@@ -1,4 +1,5 @@
-// electron-builder's afterPack (package.json "build"): signs the app with codesign, one file at a time.
+// electron-builder's afterPack (package.json "build"): the app's native modules for its architecture (natives.cjs), then
+// signs it with codesign, one file at a time.
 // electron-builder's own signing (@electron/osx-sign) opens every file in the bundle at once to find the binaries, and
 // with node_modules in it (some 26,000 files) that's more than macOS lets a process have open (EMFILE).
 //
@@ -86,6 +87,7 @@ function notarize(file) {
 
 exports.default = async function sign(context) {
   if (context.electronPlatformName !== "darwin") return
+  await require("./natives.cjs").default(context)
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   const id = identity()
   if (RELEASE) {
@@ -105,4 +107,5 @@ exports.default = async function sign(context) {
 }
 
 exports.identity = identity
+exports.macho = macho
 exports.notarize = notarize

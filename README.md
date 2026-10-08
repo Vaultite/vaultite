@@ -6,11 +6,12 @@
 <p align="center">
   Your personal knowledge base and wiki, in plain Markdown files you own, collaborating with your AI.
   <br>
-  <a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite.dmg">Download</a>
+  <a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg">Download</a>
+  (<a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg">Intel</a>)
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20silicon)-blue" alt="Platform: macOS on Apple silicon">
+  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Linux-blue" alt="Platform: macOS and Linux">
   <img src="https://img.shields.io/github/v/release/Vaultite/vaultite?label=version" alt="Latest version">
   <img src="https://img.shields.io/badge/license-Apache%202.0-lightgrey" alt="License: Apache 2.0">
 </p>
@@ -34,8 +35,9 @@ draws as pages.
 
 ## Get started
 
-[**Download Vaultite.dmg**](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite.dmg), drag it to
-Applications, and open it (on Linux: the [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest);
+[**Download Vaultite.dmg**](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg) (an Intel
+Mac: [this one](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg); macOS 13 or later), drag
+it to Applications, and open it (on Linux: the [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest);
 `sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+): make a vault (or open a folder of Markdown, changing none of it), and it opens, minimal, with a
 terminal to run Claude Code or Codex in. Or try the playground (a made-up vault) first. More is a
 bundle away (Life OS: your days, people and health), and the MCP plugin puts claude.ai and ChatGPT on it.

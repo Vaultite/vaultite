@@ -9,13 +9,16 @@
   Development one) macOS keeps the app's privacy grants across builds; signed ad hoc, each build is a new app and its
   terminals get "Operation not permitted" on an iCloud Drive vault. The microphone needs Info.plist's
   NSMicrophoneUsageDescription (package.json's build); a new native need is an entitlement (`entitlements.plist`).
-- **Updates**: a release (`npm run release`: an Apple silicon dmg and zip in `dist-app/`, hardened runtime, the app and
-  the dmg notarized and stapled with the `vaultite-notary` profile, `electron/dmg.cjs`) updates from package.json's
-  `build.publish` feed (electron-updater, the zip; a feed that fails goes only to update.log; `VAULTITE_UPDATE_URL` for
-  tests). Uploading the feed (latest-mac.yml, the zip and its blockmap) is by hand, never part of a build; a build
-  from a checkout runs `update.sh` every half hour (the repo's newest main built in `userData/source`, log
-  `userData/logs/update.log`), and Restart to update swaps the app and reopens the vaults. Test a release under another
-  `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check its privacy grants.
+- **Updates**: a release (`npm run release`: a dmg and zip each for Apple silicon and Intel in `dist-app/`, hardened
+  runtime, the apps and dmgs notarized and stapled with the `vaultite-notary` profile, `electron/dmg.cjs`) updates from
+  package.json's `build.publish` feed (electron-updater, the zip: one latest-mac.yml lists both, and each Mac takes its
+  own, the one named arm64 on Apple silicon; a feed that fails goes only to update.log; `VAULTITE_UPDATE_URL` for
+  tests). An app for the other architecture gets its native packages from package-lock.json (`natives.cjs`), so one
+  `npm ci` builds both. Uploading the feed (latest-mac.yml, both zips and their blockmaps) is by hand, never part of a
+  build; a build from a checkout runs `update.sh` every half hour (the repo's newest main built in `userData/source`,
+  log `userData/logs/update.log`, for this Mac), and Restart to update swaps the app and reopens the vaults. Test a
+  release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check its
+  privacy grants.
   **Vaultite Dev** (`npm run app:dev` in a worktree) is a branch as its own app: it updates from it and opens the
   sandbox, never Set up (which writes outside the app).
 - **Debugging the real window**: `debugPort` in `vaults.json` (or `VAULTITE_DEBUG_PORT`, from the next launch) serves

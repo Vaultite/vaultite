@@ -56,16 +56,29 @@ export const helperName = () => `transcribe-${crypto.createHash("sha1").update(f
 const quiet = (bin: string, args: string[], timeout = 120_000) => new Promise<{ ok: boolean; out: string; err: string }>((done) =>
   execFile(bin, args, { timeout }, (e, out, err) => done({ ok: !e, out: String(out).trim(), err: String(err).trim() })))
 
-/** Build the helper into `dir` (Xcode's Command Line Tools: never /usr/bin/swiftc without them, which asks to install). */
-export async function buildHelper(dir: string): Promise<string> {
+/** Build the helper into `dir` (Xcode's Command Line Tools: never /usr/bin/swiftc without them, which asks to install),
+ *  for this Mac, or one file for each of `archs` (the desktop app's: both, as it ships for Apple silicon and Intel). */
+export async function buildHelper(dir: string, archs: string[] = []): Promise<string> {
   const out = path.join(dir, helperName())
-  if (runnable(out)) return out
+  if (runnable(out)) {
+    const built = (await quiet("/usr/bin/lipo", ["-archs", out])).out.split(" ")
+    if (archs.every((a) => built.includes(a))) return out
+  }
   if (!(await quiet("/usr/bin/xcode-select", ["-p"])).ok) throw new Error("it needs Xcode's Command Line Tools to be built here")
   fs.mkdirSync(dir, { recursive: true })
   const tmp = `${out}.${process.pid}`
-  const r = await quiet("/usr/bin/xcrun", ["swiftc", "-O", SWIFT, "-o", tmp], 300_000)
-  if (!r.ok) { fs.rmSync(tmp, { force: true }); throw new Error(`it didn't build: ${r.err.split("\n").slice(-2).join(" ")}`) }
-  fs.renameSync(tmp, out)
+  const slices = archs.map((a) => [`${tmp}-${a}`, "-target", `${a}-apple-macos26`])
+  try {
+    for (const [file, ...target] of slices.length ? slices : [[tmp]]) {
+      const r = await quiet("/usr/bin/xcrun", ["swiftc", "-O", ...target, SWIFT, "-o", file], 300_000)
+      if (!r.ok) throw new Error(`it didn't build: ${r.err.split("\n").slice(-2).join(" ")}`)
+    }
+    if (slices.length) {
+      const r = await quiet("/usr/bin/xcrun", ["lipo", "-create", ...slices.map((s) => s[0]), "-output", tmp])
+      if (!r.ok) throw new Error(`lipo: ${r.err}`)
+    }
+    fs.renameSync(tmp, out)
+  } finally { for (const f of [tmp, ...slices.map((s) => s[0])]) fs.rmSync(f, { force: true }) }
   return out
 }
 

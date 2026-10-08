@@ -223,9 +223,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   ticking a checkbox or routine, switches and segmented controls, the read / edit toggle and a drawer settling.
 - **Desktop app**: a real menu bar, and the **Web viewer** (web pages in tabs, logins kept per workspace, a Web pages
   panel, Save to vault; right-click an image to save it to the vault, download, copy it or its address). Any dropped file opens in a tab. A crashed page reloads itself. Signed builds keep their
-  permissions across updates. Downloaded releases (a notarized dmg, for Apple silicon) update themselves: a new
-  version downloads in the background, then a toast offers Restart to update (quitting installs it too). New icon, and
-  you can set your own Dock icon.
+  permissions across updates. Downloaded releases (a notarized dmg, for Apple silicon or Intel Macs, macOS 13 or
+  later) update themselves: a new version downloads in the background, then a toast offers Restart to update (quitting
+  installs it too). New icon, and you can set your own Dock icon.
 - **Errors**: the errors the app and the server hit, kept on the server's Mac for 30 days (an Errors page, `vau
   errors`). That includes when the app stopped, which is sent after you reload, a block that failed, and the server's
   own errors and crashes, each with its stack, device and request. A new kind of error shows a toast. The server's

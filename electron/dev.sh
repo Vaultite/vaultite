@@ -9,5 +9,6 @@ running() { osascript -e 'tell application "System Events" to (bundle identifier
 running && osascript -e 'tell application id "app.vaultite.dev" to quit'
 while running; do sleep 0.3; done
 mkdir -p "$app"
-rsync -a --delete "dist-app/mac-arm64/Vaultite Dev.app/" "$app/"
+out=dist-app/mac; [ "$(uname -m)" = arm64 ] && out=dist-app/mac-arm64
+rsync -a --delete "$out/Vaultite Dev.app/" "$app/"
 open -g --env VAULTITE_BEHIND=1 "$app"
