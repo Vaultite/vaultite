@@ -1,12 +1,12 @@
 ## Canvases (`*.canvas`, JSON Canvas)
-A board of cards joined by arrows, in Obsidian's open format (jsoncanvas.org, spec 1.0), so Obsidian opens the same
-files. New ones go next to the note being written, else `Canvases/` ("New canvas" in the palette, `/canvas` in a
+A board of cards joined by arrows, in the open JSON Canvas format (jsoncanvas.org, spec 1.0), so other apps open the
+same files. New ones go next to the note being written, else `Canvases/` ("New canvas" in the palette, `/canvas` in a
 note), or in the folder right-clicked in the file tree (its New canvas). The app draws it as an infinite canvas; `![[Canvases/Plan.canvas]]` on a line of its own in a note or a
 dashboard shows a picture of it (`|400`: its height). `GET /api/render?path=Canvases/Plan.canvas` reads it as text:
 its cards (by group), notes as [[links]], and its connections. The graph view draws a line from a canvas to every note
 it shows.
 
-The shape (Obsidian writes it indented with tabs; keep keys you don't know):
+The shape (other apps write it indented with tabs; keep keys you don't know):
 
     {"nodes": [
        {"id": "g1", "type": "group", "label": "Launch", "x": -40, "y": -80, "width": 700, "height": 320, "color": "4"},

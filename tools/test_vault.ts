@@ -3738,7 +3738,7 @@ check("obsidian: an empty app.json changes nothing", same(s.obsidian, {}), s.obs
   const INDEX = path.join(tmp, "obsidian-index.json")
   fs.writeFileSync(INDEX, JSON.stringify({ plugins: [{ id: "harbor", name: "Harbor", repo: "alicepark/plugins", dir: "harbor", version: "1.0.0", replaces: { obsidian: ["made-up-elsewhere"] } }] }))
   process.env.VAULTITE_PLUGIN_INDEX = INDEX
-  const [oc, rows] = await api("POST", "ops/obsidian.plugins", {})
+  const [oc, rows] = await api("POST", "ops/other-apps.plugins", {})
   const by = (id: string) => (rows as Any[]).find((r) => r.id === id)
   check("obsidian plugins: each with the app's plugin that stands in for it, on or off", oc === 200 && by("recent-files-obsidian").name === "Recent Files" &&
     by("recent-files-obsidian").here[0]?.id === "recent" && by("obsidian-made-up").here.length === 0 && by("obsidian-made-up").directory.length === 0, rows)
@@ -3794,7 +3794,7 @@ check("obsidian: an empty app.json changes nothing", same(s.obsidian, {}), s.obs
   check("property.type: Obsidian's type again writes nothing", !read(".vaultite/types.json").includes("score") && read(".obsidian/types.json") === obsBefore, read(".vaultite/types.json"))
   await api("POST", "ops/property.type", { key: "due", type: "none" })
   ;[, r] = await api("POST", "ops/property.types", {})
-  check("property.type none: back to Obsidian's, .obsidian/ never written", r.types.find((t: Any) => t.key === "due")?.type === "datetime" && r.types.find((t: Any) => t.key === "due")?.from === "obsidian"
+  check("property.type none: back to Obsidian's, .obsidian/ never written", r.types.find((t: Any) => t.key === "due")?.type === "datetime" && r.types.find((t: Any) => t.key === "due")?.from === "other"
     && read(".obsidian/types.json") === obsBefore, r.types)
   ;[code] = await api("POST", "ops/property.type", { key: "due", type: "colour" })
   check("property.type: an unknown type is a 400", code === 400, code)

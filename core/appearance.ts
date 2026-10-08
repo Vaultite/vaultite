@@ -381,5 +381,5 @@ export function schemeCSS(id: string, t: Converted) {
   // A theme with one mode draws it in both (prefs.ts also keeps the app in that mode).
   const light = t.modes.includes("light") ? t.light : t.dark
   const dark = t.modes.includes("dark") ? t.dark : t.light
-  return `/* Converted from an Obsidian theme: colours only. */\n${block(sel, light, !t.modes.includes("light"))}${block(`${sel}.dark`, dark, !!t.modes.includes("dark"))}`
+  return `/* Converted from a theme: colours only. */\n${block(sel, light, !t.modes.includes("light"))}${block(`${sel}.dark`, dark, !!t.modes.includes("dark"))}`
 }

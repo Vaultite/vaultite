@@ -17,7 +17,7 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
   plugins/<id>/data.json   a plugin's settings: only the keys that differ from its defaults
   plugins/<id>/      with a manifest.json: a vault plugin it brings (it runs code: applying asks the user, and their yes
                      allows it on that machine; one already in the vault keeps waiting until allowed on its own)
-  themes/<Name>/, snippets/<name>.css   Obsidian themes and CSS snippets it uses
+  themes/<Name>/, snippets/<name>.css   themes and CSS snippets it uses
   Dashboards/Desk.md any other file: a vault file at the same path (the dashboards it pins), added if there's none
   ```
   Each file is optional: a part left out stays as it is when the bundle is applied (no plugins.json: plugins aren't

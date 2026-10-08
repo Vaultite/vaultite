@@ -121,7 +121,7 @@ export function hydrate(root: HTMLElement) {
 
 const drawnHooks = new Set<(el: HTMLElement) => void>()
 /** Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor):
- *  plugins that change rendered Markdown (Obsidian's post-processors). Returns the way to stop. */
+ *  plugins that change rendered Markdown (another app's post-processors). Returns the way to stop. */
 export function onMarkdownDrawn(fn: (el: HTMLElement) => void) {
   drawnHooks.add(fn)
   return () => { drawnHooks.delete(fn) }

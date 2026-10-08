@@ -20,7 +20,7 @@ doesn't have shows as written.
 
 ## Property types
 A property's type is the vault's, not a file's: `.vaultite/types.json`, `{"types": {"due": "date", "rating": "number"}}`
-(Obsidian's `.obsidian/types.json` the same, under it; `vau docs obsidian`). Types: `text`, `list`, `number`,
+(another app's `.obsidian/types.json` the same, under it; `vau docs other-apps`). Types: `text`, `list`, `number`,
 `checkbox`, `date` (`2026-09-01`), `datetime` (`2026-09-01 18:00`), `tags`, `aliases` (those two are implied), `link`
 (`"[[Name]]"`). A key without one is its value's type. A type picks the editor's input (the icon before a key sets it),
 adds a quiet note where a value isn't of it (under the property, and in italics in `/api/render`), and makes database

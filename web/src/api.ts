@@ -78,7 +78,7 @@ export { fetchMachines, machinePath, onMachine, otherMachines, splitMachine, use
 export { readSidebars, sameSidebars, savedSidebars, setDefaultSidebars, sidebars, sidebarsChanged, useSidebars, vaultSidebars } from "@/core/plugins"
 // Show a sidebar panel (its sidebar open, it unfolded): revealPanel, else dockAtEnd puts it at the end of a sidebar.
 export { dockAtEnd, revealPanel, sideOf as panelSide } from "@/core/plugins"
-// Plugins a plugin runs (Obsidian's, under obsidian-compat): listed and drawn like any, their switches its own.
+// Plugins a plugin runs (Obsidian's, under plugin-compat): listed and drawn like any, their switches its own.
 export { hostPlugins, standingIn } from "@/core/plugins"
 // The three levels state lives at (the vault, a workspace, a device: core/scope.ts): the current workspace, the ones in
 // use, and values a plugin keeps per workspace or per device. Workspaces itself tells the app when they change.

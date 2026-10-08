@@ -179,7 +179,7 @@ const hadCommunity = fs.existsSync(community) ? fs.readFileSync(community, "utf8
 fs.mkdirSync(path.dirname(community), { recursive: true })
 fs.writeFileSync(community, JSON.stringify(["recent-files-obsidian", "tag-wrangler", "qa-made-up"]))
 await page.goto("about:blank"); await page.goto(`${B}#plugins`); await wait(2000)
-await page.locator("[data-plugin-gear=obsidian]").click(); await wait(1500)
+await page.locator("[data-plugin-gear=other-apps]").click(); await wait(1500)
 const op = page.locator("[data-obsidian-plugins]")
 check("Obsidian's sheet lists the vault's Obsidian plugins, each with what stands in for it", await op.locator('[data-obsidian-plugin="recent-files-obsidian"]', { hasText: "Recent files" }).count() === 1 &&
   await op.locator('[data-obsidian-plugin="tag-wrangler"]', { hasText: "Tags" }).count() === 1 && await op.locator('[data-obsidian-plugin="qa-made-up"]', { hasText: "your agent can write one" }).count() === 1)

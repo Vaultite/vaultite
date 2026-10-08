@@ -1,6 +1,6 @@
 ## Audio recorder
 Recordings made in the app ("Start recording audio", `/record` in a note, "Record audio" in a note's menu) are audio
-files saved where pasted images go (`attachmentFolderPath` in `.obsidian/app.json`, else `Attachments/`), named
+files saved where pasted images go (`Attachments/`, unless the vault's settings say otherwise), named
 `Recording 2026-10-01 14.03.12.m4a` (`.webm` from some browsers), and embedded in the note on a line of their own
 (a new note named after the recording when none was being edited). When the machine running the server can transcribe
 (Apple's on-device speech recognition on macOS 26, built in; else whisper, when it's installed), the transcript is

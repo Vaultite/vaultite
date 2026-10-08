@@ -784,7 +784,7 @@ export function agentLines(vault: Vault, plugins: Plugin[] = LOADED): { plugin: 
   })
 }
 
-/** The vault's property types: Obsidian's (the service `property-types` of a plugin that's on), with
+/** The vault's property types: another app's (the service `property-types` of a plugin that's on), with
  *  `.vaultite/types.json`'s over them (`own`: false leaves those out). An undeclared key is its value's type. */
 export function propertyTypes(vault: Vault, plugins: Plugin[] = LOADED, own = true): PropTypes {
   const on = enabled(vault, plugins)

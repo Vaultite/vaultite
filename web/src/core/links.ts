@@ -66,7 +66,7 @@ function takeWebLink(url: string, mod: boolean) {
   return false
 }
 
-/** A plugin that's on takes this link of another app's scheme (obsidian://): whether one did. */
+/** A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did. */
 export function takeSchemeLink(url: string, mod = false) {
   const { disabled, order } = getPrefs()
   for (const p of active(disabled, order)) {

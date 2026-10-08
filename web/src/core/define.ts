@@ -86,7 +86,7 @@ export type BlockCtx = FileCtx & { text: string; options: Record<string, unknown
 /** A non-Markdown kind of file it draws by extension (.excalidraw). Its text is the only state: the drawing reports
  *  changes with `onChange`, the core saves and merges them. With its plugin off, the file is plain text. */
 export type FileFormat = {
-  /** Extensions, lower case, without the dot; a double one works ("excalidraw.md": Obsidian's drawings). */
+  /** Extensions, lower case, without the dot; a double one works ("excalidraw.md": Excalidraw's drawings in notes). */
   exts: string[]
   icon: LucideIcon; tint?: string
   /** Its text is JSON: saved only while it parses, and its source is highlighted as JSON. */
@@ -387,8 +387,8 @@ export type SlashItem = { id: string; title: string
   text?: string
   run?: (insert: (text: string) => void) => void | Promise<void> }
 
-/** How the vault wants new files placed and links written, when it says so itself (.obsidian/app.json); undefined
- *  leaves it to the app. The first plugin that's on and answers wins. */
+/** How the vault wants new files placed and links written, when it says so itself (another app's settings in it);
+ *  undefined leaves it to the app. The first plugin that's on and answers wins. */
 export type Conventions = {
   /** The folder a new note goes in ("" = the top). `from`: the file the user is on ("" for none). */
   newNoteFolder?: (store: Store, from: string) => string | undefined
@@ -464,7 +464,7 @@ export type PluginDef = {
   /** Web links clicked in the app: true when it opened one itself (the Web viewer), false to leave it to the browser.
    *  The first plugin that's on and takes it wins. */
   webLink?: (url: string, how: { mod: boolean }) => boolean
-  /** Links of another app's scheme clicked in the app (`obsidian://open?file=…`, `zotero://…`): true when it took one.
+  /** Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one.
    *  The first plugin that's on and takes it wins; none: the link does nothing. */
   schemeLink?: (url: string, how: { mod: boolean }) => boolean
   /** What the Plugins sheet shows, with made-up data: a render, or the id of the plugin whose dashboards (pages/*.md)
@@ -479,7 +479,7 @@ export type PluginDef = {
   files?: FileView
   /** Kinds of files it draws, by extension (see FileFormat). */
   formats?: Record<string, FileFormat>
-  /** A format for one Markdown file, decided by the file as it opens (a hosted Obsidian plugin taking a note's leaf:
+  /** A format for one Markdown file, decided by the file as it opens (a hosted plugin taking a note's leaf:
    *  Kanban's boards); null leaves it to the app. Wins over `formats`; its source view is still the file's text. */
   fileFormat?: (path: string) => FileFormat | null
   /** What it draws where a file has a ```block-<name> fence (YAML options inside). Each is declared in its manifest and
@@ -588,8 +588,9 @@ export type Plugin = Omit<Manifest, "blocks" | "settings" | "icon"> & PluginDef 
 
 export const definePlugin = (def: PluginDef) => def
 
-/** A plugin another plugin runs (an Obsidian plugin, run by obsidian-compat): listed on the Plugins page in its host's
- *  group and drawn like any plugin, while its host answers its switch, its approval and its removal (PluginHost). */
+/** A plugin another plugin runs (a plugin written for another app, run by its host): listed on the Plugins
+ *  page in its host's group and drawn like any plugin, while its host answers its switch, its approval and its removal
+ *  (PluginHost). */
 export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideIcon; description?: string; category?: string; tint?: string
   version?: string; author?: string
   /** Its home page (the author's or its repository's), shown in its sheet. */
@@ -606,7 +607,7 @@ export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideI
   disclosures?: Disclosures }
 /** What hosts plugins (hostPlugins): its group's name on the Plugins page and the answers to its plugins' buttons. */
 export type PluginHost = { title: string
-  /** A plugin of it, in its sheet's kicker ("Obsidian plugin"). */
+  /** A plugin of it, lower case: in its sheet's kicker and in sentences ("plugin from another app"). */
   kind: string
   /** A line under its group's title. */
   intro?: string
@@ -617,7 +618,7 @@ export type PluginHost = { title: string
   browse?: BrowseSource
   /** What its plugins can do once allowed, said before one first runs ("It runs with the app's full access…"). */
   trust?: string }
-/** A source of plugins to install on the Plugins page's Browse (a host's: Obsidian's community plugins). */
+/** A source of plugins to install on the Plugins page's Browse (a host's: another app's plugins). */
 export type BrowseSource = { title: string
   /** Its sort orders (the first is the default). */
   sorts?: { value: string; label: string }[]
@@ -632,8 +633,8 @@ export type BrowseEntry = { id: string; name: string; author?: string; descripti
   installed: boolean
   /** Its id once installed (a hosted plugin's), to show it among the installed ones. */
   plugin?: string
-  /** A plugin here that does its job (Vaultite's Excalidraw for Obsidian's), offered before the original: `use` installs
-   *  it if needed and turns it on; `id` shows it among the installed ones. */
+  /** A plugin here that does its job (Vaultite's Excalidraw for another app's), offered before the original: `use`
+   *  installs it if needed and turns it on; `id` shows it among the installed ones. */
   standIn?: { id: string; name: string; on: boolean; use: () => Promise<unknown> } }
 
 

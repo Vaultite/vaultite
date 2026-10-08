@@ -57,7 +57,7 @@ effect, these included.
 - `theme`: `system` | `light` | `dark`. `scheme`: `gruvbox` (default), `default` (Classic: Apple's colours), `catppuccin`,
   `nord`, `dracula` (dark only), `solarized`, `tokyo-night`, `rose-pine`, `everforest`, `kanagawa`, `one`, `ayu`,
   `github`, `flexoki`, `amethyst`, `paper`, or
-  `theme:<Name>` for an Obsidian theme in `.vaultite/themes/<Name>/` (as downloaded: `manifest.json`, `theme.css`;
+  `theme:<Name>` for a downloaded theme in `.vaultite/themes/<Name>/` (as downloaded: `manifest.json`, `theme.css`;
   only its colours carry over; `GET /api/themes` lists them).
 - `density`: `compact` (default) | `comfortable`. `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).

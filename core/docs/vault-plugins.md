@@ -18,8 +18,8 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
   made, drawn by this plugin's `files: { types: ["kanban"] }`).
 - `userFiles`: files in its folder it writes as the user's own (`["init.vim"]`): editing them isn't a new version to
   allow, and updates keep them. Data, never code.
-- `replaces`: other apps' plugins it stands in for, by app (`{"obsidian": ["dataview"]}`): someone coming from Obsidian
-  is offered it for theirs (`vau obsidian plugins`).
+- `replaces`: other apps' plugins it stands in for, by app (`{"obsidian": ["dataview"]}`: the app whose
+  `.obsidian/` folder a vault has): someone coming from that app is offered it for theirs (`vau other-apps plugins`).
 - `runsOnServer`: it reads files or runs programs on the server's machine (its Plugins sheet says so); plugin.ts alone
   doesn't make it so.
 - `icon`: how it looks wherever it's listed, and in the directory before anyone installs it: a Lucide name

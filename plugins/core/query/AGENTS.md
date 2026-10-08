@@ -71,9 +71,9 @@ it, and the file the view is in. "New database" in the file tree's menu makes a 
 database.md`) with a table of it (`from: Recipes/`), in the folder, or where new notes go when it's a kind's (People/,
 Logs/...).
 
-### Obsidian Bases (`*.base`)
-A `.base` file is Obsidian's: YAML that the app draws as its views (a tab per view; Source shows the YAML). Write it as
-Obsidian does, so both apps read it:
+### Bases (`*.base`)
+A `.base` file is YAML that the app draws as its views (a tab per view; Source shows the YAML), in the shape other
+Markdown apps write it, so they read it too:
 ```
 filters:                     # every view's; a view's own `filters` apply too (and)
   and:
@@ -109,7 +109,7 @@ views:
   (`rowHeight`, `cardSize`, `image`, a map's `defaultZoom`...) are kept and ignored.
 
 ### Expressions (filters, formulas, summaries)
-Bases' language, as in Obsidian: `'text'` or `"text"`, numbers, `true` / `false` / `null`, `[lists]`, `{"objects": 1}`,
+Bases' language: `'text'` or `"text"`, numbers, `true` / `false` / `null`, `[lists]`, `{"objects": 1}`,
 `/regex/`; `+ - * / %`, `== != > < >= <=`, `! && ||`, `( )`, `x.field`, `x[0]`, `x["key"]`. Names are properties
 (`status`, `note.status`, `note["due date"]`; a dash in a name is part of it, so write a minus with spaces), `file`,
 `formula.x`, `this`, and in `filter` / `map` / `reduce` `value`, `index`, `acc` (in a summary `values`). A `"[[link]]"`
@@ -127,6 +127,6 @@ in a property is a link; text that is a date acts as one where a date is expecte
 - Lists: `length`, `contains`, `containsAll`, `containsAny`, `filter`, `map`, `reduce`, `flat`, `join`, `reverse`,
   `slice`, `sort`, `unique`, `isEmpty`, and for summaries `sum`, `mean`, `min`, `max`, `median`. Links: `asFile()`,
   `linksTo()`. Objects: `keys`, `values`, `isEmpty`. Regexes: `matches`. Any value: `isTruthy`, `isType`, `toString`.
-- Not supported (a note says so): functions plugins add in Obsidian, `html()` and `image()` drawn as such (they show
+- Not supported (a note says so): functions other apps' plugins add, `html()` and `image()` drawn as such (they show
   as text). Property types (types.json) sort a view's columns; inside expressions a value is read by how it looks (text
   that looks like a date or a link is one).

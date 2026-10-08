@@ -55,7 +55,7 @@
 ## Features
 - **Links and graph**: `[[...]]` resolves in `core/links.ts` and `web/src/core/links.ts` (plugins add names with the
   service `link-names`); `POST /api/backlinks/link` rewrites only that stretch, 409 if the line changed.
-- **Obsidian vaults open as they are** (core/docs/from-obsidian.md): `core/sections.ts`, note embeds, the `obsidian`
+- **Obsidian vaults open as they are** (core/docs/from-other-apps.md): `core/sections.ts`, note embeds, the `other-apps`
   plugin's conventions from `.obsidian/app.json`, Obsidian themes as colour schemes (only colours carry over).
 - **Audio recorder, Slides, Export to PDF**: app-wide overlays drawn by each plugin's `background`, never a route or a
   sheet. The transcript is the server's job, written as a small edit under `vault.lock`, so it lands with the app

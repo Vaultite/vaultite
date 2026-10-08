@@ -1,5 +1,5 @@
-// Obsidian's settings sheet: the vault's Obsidian plugins, each run as it is (the original) or with what stands in for it
-// here, picked in a click (obsidian.use); "Run them here" runs them all (obsidian.run-all).
+// The settings sheet: the vault's plugins of another app, each run as it is (the original) or with what stands in for it
+// here, picked in a click (other-apps.use); "Run them here" runs them all (other-apps.run-all).
 import { useEffect, useState } from "react"
 import { Group, notify, notifyError, op, Segmented, SettingRow, Switch } from "@vaultite"
 
@@ -21,11 +21,11 @@ function status(r: Row) {
   return alt ? `Off: run the original, or Vaultite's ${alt.name}${r.here.length ? "" : " from the plugin directory"}` : "Off"
 }
 
-export function ObsidianPlugins() {
+export function OtherPlugins() {
   const [rows, setRows] = useState<Row[] | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [n, setN] = useState(0)
-  useEffect(() => { op<Row[]>("obsidian.plugins").then(setRows, () => setRows([])) }, [n])
+  useEffect(() => { op<Row[]>("other-apps.plugins").then(setRows, () => setRows([])) }, [n])
   if (!rows?.length) return null
 
   const act = async (key: string, run: () => Promise<unknown>, what: string) => {
@@ -33,7 +33,7 @@ export function ObsidianPlugins() {
     try { await run(); setN((x) => x + 1) } catch (e) { notifyError(e, `Couldn't ${what}`) } finally { setBusy(null) }
   }
   const use = (r: Row, w: string) => act(r.id, async () => {
-    const u = await op<Used>("obsidian.use", { id: r.id, with: w })
+    const u = await op<Used>("other-apps.use", { id: r.id, with: w })
     if (u.off.length) notify(`${r.name}: turned off ${u.off.join(" and ")}, so only one draws it`)
   }, `change ${r.name}`)
   const idle = rows.filter((r) => !usedBy(r)).length
@@ -41,12 +41,12 @@ export function ObsidianPlugins() {
     <div data-obsidian-plugins>
       <div className="mb-2 flex items-center gap-3 px-1">
         <p className="min-w-0 flex-1 text-[13px] leading-[18px] text-muted-foreground">
-          Your Obsidian vault has {rows.length} plugin{rows.length === 1 ? "" : "s"}. Run each as it is, or use Vaultite's own where there is one: agents can read what those draw.
+          This vault has {rows.length} plugin{rows.length === 1 ? "" : "s"} from another app. Run each as it is, or use Vaultite's own where there is one: agents can read what those draw.
         </p>
         {idle > 0 && (
           <button type="button" disabled={!!busy} data-obsidian-run-all onClick={() => void act("all", async () => {
-            const r = await op<{ running: string[]; allowed: boolean }>("obsidian.run-all")
-            notify(`Running ${r.running.length} Obsidian plugin${r.running.length === 1 ? "" : "s"}${r.allowed ? "" : ": each waits for this machine's owner to allow it"}`)
+            const r = await op<{ running: string[]; allowed: boolean }>("other-apps.run-all")
+            notify(`Running ${r.running.length} plugin${r.running.length === 1 ? "" : "s"} from another app${r.allowed ? "" : ": each waits for this machine's owner to allow it"}`)
           }, "run them")} className={`${button} bg-primary text-primary-foreground hover:opacity-90`}>{busy === "all" ? "Starting…" : "Run them here"}</button>
         )}
       </div>

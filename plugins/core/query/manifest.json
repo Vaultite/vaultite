@@ -3,7 +3,7 @@
   "icon": "table-2",
   "category": "writing",
   "name": "Database views",
-  "description": "A block that lists the files matching a query (a folder, a type, tags, their properties) as a table, cards, a list, a board, a calendar or a map, sorted and grouped, like a database; and Obsidian's .base files, embeds and ```base fences on the same engine. Click a row to open it, double-click a value to change it.",
+  "description": "A block that lists the files matching a query (a folder, a type, tags, their properties) as a table, cards, a list, a board, a calendar or a map, sorted and grouped, like a database; and .base files (bases), embeds and ```base fences on the same engine. Click a row to open it, double-click a value to change it.",
   "blocks": {
     "query": {
       "description": "the files that match a query, as a table, cards, a list, a board, a calendar or a map, with formulas and column summaries",

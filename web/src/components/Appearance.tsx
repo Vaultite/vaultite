@@ -67,7 +67,7 @@ export function SchemeGrid() {
               </div>
             )
             : <Tile key={t.name} id={id} name={t.name} on={scheme === id} onClick={() => pick(id)}
-                tip={[t.author && `By ${t.author}`, modeTip(t.modes.length === 1 ? t.modes[0] : undefined), "an Obsidian theme from your vault"].filter(Boolean).join(" · ")} />
+                tip={[t.author && `By ${t.author}`, modeTip(t.modes.length === 1 ? t.modes[0] : undefined), "a theme from your vault"].filter(Boolean).join(" · ")} />
         })}
       </div>
       {canOpenHere() && <FolderButton folder={THEMES_FOLDER} label="Open themes folder" className="mt-2 -ml-2 h-7 text-[13px]" />}
@@ -85,7 +85,7 @@ function SchemePicker() {
       <div role="radiogroup" aria-label="Colour scheme" className="contents">
         {[DEFAULT_SCHEME, second].map((id) => <Tile key={id} id={id} name={nameOf(id)} on={scheme === id} onClick={() => setPrefs({ scheme: id })} />)}
       </div>
-      <button type="button" aria-label="More colour schemes" data-tip="Every colour scheme, and your vault's Obsidian themes" onClick={() => openDetail("schemes")}
+      <button type="button" aria-label="More colour schemes" data-tip="Every colour scheme, and your vault's themes" onClick={() => openDetail("schemes")}
         className="flex min-w-0 cursor-pointer flex-col rounded-[10px] p-1 text-left ring-2 ring-transparent transition-shadow hover:ring-border">
         <div aria-hidden className="grid h-10 grid-cols-4 overflow-hidden rounded-[7px] border-[0.5px] border-border">
           {["nord", "catppuccin", "rose-pine", "tokyo-night"].map((id) => (

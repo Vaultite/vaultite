@@ -76,7 +76,7 @@ export function setVaultPlugins(list: Plugin[]) {
   if (signature(list) !== was) bump()
 }
 
-// Plugins other plugins run (an Obsidian plugin under obsidian-compat), by host: their switches are the host's.
+// Plugins other plugins run (an Obsidian plugin under plugin-compat), by host: their switches are the host's.
 const hosts = new Map<string, PluginHost>()
 const hostedOn = new Map<string, boolean>()
 export const hostOf = (p: Plugin) => (p.host ? hosts.get(p.host) ?? null : null)

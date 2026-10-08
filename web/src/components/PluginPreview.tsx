@@ -16,7 +16,7 @@ import { Where } from "@/components/PluginSettings"
 import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { List, PageHeader, Row, Section, SheetHead, Switch } from "@/components/kit"
-import { cn } from "@/lib/utils"
+import { capitalize, cn } from "@/lib/utils"
 
 const noPreview = () => <p className="p-6 text-center text-[15px] text-muted-foreground">No preview for this one yet.</p>
 
@@ -157,7 +157,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
   const toggle = (v: boolean) => setSwitch(plugin, v)
   return (
     <>
-      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? hostOf(plugin)?.kind : KICKER[plugin.tier]}
+      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : KICKER[plugin.tier]}
         title={plugin.name} sub={plugin.description} />
       {waiting ? <Approval plugin={plugin} /> : (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">

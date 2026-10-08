@@ -30,10 +30,10 @@ const bool = (key: string) => (v: string) => {
 export const APPEARANCE: Record<string, Setting> = {
   theme: { about: "light, dark or system (follows the device)", parse: oneOf("light", "dark", "system") },
   scheme: {
-    about: "colour scheme: gruvbox (the default), default (Classic, Apple's colours), one in web/src/themes (nord, catppuccin...), or theme:<Name> for an Obsidian theme in .vaultite/themes",
+    about: "colour scheme: gruvbox (the default), default (Classic, Apple's colours), one in web/src/themes (nord, catppuccin...), or theme:<Name> for a downloaded theme in .vaultite/themes",
     parse: (v) => {
       if (/^theme:[^/\\.][^/\\]*$/.test(v)) return v // checked against the vault in run
-      if (!schemes().includes(v)) throw new OpError(`'${v}' isn't one of ${schemes().join(", ")}, or theme:<Name> (an Obsidian theme in .vaultite/themes)`)
+      if (!schemes().includes(v)) throw new OpError(`'${v}' isn't one of ${schemes().join(", ")}, or theme:<Name> (a downloaded theme in .vaultite/themes)`)
       return v
     },
   },
@@ -179,7 +179,7 @@ parses, else text). There's no font size setting: ⌘+ and ⌘- (Ctrl off a Mac)
       // Themes and snippets are files in the vault: they must be there.
       const has = (p: string) => fs.existsSync(app.vault.abs(p))
       if (key === "scheme" && typeof parsed === "string" && parsed.startsWith("theme:") && !has(`.vaultite/themes/${parsed.slice(6)}/theme.css`)) {
-        throw new OpError(`no Obsidian theme '${parsed.slice(6)}': put its folder (manifest.json and theme.css) in .vaultite/themes/`, 404)
+        throw new OpError(`no theme '${parsed.slice(6)}': put its folder (manifest.json and theme.css) in .vaultite/themes/`, 404)
       }
       if (key === "snippets" && Array.isArray(parsed)) {
         for (const n of parsed) if (!has(`.vaultite/snippets/${n}.css`)) throw new OpError(`no snippet '${n}': .vaultite/snippets/${n}.css isn't there`, 404)

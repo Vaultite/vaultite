@@ -1,6 +1,6 @@
 {
   "name": "Minimal",
-  "description": "Notes and links, like Obsidian, with a terminal for your coding agent: files, search, backlinks, the graph and tags. Nothing written into your notes.",
+  "description": "Notes and links, with a terminal for your coding agent: files, search, backlinks, the graph and tags. Nothing written into your notes.",
   "icon": "feather",
   "tint": "purple",
   "sort": 1

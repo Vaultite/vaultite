@@ -252,7 +252,7 @@ columns: [file, location]
 wide: true
 ```
 
-A `map` puts a pin per file where its `coordinates` say (`[lat, lon]`; `coordinates: <key>` for another), coloured by `markerColor`. A ```` ```base ```` fence is an Obsidian base inline, its YAML as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's): filters, formulas, display names, summaries, and its views as tabs.
+A `map` puts a pin per file where its `coordinates` say (`[lat, lon]`; `coordinates: <key>` for another), coloured by `markerColor`. A ```` ```base ```` fence is a base inline, its YAML as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's): filters, formulas, display names, summaries, and its views as tabs.
 
 ```base
 filters: 'type == "book"'

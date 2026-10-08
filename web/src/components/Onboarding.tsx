@@ -72,7 +72,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
         </div>
         <Options name="vault" value={kind} onChange={(v) => setKind(v as "new" | "open")} options={[
           { value: "new", icon: FolderPlus, title: "New vault", sub: "An empty folder for your notes." },
-          { value: "open", icon: FolderOpen, title: "Open folder", sub: "Notes you already have, like an Obsidian vault." },
+          { value: "open", icon: FolderOpen, title: "Open folder", sub: "Notes you already have, from any Markdown app." },
         ]} />
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
           {kind === "new" ? (
@@ -90,7 +90,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
           ) : (
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2 px-1">
-                <h2 className="flex-1 text-[12px] font-semibold text-muted-foreground">{!!info.obsidian.length && "Obsidian vaults on this machine"}</h2>
+                <h2 className="flex-1 text-[12px] font-semibold text-muted-foreground">{!!info.obsidian.length && "Vaults on this machine"}</h2>
                 <Btn onClick={() => void pick(setFolder)} data-pick>Choose a folder…</Btn>
               </div>
               <div role="radiogroup" aria-label="Folders" className="flex flex-col gap-1.5">

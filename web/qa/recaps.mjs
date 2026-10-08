@@ -1,5 +1,5 @@
 // Day recaps (plugins/core/activity: Recaps/<date>.md, ```block-recap): a day as someone works from their daily note.
-// Tasks ticked in the Tasks plugin's query (obsidian-compat, with obsidian-tasks-plugin on: its lab), one moved from
+// Tasks ticked in the Tasks plugin's query (plugin-compat, with obsidian-tasks-plugin on: its lab), one moved from
 // Open to Closed, one dropped with a reason; a note written in; a bookmarks sync (Raindrop's files) and a transcript
 // arriving on disk; Claude Code writing a note and logging a run. Then the daily note's recap, the recap file, the
 // Activity page's Days tab, a week, a filter, a phone. Writes: throwaway server only, its vault staged three days old

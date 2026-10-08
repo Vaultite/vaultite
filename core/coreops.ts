@@ -65,7 +65,7 @@ function docsOps(app: App): Op[] {
     mcp: "docs",
     summary: "The docs, read when needed: a kind of file's format (read it before writing one), the app's settings, the API.",
     help: `Without a topic: the list. A topic is a plugin's id (its AGENTS.md, then its settings, blocks and operations)
-or one of the app's (vault, app, vault-plugins, from-obsidian, api: every operation); a title's words work too.
+or one of the app's (vault, app, vault-plugins, from-other-apps, api: every operation); a title's words work too.
 
   vau docs
   vau docs people

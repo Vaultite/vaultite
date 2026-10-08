@@ -61,7 +61,7 @@ export function slug(s: unknown) {
   return str(s).toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")
 }
 
-/** File name for a title: Obsidian forbids * " \ / < > : | ? # ^ [ ] in names. */
+/** File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names. */
 export function safeName(title: unknown) {
   const name = str(title).replaceAll(":", " -").replace(/[*"\\/<>|?#^[\]]/g, " ")
   return name.replace(/\s+/g, " ").trim() || "Untitled"

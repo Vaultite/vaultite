@@ -63,7 +63,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BlockView(props)`: ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`: nothing).
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
-- `BrowseSource`: A source of plugins to install on the Plugins page's Browse (a host's: Obsidian's community plugins).
+- `BrowseSource`: A source of plugins to install on the Plugins page's Browse (a host's: another app's plugins).
 - `cancelKeys()`: Stop the sequence under way.
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
 - `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
@@ -90,7 +90,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `commandList()`: Every command registered now, available or not (`available` says which can run).
 - `confirmDialog(opts)`: Ask; resolves true when confirmed, false when cancelled.
 - `ConfirmOptions`
-- `Conventions`: How the vault wants new files placed and links written, when it says so itself (.obsidian/app.json); undefined leaves it to the app.
+- `Conventions`: How the vault wants new files placed and links written, when it says so itself (another app's settings in it); undefined leaves it to the app.
 - `copyText(text)`: Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy.
 - `createFile(folder, name?, text?)`
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
@@ -176,7 +176,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes.
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: where most of its files are, folders named like `fallback` first (Personal/Notes/, not Clippings/), else `fallback`.
-- `HostedPlugin`: A plugin another plugin runs (an Obsidian plugin, run by obsidian-compat): listed on the Plugins page in its host's group and drawn like any plugin, while its host answers its switch, its approval…
+- `HostedPlugin`: A plugin another plugin runs (a plugin written for another app, run by its host): listed on the Plugins page in its host's group and drawn like any plugin, while its host answers its switch, its…
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math and mermaid diagrams.
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
@@ -255,7 +255,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
 - `onCommandsChanged(fn)`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
-- `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor): plugins that change rendered Markdown (Obsidian's post-processors).
+- `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor): plugins that change rendered Markdown (another app's post-processors).
 - `onTabLayoutChange(fn)`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
@@ -413,7 +413,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.
 - `tagsOf(fm, body)`: A file's tags: its frontmatter `tags` (or `tag`), then its inline #tags, each once.
 - `takeAppErrors()`: The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied).
-- `takeSchemeLink(url, mod?)`: A plugin that's on takes this link of another app's scheme (obsidian://): whether one did.
+- `takeSchemeLink(url, mod?)`: A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did.
 - `Target`
 - `TerminalAgent`
 - `terminalId()`: A new terminal session id: 8 letters and digits.
@@ -547,7 +547,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Proc`: A process on this machine: its parent, its terminal's foreground group, when it started (epoch ms), its command line.
 - `processTable(maxAge?)`: Every process on this machine by pid, from one `ps` shared by every caller of the last `maxAge` ms.
 - `PROP_TYPES`
-- `propertyTypes(vault, plugins?, own?)`: The vault's property types: Obsidian's (the service `property-types` of a plugin that's on), with `.vaultite/types.json`'s over them (`own`: false leaves those out).
+- `propertyTypes(vault, plugins?, own?)`: The vault's property types: another app's (the service `property-types` of a plugin that's on), with `.vaultite/types.json`'s over them (`own`: false leaves those out).
 - `publicUrl(raw)`: A web address the server may fetch: http(s) only, no user or password, on a public host (by its name; its addresses are checked as it's fetched).
 - `readSidebars(raw)`: sidebars.json as it's saved (or a workspace's copy), checked; null when it has neither sidebar (unset: the default).
 - `readTypes(file)`: A types file's `types` ({"due": "date"}), read leniently: unknown types and odd keys are left out.
@@ -636,7 +636,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `renameProperty(text, from, to)`: A file's text with its frontmatter key `from` renamed `to`, nothing else changed (core/textedit.ts renameKey); null when it has no such key, already has `to`, or its header can't be changed line…
 - `renameTagText(text, from, to)`: A file's text with tag `from`, and those nested under it, renamed `to`: in its frontmatter `tags` (a list or text, as it was written; a tag twice once) and its #tags.
 - `requestWriter`: Set by the API around each request that came over HTTP (core/app.ts), read by the hooks that run on its writes.
-- `safeName(title)`: File name for a title: Obsidian forbids * " \ / < > : | ? # ^ [ ] in names.
+- `safeName(title)`: File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names.
 - `sameFile(a, b)`
 - `setPropertyText(text, key, value)`: A file's text with one frontmatter key set to `value` (undefined: removed), only that key's lines rewritten; null when the header can't be patched line by line (it's left alone then).
 - `SETTINGS_DIR`: The vault's settings folder.

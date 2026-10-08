@@ -36,8 +36,8 @@ draws as pages.
 
 [**Download Vaultite.dmg**](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite.dmg), drag it to
 Applications, and open it (on Linux: the [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest);
-`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+): make a vault (or open a folder of Markdown, changing none of it), and it opens, minimal like
-Obsidian, with a terminal to run Claude Code or Codex in. Or try the playground (a made-up vault) first. More is a
+`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+): make a vault (or open a folder of Markdown, changing none of it), and it opens, minimal, with a
+terminal to run Claude Code or Codex in. Or try the playground (a made-up vault) first. More is a
 bundle away (Life OS: your days, people and health), and the MCP plugin puts claude.ai and ChatGPT on it.
 
 Agents started in Vaultite's terminals already know the vault; elsewhere, by hand:

@@ -64,13 +64,13 @@ What it gets: a route's `req`: `method`; `parts`; `query`; `body`; `wild`; `rawP
 - `searchLive`: Things it finds that aren't in the store (running terminals): `docs` is asked whenever search looks, and `subscribe` says when they change while search is open.
 - `links`
 - `webLink`: Web links clicked in the app: true when it opened one itself (the Web viewer), false to leave it to the browser. The first plugin that's on and takes it wins.
-- `schemeLink`: Links of another app's scheme clicked in the app (`obsidian://open?file=…`, `zotero://…`): true when it took one. The first plugin that's on and takes it wins; none: the link does nothing.
+- `schemeLink`: Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one. The first plugin that's on and takes it wins; none: the link does nothing.
 - `preview`: What the Plugins sheet shows, with made-up data: a render, or the id of the plugin whose dashboards (pages/*.md) to show (a plugin whose blocks are on Projects previews "projects"). Defaults to its own dashboards.
 - `mock`: Made-up data for previews: its keys of the store (what its plugin.ts puts in /api/state), made from the real store where that's configuration, not personal data (the logs' areas).
 - `mockLive`: Made-up answers for its live routes in previews, by path ("calendar": {events: [...]}).
 - `files`: How its files look when opened (see FileView).
 - `formats`: Kinds of files it draws, by extension (see FileFormat).
-- `fileFormat`: A format for one Markdown file, decided by the file as it opens (a hosted Obsidian plugin taking a note's leaf: Kanban's boards); null leaves it to the app. Wins over `formats`; its source view is still the file's text.
+- `fileFormat`: A format for one Markdown file, decided by the file as it opens (a hosted plugin taking a note's leaf: Kanban's boards); null leaves it to the app. Wins over `formats`; its source view is still the file's text.
 - `blocks`: What it draws where a file has a ```block-<name> fence (YAML options inside). Each is declared in its manifest and has a text side in plugin.ts, for /api/render: `npm run check` holds the app's plugins to both.
 - `fences`: Code fences it draws by language (```base). Its backend reads one as text with the service `fence:<lang>`.
 - `timeline`: Kinds of timeline entries it knows ("call": a phone icon), for `## Timeline` sections in any file.
@@ -112,7 +112,7 @@ What it gets: a route's `req`: `method`; `parts`; `query`; `body`; `wild`; `rawP
 - `agent:<…>` (claude, codex, cursor, hermes, openclaw, opencode): claude-code; codex; cursor; hermes; openclaw; opencode
 - `agent-meters:claude` (claude-code)
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
-- `attachments:folder` (obsidian): Where a file attached to `from` goes, as the app's attachmentFolder convention says (index.tsx); undefined: unset.
+- `attachments:folder` (other-apps): Where a file attached to `from` goes, as the app's attachmentFolder convention says (index.tsx); undefined: unset.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
 - `fence:base` (query)
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
@@ -132,12 +132,12 @@ What it gets: a route's `req`: `method`; `parts`; `query`; `body`; `wild`; `rawP
 - `mcp:tool` (mcp): A tool by name for another plugin's route (one that doesn't hold the vault), as `client`, for request `req`: its Markdown answer, or an OpError/ToolError saying why not.
 - `mcp:upload-link` (mcp): A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload without the file), or null when the vault isn't on the internet.
 - `me:file` (me)
-- `obsidian:stand-ins` (obsidian)
+- `obsidian:stand-ins` (other-apps)
 - `page-head` (dashboards): A dashboard's subtitle under its title ("{date}" is today's date), for /api/render.
 - `pages:installed` (pages)
 - `pins:installed` (workspaces): Pages just pinned in the vault's list because their plugin brought them (Pinned, when they're installed): a workspace with a list of its own gets them too, at its end, so a plugin turned on shows its pages wherever you are.
 - `pins:of` (workspaces): Workspace n's pinned pages, for Pinned's ops (`vau pin`): its own list (null: pages.json's, until its first change) and one change to it.
-- `property-types` (obsidian)
+- `property-types` (other-apps)
 - `provenance:user` (provenance): What the user said or wrote, made by another plugin's backend (Inbox's voice notes): the label to give it.
 - `provenance:agent` (provenance): And what an agent's are labelled (an AI app's note for the inbox).
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.

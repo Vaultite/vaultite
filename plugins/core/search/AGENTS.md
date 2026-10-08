@@ -2,7 +2,7 @@
 Finding files, in the app and for you. The quick switcher (⌘O, the sidebar's search field) finds things by name
 (files, pages, people, notes, books, tags, running terminals, machines: whatever the plugins that are on add) and, under
 "In files", files with the words inside them; the search tab (`view:search/<query>`) shows every matching line. Both,
-`vau search` and `GET /api/search?q=` read Obsidian's search syntax:
+`vau search` and `GET /api/search?q=` read the usual Markdown apps' search syntax:
 - Plain words: every word in the file's name or text, any order, any case; a word matches part of a word.
 - `"a phrase"` together, `-word` without it, `a OR b` either, `( )` groups, `/regex/` a regular expression.
 - `file:` in the file's name, `path:` in its path (folders too), `content:` in its text only, `tag:#project` tagged

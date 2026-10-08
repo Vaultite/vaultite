@@ -39,7 +39,7 @@ export function typeOps(app: App): Op[] {
   return [{
     id: "file.type",
     cli: "type",
-    summary: "Give Markdown files without a `type:` one (a folder brought in from Obsidian): lists them, writes with apply.",
+    summary: "Give Markdown files without a `type:` one (a folder brought in from another app): lists them, writes with apply.",
     help: `A file is a person, a log, a book... by its \`type:\` alone, wherever it is: a file without one is a plain note,
 even in People/. This finds such files and adds the line \`type: <kind>\` to each (nothing else changes). Without a
 folder, every folder named like a kind's usual one (People/, Personal/People/, Logs/Gym/) that holds files without a

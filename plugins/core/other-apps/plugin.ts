@@ -1,4 +1,4 @@
-// Obsidian's server side: the .obsidian/app.json settings that apply here (settings.ts), in /api/state as `obsidian`,
+// The server side: the .obsidian/app.json settings that apply here (settings.ts), in /api/state as `obsidian`,
 // and its types.json's property types, under the vault's own (the service `property-types`: propertyTypes in core).
 import fs from "node:fs"
 import path from "node:path"
@@ -7,7 +7,7 @@ import { obsidianSettings, obsidianTypes } from "./settings.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-// (the offer to run its plugins, until taken or dismissed: obsidian.run-all, obsidian.offered)
+// (the offer to run its plugins, until taken or dismissed: other-apps.run-all, other-apps.offered)
 plugin.state(() => ({ obsidian: obsidianSettings(plugin.vault), obsidianOffer: plugin.settings({}).offered ? null : communityIds().length || null,
   obsidianRunning: typeof plugin.service("obsidian:run") === "function" }))
 plugin.provide("property-types", () => obsidianTypes(plugin.vault))
@@ -50,7 +50,7 @@ async function survey(ctx: OpCtx) {
 
 /** The runner installed and on, its services up (a vault plugin's backend loads a moment after it's turned on). */
 async function runnerUp(ctx: OpCtx, r: Runner | null) {
-  if (!r) throw new OpError("nothing here runs Obsidian's plugins: install obsidian-compat from the plugin directory (vau plugin search obsidian)")
+  if (!r) throw new OpError("nothing here runs other apps' plugins: install Plugins from other apps from the plugin directory (vau plugin search other apps)")
   if (r.source) await ctx.op("plugin.install", { source: r.source })
   if (!r.on) await ctx.op("plugin.enable", { id: r.id })
   for (let i = 0; i < 60 && typeof plugin.service("obsidian:run") !== "function"; i++) await new Promise((ok) => setTimeout(ok, 250))
@@ -67,16 +67,16 @@ async function standInsOff(ctx: OpCtx, list: Listed[], ids: string[]) {
 }
 
 plugin.op({
-  id: "obsidian.plugins",
-  summary: "The vault's Obsidian plugins, each with what stands in for it here (a plugin of the app's or one to install) and whether the original runs.",
-  help: `Reads the Obsidian plugins the vault has on (.obsidian/community-plugins.json) and, for each, the plugins here
-whose manifest says they stand in for it (\`replaces\`: {"obsidian": [its ids]}): the app's and the vault's own (on or off),
-and the plugin directory's; and \`original\`: whether the plugin itself runs here (on, waiting to be allowed, off), when a
-plugin that runs Obsidian's is on. vau obsidian use <id> original|<plugin> picks one.
+  id: "other-apps.plugins",
+  summary: "The plugins the vault has on in another app, each with what stands in for it here (a plugin of the app's or one to install) and whether the original runs.",
+  help: `Reads the plugins the vault has on in another app (.obsidian/community-plugins.json) and, for each, the
+plugins here whose manifest says they stand in for it (\`replaces\`: {"obsidian": [its ids]}): the app's and the vault's
+own (on or off), and the plugin directory's; and \`original\`: whether the plugin itself runs here (on, waiting to be
+allowed, off), when a plugin that runs them is on. vau other-apps use <id> original|<plugin> picks one.
 
-  vau obsidian plugins`,
+  vau other-apps plugins`,
   kind: "read",
-  cli: "obsidian plugins",
+  cli: "other-apps plugins",
   run: async (_params, ctx) => {
     const ids = communityIds()
     if (!ids.length) return []
@@ -93,29 +93,29 @@ plugin that runs Obsidian's is on. vau obsidian use <id> original|<plugin> picks
       }
     })
   },
-  text: (rows: Row[]) => rows.length ? rows.map((r) => `- ${r.name} (${r.id}): ` + [r.original === "on" ? "the original runs" : r.original === "waiting" ? "the original waits to be allowed: vau obsidian use " + r.id + " original" : "",
+  text: (rows: Row[]) => rows.length ? rows.map((r) => `- ${r.name} (${r.id}): ` + [r.original === "on" ? "the original runs" : r.original === "waiting" ? "the original waits to be allowed: vau other-apps use " + r.id + " original" : "",
     r.here.length ? r.here.map((h) => `${h.name} (${h.id}, ${h.on ? "on" : "off"})`).join(", ")
-      : r.directory.length ? r.directory.map((d) => `${d.name}, to install: vau obsidian use ${r.id} ${d.id}`).join(", ") : "nothing stands in for it here"].filter(Boolean).join("; ")).join("\n")
-    : "The vault has no Obsidian plugins (.obsidian/community-plugins.json).",
+      : r.directory.length ? r.directory.map((d) => `${d.name}, to install: vau other-apps use ${r.id} ${d.id}`).join(", ") : "nothing stands in for it here"].filter(Boolean).join("; ")).join("\n")
+    : "The vault has no plugins of another app (.obsidian/community-plugins.json).",
 })
 
 plugin.op({
-  id: "obsidian.use",
-  summary: "Pick what does an Obsidian plugin's job here: the original (run as it is) or a plugin standing in for it; the other is turned off.",
-  help: `\`with\`: "original" runs the Obsidian plugin itself (installing and turning on the plugin that runs them if
+  id: "other-apps.use",
+  summary: "Pick what does another app's plugin's job here: the original (run as it is) or a plugin standing in for it; the other is turned off.",
+  help: `\`with\`: "original" runs that app's plugin itself (installing and turning on the plugin that runs them if
 needed; allowed on this machine when its owner asks), "none" turns it off, or the id of a plugin standing in for it
 (installed from the directory if needed). The two never both run.
 
-  vau obsidian use dataview original
-  vau obsidian use dataview dataview`,
+  vau other-apps use dataview original
+  vau other-apps use dataview dataview`,
   kind: "write",
   lock: false,
-  params: { id: { type: "string", required: true, description: "the Obsidian plugin's id" }, with: { type: "string", required: true, description: "original, none, or a plugin's id" } },
+  params: { id: { type: "string", required: true, description: "the other app's plugin's id" }, with: { type: "string", required: true, description: "original, none, or a plugin's id" } },
   args: ["id", "with"],
-  cli: "obsidian use",
+  cli: "other-apps use",
   run: async ({ id, with: use }, ctx) => {
     const s = await survey(ctx)
-    const owner = !(await ctx.refusal?.("running Obsidian plugins on this machine"))
+    const owner = !(await ctx.refusal?.("running other apps' plugins on this machine"))
     if (use === "original") {
       const run = await runnerUp(ctx, s.runner)
       await run({ ids: [id], on: true, owner })
@@ -123,7 +123,7 @@ needed; allowed on this machine when its owner asks), "none" turns it off, or th
     }
     if (use !== "none") {
       const here = s.list.find((p) => p.id === use && covers(manifest(p), id)), there = s.found.find((e) => e.id === use && e.replaces?.obsidian?.includes(id))
-      if (!here && !there) throw new OpError(`${use} doesn't stand in for ${id} (vau obsidian plugins)`)
+      if (!here && !there) throw new OpError(`${use} doesn't stand in for ${id} (vau other-apps plugins)`)
       if (!here && there) await ctx.op("plugin.install", { source: there.source })
       await ctx.op("plugin.enable", { id: use })
     }
@@ -134,27 +134,27 @@ needed; allowed on this machine when its owner asks), "none" turns it off, or th
 })
 
 plugin.op({
-  id: "obsidian.run-all",
-  summary: "Run the vault's Obsidian plugins here as they are, all at once (those a plugin of the app's already stands in for, on, stay with it).",
+  id: "other-apps.run-all",
+  summary: "Run the vault's plugins from another app here as they are, all at once (those a plugin of the app's already stands in for, on, stay with it).",
   kind: "write",
   lock: false,
   params: {},
-  cli: "obsidian run-all",
+  cli: "other-apps run-all",
   run: async (_params, ctx) => {
     const s = await survey(ctx)
     // (what a vault plugin stands in for, on, stays with it; the app's own on by default, like Search, run beside the original)
     const ids = communityIds().filter((id) => !s.list.some((p) => p.on && p.tier === "vault" && covers(manifest(p), id)))
-    const owner = !(await ctx.refusal?.("running Obsidian plugins on this machine"))
+    const owner = !(await ctx.refusal?.("running other apps' plugins on this machine"))
     if (ids.length) await (await runnerUp(ctx, s.runner))({ ids, on: true, owner })
     plugin.saveSettings({ ...plugin.settings({}), offered: true })
     return { running: ids, kept: communityIds().filter((id) => !ids.includes(id)), allowed: owner }
   },
-  text: (r) => `Running ${r.running.length} Obsidian plugins${r.allowed ? "" : " (each waits for this machine's owner to allow it)"}${r.kept.length ? `; ${r.kept.length} stay with what stands in for them` : ""}.`,
+  text: (r) => `Running ${r.running.length} plugins from another app${r.allowed ? "" : " (each waits for this machine's owner to allow it)"}${r.kept.length ? `; ${r.kept.length} stay with what stands in for them` : ""}.`,
 })
 
 plugin.op({
-  id: "obsidian.offered",
-  summary: "Don't offer again to run the vault's Obsidian plugins (the offer shown once when such a vault opens).",
+  id: "other-apps.offered",
+  summary: "Don't offer again to run the vault's plugins from another app (the offer shown once when such a vault opens).",
   kind: "write",
   params: {},
   run: () => { plugin.saveSettings({ ...plugin.settings({}), offered: true }); return { offered: true } },

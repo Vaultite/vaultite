@@ -208,7 +208,7 @@ function Category({ id, label, list, searching, files, originals, foldAll }: {
   )
 }
 
-/** A host's plugins (an Obsidian plugin under obsidian-compat): its title, then one card of rows. */
+/** A host's plugins (an Obsidian plugin under plugin-compat): its title, then one card of rows. */
 function HostGroup({ host, info, list, paired, files, browse }: { host: string; info: PluginHost; list: Plugin[]; paired: Plugin[]; files: string[]; browse: () => void }) {
   const prefs = usePrefs()
   const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name))

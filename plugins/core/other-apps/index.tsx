@@ -1,29 +1,29 @@
-// Obsidian: a vault Obsidian also opens keeps its settings, and the app follows the ones that mean the same here
-// (`conventions`: new notes, attachments, Markdown links). Only keys .obsidian/app.json sets change anything.
+// Vaults from other apps: a vault another app also opens keeps its settings, and the app follows the ones that mean the
+// same here (`conventions`: new notes, attachments, Markdown links). Only keys .obsidian/app.json sets change anything.
 import { useEffect } from "react"
 import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, type Store } from "@vaultite"
-import { ObsidianPlugins } from "./Plugins"
+import { OtherPlugins } from "./Plugins"
 import { obsidianLink } from "./uri"
 import "./types"
 
 const settings = (s: Store) => s.obsidian ?? null
 
-/** An Obsidian vault with plugins, opened here: offered once to run them (its sheet does it). */
+/** A vault with another app's plugins, opened here: offered once to run them (its sheet does it). */
 function Offer({ store }: { store: Store }) {
   const n = store.obsidianOffer
   useEffect(() => {
     if (!n) return
-    void op("obsidian.offered").catch(() => {})
-    notify(`Your Obsidian vault has ${n} plugin${n === 1 ? "" : "s"}: run them here?`, { id: "obsidian:offer", duration: 30_000,
-      action: { label: "Review", run: () => openPluginSettings("obsidian") } })
+    void op("other-apps.offered").catch(() => {})
+    notify(`This vault has ${n} plugin${n === 1 ? "" : "s"} from another app: run them here?`, { id: "other-apps:offer", duration: 30_000,
+      action: { label: "Review", run: () => openPluginSettings("other-apps") } })
   }, [n])
   // (taken up elsewhere: what runs them came on)
-  useEffect(() => { if (store.obsidianRunning) dismissNotice("obsidian:offer") }, [store.obsidianRunning])
+  useEffect(() => { if (store.obsidianRunning) dismissNotice("other-apps:offer") }, [store.obsidianRunning])
   return null
 }
 
 export default definePlugin({
-  settingsPanel: () => <ObsidianPlugins />,
+  settingsPanel: () => <OtherPlugins />,
   background: ({ store }) => <Offer store={store} />,
   schemeLink: obsidianLink,
   conventions: {

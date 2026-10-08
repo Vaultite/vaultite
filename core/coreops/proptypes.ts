@@ -7,13 +7,13 @@ import { type Op, OpError } from "../ops.ts"
 import { isHiddenPath, type Item } from "../vault.ts"
 import type { Any } from "./common.ts"
 
-type Listed = { key: string; type: PropType; from: "vaultite" | "obsidian" }
+type Listed = { key: string; type: PropType; from: "vaultite" | "other" }
 
 /** Every declared type, by key, and where it's declared. */
 function listed(app: App): Listed[] {
   const own = readTypes(app.vault.config("types"))
   return Object.entries(propertyTypes(app.vault, app.plugins)).sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, type]) => ({ key, type, from: Object.hasOwn(own, key) ? "vaultite" : "obsidian" }))
+    .map(([key, type]) => ({ key, type, from: Object.hasOwn(own, key) ? "vaultite" : "other" }))
 }
 
 /** Notes (files, values that aren't of their type), for check. */
@@ -32,7 +32,7 @@ export function propTypeOps(app: App): Op[] {
   return [{
     id: "property.types",
     cli: "properties types",
-    summary: "The vault's property types: which keys are dates, numbers, lists, checkboxes... (.vaultite/types.json, and Obsidian's).",
+    summary: "The vault's property types: which keys are dates, numbers, lists, checkboxes... (.vaultite/types.json, and another app's types.json).",
     help: `A property's type applies to that key in every file: the editor's input, quiet notes on values that aren't
 of it, and how database views sort and compare it. An undeclared key is its value's type. With --check, the files whose
 values aren't of their type.
@@ -45,7 +45,7 @@ values aren't of their type.
     text: (r: Any) => {
       const ts = r.types as Listed[]
       const w = Math.max(4, ...ts.map((t) => t.key.length))
-      const list = ts.length ? ts.map((t) => `${t.key.padEnd(w)}  ${t.type}${t.from === "obsidian" ? "  (.obsidian/types.json)" : ""}`).join("\n") : "No types declared: each property is its value's type."
+      const list = ts.length ? ts.map((t) => `${t.key.padEnd(w)}  ${t.type}${t.from === "other" ? "  (.obsidian/types.json)" : ""}`).join("\n") : "No types declared: each property is its value's type."
       if (!r.problems) return list
       const bad = (r.problems as { path: string; notes: string[] }[]).map((p) => `- ${p.path}: ${p.notes.join("; ")}`)
       return `${list}\n\n${bad.length ? `Not of their type:\n${bad.join("\n")}` : "Every value is of its type."}`
@@ -55,7 +55,7 @@ values aren't of their type.
     cli: "properties type",
     summary: "Set a property's type for the whole vault (text, list, number, checkbox, date, datetime, tags, aliases, link), or none.",
     help: `Writes that one key into .vaultite/types.json (the rest of the file stays); files aren't changed (to convert
-their values too: vau properties retype). none removes the line, so the key is its value's type again (or Obsidian's).
+their values too: vau properties retype). none removes the line, so the key is its value's type again (or another app's).
 
   vau properties type due date
   vau properties type rating number

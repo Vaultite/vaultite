@@ -1,7 +1,0 @@
-{
-  "id": "obsidian",
-  "icon": "gem",
-  "category": "formats",
-  "name": "Obsidian settings",
-  "description": "A vault Obsidian also opens keeps its own settings: new notes and pasted images go where its .obsidian/app.json says, links are written as Markdown links when it uses them, and its property types (types.json) apply."
-}

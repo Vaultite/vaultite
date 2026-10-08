@@ -149,12 +149,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   file to another, a recurring one), captures (bookmarks synced, clipped pages, transcripts), logs, and an agent's
   session as one line. A timeline block (`recap`, in a daily note that day's), the Activity page's Days tab with a
   grid of days, and `vau recap`.
-- **Coming from Obsidian**: opening an Obsidian vault offers to run its plugins here, all in one click or each as it is
-  or with Vaultite's own (agents can read what those draw), never both, in one row on the Plugins page with a line to
-  swap them; Browse finds Obsidian's community plugins, with what's known to work here (or isn't needed: Vaultite does
-  it), offering Vaultite's own first where there is one; one first runs once you allow it, and its code changing asks
-  again. Notes' obsidian://
-  links (open, new, search) work here, and those a plugin registers (Advanced URI's) reach it.
+- **Coming from another Markdown app**: opening its vault offers to run its plugins here, all in one click or
+  each as it is or with Vaultite's own (agents can read what those draw), never both, in one row on the Plugins page
+  with a line to swap them; Browse finds that app's plugins, with what's known to work here (or isn't needed:
+  Vaultite does it), offering Vaultite's own first where there is one; one first runs once you allow it, and its code
+  changing asks again. Notes' links in its own URI scheme (open, new, search) work here, and those a plugin registers
+  (Advanced URI's) reach it.
 - **Lessons**: an agent teaches you a note, a PR or a topic as a lesson (`type: lesson`), drawn one step at a time:
   each step's question (multiple choice with a why for each answer, recall then reveal, or putting steps in order; one
   that opens a step is a guess first) opens the next, right or wrong, and the file keeps where you are. Cards files
@@ -194,7 +194,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   a range and account filter, in your currency.
 - **Icons**: `icon:` takes any of Lucide's ~1,850 icons or an emoji, on pages and routines (a routine without one shows
   its area's). "Search icons" finds them by name or by what they're about; "Change icon of current file" sets one.
-- **Phones work like Obsidian mobile**: the sidebars are drawers, a header has the file's menu, a flat bottom bar docked
+- **Phones get a layout of their own**: the sidebars are drawers, a header has the file's menu, a flat bottom bar docked
   to the screen's edge, and the tab list is a grid of previews. Sheets (the tab list, colour schemes, details) fill the
   screen and close with Done at the bottom right; the tab list has new tab and the count beside it, and the workspaces
   as squares at the top (hold one to rename, duplicate or delete it). A blank tab looks like the desktop's. Tabs move like a browser's: the page shrinks into its
@@ -270,9 +270,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (plugins.json's `index`: `owner/name/index.json`, read with git).
 - **Allow all**: when several vault plugins wait to be allowed on this machine (turned on on another one), the Plugins
   page allows them in one go, after saying what each does beyond the vault.
-- **Your Obsidian plugins here**: Obsidian settings' sheet (and `vau obsidian plugins`) lists the plugins the vault had
-  on in Obsidian, each with what stands in for it here, to turn on or install in a click; a plugin says which it
-  replaces in its manifest (`replaces`).
+- **Your plugins from another app, here**: the sheet of Vaults from other apps (and `vau other-apps plugins`) lists the plugins
+  the vault had on in its other app, each with what stands in for it here, to turn on or install in a click; a plugin
+  says which it replaces in its manifest (`replaces`).
 - An emoji in a property (an `icon:` picked in the app) is written as it is, not as `"\U0001F4A1"`.
 - **Rename a tag everywhere**: right-click a tag in the Tags panel (or Rename in its sheet, `vau tags rename`): every
   file's frontmatter tags and #tags change, nested tags too, merging into one that exists.
@@ -288,10 +288,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **A plugin's sheet says where it's kept**, with Open: a vault plugin's folder (shown in the file tree), or a built-in
   or community plugin's settings file once it has one.
 - **Set up Vaultite**, the desktop app's first launch (again from the Vaultite menu or the palette), is one screen: a
-  new vault (iCloud Drive when it's there) or a folder you have (an Obsidian vault: none of its files change), and it
+  new vault (iCloud Drive when it's there) or a folder you have (another app's vault: none of its files change), and it
   opens; or Try the playground first (the sandbox). `vau`, the CLI, is installed without Node. Another machine's server is in
   Manage vaults: Connect to another Mac.
-- **A new vault starts minimal**, like Obsidian with a terminal for your coding agent: Minimal's plugins (files, search,
+- **A new vault starts minimal**, notes and links with a terminal for your coding agent: Minimal's plugins (files, search,
   links, the graph, tags, a terminal, Claude Code), Gruvbox, the plugins' pages kept out of your files, and a pinned Start here note
   on what to try first. An empty one also points agents started in it at the vault's rules (a line in CLAUDE.md and
   AGENTS.md). More is a bundle or a plugin away; a vault still offered the bundles that skips them (Start with Minimal)
@@ -320,7 +320,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Appearance**: Gruvbox is the default (the old colours are Classic); new Amethyst and Paper schemes; separate text
   sizes for notes and terminals; notes are narrower (700px).
 - **Folders are yours**: a file's kind comes from its `type:` alone, never its folder, so moving People/ or Dashboards/
-  breaks nothing. A folder brought in without types (an Obsidian People/) stays plain notes until `vau type People
+  breaks nothing. A folder brought in without types (another app's People/) stays plain notes until `vau type People
   --apply` gives each file its line; `vau type` and `vau context` list such files.
 - **Archive any file**: it moves into a hidden `.archive/` folder next to it (out of other tools' way, links
   following) with `archived: true`, and is left out of lists; "Show archived files" in the file tree shows them (showing
@@ -345,11 +345,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Every embed has a menu**: right-click an image, audio, video, PDF, table or embedded note (hold its header on a
   phone) to copy, open, download, rename, move, copy its path, reveal, reset its size, remove the embed or delete the
   file; only what fits its kind.
-- **Right-click in a note**, like Obsidian: Add link, Format, Paragraph and Insert menus (with their keys), Cut, Copy,
+- **Right-click in a note**: Add link, Format, Paragraph and Insert menus (with their keys), Cut, Copy,
   Paste, Paste as plain text, Select all, and Search for the selection; in the Mac app also Look up, Search the web and
   Add to dictionary. New commands: Toggle inline math, Clear formatting, Toggle task list, Insert footnote, Paste as
   plain text, Search for selected text. Phones keep the system's menu.
-- **Renaming or moving a file or folder updates every link to it**, like Obsidian: embeds (`![[x.png|300]]`), Markdown
+- **Renaming or moving a file or folder updates every link to it**: embeds (`![[x.png|300]]`), Markdown
   links, links in frontmatter, a moved note's own links; `vau move` does it for agents.
 - `[[` and `![[` suggest any file in the vault (images, PDFs), by name with its extension.
 - **Add photo**: from a note's … menu on a phone (its photos or the camera), `/photo`, Insert ▸ Photo or the palette;
@@ -359,7 +359,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - An image, PDF or other file in its own tab has a menu on right-click: Copy image, Open in default app, Download,
   Rename, Move, Copy path, Reveal, Delete.
 - Every way of making a note (⌘N, the tree, the switcher's ⇧Enter, a link, a template) puts it in one place: the top of
-  the vault, unless its Obsidian settings say otherwise.
+  the vault, unless its other app's settings say otherwise.
 - **Shorter file menus**: Open in new tab, New note, Rename and Copy path do the common thing on click and keep the
   rest in a submenu (Open to the right; Canvas, Database; Change icon; from the system root, Copy link). More is last,
   before Delete.
@@ -369,19 +369,19 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Graph blocks and the Local graph get a Fit button once moved, and can be panned in the editor.
 - Word, Excel, PowerPoint and e-books open read-only, and search and AIs can read their text. iPhone photos (HEIC)
   open too.
-- **Obsidian Bases** (`.base`). Database views gain formulas, summaries and a map, and `this`: the note a view is
+- **Bases** (`.base` files). Database views gain formulas, summaries and a map, and `this`: the note a view is
   in (the one embedding it, when embedded), so one view embedded anywhere lists what's related to that note
   (`where: "file.links contains this"`, `project = this`).
-- **Canvases work like Obsidian's**: edit cards in place, snapping, copy and paste, link previews, and the board fills
+- **Canvases**: edit cards in place, snapping, copy and paste, link previews, and the board fills
   its tab.
 - **Vim** (a plugin, off by default) in the editor and across the app: leader key, vimrc, link hints. Any command can
   be bound to a key sequence, with a hint of the next keys.
 - Find and replace, folding, page preview on hover, an All properties panel (rename or retype a property everywhere),
   properties as chips in file headers, and a token count.
-- **Property types for the whole vault**, like Obsidian's (`.vaultite/types.json`, and Obsidian's types.json): a date,
+- **Property types for the whole vault** (`.vaultite/types.json`, and another app's types.json): a date,
   number, checkbox, list... picks the property's input (set it from the icon before its name), notes a value that
   isn't one, and sorts database views by it.
-- Search understands Obsidian's syntax and shows why each result matched.
+- Search understands operators (`path:`, `tag:`, `OR`, `-word`) and shows why each result matched.
 - Audio recorder, Slides, and Export to PDF / Print. Recordings are transcribed on the Mac with Apple's on-device speech
   recognition (macOS 26), as the iPhone does: nothing to install, a language's model fetched the first time. Whisper is
   optional (the setting Transcriber). A voice note the Mac can't transcribe lands in the inbox as the recording, saying
@@ -390,19 +390,19 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   left them. Lists work with the keyboard.
 - **Reopen closed tab** (⌘⇧T in the desktop app, the command palette on the web): the tabs you closed come back one
   by one, where they were, with their history.
-- **Pinned tabs and tabs by number**, like Obsidian's: a pinned tab keeps what it shows (what's opened from it opens
+- **Pinned tabs and tabs by number**: a pinned tab keeps what it shows (what's opened from it opens
   beside it) and stays open through ⌘W and Close others; ⌘1–⌘8 go to a pane's nth tab and ⌘9 to its last (desktop app).
-- **Note composer, Random note, Unique note creator**, like Obsidian's: move a selection into another note (a link
+- **Note composer, Random note, Unique note creator**: move a selection into another note (a link
   left in its place) or merge a note into another (with Undo), open a note at random, make a note named by the minute.
-- **Pop-out windows**, like Obsidian's: Move current tab to new window (or Open…, or a tab's menu) puts a tab in a
+- **Pop-out windows**: Move current tab to new window (or Open…, or a tab's menu) puts a tab in a
   window of its own, with its history and tabs of its own and no sidebars; closing its last tab closes it. Move to main
   window (a tab's menu, the palette), or a tab or pane dragged out and let go over the main window, puts it back there.
-- **Stacked tabs**, like Obsidian's (Toggle stacked tabs, a tab's or spine's menu, or the tab bar's right-click): a
+- **Stacked tabs** (Toggle stacked tabs, a tab's or spine's menu, or the tab bar's right-click): a
   pane's tabs side by side, sliding over each other with their titles on spines.
-- **Pinned headings and searches**, like Obsidian's bookmarks: Pin current heading (the one the cursor is under) and Pin
+- **Pinned headings and searches**: Pin current heading (the one the cursor is under) and Pin
   current search put them in Pinned, where a click opens the note at that heading or the search (`vau pin
   "Notes/Idea.md#Plan"`, `vau pin "search:tag:#book"`).
-- **Obsidian's editing keys**: ⌘K makes a Markdown link (the quick switcher is ⌘O), ⌘L a task and ticks it, ⌘D
+- **The usual editing keys**: ⌘K makes a Markdown link (the quick switcher is ⌘O), ⌘L a task and ticks it, ⌘D
   deletes the line, ⌘/ a comment, ⌘G opens the graph; commands for highlight, strikethrough, code, headings, lists,
   quotes, moving lines, and callouts, tables, code and math blocks (the Editing commands plugin), and Insert current
   date / time (Templates, in its date and time formats). The app's keys now win over the editor's, so any can be
@@ -429,6 +429,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   deleted (Done in the Inbox, Archive, from any device) closes its open tabs; Undo opens it again.
 
 ### Changed
+- The app's text no longer names other apps: their vaults, settings and plugins are described as such
+  (`vau other-apps`, `vau docs from-other-apps`).
 - **A kind's blocks are drawn, not written**: a person's profile, a log's fields (and its area's blocks, a workout's
   sets), a book's and a project's card are drawn on top of each of its files without a fence, so new files hold only
   what's theirs and a kind's view can change for every file at once. A fence of one still places it (changing its
@@ -449,19 +451,19 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   (unticked and ticked again, it's back where it was). Two pages of one name say their folders.
 - An app update never changes your pages (Today, Health...): a page with a newer version says Update available, with
   See changes, Update (the old one stays in file history) and Dismiss; `vau dashboard updates` does the same.
-- Made-up names in docs and examples are generic (Alice Park, Bob Lee); a shorter README. The docs name Obsidian only
-  where the app reads its files or formats.
+- Made-up names in docs and examples are generic (Alice Park, Bob Lee); a shorter README. The docs name other apps only
+  where the app reads their files or formats.
 - Each workspace is its own file, `.vaultite/plugins/workspaces/<n>.json`, so computers and phones on different
   workspaces never write the same file through iCloud. The old list in `data.json` is copied over by itself.
 - Your own file, `ME.md`, is the Me plugin's: its setting puts it anywhere in the vault (moving it in the app updates
   the setting), and with Me off nothing asks for it. `Me.md` from before still works.
 - Health, Learning and Work are community plugins. Logs has no areas of its own: they come from the plugins that are
   on.
-- CSV, HTML, Obsidian settings, Pinned, Dashboards and Terminal are now plugins you can turn off. The Plugins page
+- CSV, HTML, Vaults from other apps, Pinned, Dashboards and Terminal are now plugins you can turn off. The Plugins page
   calls the app's plugins Built-in.
 - Renamed keys (the old ones are still read): a book's `added` is now `created`; a journal entry is a note tagged
   `journal`; notes' `pinned` is no longer read.
-- Opening a vault never changes your files: plain Markdown notes (Obsidian's) no longer get an `id` and dates written
+- Opening a vault never changes your files: plain Markdown notes (another app's) no longer get an `id` and dates written
   into them; only notes in Vaultite's format (`type: note`) do.
 - `vau`: settings edits merge through the server; plain `vau` writes `source: cli`; `vau files` and `vau search`
   print a Markdown list; `vau terminal` replaces `ls`; `vau clip --html -` reads stdin.
@@ -571,8 +573,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   session and machine a terminal id names.
 - A plugin takes an error as its own by `preventDefault()` in its window listener (the app then doesn't report it), and the
   desktop app answers a page's native open, save and message dialogs while it waits (`dialogSync`).
-- `schemeLink` takes links of another app's scheme clicked in the app (`obsidian://…`); `takeSchemeLink(url)` offers one.
-- `fileFormat(path)` draws one Markdown file a plugin's own way, decided as it opens (a hosted Obsidian plugin's board or
+- `schemeLink` takes links of another app's scheme clicked in the app (`zotero://…`); `takeSchemeLink(url)` offers one.
+- `fileFormat(path)` draws one Markdown file a plugin's own way, decided as it opens (a hosted plugin's board or
   drawing), embeds included; `openView(…, { focus: false })` opens a view in a split without moving the focus.
 - `editorMenu` adds a plugin's items to a text editor's right-click menu; `commandList` is every command, for a plugin
   keeping the app's keys first; editing commands act before `runCommandById` returns (once the editor has loaded them).
@@ -580,7 +582,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `noteTop` draws under a note's properties.
 - A host's `browse` offers a source on the Plugins page's Browse, its `trust` says what its plugins can do; a
   manifest's `replaces` makes opt-in plugins standing in for the same one alternatives, never both on (`standingIn`).
-- **Hosted plugins** (`hostPlugins`): a plugin can run others (Obsidian's community plugins, under obsidian-compat), each
+- **Hosted plugins** (`hostPlugins`): a plugin can run others (another app's plugins), each
   listed on the Plugins page in its host's group with its own switch, settings sheet, approval and Uninstall, and drawn like
   any plugin (commands, panels, tabs, fences, status items), redrawing what it adds as it comes. On a phone, `revealPanel`
   opens the drawer the panel is in.
@@ -600,7 +602,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   it while editing.
 - A vault plugin's `import()`s are chunks of their own, loaded when used (`api/plugins/<id>/<version>/<file>`), so a
   big package no longer slows every start (Excalidraw: 160 KB at start instead of 7.9 MB).
-- A manifest's `replaces`: other apps' plugins it stands in for (`{"obsidian": ["dataview"]}`).
+- A manifest's `replaces`: other apps' plugins it stands in for, by app.
 - The Templates plugin's service `template:expand`: a plugin expands a template's text as a note is made from it or it's
   inserted (Templater's `<% %>`), and may move the note; `ui.choose` with no items and `other` asks for text.
 - A vault plugin's screen-size and state variants the app doesn't have (`md:-m-1`) win over the app's plain classes on
