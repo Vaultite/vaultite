@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  Your life and your AI's memory, in plain Markdown files you own.
+  Your personal knowledge base and wiki, in plain Markdown files you own, collaborating with your AI.
   <br>
   <a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite.dmg">Download</a>
 </p>
@@ -23,13 +23,12 @@
 
 ## What it is
 
-A folder of Markdown files (your vault) that your AI writes in and Vaultite draws as pages. You say "had a chicken rice
-bowl for lunch" or "called Alice, she's moving in October"; the AI writes a meal log and a line in Alice's timeline, and
-Today, People and Health update live.
+A folder of Markdown files (your vault) that you or your AI (Claude, ChatGPT, OpenClaw, Hermes) writes in and Vaultite
+draws as pages.
 
 - **Plain files, no database.** Open the same vault in another Markdown app, grep it, sync it with iCloud or keep it in git.
-- **Made for agents.** Claude Code, Codex and any MCP client use one set of operations (`vau`, MCP, HTTP).
-- **Everything is a plugin.** People, logs, notes, even the file tree; turn them off or write your own in the vault.
+- **Made for agents.** Claude Code, Codex and any MCP client use one set of operations (the `vau` CLI, MCP, HTTP).
+- **Everything is a plugin.** Modular and hot-reloadable. People, logs, notes, even the file tree; turn them off or write your own in the vault.
 - **Also a full editor and workspace**: live preview, tabs and splits, backlinks, graph, terminals for your agents, on
   the Mac, the web and the iPhone.
 
