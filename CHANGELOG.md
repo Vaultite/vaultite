@@ -7,6 +7,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Dispatch defaults per workspace**: right-click the dispatch button, Default in <workspace>, to pick the account
+  and machine its notes go to there (Work in one workspace, Personal on the M1 in another); the button shows where.
+  ⌘⇧↩ works again with a single account.
 - **Claude Code on the web in the Terminals panel**: the desktop app lists your claude.ai/code sessions under Cloud
   (working, waiting on you or idle, and since when; a click opens one in a web tab), read with the Web viewer's
   claude.ai login (every 5 seconds while one works or waits, else 15), so no claude.ai tab needs to be open. A

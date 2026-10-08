@@ -17,7 +17,7 @@ mkdirSync(OUT, { recursive: true })
 const file = (rel) => `${VAULT}/${rel}`
 const text = (rel) => { try { return readFileSync(file(rel), "utf8") } catch { return "" } }
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
-const restore = [keep(".vaultite/plugins/dispatch/data.json")]
+const restore = [keep(".vaultite/plugins/dispatch/data.json"), keep(".vaultite/plugins/claude-code/data.json")]
 const api = (method, p, body) => fetch(`${B}/api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json())
 const enc = encodeURIComponent
 
@@ -121,6 +121,32 @@ const termFocused = (page) => until(() => page.evaluate(() => !!document.activeE
   before = await sessions()
   await item.click()
   check("file menu: it runs", !!(await newSession(before)))
+
+  // A second Claude Code account: the button says which one it runs in, and its menu sets this workspace's default.
+  const second = `${OUT}claude-second`
+  mkdirSync(`${second}/projects`, { recursive: true })
+  await api("PATCH", "config/plugin/claude-code", { accounts: { second: { dir: second, label: "Second" } } })
+  await page.goto("about:blank"); await go(page, NOTE)
+  const where = shown(page, NOTE, "[data-dispatch=claude] [data-dispatch-where]")
+  check("accounts: the button says the account it runs in", await until(async () => (await where.count()) && (await where.innerText()) === "Default", 10000), await where.count() && await where.innerText())
+  await btn.click({ button: "right" }); await wait(300)
+  await page.locator("[role=menu] [role=menuitem]").filter({ hasText: /^Default( in |$)/ }).click(); await wait(300)
+  const pick = page.locator("[role=menu]").last().locator("[role^=menuitem]").filter({ hasText: "Claude Code · Second" })
+  check("accounts: the menu's Default (in <workspace>) lists the accounts", (await pick.count()) === 1)
+  await pick.click(); await page.keyboard.press("Escape")
+  check("accounts: picked, the button says it", await until(async () => (await where.innerText()) === "Second", 8000), await where.innerText())
+  before = await sessions()
+  await btn.click()
+  id = await newSession(before, "claude_second-")
+  check("accounts: a click runs it in the workspace's default", !!id, await sessions())
+  await page.reload(); await page.locator(`.file-view[data-path="${NOTE}"]:visible`).waitFor({ timeout: 10000 })
+  check("accounts: the default stays after a reload", await until(async () => (await where.count()) && (await where.innerText()) === "Second", 10000))
+  await page.screenshot({ path: `${OUT}default-account.png` })
+  await btn.click({ button: "right" }); await wait(300)
+  await page.locator("[role=menu] [role=menuitem]").filter({ hasText: /^Default( in |$)/ }).click(); await wait(300)
+  await page.locator("[role=menu]").last().locator("[role^=menuitem]").filter({ hasText: "Claude Code · Default" }).click(); await page.keyboard.press("Escape")
+  check("accounts: back to its own", await until(async () => (await where.innerText()) === "Default", 8000))
+  await api("PATCH", "config/plugin/claude-code", { accounts: null })
 
   // An inbox result's menu has them too.
   const r = await api("POST", "inbox", { title: "QA dispatch result", body: "Something to act on." })

@@ -1,8 +1,8 @@
 import { useEffect, useState, useSyncExternalStore, type KeyboardEvent } from "react"
 import { ArrowDown, ArrowUp, Plus, Send, SquareTerminal, X } from "lucide-react"
 import {
-  agentsOn, cn, confirmDialog, currentEditor, currentFile, definePlugin, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify, notifyError, op, openView,
-  otherMachines, patch, pickIcon, places, Section, settleFile, Switch, useAgents, useCommands, useMachines, useStore, type Agent, type FileHead, type Machine, type MenuItem,
+  agentsOn, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify, notifyError, op, openView,
+  otherMachines, patch, pickIcon, places, scopedState, Section, settleFile, Switch, useAgents, useCommands, useMachines, useScopedState, useStore, type Agent, type FileHead, type Machine, type MenuItem,
   type Place, type Store,
 } from "@vaultite"
 import type { Action } from "./types"
@@ -36,8 +36,31 @@ function placesOf(a: Action, there = others): Place[] {
 }
 /** The account an action runs in by itself: its own (`claude_personal`), else the agent's default. */
 const ownAccount = (a: Action) => a.agent?.split("_")[1] ?? "default"
-/** The account's name, where the action runs by itself ("" for an agent without accounts). */
-const ownLabel = (a: Action) => placesOf(a).find((p) => !p.machine && p.profile === ownAccount(a))?.profileLabel ?? ""
+
+/** Where each action runs by default in the current workspace, by its id (none: this machine, its own account). */
+type Where = { machine?: string; account?: string }
+const NOWHERE: Record<string, Where> = {}
+const wheres = scopedState("dispatch:where", NOWHERE)
+const whereOf = (a: Action, all = wheres.get()): Where => all[a.id] ?? {}
+const isWhere = (a: Action, p: Pick<Place, "machine" | "profile">, w = whereOf(a)) => p.machine === (w.machine ?? "") && (!p.profile || p.profile === (w.account ?? ownAccount(a)))
+function setWhere(a: Action, p: Pick<Place, "machine" | "profile">) {
+  const w: Where = { ...(p.machine ? { machine: p.machine } : {}), ...(p.profile && p.profile !== ownAccount(a) ? { account: p.profile } : {}) }
+  const { [a.id]: _, ...rest } = wheres.get()
+  wheres.set(Object.keys(w).length ? { ...rest, [a.id]: w } : Object.keys(rest).length ? rest : undefined)
+}
+/** Its places, each account on each machine; one per machine for an agent without accounts (or a command). */
+function rowsOf(a: Action, there = others): Pick<Place, "machine" | "machineLabel" | "profile" | "profileLabel">[] {
+  const ps = placesOf(a, there)
+  return ps.length ? ps : [{ machine: "", machineLabel: self, profile: "", profileLabel: "" }, ...there.map((m) => ({ machine: m.id, machineLabel: m.label, profile: "", profileLabel: "" }))]
+}
+/** Where it runs by default in this workspace: "Personal · M1" (its account, the machine when several), "" for one place. */
+function whereLabel(a: Action, w = whereOf(a), there = others) {
+  const rows = rowsOf(a, there)
+  if (rows.length < 2) return ""
+  const p = rows.find((x) => isWhere(a, x, w))
+  const account = p?.profileLabel ?? w.account ?? "", machine = p ? p.machineLabel : w.machine ?? ""
+  return [account, there.length || w.machine ? machine : ""].filter(Boolean).join(" · ")
+}
 
 /** Save what's typed, start the action on the server (or on machine `m` through it), then open its terminal here (this
  *  device's window, focused) when it should (`open`, else the action's: an agent that reports runs in the background,
@@ -69,29 +92,35 @@ async function dispatch(a: Action, path: string, m?: Machine, account?: string, 
   }
 }
 
-/** An action in each place it can run (each account, on each machine), this machine's first, the one it runs in by
- *  itself checked; [] when there's only that one. */
+/** Run it where this workspace runs it by default (a machine offline answers so). */
+function dispatchHere(a: Action, path: string, open?: boolean) {
+  const w = whereOf(a)
+  const m = w.machine ? others.find((x) => x.id === w.machine) ?? ({ id: w.machine, label: w.machine } as Machine) : undefined
+  return dispatch(a, path, m, w.account, open)
+}
+
+/** An action in each place it can run (each account, on each machine), this machine's first, the workspace's default
+ *  checked, then a submenu to change that default; [] when there's only one place. */
 function onEach(a: Action, path: string, there = others): MenuItem[] {
   const Icon = iconOf(a)
-  const ps = placesOf(a, there)
-  if (ps.length < 2 && !there.length) return []
-  // An agent without accounts (or a command): once per machine.
-  const rows = ps.length ? ps : [{ machine: "", machineLabel: self, profile: "", profileLabel: "" }, ...there.map((m) => ({ machine: m.id, machineLabel: m.label, profile: "", profileLabel: "" }))]
-  return rows.map((p, i) => {
-    const m = there.find((x) => x.id === p.machine)
-    return {
-      label: `${a.label}${p.profileLabel ? ` · ${p.profileLabel}` : ""}`, icon: Icon, hint: p.machineLabel || undefined,
-      checked: !p.machine && (!p.profile || p.profile === ownAccount(a)), sep: i > 0 && p.machine !== rows[i - 1].machine,
-      run: () => void dispatch(a, path, m, p.profile || undefined),
-    }
+  const rows = rowsOf(a, there)
+  if (rows.length < 2) return []
+  const row = (p: (typeof rows)[number], i: number) => ({
+    label: `${a.label}${p.profileLabel ? ` · ${p.profileLabel}` : ""}`, icon: Icon, hint: p.machineLabel || undefined,
+    checked: isWhere(a, p), sep: i > 0 && p.machine !== rows[i - 1].machine,
   })
+  const desk = currentWorkspace()
+  return [
+    ...rows.map((p, i) => ({ ...row(p, i), run: () => void dispatch(a, path, there.find((x) => x.id === p.machine), p.profile || undefined) })),
+    { label: desk ? `Default in ${desk.label}` : "Default", icon: Icon, sep: true, run: () => {}, items: rows.map((p, i) => ({ ...row(p, i), run: () => setWhere(a, p) })) },
+  ]
 }
 
 const named = (id: string) => actionsOf(getStore()).find((a) => a.id === id)
 /** The note the user means: the editor's (a sheet's over the page too), else the focused tab's. */
 const target = () => currentEditor()?.path ?? currentFile()
 const onNote = () => dispatchable(target())
-const runOn = (id: string, m?: Machine, account?: string) => { const a = named(id); if (a) void dispatch(a, target(), m, account) }
+const runOn = (id: string, m?: Machine, account?: string) => { const a = named(id); if (a) void (m || account ? dispatch(a, target(), m, account) : dispatchHere(a, target())) }
 // The default action's command is fixed (the others' come and go with the settings), so its keys are known without the app.
 const CLAUDE = { id: "dispatch:claude", name: "Dispatch to Claude Code", keys: ["Mod+Shift+Enter"], when: () => onNote() && !!named("claude"), run: () => runOn("claude") }
 
@@ -99,6 +128,7 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   const { store } = useStore()
   const agents = useAgents()
   const machines = useMachines()
+  const [all] = useScopedState("dispatch:where", NOWHERE)
   useKnown()
   if (!dispatchable(file.path)) return null
   const there = elsewhere(machines)
@@ -106,20 +136,21 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   return actionsOf(store).map((a) => {
     const Icon = iconOf(a, agents)
     const keys = keysOf(a.id === "claude" ? CLAUDE : { id: `dispatch:${a.id}` })[0]
-    const more = onEach(a, file.path, there).length > 0, own = ownLabel(a)
-    const name = `Dispatch to ${a.label}${own ? ` (${own})` : ""}`
+    const where = whereLabel(a, whereOf(a, all), there), more = !!where
+    const name = `Dispatch to ${a.label}${where ? ` (${where})` : ""}`
     return (
       // Option-click: its terminal opens too.
-      <button key={a.id} type="button" data-dispatch={a.id} aria-label={name} onClick={(e) => void dispatch(a, file.path, undefined, undefined, e.altKey || undefined)}
+      <button key={a.id} type="button" data-dispatch={a.id} aria-label={name} onClick={(e) => void dispatchHere(a, file.path, e.altKey || undefined)}
         // Right-click (or hold, on a phone): its other accounts and machines.
         onContextMenu={more ? menuFor(() => onEach(a, file.path, there)) : undefined}
-        data-tip={`${name}${keys && bar ? ` (${keyCaps(keys).join("")})` : ""}${bar ? `; ${keyCaps("Alt").join("")}-click to watch it` : ""}${more && bar ? "; right-click for other accounts and machines" : ""}`}
-        className={cn("grid shrink-0 cursor-pointer place-items-center text-muted-foreground hover:text-foreground",
-          bar ? "size-7 rounded-[5px] hover:bg-foreground/[0.06]"
+        data-tip={`${name}${keys && bar ? ` (${keyCaps(keys).join("")})` : ""}${bar ? `; ${keyCaps("Alt").join("")}-click to watch it` : ""}${more && bar ? "; right-click for other accounts and machines, or this workspace's default" : ""}`}
+        className={cn("flex shrink-0 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground",
+          bar ? cn("h-7 rounded-[5px] hover:bg-foreground/[0.06]", where ? "gap-1 px-1.5" : "w-7")
             // (a phone's 44px target, laid out in the line's 32px)
             : "-my-1.5 size-11 active:opacity-50 md:my-0 md:size-8 md:rounded-[6px] md:hover:bg-foreground/[0.06]")}
         style={{ color: agentOf(a, agents)?.tint }}>
         <Icon className={bar ? "size-3.5" : "size-4"} strokeWidth={2.25} />
+        {bar && where && <span data-dispatch-where className="max-w-40 truncate text-[12px] text-muted-foreground">{where}</span>}
       </button>
     )
   })
@@ -143,8 +174,8 @@ function Commands() {
   const ps = useKnown()
   useCommands(() => [
     ...list.filter((a) => a.id !== "claude").map((a) => ({ id: `dispatch:${a.id}`, name: `Dispatch to ${a.label}`, when: onNote, run: () => runOn(a.id), icon: iconOf(a) })),
-    // In each other place: dispatch:<id>[:<account>][@<machine>].
-    ...list.flatMap((a) => placesOf(a, there).filter((p) => p.machine || p.profile !== ownAccount(a)).map((p) => {
+    // In each other place: dispatch:<id>[:<account>][@<machine>] (not its own here: that one's dispatch:<id>, with its keys).
+    ...list.flatMap((a) => placesOf(a, there).filter((p) => p.machine || (p.profile && p.profile !== ownAccount(a))).map((p) => {
       const m = there.find((x) => x.id === p.machine)
       const acct = p.profile && p.profile !== ownAccount(a) ? p.profile : ""
       return {
@@ -250,8 +281,8 @@ function ActionsEditor({ store }: { store: Store }) {
 export default definePlugin({
   fileBar: { dispatch: { sort: 60, render: (file) => <Buttons file={file} /> } },
   fileMenu: (path) => (dispatchable(path) ? actionsOf(getStore()).map((a) => {
-    const own = ownLabel(a)
-    const it = { label: `Dispatch to ${a.label}${own ? ` (${own})` : ""}`, icon: iconOf(a), run: () => void dispatch(a, path) }
+    const where = whereLabel(a)
+    const it = { label: `Dispatch to ${a.label}${where ? ` (${where})` : ""}`, icon: iconOf(a), run: () => void dispatchHere(a, path) }
     const each = onEach(a, path)
     return each.length ? { ...it, split: true, items: each } : it
   }) : []),
