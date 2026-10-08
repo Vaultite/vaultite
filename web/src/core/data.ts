@@ -40,6 +40,8 @@ export type State = PluginState & {
 /** A vault plugin as the server lists it (core/vaultplugins.ts on the server). */
 export type VaultPluginInfo = {
   id: string; name: string; description: string; requires: string[]; enhances: string[]; runsOnServer: boolean; tint?: string; category?: string
+  /** Its manifest's icon: a name, or its SVG file as a data address (core/pluginmeta.ts iconOf). */
+  icon?: string
   /** Other apps' plugins it stands in for (its manifest's `replaces`). */
   replaces?: Record<string, string[]>
   folder: string; on: boolean; loaded: boolean; problems: string[]

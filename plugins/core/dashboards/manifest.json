@@ -1,5 +1,6 @@
 {
   "id": "dashboards",
+  "icon": "layout-dashboard",
   "category": "writing",
   "name": "Dashboards",
   "description": "Files with type: dashboard (Today, People, your own) open as a page: a header with the page's name and subtitle, then its blocks as a grid of cards. Off, they're Markdown files like any other, their blocks one under another."

@@ -4,7 +4,6 @@ import { definePlugin, isViewOpen, openView, SearchPage, selectedText, SidebarSe
 // The sidebar's search field, and search as a full page in a tab (view:search/<query>, like VS Code's search editor:
 // names, then every matching line in files). The quick switcher itself is the core's (⌘O): the field only opens it.
 export default definePlugin({
-  icon: Search,
   sidebar: { search: { title: "Search field", heading: false, sort: 0, view: "search", render: (ctx) => <SidebarSearch {...ctx} /> } },
   views: {
     search: {

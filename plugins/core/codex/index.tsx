@@ -42,7 +42,6 @@ function mock(): AgentUsage {
 }
 
 export default definePlugin({
-  icon: OpenAIIcon,
   // `icon: openai` in a file (its dashboard).
   icons: { openai: OpenAIIcon },
   // Its page is the Codex dashboard (pages/Codex.md); `codex` goes in a project file.

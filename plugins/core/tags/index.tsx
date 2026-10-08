@@ -5,7 +5,6 @@ import { TagDetail, TagsPanel, TagsView, tagTree, TINT } from "./Tags"
 // Tags: the Tags panel, a tag's sheet, and tags in the quick switcher. Which files have which tags is
 // the core's.
 export default definePlugin({
-  icon: Hash,
   // Not in the sidebar until shown from its right-click menu (`hidden`); a flyout in the rail; a tab (view:tags).
   sidebar: { tags: { title: "Tags", heading: false, sort: 50, hidden: true, view: "tags", flyout: { icon: Hash }, render: (ctx) => <TagsPanel {...ctx} /> } },
   views: { tags: { icon: Hash, title: () => "Tags", render: ({ store }) => <TagsView store={store} /> } },

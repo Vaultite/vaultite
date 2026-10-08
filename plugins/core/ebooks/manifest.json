@@ -1,5 +1,6 @@
 {
   "id": "ebooks",
+  "icon": "book-open",
   "category": "formats",
   "name": "E-books",
   "description": "EPUB, Kindle (.mobi, .azw3), FictionBook and comic book (.cbz) files open in a reader that turns pages and keeps your place; a book's text is found by search and read by AIs.",

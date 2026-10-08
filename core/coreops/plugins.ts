@@ -258,7 +258,7 @@ vau docs vault-plugins, and vau docs plugin-api for everything it can use.
 /** A vault plugin's files to start from (vau plugin new). */
 function scaffold(id: string, name: string, description: string): Record<string, string> {
   return {
-    "manifest.json": JSON.stringify({ id, name, description, version: "0.1.0", apiVersion: API_VERSION, disclosures: {},
+    "manifest.json": JSON.stringify({ id, name, description, icon: "puzzle", version: "0.1.0", apiVersion: API_VERSION, disclosures: {},
       blocks: { [id]: { description: "how many Markdown files the vault has (change it as the plugin grows)", options: {} } } }, null, 2) + "\n",
     "plugin.ts": `/**
  * ${name}: a vault plugin (made with \`vau plugin new\`). Its backend: GET /api/${id}, and \`\`\`block-${id} as text for
@@ -294,7 +294,6 @@ function Card() {
 }
 
 export default definePlugin({
-  icon: Puzzle,
   blocks: { "${id}": () => <Card /> },
   mockLive: () => ({ "${id}": { files: 42 } }),
 })

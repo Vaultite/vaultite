@@ -17,13 +17,12 @@ const write = (p, t) => { mkdirSync(dirname(abs(p)), { recursive: true }); write
 const json = (p) => { try { return JSON.parse(read(p)) } catch { return {} } }
 const was = { plugins: read(".vaultite/plugins.json"), appearance: read(".vaultite/appearance.json") }
 
-write(".vaultite/plugins/brittle/manifest.json", JSON.stringify({ id: "brittle", category: "other", name: "Brittle", description: "A made-up vault plugin whose every part throws.", version: "1.0.0", author: "Alice Park", disclosures: {}, apiVersion: 1 }, null, 2))
+write(".vaultite/plugins/brittle/manifest.json", JSON.stringify({ id: "brittle", category: "other", name: "Brittle", icon: "bomb", description: "A made-up vault plugin whose every part throws.", version: "1.0.0", author: "Alice Park", disclosures: {}, apiVersion: 1 }, null, 2))
 write(".vaultite/plugins/brittle/index.tsx", `import { definePlugin } from "@vaultite"
 import { Bomb } from "lucide-react"
 const boom = (where: string): never => { throw new Error(\`qa: brittle \${where}\`) }
 function Background(): null { return boom("background") }
 export default definePlugin({
-  icon: Bomb,
   background: Background,
   ambient: { always: { title: "Brittle", render: () => boom("ambient") } },
   status: { count: { render: () => boom("status") } },

@@ -560,6 +560,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   misses one reloads into the new version.
 
 ### Plugin API 3
+- **A plugin's icon is its manifest's `icon`**, its one source (definePlugin has no `icon`): a Lucide name, one a plugin
+  adds (`claude`, `github`) or a brand's mark as an SVG file, so Browse shows each plugin as it looks once installed.
 - `newTab` takes only sections by name (the old function form is gone); `parseTerminal(id)` reads which agent, account,
   session and machine a terminal id names.
 - A plugin takes an error as its own by `preventDefault()` in its window listener (the app then doesn't report it), and the

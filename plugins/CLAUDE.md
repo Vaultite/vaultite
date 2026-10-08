@@ -7,7 +7,8 @@
   private monorepo Vaultite/plugins (`../vaultite-plugins`, its `node test.ts` checks them against this checkout).
   Even search, Pinned and the file tree are plugins.
 - **A plugin is one folder**, found by glob on both sides (no registration elsewhere):
-  - `manifest.json`: what it is, `category` (`core/categories.ts`), `requires`/`enhances`, `blocks` and `settings`
+  - `manifest.json`: what it is, `icon` (the one source: a Lucide name, one a plugin adds in `icons`, or an SVG file;
+    `virtual:plugin-icons` in vite.config.ts imports the app's one by one), `category` (`core/categories.ts`), `requires`/`enhances`, `blocks` and `settings`
     declared (`core/blocks.ts`, validated by `npm run check`), and `forAgents`: one line every agent reads while it's
     on (`agentLines` in core/plugins.ts), only what an agent must know up front, never a format. `offByDefault`:
     off until in plugins.json `enabled` (what few people want: Dock icon), its backend too; a plugin's

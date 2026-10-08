@@ -57,7 +57,6 @@ function AgentsAtWork() {
 }
 
 export default definePlugin({
-  icon: SquareTerminal,
   // view:terminal/<session id>: that session's shell, kept across reloads. Agent ids run the agent, and @<machine> ids
   // are another machine's.
   views: {

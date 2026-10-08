@@ -6,7 +6,7 @@ import path from "node:path"
 import { declProblems, declsOf, settingDeclProblems } from "./blocks.ts"
 import { CATEGORIES } from "./categories.ts"
 import { API_VERSION, APP_VERSION, compareVersions, MIN_API_VERSION, parseVersion, tagVersion } from "./version.ts"
-import { DISCLOSURES, HOST, REPO as REPO_NAME, VERSION } from "./pluginmeta.ts"
+import { DISCLOSURES, HOST, ICON_FILE, ICON_MAX, ICON_NAME, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
 
 export const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
 export const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
@@ -68,6 +68,9 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
   }
   if (m.category !== undefined && (typeof m.category !== "string" || !/^[a-z][a-z-]*$/.test(m.category))) {
     out.push(`${where}: category must be a slug, like "life" (core/categories.ts)`)
+  }
+  if (m.icon !== undefined && (typeof m.icon !== "string" || !(ICON_NAME.test(m.icon) || ICON_FILE.test(m.icon)))) {
+    out.push(`${where}: icon is a name ("heart-pulse": Lucide's) or an SVG file in its folder ("icon.svg")`)
   }
   // One short line every agent reads while the plugin is on (core/plugins.ts agentLines): what it's for goes in its docs.
   if (m.forAgents !== undefined) {
@@ -264,6 +267,13 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   if (!vault && !CATEGORIES.some((c) => c.id === m.category)) {
     out.push(`${label}/manifest.json: category must be one of ${CATEGORIES.map((c) => c.id).join(", ")} (core/categories.ts)`)
   }
+  if (!vault && m.icon === undefined) out.push(`${label}/manifest.json: icon names the plugin's icon ("heart-pulse": Lucide's, or one a plugin adds)`)
+  if (typeof m.icon === "string" && ICON_FILE.test(m.icon)) {
+    const file = path.join(dir, m.icon)
+    let svg: string | null = null
+    try { svg = fs.statSync(file).size <= ICON_MAX ? fs.readFileSync(file, "utf8") : null } catch { /* none */ }
+    if (!inside(dir, file) || svg === null || !svgIcon(svg)) out.push(`${label}/manifest.json: icon ${m.icon} must be an SVG file in its folder, at most ${ICON_MAX / 1000} kB, without scripts`)
+  }
   // (a vault plugin is off until turned on anyway)
   if (m.offByDefault !== undefined && (vault || m.offByDefault !== true)) {
     out.push(`${label}/manifest.json: offByDefault is for the app's plugins, and only true`)
@@ -283,10 +293,10 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   return out
 }
 
-/** The keys of `blocks: { ... }` in a plugin's definePlugin (index.tsx's source; depth 1 only, strings and comments
- *  skipped): the blocks it draws in the app. */
-export function blockNames(src: string): string[] {
-  const at = src.search(/\bblocks:\s*\{/)
+/** The keys of `<key>: { ... }` in a plugin's definePlugin (index.tsx's source; depth 1 only, strings and comments
+ *  skipped): "blocks", the blocks it draws in the app; "icons", the icons it adds by name. */
+export function defKeys(src: string, key: "blocks" | "icons"): string[] {
+  const at = src.search(new RegExp(`\\b${key}:\\s*\\{`))
   if (at < 0) return []
   const out: string[] = []
   let i = src.indexOf("{", at) + 1, depth = 1, expectKey = true
@@ -305,6 +315,16 @@ export function blockNames(src: string): string[] {
     else if (!/\s/.test(c)) expectKey = false
     i++
   }
+  return out
+}
+
+/** Every icon a manifest can name (npm run check and a plugin's CI, where the app's source is): Lucide's (their own
+ *  names, not old ones it keeps for imports) and those the app's plugins add (`icons` in their definition). */
+export function iconNames(root: string): Set<string> {
+  let lucide = ""
+  try { lucide = fs.readFileSync(path.join(root, "node_modules", "lucide-react", "dist", "esm", "icons", "index.mjs"), "utf8") } catch { /* none */ }
+  const out = new Set([...lucide.matchAll(/from '\.\/([\w-]+)\.mjs'/g)].map((m) => m[1]))
+  for (const d of walk(path.join(root, "plugins", "core")).filter((f) => f.endsWith("/index.tsx"))) for (const k of defKeys(fs.readFileSync(d, "utf8"), "icons")) out.add(k)
   return out
 }
 
@@ -330,7 +350,7 @@ export function blockProblems(dir: string, m: Record<string, unknown>, label: st
   const out = [...declProblems(m.blocks, where), ...settingDeclProblems(m.settings, where)]
   let src = ""
   try { src = fs.readFileSync(path.join(dir, "index.tsx"), "utf8") } catch { /* no frontend */ }
-  const drawn = blockNames(src), texts = new Set(textBlockNames(dir)), decls = declsOf(m)
+  const drawn = defKeys(src, "blocks"), texts = new Set(textBlockNames(dir)), decls = declsOf(m)
   for (const b of drawn) {
     if (!Object.hasOwn(decls, b)) out.push(`${where}: block '${b}' (drawn by index.tsx) isn't declared in "blocks": what it shows and its options`)
     if (!texts.has(b)) out.push(`${label}: block '${b}' has no text side: plugin.block("${b}", ...) in plugin.ts, what /api/render shows`)

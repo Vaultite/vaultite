@@ -41,7 +41,6 @@ const format: FileFormat = {
 }
 
 export default definePlugin({
-  icon: Table2,
   formats: { base: format },
   fences: { base: (ctx) => <BaseFence {...ctx} /> },
   newFiles: [

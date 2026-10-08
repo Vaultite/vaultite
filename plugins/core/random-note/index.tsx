@@ -1,4 +1,3 @@
-import { Dices } from "lucide-react"
 import { currentFile, definePlugin, get, getStore, isHidden, openFile } from "@vaultite"
 
 // Random note: a Markdown note picked at random (not the one you're on, a hidden or
@@ -27,6 +26,5 @@ async function openRandom() {
 }
 
 export default definePlugin({
-  icon: Dices,
   commands: [{ id: "random-note:open", name: "Open random note", when: () => notes().length > 0, run: () => void openRandom() }],
 })

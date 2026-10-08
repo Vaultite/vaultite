@@ -248,7 +248,6 @@ function ActionsEditor({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  icon: Send,
   fileBar: { dispatch: { sort: 60, render: (file) => <Buttons file={file} /> } },
   fileMenu: (path) => (dispatchable(path) ? actionsOf(getStore()).map((a) => {
     const own = ownLabel(a)

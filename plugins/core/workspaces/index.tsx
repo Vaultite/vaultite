@@ -1,4 +1,3 @@
-import { LayoutGrid } from "lucide-react"
 import { definePlugin, isMac, isPopout, vaultSidebars } from "@vaultite"
 import { Background, Workspaces } from "./Numbers"
 import { WorkspaceSettings } from "./Settings"
@@ -8,7 +7,6 @@ import { current, currentTab, cycle, host, lit, moveTab, openElsewhere, patch, s
 // per device. Devices on one follow each other live and save only what they share, so a change received never echoes.
 
 export default definePlugin({
-  icon: LayoutGrid,
   // The sidebars are the current workspace's own, else sidebars.json's (what new ones start with).
   sidebarSetup: {
     get: () => {

@@ -1,6 +1,6 @@
 // The Dock icon: try another picture in the desktop app's Dock, drawn on Apple's icon grid and kept by the main
 // process on this Mac until reset. Nothing in the vault.
-import { ImageIcon, ImageUp } from "lucide-react"
+import { ImageUp } from "lucide-react"
 import { definePlugin, dockIcon, notify, notifyError, rawUrl } from "@vaultite"
 
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|heic|heif)$/i
@@ -48,7 +48,6 @@ async function pick() {
 }
 
 export default definePlugin({
-  icon: ImageIcon,
   fileMenu: (path) => (dockIcon() && IMAGE.test(path)
     ? [{ label: "Use as Dock icon", icon: ImageUp, section: "more", run: () => void apply(rawUrl(path), path.split("/").pop()!) }]
     : []),

@@ -1,4 +1,4 @@
-import { ListChecks, Sun } from "lucide-react"
+import { ListChecks } from "lucide-react"
 import { AmbientButton, createFile, definePlugin, dow, getStore, homeOf, isArchived, openFile, pageOf, Panel, plainText, today, useStore } from "@vaultite"
 import { RoutineDay, RoutineHistory } from "./RoutineDetail"
 import { RoutineGrid } from "./RoutineGrid"
@@ -18,7 +18,6 @@ function RoutinesToday() {
 }
 
 export default definePlugin({
-  icon: Sun,
   mock: mockRoutines,
   // ```block-routines: this week's routines, to tick. Its page is the Today dashboard (pages/Today.md), where other
   // plugins' blocks sit too (the calendar, this week's goals, sleep, meals).

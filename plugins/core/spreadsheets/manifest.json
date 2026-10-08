@@ -1,5 +1,6 @@
 {
   "id": "spreadsheets",
+  "icon": "file-spreadsheet",
   "category": "formats",
   "name": "Spreadsheets",
   "description": "Excel, OpenDocument and Numbers workbooks (.xlsx, .xls, .ods, .numbers) open as a grid with a tab for each sheet, read-only; their cells are found by search and read by AIs."

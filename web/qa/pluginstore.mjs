@@ -38,7 +38,7 @@ const writeIndex = (harborVersion) => {
   mkdirSync(dirname(INDEX), { recursive: true })
   writeFileSync(INDEX, JSON.stringify({ format: 1, generated: new Date().toISOString(), blocked: {}, plugins: [
     entry({ id: "harbor", name: "Harbor", author: "Alice Park", repo: "alicepark/harbor", version: harborVersion, tag: `v${harborVersion}`, stars: 40, released: "2026-06-01T00:00:00Z",
-      description: "The harbour's tides, and when the boats leave.", disclosures: { network: ["tides.example.com"], ...(harborVersion === "1.1.0" ? { shell: true } : {}) } }),
+      description: "The harbour's tides, and when the boats leave.", icon: "anchor", tint: "teal", disclosures: { network: ["tides.example.com"], ...(harborVersion === "1.1.0" ? { shell: true } : {}) } }),
     entry({ id: "beacon", name: "Beacon", repo: "boblee/beacon", stars: 90, created: "2024-01-01T00:00:00Z", released: "2025-01-01T00:00:00Z" }),
     entry({ id: "skiff", name: "Skiff", repo: "boblee/skiff", stars: 5, created: "2026-09-01T00:00:00Z", released: "2026-09-30T00:00:00Z", description: "Small boats and their moorings." }),
   ] }))
@@ -73,6 +73,8 @@ try {
   const harborRow = browse.locator('[data-browse-row="harbor"]')
   check("browse: each with its stars, version and what it says it does", /40[\s\S]*1\.0\.0/.test(await harborRow.innerText()) &&
     (await harborRow.locator("[data-browse-discloses]").innerText()).includes("Talks to tides.example.com"), await harborRow.innerText())
+  check("browse: each with its icon (a puzzle piece for one without)", await browse.locator("[data-browse-icon] svg").count() === 3 &&
+    await harborRow.locator("[data-browse-icon]").evaluate((e) => getComputedStyle(e).color === getComputedStyle(document.documentElement).getPropertyValue("--teal").trim() || !!e.style.color))
   await shot("browse")
   await page.getByRole("radio", { name: "New" }).click()
   check("browse: New puts the newest first", await until(async () => (await rows())[0] === "skiff", 8000), await rows())

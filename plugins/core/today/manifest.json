@@ -1,5 +1,6 @@
 {
   "id": "today",
+  "icon": "sun",
   "category": "life",
   "name": "Today",
   "description": "Routines you tick each day, and the Today page: a dashboard of blocks from this and other plugins (the calendar, this week's goals, sleep, meals).",

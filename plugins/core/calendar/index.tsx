@@ -1,9 +1,7 @@
-import { CalendarDays } from "lucide-react"
 import { definePlugin, today } from "@vaultite"
 import { AgendaPanel } from "./Agenda"
 
 export default definePlugin({
-  icon: CalendarDays,
   // ```block-agenda: today's and the coming days' events (on Today).
   blocks: { agenda: () => <AgendaPanel /> },
   preview: "today",

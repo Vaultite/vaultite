@@ -1,5 +1,6 @@
 {
   "id": "lighthouse",
+  "icon": "lamp",
   "category": "life",
   "name": "Lighthouse",
   "description": "A made-up vault plugin: its keepers, whether the beam is on, and a page for both.",

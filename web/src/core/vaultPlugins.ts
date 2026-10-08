@@ -3,11 +3,12 @@
 import * as React from "react"
 import * as ReactDOM from "react-dom"
 import * as jsxRuntime from "react/jsx-runtime"
-import { Puzzle } from "lucide-react"
+import { Puzzle, type LucideIcon } from "lucide-react"
 import * as api from "@/api"
 import type { PluginDef, Plugin } from "@/core/define"
 import type { State, VaultPluginInfo } from "@/core/data"
 import { setVaultPlugins } from "@/core/plugins"
+import { pluginIcon } from "@/core/pages"
 import { openDetail } from "@/core/nav"
 import { notify } from "@/core/notify"
 
@@ -59,7 +60,7 @@ globalThis.__vaultite = {
   },
 }
 
-const loaded = new Map<string, { version: string; def: PluginDef | null; error: string | null; at?: number }>()
+const loaded = new Map<string, { version: string; def: PluginDef | null; icon?: LucideIcon; error: string | null; at?: number }>()
 /** A bundle that failed is tried again at most this often (a state comes every second while agents write). */
 const RETRY = 30_000
 
@@ -74,7 +75,8 @@ async function importBundle(info: VaultPluginInfo, version: string, retry: boole
       .finally(() => clearTimeout(late))
     const def = mod.default as PluginDef | undefined
     if (!def || typeof def !== "object") throw new Error("index.tsx has no default export (export default definePlugin({...}))")
-    return { version, def, error: null }
+    // (its icon by a Lucide name comes with it: core/vaultplugins.ts bundle)
+    return { version, def, icon: mod.icon as LucideIcon | undefined, error: null }
   } catch (e) {
     // (it may have changed again meanwhile: a newer state brings it, or tries this one again)
     console.warn(`vault plugin ${info.id}:`, e)
@@ -96,7 +98,7 @@ export async function loadVaultPlugins(state: State) {
     const { id, name, description, requires, enhances, runsOnServer, tint, category, replaces, folder, pages, blocks, settings, warnings } = info
     const { version, author, repo, fundingUrl, disclosures, source, approval, blocked, hash, edits } = info
     return {
-      icon: Puzzle, ...hit?.def, id, name, description, requires: requires.length ? requires : undefined,
+      ...hit?.def, icon: hit?.icon ?? pluginIcon(info.icon) ?? Puzzle, id, name, description, requires: requires.length ? requires : undefined,
       enhances: enhances.length ? enhances : undefined, runsOnServer, tint, category, replaces, folder, pages, tier: "vault", version: hit?.version,
       problems: [...info.problems, ...(hit?.error ? [hit.error] : [])], warnings: warnings ?? [], blockDecls: blocks ?? {},
       settingsDecls: settings ?? {},

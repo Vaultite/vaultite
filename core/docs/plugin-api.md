@@ -56,9 +56,8 @@ What it gets: a route's `req`: `method`; `parts`; `query`; `body`; `wild`; `rawP
 `setPropertyText` (`@vaultite/core/vault.ts`).
 
 ### The app: `definePlugin({...})` in `index.tsx`
-`import { definePlugin } from "@vaultite"`; every key but `icon` is optional.
+`import { definePlugin } from "@vaultite"`; every key is optional (its icon is its manifest's).
 
-- `icon` (required)
 - `icons`: Icons it adds by name: a file's `icon:` can name them (a dashboard's `icon: claude`), and other plugins draw them with iconNamed("claude") (the plugin API) without importing it.
 - `details`
 - `search`: What the quick switcher and the search tab find by name: its things, from the store.

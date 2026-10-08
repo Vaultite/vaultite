@@ -5,7 +5,6 @@ import { definePlugin, FilesPage, FilesPanel, FilesSettings, filesSettingsSearch
 // Terminals; one icon in the rail. Its settings are the vault's files.json; its right-click menus show or hide hidden
 // and archived files.
 export default definePlugin({
-  icon: FolderClosed,
   sidebar: { files: { title: "File explorer", names: ["file tree", "tree", "explorer"], heading: false, sort: 35, tall: true, view: "files", flyout: { icon: FolderTree, width: 280 },
     menu: treeShownItems, render: (ctx) => <FilesPanel {...ctx} /> } },
   views: {

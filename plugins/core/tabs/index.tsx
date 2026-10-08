@@ -138,7 +138,6 @@ function TabsPanel({ store, open, panel }: SidebarCtx) {
 }
 
 export default definePlugin({
-  icon: Layers2,
   background: ({ store }) => (isPopout() ? null : <Report store={store} />),
   sidebar: {
     tabs: {

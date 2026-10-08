@@ -1,5 +1,6 @@
 {
   "id": "inbox",
+  "icon": "inbox",
   "category": "agents",
   "name": "Inbox",
   "description": "What your agents tell you, in one place: a coding agent finished or is waiting for you (toasts, a badge, the Mac's notifications), and results to review (an agent's research, a clipped page) as files in Inbox/ to mark done (into Inbox/.archive/) or file away.",

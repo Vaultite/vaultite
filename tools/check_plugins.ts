@@ -6,7 +6,8 @@ import { fileURLToPath } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 import { declsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
-import { blockNames, blockProblems, nodeSide, pluginProblems, walk } from "../core/rules.ts"
+import { blockProblems, defKeys, iconNames, nodeSide, pluginProblems, walk } from "../core/rules.ts"
+import { ICON_NAME } from "../core/pluginmeta.ts"
 import { opProblems } from "../core/ops.ts"
 
 // (the plugins load below into a throwaway vault, keeping what they keep on this machine in a throwaway folder too: before
@@ -14,6 +15,11 @@ import { opProblems } from "../core/ops.ts"
 const SCRATCH = fs.mkdtempSync(path.join((await import("node:os")).tmpdir(), "vaultite-check-"))
 process.env.VAULTITE_LOCAL = path.join(SCRATCH, "local")
 const { inArea } = await import("../core/hooks.ts")
+
+// A manifest's icon by name is one the app has (the server can't tell: the app's plugins' sources aren't shipped).
+const ICONS = iconNames(path.dirname(path.dirname(fileURLToPath(import.meta.url))))
+const iconProblems = (m: Record<string, unknown> | null | undefined, where: string) => typeof m?.icon === "string" && ICON_NAME.test(m.icon) && !ICONS.has(m.icon)
+  ? [`${where}: icon '${m.icon}' isn't one of Lucide's (lucide.dev/icons, by its own name) or one the app's plugins add`] : []
 
 // One plugin's folder (a plugin's own repository, its CI: tools/plugin-action/action.yml).
 const flag = (name: string) => { const i = process.argv.indexOf(name); return i < 0 ? null : process.argv[i + 1] ?? "" }
@@ -23,6 +29,7 @@ if (flag("--plugin") !== null) {
   const { discover } = await import("../core/plugins.ts")
   const tag = flag("--tag") || null
   const r = folderProblems(dir, new Map(discover().map(([tier, id]) => [id, tier])), { installable: process.argv.includes("--installable") || !!tag, tag })
+  try { r.problems.push(...iconProblems(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")), "./manifest.json")) } catch { /* said */ }
   fs.rmSync(SCRATCH, { recursive: true, force: true })
   if (r.warnings.length) console.log(`Warnings (it still loads):\n${r.warnings.join("\n")}\n`)
   console.log(r.problems.join("\n") || `ok: ${r.id}${tag ? ` at ${tag}` : ""} follows the rules`)
@@ -55,6 +62,7 @@ for (const [name, [tier, d]] of found) {
     const r = checkVaultPlugin(d, { ids, label: `.vaultite/plugins/${name}` })
     problems.push(...r.problems)
     warnings.push(...r.warnings)
+    problems.push(...iconProblems(r.manifest, `.vaultite/plugins/${name}/manifest.json`))
     if (r.manifest) vaultManifests.set(name, r.manifest)
     continue
   }
@@ -62,7 +70,7 @@ for (const [name, [tier, d]] of found) {
   problems.push(...pluginProblems(d, ROOT, ids, false, label))
   let m: Record<string, unknown> = {}
   try { m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8")) } catch { continue } // (said above)
-  problems.push(...blockProblems(d, m, label))
+  problems.push(...blockProblems(d, m, label), ...iconProblems(m, `${label}/manifest.json`))
   Object.assign(decls, declsOf(m))
 }
 
@@ -129,7 +137,7 @@ for (const [name, [tier, d]] of found) {
   if (tier === "vault") continue // (the app's design system shows the app's blocks)
   const index = path.join(d, "index.tsx")
   if (!fs.existsSync(index)) continue
-  for (const b of blockNames(fs.readFileSync(index, "utf8"))) {
+  for (const b of defKeys(fs.readFileSync(index, "utf8"), "blocks")) {
     if (!shown.has(b)) problems.push(`plugins/${tier}/${name}: block '${b}' isn't in core/pages/Design.md (the design system shows every block)`)
   }
 }

@@ -14,6 +14,9 @@ import type { Disclosures } from "../../../core/pluginmeta.ts"
 
 export type Manifest = {
   id: string; name: string; description: string
+  /** Its icon, wherever it's listed (and in the directory before it's installed): a Lucide name ("heart-pulse"), one a
+   *  plugin adds ("claude": `icons`), or an SVG file in its folder ("icon.svg", a mark in one colour: drawn in the text's). */
+  icon?: string
   /** Can't work without these plugins: off while any of them is off. */
   requires?: string[]
   /** Uses these when they're on (optional). */
@@ -445,7 +448,6 @@ export type PluginCommand = { id: string; name: string; keys?: string[]; when?: 
 export type SettingsSearchEntry = { label: string; description?: string; key?: string }
 
 export type PluginDef = {
-  icon: LucideIcon
   /** Icons it adds by name: a file's `icon:` can name them (a dashboard's `icon: claude`), and other plugins draw them
    *  with iconNamed("claude") (the plugin API) without importing it. */
   icons?: Record<string, LucideIcon>
@@ -553,7 +555,9 @@ export type PluginDef = {
   background?: (ctx: { store: Store }) => ReactNode
 }
 
-export type Plugin = Omit<Manifest, "blocks" | "settings"> & PluginDef & {
+export type Plugin = Omit<Manifest, "blocks" | "settings" | "icon"> & PluginDef & {
+  /** Its manifest's icon (Puzzle for none). */
+  icon: LucideIcon
   /** Its manifest's `blocks`: what each of its blocks shows and its options (core/blocks.ts). */
   blockDecls: BlockDecls
   /** Its manifest's `settings`: its data.json's keys, typed, which its settings sheet draws as a form. */
@@ -581,7 +585,7 @@ export const definePlugin = (def: PluginDef) => def
 
 /** A plugin another plugin runs (an Obsidian plugin, run by obsidian-compat): listed on the Plugins page in its host's
  *  group and drawn like any plugin, while its host answers its switch, its approval and its removal (PluginHost). */
-export type HostedPlugin = PluginDef & { id: string; name: string; description?: string; category?: string; tint?: string
+export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideIcon; description?: string; category?: string; tint?: string
   version?: string; author?: string
   /** Its home page (the author's or its repository's), shown in its sheet. */
   url?: string

@@ -12,7 +12,6 @@ function Header({ title, fm, place }: PageCtx) {
 }
 
 export default definePlugin({
-  icon: BookOpenCheck,
   mock: mockLessons,
   mockLive: () => ({ "lessons/state": { reviews: {}, retention: 0.9, newPerDay: 20 } }),
   files: {

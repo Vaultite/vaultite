@@ -38,7 +38,6 @@ function mock(): AgentUsage {
 }
 
 export default definePlugin({
-  icon: Feather,
   // `icon: hermes` in a file (its dashboard).
   icons: { hermes: Feather },
   // Its page is the Hermes dashboard (pages/Hermes.md); `hermes` goes in a project file.

@@ -6110,11 +6110,12 @@ plugin.every("gone", null)
     "https://api.github.com/repos/carol/fleet/tags?per_page=100": [{ name: "dinghy/v1.0.0", commit: { sha: "d1" } }, { name: "dinghy/v1.1.0", commit: { sha: "d2" } },
       { name: "skiff/v0.1.0", commit: { sha: "s1" } }],
     "https://api.github.com/repos/carol/fleet/commits/d2": { commit: { committer: { date: "2026-09-25T00:00:00Z" } } },
-    "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/manifest.json": { id: "dinghy", name: "Dinghy", version: "1.1.0", description: "Sails." },
+    "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/manifest.json": { id: "dinghy", name: "Dinghy", version: "1.1.0", description: "Sails.", icon: "icon.svg" },
+    "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/icon.svg": '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20z"/></svg>\n',
     "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/README.md": "# Dinghy\n\nSmall sails for small boats, and when to take them in.\n",
     "https://raw.githubusercontent.com/carol/fleet/s1/skiff/manifest.json": { id: "skiff", name: "Skiff", version: "0.2.0" },
     "https://api.github.com/repos/alicepark/harbor/releases/latest": { tag_name: "v1.2.0", published_at: "2026-09-15T00:00:00Z" },
-    "https://raw.githubusercontent.com/alicepark/harbor/v1.2.0/manifest.json": { id: "harbor", name: "Harbor", version: "1.2.0", description: "Tides.", author: "Alice Park", disclosures: { network: ["tides.example.com"] }, fundingUrl: "https://example.com/fund" },
+    "https://raw.githubusercontent.com/alicepark/harbor/v1.2.0/manifest.json": { id: "harbor", name: "Harbor", version: "1.2.0", description: "Tides.", author: "Alice Park", icon: "anchor", tint: "teal", disclosures: { network: ["tides.example.com"] }, fundingUrl: "https://example.com/fund" },
     "https://api.github.com/repos/boblee/oldboat/tags?per_page=100": [{ name: "v0.9.0", commit: { sha: "aaa" } }, { name: "v0.10.0", commit: { sha: "bbb" } }, { name: "nightly" }],
     "https://api.github.com/repos/boblee/oldboat/commits/bbb": { commit: { committer: { date: "2024-02-01T00:00:00Z" } } },
     "https://raw.githubusercontent.com/boblee/oldboat/v0.10.0/manifest.json": { id: "oldboat", name: "Old boat", version: "0.10.0", description: "Rowing." },
@@ -6145,6 +6146,10 @@ plugin.every("gone", null)
   const dg = index.plugins.find((p) => p.id === "dinghy") as Any
   check("index builder: several plugins in one repository, each at its folder's newest tag", dg?.repo === "carol/fleet" && dg.dir === "dinghy" && dg.tag === "dinghy/v1.1.0" &&
     dg.version === "1.1.0" && dg.released === "2026-09-25T00:00:00Z" && dg.readme === "Small sails for small boats, and when to take them in.", dg)
+  const fromIndex = (await import("../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins
+  check("index builder: an icon by name as it is, an SVG file inline (the app reads both)", hb?.icon === "anchor" && hb.tint === "teal" &&
+    dg?.icon === `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20z"/></svg>')}` &&
+    fromIndex.find((p) => p.id === "dinghy")?.icon === dg.icon && fromIndex.find((p) => p.id === "harbor")?.tint === "teal", { hb: hb?.icon, dg: dg?.icon })
   check("index builder: listed.json's repos are asked for too", asked.includes("https://api.github.com/repos/carol/listed"))
   check("index builder: sorted by score, the blocklist goes out, and the app reads it", index.plugins[0].id === "harbor" && (index.blocked as Any)["boblee/oldboat"][0] === "<1.0.0" &&
     (await import("../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins.length === 3)
@@ -6167,6 +6172,10 @@ plugin.every("gone", null)
   check("manifest: version, author, repo, fundingUrl and disclosures are checked", ["version must be", "author is a name", "repo is its GitHub", "fundingUrl is an https", "disclosures.network is", "disclosures.shell is true or false", "disclosures.camera isn't one"]
     .every((x) => mp.some((p) => p.includes(x))), mp)
   const pm = await import("../core/pluginmeta.ts")
+  check("manifest: an icon's SVG is one SVG without scripts", !pm.svgIcon('<svg><script>alert(1)</script></svg>') && !pm.svgIcon("<html></html>") &&
+    !pm.svgIcon(`<svg>${"x".repeat(pm.ICON_MAX)}</svg>`) && !!pm.svgIcon("<svg viewBox='0 0 24 24'/></svg>") && pm.iconOf("Not a name") === null && pm.iconOf("heart-pulse") === "heart-pulse")
+  const ip = meta.manifestProblems({ id: "x", name: "X", description: "x", icon: "../logo.png" }, "x", new Set(["x"]))
+  check("manifest: icon is a name or an SVG file in its folder", ip.some((p) => p.includes("icon is a name")), ip)
   const any = pm.disclosed(pm.disclosuresOf({ disclosures: { network: ["*.example.com", "*"] } }))
   check("manifest: network \"*\" is any host its settings name", !meta.metaProblems({ disclosures: { network: ["*"] } }).length &&
     any[0] === "talks to *.example.com and any host you set in its settings", any)

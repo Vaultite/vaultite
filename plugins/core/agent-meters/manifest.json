@@ -1,5 +1,6 @@
 {
   "id": "agent-meters",
+  "icon": "gauge",
   "category": "agents",
   "name": "Agent meters",
   "description": "How much of its context a coding agent has used and how long its prompt cache lasts, on its terminal: while it's idle its icon keeps its colour only as far as the cache has time left, draining from the top, and a ring beside its name in the Terminals panel fills up with its context. Read from its own transcripts on the server's machine (Claude Code's); the window is what Claude Code's status line said, when it writes one, else 200k tokens.",

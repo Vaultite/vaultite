@@ -1,4 +1,4 @@
-import { Replace, TextSearch } from "lucide-react"
+import { Replace } from "lucide-react"
 import { currentEditor, definePlugin } from "@vaultite"
 
 // Find and replace, ⌘F (⌥⌘F replaces; ⌘H is the Mac's Hide), in every editor; read-only ones
@@ -12,7 +12,6 @@ const open = (replace: boolean) => {
 }
 
 export default definePlugin({
-  icon: TextSearch,
   editor: async () => (await load()).findExtension,
   commands: [
     { id: "find:open", name: "Search current file", keys: ["Mod+F"], when: () => !!currentEditor(), run: () => open(false) },

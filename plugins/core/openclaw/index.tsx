@@ -48,7 +48,6 @@ const cron = (): Job[] => [
 ]
 
 export default definePlugin({
-  icon: Bot,
   // `icon: openclaw` in a file (its dashboard).
   icons: { openclaw: Bot },
   // Its page is the OpenClaw dashboard (pages/OpenClaw.md); `openclaw` goes in a project file.

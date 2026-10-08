@@ -1,5 +1,6 @@
 {
   "id": "tables",
+  "icon": "sheet",
   "category": "formats",
   "name": "Tables",
   "description": "CSV files (transactions, exports) open as a table you can filter and sort, and ![[Transactions.csv]] shows one in a note."

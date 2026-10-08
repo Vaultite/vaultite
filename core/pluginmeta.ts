@@ -29,3 +29,28 @@ export function disclosed(d: Disclosures | null | undefined): string[] {
   for (const k of ["shell", "outsideVault", "clipboard"] as const) if (d?.[k]) out.push(DISCLOSURES[k])
   return out
 }
+
+/** A manifest's `icon` as a name: Lucide's ("heart-pulse") or one an app plugin adds ("claude"). */
+export const ICON_NAME = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/
+/** ...or an SVG file in its folder ("icon.svg"), at most ICON_MAX bytes. */
+export const ICON_FILE = /^[\w-]+(\/[\w-]+)*\.svg$/
+export const ICON_MAX = 16_000
+const ICON_DATA = /^data:image\/svg\+xml,[^"\\\s]+$/
+
+/** An SVG mark as the app draws it: a data address (null for what doesn't read as one SVG). Drawn as a mask in the
+ *  text's colour (web core/icons.tsx), never as a document, so nothing in it runs. */
+export function svgIcon(svg: string): string | null {
+  const s = svg.replace(/^﻿/, "").replace(/^\s*(<\?xml[^>]*\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>|\s)*/i, "").trim()
+  if (s.length > ICON_MAX || !/^<svg[\s>]/i.test(s) || !/<\/svg>$/i.test(s) || /<script|<foreignObject/i.test(s)) return null
+  return `data:image/svg+xml,${encodeURIComponent(s)}`
+}
+
+/** A manifest's (or an index entry's) `icon` as the app draws it: a name, or its SVG file read by `read` (a path in
+ *  its folder -> its text, or null) as a data address; an index entry's data address as it is. Null for none. */
+export function iconOf(icon: unknown, read?: (file: string) => string | null): string | null {
+  if (typeof icon !== "string") return null
+  if (ICON_NAME.test(icon)) return icon
+  if (ICON_DATA.test(icon) && icon.length <= ICON_MAX * 3) return icon
+  if (read && ICON_FILE.test(icon)) { const svg = read(icon); return svg === null ? null : svgIcon(svg) }
+  return null
+}

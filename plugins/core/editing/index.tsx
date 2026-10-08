@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListOrdered, ListTodo, PenLine, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
+import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
 import { activeFile, currentEditor, definePlugin, notifyError } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { addPhotos } from "./photo"
@@ -35,7 +35,6 @@ const blocks: [string, string, string][] = [
 ]
 
 export default definePlugin({
-  icon: PenLine,
   commands: [
     ...marks.map(([id, name, m, keys]) => ({ id: `editor:toggle-${id}`, name, keys, when, run: run((e) => e.toggleMark(m)) })),
     { id: "editor:clear-formatting", name: "Clear formatting", when, run: run((e) => e.clearFormatting), icon: RemoveFormatting },

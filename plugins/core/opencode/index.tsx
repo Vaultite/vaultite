@@ -37,7 +37,6 @@ function mock(): AgentUsage {
 }
 
 export default definePlugin({
-  icon: OpenCodeIcon,
   // `icon: opencode` in a file (its dashboard).
   icons: { opencode: OpenCodeIcon },
   // Its page is the OpenCode dashboard (pages/OpenCode.md); `opencode` goes in a project file.

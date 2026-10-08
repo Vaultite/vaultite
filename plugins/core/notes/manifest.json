@@ -1,5 +1,6 @@
 {
   "id": "notes",
+  "icon": "notebook-text",
   "category": "writing",
   "name": "Note kinds",
   "description": "Ideas, notes and journal entries: an idea's status, when a note was written, and its tags, shown when it's open.",

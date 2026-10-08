@@ -160,7 +160,7 @@ What it gets: a route's \`req\`: ${shape("core/plugins.ts", "Request")}. A block
 \`setPropertyText\` (\`@vaultite/core/vault.ts\`).
 
 ### The app: \`definePlugin({...})\` in \`index.tsx\`
-\`import { definePlugin } from "@vaultite"\`; every key but \`icon\` is optional.
+\`import { definePlugin } from "@vaultite"\`; every key is optional (its icon is its manifest's).
 
 ${frontend().join("\n")}
 

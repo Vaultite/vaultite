@@ -31,7 +31,6 @@ function Preview() {
 }
 
 export default definePlugin({
-  icon: Mic,
   commands: [
     { id: "audio-recorder:start", name: "Start recording audio", when: idle, run: () => void start(), icon: Mic },
     { id: "audio-recorder:stop", name: "Stop recording audio", when: recording, run: stop, icon: Square },

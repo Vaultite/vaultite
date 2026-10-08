@@ -26,7 +26,6 @@ const MOCK = {
 }
 
 export default definePlugin({
-  icon: Waypoints,
   views: {
     graph: {
       icon: Waypoints, full: true,

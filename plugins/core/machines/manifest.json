@@ -1,5 +1,6 @@
 {
   "id": "machines",
+  "icon": "server",
   "category": "system",
   "name": "Machines",
   "description": "Your other computers running Vaultite, reached from this one: which are online and what they run, their terminals and coding agents in this app. One vault, many machines.",

@@ -1,11 +1,9 @@
-import { Heart } from "lucide-react"
 import { definePlugin } from "@vaultite"
 import { WorkoutsPanel } from "./Health"
 import { LogSections } from "./LogSections"
 import { NutritionPanel, SleepPanel } from "./sections"
 
 export default definePlugin({
-  icon: Heart,
   // Its page is the Health dashboard (pages/Health.md); sleep and nutrition are on Today too.
   blocks: {
     workouts: ({ store, options }) => <WorkoutsPanel store={store} area={typeof options.area === "string" && options.area ? options.area : "workouts"} />,

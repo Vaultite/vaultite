@@ -1,5 +1,6 @@
 {
   "id": "app-windows",
+  "icon": "app-window",
   "category": "navigation",
   "name": "App windows",
   "description": "Other Mac apps in a tab of the desktop app, next to your notes: Spotify, Messages, any app with a window. The app's own window is kept right behind the tab, so it works as it always does; closing the tab gives it back where it was.",

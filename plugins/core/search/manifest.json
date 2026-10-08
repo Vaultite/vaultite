@@ -1,5 +1,6 @@
 {
   "id": "search",
+  "icon": "search",
   "category": "navigation",
   "name": "Search field",
   "description": "The search field at the top of the sidebar. Off, the quick switcher still opens with ⌘O.",

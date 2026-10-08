@@ -1,5 +1,6 @@
 {
   "id": "calendar",
+  "icon": "calendar-days",
   "category": "life",
   "name": "Calendar",
   "description": "Today's and tomorrow's events (a block on Today), read live from your calendars' private iCal links. Nothing is saved.",

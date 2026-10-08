@@ -60,7 +60,6 @@ function Preview() {
 const isReview = (path: string) => /(^|\/)Memories to review\.md$/.test(path)
 
 export default definePlugin({
-  icon: MessagesSquare,
   files: { types: ["chat", "chat-project", "memory-review"], icon: MessagesSquare, tint: TINT,
     kicker: ({ fm }) => (fm.type === "chat-project" ? "Claude project" : fm.type === "memory-review" ? "Memories to review"
       : `${fm.source === "claude" ? "Claude" : fm.source === "chatgpt" ? "ChatGPT" : "AI"} chat`) },

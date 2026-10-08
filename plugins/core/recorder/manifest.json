@@ -1,5 +1,6 @@
 {
   "id": "recorder",
+  "icon": "bug",
   "category": "system",
   "name": "Bug recorder",
   "description": "Keeps the last few minutes of this window in memory: keys, clicks, scrolling, edits, files changing, commands, warnings. Report a bug saves them as a note with a screenshot; nothing is written until then.",

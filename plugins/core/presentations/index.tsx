@@ -13,6 +13,5 @@ const format: FileFormat = {
 }
 
 export default definePlugin({
-  icon: Presentation,
   formats: { deck: format },
 })

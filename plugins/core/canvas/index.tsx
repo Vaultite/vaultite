@@ -43,7 +43,6 @@ const SAMPLE = JSON.stringify({
 })
 
 export default definePlugin({
-  icon: LayoutDashboard,
   formats: { canvas: format },
   newFiles: [{ label: "New canvas", icon: LayoutDashboard, make: newCanvas }],
   commands: [

@@ -1,9 +1,11 @@
 import { FolderGit2 } from "lucide-react"
 import { definePlugin } from "@vaultite"
+import { GitHubIcon } from "./GitHubIcon"
 import { ProjectBlock, ProjectCards } from "./Projects"
 
 export default definePlugin({
-  icon: FolderGit2,
+  // `icon: github` in a file, and plugins about GitHub (their manifests' icon).
+  icons: { github: GitHubIcon },
   mock: () => ({
     projects: [{ id: "Projects/Demo app", name: "Demo app", slug: "demo-app", tagline: "A small open source tool", status: "building",
       repo: "example/demo", path: null, links: [], sort: 0, notes: "" }],

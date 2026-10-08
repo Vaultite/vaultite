@@ -37,7 +37,6 @@ function Connect() {
 }
 
 export default definePlugin({
-  icon: Plug,
   preview: () => <Preview />,
   settingsPanel: () => <Connect />,
   views: { connections: { icon: Plug, title: () => "Connections", render: () => <ConnectionsView /> } },

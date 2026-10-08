@@ -6,8 +6,8 @@ import { isBuiltin, registerHooks } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { LOCAL, Plugin, ROOT } from "./plugins.ts"
-import { disclosuresOf } from "./pluginmeta.ts"
-import { blockProblems, hashed, installProblems, pluginProblems, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
+import { disclosuresOf, ICON_NAME, iconOf } from "./pluginmeta.ts"
+import { blockProblems, hashed, inside, installProblems, pluginProblems, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, settingsOf } from "./blocks.ts"
 import type { VaultEvent } from "./events.ts"
 import { hookProblems, Hooks } from "./hooks.ts"
@@ -23,6 +23,8 @@ const BUILD = "4:" + crypto.createHash("sha256").update(readText(CSS)).digest("h
 
 export type VaultPlugin = {
   id: string; dir: string; manifest: Item
+  /** Its manifest's icon as the app draws it (core/pluginmeta.ts iconOf): a name, or its SVG file as a data address. */
+  icon: string | null
   /** Its files' sizes and times (cheap to compare), and a hash of their contents and the app's build: its version. */
   stat: string; hash: string
   /** Its contents' hash and each file's (what this machine approves: core/trust.ts). */
@@ -126,8 +128,12 @@ async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
   const preload = new Set<string>()
   const sheets: string[] = [] // stylesheets it imports (a package's own: "@excalidraw/excalidraw/index.css"), in order
   const refuse = (spec: string, why: string): never => { throw new Error(`can't import '${spec}': ${why}`) }
+  // Its icon by a Lucide name comes in the bundle (`icon`), so the app needn't load all of Lucide's to draw it.
+  const index = path.join(dir, "index.tsx"), ENTRY = "\0vau-entry"
+  const lucide = vp.icon && ICON_NAME.test(vp.icon) ? path.join(ROOT, "node_modules", "lucide-react", "dist", "esm", "icons", `${vp.icon}.mjs`) : ""
+  const entry = lucide && fs.existsSync(lucide) ? `export { default } from ${JSON.stringify(index)}\nexport { default as icon } from ${JSON.stringify(lucide)}` : ""
   const build = await rolldown({
-    input: path.join(dir, "index.tsx"),
+    input: entry ? ENTRY : index,
     cwd: ROOT,
     platform: "browser",
     logLevel: "silent",
@@ -136,6 +142,7 @@ async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
     plugins: [{
       name: "vaultite",
       async resolveId(spec, importer) {
+        if (spec === ENTRY || importer === ENTRY) return spec
         if (SHARED.has(spec)) return `\0vau:${spec}`
         if (SHARED_EDITOR.has(spec) || spec.startsWith("@plugins/")) {
           if (spec.startsWith("@plugins/") && !requires.some((r) => spec.startsWith(r + "/"))) refuse(spec, "a plugin may only import plugins it `requires`")
@@ -156,6 +163,7 @@ async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
         return r ?? refuse(spec, "the app has no such package")
       },
       load(id) {
+        if (id === ENTRY) return entry
         if (id.startsWith("\0vau:")) return `module.exports = globalThis.__vaultite.modules[${JSON.stringify(id.slice(5))}]`
         if (id.endsWith(".css")) { sheets.push(readText(id)); return { code: "", moduleType: "js" } }
         return null
@@ -316,10 +324,11 @@ export class VaultPlugins {
           const digest = digestOf(dir)
           // (the app's built stylesheet too: which of its classes the app has decides their layer)
           const hash = crypto.createHash("sha256").update(BUILD).update((builtCss(), appCss?.file ?? "")).update(digest.content).digest("hex").slice(0, 12)
-          vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, stat, problems, warnings, hash, digest }
+          const icon = iconOf(manifest.icon, (f) => { const file = path.join(dir, f); return inside(dir, file) && fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? readText(file) : null })
+          vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, icon, stat, problems, warnings, hash, digest }
         } catch (e) {
           // A file iCloud hasn't brought down yet can't be read (EDEADLK under launchd): looked at again next time.
-          vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, stat: "", warnings: [], hash: "", digest: { content: "", files: {} },
+          vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, icon: null, stat: "", warnings: [], hash: "", digest: { content: "", files: {} },
             problems: [`${DIR}/${name}: can't be read yet (${e instanceof Error ? e.message : String(e)})`] }
         }
         this.found.set(name, vp)
@@ -431,6 +440,7 @@ export class VaultPlugins {
         requires: Array.isArray(m.requires) ? m.requires : [], enhances: Array.isArray(m.enhances) ? m.enhances : [], runsOnServer: !!m.runsOnServer,
         minAppVersion: typeof m.minAppVersion === "string" ? m.minAppVersion : null, apiVersion: typeof m.apiVersion === "number" ? m.apiVersion : null,
         ...(typeof m.tint === "string" ? { tint: m.tint } : {}),
+        ...(vp.icon ? { icon: vp.icon } : {}),
         ...(typeof m.category === "string" ? { category: m.category } : {}),
         ...(m.replaces && typeof m.replaces === "object" && !Array.isArray(m.replaces) ? { replaces: m.replaces } : {}),
         folder: `${DIR}/${vp.id}`, on: on.has(vp.id), loaded: !!vp.plugin, problems: [...vp.problems, ...failed, ...(vp.blocked ? [vp.blocked] : [])], warnings: vp.warnings,

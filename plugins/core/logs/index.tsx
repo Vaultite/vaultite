@@ -35,7 +35,6 @@ function Area({ store, options }: BlockCtx) {
 }
 
 export default definePlugin({
-  icon: ScrollText,
   mock: mockLogs,
   blocks: {
     // ```block-log: the fields of the log file it's in.

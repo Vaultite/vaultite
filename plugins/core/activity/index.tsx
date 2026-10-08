@@ -12,7 +12,6 @@ import { SummaryBlock } from "./Summary"
 
 
 export default definePlugin({
-  icon: Activity,
   blocks: {
     // The feed (`limit: 30`, `actor: agent`, `path: this` for the file the block is in).
     activity: (ctx) => <FeedBlock store={ctx.store} path={ctx.path} options={ctx.options} />,

@@ -3,6 +3,7 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
+import { ICON_FILE, ICON_NAME, svgIcon } from './core/pluginmeta.ts'
 
 // A page open in a browser keeps asking for the build it loaded from (a view's chunk, the first time it's opened), so a
 // rebuild keeps the files of the last days' builds rather than emptying dist/assets: a page from before the rebuild
@@ -27,10 +28,40 @@ function keepRecentBuilds(): Plugin {
   }
 }
 
+// The app's plugins' icons (their manifests' `icon`: core/pluginmeta.ts) as virtual:plugin-icons, each Lucide one
+// imported alone: all of Lucide's is a chunk of its own (web/src/core/icons.tsx), loaded only when a file names one.
+function pluginIcons(): Plugin {
+  const ID = 'virtual:plugin-icons', DIR = path.resolve(import.meta.dirname, 'plugins/core')
+  const LUCIDE = path.resolve(import.meta.dirname, 'node_modules/lucide-react/dist/esm/icons')
+  return {
+    name: 'vaultite-plugin-icons',
+    resolveId: (id) => (id === ID ? `\0${ID}` : null),
+    load(id) {
+      if (id !== `\0${ID}`) return null
+      const imports = ['import { markIcon } from "@/core/icons"'], entries: string[] = []
+      for (const name of fs.readdirSync(DIR).sort()) {
+        const file = path.join(DIR, name, 'manifest.json')
+        if (!fs.existsSync(file)) continue
+        this.addWatchFile(file)
+        const icon: unknown = JSON.parse(fs.readFileSync(file, 'utf8')).icon
+        if (typeof icon !== 'string') continue
+        if (ICON_FILE.test(icon)) {
+          const mark = fs.existsSync(path.join(DIR, name, icon)) && svgIcon(fs.readFileSync(path.join(DIR, name, icon), 'utf8'))
+          if (mark) entries.push(`${JSON.stringify(name)}: markIcon(${JSON.stringify(mark)})`)
+        } else if (ICON_NAME.test(icon) && fs.existsSync(path.join(LUCIDE, `${icon}.mjs`))) {
+          imports.push(`import i${imports.length} from "lucide-react/dist/esm/icons/${icon}.mjs"`)
+          entries.push(`${JSON.stringify(name)}: i${imports.length - 1}`)
+        } else entries.push(`${JSON.stringify(name)}: ${JSON.stringify(icon)}`)
+      }
+      return `${imports.join('\n')}\nexport default {\n  ${entries.join(',\n  ')}\n}\n`
+    },
+  }
+}
+
 // The app is in web/ (the core) and plugins/ (every feature, one folder each); both are bundled together.
 export default defineConfig({
   root: 'web',
-  plugins: [react(), tailwindcss(), keepRecentBuilds()],
+  plugins: [react(), tailwindcss(), keepRecentBuilds(), pluginIcons()],
   resolve: {
     alias: {
       // What plugins import: the plugin API (web/src/api.ts). Core code uses @/.

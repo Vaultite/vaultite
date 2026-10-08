@@ -23,7 +23,6 @@ function Shown() {
 }
 
 export default definePlugin({
-  icon: PresentationIcon,
   commands: [{ id: "slides:start", name: "Start presentation", when: () => !!here() && !shown, run: () => present() }],
   fileMenu: (path) => (isNote(path) ? [{ label: "Start presentation", icon: PresentationIcon, section: "more", run: () => present(path) }] : []),
   background: () => <Shown />,

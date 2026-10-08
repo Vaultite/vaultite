@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { git, parseSource } from "./installs.ts"
-import { type Disclosures, disclosuresOf, REPO } from "./pluginmeta.ts"
+import { type Disclosures, disclosuresOf, iconOf, REPO } from "./pluginmeta.ts"
 import { compareVersions, parseVersion } from "./version.ts"
 import { type Item, type Vault, writeAtomic } from "./vault.ts"
 import { fetchPublic } from "./web.ts"
@@ -20,6 +20,8 @@ export type Entry = {
   id: string; name: string; description: string; author: string; repo: string; dir: string | null; version: string; tag: string | null
   stars: number; released: string | null; created: string | null; pushed: string | null; issues: { open: number; closed: number }
   topics: string[]; disclosures: Disclosures; readme: string; score: number; fundingUrl?: string; replaces?: Record<string, string[]>
+  /** Its manifest's icon (a name, or its SVG as a data address: core/pluginmeta.ts iconOf) and colour. */
+  icon?: string; tint?: string
 }
 export type Index = { generated: string | null; plugins: Entry[]; blocked: Record<string, string[]> }
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
@@ -43,6 +45,7 @@ export function readIndex(o: unknown): Index {
       version: str(e.version, 50), tag: str(e.tag, 100) || null, stars: num(e.stars), released: date(e.released), created: date(e.created), pushed: date(e.pushed),
       issues: { open: num(issues.open), closed: num(issues.closed) }, topics: Array.isArray(e.topics) ? e.topics.filter((t): t is string => typeof t === "string").slice(0, 20) : [],
       disclosures: disclosuresOf(e), readme: str(e.readme, 600), score: num(e.score), ...(str(e.fundingUrl).startsWith("https://") ? { fundingUrl: str(e.fundingUrl) } : {}),
+      ...(iconOf(e.icon) ? { icon: iconOf(e.icon)! } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.tint, 30)) ? { tint: str(e.tint) } : {}),
       ...(isObj(e.replaces) ? { replaces: Object.fromEntries(Object.entries(e.replaces).filter(([, v]) => Array.isArray(v))
         .map(([k, v]) => [k, (v as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 20)])) } : {}) })
   }

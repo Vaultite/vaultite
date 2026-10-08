@@ -84,7 +84,6 @@ function RecentView({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  icon: History,
   sidebar: {
     recent: {
       title: "Recent files", names: ["recent", "recently opened", "recently changed", "recently edited"], heading: false, sort: 37, hidden: true,

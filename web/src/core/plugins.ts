@@ -2,6 +2,7 @@
 // own once /api/state lists them. Which are on is plugins.json (prefs.ts); a plugin is off while one it `requires` is.
 import { signal } from "@/core/signal"
 import { Puzzle } from "lucide-react"
+import BUILT_IN_ICONS from "virtual:plugin-icons"
 import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
@@ -36,8 +37,9 @@ const folder = (path: string) => path.split("/").slice(-3, -1).join("/") // "cor
 export const PLUGINS: Plugin[] = Object.entries(manifests)
   .map(([path, { blocks: decls, settings, ...m }]) => {
     const f = folder(path)
-    const def = Object.entries(modules).find(([p]) => folder(p) === f)?.[1] ?? { icon: Puzzle }
-    return { ...m, ...def, blockDecls: decls ?? {}, settingsDecls: settings ?? {}, tier: "core" } as Plugin
+    const def = Object.entries(modules).find(([p]) => folder(p) === f)?.[1] ?? {}
+    const icon = BUILT_IN_ICONS[m.id] // (a name: one it adds itself)
+    return { ...m, ...def, icon: (typeof icon === "string" ? def.icons?.[icon] : icon) ?? Puzzle, blockDecls: decls ?? {}, settingsDecls: settings ?? {}, tier: "core" } as Plugin
   })
 
 /** Plugins' colours: a manifest's `tint` ("orange") makes --<id> (--today: var(--orange)). At no specificity

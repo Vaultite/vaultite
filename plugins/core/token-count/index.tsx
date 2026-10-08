@@ -1,5 +1,5 @@
 import { useMemo } from "react"
-import { Coins, Gauge } from "lucide-react"
+import { Gauge } from "lucide-react"
 import { cn, definePlugin, openView, useStore, type FileMark, type OpenFile, type Store } from "@vaultite"
 import { estimateTokens, tokenText } from "./estimate"
 import { levelOf, ruleFor, worse } from "./limits"
@@ -47,7 +47,6 @@ function marks(store: Store): Record<string, FileMark> {
 }
 
 export default definePlugin({
-  icon: Coins,
   status: { tokens: { after: true, render: (file) => <Tokens file={file} /> } },
   fileMarks: marks,
   sidebar: {

@@ -15,6 +15,5 @@ function Preview() {
 }
 
 export default definePlugin({
-  icon: Scissors,
   preview: () => <Preview />,
 })

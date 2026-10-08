@@ -7,7 +7,6 @@ import { NoteKicker, NotePreview } from "./NoteHeader"
 import { mockNotes } from "./mock"
 
 export default definePlugin({
-  icon: NotebookText,
   mock: mockNotes,
   // Old #…/note/<id> addresses and links open the file.
   details: {

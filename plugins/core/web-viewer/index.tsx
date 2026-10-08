@@ -136,7 +136,6 @@ function Preview() {
 }
 
 export default definePlugin({
-  icon: Globe,
   views: {
     web: {
       icon: Globe,

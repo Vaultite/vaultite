@@ -1,5 +1,6 @@
 {
   "id": "unique-note",
+  "icon": "file-plus-corner",
   "category": "writing",
   "name": "Unique note creator",
   "description": "Make a note named by the minute it was made (202610031542), like a Zettelkasten's: a new name every time, in a folder you choose.",

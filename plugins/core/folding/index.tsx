@@ -1,4 +1,4 @@
-import { ChevronsDownUp, FoldVertical, UnfoldVertical } from "lucide-react"
+import { FoldVertical, UnfoldVertical } from "lucide-react"
 import { currentEditor, definePlugin } from "@vaultite"
 
 // Folding: headings and list items fold from a chevron or commands, remembered per file on this
@@ -14,7 +14,6 @@ const run = (what: "foldAll" | "unfoldAll" | "toggleHere") => () => {
 }
 
 export default definePlugin({
-  icon: ChevronsDownUp,
   editor: async (ctx) => (ctx.kind === "markdown" ? (await load()).foldingExtension(ctx.path) : []),
   commands: [
     { id: "folding:toggle", name: "Toggle fold on the current line", keys: ["Mod+Alt+["], when: () => !!note(), run: run("toggleHere") },

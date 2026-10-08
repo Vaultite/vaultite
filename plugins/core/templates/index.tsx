@@ -1,6 +1,6 @@
 // Templates: start a note from one or insert one, placeholders filled in the settings' formats. A new
 // note goes where files of its `type` live, else beside the open file, else where new notes go.
-import { CalendarDays, Clock, FilePlus2, FileStack } from "lucide-react"
+import { CalendarDays, Clock, FilePlus2 } from "lucide-react"
 import {
   activeFile, besideActive, choose, createFile, definePlugin, folderOf, formatDate, freeName, get, getStore, newNoteFolder, notify, notifyError,
   op, openNew, post, readFile, splitFm, stem, type Store,
@@ -127,7 +127,6 @@ async function pickTemplate(how: "new" | "insert", made: string[] = []) {
 }
 
 export default definePlugin({
-  icon: FileStack,
   commands: [
     { id: "templates:new", name: "New note from template", run: () => void pickTemplate("new"), icon: FilePlus2 },
     { id: "templates:insert", name: "Insert template", when: () => !!activeFile(), run: () => void pickTemplate("insert") },

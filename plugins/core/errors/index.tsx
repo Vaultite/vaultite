@@ -6,7 +6,6 @@ import { mockLive } from "./mock"
 import { Report } from "./Report"
 
 export default definePlugin({
-  icon: AlertTriangle,
   icons: { "alert-triangle": AlertTriangle },
   blocks: {
     // The errors, each kind once with a count (`limit: 20`, `source: app` or `server`, `title`).

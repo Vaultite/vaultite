@@ -18,7 +18,6 @@ function Header({ title, fm, place, path }: PageCtx) {
 }
 
 export default definePlugin({
-  icon: LayoutDashboard,
   files: {
     types: ["dashboard"], icon: LayoutDashboard,
     page: { header: (ctx) => <Header {...ctx} />, render: (ctx) => <Dashboard ctx={ctx} className={ctx.place === "sheet" ? "mt-4" : undefined} /> },

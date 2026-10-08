@@ -49,7 +49,6 @@ async function tidy() {
 }
 
 export default definePlugin({
-  icon: Archive,
   fileMenu: (path) => {
     if (!can(path)) return []
     const on = archived(path)

@@ -1,5 +1,6 @@
 {
   "id": "logs",
+  "icon": "scroll-text",
   "category": "life",
   "name": "Logs",
   "description": "What you did, one file per entry: workouts, sleep, meals, study sessions. Areas are set in its settings.",

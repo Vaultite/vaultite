@@ -45,7 +45,6 @@ function mock(): AgentUsage {
 }
 
 export default definePlugin({
-  icon: ClaudeIcon,
   // `icon: claude` in a file (the Claude dashboard), and Terminal's Claude Code sessions.
   icons: { claude: ClaudeIcon },
   ambient: { limits: { title: "Claude limits", sort: 40, render: () => <AgentLimitsChip src={SRC} open={() => { const p = pageOf(getStore(), "claude-code", "Claude"); if (p) openFile(p.path) }} /> } },

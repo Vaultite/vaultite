@@ -12,6 +12,5 @@ const format: FileFormat = {
 }
 
 export default definePlugin({
-  icon: AppWindow,
   formats: { page: format },
 })

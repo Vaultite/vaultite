@@ -2,12 +2,13 @@
 // plugin.search: core/pluginindex.ts), by stars, newest or last updated, each with what it discloses and Install; and
 // the sources hosts offer (Obsidian's community plugins: PluginHost.browse).
 import { useEffect, useState } from "react"
-import { Download, MoreHorizontal, RefreshCw, Star } from "lucide-react"
+import { Download, MoreHorizontal, Puzzle, RefreshCw, Star } from "lucide-react"
 import { dateText, fmtAgo } from "@/core/data"
 import { op } from "@/core/http"
 import { openWebLink } from "@/core/links"
 import { notify, notifyError } from "@/core/notify"
 import { openDetail } from "@/core/nav"
+import { pluginIcon } from "@/core/pages"
 import { Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { cn } from "@/lib/utils"
@@ -19,6 +20,8 @@ type Sort = "stars" | "new" | "updated"
 type Entry = {
   id: string; name: string; description: string; author: string; repo: string; dir: string | null; source: string; version: string; stars: number; released: string | null
   pushed: string | null; created: string | null; disclosures: Disclosures; installed: string | null; ours: boolean; update: boolean; blocked: string | null
+  /** Its manifest's icon (a name, or its SVG mark as a data address) and colour: as it looks once installed. */
+  icon?: string; tint?: string
 }
 type Found = { url: string; available: boolean; error?: string; plugins: Entry[] }
 
@@ -29,8 +32,13 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
   const updated = e.released ?? e.pushed
   const says = disclosed(e.disclosures)
   const button = e.blocked ? null : e.update ? "Update" : e.installed !== null ? null : "Install"
+  const Icon = pluginIcon(e.icon) ?? Puzzle
   return (
     <div className="flex items-start gap-3 py-2.5" data-browse-row={e.id}>
+      {/* (the tile of its row once installed: Plugins.tsx) */}
+      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" style={{ color: e.tint && `var(--${e.tint})` }} data-browse-icon>
+        <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
+      </span>
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
           <button type="button" onClick={() => openWebLink(`https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`)} data-tip={`github.com/${e.source}`}

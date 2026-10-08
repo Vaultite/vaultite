@@ -65,5 +65,21 @@ export function BrandIcon({ d, fillRule, size = 24, strokeWidth: _s, absoluteStr
   )
 }
 
+const marks = new Map<string, LucideIcon>()
+/** A plugin's SVG mark (a data address: core/pluginmeta.ts svgIcon) drawn like a Lucide icon, in the text's colour: a
+ *  mask over currentColor, so it follows the scheme and nothing in the SVG runs. */
+export function markIcon(data: string): LucideIcon {
+  let icon = marks.get(data)
+  if (!icon) {
+    const mask = `url("${data}") center / contain no-repeat`
+    icon = forwardRef<SVGSVGElement, LucideProps>(({ size = 24, className, style }, ref) => (
+      <svg ref={ref} width={size} height={size} className={className} aria-hidden="true"
+        style={{ ...style, background: "currentColor", mask, WebkitMask: mask }} />
+    )) as LucideIcon
+    marks.set(data, icon)
+  }
+  return icon
+}
+
 /** Lucide's icons with what each is about (its tags), for the icon picker: loaded with it. */
 export const loadIconTags = () => import("./lucide-tags.json").then((m) => m.default as Record<string, string[]>)

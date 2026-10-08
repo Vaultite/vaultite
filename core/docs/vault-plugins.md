@@ -4,7 +4,7 @@ HTML page is often enough. When it needs its own kind of file, blocks, an API ro
 (every method, key and name the API has, from the code: `vau docs plugin-api`):
 a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau plugin new <id>` makes a working one.
 
-**`manifest.json`**: `{"id" (= the folder's name, not one the app has), "name", "description", "version": "1.0.0",
+**`manifest.json`**: `{"id" (= the folder's name, not one the app has), "name", "description", "icon", "version": "1.0.0",
 "author", "repo": "owner/name", "fundingUrl", "disclosures", "requires": [plugin ids it can't work without],
 "enhances", "runsOnServer", "tint": "green", "category": "life", "apiVersion": 3, "minAppVersion": "0.1.0", "forAgents",
 "blocks", "settings", "replaces", "userFiles", "marks"}`. A folder with only `data.json` is settings, not a plugin.
@@ -22,6 +22,9 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
   is offered it for theirs (`vau obsidian plugins`).
 - `runsOnServer`: it reads files or runs programs on the server's machine (its Plugins sheet says so); plugin.ts alone
   doesn't make it so.
+- `icon`: how it looks wherever it's listed, and in the directory before anyone installs it: a Lucide name
+  (`"heart-pulse"`, lucide.dev/icons) or one the app adds (`"claude"`, `"github"`), or a brand's mark as an SVG file in
+  its folder (`"icon.svg"`, at most 16 kB): one colour, drawn in the text's colour. None: a puzzle piece.
 - `tint`: a named colour (`red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink`, `gray`); the app makes
   `--<id>` of it, so its dashboards can say `tint: <id>`. Those names are the app's colours: `text-[var(--green)]`.
 - `category`: its Plugins page section: `navigation`, `writing`, `life`, `health`, `agents`, `developer`, `formats`,
@@ -93,7 +96,7 @@ what isn't the user's files or settings), and `VAULTITE_OP` + `VAULTITE_PARAMS_J
 (the type, `startup` or `schedule` with `VAULTITE_SCHEDULE` its name) + `VAULTITE_EVENT_JSON` (an event). `timeout` is seconds (ops 60, hooks 120, at most 600).
 What they did: `vau vault-plugin.log <id>` (each run's command, exit, time and stderr).
 
-**`index.tsx`** (optional; the app): `export default definePlugin({ icon, blocks: { "<name>": (ctx) => <Panel
+**`index.tsx`** (optional; the app): `export default definePlugin({ blocks: { "<name>": (ctx) => <Panel
 title="...">...</Panel> }, files, details, search, links, commands, sidebar, header, settingsPanel, editor })` from
 `"@vaultite"` (`Panel`, `Row`, `useLive("finance/summary")` for its routes (`useLive(route, undefined, true)`: again
 whenever notes change, for a route that reads them), `openFile`, `Markdown`, `Loading`,

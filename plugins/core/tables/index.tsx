@@ -18,7 +18,6 @@ const format: FileFormat = {
 const SAMPLE = "date,amount,note\n2026-01-01,-5.20,\"Coffee, large\"\n2026-01-02,1200,Pay\n2026-01-03,-42,Groceries\n2026-01-04,-9,Books\n"
 
 export default definePlugin({
-  icon: Sheet,
   formats: { table: format },
   preview: () => <CsvView text={SAMPLE} embed />,
 })

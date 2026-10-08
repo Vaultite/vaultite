@@ -7,7 +7,6 @@ import "./types"
 // All properties: every frontmatter key with its count and type, renamed or retyped everywhere; keys
 // pinned to headers are chips (Chips.tsx).
 export default definePlugin({
-  icon: Tags,
   sidebar: { properties: { title: "All properties", heading: false, sort: 52, hidden: true, view: "properties", flyout: { icon: Tags }, render: (ctx) => <PropertiesPanel {...ctx} /> } },
   views: { properties: { icon: Tags, title: () => "All properties", render: ({ store }) => <PropertiesView store={store} /> } },
   fileBar: { chips: { sort: 40, render: (file) => <Chips file={file} place={file.place} /> } },

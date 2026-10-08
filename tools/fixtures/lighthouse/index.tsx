@@ -16,7 +16,6 @@ function BeamCard() {
 }
 
 export default definePlugin({
-  icon: Lamp,
   blocks: { lighthouse: () => <BeamCard /> },
   commands: [{ id: "lighthouse:beam", name: "Say the lighthouse's beam", run: () => notify("The beam is on") },
     { id: "lighthouse:logbook", name: "Read the lighthouse's logbook", run: async () => notify((await import("./logbook")).logbook()) }],

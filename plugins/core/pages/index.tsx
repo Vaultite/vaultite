@@ -94,7 +94,6 @@ function Tiles({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  icon: Pin,
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,
     actions: ({ file }) => <PinCurrent file={file} /> } },
   views: {

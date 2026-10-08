@@ -1,5 +1,6 @@
 {
   "id": "slides",
+  "icon": "presentation",
   "category": "writing",
   "name": "Slides",
   "description": "Present a note as slides, full screen: --- lines split it into slides, drawn as the note reads (images, embeds, math, code). Arrow keys, a click or a swipe go through them.",

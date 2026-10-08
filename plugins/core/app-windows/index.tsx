@@ -62,7 +62,6 @@ function Preview() {
 }
 
 export default definePlugin({
-  icon: AppWindow,
   views: {
     app: {
       icon: AppWindow,

@@ -1,5 +1,6 @@
 {
   "id": "properties",
+  "icon": "tags",
   "category": "navigation",
   "name": "All properties",
   "description": "Every property (frontmatter key) used in the vault, with how many files have it and what kind of value: click one for its files, rename it in every file at once, or change its type."

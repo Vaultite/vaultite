@@ -1,5 +1,6 @@
 {
   "id": "graph",
+  "icon": "waypoints",
   "category": "navigation",
   "name": "Graph view",
   "description": "The vault as a graph: files are dots, [[links]] the lines between them. Open it as a tab, see a file's neighbours in the sidebar, or put a local graph in any file.",

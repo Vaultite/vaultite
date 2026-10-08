@@ -50,7 +50,6 @@ function OutlineView() {
 }
 
 export default definePlugin({
-  icon: ListTree,
   sidebar: { outline: { title: "Outline", heading: false, sort: 46, hidden: true, view: "outline", flyout: { icon: ListTree }, render: (ctx) => <OutlinePanel {...ctx} /> } },
   views: { outline: { icon: ListTree, title: () => "Outline", render: () => <OutlineView /> } },
   commands: [

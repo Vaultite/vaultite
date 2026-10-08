@@ -117,7 +117,6 @@ function machineDocs(): SearchDoc[] {
 }
 
 export default definePlugin({
-  icon: Server,
   blocks: { machines: () => <MachinesBlock /> },
   searchLive: {
     docs: machineDocs,

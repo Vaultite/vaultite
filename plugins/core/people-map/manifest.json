@@ -1,5 +1,6 @@
 {
   "id": "people-map",
+  "icon": "map",
   "category": "life",
   "name": "People map",
   "description": "A map of everyone (the Map tab on People): their pins, grouped by place.",

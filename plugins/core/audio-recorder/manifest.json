@@ -1,5 +1,6 @@
 {
   "id": "audio-recorder",
+  "icon": "mic",
   "category": "writing",
   "name": "Audio recorder",
   "description": "Record from the microphone into the note you're writing: the recording is saved as an attachment, embedded at the cursor and transcribed under it on this machine (Apple's on-device speech recognition on macOS 26, nothing to install; or whisper, when it's there).",

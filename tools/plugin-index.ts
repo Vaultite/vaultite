@@ -4,7 +4,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { disclosuresOf, REPO } from "../core/pluginmeta.ts"
+import { disclosuresOf, ICON_FILE, ICON_MAX, iconOf, REPO, svgIcon } from "../core/pluginmeta.ts"
 import { compareVersions, tagVersion } from "../core/version.ts"
 
 /** One GET: its status and body (JSON when it parses). */
@@ -97,6 +97,13 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
       if (typeof m.id !== "string" || !/^[a-z][a-z0-9-]*$/.test(m.id)) { skipped.push(`${where}: its manifest's id isn't one`); continue }
       if (m.version !== tagVersion(tag)) { skipped.push(`${where}: its manifest's version (${String(m.version)}) isn't its tag's (${tag})`); continue }
       const readme = dir ? await get(`${RAW}/${full}/${ref}/${dir}/README.md`, "application/vnd.github.raw") : await get(`${API}/repos/${full}/readme`, "application/vnd.github.raw")
+      // Its icon by name as it is; its SVG file inline, so the directory draws it before it's installed.
+      let icon = iconOf(m.icon)
+      if (typeof m.icon === "string" && ICON_FILE.test(m.icon)) {
+        const svg = await get(`${RAW}/${full}/${ref}/${dir ? `${dir}/` : ""}${m.icon}`, "application/vnd.github.raw")
+        icon = svg.status === 200 && typeof svg.body === "string" && svg.body.length <= ICON_MAX ? svgIcon(svg.body) : null
+        if (!icon) skipped.push(`${where}: its icon ${m.icon} isn't an SVG of at most ${ICON_MAX / 1000} kB (listed without it)`)
+      }
       const stars = repo.stargazers_count ?? 0
       const last = [released, repo.pushed_at ?? null].filter((d): d is string => !!d).sort().at(-1) ?? null
       plugins.push({
@@ -106,6 +113,7 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
         disclosures: disclosuresOf(m), readme: readme.status === 200 && typeof readme.body === "string" ? excerpt(readme.body) : "", score: scoreOf(stars, last, open, closed, now),
         ...(typeof m.fundingUrl === "string" && m.fundingUrl.startsWith("https://") ? { fundingUrl: m.fundingUrl } : {}),
         ...(m.replaces && typeof m.replaces === "object" ? { replaces: m.replaces } : {}),
+        ...(icon ? { icon } : {}), ...(typeof m.tint === "string" && /^[a-z][a-z-]*$/.test(m.tint) ? { tint: m.tint } : {}),
       })
     }
   }

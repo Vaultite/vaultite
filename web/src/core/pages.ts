@@ -10,7 +10,7 @@ import {
 } from "lucide-react"
 import type { ComponentType } from "react"
 import { getStore, type Store } from "@/core/data"
-import { anyIcon } from "@/core/icons"
+import { anyIcon, markIcon } from "@/core/icons"
 import type { VaultFile } from "@/core/files"
 import { fileViewFor, iconNamed, isEnabled, pluginById } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
@@ -40,6 +40,10 @@ export const namedIcon = (name?: string | null): LucideIcon | null => {
   if (!n) return null
   return ICONS[n.toLowerCase()] ?? iconNamed(n.toLowerCase()) ?? anyIcon(n.toLowerCase())
 }
+
+/** A plugin's icon as its manifest says it (core/pluginmeta.ts iconOf): a name, or its SVG mark as a data address. */
+export const pluginIcon = (icon?: string | null): LucideIcon | null =>
+  icon?.startsWith("data:image/svg+xml,") ? markIcon(icon) : namedIcon(icon)
 
 /** A command's icon (core/commands.ts: a component or a name), or `named` over it (a new tab button's, newtab.json). */
 export const commandIcon = (c: { icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string }, named?: string | null): ComponentType<{ className?: string; strokeWidth?: number }> | null =>

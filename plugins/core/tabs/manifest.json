@@ -1,5 +1,6 @@
 {
   "id": "tabs",
+  "icon": "layers-2",
   "category": "navigation",
   "name": "Tabs",
   "description": "A sidebar panel with the open tabs, pane by pane: show, close and drag them from the sidebar, with or without the tab bar. Under them, the tabs your other devices have open, to open here.",

@@ -1,10 +1,9 @@
-import { User, Users } from "lucide-react"
+import { User } from "lucide-react"
 import { definePlugin, detailPath, plainText } from "@vaultite"
 import { PeopleDue, PeopleGroup, PeopleWants, PersonBlock, personKicker, TIMELINE_KINDS } from "./People"
 import { mockPeople } from "./mock"
 
 export default definePlugin({
-  icon: Users,
   mock: mockPeople,
   // A person is their file (People/<name>.md): links and old #…/person/… addresses open it.
   details: {

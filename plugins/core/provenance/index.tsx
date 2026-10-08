@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react"
-import { UserCheck } from "lucide-react"
 import {
   choose, ChipValuesEditor, chipLabel, chipValues, currentFile, definePlugin, getStore, Group, isHidden, notifyError, op, patch, PropertyChip,
   Section, setProperty, useLive, useStore, type ChipValue, type FileHead, type Store,
@@ -89,7 +88,6 @@ function SettingsPanel({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  icon: UserCheck,
   fileBar: { origin: { sort: 50, render: (file) => <Label file={file} place={file.place} /> } },
   status: { origin: { sort: 50, render: (file) => <Label file={file} place="status" /> } },
   settingsPanel: ({ store }) => <SettingsPanel store={store} />,

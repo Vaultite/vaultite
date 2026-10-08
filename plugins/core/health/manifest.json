@@ -1,5 +1,6 @@
 {
   "id": "health",
+  "icon": "heart",
   "category": "health",
   "name": "Health",
   "description": "Workouts, sleep and nutrition from your logs: the Health page, and sleep and meals blocks for Today.",

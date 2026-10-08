@@ -1,7 +1,6 @@
 // Obsidian: a vault Obsidian also opens keeps its settings, and the app follows the ones that mean the same here
 // (`conventions`: new notes, attachments, Markdown links). Only keys .obsidian/app.json sets change anything.
 import { useEffect } from "react"
-import { Gem } from "lucide-react"
 import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, type Store } from "@vaultite"
 import { ObsidianPlugins } from "./Plugins"
 import { obsidianLink } from "./uri"
@@ -24,7 +23,6 @@ function Offer({ store }: { store: Store }) {
 }
 
 export default definePlugin({
-  icon: Gem,
   settingsPanel: () => <ObsidianPlugins />,
   background: ({ store }) => <Offer store={store} />,
   schemeLink: obsidianLink,

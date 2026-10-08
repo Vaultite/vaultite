@@ -1,4 +1,4 @@
-import { Combine, Merge, Scissors } from "lucide-react"
+import { Merge, Scissors } from "lucide-react"
 import {
   choose, createFile, currentEditor, currentFile, definePlugin, deleteFile, folderOf, freeName, get, getStore, isHidden, linkTo, notify,
   notifyError, openFile, put, readFile, restoreFile, splitFm, stem, type Choice,
@@ -87,7 +87,6 @@ function merge() {
 }
 
 export default definePlugin({
-  icon: Combine,
   commands: [
     { id: "note-composer:extract", name: "Extract current selection…", when: () => !!selection(), run: extract, icon: Scissors },
     { id: "note-composer:merge-file", name: "Merge current file with another file…", when: () => currentFile().endsWith(".md"), run: merge, icon: Merge },

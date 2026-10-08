@@ -1,5 +1,6 @@
 {
   "id": "buttons",
+  "icon": "mouse-pointer-click",
   "category": "navigation",
   "name": "Buttons",
   "description": "The new tab's buttons as a sidebar panel: commands a click away, in a phone's drawer too."

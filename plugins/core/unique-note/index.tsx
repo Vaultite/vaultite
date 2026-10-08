@@ -1,4 +1,3 @@
-import { FilePlus2 } from "lucide-react"
 import { createFile, definePlugin, freeName, get, getStore, newNoteFolder, openNew } from "@vaultite"
 
 // Unique note creator (a Zettelkasten prefixer): a note named by when it was made, 202610031542 by
@@ -23,6 +22,5 @@ async function create() {
 }
 
 export default definePlugin({
-  icon: FilePlus2,
   commands: [{ id: "unique-note:new", name: "Create new unique note", run: () => void create() }],
 })

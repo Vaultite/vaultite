@@ -114,7 +114,6 @@ function InboxNew() {
 }
 
 export default definePlugin({
-  icon: InboxIcon,
   ambient: { new: { title: "Inbox", sort: 30, render: () => <InboxNew /> } },
   background: ({ store }) => <Background store={store} />,
   header: { inbox: { sort: 50, phoneBar: true, render: (ctx) => <InboxButton {...ctx} /> } },

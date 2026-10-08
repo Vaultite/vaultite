@@ -4,7 +4,6 @@ import { BookDetail, BookFields, BooksPanel } from "./Books"
 import { mockBooks } from "./mock"
 
 export default definePlugin({
-  icon: BookOpen,
   mock: mockBooks,
   details: {
     book: {

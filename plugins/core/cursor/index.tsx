@@ -46,7 +46,6 @@ function mock(): AgentUsage {
 }
 
 export default definePlugin({
-  icon: CursorIcon,
   // `icon: cursor` in a file (its dashboard).
   icons: { cursor: CursorIcon },
   // Its page is the Cursor dashboard (pages/Cursor.md); `cursor` goes in a project file.
