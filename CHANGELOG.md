@@ -319,6 +319,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   hidden files doesn't), else an archived file shows there only while it's the open file. Files archived before stay put until `vau archive tidy` (or the palette's "Move archived files into archive folders").
 
 ### Editor and files
+- **Bug recorder** (a plugin, off until turned on): keeps the window's last minutes in memory (keys, clicks, scrolling
+  and whether the app or you moved it, edits, files changing, commands, warnings); Report a bug saves them as a note
+  with your description and a screenshot. An editor's trace names who moved its cursor when the app did.
 - **Long folders show their first files**: past 25 files (in the sort order), a folder in the file tree shows those,
   its folders, then Show N more; the open file always shows. Files per folder in the Files settings (0: all).
 - **Blocks are views you edit in place**: clicking a block keeps it drawn; hover for its bar (its name, Options, its

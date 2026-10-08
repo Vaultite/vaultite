@@ -194,9 +194,12 @@ function traceUpdate(u: ViewUpdate, path: string) {
   const by = [...new Set(u.transactions.map((t) => (t.annotation(Transaction.remote) ? "remote" : t.annotation(Transaction.userEvent) ?? "app")))]
   const changes: [number, number, number][] = []
   u.changes.iterChanges((from, to, _f, _t, ins) => { if (changes.length < 3) changes.push([from, to, ins.length]) })
+  // The app moving the cursor or rewriting most of the text: who did it (a plugin's file is in its stack)
+  const jump = by.includes("app") && (lines > 1 || changes.some(([f, t]) => t - f > u.startState.doc.length / 2))
   trace("editor", { ev: "update", path, by: by.join(","), was, head, ...(changes.length ? { changes } : {}),
-    ...(editable ? { editable: u.state.facet(EditorView.editable) } : {}), focus: u.view.hasFocus })
+    ...(editable ? { editable: u.state.facet(EditorView.editable) } : {}), focus: u.view.hasFocus, ...(jump ? { stack: callers() } : {}) })
 }
+const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
 export default function Editor({ doc, editable, config, onChange, onOpen, names, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onPasteFiles, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter }: Props) {
   const host = useRef<HTMLDivElement>(null)

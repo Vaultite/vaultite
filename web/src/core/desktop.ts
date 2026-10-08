@@ -231,6 +231,10 @@ export const askMicrophone = async () => (desktop?.microphone ? desktop.micropho
 export const systemNotify = (title: string, body = ""): Promise<boolean> | null =>
   desktop?.notify ? desktop.notify(title, body).catch(() => false) : null
 
+/** The window as a PNG (base64), or null: a browser, or a build without it. */
+export const captureWindow = (): Promise<{ png: string; width: number; height: number } | null> =>
+  desktop?.capture ? desktop.capture().catch(() => null) : Promise.resolve(null)
+
 /** The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them. */
 export const lookUp = desktop?.lookUp && isMac ? desktop.lookUp : null
 type Spelled = { word: string; suggestions: string[] }

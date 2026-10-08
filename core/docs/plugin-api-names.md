@@ -66,6 +66,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BrowseSource`: A source of plugins to install on the Plugins page's Browse (a host's: Obsidian's community plugins).
 - `cancelKeys()`: Stop the sequence under way.
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
+- `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
 - `CheckItem`: One thing a checklist turns on or off.
 - `checklist(id, { on, off, set })`: Which things are on, as menu rows (the panels a sidebar shows, the pinned pages, a new tab's sections and buttons): the ones on, ticked, in their order, then More ▸ with the rest (`off`, groups…
@@ -255,6 +256,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor): plugins that change rendered Markdown (Obsidian's post-processors).
 - `onTabLayoutChange(fn)`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
+- `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
 - `opcodes`
@@ -425,6 +427,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `today()`
 - `tokens(n)`
 - `touches(paths, path)`: Does this change touch `path` (the file itself, or a folder it's in)?
+- `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.
+- `TraceEvent`
 - `treeShownItems()`: What the tree shows beyond the user's notes, for its panel's, its tab's and its empty space's menus: hidden files, and archived ones when there are archive folders (the heading's buttons have the…
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…

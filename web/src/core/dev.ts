@@ -3,6 +3,7 @@
 import { available, commandList, keysOf } from "@/core/commands"
 import { desktop } from "@/core/desktop"
 import { answerUi } from "@/core/live"
+import { trace } from "@/core/trace"
 
 type Line = { t: number; level: string; text: string }
 const MAX = 500, TEXT = 4000, HTML = 100_000
@@ -16,7 +17,9 @@ function shown(v: unknown): string {
 }
 
 function keep(level: string, args: unknown[]) {
-  lines.push({ t: Date.now(), level, text: args.map(shown).join(" ").slice(0, TEXT) })
+  const text = args.map(shown).join(" ").slice(0, TEXT)
+  lines.push({ t: Date.now(), level, text })
+  if (level === "warn" || level === "error") trace("console", { level, text: text.slice(0, 500) })
   if (lines.length > MAX) lines.splice(0, lines.length - MAX)
 }
 

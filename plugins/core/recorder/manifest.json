@@ -1,0 +1,14 @@
+{
+  "id": "recorder",
+  "category": "system",
+  "name": "Bug recorder",
+  "description": "Keeps the last few minutes of this window in memory: keys, clicks, scrolling, edits, files changing, commands, warnings. Report a bug saves them as a note with a screenshot; nothing is written until then.",
+  "tint": "red",
+  "offByDefault": true,
+  "forAgents": "A note tagged bug-report has the app's last minutes before a bug as a timeline (by=app: the app did it, not the user): start from it.",
+  "settings": {
+    "minutes": { "type": "number", "default": 5, "min": 1, "max": 30, "label": "Minutes kept", "description": "how far back a report goes" },
+    "typed_text": { "type": "boolean", "default": false, "label": "Record the letters typed", "description": "the keys themselves, not only how many; never in terminals or password fields" },
+    "folder": { "type": "string", "default": "Bug reports", "label": "Folder", "description": "where reports are saved" }
+  }
+}

@@ -164,6 +164,8 @@ export { commandList, keysOf, useCommandList } from "@/core/commands"
 export { currentRow, focusSidebar, foldInList, inKeyList, leaveList, moveInList, openInList } from "@/core/keylist"
 // What the user does in the app that no request shows (a command run, a drag and drop): Activity listens.
 export { onActivity, type ActivityNote } from "@/core/activity"
+/** What the app did, by topic (editor changes, scroll restores, commands, console warnings): add to it, or hear it all. */
+export { onTrace, trace, type TraceEvent } from "@/core/trace"
 export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
 export { dismissNotice, notify, notifyError, type NotifyOptions } from "@/core/notify"
 export { cn } from "@/lib/utils"
@@ -177,7 +179,7 @@ export { setProperty } from "@/core/frontmatter"
 export { ChipValuesEditor, chipLabel, chipMenu, chipValues, CHIP_TINTS, PropertyChip, type ChipProps, type ChipValue } from "@/components/PropertyChip"
 // The desktop app's own: a PDF of the window as it prints (Export to PDF), and the Mac's microphone permission (Audio
 // recorder). In a browser savePdf answers undefined (print instead) and askMicrophone true.
-export { askMicrophone, savePdf } from "@/core/desktop"
+export { askMicrophone, captureWindow, savePdf } from "@/core/desktop"
 // The iPhone app's voice note, as its widgets open it (Audio recorder's "Record a voice note"); false in a browser.
 export { phoneVoiceNote } from "@/core/phoneapp"
 /** Is this plugin on now (and what it requires)? For a `when` that needs another plugin's API (Inbox's ops). */
