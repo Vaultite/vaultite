@@ -2,12 +2,11 @@
 // and other machines' sessions, sorted by state (waiting on you first). With Workspaces, the current workspace's come first.
 // Under them, Claude Code on the web's sessions (cloud.ts), on the desktop app.
 import { useContext, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
-import { Cloud, Plus, SquareTerminal, X } from "lucide-react"
+import { Cloud, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
   choosePlace, cn, currentWorkspace, isViewOpen, menuBelow, openAgent, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag,
   useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type SidebarCtx,
 } from "@vaultite"
-import { MapPin } from "lucide-react"
 import { ago, cloudListed, getCloud, subscribeCloud } from "./cloud"
 import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, newId, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
 
@@ -32,19 +31,17 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   return (
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
-    <SidebarRow icon={a?.icon ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={waiting(s, a)} label={labelOf(s, a)} open={open}
-      active={tab === to} tip={labelOf(s, a) + (a ? stateTip(s) : "") + (a && s.meter ? `\n${cap(meterText(s))}` : "") + (s.machineLabel ? `, on ${s.machineLabel}` : "") + (where ? `, in ${where}` : "")} data-session={s.id} data-state={s.state} data-agent={a?.name}
+    <SidebarRow icon={a?.icon ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={waiting(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
+      active={tab === to} tip={labelOf(s, a) + (a ? stateTip(s) : "") + (a && s.meter ? `\n${cap(meterText(s))}` : "") + (s.machineLabel ? `, on ${s.machineLabel}` : "") + (where ? `, in ${where}` : "") + (s.clients ? "" : ", detached")} data-session={s.id} data-state={s.state} data-agent={a?.name}
       data-where={where}
       data-machine={s.machine}
       swipe={() => [{ label: "End", icon: X, danger: true, run: () => void endForGood(s.id) }]}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
-      {/* Watched somewhere (a tab here, on another device, or tmux in a real terminal), or running with nobody looking. */}
-      {/* At most half the row, so the name always shows. */}
+      {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
+          watching: no tab on any device, no tmux in a real terminal) is in the tooltip and the Terminals tab. */}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
       {page && <span className="mr-1 max-w-[50%] truncate text-[11px] text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true)].filter(Boolean).join(" · ")}</span>}
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{where}</span>}
-      {!page && s.machineLabel && <span className="mr-1 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{s.machineLabel}</span>}
-      {!page && !where && !s.clients && <span className="mr-1 text-[11px] text-tertiary group-hover/row:hidden">detached</span>}
       <button type="button" className={`${button} hidden group-hover/row:grid`} aria-label="End session" data-tip="End session"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); void endForGood(s.id) }} data-no-drag><X className="size-3.5" strokeWidth={2.25} /></button>
     </SidebarRow>
@@ -53,29 +50,38 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
 }
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
+/** A machine's name short enough for the icon's tag: "M1" as is, "Mini PC" → "MP", "studio" → "ST". */
+const short = (l: string) => {
+  const w = l.trim().split(/\s+/)
+  return (l.length <= 3 ? l : w.length > 1 ? w.map((x) => x[0]).join("").slice(0, 3) : l.slice(0, 2)).toUpperCase()
+}
 
-/** Agent meters beside the name (sessions.ts: Meter): its context as a bar, a percent or tokens, and its cache's time
- *  left as a bar while idle; the bars stack in one short column, the numbers are in the row's tooltip. */
+/** Agent meters beside the name (sessions.ts: Meter): its context as a ring that fills up (as Claude's desktop app
+ *  does), a percent or tokens, with its cache's time left as an inner ring while idle; the numbers are in the row's tooltip. */
 function Meters({ s, tint }: { s: Session; tint?: string }) {
   const { context: c, cache } = s.meter!
   const used = c ? Math.min(1, c.tokens / c.window) : 0
-  const bars = [
-    c?.as === "bar" && { key: "context", part: used, colour: used > 0.9 ? "var(--red)" : used > 0.75 ? "var(--orange)" : "var(--muted-foreground)" },
-    cache?.as === "bar" && s.state === "idle" && { key: "cache", part: cacheLeft(cache), colour: tint ?? "var(--muted-foreground)" },
+  const rings = [
+    c?.as === "bar" && { key: "context", r: 6, part: used, colour: used > 0.9 ? "var(--red)" : used > 0.75 ? "var(--orange)" : "var(--muted-foreground)" },
+    cache?.as === "bar" && s.state === "idle" && { key: "cache", r: 3, part: cacheLeft(cache), colour: tint ?? "var(--muted-foreground)" },
   ].filter((b) => !!b)
   const text = c?.as === "percent" ? `${Math.round(used * 100)}%` : c?.as === "tokens" ? `${Math.round(c.tokens / 1000)}k` : ""
-  if (!bars.length && !text) return null
+  if (!rings.length && !text) return null
   return (
     <span className="mr-1 flex shrink-0 items-center gap-1.5 group-hover/row:hidden" data-meters>
       {text && <span className="text-[11px] text-tertiary tabular-nums" data-meter="context">{text}</span>}
-      {!!bars.length && (
-        <span className="flex w-6 flex-col gap-[2px]">
-          {bars.map((b) => (
-            <span key={b.key} className="h-[3px] overflow-hidden rounded-full bg-foreground/[0.12]" data-meter={b.key}>
-              <span className="block h-full rounded-full" style={{ width: `${b.part * 100}%`, background: b.colour }} />
-            </span>
-          ))}
-        </span>
+      {!!rings.length && (
+        <svg viewBox="0 0 16 16" className="size-3.5 shrink-0 -rotate-90" aria-hidden>
+          {rings.map((b) => {
+            const len = 2 * Math.PI * b.r
+            return (
+              <g key={b.key} data-meter={b.key} data-part={b.part.toFixed(3)}>
+                <circle cx={8} cy={8} r={b.r} fill="none" strokeWidth={2} style={{ stroke: "color-mix(in oklab, var(--foreground) 12%, transparent)" }} />
+                {b.part > 0 && <circle cx={8} cy={8} r={b.r} fill="none" strokeWidth={2} strokeLinecap="round" strokeDasharray={`${len * b.part} ${len}`} style={{ stroke: b.colour }} />}
+              </g>
+            )
+          })}
+        </svg>
       )}
     </span>
   )
@@ -163,7 +169,7 @@ export function newMenu(e: MouseEvent, agents: Agent[]) {
   menuBelow(e, [
     { label: "New terminal", icon: SquareTerminal, run: () => openView(`terminal/${newId()}`, { newTab: true }) },
     ...agents.map((a, i) => ({ label: `New ${a.label}`, icon: a.icon, sep: i === 0, run: () => openAgent(a.name) })),
-    { label: "Choose where…", icon: MapPin, sep: true, run: () => void choosePlace() },
+    { label: "Choose where…", icon: Monitor, sep: true, run: () => void choosePlace() },
   ])
 }
 

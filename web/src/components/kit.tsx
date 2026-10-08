@@ -31,13 +31,15 @@ export function PageHeader({ title, subtitle, children, className }: { title: st
 /** The top of a detail sheet: tinted kind line, the title (labels the sheet), a subtitle, then any extras. */
 /** The app's own mark, where a lucide icon would go (the Vaults sheet). */
 /** An icon with a status dot on its corner while
- *  `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row). */
-export function Badged({ on, children }: { on?: boolean; children: ReactNode }) {
-  if (!on) return <>{children}</>
+ *  `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
+ *  `tag`: a tiny label on its bottom corner (the machine a terminal runs on: "M1"). */
+export function Badged({ on, tag, children }: { on?: boolean; tag?: string; children: ReactNode }) {
+  if (!on && !tag) return <>{children}</>
   return (
     <span className="relative inline-grid shrink-0 place-items-center" data-badged>
       {children}
-      <span aria-hidden className="absolute -top-[3px] -right-[3px] size-[7px] rounded-full bg-[var(--yellow)] ring-[1.5px] ring-background" />
+      {on && <span aria-hidden className="absolute -top-[3px] -right-[3px] size-[7px] rounded-full bg-[var(--yellow)] ring-[1.5px] ring-background" />}
+      {tag && <span aria-hidden data-tag className="absolute -right-[6px] -bottom-[2px] rounded-[2px] bg-background px-[1.5px] text-[7px] leading-[8px] font-semibold tracking-tight text-muted-foreground">{tag}</span>}
     </span>
   )
 }

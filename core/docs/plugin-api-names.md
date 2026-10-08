@@ -52,7 +52,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: Attachments, unless the vault says otherwise.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.
-- `Badged({ on, children })`: An icon with a status dot on its corner while `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
+- `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
 - `besideActive(fallback, skip?)`: The folder of the note being written, for a file made from it (a canvas, a drawing, a base): an archived note's as if it weren't (nothing new goes into an archive); `fallback` when it's a page,…
@@ -377,7 +377,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarCtx`
 - `SidebarHeading`
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
-- `SidebarRow({ icon, iconClassName, tint, badge, label, open, active, onClick, onContextMenu, href, tip, className, children, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
+- `SidebarRow({ icon, iconClassName, tint, badge, tag, label, open, active, onClick, onContextMenu, href, tip, className, children, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
 - `sidebars(prefs?)`: The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's.
 - `Sidebars`
 - `sidebarsChanged()`: Tell the sidebars a plugin's setup changed (a workspace switch).

@@ -1,7 +1,7 @@
 // Agent meters (plugins/core/agent-meters): a terminal running Claude Code (a stand-in program named claude, and a faked
 // session in <claude dir>/sessions with a transcript whose last request read 51k tokens 2.5 min ago, 5 min cache) shows
-// its context as a bar beside its row's name and, idle, its icon in its colour dimmed from the top as far as the cache
-// ran out; an expired cache greys it; "As a bar" draws the cache as a second bar instead. Turns the plugin on and writes
+// its context as a ring beside its row's name and, idle, its icon in its colour dimmed from the top as far as the cache
+// ran out; an expired cache greys it; "As a ring" draws the cache as an inner ring instead. Turns the plugin on and writes
 // its settings and the sidebars (put back), runs a shell, writes in <claude dir>: a throwaway server started with
 // CLAUDE_CONFIG_DIR=<claude dir>, never the real ~/.claude.
 //   node web/qa/agentmeters.mjs <base url> <vault path> <claude dir> [out dir]
@@ -57,9 +57,9 @@ try {
   await send(term, `${stand} 300`)
 
   const row = `aside [data-session='${term}']`, icon = `${row} svg`
-  const bar = await until(() => page.$(`${row} [data-meter='context'] span`), 15000)
-  const width = await bar?.evaluate((e) => parseFloat(e.style.width))
-  check("its row shows its context as a bar: 51k of 200k", Math.abs((width ?? 0) - 25.5) < 1, width)
+  const ring = await until(() => page.$(`${row} [data-meter='context']`), 15000)
+  const width = await ring?.evaluate((e) => parseFloat(e.getAttribute("data-part")) * 100)
+  check("its row shows its context as a ring: 51k of 200k", Math.abs((width ?? 0) - 25.5) < 1, width)
   const tip = await page.$eval(row, (e) => e.getAttribute("aria-label")).catch(() => null)
   check("  its label (the rail's tooltip) says it in words, with the cache's time left", /Context 51k of 200k \(26%\), cache 3 min left/.test(tip ?? ""), tip)
   const look = () => page.$eval(icon, (e) => ({ cls: e.getAttribute("class") ?? "", colour: e.style.color })).catch(() => null)
@@ -75,14 +75,14 @@ try {
   mkdirSync(path.dirname(settings), { recursive: true })
   writeFileSync(settings, JSON.stringify({ cache: "bar", context: "percent" }))
   request(60, "\n\n")
-  const cacheLeft = () => page.$eval(`${row} [data-meter='cache'] span`, (e) => parseFloat(e.style.width)).catch(() => null)
+  const cacheLeft = () => page.$eval(`${row} [data-meter='cache']`, (e) => parseFloat(e.getAttribute("data-part")) * 100).catch(() => null)
   await until(async () => (await cacheLeft()) > 50, 10000)
   const left = await cacheLeft()
-  check('"As a bar": the cache is a bar instead, 4 of 5 min left', Math.abs((left ?? 0) - 80) < 6, left)
+  check('"As a ring": the cache is an inner ring instead, 4 of 5 min left', Math.abs((left ?? 0) - 80) < 6, left)
   check("  the icon stays grey, undimmed", !(await look())?.cls.includes("mask-image"), await look())
   const pct = await page.$eval(`${row} [data-meter='context']`, (e) => e.textContent).catch(() => null)
   check('  "Percent used": its context as a number', pct === "26%", pct)
-  await page.screenshot({ path: `${OUT}bars.png`, clip: { x: 0, y: 160, width: 240, height: 80 } })
+  await page.screenshot({ path: `${OUT}rings.png`, clip: { x: 0, y: 160, width: 240, height: 80 } })
 } finally {
   await fetch(new URL(`/api/terminals/${encodeURIComponent(term)}`, B), { method: "DELETE" }).catch(() => {})
   await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: pluginsBefore.disabled ?? [], enabled: pluginsBefore.enabled ?? [] }) })

@@ -2,11 +2,11 @@
   "id": "agent-meters",
   "category": "agents",
   "name": "Agent meters",
-  "description": "How much of its context a coding agent has used and how long its prompt cache lasts, on its terminal: while it's idle its icon keeps its colour only as far as the cache has time left, draining from the top, and a bar beside its name in the Terminals panel shows its context. Read from its own transcripts on the server's machine (Claude Code's); the window is what Claude Code's status line said, when it writes one, else 200k tokens.",
+  "description": "How much of its context a coding agent has used and how long its prompt cache lasts, on its terminal: while it's idle its icon keeps its colour only as far as the cache has time left, draining from the top, and a ring beside its name in the Terminals panel fills up with its context. Read from its own transcripts on the server's machine (Claude Code's); the window is what Claude Code's status line said, when it writes one, else 200k tokens.",
   "enhances": ["terminal", "claude-code"],
   "offByDefault": true,
   "settings": {
-    "cache": { "type": "enum", "values": ["icon", "bar", "off"], "labels": { "icon": "In the icon", "bar": "As a bar", "off": "Hidden" }, "default": "icon", "label": "Prompt cache", "description": "the time its cache has left while idle: the icon draining from the top, or a bar beside its name" },
-    "context": { "type": "enum", "values": ["bar", "percent", "tokens", "off"], "labels": { "bar": "As a bar", "percent": "Percent used", "tokens": "Tokens used", "off": "Hidden" }, "default": "bar", "label": "Context", "description": "how full its context window is, beside its name" }
+    "cache": { "type": "enum", "values": ["icon", "bar", "off"], "labels": { "icon": "In the icon", "bar": "As a ring", "off": "Hidden" }, "default": "icon", "label": "Prompt cache", "description": "the time its cache has left while idle: the icon draining from the top, or a ring inside the context's" },
+    "context": { "type": "enum", "values": ["bar", "percent", "tokens", "off"], "labels": { "bar": "As a ring", "percent": "Percent used", "tokens": "Tokens used", "off": "Hidden" }, "default": "bar", "label": "Context", "description": "how full its context window is, beside its name" }
   }
 }

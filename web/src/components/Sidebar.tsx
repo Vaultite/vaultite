@@ -298,7 +298,7 @@ export const RAIL = 11
 export const ROW = "group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap transition-colors"
 
 /** A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows. */
-export function SidebarRow({ icon: Icon, iconClassName, tint, badge, label, open, active, onClick, onContextMenu, href, tip, className, children, swipe, ...rest }: {
+export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label, open, active, onClick, onContextMenu, href, tip, className, children, swipe, ...rest }: {
   /** None: the label alone (file icons turned off). */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   label: React.ReactNode; open: boolean; active?: boolean; href?: string
@@ -310,6 +310,8 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, label, open
   tint?: string
   /** A dot on the icon: something wants the user (an agent waiting for an answer). */
   badge?: boolean
+  /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
+  tag?: string
   /** The tooltip in the rail (defaults to the label when it's text). `onClick` hears a middle-click too (`e.button`
    *  1: open it in a new tab). */
   tip?: string
@@ -330,7 +332,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, label, open
         ROW,
         active ? "bg-foreground/[0.08] font-medium" : "hover:bg-foreground/[0.04]", className,
       )}>
-      {Icon && <Badged on={badge}>
+      {Icon && <Badged on={badge} tag={tag}>
         <Icon className={cn("size-4 shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
       </Badged>}
       <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>

@@ -13,10 +13,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   session finishing or needing you is in the Inbox again.
 - **Terminals show their agent's state**, as Claude Code's agent view does: an agent's icon keeps its colour while it
   works, turns yellow with a dot while it waits on you, and grey once idle; the Terminals panel lists the waiting ones
-  first, then working, idle and plain shells, and holds still while the pointer is over it.
-- **Agent meters** (a plugin, off until turned on): a Claude Code terminal's context used, as a bar, a percent or
-  tokens beside its name, and its prompt cache's time left while idle: its icon keeps its colour only as far as the
-  cache lasts, draining from the top, or a second bar.
+  first, then working, idle and plain shells, and holds still while the pointer is over it. Another machine's terminal
+  has its name on its icon ("M4"); "detached" is in its tooltip, not on its row.
+- **Agent meters** (a plugin, off until turned on): a Claude Code terminal's context used, as a ring that fills up, a
+  percent or tokens beside its name, and its prompt cache's time left while idle: its icon keeps its colour only as far
+  as the cache lasts, draining from the top, or an inner ring.
 - **Dispatch in the background**: dispatching a note no longer opens the agent's terminal; a toast offers "Open
   session" (option-click the button to watch it), and its report comes to your inbox. `open` on an action changes it.
 - **A report is a thread**: replying to an agent's report and its next report stay in the same file, back in your
