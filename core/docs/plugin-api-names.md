@@ -474,6 +474,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
 - `viewsChanged()`: Tell the tabs that a view's `title` or `iconClass` answers something else now.
 - `WebEvent`
+- `WebPageAction`: A button a plugin adds to a web page's bar in the Web viewer (its icon, `label` its tooltip), also in its tab's menu.
+- `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).
 - `WebPageInfo`
 - `webPages`: The desktop app's web pages, or null (a browser, an app build from before the Web viewer).
 - `WebPages`: Web pages in the desktop app: native views drawn over this window in sessions of their own (logins kept apart from the app's), known by number; a released page is kept a while.

@@ -222,6 +222,31 @@ func adopt(_ bundle: String, want: Int?, launch: Bool) async -> [String: Any] {
   return ["ok": true, "wid": id, "title": title(win)]
 }
 
+/** A link opened in the app (a browser: a new tab in its front window, or a window of its own), answering the window
+ *  it's in, for a tab to take. */
+func openLink(_ bundle: String, _ link: URL) async -> [String: Any] {
+  if bundle == vaultite { return ["ok": false, "why": "self"] }
+  guard let at = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundle) else { return ["ok": false, "why": "missing"] }
+  // (its window isn't news of a new one: the tab asking takes it)
+  adopting[bundle, default: 0] += 1
+  defer { adopting[bundle]! -= 1; if adopting[bundle] == 0 { adopting[bundle] = nil } }
+  let launched = running(bundle) == nil
+  let cfg = NSWorkspace.OpenConfiguration()
+  cfg.activates = false
+  guard let app = try? await NSWorkspace.shared.open([link], withApplicationAt: at, configuration: cfg) else { return ["ok": false, "why": "missing"] }
+  guard AXIsProcessTrusted() else { return ["ok": false, "why": "trust"] }
+  // (the link lands in the window the app last used, which is then its focused one; a new window takes a moment)
+  for _ in 0..<(launched ? 75 : 15) {
+    try? await Task.sleep(nanoseconds: 200_000_000)
+    let pid = app.processIdentifier
+    if let w: AXUIElement = attr(AXUIElementCreateApplication(pid), kAXFocusedWindowAttribute) ?? windows(pid).first, let id = wid(w),
+       windows(pid).contains(where: { wid($0) == id }) {
+      return ["ok": true, "wid": id, "title": title(w)]
+    }
+  }
+  return ["ok": false, "why": "window"]
+}
+
 /** Over `to`; an app that won't be that small is kept inside the host window (`bound`), under its other parts. */
 func place(_ id: Int, _ to: CGRect, _ bound: CGRect?) -> [String: Any] {
   guard let h = held[id] else { return ["ok": false, "why": "window"] }
@@ -278,6 +303,9 @@ func handle(_ req: [String: Any]) async -> [String: Any] {
   case "adopt":
     guard AXIsProcessTrusted() else { return ["ok": false, "why": "trust"] }
     return await adopt(bundle, want: id == 0 ? nil : id, launch: req["launch"] as? Bool ?? true)
+  case "open":
+    guard let link = URL(string: req["url"] as? String ?? ""), ["http", "https"].contains(link.scheme ?? "") else { return ["error": "expected a web address"] }
+    return await openLink(bundle, link)
   case "place":
     guard let to = rect(req["rect"]) else { return ["ok": false, "why": "rect"] }
     return place(id, to, rect(req["bound"]))
@@ -338,7 +366,7 @@ Thread {
       done.signal()
       pending.leave()
     }
-    if req["op"] as? String != "adopt" { done.wait() }
+    if !["adopt", "open"].contains(req["op"] as? String ?? "") { done.wait() }
   }
   pending.wait()
   DispatchQueue.main.async {

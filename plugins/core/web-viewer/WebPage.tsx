@@ -2,7 +2,7 @@
 // anything of the app covers the box (sampled with elementFromPoint) the page is swapped for its snapshot until it's gone.
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight, ArrowUpRight, Globe, RotateCw, Scissors, X, type LucideIcon } from "lucide-react"
-import { cn, notify, notifyError, openInSplit, post, typingIn, usePane, webPages, type WebPageState, type WebPages } from "@vaultite"
+import { cn, notify, notifyError, openInSplit, post, typingIn, useEnabled, usePane, webPageActions, webPages, type WebPageState, type WebPages } from "@vaultite"
 import { addressOf, hostOf } from "./address"
 import { getSettings, profile, setFocusedPage, setTitle, settingsRead, shown } from "./state"
 
@@ -53,6 +53,7 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
   const [state, setState] = useState<WebPageState>({ url: arg, title: "", back: false, forward: false, loading: true })
   const [typed, setTyped] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  useEnabled() // (other plugins' buttons, as they're switched)
   // What the effects below read without starting again.
   const live = useRef({ arg, state, setArg, error: false })
   useEffect(() => { live.current = { arg, state, setArg, error: !!state.error } })
@@ -212,6 +213,7 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
             className={cn("h-7 w-full rounded-[6px] bg-foreground/[0.05] px-2.5 text-[13px] outline-none placeholder:text-tertiary",
               "focus:bg-background focus:ring-1 focus:ring-primary/50", typed === null && "text-muted-foreground")} />
         </form>
+        {http(state.url) && webPageActions({ url: state.url, title: state.title }).map((a) => <BarButton key={a.label} icon={a.icon} label={a.label} onClick={a.run} />)}
         <BarButton icon={ArrowUpRight} label="Open in the browser" disabled={!http(state.url)} onClick={() => void web.external(state.url)} />
         <button type="button" onClick={() => void clip()} disabled={!id || saving || !http(state.url)} data-tip="Save to vault: the page as a note in Clippings" data-web-clip
           className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[13px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent">

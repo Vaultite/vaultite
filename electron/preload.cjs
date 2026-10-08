@@ -85,6 +85,7 @@ contextBridge.exposeInMainWorld("vaultite", {
     list: call("apps:list"),
     trusted: call("apps:trusted"),
     show: call("apps:show"),
+    open: call("apps:open"),
     release: call("apps:release"),
     close: call("apps:close"),
     icons: call("apps:icons"),

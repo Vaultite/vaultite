@@ -5,7 +5,7 @@ import { lazy, Suspense, useEffect } from "react"
 import { ExternalLink, Globe, PencilLine, Scissors, Search } from "lucide-react"
 import {
   choose, definePlugin, focusGroup, get, getStore, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut,
-  saveAttachments, showLabel, systemNotify, selectedText, useCommandList, useVaultChange, webPages, type WebEvent,
+  saveAttachments, showLabel, systemNotify, selectedText, useCommandList, useVaultChange, webPageActions, webPages, type WebEvent,
 } from "@vaultite"
 import { addressOf, hostOf, searchUrl } from "./address"
 import { iconCame, siteIcon } from "./icons"
@@ -148,6 +148,7 @@ export default definePlugin({
         <Suspense fallback={null}><WebPage arg={arg} focused={focused} setArg={setArg} /></Suspense>
       ),
       onClose: (arg) => { void webPages?.close(arg, profile()) },
+      tabMenu: (arg) => /^https?:\/\//i.test(arg) ? webPageActions({ url: arg, title: titleOf(arg) ?? "" }) : [],
     },
     "web-pages": { icon: Globe, title: () => "Web pages", render: () => <WebPagesView openPage={openPage} ask={() => void askAddress()} /> },
   },

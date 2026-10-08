@@ -20,7 +20,7 @@ export { definePlugin, detailPath } from "@/core/define"
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
 export { pinKind, SEARCH as PIN_SEARCH } from "../../core/pins.ts"
-export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PluginCommand, PluginDef, PluginHost, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TimelineKind, ViewCtx, ViewDef, WorkspaceHost, WorkspaceInfo } from "@/core/define"
+export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PluginCommand, PluginDef, PluginHost, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TimelineKind, ViewCtx, ViewDef, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
@@ -63,7 +63,7 @@ export { changedFiles, RecentList, useFileIcon, useOpenedFiles, type RecentKind 
 export { agentOfTerminal, agentsOn, iconNamed, useAgents, useEnabled, type Agent } from "@/core/plugins"
 export { parseTerminal, type TerminalAgent } from "../../core/terminalids.ts"
 // Plugins' colours (--<id>), which an artifact gets too (as --vau-<id>).
-export { editorMenuItems, tintNames } from "@/core/plugins"
+export { editorMenuItems, tintNames, webPageActions } from "@/core/plugins"
 export { blockFor, fileRowsChanged, kindFolder, pluginById } from "@/core/plugins"
 export { besideActive, newNoteFolder } from "@/core/conventions"
 // How a file looks where it's listed (its `icon:` and `tint:`, or its plugin's), and pages:

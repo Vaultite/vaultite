@@ -137,6 +137,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - The desktop app can serve DevTools to agents on the Mac (`debugPort`, off by default).
 
 ### Apps
+- **A web page in another browser's tab**: plugins add buttons to the Web viewer's bar and its tab's menu; the
+  BrowserOS plugin (Vaultite/plugins) opens the page in BrowserOS's own window, shown in a tab by App windows, where
+  passkeys work.
 - **Web demo**: the whole app in a browser, nothing to install, on the sample vault (`npm run build:demo`, static
   files for any host): edits stay in that browser until Reset; terminals, agents and connectors need the app.
 - **Web tabs show their sites' icons**: a page's own icon on its tab and in Web pages, kept for when its page isn't
@@ -562,6 +565,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ### Plugin API 3
 - **A plugin's icon is its manifest's `icon`**, its one source (definePlugin has no `icon`): a Lucide name, one a plugin
   adds (`claude`, `github`) or a brand's mark as an SVG file, so Browse shows each plugin as it looks once installed.
+- `webPageActions` adds buttons to a web page's bar and its tab's menu; `appWindows.open(bundle, url)` opens a web
+  address in an app and answers the window it's in, for a `view:app/<bundle>:<wid>` tab.
 - `newTab` takes only sections by name (the old function form is gone); `parseTerminal(id)` reads which agent, account,
   session and machine a terminal id names.
 - A plugin takes an error as its own by `preventDefault()` in its window listener (the app then doesn't report it), and the

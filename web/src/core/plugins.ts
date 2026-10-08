@@ -7,7 +7,7 @@ import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
 import { editorOf } from "@/core/editors"
-import type { AgentDef, EditorCtx, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, SidebarPanel, TimelineKind, ViewDef } from "@/core/define"
+import type { AgentDef, EditorCtx, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, SidebarPanel, TimelineKind, ViewDef, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -634,6 +634,14 @@ export function editorMenuItems(view: EditorView): MenuItem[] {
   const ctx = { view, path: editorOf(view)?.path }, { disabled } = getPrefs()
   return PLUGINS.filter((p) => p.editorMenu && isEnabled(p.id, disabled)).flatMap((p) => {
     try { return p.editorMenu!(ctx) } catch (e) { console.error(`${p.id}: editorMenu`, e); return [] }
+  })
+}
+
+/** What the plugins that are on add to a web page's bar (`webPageActions`). */
+export function webPageActions(page: { url: string; title: string }): WebPageAction[] {
+  const { disabled } = getPrefs()
+  return PLUGINS.filter((p) => p.webPageActions && isEnabled(p.id, disabled)).flatMap((p) => {
+    try { return p.webPageActions!(page) } catch (e) { console.error(`${p.id}: webPageActions`, e); return [] }
   })
 }
 

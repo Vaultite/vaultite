@@ -418,6 +418,9 @@ export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; 
   /** A submenu, as a menu item's (`split`: clicking the row still runs `run`, the rest in its submenu). */
   items?: FileMenuItem[]; split?: boolean; hint?: string }
 
+/** A button a plugin adds to a web page's bar in the Web viewer (its icon, `label` its tooltip), also in its tab's menu. */
+export type WebPageAction = { label: string; icon: LucideIcon; run: () => void }
+
 /** An icon a plugin gives a file or folder: `icon` a name (Lucide's, a plugin's, or an emoji), `tint` a colour token
  *  (`green`). */
 export type FileIcon = { icon: string; tint?: string }
@@ -530,6 +533,8 @@ export type PluginDef = {
   editorMenu?: (ctx: { view: EditorView; path?: string }) => MenuItem[]
   /** Items it adds to a folder's menu in the file tree, for that folder's path; [] for none. */
   folderMenu?: (path: string) => FileMenuItem[]
+  /** Buttons it adds to a web page's bar in the Web viewer (see WebPageAction), for the page shown; [] for none. */
+  webPageActions?: (page: { url: string; title: string }) => WebPageAction[]
   /** Marks on files in the file tree, by path, from the store (keep it to the few files that need one). */
   fileMarks?: (store: Store) => Record<string, FileMark>
   /** Icons it gives files and folders, by path, from the store, wherever the app draws a file's icon (the tree, tabs,

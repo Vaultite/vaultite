@@ -12,6 +12,7 @@
   `anthropic-version` header), asked with each profile's cookies (its partitions on disk), through an open claude.ai
   page of that profile when there is one: never its DOM, which changes. A window asks once (`web:cloud`), then hears
   `cloud` (the list, for the Terminals panel) and `session` (news, posted to the Inbox).
+- Other plugins' buttons (`webPageActions`) sit before Open in the browser and in the tab's menu, for http(s) pages only.
 - Save image to vault downloads in the page's session (`saveAttachments`). Web links go through `openWebLink` (core/links.ts). QA: `webviewer.mjs`, `weblogins.mjs`, `webwatch.mjs`, `webicons.mjs`.
 - Sites' icons (`icons.tsx`): the desktop app fetches a page's icons in its session, keeps only what decodes as an
   image (`iconOf`), by host in userData `web-icons.json`; the app draws the globe until one comes or if one fails to draw.

@@ -231,6 +231,11 @@ export const appHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     if (behind && !had?.behind) void ask({ op: "raise", wid: id })
     return { ...res, wid: id, ...(typeof title === "string" ? { title } : {}) }
   },
+  // (a link in the app: the window it's in, which the tab asking for it then shows)
+  "apps:open": (_win, bundle, url) => {
+    if (typeof url !== "string" || !/^https?:\/\//i.test(url)) throw new Error("expected a web address")
+    return ask({ op: "open", bundle: bundleOf(bundle), url })
+  },
   "apps:release": async (win, wid, keep) => {
     const id = drop(win, wid)
     if (id) await ask({ op: "release", wid: id, keep: !!keep })

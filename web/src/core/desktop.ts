@@ -170,6 +170,9 @@ export type AppWindows = {
   show: (bundle: string, wid: number, rect: WebRect | null) => Promise<{ ok: boolean; why?: AppProblem; wid?: number; title?: string
     /** false: the window is on another desktop (Space), left there. */
     here?: boolean }>
+  /** A web address opened in the app (a browser: in the window it last used, or a new one), answering that window for
+   *  a tab to show (`view:app/<bundle>:<wid>`). Older builds don't have it. */
+  open?: (bundle: string, url: string) => Promise<{ ok: boolean; why?: AppProblem; wid?: number; title?: string }>
   /** Its tab closed: the window goes back where it was (one the app made for the tab is closed, unless `keep`). */
   release: (wid: number, keep?: boolean) => Promise<unknown>
   /** Close the window as its close button does (the app may ask first); the tab no longer holds it. Older builds don't
