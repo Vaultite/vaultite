@@ -2,6 +2,7 @@
   "id": "me",
   "icon": "user",
   "category": "life",
+  "essential": true,
   "name": "Me",
   "description": "Your own file, ME.md: who you are and how you want AIs to work with you. Agents are told to read it before writing anything, facts you tell them about yourself go there, and its location puts you on the people map.",
   "forAgents": "`{path}` is the user: read it before writing anything (who they are, the people who matter, how they want you to work, what not to store).",

@@ -2,6 +2,7 @@
   "id": "learning",
   "icon": "graduation-cap",
   "category": "life",
+  "offByDefault": true,
   "name": "Learning",
   "description": "The Learning page: what you study and read, from your logs, and your books.",
   "tint": "blue",

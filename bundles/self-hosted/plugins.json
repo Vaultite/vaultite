@@ -1,18 +1,20 @@
 {
   "disabled": [
-    "ai-import",
-    "audio-recorder",
-    "books",
-    "calendar",
     "clipper",
-    "logs",
-    "people",
-    "people-map",
-    "projects",
-    "today",
-    "cursor",
-    "health",
-    "learning"
+    "cursor"
   ],
-  "enabled": []
+  "enabled": [
+    "documents",
+    "ebooks",
+    "lessons",
+    "machines",
+    "note-composer",
+    "notes",
+    "presentations",
+    "random-note",
+    "slides",
+    "spreadsheets",
+    "unique-note",
+    "web-viewer"
+  ]
 }

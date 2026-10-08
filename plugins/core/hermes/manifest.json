@@ -2,6 +2,7 @@
   "id": "hermes",
   "icon": "feather",
   "category": "agents",
+  "essential": true,
   "name": "Hermes",
   "description": "What Hermes Agent (Nous Research) does on this machine, in its main home and each profile: sessions running now, usage and its cost as Hermes records it, by day, project and model, each session's conversation, its memory and its scheduled jobs. Read from Hermes' own files, nothing saved.",
   "runsOnServer": true,

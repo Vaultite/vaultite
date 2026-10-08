@@ -2,6 +2,7 @@
   "id": "opencode",
   "icon": "opencode",
   "category": "agents",
+  "essential": true,
   "name": "OpenCode",
   "description": "What OpenCode does on this machine: sessions running now, usage and its cost as OpenCode records it, by day, project and model, and each session's conversation. Read from OpenCode's own database, nothing saved.",
   "runsOnServer": true,

@@ -55,6 +55,24 @@ What it gets: a route's `req`: `method`; `parts`; `query`; `body`; `wild`; `rawP
 `plugin.kind(new Kind({...}))`: `type` (the frontmatter `type:` (person, note, log...)); `collection` (its name in /api/state and the API (people, notes, logs...)); `folder?` (its usual folder ("People"; "Logs" holds subfolders when recursive is true): only where its first file goes (Vault.home)); `file?` (or a single file ("ME.md", in any case; a function when a setting names it), its kind with or without a `type`; elsewhere, the one file of its type); `recursive?`; `titleKey?`; `parse` (file -> [item, problems] (the vault adds `id` and `modified`, UTC)); `render` (item -> [owned frontmatter, body]; keys the file has beyond `owned` are kept); `filename?` (path relative to the vault, without .md (default: <folder>/<safe name of item[titleKey]>)); `key?` (a value that identifies the item for upserts (POST with the same key updates it), or null); `prepare?` (before a write: fill timestamps, geocode..); `fill?` (after reading a changed file (before = what it was): an item to write back with fields filled in, or null); `order?` (sort for /api/state (default: by id)); `merge?` (an update: the old item with the patch's fields on top (a kind can merge nested fields, like log data)); `blocks?` (its files' view: blocks drawn on top of each file that doesn't place them itself (["person"]: ```block-person), or a function of its frontmatter). One frontmatter key in a file's text:
 `setPropertyText` (`@vaultite/core/vault.ts`).
 
+### What it is: `manifest.json`
+The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
+
+- `id` (required)
+- `name` (required)
+- `description` (required)
+- `icon`: Its icon, wherever it's listed (and in the directory before it's installed): a Lucide name ("heart-pulse"), one a plugin adds ("claude": `icons`), or an SVG file in its folder ("icon.svg", a mark in one colour: drawn in the text's).
+- `requires`: Can't work without these plugins: off while any of them is off.
+- `enhances`: Uses these when they're on (optional).
+- `runsOnServer`: Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it.
+- `tint`: Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages, files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else.
+- `category`: Its section on the Plugins page and in Settings ("life", "agents": core/categories.ts); none or unknown: Other.
+- `blocks`: Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs.
+- `settings`: Its settings (.vaultite/plugins/<id>/data.json), typed like a block's options plus a label each (core/blocks.ts SettingDecl): its settings sheet draws them as a form, and its docs list them (`vau docs <id>`).
+- `offByDefault`: Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim), and every built-in that isn't `essential` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff).
+- `essential`: One of the app's own (built-in only): the Plugins page lists it under Built-in. The other built-ins are Vaultite plugins, first-party extras listed apart and off until turned on (`offByDefault`, or by a bundle).
+- `replaces`: Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in plugins standing in for the same one are alternatives: turning one on turns the other off.
+
 ### The app: `definePlugin({...})` in `index.tsx`
 `import { definePlugin } from "@vaultite"`; every key is optional (its icon is its manifest's).
 

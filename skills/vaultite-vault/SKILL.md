@@ -32,11 +32,7 @@ are the only copy, and the user reads them too.
 ## Plugins
 - What the user did on a day (notes changed and what changed, tasks done, captures, logs): `activity.recap` (`vau recap 2026-10-06`), kept in `Recaps/<date>.md`.
 - Something for the user to read later (research, a summary) goes in their inbox: `inbox.add`.
-- To teach the user something (a note, a PR, a topic): a lesson, plus cards for what's worth remembering (`vau docs lessons`). To quiz them: `cards.due`.
-- What the user did (a workout, a meal, sleep, study) is a log: `log.create`.
 - `ME.md` is the user: read it before writing anything (who they are, the people who matter, how they want you to work, what not to store).
-- A lasting fact the user tells you about themselves or someone goes where it belongs: `people.remember`; something that happened with someone: `person.timeline-add`.
-- Their day or week: `today.render` (the Today page as text).
 <!-- end generated -->
 
 ## Without the app

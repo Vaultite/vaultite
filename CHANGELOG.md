@@ -432,6 +432,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   deleted (Done in the Inbox, Archive, from any device) closes its open tabs; Undo opens it again.
 
 ### Changed
+- **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
+  Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
+  until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until
+  turned on, its init.vim kept.
 - The app's text no longer names other apps: their vaults, settings and plugins are described as such
   (`vau other-apps`, `vau docs from-other-apps`).
 - **A kind's blocks are drawn, not written**: a person's profile, a log's fields (and its area's blocks, a workout's

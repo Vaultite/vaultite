@@ -2,6 +2,7 @@
   "id": "errors",
   "icon": "triangle-alert",
   "category": "system",
+  "essential": true,
   "name": "Errors",
   "description": "The errors the app and the server hit, kept on this machine: when the app stopped or a block failed, with what you were doing, and the server's own. The same error again is one line with a count; a new kind shows a toast.",
   "tint": "red",

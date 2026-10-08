@@ -2,6 +2,7 @@
   "id": "people-map",
   "icon": "map",
   "category": "life",
+  "offByDefault": true,
   "name": "People map",
   "description": "A map of everyone (the Map tab on People): their pins, grouped by place.",
   "requires": ["people"],

@@ -2,6 +2,7 @@
   "id": "logs",
   "icon": "scroll-text",
   "category": "life",
+  "offByDefault": true,
   "name": "Logs",
   "description": "What you did, one file per entry: workouts, sleep, meals, study sessions. Areas are set in its settings.",
   "forAgents": "What the user did (a workout, a meal, sleep, study) is a log: `log.create`.",

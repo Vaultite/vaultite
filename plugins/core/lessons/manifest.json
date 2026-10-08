@@ -2,6 +2,7 @@
   "id": "lessons",
   "icon": "book-open-check",
   "category": "life",
+  "offByDefault": true,
   "name": "Lessons",
   "description": "Learn a note, a PR or a topic one step at a time, answering as you go, then keep it with cards that come back just before you'd forget.",
   "replaces": { "obsidian": ["obsidian-spaced-repetition"] },

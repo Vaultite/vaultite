@@ -100,7 +100,7 @@ try {
   check("the setup window closes", await until(() => !app.windows().some((x) => x.url().endsWith("onboarding.html")), 15000))
   check("setup is remembered as done, outside the vault", !!JSON.parse(fs.readFileSync(path.join(TMP, "userData/setup.json"), "utf8")).done && !fs.readdirSync(VAULT, { recursive: true }).some((f) => /setup\.json$/.test(f)))
   const pj = JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins.json"), "utf8")), pages = JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/pages.json"), "utf8"))
-  check("it starts from Minimal: a terminal, no Life OS", pj.disabled.includes("people") && pj.disabled.includes("today") && !pj.disabled.includes("terminal"), pj)
+  check("it starts from Minimal: a terminal, no Life OS", !(pj.enabled ?? []).includes("people") && !(pj.enabled ?? []).includes("today") && !pj.disabled.includes("terminal"), pj)
   check("Start here is written and the only pin", fs.existsSync(path.join(VAULT, "Start here.md")) && JSON.stringify(pages.pinned) === '["Start here.md"]', pages)
   check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate(() => decodeURIComponent(location.hash).includes("Start here") && /run claude/.test(document.querySelector("[data-pane]")?.textContent ?? "")), 20000),
     await vw.evaluate(() => location.hash))
@@ -145,7 +145,7 @@ try {
   check("the Obsidian vault: none of its files changed, nothing added outside .vaultite/", !touched.length, touched)
   const gp = JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/pages.json"), "utf8"))
   check("it starts from Minimal too, nothing pinned, the plugins' pages out of its files", gp.install === false && JSON.stringify(gp.pinned) === "[]"
-    && JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/plugins.json"), "utf8")).disabled.includes("people"), gp)
+    && !(JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people"), gp)
   const rows = await gw.evaluate(() => [...document.querySelectorAll("[role=tree] [role=treeitem] > :first-child")].map((e) => e.textContent.trim()))
   check("the file tree shows its notes", rows.some((t) => /Welcome/.test(t)) && !rows.some((t) => /vaultite|^Dashboards$/.test(t)), rows)
   await gw.screenshot({ path: path.join(SHOTS, "4-own-folder.png") })

@@ -2,6 +2,7 @@
   "id": "codex",
   "icon": "openai",
   "category": "agents",
+  "essential": true,
   "name": "Codex",
   "description": "What OpenAI's Codex does on this machine: your ChatGPT plan's limits and when they renew, sessions running now, usage and its value at API prices, by day, project and model. Read from Codex's own files, nothing saved.",
   "runsOnServer": true,

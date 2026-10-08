@@ -2,6 +2,7 @@
   "id": "ai-import",
   "icon": "messages-square",
   "category": "agents",
+  "offByDefault": true,
   "name": "AI import",
   "description": "Bring your history from ChatGPT and Claude: their official exports become a note per chat (and per Claude project), and what they remembered about you a list you review before any of it reaches ME.md or People.",
   "tint": "purple",

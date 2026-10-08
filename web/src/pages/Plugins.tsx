@@ -1,5 +1,5 @@
-// Plugins, in tiers (built-in, the vault's own: off until allowed on this machine since they run code), a folding
-// section per category. Tap one for its sheet with a live preview; Browse is the directory (PluginBrowse.tsx).
+// Plugins, in groups (built-in: the app's essential ones; Vaultite plugins: its other built-ins, off until turned on;
+// the vault's own: off until allowed on this machine since they run code), a folding section per category. Tap one for its sheet with a live preview; Browse is the directory (PluginBrowse.tsx).
 import { useEffect, useState } from "react"
 import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Package, Settings2 } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, hostsNow, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
@@ -21,7 +21,11 @@ import { PanelFold, SidebarHeading } from "@/components/SidebarHeading"
 /** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
-/** A section's key in `collapsedCategories`: "<tier>:<category>". */
+/** The group a plugin is listed in: its tier, the app's own split into its essential ones ("core") and the rest
+ *  ("vaultite"). */
+const groupOf = (p: Plugin) => (p.tier === "core" && !p.essential ? "vaultite" : p.tier)
+
+/** A section's key in `collapsedCategories`: "<group>:<category>". */
 const sectionKey = (tier: string, category: string) => `${tier}:${category}`
 
 function toggleSection(key: string, fold?: boolean) {
@@ -44,7 +48,7 @@ function reveal(id: string) {
   beforeReveal()
   // (an original with a stand-in here shares its row)
   const found = pluginById(id), p = found && (standInOf(found) ?? found)
-  if (p) toggleSection(sectionKey(p.tier, categoryOf(p.category).id), false)
+  if (p) toggleSection(sectionKey(groupOf(p), categoryOf(p.category).id), false)
   requestAnimationFrame(() => requestAnimationFrame(() => pulse(p?.id ?? id)))
 }
 function pulse(id: string) {
@@ -237,6 +241,7 @@ function HostGroup({ host, info, list, paired, files, browse }: { host: string; 
 
 const TIERS = [
   { tier: "core", title: "Built-in plugins" },
+  { tier: "vaultite", title: "Vaultite plugins" },
   { tier: "vault", title: "Vault plugins" },
 ] as const
 
@@ -268,6 +273,7 @@ export function Plugins({ store }: { store: Store }) {
   const vaultIntro = (
     <>Your own plugins, in <button type="button" onClick={() => showInTree(FOLDER)} data-tip="Show the folder in the file tree" className={link}>{FOLDER}</button></>
   )
+  const vaultiteIntro = "Vaultite's own extras, built in and off until you turn them on (a bundle like Life OS turns on several)."
   return (
     <>
       <PageHeader title="Plugins" className="items-center">
@@ -289,11 +295,11 @@ export function Plugins({ store }: { store: Store }) {
       </div>
       {tab === "installed" && <Waiting list={all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval)} />}
       {tab === "browse" ? <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={(id) => { setTab("installed"); reveal(id) }} /> : TIERS.map(({ tier, title }) => {
-        const list = shown.filter((p) => p.tier === tier)
-        const total = all.filter((p) => p.tier === tier).length
+        const list = shown.filter((p) => groupOf(p) === tier)
+        const total = all.filter((p) => groupOf(p) === tier).length
         // Filtering: a tier with nothing left leaves (the vault one too, unless it has none at all and nothing's filtered).
         if (!list.length && (tier !== "vault" || filtering || total)) return null
-        return <Group key={tier} tier={tier} title={title} list={list} searching={!!q} intro={tier === "vault" ? vaultIntro : undefined} files={files} originals={originals} />
+        return <Group key={tier} tier={tier} title={title} list={list} searching={!!q} intro={tier === "vault" ? vaultIntro : tier === "vaultite" ? vaultiteIntro : undefined} files={files} originals={originals} />
       })}
       {/* Plugins other plugins run (Obsidian's), a group per host, without categories. */}
       {tab === "installed" && hostsNow().map(([h, info]) => {

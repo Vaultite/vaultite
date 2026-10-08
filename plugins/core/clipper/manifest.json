@@ -2,6 +2,7 @@
   "id": "clipper",
   "icon": "scissors",
   "category": "writing",
+  "essential": true,
   "name": "Web clipper",
   "description": "Saves a web page to your vault as a Markdown note: its main content without menus and ads, with its source, title, author and date. From vau clip, an AI through MCP, or anything that posts a page.",
   "settings": {

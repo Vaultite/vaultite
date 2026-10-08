@@ -2,6 +2,7 @@
   "id": "projects",
   "icon": "folder-git-2",
   "category": "life",
+  "offByDefault": true,
   "name": "Projects",
   "description": "Your projects from the vault's Projects folder (the Projects page): what each one is, its status and links.",
   "tint": "green",

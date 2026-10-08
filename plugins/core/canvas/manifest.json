@@ -2,6 +2,7 @@
   "id": "canvas",
   "icon": "layout-dashboard",
   "category": "writing",
+  "essential": true,
   "name": "Canvas",
   "description": "Boards of cards, notes, web pages and groups joined by arrows: .canvas files (JSON Canvas) open as an infinite canvas, and ![[Board.canvas]] shows one in a note.",
   "settings": {

@@ -1,7 +1,6 @@
 {
   "disabled": [
     "activity",
-    "machines",
     "codex",
     "cursor",
     "opencode",
@@ -9,5 +8,28 @@
     "hermes",
     "openclaw"
   ],
-  "enabled": []
+  "enabled": [
+    "ai-import",
+    "audio-recorder",
+    "books",
+    "calendar",
+    "documents",
+    "ebooks",
+    "health",
+    "learning",
+    "lessons",
+    "logs",
+    "note-composer",
+    "notes",
+    "people",
+    "people-map",
+    "presentations",
+    "projects",
+    "random-note",
+    "slides",
+    "spreadsheets",
+    "today",
+    "unique-note",
+    "web-viewer"
+  ]
 }

@@ -2,6 +2,7 @@
   "id": "backlinks",
   "icon": "link-2",
   "category": "navigation",
+  "essential": true,
   "name": "Links",
   "description": "A sidebar panel for the file you're on: what links to it, where its name appears without a link (one click links it), and what it links to. Also opens as a tab that follows the file in the other pane."
 }

@@ -1,22 +1,28 @@
 {
   "disabled": [
     "activity",
-    "ai-import",
-    "calendar",
-    "logs",
-    "machines",
-    "people",
-    "people-map",
     "terminal",
-    "today",
     "claude-code",
     "codex",
     "cursor",
-    "health",
-    "learning",
     "opencode",
     "hermes",
     "openclaw"
   ],
-  "enabled": []
+  "enabled": [
+    "audio-recorder",
+    "books",
+    "documents",
+    "ebooks",
+    "lessons",
+    "note-composer",
+    "notes",
+    "presentations",
+    "projects",
+    "random-note",
+    "slides",
+    "spreadsheets",
+    "unique-note",
+    "web-viewer"
+  ]
 }

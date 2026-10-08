@@ -34,9 +34,12 @@ export type Manifest = {
   /** Its settings (.vaultite/plugins/<id>/data.json), typed like a block's options plus a label each (core/blocks.ts
    *  SettingDecl): its settings sheet draws them as a form, and its docs list them (`vau docs <id>`). */
   settings?: SettingDecls
-  /** Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim)
-   *  or that few want (Finance). The server keeps its backend off too (Vault.switchedOff). */
+  /** Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim),
+   *  and every built-in that isn't `essential` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff). */
   offByDefault?: boolean
+  /** One of the app's own (built-in only): the Plugins page lists it under Built-in. The other built-ins are Vaultite
+   *  plugins, first-party extras listed apart and off until turned on (`offByDefault`, or by a bundle). */
+  essential?: boolean
   /** Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in
    *  plugins standing in for the same one are alternatives: turning one on turns the other off. */
   replaces?: Record<string, string[]>

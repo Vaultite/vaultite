@@ -2,6 +2,7 @@
   "id": "templates",
   "icon": "file-stack",
   "category": "writing",
+  "essential": true,
   "name": "Templates",
   "description": "Notes in a Templates folder you start new notes from, or insert into the one you're writing, with {{date}}, {{time}} and {{title}} filled in; and commands that insert the current date or time.",
   "settings": {

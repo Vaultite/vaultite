@@ -2,6 +2,7 @@
   "id": "documents",
   "icon": "file-text",
   "category": "formats",
+  "offByDefault": true,
   "name": "Documents",
   "description": "Word documents (.docx) open as their pages, read-only, laid out like Word; their text is found by search and read by AIs.",
   "replaces": { "obsidian": ["docxer"] }

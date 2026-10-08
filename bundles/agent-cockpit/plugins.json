@@ -1,13 +1,20 @@
 {
-  "disabled": [
-    "books",
-    "calendar",
-    "logs",
-    "people",
-    "people-map",
-    "today",
-    "health",
-    "learning"
-  ],
-  "enabled": []
+  "disabled": [],
+  "enabled": [
+    "ai-import",
+    "audio-recorder",
+    "documents",
+    "ebooks",
+    "lessons",
+    "machines",
+    "note-composer",
+    "notes",
+    "presentations",
+    "projects",
+    "random-note",
+    "slides",
+    "spreadsheets",
+    "unique-note",
+    "web-viewer"
+  ]
 }

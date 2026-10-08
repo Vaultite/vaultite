@@ -2,6 +2,7 @@
   "id": "machines",
   "icon": "server",
   "category": "system",
+  "offByDefault": true,
   "name": "Machines",
   "description": "Your other computers running Vaultite, reached from this one: which are online and what they run, their terminals and coding agents in this app. One vault, many machines.",
   "tint": "teal",

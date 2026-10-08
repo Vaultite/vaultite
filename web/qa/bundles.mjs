@@ -39,7 +39,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   const { ctx, page } = await open(1280, 820)
   await go(page, FB)
   check("a new vault opens on Start here, not the bundles", decodeURIComponent(await page.evaluate(() => location.hash)) !== "#bundles"
-    && JSON.stringify(settings(FVAULT).pages?.pinned) === '["Start here.md"]' && settings(FVAULT).plugins?.disabled?.includes("people"), settings(FVAULT))
+    && JSON.stringify(settings(FVAULT).pages?.pinned) === '["Start here.md"]' && !(settings(FVAULT).plugins?.enabled ?? []).includes("people"), settings(FVAULT))
   await shot(page, "new-vault-minimal")
   await go(page, FB, "bundles")
   await until(() => page.locator("[data-bundle]").count(), 6000)
@@ -67,7 +67,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await until(() => !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`), 6000)
   check("Start with Minimal ends the offer", !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`))
   const m = settings(FVAULT)
-  check("skipped: Minimal's plugins (Claude Code on), and Restore still Life OS's", m.plugins?.disabled?.includes("people") && !m.plugins.disabled.includes("claude-code")
+  check("skipped: Minimal's plugins (Claude Code on), and Restore still Life OS's", !(m.plugins?.enabled ?? []).includes("people") && !m.plugins?.disabled?.includes("claude-code")
     && json(FVAULT, ".vaultite/bundles/previous.json")?.bundle === "life-os", [m.plugins, json(FVAULT, ".vaultite/bundles/previous.json")?.bundle])
   await until(async () => (await page.locator("main h1").first().innerText()) === "Bundles", 6000)
   check("then the page is just Bundles", (await page.locator("main h1").first().innerText()) === "Bundles")
@@ -82,7 +82,7 @@ await until(() => page.locator("[data-bundle]").count() >= 3, 6000)
 check("an existing vault isn't greeted", (await page.locator("main h1").first().innerText()) === "Bundles")
 await shot(page, "picker")
 const want = {
-  "minimal": (s) => !s.pages.pinned.some((p) => p.startsWith("Dashboards/Today")) && s.appearance.fileIcons === false && s.plugins.disabled.includes("people") && s.sidebars.right.includes("backlinks:links") && s.plugins.disabled.includes("workspaces"),
+  "minimal": (s) => !s.pages.pinned.some((p) => p.startsWith("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links") && s.plugins.disabled.includes("workspaces"),
   "pages": (s) => s.pages.pinned[0] === "Dashboards/Home.md" && existsSync(`${VAULT}/Dashboards/Home.md`) && s.appearance.density === "comfortable",
   "life-os": (s) => s.pages.pinned[0] === "Dashboards/Today.md" && s.appearance.scheme === "flexoki",
   "agent-cockpit": (s) => s.pages.pinned[0] === "Dashboards/Agents.md" && s.appearance.scheme === "tokyo-night" && s.sidebars.right.includes("activity:feed"),

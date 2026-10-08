@@ -2,6 +2,7 @@
   "id": "openclaw",
   "icon": "bot",
   "category": "agents",
+  "essential": true,
   "name": "OpenClaw",
   "description": "What OpenClaw, the personal AI agent, does on this machine: sessions running now, usage and its cost as OpenClaw records it, by day, project and model, each session's conversation, its agents' memory and its scheduled jobs. Read from OpenClaw's own databases and workspace, nothing saved; one step gives it the vault's tools.",
   "runsOnServer": true,

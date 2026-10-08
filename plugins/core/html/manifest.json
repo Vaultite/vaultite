@@ -2,6 +2,7 @@
   "id": "html",
   "icon": "app-window",
   "category": "formats",
+  "essential": true,
   "name": "HTML pages",
   "description": "Interactive pages: an .html file runs in a sandbox (no network, no reach into the app), reads the vault's files and tables through a small bridge, and ![[Spending.html]] shows one in a note."
 }

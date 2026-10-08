@@ -2,6 +2,7 @@
   "id": "people",
   "icon": "users",
   "category": "life",
+  "offByDefault": true,
   "name": "People",
   "description": "Who to reach out to (the People page). A person's file opens as their profile, with the timeline drawn from its Timeline section.",
   "forAgents": "A lasting fact the user tells you about themselves or someone goes where it belongs: `people.remember`; something that happened with someone: `person.timeline-add`.",

@@ -2,6 +2,7 @@
   "id": "find",
   "icon": "text-search",
   "category": "writing",
+  "essential": true,
   "name": "Find and replace",
   "description": "Find in the file you're on (⌘F), and replace (⌥⌘F): match case, whole words or a regular expression, with how many matches there are. In reading view it only finds."
 }

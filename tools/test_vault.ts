@@ -13,6 +13,12 @@ else {
   fs.mkdirSync(path.join(VAULT, "People"), { recursive: true })
   fs.writeFileSync(path.join(VAULT, "People", "Alice Park.md"), "---\ntype: person\nrelation: friend\nlocation: Seattle, WA\n---\n\n" +
     "Likes hiking.\n\n## Timeline\n\n- 2026-09-20 · call · 20 min · Caught up\n")
+  // The Vaultite plugins on (the tests use them), but the few that change the app for everyone (the Dock icon...).
+  const root = path.join(path.dirname(fileURLToPath(import.meta.url)), "..", "plugins", "core")
+  const enabled = fs.readdirSync(root).filter((id) => !["agent-meters", "app-windows", "dock-icon", "recorder"].includes(id) &&
+    !JSON.parse(fs.readFileSync(path.join(root, id, "manifest.json"), "utf8")).essential)
+  fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
+  fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins.json"), JSON.stringify({ disabled: [], enabled }, null, 2) + "\n")
 }
 fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n") // the user's own
 process.env.VAULTITE_VAULT = VAULT
@@ -132,6 +138,8 @@ const { Text } = await import("../core/plugins.ts")
 const { publicOf } = await import("../core/vault.ts")
 const app = await open(VAULT, { start: false })
 const vault = app.vault
+/** The Vaultite plugins on in the test vault (above): a test that writes plugins.json keeps them on. */
+const ON: string[] = vault.config("plugins").enabled ?? []
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -943,19 +951,18 @@ check("a workout renders as text", (await api("GET", `render?path=${gym.id}.md`)
   const gymArea = areas.find((a: Any) => a.slug === "workouts")
   check("areas come from the plugins that draw them", gymArea?.tint === "pink" && gymArea.icon === "dumbbell" && gymArea.parent === "health" &&
     ["sleep", "nutrition", "study", "reading"].every((s) => areas.some((a: Any) => a.slug === s)), areas.map((a: Any) => a.slug))
-  // An offByDefault plugin's backend (Learning, made one here): its service brings nothing until it's in `enabled`.
-  vault.optIn.add("learning")
-  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: ["dock-icon"] }) // (a settings change: /api/state is new)
+  // An offByDefault plugin's backend (Learning): its service brings nothing until it's in `enabled`.
+  const was: string[] = vault.config("plugins").enabled, without = was.filter((id) => id !== "learning")
+  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: without }) // (a settings change: /api/state is new)
   areas = (await api("GET", "state"))[1].areas
   check("an offByDefault plugin's service is off until it's turned on", !areas.some((a: Any) => a.slug === "study"), areas.map((a: Any) => a.slug))
-  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: ["learning"] })
+  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: was })
   areas = (await api("GET", "state"))[1].areas
   check("turned on (enabled), it brings its areas", areas.some((a: Any) => a.slug === "study"), areas.map((a: Any) => a.slug))
-  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: [] })
+  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: without })
   areas = (await api("GET", "state"))[1].areas
   check("a plugin that's off brings none", !areas.some((a: Any) => a.slug === "study") && areas.some((a: Any) => a.slug === "workouts"), areas.map((a: Any) => a.slug))
-  vault.optIn.delete("learning")
-  vault.setConfig("plugins", { ...vault.config("plugins"), disabled: [] })
+  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: was, disabled: [] })
   vault.setConfig("plugins/logs/data", { areas: [{ slug: "workouts", name: "Lifting", fields: [{ key: "volume_kg", label: "Volume", type: "number", unit: "kg" }] },
     { slug: "chess", name: "Chess", icon: "trophy", tint: "teal" }] })
   areas = (await api("GET", "state"))[1].areas
@@ -1229,7 +1236,7 @@ check("vault plugins: one can't take an app plugin's id", (await vplugin("people
 }
 ;[, s] = await api("GET", "state")
 check("vault plugins: in /api/state", s.vaultPlugins.some((p: Any) => p.id === "lighthouse"))
-const turn = (on: boolean) => api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: on ? ["lighthouse", "people"] : [] })
+const turn = (on: boolean) => api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: on ? [...ON, "lighthouse"] : ON })
 // Per-machine trust (core/trust.ts): on in plugins.json alone (a sync, another machine, a shared vault), it waits here.
 await turn(true)
 lh = await vplugin()
@@ -1653,7 +1660,7 @@ cr = await vau("panels", "--help")
 check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)
 cr = await vau("nope")
 check("vau: an unknown command says so", cr.code === 2 && cr.err.includes("no command 'nope'"), cr)
-fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["random-note"], order: ["people"], custom: 1 }, null, 2) + "\n")
+fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["random-note"], enabled: ON, order: ["people"], custom: 1 }, null, 2) + "\n")
 fs.rmSync(path.join(VAULT, ".vaultite/sidebars.json"), { force: true })
 // The sidebars' panels: .vaultite/sidebars.json (core/sidebars.ts), a stack per sidebar and the folded ones.
 const sb = () => conf("sidebars")
@@ -1741,10 +1748,10 @@ await api("PUT", "config/plugins", { disabled: [] })
 check("PUT /api/config keeps keys it didn't send", conf("plugins").custom === 1 && !conf("plugins").disabled.length, conf("plugins"))
 await vau("plugin", "off", "people")
 cr = await vau("plugins", "--json")
-check("vau plugin off: in disabled, and what requires it is off too", conf("plugins").disabled.includes("people") &&
+check("vau plugin off: out of enabled, and what requires it is off too", !conf("plugins").enabled.includes("people") &&
   JSON.parse(cr.out).find((x: Any) => x.id === "people-map").on === false, conf("plugins"))
 await vau("plugin", "on", "People")
-check("vau plugin on (by name)", !conf("plugins").disabled.includes("people"), conf("plugins"))
+check("vau plugin on (by name)", conf("plugins").enabled.includes("people"), conf("plugins"))
 cr = await vau("plugins", "--json")
 check("vau plugins: an offByDefault plugin is off until turned on", JSON.parse(cr.out).find((x: Any) => x.id === "dock-icon").on === false, cr.out.slice(0, 200))
 await vau("plugin", "on", "dock-icon")
@@ -4594,9 +4601,10 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   await api("POST", "books", { title: "Op book", total_pages: 300, status: "want" })
   t = await run("book.progress", { book: "op book", page: 120 })
   check("book.progress: the page, reading from now", !t.error && t.text === "Op book: reading, page 120 of 300." && read("Books/Op book.md").includes("current_page: 120") && read("Books/Op book.md").includes("started:"), [t, read("Books/Op book.md")])
-  vault.optIn.add("books") // (made offByDefault here)
+  const en: string[] = vault.config("plugins").enabled
+  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: en.filter((x) => x !== "books") })
   check("ops: an offByDefault plugin's aren't there until it's turned on", !app.opNamed("book.progress"), app.opNamed("book.progress")?.op.id)
-  vault.optIn.delete("books")
+  vault.setConfig("plugins", { ...vault.config("plugins"), enabled: en })
   c = await vau("properties")
   check("vau properties: every key, counted", c.code === 0 && /^tags\s+\d+\s+list/m.test(c.out), c)
   c = await vau("tags", "topic")
@@ -5370,7 +5378,7 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   app.installPages()
   const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
   const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
-  setConf("plugins", { disabled: ["random-note"], collapsedCategories: ["core:navigation"], order: ["people"] })
+  setConf("plugins", { disabled: ["recent"], enabled: ON, collapsedCategories: ["core:navigation"], order: ["people"] })
   setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
   setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/Today.md"] })
   setConf("plugins/page-preview/data", { delay: 300 })
@@ -5394,7 +5402,7 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   ;[code, r] = await api("POST", "bundles/pages/apply", { workspace: 1 })
   check("bundles: apply", code === 200 && r.applied === "Pages and databases", r)
   const pj = conf("plugins"), look = conf("appearance")
-  check("bundles: plugins.json keeps its other keys", pj.collapsedCategories?.[0] === "core:navigation" && pj.order?.[0] === "people" && pj.disabled.includes("today") && !pj.disabled.includes("books"), pj)
+  check("bundles: plugins.json keeps its other keys", pj.collapsedCategories?.[0] === "core:navigation" && pj.order?.[0] === "people" && !pj.enabled.includes("today") && pj.enabled.includes("books"), pj)
   check("bundles: appearance keeps the keys the bundle doesn't set; one it sets to the default is removed", look.textFont === "Georgia" && !("theme" in look) && look.scheme === "paper" &&
     look.density === "comfortable", look)
   check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))
@@ -5439,12 +5447,12 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   ;[code, r] = await api("POST", "bundles", { name: "My desk", workspace: 1 })
   const saved = (f: string) => { try { return JSON.parse(read(`.vaultite/bundles/my-desk/${f}`)) } catch { return null } }
   check("bundles: save writes the user's bundle", code === 200 && r.bundle.id === "my-desk" && saved("bundle.json")?.name === "My desk", r)
-  check("bundles: saved: plugins, the workspace's pins, settings that differ from their defaults, never local ones", saved("plugins.json")?.disabled?.includes("random-note") &&
+  check("bundles: saved: plugins, the workspace's pins, settings that differ from their defaults, never local ones", saved("plugins.json")?.disabled?.includes("recent") &&
     saved("pages.json")?.pinned?.join() === deskBefore.pinned.join() && saved("plugins/page-preview/data.json")?.delay === 300 && saved("plugins/terminal/data.json") === null &&
     saved("appearance.json")?.scheme === "nord" && saved("hotkeys.json") === null, fs.readdirSync(path.join(VAULT, ".vaultite/bundles/my-desk"), { recursive: true }))
   ;[code, r] = await api("GET", "bundles/my-desk/export")
   const exported = JSON.parse(r)
-  check("bundles: export is one JSON file", code === 200 && exported.vaultite === "bundle" && exported.files["plugins.json"].disabled.includes("random-note"), exported)
+  check("bundles: export is one JSON file", code === 200 && exported.vaultite === "bundle" && exported.files["plugins.json"].disabled.includes("recent"), exported)
   ;[code, r] = await api("POST", "bundles/import", exported)
   check("bundles: import adds it under a free id", code === 200 && r.bundle.id === "my-desk-2" && exists(".vaultite/bundles/my-desk-2/pages.json"), r)
   ;[code, r] = await api("POST", "bundles/import", { vaultite: "bundle", files: { "../x.json": "{}" } })
@@ -6203,7 +6211,7 @@ plugin.every("gone", null)
   fs.mkdirSync(fresh)
   await open(fresh)
   const pj = conf(fresh, "plugins"), look = conf(fresh, "appearance"), pages = conf(fresh, "pages")
-  check("new vault: Minimal's plugins (a terminal and Claude Code, none of Life OS)", pj?.disabled?.includes("people") && pj.disabled.includes("today") && !pj.disabled.includes("terminal")
+  check("new vault: Minimal's plugins (a terminal and Claude Code, none of Life OS)", !(pj?.enabled ?? []).includes("people") && !(pj?.enabled ?? []).includes("today") && !pj?.disabled?.includes("terminal")
     && !pj.disabled.includes("claude-code") && !pj.disabled.includes("provenance"), pj)
   check("new vault: Minimal's look (Gruvbox, the default: unset)", !look?.scheme && look?.fileIcons === false, look)
   check("new vault: Start here, the only pin; plugins' pages out of the user's files", JSON.stringify(pages?.pinned) === '["Start here.md"]' && pages.install === false
@@ -6215,7 +6223,7 @@ plugin.every("gone", null)
   fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")
   await open(own)
   const files = fs.readdirSync(own, { recursive: true }).map(String).filter((f) => !f.startsWith(".vaultite")).sort()
-  check("a folder of notes: Minimal, and nothing added among its files", conf(own, "plugins")?.disabled?.includes("people") && JSON.stringify(files) === '["Ideas","Ideas/One.md"]'
+  check("a folder of notes: Minimal, and nothing added among its files", conf(own, "plugins")?.disabled?.includes("activity") && JSON.stringify(files) === '["Ideas","Ideas/One.md"]'
     && fs.readFileSync(path.join(own, "Ideas/One.md"), "utf8") === "An idea.\n", files)
   const opened = path.join(tmp, "Opened before")
   fs.mkdirSync(path.join(opened, ".vaultite"), { recursive: true })
@@ -6236,7 +6244,7 @@ plugin.every("gone", null)
   fs.writeFileSync(path.join(skipped, ".vaultite/bundles/onboarding.json"), "{}\n")
   const sk = await open(skipped)
   const after = await sk.host().call("POST", "bundles/onboarding", {}) as { onboarding: boolean; previous: unknown }
-  check("skipping the offer: Minimal, nothing offered or to restore", conf(skipped, "plugins")?.disabled?.includes("people") && !after.onboarding && !after.previous
+  check("skipping the offer: Minimal, nothing offered or to restore", conf(skipped, "plugins")?.disabled?.includes("activity") && !after.onboarding && !after.previous
     && !fs.existsSync(path.join(skipped, ".vaultite/bundles/previous.json")), [after, conf(skipped, "plugins")])
 }
 

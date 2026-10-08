@@ -2,6 +2,7 @@
   "id": "search",
   "icon": "search",
   "category": "navigation",
+  "essential": true,
   "name": "Search field",
   "description": "The search field at the top of the sidebar. Off, the quick switcher still opens with ⌘O.",
   "replaces": { "obsidian": ["omnisearch"] },

@@ -2,6 +2,7 @@
   "id": "files",
   "icon": "folder-closed",
   "category": "navigation",
+  "essential": true,
   "name": "File explorer",
   "description": "The vault's files in the sidebar, as a file explorer. Off, files still open from search, links and pages."
 }

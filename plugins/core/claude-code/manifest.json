@@ -2,6 +2,7 @@
   "id": "claude-code",
   "icon": "claude",
   "category": "agents",
+  "essential": true,
   "name": "Claude Code",
   "description": "What Claude Code does on this machine, in each of its accounts: plan limits and when they renew, sessions running now and Remote Control servers, usage and its value at API prices, by day, project and model. Read from Claude Code's own files, nothing saved.",
   "runsOnServer": true,

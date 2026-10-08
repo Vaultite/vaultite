@@ -2,6 +2,7 @@
   "id": "pages",
   "icon": "pin",
   "category": "navigation",
+  "essential": true,
   "name": "Pinned",
   "description": "Pin files to the sidebar as pages, in your order: drag to reorder, drag a file from the tree to pin it, or Pin in a file's menu. The pinned pages are also in search, in its settings, in the phone's drawer and as tiles on a phone's new tab, and a new device opens on the first one. Off, nothing is pinned or shown; your list stays in .vaultite/pages.json."
 }

@@ -2,6 +2,7 @@
   "id": "presentations",
   "icon": "presentation",
   "category": "formats",
+  "offByDefault": true,
   "name": "Presentations",
   "description": "PowerPoint decks (.pptx) open as their slides, read-only, drawn like PowerPoint; their slides' text and speaker notes are found by search and read by AIs."
 }

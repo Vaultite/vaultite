@@ -2,7 +2,8 @@
 
 ## How it's built
 - **Tiers**: built-in plugins (`plugins/core/<id>/`, ship with the app, can be turned off; the UI says Built-in so
-  "core" means only the app itself) and vault plugins (in the vault: installed or the user's own). The core is generic
+  "core" means only the app itself: those marked `essential`; the others are Vaultite plugins, first-party extras listed
+  apart and off by default, turned on by a bundle or by hand) and vault plugins (in the vault: installed or the user's own). The core is generic
   primitives; what assumes one person's life (a job, a bank's CSV, one tool) is a vault plugin, Vaultite's own in the
   private monorepo Vaultite/plugins (`../vaultite-plugins`, its `node test.ts` checks them against this checkout).
   Even search, Pinned and the file tree are plugins.
@@ -11,7 +12,7 @@
     `virtual:plugin-icons` in vite.config.ts imports the app's one by one), `category` (`core/categories.ts`), `requires`/`enhances`, `blocks` and `settings`
     declared (`core/blocks.ts`, validated by `npm run check`), and `forAgents`: one line every agent reads while it's
     on (`agentLines` in core/plugins.ts), only what an agent must know up front, never a format. `offByDefault`:
-    off until in plugins.json `enabled` (what few people want: Dock icon), its backend too; a plugin's
+    off until in plugins.json `enabled` (every one not `essential`, and Vim), its backend too; a plugin's
     code asks `plugin.isOff()` or `vault.switchedOff()`, never `disabled` alone (`npm run check`).
   - `plugin.ts` (backend, Node): `new Plugin(import.meta.url)`; each method of the `Plugin` class (core/plugins.ts)
     says what it does: kinds, routes, ops, blocks as text, hooks, sockets, services (`plugin.provide` /

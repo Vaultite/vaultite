@@ -76,6 +76,7 @@ async function restore() {
     // What needs a machine starts off (machine.ts).
     const file = `${VAULT}/.vaultite/plugins.json`, cfg = JSON.parse(fs.readFileSync(file, "utf8") as string)
     cfg.disabled = [...new Set([...cfg.disabled, ...MACHINE])]
+    cfg.enabled = cfg.enabled.filter((id: string) => !MACHINE.includes(id))
     fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n")
     await tx(["files"], (t) => t.objectStore("files").clear())
     meta = { day: today, sample, edited: false }
@@ -109,7 +110,8 @@ const json = (body: unknown, status = 200): Answer => ({ status, headers: { "Con
 function refused(method: string, route: string, body: unknown) {
   if (route !== "config/plugins" || (method !== "PUT" && method !== "PATCH") || !body || typeof body !== "object") return ""
   const b = body as { disabled?: unknown; enabled?: unknown }
-  const on = MACHINE.find((id) => (Array.isArray(b.disabled) && !b.disabled.includes(id)) || (Array.isArray(b.enabled) && b.enabled.includes(id)))
+  // (an offByDefault one is on when in `enabled`, another when out of `disabled`)
+  const on = MACHINE.find((id) => app.vault.optIn.has(id) ? Array.isArray(b.enabled) && b.enabled.includes(id) : Array.isArray(b.disabled) && !b.disabled.includes(id))
   const name = on && app.plugins.find((p) => p.id === on)?.manifest.name
   return on ? `${name ?? on} needs the Vaultite app: download it to use it` : ""
 }

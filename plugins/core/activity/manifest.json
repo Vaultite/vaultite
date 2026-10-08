@@ -2,6 +2,7 @@
   "id": "activity",
   "icon": "activity",
   "category": "system",
+  "essential": true,
   "name": "Activity",
   "description": "Everything done to your vault and the app, and by whom: your edits and moves, coding agents working through the CLI or the API, changes on disk. Kept on this machine for two weeks, and each day's recap in the vault for good: what you made and changed, tasks done, things captured. Plus how fast the server and the app are.",
   "forAgents": "What the user did on a day (notes changed and what changed, tasks done, captures, logs): `activity.recap` (`vau recap 2026-10-06`), kept in `Recaps/<date>.md`.",

@@ -2,6 +2,7 @@
   "id": "page-preview",
   "icon": "panel-top-open",
   "category": "navigation",
+  "essential": true,
   "name": "Page preview",
   "description": "Point at a [[link]] for a moment to see that note in a popover, scrollable, its links clickable: in notes, dashboards, the Links panel and search. While you're editing, hold ⌘. Computers only.",
   "settings": {

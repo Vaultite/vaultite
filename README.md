@@ -29,7 +29,8 @@ draws as pages.
 
 - **Plain files, no database.** Open the same vault in another Markdown app, grep it, sync it with iCloud or keep it in git.
 - **Made for agents.** Claude Code, Codex and any MCP client use one set of operations (the `vau` CLI, MCP, HTTP).
-- **Everything is a plugin.** Modular and hot-reloadable. People, logs, notes, even the file tree; turn them off or write your own in the vault.
+- **Everything is a plugin.** Modular and hot-reloadable. Even the file tree is one; Vaultite's own (People, logs, notes)
+  come with it, off until a bundle or you turn them on; write your own in the vault.
 - **Also a full editor and workspace**: live preview, tabs and splits, backlinks, graph, terminals for your agents, on
   the Mac, the web and the iPhone.
 

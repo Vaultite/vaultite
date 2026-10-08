@@ -2,6 +2,7 @@
   "id": "health",
   "icon": "heart",
   "category": "health",
+  "offByDefault": true,
   "name": "Health",
   "description": "Workouts, sleep and nutrition from your logs: the Health page, and sleep and meals blocks for Today.",
   "tint": "red",

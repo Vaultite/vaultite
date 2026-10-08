@@ -1,6 +1,29 @@
 {
   "disabled": [],
   "enabled": [
-    "dock-icon"
+    "ai-import",
+    "audio-recorder",
+    "books",
+    "calendar",
+    "dock-icon",
+    "documents",
+    "ebooks",
+    "health",
+    "learning",
+    "lessons",
+    "logs",
+    "machines",
+    "note-composer",
+    "notes",
+    "people",
+    "people-map",
+    "presentations",
+    "projects",
+    "random-note",
+    "slides",
+    "spreadsheets",
+    "today",
+    "unique-note",
+    "web-viewer"
   ]
 }

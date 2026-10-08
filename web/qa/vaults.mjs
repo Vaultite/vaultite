@@ -50,7 +50,7 @@ try {
   const second = path.join(parent, "Second")
   const pages = JSON.parse(fs.readFileSync(path.join(second, ".vaultite/pages.json"), "utf8"))
   check("create: Minimal, Start here pinned, no dashboards among its files, nothing offered",
-    JSON.parse(fs.readFileSync(path.join(second, ".vaultite/plugins.json"), "utf8")).disabled.includes("people") && JSON.stringify(pages.pinned) === '["Start here.md"]'
+    !(JSON.parse(fs.readFileSync(path.join(second, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people") && JSON.stringify(pages.pinned) === '["Start here.md"]'
     && fs.existsSync(path.join(second, "Start here.md")) && !fs.existsSync(path.join(second, "Dashboards")) && !fs.existsSync(path.join(second, ".vaultite/bundles/onboarding.json")), pages)
   check("create: its rules in .vaultite, and a line in CLAUDE.md and AGENTS.md pointing there", fs.existsSync(path.join(second, ".vaultite/AGENTS.md"))
     && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(second, "CLAUDE.md"), "utf8")) && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(second, "AGENTS.md"), "utf8")))

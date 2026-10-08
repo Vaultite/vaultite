@@ -2,6 +2,7 @@
   "id": "dispatch",
   "icon": "send",
   "category": "agents",
+  "essential": true,
   "name": "Dispatch",
   "description": "Hand a note to a coding agent: a button in the note's header (and a command, ⌘⇧↩) starts Claude Code in a new terminal on this machine (or another of your machines), told to read the note and do what it asks. Its actions are yours to change: another agent, another prompt, or a shell command of your own.",
   "runsOnServer": true,

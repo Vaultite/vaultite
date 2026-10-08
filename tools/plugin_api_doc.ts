@@ -38,9 +38,10 @@ function backend() {
   return out
 }
 
-function frontend() {
+/** A type of define.ts (PluginDef: index.tsx's definePlugin; Manifest: manifest.json), a line per key. */
+function keysOf(type: string) {
   const { src, ast } = parse("web/src/core/define.ts")
-  const def = ast.body.find((n) => n.type === "ExportNamedDeclaration" && n.declaration?.id?.name === "PluginDef")!
+  const def = ast.body.find((n) => n.type === "ExportNamedDeclaration" && n.declaration?.id?.name === type)!
   return (def.declaration.typeAnnotation.members as Node[]).filter((m) => m.type === "TSPropertySignature")
     .map((m) => `- \`${m.key.name}\`${m.optional ? "" : " (required)"}${docBefore(src, m.start) ? `: ${docBefore(src, m.start)}` : ""}`)
 }
@@ -159,10 +160,15 @@ What it gets: a route's \`req\`: ${shape("core/plugins.ts", "Request")}. A block
 \`plugin.kind(new Kind({...}))\`: ${shape("core/vault.ts", "KindSpec")}. One frontmatter key in a file's text:
 \`setPropertyText\` (\`@vaultite/core/vault.ts\`).
 
+### What it is: \`manifest.json\`
+The app's own manifest keys (a vault plugin's are in \`vau docs vault-plugins\`).
+
+${keysOf("Manifest").join("\n")}
+
 ### The app: \`definePlugin({...})\` in \`index.tsx\`
 \`import { definePlugin } from "@vaultite"\`; every key is optional (its icon is its manifest's).
 
-${frontend().join("\n")}
+${keysOf("PluginDef").join("\n")}
 
 ### Services the app's plugins offer
 \`plugin.ask("<name>", ...args)\` (\`plugin.provide\` to offer one): by name, never by plugin.

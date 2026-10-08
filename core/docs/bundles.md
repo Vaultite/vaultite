@@ -9,7 +9,7 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```
   bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple"}
-  plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, dock-icon]}
+  plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, Vaultite plugins like today]}
   sidebars.json      the panels, as .vaultite/sidebars.json ({} is the default panels)
   pages.json         {"pinned": ["Dashboards/Desk.md", "Dashboards/Projects.md"]}
   appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable"}

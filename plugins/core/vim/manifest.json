@@ -1,0 +1,10 @@
+{
+  "id": "vim",
+  "icon": "keyboard",
+  "category": "writing",
+  "essential": true,
+  "offByDefault": true,
+  "name": "Vim",
+  "description": "Vim's keys in the whole app: the editor (modes, motions, : commands, Markdown motions, folds, a vimrc, the system clipboard), and outside it (j and k scroll, f link hints, / find, lists and panes), with Space as a leader key. Off until you turn it on; phones type as usual.",
+  "replaces": { "obsidian": ["obsidian-vimrc-support"] }
+}

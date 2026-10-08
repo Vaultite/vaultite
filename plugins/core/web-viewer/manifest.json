@@ -2,6 +2,7 @@
   "id": "web-viewer",
   "icon": "globe",
   "category": "navigation",
+  "offByDefault": true,
   "name": "Web viewer",
   "description": "Web pages in a tab of the desktop app, next to your notes, with back, forward and Save to vault, which clips the page you see (one you're logged in to too) into a note. Links in notes open there, or in your browser with ⌘.",
   "enhances": ["clipper"],

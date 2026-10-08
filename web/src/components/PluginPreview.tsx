@@ -141,8 +141,9 @@ function About({ plugin }: { plugin: Plugin }) {
   )
 }
 
-// (the "core" tier's plugins are the app's built-in ones: "core" alone is the app itself)
-const KICKER = { core: "Built-in plugin", vault: "Vault plugin" }
+// (the "core" tier's plugins are the app's built-in ones: "core" alone is the app itself; those not `essential` are
+// Vaultite plugins, first-party extras)
+const kickerOf = (p: Plugin) => (p.tier === "vault" ? "Vault plugin" : p.essential ? "Built-in plugin" : "Vaultite plugin")
 
 export function PluginPreview({ store, plugin: given }: { store: Store; plugin: Plugin }) {
   usePluginsVersion()
@@ -157,7 +158,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
   const toggle = (v: boolean) => setSwitch(plugin, v)
   return (
     <>
-      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : KICKER[plugin.tier]}
+      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
         title={plugin.name} sub={plugin.description} />
       {waiting ? <Approval plugin={plugin} /> : (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">

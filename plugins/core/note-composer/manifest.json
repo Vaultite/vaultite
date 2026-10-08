@@ -2,6 +2,7 @@
   "id": "note-composer",
   "icon": "combine",
   "category": "writing",
+  "offByDefault": true,
   "name": "Note composer",
   "description": "Move what you've selected into another note or a new one, leaving a link in its place, or merge the note you're on into another.",
   "settings": {
