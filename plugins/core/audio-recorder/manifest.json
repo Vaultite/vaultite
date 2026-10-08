@@ -1,0 +1,13 @@
+{
+  "id": "audio-recorder",
+  "category": "writing",
+  "name": "Audio recorder",
+  "description": "Record from the microphone into the note you're writing: the recording is saved as an attachment, embedded at the cursor and transcribed under it on this machine (Apple's on-device speech recognition on macOS 26, nothing to install; or whisper, when it's there).",
+  "settings": {
+    "transcribe": { "type": "boolean", "default": true, "label": "Transcribe recordings", "description": "what was said is written under each recording, on this machine" },
+    "auto": { "type": "boolean", "default": true, "label": "Transcribe at once", "description": "off, a recording is transcribed only when asked (Transcribe audio)" },
+    "engine": { "type": "enum", "values": ["auto", "apple", "whisper"], "labels": {"auto": "Automatic", "apple": "Apple's speech recognition", "whisper": "Whisper"}, "default": "auto", "label": "Transcriber", "description": "automatic: Apple's on this machine when it has it (macOS 26), else whisper when it's installed" },
+    "model": { "type": "enum", "values": ["tiny", "base", "small", "medium", "turbo"], "label": "Whisper model", "description": "bigger is better and slower; left out, the best one already downloaded of small, base and tiny" },
+    "language": { "type": "string", "label": "Language", "description": "a language's code, like en or pt, to always transcribe in it; left out, Apple's uses the Mac's language and whisper detects it" }
+  }
+}

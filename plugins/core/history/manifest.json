@@ -1,0 +1,10 @@
+{
+  "id": "history",
+  "category": "system",
+  "name": "File history",
+  "description": "Keeps earlier versions of your text files on this machine, every few minutes while they change, so a bad edit can be undone. Open a file's version history from its menu.",
+  "settings": {
+    "interval_min": { "type": "number", "default": 5, "min": 0, "max": 1440, "label": "Minutes between versions", "description": "at most one version of a file is kept in this many minutes" },
+    "keep_days": { "type": "number", "default": 7, "min": 1, "max": 365, "label": "Days to keep versions", "description": "how long earlier versions are kept on this machine" }
+  }
+}

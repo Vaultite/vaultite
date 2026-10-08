@@ -1,0 +1,46 @@
+{
+  "id": "health",
+  "category": "health",
+  "name": "Health",
+  "description": "Workouts, sleep and nutrition from your logs: the Health page, and sleep and meals blocks for Today.",
+  "tint": "red",
+  "requires": [
+    "logs"
+  ],
+  "enhances": [
+    "today"
+  ],
+  "pageSort": 20,
+  "blocks": {
+    "workouts": {
+      "description": "an area's workouts: its weeks and latest sessions, with each lift's top set and the top grade when its logs have them",
+      "options": {
+        "area": {
+          "type": "string",
+          "default": "workouts",
+          "description": "the area whose workouts it shows (a slug of the vault's areas)"
+        }
+      }
+    },
+    "sleep": {
+      "description": "last night's sleep and the average over the last nights",
+      "options": {
+        "nights": {
+          "type": "number",
+          "default": 7,
+          "min": 1,
+          "max": 60,
+          "description": "how many nights the average covers"
+        }
+      }
+    },
+    "nutrition": {
+      "description": "today's meals and their totals",
+      "options": {}
+    },
+    "workout": {
+      "description": "in a workout log file: its exercises and sets, or its climbs",
+      "options": {}
+    }
+  }
+}

@@ -1,0 +1,8 @@
+// The iPhone app's settings, for both of its targets (the app and its share extension). Your own team goes in
+// Local.xcconfig, next to this one and not in git: `DEVELOPMENT_TEAM = <team id>` (Xcode > Settings > Accounts), and
+// `VAULTITE_BUNDLE_ID = <yours>` when another team has app.vaultite.ios.
+VAULTITE_BUNDLE_ID = app.vaultite.ios
+VAULTITE_APP_GROUP = group.$(VAULTITE_BUNDLE_ID)
+MARKETING_VERSION = 0.1.0
+CURRENT_PROJECT_VERSION = 1
+#include? "Local.xcconfig"

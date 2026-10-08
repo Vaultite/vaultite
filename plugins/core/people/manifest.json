@@ -1,0 +1,30 @@
+{
+  "id": "people",
+  "category": "life",
+  "name": "People",
+  "description": "Who to reach out to (the People page). A person's file opens as their profile, with the timeline drawn from its Timeline section.",
+  "forAgents": "A lasting fact the user tells you about themselves or someone goes where it belongs: `people.remember`; something that happened with someone: `person.timeline-add`.",
+  "tint": "teal",
+  "pageSort": 40,
+  "blocks": {
+    "person": {
+      "description": "a person's profile: how you know them, where they live, when you were last in touch",
+      "options": {}
+    },
+    "people-due": {
+      "description": "the people overdue for a check-in",
+      "options": {}
+    },
+    "people-wants": {
+      "description": "everyone with a want_to: people to call, meet or write to",
+      "options": {}
+    },
+    "people-group": {
+      "description": "the people with some relations, and when you were last in touch with each",
+      "options": {
+        "relations": { "type": ["list", "string"], "description": "the relations to show (partner, family, friend...); everyone when left out" },
+        "title": { "type": "string", "default": "People", "description": "the card's title" }
+      }
+    }
+  }
+}

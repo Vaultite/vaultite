@@ -1,0 +1,12 @@
+{
+  "id": "app-windows",
+  "category": "navigation",
+  "name": "App windows",
+  "description": "Other Mac apps in a tab of the desktop app, next to your notes: Spotify, Messages, any app with a window. The app's own window is kept right behind the tab, so it works as it always does; closing the tab gives it back where it was.",
+  "runsOnServer": true,
+  "offByDefault": true,
+  "tint": "indigo",
+  "settings": {
+    "newWindows": { "type": "boolean", "default": true, "label": "New windows as tabs", "description": "a new window from an app in a tab (Brave's ⌘N, a link opened in a new window) opens in a tab next to it; false leaves it a window of its own" }
+  }
+}

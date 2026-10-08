@@ -1,0 +1,19 @@
+{
+  "appId": "app.vaultite.ios",
+  "appName": "Vaultite",
+  "webDir": "web/dist",
+  "server": {
+    "appStartPath": "phone.html"
+  },
+  "ios": {
+    "path": "ios",
+    "contentInset": "never"
+  },
+  "experimental": {
+    "ios": {
+      "spm": {
+        "swiftToolsVersion": "6.2"
+      }
+    }
+  }
+}

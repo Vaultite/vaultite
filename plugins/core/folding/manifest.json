@@ -1,0 +1,6 @@
+{
+  "id": "folding",
+  "category": "writing",
+  "name": "Folding",
+  "description": "Fold a heading's section or a list item's nested items: a chevron beside the line when you point at it, and commands to fold or unfold everything. Folds are remembered per file on each device."
+}

@@ -1,0 +1,71 @@
+{
+  "id": "hermes",
+  "category": "agents",
+  "name": "Hermes",
+  "description": "What Hermes Agent (Nous Research) does on this machine, in its main home and each profile: sessions running now, usage and its cost as Hermes records it, by day, project and model, each session's conversation, its memory and its scheduled jobs. Read from Hermes' own files, nothing saved.",
+  "runsOnServer": true,
+  "enhances": ["projects", "terminal"],
+  "blocks": {
+    "hermes-sessions": {
+      "description": "sessions open now, then the latest ones",
+      "live": "Hermes' database on the machine the server runs on (~/.hermes/state.db)",
+      "options": {
+        "recent": { "type": "number", "default": 5, "description": "how many recent sessions to list after the open ones" },
+        "account": { "type": "string", "description": "one profile's (default for the main home, else its name); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "hermes-usage": {
+      "description": "its cost as Hermes recorded it and tokens per day, today and over the last days",
+      "live": "Hermes' database on the machine the server runs on (~/.hermes/state.db)",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one profile's (default for the main home, else its name); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "hermes-projects": {
+      "description": "its usage by project over the last days (a chat app's sessions under the app's name)",
+      "live": "Hermes' database on the machine the server runs on (~/.hermes/state.db)",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one profile's (default for the main home, else its name); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "hermes-models": {
+      "description": "its usage by model over the last days",
+      "live": "Hermes' database on the machine the server runs on (~/.hermes/state.db)",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one profile's (default for the main home, else its name); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "hermes": {
+      "description": "in a project file: that project's usage over the last 30 days and its sessions",
+      "live": "Hermes' database on the machine the server runs on (~/.hermes/state.db)",
+      "options": {
+        "project": { "type": "string", "description": "another project than the file's (its folder's name)" },
+        "account": { "type": "string", "description": "one profile's (default for the main home, else its name); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "hermes-memory": {
+      "description": "what Hermes keeps about itself and you: its SOUL.md, and each entry of its MEMORY.md and USER.md, read only",
+      "live": "Hermes' files on the machine the server runs on (~/.hermes/SOUL.md, memories/)",
+      "options": {
+        "account": { "type": "string", "description": "a profile's (its name); the main home's when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "hermes-cron": {
+      "description": "Hermes' scheduled jobs: each one's schedule, whether it's on, its next run and how the last one went",
+      "live": "Hermes' files on the machine the server runs on (~/.hermes/cron/jobs.json)",
+      "options": {
+        "account": { "type": "string", "description": "a profile's (its name); the main home's when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    }
+  }
+}

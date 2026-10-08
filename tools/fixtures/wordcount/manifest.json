@@ -1,0 +1,39 @@
+{
+  "id": "wordcount",
+  "name": "Word count",
+  "description": "A made-up vault plugin with no code in the app: commands that count the words of the vault's notes, keep a list of notes changed, and say when they started.",
+  "version": "1.0.0",
+  "author": "Bob Lee",
+  "repo": "boblee/wordcount",
+  "disclosures": {},
+  "category": "writing",
+  "apiVersion": 1,
+  "ops": [
+    {
+      "id": "wordcount.count",
+      "summary": "Count the words of the Markdown files in a folder.",
+      "help": "Reads the files where they are (the vault's folder) and answers {folder, files, words}.\n\n  vau words Notes",
+      "kind": "read",
+      "params": {
+        "folder": { "type": "string", "default": "", "description": "a folder of the vault (the whole vault when left out)" }
+      },
+      "args": ["folder"],
+      "cli": "words",
+      "mcp": true,
+      "command": ["node", "count.mjs"]
+    },
+    {
+      "id": "wordcount.changed",
+      "summary": "The notes changed since the server started, as this plugin's event hook noted them.",
+      "kind": "read",
+      "command": ["node", "changed.mjs"],
+      "timeout": 10
+    }
+  ],
+  "events": [
+    { "on": "file.changed", "path": "Notes/", "command": ["node", "note-changed.mjs"] }
+  ],
+  "startup": [
+    { "command": ["node", "started.mjs"] }
+  ]
+}

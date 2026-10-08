@@ -1,0 +1,15 @@
+{
+  "left": [
+    "search:search",
+    "pages:pages",
+    "files:files"
+  ],
+  "right": [
+    "backlinks:links",
+    "outline:outline",
+    "tags:tags"
+  ],
+  "collapsed": [
+    "tags:tags"
+  ]
+}

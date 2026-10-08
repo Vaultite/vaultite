@@ -1,0 +1,6 @@
+{
+  "id": "outline",
+  "category": "navigation",
+  "name": "Outline",
+  "description": "A sidebar panel with the headings of the file you're on: click one to go there, and the one you're reading is lit."
+}

@@ -1,0 +1,7 @@
+{
+  "id": "export-pdf",
+  "category": "writing",
+  "name": "Export to PDF",
+  "description": "Print a note, or save it as a PDF, the way it reads: its title and text with images, embeds and math, in light colours on white whatever the app's theme, without the app around it.",
+  "replaces": { "obsidian": ["better-export-pdf"] }
+}

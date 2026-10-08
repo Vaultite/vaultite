@@ -1,0 +1,61 @@
+/* Rosé Pine, from rose-pine/rose-pine-theme: Dawn (light) and Main (dark). Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="rose-pine"] {
+    color-scheme: light;
+    --background: #faf4ed;
+    --foreground: #575279;
+    --card: #fffaf3;
+    --card-foreground: #575279;
+    --popover: rgb(255 250 243 / 0.9);
+    --popover-foreground: #575279;
+    --primary: #286983;
+    --primary-foreground: #faf4ed;
+    --secondary: rgb(121 117 147 / 0.14);
+    --secondary-foreground: #575279;
+    --muted: rgb(121 117 147 / 0.14);
+    --muted-foreground: #797593;
+    --accent: rgb(121 117 147 / 0.14);
+    --accent-foreground: #575279;
+    --destructive: #b4637a;
+    --border: rgb(121 117 147 / 0.28);
+    --input: rgb(121 117 147 / 0.22);
+    --ring: #286983;
+    --chart-1: #286983; --chart-2: #797593; --chart-3: #b4637a; --chart-4: #907aa9; --chart-5: #56949f;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #f2e9e1;
+    --segment-on: #fffaf3;
+    --red: #b4637a; --orange: #d7827e; --yellow: #ea9d34; --green: #56949f; --teal: #56949f;
+    --blue: #286983; --indigo: #907aa9; --purple: #907aa9; --pink: #d7827e; --gray: #9893a5;
+    --h1: var(--red); --h2: var(--yellow); --h3: var(--orange); --h4: var(--teal); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(121 117 147 / 0.35); --scrollbar-hover: rgb(121 117 147 / 0.55);
+    --map-land: #f2e9e1; --map-water: #bfcdcf; --map-park: #d9e1dd;
+}
+:is(:root, .scheme-preview)[data-scheme="rose-pine"].dark {
+    color-scheme: dark;
+    --background: #191724;
+    --foreground: #e0def4;
+    --card: #1f1d2e;
+    --card-foreground: #e0def4;
+    --popover: rgb(38 35 58 / 0.92);
+    --popover-foreground: #e0def4;
+    --primary: #c4a7e7;
+    --primary-foreground: #191724;
+    --secondary: rgb(144 140 170 / 0.22);
+    --secondary-foreground: #e0def4;
+    --muted: rgb(144 140 170 / 0.22);
+    --muted-foreground: #908caa;
+    --accent: rgb(144 140 170 / 0.22);
+    --accent-foreground: #e0def4;
+    --destructive: #eb6f92;
+    --border: rgb(144 140 170 / 0.32);
+    --input: rgb(224 222 244 / 0.14);
+    --ring: #c4a7e7;
+    --chart-1: #c4a7e7; --chart-2: #908caa; --chart-3: #eb6f92; --chart-4: #c4a7e7; --chart-5: #9ccfd8;
+    --glass-edge: rgb(224 222 244 / 0.1);
+    --sidebar: #16141f;
+    --segment-on: #403d52;
+    --red: #eb6f92; --orange: #ebbcba; --yellow: #f6c177; --green: #9ccfd8; --teal: #9ccfd8;
+    --blue: #31748f; --indigo: #c4a7e7; --purple: #c4a7e7; --pink: #ebbcba; --gray: #6e6a86;
+    --h1: var(--red); --h2: var(--yellow); --h3: var(--orange); --h4: var(--teal); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(224 222 244 / 0.2); --scrollbar-hover: rgb(224 222 244 / 0.35);
+    --map-land: #16141f; --map-water: #1e2b3c; --map-park: #2e3441;
+}

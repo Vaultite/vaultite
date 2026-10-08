@@ -1,0 +1,18 @@
+{
+  "disabled": [
+    "ai-import",
+    "audio-recorder",
+    "books",
+    "calendar",
+    "clipper",
+    "logs",
+    "people",
+    "people-map",
+    "projects",
+    "today",
+    "cursor",
+    "health",
+    "learning"
+  ],
+  "enabled": []
+}

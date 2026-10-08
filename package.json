@@ -1,0 +1,247 @@
+{
+  "name": "vaultite",
+  "private": true,
+  "license": "Apache-2.0",
+  "version": "0.1.0",
+  "type": "module",
+  "engines": {
+    "node": ">=23.6"
+  },
+  "bin": {
+    "vau": "bin/vau"
+  },
+  "scripts": {
+    "prepare": "git config core.hooksPath .githooks 2>/dev/null || true",
+    "dev": "vite",
+    "start": "node server.ts",
+    "build": "tsc -b & vite build; v=$?; wait $! && exit $v",
+    "build:demo": "vite build -c vite.demo.config.ts",
+    "test": "node tools/test_web.ts && node tools/test_vault.ts && node tools/test_sandbox.ts && node tools/test_setup.ts && node tools/test_stall.ts",
+    "check": "node tools/check_plugins.ts",
+    "smoke": "node web/qa/boot.mjs",
+    "qa": "node tools/qa.ts",
+    "lint": "oxlint",
+    "preview": "vite preview",
+    "app": "node electron/start.ts",
+    "app:build": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && node electron/stamp.ts && node tools/build_helpers.ts && electron-builder --dir",
+    "app:build:dev": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_CHANNEL=dev node electron/stamp.ts && node tools/build_helpers.ts && electron-builder --dir -c.appId=app.vaultite.dev -c.productName='Vaultite Dev' -c.extraMetadata.productName='Vaultite Dev'",
+    "app:dev": "zsh electron/dev.sh",
+    "app:install": "node electron/install.ts",
+    "release": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && node tools/build_helpers.ts && VAULTITE_RELEASE=1 electron-builder --mac --publish never",
+    "release:linux": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --linux --publish never",
+    "ios": "VAULTITE_CLEAN_BUILD=1 vite build && cap sync ios && cap open ios"
+  },
+  "dependencies": {
+    "@aiden0z/pptx-renderer": "1.3.0",
+    "@base-ui/react": "^1.8.0",
+    "@codemirror/autocomplete": "^6.20.3",
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-html": "^6.4.12",
+    "@codemirror/lang-json": "^6.0.2",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/lang-yaml": "^6.1.3",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/language-data": "^6.5.2",
+    "@codemirror/search": "^6.7.2",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/modifiers": "^9.0.0",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
+    "@excalidraw/excalidraw": "^0.18.1",
+    "@fontsource-variable/geist": "^5.3.0",
+    "@lezer/highlight": "^1.2.5",
+    "@lezer/markdown": "^1.7.2",
+    "@novnc/novnc": "1.7.0",
+    "@replit/codemirror-vim": "^6.4.0",
+    "@tailwindcss/node": "^4.3.3",
+    "@tailwindcss/oxide": "^4.3.3",
+    "@tailwindcss/vite": "^4.3.3",
+    "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-serialize": "^0.14.0",
+    "@xterm/addon-web-links": "^0.12.0",
+    "@xterm/addon-webgl": "^0.19.0",
+    "@xterm/headless": "^6.0.0",
+    "@xterm/xterm": "^6.0.0",
+    "class-variance-authority": "^0.7.1",
+    "cn": "^0.4.0",
+    "d3-force": "^3.0.0",
+    "defuddle": "^0.19.4",
+    "docx-preview": "0.4.1",
+    "electron-updater": "^6.8.9",
+    "foliate-js": "1.0.1",
+    "ical.js": "^2.2.1",
+    "katex": "^0.16.47",
+    "linkedom": "^0.18.13",
+    "lucide-react": "^1.48.0",
+    "lz-string": "^1.5.0",
+    "maplibre-gl": "^6.11.2",
+    "marked": "^18.0.14",
+    "mermaid": "^11.17.2",
+    "node-pty": "^1.1.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "rolldown": "^1.2.11",
+    "sax": "^1.6.1",
+    "sonner": "^2.0.8",
+    "tailwindcss": "^4.3.3",
+    "tw-animate-css": "^1.4.0",
+    "ws": "^8.22.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "yaml": "^2.9.1"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.5.2",
+    "@capacitor/core": "^8.5.2",
+    "@capacitor/ios": "^8.5.2",
+    "@noble/hashes": "^2.4.0",
+    "@types/d3-force": "^3.0.10",
+    "@types/node": "^24.19.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.7",
+    "@types/sax": "^1.2.7",
+    "@types/ws": "^8.18.2",
+    "@vitejs/plugin-react": "^6.1.1",
+    "buffer": "^6.0.3",
+    "electron": "^44.5.0",
+    "electron-builder": "^26.15.3",
+    "oxlint": "^1.81.0",
+    "playwright-core": "^1.63.0",
+    "shadcn": "^4.21.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-darwin-arm64": "^1.2.11"
+  },
+  "main": "electron/main.ts",
+  "description": "Vaultite: a personal life dashboard over a vault of Markdown files",
+  "homepage": "https://vaultite.com",
+  "desktopName": "vaultite.desktop",
+  "build": {
+    "appId": "app.vaultite.desktop",
+    "productName": "Vaultite",
+    "directories": {
+      "output": "dist-app"
+    },
+    "asar": false,
+    "npmRebuild": false,
+    "afterPack": "electron/sign.cjs",
+    "artifactBuildCompleted": "electron/dmg.cjs",
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "https://vaultite.com/updates"
+      }
+    ],
+    "files": [
+      "package.json",
+      "README.md",
+      "screenshots/**",
+      "CHANGELOG.md",
+      "server.ts",
+      "core/**",
+      "bundles/**",
+      "plugins/**",
+      "bin/**",
+      "electron/**",
+      "examples/vault/**",
+      "web/dist/**",
+      "web/public/**",
+      "web/src/index.css",
+      "web/src/shadcn.css",
+      "web/src/themes/**",
+      "!plugins/**/*.tsx",
+      "!**/node_modules/**/*.map",
+      "!**/node_modules/**/*.d.{mts,cts}"
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "icon": "web/public/icon-512.png",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": "arm64"
+        },
+        {
+          "target": "zip",
+          "arch": "arm64"
+        }
+      ],
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Vaultite records audio into your notes when you ask it to.",
+        "NSAppleEventsUsageDescription": "Scripts in Vaultite's terminals want to control another app."
+      }
+    },
+    "dmg": {
+      "writeUpdateInfo": false
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Office",
+      "icon": "web/public/icon-512.png",
+      "executableName": "vaultite",
+      "synopsis": "Your notes as plain Markdown files, with your coding agents in them",
+      "description": "Vaultite reads a folder of Markdown files (a vault) live: notes, dashboards, logs and plugins, with Claude Code and other agents in its terminals.",
+      "maintainer": "Vaultite",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "vaultite"
+        }
+      },
+      "syncDesktopName": true
+    },
+    "appImage": {
+      "artifactName": "Vaultite-${version}-${arch}.AppImage"
+    },
+    "deb": {
+      "artifactName": "vaultite_${version}_${arch}.deb",
+      "packageCategory": "editors"
+    },
+    "fileAssociations": [
+      {
+        "ext": [
+          "md",
+          "markdown"
+        ],
+        "name": "Markdown",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/markdown"
+      },
+      {
+        "ext": "csv",
+        "name": "CSV table",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/csv"
+      },
+      {
+        "ext": [
+          "html",
+          "htm"
+        ],
+        "name": "HTML page",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/html"
+      },
+      {
+        "ext": "txt",
+        "name": "Plain text",
+        "role": "Editor",
+        "rank": "Alternate",
+        "mimeType": "text/plain"
+      }
+    ],
+    "toolsets": {
+      "appimage": "1.0.3"
+    }
+  }
+}

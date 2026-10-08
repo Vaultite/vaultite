@@ -1,0 +1,16 @@
+{
+  "id": "terminal",
+  "category": "system",
+  "name": "Terminal",
+  "description": "A shell in a tab, opened in the vault's folder, to run a coding agent (Claude Code, Codex, OpenCode, Cursor) on your notes. Runs on this machine, or on your other machines (Machines); closing the tab keeps the shell going.",
+  "replaces": { "obsidian": ["terminal"] },
+  "runsOnServer": true,
+  "enhances": [
+    "machines"
+  ],
+  "settings": {
+    "backend": { "local": true, "type": "enum", "values": ["vaultite", "tmux"], "default": "vaultite", "labels": { "vaultite": "Vaultite", "tmux": "tmux" }, "label": "Where new shells run", "description": "Vaultite keeps them running on its own, with the page's own scrollback; tmux, when it's installed, keeps them in a tmux server (tmux -L vaultite attach reaches them from any terminal). Shells already running stay where they are" },
+    "allowUsers": { "local": true, "type": "list", "label": "Other tailnet logins", "description": "tailnet logins besides this machine's owner that may open terminals through Tailscale Serve, like someone@example.com" },
+    "allowRemote": { "local": true, "type": "boolean", "default": false, "label": "Anyone who reaches the app", "description": "lets anyone who reaches the app open terminals, not only this machine's owner and the logins above: only on a network you trust" }
+  }
+}

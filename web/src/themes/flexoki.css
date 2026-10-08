@@ -1,0 +1,61 @@
+/* Flexoki, from kepano/flexoki: light and dark. Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="flexoki"] {
+    color-scheme: light;
+    --background: #f2f0e5;
+    --foreground: #100f0f;
+    --card: #fffcf0;
+    --card-foreground: #100f0f;
+    --popover: rgb(255 252 240 / 0.9);
+    --popover-foreground: #100f0f;
+    --primary: #205ea6;
+    --primary-foreground: #fffcf0;
+    --secondary: rgb(111 110 105 / 0.14);
+    --secondary-foreground: #100f0f;
+    --muted: rgb(111 110 105 / 0.14);
+    --muted-foreground: #6f6e69;
+    --accent: rgb(111 110 105 / 0.14);
+    --accent-foreground: #100f0f;
+    --destructive: #af3029;
+    --border: #cecdc3;
+    --input: rgb(111 110 105 / 0.22);
+    --ring: #205ea6;
+    --chart-1: #205ea6; --chart-2: #6f6e69; --chart-3: #af3029; --chart-4: #5e409d; --chart-5: #66800b;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #e6e4d9;
+    --segment-on: #fffcf0;
+    --red: #af3029; --orange: #bc5215; --yellow: #ad8301; --green: #66800b; --teal: #24837b;
+    --blue: #205ea6; --indigo: #5e409d; --purple: #5e409d; --pink: #a02f6f; --gray: #878580;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--teal); --h6: var(--blue);
+    --scrollbar: rgb(111 110 105 / 0.35); --scrollbar-hover: rgb(111 110 105 / 0.55);
+    --map-land: #e6e4d9; --map-water: #b7c7d3; --map-park: #d6dab9;
+}
+:is(:root, .scheme-preview)[data-scheme="flexoki"].dark {
+    color-scheme: dark;
+    --background: #100f0f;
+    --foreground: #cecdc3;
+    --card: #1c1b1a;
+    --card-foreground: #cecdc3;
+    --popover: rgb(40 39 38 / 0.92);
+    --popover-foreground: #cecdc3;
+    --primary: #4385be;
+    --primary-foreground: #100f0f;
+    --secondary: rgb(135 133 128 / 0.22);
+    --secondary-foreground: #cecdc3;
+    --muted: rgb(135 133 128 / 0.22);
+    --muted-foreground: #878580;
+    --accent: rgb(135 133 128 / 0.22);
+    --accent-foreground: #cecdc3;
+    --destructive: #d14d41;
+    --border: #343331;
+    --input: rgb(206 205 195 / 0.14);
+    --ring: #4385be;
+    --chart-1: #4385be; --chart-2: #878580; --chart-3: #d14d41; --chart-4: #8b7ec8; --chart-5: #879a39;
+    --glass-edge: rgb(206 205 195 / 0.1);
+    --sidebar: #161514;
+    --segment-on: #403e3c;
+    --red: #d14d41; --orange: #da702c; --yellow: #d0a215; --green: #879a39; --teal: #3aa99f;
+    --blue: #4385be; --indigo: #8b7ec8; --purple: #8b7ec8; --pink: #ce5d97; --gray: #575653;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--teal); --h6: var(--blue);
+    --scrollbar: rgb(206 205 195 / 0.2); --scrollbar-hover: rgb(206 205 195 / 0.35);
+    --map-land: #161514; --map-water: #1b2936; --map-park: #232516;
+}

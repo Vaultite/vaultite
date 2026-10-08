@@ -1,0 +1,14 @@
+{
+  "id": "machines",
+  "category": "system",
+  "name": "Machines",
+  "description": "Your other computers running Vaultite, reached from this one: which are online and what they run, their terminals and coding agents in this app. One vault, many machines.",
+  "tint": "teal",
+  "blocks": {
+    "machines": {
+      "description": "your other computers running Vaultite, whether they answer and what they run",
+      "live": "the other machines' apps, asked live",
+      "options": {}
+    }
+  }
+}

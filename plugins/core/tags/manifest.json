@@ -1,0 +1,7 @@
+{
+  "id": "tags",
+  "category": "navigation",
+  "name": "Tags",
+  "description": "Every tag in the vault, from frontmatter tags and #tags in the text, nested ones under their parents, with counts. Click a tag (here or in a note) for its files, or rename it everywhere.",
+  "replaces": { "obsidian": ["tag-wrangler"] }
+}

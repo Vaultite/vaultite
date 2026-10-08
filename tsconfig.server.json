@@ -1,0 +1,29 @@
+{
+  "compilerOptions": {
+    "incremental": true,
+    "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
+    // how a vault plugin's backend imports the core (core/vaultplugins.ts): the example in tools/fixtures
+    "paths": { "@vaultite/core/*": ["./core/*"] },
+    "target": "es2023",
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"],
+    "skipLibCheck": true,
+
+    /* Node runs these files as they are (type stripping): imports name the .ts file */
+    "module": "nodenext",
+    "allowImportingTsExtensions": true,
+    "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
+    "moduleDetection": "force",
+    "noEmit": true,
+
+    /* Linting */
+    "strict": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+    "noFallthroughCasesInSwitch": true
+  },
+  "include": ["server.ts", "core", "web/demo/worker.ts", "web/demo/mount.ts", "web/demo/machine.ts", "web/demo/env.d.ts", "web/demo/node", "plugins/**/plugin.ts", "plugins/**/import.ts", "plugins/**/cli.ts", "tools", "electron/*.ts"],
+  // an example vault plugin's frontend: tsconfig.app.json
+  "exclude": ["tools/fixtures/**/*.tsx"]
+}

@@ -1,0 +1,69 @@
+{
+  "id": "activity",
+  "category": "system",
+  "name": "Activity",
+  "description": "Everything done to your vault and the app, and by whom: your edits and moves, coding agents working through the CLI or the API, changes on disk. Kept on this machine for two weeks, and each day's recap in the vault for good: what you made and changed, tasks done, things captured. Plus how fast the server and the app are.",
+  "forAgents": "What the user did on a day (notes changed and what changed, tasks done, captures, logs): `activity.recap` (`vau recap 2026-10-06`), kept in `Recaps/<date>.md`.",
+  "tint": "indigo",
+  "settings": {
+    "keep_days": { "type": "number", "default": 14, "min": 1, "max": 365, "label": "Days to keep", "description": "how long events and timings are kept on this machine" },
+    "reads": { "type": "boolean", "default": true, "label": "Record reads", "description": "what agents and scripts read is recorded too, not only what they change" },
+    "recaps": { "type": "boolean", "default": true, "label": "Write day recaps", "description": "each day's recap goes in the vault (Recaps/<date>.md), with the text you changed quoted, to keep" },
+    "capture_folders": { "type": "list", "label": "Capture folders", "description": "folders whose new files are captures, like Transcripts for a transcriber's exports (clips and bookmarks are found without it)" }
+  },
+  "blocks": {
+    "activity": {
+      "description": "what was done to the vault and the app, and by whom, newest first",
+      "live": "this machine's activity record (not in the vault)",
+      "options": {
+        "limit": { "type": "number", "default": 30, "min": 1, "max": 200, "description": "how many events to show" },
+        "actor": { "type": "enum", "values": ["you", "agent", "cli", "script", "disk"], "description": "only what this kind of actor did" },
+        "path": { "type": "string", "description": "only events on one file: a vault path, or this for the file the block is in" },
+        "title": { "type": "string", "description": "the card's title" }
+      }
+    },
+    "recap": {
+      "description": "what you did on a day, as a timeline: notes made and changed with the text changed, tasks done or dropped, captures, logs, agents' sessions; filter by kind, step by day, week or month",
+      "live": "today's made from this machine's activity and file history; earlier days from their recaps (Recaps/<date>.md)",
+      "options": {
+        "date": { "type": "string", "description": "the day (YYYY-MM-DD); left out: the date of the note it's in (a daily note), else today" },
+        "days": { "type": "number", "default": 1, "min": 1, "max": 31, "description": "how many days, ending with that one: 7 for a week" },
+        "title": { "type": "string", "description": "the card's title" }
+      }
+    },
+    "recap-stats": {
+      "description": "the last weeks of recaps as a grid of days, darker the more done, and how many of each kind",
+      "live": "the recaps in the vault, today's made now",
+      "options": {
+        "weeks": { "type": "number", "default": 10, "min": 1, "max": 53, "description": "how many weeks back" }
+      }
+    },
+    "activity-summary": {
+      "description": "the last 24 hours (or days) by you, agents and the rest, then who and the files touched most",
+      "live": "this machine's activity record (not in the vault)",
+      "options": {
+        "days": { "type": "number", "default": 1, "min": 1, "max": 31, "description": "how many days back: 1 is the last 24 hours by hour, more is by day" },
+        "title": { "type": "string", "description": "the card's title" }
+      }
+    },
+    "perf-server": {
+      "description": "the server's uptime, memory, event loop delay and requests, with per-minute response times",
+      "live": "this server's own timings (not in the vault)",
+      "options": {
+        "minutes": { "type": "number", "default": 1440, "min": 10, "max": 10080, "description": "how many minutes back the charts and counts go" }
+      }
+    },
+    "perf-routes": {
+      "description": "each API route's count and timings, and the slow requests",
+      "live": "this server's own timings (not in the vault)",
+      "options": {
+        "minutes": { "type": "number", "min": 10, "max": 10080, "description": "how many minutes back the timings go" }
+      }
+    },
+    "perf-app": {
+      "description": "what each app window reports about its own speed",
+      "live": "this server's own timings (not in the vault)",
+      "options": {}
+    }
+  }
+}

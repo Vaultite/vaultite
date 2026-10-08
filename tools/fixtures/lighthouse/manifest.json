@@ -1,0 +1,17 @@
+{
+  "id": "lighthouse",
+  "category": "life",
+  "name": "Lighthouse",
+  "description": "A made-up vault plugin: its keepers, whether the beam is on, and a page for both.",
+  "version": "1.0.0",
+  "author": "Alice Park",
+  "repo": "alicepark/lighthouse",
+  "disclosures": {},
+  "apiVersion": 1,
+  "blocks": {
+    "lighthouse": {
+      "description": "whether the beam is on, and the keepers",
+      "options": {}
+    }
+  }
+}

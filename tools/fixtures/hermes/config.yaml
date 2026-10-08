@@ -1,0 +1,13 @@
+# Hermes settings, made up for the tests.
+model:
+  default: anthropic/claude-sonnet-4.6
+  provider: openrouter
+
+mcp_servers:
+  time:
+    command: uvx
+    args: ["mcp-server-time"]
+
+# Where commands run
+terminal:
+  backend: local

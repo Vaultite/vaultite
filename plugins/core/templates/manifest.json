@@ -1,0 +1,26 @@
+{
+  "id": "templates",
+  "category": "writing",
+  "name": "Templates",
+  "description": "Notes in a Templates folder you start new notes from, or insert into the one you're writing, with {{date}}, {{time}} and {{title}} filled in; and commands that insert the current date or time.",
+  "settings": {
+    "folder": {
+      "type": "string",
+      "default": "Templates",
+      "label": "Folder",
+      "description": "the folder whose notes are templates"
+    },
+    "dateFormat": {
+      "type": "string",
+      "default": "YYYY-MM-DD",
+      "label": "Date format",
+      "description": "how {{date}} and Insert current date write a date (YYYY MM DD, dddd D MMMM...)"
+    },
+    "timeFormat": {
+      "type": "string",
+      "default": "HH:mm",
+      "label": "Time format",
+      "description": "how {{time}} and Insert current time write a time (HH:mm, h:mm A...)"
+    }
+  }
+}

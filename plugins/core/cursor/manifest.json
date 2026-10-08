@@ -1,0 +1,57 @@
+{
+  "id": "cursor",
+  "category": "agents",
+  "name": "Cursor",
+  "description": "What Cursor and its CLI do on this machine: the plan's included usage and when it renews, chats open now, usage and its value at API rates, by day, project and model. Chats read from Cursor's own files, usage from Cursor's dashboard; nothing saved.",
+  "runsOnServer": true,
+  "enhances": ["projects", "terminal"],
+  "blocks": {
+    "cursor-limits": {
+      "description": "the plan's included usage this billing month, and Grok Bot's week: how much is used and when each renews",
+      "live": "Cursor's own files on this machine and its dashboard",
+      "options": {
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "cursor-sessions": {
+      "description": "chats open now, then the latest ones",
+      "live": "Cursor's own files on this machine and its dashboard",
+      "options": {
+        "recent": { "type": "number", "default": 5, "description": "how many recent chats to list after the open ones" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "cursor-usage": {
+      "description": "its value at API rates, as Cursor meters it, and tokens per day, today and over the last days",
+      "live": "Cursor's own files on this machine and its dashboard",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "cursor-projects": {
+      "description": "its usage by project over the last days",
+      "live": "Cursor's own files on this machine and its dashboard",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "cursor-models": {
+      "description": "its usage by model over the last days",
+      "live": "Cursor's own files on this machine and its dashboard",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "cursor": {
+      "description": "in a project file: that project's usage over the last 30 days and its chats",
+      "live": "Cursor's own files on this machine and its dashboard",
+      "options": {
+        "project": { "type": "string", "description": "another project than the file's (its folder's name, as Cursor names it)" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    }
+  }
+}

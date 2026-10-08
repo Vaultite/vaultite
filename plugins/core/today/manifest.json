@@ -1,0 +1,16 @@
+{
+  "id": "today",
+  "category": "life",
+  "name": "Today",
+  "description": "Routines you tick each day, and the Today page: a dashboard of blocks from this and other plugins (the calendar, this week's goals, sleep, meals).",
+  "forAgents": "Their day or week: `today.render` (the Today page as text).",
+  "tint": "orange",
+  "enhances": ["logs"],
+  "pageSort": 10,
+  "blocks": {
+    "routines": {
+      "description": "this week's routines, to tick",
+      "options": {}
+    }
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "id": "random-note",
+  "category": "navigation",
+  "name": "Random note",
+  "description": "Open a note picked at random: a way to come across what you wrote long ago.",
+  "settings": {
+    "newTab": { "type": "boolean", "default": false, "label": "Open in a new tab", "description": "open the note in a new tab rather than the one you're in" }
+  }
+}

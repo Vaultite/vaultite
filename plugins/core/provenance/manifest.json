@@ -1,0 +1,26 @@
+{
+  "id": "provenance",
+  "category": "agents",
+  "name": "Provenance",
+  "description": "Who wrote a file: you, an AI whose text you reviewed, you and an AI together, or an AI. One property, origin, shown and changed in every file's header and the status bar, with values you can change; those agents make through the API are marked AI, and yours can be marked too (a setting). Images and other files keep theirs in a list (labelling one never rewrites it), new ones agents upload carry the IPTC mark for AI-made media, and an image that carries it (ChatGPT's, Gemini's) shows as AI. A label, not a lock.",
+  "settings": {
+    "label_user": {
+      "type": "boolean",
+      "default": false,
+      "label": "Label your notes",
+      "description": "a note or file you make in the app (New note, the quick switcher, a template, a pasted image) or with the CLI is written with the first value; off, a note without a label is yours, and its header shows none"
+    },
+    "label_agents": {
+      "type": "boolean",
+      "default": true,
+      "label": "Label agents' notes",
+      "description": "a note or file an agent makes through the API (MCP, the CLI under a coding agent, curl) is written with an origin, and a new image says so inside"
+    },
+    "agent": {
+      "type": "string",
+      "default": "ai",
+      "label": "Agents' label",
+      "description": "the value those notes and files get, one of the values above; also what a file whose bytes say an AI made it shows"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "name": "Agents",
+  "description": "Where your coding agents work: terminals beside your pages, their sessions and limits, and a feed of what they did.",
+  "icon": "bot",
+  "tint": "orange",
+  "sort": 3
+}

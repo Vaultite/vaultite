@@ -1,0 +1,13 @@
+{
+  "disabled": [
+    "activity",
+    "machines",
+    "codex",
+    "cursor",
+    "opencode",
+    "workspaces",
+    "hermes",
+    "openclaw"
+  ],
+  "enabled": []
+}

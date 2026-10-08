@@ -1,0 +1,61 @@
+/* GitHub, from primer/primitives (GitHub's colours): light and dark. Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="github"] {
+    color-scheme: light;
+    --background: #f6f8fa;
+    --foreground: #1f2328;
+    --card: #ffffff;
+    --card-foreground: #1f2328;
+    --popover: rgb(255 255 255 / 0.9);
+    --popover-foreground: #1f2328;
+    --primary: #0969da;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(89 99 110 / 0.14);
+    --secondary-foreground: #1f2328;
+    --muted: rgb(89 99 110 / 0.14);
+    --muted-foreground: #59636e;
+    --accent: rgb(89 99 110 / 0.14);
+    --accent-foreground: #1f2328;
+    --destructive: #cf222e;
+    --border: #d1d9e0;
+    --input: rgb(89 99 110 / 0.22);
+    --ring: #0969da;
+    --chart-1: #0969da; --chart-2: #59636e; --chart-3: #cf222e; --chart-4: #8250df; --chart-5: #1a7f37;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #eff2f5;
+    --segment-on: #ffffff;
+    --red: #cf222e; --orange: #bc4c00; --yellow: #9a6700; --green: #1a7f37; --teal: #1b7c83;
+    --blue: #0969da; --indigo: #6639ba; --purple: #8250df; --pink: #bf3989; --gray: #818b98;
+    --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground); --h4: var(--muted-foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
+    --scrollbar: rgb(89 99 110 / 0.35); --scrollbar-hover: rgb(89 99 110 / 0.55);
+    --map-land: #eff2f5; --map-water: #b4d0f1; --map-park: #cae0d3;
+}
+:is(:root, .scheme-preview)[data-scheme="github"].dark {
+    color-scheme: dark;
+    --background: #0d1117;
+    --foreground: #f0f6fc;
+    --card: #151b23;
+    --card-foreground: #f0f6fc;
+    --popover: rgb(21 27 35 / 0.92);
+    --popover-foreground: #f0f6fc;
+    --primary: #4493f8;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(145 152 161 / 0.22);
+    --secondary-foreground: #f0f6fc;
+    --muted: rgb(145 152 161 / 0.22);
+    --muted-foreground: #9198a1;
+    --accent: rgb(145 152 161 / 0.22);
+    --accent-foreground: #f0f6fc;
+    --destructive: #f85149;
+    --border: #3d444d;
+    --input: rgb(240 246 252 / 0.14);
+    --ring: #4493f8;
+    --chart-1: #4493f8; --chart-2: #9198a1; --chart-3: #f85149; --chart-4: #ab7df8; --chart-5: #3fb950;
+    --glass-edge: rgb(240 246 252 / 0.1);
+    --sidebar: #010409;
+    --segment-on: #3d444d;
+    --red: #f85149; --orange: #db6d28; --yellow: #d29922; --green: #3fb950; --teal: #39c5cf;
+    --blue: #4493f8; --indigo: #8957e5; --purple: #ab7df8; --pink: #db61a2; --gray: #656c76;
+    --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground); --h4: var(--muted-foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
+    --scrollbar: rgb(240 246 252 / 0.2); --scrollbar-hover: rgb(240 246 252 / 0.35);
+    --map-land: #010409; --map-water: #192e49; --map-park: #152c20;
+}

@@ -1,0 +1,29 @@
+{
+  "id": "logs",
+  "category": "life",
+  "name": "Logs",
+  "description": "What you did, one file per entry: workouts, sleep, meals, study sessions. Areas are set in its settings.",
+  "forAgents": "What the user did (a workout, a meal, sleep, study) is a log: `log.create`.",
+  "blocks": {
+    "log": {
+      "description": "a log file's fields",
+      "options": {}
+    },
+    "week-goals": {
+      "description": "this week against each area's weekly goal",
+      "options": {
+        "areas": { "type": ["list", "string"], "description": "the areas to show (slugs); every area with a goal when left out" },
+        "title": { "type": "string", "default": "This week", "description": "the card's title" }
+      }
+    },
+    "area": {
+      "description": "an area's weeks and latest sessions",
+      "options": {
+        "area": { "type": "string", "required": true, "description": "the area (its slug)" },
+        "meta": { "type": ["string", "list"], "description": "a field, or a list of them, shown on each session" },
+        "total": { "type": "string", "description": "a number field summed over this week" },
+        "empty": { "type": "string", "description": "the text when there's nothing logged yet" }
+      }
+    }
+  }
+}

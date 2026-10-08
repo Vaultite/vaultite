@@ -1,0 +1,64 @@
+/* Amethyst (light and dark): white pages, a grey sidebar, a purple accent, plain headings. Values only. Overrides
+   every token in index.css. See LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="amethyst"] {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #222222;
+    --card: #fafafa;
+    --card-foreground: #222222;
+    --popover: rgb(255 255 255 / 0.92);
+    --popover-foreground: #222222;
+    --primary: #705dcf;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(0 0 0 / 0.06);
+    --secondary-foreground: #222222;
+    --muted: rgb(0 0 0 / 0.06);
+    --muted-foreground: #5c5c5c;
+    --accent: rgb(0 0 0 / 0.06);
+    --accent-foreground: #222222;
+    --destructive: #e93147;
+    --border: #e0e0e0;
+    --input: rgb(0 0 0 / 0.12);
+    --ring: #705dcf;
+    --chart-1: #705dcf; --chart-2: #707070; --chart-3: #e93147; --chart-4: #086ddd; --chart-5: #08b94e;
+    --glass-edge: rgb(255 255 255 / 0.6);
+    --sidebar: #f6f6f6;
+    --segment-on: #ffffff;
+    --red: #e93147; --orange: #ec7500; --yellow: #e0ac00; --green: #08b94e; --teal: #00bfbc;
+    --blue: #086ddd; --indigo: #5a5fd6; --purple: #7852ee; --pink: #d53984; --gray: #ababab;
+    --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground);
+    --h4: var(--foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
+    --scrollbar: rgb(0 0 0 / 0.2); --scrollbar-hover: rgb(0 0 0 / 0.35);
+    --map-land: #f2f2f2; --map-water: #c9d6e6; --map-park: #dce8d6;
+}
+:is(:root, .scheme-preview)[data-scheme="amethyst"].dark {
+    color-scheme: dark;
+    --background: #1e1e1e;
+    --foreground: #dadada;
+    --card: #262626;
+    --card-foreground: #dadada;
+    --popover: rgb(38 38 38 / 0.94);
+    --popover-foreground: #dadada;
+    --primary: #8a7cf0;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(255 255 255 / 0.08);
+    --secondary-foreground: #dadada;
+    --muted: rgb(255 255 255 / 0.08);
+    --muted-foreground: #a3a3a3;
+    --accent: rgb(255 255 255 / 0.08);
+    --accent-foreground: #dadada;
+    --destructive: #fb464c;
+    --border: #363636;
+    --input: rgb(255 255 255 / 0.12);
+    --ring: #8a7cf0;
+    --chart-1: #8a7cf0; --chart-2: #999999; --chart-3: #fb464c; --chart-4: #027aff; --chart-5: #44cf6e;
+    --glass-edge: rgb(255 255 255 / 0.08);
+    --sidebar: #262626;
+    --segment-on: #3f3f3f;
+    --red: #fb464c; --orange: #e9973f; --yellow: #e0de71; --green: #44cf6e; --teal: #53dfdd;
+    --blue: #027aff; --indigo: #7f86f2; --purple: #a882ff; --pink: #fa99cd; --gray: #666666;
+    --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground);
+    --h4: var(--foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
+    --scrollbar: rgb(255 255 255 / 0.18); --scrollbar-hover: rgb(255 255 255 / 0.32);
+    --map-land: #242424; --map-water: #1c2633; --map-park: #22291f;
+}

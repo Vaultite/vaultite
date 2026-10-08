@@ -1,0 +1,18 @@
+{
+  "id": "projects",
+  "category": "life",
+  "name": "Projects",
+  "description": "Your projects from the vault's Projects folder (the Projects page): what each one is, its status and links.",
+  "tint": "green",
+  "pageSort": 70,
+  "blocks": {
+    "project": {
+      "description": "a project file's status, tagline and links",
+      "options": {}
+    },
+    "projects": {
+      "description": "a card per project, each made of that project file's blocks",
+      "options": {}
+    }
+  }
+}

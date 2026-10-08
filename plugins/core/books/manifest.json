@@ -1,0 +1,16 @@
+{
+  "id": "books",
+  "category": "life",
+  "name": "Books",
+  "description": "What you're reading and want to read, from the vault's Books folder. A block on Learning.",
+  "blocks": {
+    "book": {
+      "description": "a book file's fields: status, reading progress, rating",
+      "options": {}
+    },
+    "books": {
+      "description": "the books being read and the ones wanted to read",
+      "options": {}
+    }
+  }
+}

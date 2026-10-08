@@ -1,0 +1,90 @@
+/* People map pins, popups and MapLibre controls, restyled to match the dashboard (loaded with the map chunk). */
+.pm-map { --pm-halo: #f6f4ef; background: #f6f4ef; }
+.dark .pm-map { --pm-halo: #242426; background: #242426; }
+.pm-map .maplibregl-canvas:focus-visible { outline: none; }
+
+/* Layers, bottom to top, stated once here (never inline, never left to DOM order: pins are redrawn on every zoom
+   and would cover a popup opened before): your own pin alone, pins, pins that include you, popups, controls. */
+.pm-map { isolation: isolate; }
+.pm-map .maplibregl-marker { z-index: 1; }
+.pm-map .maplibregl-marker.pm-layer-me { z-index: 0; }
+.pm-map .maplibregl-marker.pm-layer-top { z-index: 2; }
+.pm-map .maplibregl-popup { z-index: 3; }
+.pm-map .maplibregl-control-container > * { z-index: 4; }
+
+/* No position here: MapLibre positions markers absolutely (.maplibregl-marker). */
+.pm-pin {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.pm-pin:focus-visible { outline: none; }
+.pm-pin:focus-visible .pm-bubble { outline: 2px solid var(--ring); outline-offset: 2px; }
+.pm-bubble, .pm-avatar {
+  position: relative; display: grid; place-items: center; border-radius: 9999px; color: #fff;
+  font-family: var(--font-rounded); font-weight: 600; letter-spacing: 0.01em;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--c) 70%, #fff), var(--c));
+}
+.pm-bubble {
+  width: 40px; height: 40px; font-size: 15px; border: 2.5px solid #fff;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 0.22), 0 0 0 0.5px rgb(0 0 0 / 0.1);
+  transition: transform 0.15s ease;
+}
+.pm-group { width: 44px; height: 44px; font-size: 18px; }
+.pm-pin:active .pm-bubble { transform: scale(0.92); }
+.pm-tail {
+  width: 0; height: 0; margin-top: -2px;
+  border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid #fff;
+  filter: drop-shadow(0 2px 1px rgb(0 0 0 / 0.16));
+}
+.pm-label {
+  position: absolute; top: 100%; margin-top: 1px; white-space: nowrap; pointer-events: none;
+  font-size: 12px; line-height: 14px; font-weight: 600; color: var(--foreground);
+  text-shadow: 0 0 2px var(--pm-halo), 0 0 2px var(--pm-halo), 0 0 4px var(--pm-halo), 0 0 6px var(--pm-halo);
+}
+.pm-pin-me .pm-label { margin-top: 4px; color: var(--blue); }
+/* You: the blue location dot. */
+.pm-me {
+  display: block; width: 20px; height: 20px; border-radius: 9999px; background: var(--blue); border: 3px solid #fff;
+  box-shadow: 0 0 0 9px rgb(0 122 255 / 0.16), 0 1px 4px rgb(0 0 0 / 0.3);
+}
+.dark .pm-me { background: var(--blue); box-shadow: 0 0 0 9px color-mix(in srgb, var(--blue) 22%, transparent), 0 1px 4px rgb(0 0 0 / 0.5); }
+.pm-me-badge {
+  position: absolute; right: -4px; bottom: -3px; width: 15px; height: 15px; border-radius: 9999px;
+  background: var(--blue); border: 2.5px solid #fff; box-shadow: 0 1px 2px rgb(0 0 0 / 0.25);
+}
+
+/* Popup: a small glass list of the people in one spot. */
+.pm-popup .maplibregl-popup-tip { display: none; }
+.pm-popup .maplibregl-popup-content {
+  padding: 4px; border-radius: 12px; color: var(--foreground);
+  background: color-mix(in srgb, var(--popover) 92%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18), inset 0 0 0 0.5px var(--border);
+  font-family: var(--font-sans);
+}
+.pm-list > * + * { border-top: 0.5px solid var(--border); }
+.pm-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 48px; padding: 6px 10px;
+  text-align: left; background: none; border-radius: 8px; color: inherit;
+}
+.pm-row-btn { cursor: pointer; }
+.pm-row-btn:hover, .pm-row-btn:active { background: rgb(120 120 128 / 0.12); }
+.pm-avatar { width: 30px; height: 30px; flex: none; font-size: 12px; }
+.pm-avatar-me { background: radial-gradient(circle, var(--blue) 0 6px, #fff 6.5px 9px, color-mix(in srgb, var(--blue) 18%, transparent) 9.5px); }
+.pm-row-text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.pm-row-name { font-size: 15px; line-height: 20px; }
+.pm-row-meta { font-size: 13px; line-height: 17px; color: var(--muted-foreground); }
+.pm-chevron {
+  width: 8px; height: 8px; flex: none; margin-left: 4px; border: solid var(--muted-foreground); border-width: 2px 2px 0 0;
+  transform: rotate(45deg); opacity: 0.6;
+}
+
+/* Attribution: a quiet glass "i" in the corner. */
+.pm-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  margin: 0 8px 8px 0; background: color-mix(in srgb, var(--popover) 85%, transparent); color: var(--muted-foreground);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+}
+.pm-map .maplibregl-ctrl-attrib a { color: inherit; }
+.dark .pm-map .maplibregl-ctrl-attrib-button { filter: invert(1); }
+.dark .pm-map .maplibregl-ctrl-attrib.maplibregl-compact-show .maplibregl-ctrl-attrib-button { filter: invert(1); }
+.pm-group { text-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }

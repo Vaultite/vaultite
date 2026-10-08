@@ -1,0 +1,10 @@
+{
+  "id": "canvas",
+  "category": "writing",
+  "name": "Canvas",
+  "description": "Boards of cards, notes, web pages and groups joined by arrows: .canvas files (JSON Canvas) open as an infinite canvas, and ![[Board.canvas]] shows one in a note.",
+  "settings": {
+    "snapToGrid": { "type": "boolean", "default": true, "label": "Snap to grid", "description": "moving and resizing cards snaps to a 20px grid" },
+    "snapToObjects": { "type": "boolean", "default": true, "label": "Snap to cards", "description": "moving and resizing cards snaps to other cards' edges and centres" }
+  }
+}

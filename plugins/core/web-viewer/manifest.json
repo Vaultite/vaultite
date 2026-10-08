@@ -1,0 +1,15 @@
+{
+  "id": "web-viewer",
+  "category": "navigation",
+  "name": "Web viewer",
+  "description": "Web pages in a tab of the desktop app, next to your notes, with back, forward and Save to vault, which clips the page you see (one you're logged in to too) into a note. Links in notes open there, or in your browser with ⌘.",
+  "enhances": ["clipper"],
+  "runsOnServer": true,
+  "tint": "blue",
+  "settings": {
+    "openLinks": { "type": "enum", "values": ["viewer", "browser"], "default": "viewer", "label": "Open web links", "labels": {"viewer": "In the viewer", "browser": "In the browser"}, "description": "where web links clicked in notes open in the desktop app: a tab of the viewer (⌘-click: the browser), or always the browser" },
+    "search": { "type": "string", "default": "https://duckduckgo.com/?q=%s", "label": "Search with", "description": "where words typed in the address go, %s being the words" },
+    "notifications": { "type": "boolean", "default": true, "label": "Notifications from pages", "description": "a page's notifications (a new message), and Claude Code on the web's sessions finishing or waiting for you, reach you through the Inbox: a toast, the Mac's notification while the app isn't in front, and a click opens its tab; false drops them" },
+    "logins": { "type": "enum", "values": ["workspace", "shared"], "default": "workspace", "label": "Logins", "labels": {"workspace": "One per workspace", "shared": "Shared by every workspace"}, "description": "whether each workspace's pages have logins of their own (a different account per workspace for the same site; the first workspace keeps the logins pages had before) or every page shares one; pages already open keep theirs until reopened" }
+  }
+}

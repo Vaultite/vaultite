@@ -1,0 +1,12 @@
+{
+  "disabled": [
+    "activity",
+    "ai-import",
+    "machines",
+    "workspaces",
+    "codex",
+    "cursor",
+    "opencode"
+  ],
+  "enabled": []
+}

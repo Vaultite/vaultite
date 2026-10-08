@@ -1,0 +1,13 @@
+{
+  "id": "calendar",
+  "category": "life",
+  "name": "Calendar",
+  "description": "Today's and tomorrow's events (a block on Today), read live from your calendars' private iCal links. Nothing is saved.",
+  "blocks": {
+    "agenda": {
+      "description": "today's and tomorrow's events from the calendars",
+      "live": "your calendars, read live: not stored",
+      "options": {}
+    }
+  }
+}

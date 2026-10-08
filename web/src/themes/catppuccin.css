@@ -1,0 +1,61 @@
+/* Catppuccin, from catppuccin/catppuccin: Latte (light) and Mocha (dark). Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="catppuccin"] {
+    color-scheme: light;
+    --background: #eff1f5;
+    --foreground: #4c4f69;
+    --card: #ffffff;
+    --card-foreground: #4c4f69;
+    --popover: rgb(255 255 255 / 0.9);
+    --popover-foreground: #4c4f69;
+    --primary: #8839ef;
+    --primary-foreground: #eff1f5;
+    --secondary: rgb(108 111 133 / 0.14);
+    --secondary-foreground: #4c4f69;
+    --muted: rgb(108 111 133 / 0.14);
+    --muted-foreground: #6c6f85;
+    --accent: rgb(108 111 133 / 0.14);
+    --accent-foreground: #4c4f69;
+    --destructive: #d20f39;
+    --border: rgb(108 111 133 / 0.3);
+    --input: rgb(108 111 133 / 0.22);
+    --ring: #8839ef;
+    --chart-1: #8839ef; --chart-2: #6c6f85; --chart-3: #d20f39; --chart-4: #8839ef; --chart-5: #40a02b;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #e6e9ef;
+    --segment-on: #ffffff;
+    --red: #d20f39; --orange: #fe640b; --yellow: #df8e1d; --green: #40a02b; --teal: #179299;
+    --blue: #1e66f5; --indigo: #7287fd; --purple: #8839ef; --pink: #ea76cb; --gray: #9ca0b0;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--teal); --h6: var(--indigo);
+    --scrollbar: rgb(108 111 133 / 0.35); --scrollbar-hover: rgb(108 111 133 / 0.55);
+    --map-land: #e6e9ef; --map-water: #b4caf5; --map-park: #cce1cd;
+}
+:is(:root, .scheme-preview)[data-scheme="catppuccin"].dark {
+    color-scheme: dark;
+    --background: #1e1e2e;
+    --foreground: #cdd6f4;
+    --card: #313244;
+    --card-foreground: #cdd6f4;
+    --popover: rgb(49 50 68 / 0.92);
+    --popover-foreground: #cdd6f4;
+    --primary: #cba6f7;
+    --primary-foreground: #1e1e2e;
+    --secondary: rgb(166 173 200 / 0.22);
+    --secondary-foreground: #cdd6f4;
+    --muted: rgb(166 173 200 / 0.22);
+    --muted-foreground: #a6adc8;
+    --accent: rgb(166 173 200 / 0.22);
+    --accent-foreground: #cdd6f4;
+    --destructive: #f38ba8;
+    --border: rgb(166 173 200 / 0.32);
+    --input: rgb(205 214 244 / 0.14);
+    --ring: #cba6f7;
+    --chart-1: #cba6f7; --chart-2: #a6adc8; --chart-3: #f38ba8; --chart-4: #cba6f7; --chart-5: #a6e3a1;
+    --glass-edge: rgb(205 214 244 / 0.1);
+    --sidebar: #181825;
+    --segment-on: #45475a;
+    --red: #f38ba8; --orange: #fab387; --yellow: #f9e2af; --green: #a6e3a1; --teal: #94e2d5;
+    --blue: #89b4fa; --indigo: #b4befe; --purple: #cba6f7; --pink: #f5c2e7; --gray: #7f849c;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--teal); --h6: var(--indigo);
+    --scrollbar: rgb(205 214 244 / 0.2); --scrollbar-hover: rgb(205 214 244 / 0.35);
+    --map-land: #181825; --map-water: #363f5b; --map-park: #343e40;
+}

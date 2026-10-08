@@ -1,0 +1,57 @@
+{
+  "id": "codex",
+  "category": "agents",
+  "name": "Codex",
+  "description": "What OpenAI's Codex does on this machine: your ChatGPT plan's limits and when they renew, sessions running now, usage and its value at API prices, by day, project and model. Read from Codex's own files, nothing saved.",
+  "runsOnServer": true,
+  "enhances": ["projects", "terminal"],
+  "blocks": {
+    "codex-limits": {
+      "description": "the ChatGPT plan's limits, the 5-hour session and the week: how much is used and when each renews",
+      "live": "Codex's own files on this machine (~/.codex) and its CLI",
+      "options": {
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "codex-sessions": {
+      "description": "sessions open now, then the latest ones",
+      "live": "Codex's own files on this machine (~/.codex) and its CLI",
+      "options": {
+        "recent": { "type": "number", "default": 5, "description": "how many recent sessions to list after the open ones" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "codex-usage": {
+      "description": "its value at API prices and tokens per day, today and over the last days",
+      "live": "Codex's own files on this machine (~/.codex) and its CLI",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "codex-projects": {
+      "description": "its usage by project over the last days",
+      "live": "Codex's own files on this machine (~/.codex) and its CLI",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "codex-models": {
+      "description": "its usage by model over the last days",
+      "live": "Codex's own files on this machine (~/.codex) and its CLI",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "codex": {
+      "description": "in a project file: that project's usage over the last 30 days and its sessions",
+      "live": "Codex's own files on this machine (~/.codex) and its CLI",
+      "options": {
+        "project": { "type": "string", "description": "another project than the file's (its folder's name, as Codex names it)" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    }
+  }
+}

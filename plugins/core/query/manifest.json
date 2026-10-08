@@ -1,0 +1,34 @@
+{
+  "id": "query",
+  "category": "writing",
+  "name": "Database views",
+  "description": "A block that lists the files matching a query (a folder, a type, tags, their properties) as a table, cards, a list, a board, a calendar or a map, sorted and grouped, like a database; and Obsidian's .base files, embeds and ```base fences on the same engine. Click a row to open it, double-click a value to change it.",
+  "blocks": {
+    "query": {
+      "description": "the files that match a query, as a table, cards, a list, a board, a calendar or a map, with formulas and column summaries",
+      "options": {
+        "from": { "type": ["string", "list"], "description": "the folders to look in (path prefixes)" },
+        "type": { "type": ["string", "list"], "description": "the files' type, or a list of them (any)" },
+        "tags": { "type": ["string", "list"], "description": "tags the files must all have (a nested one counts for its parent)" },
+        "where": { "type": ["string", "map"], "description": "an expression over the keys (relation = friend and every_days <= 30), or a map of key: value" },
+        "filters": { "type": ["string", "map", "list"], "description": "a Bases filter: an expression (file.hasTag(\"book\") && status != \"done\"), or and / or / not lists of them" },
+        "formulas": { "type": "map", "description": "computed columns, name: a Bases expression (formula.<name> in columns, sort, group)" },
+        "columns": { "type": ["string", "list"], "description": "the columns: frontmatter keys, and file, folder, path, updated, created; the name and the keys most matches have when left out" },
+        "properties": { "type": "map", "description": "column labels, the Bases way: key: {displayName: Label}" },
+        "summaries": { "type": "map", "description": "a summary under a column, key: Sum, Average, Min, Max, Median, Range, Count... or an expression over values" },
+        "sort": { "type": ["string", "list"], "description": "the keys to sort by, in turn; a leading - sorts descending (or Bases' {property, direction}); by file when left out" },
+        "group": { "type": ["string", "map"], "description": "the key rows are grouped by (a board's columns), or Bases' {property, direction}" },
+        "groups": { "type": ["string", "list"], "description": "the groups in this order, the rest after; a board shows them even when empty" },
+        "view": { "type": "enum", "values": ["table", "cards", "list", "board", "calendar", "map"], "default": "table", "description": "how the files are drawn" },
+        "limit": { "type": "number", "min": 1, "max": 500, "description": "at most this many rows (50 when left out, a calendar's or a map's 500)" },
+        "date": { "type": "string", "description": "a calendar's date key (date when the files have one, else created)" },
+        "month": { "type": "string", "description": "the month a calendar shows, as YYYY-MM (this one when left out)" },
+        "coordinates": { "type": "string", "description": "a map's key for where each file is ([lat, lon] or \"lat, lon\"; coordinates when left out)" },
+        "markerColor": { "type": "string", "description": "a map's key for a pin's colour (an app colour's name, or a CSS colour)" },
+        "markerIcon": { "type": "string", "description": "a map's key for a pin's icon (a lucide name)" },
+        "title": { "type": "string", "default": "Query", "description": "the card's title" },
+        "archived": { "type": ["boolean", "enum"], "values": ["only"], "description": "true lists archived files too, only lists only them" }
+      }
+    }
+  }
+}

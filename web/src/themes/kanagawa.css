@@ -1,0 +1,61 @@
+/* Kanagawa, from rebelot/kanagawa.nvim: Lotus (light) and Wave (dark). Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="kanagawa"] {
+    color-scheme: light;
+    --background: #f2ecbc;
+    --foreground: #545464;
+    --card: #f6f1cc;
+    --card-foreground: #545464;
+    --popover: rgb(246 241 204 / 0.9);
+    --popover-foreground: #545464;
+    --primary: #4d699b;
+    --primary-foreground: #f2ecbc;
+    --secondary: rgb(113 110 97 / 0.14);
+    --secondary-foreground: #545464;
+    --muted: rgb(113 110 97 / 0.14);
+    --muted-foreground: #716e61;
+    --accent: rgb(113 110 97 / 0.14);
+    --accent-foreground: #545464;
+    --destructive: #c84053;
+    --border: rgb(113 110 97 / 0.3);
+    --input: rgb(113 110 97 / 0.22);
+    --ring: #4d699b;
+    --chart-1: #4d699b; --chart-2: #716e61; --chart-3: #c84053; --chart-4: #624c83; --chart-5: #6f894e;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #e7dba0;
+    --segment-on: #f6f1cc;
+    --red: #c84053; --orange: #cc6d00; --yellow: #836f4a; --green: #6f894e; --teal: #597b75;
+    --blue: #4d699b; --indigo: #5d57a3; --purple: #624c83; --pink: #b35b79; --gray: #8a8980;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(113 110 97 / 0.35); --scrollbar-hover: rgb(113 110 97 / 0.55);
+    --map-land: #e7dba0; --map-water: #c4c7b3; --map-park: #d8d8a6;
+}
+:is(:root, .scheme-preview)[data-scheme="kanagawa"].dark {
+    color-scheme: dark;
+    --background: #1f1f28;
+    --foreground: #dcd7ba;
+    --card: #2a2a37;
+    --card-foreground: #dcd7ba;
+    --popover: rgb(42 42 55 / 0.92);
+    --popover-foreground: #dcd7ba;
+    --primary: #7e9cd8;
+    --primary-foreground: #1f1f28;
+    --secondary: rgb(166 166 156 / 0.22);
+    --secondary-foreground: #dcd7ba;
+    --muted: rgb(166 166 156 / 0.22);
+    --muted-foreground: #a6a69c;
+    --accent: rgb(166 166 156 / 0.22);
+    --accent-foreground: #dcd7ba;
+    --destructive: #e46876;
+    --border: rgb(166 166 156 / 0.32);
+    --input: rgb(220 215 186 / 0.14);
+    --ring: #7e9cd8;
+    --chart-1: #7e9cd8; --chart-2: #a6a69c; --chart-3: #e46876; --chart-4: #957fb8; --chart-5: #98bb6c;
+    --glass-edge: rgb(220 215 186 / 0.1);
+    --sidebar: #16161d;
+    --segment-on: #363646;
+    --red: #e46876; --orange: #ffa066; --yellow: #e6c384; --green: #98bb6c; --teal: #7aa89f;
+    --blue: #7e9cd8; --indigo: #7fb4ca; --purple: #957fb8; --pink: #d27e99; --gray: #727169;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(220 215 186 / 0.2); --scrollbar-hover: rgb(220 215 186 / 0.35);
+    --map-land: #16161d; --map-water: #343b4f; --map-park: #323833;
+}

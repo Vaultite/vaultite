@@ -1,0 +1,11 @@
+{
+  "id": "mcp",
+  "category": "agents",
+  "name": "MCP",
+  "description": "Your vault's tools for AIs outside the app (Claude Code, Claude desktop and other MCP clients): search, read, render, query, and write notes, logs, timelines, facts and clippings, the vault's way. Over stdio (vau mcp) and HTTP (/api/mcp), for this machine and its owner only.",
+  "replaces": { "obsidian": ["mcp-tools-istefox"] },
+  "settings": {
+    "allowUsers": { "local": true, "type": "list", "label": "Other tailnet logins", "description": "tailnet logins besides this machine's owner that may connect over HTTP through Tailscale Serve, like someone@example.com" },
+    "allowRemote": { "local": true, "type": "boolean", "default": false, "label": "Anyone who reaches the app", "description": "lets anyone who reaches the app connect over HTTP, not only this machine's owner and the logins above: only on a network you trust" }
+  }
+}

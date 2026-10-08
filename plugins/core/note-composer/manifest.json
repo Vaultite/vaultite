@@ -1,0 +1,9 @@
+{
+  "id": "note-composer",
+  "category": "writing",
+  "name": "Note composer",
+  "description": "Move what you've selected into another note or a new one, leaving a link in its place, or merge the note you're on into another.",
+  "settings": {
+    "afterExtract": { "type": "enum", "values": ["link", "embed", "none"], "default": "link", "label": "Text after extraction", "description": "what takes the selection's place: a link to the note it went to, that note embedded, or nothing" }
+  }
+}

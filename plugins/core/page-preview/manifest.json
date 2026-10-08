@@ -1,0 +1,10 @@
+{
+  "id": "page-preview",
+  "category": "navigation",
+  "name": "Page preview",
+  "description": "Point at a [[link]] for a moment to see that note in a popover, scrollable, its links clickable: in notes, dashboards, the Links panel and search. While you're editing, hold ⌘. Computers only.",
+  "settings": {
+    "trigger": { "type": "enum", "values": ["auto", "hover", "mod"], "default": "auto", "label": "Show a preview", "labels": {"auto": "Auto", "hover": "Hover", "mod": "⌘ held"}, "description": "auto needs ⌘ held only while editing a note, hover never, mod (⌘ held) always" },
+    "delay": { "type": "number", "default": 500, "min": 0, "max": 5000, "label": "Delay", "description": "how long the pointer rests on a link first, in ms" }
+  }
+}

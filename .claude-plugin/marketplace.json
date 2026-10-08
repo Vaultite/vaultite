@@ -1,0 +1,24 @@
+{
+  "name": "vaultite",
+  "description": "Skills for agents working in a Vaultite vault",
+  "owner": {
+    "name": "Vaultite",
+    "url": "https://github.com/Vaultite"
+  },
+  "plugins": [
+    {
+      "name": "vaultite",
+      "source": "./skills",
+      "description": "Read and write a Vaultite vault (its rules, the vau CLI and MCP, the Markdown it reads) and write vault plugins",
+      "author": {
+        "name": "Vaultite",
+        "url": "https://github.com/Vaultite"
+      },
+      "homepage": "https://github.com/Vaultite/vaultite",
+      "repository": "https://github.com/Vaultite/vaultite",
+      "license": "Apache-2.0",
+      "keywords": ["vaultite", "vault", "markdown", "notes", "mcp"],
+      "skills": ["./"]
+    }
+  ]
+}

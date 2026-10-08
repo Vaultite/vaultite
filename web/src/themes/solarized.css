@@ -1,0 +1,61 @@
+/* Solarized, from altercation/solarized: light and dark. Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="solarized"] {
+    color-scheme: light;
+    --background: #fdf6e3;
+    --foreground: #586e75;
+    --card: #fffbee;
+    --card-foreground: #586e75;
+    --popover: rgb(255 251 238 / 0.9);
+    --popover-foreground: #586e75;
+    --primary: #268bd2;
+    --primary-foreground: #fdf6e3;
+    --secondary: rgb(101 123 131 / 0.14);
+    --secondary-foreground: #586e75;
+    --muted: rgb(101 123 131 / 0.14);
+    --muted-foreground: #657b83;
+    --accent: rgb(101 123 131 / 0.14);
+    --accent-foreground: #586e75;
+    --destructive: #dc322f;
+    --border: rgb(147 161 161 / 0.45);
+    --input: rgb(101 123 131 / 0.22);
+    --ring: #268bd2;
+    --chart-1: #268bd2; --chart-2: #657b83; --chart-3: #dc322f; --chart-4: #6c71c4; --chart-5: #859900;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #eee8d5;
+    --segment-on: #fffbee;
+    --red: #dc322f; --orange: #cb4b16; --yellow: #b58900; --green: #859900; --teal: #2aa198;
+    --blue: #268bd2; --indigo: #6c71c4; --purple: #6c71c4; --pink: #d33682; --gray: #93a1a1;
+    --h1: var(--orange); --h2: var(--yellow); --h3: var(--green); --h4: var(--teal); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(101 123 131 / 0.35); --scrollbar-hover: rgb(101 123 131 / 0.55);
+    --map-land: #eee8d5; --map-water: #c1d8de; --map-park: #e5e3b6;
+}
+:is(:root, .scheme-preview)[data-scheme="solarized"].dark {
+    color-scheme: dark;
+    --background: #002b36;
+    --foreground: #93a1a1;
+    --card: #073642;
+    --card-foreground: #93a1a1;
+    --popover: rgb(7 54 66 / 0.92);
+    --popover-foreground: #93a1a1;
+    --primary: #268bd2;
+    --primary-foreground: #fdf6e3;
+    --secondary: rgb(131 148 150 / 0.22);
+    --secondary-foreground: #93a1a1;
+    --muted: rgb(131 148 150 / 0.22);
+    --muted-foreground: #839496;
+    --accent: rgb(131 148 150 / 0.22);
+    --accent-foreground: #93a1a1;
+    --destructive: #dc322f;
+    --border: rgb(131 148 150 / 0.32);
+    --input: rgb(147 161 161 / 0.14);
+    --ring: #268bd2;
+    --chart-1: #268bd2; --chart-2: #839496; --chart-3: #dc322f; --chart-4: #6c71c4; --chart-5: #859900;
+    --glass-edge: rgb(147 161 161 / 0.1);
+    --sidebar: #00212b;
+    --segment-on: #586e75;
+    --red: #dc322f; --orange: #cb4b16; --yellow: #b58900; --green: #859900; --teal: #2aa198;
+    --blue: #268bd2; --indigo: #6c71c4; --purple: #6c71c4; --pink: #d33682; --gray: #586e75;
+    --h1: var(--orange); --h2: var(--yellow); --h3: var(--green); --h4: var(--teal); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(147 161 161 / 0.2); --scrollbar-hover: rgb(147 161 161 / 0.35);
+    --map-land: #00212b; --map-water: #084058; --map-park: #153d2d;
+}

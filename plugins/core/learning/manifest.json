@@ -1,0 +1,15 @@
+{
+  "id": "learning",
+  "category": "life",
+  "name": "Learning",
+  "description": "The Learning page: what you study and read, from your logs, and your books.",
+  "tint": "blue",
+  "requires": [
+    "logs"
+  ],
+  "enhances": [
+    "books",
+    "lessons"
+  ],
+  "pageSort": 30
+}

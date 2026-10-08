@@ -1,0 +1,61 @@
+/* Nord, from nordtheme/nord: Polar Night (dark) and Snow Storm (its bright ambiance, light). Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="nord"] {
+    color-scheme: light;
+    --background: #e5e9f0;
+    --foreground: #2e3440;
+    --card: #eceff4;
+    --card-foreground: #2e3440;
+    --popover: rgb(236 239 244 / 0.9);
+    --popover-foreground: #2e3440;
+    --primary: #5e81ac;
+    --primary-foreground: #eceff4;
+    --secondary: rgb(76 86 106 / 0.14);
+    --secondary-foreground: #2e3440;
+    --muted: rgb(76 86 106 / 0.14);
+    --muted-foreground: #4c566a;
+    --accent: rgb(76 86 106 / 0.14);
+    --accent-foreground: #2e3440;
+    --destructive: #bf616a;
+    --border: rgb(76 86 106 / 0.3);
+    --input: rgb(76 86 106 / 0.22);
+    --ring: #5e81ac;
+    --chart-1: #5e81ac; --chart-2: #4c566a; --chart-3: #bf616a; --chart-4: #b48ead; --chart-5: #8aa872;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #d8dee9;
+    --segment-on: #eceff4;
+    --red: #bf616a; --orange: #d08770; --yellow: #c29a4a; --green: #8aa872; --teal: #8fbcbb;
+    --blue: #5e81ac; --indigo: #81a1c1; --purple: #b48ead; --pink: #b48ead; --gray: #7b88a1;
+    --h1: var(--blue); --h2: var(--teal); --h3: var(--green); --h4: var(--yellow); --h5: var(--orange); --h6: var(--purple);
+    --scrollbar: rgb(76 86 106 / 0.35); --scrollbar-hover: rgb(76 86 106 / 0.55);
+    --map-land: #d8dee9; --map-water: #bfccdd; --map-park: #d3dcd7;
+}
+:is(:root, .scheme-preview)[data-scheme="nord"].dark {
+    color-scheme: dark;
+    --background: #2e3440;
+    --foreground: #eceff4;
+    --card: #3b4252;
+    --card-foreground: #eceff4;
+    --popover: rgb(59 66 82 / 0.92);
+    --popover-foreground: #eceff4;
+    --primary: #88c0d0;
+    --primary-foreground: #2e3440;
+    --secondary: rgb(163 173 191 / 0.22);
+    --secondary-foreground: #eceff4;
+    --muted: rgb(163 173 191 / 0.22);
+    --muted-foreground: #a3adbf;
+    --accent: rgb(163 173 191 / 0.22);
+    --accent-foreground: #eceff4;
+    --destructive: #bf616a;
+    --border: rgb(163 173 191 / 0.32);
+    --input: rgb(236 239 244 / 0.14);
+    --ring: #88c0d0;
+    --chart-1: #88c0d0; --chart-2: #a3adbf; --chart-3: #bf616a; --chart-4: #b48ead; --chart-5: #a3be8c;
+    --glass-edge: rgb(236 239 244 / 0.1);
+    --sidebar: #292e39;
+    --segment-on: #4c566a;
+    --red: #bf616a; --orange: #d08770; --yellow: #ebcb8b; --green: #a3be8c; --teal: #8fbcbb;
+    --blue: #81a1c1; --indigo: #5e81ac; --purple: #b48ead; --pink: #b48ead; --gray: #616e88;
+    --h1: var(--blue); --h2: var(--teal); --h3: var(--green); --h4: var(--yellow); --h5: var(--orange); --h6: var(--purple);
+    --scrollbar: rgb(236 239 244 / 0.2); --scrollbar-hover: rgb(236 239 244 / 0.35);
+    --map-land: #292e39; --map-water: #404c5c; --map-park: #414a4c;
+}

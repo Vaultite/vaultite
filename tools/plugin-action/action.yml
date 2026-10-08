@@ -1,0 +1,28 @@
+# Vaultite's plugin check, for a plugin's own repository: its manifest, imports, commands and blocks as the app checks
+# a vault plugin, and on a version tag that its manifest says that version and its repo. Fails the job on a problem.
+#   - uses: actions/checkout@v4
+#   - uses: Vaultite/vaultite/tools/plugin-action@main
+name: Vaultite plugin check
+description: Checks a Vaultite plugin's repository the way the app checks a vault plugin before loading or installing it.
+inputs:
+  path:
+    description: The plugin's folder (where its manifest.json is)
+    default: "."
+  vaultite-ref:
+    description: The Vaultite version (a branch or tag) to check against
+    default: main
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v4
+      with: { repository: Vaultite/vaultite, ref: "${{ inputs.vaultite-ref }}", path: .vaultite-app }
+    - uses: actions/setup-node@v4
+      with: { node-version: 24, cache: npm, cache-dependency-path: .vaultite-app/package-lock.json }
+    - shell: bash
+      run: npm ci --ignore-scripts --no-audit --no-fund --prefix .vaultite-app
+    - shell: bash
+      env: { PLUGIN: "${{ inputs.path }}", REF: "${{ github.ref }}", REF_TYPE: "${{ github.ref_type }}" }
+      run: |
+        tag=""
+        if [ "$REF_TYPE" = tag ]; then tag="${REF#refs/tags/}"; fi
+        node .vaultite-app/tools/check_plugins.ts --plugin "$PLUGIN" ${tag:+--tag "$tag"}

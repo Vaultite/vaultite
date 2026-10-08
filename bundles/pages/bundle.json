@@ -1,0 +1,8 @@
+{
+  "name": "Pages and databases",
+  "description": "Pages and databases: a home page of boards, tables and a calendar over your notes, projects and books, with roomy spacing and previews on hover.",
+  "icon": "layout-dashboard",
+  "tint": "gray",
+  "sort": 4,
+  "more": true
+}

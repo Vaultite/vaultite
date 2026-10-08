@@ -1,0 +1,13 @@
+{
+  "left": [
+    "search:search",
+    "pages:pages",
+    "terminal:sessions",
+    "files:files"
+  ],
+  "right": [
+    "inbox:inbox",
+    "activity:feed"
+  ],
+  "collapsed": []
+}

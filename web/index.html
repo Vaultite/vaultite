@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <!-- maximum-scale=1: iOS zooms the whole page into a field under 16px when it gets focus (and stays zoomed). Safari
+         still lets you pinch-zoom; the iPhone app's web view doesn't. Every page of the app has it. -->
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#f2f2f7" media="(prefers-color-scheme: light)" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Vaultite" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" href="icon.svg" />
+    <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+    <title>Vaultite</title>
+    <!-- The look the app last had (core/appearance.ts keeps it), in place before its code loads: no flash of the other theme. -->
+    <script>
+      try {
+        const root = document.documentElement
+        root.dataset.scheme = "gruvbox" // the default scheme (themes/schemes.ts), until the app's last look says otherwise
+        const look = JSON.parse(localStorage.getItem("vaultite.look"))
+        if (look.dark === true || (look.dark === "system" && matchMedia("(prefers-color-scheme: dark)").matches)) root.classList.add("dark")
+        if (look.scheme) root.dataset.scheme = look.scheme
+        else delete root.dataset.scheme
+        if (look.density) root.dataset.density = look.density
+      } catch {}
+    </script>
+    <!-- If the app can't start (its code threw before drawing, or didn't load), say why instead of a blank window. Errors
+         count until main.tsx is about to draw (it sets __vauStarted, and takes this down if the app starts after all);
+         after that, React's onUncaughtError calls showBootError for an error that unmounts the app, with `fresh`: Reload
+         with a new tab, so a tab that stops the app as it's drawn isn't drawn again (core/workspace.ts startedFresh), and
+         `again` when it stopped like this right after the last reload too. No hex colours: the theme's tokens when
+         index.css loaded, else the system's. -->
+    <script>
+      (() => {
+        const el = (tag, style, text) => { const e = document.createElement(tag); e.style.cssText = style; if (text) e.textContent = text; return e }
+        const button = (label, run) => { const b = el("button", "font: inherit; padding: 5px 12px; border-radius: 6px; cursor: pointer; border: 1px solid var(--border, GrayText); background: var(--card, Canvas); color: inherit", label); b.type = "button"; b.onclick = () => run(b); return b }
+        const show = (title, detail, opts = {}) => {
+          if (document.getElementById("vau-boot-error")) return
+          const box = el("div", "position: fixed; inset: 0; z-index: 2147483647; overflow: auto; color-scheme: light dark; background: var(--background, Canvas); color: var(--foreground, CanvasText); font: 13px/1.5 -apple-system, system-ui, sans-serif; padding: max(48px, env(safe-area-inset-top)) 24px 24px; -webkit-app-region: no-drag")
+          box.id = "vau-boot-error"
+          box.setAttribute("role", "alert")
+          const inner = el("div", "max-width: 720px; margin: 0 auto")
+          inner.append(el("h1", "font-size: 17px; font-weight: 600; margin: 0 0 6px", title),
+            el("p", "margin: 0 0 14px; color: var(--muted-foreground, GrayText)", opts.again
+              ? "It stopped again right as it started: what a tab shows may be what fails. Reload with a new tab opens the app on a new tab, the others still in its tab bar; Reload with vault plugins off opens it without the vault's own plugins until you turn them back on. The error is below (and in the console)."
+              : "The error is below (and in the console). Reloading may help if it was passing; if it comes back, it's a bug in the app's code."),
+            el("pre", "font: 12px/1.5 ui-monospace, Menlo, monospace; white-space: pre-wrap; word-break: break-word; margin: 0 0 14px; padding: 10px 12px; max-height: 50vh; overflow: auto; border-radius: 6px; border: 1px solid var(--border, GrayText); user-select: text", detail))
+          const row = el("div", "display: flex; flex-wrap: wrap; gap: 8px")
+          const fresh = () => {
+            try { sessionStorage.setItem("vaultite.freshStart", "1") } catch {}
+            history.replaceState(null, "", location.pathname + location.search)
+            location.reload()
+          }
+          // (vault plugins off for this window's visit, core/plugins.ts safeMode: a way back in when one stops the app)
+          const safe = () => { try { sessionStorage.setItem("vaultite.safe", "1") } catch {} fresh() }
+          if (opts.fresh && opts.again) row.append(button("Reload with a new tab", fresh), button("Reload with vault plugins off", safe))
+          row.append(button("Reload", () => location.reload()))
+          if (opts.fresh && !opts.again) row.append(button("Reload with a new tab", fresh), button("Reload with vault plugins off", safe))
+          row.append(button("Copy error", (b) => navigator.clipboard?.writeText(`${title}\n${detail}`).then(() => { b.textContent = "Copied" }, () => {})))
+          inner.append(row)
+          box.append(inner)
+          ;(document.body || document.documentElement).append(box)
+        }
+        const text = (e) => (e && (e.stack || e.message)) || String(e)
+        window.showBootError = (error, title, opts) => show(title || "Vaultite couldn't start", text(error), opts)
+        // Kept for the Errors plugin, which sends it once the app starts (the queue of web/src/core/errors.ts).
+        const keep = (message, error) => {
+          try {
+            const q = JSON.parse(localStorage.getItem("vaultite.errors") || "[]")
+            q.push({ t: Date.now(), kind: "boot", message: String(message).split("\n")[0].slice(0, 500), fatal: true, url: location.pathname + location.hash,
+              ...(error && error.stack ? { stack: String(error.stack).slice(0, 8000) } : {}) })
+            localStorage.setItem("vaultite.errors", JSON.stringify(q.slice(-20)))
+          } catch {}
+        }
+        addEventListener("error", (e) => {
+          if (window.__vauStarted) return
+          const t = e.target
+          // (a resource that didn't load: only the app's own script counts; a plugin's chunk is loadAppPlugins' to handle)
+          if (t && t !== window && t.tagName) { if (t.tagName === "SCRIPT") { show("Vaultite couldn't load", `${t.src} didn't load. Is the server running?`); keep(`${t.src} didn't load`) } }
+          else { show("Vaultite couldn't start", text(e.error || e.message)); keep((e.error && e.error.message) || e.message, e.error) }
+        }, true)
+      })()
+    </script>
+    <!-- Vault plugins' styles go in the plugins layer: under the app's utilities, so they never restyle the app; their
+         variants the app doesn't have (md:-m-1) above them, so they still win on the plugin's own elements. -->
+    <style>@layer properties, theme, base, components, plugins, utilities, plugin-variants;</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

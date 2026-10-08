@@ -1,0 +1,15 @@
+{
+  "id": "people-map",
+  "category": "life",
+  "name": "People map",
+  "description": "A map of everyone (the Map tab on People): their pins, grouped by place.",
+  "requires": ["people"],
+  "blocks": {
+    "people-map": {
+      "description": "everyone's pin from their location, and the same people by place",
+      "options": {
+        "places": { "type": "boolean", "default": true, "description": "the list of people by place under the map" }
+      }
+    }
+  }
+}

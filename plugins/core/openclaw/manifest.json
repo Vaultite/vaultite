@@ -1,0 +1,72 @@
+{
+  "id": "openclaw",
+  "category": "agents",
+  "name": "OpenClaw",
+  "description": "What OpenClaw, the personal AI agent, does on this machine: sessions running now, usage and its cost as OpenClaw records it, by day, project and model, each session's conversation, its agents' memory and its scheduled jobs. Read from OpenClaw's own databases and workspace, nothing saved; one step gives it the vault's tools.",
+  "runsOnServer": true,
+  "enhances": ["projects", "terminal"],
+  "blocks": {
+    "openclaw-sessions": {
+      "description": "sessions running now, then the latest ones",
+      "live": "OpenClaw's databases on the machine the server runs on",
+      "options": {
+        "recent": { "type": "number", "default": 5, "description": "how many recent sessions to list after the running ones" },
+        "account": { "type": "string", "description": "one agent's (its id, like main); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "openclaw-usage": {
+      "description": "its cost as OpenClaw recorded it and tokens per day, today and over the last days",
+      "live": "OpenClaw's databases on the machine the server runs on",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one agent's (its id, like main); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "openclaw-projects": {
+      "description": "its usage by the folder each session ran in, over the last days",
+      "live": "OpenClaw's databases on the machine the server runs on",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one agent's (its id, like main); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "openclaw-models": {
+      "description": "its usage by model over the last days",
+      "live": "OpenClaw's databases on the machine the server runs on",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one agent's (its id, like main); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "openclaw": {
+      "description": "in a project file: that project's usage over the last 30 days and its sessions",
+      "live": "OpenClaw's databases on the machine the server runs on",
+      "options": {
+        "project": { "type": "string", "description": "another project than the file's (its folder's name)" },
+        "account": { "type": "string", "description": "one agent's (its id, like main); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "openclaw-memory": {
+      "description": "an agent's memory, read only: its identity, soul, what it knows of the user, its long-term memory and its latest daily notes",
+      "live": "the agent's workspace on the machine the server runs on",
+      "options": {
+        "notes": { "type": "number", "default": 2, "min": 0, "max": 14, "description": "how many of the latest daily notes to show" },
+        "account": { "type": "string", "description": "another agent's (its id); main when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "openclaw-cron": {
+      "description": "its scheduled jobs: when each runs, its last run and the next",
+      "live": "OpenClaw's shared database on the machine the server runs on",
+      "options": {
+        "account": { "type": "string", "description": "one agent's jobs (its id, like main); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Self-hosted",
+  "description": "An always-on machine you reach from anywhere, a Mac at home, a Linux box or a VPS: the agents running on it (Claude Code, Codex, OpenCode, OpenClaw, Hermes) in terminals, their sessions and what they did, its other machines, how the server is doing, and the MCP connector.",
+  "icon": "server",
+  "tint": "teal",
+  "sort": 5,
+  "more": true
+}

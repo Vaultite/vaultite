@@ -1,0 +1,61 @@
+/* Ayu, from ayu-theme/ayu-colors: light and dark. Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="ayu"] {
+    color-scheme: light;
+    --background: #f3f4f5;
+    --foreground: #5c6166;
+    --card: #fcfcfc;
+    --card-foreground: #5c6166;
+    --popover: rgb(252 252 252 / 0.9);
+    --popover-foreground: #5c6166;
+    --primary: #fa8d3e;
+    --primary-foreground: #fcfcfc;
+    --secondary: rgb(120 123 128 / 0.14);
+    --secondary-foreground: #5c6166;
+    --muted: rgb(120 123 128 / 0.14);
+    --muted-foreground: #787b80;
+    --accent: rgb(120 123 128 / 0.14);
+    --accent-foreground: #5c6166;
+    --destructive: #f07171;
+    --border: rgb(120 123 128 / 0.3);
+    --input: rgb(120 123 128 / 0.22);
+    --ring: #fa8d3e;
+    --chart-1: #fa8d3e; --chart-2: #787b80; --chart-3: #f07171; --chart-4: #a37acc; --chart-5: #86b300;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #e7e8e9;
+    --segment-on: #fcfcfc;
+    --red: #f07171; --orange: #fa8d3e; --yellow: #f2ae49; --green: #86b300; --teal: #4cbf99;
+    --blue: #399ee6; --indigo: #55b4d4; --purple: #a37acc; --pink: #f07171; --gray: #8a9199;
+    --h1: var(--orange); --h2: var(--yellow); --h3: var(--green); --h4: var(--teal); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(120 123 128 / 0.35); --scrollbar-hover: rgb(120 123 128 / 0.55);
+    --map-land: #e7e8e9; --map-water: #bfdcf1; --map-park: #dde7c4;
+}
+:is(:root, .scheme-preview)[data-scheme="ayu"].dark {
+    color-scheme: dark;
+    --background: #0b0e14;
+    --foreground: #bfbdb6;
+    --card: #131721;
+    --card-foreground: #bfbdb6;
+    --popover: rgb(19 23 33 / 0.92);
+    --popover-foreground: #bfbdb6;
+    --primary: #e6b450;
+    --primary-foreground: #0b0e14;
+    --secondary: rgb(138 143 152 / 0.22);
+    --secondary-foreground: #bfbdb6;
+    --muted: rgb(138 143 152 / 0.22);
+    --muted-foreground: #8a8f98;
+    --accent: rgb(138 143 152 / 0.22);
+    --accent-foreground: #bfbdb6;
+    --destructive: #f07178;
+    --border: rgb(138 143 152 / 0.32);
+    --input: rgb(191 189 182 / 0.14);
+    --ring: #e6b450;
+    --chart-1: #e6b450; --chart-2: #8a8f98; --chart-3: #f07178; --chart-4: #d2a6ff; --chart-5: #aad94c;
+    --glass-edge: rgb(191 189 182 / 0.1);
+    --sidebar: #0d1017;
+    --segment-on: #2d3640;
+    --red: #f07178; --orange: #ff8f40; --yellow: #ffb454; --green: #aad94c; --teal: #95e6cb;
+    --blue: #59c2ff; --indigo: #39bae6; --purple: #d2a6ff; --pink: #f29668; --gray: #636a72;
+    --h1: var(--orange); --h2: var(--yellow); --h3: var(--green); --h4: var(--teal); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(191 189 182 / 0.2); --scrollbar-hover: rgb(191 189 182 / 0.35);
+    --map-land: #0d1017; --map-water: #1c3648; --map-park: #242e1d;
+}

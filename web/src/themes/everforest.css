@@ -1,0 +1,61 @@
+/* Everforest, from sainnhe/everforest: light and dark (medium). Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="everforest"] {
+    color-scheme: light;
+    --background: #f4f0d9;
+    --foreground: #5c6a72;
+    --card: #fdf6e3;
+    --card-foreground: #5c6a72;
+    --popover: rgb(253 246 227 / 0.9);
+    --popover-foreground: #5c6a72;
+    --primary: #8da101;
+    --primary-foreground: #fdf6e3;
+    --secondary: rgb(130 145 129 / 0.14);
+    --secondary-foreground: #5c6a72;
+    --muted: rgb(130 145 129 / 0.14);
+    --muted-foreground: #829181;
+    --accent: rgb(130 145 129 / 0.14);
+    --accent-foreground: #5c6a72;
+    --destructive: #f85552;
+    --border: rgb(130 145 129 / 0.3);
+    --input: rgb(130 145 129 / 0.22);
+    --ring: #8da101;
+    --chart-1: #8da101; --chart-2: #829181; --chart-3: #f85552; --chart-4: #df69ba; --chart-5: #8da101;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #efebd4;
+    --segment-on: #fdf6e3;
+    --red: #f85552; --orange: #f57d26; --yellow: #dfa000; --green: #8da101; --teal: #35a77c;
+    --blue: #3a94c5; --indigo: #3a94c5; --purple: #df69ba; --pink: #df69ba; --gray: #a6b0a0;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(130 145 129 / 0.35); --scrollbar-hover: rgb(130 145 129 / 0.55);
+    --map-land: #efebd4; --map-water: #c0d6d3; --map-park: #dfe0ae;
+}
+:is(:root, .scheme-preview)[data-scheme="everforest"].dark {
+    color-scheme: dark;
+    --background: #2d353b;
+    --foreground: #d3c6aa;
+    --card: #343f44;
+    --card-foreground: #d3c6aa;
+    --popover: rgb(61 72 77 / 0.92);
+    --popover-foreground: #d3c6aa;
+    --primary: #a7c080;
+    --primary-foreground: #2d353b;
+    --secondary: rgb(157 169 160 / 0.22);
+    --secondary-foreground: #d3c6aa;
+    --muted: rgb(157 169 160 / 0.22);
+    --muted-foreground: #9da9a0;
+    --accent: rgb(157 169 160 / 0.22);
+    --accent-foreground: #d3c6aa;
+    --destructive: #e67e80;
+    --border: rgb(157 169 160 / 0.32);
+    --input: rgb(211 198 170 / 0.14);
+    --ring: #a7c080;
+    --chart-1: #a7c080; --chart-2: #9da9a0; --chart-3: #e67e80; --chart-4: #d699b6; --chart-5: #a7c080;
+    --glass-edge: rgb(211 198 170 / 0.1);
+    --sidebar: #232a2e;
+    --segment-on: #475258;
+    --red: #e67e80; --orange: #e69875; --yellow: #dbbc7f; --green: #a7c080; --teal: #83c092;
+    --blue: #7fbbb3; --indigo: #7fbbb3; --purple: #d699b6; --pink: #d699b6; --gray: #7a8478;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--blue); --h6: var(--purple);
+    --scrollbar: rgb(211 198 170 / 0.2); --scrollbar-hover: rgb(211 198 170 / 0.35);
+    --map-land: #232a2e; --map-water: #3f5255; --map-park: #414b46;
+}

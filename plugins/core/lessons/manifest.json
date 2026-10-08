@@ -1,0 +1,29 @@
+{
+  "id": "lessons",
+  "category": "life",
+  "name": "Lessons",
+  "description": "Learn a note, a PR or a topic one step at a time, answering as you go, then keep it with cards that come back just before you'd forget.",
+  "replaces": { "obsidian": ["obsidian-spaced-repetition"] },
+  "tint": "purple",
+  "forAgents": "To teach the user something (a note, a PR, a topic): a lesson, plus cards for what's worth remembering (`vau docs lessons`). To quiz them: `cards.due`.",
+  "blocks": {
+    "lessons": {
+      "description": "lessons in progress, cards files and the cards to review now",
+      "options": {}
+    }
+  },
+  "settings": {
+    "retention": {
+      "type": "number", "default": 0.9, "min": 0.7, "max": 0.97, "label": "Target recall",
+      "description": "how likely you should be to remember a card when it comes back: higher means more reviews"
+    },
+    "new_per_day": {
+      "type": "number", "default": 20, "min": 0, "label": "New cards a day",
+      "description": "how many cards you haven't seen a day's reviews bring in"
+    },
+    "remind_at": {
+      "type": "string", "default": "08:00", "label": "Remind at",
+      "description": "when the day's reminder comes to your Inbox (and phone) if cards are due, HH:MM; empty for none. One at a time: it goes once you've reviewed them"
+    }
+  }
+}

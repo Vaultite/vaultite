@@ -1,0 +1,23 @@
+{
+  "id": "graph",
+  "category": "navigation",
+  "name": "Graph view",
+  "description": "The vault as a graph: files are dots, [[links]] the lines between them. Open it as a tab, see a file's neighbours in the sidebar, or put a local graph in any file.",
+  "settings": {
+    "colorBy": { "type": "enum", "values": ["folder", "type"], "default": "folder", "label": "Colour by", "labels": {"folder": "Folder", "type": "Type"}, "description": "what a dot's colour says" },
+    "orphans": { "type": "boolean", "default": false, "label": "Show files with no links", "description": "the whole graph shows files nothing links to, and that link to nothing" },
+    "archived": { "type": "boolean", "default": false, "label": "Show archived files", "description": "archived files are left out of the graph unless this is on" },
+    "depth": { "type": "enum", "values": [1, 2, 3], "default": 2, "label": "Local graph depth", "labels": {"1": "1 link", "2": "2 links", "3": "3 links"}, "description": "how many links away a file's local graph goes" },
+    "hidden": { "type": "list", "label": "Hidden groups", "description": "groups left out of the whole graph, like folder:Logs or type:log" }
+  },
+  "blocks": {
+    "graph": {
+      "description": "a file's local graph: its neighbours in the vault, files as dots and links as lines",
+      "options": {
+        "depth": { "type": "enum", "values": [1, 2, 3], "default": 1, "description": "how many links away to go" },
+        "height": { "type": "number", "default": 300, "min": 160, "max": 800, "description": "the graph's height in px" },
+        "title": { "type": "string", "default": "Graph", "description": "the card's title" }
+      }
+    }
+  }
+}

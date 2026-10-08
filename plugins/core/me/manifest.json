@@ -1,0 +1,10 @@
+{
+  "id": "me",
+  "category": "life",
+  "name": "Me",
+  "description": "Your own file, ME.md: who you are and how you want AIs to work with you. Agents are told to read it before writing anything, facts you tell them about yourself go there, and its location puts you on the people map.",
+  "forAgents": "`{path}` is the user: read it before writing anything (who they are, the people who matter, how they want you to work, what not to store).",
+  "settings": {
+    "path": { "type": "string", "default": "ME.md", "label": "Your file", "description": "where it is, from the vault's top (Personal/ME.md); a file of type me elsewhere is found too" }
+  }
+}

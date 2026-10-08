@@ -1,0 +1,54 @@
+/* Pins, popups and MapLibre's controls on a map of files (components/PinMap.tsx), like People → Map's (loaded with the
+   map's chunk). A pin's colour is --c (an app colour, or any CSS one the file names). */
+.nm-map { --nm-halo: #f6f4ef; background: #f6f4ef; isolation: isolate; }
+.dark .nm-map { --nm-halo: #242426; background: #242426; }
+.nm-map .maplibregl-canvas:focus-visible { outline: none; }
+.nm-map .maplibregl-marker { z-index: 1; }
+.nm-map .maplibregl-popup { z-index: 3; }
+.nm-map .maplibregl-control-container > * { z-index: 4; }
+
+.nm-pin {
+  display: flex; flex-direction: column; align-items: center;
+  padding: 0; border: 0; background: none; cursor: pointer; -webkit-tap-highlight-color: transparent;
+}
+.nm-pin:focus-visible { outline: none; }
+.nm-pin:focus-visible .nm-dot { outline: 2px solid var(--ring); outline-offset: 2px; }
+.nm-dot {
+  position: relative; display: grid; place-items: center; width: 18px; height: 18px; border-radius: 9999px; color: #fff;
+  background: var(--c); border: 2.5px solid #fff; box-shadow: 0 1px 5px rgb(0 0 0 / 0.28), 0 0 0 0.5px rgb(0 0 0 / 0.1);
+  font-family: var(--font-rounded); font-weight: 600; transition: transform 0.15s ease;
+}
+.nm-has-icon { width: 26px; height: 26px; }
+.nm-group { width: 30px; height: 30px; font-size: 13px; text-shadow: 0 1px 2px rgb(0 0 0 / 0.3); }
+.nm-pin:active .nm-dot { transform: scale(0.9); }
+.nm-label {
+  position: absolute; top: 100%; margin-top: 2px; max-width: 160px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  pointer-events: none; font-size: 12px; line-height: 14px; font-weight: 600; color: var(--foreground);
+  text-shadow: 0 0 2px var(--nm-halo), 0 0 2px var(--nm-halo), 0 0 4px var(--nm-halo), 0 0 6px var(--nm-halo);
+}
+
+.nm-popup .maplibregl-popup-tip { display: none; }
+.nm-popup .maplibregl-popup-content {
+  padding: 4px; border-radius: 12px; color: var(--foreground);
+  background: color-mix(in srgb, var(--popover) 92%, transparent);
+  -webkit-backdrop-filter: blur(30px) saturate(200%); backdrop-filter: blur(30px) saturate(200%);
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.18), inset 0 0 0 0.5px var(--border);
+  font-family: var(--font-sans); max-height: 280px; overflow-y: auto;
+}
+.nm-list > * + * { border-top: 0.5px solid var(--border); }
+.nm-row {
+  display: flex; align-items: center; gap: 10px; width: 100%; min-height: 44px; padding: 6px 10px;
+  text-align: left; background: none; border-radius: 8px; color: inherit; cursor: pointer;
+}
+.nm-row:hover, .nm-row:active { background: rgb(120 120 128 / 0.12); }
+.nm-row-dot { width: 10px; height: 10px; flex: none; border-radius: 9999px; background: var(--c); }
+.nm-row-text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.nm-row-name { font-size: 15px; line-height: 20px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.nm-row-meta { font-size: 13px; line-height: 17px; color: var(--muted-foreground); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.nm-map .maplibregl-ctrl-attrib.maplibregl-compact {
+  margin: 0 8px 8px 0; background: color-mix(in srgb, var(--popover) 85%, transparent); color: var(--muted-foreground);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+}
+.nm-map .maplibregl-ctrl-attrib a { color: inherit; }
+.dark .nm-map .maplibregl-ctrl-attrib-button { filter: invert(1); }

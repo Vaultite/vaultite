@@ -1,0 +1,17 @@
+{
+  "left": [
+    "search:search",
+    "pages:pages",
+    "terminal:sessions",
+    "files:files"
+  ],
+  "right": [
+    "inbox:inbox",
+    "backlinks:links",
+    "outline:outline",
+    "activity:feed"
+  ],
+  "collapsed": [
+    "activity:feed"
+  ]
+}

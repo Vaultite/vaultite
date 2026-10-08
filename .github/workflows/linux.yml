@@ -1,0 +1,29 @@
+# The desktop app for Linux, x64 and arm64: each built on its own architecture (node-pty is compiled there), tested, and
+# its AppImage, .deb and latest-linux.yml kept as the run's artifacts. By hand (Actions > Linux), or for a v* tag.
+name: Linux
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+jobs:
+  build:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build && npm run check && npm test
+      - run: npm run release:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: vaultite-linux-${{ runner.arch }}
+          path: |
+            dist-app/*.AppImage
+            dist-app/*.deb
+            dist-app/latest-linux*.yml

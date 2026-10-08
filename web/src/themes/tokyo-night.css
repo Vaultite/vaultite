@@ -1,0 +1,61 @@
+/* Tokyo Night, from enkia/tokyo-night-vscode-theme and folke/tokyonight.nvim: Day (light) and Night (dark). Overrides every token in index.css. Licence: see LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="tokyo-night"] {
+    color-scheme: light;
+    --background: #e1e2e7;
+    --foreground: #3760bf;
+    --card: #eeeff3;
+    --card-foreground: #3760bf;
+    --popover: rgb(238 239 243 / 0.9);
+    --popover-foreground: #3760bf;
+    --primary: #2e7de9;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(97 114 176 / 0.14);
+    --secondary-foreground: #3760bf;
+    --muted: rgb(97 114 176 / 0.14);
+    --muted-foreground: #6172b0;
+    --accent: rgb(97 114 176 / 0.14);
+    --accent-foreground: #3760bf;
+    --destructive: #f52a65;
+    --border: rgb(97 114 176 / 0.3);
+    --input: rgb(97 114 176 / 0.22);
+    --ring: #2e7de9;
+    --chart-1: #2e7de9; --chart-2: #6172b0; --chart-3: #f52a65; --chart-4: #9854f1; --chart-5: #587539;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #d0d5e3;
+    --segment-on: #eeeff3;
+    --red: #f52a65; --orange: #b15c00; --yellow: #8c6c3e; --green: #587539; --teal: #118c74;
+    --blue: #2e7de9; --indigo: #7847bd; --purple: #9854f1; --pink: #d20065; --gray: #848cb5;
+    --h1: var(--blue); --h2: var(--purple); --h3: var(--teal); --h4: var(--green); --h5: var(--yellow); --h6: var(--orange);
+    --scrollbar: rgb(97 114 176 / 0.35); --scrollbar-hover: rgb(97 114 176 / 0.55);
+    --map-land: #d0d5e3; --map-water: #afc6e8; --map-park: #c6ccc4;
+}
+:is(:root, .scheme-preview)[data-scheme="tokyo-night"].dark {
+    color-scheme: dark;
+    --background: #1a1b26;
+    --foreground: #c0caf5;
+    --card: #24283b;
+    --card-foreground: #c0caf5;
+    --popover: rgb(36 40 59 / 0.92);
+    --popover-foreground: #c0caf5;
+    --primary: #7aa2f7;
+    --primary-foreground: #1a1b26;
+    --secondary: rgb(169 177 214 / 0.22);
+    --secondary-foreground: #c0caf5;
+    --muted: rgb(169 177 214 / 0.22);
+    --muted-foreground: #a9b1d6;
+    --accent: rgb(169 177 214 / 0.22);
+    --accent-foreground: #c0caf5;
+    --destructive: #f7768e;
+    --border: rgb(169 177 214 / 0.32);
+    --input: rgb(192 202 245 / 0.14);
+    --ring: #7aa2f7;
+    --chart-1: #7aa2f7; --chart-2: #a9b1d6; --chart-3: #f7768e; --chart-4: #bb9af7; --chart-5: #9ece6a;
+    --glass-edge: rgb(192 202 245 / 0.1);
+    --sidebar: #16161e;
+    --segment-on: #414868;
+    --red: #f7768e; --orange: #ff9e64; --yellow: #e0af68; --green: #9ece6a; --teal: #73daca;
+    --blue: #7aa2f7; --indigo: #7dcfff; --purple: #bb9af7; --pink: #ff007c; --gray: #565f89;
+    --h1: var(--blue); --h2: var(--purple); --h3: var(--teal); --h4: var(--green); --h5: var(--yellow); --h6: var(--orange);
+    --scrollbar: rgb(192 202 245 / 0.2); --scrollbar-hover: rgb(192 202 245 / 0.35);
+    --map-land: #16161e; --map-water: #2f3954; --map-park: #2f3831;
+}

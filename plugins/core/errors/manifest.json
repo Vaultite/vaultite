@@ -1,0 +1,22 @@
+{
+  "id": "errors",
+  "category": "system",
+  "name": "Errors",
+  "description": "The errors the app and the server hit, kept on this machine: when the app stopped or a block failed, with what you were doing, and the server's own. The same error again is one line with a count; a new kind shows a toast.",
+  "tint": "red",
+  "settings": {
+    "keep_days": { "type": "number", "default": 30, "min": 1, "max": 365, "label": "Days to keep", "description": "how long errors are kept on this machine" },
+    "notify": { "type": "boolean", "default": true, "label": "Tell me about new errors", "description": "a toast, kept in the inbox, the first time a kind of error happens" }
+  },
+  "blocks": {
+    "errors": {
+      "description": "the errors the app and the server hit, the latest first, each kind once with a count; open one for its stack and when it happened",
+      "live": "this machine's error record (not in the vault)",
+      "options": {
+        "limit": { "type": "number", "default": 20, "min": 1, "max": 200, "description": "how many kinds of error to show" },
+        "source": { "type": "enum", "values": ["app", "server"], "description": "only the app's errors, or only the server's" },
+        "title": { "type": "string", "description": "the card's title" }
+      }
+    }
+  }
+}

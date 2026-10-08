@@ -1,0 +1,71 @@
+/* Paper (light and dark): warm off-black text on white, a beige-grey sidebar, a calm blue, and nine soft text colours.
+   Values only. Overrides every token in index.css. See LICENSES.md. */
+:is(:root, .scheme-preview)[data-scheme="paper"] {
+    color-scheme: light;
+    --background: #ffffff;
+    --foreground: #37352f;
+    --card: #ffffff;
+    --card-foreground: #37352f;
+    --popover: rgb(255 255 255 / 0.94);
+    --popover-foreground: #37352f;
+    --primary: #2383e2;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(55 53 47 / 0.08);
+    --secondary-foreground: #37352f;
+    --muted: rgb(55 53 47 / 0.08);
+    --muted-foreground: #787774;
+    --accent: rgb(55 53 47 / 0.08);
+    --accent-foreground: #37352f;
+    --destructive: #d44c47;
+    --border: #e9e9e7;
+    --input: rgb(55 53 47 / 0.16);
+    --ring: #2383e2;
+    --chart-1: #2383e2; --chart-2: #787774; --chart-3: #d44c47; --chart-4: #9065b0; --chart-5: #448361;
+    --glass-edge: rgb(255 255 255 / 0.6);
+    --sidebar: #f8f8f7;
+    --segment-on: #ffffff;
+    --red: #d44c47; --orange: #d9730d; --yellow: #cb912f; --green: #448361; --teal: #3e8a87;
+    --blue: #337ea9; --indigo: #5a67b0; --purple: #9065b0; --pink: #c14c8a; --gray: #9b9a97;
+    --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground);
+    --h4: var(--foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
+    --scrollbar: rgb(55 53 47 / 0.2); --scrollbar-hover: rgb(55 53 47 / 0.35);
+    --map-land: #f4f4f2; --map-water: #cfdde8; --map-park: #dfe8da;
+}
+:is(:root, .scheme-preview)[data-scheme="paper"].dark {
+    color-scheme: dark;
+    --background: #191919;
+    --foreground: #d4d4d4;
+    --card: #202020;
+    --card-foreground: #d4d4d4;
+    --popover: rgb(37 37 37 / 0.95);
+    --popover-foreground: #d4d4d4;
+    --primary: #2383e2;
+    --primary-foreground: #ffffff;
+    --secondary: rgb(255 255 255 / 0.08);
+    --secondary-foreground: #d4d4d4;
+    --muted: rgb(255 255 255 / 0.08);
+    --muted-foreground: #9b9b9b;
+    --accent: rgb(255 255 255 / 0.08);
+    --accent-foreground: #d4d4d4;
+    --destructive: #df5452;
+    --border: #2f2f2f;
+    --input: rgb(255 255 255 / 0.12);
+    --ring: #2383e2;
+    --chart-1: #2383e2; --chart-2: #9b9b9b; --chart-3: #df5452; --chart-4: #9d68d3; --chart-5: #529e72;
+    --glass-edge: rgb(255 255 255 / 0.07);
+    --sidebar: #202020;
+    --segment-on: #373737;
+    --red: #df5452; --orange: #c77d48; --yellow: #ca984d; --green: #529e72; --teal: #4fa29e;
+    --blue: #5e87c9; --indigo: #7a84d0; --purple: #9d68d3; --pink: #d15796; --gray: #7f7f7f;
+    --h1: var(--foreground); --h2: var(--foreground); --h3: var(--foreground);
+    --h4: var(--foreground); --h5: var(--muted-foreground); --h6: var(--muted-foreground);
+    --scrollbar: rgb(255 255 255 / 0.16); --scrollbar-hover: rgb(255 255 255 / 0.3);
+    --map-land: #202020; --map-water: #1b2633; --map-park: #212820;
+}
+/* Checkboxes are the blue, and links are the text's own colour, underlined: the one rule here beyond
+   tokens (notes' tint is what the editor draws links, checkboxes and quotes in). */
+:is(:root, .scheme-preview)[data-scheme="paper"] { --notes: var(--primary); }
+:root[data-scheme="paper"] :is(.note-prose .wikilink:not(.missing), .dash-prose .wikilink:not(.missing), .vau-editor .cm-wikilink, .vau-editor .cm-wikilink-raw, .vau-editor .cm-block .wikilink) {
+    color: inherit; text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+    text-decoration-color: color-mix(in oklab, currentColor 35%, transparent);
+}

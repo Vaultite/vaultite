@@ -1,0 +1,13 @@
+{
+  "disabled": [
+    "books",
+    "calendar",
+    "logs",
+    "people",
+    "people-map",
+    "today",
+    "health",
+    "learning"
+  ],
+  "enabled": []
+}

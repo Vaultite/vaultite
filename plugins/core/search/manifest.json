@@ -1,0 +1,14 @@
+{
+  "id": "search",
+  "category": "navigation",
+  "name": "Search field",
+  "description": "The search field at the top of the sidebar. Off, the quick switcher still opens with ⌘O.",
+  "replaces": { "obsidian": ["omnisearch"] },
+  "settings": {
+    "sort": { "type": "enum", "values": ["relevance", "name", "name-desc", "modified", "modified-old", "created", "created-old"], "default": "relevance", "label": "Sort results", "labels": {"relevance": "Best match", "name": "File name (A to Z)", "name-desc": "File name (Z to A)", "modified": "Modified time (new to old)", "modified-old": "Modified time (old to new)", "created": "Created time (new to old)", "created-old": "Created time (old to new)"}, "description": "the order of the search tab's results" },
+    "matchCase": { "type": "boolean", "default": false, "label": "Match case", "description": "the search tab tells upper and lower case apart" },
+    "collapse": { "type": "boolean", "default": false, "label": "Collapse results", "description": "the search tab lists each file by name only, its matches folded" },
+    "context": { "type": "number", "default": 0, "min": 0, "max": 5, "label": "Lines of context", "description": "lines shown around each match in the search tab" },
+    "explain": { "type": "boolean", "default": false, "label": "Explain search terms", "description": "the search tab says in words what a query looks for" }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "Everything",
+  "description": "Every plugin on: your days, people and health, notes and links, coding agents with their terminals, machines and the web, all in one app. Turn off what you don't use later.",
+  "icon": "layers",
+  "tint": "indigo",
+  "sort": 6,
+  "more": true
+}

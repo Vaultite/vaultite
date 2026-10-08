@@ -1,0 +1,20 @@
+filters:
+  and:
+    - file.inFolder("Notes/Books")
+    - 'status != "dropped"'
+formulas:
+  left: if(total_pages, total_pages - current_page, "")
+properties:
+  formula.left: {displayName: Pages left}
+views:
+  - type: table
+    name: All books
+    order: [file.name, author, status, rating, formula.left]
+    sort: [{property: note.status, direction: ASC}]
+  - type: kanban
+    name: Board
+    groupBy: {property: note.status, direction: ASC}
+    order: [file.name, author]
+  - type: cards
+    name: Cards
+    order: [file.name, author, rating]

@@ -1,0 +1,32 @@
+/* Dracula, from dracula/dracula-theme (dark only). Overrides every token in index.css. Licence: see LICENSES.md. */
+/* Dark only: the app stays dark with it (web/src/core/appearance.ts). */
+:is(:root, .scheme-preview)[data-scheme="dracula"] {
+    color-scheme: dark;
+    --background: #282a36;
+    --foreground: #f8f8f2;
+    --card: #343746;
+    --card-foreground: #f8f8f2;
+    --popover: rgb(52 55 70 / 0.92);
+    --popover-foreground: #f8f8f2;
+    --primary: #bd93f9;
+    --primary-foreground: #282a36;
+    --secondary: rgb(164 172 200 / 0.22);
+    --secondary-foreground: #f8f8f2;
+    --muted: rgb(164 172 200 / 0.22);
+    --muted-foreground: #a4acc8;
+    --accent: rgb(164 172 200 / 0.22);
+    --accent-foreground: #f8f8f2;
+    --destructive: #ff5555;
+    --border: rgb(164 172 200 / 0.32);
+    --input: rgb(248 248 242 / 0.14);
+    --ring: #bd93f9;
+    --chart-1: #bd93f9; --chart-2: #a4acc8; --chart-3: #ff5555; --chart-4: #bd93f9; --chart-5: #50fa7b;
+    --glass-edge: rgb(248 248 242 / 0.1);
+    --sidebar: #21222c;
+    --segment-on: #44475a;
+    --red: #ff5555; --orange: #ffb86c; --yellow: #f1fa8c; --green: #50fa7b; --teal: #8be9fd;
+    --blue: #8be9fd; --indigo: #6272a4; --purple: #bd93f9; --pink: #ff79c6; --gray: #6272a4;
+    --h1: var(--purple); --h2: var(--pink); --h3: var(--green); --h4: var(--orange); --h5: var(--teal); --h6: var(--yellow);
+    --scrollbar: rgb(248 248 242 / 0.2); --scrollbar-hover: rgb(248 248 242 / 0.35);
+    --map-land: #21222c; --map-water: #3e5462; --map-park: #2e4b41;
+}

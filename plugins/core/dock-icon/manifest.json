@@ -1,0 +1,8 @@
+{
+  "id": "dock-icon",
+  "category": "system",
+  "name": "Dock icon",
+  "description": "Try another picture as the desktop app's Dock icon, to see how an icon looks there: any image in the vault (its menu: Use as Dock icon) or on the Mac (Set Dock icon from a file…). Kept on this Mac until you reset it; Finder keeps the app's own.",
+  "offByDefault": true,
+  "runsOnServer": true
+}

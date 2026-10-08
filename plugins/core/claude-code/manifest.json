@@ -1,0 +1,67 @@
+{
+  "id": "claude-code",
+  "category": "agents",
+  "name": "Claude Code",
+  "description": "What Claude Code does on this machine, in each of its accounts: plan limits and when they renew, sessions running now and Remote Control servers, usage and its value at API prices, by day, project and model. Read from Claude Code's own files, nothing saved.",
+  "runsOnServer": true,
+  "enhances": [
+    "projects",
+    "terminal",
+    "machines"
+  ],
+  "blocks": {
+    "claude-limits": {
+      "description": "the plan's limits, the session and the week: how much is used and when each renews (each account's, with several)",
+      "live": "Claude Code's own files on this machine (~/.claude)",
+      "options": {
+        "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "claude-sessions": {
+      "description": "sessions open now, then the latest ones, then the Remote Control servers running",
+      "live": "Claude Code's own files on this machine (~/.claude)",
+      "options": {
+        "recent": { "type": "number", "default": 5, "description": "how many recent sessions to list after the open ones" },
+        "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "claude-usage": {
+      "description": "its value at API prices and tokens per day, today and over the last days",
+      "live": "Claude Code's own files on this machine (~/.claude)",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "claude-projects": {
+      "description": "its usage by project over the last days",
+      "live": "Claude Code's own files on this machine (~/.claude)",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "claude-models": {
+      "description": "its usage by model over the last days",
+      "live": "Claude Code's own files on this machine (~/.claude)",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 30, "description": "how many days back it covers, up to 30" },
+        "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "claude": {
+      "description": "in a project file: that project's usage over the last 30 days and its sessions",
+      "live": "Claude Code's own files on this machine (~/.claude)",
+      "options": {
+        "project": { "type": "string", "description": "another project than the file's (its folder's name, as Claude Code names it)" },
+        "account": { "type": "string", "description": "one account's (its id, like default or personal); all of them when left out" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    }
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "disabled": [
+    "activity",
+    "ai-import",
+    "calendar",
+    "logs",
+    "machines",
+    "people",
+    "people-map",
+    "terminal",
+    "today",
+    "claude-code",
+    "codex",
+    "cursor",
+    "health",
+    "learning",
+    "opencode",
+    "hermes",
+    "openclaw"
+  ],
+  "enabled": []
+}

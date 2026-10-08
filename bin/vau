@@ -1,0 +1,8 @@
+#!/usr/bin/env node
+// vau: Vaultite from a terminal (core/cli.ts). `vau --help`.
+// Node's compile cache first (modules type-stripped and compiled once are kept in os.tmpdir()), then the CLI.
+import module from "node:module"
+
+module.enableCompileCache?.()
+const { main } = await import("../core/cli.ts")
+process.exitCode = await main()

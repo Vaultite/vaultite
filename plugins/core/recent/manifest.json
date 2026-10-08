@@ -1,0 +1,7 @@
+{
+  "id": "recent",
+  "category": "navigation",
+  "name": "Recent files",
+  "description": "A sidebar panel with the files you opened lately in this workspace, or the vault's recently changed ones: the same lists a new tab shows.",
+  "replaces": { "obsidian": ["recent-files-obsidian"] }
+}

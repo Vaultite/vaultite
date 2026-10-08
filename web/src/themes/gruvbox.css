@@ -1,0 +1,59 @@
+/* Gruvbox (morhetz/gruvbox): warm retro palette. Overrides every token in index.css; light uses the light variant. */
+:is(:root, .scheme-preview)[data-scheme="gruvbox"] {
+    --background: #fbf1c7;
+    --foreground: #3c3836;
+    --card: #f9f5d7;
+    --card-foreground: #3c3836;
+    --popover: rgb(249 245 215 / 0.9);
+    --popover-foreground: #3c3836;
+    --primary: #076678;
+    --primary-foreground: #f9f5d7;
+    --secondary: rgb(124 111 100 / 0.14);
+    --secondary-foreground: #3c3836;
+    --muted: rgb(124 111 100 / 0.14);
+    --muted-foreground: #7c6f64;
+    --accent: rgb(124 111 100 / 0.14);
+    --accent-foreground: #3c3836;
+    --destructive: #9d0006;
+    --border: rgb(124 111 100 / 0.3);
+    --input: rgb(124 111 100 / 0.22);
+    --ring: #076678;
+    --chart-1: #076678; --chart-2: #7c6f64; --chart-3: #9d0006; --chart-4: #8f3f71; --chart-5: #79740e;
+    --glass-edge: rgb(255 255 255 / 0.5);
+    --sidebar: #f2e5bc;
+    --segment-on: #f9f5d7;
+    --red: #cc241d; --orange: #d65d0e; --yellow: #d79921; --green: #98971a; --teal: #689d6a;
+    --blue: #458588; --indigo: #076678; --purple: #b16286; --pink: #cc241d; --gray: #928374;
+    --h1: #9d0006; --h2: #af3a03; --h3: #b57614; --h4: #79740e; --h5: #427b58; --h6: #076678;
+    --scrollbar: rgb(124 111 100 / 0.35); --scrollbar-hover: rgb(124 111 100 / 0.55);
+    --map-land: #f2e5bc; --map-water: #b7cfc4; --map-park: #e2dfa9;
+}
+:is(:root, .scheme-preview)[data-scheme="gruvbox"].dark {
+    --background: #1d2021;
+    --foreground: #ebdbb2;
+    --card: #282828;
+    --card-foreground: #ebdbb2;
+    --popover: rgb(50 48 47 / 0.92);
+    --popover-foreground: #ebdbb2;
+    --primary: #83a598;
+    --primary-foreground: #1d2021;
+    --secondary: rgb(146 131 116 / 0.22);
+    --secondary-foreground: #ebdbb2;
+    --muted: rgb(146 131 116 / 0.22);
+    --muted-foreground: #a89984;
+    --accent: rgb(146 131 116 / 0.22);
+    --accent-foreground: #ebdbb2;
+    --destructive: #fb4934;
+    --border: rgb(146 131 116 / 0.32);
+    --input: rgb(235 219 178 / 0.14);
+    --ring: #83a598;
+    --chart-1: #83a598; --chart-2: #a89984; --chart-3: #fb4934; --chart-4: #d3869b; --chart-5: #b8bb26;
+    --glass-edge: rgb(235 219 178 / 0.1);
+    --sidebar: #181a1b;
+    --segment-on: #504945;
+    --red: #fb4934; --orange: #fe8019; --yellow: #fabd2f; --green: #b8bb26; --teal: #8ec07c;
+    --blue: #83a598; --indigo: #83a598; --purple: #d3869b; --pink: #fb4934; --gray: #928374;
+    --h1: var(--red); --h2: var(--orange); --h3: var(--yellow); --h4: var(--green); --h5: var(--teal); --h6: var(--blue);
+    --scrollbar: rgb(235 219 178 / 0.2); --scrollbar-hover: rgb(235 219 178 / 0.35);
+    --map-land: #282828; --map-water: #1f3136; --map-park: #2f3322;
+}
