@@ -18,3 +18,4 @@
   so it retires (`stale`); tmux takes PATH from the client that made the session (the rest per session, `-e`); shells drop
   `ELECTRON_RUN_AS_NODE`; whether a shell runs something is its tty's foreground group (`inFront`), not its name;
   `plugin.memo` keys on `fn.name` (anonymous functions share an entry).
+- The panel's Cloud rows (`cloud.ts`) are Claude Code on the web's sessions, from the desktop app (`webPages.cloud`, electron/web.ts).

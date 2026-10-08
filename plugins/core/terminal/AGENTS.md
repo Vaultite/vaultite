@@ -7,7 +7,9 @@ screen and history again. Only the tab that opened an agent starts it: a tab put
 reattaches, and if that agent's session is gone it says so and offers a new one rather than starting it by itself. A
 shell open on two devices has the size of the last one used: going back to one (focusing its tab or window, a click, a
 key) gives it its size again. The sidebar's Terminals panel lists every running shell (click to open it, x to end it); it's also a tab,
-`view:terminals`, and a terminal's tab shows the same name (an agent's session name) as its row. With the Machines
+`view:terminals`, and a terminal's tab shows the same name (an agent's session name) as its row. In the desktop app it
+also lists Claude Code on the web's sessions under Cloud (with claude.ai signed in in the Web viewer; a click opens one
+in a web tab). With the Machines
 plugin on, other machines' shells are listed too, and a tab `view:terminal/<id>@<machine>` is a shell on that machine
 ("Open a terminal or an agent on a machine…"); workspaces save every terminal tab with its machine, so a tab made on one
 machine opens the same shell from the others (when that machine doesn't answer, the tab says so and keeps trying, rather

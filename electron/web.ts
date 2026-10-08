@@ -140,7 +140,6 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   win.contentView.addChildView(view)
   const p: Page = { id: next++, win, view, profile, held: true, closing: false, let: 0 }
   pages.set(p.id, p)
-  watching ??= setInterval(() => void watch(), WATCH_EVERY)
   const wc = view.webContents
 
   // Only to the web: a mailto: link opens the mail app, anything else (file:, an app's own scheme) goes nowhere.
@@ -267,8 +266,7 @@ function end(p: Page) {
 
 /** Keep at most KEEP pages let go of in a window: the oldest end. */
 function trim(win: BrowserWindow) {
-  // (a page whose work is watched stays: closing its tab ends it)
-  const loose = [...pages.values()].filter((p) => p.win === win && !p.held && !watched(p)).sort((a, b) => b.let - a.let)
+  const loose = [...pages.values()].filter((p) => p.win === win && !p.held).sort((a, b) => b.let - a.let)
   for (const p of loose.slice(KEEP)) end(p)
 }
 
@@ -424,16 +422,11 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     // Its pages in that profile show it signed out.
     for (const p of pages.values()) if (p.profile === prof && siteOf(hostOfUrl(p.view.webContents.getURL())) === name) p.view.webContents.reload()
   },
-  "web:wake": (win, urls, profile) => {
-    const prof = profileOf(profile)
-    for (const u of Array.isArray(urls) ? urls.slice(0, 20) : []) {
-      if (typeof u !== "string" || !web(u) || !WATCH.hosts.has(hostOfUrl(u))) continue
-      if ([...pages.values()].some((x) => x.win === win && x.profile === prof && !x.closing && (x.view.webContents.getURL() || "") === u)) continue
-      const p = make(win, u, prof)
-      p.held = false
-      p.let = Date.now()
-    }
-    pagesChanged(win)
+  // Claude Code on the web's sessions: the window is told them from now on, as they change (`cloud`) and their news.
+  "web:cloud": (win) => {
+    cloudWindows.add(win)
+    if (!cloudTimer) { cloudTimer = setInterval(() => void cloudRead(), Math.min(CLOUD.every, 5000)); void cloudRead() }
+    return cloudAll()
   },
   // (anything but a host is answered "", never the whole list refused)
   "web:icons": (_win, hosts) => {
@@ -620,54 +613,113 @@ async function iconFrom(p: Page, urls: unknown) {
   }
 }
 
-// ---------- work going on in a page: Claude Code on the web ----------
+// ---------- Claude Code on the web's sessions ----------
 
-/** Claude Code on the web's sidebar shows every session with a status icon named for its state (labels from its
- *  code), read in an isolated world. VAULTITE_TEST_CLAUDE_HOST: web/qa/webwatch.mjs's stand-in. */
-const WATCH = {
-  hosts: new Set(["claude.ai", ...(process.env.VAULTITE_TEST_CLAUDE_HOST ? [process.env.VAULTITE_TEST_CLAUDE_HOST] : [])]),
-  read: `[...document.querySelectorAll('a[href*="/code/session_"]')].map((a) => {
-    const s = a.querySelector('[aria-label][role=img], [aria-label][role=status]')
-    return s ? { key: new URL(a.getAttribute("href"), location.href).href, title: (a.textContent || "").trim().slice(0, 120), state: s.getAttribute("aria-label") || "" } : null
-  }).filter(Boolean)`,
-  working: new Set(["Running", "Using the browser"]),
-  finished: new Set(["Unread response", "Idle", "Done"]),
+/** A session of Claude Code on the web, as its own sidebar has it: `state` from its `session_status` (running,
+ *  requires_action, anything else idle), `updated` in ms, `url` its page. */
+export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string }
+/** Asked of claude.ai with a profile's logins, no page needed. VAULTITE_TEST_CLAUDE_URL: web/qa/webwatch.mjs's stand-in. */
+const CLOUD_BASE = process.env.VAULTITE_TEST_CLAUDE_URL || "https://claude.ai"
+const CLOUD = {
+  list: `${CLOUD_BASE}/v1/code/sessions?statuses=active&statuses=paused&limit=50`,
+  page: (id: string) => `${CLOUD_BASE}/code/${encodeURIComponent(id)}`,
+  site: siteOf(hostOfUrl(CLOUD_BASE)),
+  every: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 15_000,
 }
-const WATCH_EVERY = 3000
-let watching: ReturnType<typeof setInterval> | undefined
-let reading = false
-/** Each session's last state, by "<profile> <address>": a change is news once, however many pages show it. */
-const sessionStates = new Map<string, string>()
-const watched = (p: Page) => !p.view.webContents.isDestroyed() && WATCH.hosts.has(hostOfUrl(p.view.webContents.getURL()))
+/** The windows that asked (`web:cloud`): they're told the list as it changes, and its news. */
+const cloudWindows = new Set<BrowserWindow>()
+/** Each profile's sessions as last read (null: not signed in), and when to read it next (later after a failure). */
+const cloudLists = new Map<string, CloudSession[] | null>()
+const cloudNext = new Map<string, { at: number; wait: number }>()
+let cloudTimer: ReturnType<typeof setInterval> | undefined
+let cloudReading = false
+
+/** The profiles this Mac has logins for: their partitions on disk, and those set up since. */
+function cloudProfiles() {
+  const out = new Set(sessions.keys())
+  try {
+    for (const d of fs.readdirSync(path.join(app.getPath("userData"), "Partitions"))) {
+      const m = /^web(?:-([a-z0-9-]{1,32}))?$/.exec(d)
+      if (m) out.add(m[1] ?? "")
+    }
+  } catch { /* no pages yet */ }
+  return [...out]
+}
+
+/** A profile's sessions, or null when it isn't signed in to claude.ai. From one of its claude.ai pages when one is open
+ *  (the site's own origin), else with the session's cookies from here, like accountOf. */
+async function readCloud(profile: string): Promise<CloudSession[] | null> {
+  const s = webSession(profile)
+  if (!(await s.cookies.get({ url: CLOUD_BASE })).length) return null
+  const headers = { accept: "application/json", "anthropic-version": "2023-06-01" }
+  const page = [...pages.values()].find((p) => p.profile === profile && !p.view.webContents.isDestroyed() && siteOf(hostOfUrl(p.view.webContents.getURL())) === CLOUD.site)
+  const j = (page
+    ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: `fetch(${JSON.stringify(CLOUD.list)}, { credentials: "include", headers: ${JSON.stringify(headers)} }).then((r) => r.status === 401 || r.status === 403 ? { out: true } : r.ok ? r.json() : Promise.reject(new Error(String(r.status))))` }])
+    : await s.fetch(CLOUD.list, { credentials: "include", headers }).then((r) => (r.status === 401 || r.status === 403 ? { out: true } : r.ok ? r.json() : Promise.reject(new Error(String(r.status)))))) as { out?: boolean; data?: unknown }
+  if (j?.out) return null
+  if (!Array.isArray(j?.data)) throw new Error("no sessions list")
+  return (j.data as Record<string, unknown>[]).flatMap((x): CloudSession[] => {
+    if (typeof x?.id !== "string" || x.session_status === "archived") return []
+    const at = Date.parse(String(x.updated_at ?? ""))
+    return [{
+      id: x.id, title: typeof x.title === "string" && x.title.trim() ? x.title.trim().slice(0, 200) : "Claude Code session",
+      state: x.session_status === "running" ? "running" : x.session_status === "requires_action" ? "waiting" : "idle",
+      updated: Number.isFinite(at) ? at : 0, url: CLOUD.page(x.id), profile,
+    }]
+  })
+}
+
+/** Every profile's sessions, one per session (the first profile's), most recent first. */
+const cloudAll = () => {
+  const seen = new Map<string, CloudSession>()
+  for (const list of cloudLists.values()) for (const c of list ?? []) if (!seen.has(c.id)) seen.set(c.id, c)
+  return [...seen.values()].sort((a, b) => b.updated - a.updated)
+}
 
 /** What a session going from one state to another is worth telling, if anything. */
-function newsOf(was: string, now: string): { kind: "done" | "waiting"; title: string } | null {
+function newsOf(was: CloudSession["state"], now: CloudSession["state"]): { kind: "done" | "waiting"; title: string } | null {
   if (was === now) return null
-  if (now === "Awaiting input") return { kind: "waiting", title: "Claude Code needs your approval" }
-  if (now === "Awaiting answer") return { kind: "waiting", title: "Claude Code has a question" }
-  if (WATCH.working.has(was) && WATCH.finished.has(now)) return { kind: "done", title: "Claude Code finished" }
+  if (now === "waiting") return { kind: "waiting", title: "Claude Code needs you" }
+  if (was === "running") return { kind: "done", title: "Claude Code finished" }
   return null
 }
 
-async function watch() {
-  if (reading) return
-  reading = true
+async function cloudRead() {
+  for (const w of cloudWindows) if (w.isDestroyed()) cloudWindows.delete(w)
+  if (!cloudWindows.size) { clearInterval(cloudTimer); cloudTimer = undefined; return }
+  if (cloudReading) return
+  cloudReading = true
   try {
-    for (const p of [...pages.values()]) {
-      if (p.closing || !watched(p)) continue
-      let list: unknown
-      try { list = await p.view.webContents.executeJavaScriptInIsolatedWorld(1003, [{ code: WATCH.read }]) } catch { continue }
-      if (!Array.isArray(list)) continue
-      for (const s of list as { key?: unknown; title?: unknown; state?: unknown }[]) {
-        if (typeof s?.key !== "string" || typeof s.state !== "string" || !web(s.key)) continue
-        const k = `${p.profile} ${s.key}`, was = sessionStates.get(k)
-        sessionStates.set(k, s.state)
-        // (a session seen for the first time is where things stand, not news)
-        const news = was === undefined ? null : newsOf(was, s.state)
-        if (news) tell(p.win, { type: "session", id: p.id, profile: p.profile, site: siteOf(hostOfUrl(s.key)), url: s.key, kind: news.kind, title: news.title, body: typeof s.title === "string" ? s.title : "" })
+    const before = JSON.stringify(cloudAll())
+    for (const profile of cloudProfiles()) {
+      const due = cloudNext.get(profile)
+      if (due && Date.now() < due.at) continue
+      let list: CloudSession[] | null
+      try { list = await readCloud(profile) } catch {
+        // (a failure: asked again later and later, up to five minutes; the list stays as it was)
+        const wait = Math.min(300_000, (due?.wait ?? CLOUD.every) * 2)
+        cloudNext.set(profile, { at: Date.now() + wait, wait })
+        continue
       }
+      // (signed out: asked again in a minute)
+      const wait = list ? CLOUD.every : Math.max(CLOUD.every, 60_000)
+      cloudNext.set(profile, { at: Date.now() + wait, wait })
+      const had = cloudLists.get(profile)
+      cloudLists.set(profile, list)
+      // (a profile's first read is where things stand, not news; a running session that left the list is done)
+      if (!had || !list) continue
+      const now = new Map(list.map((c) => [c.id, c]))
+      for (const c of had) {
+        const n = now.get(c.id)
+        const news = newsOf(c.state, n?.state ?? "idle")
+        if (news) for (const w of cloudWindows) tell(w, { type: "session", id: 0, profile, site: CLOUD.site, url: c.url, kind: news.kind, title: news.title, body: (n ?? c).title })
+      }
+      for (const n of list) if (!had.some((c) => c.id === n.id) && n.state === "waiting")
+        for (const w of cloudWindows) tell(w, { type: "session", id: 0, profile, site: CLOUD.site, url: n.url, kind: "waiting", title: "Claude Code needs you", body: n.title })
     }
-  } finally { reading = false }
+    const after = cloudAll()
+    if (JSON.stringify(after) !== before) for (const w of cloudWindows) tell(w, { type: "cloud", sessions: after })
+  } finally { cloudReading = false }
 }
 
 // ---------- toasts over pages ----------

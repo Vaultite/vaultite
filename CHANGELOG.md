@@ -7,6 +7,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Claude Code on the web in the Terminals panel**: the desktop app lists your claude.ai/code sessions under Cloud
+  (working, waiting on you or idle, and since when; a click opens one in a web tab), read with the Web viewer's
+  claude.ai login, so no claude.ai tab needs to be open. A session finishing or needing you is in the Inbox again.
 - **Terminals show their agent's state**, as Claude Code's agent view does: an agent's icon keeps its colour while it
   works, turns yellow with a dot while it waits on you, and grey once idle; the Terminals panel lists the waiting ones
   first, then working, idle and plain shells, and holds still while the pointer is over it.

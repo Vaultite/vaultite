@@ -1,15 +1,16 @@
 // Web viewer: pages in desktop app tabs (native views, electron/web.ts), a viewer next to your notes rather than a
-// browser. Links open here (⌘-click: the browser); pages' notifications and Claude Code sessions become Inbox events.
+// browser. Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions become
+// Inbox events.
 import { lazy, Suspense, useEffect } from "react"
 import { ExternalLink, Globe, PencilLine, Scissors, Search } from "lucide-react"
 import {
-  choose, currentWorkspace, definePlugin, focusGroup, get, getStore, getTabLayout, isViewOpen, modKey, onTabLayoutChange, workspaceList, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut,
-  saveAttachments, showLabel, systemNotify, selectedText, useCommandList, useVaultChange, webPages, type TabLayout, type WebEvent,
+  choose, definePlugin, focusGroup, get, getStore, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut,
+  saveAttachments, showLabel, systemNotify, selectedText, useCommandList, useVaultChange, webPages, type WebEvent,
 } from "@vaultite"
 import { addressOf, hostOf, searchUrl } from "./address"
 import { iconCame, siteIcon } from "./icons"
 import { WebPagesPanel, WebPagesView } from "./Pages"
-import { focusedPage, getSettings, linksInViewer, profile, profileFor, setSettings, SETTINGS_DIR, shown, titleOf, type Settings } from "./state"
+import { focusedPage, getSettings, linksInViewer, profile, setSettings, SETTINGS_DIR, shown, titleOf, type Settings } from "./state"
 
 const WebPage = lazy(() => import("./WebPage"))
 
@@ -65,23 +66,6 @@ function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
   })
 }
 
-/** Tell the desktop app every workspace's web tabs, with their logins (see the head of this file). */
-function wake() {
-  if (!webPages?.wake) return
-  const web = (to: string) => (to.startsWith("view:web/") ? [to.slice(9)] : [])
-  const here: string[] = []
-  const walk = (n: TabLayout["root"]) => { if ("tabs" in n) here.push(...n.tabs.flatMap((t) => web(t.to))); else n.kids.forEach(walk) }
-  walk(getTabLayout().root)
-  const now = currentWorkspace()?.n
-  const by = new Map<string, string[]>([[profile(), here]])
-  for (const w of workspaceList()) {
-    if (w.n === now) continue
-    const p = profileFor(w.n)
-    by.set(p, [...(by.get(p) ?? []), ...w.places.flatMap(web)])
-  }
-  for (const [p, urls] of by) if (urls.length) void webPages.wake([...new Set(urls)], p).catch(() => {})
-}
-
 /** Toasts and tooltips over a shown page, told to the desktop app, which copies them above the native page so they show
  *  without stopping it; resent as they or the tabs change, and every 100 ms while they animate. */
 function FloatLayer() {
@@ -117,12 +101,8 @@ function Background() {
   const read = () => { get<Settings>("config/plugin/web-viewer").then((s) => setSettings(s && typeof s === "object" ? s : {}), () => {}) }
   useEffect(read, [])
   useVaultChange(read, (p) => p.startsWith(`${SETTINGS_DIR}/`))
-  // (a moment after the tabs change: a tab being shown makes its own page first)
-  useEffect(() => {
-    let t = window.setTimeout(wake, 3000)
-    const off = onTabLayoutChange(() => { clearTimeout(t); t = window.setTimeout(wake, 2000) })
-    return () => { clearTimeout(t); off() }
-  }, [])
+  // (Claude Code on the web's sessions: their news comes as `session` events from now on)
+  useEffect(() => { void webPages?.cloud?.().catch(() => {}) }, [])
   const commands = useCommandList()
   useEffect(() => { void webPages?.keys(modifiedSteps()) }, [commands])
   useEffect(() => webPages?.on((m) => {

@@ -70,7 +70,7 @@ contextBridge.exposeInMainWorld("vaultite", {
     list: call("web:list"),
     sites: call("web:sites"),
     forget: call("web:forget"),
-    wake: call("web:wake"),
+    cloud: call("web:cloud"),
     float: call("web:float"),
     take: call("web:take"),
     icons: call("web:icons"),

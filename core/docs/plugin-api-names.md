@@ -83,6 +83,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `clearSelection()`
 - `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
+- `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with.
 - `cn`
 - `commandItems(...ids)`: Commands as menu rows (by id), those offered now: their name, icon and first keys, so a menu and the palette say the same (the File explorer's Show hidden files, a tab bar's Reopen closed tab).
 - `commandKeys(id)`: Those keys as `keyHint` writes them, "" without any: for a button's tooltip, so it never names keys of its own.

@@ -110,9 +110,9 @@ export type WebPages = {
   sites?: (profile: string) => Promise<WebSite[]>
   /** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
   forget?: (profile: string, site: string) => Promise<unknown>
-  /** The addresses of a profile's web tabs: the watched ones (work going on in them, Claude Code's sessions) without a
-   *  page get one, hidden, so they're read before their tab is shown. */
-  wake?: (urls: string[], profile: string) => Promise<unknown>
+  /** Claude Code on the web's sessions in every profile signed in to claude.ai, read with its logins (no page needed); the
+   *  window is told them from now on as `cloud` events, their news as `session` ones. Older builds don't have it. */
+  cloud?: () => Promise<CloudSession[]>
   /** Toasts and tooltips floating over a page: each copied into
    *  a layer above the pages, so it shows while the page stays live; `through` passes the pointer on to the page. */
   float?: (rects: (WebRect & { through?: boolean })[]) => Promise<unknown>
@@ -139,8 +139,13 @@ export type WebEvent =
   | { type: "icon"; host: string; icon: string }
   /** A page's notification (its title and body; the page's address and site, and its logins' profile). */
   | { type: "notify"; id: number; profile: string; url: string; site: string; title: string; body: string }
-  /** Work in a page finished or waits for the user (Claude Code on the web's sessions): `url` is the session's. */
+  /** A Claude Code on the web session finished or waits for the user: `url` is the session's page. */
   | { type: "session"; id: number; profile: string; url: string; site: string; kind: "done" | "waiting"; title: string; body: string }
+  /** Claude Code on the web's sessions changed (`cloud`). */
+  | { type: "cloud"; sessions: CloudSession[] }
+/** A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was
+ *  read with. */
+export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string }
 export type WebPageInfo = WebPageState & { id: number; profile: string; shown: boolean }
 export type WebSite = { site: string; account?: string
   /** No page of it was opened in these logins: its cookies came with other sites' pages (trackers). */
