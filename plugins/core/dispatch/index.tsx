@@ -40,13 +40,15 @@ const ownAccount = (a: Action) => a.agent?.split("_")[1] ?? "default"
 /** Where each action runs by default in the current workspace, by its id (none: this machine, its own account). */
 type Where = { machine?: string; account?: string }
 const NOWHERE: Record<string, Where> = {}
-const wheres = scopedState("dispatch:where", NOWHERE)
-const whereOf = (a: Action, all = wheres.get()): Where => all[a.id] ?? {}
+// Made on first use: the plugin API may not be ready while the module loads.
+let wheresState: ReturnType<typeof scopedState<Record<string, Where>>> | undefined
+const wheres = () => (wheresState ??= scopedState("dispatch:where", NOWHERE))
+const whereOf = (a: Action, all = wheres().get()): Where => all[a.id] ?? {}
 const isWhere = (a: Action, p: Pick<Place, "machine" | "profile">, w = whereOf(a)) => p.machine === (w.machine ?? "") && (!p.profile || p.profile === (w.account ?? ownAccount(a)))
 function setWhere(a: Action, p: Pick<Place, "machine" | "profile">) {
   const w: Where = { ...(p.machine ? { machine: p.machine } : {}), ...(p.profile && p.profile !== ownAccount(a) ? { account: p.profile } : {}) }
-  const { [a.id]: _, ...rest } = wheres.get()
-  wheres.set(Object.keys(w).length ? { ...rest, [a.id]: w } : Object.keys(rest).length ? rest : undefined)
+  const { [a.id]: _, ...rest } = wheres().get()
+  wheres().set(Object.keys(w).length ? { ...rest, [a.id]: w } : Object.keys(rest).length ? rest : undefined)
 }
 /** Its places, each account on each machine; one per machine for an agent without accounts (or a command). */
 function rowsOf(a: Action, there = others): Pick<Place, "machine" | "machineLabel" | "profile" | "profileLabel">[] {
