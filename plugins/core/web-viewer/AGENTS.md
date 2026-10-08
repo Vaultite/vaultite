@@ -14,7 +14,7 @@ logins, apart from the app's, on the Mac running the desktop app; nothing about 
 - Notifications: a page's notifications become Inbox events (source: the site, kind `web`, linking to its tab), so
   they're toasts and the Mac's notifications too; `notifications: false` drops them.
 - Claude Code on the web: with claude.ai signed in in a workspace's logins, the desktop app reads its sessions every
-  15 seconds (claude.ai's own list, with those logins: no claude.ai tab needed). The Terminals panel lists them under
+  5 seconds while one is working or waiting, else every 15 (claude.ai's own list, with those logins: no claude.ai tab needed). The Terminals panel lists them under
   Cloud, and one finishing or waiting for the user is an Inbox event: "Claude Code finished" (kind `done`) or "Claude
   Code needs you" (`waiting`), `session` its address. On the web and phones links open in the
 browser, and a web tab says so with a link out.

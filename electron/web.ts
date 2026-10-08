@@ -425,7 +425,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
   // Claude Code on the web's sessions: the window is told them from now on, as they change (`cloud`) and their news.
   "web:cloud": (win) => {
     cloudWindows.add(win)
-    if (!cloudTimer) { cloudTimer = setInterval(() => void cloudRead(), Math.min(CLOUD.every, 5000)); void cloudRead() }
+    if (!cloudTimer) { cloudTimer = setInterval(() => void cloudRead(), 1000); void cloudRead() }
     return cloudAll()
   },
   // (anything but a host is answered "", never the whole list refused)
@@ -624,7 +624,9 @@ const CLOUD = {
   list: `${CLOUD_BASE}/v1/code/sessions?statuses=active&statuses=paused&limit=50`,
   page: (id: string) => `${CLOUD_BASE}/code/${encodeURIComponent(id)}`,
   site: siteOf(hostOfUrl(CLOUD_BASE)),
-  every: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 15_000,
+  // (read again sooner while a session is working or waiting: its news comes sooner)
+  busy: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 5000,
+  idle: process.env.VAULTITE_TEST_CLAUDE_URL ? 1500 : 15_000,
 }
 /** The windows that asked (`web:cloud`): they're told the list as it changes, and its news. */
 const cloudWindows = new Set<BrowserWindow>()
@@ -697,12 +699,12 @@ async function cloudRead() {
       let list: CloudSession[] | null
       try { list = await readCloud(profile) } catch {
         // (a failure: asked again later and later, up to five minutes; the list stays as it was)
-        const wait = Math.min(300_000, (due?.wait ?? CLOUD.every) * 2)
+        const wait = Math.min(300_000, (due?.wait ?? CLOUD.idle) * 2)
         cloudNext.set(profile, { at: Date.now() + wait, wait })
         continue
       }
       // (signed out: asked again in a minute)
-      const wait = list ? CLOUD.every : Math.max(CLOUD.every, 60_000)
+      const wait = !list ? 60_000 : list.some((c) => c.state !== "idle") ? CLOUD.busy : CLOUD.idle
       cloudNext.set(profile, { at: Date.now() + wait, wait })
       const had = cloudLists.get(profile)
       cloudLists.set(profile, list)
