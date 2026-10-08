@@ -91,6 +91,8 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
     const open = await count("open"), closed = await count("closed")
     for (const { dir, tag, ref, released } of units) {
       const where = dir ? `${full}/${dir}` : full
+      // (a folder gone from the default branch, removed or renamed, keeps its old tags but isn't listed)
+      if (dir && (await get(`${RAW}/${full}/HEAD/${dir}/manifest.json`)).status !== 200) { skipped.push(`${where}: no longer in the repository`); continue }
       const mf = await get(`${RAW}/${full}/${ref}/${dir ? `${dir}/` : ""}manifest.json`)
       const m = (mf.status === 200 && mf.body && typeof mf.body === "object" ? mf.body : null) as Any | null
       if (!m) { skipped.push(`${where}: no manifest.json at ${tag}`); continue }

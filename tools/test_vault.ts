@@ -6108,12 +6108,15 @@ plugin.every("gone", null)
       { full_name: "boblee/gone", archived: true, owner: { login: "boblee" } },
       { full_name: "carol/fleet", stargazers_count: 7, owner: { login: "carol" } }] },
     "https://api.github.com/repos/carol/fleet/tags?per_page=100": [{ name: "dinghy/v1.0.0", commit: { sha: "d1" } }, { name: "dinghy/v1.1.0", commit: { sha: "d2" } },
-      { name: "skiff/v0.1.0", commit: { sha: "s1" } }],
+      { name: "skiff/v0.1.0", commit: { sha: "s1" } }, { name: "raft/v1.0.0", commit: { sha: "r1" } }],
     "https://api.github.com/repos/carol/fleet/commits/d2": { commit: { committer: { date: "2026-09-25T00:00:00Z" } } },
     "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/manifest.json": { id: "dinghy", name: "Dinghy", version: "1.1.0", description: "Sails.", icon: "icon.svg" },
     "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/icon.svg": '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20z"/></svg>\n',
     "https://raw.githubusercontent.com/carol/fleet/d2/dinghy/README.md": "# Dinghy\n\nSmall sails for small boats, and when to take them in.\n",
     "https://raw.githubusercontent.com/carol/fleet/s1/skiff/manifest.json": { id: "skiff", name: "Skiff", version: "0.2.0" },
+    "https://raw.githubusercontent.com/carol/fleet/HEAD/dinghy/manifest.json": { id: "dinghy", version: "1.1.0" },
+    "https://raw.githubusercontent.com/carol/fleet/HEAD/skiff/manifest.json": { id: "skiff", version: "0.2.0" },
+    "https://raw.githubusercontent.com/carol/fleet/r1/raft/manifest.json": { id: "raft", name: "Raft", version: "1.0.0" },
     "https://api.github.com/repos/alicepark/harbor/releases/latest": { tag_name: "v1.2.0", published_at: "2026-09-15T00:00:00Z" },
     "https://raw.githubusercontent.com/alicepark/harbor/v1.2.0/manifest.json": { id: "harbor", name: "Harbor", version: "1.2.0", description: "Tides.", author: "Alice Park", icon: "anchor", tint: "teal", disclosures: { network: ["tides.example.com"] }, fundingUrl: "https://example.com/fund" },
     "https://api.github.com/repos/boblee/oldboat/tags?per_page=100": [{ name: "v0.9.0", commit: { sha: "aaa" } }, { name: "v0.10.0", commit: { sha: "bbb" } }, { name: "nightly" }],
@@ -6139,9 +6142,10 @@ plugin.every("gone", null)
   check("index builder: a README's first prose, without badges or links' addresses", hb?.readme === "Shows the harbour's tides on a dashboard, and when the boats leave.", hb?.readme)
   const ob = index.plugins.find((p) => p.id === "oldboat") as Any
   check("index builder: no release, its newest version tag (and the commit's date)", ob?.tag === "v0.10.0" && ob.released === "2024-02-01T00:00:00Z" && ob.author === "boblee", ob)
-  check("index builder: left out, saying why: no tag, archived, a version that isn't its tag's, a copy's id", skipped.some((x) => x.startsWith("boblee/notag: no version tag")) &&
+  check("index builder: left out, saying why: no tag, archived, a version that isn't its tag's, a copy's id, a folder gone", skipped.some((x) => x.startsWith("boblee/notag: no version tag")) &&
     skipped.some((x) => x.startsWith("boblee/gone: archived")) && skipped.some((x) => x.includes("carol/listed") && x.includes("isn't its tag's")) &&
     skipped.some((x) => x.startsWith("boblee/harbor-copy: id 'harbor'")) && skipped.some((x) => x.startsWith("carol/fleet/skiff: its manifest's version")) &&
+    skipped.some((x) => x === "carol/fleet/raft: no longer in the repository") &&
     index.plugins.length === 3, skipped)
   const dg = index.plugins.find((p) => p.id === "dinghy") as Any
   check("index builder: several plugins in one repository, each at its folder's newest tag", dg?.repo === "carol/fleet" && dg.dir === "dinghy" && dg.tag === "dinghy/v1.1.0" &&
