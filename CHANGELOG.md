@@ -440,7 +440,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until
   turned on, its init.vim kept.
 - The app's text no longer names other apps: their vaults, settings and plugins are described as such
-  (`vau other-apps`, `vau docs from-other-apps`).
+  (`vau other-apps`, `vau docs from-other-apps`); the plugin that runs Obsidian's plugins, and its Browse tab, still say
+  Obsidian.
 - **A kind's blocks are drawn, not written**: a person's profile, a log's fields (and its area's blocks, a workout's
   sets), a book's and a project's card are drawn on top of each of its files without a fence, so new files hold only
   what's theirs and a kind's view can change for every file at once. A fence of one still places it (changing its

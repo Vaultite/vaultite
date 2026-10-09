@@ -50,7 +50,7 @@ async function survey(ctx: OpCtx) {
 
 /** The runner installed and on, its services up (a vault plugin's backend loads a moment after it's turned on). */
 async function runnerUp(ctx: OpCtx, r: Runner | null) {
-  if (!r) throw new OpError("nothing here runs other apps' plugins: install Plugins from other apps from the plugin directory (vau plugin search other apps)")
+  if (!r) throw new OpError("nothing here runs other apps' plugins: install plugin-compat from the plugin directory (vau plugin search plugin-compat)")
   if (r.source) await ctx.op("plugin.install", { source: r.source })
   if (!r.on) await ctx.op("plugin.enable", { id: r.id })
   for (let i = 0; i < 60 && typeof plugin.service("obsidian:run") !== "function"; i++) await new Promise((ok) => setTimeout(ok, 250))

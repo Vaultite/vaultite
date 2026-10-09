@@ -17,6 +17,6 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
 - Its plugins: offered once when the vault opens. Each runs as it is (the original, through a plugin that
   runs them: `replaces: {"obsidian": ["*"]}`) or with what stands in for it here; `vau other-apps plugins`, `vau
   other-apps use <id> original|<plugin>`, `vau other-apps run-all`, or the sheet of Vaults from other apps. Never both:
-  turning one on turns the other off. More are in the Plugins page's Browse, Other apps.
+  turning one on turns the other off. More are in the Plugins page's Browse, in that plugin's tab.
 - Not read: `workspace.json`, hotkeys and appearance. Renames update `[[links]]`,
   not Markdown links.
