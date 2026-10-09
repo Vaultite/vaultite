@@ -76,7 +76,7 @@ class ShareViewController: UIViewController {
                 defer { for f in files { try? FileManager.default.removeItem(at: f.file) } }
                 for (i, f) in files.enumerated() {
                     label.text = files.count == 1 ? "Saving to Vaultite" : "Saving \(i + 1) of \(files.count)"
-                    try await upload(base.appendingPathComponent("api/ops/file.upload"), f.file, ["name": f.name, "note": "\(id).md"])
+                    _ = try await Servers.send("ops/file.upload", file: f.file, query: ["name": f.name, "note": "\(id).md"], from: nil, timeout: 300)
                 }
                 saved = "Saved to the inbox"
             }
@@ -155,30 +155,6 @@ class ShareViewController: UIViewController {
 
     /// POST `fields` and the file's bytes as `data` (base64), the JSON written to a file a chunk at a time and sent
     /// from it: a video is never all in memory, which a share extension doesn't have much of.
-    private func upload(_ url: URL, _ file: URL, _ fields: [String: String]) async throws {
-        let body = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        defer { try? FileManager.default.removeItem(at: body) }
-        FileManager.default.createFile(atPath: body.path, contents: nil)
-        let out = try FileHandle(forWritingTo: body), from = try FileHandle(forReadingFrom: file)
-        defer { try? out.close(); try? from.close() }
-        var head = try JSONSerialization.data(withJSONObject: fields)
-        head.removeLast() // its closing brace: data follows
-        try out.write(contentsOf: head + Data(#","data":""#.utf8))
-        // (a multiple of 3 bytes a chunk, so the pieces of base64 join as one)
-        while let chunk = try from.read(upToCount: 3 << 18), !chunk.isEmpty {
-            try out.write(contentsOf: chunk.base64EncodedData())
-        }
-        try out.write(contentsOf: Data(#""}"#.utf8))
-        try out.close()
-        var request = URLRequest(url: url, timeoutInterval: 300)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: body)
-        let answer = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
-        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(status) { throw Failure(answer["error"] as? String ?? "The server answered \(status)") }
-    }
-
     private func post(_ url: URL, _ body: [String: Any]) async throws -> [String: Any] {
         var request = URLRequest(url: url, timeoutInterval: 45)
         request.httpMethod = "POST"

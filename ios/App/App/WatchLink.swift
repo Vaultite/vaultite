@@ -133,9 +133,8 @@ enum Voice {
         sending.insert(url.lastPathComponent)
         defer { sending.remove(url.lastPathComponent) }
         let seconds = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 0
-        if seconds > 0, seconds <= longest, let text = try? await Transcribe.file(url), let audio = try? Data(contentsOf: url),
-           let r = try? await Servers.call("POST", "ops/inbox.voice", ["text": text, "from": from, "audio": audio.base64EncodedString(),
-                                                                        "ext": url.pathExtension], from: client) {
+        if seconds > 0, seconds <= longest, let text = try? await Transcribe.file(url),
+           let r = try? await Servers.send("ops/inbox.voice", file: url, query: ["text": text, "from": from, "ext": url.pathExtension], from: client) {
             try? FileManager.default.removeItem(at: url)
             var out: [String: Any] = ["text": text, "path": r["path"] as? String ?? ""]
             if let t = r["terminal"] as? String { out["terminal"] = t }
@@ -162,9 +161,8 @@ enum Voice {
     /// To the server as it is, then gone from here.
     private static func upload(_ url: URL) async throws {
         let watch = url.lastPathComponent.hasPrefix("watch-")
-        let data = try Data(contentsOf: url)
-        _ = try await Servers.call("POST", "audio-recorder/voice", ["data": data.base64EncodedString(), "ext": url.pathExtension,
-                                   "from": watch ? "Apple Watch" : "iPhone"], from: watch ? "watch" : "iphone", timeout: 600)
+        _ = try await Servers.send("audio-recorder/voice", file: url, query: ["ext": url.pathExtension, "from": watch ? "Apple Watch" : "iPhone"],
+                                   from: watch ? "watch" : "iphone")
         try? FileManager.default.removeItem(at: url)
     }
 }

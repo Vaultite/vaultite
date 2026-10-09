@@ -605,6 +605,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **More size limits gone**: a voice note for the inbox streams at any length (no base64); token counts for files over
   4 MB; an HTML page's saved state over 2 MB; clipping a page over 8 MB (it was cut short when fetched); the editor sees a
   frontmatter of any size. Excalidraw's interface font loads (it was a 404).
+- **iPhone: voice notes and shares at any size**: the watch's and the phone's recordings, and files shared to Vaultite,
+  go to the server as they are (streamed from disk), never as base64 in JSON.
 - **Agent hooks reach a server on its own address**: with `HOST` set to one address, the inbox's and Activity's hooks
   post there instead of to 127.0.0.1, which nothing answered.
 - **iPhone: never a blank screen**: a server's page that doesn't load (unreachable, or reloaded after iOS ended the page

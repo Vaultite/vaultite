@@ -66,6 +66,27 @@ enum Servers {
         return answer
     }
 
+    /// A file's bytes as the body of a POST to the current server's API (`route` after /api/, its parameters in `query`),
+    /// streamed from disk at any size, never base64: its JSON answer, as call's. `from`: nil sends no X-Vaultite-Client.
+    static func send(_ route: String, file: URL, query: [String: String] = [:], from client: String? = "iphone", timeout: TimeInterval = 600) async throws -> [String: Any] {
+        guard let server = current, var parts = URLComponents(string: server.url + "/api/" + route) else {
+            throw Failure("Open Vaultite and add your server first")
+        }
+        if !query.isEmpty { parts.queryItems = query.sorted { $0.key < $1.key }.map { URLQueryItem(name: $0.key, value: $0.value) } }
+        // (a "+" in a value would read as a space)
+        parts.percentEncodedQuery = parts.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
+        guard let url = parts.url else { throw Failure("Open Vaultite and add your server first") }
+        var request = URLRequest(url: url, timeoutInterval: timeout)
+        request.httpMethod = "POST"
+        if let client { request.setValue(client, forHTTPHeaderField: "X-Vaultite-Client") }
+        request.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
+        let answer = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if !(200..<300).contains(status) { throw Failure(answer["error"] as? String ?? "The server answered \(status)") }
+        return answer
+    }
+
     /// The widgets' push token (iOS 26: Widgets/Widgets.swift gets it), told to the current server, which then reloads
     /// them when what they show changes (plugins/core/inbox/push.ts). The app tells it again with another server.
     static var widgetToken: String? {
