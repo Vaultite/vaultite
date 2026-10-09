@@ -481,6 +481,19 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Map pins stay out of your files**: a person's or your own place is looked up when you enter it or the People map
   needs it, and kept in the app's cache, never written as `coordinates`; a place that isn't found has no pin instead of
   a guess, and the map starts on the whole world, then fits the pins.
+- **Nothing is cut or thrown away behind your back**:
+  - AI import keeps every chat (one message is enough), every image whatever its size, and attachments, project files,
+    tool results and memories whole; an attachment too long to read inline becomes a text file in Attachments/.
+  - Inbox events keep their whole title and body (an event that leads nowhere opens in place); unread ones stay until
+    you read or dismiss them, and only read ones go after Days to keep (the last 200).
+  - Voice notes keep their recording above what was said, from the watch, the phone (with the app updated) or the app
+    (Keep voice notes' audio, in the Inbox's settings). A tap under 0.7 s says "Too short, not saved".
+  - Terminals never end for being left alone: a shell ends when its last tab closes at its prompt, or when you end it.
+    What's pasted into one stays while it runs and 30 days after; Scrollback is one setting every backend keeps, all of
+    it shown again when you come back.
+  - The trash is emptied of what's been there 30 days, like Recently deleted, once a day by one machine; restore works
+    until then.
+  - Agent files deletes a root AGENTS.md or CLAUDE.md only when it made it for its line; yours stay, even empty.
 - **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
   Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until

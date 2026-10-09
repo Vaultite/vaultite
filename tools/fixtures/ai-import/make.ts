@@ -101,7 +101,8 @@ export function claudeConversations() {
     account: { uuid: "acc" },
     chat_messages: [
       cmsg("m1", ROOT, "human", 0, [{ type: "text", text: "Ideas for dinner with what's in this list?" }], {
-        attachments: [{ file_name: "pantry.txt", file_type: "text/plain", file_size: 30, extracted_content: "rice\nbeans\n```\ntomatoes" }],
+        attachments: [{ file_name: "pantry.txt", file_type: "text/plain", file_size: 30, extracted_content: "rice\nbeans\n```\ntomatoes" },
+          { file_name: "cookbook.pdf", file_type: "application/pdf", file_size: 9000, extracted_content: "A long cookbook page. ".repeat(300) }],
         files: [{ file_uuid: "f1", file_name: "fridge.jpg" }] }),
       cmsg("m2", "m1", "assistant", 1, [
         { type: "thinking", thinking: "Rice and beans: a bowl." },
@@ -109,6 +110,7 @@ export function claudeConversations() {
         { type: "tool_use", name: "artifacts", input: { id: "list", type: "text/markdown", title: "Shopping list", command: "create", content: "- Limes\n- Cilantro" } },
         { type: "tool_use", name: "web_search", input: { query: "rice bowl recipes" } },
         { type: "tool_result", name: "web_search", content: [{ type: "knowledge", title: "Rice bowls", url: "https://example.com/bowls" }] },
+        { type: "tool_result", name: "web_fetch", content: [{ type: "text", text: `${"A fetched page. ".repeat(400)}The end of the page.` }] },
       ]),
       cmsg("m3", "m2", "human", 5, [{ type: "text", text: "Make it spicy." }]),
       // Retried: m4 the first try, m5 the one shown (newest).

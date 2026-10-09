@@ -4,7 +4,7 @@ them in place: only the frontmatter keys whose values changed (other keys, comme
 of the body, and only when someone asks it to (reading never writes). What it fills in (a note's id and dates) goes in
 only when the app makes the file or it's edited in the app. Files it can't read are listed at
 `GET /api/vault` and shown on the file in the app. Deleting a file deletes that thing; the app's deletes go to
-`.trash/`.
+`.trash/` (restored from there, or gone for good after 30 days).
 
 **Layout.** A file's kind is its `type:` frontmatter wherever it lives, and only that: a file without one is a plain
 note, even in `People/` (`vau type` lists such files and gives them one). A kind kept in one file (the user's `ME.md`,

@@ -2,6 +2,7 @@
 // /api/raw. Hidden files are out of reach unless shown, but the app's own settings open by exact path (SETTINGS).
 import fs from "node:fs"
 import path from "node:path"
+import { setImmediate as turn } from "node:timers/promises"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive, inPagesDir } from "./fileprops.ts"
 import { isTextKind, kindOf, tooBig } from "./filetypes.ts"
@@ -359,6 +360,43 @@ function restore(vault: Vault, rel: string) {
   fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
   fs.renameSync(vault.abs(rel), vault.abs(dst))
   return dst
+}
+
+/** How long things stay in .trash, like Recently deleted. */
+export const TRASH_DAYS = 30
+const TRASHED_AT = / (\d{4})-(\d{2})-(\d{2}) (\d{2})(\d{2})(\d{2})(?: \d+)?$/
+
+/** Delete for good what went to .trash over TRASH_DAYS ago: by the time in its name, else (put there by another app)
+ *  when it was moved there. A few at a time; an iCloud placeholder counts as its file. Returns what it deleted. */
+export async function emptyTrash(vault: Vault, now = Date.now()) {
+  const cutoff = now - TRASH_DAYS * 86_400_000, gone: string[] = []
+  const top = vault.abs(".trash")
+  try { if (!fs.lstatSync(top).isDirectory()) return gone } catch { return gone }
+  const sweep = async (dir: string): Promise<boolean> => {
+    let names: string[]
+    try { names = fs.readdirSync(path.join(top, dir)) } catch { return false }
+    let removed = false
+    for (const name of names) {
+      const rel = dir ? `${dir}/${name}` : name, abs = path.join(top, rel)
+      let st: fs.Stats
+      try { st = fs.lstatSync(abs) } catch { continue }
+      // (an iCloud placeholder: ".Name 2026-09-01 101500.md.icloud")
+      const real = name.replace(/^\.(.+)\.icloud$/, "$1")
+      const m = TRASHED_AT.exec(st.isDirectory() ? real : splitext(real)[0])
+      if (!m && st.isDirectory()) {
+        // A folder the trash keeps a path in: what's in it, then itself once that's all gone.
+        if (await sweep(rel) && !fs.readdirSync(abs).length) { try { fs.rmdirSync(abs); removed = true } catch { /* in use */ } }
+        continue
+      }
+      const at = m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : st.ctimeMs
+      if (at > cutoff) continue
+      try { fs.rmSync(abs, { recursive: true, force: true }); gone.push(`.trash/${rel}`); removed = true } catch (e) { console.error("trash:", e) }
+      if (gone.length % 20 === 0) await turn()
+    }
+    return removed
+  }
+  await sweep("")
+  return gone
 }
 
 

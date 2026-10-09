@@ -16,7 +16,8 @@
 - **Watch app** (`App/Watch/`, SwiftUI): a microphone and the Inbox. The watch can't reach the tailnet: everything goes
   through the phone over WatchConnectivity (`Watch/PhoneLink.swift` asks, `App/WatchLink.swift` answers). A recording
   under 60 KB goes as message data, a longer one as a queued file; the phone sends it on (`Voice`, App/WatchLink.swift:
-  transcribed there under 3 minutes, else the server's `audio-recorder/voice`), keeping it until it's sent.
+  transcribed there under 3 minutes and sent with its audio, else the server's `audio-recorder/voice`), keeping it until
+  it's sent; the inbox keeps the audio above the words.
   Simulators: SpeechTranscriber's model can't download and file transfers don't arrive, so test with a short clip.
   The complication (`App/WatchWidgets/`) opens `vaultite-watch://record`.
 - **Widgets** (`App/Widgets/`): shortcuts (`vaultite://record`, `command/<id>`, `open/<path>`: Shared/Links.swift,

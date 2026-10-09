@@ -28,7 +28,7 @@ What it says, as Markdown.
   the report; that session's next report goes on in the same file (one file per exchange).
 
 **Events** ("Claude Code finished", "Codex is waiting for you") matter for minutes, so they're kept on the server's
-machine for `keep_days`, not in the vault. An agent's turn ending is kept read, with no toast or push (the setting `turns`): its
+machine, not in the vault: an unread one until it's read or dismissed, a read one for `keep_days` (the last 200). An agent's turn ending is kept read, with no toast or push (the setting `turns`): its
 report says when the work is done. With Machines every app shows every machine's (another's id ends in
 `@<machine>`, and changing it is done there). They toast, count on the Inbox button and go to the phone and watch, with
 Approve and Deny when an agent in an app terminal asks permission or an app on the public MCP asks to run code here.

@@ -28,8 +28,6 @@ export function linearize(msgs: Msg[], current?: string) {
   return { path: path.reverse(), others: Math.max(0, leaves.length - 1) }
 }
 
-const MAX_RESULT = 4000
-
 /** A tool's input as one short line or a block. */
 function toolUse(b: Record<string, unknown>): Part[] {
   const name = text(b.name)
@@ -49,7 +47,9 @@ function toolUse(b: Record<string, unknown>): Part[] {
   if (typeof input.url === "string") return [{ kind: "note", text: `Opened ${input.url}` }]
   if (typeof input.code === "string") return [{ kind: "code", text: input.code, lang: text(input.language) || "javascript", title: name ? `Called ${name}` : "Code" }]
   const json = JSON.stringify(input)
-  return [{ kind: "note", text: `Used ${name || "a tool"}${json && json !== "{}" ? `: ${json.length > 300 ? `${json.slice(0, 297)}...` : json}` : ""}` }]
+  // (a long input reads better as a block than as one line)
+  if (json && json.length > 300) return [{ kind: "code", text: JSON.stringify(input, null, 2), lang: "json", title: `Called ${name || "a tool"}` }]
+  return [{ kind: "note", text: `Used ${name || "a tool"}${json && json !== "{}" ? `: ${json}` : ""}` }]
 }
 
 function toolResult(b: Record<string, unknown>): Part[] {
@@ -61,9 +61,8 @@ function toolResult(b: Record<string, unknown>): Part[] {
     if (typeof x.text === "string") lines.push(x.text)
     else if (text(x.title) || text(x.url)) lines.push(`- ${text(x.title) || text(x.url)}${text(x.title) && text(x.url) ? ` (${text(x.url)})` : ""}`)
   }
-  let t = lines.join("\n").trim()
+  const t = lines.join("\n").trim()
   if (!t) return []
-  if (t.length > MAX_RESULT) t = `${t.slice(0, MAX_RESULT)}\n...`
   return [{ kind: "output", text: t, title: [text(b.name), b.is_error === true ? "error" : ""].filter(Boolean).join(", ") || undefined }]
 }
 

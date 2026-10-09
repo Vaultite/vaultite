@@ -12,7 +12,7 @@ export const cli: PluginCli = {
     summary: "What's new in the inbox (results to review, agents' events); add a result; an agent's hook posts here.",
     usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --summary <text> | reply <path> <text> | done <path> [--title <title>] | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <answer> | push <title> | voice <text> | clear]",
     help: `The Inbox: results to review (files in Inbox/, status new) and what coding agents said (events, kept on the
-server's machine for a week: finished, waiting for you). Without a subcommand: both, newest first. The subcommands are
+server's machine until read, then for a week: finished, waiting for you). Without a subcommand: both, newest first. The subcommands are
 operations: vau inbox.add --help explains one (inbox.list, inbox.add, inbox.report, inbox.reply, inbox.done,
 inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
 

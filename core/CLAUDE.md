@@ -50,7 +50,8 @@
 - **Files** (`core/files.ts`): any file opens (over 1 MB read-only, over 8 MB a card). Binary formats a plugin draws are
   read-only, and their `text:<ext>` (given a Buffer) is what render and search read. They're untrusted: a Word document
   is drawn in a shadow root, a book's pages are cleaned of scripts and get a CSP, a deck's renderer escapes its text;
-  keep it so when updating those libraries (pinned in package.json). Delete goes to `.trash` with Undo. Moves through
+  keep it so when updating those libraries (pinned in package.json). Delete goes to `.trash` with Undo; the
+  core's schedule job `core/trash` deletes what's been there 30 days (`emptyTrash`, by the time in its name). Moves through
   the API update `[[links]]` and what plugins keep (`plugin.onMove`); renames by hand don't. Hidden folders are out of
   reach unless Show hidden files is on, but `.archive/` (indexed, archived) and `.vaultite/**.json|md` by exact path;
   `.trash` and `.vaultite/generated` are read-only. **The app never writes outside `.vaultite/` on its own**: the

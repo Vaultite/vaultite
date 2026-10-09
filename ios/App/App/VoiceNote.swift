@@ -41,12 +41,17 @@ final class VoiceNote: NSObject, ObservableObject {
         }
     }
 
-    /// Stop and send; a tap by mistake (under a second) isn't a note.
+    /// Stop and send; a tap by mistake (under 0.7 s) isn't a note, and says so.
     func stop() async {
         guard let recorder, let file else { return }
         let long = recorder.currentTime
         finish()
-        if long < 0.7 { try? FileManager.default.removeItem(at: file); return close() }
+        if long < 0.7 {
+            try? FileManager.default.removeItem(at: file)
+            step = .failed("Too short, not saved")
+            try? await Task.sleep(for: .seconds(1.5))
+            return close()
+        }
         step = .sending
         let outcome = await Voice.send(file, from: "iPhone")
         if let error = outcome["error"] as? String {

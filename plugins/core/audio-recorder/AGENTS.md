@@ -20,8 +20,10 @@ written under the embed as a folded callout, paragraphs split at pauses:
   `queued`, `running`, `done` or `failed` (with `error`). `GET /api/audio-recorder/transcriber` says what transcribes here.
 - A voice note ("Record a voice note for your inbox", what the iPhone's voice note widget opens): `POST
   /api/audio-recorder/voice {"data": "<base64>", "ext": "m4a", "from": "Computer"}` transcribes it, then the Inbox's
-  `inbox.voice` with its words (the job's `note` is the inbox file); the recording isn't kept. One the machine can't
-  transcribe is kept instead: an inbox result embedding the recording, saying why (the job's `kept`).
+  `inbox.voice` with its words and the recording, kept as an attachment embedded above them (the job's `note` is the
+  inbox file; the Inbox's setting `voice_audio` off keeps only the words). One the machine can't transcribe is kept
+  as the recording alone: an inbox result embedding it, saying why (the job's `kept`). A recording under 0.7 s is a tap
+  by mistake: not saved, and the app says so.
 - Settings, `.vaultite/plugins/audio-recorder/data.json`: `{"engine": "auto", "language": "", "auto": true}`.
   `engine`: `auto` (Apple's when this machine has it, else whisper), `apple` or `whisper`. Apple's needs no install: a small
   helper (`transcribe.swift`, built the first time, shipped built in the desktop app) downloads a language's model the

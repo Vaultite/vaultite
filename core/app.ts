@@ -68,7 +68,12 @@ export class App {
     this.index = new PluginIndex(this.vault)
     this.scheduler = new Scheduler({
       file: path.join(LOCAL, "schedules", `${vaultHere(vaultPath).key}.json`),
-      jobs: () => { const on = enabled(this.vault, this.plugins); return this.plugins.filter((p) => on.has(p.id)).flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job }))) },
+      jobs: () => {
+        const on = enabled(this.vault, this.plugins)
+        // The core's own: .trash emptied of what's been there 30 days (one machine does it, so iCloud sees each delete once).
+        return [{ plugin: "core", job: { name: "trash", every: "1d", run: () => F.emptyTrash(this.vault) } },
+          ...this.plugins.filter((p) => on.has(p.id)).flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job })))]
+      },
       here: (machine) => this.runsHere(machine),
       before: () => this.syncPlugins(),
     })

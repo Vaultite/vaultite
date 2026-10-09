@@ -1,8 +1,7 @@
 // Workspaces as desks (plugins/core/workspaces, web/src/core/scope.ts): always a current workspace, each with its own
 // pinned pages (copied from pages.json at its first change), blank new tabs, open folders and recent files, the
 // Terminals panel split by workspace, the window telling the server its workspace (`vau panels`, `vau pin`), and panel
-// heights. With QA_TERMINAL_IDLE_MS (the server started with the same VAULTITE_TERMINAL_IDLE_MS), also that a shell
-// another workspace shows outlives the idle timeout. Runs shells and WRITES the plugin's data.json, sidebars.json,
+// heights. Runs shells and WRITES the plugin's data.json, sidebars.json,
 // pages.json and plugins.json: throwaway server only.
 //   node web/qa/desks.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
@@ -152,22 +151,6 @@ try {
   await wait(400)
   check("...with the workspace it's in", where === "Workspace 2", where)
   await page.screenshot({ path: `${OUT}3-terminals.png`, clip: { x: 0, y: 0, width: 260, height: 500 } })
-  // A plain shell another workspace shows isn't idle, however long nobody looks (the server asks Workspaces: tabs:open);
-  // one no workspace shows any more (its workspace deleted) ends after the idle time at its prompt.
-  const IDLE = Number(process.env.QA_TERMINAL_IDLE_MS)
-  let t3 = ""
-  if (IDLE > 0) {
-    t3 = `qadesk${Date.now().toString(36)}c`
-    await pick(3)
-    await page.goto(`${B}#view/${encodeURIComponent(`terminal/${t3}`)}`)
-    await until(() => page.$(`aside [data-session="${t3}"]`), 6000)
-    await until(() => JSON.stringify(data()[2]?.layout ?? "").includes(t3), 6000)
-    await pick(1)
-    await api("DELETE", "workspaces/3")
-    await wait(IDLE * 2 + 1500)
-    check("a plain shell another workspace shows outlives the idle time", !!(await page.$(`aside [data-session="${t2}"][data-where]`)))
-    check("...one no workspace shows ends after it", !!(await until(async () => !(await page.$(`aside [data-session="${t3}"]`)), IDLE + 4000)))
-  } else console.log("skip idle check (set QA_TERMINAL_IDLE_MS and start the server with VAULTITE_TERMINAL_IDLE_MS)")
 
   // ---------- vau panels changes the window's workspace ----------
   const out = vau("panels", "hide", "search")
@@ -229,7 +212,7 @@ try {
 
   // Clean up the shells (this server's tmux socket: vaultite-<port>).
   const port = new URL(B).port
-  for (const t of [t1, t2, t3].filter(Boolean)) { try { execFileSync("/opt/homebrew/bin/tmux", ["-L", `vaultite-${port}`, "kill-session", "-t", t], { stdio: "ignore" }) } catch { /* gone */ } }
+  for (const t of [t1, t2].filter(Boolean)) { try { execFileSync("/opt/homebrew/bin/tmux", ["-L", `vaultite-${port}`, "kill-session", "-t", t], { stdio: "ignore" }) } catch { /* gone */ } }
   noErrors()
 } finally {
   writeFileSync(file(".vaultite/pages.json"), pagesBefore)

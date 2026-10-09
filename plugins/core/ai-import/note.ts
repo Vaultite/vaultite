@@ -41,7 +41,8 @@ export function fenced(text: string, lang = "") {
 
 const quote = (s: string) => s.split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n")
 const callout = (type: string, title: string, body: string, folded = true) => `> [!${type}]${folded ? "-" : ""} ${title}\n${quote(body)}`
-const MAX_FILE = 50_000
+/** An attachment or a project's file longer than this is a file of its own (`saved`), linked: too long to read inline. */
+export const INLINE = 4000
 const italic = (s: string) => (s.includes("*") ? s : `*${s.replace(/\s+/g, " ").trim()}*`)
 
 /** A part as Markdown. `images`: the vault file name of each imported image, by its export id. */
@@ -61,9 +62,9 @@ function partText(p: Part, images: Map<string, string>): string {
       return italic(`An image${p.name ? ` (${p.name})` : ""}, not in the import`)
     }
     case "file": {
+      if (p.saved) return `*Attached* [[${p.saved}]]`
       if (!p.text?.trim()) return italic(`Attached ${p.name}`)
-      const t = p.text.length > MAX_FILE ? `${p.text.slice(0, MAX_FILE)}\n...` : p.text
-      return callout("note", `Attached ${p.name}`, fenced(t))
+      return callout("note", `Attached ${p.name}`, fenced(p.text))
     }
     case "memory": return callout("info", "Saved to memory", p.text, false)
     case "note": return italic(p.text)
@@ -124,7 +125,7 @@ export function projectNote(p: Project): { fm: Record<string, unknown>; body: st
   if (p.instructions) out.push(`## Instructions\n\n${shiftHeadings(p.instructions).trim()}`)
   if (p.docs.length) {
     out.push("## Files")
-    for (const d of p.docs) out.push(`### ${d.name}\n\n${shiftHeadings(d.text.length > MAX_FILE * 4 ? `${d.text.slice(0, MAX_FILE * 4)}\n...` : d.text, 3).trim()}`)
+    for (const d of p.docs) out.push(`### ${d.name}\n\n${d.saved ? `![[${d.saved}]]` : shiftHeadings(d.text, 3).trim()}`)
   }
   return { fm, body: out.join("\n\n") }
 }

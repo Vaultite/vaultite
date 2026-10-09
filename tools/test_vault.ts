@@ -245,6 +245,11 @@ check("the rules: each plugin that's on adds its line, a setting filled in", rea
   await setRoot(false)
   check("agent files: off, a file that was only the line goes", !exists("AGENTS.md"))
   check("agent files: off, the rest of a file stays", read("CLAUDE.md") === "@AGENTS.md\n", read("CLAUDE.md"))
+  fs.writeFileSync(path.join(VAULT, "AGENTS.md"), "")
+  await setRoot(true)
+  await setRoot(false)
+  check("agent files: off, the user's own file stays even when it was only the line", exists("AGENTS.md") && read("AGENTS.md") === "", read("AGENTS.md"))
+  fs.rmSync(path.join(VAULT, "AGENTS.md"))
   fs.writeFileSync(path.join(VAULT, "AGENTS.md"), "# My project\n\nBuild with make.\n")
   await api("GET", "state")
   check("agent files: off, the user's own AGENTS.md is never touched", read("AGENTS.md") === "# My project\n\nBuild with make.\n")
@@ -720,6 +725,16 @@ check("restore takes a .trash path with hidden files off (Undo)", code === 200 &
 check("restoring twice says it's not in the trash any more", code === 404 && /isn't in the trash/.test(p.error), [code, p])
 ;[code, p] = await api("POST", "file/restore", { path: ".trash/../Scratch/Undo me.txt" })
 check("restore refuses paths out of the trash", code === 400, [code, p])
+{
+  // .trash is emptied of what's been there 30 days (by the time in its name), its emptied path folders too.
+  const { emptyTrash } = await import("../core/files.ts")
+  const old = "2026-08-01 101500", fresh = "2026-10-01 101500", now = new Date(2026, 9, 9).getTime()
+  for (const f of [`Old ${old}.md`, `Fresh ${fresh}.md`, `Deep/Er/Old ${old} 2.md`, `Folder ${old}/a.md`, `.Cloud ${old}.md.icloud`]) write(`.trash/${f}`, "x\n")
+  const gone = await emptyTrash(vault, now)
+  check("trash: what's been there over 30 days goes for good, the rest stays", gone.length === 4 && !exists(`.trash/Old ${old}.md`) && exists(`.trash/Fresh ${fresh}.md`) &&
+    !exists(`.trash/Folder ${old}`) && !exists(".trash/Deep") && !exists(`.trash/.Cloud ${old}.md.icloud`), gone)
+  fs.rmSync(path.join(VAULT, `.trash/Fresh ${fresh}.md`))
+}
 ;[code, p] = await api("POST", "file/move", { from: "Scratch/Undo me.txt", to: "Scratch/Moved/Undo me.txt" })
 await api("DELETE", "file?path=Scratch/Moved/Undo me.txt")
 ;[code, p] = await api("POST", "file/move", { from: "Scratch/Moved/Undo me.txt", to: "Scratch/Undo me.txt" })
@@ -2820,6 +2835,15 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
   check("terminal: @<machine> is another machine's", JSON.stringify(splitMachine("claude-k3j2@studio")) === JSON.stringify(["claude-k3j2", "studio"]) &&
     JSON.stringify(splitMachine("k3j2h1g0")) === JSON.stringify(["k3j2h1g0", ""]) && term.TERMINAL_ID.test("claude_work-k3@box-2") &&
     !term.TERMINAL_ID.test("a@B") && !term.TERMINAL_ID.test("a@b@c"), splitMachine("claude-k3j2@studio"))
+  // What a page gets back from a backend without pictures: the last `scrollback` lines, whole chunks, and a line
+  // redrawn without end (a progress bar) held to its share.
+  const { Tail } = await import("../plugins/core/terminal/backend.ts")
+  const tail = new Tail(100)
+  for (let i = 0; i < 500; i++) tail.push(`line ${i}\r\n`)
+  const kept = tail.text().split("\r\n").filter(Boolean)
+  check("terminal: the replay is the last scrollback lines", kept.length === 100 && kept[0] === "line 400" && kept.at(-1) === "line 499", kept.length)
+  for (let i = 0; i < 2000; i++) tail.push(`\r${"#".repeat(50)} ${i}%`)
+  check("terminal: output with no line breaks is held to about 200 characters a line", tail.text().length <= 100 * 200 + 60, tail.text().length)
 }
 
 // Routes: * is one segment, a last ** the rest.
@@ -4109,13 +4133,17 @@ check("the file tree lets go of a deleted folder", !bin() && !filesNow.folders.i
   write("Attachments/loose.m4a", "x")
   const [s4, e4] = await api("POST", "audio-recorder/transcribe", { path: "Attachments/loose.m4a" })
   check("audio: only audio, into a note that's there; a file no note embeds needs one named", s2 === 400 && s3 === 404 && s4 === 400 && /no note embeds/.test(e4.error), [s2, s3, s4, e4])
-  // A voice note (Record a voice note for your inbox): transcribed, then inbox.voice; the recording isn't kept.
+  // A voice note (Record a voice note for your inbox): transcribed, then inbox.voice, the recording kept above its words.
   const [s6, vj] = await api("POST", "audio-recorder/voice", { data: Buffer.from("not really audio").toString("base64"), ext: "webm", from: "Computer" })
   let v = vj
   for (let i = 0; i < 50 && (v.state === "queued" || v.state === "running"); i++) { await sleep(100); [, v] = await api("GET", `audio-recorder/jobs/${vj.id}`) }
   check("audio: a voice note is transcribed into the inbox, from where it was said", s6 === 202 && v.state === "done" && v.note.startsWith("Inbox/Heard voice") &&
     read(v.note).includes("from: Computer") && read(v.note).includes("Heard voice.webm.\n\nSecond paragraph."), [v, v.note && read(v.note)])
-  check("audio: a voice note's recording isn't kept", !fs.readdirSync(os.tmpdir()).some((f) => f.startsWith("vaultite-voice-")), fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith("vaultite-voice-")))
+  const heard = v.note ? /^!\[\[(Voice note [^\]]+\.webm)\]\]$/m.exec(read(v.note))?.[1] : undefined
+  check("audio: a voice note's recording is kept, embedded above its words", !!heard && read(`Attachments/${heard}`) === "not really audio" &&
+    read(v.note).includes(`![[${heard}]]\n\nHeard voice.webm.`), v.note && read(v.note))
+  if (heard) fs.rmSync(path.join(VAULT, "Attachments", heard))
+  check("audio: a voice note leaves no temporary copy", !fs.readdirSync(os.tmpdir()).some((f) => f.startsWith("vaultite-voice-")), fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith("vaultite-voice-")))
   const [s7] = await api("POST", "audio-recorder/voice", { data: "" })
   check("audio: a voice note needs its recording", s7 === 400, s7)
   if (v.note) fs.rmSync(path.join(VAULT, v.note))
@@ -4781,7 +4809,7 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
 
 // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
 {
-  const { fromHook } = await import("../plugins/core/inbox/plugin.ts")
+  const { fromHook, prune } = await import("../plugins/core/inbox/plugin.ts")
   let [st, b] = await api("POST", "inbox", { title: "Plant care apps compared", body: "## Findings\n- One", from: "Claude", source: "https://example.com/tools" })
   check("inbox: a result is a file in Inbox/, new", st === 201 && read("Inbox/Plant care apps compared.md").startsWith("---\ntype: inbox\nstatus: new\nfrom: Claude\nsource: https://example.com/tools\ncreated: '") &&
     read("Inbox/Plant care apps compared.md").includes("## Findings"), [st, b])
@@ -4849,6 +4877,17 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("inbox events: a title is required", st === 400, st)
   ;[st, b] = await api("POST", "inbox/events", { title: "Odd", kind: "Not A Kind", terminal: "../x" })
   check("inbox events: an unknown kind is info, a bad terminal left out", b.event.kind === "info" && !("terminal" in b.event) && b.event.source === "vau", b)
+  {
+    const title = "A long title ".repeat(40).trim(), body = "First line.\n\n" + "word ".repeat(400) + "\nLast line."
+    ;[st, b] = await api("POST", "inbox/events", { title, body })
+    check("inbox events: the title and body are kept whole (the body's lines too)", st === 201 && b.event.title === title && b.event.body === body.trim(), b.event)
+    await api("DELETE", `inbox/events/${b.event.id}`)
+    const day = 86_400_000, now = Date.now()
+    const ev = (i: number, read: boolean, ago: number) => ({ id: `p${i}`, t: now - ago, source: "vau", kind: "info", title: `${i}`, read })
+    const kept = prune([ev(0, false, 30 * day), ev(1, true, 30 * day), ...Array.from({ length: 500 }, (_, i) => ev(i + 2, i % 2 === 0, i * 1000))])
+    check("inbox events: pruning keeps every unread one, old or past the cap; read ones go after the days, past 200",
+      kept.some((e) => e.id === "p0") && !kept.some((e) => e.id === "p1") && kept.filter((e) => !e.read).length === 251 && kept.filter((e) => e.read).length === 200, kept.length)
+  }
   // Hooks: Terminal's state command (state and prev), Claude Code's and Codex's JSON.
   check("hook: working -> idle is done, idle at start isn't news", (fromHook({ state: "idle", prev: "working" }, {}) as Any)?.kind === "done" && fromHook({ state: "idle", prev: "" }, {}) === null)
   check("hook: into waiting says what it asks", (fromHook({ state: "waiting", prev: "working" }, { hook_event_name: "PreToolUse", tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "Which port?" }] } }) as Any)?.body === "Asks: Which port?")
@@ -4910,6 +4949,21 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   ;[st, b] = await api("POST", "ops/inbox.voice", { text: "Remind me to call Alice about the trip on Friday please, thanks", from: "Apple Watch" })
   check("voice: kept in the inbox, named by its first words", st === 200 && b.path === "Inbox/Remind me to call Alice about the trip…" + ".md" &&
     read("Inbox/Remind me to call Alice about the trip….md").includes("from: Apple Watch") && b.terminal === null, [st, b])
+  {
+    // From the phone: its words and the recording, kept as an attachment above them (unless voice_audio is off).
+    const audio = Buffer.from("a phone's recording").toString("base64")
+    const [as, ab] = await api("POST", "ops/inbox.voice", { text: "Buy oat milk", from: "iPhone", audio, ext: "m4a" })
+    const embed = /^!\[\[(Voice note [^\]]+\.m4a)\]\]\n\nBuy oat milk$/m.exec(as === 200 ? read(ab.path) : "")
+    check("voice: the recording is kept, embedded above what was said", !!embed && read(`Attachments/${embed[1]}`) === "a phone's recording", [as, ab, as === 200 && read(ab.path)])
+    if (embed) fs.rmSync(path.join(VAULT, "Attachments", embed[1]))
+    if (as === 200) fs.rmSync(path.join(VAULT, ab.path))
+    const conf = path.join(VAULT, ".vaultite/plugins/inbox/data.json"), was = exists(".vaultite/plugins/inbox/data.json") ? fs.readFileSync(conf, "utf8") : null
+    fs.writeFileSync(conf, JSON.stringify({ ...(was ? JSON.parse(was) : {}), voice_audio: false }))
+    const [ws, wb] = await api("POST", "ops/inbox.voice", { text: "Buy rye bread", from: "iPhone", audio, ext: "m4a" })
+    check("voice: voice_audio off keeps only the words", ws === 200 && !read(wb.path).includes("![[") && read(wb.path).includes("Buy rye bread"), [ws, wb])
+    if (was === null) fs.rmSync(conf); else fs.writeFileSync(conf, was)
+    if (ws === 200) fs.rmSync(path.join(VAULT, wb.path))
+  }
   {
     const conf = path.join(VAULT, ".vaultite/plugins/inbox/data.json"), was = exists(".vaultite/plugins/inbox/data.json") ? fs.readFileSync(conf, "utf8") : null
     fs.writeFileSync(conf, JSON.stringify({ ...(was ? JSON.parse(was) : {}), dispatch: "claude" }))
@@ -5236,6 +5290,8 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("claude: an old chat (text only, no name, no parents) in a project", c2.title === "When do I plant tomatoes?" && c2.messages.length === 2 && c2.project?.startsWith("p1000000"), c2)
   const mems = claude.readMemories([{ conversations_memory: "**Work**\n\nThe user designs. The user prefers short answers.\n\n- Lives in Porto", project_memories: { p1: "Sunny." } }], new Map([["p1", "Garden"]]))
   check("claude memories: sentences and items, headings off, a project's named", mems.map((m) => `${m.about}:${m.text}`).join("|") === "me:The user designs.|preference:The user prefers short answers.|me:Lives in Porto|me:Sunny." && mems[3].from.includes("Garden"), mems)
+  const { factsOf } = await import("../plugins/core/ai-import/chat.ts")
+  check("memories: a long fact kept whole", factsOf(`- ${"word ".repeat(200)}end`)[0]?.endsWith("end"))
   check("claude memories: memory as files", claude.readMemories({ memories: [{ path: "/preferences.md", content: "- Answer in English" }] })[0]?.about === "preference")
 
   // Markdown: headings moved under the turns (not in code), fences that can't close early.
@@ -5261,9 +5317,9 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   }
   let j = await runJob({ path: "Imports/chatgpt-export.zip" })
   const tripRel = "Chats/ChatGPT/2026-09-20 Trip to Lisbon.md"
-  check("ai-import chatgpt: done, chats made, the short one skipped, the broken item said", j.state === "done" && j.source === "chatgpt" && j.created === 2 && j.skipped === 1 && j.problems.length === 1 && j.read === j.total, j)
+  check("ai-import chatgpt: done, every chat made (a one-message one too), the broken item said", j.state === "done" && j.source === "chatgpt" && j.created === 3 && j.skipped === 0 && j.problems.length === 1 && j.read === j.total, j)
   check("ai-import chatgpt: the chat note", exists(tripRel) && read(tripRel).startsWith("---\ntype: chat\nsource: chatgpt\next_id: chatgpt-") && read(tripRel).includes("models: [gpt-4o, o3]"), exists(tripRel) && read(tripRel))
-  check("ai-import chatgpt: a small image, once, in Attachments", j.images === 1 && exists("Chats/ChatGPT/Attachments/file-Img001-beach.png"), j)
+  check("ai-import chatgpt: an image, once, in Attachments", j.images === 1 && exists("Chats/ChatGPT/Attachments/file-Img001-beach.png"), j)
   check("ai-import chatgpt: memories to review, none written to ME.md", j.memories === 6 && j.review === "Chats/ChatGPT/Memories to review.md" && !read("ME.md").includes("Biscuit") &&
     reviewItems(read(j.review)).length === 6 && reviewItems(read(j.review)).every((i) => !i.done), j)
   let [, rendered] = await api("GET", `render?path=${j.review}`)
@@ -5272,14 +5328,14 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   // Again: nothing changes, nothing doubles.
   const before = read(tripRel)
   j = await runJob({ path: "Imports/chatgpt-export.zip" })
-  check("ai-import again: unchanged, no second file, no new memories", j.state === "done" && j.created === 0 && j.unchanged === 2 && j.memories === 0 && read(tripRel) === before &&
-    fs.readdirSync(path.join(VAULT, "Chats/ChatGPT")).filter((f) => f.endsWith(".md")).length === 3, j)
+  check("ai-import again: unchanged, no second file, no new memories", j.state === "done" && j.created === 0 && j.unchanged === 3 && j.memories === 0 && read(tripRel) === before &&
+    fs.readdirSync(path.join(VAULT, "Chats/ChatGPT")).filter((f) => f.endsWith(".md")).length === 4, j)
   // The user writes above the transcript and adds a key; the chat goes on in ChatGPT; importing again updates it in place.
   write(tripRel, before.replace("---\n\n## You", "rating: 5\n---\n\nMy notes: book the train.\n\n## You"))
   fs.writeFileSync(path.join(VAULT, "Imports/chatgpt-export.zip"), fx.chatgptExport(120))
   j = await runJob({ path: "Imports/chatgpt-export.zip" })
   const after = read(tripRel)
-  check("ai-import update: in place, the user's text and keys kept, updated changed", j.updated === 1 && j.unchanged === 1 && after.includes("My notes: book the train.\n\n## You") &&
+  check("ai-import update: in place, the user's text and keys kept, updated changed", j.updated === 1 && j.unchanged === 2 && after.includes("My notes: book the train.\n\n## You") &&
     after.includes("rating: 5") && after.includes("updated: '2026-09-20 16:12:00'") && after.split("## You").length === 3, [j, after])
 
   // Claude's (named .dms), with a project and memories.
@@ -5287,10 +5343,17 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   const proj = "Chats/Claude/Projects/Garden planning.md"
   check("ai-import claude: chats, a project, the empty one skipped", j.state === "done" && j.source === "claude" && j.created === 2 && j.skipped === 1 && j.projects === 1 && exists(proj) &&
     read(proj).includes("## Instructions") && read(proj).includes("#### Beds"), j)
+  {
+    const recipes = read(`Chats/Claude/${fs.readdirSync(path.join(VAULT, "Chats/Claude")).find((f) => f.endsWith("Recipe ideas.md"))}`)
+    check("ai-import claude: a long attachment is a file of its own, whole, linked; a long tool result kept whole", j.files === 1 &&
+      read("Chats/Claude/Attachments/cookbook.pdf.txt") === "A long cookbook page. ".repeat(300) && recipes.includes("*Attached* [[cookbook.pdf.txt]]") &&
+      recipes.includes("The end of the page.") && recipes.includes("Attached pantry.txt"), [j, recipes.slice(0, 1500)])
+  }
   check("ai-import claude: a chat links its project", read("Chats/Claude/2026-09-21 When do I plant tomatoes.md").includes("project: '[[Chats/Claude/Projects/Garden planning|Garden planning]]'"))
   check("ai-import claude: memories to review", j.memories === 5 && reviewItems(read("Chats/Claude/Memories to review.md")).some((i) => i.fact === "Has a dog named Biscuit"), j)
   j = await runJob({ path: "Imports/claude-export.dms" })
-  check("ai-import claude again: unchanged", j.created === 0 && j.projects === 0 && j.unchanged === 2 && j.memories === 0, j)
+  check("ai-import claude again: unchanged, its attachment's file not doubled", j.created === 0 && j.projects === 0 && j.unchanged === 2 && j.memories === 0 &&
+    fs.readdirSync(path.join(VAULT, "Chats/Claude/Attachments")).length === 1, j)
   j = await runJob({ path: "People/Sam Park.md" })
   check("ai-import: something that isn't an export fails, saying why", j.state === "failed" && /conversations/.test(j.error), j)
   const [bs] = await api("POST", "ai-import", {})

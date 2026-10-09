@@ -10,13 +10,13 @@ import {
   bullets, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, reply, splitMachine, type Machine,
   type OpCtx, type Request,
 } from "../../../core/plugins.ts"
-import { isArchived, type Item, Kind, nowUtc, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
+import { isArchived, type Item, Kind, localStamp, nowUtc, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import * as push from "./push.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
 const FOLDER = "Inbox"
-const MAX = 200 // events kept
+const MAX = 200 // read events kept: unread ones stay until they're read or dismissed
 const MERGE = 60_000 // the same thing again within this long updates the event
 const DAY = 86_400_000
 
@@ -97,7 +97,7 @@ const dir = () => plugin.localDir(false)
 function settings() {
   const s = plugin.loaded ? plugin.settings({}) : {}
   return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "all",
-    turns: str(s.turns) === "notify" ? "notify" : "quiet",
+    turns: str(s.turns) === "notify" ? "notify" : "quiet", audio: s.voice_audio !== false,
     dispatch: AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }
 }
@@ -116,10 +116,11 @@ function list(): InboxEvent[] {
   return events!
 }
 
-/** Old ones go (keep_days, and at most MAX). */
-function prune(es: InboxEvent[]) {
+/** Read ones go after keep_days, past the latest MAX read; an unread one stays until it's read or dismissed. */
+export function prune(es: InboxEvent[]) {
   const since = Date.now() - settings().keep * DAY
-  return es.filter((e) => e.t >= since).slice(0, MAX)
+  let read = 0
+  return es.filter((e) => !e.read || (e.t >= since && ++read <= MAX))
 }
 
 function save() {
@@ -148,19 +149,20 @@ function changed(next: InboxEvent[]) {
 }
 let waitingSeen = ""
 
-const clip = (v: unknown, n: number) => str(v).replace(/\s+/g, " ").trim().slice(0, n)
+const clip = (v: unknown, n = Infinity) => str(v).replace(/\s+/g, " ").trim().slice(0, n)
 const TERMINAL = /^[\w-]{1,64}(@[a-z0-9][a-z0-9-]{0,62})?$/
 
-/** An event as given (the API's body, a hook's), checked and trimmed; throws a 400 for one without a title. */
+/** An event as given (the API's body, a hook's), checked; its title one line and its body as written, both whole (the
+ *  event is their only copy). Throws a 400 for one without a title. */
 export function eventOf(b: Item): Omit<InboxEvent, "id" | "t"> {
-  const title = clip(b.title, 200)
+  const title = clip(b.title)
   if (!title) throw new HTTPError(400, "title: what happened, one line")
   const e: Omit<InboxEvent, "id" | "t"> = {
     source: clip(b.source, 40).toLowerCase() || "vau",
     kind: /^[a-z][a-z-]{0,19}$/.test(str(b.kind)) ? str(b.kind) : "info",
     title,
   }
-  const body = clip(b.body, 500)
+  const body = str(b.body).trim()
   if (body) e.body = body
   const link = str(b.link).trim()
   if (link && link.length <= 1000) e.link = link
@@ -383,7 +385,7 @@ async function owner(req: Request) {
 
 plugin.route("GET", "inbox/events", async (req) => {
   if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Settings > Plugins)")
-  const limit = Math.min(Math.max(Math.trunc(Number(req.query.limit)) || 50, 1), MAX)
+  const limit = req.query.all ? Infinity : Math.max(Math.trunc(Number(req.query.limit)) || 50, 1)
   const local = !!req.query.local
   if (!local) await others()
   return { events: shown(local).slice(0, limit), unread: unread(local) }
@@ -618,11 +620,11 @@ plugin.op({
   mcp: "inbox",
   summary: "What's new in the inbox: results to review (Inbox/, status new) and what agents said (finished, waiting), newest first.",
   help: `Results are files in Inbox/ the user hasn't reviewed yet; events are what coding agents said (kept on the machine they
-happened on for a week; another machine's id ends in @<machine>), each with its id (inbox.read, inbox.unread take them).
+happened on until read, then for a week; another machine's id ends in @<machine>), each with its id (inbox.read, inbox.unread take them).
 
   vau inbox`,
   kind: "read",
-  params: { limit: { type: "integer", minimum: 1, maximum: MAX, default: 20, description: "at most this many events" } },
+  params: { limit: { type: "integer", minimum: 1, default: 20, description: "at most this many events" } },
   run: async ({ limit }, ctx) => {
     const [ev, items] = await Promise.all([ctx.api("GET", `inbox/events?limit=${limit}`), ctx.api("GET", "inbox")]) as [Item, Item[]]
     const results = (items ?? []).filter((r) => r.status === "new" && !isArchived(r)).map((r) => ({ path: `${r.id}.md`, title: r.title, from: r.from ?? null, created: r.created ?? null, updated: r.updated ?? null }))
@@ -1056,7 +1058,7 @@ question. read marks the event read.
   },
   args: ["id", "answer"],
   run: async ({ id, answer }, ctx) => {
-    const { events } = await ctx.api("GET", `inbox/events?limit=${MAX}`) as { events: InboxEvent[] }
+    const { events } = await ctx.api("GET", "inbox/events?all=1") as { events: InboxEvent[] }
     const e = events.find((x) => x.id === id)
     if (!e) throw new OpError(`no event ${id} (vau inbox lists them)`, 404)
     if (answer !== "read") {
@@ -1139,7 +1141,8 @@ plugin.op({
   cli: "inbox voice",
   summary: "What the user said into their watch, phone or the app: kept in the inbox, and handed to the front-door agent when the setting dispatch names one.",
   help: `The iPhone app sends it (from the watch's microphone, transcribed on the phone), and so does the app's Record a
-voice note for your inbox. With dispatch set (claude, codex...), a new terminal runs that agent with the note, to write
+voice note for your inbox. The recording (audio) is kept as an attachment, embedded above what was said, unless the
+setting voice_audio is off. With dispatch set (claude, codex...), a new terminal runs that agent with the note, to write
 it down, do it, or say what it would do; one past 1,500 words (a recording left running, a meeting) is only kept.
 
   vau inbox voice "Remind me to call Alice about the trip on Friday"`,
@@ -1147,9 +1150,11 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
   params: {
     text: { type: "string", required: true, description: "what was said, transcribed" },
     from: { type: "string", description: "where it was said (Apple Watch, iPhone)" },
+    audio: { type: "string", description: "the recording, base64: kept as an attachment, embedded above what was said" },
+    ext: { type: "string", description: "the recording's extension (m4a, webm)" },
   },
   args: ["text"],
-  run: async ({ text, from }, ctx) => {
+  run: async ({ text, from, audio, ext }, ctx) => {
     const said = text.trim()
     if (!said) throw new OpError("nothing was said")
     const words = said.replace(/[\\/:*?"<>|#^[\]]/g, "").replace(/\s+/g, " ").trim().split(" ")
@@ -1157,7 +1162,14 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
     const title = `${first[0]?.toUpperCase() ?? ""}${first.slice(1)}${words.length > 8 ? "…" : ""}` || "Voice note"
     // The user's own words (Provenance's label for what they write, while it's on); an AI app's (MCP) are its own.
     const origin = (plugin.service(ctx.who.client === "mcp" ? "provenance:agent" : "provenance:user") as (() => string) | null)?.() || undefined
-    const r = await ctx.api("POST", "inbox", { title, body: said, from: str(from).trim() || ctx.who.label, origin })
+    // The recording above its words, as a note's recording sits above its transcript.
+    let body = said
+    if (audio && settings().audio) {
+      const kind = /^[a-z0-9]{1,5}$/i.test(str(ext)) ? str(ext).toLowerCase() : "m4a"
+      const up = await ctx.op("file.upload", { data: audio, name: `Voice note ${localStamp().replace(/(\d\d)(\d\d)(\d\d)$/, "$1.$2.$3")}.${kind}` })
+      body = `![[${path.posix.basename(str(up.path))}]]\n\n${said}`
+    }
+    const r = await ctx.api("POST", "inbox", { title, body, from: str(from).trim() || ctx.who.label, origin })
     const file = `${r.id}.md`
     const agent = settings().dispatch
     let terminal: string | null = null, why = ""

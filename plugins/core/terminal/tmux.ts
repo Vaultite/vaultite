@@ -91,7 +91,8 @@ export function tmuxBackend(name: string, o: { conf: string; env: () => Record<s
     },
     async create(id, spec, c) {
       try { fs.mkdirSync(STATUS_DIR, { recursive: true }); fs.rmSync(statusFile(id), { force: true }) } catch { /* reported as a clean exit */ }
-      const args = ["new-session", "-d", "-s", `${PREFIX}${id}`, "-x", String(spec.cols), "-y", String(spec.rows), "-c", spec.run?.cwd || spec.cwd,
+      // (history-limit is taken when a pane is made: set first, for this one)
+      const args = ["start-server", ";", "set-option", "-g", "history-limit", String(spec.scrollback), ";", "new-session", "-d", "-s", `${PREFIX}${id}`, "-x", String(spec.cols), "-y", String(spec.rows), "-c", spec.run?.cwd || spec.cwd,
         ...tmuxVars(spec.ctx), ...tmuxCommand(spec.shell, shellArgs(spec.shell, c?.spare ? null : spec.run))]
       // (new-session may start tmux's server, which must outlive a systemd unit's restart: outliving)
       const [cmd, argv] = outliving(TMUX, ["-L", SOCKET, "-f", o.conf, ...args], `tmux-${SOCKET}`)

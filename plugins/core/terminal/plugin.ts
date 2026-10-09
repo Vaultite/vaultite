@@ -10,7 +10,9 @@ import { parseTerminal } from "../../../core/terminalids.ts"
 import {
   agentLines, HTTPError, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine, type Request,
 } from "../../../core/plugins.ts"
-import { loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, shellArgs, type AgentRun, type Backend, type Link, type Listed as Shell } from "./backend.ts"
+import {
+  limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, shellArgs, Tail, type AgentRun, type Backend, type Link, type Listed as Shell,
+} from "./backend.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
 
@@ -19,16 +21,11 @@ export const plugin = new Plugin(import.meta.url)
 
 /** How much output a terminal client may be behind before it's dropped (it reconnects and gets the replay). */
 const BEHIND = 16 << 20
-const SCROLLBACK = 200 * 1024 // characters replayed on reattach, for a backend without pictures (tmux)
-// A shell at its prompt with no client for this long ends, unless a tab kept on the server still shows it (below).
-// VAULTITE_TERMINAL_IDLE_MS changes it (QA: a few seconds).
-const IDLE_MS = Number(process.env.VAULTITE_TERMINAL_IDLE_MS) > 0 ? Number(process.env.VAULTITE_TERMINAL_IDLE_MS) : 12 * 3600 * 1000
-/** A session a tab kept on the server shows (another workspace's: "tabs:open"), so it isn't idle however long nobody
- *  looks. One saved with its machine (`<id>@<machine>`) counts too, to be safe. */
-function kept(id: string) {
-  const fn = plugin.service("tabs:open")
-  try { return typeof fn === "function" && (fn() as string[]).some((t) => t === `view:terminal/${id}` || t.startsWith(`view:terminal/${id}@`)) } catch { return false }
-}
+/** Lines of history every terminal keeps, whatever its backend (the setting `scrollback`): the page's, the keeper's and
+ *  tmux's, all given back to a page that comes back. */
+const scrollback = () => clamp(plugin.settings().scrollback, 100, 1_000_000, 10_000)
+limits.scrollback = scrollback
+// A shell ends only when its tab closes (idle, its last one), or it's ended on purpose: never for having been left alone.
 /** A shell at its prompt: nothing else runs in it (the app's `busy` is the other side of this). */
 const SHELLS = new Set(["zsh", "bash", "fish", "sh", "dash", "-zsh", "-bash", "-sh", "login", ""])
 const VERSION = /^\d+(\.\d+)+$/
@@ -56,11 +53,10 @@ const REFUSED = 4003 // close code: this request may not have a shell (the clien
 /** A shell this server shows: its backend's link to it, and the pages' sockets on it. */
 type Session = {
   id: string; backend: Backend; link: Link; clients: Set<WebSocket>; started: number
-  ended: boolean // ended by us (close, idle): reported as SIGHUP, like a shell killed directly
+  ended: boolean // ended by us (a tab's close, End session): reported as SIGHUP, like a shell killed directly
   kept?: boolean // ended by us, its tabs kept (end's `keep`)
-  out: string[]; size: number // the last SCROLLBACK characters of output, in chunks (a backend without pictures)
+  out: Tail // its last `scrollback` lines of output (a backend without pictures)
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
-  idle: ReturnType<typeof setTimeout> | null
 }
 const sessions = new Map<string, Session>()
 
@@ -74,6 +70,9 @@ const TMP = path.join(runtimeDir(), "vaultite-terminal")
 const UPLOADS = path.join(TMP, "uploads")
 const STATES = path.join(TMP, "states")
 const MAX_UPLOAD = 20 << 20
+/** How long what was pasted into a terminal stays once its shell has ended: as long as Claude Code keeps a session to
+ *  resume by default (cleanupPeriodDays), so a resumed one still finds the files it was given. */
+const UPLOADS_KEPT = 30 * 86_400_000
 const SPARE = "vauspare-" // a shell kept ready (below)
 
 const keeper = ptydBackend(named("vaultite"), { daemon: path.join(plugin.dir, "ptyd.ts"), log: console.error })
@@ -109,38 +108,34 @@ async function backendOf(id: string): Promise<Backend | null> {
 /** A shell with this id runs here (in any backend). */
 const runsHere = async (id: string) => !!(await backendOf(id))
 
-/** A file the page sent (a pasted screenshot), saved where the shell can read it: its path. */
-function upload(name: unknown, data: unknown): string {
+/** A file the page sent (a pasted screenshot) into terminal `id`, saved where the shell can read it: its path. */
+function upload(id: string, name: unknown, data: unknown): string {
   const bytes = Buffer.from(String(data ?? ""), "base64")
   if (!bytes.length || bytes.length > MAX_UPLOAD) throw new Error("empty or over 20 MB")
   const safe = String(name ?? "").replace(/[^\w.-]+/g, "-").replace(/^[.-]+/, "").slice(-80) || "file"
-  fs.mkdirSync(UPLOADS, { recursive: true })
-  const file = path.join(UPLOADS, `${Date.now().toString(36)}-${safe}`)
+  const dir = path.join(UPLOADS, id)
+  fs.mkdirSync(dir, { recursive: true })
+  const file = path.join(dir, `${Date.now().toString(36)}-${safe}`)
   fs.writeFileSync(file, bytes)
   return file
 }
 
-/** Ends shells nobody has come back to for IDLE_MS (a tab that never came back after a restart) in the backends that are
- *  Vaultite's alone, and drops uploads older than a week. */
+/** What was pasted into terminals stays while its shell runs, and UPLOADS_KEPT after it ended (its folder's time is
+ *  kept current while it runs). */
 async function sweep() {
-  try {
-    for (const f of fs.readdirSync(UPLOADS)) {
-      const p = path.join(UPLOADS, f)
-      if (Date.now() - fs.statSync(p).mtimeMs > 7 * 24 * 3600 * 1000) fs.rmSync(p, { force: true })
-    }
-  } catch { /* none yet */ }
-  const cutoff = Date.now() - IDLE_MS
-  for (const b of backends()) {
-    if (b.external) continue
-    for (const x of await b.list().catch(() => [] as Shell[])) {
-      if (x.spare || x.id.startsWith(SPARE) || x.attached || (x.activity ?? Date.now()) > cutoff) continue
-      // Something running in it (an agent, a server) was left running on purpose (closing its tab keeps it): it stays.
-      // So does one a workspace's tab shows.
-      if (!sessions.has(x.id) && !kept(x.id) && (await inFront(x)) === null) await b.kill(x.id).catch(() => {})
-    }
+  let names: string[]
+  try { names = fs.readdirSync(UPLOADS) } catch { return }
+  const now = Date.now()
+  for (const f of names) {
+    const p = path.join(UPLOADS, f)
+    try {
+      const dir = fs.statSync(p).isDirectory()
+      if (dir && TERMINAL_ID.test(f) && (await runsHere(f))) { fs.utimesSync(p, now / 1000, now / 1000); continue }
+      if (now - fs.statSync(p).mtimeMs > UPLOADS_KEPT) fs.rmSync(p, { recursive: true, force: true })
+    } catch { /* gone meanwhile */ }
   }
 }
-sweep()
+setTimeout(() => void sweep(), 5000).unref?.()
 const sweeper = setInterval(sweep, 3600 * 1000)
 sweeper.unref?.()
 plugin.onUnload(() => clearInterval(sweeper))
@@ -269,7 +264,7 @@ function makeSpare(from: From) {
     if (!b.spares || spares.has(key)) return
     const name = `${SPARE}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
     // (its id comes when it's taken)
-    const ready = dropped.then(() => b.create(name, { shell: shell(), run: null, cwd: vaultDir(), env: env(), ctx: context(null, from), cols: 120, rows: 40 },
+    const ready = dropped.then(() => b.create(name, { shell: shell(), run: null, cwd: vaultDir(), env: env(), ctx: context(null, from), cols: 120, rows: 40, scrollback: scrollback() },
       { spare: true })).then(() => true, () => false)
     spares.set(key, { b, name, ready })
   })()
@@ -306,7 +301,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
     const run = await agentRun(id, prompt)
-    const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows }
+    const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows, scrollback: scrollback() }
     if (!(b.spares && (await takeSpare(b, id, from, run)))) {
       try { await b.create(id, spec) } catch (e) {
         if (b !== keeper) throw e
@@ -322,14 +317,9 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   }
   const backend = b
   const link = await backend.attach(id, cols, rows)
-  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: [], size: 0, pending: new Set(), idle: null, ended: false }
+  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: new Tail(scrollback()), pending: new Set(), ended: false }
   link.onData((data) => {
-    if (!link.snapshot) {
-      s.out.push(data)
-      s.size += data.length
-      while (s.size > SCROLLBACK && s.out.length > 1) s.size -= s.out.shift()!.length
-      if (s.size > SCROLLBACK) { s.out[0] = s.out[0].slice(-SCROLLBACK); s.size = s.out[0].length }
-    }
+    if (!link.snapshot) s.out.push(data)
     const bytes = Buffer.from(data, "utf8")
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN || s.pending.has(ws)) continue
@@ -342,7 +332,6 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   link.onExit(async (exit) => {
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
-    if (s.idle) clearTimeout(s.idle)
     // Only our hold on it ended (the server's tmux client was killed): the clients reconnect, which reattaches.
     if (!exit && !s.ended && (await backend.has(id).catch(() => false))) {
       for (const ws of s.clients) ws.close(1012, "reattach")
@@ -363,7 +352,6 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   sessions.set(id, s)
   endedOnPurpose.delete(id)
   listChanged()
-  idle(s) // until a client attaches
   return { s, fresh }
 }
 
@@ -394,10 +382,9 @@ function resize(s: Session, cols: number, rows: number) {
 }
 
 function attach(s: Session, ws: WebSocket, fresh: boolean) {
-  if (s.idle) { clearTimeout(s.idle); s.idle = null }
   s.clients.add(ws)
   listChanged()
-  ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws }))
+  ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws, scrollback: scrollback() }))
   ws.send(JSON.stringify({ t: "size", cols: s.link.cols, rows: s.link.rows }))
   if (s.link.snapshot) {
     // The screen and its history as they are now, then what it prints from there on.
@@ -407,7 +394,8 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
       if (picture && ws.readyState === ws.OPEN) ws.send(Buffer.from(picture, "utf8"))
     })
   } else {
-    if (!fresh && s.out.length) ws.send(Buffer.from(s.out.join(""), "utf8"))
+    const replay = fresh ? "" : s.out.text()
+    if (replay) ws.send(Buffer.from(replay, "utf8"))
     // The backend draws its screen again (the replay can end mid-screen).
     if (!fresh) s.link.redraw?.()
   }
@@ -426,7 +414,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     else if (msg.t === "scroll") { if (Number.isInteger(msg.lines) && msg.lines) s.link.scroll?.(msg.lines!) }
     else if (msg.t === "upload") {
       let file = ""
-      try { file = upload(msg.name, msg.data) } catch (e) { console.error("terminal upload:", e); return }
+      try { file = upload(s.id, msg.name, msg.data) } catch (e) { console.error("terminal upload:", e); return }
       if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: file }))
     }
   })
@@ -434,21 +422,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     s.clients.delete(ws)
     s.pending.delete(ws)
     listChanged()
-    if (!s.clients.size) idle(s)
   })
-}
-
-/** A shell nobody watches ends after IDLE_MS at its prompt; one running something (left running when its tab closed),
- *  or one a tab kept on the server shows (another workspace's), is asked again then. Another program's (herdr's) never. */
-function idle(s: Session) {
-  if (s.idle) clearTimeout(s.idle)
-  if (sessions.get(s.id) !== s || s.backend.external) return
-  s.idle = setTimeout(async () => {
-    const x = (await s.backend.list().catch(() => [] as Shell[])).find((x) => x.id === s.id)
-    const command = x ? await inFront(x) : null
-    if (s.clients.size) return
-    if (command === null && !kept(s.id)) end(s); else idle(s)
-  }, IDLE_MS)
 }
 
 // --- another machine's shells (Machines): an id ending in @<machine> is let in here first, then joined to the same
@@ -713,7 +687,7 @@ plugin.route("GET", "terminals/sessions", async (req) => {
 plugin.route("GET", "terminals/*/screen", async (req) => {
   await owner(req)
   const id = localId(req)
-  const lines = clamp(req.query.lines, 1, 5000, 50)
+  const lines = clamp(req.query.lines, 1, scrollback(), 50)
   // The visible screen plus `lines` above it, wrapped lines joined, trailing blank lines left out.
   const all = (await (await mustRun(id)).screen(id, lines)).replace(/\s+$/, "").split("\n")
   return { id, lines: all.slice(-lines) }

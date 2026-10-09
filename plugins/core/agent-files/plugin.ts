@@ -1,5 +1,6 @@
 /** The vault's rules for AIs, `.vaultite/AGENTS.md`: core/AGENTS.md, each plugin's `forAgents` line, then the user's
- *  own under OWN, always kept. With `rootFiles` on, one pointer line in the vault's AGENTS.md and CLAUDE.md; off, it goes. */
+ *  own under OWN, always kept. With `rootFiles` on, one pointer line in the vault's AGENTS.md and CLAUDE.md; off, it goes
+ *  (and a file the app made for it). */
 import fs from "node:fs"
 import path from "node:path"
 import { agentLines, LOADED, Plugin, ROOT } from "../../../core/plugins.ts"
@@ -47,6 +48,10 @@ export function rulesText(own: string) {
   return [core, lines.length ? `## Plugins\n${lines.join("\n")}` : "", `${OWN}\n${OWN_NOTE}${own ? `\n\n${own}` : ""}`].filter(Boolean).join("\n\n") + "\n"
 }
 
+/** The root files the app made for its line (none was there), in `made.json`: only those it may delete again. */
+const made = () => (plugin.settings({}, "made").files ?? []) as string[]
+const setMade = (files: string[]) => plugin.saveSettings(files.length ? { files } : null, "made")
+
 /** Add the pointer line to the end of `name`, or take it out. Returns whether the file changed. */
 export function point(abs: (rel: string) => string, name: string, on: boolean) {
   const file = abs(name), line = LINES[name], cur = read(file)
@@ -55,11 +60,14 @@ export function point(abs: (rel: string) => string, name: string, on: boolean) {
   if (on === has) return false
   if (on) {
     writeAtomic(file, cur === null || cur === "" ? line + "\n" : cur.replace(/\n*$/, "\n\n") + line + "\n")
+    if (cur === null && !made().includes(name)) setMade([...made(), name])
     return true
   }
   const rest = lines.filter((l) => l.trim() !== line).join("\n").replace(/\n{3,}/g, "\n\n").replace(/\n+$/, "")
-  if (rest.trim() === "") fs.rmSync(file)
-  else writeAtomic(file, rest + "\n")
+  // (a file of the user's stays even when only the line was in it: the app deletes only what it made)
+  if (rest.trim() === "" && made().includes(name)) fs.rmSync(file)
+  else writeAtomic(file, rest.trim() === "" ? "" : rest + "\n")
+  if (made().includes(name)) setMade(made().filter((n) => n !== name))
   return true
 }
 

@@ -33,7 +33,6 @@ function options(q: Record<string, string>): Options {
     folder,
     minMessages: num(q.minMessages ?? s.minMessages, DEFAULTS.minMessages),
     images: bool(q.images ?? s.images, DEFAULTS.images),
-    maxImageBytes: num(s.maxImageKB, DEFAULTS.maxImageBytes / 1024) * 1024,
   }
 }
 
@@ -167,6 +166,7 @@ function jobText(job: Job) {
     `${job.source === "claude" ? "Claude" : "ChatGPT"}: ${job.chats} chats in ${job.folder}/: ${job.created} new, ${job.updated} updated, ${job.unchanged} already there, ${job.skipped} short one${job.skipped === 1 ? "" : "s"} skipped.`,
     ...(job.projects ? [`${job.projects} project notes.`] : []),
     ...(job.images ? [`${job.images} images.`] : []),
+    ...(job.files ? [`${job.files} long attachments as files of their own.`] : []),
     job.review ? `${job.memories} memories to review in ${job.review}: tick the ones to keep, then Add (ai-import.apply).` : "No memories to review.",
     ...(job.problems?.length ? [`Not read: ${job.problems.join("; ")}`] : []),
   ].join("\n")
@@ -186,7 +186,7 @@ plugin.op({
   id: "ai-import.run",
   summary: "Import ChatGPT's or Claude's export already in the vault (or uploaded): a note per chat, their memories as a list to review.",
   help: `The export's zip (or its conversations.json) becomes a job: every chat a note in Chats/ChatGPT/ or Chats/Claude/
-(Claude's projects in Chats/Claude/Projects/), small images from ChatGPT in their Attachments/, and what the AI
+(Claude's projects in Chats/Claude/Projects/), ChatGPT's images and long attachments in their Attachments/, and what the AI
 remembered about the user added to Chats/<AI>/Memories to review.md, never straight to ME.md (the user ticks the ones to
 keep, then ai-import.apply). Importing again updates chats that changed and never makes a second copy. A file on the
 computer you're on: vau import <file> (it uploads it). wait: answer once it's done.
@@ -201,8 +201,8 @@ computer you're on: vau import <file> (it uploads it). wait: answer once it's do
   params: {
     path: { type: "string", format: "path", description: "the export in the vault (a zip, a .dms, or conversations.json)" },
     upload: { type: "string", description: "or an upload's id (POST /api/ai-import/upload: the app sends big files in pieces)" },
-    minMessages: { type: "integer", minimum: 0, description: "skip chats with fewer messages (default the setting's, 2)" },
-    images: { type: "boolean", description: "bring ChatGPT's small images (default the setting's, true)" },
+    minMessages: { type: "integer", minimum: 0, description: "skip chats with fewer messages (default the setting's, 1)" },
+    images: { type: "boolean", description: "bring ChatGPT's images (default the setting's, true)" },
     folder: { type: "string", description: "where the chats go (default the setting's, Chats)" },
     wait: { type: "boolean", description: "answer once the import is done (else at once, with the job to follow)" },
   },

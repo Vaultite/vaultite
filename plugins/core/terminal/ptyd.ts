@@ -12,8 +12,7 @@ import type { SerializeAddon as Serializer } from "@xterm/addon-serialize"
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: ptyd.ts <socket path>"); process.exit(2) }
 const V = 1
-const SCROLLBACK = 10000 // lines the headless terminal keeps (what `screen` can read)
-const PICTURE = 3000 // lines of history a page gets back
+const SCROLLBACK = 10000 // lines the headless terminal keeps when the server doesn't say (its setting `scrollback`)
 
 const require = createRequire(import.meta.url)
 const SELF = fileURLToPath(import.meta.url)
@@ -44,7 +43,8 @@ type Shell = {
 const shells = new Map<string, Shell>()
 const conns = new Set<Conn>()
 
-const picture = (s: Shell) => s.ser.serialize({ scrollback: PICTURE })
+/** The screen and its whole history, for a page that comes back. */
+const picture = (s: Shell) => s.ser.serialize({ scrollback: s.term.options.scrollback })
 
 /** Passed on to the attached connections that have their picture (one that's waiting for it has this in it). */
 function forward(s: Shell, d: string) {
@@ -70,7 +70,7 @@ function create(m: Record<string, unknown>) {
     fixHelper()
     p = spawn()
   }
-  const term = new Terminal({ cols, rows, scrollback: SCROLLBACK, allowProposedApi: true })
+  const term = new Terminal({ cols, rows, scrollback: Number(m.scrollback) > 0 ? Number(m.scrollback) : SCROLLBACK, allowProposedApi: true })
   const ser = new SerializeAddon()
   term.loadAddon(ser as never)
   const s: Shell = { id, pty: p, term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set() }
@@ -158,7 +158,7 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
       sessions: [...shells.values()].map((s) => ({ id: s.id, pid: s.pty.pid, process: process_(s), created: s.created, activity: s.activity,
         attached: s.attached.size, title: s.title, cols: s.term.cols, rows: s.term.rows, spare: s.spare })),
     }
-    case "screen": return { text: screen(shell(m.id), Math.max(1, Math.min(SCROLLBACK, Number(m.lines) || 50))) }
+    case "screen": { const s = shell(m.id); return { text: screen(s, Math.max(1, Math.min(s.term.options.scrollback ?? SCROLLBACK, Number(m.lines) || 50))) } }
     case "attach": {
       const s = shell(m.id)
       if (c.session) c.session.attached.delete(c)

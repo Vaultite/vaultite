@@ -6,4 +6,5 @@ there only when the user asks; facts about the user go in their file, ME.md). Wi
 writing it and takes its part out (the user's own rules stay; nothing left, no file). The vault's `AGENTS.md` and
 `CLAUDE.md` are the user's: the app never writes them, except one line pointing at the rules when the setting
 `rootFiles` is on (`.vaultite/plugins/agent-files/data.json`, `{"rootFiles": true}`): `@.vaultite/AGENTS.md` in
-CLAUDE.md, a sentence in AGENTS.md. Turned off (or the plugin off), that line goes.
+CLAUDE.md, a sentence in AGENTS.md. Turned off (or the plugin off), that line goes; a file is deleted only when the app
+made it for that line.

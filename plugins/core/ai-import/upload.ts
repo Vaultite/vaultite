@@ -72,7 +72,7 @@ export function summary(j: Job) {
   if (j.unchanged) parts.push(`${j.unchanged} already here`)
   if (j.skipped) parts.push(`${j.skipped} short one${j.skipped === 1 ? "" : "s"} skipped`)
   const extra = [j.projects ? `${j.projects} project${j.projects === 1 ? "" : "s"}` : "", j.images ? `${j.images} image${j.images === 1 ? "" : "s"}` : "",
-    j.memories ? `${j.memories} memor${j.memories === 1 ? "y" : "ies"} to review` : ""].filter(Boolean)
+    j.files ? `${j.files} long attachment${j.files === 1 ? "" : "s"} as files` : "", j.memories ? `${j.memories} memor${j.memories === 1 ? "y" : "ies"} to review` : ""].filter(Boolean)
   return `${name(j)}: ${j.chats} chats (${parts.join(", ")})${extra.length ? `, ${extra.join(", ")}` : ""}.`
 }
 

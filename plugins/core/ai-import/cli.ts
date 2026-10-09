@@ -33,8 +33,8 @@ export const cli: PluginCli = {
     usage: "vau import <export.zip> [--min-messages <n>] [--no-images] [--folder <folder>] [--no-wait]",
     bool: ["no-images", "no-wait"],
     help: `Sends the export's zip (or its conversations.json) to the running server, which imports it as a job: every chat
-a note in Chats/ChatGPT/ or Chats/Claude/ (Claude's projects in Chats/Claude/Projects/), small images from ChatGPT in
-their Attachments/, and what the AI remembered about you added to Chats/<AI>/Memories to review.md, never straight to
+a note in Chats/ChatGPT/ or Chats/Claude/ (Claude's projects in Chats/Claude/Projects/), ChatGPT's images and long
+attachments in their Attachments/, and what the AI remembered about you added to Chats/<AI>/Memories to review.md, never straight to
 ME.md: tick the ones to keep there and press Add (or vau ai-import.apply <path>). Importing again updates chats that
 changed and never makes a second copy. Waits and prints what it did (--no-wait: just starts it). An export already
 in the vault: vau ai-import.run <path>.

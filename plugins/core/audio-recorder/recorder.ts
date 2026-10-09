@@ -157,8 +157,16 @@ const keep = (why: unknown, blob: Blob, file: File) => notify(`Couldn't save the
   action: { label: "Download", run: () => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click() } },
 })
 
+/** A tap by mistake (under 0.7 s, as on the phone and watch): not saved, and said so. */
+function tooShort() {
+  if (Date.now() - started.getTime() >= 700) return false
+  notify("Too short, not saved", { duration: 2000 })
+  return true
+}
+
 async function finish(note: string | null) {
   const { blob, file } = taken()
+  if (tooShort()) { set({ state: "idle" }); return }
   const name = recordingName(started)
   const s = getStore()
   try {
@@ -187,13 +195,12 @@ async function finish(note: string | null) {
   }
 }
 
-/** A voice note as the phone's widget sends one: transcribed on the server and put in the inbox (inbox.voice); the
- *  recording is kept only if it couldn't be transcribed. */
+/** A voice note as the phone's widget sends one: transcribed on the server and put in the inbox (inbox.voice), the
+ *  recording kept above its words (alone, when it couldn't be transcribed). */
 async function sendVoice() {
   const { blob, type, file } = taken()
   set({ state: "idle" })
-  // (a tap by mistake isn't a note)
-  if (Date.now() - started.getTime() < 700) return
+  if (tooShort()) return
   const id = "voice-note"
   notify("Sending your voice note…", { id, duration: Infinity })
   try {

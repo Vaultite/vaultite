@@ -230,7 +230,8 @@ function create(id: string): Live {
         replayNext = false; replaying = true
         return t.write(new Uint8Array(e.data as ArrayBuffer), () => { replaying = false })
       }
-      let msg: { t?: string; fresh?: boolean; tmux?: boolean; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean }
+      let msg: { t?: string; fresh?: boolean; tmux?: boolean; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean
+        scrollback?: number }
       try { msg = JSON.parse(e.data) } catch { return }
       if (msg.t === "size") {
         shell = { cols: msg.cols ?? 0, rows: msg.rows ?? 0 }
@@ -240,6 +241,8 @@ function create(id: string): Live {
       } else if (msg.t === "attached") {
         tries = 0
         attachOnly = true // reconnecting (the server restarted) never starts it again
+        // (as many lines as its shell keeps, the setting on the machine it runs on: the replay is all of them)
+        if (msg.scrollback && msg.scrollback !== t.options.scrollback) t.options.scrollback = msg.scrollback
         t.reset() // what the shell printed comes again (the replay), or it's a new shell
         replayNext = !msg.fresh
         l.tmuxScroll = !!msg.tmux
@@ -421,10 +424,10 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     if (t.options.fontSize !== fontSize(textSize("terminal"))) t.options.fontSize = fontSize(textSize("terminal"))
     l.open()
     l.refit() // this pane may be another size than where it was parked
-    // What it shows, as text, for scripts (web/qa): with WebGL the screen is a canvas, not rows of text.
-    Object.defineProperty(el, "terminalText", { configurable: true, value: () => {
+    // What it shows (`all`: its whole history too), as text, for scripts (web/qa): with WebGL the screen is a canvas.
+    Object.defineProperty(el, "terminalText", { configurable: true, value: (all = false) => {
       const b = t.buffer.active, lines: string[] = []
-      for (let y = 0; y < t.rows; y++) lines.push(b.getLine(b.viewportY + y)?.translateToString(true) ?? "")
+      for (let y = all ? 0 : b.viewportY, end = all ? b.length : b.viewportY + t.rows; y < end; y++) lines.push(b.getLine(y)?.translateToString(true) ?? "")
       return lines.join("\n")
     } })
     let frame = 0

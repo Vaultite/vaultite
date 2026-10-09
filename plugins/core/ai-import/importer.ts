@@ -3,13 +3,14 @@
 import fs from "node:fs"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
+import { isTextKind, kindOf } from "../../../core/plugins.ts"
 import { FM, frontmatter, nowUtc, safeName, setPropertyText, str, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { aboutOf, type Chat, isObj, type Job, type Memory, type Project } from "./chat.ts"
 export type { Job } from "./chat.ts"
 import * as chatgpt from "./chatgpt.ts"
 import * as claude from "./claude.ts"
 import { jsonItems } from "./jsonstream.ts"
-import { chatNote, LABELS, localDate, projectNote, reviewText, splitBody } from "./note.ts"
+import { chatNote, INLINE, LABELS, localDate, projectNote, reviewText, splitBody } from "./note.ts"
 import { entryBytes, entryStream, isZip, type ZipEntry, zipEntries } from "./zip.ts"
 
 export type Options = {
@@ -17,16 +18,15 @@ export type Options = {
   folder: string
   /** Chats with fewer messages (the user's and the AI's, with something in them) are skipped; 0 imports every one. */
   minMessages: number
-  /** Import ChatGPT's images up to maxImageBytes each. */
+  /** Import ChatGPT's images, whatever their size. */
   images: boolean
-  maxImageBytes: number
 }
 
-export const DEFAULTS: Options = { folder: "Chats", minMessages: 2, images: true, maxImageBytes: 2 << 20 }
+export const DEFAULTS: Options = { folder: "Chats", minMessages: 1, images: true }
 
 export const newJob = (id: string, name: string): Job => ({
   id, state: "queued", name, source: null, read: 0, total: 0, chats: 0, created: 0, updated: 0, unchanged: 0, skipped: 0, images: 0,
-  projects: 0, memories: 0, review: null, folder: null, problems: [], started: Date.now(),
+  files: 0, projects: 0, memories: 0, review: null, folder: null, problems: [], started: Date.now(),
 })
 
 /** Files written per hold of the vault. */
@@ -34,7 +34,7 @@ const BATCH = 20
 
 type Write =
   | { kind: "note"; ext: string; dir: string; name: string; fm: Record<string, unknown>; body: string }
-  | { kind: "file"; rel: string; data: Buffer }
+  | { kind: "file"; rel: string; data: Buffer; counts: "images" | "files" }
 
 /** A file name for `name` in `dir` that's free ("Name.md", "Name 1.md"...). */
 function freePath(vault: Vault, dir: string, name: string, taken: Set<string>) {
@@ -106,7 +106,7 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
   const write = (w: Write) => {
     if (w.kind === "file") {
       const abs = vault.abs(w.rel)
-      if (!fs.existsSync(abs)) { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.writeFileSync(abs, w.data); job.images++ }
+      if (!fs.existsSync(abs)) { fs.mkdirSync(path.dirname(abs), { recursive: true }); fs.writeFileSync(abs, w.data); job[w.counts]++ }
       return
     }
     const rel = known.get(w.ext)
@@ -132,8 +132,27 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     return !!e && str(e.fm.updated) === str(fm.updated ?? "") && str(e.fm.messages ?? "") === str(fm.messages ?? "")
   }
 
+  /** A long text as a file in `dir` (a text kind keeps its name, else ".txt" is added): its name, the same file again
+   *  when it's there with these bytes (importing again), else the next free name. */
+  const saveText = (dir: string, name: string, text: string) => {
+    const base = [...safeName(name)].slice(0, 100).join("").replace(/^[.\s]+|[.\s]+$/g, "") || "Attachment"
+    const full = isTextKind(kindOf(base)) ? base : `${base}.txt`
+    const dot = full.lastIndexOf("."), stem = dot > 0 ? full.slice(0, dot) : full, ext = dot > 0 ? full.slice(dot) : ""
+    const data = Buffer.from(text)
+    for (let n = 1; ; n++) {
+      const file = n === 1 ? full : `${stem} ${n}${ext}`, rel = `${dir}/${file}`
+      const queued = pending.find((w): w is Write & { kind: "file" } => w.kind === "file" && w.rel === rel)
+      const there = queued?.data ?? (fs.existsSync(vault.abs(rel)) ? fs.readFileSync(vault.abs(rel)) : null)
+      if (there?.equals(data)) return file
+      if (there) continue
+      pending.push({ kind: "file", rel, data, counts: "files" })
+      return file
+    }
+  }
+
   for (const p of projects) {
     const dir = `${opts.folder}/Claude/Projects`
+    for (const d of p.docs) if (d.text.length > INLINE) d.saved = saveText(`${opts.folder}/Claude/Attachments`, d.name, d.text)
     const { fm, body } = projectNote(p)
     const ext = String(fm.ext_id)
     if (!same(ext, fm)) pending.push({ kind: "note", ext, dir, name: p.name, fm, body })
@@ -169,19 +188,22 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     if (!known.has(ext) && (fm.messages as number) < opts.minMessages) { job.skipped++; return }
     if (same(ext, fm)) { job.unchanged++; return }
     const label = LABELS[chat.source]
-    // Its images: the small ones the zip has, once each.
+    for (const m of chat.messages) for (const p of m.parts) {
+      if (p.kind === "file" && p.text && p.text.length > INLINE) p.saved = saveText(`${opts.folder}/${label}/Attachments`, p.name, p.text)
+    }
+    // Its images: the ones the zip has, once each.
     const images = new Map<string, string>()
     if (opts.images && zip) {
       for (const m of chat.messages) for (const p of m.parts) {
         if (p.kind !== "image" || !p.ref || images.has(p.ref)) continue
         const at = assets.get(p.ref)
         const e = at ? byName.get(at) : undefined
-        if (!e || e.size > opts.maxImageBytes) continue
+        if (!e) continue
         const base = e.name.split("/").pop()!.replace(/[^\w.-]+/g, "-")
         const rel = `${opts.folder}/${label}/Attachments/${base}`
         images.set(p.ref, base)
         if (!fs.existsSync(vault.abs(rel)) && !pending.some((w) => w.kind === "file" && w.rel === rel)) {
-          pending.push({ kind: "file", rel, data: await entryBytes(file, e) })
+          pending.push({ kind: "file", rel, data: await entryBytes(file, e), counts: "images" })
         }
       }
     }

@@ -344,17 +344,20 @@ function ResultRow({ r, done }: { r: InboxItem; done?: boolean }) {
 function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touched?: (id: string) => void }) {
   const read = e.read && !fresh
   const key = eventKey(e), picked = useSelected(SELECT, key)
+  // (one that leads nowhere opens in place, its whole body, and stays where it is while the page shows it)
+  const [whole, setWhole] = useState(false)
   return (
     <SwipeRow actions={() => eventSwipe(e)} className={pageSwipe}>
     <div data-event={e.id} data-kind={e.kind} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}
       onContextMenu={menuFor(rowMenu(SELECT, key, eventItems(e, !read, touched)))}
       className={cn("group/ev relative isolate flex min-h-11 items-center gap-3 py-2 before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]",
         pickedRow, read && "opacity-50 hover:opacity-100")}>
-      <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; openEvent(e); touched?.(e.id) }}>
+      <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; if (!targetOf(e)) { setWhole(!whole); markRead([e.id]); return } openEvent(e); touched?.(e.id) }}>
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
           <span className={cn("line-clamp-2 text-[15px] leading-[20px]", (!e.read || fresh) && "font-medium")}>{e.title}</span>
-          {(e.body || e.machineLabel) && <span className="block text-[13px] text-muted-foreground max-md:line-clamp-2 md:truncate">{[e.body, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
+          {(e.body || e.machineLabel) && <span data-tip={whole ? undefined : e.body} data-tip-trunc
+            className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}>{[e.body, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{ago(e.t)}</span>
       </button>
@@ -468,7 +471,7 @@ export function InboxPage({ store, focused }: { store: Store; focused: boolean }
         )}
       </div>
       <p className="mb-4 text-[13px] text-muted-foreground">
-        Results to review (files in Inbox/) and what your coding agents said: finished, waiting for you. Events are kept on this machine for a week.
+        Results to review (files in Inbox/) and what your coding agents said: finished, waiting for you. Events are kept on this machine until read, then for a week.
       </p>
       <Lists store={store} events={20} results={100} fresh={fresh} touched={touched} all />
     </div>

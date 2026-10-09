@@ -13,8 +13,35 @@ import type { IPty } from "node-pty"
 export type AgentRun = { command: string; cwd?: string | null }
 
 /** A new shell: the login shell, in `cwd`, running `run` first when it's an agent's. `env` is the server's environment
- *  less what's about the server; `ctx` Vaultite's variables (VAULTITE_URL..., and PATH with the app's bin/ first). */
-export type Spec = { shell: string; run: AgentRun | null; cwd: string; env: Record<string, string>; ctx: Record<string, string>; cols: number; rows: number }
+ *  less what's about the server; `ctx` Vaultite's variables (VAULTITE_URL..., and PATH with the app's bin/ first);
+ *  `scrollback` the lines of history it keeps (the setting's). */
+export type Spec = { shell: string; run: AgentRun | null; cwd: string; env: Record<string, string>; ctx: Record<string, string>; cols: number; rows: number
+  scrollback: number }
+
+/** The terminal's settings as backends need them (plugin.ts sets them): lines of history every shell keeps. */
+export const limits = { scrollback: () => 10_000 }
+
+/** The last `lines` lines of a stream of output, in its chunks: the replay of a backend that has no pictures. Output
+ *  with few line breaks (a progress bar redrawn) is held to about 200 characters a line. */
+export class Tail {
+  private chunks: string[] = []
+  private breaks: number[] = []
+  private lines = 0
+  private size = 0
+  private max: number
+  private cap: number
+  constructor(max: number) { this.max = max; this.cap = max * 200 }
+  push(d: string) {
+    let n = 0
+    for (let i = d.indexOf("\n"); i >= 0; i = d.indexOf("\n", i + 1)) n++
+    this.chunks.push(d); this.breaks.push(n); this.lines += n; this.size += d.length
+    while ((this.lines > this.max || this.size > this.cap) && this.chunks.length > 1) {
+      this.lines -= this.breaks.shift()!
+      this.size -= this.chunks.shift()!.length
+    }
+  }
+  text() { return this.chunks.join("") }
+}
 
 /** How a shell ended: its exit status, or null when only this server's hold on it ended (it still runs: reattach). */
 export type Exit = { code: number; signal: number } | null
@@ -123,7 +150,7 @@ export function ptyLink(p: IPty, extra: Partial<Pick<Link, "redraw" | "scroll" |
 
 /** A Link that gives pictures of one that can't, by reading its output through a headless xterm.js first, so a viewer
  *  who joins gets the screen as it is (for backends whose client only sends what changed). */
-export async function mirrored(link: Link, scrollback = 1000): Promise<Link> {
+export async function mirrored(link: Link, scrollback = limits.scrollback()): Promise<Link> {
   const { createRequire } = await import("node:module")
   const require = createRequire(import.meta.url)
   const { Terminal } = require("@xterm/headless") as typeof import("@xterm/headless")
@@ -151,8 +178,7 @@ export async function mirrored(link: Link, scrollback = 1000): Promise<Link> {
 // ---------- pty: the server's own children (they end with it)
 
 export function plainBackend(): Backend {
-  const RING = 200 * 1024
-  const shells = new Map<string, { p: IPty; created: number; activity: number; out: string[]; size: number; attached: number }>()
+  const shells = new Map<string, { p: IPty; created: number; activity: number; out: Tail; attached: number }>()
   const get = (id: string) => {
     const s = shells.get(id)
     if (!s) throw new Error(`there's no shell '${id}'`)
@@ -171,11 +197,10 @@ export function plainBackend(): Backend {
       const lib = await loadPty()
       const p = lib.spawn(spec.shell, shellArgs(spec.shell, spec.run), { name: "xterm-256color", cols: spec.cols, rows: spec.rows, cwd: spec.run?.cwd || spec.cwd,
         env: { ...spec.env, ...spec.ctx } })
-      const s = { p, created: Date.now(), activity: Date.now(), out: [] as string[], size: 0, attached: 0 }
+      const s = { p, created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0 }
       p.onData((d) => {
         s.activity = Date.now()
-        s.out.push(d); s.size += d.length
-        while (s.size > RING && s.out.length > 1) s.size -= s.out.shift()!.length
+        s.out.push(d)
       })
       p.onExit(() => { if (shells.get(id) === s) shells.delete(id) })
       shells.set(id, s)
@@ -191,7 +216,7 @@ export function plainBackend(): Backend {
       return link
     },
     kill: async (id) => { try { get(id).p.kill("SIGHUP") } catch { /* ended */ } },
-    screen: async (id, lines) => plain(get(id).out.join("")).replace(/\s+$/, "").split("\n").slice(-lines).join("\n"),
+    screen: async (id, lines) => plain(get(id).out.text()).replace(/\s+$/, "").split("\n").slice(-lines).join("\n"),
     async send(id, text, enter) {
       const s = get(id)
       if (text) s.p.write(text)
@@ -329,7 +354,7 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
     },
     async create(id, spec, c) {
       const params = { id, file: spec.shell, args: shellArgs(spec.shell, spec.run), cwd: spec.run?.cwd || spec.cwd,
-        env: { ...spec.env, ...spec.ctx }, cols: spec.cols, rows: spec.rows, spare: !!c?.spare }
+        env: { ...spec.env, ...spec.ctx }, cols: spec.cols, rows: spec.rows, scrollback: spec.scrollback, spare: !!c?.spare }
       try { await ask("create", params) } catch (e) {
         // A keeper whose files are gone (its checkout moved: ptyd.ts, stale) can't start shells, and makes way when it
         // holds none: once it's gone, the next one starts from this server's files.

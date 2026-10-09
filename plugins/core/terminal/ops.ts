@@ -176,7 +176,7 @@ days); several are listed. Other agents: their session's id.
     summary: "What a terminal shows now, as text, and the lines above it.",
     help: "  vau terminal screen claude-k3j2h1g0 --lines 20",
     kind: "read",
-    params: { id: ID, lines: { type: "integer", minimum: 1, maximum: 5000, default: 50, description: "how many lines, the screen's last ones and those above" } },
+    params: { id: ID, lines: { type: "integer", minimum: 1, default: 50, description: "how many lines, the screen's last ones and those above (up to its scrollback)" } },
     args: ["id"],
     run: async ({ id, lines }, ctx) => await ctx.api("GET", `terminals/${encodeURIComponent(localId(id))}/screen?lines=${lines}`),
     text: (r) => (r.lines as string[]).join("\n"),

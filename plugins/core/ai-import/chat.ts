@@ -10,8 +10,9 @@ export type Part =
   | { kind: "thinking"; text: string }
   /** An image: `ref` is the export's id for its file (ChatGPT's file-...), null when the export has no bytes for it. */
   | { kind: "image"; ref: string | null; name?: string; size?: number }
-  /** A file the user attached: its text when the export has it (Claude's extracted_content). */
-  | { kind: "file"; name: string; text?: string }
+  /** A file the user attached: its text when the export has it (Claude's extracted_content); `saved`, the vault file
+   *  a long one went to. */
+  | { kind: "file"; name: string; text?: string; saved?: string }
   /** Something the AI saved to its memory during the chat. */
   | { kind: "memory"; text: string }
   /** A one-line note about what happened (a web search, an edit to an artifact). */
@@ -50,7 +51,7 @@ export type MemoryAbout = "me" | "preference" | string
 export type Memory = { text: string; about: MemoryAbout; from: string; at?: number }
 
 export type Project = { id: string; name: string; description?: string; instructions?: string; created?: number; updated?: number
-  docs: { name: string; text: string }[] }
+  docs: { name: string; text: string; saved?: string }[] }
 
 /** An import as the API reports it (importer.ts runs it, plugin.ts serves it, the app follows it). */
 export type Job = {
@@ -64,6 +65,8 @@ export type Job = {
   total: number
   chats: number; created: number; updated: number; unchanged: number; skipped: number
   images: number; projects: number
+  /** Attachments and project files too long to read inline, written as files of their own. */
+  files: number
   /** Memories added to the review list, and the list's path. */
   memories: number
   review: string | null
@@ -102,7 +105,7 @@ export function factsOf(raw: string): string[] {
   const out: string[] = []
   const add = (s: string) => {
     const t = s.replace(/\*\*/g, "").replace(/\s+/g, " ").trim()
-    if (t.length >= 3 && /[a-z]/i.test(t)) out.push(t.length > 500 ? `${t.slice(0, 497)}...` : t)
+    if (t.length >= 3 && /[a-z]/i.test(t)) out.push(t)
   }
   let para: string[] = []
   const flush = () => {

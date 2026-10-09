@@ -7,6 +7,7 @@ import WatchKit
 @MainActor
 final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
     static let longest: TimeInterval = 2 * 60 * 60
+    static let tooShort = "Too short, not saved"
 
     @Published var recording = false
     @Published var started: Date?
@@ -61,9 +62,11 @@ final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
         recording = false
         started = nil
         WKInterfaceDevice.current().play(.stop)
-        // A tap by mistake isn't a note.
+        // A tap by mistake isn't a note, and says so for a moment.
         if long < 0.7 {
             try? FileManager.default.removeItem(at: file)
+            problem = Self.tooShort
+            Task { try? await Task.sleep(for: .seconds(2)); if problem == Self.tooShort { problem = nil } }
             return
         }
         PhoneLink.shared.send(recording: file)

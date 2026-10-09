@@ -241,8 +241,8 @@ plugin.route("POST", "audio-recorder/transcribe", async (req) => {
   return reply(202, job)
 })
 
-/** A voice note: transcribed, then inbox.voice with its words, as who recorded it. The recording is temporary; one this
- *  Mac can't transcribe is kept in the inbox instead (`kept`: why), never lost. */
+/** A voice note: transcribed, then inbox.voice with its words and the recording (kept above them), as who recorded it;
+ *  one this Mac can't transcribe is kept in the inbox as the recording alone (`kept`: why), never lost. */
 async function voice(job: Job, dir: string, file: string, from: string, who: Who, http: IncomingMessage | undefined) {
   job.state = "running"
   let why = ""
@@ -255,7 +255,7 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
         job.language = language
         const text = paras.join("\n\n").trim()
         if (!text) throw new Error("nothing was heard")
-        const r = await plugin.runOp("inbox.voice", { text, from }, who, http)
+        const r = await plugin.runOp("inbox.voice", { text, from, audio: fs.readFileSync(file).toString("base64"), ext: path.extname(file).slice(1) }, who, http)
         job.note = String((r.result as { path?: unknown })?.path ?? "")
       } catch (e) {
         if (job.note) throw e

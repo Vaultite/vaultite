@@ -12,6 +12,7 @@
   ],
   "settings": {
     "backend": { "local": true, "type": "enum", "values": ["vaultite", "tmux"], "default": "vaultite", "labels": { "vaultite": "Vaultite", "tmux": "tmux" }, "label": "Where new shells run", "description": "Vaultite keeps them running on its own, with the page's own scrollback; tmux, when it's installed, keeps them in a tmux server (tmux -L vaultite attach reaches them from any terminal). Shells already running stay where they are" },
+    "scrollback": { "type": "number", "default": 10000, "min": 100, "max": 1000000, "label": "Scrollback", "description": "lines of history each terminal keeps, all of them shown again when you come back to it, whether it runs in Vaultite or tmux; new terminals take a change" },
     "allowUsers": { "local": true, "type": "list", "label": "Other tailnet logins", "description": "tailnet logins besides this machine's owner that may open terminals through Tailscale Serve, like someone@example.com" },
     "allowRemote": { "local": true, "type": "boolean", "default": false, "label": "Anyone who reaches the app", "description": "lets anyone who reaches the app open terminals, not only this machine's owner and the logins above: only on a network you trust" }
   }

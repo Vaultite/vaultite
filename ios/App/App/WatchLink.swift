@@ -105,7 +105,8 @@ final class WatchLink: NSObject, WCSessionDelegate {
     }
 }
 
-/// A recording on its way to the inbox, never lost: a short one transcribed here (the op inbox.voice); a long one, or one
+/// A recording on its way to the inbox, never lost: a short one transcribed here (the op inbox.voice, with the recording,
+/// kept above its words); a long one, or one
 /// this phone couldn't transcribe or send, goes as it is to the server (audio-recorder/voice), which transcribes it or
 /// keeps the audio. It waits in Application Support/Voice notes until it's sent, so one the server can't be reached for
 /// (or the app stopped mid-way) goes the app's next time in front.
@@ -132,8 +133,9 @@ enum Voice {
         sending.insert(url.lastPathComponent)
         defer { sending.remove(url.lastPathComponent) }
         let seconds = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 0
-        if seconds > 0, seconds <= longest, let text = try? await Transcribe.file(url),
-           let r = try? await Servers.call("POST", "ops/inbox.voice", ["text": text, "from": from], from: client) {
+        if seconds > 0, seconds <= longest, let text = try? await Transcribe.file(url), let audio = try? Data(contentsOf: url),
+           let r = try? await Servers.call("POST", "ops/inbox.voice", ["text": text, "from": from, "audio": audio.base64EncodedString(),
+                                                                        "ext": url.pathExtension], from: client) {
             try? FileManager.default.removeItem(at: url)
             var out: [String: Any] = ["text": text, "path": r["path"] as? String ?? ""]
             if let t = r["terminal"] as? String { out["terminal"] = t }
