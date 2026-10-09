@@ -88,7 +88,7 @@ export function useScopedState<T>(key: string, fallback: T, scope: Scope = "work
 
 // ---------- files opened lately, per workspace ----------
 // So each desk remembers its own work: saved a moment after a file has stayed in view, offered first by new tabs.
-const RECENT_MAX = 12
+const RECENT_MAX = 200
 const recentState = scopedState<string[]>("core:recent", [], "workspace")
 const NONE: string[] = []
 /** The files opened lately in the current workspace, newest first. */

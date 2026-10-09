@@ -5,6 +5,7 @@ import { X } from "lucide-react"
 import { keyCaps, keyHint } from "@/core/commands"
 import { isMac } from "@/core/platform"
 import { useHeldFocus } from "@/core/focus"
+import { useNearEnd } from "@/core/near"
 import { dismissKeyboardOnDrag, usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 
@@ -35,7 +36,7 @@ export function Keys({ keys }: { keys: string }) {
   )
 }
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0 }: {
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string) => void
   items: T[]
@@ -52,6 +53,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   empty?: ReactNode
   /** The row selected while nothing is typed (the current value), scrolled into view. */
   start?: number
+  /** The list was scrolled (or arrowed) near its end: the caller lists more, if it has them. */
+  onEnd?: () => void
 }) {
   // Closed, the keyboard goes back where it was (or to what it opened).
   useHeldFocus()
@@ -71,6 +74,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setSel(query ? 0 : start), [query])
   useEffect(() => { list.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" }) }, [sel])
+  const end = useRef<HTMLDivElement>(null)
+  useNearEnd(end, () => onEnd?.(), items.length, "200px")
   const pick = (i: number, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) =>
     onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })
   const onKey = (e: KeyboardEvent) => {
@@ -122,6 +127,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
             </button>
             </Fragment>
           ))}
+          {onEnd && <div ref={end} aria-hidden className="h-px" />}
         </div>
         <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t-[0.5px] border-border px-5 py-2.5 text-[13px] text-muted-foreground md:flex">
           {hints.map(([k, what]) => (

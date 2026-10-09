@@ -38,9 +38,10 @@ function lineInSight(v: EditorApi["view"], box: HTMLElement | null) {
  *  scroll to it with `reveal`. Gives up after a second or when the reader acts first. Returns a stop. */
 export function useTextFocus(editor: { current: { api: EditorApi; source: boolean } | null }, article: { current: HTMLElement | null },
   shown: { current: Mode }, cur: { current: { fm: string; body: string } }) {
-  return useCallback((at: [number, number] | null, reveal = false) => {
+  return useCallback((at: [line: number, col: number, find?: string] | null, reveal = false) => {
     let frame = 0, stopped = false
-    const until = performance.now() + 1000
+    // (a line asked for waits longer: the editor's chunk may still be on its way)
+    const until = performance.now() + (reveal ? 4000 : 1000)
     const stop = () => {
       stopped = true
       cancelAnimationFrame(frame)
@@ -64,12 +65,17 @@ export function useTextFocus(editor: { current: { api: EditorApi; source: boolea
         const b = v.lineBlockAt(pos), r = box?.getBoundingClientRect() ?? { top: 0, bottom: innerHeight }
         return v.documentTop + b.top >= r.top - 1 && v.documentTop + b.bottom <= r.bottom + 1
       }
+      // (an editor back as its tab left it keeps its own selection, a range too, when that's in sight: editor/kept.ts)
+      if (!reveal && ed.api.restored && seen(v.state.selection.main.head)) { v.contentDOM.focus({ preventScroll: true }); return }
       let pos: number | null = null
       if (at && at[0] + above + 1 <= doc.lines) {
         const line = doc.line(at[0] + above + 1)
         pos = line.from + Math.min(at[1], line.length)
         if (reveal) {
-          v.dispatch({ selection: { anchor: pos }, scrollIntoView: true })
+          // (what was found on the line selected, as a search's match is)
+          const i = at[2] ? line.text.toLowerCase().indexOf(at[2].toLowerCase()) : -1
+          const selection = i >= 0 ? { anchor: line.from + i, head: line.from + i + at[2]!.length } : { anchor: pos }
+          v.dispatch({ selection, scrollIntoView: true })
           v.contentDOM.focus({ preventScroll: true })
           return
         }

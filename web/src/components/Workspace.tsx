@@ -219,7 +219,7 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
     if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio, video") ?? []) (m as HTMLMediaElement).pause()
     wasShown.current = shown
   }, [shown, full])
-  const pane = useMemo(() => ({ group, focused, hidden: !shown }), [group, focused, shown])
+  const pane = useMemo(() => ({ group, focused, hidden: !shown, tab: tab?.id }), [group, focused, shown, tab?.id])
   // (a stacked tab that isn't the active one: data-stacked, so what looks for the pane's scroller finds the active one)
   const back = shown && !active
   // A view that fills the pane isn't kept: drawn only while it's shown.

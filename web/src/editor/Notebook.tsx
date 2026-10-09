@@ -40,7 +40,7 @@ function HtmlOutput({ html }: { html: string }) {
   }, [html])
   return (
     <iframe ref={ref} sandbox="allow-same-origin" srcDoc={doc} title="Output" className="block w-full" style={{ height: h }}
-      onLoad={() => { const d = ref.current?.contentDocument; if (d) setH(Math.min(4000, d.documentElement.scrollHeight + 2)) }} />
+      onLoad={() => { const d = ref.current?.contentDocument; if (d) setH(d.documentElement.scrollHeight + 2) }} />
   )
 }
 

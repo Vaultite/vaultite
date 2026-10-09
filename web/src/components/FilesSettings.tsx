@@ -15,7 +15,7 @@ const DECLS: Record<"showHidden" | "showArchived" | "fileSort" | "folderLimit" |
     description: "adds the .archive folders archived files move into, dimmed (hidden files or not); without it, an archived file shows only while it's open" },
   fileSort: { type: "enum", default: "name", label: "Sort order", values: sorts.map((s) => s.value),
     labels: Object.fromEntries(sorts.map((s) => [s.value, s.label])), description: "folders stay first, by name" },
-  folderLimit: { type: "number", default: 25, min: 0, label: "Files per folder",
+  folderLimit: { type: "number", default: 0, min: 0, label: "Files per folder",
     description: "how many of a folder's files show before a Show more row (in the sort order; its folders always show); 0 shows them all" },
   autoReveal: { type: "boolean", default: false, label: "Reveal the open file", description: "opens its folders in the tree and scrolls to it" },
 }
@@ -32,7 +32,7 @@ export function FilesSettings() {
       <Field k="showArchived" d={DECLS.showArchived} value={prefs.showArchived} set={(v) => void setPrefs({ showArchived: v === true })} />
       <Field k="fileSort" d={DECLS.fileSort} value={prefs.fileSort} set={(v) => void setPrefs({ fileSort: (v ?? "name") as FileSort })} />
       <Field k="folderLimit" d={DECLS.folderLimit} value={prefs.folderLimit}
-        set={(v) => void setPrefs({ folderLimit: typeof v === "number" && v >= 0 ? Math.floor(v) : 25 })} />
+        set={(v) => void setPrefs({ folderLimit: typeof v === "number" && v >= 0 ? Math.floor(v) : 0 })} />
       <Field k="autoReveal" d={DECLS.autoReveal} value={prefs.autoReveal} set={(v) => void setPrefs({ autoReveal: v === true })} />
     </Group>
   )

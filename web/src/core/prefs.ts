@@ -67,7 +67,7 @@ export type Prefs = {
 const KEY = "vaultite.prefs"
 // (the appearance ones are core/bundles.ts' LOOK_DEFAULTS too: keep them the same)
 const DEFAULTS: Prefs = {
-  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, fileSort: "name", folderLimit: 25, autoReveal: false, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null }, collapsedCategories: [], device: {},
+  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, fileSort: "name", folderLimit: 0, autoReveal: false, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null }, collapsedCategories: [], device: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {

@@ -47,7 +47,7 @@ import { useHeldFocus } from "@/core/focus"
 import { useEditAt } from "@/core/anchors"
 import { useAutosave, type SaveStatus } from "@/core/autosave"
 import { trace } from "@/core/trace"
-import { addRestore, afterPlaced, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
+import { addRestore, afterPlaced, cancelRestores, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 import { haptic } from "@/core/haptics"
 import type { EditorApi } from "@/editor/Editor"
@@ -483,10 +483,16 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const focusText = useTextFocus(editor, article, shownNow, cur)
   // A block's "Edit source" (editAt in core/anchors.ts): into editing, the cursor on that line of the file, scrolled to.
   const revealing = useRef(false)
-  const toLine = useCallback((line: number) => {
+  // (the cursor put back where it was left, as the file opens: a line asked for wins over it, before or after)
+  const putBack = useRef<(() => void) | null>(null)
+  const tookLine = useRef(false)
+  const toLine = useCallback((line: number, find?: string) => {
     if (ro || hidden) return
+    tookLine.current = true
+    putBack.current?.(); putBack.current = null
+    cancelRestores()
     if (shownNow.current === "read") { revealing.current = true; pick(edit) }
-    focusText([Math.max(0, line - fmLines(cur.current)), 0], true)
+    focusText([Math.max(0, line - fmLines(cur.current)), 0, find], true)
   }, [ro, hidden, pick, edit, focusText])
   const articleEl = useCallback(() => article.current, [])
   useEditAt(path, articleEl, toLine)
@@ -585,8 +591,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         const a = document.activeElement
         if (a && a !== document.body && typingIn(a) && !article.current?.contains(a)) return
         let stopFocus: (() => void) | undefined
-        const unwait = afterPlaced(`file:${path}`, () => { stopFocus = focusText(cursorOf(path)) })
-        stop = () => { unwait(); stopFocus?.() }
+        if (tookLine.current) return
+        const unwait = afterPlaced(`file:${path}`, () => { if (!tookLine.current) stopFocus = focusText(cursorOf(path)) })
+        stop = putBack.current = () => { unwait(); stopFocus?.() }
       })
     })
     return () => { cancelAnimationFrame(frame); stop?.() }
@@ -910,13 +917,13 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
               <JsonView text={body} editable={shown === "live" && !ro}
                 onChange={(text) => { cur.current = { fm: "", body: text }; setBody(text); changed() }} />
             ) : source ? (
-              <Editor key={`${path}:source`} doc={full()} editable={!ro} source numbered code={strict ? "json" : format?.code}
+              <Editor key={`${path}:source`} doc={full()} keep={path} editable={!ro} source numbered code={strict ? "json" : format?.code}
                 language={code ? path : format?.source ? `source.${format.source}` : undefined} config={config} {...wiring} label={stem(path)}
                 docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}
                 onReady={(api) => { editor.current = { api, source: true }; ready(api, true); if (kept?.write) toText() }}
                 onChange={(text) => typed(text, null)} />
             ) : (
-              <Editor key={`${path}:text`} doc={full()} frontmatter editable={shown === "live" && !ro} config={config} {...wiring} label={stem(path)}
+              <Editor key={`${path}:text`} doc={full()} keep={path} frontmatter editable={shown === "live" && !ro} config={config} {...wiring} label={stem(path)}
                 docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}
                 placeholderText={shown === "read" ? "" : "Start writing"} numbered={shown !== "read"}
                 onReady={(api) => { editor.current = { api, source: false }; ready(api, false); if (kept?.write) toText() }}

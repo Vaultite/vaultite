@@ -2,11 +2,11 @@
 // see, and linking one as a small edit of that line (409 if it changed since).
 import fs from "node:fs"
 import { HTTPError, Plugin } from "../../../core/plugins.ts"
-import { sortBy, stemOf, writeAtomic } from "../../../core/vault.ts"
-import { findMentions, linkMention } from "./mentions.ts"
+import { sortBy, stemOf, writeAtomic, type Entry } from "../../../core/vault.ts"
+import { findMentions, linkMention, type Mention } from "./mentions.ts"
 
 export const plugin = new Plugin(import.meta.url)
-const LIMIT = 300
+const PAGE = 100
 
 /** The names a file answers to as text: its name and its aliases. */
 function namesOf(rel: string): string[] {
@@ -21,18 +21,40 @@ function target(q: unknown) {
   return rel
 }
 
+/** Each file's mentions of the last names asked for, by its stat: the list pages through them, so only changed files
+ *  are read again. */
+let found: { names: string; files: Map<string, { ns: bigint; ms: Mention[] }> } = { names: "", files: new Map() }
+function mentionsIn(e: Entry, names: string[], lower: string[]): Mention[] {
+  const hit = found.files.get(e.rel)
+  if (hit && hit.ns === e.stat.ns) return hit.ms
+  const body = e.body.toLowerCase()
+  const ms = lower.some((n) => body.includes(n)) ? findMentions(e.body, names) : []
+  found.files.set(e.rel, { ns: e.stat.ns, ms })
+  return ms
+}
+
+/** GET backlinks/unlinked?path=&offset=&limit=: one page of the mentions, newest files first, with how many there are
+ *  in all (`total`) and in how many files. */
 plugin.route("GET", "backlinks/unlinked", (req) => {
   const rel = target(req.query.path)
   const names = namesOf(rel)
-  const out: object[] = []
-  const files = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel !== rel), (e) => -Number(e.stat.ns / 1000000n))
-  for (const e of files) {
-    for (const m of findMentions(e.body, names)) {
-      out.push({ path: e.rel, ...m })
-      if (out.length >= LIMIT) return out
+  const key = names.join("\0")
+  if (found.names !== key) found = { names: key, files: new Map() }
+  const lower = names.map((n) => n.trim().toLowerCase()).filter((n) => n.length >= 2)
+  const offset = Math.max(0, Math.floor(Number(req.query.offset) || 0))
+  const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
+  const mentions: object[] = []
+  let total = 0, files = 0
+  const all = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel !== rel), (e) => -Number(e.stat.ns / 1000000n))
+  for (const e of all) {
+    const ms = mentionsIn(e, names, lower)
+    if (ms.length) files++
+    for (const m of ms) {
+      if (total >= offset && mentions.length < limit) mentions.push({ path: e.rel, ...m })
+      total++
     }
   }
-  return out
+  return { total, files, mentions }
 })
 
 plugin.route("POST", "backlinks/link", (req) => {

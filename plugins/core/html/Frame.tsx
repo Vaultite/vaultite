@@ -94,7 +94,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
         // A page that's always a bit taller than its frame (100vh plus a margin) would grow forever: stop it.
         const now = Date.now()
         growth.current = [...growth.current.filter((t) => now - t < 1000), now]
-        setH((cur) => (cur !== null && d.h > cur && growth.current.length > 6 ? cur : Math.min(d.h, 30000)))
+        setH((cur) => (cur !== null && d.h > cur && growth.current.length > 6 ? cur : d.h))
       } else if (d.type === "listening") listening.current = true
       else if (d.type === "state" && d.data && typeof d.data === "object" && !outside) {
         fetch("api/artifact/state", { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, data: d.data }) })

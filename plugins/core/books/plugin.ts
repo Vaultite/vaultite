@@ -90,13 +90,14 @@ plugin.block("book", (ctx) => {
   ])
 })
 
-// The same groups as the card (Books.tsx): reading, the next five and the last five finished; empty ones left out.
+// The same groups as the card (Books.tsx): reading, up next and finished, every one (the card shows five of the last
+// two, then Show all); empty ones left out.
 plugin.block("books", (ctx) => {
   const bs = plugin.vault.items("books").filter((b) => !isArchived(b))
   const groups: [string, Item[]][] = [
     ["Reading", bs.filter((b) => b.status === "reading")],
-    ["Up next", bs.filter((b) => b.status === "want").slice(0, 5)],
-    ["Finished", bs.filter((b) => b.status === "done").slice(0, 5)],
+    ["Up next", bs.filter((b) => b.status === "want")],
+    ["Finished", bs.filter((b) => b.status === "done")],
   ]
   ctx.source(groups.map(([, g]) => g))
   const parts = groups.filter(([, g]) => g.length).map(([title, g]) => `${title}:\n${bullets(g.map(line))}`)

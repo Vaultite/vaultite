@@ -1,7 +1,7 @@
 // The Terminals panel: every shell the server runs (sessions outlive tabs), live, with agents' states from their hooks
 // and other machines' sessions, sorted by state (waiting on you first). With Workspaces, the current workspace's come first.
 // Under them, Claude Code on the web's sessions (cloud.ts), on the desktop app.
-import { useContext, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
+import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Cloud, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
   chooseDefaultPlace, choosePlace, cn, currentWorkspace, isViewOpen, menuBelow, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag,
@@ -16,7 +16,11 @@ export const useSessions = () => useSyncExternalStore(subscribeSessions, getSess
 /** The sessions the panel lists: another program's own (a herdr pane) only while a tab shows it (its own panel has the rest). */
 const listed = (list: Session[] | null) => list?.filter((s) => !s.external || s.clients > 0) ?? null
 /** Claude Code on the web's sessions the panel lists (none but on the desktop app). */
-const useCloud = () => cloudListed(useSyncExternalStore(subscribeCloud, getCloud))
+function useCloud() {
+  const all = useSyncExternalStore(subscribeCloud, getCloud)
+  return useMemo(() => cloudListed(all), [all])
+}
+type Cloudy = ReturnType<typeof cloudListed>
 
 const button = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
@@ -157,15 +161,24 @@ function CloudRow({ c, open, tab, page }: { c: CloudSession; open: boolean; tab:
   )
 }
 
-/** The cloud's rows under their heading (in the rail: after a rule). */
-function CloudRows({ list, open, tab, page, after }: { list: CloudSession[]; open: boolean; tab: string; page?: boolean; after: boolean }) {
-  if (!list.length) return null
+/** The cloud's rows under their heading (in the rail: after a rule), the older ones behind Show older (not in the rail). */
+function CloudRows({ cloud, open, tab, page, after }: { cloud: Cloudy; open: boolean; tab: string; page?: boolean; after: boolean }) {
+  const [older, setOlder] = useState(false)
+  const { listed } = cloud
+  if (!listed.length && !(open && cloud.older.length)) return null
   return (
     <div className="flex flex-col gap-px" data-terminals-cloud>
       {open
         ? <div className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium text-tertiary max-md:h-8 max-md:text-[13px]", after && "mt-1")}>Cloud</div>
         : after && <div aria-hidden className="mx-auto my-1 h-px w-4 bg-border" />}
-      {list.map((c) => <CloudRow key={c.id} c={c} open={open} tab={tab} page={page} />)}
+      {listed.map((c) => <CloudRow key={c.id} c={c} open={open} tab={tab} page={page} />)}
+      {open && older && cloud.older.map((c) => <CloudRow key={c.id} c={c} open={open} tab={tab} page={page} />)}
+      {open && !!cloud.older.length && (
+        <button type="button" data-keyrow data-cloud-older onClick={() => setOlder(!older)}
+          className="flex h-7 min-w-0 cursor-pointer items-center truncate rounded-[5px] pl-1.5 text-left text-[13px] whitespace-nowrap text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground max-md:min-h-11 max-md:text-[15px]">
+          {older ? "Show fewer" : `Show ${cloud.older.length} older`}
+        </button>
+      )}
     </div>
   )
 }
@@ -187,13 +200,13 @@ export function Sessions({ open, tab }: SidebarCtx) {
   const cloud = useCloud()
   const agents = useAgents()
   const fold = useContext(PanelFold)
-  const empty = !!list && !list.length && !cloud.length
+  const empty = !!list && !list.length && !cloud.listed.length
   // Opened by hand while empty: until a session comes along (then it's open anyway) or it's folded again.
   const [peek, setPeek] = useState(false)
   useEffect(() => { if (!empty) setPeek(false) }, [empty])
   if (refused) return null
-  if (!open) return list?.length || cloud.length
-    ? <>{!!list?.length && <Rows list={list} open={false} tab={tab} />}<CloudRows list={cloud} open={false} tab={tab} after={!!list?.length} /></>
+  if (!open) return list?.length || cloud.listed.length
+    ? <>{!!list?.length && <Rows list={list} open={false} tab={tab} />}<CloudRows cloud={cloud} open={false} tab={tab} after={!!list?.length} /></>
     : null
   const auto = empty && !peek
   const folded = !!fold?.collapsed || auto
@@ -221,7 +234,7 @@ export function Sessions({ open, tab }: SidebarCtx) {
       {!folded && (
         <div className="flex flex-col gap-px">
           {list && <Rows list={list} open={open} tab={tab} />}
-          <CloudRows list={cloud} open={open} tab={tab} after={!!list?.length} />
+          <CloudRows cloud={cloud} open={open} tab={tab} after={!!list?.length} />
           {empty && (
             <button type="button" onClick={() => void openTerminal()}
               className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
@@ -241,8 +254,8 @@ export function SessionList() {
   return (
     <div className="flex flex-col gap-px pb-1">
       {list && <Rows list={list} open tab="" page />}
-      <CloudRows list={cloud} open tab="" page after={!!list?.length} />
-      {list && !list.length && !cloud.length && (
+      <CloudRows cloud={cloud} open tab="" page after={!!list?.length} />
+      {list && !list.length && !cloud.listed.length && !cloud.older.length && (
         <button type="button" onClick={() => void openTerminal()}
           className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
           No terminals running. Open one

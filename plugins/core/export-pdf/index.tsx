@@ -3,7 +3,7 @@
 import { useEffect, useRef, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { FileDown, Printer } from "lucide-react"
-import { activeFile, currentFile, definePlugin, getStore, notify, notifyError, NoteBody, Panel, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
+import { activeFile, currentFile, definePlugin, dismissNotice, getStore, notify, notifyError, NoteBody, Panel, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
 
 type Job = { path: string; text: string; how: "pdf" | "print"; ready: () => void }
 let job: Job | null = null
@@ -28,16 +28,28 @@ const CSS = `
   #vau-print :is(audio, video, iframe) { display: none; }
 }`
 
-/** Images loaded (or given up on), fonts in, math and diagrams drawn. */
+/** Images loaded (or failed), fonts in, math and diagrams drawn. Slow images are waited for, never dropped by a timer:
+ *  after a moment a toast counts them, and its button goes on without the rest. */
 async function settled(root: HTMLElement) {
-  const until = Date.now() + 6000
+  const started = Date.now(), id = "export-pdf-images"
+  let skip = false, said = "", saidAt = 0
   for (const img of root.querySelectorAll("img")) img.loading = "eager"
   await document.fonts?.ready.catch(() => {})
-  for (;;) {
-    const imgs = [...root.querySelectorAll("img")]
-    if (imgs.every((i) => i.complete) || Date.now() > until) break
-    await new Promise((r) => setTimeout(r, 100))
-  }
+  try {
+    for (;;) {
+      const imgs = [...root.querySelectorAll("img")]
+      for (const img of imgs) img.loading = "eager" // (note embeds drawn since)
+      const left = imgs.filter((i) => !i.complete).length
+      if (!left || skip) break
+      const text = `Waiting for ${left} of ${imgs.length} ${imgs.length === 1 ? "image" : "images"}…`
+      // (said again each second: a toast swiped away comes back, or the export would wait unseen)
+      if (Date.now() - started > 1500 && (text !== said || Date.now() - saidAt > 1000)) {
+        said = text; saidAt = Date.now()
+        notify(text, { id, duration: Infinity, action: { label: "Go on without", run: () => { skip = true } } })
+      }
+      await new Promise((r) => setTimeout(r, 100))
+    }
+  } finally { if (said) dismissNotice(id) }
   await new Promise((r) => setTimeout(r, 400)) // (note embeds read their files; mermaid draws late)
   await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
 }

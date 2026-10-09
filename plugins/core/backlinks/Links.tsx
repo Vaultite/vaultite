@@ -1,16 +1,19 @@
 // One file's links, backlinks and outgoing links in one: linked and unlinked mentions ("Link" makes
 // one a [[link]]) and outgoing links. A sidebar panel, or a tab following the other panes' file.
-import { useMemo, useState, type ReactNode } from "react"
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, FileQuestion, FileText, SquareArrowOutUpRight } from "lucide-react"
 import {
   backlinks, cn, openDetail, openFile, openView, post, resolver, SidebarHeading, snippet, startDrag, stem, useFocusedFile,
-  useLive, useVaultChange, type SidebarCtx, type Store,
+  useLive, useNearEnd, useVaultChange, type SidebarCtx, type Store,
 } from "@vaultite"
 
 type Mention = { path: string; line: string; nth: number; col: number; len: number; text: string }
+type Unlinked = { total: number; files: number; mentions: Mention[] }
 type Out = { key: string; title: string; context: string; file?: string; detail?: string }
 
 const isMd = (p: string) => /\.md$/i.test(p)
+/** Unlinked mentions come this many more at a time, as the list is scrolled to its end. */
+const PAGE = 100
 
 /** Everything the panel shows for `path`. */
 function useLinks(store: Store, path: string) {
@@ -33,9 +36,12 @@ function useLinks(store: Store, path: string) {
   // counter: useLive shares one answer between the same addresses for a few seconds, and two panels' counters would collide).
   const [v, setV] = useState(() => Date.now())
   useVaultChange(() => setV(Date.now()), (p) => !p.startsWith("."))
-  const { data } = useLive<Mention[]>(path && isMd(path) ? `backlinks/unlinked?path=${encodeURIComponent(path)}` : null, v)
-  const unlinked = path && isMd(path) ? data?.filter((m) => m.path !== path) ?? null : []
-  return { linked, outgoing, unlinked, refresh: () => setV(Date.now()) }
+  const [limit, setLimit] = useState(PAGE)
+  useEffect(() => setLimit(PAGE), [path])
+  const { data } = useLive<Unlinked>(path && isMd(path) ? `backlinks/unlinked?path=${encodeURIComponent(path)}&limit=${limit}` : null, v)
+  const unlinked = path && isMd(path) ? data ?? null : { total: 0, files: 0, mentions: [] }
+  const more = () => { if (data && data.mentions.length < data.total && data.mentions.length >= limit) setLimit(limit + PAGE) }
+  return { linked, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
 }
 
 /** A group's open or closed state, per device (like the sidebar's own). */
@@ -91,11 +97,18 @@ function around(m: Mention) {
   )
 }
 
+/** At the end of a list that has more: asks for them as it comes near the screen (again each time it's moved down). */
+function More({ onNear, children }: { onNear: () => void; children: ReactNode }) {
+  const ref = useRef<HTMLParagraphElement>(null)
+  useNearEnd(ref, onNear, 0, "400px")
+  return <p ref={ref} className="py-1 pl-6 text-[12px] text-tertiary">{children}</p>
+}
+
 const empty = (text: string) => <p className="py-1 pl-6 text-[12px] text-tertiary">{text}</p>
 
 /** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
 export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
-  const { linked, outgoing, unlinked, refresh } = useLinks(store, path)
+  const { linked, outgoing, unlinked, more, refresh } = useLinks(store, path)
   const [busy, setBusy] = useState("")
   const open = (p: string, e?: { metaKey: boolean; ctrlKey: boolean }) => openFile(p, { newTab: !!(e?.metaKey || e?.ctrlKey), pane })
   const link = async (m: Mention) => {
@@ -112,8 +125,8 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
           <Item key={file.path} icon={FileText} title={title} context={context} onOpen={() => open(file.path)} path={file.path} />
         )) : empty("Nothing links here yet.")}
       </Group>
-      <Group id="unlinked" title="Unlinked mentions" count={unlinked ? unlinked.length : null}>
-        {!unlinked ? empty("Looking…") : unlinked.length ? unlinked.map((m) => {
+      <Group id="unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
+        {!unlinked ? empty("Looking…") : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
           const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
           return (
             <Item key={key} icon={FileText} title={stem(m.path)} context={around(m)} onOpen={() => open(m.path)} path={m.path}
@@ -125,7 +138,10 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
                 </button>
               } />
           )
-        }) : empty(isMd(path) ? "Its name isn't written anywhere else." : "Only notes have mentions.")}
+        })}
+        {unlinked.mentions.length < unlinked.total && (
+          <More key={unlinked.mentions.length} onNear={more}>{unlinked.total - unlinked.mentions.length} more…</More>
+        )}</> : empty(isMd(path) ? "Its name isn't written anywhere else." : "Only notes have mentions.")}
       </Group>
       <Group id="outgoing" title="Outgoing links" count={outgoing.length}>
         {outgoing.length ? outgoing.map((o) => {

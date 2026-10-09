@@ -395,7 +395,7 @@ function syncMenu(sync: (snap: MenuSnapshot) => Promise<unknown>) {
     const snap: MenuSnapshot = {
       commands: commandList().map((c) => ({ id: c.id, name: c.name, keys: keysOf(c), custom: isCustom(c.id), on: available([c]).length > 0 })),
       pinned: (Array.isArray(pins) ? pins : []).filter((p) => exists.has(p)).map((p) => ({ path: p, title: title(p) })),
-      recent: recentFiles().filter((p) => exists.has(p)).map((p) => ({ path: p, title: title(p) })),
+      recent: recentFiles().filter((p) => exists.has(p)).slice(0, 15).map((p) => ({ path: p, title: title(p) })),
     }
     const json = JSON.stringify(snap)
     if (json === last) return

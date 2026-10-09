@@ -1,7 +1,8 @@
+import { useEffect, useState } from "react"
 import { FileClock, FilePen, History } from "lucide-react"
 import {
-  changedFiles, cn, definePlugin, menuFor, openFile, openItem, openingSoon, openInSplit, openView, panelMenu, RecentList,
-  SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, type RecentKind, type SidebarCtx, type Store,
+  changedFiles, cn, definePlugin, get, menuFor, openFile, openItem, openingSoon, openInSplit, openView, panelMenu, RecentList,
+  SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, useVaultChange, type RecentKind, type SidebarCtx, type Store,
 } from "@vaultite"
 
 // Recent files: opened lately in this workspace, or changed lately (a toggle kept
@@ -17,10 +18,39 @@ function useList(store: Store, kind: RecentKind, n: number) {
   return kind === "opened" ? opened : changedFiles(store, n)
 }
 
+/** How many files a list shows at first (the plugin's `limit` setting, 50 as Obsidian's Recent Files plugin). */
+const LIMIT = 50
+function useLimit() {
+  const [n, setN] = useState(LIMIT)
+  const read = () => { get<{ limit?: unknown }>("config/plugin/recent").then((s) => { const v = Math.floor(Number(s?.limit)); setN(v >= 1 ? v : LIMIT) }, () => {}) }
+  useEffect(read, [])
+  useVaultChange(read, (p) => p.startsWith(".vaultite/plugins/recent/"))
+  return n
+}
+
+/** A list's first `limit` files, then `limit` more at each Show more (one more asked for, to know there are more). */
+function useShown(store: Store, kind: RecentKind) {
+  const limit = useLimit()
+  const [pages, setPages] = useState(1)
+  useEffect(() => setPages(1), [kind])
+  const files = useList(store, kind, limit * pages + 1)
+  const more = files.length > limit * pages
+  return { files: more ? files.slice(0, limit * pages) : files, more: more ? () => setPages(pages + 1) : null }
+}
+
+function ShowMore({ onClick }: { onClick: () => void }) {
+  return (
+    <button type="button" data-keyrow data-recent-more onClick={onClick}
+      className="flex h-7 w-full cursor-pointer items-center rounded-[5px] pl-1.5 text-left text-[13px] text-muted-foreground transition-colors hover:bg-foreground/[0.04] hover:text-foreground max-md:min-h-11 max-md:text-[15px]">
+      Show more
+    </button>
+  )
+}
+
 function RecentPanel({ store, open, file, panel }: SidebarCtx) {
   const [kind, setKind] = useScopedState<RecentKind>("recent:kind", FIRST)
   const shown = KINDS.find((k) => k.kind === kind) ?? KINDS[0]
-  const files = useList(store, shown.kind, 10)
+  const { files, more } = useShown(store, shown.kind)
   const iconOf = useFileIcon(store)
   const d = useDrag()
   if (!open) return null
@@ -55,6 +85,7 @@ function RecentPanel({ store, open, file, panel }: SidebarCtx) {
               </div>
             )
           })}
+          {more && <ShowMore onClick={more} />}
         </div>
       )}
     </div>
@@ -63,18 +94,19 @@ function RecentPanel({ store, open, file, panel }: SidebarCtx) {
 
 /** The tab (view:recent): both lists, as a blank tab draws them (the sidebar's rows, a size up). */
 function RecentView({ store }: { store: Store }) {
-  const opened = useList(store, "opened", 12)
-  const changed = useList(store, "changed", 20)
+  const opened = useShown(store, "opened")
+  const changed = useShown(store, "changed")
   return (
     <div className="flex flex-col gap-3 pb-10" data-recent-view>
       <h1 className="truncate text-[22px] leading-[28px] font-bold max-md:hidden">Recent files</h1>
       <div className="size-up-bleed"><div data-size-up className="flex flex-col gap-3">
         {KINDS.map((k) => {
-          const files = k.kind === "opened" ? opened : changed
+          const { files, more } = k.kind === "opened" ? opened : changed
           return (
             <section key={k.kind} aria-label={k.title}>
               <SidebarHeading title={k.title} open className="mt-0" />
               {files.length ? <RecentList store={store} files={files} /> : <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing yet.</p>}
+              {more && <ShowMore onClick={more} />}
             </section>
           )
         })}

@@ -360,14 +360,21 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ### Editor and files
 - **Database views and bases show every row**, like Obsidian (no cap at 500), drawn as you scroll; a database view
   without `limit` lists every match (it was 50).
+- **Nothing is cut off with no way to see the rest**: the search tab lists every file, more as you scroll, with the
+  totals right; "N more in this file" shows them, and a line opens the file there, the match selected. The quick
+  switcher lists more as you scroll, matches text from two letters, and ends with the search tab. Every unlinked
+  mention, as you scroll. Books' Up next and Finished, an embedded spreadsheet's rows and older cloud sessions have
+  Show all; embeds nest 20 deep (a loop is still caught), and HTML pages and notebook output are never clipped. Tabs
+  synced between devices keep every tab and its whole name. Export to PDF waits for every image, saying how many are
+  left when it's slow. A tab whose editor was put away keeps its undo history and selection.
 - **Editing keys over the phone's keyboard**: while you write a note, a row of undo, redo, link, task, indent, bold,
   italic, highlight, bullet list and photo sits above the keyboard, like the terminal's keys; pick them in Editing commands'
   settings.
 - **Bug recorder** (a plugin, off until turned on): keeps the window's last minutes in memory (keys, clicks, scrolling
   and whether the app or you moved it, edits, files changing, commands, warnings); Report a bug saves them as a note
   with your description and a screenshot. An editor's trace names who moved its cursor when the app did.
-- **Long folders show their first files**: past 25 files (in the sort order), a folder in the file tree shows those,
-  its folders, then Show N more; the open file always shows. Files per folder in the Files settings (0: all).
+- **Folders show every file**, as Obsidian's do, drawn as you scroll so a folder of thousands opens at once. Files per
+  folder in the Files settings shows a folder's first ones, then Show N more; the open file always shows.
 - **Blocks are views you edit in place**: clicking a block keeps it drawn; hover for its bar (its name, Options, its
   menu, `</>` for its Markdown, with Done and what's wrong under it). Options is a form from the block's declaration,
   and a person's context, place, to-do and contact are changed right in the card; on a dashboard too, where right-click,
@@ -449,7 +456,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - The file tree no longer opens folders to reveal the open file; File explorer's Reveal the open file turns it back
   on. On a phone it opens the folders but leaves the drawer at its top.
 - **Recent files** panel: the files you opened lately in the workspace, or the vault's recently changed ones (a
-  toggle in its heading). Hidden until you show it from the sidebar's menu; also a tab.
+  toggle in its heading). Hidden until you show it from the sidebar's menu; also a tab. Lists 50 (a setting), then Show more.
 - **Any sidebar panel can be on a new tab**: right-click a blank tab, Sections, or `vau newtab show "recent files"`.
 - **Activity filters**: the panel's heading filters by who (you, agents, the CLI...) and what (changes, opens,
   commands, settings), kept per workspace; the Activity tab has the same as chips, and `vau activity --action`.

@@ -462,6 +462,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useHeldHeight(key)`: holdHeight for a React element: put the ref on it.
 - `useLive(path, version?, files?)`: Live data from a plugin's own route: loaded once per mount (the last answer shown meanwhile), and again when its plugin's cache or settings change, after a disconnect, when `version` changes, and…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
+- `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.
 - `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
@@ -614,6 +615,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ArchiveHook`: onArchive's hooks (Vault.onArchive): the folder a file being archived (or unarchived) moves to, or null.
 - `archiveTwin(rel)`: The same path archived or not: People/Kai.md <-> People/.archive/Kai.md.
 - `blank(v)`
+- `bodyLine(text)`: The line (0-based) of `text` that parseText's body starts on: a body's line n is the file's line n + this.
 - `cmp(a, b)`: Compare like Python: numbers, strings, and arrays of them element by element.
 - `ConfigError`: A settings file that can't be read safely for a read-modify-write: `busy` (mid-sync, try again: 503), else broken (409).
 - `ConflictError`: A write the vault refuses because the file isn't in a state it can safely change (the API answers 409).

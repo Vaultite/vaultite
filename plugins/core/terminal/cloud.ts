@@ -18,11 +18,14 @@ export function subscribeCloud(fn: () => void) {
 }
 export const getCloud = () => now
 
-/** The ones the panel lists: waiting on you, working, then idle ones touched in the last two days; at most ten. */
+/** The ones the panel lists: waiting on you, working, then idle ones touched in the last two days, at most ten; `older`:
+ *  the rest, behind Show older. */
 export const cloudListed = (list: CloudSession[]) => {
   const rank = { waiting: 0, running: 1, idle: 2 }
-  return list.filter((c) => c.state !== "idle" || Date.now() - c.updated < 2 * 86_400_000)
-    .sort((a, b) => rank[a.state] - rank[b.state] || b.updated - a.updated).slice(0, 10)
+  const recent = (c: CloudSession) => c.state !== "idle" || Date.now() - c.updated < 2 * 86_400_000
+  const sorted = [...list].sort((a, b) => Number(!recent(a)) - Number(!recent(b)) || rank[a.state] - rank[b.state] || b.updated - a.updated)
+  const n = Math.min(10, sorted.filter(recent).length)
+  return { listed: sorted.slice(0, n), older: sorted.slice(n) }
 }
 
 /** "now", "5 min", "3 h", "2 d". */

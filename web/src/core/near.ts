@@ -1,6 +1,6 @@
 // Something heavy (a map: a WebGL context) is made once it comes near the screen, so a long dashboard or a hidden tab
 // doesn't make every one. Once made, it stays.
-import { useEffect, useState, type RefObject } from "react"
+import { useEffect, useRef, useState, type RefObject } from "react"
 
 /** Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after. */
 export function useNearScreen(ref: RefObject<Element | null>, margin = "600px"): boolean {
@@ -38,4 +38,19 @@ export function useRowsNear(total: number, step = 100): [number, (el: Element | 
     return () => o.disconnect()
   }, [mark, shown, total, step])
   return [typeof IntersectionObserver === "undefined" ? total : shown, setMark]
+}
+
+/** A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked
+ *  at again when `shown` changes (how many are shown: what's drawn since may have moved it away). */
+export function useNearEnd(ref: RefObject<Element | null>, onNear: () => void, shown: unknown, margin = "600px") {
+  const near = useRef(onNear)
+  near.current = onNear
+  useEffect(() => {
+    const el = ref.current
+    if (!el || typeof IntersectionObserver === "undefined") return
+    // (the pane that scrolls it, so the margin reaches below what it clips)
+    const o = new IntersectionObserver((es) => { if (es.some((e) => e.isIntersecting)) near.current() }, { root: scroller(el), rootMargin: margin })
+    o.observe(el)
+    return () => o.disconnect()
+  }, [ref, margin, shown])
 }

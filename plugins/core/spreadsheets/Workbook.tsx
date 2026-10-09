@@ -88,7 +88,7 @@ function SheetGrid({ ws, embed }: { ws: XLSX.WorkSheet; embed?: boolean }) {
       return words.every((w) => hay.includes(w))
     })
   }, [grid, q])
-  const limit = embed ? EMBED_ROWS : all ? Infinity : PAGE
+  const limit = all ? Infinity : embed ? EMBED_ROWS : PAGE
   const visible = shown.slice(0, limit)
   // (a filter breaks merged cells' rows apart: merges are drawn only unfiltered)
   const merged = !q
@@ -140,7 +140,7 @@ function SheetGrid({ ws, embed }: { ws: XLSX.WorkSheet; embed?: boolean }) {
             ))}
           </tbody>
         </table>
-        {!embed && !all && shown.length > PAGE && (
+        {!all && shown.length > limit && (
           <button type="button" onClick={() => setAll(true)} className="m-3 cursor-pointer text-[15px] font-semibold text-primary">
             Show all {numberText(shown.length)} rows
           </button>

@@ -13,7 +13,6 @@ type Device = { id: string; name: string; kind: "desktop" | "phone" | "web"; at:
 
 const ID = /^[a-z0-9]{8,32}$/
 const TERM = "view:terminal/"
-const MAX_TABS = 100
 /** A device not heard from in this long is left out (its file stays until it's forgotten). */
 const STALE = 30 * 86400_000
 
@@ -57,8 +56,7 @@ function tabsOf(raw: unknown, machine: string): DeviceTab[] {
     let to = typeof t?.to === "string" ? t.to : ""
     if (!/^(file|view):./.test(to) || to.startsWith("file:/") || out.some((o) => o.to === to)) continue
     if (to.startsWith(TERM) && !to.includes("@")) { if (!machine) continue; to = `${to}@${machine}` }
-    out.push({ to, ...(typeof t.label === "string" && t.label ? { label: t.label.slice(0, 200) } : {}), ...(t.pinned === true ? { pinned: true } : {}) })
-    if (out.length >= MAX_TABS) break
+    out.push({ to, ...(typeof t.label === "string" && t.label ? { label: t.label } : {}), ...(t.pinned === true ? { pinned: true } : {}) })
   }
   return out
 }

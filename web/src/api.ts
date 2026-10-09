@@ -139,8 +139,9 @@ export { EmbedView } from "@/components/NoteEmbed"
 // Remembered heights: a card drawn again starts at the size it had (core/heights.ts), so a page doesn't jump as its
 // data comes in.
 export { blockHeightKey, holdHeight, textKey, useHeldHeight } from "@/core/heights"
-// Something heavy (a map) made only once it comes near the screen; a long list's rows drawn as they come near it.
-export { useNearScreen, useRowsNear } from "@/core/near"
+// Something heavy (a map) made only once it comes near the screen; a long list's rows drawn as they come near it, or
+// more asked for as its end does.
+export { useNearEnd, useNearScreen, useRowsNear } from "@/core/near"
 // A page of cards keeps what's at the top of the screen in place when cards above it change size.
 export { keepAnchored } from "@/core/anchor"
 export { SortableList } from "@/components/Sortable"

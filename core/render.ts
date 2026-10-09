@@ -290,8 +290,8 @@ async function inlineCode(plugins: Plugin[], on: Set<string>, rel: string, body:
   return lines.join("\n")
 }
 
-/** How deep embedded notes go (a note embedding a note embedding...). */
-const DEPTH = 4
+/** How deep embedded notes go (a note embedding a note embedding...): only a guard, loops are caught by `seen`. */
+const DEPTH = 20
 const EMBED = /^!\[\[([^\]|\n]+?)(?:\|[^\]\n]*)?\]\][ \t]*$/gm
 
 /** A body as the user reads it: blocks as text, %%comments%% and ^ids out, embeds on their own line inlined (a note or

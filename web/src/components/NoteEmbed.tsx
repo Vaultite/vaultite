@@ -20,8 +20,8 @@ import { Markdown } from "@/components/Markdown"
 import type { EmbedEdit } from "@/editor/livePreview"
 import { cn, scrollingBox } from "@/lib/utils"
 
-/** How deep embeds go inside embeds. */
-const DEPTH = 4
+/** How deep embeds go inside embeds: only a guard, loops are caught by `seen` (as core/render.ts). */
+const DEPTH = 20
 
 /** The note an embed names, or null (not a note, or no such file). `from`: the file it's in (`![[#Heading]]`). */
 export function noteFor(store: Store, target: string, from: string): string | null {

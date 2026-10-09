@@ -1,6 +1,6 @@
 // Search as a tab (view:search/<query>), like VS Code's search editor: the query is the tab's arg, so it stays with
 // the tab. Names (fuzzy, plain words only), then every matching line in files; its options are the plugin's settings.
-import { Fragment, useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
 import { CaseSensitive, ChevronRight, Ellipsis, FileText, Search as SearchIcon, X } from "lucide-react"
 import { useLive, type Store } from "@/core/data"
 import { get, put } from "@/core/http"
@@ -8,6 +8,9 @@ import { startDrag } from "@/core/drag"
 import { folderOf, openFile, openView, stem } from "@/core/files"
 import { isDesktop, useFocusedFile } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
+import { editAt } from "@/core/anchors"
+import { kindOf } from "@/core/filekinds"
+import { useNearEnd } from "@/core/near"
 import { usePrefs } from "@/core/prefs"
 import { search, useSearchIndex, type Hit } from "@/core/search"
 import { Marked } from "@/components/Palette"
@@ -19,7 +22,26 @@ import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } fro
 
 type Match = { line: number; text: string; ctx?: true }
 type Result = { path: string; title: string; context: string; mtime: number; matches?: Match[]; count?: number }
+type Found = { results: Result[]; files: number; lines: number }
 type Settings = { matchCase?: boolean; sort?: string; collapse?: boolean; context?: number; explain?: boolean }
+
+/** Files come this many at a time, more as the list is scrolled to its end; each with its first LINES lines. */
+const PAGE = 100, LINES = 20
+/** The most the server gives at once (core/files.ts): files, and lines of one. */
+const MOST = 500, MOST_LINES = 100_000
+
+/** The first `n` results of a search (`params` without a page), and the totals. */
+async function firstOf(params: string, n: number): Promise<Found> {
+  let out: Found | null = null
+  for (let at = 0; !out || (at < n && out.results.length === at); at += MOST) {
+    const f: Found = await get<Found>(`search?${params}&lines=${LINES}&total=1&offset=${at}&limit=${Math.min(MOST, n - at)}`)
+    out = out ? { ...f, results: [...out.results, ...f.results] } : f
+  }
+  return out
+}
+
+/** A line search found opens the file there, the match selected, as Obsidian's does; a file that isn't text opens. */
+const atLine = (kind: string) => kind === "markdown" || kind === "code" || kind === "json"
 
 const SORTS: [string, string][] = [
   ["relevance", "Best match"], ["name", "File name (A to Z)"], ["name-desc", "File name (Z to A)"],
@@ -74,30 +96,74 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
 
   // Names: the quick switcher's index (pages, people, files, terminals, what plugins index), for plain words.
   const docs = useSearchIndex(store)
-  const names = useMemo(() => (plain && !matchCase ? search(docs, q).slice(0, 8) : []), [docs, q, plain, matchCase])
+  const allNames = useMemo(() => (plain && !matchCase ? search(docs, q, Infinity) : []), [docs, q, plain, matchCase])
+  const [allShown, setAllShown] = useState(false)
+  useEffect(() => setAllShown(false), [q])
+  const names = allShown ? allNames : allNames.slice(0, 8)
 
-  // Inside files: the server's search, every matching line.
-  const [results, setResults] = useState<Result[] | null>(null)
+  // Inside files: the server's search, every matching line, a page of files at a time.
+  const [found, setFound] = useState<Found | null>(null)
+  const results = found?.results ?? null
   const [failed, setFailed] = useState("")
   const [busy, setBusy] = useState(false)
   const context = settings.context ?? 0
-  useEffect(() => {
+  const params = useMemo(() => {
     const text = q.trim()
-    if (!node || (plain && text.length < 2)) { setResults(null); setFailed(""); return }
+    if (!node || (plain && text.length < 2)) return ""
+    const p = new URLSearchParams({ q: text })
+    if (folder.trim()) p.set("folder", folder.trim())
+    if (matchCase) p.set("case", "1")
+    if (settings.sort && settings.sort !== "relevance") p.set("sort", settings.sort)
+    if (context) p.set("context", String(context))
+    return p.toString()
+  }, [q, node, plain, folder, matchCase, settings.sort, context])
+  // A file's every line, once "more in this file" is clicked; asked again with the rest when the vault changes.
+  const [whole, setWhole] = useState<Record<string, Match[]>>({})
+  const shownNow = useRef({ params, n: 0, whole, of: "" })
+  shownNow.current = { ...shownNow.current, params, n: results?.length ?? 0, whole }
+  const wholeOf = useCallback(async (path: string) => {
+    const rs = await get<Result[]>(`search?${params}&path=${encodeURIComponent(path)}&lines=${MOST_LINES}`)
+    return rs[0]?.matches ?? []
+  }, [params])
+  useEffect(() => {
+    if (!params) { setFound(null); setWhole({}); setFailed(""); return }
     let on = true
     setBusy(true)
-    const params = new URLSearchParams({ q: text, lines: "20", limit: "200" })
-    if (folder.trim()) params.set("folder", folder.trim())
-    if (matchCase) params.set("case", "1")
-    if (settings.sort && settings.sort !== "relevance") params.set("sort", settings.sort)
-    if (context) params.set("context", String(context))
+    // (the vault changed: as many as were shown, again; a new query: its first page)
+    const same = shownNow.current.of === params
+    const n = same ? Math.max(PAGE, shownNow.current.n) : PAGE
+    const open = same ? Object.keys(shownNow.current.whole) : []
+    if (!same) setWhole({})
     const t = setTimeout(() => {
-      get<Result[]>(`search?${params}`)
-        .then((rs) => { if (on) { setResults(rs); setFailed(""); setBusy(false) } })
-        .catch((e) => { if (on) { setResults([]); setFailed(e instanceof Error ? e.message : String(e)); setBusy(false) } })
+      firstOf(params, n)
+        .then(async (f) => {
+          const lines = await Promise.all(open.map(async (p) => [p, await wholeOf(p).catch(() => [])] as const))
+          if (!on) return
+          shownNow.current.of = params
+          setFound(f); setFailed(""); setBusy(false)
+          if (open.length) setWhole(Object.fromEntries(lines))
+        })
+        .catch((e) => { if (on) { setFound({ results: [], files: 0, lines: 0 }); setFailed(e instanceof Error ? e.message : String(e)); setBusy(false) } })
     }, 200)
     return () => { on = false; clearTimeout(t) }
-  }, [q, node, plain, folder, matchCase, settings.sort, context, store])
+  }, [params, wholeOf, store])
+  // The next page, as the end of the list comes near.
+  const loading = useRef("")
+  const more = () => {
+    if (!found || busy || found.results.length >= found.files) return
+    const key = `${params}@${found.results.length}`
+    if (loading.current === key) return
+    loading.current = key
+    get<Found>(`search?${params}&lines=${LINES}&total=1&offset=${found.results.length}&limit=${PAGE}`)
+      .then((f) => setFound((cur) => (cur && shownNow.current.params === params && cur.results.length === found.results.length
+        ? { ...f, results: [...cur.results, ...f.results] } : cur)))
+      .catch(() => { loading.current = "" })
+  }
+  const end = useRef<HTMLParagraphElement>(null)
+  useNearEnd(end, more, `${found?.results.length}:${busy}`, "800px")
+  const showWhole = (path: string) => {
+    wholeOf(path).then((ms) => { if (shownNow.current.params === params) setWhole((w) => ({ ...w, [path]: ms })) }, () => {})
+  }
   // Folded files: the ones toggled, or, with "Collapse results" on, every one but those.
   const [toggled, setToggled] = useState<Set<string>>(new Set())
   useEffect(() => setToggled(new Set()), [settings.collapse])
@@ -134,8 +200,8 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
     { label: "Explain search terms", checked: !!settings.explain, run: () => save({ explain: settings.explain ? null : true }) },
   ])
 
-  const total = results?.reduce((n, r) => n + (r.count ?? 0), 0) ?? 0
-  const lines = !!results?.some((r) => r.count)
+  const total = found?.lines ?? 0
+  const lines = total > 0
   const phone = !isDesktop()
   const tool = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-9"
   const counted = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
@@ -198,6 +264,12 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                 <span className="shrink-0 text-[12px] text-tertiary">{h.kind}</span>
               </button>
             ))}
+            {!allShown && allNames.length > names.length && (
+              <button type="button" data-keyrow onClick={() => setAllShown(true)}
+                className="flex h-7 cursor-pointer items-center rounded-[5px] px-1.5 text-left text-[12px] text-primary hover:bg-foreground/[0.05] max-md:h-11 max-md:text-[15px]">
+                Show all {allNames.length}
+              </button>
+            )}
           </div>
         </section>
       )}
@@ -207,7 +279,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
           <h2 className="mb-1 flex items-baseline gap-2 text-[12px] font-semibold text-muted-foreground">
             {plain ? "In files" : "Files"}
             <span className="font-normal">{failed || (!results || (busy && !results.length) ? "Searching…" : !results.length ? "Nothing found"
-              : lines ? `${counted(total, "line")} in ${counted(results.length, "file")}` : counted(results.length, "file"))}</span>
+              : lines ? `${counted(total, "line")} in ${counted(found!.files, "file")}` : counted(found!.files, "file"))}</span>
           </h2>
           <div className="flex flex-col gap-1">
             {results?.map((r) => {
@@ -216,7 +288,8 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
               const { icon: Icon, tint } = fileIcon(r.path, f?.type ?? null, disabled, f)
               const where = folderOf(r.path)
               const title = stem(r.path)
-              const shown = r.matches ?? []
+              const shown = whole[r.path] ?? r.matches ?? []
+              const kind = kindOf(r.path)
               const matched = shown.filter((m) => !m.ctx).length
               return (
                 <div key={r.path} data-search-file={r.path}>
@@ -239,12 +312,15 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                   {!shut && !!shown.length && (
                     <ul className="ml-[13px] border-l-[0.5px] border-border pl-2">
                       {shown.map((m, i) => {
-                        const ex = m.ctx ? { text: m.text, ranges: [] } : excerpt(m.text, marks(m.text), 180, 40)
+                        const hit = m.ctx ? [] : marks(m.text)
+                        const ex = m.ctx ? { text: m.text, ranges: [] } : excerpt(m.text, hit, 180, 40)
+                        const go = (e: MouseEvent) => (atLine(kind) ? editAt(r.path, m.line - 1, { newTab: e.metaKey || e.ctrlKey, pane, find: hit[0] && m.text.slice(...hit[0]) })
+                          : open(r.path, e.metaKey || e.ctrlKey))
                         return (
                           <Fragment key={m.line}>
                             {context > 0 && i > 0 && m.line !== shown[i - 1].line + 1 && <li aria-hidden className="mx-1.5 my-1 h-px w-6 bg-border" />}
                             <li>
-                              <button type="button" data-keyrow={m.ctx ? undefined : ""} onClick={(e) => open(r.path, e.metaKey || e.ctrlKey)} data-ctx={m.ctx ? "" : undefined}
+                              <button type="button" data-keyrow={m.ctx ? undefined : ""} onClick={go} data-ctx={m.ctx ? "" : undefined} data-line={m.line}
                                 className={cn("flex w-full cursor-pointer items-baseline rounded-[5px] px-1.5 text-left text-[13px] leading-[18px] hover:bg-foreground/[0.04]",
                                   m.ctx ? "py-0" : "py-1", phone && "text-[15px] leading-[21px]", phone && (m.ctx ? "py-0.5" : "py-2"))}>
                                 <span className={cn("min-w-0 flex-1 break-words", m.ctx ? "text-muted-foreground" : "text-foreground/85")}>
@@ -255,12 +331,19 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
                           </Fragment>
                         )
                       })}
-                      {(r.count ?? 0) > matched && <li className="px-1.5 py-1 text-[12px] text-tertiary">{(r.count ?? 0) - matched} more in this file</li>}
+                      {(r.count ?? 0) > matched && (
+                        <li><button type="button" data-keyrow onClick={() => showWhole(r.path)}
+                          className="cursor-pointer rounded-[5px] px-1.5 py-1 text-left text-[12px] text-primary hover:bg-foreground/[0.04] max-md:py-2 max-md:text-[15px]">
+                          {(r.count ?? 0) - matched} more in this file</button></li>
+                      )}
                     </ul>
                   )}
                 </div>
               )
             })}
+            {found && found.results.length < found.files && (
+              <p ref={end} className="px-1.5 py-1 text-[12px] text-tertiary">{found.files - found.results.length} more files…</p>
+            )}
           </div>
         </section>
       )}

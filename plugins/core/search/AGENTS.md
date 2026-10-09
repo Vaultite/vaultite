@@ -9,8 +9,10 @@ Finding files, in the app and for you. The quick switcher (⌘O, the sidebar's s
   (nested ones too), `line:(a b)` on one line, `block:(a b)` in one paragraph, `section:(a b)` under one heading,
   `task:x` / `task-todo:x` / `task-done:x` in a task (ticked or not; nothing after the colon: any), `match-case:X` /
   `ignore-case:x`, `[status]` has a property, `[status:seed]` its value has it (`[status:seed OR exploring]`).
-- `GET /api/search?q=...&lines=5` adds each file's matching lines; `&context=N` lines around them, `&folder=Notes`,
-  `&sort=relevance | name | name-desc | modified | modified-old | created | created-old`, `&case=1`. A query it can't
+- `GET /api/search?q=...&lines=5` adds each file's matching lines (numbered as the file's, frontmatter counted);
+  `&context=N` lines around them, `&folder=Notes`, `&path=<file>` that file alone, `&sort=relevance | name | name-desc |
+  modified | modified-old | created | created-old`, `&case=1`. `&limit=` files (500 at most) from `&offset=`;
+  `&total=1` answers `{results, files, lines}`: the page and how many files and lines matched in all. A query it can't
   read is a 400 saying why.
 The search tab's options (match case, sort, collapse results, more context, explain search terms) are its settings,
 below.

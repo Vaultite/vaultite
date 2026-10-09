@@ -554,18 +554,23 @@ const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
   "created-old": [(r) => r.created, false],
 }
 
-type SearchOpts = { lines?: number; folder?: string; matchCase?: boolean; sort?: string; context?: number; offset?: number }
+type SearchOpts = { lines?: number; folder?: string; path?: string; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
 /** Files matching a query (core/searchquery.ts: words, "phrases", -not, OR, file:, path:, tag:, line:(), [property]...),
  *  with the first line that matched, and with `lines` every such line (and `context` lines around each). */
 export async function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}) {
-  if (!q.trim()) return []
+  return (await searchAll(vault, q, limit, opts)).results
+}
+
+/** search's page of results (from `offset`), and how many files and lines (with `lines`) matched in all. */
+export async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<{ results: Item[]; files: number; lines: number }> {
+  if (!q.trim()) return { results: [], files: 0, lines: 0 }
   let node: Node
   try { node = parse(q, { matchCase: opts.matchCase }) } catch (e) {
     if (e instanceof SearchError) throw new HTTPError(400, e.message)
     throw e
   }
-  if (node.t === "all") return []
+  if (node.t === "all") return { results: [], files: 0, lines: 0 }
   const marks = highlighter(node, "text"), names = highlighter(node, "name")
   const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
   const whole = q.trim().toLowerCase()
@@ -577,7 +582,7 @@ export async function search(vault: Vault, q: string, limit = 60, opts: SearchOp
     const score = names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0)
     const item: Item = { path: rel, title: name, context: "", score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
     // The search tab (view:search) shows every line that matched, like a search editor; `context` lines around each
-    // come marked `ctx: true`, each line once.
+    // come marked `ctx: true`, each line once. Lines are the file's (1-based), frontmatter counted.
     if (opts.lines) {
       const lines = body.split("\n")
       const hits: number[] = []
@@ -607,15 +612,16 @@ export async function search(vault: Vault, q: string, limit = 60, opts: SearchOp
     return item
   }
   const out: Item[] = []
+  const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.path && rel !== opts.path)
   for (const [rel, e] of vault.entries) {
-    if (folder && !rel.startsWith(`${folder}/`)) continue
-    const item = check(rel, e.body, e.stat.ns, e.stat.born, e)
+    if (skip(rel)) continue
+    const item = check(rel, e.body, e.stat.ns, e.stat.born, e, e.bodyLine)
     if (item) out.push(item)
   }
   await refresh(vault)
   for (const [rel, f] of indexes.get(vault)!.files) {
     const st = vault.others.get(rel)
-    if (!st || (folder && !rel.startsWith(`${folder}/`))) continue
+    if (!st || skip(rel)) continue
     // A file read in pieces matches when one of them does; its lines are counted on from piece to piece.
     let item: Item | null = null, from = 0
     for await (const text of textsOf(vault, rel, f)) {
@@ -632,7 +638,8 @@ export async function search(vault: Vault, q: string, limit = 60, opts: SearchOp
   const [key, reverse] = SORTS[opts.sort ?? ""] ?? SORTS.relevance
   const sorted = sortBy(out, key, reverse)
   const from = opts.offset ?? 0
-  return [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(from, from + limit)
+  const results = [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(from, from + limit)
+  return { results, files: out.length, lines: out.reduce((n, r) => n + (r.count ?? 0), 0) }
 }
 
 let uploadN = 0
@@ -671,8 +678,10 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
   if (route === "search" && method === "GET") {
     const n = (v: string | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)))
     if (query.sort && !(query.sort in SORTS)) throw new HTTPError(400, `sort is one of ${Object.keys(SORTS).join(", ")}`)
-    return search(vault, query.q ?? "", n(query.limit, 500) || 60,
-      { lines: n(query.lines, 50), folder: query.folder, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
+    // (a page at a time from `offset`; `total=1`: with how many files and lines matched in all)
+    const found = await searchAll(vault, query.q ?? "", n(query.limit, 500) || 60, { lines: n(query.lines, 100_000), folder: query.folder, path: query.path,
+      matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
+    return query.total === "1" ? found : found.results
   }
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
   if (route === "file") {

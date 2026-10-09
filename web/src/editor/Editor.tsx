@@ -10,7 +10,7 @@ import { yamlFrontmatter, yamlLanguage } from "@codemirror/lang-yaml"
 import { HighlightStyle, indentUnit, languageDataProp, syntaxHighlighting } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
 import { tags } from "@lezer/highlight"
-import { Compartment, EditorSelection, EditorState, Prec, Text, Transaction } from "@codemirror/state"
+import { Compartment, EditorSelection, EditorState, Prec, Text, Transaction, type Extension, type SelectionRange } from "@codemirror/state"
 import { EditorView, keymap, placeholder, tooltips, type ViewUpdate } from "@codemirror/view"
 import { codeStyle, indentOf, languageFor } from "./languages"
 import { fenceMenu, linkHandler, livePreview, offBlocks, previewConfig, textStart, type PreviewConfig } from "./livePreview"
@@ -18,6 +18,7 @@ import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyL
 import { slashSource } from "./slash"
 import { blockOptionSource } from "./blockOptions"
 import { numberGutter } from "./numbers"
+import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import type { SlashItem } from "@/core/define"
@@ -28,6 +29,7 @@ import { textChanges } from "@/core/merge"
 import { pastedFiles } from "@/core/files"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
+import { usePane } from "@/core/pane"
 import { cn, scrollingBox } from "@/lib/utils"
 import { trace } from "@/core/trace"
 
@@ -43,6 +45,8 @@ export type EditorApi = {
   reveal: (line: number) => void
   /** Where the app can put the cursor near `pos` without opening a drawn block (livePreview's offBlocks). */
   offBlocks: (pos: number) => number | null
+  /** It came back as its tab's editor was left (editor/kept.ts), selection included: that's where its cursor goes. */
+  restored: boolean
   view: EditorView
 }
 
@@ -89,6 +93,8 @@ type Props = {
   /** A file's own editor (not a canvas card's): line numbers beside it while the user has them on (appearance.json
    *  `lineNumbers`). Code files have them anyway. */
   numbered?: boolean
+  /** The file it shows, whose history and selection are kept while its tab isn't drawn (editor/kept.ts). */
+  keep?: string
 }
 
 
@@ -202,7 +208,7 @@ function traceUpdate(u: ViewUpdate, path: string) {
 }
 const callers = () => (new Error().stack ?? "").split("\n").slice(3, 12).map((l) => l.trim().replace(/^at /, "")).join(" < ")
 
-export default function Editor({ doc, editable, config, onChange, onOpen, names, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onPasteFiles, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter }: Props) {
+export default function Editor({ doc, editable, config, onChange, onOpen, names, headings, slash, onReady, placeholderText, label, source, frontmatter: hides, code, language, markdownLinks, onPasteFiles, docPath, floatingTooltips, onEscape, onBlur, numbered, onUndoFrontmatter, keep }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const cfg = useRef(new Compartment())
@@ -212,6 +218,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const nums = useRef(new Compartment())
   const { disabled, enabled, order, lineNumbers: numbersOn } = usePrefs()
   const plugins = usePluginsVersion()
+  const { tab } = usePane()
   const showNumbers = !!numbered && numbersOn && language === undefined
   // Callbacks change every render; the editor reads the latest through refs.
   const cb = useRef({ onChange, onOpen, names, headings, slash, markdownLinks, onPasteFiles, onEscape, onBlur, onUndoFrontmatter })
@@ -278,9 +285,18 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
       floatingTooltips ? tooltips({ parent: tooltipHost() }) : [],
       EditorView.updateListener.of((u) => traceUpdate(u, docPath ?? label ?? "")),
     ]
+    // (as this tab's editor of the file was left, its history with it, when it went: editor/kept.ts)
+    const keepAs = keep ? keptKey(tab, keep) : null
+    let restored = false
+    const start = (c: { doc: string; selection?: EditorSelection | SelectionRange; extensions: Extension }) => {
+      const back = keepAs ? keptState(keepAs, c.doc, !!source, { extensions: c.extensions }) : null
+      if (!back) return EditorState.create(c)
+      restored = back.selection
+      return back.selection || !c.selection ? back.state : back.state.update({ selection: c.selection }).state
+    }
     const v = new EditorView({
       parent: host.current!,
-      state: EditorState.create({
+      state: start({
         doc: fill(doc),
         // (a new editor's cursor starts at the body, never inside the hidden frontmatter: typing there went before `---`)
         selection: hides ? EditorSelection.cursor(bodyStart(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
@@ -345,6 +361,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     if (language) languageFor(language).then((l) => { if (l && view.current === v) v.dispatch({ effects: lang.current.reconfigure(l) }) })
     onReady?.({
       view: v,
+      restored,
       replace: (text) => {
         const changes = textChanges(v.state.doc.toString(), fill(text))
         if (!changes.length) return
@@ -397,7 +414,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     const unlist = registerEditor({ view: v, kind: language !== undefined ? "code" : code ? "text" : "markdown", path: docPath ?? (language || undefined), source: !!source,
       start: (s) => s.field(frontmatter, false) ?? 0, undo: () => undo(v), redo: () => redo(v) })
     trace("editor", { ev: "mount", path: docPath ?? label, head: v.state.selection.main.head, editable, source: !!source })
-    return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); unregister?.(); unlist(); v.destroy(); view.current = null }
+    return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
     // One editor per file: the parent keys this component by path.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

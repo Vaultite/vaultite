@@ -13,6 +13,7 @@ import { isMac } from "@/core/platform"
 import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, isDesktop, onWorkspaceChange } from "@/core/workspace"
 import { leaves, type Workspace } from "@/core/layout"
+import { useNearEnd } from "@/core/near"
 import { openInSplit } from "@/core/splits"
 import { iconOf, namedIcon, tintOf } from "@/core/pages"
 import { scopedState, subscribeScoped } from "@/core/scope"
@@ -724,17 +725,28 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
 })
 
 type KidsProps = { n: Node; depth: number; rows: Rows; active?: string; renaming?: string; dropOn?: string; dragging: string | null; draggingMany: boolean }
+/** A folder's rows drawn at first, then this many more as the end of what's drawn nears the screen: a folder of
+ *  thousands opens at once. */
+const DRAWN = 300
+
 /** A folder's rows, a long one's cut to its first files (Rows' `limit`) with a row that shows the rest or hides them again. */
 function Kids({ n, depth, rows, active, renaming, dropOn, dragging, draggingMany }: KidsProps) {
   const all = useShowsAll(n.path), revealed = useRevealedIn(n.path)
   const { shown, hidden, long } = capped(n.children, rows.limit, all, [active, renaming, revealed])
   const pad = (rows.compact ? 1.5 : 1) + depth * (rows.compact ? 3.5 : 4.5)
+  const [drawn, setDrawn] = useState(DRAWN)
+  // (what's open, revealed or being renamed is drawn, however far down)
+  const kept = shown.length > drawn ? shown.findLastIndex((c) => [active, renaming, revealed].some((k) => k && under(k, c))) : -1
+  const upTo = Math.max(drawn, kept + 1)
+  const end = useRef<HTMLLIElement>(null)
+  useNearEnd(end, () => setDrawn(upTo + DRAWN), upTo)
   return (
     <>
-      {shown.map((c) => (
+      {shown.slice(0, upTo).map((c) => (
         <TreeRow key={c.path} n={c} depth={depth} rows={rows} active={under(active, c)} renaming={under(renaming, c)}
           dropOn={under(dropOn, c)} dragging={dragging} draggingMany={draggingMany} />
       ))}
+      {upTo < shown.length && <li ref={end} role="none" aria-hidden style={{ height: `${(shown.length - upTo) * (rows.compact ? 26 : 44)}px` }} />}
       {long && (all || hidden > 0) && (
         <li role="none" data-tree-more={n.path}>
           <button type="button" data-keyrow onClick={() => setShowingAll(n.path, !all)}

@@ -87,10 +87,10 @@ export function openAt(path: string, anchor: string, opts: { newTab?: boolean; p
 
 // ---------- editing a line: a block's "Edit source" ----------
 
-/** A file's view on screen that can take the cursor to a line (FileView: into editing first). */
-type LineTaker = { path: string; dom: () => HTMLElement | null; take: (line: number) => void }
+/** A file's view on screen that can take the cursor to a line (FileView: into editing first), `find` on it selected. */
+type LineTaker = { path: string; dom: () => HTMLElement | null; take: (line: number, find?: string) => void }
 const takers: LineTaker[] = []
-let wanted: { path: string; line: number; until: number } | null = null
+let wanted: { path: string; line: number; find?: string; until: number } | null = null
 
 function deliver() {
   if (!wanted) return
@@ -98,23 +98,24 @@ function deliver() {
   const shown = takers.filter((t) => t.path === wanted!.path && !!t.dom()?.isConnected && t.dom()!.getClientRects().length > 0)
   const t = shown.find((x) => x.dom()!.closest("#main-scroll")) ?? shown[shown.length - 1]
   if (!t) return
-  const { line } = wanted
+  const { line, find } = wanted
   wanted = null
-  t.take(line)
+  t.take(line, find)
 }
 
 /** Open a file in editing with the cursor at a line (0-based, frontmatter counted: as the server numbers a file's
- *  lines), scrolled to it: a block's "Edit source" while it's read. The file's view may still be on its way. */
-export function editAt(path: string, line: number) {
-  openFile(path)
-  wanted = { path, line, until: Date.now() + 4000 }
+ *  lines), scrolled to: a block's "Edit source" while it's read, a line search found (`find`: the match, selected).
+ *  The file's view may still be on its way. */
+export function editAt(path: string, line: number, opts: { newTab?: boolean; pane?: string; find?: string } = {}) {
+  openFile(path, { newTab: opts.newTab, pane: opts.pane })
+  wanted = { path, line, find: opts.find, until: Date.now() + 4000 }
   let n = 0
   const t = setInterval(() => { deliver(); if (!wanted || ++n > 40) clearInterval(t) }, 100)
   deliver()
 }
 
 /** A file's view takes editAt's requests for its path while it's mounted. */
-export function useEditAt(path: string, dom: () => HTMLElement | null, take: (line: number) => void) {
+export function useEditAt(path: string, dom: () => HTMLElement | null, take: LineTaker["take"]) {
   useEffect(() => {
     const t: LineTaker = { path, dom, take }
     takers.push(t)

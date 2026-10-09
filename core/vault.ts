@@ -103,11 +103,22 @@ export function loadFm(raw: string): Item {
   return fm as Item
 }
 
+const HEAD = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/
 /** [frontmatter, body]. Throws on a broken header. */
 export function parseText(text: string): [Item, string] {
-  const m = /^---\n([\s\S]*?)\n---\n?([\s\S]*)$/.exec(text)
+  const m = HEAD.exec(text)
   if (!m) return [{}, text.trim()]
   return [loadFm(m[1]), m[2].trim()]
+}
+
+/** The line (0-based) of `text` that parseText's body starts on: a body's line n is the file's line n + this. */
+export function bodyLine(text: string): number {
+  const m = HEAD.exec(text)
+  const rest = m ? m[2] : text
+  const at = text.length - rest.length + (rest.length - rest.trimStart().length)
+  let n = 0
+  for (let i = text.indexOf("\n"); i >= 0 && i < at; i = text.indexOf("\n", i + 1)) n++
+  return n
 }
 
 /** A file's text with its frontmatter key `from` renamed `to`, nothing else changed (core/textedit.ts renameKey); null
@@ -509,6 +520,8 @@ export class Entry {
   kind: Kind | null
   fm: Item = {}
   body = ""
+  /** The file's line (0-based) the body starts on, past the frontmatter and blank lines. */
+  bodyLine = 0
   item: Item | null = null
   problems: string[] = []
   broken = false // its header doesn't parse: fm/body/item are the last good read
@@ -1043,12 +1056,13 @@ export class Vault {
       const t = text ?? readText(this.abs(rel))
       if (typeof t !== "string") throw t
       ;[e.fm, e.body] = parseText(t)
+      e.bodyLine = bodyLine(t)
     } catch (ex) {
       // Keep what we had, so a half-written or broken file doesn't make its item vanish.
       const name = ex instanceof YAMLError ? "YAMLError" : ex instanceof TypeError ? "UnicodeDecodeError" : "OSError"
       e.problems = [`can't read the frontmatter (${name}); nothing from this file was updated`]
       e.broken = true
-      if (old) { e.fm = old.fm; e.body = old.body; e.item = old.item; e.kind = old.kind } else e.kind = this.kindFor(rel, {})
+      if (old) { e.fm = old.fm; e.body = old.body; e.bodyLine = old.bodyLine; e.item = old.item; e.kind = old.kind } else e.kind = this.kindFor(rel, {})
       this.entries.set(rel, e)
       return e
     }

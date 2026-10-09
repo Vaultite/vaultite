@@ -1,4 +1,5 @@
 // Books on Learning (reading, up next, finished) and a book's sheet (book/<id>).
+import { useState } from "react"
 import { BookOpen } from "lucide-react"
 import {
   detailPath, Empty, fmtDay, fmtLongDay, Group, isArchived, KV, List, Markdown, openDetail, Panel, Row, Section, SheetHead,
@@ -23,12 +24,16 @@ function BookRow({ b }: { b: Book }) {
   )
 }
 
+/** Up next and Finished list this many, then "Show all". */
+const FIRST = 5
+
 export function BooksPanel({ store }: { store: Store }) {
   const books = store.books.filter((b) => !isArchived(b))
+  const [all, setAll] = useState<string[]>([])
   const groups: [string, Book[]][] = [
     ["Reading", books.filter((b) => b.status === "reading")],
-    ["Up next", books.filter((b) => b.status === "want").slice(0, 5)],
-    ["Finished", books.filter((b) => b.status === "done").slice(0, 5)],
+    ["Up next", books.filter((b) => b.status === "want")],
+    ["Finished", books.filter((b) => b.status === "done")],
   ]
   return (
     <Panel title="Books" icon={BookOpen} tint="var(--orange)">
@@ -38,7 +43,12 @@ export function BooksPanel({ store }: { store: Store }) {
         <div className="space-y-4">
           {groups.filter(([, bs]) => bs.length).map(([title, bs]) => (
             <Section key={title} title={title}>
-              <List>{bs.map((b) => <BookRow key={b.id} b={b} />)}</List>
+              <List>{(title === "Reading" || all.includes(title) ? bs : bs.slice(0, FIRST)).map((b) => <BookRow key={b.id} b={b} />)}</List>
+              {title !== "Reading" && !all.includes(title) && bs.length > FIRST && (
+                <button type="button" onClick={() => setAll([...all, title])} className="mt-1 min-h-11 cursor-pointer text-[15px] text-primary hover:underline md:min-h-7 md:text-[13px]">
+                  Show all {bs.length}
+                </button>
+              )}
             </Section>
           ))}
         </div>
