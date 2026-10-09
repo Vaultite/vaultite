@@ -48,7 +48,17 @@ function demoServer(): Plugin {
 const demoEntry = (): Plugin => ({
   name: 'vaultite-demo-entry',
   transform: (code, id) => (id === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
+  // ?theme=light (or dark) pins the look whatever the system's (the site embeds the demo in a light page). Before any of
+  // the app's code: its chunks read the system's look as they load.
+  transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <script>${PIN_THEME}</script>`),
 })
+
+const PIN_THEME = `(() => {
+  const pin = new URLSearchParams(location.search).get("theme")
+  if (pin !== "light" && pin !== "dark") return
+  const real = matchMedia.bind(window)
+  window.matchMedia = (q) => real(q.includes("prefers-color-scheme") ? (pin === "dark" ? "all" : "not all") : q)
+})()`
 
 export default defineConfig({
   ...base,

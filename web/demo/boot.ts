@@ -63,7 +63,7 @@ function badge() {
     b.onclick = run
     return b
   }
-  bar.append("Demo: your edits stay in this browser", button("Reset", reset), button("Get the app", () => window.open("https://vaultite.com", "_blank", "noopener")))
+  bar.append("Demo: your edits stay in this browser", button("Reset", reset), button("Get the app", () => window.open("https://vaultite.com/download", "_blank", "noopener")))
   document.head.append(style)
   document.body.append(bar)
 }
