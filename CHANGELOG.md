@@ -7,6 +7,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Agents see everything, a page at a time**: read, render, query, search and list take `offset` and `limit`, and
+  every cut answer says so and gives the next offset (a long query cell ends in "…"). `edit_file` (`vau edit`) changes
+  just the text it names; writing a page back whole is refused, so a long file's end can't be dropped.
+- **Coding agents' usage over any range**: a usage block's `days` goes past 30, as far back as the tool's data.
 - **Writing plugins from ChatGPT or claude.ai**: an app on the internet writes a vault plugin's code without asking each
   time; it runs only once you allow it, and that request says what it discloses and which files changed.
 - **Secrets from any device**: `vau secret "<what>"` asks for a password or a key file in a hidden field on whatever
@@ -353,6 +357,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   hidden files doesn't), else an archived file shows there only while it's the open file. Files archived before stay put until `vau archive tidy` (or the palette's "Move archived files into archive folders").
 
 ### Editor and files
+- **Database views and bases show every row**, like Obsidian (no cap at 500), drawn as you scroll; a database view
+  without `limit` lists every match (it was 50).
 - **Editing keys over the phone's keyboard**: while you write a note, a row of undo, redo, link, task, indent, bold,
   italic, highlight, bullet list and photo sits above the keyboard, like the terminal's keys; pick them in Editing commands'
   settings.

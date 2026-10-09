@@ -57,7 +57,8 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
   return rel
 }
 
-const chars = (s: string, n: number) => [...s].slice(0, n).join("")
+/** The first `n` characters, an ellipsis saying when there were more. */
+const chars = (s: string, n: number) => { const c = [...s]; return c.length > n ? `${c.slice(0, n).join("")}…` : s }
 
 /** A line as search shows it: without its list mark, task box, quote or heading marks, up to 200 characters, from a
  *  little before the match (`at`, an index in the line) when that's further in, so it's in what's shown. */
@@ -420,7 +421,7 @@ const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
   "created-old": [(r) => r.created, false],
 }
 
-type SearchOpts = { lines?: number; folder?: string; matchCase?: boolean; sort?: string; context?: number }
+type SearchOpts = { lines?: number; folder?: string; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
 /** Files matching a query (core/searchquery.ts: words, "phrases", -not, OR, file:, path:, tag:, line:(), [property]...),
  *  with the first line that matched, and with `lines` every such line (and `context` lines around each). */
@@ -473,7 +474,8 @@ export function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {
   // Archived files last (core/fileprops.ts), like the quick switcher.
   const [key, reverse] = SORTS[opts.sort ?? ""] ?? SORTS.relevance
   const sorted = sortBy(out, key, reverse)
-  return [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(0, limit)
+  const from = opts.offset ?? 0
+  return [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(from, from + limit)
 }
 
 /** The file routes, or undefined if the request isn't one of them. */
@@ -484,7 +486,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     const n = (v: string | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)))
     if (query.sort && !(query.sort in SORTS)) throw new HTTPError(400, `sort is one of ${Object.keys(SORTS).join(", ")}`)
     return search(vault, query.q ?? "", n(query.limit, 500) || 60,
-      { lines: n(query.lines, 50), folder: query.folder, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5) })
+      { lines: n(query.lines, 50), folder: query.folder, matchCase: query.case === "1" || query.case === "true", sort: query.sort, context: n(query.context, 5), offset: n(query.offset, Infinity) })
   }
   if (route === "file/info" && method === "GET") return info(vault, clean(query.path, true, vault, true))
   if (route === "file") {

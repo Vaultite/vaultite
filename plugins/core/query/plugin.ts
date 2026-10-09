@@ -183,11 +183,13 @@ plugin.provide("text:base", (text: string, rel: string, at?: { sub?: string; hos
 // A ```base fence in a note: its YAML is a base, `this` the note (the one embedding it, when it's embedded).
 plugin.provide("fence:base", (ctx: { path: string; text: string; host?: string }) => baseMarkdown(plugin.vault, ctx.text, { path: ctx.path, this: ctx.host ?? ctx.path, level: 3 }))
 
-/** A cell of a Markdown table: one line, pipes escaped. */
-const cell = (v: unknown) => {
-  const s = v === null || v === undefined ? "" : Array.isArray(v) ? v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join(", ")
-    : typeof v === "object" ? JSON.stringify(v) : String(v)
-  return s.replace(/\s*\n\s*/g, " ").replace(/\|/g, "\\|").slice(0, 200)
+/** A cell of a Markdown table: one line, pipes escaped, at most CELL characters (then "…", counted in `cut`). */
+const CELL = 200
+const cell = (v: unknown, cut?: { n: number }) => {
+  const s = (v === null || v === undefined ? "" : Array.isArray(v) ? v.map((x) => (typeof x === "object" ? JSON.stringify(x) : String(x))).join(", ")
+    : typeof v === "object" ? JSON.stringify(v) : String(v)).replace(/\s*\n\s*/g, " ")
+  if (s.length > CELL && cut) cut.n++
+  return (s.length > CELL ? `${s.slice(0, CELL)}…` : s).replace(/\|/g, "\\|")
 }
 
 const LIST = (description: string) => ({ type: "array" as const, items: { type: "string" as const }, description })
@@ -199,7 +201,8 @@ plugin.op({
   summary: "Query the vault like a database: the files that match, as a table of their properties (a database view).",
   help: `The same engine as \`\`\`block-query (vau docs query): from (folders), type (person, note, log, book, project...),
 tags, where ("relation = friend and every_days <= 30", "area = workouts and date >= 2026-09-01"), columns, sort ("-date"),
-group, limit. The answer as JSON has every row's values; as text it's a Markdown table (one per group).
+group, limit and offset (a page: 50 rows at a time unless limit says). The answer as JSON has every row's values
+whole; as text it's a Markdown table (one per group), a long cell cut with "…".
 
   vau query --type log --where "area = sleep" --columns file,date,duration_min --sort=-date --limit 7
   vau query --type person --columns file,relation --group relation
@@ -213,29 +216,34 @@ group, limit. The answer as JSON has every row's values; as text it's a Markdown
     columns: LIST("properties to show (and file, folder, path, created, updated)"),
     sort: LIST("keys to sort by; a leading - is descending"),
     group: { type: "string", description: "a property to group the rows by" },
-    limit: { type: "integer", minimum: 1, description: "at most this many rows (default 50)" },
+    limit: { type: "integer", minimum: 1, default: 50, description: "at most this many rows" },
+    offset: { type: "integer", minimum: 0, description: "skip this many rows first (the next page: what the last answer says)" },
     archived: { type: "boolean", description: "include archived files" },
     this: { type: "string", format: "path", description: "the note `this` is in the where (file.links contains this: what links to it)" },
   },
   run: (p) => {
     const options: Item = {}
-    for (const k of ["from", "type", "tags", "where", "columns", "sort", "group", "limit", "archived"]) if (p[k] !== undefined && p[k] !== "") options[k] = p[k]
+    for (const k of ["from", "type", "tags", "where", "columns", "sort", "group", "limit", "offset", "archived"]) if (p[k] !== undefined && p[k] !== "") options[k] = p[k]
     const here = typeof p.this === "string" && p.this ? plugin.vault.relocated(p.this) : undefined
     if (here && !plugin.vault.entries.has(here) && !plugin.vault.others.has(here)) throw new HTTPError(404, `this: no file '${p.this}'`)
     return query(plugin.vault, options as Opts, here, here)
   },
   text: (r) => {
+    const cut = { n: 0 }
     const cols = ((r.columns ?? []) as Item[]).map((c) => (typeof c === "string" ? { key: c, label: c } : { key: c.key ?? c.id ?? c.name, label: c.label ?? c.name ?? c.key }))
     const table = (rows: Item[]) => {
       if (!rows.length) return "_None._"
       const head = `| ${cols.map((c) => cell(c.label)).join(" | ")} |\n|${cols.map(() => " --- ").join("|")}|`
-      return [head, ...rows.map((row) => `| ${cols.map((c, i) => cell(Array.isArray(row.values) ? row.values[i] : row.values?.[c.key] ?? (c.key === "file" ? row.title : ""))).join(" | ")} |`)].join("\n")
+      return [head, ...rows.map((row) => `| ${cols.map((c, i) => cell(Array.isArray(row.values) ? row.values[i] : row.values?.[c.key] ?? (c.key === "file" ? row.title : ""), cut)).join(" | ")} |`)].join("\n")
     }
     const groups = (r.groups ?? []) as Item[]
     const body = groups.length === 1 && (groups[0].name === null || groups[0].name === undefined || groups[0].name === "")
       ? table(groups[0].rows ?? [])
       : groups.map((g) => `### ${g.name ?? "No value"} (${(g.rows ?? []).length})\n\n${table(g.rows ?? [])}`).join("\n\n")
-    const notes = ((r.notes ?? []) as string[]).map((n) => `_${n}_`).join("\n")
-    return [`${r.shown ?? "?"} of ${r.total ?? "?"} files.`, body || "_None._", notes].filter(Boolean).join("\n\n")
+    const notes = ((r.notes ?? []) as string[]).map((n) => `_${n}_`)
+    if (cut.n) notes.push(`_A cell ending in … is cut at ${CELL} characters: read its file (or ask for JSON) for the whole value._`)
+    const from = r.offset ?? 0, end = from + (r.shown ?? 0)
+    const count = r.shown === r.total ? `${r.total} files.` : `Rows ${r.shown ? `${from + 1}-${end}` : "none"} of ${r.total} files${end < r.total ? `; more: offset ${end}` : ""}.`
+    return [count, body || "_None._", notes.join("\n")].filter(Boolean).join("\n\n")
   },
 })

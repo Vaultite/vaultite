@@ -4,7 +4,7 @@ import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentStart, ago, busyFirst, cap, codingAgent, cwds, dayOf, HOME, limitRows, limitWindow, notHere, priceList, processes,
-  projectOf, quote, readLines, roots, stamp, Tally, terminalOf, throttled, Transcript, transcripts } from "../../../core/codingagents.ts"
+  projectOf, quote, readLines, roots, scanDays, stamp, Tally, terminalOf, throttled, Transcript, transcripts } from "../../../core/codingagents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
@@ -12,7 +12,6 @@ import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
 export const plugin = new Plugin(import.meta.url)
 const CODEX = process.env.CODEX_HOME || path.join(HOME, ".codex")
 plugin.folders(() => [CODEX])
-const KEEP_DAYS = 35 // what the scan keeps in memory; blocks show up to 30 days
 
 // US dollars per million tokens: input, cached input, output (reasoning is part of output), from the published API
 // list (LiteLLM's table). A model takes the longest id it starts with, a whole word (gpt-5.1-codex-max -> gpt-5.1).
@@ -65,11 +64,13 @@ class Scan {
   names = new Map<string, string>() // session -> the name it was given
   limits: { observed: number; rl: Item } | null = null // the newest rate limits a session saw
   pruned = 0
-  /** Read what was appended since the last time, at most every 5 s. */
-  refresh = throttled(5000, () => this.run())
+  reach = scanDays()
+  /** Read what was appended since the last time, at most every 5 s; all again once asked for older days. */
+  refresh = throttled(5000, () => this.run(), () => this.reach < scanDays())
 
   private async run() {
-    const cutoff = Date.now() / 1000 - KEEP_DAYS * 86400
+    if (this.reach < scanDays()) { this.files.clear(); this.resp.clear(); this.turns.clear(); this.reach = scanDays() }
+    const cutoff = Date.now() / 1000 - this.reach * 86400
     const names: string[] = []
     for (const dir of ["sessions", "archived_sessions"]) {
       try {

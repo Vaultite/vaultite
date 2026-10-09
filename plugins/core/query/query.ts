@@ -24,6 +24,8 @@ type SortKey = { key: string; desc: boolean }
 export type View = "table" | "cards" | "list" | "board" | "calendar" | "map"
 export type Result = {
   title: string; view: View; columns: Column[]; groups: Group[]; total: number; shown: number
+  /** How many matches come before the rows shown (a page past the first: `offset`). */
+  offset?: number
   /** The order the rows are in (their `values` have these keys too), so the app can place a moved one. */
   sort: SortKey[]
   /** The key rows are grouped by (a board's columns). */
@@ -45,7 +47,6 @@ export type Result = {
 export class QueryError extends Error {}
 
 const SPECIAL = ["file", "folder", "path", "updated", "created"]
-const MAX = 500
 export const VIEWS: View[] = ["table", "cards", "list", "board", "calendar", "map"]
 const MONTH = /^(\d{4})-(\d{2})$/
 
@@ -317,9 +318,10 @@ export function compile(o: Opts, env: WhereEnv = {}) {
   const sort = sortOf(o.sort)
   const view = (o.view === undefined ? "table" : String(o.view)) as View
   if (!VIEWS.includes(view)) throw new QueryError(`view is table, cards, list, board, calendar or map, not '${view}'`)
-  const dflt = view === "calendar" || view === "map" ? MAX : 50
-  const n = Number(o.limit ?? dflt)
-  const limit = Number.isFinite(n) ? Math.min(Math.max(Math.trunc(n), 1), MAX) : dflt
+  // Every match unless a limit is given (the app draws rows as they near the screen); offset: a page past the first.
+  const n = Number(o.limit), at = Number(o.offset)
+  const limit = o.limit === undefined || o.limit === null || o.limit === "" || !Number.isFinite(n) ? Infinity : Math.max(Math.trunc(n), 1)
+  const offset = Number.isFinite(at) ? Math.max(Math.trunc(at), 0) : 0
   // group: a key, or the Bases way ({property: status, direction: DESC}).
   const g = o.group && typeof o.group === "object" && !Array.isArray(o.group) ? o.group as Record<string, unknown> : null
   const groupKey = g ? (typeof g.property === "string" ? g.property : "") : typeof o.group === "string" ? o.group : ""
@@ -350,7 +352,7 @@ export function compile(o: Opts, env: WhereEnv = {}) {
   }
   const keyName = (k: unknown) => (typeof k === "string" ? keyOf(k) : "")
   return {
-    match, sort, view, limit, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
+    match, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
     title: typeof o.title === "string" ? o.title : "",
     coordinates: keyName(o.coordinates) || "coordinates", markerColor: keyName(o.markerColor), markerIcon: keyName(o.markerIcon),
   }
@@ -545,7 +547,7 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   const types: Record<string, string> = {}
   for (const k of keys) { const t = typeOfKey(k); if (t) types[k] = t }
   hits.sort(byKeys(sort, sv, types, ctx.types?.value))
-  const shown = hits.slice(0, q.limit)
+  const shown = hits.slice(q.offset, q.offset + q.limit)
   let unplaced = 0
   const rowOf = new Map<Row, Rec>()
   const rows: Row[] = shown.map((r) => {
@@ -627,7 +629,7 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     if (typeof d === "string" && d.trim()) labels.set(keyOf(k), d.trim())
   }
   return {
-    title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: rows.length, sort,
+    title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: rows.length, ...(q.offset ? { offset: q.offset } : {}), sort,
     ...(q.group ? { group: q.group } : {}), ...(date ? { date, month } : {}), ...(summaries ? { summaries } : {}),
     ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(notes.length ? { notes } : {}), ...(Object.keys(types).length ? { types } : {}),
   }
@@ -734,6 +736,7 @@ export function markdown(res: Result, level = 2): string {
       parts.push(`Summaries: ${res.summaries.map((s) => `${res.columns.find((c) => c.key === s.key)?.label ?? s.key} ${s.name.toLowerCase()} ${summaryText(s.value)}`).join(" · ")}`)
     }
   }
-  if (res.total > res.shown) parts.push(`_${res.shown} of ${res.total} shown._`)
+  const from = res.offset ?? 0
+  if (res.total > res.shown) parts.push(`_${res.shown ? `${from + 1}-${from + res.shown}` : "None"} of ${res.total} shown${from + res.shown < res.total ? `; more: offset ${from + res.shown}` : ""}._`)
   return parts.join("\n\n")
 }

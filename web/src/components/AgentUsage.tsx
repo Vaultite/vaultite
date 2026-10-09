@@ -99,7 +99,7 @@ export function openSession(src: AgentSource, s: { id: string; terminal?: string
 
 const titleOf = (s: { title: string; private?: boolean }, untitled: string) => (s.private ? "Private session" : s.title || untitled)
 
-const daysOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.days === "number" ? Math.round(o.days) : 30, 1), 30)
+const daysOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.days === "number" ? Math.round(o.days) : 30, 1), 3650)
 export const money = (v: number) => (v < 100 ? `$${v.toFixed(2)}` : `$${numberText(Math.round(v))}`)
 export const tokens = (n: number) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n)

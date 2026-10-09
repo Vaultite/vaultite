@@ -7,7 +7,7 @@ import path from "node:path"
 import { promisify } from "node:util"
 import zlib from "node:zlib"
 import { accountsNamed, type AgentStart, ago, codingAgent, cut, expandHome, HOME, isoMicro as iso, notHere, num, processes, projectOf, quote,
-  rebuilt, roots, SqliteFile, Tally, terminalOf, vauMcpServer } from "../../../core/codingagents.ts"
+  rebuilt, roots, scanDays, SqliteFile, Tally, terminalOf, vauMcpServer } from "../../../core/codingagents.ts"
 import { bullets, fmtMin, localDate, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { type Any, conversation, injected, textOf } from "./transcript.ts"
@@ -18,7 +18,6 @@ const run = promisify(execFile)
 const env = (k: string) => process.env[k]?.trim() || ""
 const PROFILE = env("OPENCLAW_PROFILE").toLowerCase() === "default" ? "" : env("OPENCLAW_PROFILE")
 const STATE = env("OPENCLAW_STATE_DIR") ? expandHome(env("OPENCLAW_STATE_DIR")) : path.join(HOME, PROFILE ? `.openclaw-${PROFILE}` : ".openclaw")
-const KEEP_DAYS = 35 // what the scan keeps in memory; blocks show up to 30 days
 // zstd comes with Node 22.15: without it compressed events are skipped.
 const unzstd = typeof zlib.zstdDecompressSync === "function" ? zlib.zstdDecompressSync : null
 const str = (v: unknown) => (typeof v === "string" ? v : "")
@@ -75,10 +74,10 @@ class Agent {
       : path.join(STATE, `workspace-${this.id}`)
   }
 
-  /** Read the last KEEP_DAYS days again, at most every 5 s and only when the database changed. */
+  /** Read the days the scans reach (scanDays) again, at most every 5 s and only when the database changed. */
   refresh() {
     if (!this.db.due(() => { this.replies = []; this.nodes.clear(); this.bySession.clear(); this.windows.clear() })) return
-    const cutoff = Date.now() - KEEP_DAYS * 86400000
+    const cutoff = Date.now() - scanDays() * 86400000
     this.nodes = new Map(this.db.all(`SELECT session_key, current_session_id, status, label, display_name, parent_session_key, spawned_by,
         archived_at, created_at, updated_at, last_activity_at, entry_json FROM session_nodes WHERE updated_at >= ? OR status = 'running'`, cutoff)
       .map((n) => {

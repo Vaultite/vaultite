@@ -4,7 +4,7 @@ import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useStat
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Table2 } from "lucide-react"
 import {
   addDays, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, Panel, parse, PinMap, range, resolver, setProperty, startDrag,
-  today, typedValue, useDrag, useDropHit, useDropTarget, useLive, useVaultChange, weekStart, type BlockCtx, type MapPin, type MenuItem,
+  today, typedValue, useDrag, useDropHit, useDropTarget, useLive, useRowsNear, useVaultChange, weekStart, type BlockCtx, type MapPin, type MenuItem,
 } from "@vaultite"
 import { byKeys, compare, comparer, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
 
@@ -209,6 +209,10 @@ const Table = memo(function Table({ groups, res, resolve, sort, setSort, save }:
   const [editing, setEditing] = useState<string | null>(null)
   const dropped = useRef(false) // Escape: the blur that follows doesn't save
   const { open, cancel } = opener
+  // (every row, drawn as it comes near the screen: the groups take theirs in turn)
+  const total = groups.reduce((n, g) => n + g.rows.length, 0)
+  const [drawn, mark] = useRowsNear(total)
+  const upTo = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.rows.length, 0))
   // Asc, desc, then the query's own order.
   const next = (key: string): Sort => (sort?.key !== key ? { key, desc: false } : !sort.desc ? { key, desc: true } : null)
   return (
@@ -227,12 +231,12 @@ const Table = memo(function Table({ groups, res, resolve, sort, setSort, save }:
               ))}
             </tr>
           </thead>
-        {groups.map((g, gi) => (
+        {groups.map((g, gi) => upTo[gi] < drawn && (
         <tbody key={g.name ?? `-${gi}`}>
           {(groups.length > 1 || g.name) && (
             <tr><td colSpan={res.columns.length} className={cn("pb-0.5", gi ? "pt-4" : "pt-2")}><GroupHead name={g.name} n={g.rows.length} /></td></tr>
           )}
-          {g.rows.map((r) => (
+          {g.rows.slice(0, drawn - upTo[gi]).map((r) => (
             <tr key={r.path} tabIndex={-1} data-keyrow data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, !!(e.target as HTMLElement).closest("[data-editable]")) }}
               className="cursor-pointer border-b-[0.5px] border-border hover:bg-foreground/[0.03] [tbody:last-child>&:last-child]:border-0">
               {res.columns.map((c) => {
@@ -263,13 +267,14 @@ const Table = memo(function Table({ groups, res, resolve, sort, setSort, save }:
               })}
             </tr>
           ))}
-          {g.summaries && <SummaryRow res={res} values={g.summaries} group />}
+          {g.summaries && drawn >= upTo[gi] + g.rows.length && <SummaryRow res={res} values={g.summaries} group />}
         </tbody>
         ))}
-        {res.summaries?.length ? (
+        {res.summaries?.length && drawn >= total ? (
           <tfoot><SummaryRow res={res} values={Object.fromEntries(res.summaries.map((x) => [x.key, x.value]))} /></tfoot>
         ) : null}
       </table>
+      {drawn < total && <div ref={mark} className="h-px" aria-hidden />}
     </div>
   )
 })
@@ -332,9 +337,10 @@ const MapResult = memo(function MapResult({ groups, res, resolve, fill }: { grou
 const others = (res: Result) => res.columns.filter((c) => c.key !== "file")
 
 const Cards = memo(function Cards({ rows, res, resolve }: { rows: Row[]; res: Result; resolve: Resolve }) {
+  const [drawn, mark] = useRowsNear(rows.length)
   return (
     <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-      {rows.map((r) => (
+      {rows.slice(0, drawn).map((r) => (
         <button type="button" key={r.path} data-keyrow data-query-row={r.path} onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
           className="min-w-0 cursor-pointer rounded-[10px] border-[0.5px] border-border bg-background/50 p-3 text-left hover:bg-foreground/[0.03]">
           <div className="truncate text-[15px] font-medium">{r.title}</div>
@@ -348,28 +354,33 @@ const Cards = memo(function Cards({ rows, res, resolve }: { rows: Row[]; res: Re
           </div>
         </button>
       ))}
+      {drawn < rows.length && <div ref={mark} className="col-span-full h-px" aria-hidden />}
     </div>
   )
 })
 
 const Lines = memo(function Lines({ rows, res, resolve }: { rows: Row[]; res: Result; resolve: Resolve }) {
+  const [drawn, mark] = useRowsNear(rows.length)
   return (
-    <div className="hairline">
-      {rows.map((r) => (
-        <button type="button" key={r.path} data-keyrow data-query-row={r.path} onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
-          className={cn("relative isolate flex min-h-11 w-full min-w-0 cursor-pointer flex-col justify-center py-2 text-left",
-            "before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]")}>
-          <span className="truncate text-[15px] leading-[20px]">{r.title}</span>
-          {others(res).length > 0 && (
-            <span className="flex min-w-0 flex-wrap gap-x-1.5 text-[13px] text-muted-foreground">
-              {others(res).filter((c) => text(r.values[c.key])).map((c, i) => (
-                <span key={c.key} className="min-w-0 truncate">{i > 0 && "· "}<Value v={r.values[c.key]} resolve={resolve} /></span>
-              ))}
-            </span>
-          )}
-        </button>
-      ))}
-    </div>
+    <>
+      <div className="hairline">
+        {rows.slice(0, drawn).map((r) => (
+          <button type="button" key={r.path} data-keyrow data-query-row={r.path} onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
+            className={cn("relative isolate flex min-h-11 w-full min-w-0 cursor-pointer flex-col justify-center py-2 text-left",
+              "before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] hover:before:bg-foreground/[0.04]")}>
+            <span className="truncate text-[15px] leading-[20px]">{r.title}</span>
+            {others(res).length > 0 && (
+              <span className="flex min-w-0 flex-wrap gap-x-1.5 text-[13px] text-muted-foreground">
+                {others(res).filter((c) => text(r.values[c.key])).map((c, i) => (
+                  <span key={c.key} className="min-w-0 truncate">{i > 0 && "· "}<Value v={r.values[c.key]} resolve={resolve} /></span>
+                ))}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+      {drawn < rows.length && <div ref={mark} className="h-px" aria-hidden />}
+    </>
   )
 })
 
@@ -419,54 +430,60 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
     if (r && c) move(r, c)
   }, { end: edge.stop })
   const fields = others(res).filter((c) => c.key !== key)
+  // (every card, drawn as the board's end comes near the screen: each column's next ones at once)
+  const longest = Math.max(0, ...cols.map((c) => c.rows.length))
+  const [drawn, mark] = useRowsNear(longest)
   return (
-    <div ref={box} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" data-query-board data-no-edit>
-      {cols.map((c) => (
-        <div key={c.key} data-board-col={c.key}
-          className={cn("flex w-[232px] shrink-0 flex-col rounded-[10px] bg-foreground/[0.035] p-1.5 transition-shadow",
-            hit === c.key && "ring-2 ring-primary")}>
-          <div className="flex items-baseline gap-1.5 px-1.5 pt-0.5 pb-1.5 text-[13px] font-semibold text-muted-foreground" data-query-group>
-            <span className="truncate">{c.name ?? "No value"}</span><span className="font-normal tabular-nums">{c.rows.length}</span>
+    <>
+      <div ref={box} className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1" data-query-board data-no-edit>
+        {cols.map((c) => (
+          <div key={c.key} data-board-col={c.key}
+            className={cn("flex w-[232px] shrink-0 flex-col rounded-[10px] bg-foreground/[0.035] p-1.5 transition-shadow",
+              hit === c.key && "ring-2 ring-primary")}>
+            <div className="flex items-baseline gap-1.5 px-1.5 pt-0.5 pb-1.5 text-[13px] font-semibold text-muted-foreground" data-query-group>
+              <span className="truncate">{c.name ?? "No value"}</span><span className="font-normal tabular-nums">{c.rows.length}</span>
+            </div>
+            <div className="flex min-h-10 flex-col gap-1.5">
+              {c.rows.slice(0, drawn).map((r) => {
+                const can = movable(r)
+                const menu = () => [
+                  { label: "Open", run: () => openFile(r.path) },
+                  ...(can ? moveItems(cols, c.key, (to) => move(r, to)).map((m, i) => (i ? m : { ...m, sep: true })) : []),
+                ]
+                return (
+                  <div key={r.path} role="button" tabIndex={0} data-keyrow data-query-row={r.path} onContextMenu={menuFor(menu)}
+                    onPointerDown={can ? (e) => startDrag(e, { from: "row", path: r.path, label: r.title }, { touch: true }) : undefined}
+                    onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
+                    onKeyDown={(e) => { if (e.key === "Enter") openFile(r.path) }}
+                    className={cn("group relative min-w-0 cursor-pointer rounded-[8px] bg-card p-2.5 text-left shadow-sm ring-[0.5px] ring-border hover:bg-background",
+                      drag?.item.from === "row" && drag.item.path === r.path && "opacity-50")}>
+                    <div className="truncate pr-6 text-[14px] font-medium">{r.title}</div>
+                    {fields.some((f) => text(r.values[f.key])) && (
+                      <div className="mt-1 space-y-0.5 text-[12px]">
+                        {fields.filter((f) => text(r.values[f.key])).map((f) => (
+                          <div key={f.key} className="flex min-w-0 gap-2">
+                            <span className="shrink-0 text-muted-foreground">{f.label}</span>
+                            <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[f.key]} resolve={resolve} /></span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {can && (
+                      <button type="button" data-no-drag aria-label={`Move ${r.title}`} data-query-move
+                        onClick={(e) => { e.stopPropagation(); menuBelow(e, moveItems(cols, c.key, (to) => move(r, to))) }}
+                        className="absolute top-1.5 right-1.5 grid size-6 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100">
+                        <Ellipsis className="size-4" strokeWidth={2} />
+                      </button>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
           </div>
-          <div className="flex min-h-10 flex-col gap-1.5">
-            {c.rows.map((r) => {
-              const can = movable(r)
-              const menu = () => [
-                { label: "Open", run: () => openFile(r.path) },
-                ...(can ? moveItems(cols, c.key, (to) => move(r, to)).map((m, i) => (i ? m : { ...m, sep: true })) : []),
-              ]
-              return (
-                <div key={r.path} role="button" tabIndex={0} data-keyrow data-query-row={r.path} onContextMenu={menuFor(menu)}
-                  onPointerDown={can ? (e) => startDrag(e, { from: "row", path: r.path, label: r.title }, { touch: true }) : undefined}
-                  onClick={(e) => openFile(r.path, { newTab: e.metaKey || e.ctrlKey })}
-                  onKeyDown={(e) => { if (e.key === "Enter") openFile(r.path) }}
-                  className={cn("group relative min-w-0 cursor-pointer rounded-[8px] bg-card p-2.5 text-left shadow-sm ring-[0.5px] ring-border hover:bg-background",
-                    drag?.item.from === "row" && drag.item.path === r.path && "opacity-50")}>
-                  <div className="truncate pr-6 text-[14px] font-medium">{r.title}</div>
-                  {fields.some((f) => text(r.values[f.key])) && (
-                    <div className="mt-1 space-y-0.5 text-[12px]">
-                      {fields.filter((f) => text(r.values[f.key])).map((f) => (
-                        <div key={f.key} className="flex min-w-0 gap-2">
-                          <span className="shrink-0 text-muted-foreground">{f.label}</span>
-                          <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[f.key]} resolve={resolve} /></span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                  {can && (
-                    <button type="button" data-no-drag aria-label={`Move ${r.title}`} data-query-move
-                      onClick={(e) => { e.stopPropagation(); menuBelow(e, moveItems(cols, c.key, (to) => move(r, to))) }}
-                      className="absolute top-1.5 right-1.5 grid size-6 cursor-pointer place-items-center rounded-[5px] text-muted-foreground opacity-0 group-hover:opacity-100 hover:bg-foreground/[0.06] hover:text-foreground focus-visible:opacity-100 pointer-coarse:opacity-100">
-                      <Ellipsis className="size-4" strokeWidth={2} />
-                    </button>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
-      ))}
-    </div>
+        ))}
+      </div>
+      {drawn < longest && <div ref={mark} className="h-px" aria-hidden />}
+    </>
   )
 })
 

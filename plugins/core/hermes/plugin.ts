@@ -4,13 +4,12 @@ import fs from "node:fs"
 import path from "node:path"
 import { isMap, isScalar, type Node, parseDocument, type Scalar } from "yaml"
 import { accountsNamed, type AgentStart, ago, busyFirst, cap, codingAgent, cwds, expandHome, HOME, isoMicro as iso, notHere, num, processes,
-  projectOf, quote, rebuilt, roots, SqliteFile, Tally, terminalOf, vauMcpServer } from "../../../core/codingagents.ts"
+  projectOf, quote, rebuilt, roots, scanDays, SqliteFile, Tally, terminalOf, vauMcpServer } from "../../../core/codingagents.ts"
 import { bullets, HTTPError, localDate, localTime, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { conversation, type Row, textOf } from "./transcript.ts"
 
 export const plugin = new Plugin(import.meta.url)
-const KEEP_DAYS = 35 // what the scan keeps in memory; blocks show up to 30 days
 /** A message's content read as bytes: node:sqlite's text ends at a NUL, and Hermes starts its JSON parts (an image
  *  with the text) with one ("\0json:"), so as text they came back empty. */
 const CONTENT = "CAST(content AS BLOB) AS content"
@@ -85,10 +84,10 @@ class Store extends SqliteFile {
       .filter(Boolean).join(" AND ") || "1"
   }
 
-  /** Read the last KEEP_DAYS days again, at most every 5 s and only when the database changed. */
+  /** Read the days the scans reach (scanDays) again, at most every 5 s and only when the database changed. */
   refresh() {
     if (!this.due(() => { this.uses = []; this.turns = []; this.sessions.clear() })) return
-    const cutoff = Date.now() / 1000 - KEEP_DAYS * 86400
+    const cutoff = Date.now() / 1000 - scanDays() * 86400
     const c = (k: string) => this.col("sessions", k)
     const last = `coalesce(${this.has("sessions", "last_activity_at") ? "last_activity_at" : "NULL"}, ended_at, started_at)`
     this.parents = new Map(this.all(`SELECT id, parent_session_id AS p FROM sessions WHERE parent_session_id IS NOT NULL`).map((r) => [r.id, r.p]))

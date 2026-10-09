@@ -16,7 +16,7 @@ are the only copy, and the user reads them too.
 
 - `vau` is the app's CLI (`vau --help`). Write through it where there's an operation (`vau ops`; the same are
   `POST /api/ops/<id>` and MCP's tools): it keeps ids, dates and links right. Else edit the file, changing only what
-  you mean to.
+  you mean to (`vau edit`: just the text you name). A long answer comes in pages: it ends saying the next `offset`.
 - Before writing a kind of file, read its format: `vau docs <topic>` (`vau docs` lists them). A file's kind is its
   `type:` field; new files go where files of their kind already are. Don't invent fields.
 - `vau context` shows what the user is looking at; `vau render <file>` a file with its views filled in as text.

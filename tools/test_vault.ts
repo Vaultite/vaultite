@@ -1547,7 +1547,7 @@ live.close()
 
 // Database views (plugins/core/query): one evaluator (query.ts) for the route and the block's text.
 {
-  const { parseWhere, run, QueryError } = await import("../plugins/core/query/query.ts")
+  const { parseWhere, run, QueryError, markdown } = await import("../plugins/core/query/query.ts")
   const recs = [
     { path: "Q/Alice Park.md", fm: { type: "qtest", relation: "friend", every_days: 30, tags: ["University", "AI"], with: "[[Bob Lee]]", met: "2026-09-01" }, mtime: 3 },
     { path: "Q/Bob Lee.md", fm: { type: "qtest", relation: "Family", every_days: 7, tags: ["Work"], met: "2025-01-10" }, mtime: 2 },
@@ -1574,6 +1574,11 @@ live.close()
     try { parseWhere(w) } catch (e) { if (e instanceof QueryError) bad++ }
   }
   check("query: garbage is an error, never a crash", bad === 9, bad)
+  const many = Array.from({ length: 700 }, (_, i) => ({ path: `M/${String(i).padStart(3, "0")}.md`, fm: { n: i }, mtime: 0 }))
+  const all = run({ columns: ["file", "n"] }, many), page = run({ columns: ["file", "n"], limit: 50, offset: 600 }, many)
+  check("query: every match without a limit (no cap), a page with limit and offset", all.shown === 700 && all.total === 700 &&
+    page.shown === 50 && page.offset === 600 && page.groups[0].rows[0].title === "600" && markdown(page).includes("_601-650 of 700 shown; more: offset 650._"),
+  [all.shown, page.shown, page.offset])
   write("Query test/Alice Park.md", "---\ntype: qtest\nrelation: friend\nevery_days: 30\n---\n\nHi.\n")
   write("Query test/Bob Lee.md", "---\ntype: qtest\nrelation: family\nevery_days: 7 # weekly\n---\n")
   write("Query test/View.md", "---\ntags: [Trip]\n---\n\n```block-query\ntitle: Test people\nfrom: Query test/\ntype: qtest\ncolumns: [file, relation, every_days]\nsort: -every_days\n```\n")
@@ -2257,6 +2262,52 @@ uiLive.close()
   check("actions: as text, one line each with its op", /- Add to timeline: person\.timeline-add person="Alice Park", needs kind, text/.test(await asMcp("file.actions", { path: "People/Alice Park.md" })))
   cr = await vau("read", "From vau")
   check("vau read: the file's text exactly (no path before it, as an MCP client gets)", cr.code === 0 && cr.out === read("Notes/From vau.md").replace(/\n$/, ""), cr)
+
+  // Agents page through what's long, every cut says where to go on, and a page can't be written back over the file.
+  const longText = Array.from({ length: 3000 }, (_, i) => `Line ${i + 1} ${"x".repeat(60)}`).join("\n") + "\n"
+  write("Notes/Long read.md", longText)
+  await vault.synced()
+  const p1 = await asMcp("file.read", { path: "Notes/Long read.md" })
+  const m1 = /\(lines 1-(\d+) of 3000; more: offset (\d+); to change it: edit_file/.exec(p1)
+  check("read over MCP: a long file in pages, cut at a line, saying where to go on", !!m1 && Number(m1[2]) === Number(m1[1]) + 1 && p1.length < 101_000 && p1.includes(`Line ${m1[1]} `) && !p1.includes(`Line ${m1[2]} `), p1.slice(-200))
+  const pages = [p1]
+  let at = Number(m1?.[2])
+  while (at && pages.length < 10) {
+    const p = await asMcp("file.read", { path: "Notes/Long read.md", offset: at })
+    pages.push(p)
+    at = Number(/; more: offset (\d+)/.exec(p)?.[1] ?? 0)
+  }
+  const joined = pages.map((p) => p.slice(p.indexOf("\n\n") + 2).replace(/\n\(lines [^\n]*\)$/, "")).join("")
+  check("read: offset goes on from there, every line once, to the end", joined === longText && /\(lines \d+-3000 of 3000; to change it/.test(pages.at(-1)!), [pages.length, pages.at(-1)!.slice(-200)])
+  const few = (await app.runOp("file.read", { path: "Notes/Long read.md", offset: 10, limit: 2 })).result as Any
+  check("read: offset and limit give exactly those lines (the API too)", few.text === `Line 10 ${"x".repeat(60)}\nLine 11 ${"x".repeat(60)}\n` && few.lines === 3000 && few.to === 11, few)
+  const opErr = async (id: string, params: Any, who = whoOf("mcp", "claude-code")) => { try { await app.runOp(id, params, { who }); return "" } catch (e) { return (e as Error).message } }
+  const pageBody = p1.slice(p1.indexOf("\n\n") + 2)
+  check("write_file: a page as read is refused (it would drop the rest)", /drop the rest/.test(await opErr("file.write", { path: "Notes/Long read.md", text: pageBody })) && read("Notes/Long read.md") === longText)
+  check("write_file: a file longer than one read needs base over MCP", /longer than one read/.test(await opErr("file.write", { path: "Notes/Long read.md", text: "short\n" })) && read("Notes/Long read.md") === longText)
+  const page = few.text
+  await app.runOp("file.write", { path: "Notes/Long read.md", text: page.replace("Line 10 ", "Line ten "), base: page }, { who: whoOf("mcp", "claude-code") })
+  check("write_file: a page written with base changes it and keeps the rest", read("Notes/Long read.md") === longText.replace("Line 10 ", "Line ten "), read("Notes/Long read.md").slice(0, 300))
+  await app.runOp("file.edit", { path: "Notes/Long read.md", old: "Line 2999 ", new: "Line two nine nine nine " }, { who: whoOf("mcp", "claude-code") })
+  check("edit_file: replaces just that text, the rest kept", read("Notes/Long read.md") === longText.replace("Line 10 ", "Line ten ").replace("Line 2999 ", "Line two nine nine nine "))
+  check("edit_file: text found more than once, or not at all, is refused with what to do", /3000 times.*all: true/.test(await opErr("file.edit", { path: "Notes/Long read.md", old: ` ${"x".repeat(60)}`, new: "y" })) &&
+    /isn't in/.test(await opErr("file.edit", { path: "Notes/Long read.md", old: "nowhere to be found", new: "y" })))
+  await app.runOp("file.edit", { path: "Notes/Long read.md", old: "x".repeat(60), new: "y", all: true })
+  check("edit_file: all replaces every one", !read("Notes/Long read.md").includes("xxxx") && read("Notes/Long read.md").split("\n").length === 3001)
+  for (let i = 0; i < 25; i++) write(`Paged search/Hit ${String(i).padStart(2, "0")}.md`, `pagedneedle ${"word ".repeat(80)}\n`)
+  await vault.synced()
+  const s1 = await asMcp("file.search", { query: "pagedneedle", folder: "Paged search", sort: "name" })
+  const s2 = await asMcp("file.search", { query: "pagedneedle", folder: "Paged search", sort: "name", offset: 20 })
+  check("search: a page says where the next starts; a long line ends in …", /\(more files match: offset 20\)$/.test(s1) && (s1.match(/^- /gm) ?? []).length === 20 && s1.includes("…") &&
+    (s2.match(/^- /gm) ?? []).length === 5 && s2.includes("Hit 24") && !s2.includes("more files match"), [s1.slice(-200), s2])
+  const l1 = await asMcp("file.list", { folder: "Paged search", limit: 10, offset: 10 })
+  check("list: a page with offset, saying what's left", l1.includes("Hit 10") && !l1.includes("Hit 09") && /\(files 11-20 of 25; more: offset 20/.test(l1), l1)
+  write("Paged search/Long cell.md", `---\ntype: longcell\nsummary: ${"y".repeat(300)}\n---\n`)
+  await vault.synced()
+  const q1 = await asMcp("query.run", { type: "longcell", columns: ["file", "summary"] })
+  const q2 = await asMcp("query.run", { from: ["Paged search"], columns: ["file"], sort: "file", limit: 10 })
+  check("query: a cut cell ends in … and says how to get it whole; a page says the next offset", q1.includes(`${"y".repeat(200)}…`) && q1.includes("read its file") &&
+    q2.startsWith("Rows 1-10 of 26 files; more: offset 10."), [q1.slice(-300), q2.slice(0, 80)])
 }
 
 // Appearance: Obsidian themes as colour schemes, CSS snippets, appearance.json keys kept

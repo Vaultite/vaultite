@@ -65,8 +65,7 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
     ...(Array.isArray(v.order) && v.order.length ? { columns: v.order.map(String) } : {}),
     ...(v.sort !== undefined ? { sort: v.sort } : {}),
     ...(group && typeof group.property === "string" ? { group: { property: group.property, direction: group.direction } } : {}),
-    // (Obsidian shows every match; here at most 500 rows are drawn, and the count says how many there are)
-    limit: typeof v.limit === "number" && v.limit > 0 ? v.limit : 500,
+    ...(typeof v.limit === "number" && v.limit > 0 ? { limit: v.limit } : {}),
   }
   for (const k of ["coordinates", "markerColor", "markerIcon", "date", "month"]) if (typeof v[k] === "string") opts[k] = v[k]
   return { opts, views, index, notes }

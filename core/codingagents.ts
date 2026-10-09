@@ -26,10 +26,15 @@ const pad = (n: number) => String(n).padStart(2, "0")
 /** Epoch ms -> "2026-09-29T17:57:21.325000Z" (no fraction on a whole second), or null. */
 export const isoMicro = (ms: number | null | undefined) =>
   ms ? new Date(ms).toISOString().replace(/\.(\d{3})Z$/, (_, f) => (f === "000" ? "Z" : `.${f}000Z`)) : null
-/** A block's or a query's `days`: 1 to 30, 30 when unset. */
+/** How many days back the scans read: 35, and as far as a block or a query has asked for since the server started. */
+let reach = 35
+export const scanDays = () => reach
+/** A block's or a query's `days`: 30 when unset, any range up to ten years; asking for more widens the scans. */
 function daysOf(v: unknown) {
   const n = Math.trunc(Number(v || 30))
-  return Number.isFinite(n) ? Math.min(Math.max(n, 1), 30) : 30
+  const days = Number.isFinite(n) ? Math.min(Math.max(n, 1), 3650) : 30
+  reach = Math.max(reach, days + 5)
+  return days
 }
 
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
@@ -57,12 +62,12 @@ export function priceList<T>(table: Record<string, T>, sep = "") {
   }
 }
 
-/** `fn` run at most every `ms`, callers sharing a run in progress. */
-export function throttled(ms: number, fn: () => Promise<void>) {
+/** `fn` run at most every `ms` (or sooner when `due`), callers sharing a run in progress. */
+export function throttled(ms: number, fn: () => Promise<void>, due?: () => boolean) {
   let at = 0, running: Promise<void> | null = null
   return (): Promise<void> => {
     if (running) return running
-    if (Date.now() - at < ms) return Promise.resolve()
+    if (Date.now() - at < ms && !due?.()) return Promise.resolve()
     running = fn().finally(() => { at = Date.now(); running = null })
     return running
   }
@@ -411,6 +416,7 @@ export class SqliteFile {
   private ino = 0
   private version = -1
   private at = 0
+  private reach = 0
   private cols = new Map<string, Set<string>>()
 
   constructor(where: string | (() => string | null)) {
@@ -475,10 +481,12 @@ export class SqliteFile {
 
   /** Whether to read it again: at most every 5 s, only when it changed; `none` runs when there's no database. */
   due(none: () => void) {
-    if (Date.now() - this.at < 5000) return false
+    const wider = this.reach < reach
+    if (!wider && Date.now() - this.at < 5000) return false
     this.at = Date.now()
     if (!this.open()) { none(); return false }
-    return this.changed()
+    this.reach = reach
+    return this.changed() || wider
   }
 }
 
@@ -555,7 +563,7 @@ export type CodingAgent = Words & {
   id: string
   /** What its session ids look like: any other is a 404. */
   sessionId: RegExp
-  /** All the blocks show: plan, limits, live sessions and `days` (1-30) of usage, of `account` (none: all of them). */
+  /** All the blocks show: plan, limits, live sessions and `days` of usage, of `account` (none: all of them). */
   usage(days: number, account: unknown): Promise<Usage>
   /** A session's title, folder, times, model, project (and what more it says) and conversation; null when it isn't here. */
   session(id: string): (Item & { entries: Entry[] }) | null | Promise<(Item & { entries: Entry[] }) | null>

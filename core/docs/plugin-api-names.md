@@ -465,6 +465,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePane()`
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
+- `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
 - `useScopedState(key, fallback, scope?)`: The same as a hook: [value, set], redrawn when it changes (here, another device on the workspace, a switch).
 - `useSelectable(list, def)`: Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row `data-select-key`; their order on screen is the order a ⇧-click takes.
 - `useSelected(list, key)`: Whether this row is selected: drawn again only when that changes.

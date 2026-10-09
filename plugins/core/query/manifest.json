@@ -22,7 +22,7 @@
         "group": { "type": ["string", "map"], "description": "the key rows are grouped by (a board's columns), or Bases' {property, direction}" },
         "groups": { "type": ["string", "list"], "description": "the groups in this order, the rest after; a board shows them even when empty" },
         "view": { "type": "enum", "values": ["table", "cards", "list", "board", "calendar", "map"], "default": "table", "description": "how the files are drawn" },
-        "limit": { "type": "number", "min": 1, "max": 500, "description": "at most this many rows (50 when left out, a calendar's or a map's 500)" },
+        "limit": { "type": "number", "min": 1, "description": "at most this many rows (every match when left out)" },
         "date": { "type": "string", "description": "a calendar's date key (date when the files have one, else created)" },
         "month": { "type": "string", "description": "the month a calendar shows, as YYYY-MM (this one when left out)" },
         "coordinates": { "type": "string", "description": "a map's key for where each file is ([lat, lon] or \"lat, lon\"; coordinates when left out)" },

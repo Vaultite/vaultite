@@ -18,7 +18,7 @@ sort: [-every_days, file]
 group: relation
 groups: [family, friend]
 view: table
-limit: 50
+limit: 50                   # every match when left out
 archived: true
 ```
 ````
@@ -45,7 +45,7 @@ archived: true
   `[lat, lon]`, or text `"lat, lon"`, like People's), coloured by `markerColor` (a key: an app colour's name like
   `green`, or any CSS colour) with `markerIcon` (a key: a lucide icon's name). Files without one are listed under it.
 - To see what it lists: `GET /api/render?path=<the file>` (a Markdown table, summaries in a last row), or
-  `GET /api/query?q=<the options as JSON or YAML>` (`{columns, groups: [{name, value, rows: [{path, title, values,
+  `GET /api/query?q=<the options as JSON or YAML>` (`limit` and `offset` page it; `{columns, groups: [{name, value, rows: [{path, title, values,
   pin}], summaries}], total, shown, summaries, notes}`, plus `group` for a board and `date`, `month` for a calendar,
   whose groups are its days; a bad query is a 400 saying why). As text a board is a `### column (count)` section per
   column with a bullet per file, a calendar its month with a `- YYYY-MM-DD · [[file]]` bullet per file, a map a

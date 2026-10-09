@@ -4,7 +4,7 @@ import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentStart, ago, busyFirst, codingAgent, cut, cwds, type Entry, HOME, limitRows, nodeSqlite, notHere, processes, projectName,
-  quote, roots, type Said, Tally, terminalOf, type Tool, toolSummary } from "../../../core/codingagents.ts"
+  quote, roots, type Said, scanDays, Tally, terminalOf, type Tool, toolSummary } from "../../../core/codingagents.ts"
 import { localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 
@@ -429,13 +429,13 @@ async function fetchEvents(since: number): Promise<Metered[] | null> {
 
 type Account = { summary: Summary | null; events: Metered[] | null }
 let lastGood: Account = { summary: null, events: null }
-async function cursorAccount(): Promise<Account> {
-  const since = Date.now() - 31 * 86400_000
+async function cursorAccount(days: number): Promise<Account> {
+  const since = Date.now() - days * 86400_000
   const [s, e] = await Promise.all([fetchSummary().catch(() => undefined), fetchEvents(since).catch(() => undefined)])
   lastGood = { summary: s === undefined ? lastGood.summary : s, events: e === undefined ? lastGood.events : e }
   return lastGood
 }
-const account = () => plugin.memo(300, cursorAccount)
+const account = () => plugin.memo(300, cursorAccount, scanDays())
 
 // ---------- usage
 

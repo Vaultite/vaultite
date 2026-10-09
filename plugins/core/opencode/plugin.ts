@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { type AgentStart, busyFirst, codingAgent, cwds, HOME, isoMicro as iso, notHere, num, processes, projectOf, quote, rebuilt, roots,
-  SqliteFile, Tally, terminalOf } from "../../../core/codingagents.ts"
+  scanDays, SqliteFile, Tally, terminalOf } from "../../../core/codingagents.ts"
 import { localDate, Plugin } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { conversation, type Row } from "./transcript.ts"
@@ -16,7 +16,6 @@ export const plugin = new Plugin(import.meta.url)
 const xdg = (v: string | undefined, dflt: string) => (v && path.isAbsolute(v) ? v : dflt)
 const DATA = process.env.OPENCODE_DATA_DIR || path.join(xdg(process.env.XDG_DATA_HOME, path.join(HOME, ".local", "share")), "opencode")
 const CACHE = process.env.OPENCODE_CACHE_DIR || path.join(xdg(process.env.XDG_CACHE_HOME, path.join(HOME, ".cache")), "opencode")
-const KEEP_DAYS = 35 // what the scan keeps in memory; blocks show up to 30 days
 
 // ---------- the database
 
@@ -42,10 +41,10 @@ class Store extends SqliteFile {
   replies: Reply[] = []
   sessions = new Map<string, Ses>()
 
-  /** Read the last KEEP_DAYS days again, at most every 5 s and only when the database changed. */
+  /** Read the days the scans reach (scanDays) again, at most every 5 s and only when the database changed. */
   refresh() {
     if (!this.due(() => { this.replies = []; this.sessions.clear() })) return
-    const cutoff = Date.now() - KEEP_DAYS * 86400000
+    const cutoff = Date.now() - scanDays() * 86400000
     this.sessions = new Map(this.all(`SELECT id, parent_id, directory, title, time_created, time_updated FROM session WHERE time_updated >= ?`, cutoff)
       .map((s) => [s.id, { id: s.id, parent: s.parent_id ?? null, directory: s.directory ?? "", title: s.title ?? "", created: num(s.time_created), updated: num(s.time_updated) }]))
     const rows = this.all(`SELECT id, session_id AS sid, time_created AS created, json_extract(data, '$.modelID') AS model,

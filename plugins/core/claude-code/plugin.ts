@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { accountsNamed, type AgentMeter, type AgentStart, ago, busyFirst, cap, codingAgent, dayOf, expandHome, HOME, isoMicro, limitRows,
-  limitWindow, notHere, priceList, processes, projectName, projectOf, quote, readLines, roots, stamp, Tally, terminalOf, throttled, Transcript,
+  limitWindow, notHere, priceList, processes, projectName, projectOf, quote, readLines, roots, scanDays, stamp, Tally, terminalOf, throttled, Transcript,
   transcripts, type Usage } from "../../../core/codingagents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
@@ -14,7 +14,6 @@ import { Conversation, WANTED } from "./transcript.ts"
 export const plugin = new Plugin(import.meta.url)
 const DEFAULT_DIR = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : path.join(HOME, ".claude")
 const APP_HISTORY = path.join(HOME, "Library", "Application Support", "Claude", "plan-usage-history.json")
-const KEEP_DAYS = 35 // what the scan keeps in memory; blocks show up to 30 days
 
 // US dollars per million tokens: input, output, cache read, cache write (5 min), cache write (1 h), from the published
 // API list. A model takes the longest id it starts with (claude-sonnet-5-5 -> claude-sonnet-5). Fast mode costs FAST x.
@@ -95,12 +94,14 @@ class Scan {
   titles = new Map<string, [string, string]>()  // session -> [custom | ai, title]
   version = 0                                   // bumps when anything above changed
   pruned = 0
-  /** Read what was appended since the last time, at most every 5 s. */
-  refresh = throttled(5000, () => this.run())
+  reach = scanDays()
+  /** Read what was appended since the last time, at most every 5 s; all again once asked for older days. */
+  refresh = throttled(5000, () => this.run(), () => this.reach < scanDays())
   constructor(dir: string) { this.dir = dir }
 
   private async run() {
-    const cutoff = Date.now() / 1000 - KEEP_DAYS * 86400
+    if (this.reach < scanDays()) { this.files.clear(); this.resp.clear(); this.turns.clear(); this.reach = scanDays() }
+    const cutoff = Date.now() / 1000 - this.reach * 86400
     const dir = path.join(this.dir, "projects")
     let names: string[] = []
     try { names = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((n) => n.endsWith(".jsonl")) } catch { /* no Claude Code here */ }

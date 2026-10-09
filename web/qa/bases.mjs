@@ -161,6 +161,18 @@ await page.screenshot({ path: `${OUT}base-note-desktop-dark.png`, fullPage: true
 await page.goto(url(`${F}/Qa.base`)); await page.waitForTimeout(2500)
 await page.screenshot({ path: `${OUT}base-desktop-dark.png` })
 
+// Every row (no cap): 700 notes, drawn as they come near the screen, every one reached by scrolling.
+await Promise.all(Array.from({ length: 700 }, (_, i) => put(`${F}/Many/Row ${String(i + 1).padStart(3, "0")}.md`, `---\ntype: qa-row\nn: ${i + 1}\n---\n`)))
+await put(`${F}/Many.base`, `filters: file.inFolder("${F}/Many")\nviews:\n  - type: table\n    name: All\n    order: [file.name, n]\n    summaries:\n      n: Sum\n`)
+await page.goto(url(`${F}/Many.base`)); await page.waitForTimeout(2500)
+const many = page.locator(`[data-pane] [data-base="${F}/Many.base"]`)
+const drawn = () => many.locator("[data-query-row]").count()
+const firstDrawn = await drawn()
+check("every row: the count says all of them; only the first are drawn at once", (await many.locator("[data-base-count]").innerText()) === "700 files" && firstDrawn > 0 && firstDrawn < 700, firstDrawn)
+await until(async () => { await many.locator("[data-base-body]").evaluate((e) => { e.scrollTop = e.scrollHeight }); return (await drawn()) === 700 }, 15000, 300).catch(() => {})
+const sum = (await many.locator('[data-query-summaries="all"]').innerText().catch(() => "")).replace(/\s+/g, " ").trim()
+check("every row: scrolling down reaches the last, the summary under all of them", (await drawn()) === 700 && (await many.locator(`[data-query-row="${F}/Many/Row 700.md"]`).count()) === 1 && /^Sum 245.?350$/.test(sum), [await drawn(), sum])
+
 // Phone.
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 const m = watch(await phone.newPage(), { label: "phone" })
