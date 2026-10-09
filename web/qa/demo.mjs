@@ -1,6 +1,7 @@
 // The web demo (npm run build:demo): the app with its server in the browser. Serves web/dist-demo under /demo/ (or uses
 // <base url>) and checks, in Chrome and WebKit, it starts, opens a note, Today and search, keeps an edit across a reload,
-// refuses a plugin that needs a machine, opens on a bundle (?bundle=), and that Reset brings the sample back.
+// refuses a plugin that needs a machine, opens on a bundle (?bundle=), that the sample's files were edited across the
+// weeks before (also once a reload brings them back from IndexedDB), and that Reset brings the sample back.
 // WRITES: only the browser profile it makes.
 //   node web/qa/demo.mjs [<base url>]
 import fs from "node:fs"
@@ -41,6 +42,17 @@ async function visit(name, browser) {
   const open = async (file) => { await page.goto("about:blank"); await page.goto(`${base}#view/files/file/${encodeURIComponent(file)}`); await drawn(); await wait(1500) }
   const shown = () => page.evaluate(() => document.querySelector("[data-pane]")?.innerText ?? "")
   const is = (what, ok, got) => check(`${name}: ${what}`, ok, got)
+  /** How many of the sample's notes were last edited on each day (a calendar by `updated`). */
+  const editDays = async () => {
+    const days = {}
+    for (const f of (await api("GET", "files")).json?.files ?? []) {
+      if (!f.path.endsWith(".md") || f.path.startsWith(".")) continue
+      const d = new Date(f.mtime), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
+      days[day] = (days[day] ?? 0) + 1
+    }
+    return days
+  }
+  const spread = (days) => Object.keys(days).length >= 10 && Math.max(...Object.values(days)) <= 15
 
   await page.goto(base)
   const screen = await drawn()
@@ -57,6 +69,9 @@ async function visit(name, browser) {
 
   const found = await api("POST", "ops/file.search", { query: "Lisbon" })
   is("search finds a note", found.status === 200 && JSON.stringify(found.json).includes("Lisbon trip"), found)
+
+  const fresh = await editDays()
+  is("the sample's notes were edited across the weeks before", spread(fresh), fresh)
 
   const refused = await api("PATCH", "config/plugins", { disabled: [] })
   is("a plugin that needs a machine isn't turned on", refused.status === 403 && /needs the Vaultite app/.test(refused.json?.error), refused)
@@ -77,6 +92,8 @@ async function visit(name, browser) {
   await open("Notes/Lisbon trip.md")
   is("an edit is kept across a reload", (await shown()).includes(MARK), (await shown()).slice(-300))
   is("and the server has it", JSON.stringify((await api("GET", "file?path=Notes%2FLisbon%20trip.md")).json).includes(MARK))
+  const kept = await editDays()
+  is("and the notes' edit times came back with them", spread(kept), kept)
 
   await page.getByRole("button", { name: "Reset" }).click()
   await page.locator("[data-confirm] button", { hasText: "Reset" }).click()

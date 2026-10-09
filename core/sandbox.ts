@@ -44,9 +44,13 @@ export function isSandbox(dir: string) {
   return fs.readdirSync(dir).length === 0 || fs.existsSync(path.join(dir, MARKER))
 }
 
-/** A stamp of the sample's files (names and contents): an app update that changes the sample changes it. */
+/** How the sandbox is made from the sample: raise it when makeSandbox makes different files (or times) from the same
+ *  sample, so sandboxes made before are made again. */
+const MAKE = 2
+
+/** A stamp of the sample's files (names and contents) and of MAKE: an app update that changes either changes it. */
 export function sampleStamp(source = SAMPLE) {
-  const h = crypto.createHash("sha1")
+  const h = crypto.createHash("sha1").update(`make ${MAKE}\0`)
   for (const rel of (fs.readdirSync(source, { recursive: true }) as string[]).sort()) {
     const p = path.join(source, rel)
     if (!fs.statSync(p).isFile() || path.basename(rel) === ".DS_Store") continue
