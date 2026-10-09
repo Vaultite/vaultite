@@ -1,0 +1,166 @@
+# The desktop app: a signed and notarized Mac build (dmg and zip, Apple silicon and Intel) and Linux's AppImage and .deb
+# (x64 and arm64, each built on its own architecture: node-pty is compiled there).
+# - A v* tag (matching package.json's version) is that GitHub release, its notes CHANGELOG.md's section for it, and goes
+#   on the update feed (vaultite.com/updates: R2's vaultite-updates, which vaultite-cloud serves).
+# - Every night, if main changed, it's the `nightly` prerelease, replaced each time: version <next patch>-nightly.<time>,
+#   not on the feed. By hand: Actions, Release, Run workflow (on main).
+# Secrets: MAC_CERT_P12 (the Developer ID Application certificate and key, base64) and MAC_CERT_PASSWORD; NOTARY_KEY (an
+# App Store Connect API key's .p8, base64), NOTARY_KEY_ID and NOTARY_ISSUER; for the feed, CLOUDFLARE_API_TOKEN (R2
+# edit) and CLOUDFLARE_ACCOUNT_ID.
+name: Release
+on:
+  push:
+    tags: ["v*"]
+  schedule:
+    - cron: "0 7 * * *"
+  workflow_dispatch:
+concurrency:
+  group: release-${{ github.ref }}
+permissions:
+  contents: write
+env:
+  STABLE: ${{ startsWith(github.ref, 'refs/tags/v') }}
+jobs:
+  plan:
+    runs-on: ubuntu-24.04
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      version: ${{ steps.plan.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=$(node -p 'require("./package.json").version')
+          if [ "$STABLE" = true ]; then
+            [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::package.json's version is $v, the tag $GITHUB_REF_NAME"; exit 1; }
+            echo "version=$v" >> "$GITHUB_OUTPUT"; echo "build=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          [ "$GITHUB_REF" = refs/heads/main ] || { echo "::error::a nightly is built from main"; exit 1; }
+          last=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/nightly" --jq .object.sha 2>/dev/null || true)
+          if [ "$GITHUB_EVENT_NAME" = schedule ] && [ "$last" = "$GITHUB_SHA" ]; then
+            echo "main hasn't changed since the last nightly"; echo "build=false" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          IFS=. read -r major minor patch <<< "${v%%-*}"
+          echo "version=$major.$minor.$((patch + 1))-nightly.$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
+          echo "build=true" >> "$GITHUB_OUTPUT"
+
+  mac:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    runs-on: macos-15
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - name: Signing identity and notary profile, in a keychain of the run's own
+        env:
+          CERT: ${{ secrets.MAC_CERT_P12 }}
+          CERT_PASSWORD: ${{ secrets.MAC_CERT_PASSWORD }}
+          NOTARY_KEY: ${{ secrets.NOTARY_KEY }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.NOTARY_ISSUER }}
+        run: |
+          for s in CERT CERT_PASSWORD NOTARY_KEY NOTARY_KEY_ID NOTARY_ISSUER; do
+            [ -n "${!s}" ] || { echo "::error::a secret for signing or notarizing isn't set ($s; see the top of release.yml)"; exit 1; }
+          done
+          kc="$RUNNER_TEMP/signing.keychain-db"; pw=$(openssl rand -hex 16)
+          security create-keychain -p "$pw" "$kc"
+          security set-keychain-settings -lut 21600 "$kc"
+          security unlock-keychain -p "$pw" "$kc"
+          echo "$CERT" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -k "$kc" -P "$CERT_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$pw" "$kc" > /dev/null
+          # shellcheck disable=SC2046 # the runner's keychains, one word each (no spaces in their paths)
+          security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
+          echo "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          # (base64 twice when it was stored from a file picker that already gave it as base64)
+          if ! grep -q "BEGIN PRIVATE KEY" "$RUNNER_TEMP/notary.p8"; then
+            base64 --decode < "$RUNNER_TEMP/notary.p8" > "$RUNNER_TEMP/key" && mv "$RUNNER_TEMP/key" "$RUNNER_TEMP/notary.p8"
+          fi
+          grep -q "BEGIN PRIVATE KEY" "$RUNNER_TEMP/notary.p8" || { echo "::error::NOTARY_KEY isn't a .p8 key"; exit 1; }
+          xcrun notarytool store-credentials vaultite-notary --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER" --keychain "$kc"
+          rm "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8"
+          echo "VAULTITE_NOTARY_KEYCHAIN=$kc" >> "$GITHUB_ENV"
+      - run: npm ci
+      - run: npx playwright-core install chromium
+      - if: env.STABLE != 'true'
+        run: npm pkg set version=${{ needs.plan.outputs.version }}
+      - run: npm run release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mac
+          if-no-files-found: error
+          path: |
+            dist-app/*.dmg
+            dist-app/*-mac.zip
+            dist-app/*-mac.zip.blockmap
+            dist-app/latest-mac.yml
+
+  linux:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npx playwright-core install --with-deps chromium
+      - if: env.STABLE != 'true'
+        run: npm pkg set version=${{ needs.plan.outputs.version }}
+      - run: npm run release:linux
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ runner.arch }}
+          if-no-files-found: error
+          path: |
+            dist-app/*.AppImage
+            dist-app/*.deb
+            dist-app/latest-linux*.yml
+
+  publish:
+    needs: [plan, mac, linux]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: out
+          merge-multiple: true
+      - name: The GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          V: ${{ needs.plan.outputs.version }}
+        run: |
+          if [ "$STABLE" = true ]; then
+            awk -v h="## $V" 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
+            [ -s notes.md ] || echo "Vaultite $V." > notes.md
+            gh release create "$GITHUB_REF_NAME" out/*.dmg out/*.AppImage out/*.deb --verify-tag --title "Vaultite $V" \
+              --notes-file notes.md
+          else
+            gh release delete nightly --cleanup-tag --yes || true
+            gh release create nightly out/*.dmg out/*.AppImage out/*.deb --prerelease --target "$GITHUB_SHA" \
+              --title "Nightly $V" --notes "main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. Doesn't update itself to the next nightly: download it again."
+          fi
+      # The feed's files, the update lists last so they never name a file that isn't there yet.
+      - name: The update feed
+        if: env.STABLE == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/latest-*.yml; do
+            npx -y wrangler@4 r2 object put "vaultite-updates/$(basename "$f")" --file "$f" --remote
+          done

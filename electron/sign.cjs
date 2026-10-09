@@ -19,6 +19,8 @@ const path = require("node:path")
 
 const RELEASE = !!process.env.VAULTITE_RELEASE
 const NOTARY = "vaultite-notary"
+// That profile, in VAULTITE_NOTARY_KEYCHAIN when it isn't in the login keychain (CI's: .github/workflows/release.yml).
+const PROFILE = ["--keychain-profile", NOTARY, ...(process.env.VAULTITE_NOTARY_KEYCHAIN ? ["--keychain", process.env.VAULTITE_NOTARY_KEYCHAIN] : [])]
 const ENTITLEMENTS = path.join(__dirname, "entitlements.plist")
 
 /** The identity to sign with, or null for ad hoc. */
@@ -71,7 +73,7 @@ function release(app, id) {
 /** Notarize a .app (sent zipped) or a .dmg with the `vaultite-notary` profile, then staple its ticket to it. */
 function notarize(file) {
   try {
-    execFileSync("xcrun", ["notarytool", "history", "--keychain-profile", NOTARY], { stdio: "ignore" })
+    execFileSync("xcrun", ["notarytool", "history", ...PROFILE], { stdio: "ignore" })
   } catch {
     console.warn(`sign.cjs: NOT NOTARIZED: no notarytool profile "${NOTARY}" in the keychain (xcrun notarytool store-credentials ${NOTARY} ...); macOS will refuse this app once downloaded`)
     return
@@ -80,7 +82,7 @@ function notarize(file) {
   try {
     if (zip) execFileSync("ditto", ["-c", "-k", "--keepParent", file, zip])
     console.log(`sign.cjs: notarizing ${path.basename(file)} (notarytool waits for Apple's answer)`)
-    execFileSync("xcrun", ["notarytool", "submit", zip ?? file, "--keychain-profile", NOTARY, "--wait"], { stdio: "inherit" })
+    execFileSync("xcrun", ["notarytool", "submit", zip ?? file, ...PROFILE, "--wait"], { stdio: "inherit" })
   } finally { if (zip) fs.rmSync(zip, { force: true }) }
   execFileSync("xcrun", ["stapler", "staple", file], { stdio: "inherit" })
 }

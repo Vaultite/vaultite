@@ -4400,6 +4400,7 @@ at("Rc/Done.md", "done\n", Y2)
 await settled()
 at("Rc/Idea.md", "# Idea\n\nFirst thought\nYesterday's line\n", Y)
 await settled()
+await api("POST", "ops/activity.recap", {}) // (asked just before: what follows is still in the next one)
 // Today: an edit in the app, tasks done, moved, dropped, recurring and in a status of the Tasks plugin's own.
 await actHeard("PUT", "file", { path: "Rc/Idea.md", text: "# Idea\n\nFirst thought\nYesterday's line\nToday's #line about [[Lighthouse]]\n" }, "app/desktop")
 write("Rc/Open.md", "- [-] Print the flyers ❌ 2026-10-06\n  - Reason: the venue has screens\n- [ ] Take out the trash 🔁 every week 📅 2026-10-13\n- [x] Take out the trash 🔁 every week 📅 2026-10-06 ✅ 2026-10-06\n- [d] Ask Alice\n")
