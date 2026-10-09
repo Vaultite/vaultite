@@ -22,13 +22,14 @@ function fmtDate(s: string) {
 }
 
 /** A value drawn: a [[link]] as a link, a date as a date, a list as chips, yes/no, a URL. */
-function Value({ v, resolve }: { v: unknown; resolve: Resolve }): ReactNode {
+/** A cell's value; a [[link]] in it resolved from its row's file (`from`), so the closest file of a name wins. */
+function Value({ v, resolve, from }: { v: unknown; resolve: Resolve; from: string }): ReactNode {
   if (v === null || v === undefined || v === "") return <span className="text-tertiary">–</span>
   if (Array.isArray(v)) {
     return (
       <span className="inline-flex flex-wrap gap-1">
         {v.map((x, i) => (
-          <span key={i} className="rounded-[5px] bg-foreground/[0.06] px-1.5 text-[12px] leading-[20px] whitespace-nowrap"><Value v={x} resolve={resolve} /></span>
+          <span key={i} className="rounded-[5px] bg-foreground/[0.06] px-1.5 text-[12px] leading-[20px] whitespace-nowrap"><Value v={x} resolve={resolve} from={from} /></span>
         ))}
       </span>
     )
@@ -38,7 +39,7 @@ function Value({ v, resolve }: { v: unknown; resolve: Resolve }): ReactNode {
   if (typeof v !== "string") return <span className="text-muted-foreground">{text(v)}</span>
   const link = WIKI.exec(v.trim())
   if (link) {
-    const file = resolve(link[1])?.file
+    const file = resolve(link[1], from)?.file
     return file ? (
       <button type="button" className="cursor-pointer text-primary hover:underline"
         onClick={(e) => { e.stopPropagation(); openFile(file, { newTab: e.metaKey || e.ctrlKey }) }}>{link[2] ?? link[1]}</button>
@@ -261,7 +262,7 @@ const Table = memo(function Table({ groups, res, resolve, sort, setSort, save }:
                           const to = typed(e.target.value, v)
                           if (to !== (v ?? undefined)) save(r, c.key, to)
                         }} />
-                    ) : c.key === "file" ? <span className="font-medium">{r.title}</span> : <Value v={v} resolve={resolve} />}
+                    ) : c.key === "file" ? <span className="font-medium">{r.title}</span> : <Value v={v} resolve={resolve} from={r.path} />}
                   </td>
                 )
               })}
@@ -348,7 +349,7 @@ const Cards = memo(function Cards({ rows, res, resolve }: { rows: Row[]; res: Re
             {others(res).map((c) => (
               <div key={c.key} className="flex min-w-0 gap-2">
                 <span className="shrink-0 text-muted-foreground">{c.label}</span>
-                <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[c.key]} resolve={resolve} /></span>
+                <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[c.key]} resolve={resolve} from={r.path} /></span>
               </div>
             ))}
           </div>
@@ -372,7 +373,7 @@ const Lines = memo(function Lines({ rows, res, resolve }: { rows: Row[]; res: Re
             {others(res).length > 0 && (
               <span className="flex min-w-0 flex-wrap gap-x-1.5 text-[13px] text-muted-foreground">
                 {others(res).filter((c) => text(r.values[c.key])).map((c, i) => (
-                  <span key={c.key} className="min-w-0 truncate">{i > 0 && "· "}<Value v={r.values[c.key]} resolve={resolve} /></span>
+                  <span key={c.key} className="min-w-0 truncate">{i > 0 && "· "}<Value v={r.values[c.key]} resolve={resolve} from={r.path} /></span>
                 ))}
               </span>
             )}
@@ -463,7 +464,7 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
                         {fields.filter((f) => text(r.values[f.key])).map((f) => (
                           <div key={f.key} className="flex min-w-0 gap-2">
                             <span className="shrink-0 text-muted-foreground">{f.label}</span>
-                            <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[f.key]} resolve={resolve} /></span>
+                            <span className="min-w-0 flex-1 truncate text-right"><Value v={r.values[f.key]} resolve={resolve} from={r.path} /></span>
                           </div>
                         ))}
                       </div>

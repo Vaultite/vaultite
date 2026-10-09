@@ -522,9 +522,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   asks "Did you mean" (add an alias to make it a link).
 - **Every link and image renders, as in Obsidian**: `[x](Note)`, `[pdf](files/a.pdf)` and links to other apps
   (`obsidian://`, `zotero://`, `tel:`, `file://`) are links on every surface and the desktop app opens them; raw HTML
-  (`<br>`, `<sub>`, `<kbd>`, `<span style>`, `<img>`, `<details>`) is drawn, made safe; vault images show in embeds and
-  anywhere Markdown is drawn; `![[Note]]` in the middle of a line is an embed. Web pages asking to open another app ask
-  you first. A #tag clicked without the Tags plugin searches for it.
+  (`<br>`, `<sub>`, `<kbd>`, `<span class>`, `<img>`, `<details>`, an https `<iframe>` such as a video, sandboxed) is
+  drawn, made safe; vault images show in embeds and anywhere Markdown is drawn; `![[Note]]` in the middle of a line is
+  an embed. Web pages asking to open another app ask you first. A #tag clicked without the Tags plugin searches for
+  it. Links in query, base and log cells go to the file closest to their row's.
 - **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
   Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until

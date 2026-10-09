@@ -309,6 +309,8 @@
 .note-prose :where(th, td) { text-align: left; padding: 7px 14px 7px 0; border-bottom: 0.5px solid var(--border); vertical-align: top; }
 .note-prose th { font-weight: 600; }
 .note-prose img { max-width: 100%; border-radius: 10px; }
+/* an https frame from raw HTML (a video): fits the column */
+:is(.note-prose, .vau-editor) iframe { max-width: 100%; border: 0; border-radius: 10px; }
 /* `![[Note]]` in running text: drawn in its place, as on a line of its own */
 .note-prose .md-embed { display: block; margin: 0.5em 0; }
 /* Filter chips: on phones one sideways-scrolling row, no scrollbar, faded at the right edge; wrapped from md up. */

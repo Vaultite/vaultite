@@ -961,7 +961,7 @@ type Cand = { from: number; to: number; a: number; b: number; decos: Range<Decor
 type Cands = { cfg: PreviewConfig; read: boolean; list: Cand[] }
 
 /** A line that starts a block of raw HTML: a block-level tag, or a whole tag alone on its line (not a comment). */
-const HTML_BLOCK = /^\s{0,3}(?:<\/?(?:address|article|aside|blockquote|center|dd|dir|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|li|main|nav|ol|p|section|table|tbody|td|tfoot|th|thead|tr|ul)(?=[\s/>]|$)|<\/?[a-z][\w-]*(?:\s+[^<>]*)?\/?>\s*$)/i
+const HTML_BLOCK = /^\s{0,3}(?:<\/?(?:address|article|aside|blockquote|center|dd|dir|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|iframe|li|main|nav|ol|p|section|table|tbody|td|tfoot|th|thead|tr|ul)(?=[\s/>]|$)|<\/?[a-z][\w-]*(?:\s+[^<>]*)?\/?>\s*$)/i
 
 /** Every block the document could draw, in the order they win (fences, $$ and <details>; embeds; sections; comments;
  *  callouts and tables), worked out once per document version: a cursor move only picks among them again. */

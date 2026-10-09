@@ -32,7 +32,8 @@ export function LogFields({ store, log }: { store: Store; log: Log }) {
   // repeat (every "Morning workout"), and a place named like the session's title would link to the session itself.
   const logIds = new Set(store.logs.map((l) => l.id))
   const shown = (k: string, v: unknown, unit?: string): ReactNode => {
-    const found = typeof v === "string" ? link(v) : null
+    // (from the log's own file, so the closest file of a name wins)
+    const found = typeof v === "string" ? link(v, `${log.id}.md`) : null
     const t = found && !logIds.has(found.id) ? found : null
     if (t) return <button type="button" onClick={() => openDetail(t.detail)} className="cursor-pointer text-primary hover:underline">{t.title}</button>
     if (WORDS.has(k) && typeof v === "string") return human(v === "doing" ? "in progress" : v)

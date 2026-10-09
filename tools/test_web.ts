@@ -361,12 +361,14 @@ const imgs = md.renderMarkdown("Before ![[photo.png|300]] and ![alt|200](../Img/
 check("markdown: vault images show (with widths), and an embed mid-line is drawn in its place",
   imgs.includes('<img src="/api/raw?path=Img/photo.png" alt="photo.png" width="300"') && imgs.includes('alt="alt" width="200"') &&
   imgs.includes('<span class="md-embed" data-md-embed="Idea"><a class="wikilink" data-wiki="Idea" data-wiki-embed>Idea</a></span>'), imgs)
-const raw = md.renderMarkdown('Line<br>two H<sub>2</sub>O x<sup>2</sup> <kbd>Cmd</kbd> <span style="color: red; position: fixed" onclick="x()">red</span>\n\n<details><summary>More</summary>\n\nInside\n\n</details>\n\n<script>alert(1)</script>\n\n<img src="photo.png" onerror="x()" width="50"> <a href="Idea">idea</a> <a href="javascript:x()">bad</a> <iframe src="https://x.test"></iframe> <custom>tag</custom>\n', vopts)
-check("markdown: raw HTML is drawn sanitized: safe tags and attributes, links and vault images; no scripts, handlers or frames",
+const raw = md.renderMarkdown('Line<br>two H<sub>2</sub>O x<sup>2</sup> <kbd>Cmd</kbd> <span style="color: red; position: fixed" onclick="x()">red</span>\n\n<details><summary>More</summary>\n\nInside\n\n</details>\n\n<script>alert(1)</script>\n\n<img src="photo.png" onerror="x()" width="50"> <a href="Idea">idea</a> <a href="javascript:x()">bad</a> <iframe src="https://x.test" onload="x()" allowfullscreen></iframe> <iframe src="http://x.test"></iframe> <custom>tag</custom>\n\n<span class="mine" id="a1">styled</span> <a class="mine" href="Idea">mine</a>\n', vopts)
+check("markdown: raw HTML is drawn sanitized: safe tags and attributes (class, id), links, vault images, https frames sandboxed; no scripts or handlers",
   raw.includes("Line<br>two") && raw.includes("<sub>2</sub>") && raw.includes("<sup>2</sup>") && raw.includes("<kbd>Cmd</kbd>") && raw.includes('<span style="color: red">red</span>') &&
   raw.includes("<details><summary>More</summary>") && !raw.includes("alert") && !raw.includes("onclick") && !raw.includes("onerror") && !raw.includes("position") &&
   raw.includes('<img src="/api/raw?path=Img/photo.png" width="50" loading="lazy">') && raw.includes('data-wiki="Idea">idea</a>') && raw.includes("<a>bad</a>") &&
-  !raw.includes("<iframe") && raw.includes("&#60;custom&#62;tag&#60;/custom&#62;"), raw)
+  raw.includes('<iframe src="https://x.test" allowfullscreen="" sandbox="allow-scripts allow-same-origin allow-presentation"') && !raw.includes("http://x.test") &&
+  raw.split("</iframe>").length === 2 && raw.includes("&#60;custom&#62;tag&#60;/custom&#62;") && raw.includes('<span id="a1" class="mine">styled</span>') &&
+  raw.includes('<a class="mine wikilink" data-wiki="Idea">mine</a>'), raw)
 check("embeds: a note, a section, a block, a heading here", same([formats.embedOf("![[Idea]]"), formats.embedOf("![[Idea#Plans]]"), formats.embedOf("![[Idea#^b1]]"), formats.embedOf("![[#Top]]")].map((e) => e?.note),
   [true, true, true, true]) && formats.embedOf("![[photo.png]]") === null && formats.embedOf("![[v1.2 notes]]")?.note === true)
 const note = "---\ntags: [a]\n---\n# Top\n\nIntro #intro and `#no` [[X#y]] ^p1\n\n## Plans\n\n- one ^li\n  - under\n- two\n\n```\n# not a heading #no\n```\n\n## After\n"
