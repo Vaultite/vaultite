@@ -108,6 +108,9 @@ if (settings || cloud.stored()) publicMcp()
  *  vault isn't on the internet. */
 plugin.provide("mcp:upload-link", (pending: Record<string, unknown>, who: Who) => pub?.uploadLink(pending, who) ?? null)
 cloud.start()
+/** For plugins that require MCP: Vaultite Cloud's API as this machine (Publish), and whether it's signed in. */
+plugin.exports.cloudFetch = (route: string, init?: RequestInit) => cloud.request(route, init)
+plugin.exports.cloudStatus = () => cloud.status()
 plugin.onUnload(() => { pub?.stop(); cloud.stop() })
 
 /** The apps connected from the internet, how many sign-ins wait for their code, those finishing, and Vaultite Cloud. */

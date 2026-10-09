@@ -110,6 +110,15 @@ export class Cloud {
     return d
   }
 
+  /** A request to Vaultite Cloud's API as this machine (its token), for plugins that use the account (Publish). */
+  async request(route: string, init: RequestInit = {}): Promise<Response> {
+    const s = this.stored()
+    if (!s) throw Object.assign(new Error("This machine isn't signed in to Vaultite Cloud: sign in under Connections, or with vau cloud sign-in"), { status: 401 })
+    const headers = new Headers(init.headers)
+    headers.set("Authorization", `Bearer ${s.token}`)
+    return fetch(`${this.relay}${route}`, { ...init, headers, signal: init.signal ?? AbortSignal.timeout(60_000) })
+  }
+
   /** Trades the one-time code from /connect for this machine's token, and connects (it replaces the machine signed in before).
    *  Without a code, signed in: connects this machine again (after another took over). */
   async signIn(code = ""): Promise<CloudStatus> {

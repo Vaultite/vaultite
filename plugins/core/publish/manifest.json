@@ -1,0 +1,13 @@
+{
+  "id": "publish",
+  "icon": "globe",
+  "category": "writing",
+  "offByDefault": true,
+  "name": "Publish",
+  "description": "Publish notes and folders as public pages on your Vaultite Cloud site: rendered from the Markdown, links between published notes kept, images included, light and dark. Needs a Publish plan on Vaultite Cloud.",
+  "forAgents": "Publishing puts notes on the public web: only when the user asks (`publish.add`; `publish.list` says what's published).",
+  "requires": ["mcp"],
+  "settings": {
+    "published": { "type": "list", "default": [], "label": "Published", "description": "the notes and folders on your site (vault paths), added from a note's or folder's menu" }
+  }
+}
