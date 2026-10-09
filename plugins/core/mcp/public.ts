@@ -368,7 +368,9 @@ export class PublicMcp {
   redirectOk(r: string) {
     try {
       const u = new URL(r)
-      return u.protocol === "https:" && this.settings.redirectHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
+      // An entry with "://" is one exact return address, for an app whose isn't https (Grok Bot's is a localhost one).
+      if (this.settings.redirectHosts.includes(u.href)) return true
+      return u.protocol === "https:" && this.settings.redirectHosts.some((h) => !h.includes("://") && (u.hostname === h || u.hostname.endsWith(`.${h}`)))
     } catch { return false }
   }
 

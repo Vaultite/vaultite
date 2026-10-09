@@ -9,7 +9,9 @@ the `forAgents` line of each plugin that's on, and how to use the tools.
   Terminal: `.vaultite/plugins/mcp/data.json` takes `{"allowUsers": ["someone@example.com"]}` and
   `{"allowRemote": true}` (off by default).
 - On the internet, for apps that connect from their own servers (claude.ai and the Claude apps, ChatGPT): `<url>/mcp` on a
-  listener of its own that a tunnel makes public, set in this machine's `data/config.json` (`mcp.public`: `url`, `port`).
+  listener of its own that a tunnel makes public, set in this machine's `data/config.json` (`mcp.public`: `url`, `port`;
+  `redirectHosts`, the apps that may sign in: claude.ai, claude.com, chatgpt.com, openai.com unless set, and an entry
+  with `://` lets in that one exact return address, like `http://localhost:8787/callback`).
   Sign-in has no accounts: the app's sign-in page shows a code, typed in view:connections, where connections are also
   ended. The same tools, `ops` and `call` too, without what only this machine's owner may run (terminals, the screen).
   What can run code on this machine or change what does (turning a plugin on, writing under `.vaultite/`, bundles,

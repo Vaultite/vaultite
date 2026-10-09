@@ -79,7 +79,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Your vault in Claude on the web and phone**: MCP on a public address (behind a tunnel) that claude.ai adds as a
   custom connector, and ChatGPT as a custom MCP server plugin. Connections has Set up Claude and Set up ChatGPT, each a
   few short steps with the address one click away; signing in shows a code you type there (the app then shows under
-  Connected, shimmering, till it finishes signing in), where you also disconnect an app.
+  Connected, shimmering, till it finishes signing in), where you also disconnect an app. `redirectHosts` takes an
+  exact return address too, for an app that signs in through a local one.
 - **Photos from ChatGPT and Claude go in the vault**: `upload_file` (`vau upload`) saves a photo or file into
   Attachments/ and embeds it in a note or log. ChatGPT hands over the chat's photo; claude.ai's code sandbox PUTs it to
   a one-time link (allow your vault's address in its network settings). Inbox notes an AI app sends are labelled AI, and a log another AI corrects by its id stays one log.
