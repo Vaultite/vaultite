@@ -4,5 +4,67 @@
   "category": "writing",
   "essential": true,
   "name": "Editing commands",
-  "description": "Editing commands and keys in every note: bold, italics, highlight, strikethrough, code, math and comment, ⌘K for a link, ⌘L for a task, ⌘D to delete a line, headings, lists, quotes, and callouts, tables, footnotes, code and math blocks, and Add photo (on a phone, from its photos or camera). Right-click in a note for them, the clipboard and searching what's selected."
+  "description": "Editing commands and keys in every note: bold, italics, highlight, strikethrough, code, math and comment, ⌘K for a link, ⌘L for a task, ⌘D to delete a line, headings, lists, quotes, and callouts, tables, footnotes, code and math blocks, and Add photo (on a phone, from its photos or camera). On a phone, a row of them over the keyboard. Right-click in a note for them, the clipboard and searching what's selected.",
+  "settings": {
+    "toolbar": {
+      "type": "list",
+      "label": "Keys over the keyboard",
+      "description": "on a phone, the keys over the keyboard while you write, in the order you pick them",
+      "values": [
+        "editor:undo",
+        "editor:redo",
+        "editor:insert-wikilink",
+        "editor:insert-link",
+        "editor:toggle-checklist-status",
+        "editor:toggle-bullet-list",
+        "editor:toggle-numbered-list",
+        "editor:unindent-list",
+        "editor:indent-list",
+        "editor:toggle-bold",
+        "editor:toggle-italics",
+        "editor:toggle-strikethrough",
+        "editor:toggle-highlight",
+        "editor:toggle-code",
+        "editor:set-heading-1",
+        "editor:set-heading-2",
+        "editor:set-heading-3",
+        "editor:toggle-blockquote",
+        "editor:add-photo"
+      ],
+      "labels": {
+        "editor:undo": "Undo",
+        "editor:redo": "Redo",
+        "editor:insert-wikilink": "Link",
+        "editor:insert-link": "External link",
+        "editor:toggle-checklist-status": "Task",
+        "editor:toggle-bullet-list": "Bullet list",
+        "editor:toggle-numbered-list": "Numbered list",
+        "editor:unindent-list": "Unindent",
+        "editor:indent-list": "Indent",
+        "editor:toggle-bold": "Bold",
+        "editor:toggle-italics": "Italic",
+        "editor:toggle-strikethrough": "Strikethrough",
+        "editor:toggle-highlight": "Highlight",
+        "editor:toggle-code": "Code",
+        "editor:set-heading-1": "Heading 1",
+        "editor:set-heading-2": "Heading 2",
+        "editor:set-heading-3": "Heading 3",
+        "editor:toggle-blockquote": "Quote",
+        "editor:add-photo": "Photo"
+      },
+      "default": [
+        "editor:undo",
+        "editor:redo",
+        "editor:insert-wikilink",
+        "editor:toggle-checklist-status",
+        "editor:unindent-list",
+        "editor:indent-list",
+        "editor:toggle-bold",
+        "editor:toggle-italics",
+        "editor:toggle-highlight",
+        "editor:toggle-bullet-list",
+        "editor:add-photo"
+      ]
+    }
+  }
 }

@@ -144,6 +144,8 @@ export { useNearScreen } from "@/core/near"
 export { keepAnchored } from "@/core/anchor"
 export { SortableList } from "@/components/Sortable"
 export { haptic, type Haptic } from "@/core/haptics"
+// Phones: keys above the on-screen keyboard, and the part of the window it leaves.
+export { KeyBar, keyboardUp, useVisibleArea, type BarKey } from "@/components/KeyBar"
 export { FilesPanel, PanelFold, panelMenu, SidebarHeading, SidebarRow, SidebarSearch } from "@/components/Sidebar"
 export { ActionButtons, AddButton } from "@/components/NewTab"
 // The core's pages that panels open as tabs: the file tree (view:files) and the search page.

@@ -1,6 +1,7 @@
-import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
+import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
 import { activeFile, currentEditor, definePlugin, notifyError } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
+import { NoteKeys } from "./keys"
 import { addPhotos } from "./photo"
 
 // Editing commands with Obsidian's ids, so its names and keys carry over; they win over the editor's own keys, and make
@@ -44,6 +45,8 @@ export default definePlugin({
     { id: "editor:toggle-bullet-list", name: "Toggle bullet list", when, run: run((e) => e.toggleBullets), icon: List },
     { id: "editor:toggle-numbered-list", name: "Toggle numbered list", when, run: run((e) => e.toggleNumbers), icon: ListOrdered },
     { id: "editor:toggle-task-list", name: "Toggle task list", when, run: run((e) => e.toggleTasks), icon: ListTodo },
+    { id: "editor:indent-list", name: "Indent list", when, run: run((e) => e.indentMore), icon: ListIndentIncrease },
+    { id: "editor:unindent-list", name: "Unindent list", when, run: run((e) => e.indentLess), icon: ListIndentDecrease },
     { id: "editor:toggle-blockquote", name: "Toggle blockquote", when, run: run((e) => e.toggleQuote), icon: TextQuote },
     ...[1, 2, 3, 4, 5, 6].map((n) => ({ id: `editor:set-heading-${n}`, name: `Set as heading ${n}`, when, run: run((e) => e.setHeading(n)), icon: [Heading1, Heading2, Heading3, Heading4, Heading5, Heading6][n - 1] })),
     { id: "editor:set-heading-0", name: "Remove heading", when, run: run((e) => e.setHeading(0)), icon: Pilcrow },
@@ -63,5 +66,6 @@ export default definePlugin({
   }]),
   fileMenu: (path) => (/\.md$/i.test(path) && !path.startsWith(".")
     ? [{ label: "Add photo", icon: ImagePlus, section: coarse() ? "actions" : "more", run: () => void addPhotos(path) }] : []),
-  editor: () => { void load(); return import("./menu").then((m) => m.editorMenu) },
+  editor: () => { void load(); return Promise.all([import("./menu"), import("./margin")]).then(([m, k]) => [m.editorMenu, k.keysMargin]) },
+  background: () => <NoteKeys />,
 })

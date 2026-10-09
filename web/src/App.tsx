@@ -313,8 +313,8 @@ export default function App() {
   }
   const besideText = () => {
     const a = document.activeElement, ed = currentEditor()
-    // (nothing focused, something in the file's view, or what holds it: a sheet's dialog)
-    return !!ed?.undo && !typingIn(a) && (!a || a.contains(ed.view.dom) || !!a.closest(".file-view")?.contains(ed.view.dom))
+    // (the editor itself, for the phone's keys; nothing focused, something in the file's view, or what holds it: a sheet)
+    return !!ed?.undo && (a === ed.view.contentDOM || !typingIn(a) && (!a || a.contains(ed.view.dom) || !!a.closest(".file-view")?.contains(ed.view.dom)))
   }
   const pageKey = pages.map((p) => `${p.id}:${p.label}`).join("|")
   useCommands(() => [

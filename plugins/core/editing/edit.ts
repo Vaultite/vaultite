@@ -2,6 +2,7 @@
 // every selection the way the command's name says. Loaded when one first runs.
 import { startCompletion } from "@codemirror/autocomplete"
 import { deleteLine, moveLineDown, moveLineUp } from "@codemirror/commands"
+export { indentLess, indentMore } from "@codemirror/commands"
 import { EditorSelection, type EditorState, type Line } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 

@@ -53,6 +53,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.
 - `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
+- `BarKey`
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
 - `besideActive(fallback, skip?)`: The folder of the note being written, for a file made from it (a canvas, a drawing, a base): an archived note's as if it weren't (nothing new goes into an archive); `fallback` when it's a page,…
@@ -200,7 +201,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
 - `keepOpen(path)`: Something done in this file is about to archive it (a reply sent from a report): its tabs follow it into the archive instead of closing.
+- `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard, Hide keyboard at its end.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
+- `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
 - `keyCaps(keys)`: A shortcut as the keycaps to draw: "Mod+Shift+F" -> ["⌘", "⇧", "F"].
 - `keyHint(keys)`: Keys as text: ⌘⇧F on a Mac, Ctrl+Shift+F elsewhere (caps run together would read "CtrlO"); a sequence's steps apart ("g g").
 - `keysOf(c)`: A command's keys in effect: the vault's hotkeys.json if it names the command, else its own defaults and the keys plugins add to it (`addKeys`).
@@ -475,6 +478,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size instead of zooming the page.
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
+- `useVisibleArea(on)`: The part of the window the user sees (above the on-screen keyboard), followed while `on`.
 - `useWorkspaceVersion()`: Redraws when the current workspace or what's kept in it changes; answers a number that changes then.
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`

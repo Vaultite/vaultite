@@ -1,13 +1,13 @@
 // The terminal view: xterm.js on a WebSocket to the shell, its own chunk, coloured from the app's tokens. On phones a
 // tap brings up the keyboard and a row of the keys a phone's lacks sits above it.
-import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type PointerEvent, type ReactNode, type TouchEvent as ReactTouchEvent } from "react"
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy, KeyboardOff } from "lucide-react"
+import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, ClipboardPaste, Copy } from "lucide-react"
 import { Terminal as XTerm, type ITheme } from "@xterm/xterm"
 import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, closeView, cn, isMac, keyboardBusy, mintedHere, notifyError, openMenu, textSize, usePane, useTextSize, useTextSizeWheel } from "@vaultite"
+import { agentOfTerminal, appShortcut, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, openMenu, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -100,24 +100,6 @@ async function readClipboard(t: XTerm, sendFiles: (files: File[]) => void) {
 }
 
 const touchScreen = () => matchMedia("(pointer: coarse)").matches
-/** The on-screen keyboard is up: the visible part of the page is well short of the window. */
-const keyboardUp = () => !!visualViewport && innerHeight - visualViewport.height > 80
-
-/** The part of the window the user sees (above the on-screen keyboard), followed while `on`. */
-function useVisibleArea(on: boolean) {
-  const [area, setArea] = useState<{ top: number; height: number; keyboard: boolean } | null>(null)
-  useLayoutEffect(() => {
-    const vv = visualViewport
-    if (!on || !vv) return setArea(null)
-    const read = () => setArea({ top: vv.offsetTop, height: vv.height, keyboard: keyboardUp() })
-    read()
-    vv.addEventListener("resize", read)
-    vv.addEventListener("scroll", read)
-    return () => { vv.removeEventListener("resize", read); vv.removeEventListener("scroll", read) }
-  }, [on])
-  return area
-}
-
 /** The keys a phone's keyboard lacks, as the terminal sends them. Arrows follow the program's cursor-keys mode. */
 const arrow = (t: XTerm, k: string) => (t.modes.applicationCursorKeysMode ? `\x1bO${k}` : `\x1b[${k}`)
 const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
@@ -130,32 +112,6 @@ const KEYS: { label: ReactNode; name: string; send: (t: XTerm) => string }[] = [
   { label: <ArrowDown className="size-[17px]" strokeWidth={2} />, name: "Down", send: (t) => arrow(t, "B") },
   { label: <ArrowRight className="size-[17px]" strokeWidth={2} />, name: "Right", send: (t) => arrow(t, "C") },
 ]
-
-/** The row above the keyboard. Its buttons never take focus (press and touch end cancelled, nothing selectable), since
- *  on iOS any of those moves focus off the terminal and the keyboard goes; they act as the finger lifts. */
-function KeyBar({ keys, paste, hide }: { keys: (send: (t: XTerm) => string) => void; paste: () => void; hide: () => void }) {
-  const key = "grid h-9 min-w-0 flex-1 cursor-pointer place-items-center rounded-[8px] bg-card font-mono text-[13px] text-foreground active:bg-foreground/[0.12]"
-  const tap = (run: () => void) => ({
-    onPointerDown: (e: PointerEvent) => e.preventDefault(),
-    onMouseDown: (e: ReactMouseEvent) => e.preventDefault(),
-    onTouchEnd: (e: ReactTouchEvent) => { if (e.cancelable) e.preventDefault() },
-    onPointerUp: (e: PointerEvent) => { if (e.currentTarget.contains(document.elementFromPoint(e.clientX, e.clientY))) run() },
-  })
-  return (
-    <div role="toolbar" aria-label="Terminal keys" data-no-drag
-      className="flex shrink-0 items-center gap-1 border-t-[0.5px] border-border bg-sidebar px-1.5 py-1.5 select-none [-webkit-touch-callout:none]">
-      {KEYS.map((k) => (
-        <button key={k.name} type="button" tabIndex={-1} aria-label={k.name} {...tap(() => keys(k.send))} className={key}>{k.label}</button>
-      ))}
-      <button type="button" tabIndex={-1} aria-label="Paste" {...tap(paste)} className={key}>
-        <ClipboardPaste className="size-[17px]" strokeWidth={2} />
-      </button>
-      <button type="button" tabIndex={-1} aria-label="Hide keyboard" {...tap(hide)} className={cn(key, "bg-transparent text-muted-foreground")}>
-        <KeyboardOff className="size-[19px]" strokeWidth={1.9} />
-      </button>
-    </div>
-  )
-}
 
 /** The terminal's font size at 100% (its text size, Settings > Appearance, scales it: ⌘+scroll over it). */
 const FONT = 13
@@ -587,7 +543,10 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
             keyboard's hidden field at 16px, or iOS zooms the page in when it's focused. */}
         <div ref={host} data-terminal={id} className={cn("h-full w-full", touchUi && "select-none [-webkit-touch-callout:none] [&_.xterm-helper-textarea]:!text-[16px]")} />
       </div>
-      {full && <KeyBar keys={(send) => touchActions.current.key(send)} paste={() => touchActions.current.paste()} hide={() => touchActions.current.hide()} />}
+      {full && <KeyBar label="Terminal keys" hide={() => touchActions.current.hide()} keys={[
+        ...KEYS.map((k) => ({ name: k.name, label: k.label, run: () => touchActions.current.key(k.send) })),
+        { name: "Paste", label: <ClipboardPaste className="size-[17px]" strokeWidth={2} />, run: () => touchActions.current.paste() },
+      ]} />}
       {status.kind === "connecting" && status.tries > 0 && (
         <div className="pointer-events-none absolute top-2 right-4 rounded-[6px] border border-border bg-card px-2 py-1 text-[12px] text-muted-foreground">
           Reconnecting…

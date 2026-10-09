@@ -15,5 +15,6 @@
 - Page preview (`plugins/core/page-preview`) listens for `[data-wiki]` / `[data-preview]` outside sheets.
 - Right-click: an image or embed has one menu (components/EmbedMenu.tsx); text has Editing commands' (made of commands
   by id); the desktop app lets the event reach the system first for spelling.
+- Phones: Editing commands' keys sit over the keyboard (`KeyBar`, the terminal's too).
 - QA: `keylists.mjs`, `editing.mjs`, `viewstate.mjs`, `stability.mjs`, `images.mjs`,
-  `embedmenus.mjs`, `editormenu.mjs`.
+  `embedmenus.mjs`, `editormenu.mjs`, `notekeys.mjs`.
