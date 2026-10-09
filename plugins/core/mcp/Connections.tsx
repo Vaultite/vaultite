@@ -1,8 +1,8 @@
 // view:connections: the AI apps connected from the internet (public.ts): sign in to Vaultite Cloud (cloud.ts), a guide
-// per app, let one in by its code, disconnect. Polls while shown, faster while an app is connecting.
+// per app in a sheet (with the code field), let one in by its code, disconnect. Polls while shown, faster while an app is connecting.
 import { useEffect, useState, type ReactNode } from "react"
-import { Bot, Check, ChevronDown, Copy, ExternalLink, Plug, type LucideIcon } from "lucide-react"
-import { cn, confirmDialog, copyText, del, Empty, fmtAgo, get, Group, iconNamed, Loading, notify, notifyError, op, openWebLink, Panel, post, Row, Section, SettingRow } from "@vaultite"
+import { Bot, Check, ChevronRight, Copy, ExternalLink, Plug, type LucideIcon } from "lucide-react"
+import { confirmDialog, copyText, del, detailPath, Empty, fmtAgo, get, Group, iconNamed, Loading, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead } from "@vaultite"
 
 type Connection = { id: string; name: string; created: string; used: string | null }
 type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; connectUrl: string; message?: string }
@@ -83,7 +83,7 @@ function CloudSection({ cloud, onDone }: { cloud: Cloud; onDone: () => void }) {
       <Section title="Vaultite Cloud">
         <p className="pb-2 text-[15px] leading-[20px] text-muted-foreground">
           {entering ? "Sign in on the page that opened and type the code it shows. Never use a code someone sent you: it would connect this machine to their account."
-            : "Gives your vault's MCP server an address of its own on vaultite.app, for Claude and ChatGPT on the web and phone, with no tunnel to set up. This machine keeps it connected."}
+            : "Gives your vault's MCP server an address of its own on vaultite.app, for Claude, ChatGPT, Grok Bot and Muse on the web and phone, with no tunnel to set up. This machine keeps it connected."}
         </p>
         {cloud.message && !entering && <p className="pb-2 text-[15px] leading-[20px]">{cloud.message}</p>}
         {entering ? (
@@ -118,52 +118,69 @@ function CloudSection({ cloud, onDone }: { cloud: Cloud; onDone: () => void }) {
 
 const copyAddress = (url: string) => copyText(url).then(() => notify("Copied the address", { id: "copied" }), (e) => notifyError(e))
 
-type AppId = "claude" | "chatgpt"
-/** One thing to do in the app, with what it needs: a value to copy or a page to open. */
-type Step = { text: ReactNode; copy?: "name" | "address"; open?: string }
+export type AppId = "claude" | "chatgpt" | "grok-bot" | "muse"
+/** One thing to do in the app, with what it needs: a text to copy or a page to open. */
+type Step = { text: ReactNode; copy?: { label: string; value: string }; open?: string }
 const NAME = "Vaultite"
 const B = ({ children }: { children: ReactNode }) => <b className="font-semibold">{children}</b>
-/** How to add the address in each app, in the order its screens ask. */
-const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; steps: (icon: string) => Step[] }> = {
+const RESULTS = "When you finish a task, save the result to my Vaultite inbox with inbox_add."
+/** How to add the address in each app, in the order its screens ask. Grok Bot and Muse add it when asked in a chat. */
+const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: string; steps: (address: string, icon: string) => Step[] }> = {
   claude: {
-    name: "Claude", icon: "claude", tint: "var(--orange)",
-    steps: () => [
+    name: "Claude", icon: "claude", tint: "var(--orange)", sub: "On the web, the desktop app and the phone, once added on the web.",
+    steps: (address) => [
       { text: <>Open Claude's <B>Add custom connector</B></>, open: "https://claude.ai/customize/connectors?modal=add-custom-connector" },
-      { text: <>Name it <B>{NAME}</B></>, copy: "name" },
-      { text: <>Paste the address as its <B>MCP server URL</B>, then <B>Continue</B></>, copy: "address" },
+      { text: <>Name it <B>{NAME}</B></>, copy: { label: "Copy name", value: NAME } },
+      { text: <>Paste the address as its <B>MCP server URL</B>, then <B>Continue</B></>, copy: { label: "Copy address", value: address } },
       { text: <>Keep the defaults, scroll down and choose <B>Add</B></> },
       { text: <>Choose <B>Connect</B>: Vaultite's sign-in page shows a code. Type it below.</> },
       { text: <>It's connected when Vaultite has a check in <B>Connectors</B>, <B>Yours</B></>, open: "https://claude.ai/customize/connectors/yours" },
     ],
   },
   chatgpt: {
-    name: "ChatGPT", icon: "openai",
-    steps: (icon) => [
+    name: "ChatGPT", icon: "openai", sub: "On the web and the phone, once added on the web.",
+    steps: (address, icon) => [
       { text: <>Open ChatGPT's <B>Plugins</B>, then <B>Add</B>, <B>Create custom MCP server</B></>, open: "https://chatgpt.com/plugins" },
-      { text: <>Name it <B>{NAME}</B></>, copy: "name" },
-      { text: <>Paste the address as its <B>Server URL</B></>, copy: "address" },
+      { text: <>Name it <B>{NAME}</B></>, copy: { label: "Copy name", value: NAME } },
+      { text: <>Paste the address as its <B>Server URL</B></>, copy: { label: "Copy address", value: address } },
       { text: <>Add <a className="text-primary" href={icon} target="_blank" rel="noreferrer" data-connector-icon>Vaultite's icon</a> if you like (save it, then choose it as the <B>Icon</B>)</> },
       { text: <>Keep <B>OAuth</B>, tick <B>I understand</B> and choose <B>Create as a plugin</B></> },
       { text: <>Sign in when it asks: Vaultite's sign-in page shows a code. Type it below.</> },
       { text: <>It's connected when Vaultite is in <B>Settings</B>, <B>Plugins</B></>, open: "https://chatgpt.com/settings/plugins-settings" },
     ],
   },
+  "grok-bot": {
+    name: "Grok Bot", icon: "grok-bot", sub: "Every bot on your account gets it.",
+    steps: (address) => [
+      { text: <>In Grok Bot, send this in a chat</>, copy: { label: "Copy message", value: `Add a custom MCP server called ${NAME} at ${address}` } },
+      { text: <>Choose <B>Add it</B> when it shows the name and address</> },
+      { text: <>Choose <B>Authorize</B> on the card it posts: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
+    ],
+  },
+  muse: {
+    name: "Muse", icon: "muse", tint: "var(--blue)", sub: "On the web, the phone and WhatsApp.",
+    steps: (address) => [
+      { text: <>In Muse, send this in a chat</>, copy: { label: "Copy message", value: `Add a custom connector called ${NAME}: a remote MCP server at ${address} (streamable HTTP, OAuth).` }, open: "https://muse.ai" },
+      { text: <>Open the sign-in link it answers with: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
+    ],
+  },
 }
 
 function Guide({ id, address }: { id: AppId; address: string }) {
-  const g = GUIDES[id]
-  const [copied, setCopied] = useState<string | null>(null)
-  const copy = (what: "name" | "address") => copyText(what === "name" ? NAME : address)
-    .then(() => { setCopied(what); setTimeout(() => setCopied((c) => (c === what ? null : c)), 1500) }, (e) => notifyError(e))
+  const [copied, setCopied] = useState<number | null>(null)
+  const copy = (i: number, value: string) => copyText(value)
+    .then(() => { setCopied(i); setTimeout(() => setCopied((c) => (c === i ? null : c)), 1500) }, (e) => notifyError(e))
   return (
-    <ol className="flex flex-col gap-1 py-3" data-guide={id}>
-      {g.steps(address.replace(/\/mcp$/, "/icon.png")).map((s, i) => (
+    <ol className="flex flex-col gap-1" data-guide={id}>
+      {GUIDES[id].steps(address, address.replace(/\/mcp$/, "/icon.png")).map((s, i) => (
         <li key={i} className="flex min-h-9 items-center gap-3 text-[15px] leading-[20px]">
           <span className="grid size-5.5 shrink-0 place-items-center rounded-full bg-foreground/[0.08] text-[12px] font-semibold">{i + 1}</span>
           <span className="min-w-0 flex-1">{s.text}</span>
           {s.copy && (
-            <button type="button" onClick={() => void copy(s.copy!)} className={small} data-guide-copy={s.copy}>
-              {copied === s.copy ? <Check className="size-3.5" strokeWidth={2.5} /> : <Copy className="size-3.5" />}{copied === s.copy ? "Copied" : s.copy === "name" ? "Copy name" : "Copy address"}
+            <button type="button" onClick={() => void copy(i, s.copy!.value)} className={small} data-guide-copy>
+              {copied === i ? <Check className="size-3.5" strokeWidth={2.5} /> : <Copy className="size-3.5" />}{copied === i ? "Copied" : s.copy.label}
             </button>
           )}
           {s.open && <a href={s.open} target="_blank" rel="noreferrer" className={small} data-guide-open>Open<ExternalLink className="size-3.5" /></a>}
@@ -173,26 +190,48 @@ function Guide({ id, address }: { id: AppId; address: string }) {
   )
 }
 
-/** Claude and ChatGPT, each a button that opens its steps. */
-function ConnectApp({ address }: { address: string }) {
-  const [open, setOpen] = useState<AppId | null>(null)
+/** The sheet's detail path (`details` in index.tsx): connect-app/<app>. */
+export const SETUP_DETAIL = "connect-app"
+export const setupTitle = (id: string) => (id in GUIDES ? `Set up ${GUIDES[id as AppId].name}` : "Set up an app")
+const iconOf = (id: AppId): LucideIcon => iconNamed(GUIDES[id].icon) ?? Bot
+
+/** An app's steps in a sheet, with the field for the code its sign-in shows. */
+export function SetupSheet({ id }: { id: AppId }) {
+  const { data, error, reload } = useConnections()
+  const g = GUIDES[id]
+  if (!g) return null
+  const address = data ? data.cloud.url ?? data.url : null
   return (
-    <>
-      <div className="flex gap-2 pt-1">
-        {(Object.keys(GUIDES) as AppId[]).map((id) => {
-          const g = GUIDES[id], Icon: LucideIcon = iconNamed(g.icon) ?? Bot, on = open === id
-          return (
-            <button key={id} type="button" aria-expanded={on} onClick={() => setOpen(on ? null : id)} data-guide-for={id}
-              className={cn("flex h-11 flex-1 cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.5px] px-3 text-[15px] font-medium",
-                on ? "border-primary bg-primary/[0.06]" : "border-border hover:bg-foreground/[0.04]")}>
-              <Icon className="size-5 shrink-0" style={g.tint ? { color: g.tint } : undefined} />Set up {g.name}
-              <ChevronDown className={cn("ml-auto size-4 text-tertiary transition-transform", on && "rotate-180")} strokeWidth={2.5} />
-            </button>
-          )
-        })}
-      </div>
-      {open && <Guide key={open} id={open} address={address} />}
-    </>
+    <div data-setup={id}>
+      <SheetHead icon={iconOf(id)} tint={g.tint ?? "var(--foreground)"} kicker="Connections" title={setupTitle(id)} sub={g.sub} />
+      {!data ? <Loading error={error} /> : address ? (
+        <div className="flex flex-col gap-4">
+          <Section title="Steps"><Guide id={id} address={address} /></Section>
+          <Section title="Code"><Connect waiting={data.waiting} onDone={reload} /></Section>
+          {!!data.finishing?.length && (
+            <Group>{data.finishing.map((name, i) => <Row key={i} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />)}</Group>
+          )}
+        </div>
+      ) : <Empty>Your vault needs an address on the internet first: sign in to Vaultite Cloud in Connections.</Empty>}
+    </div>
+  )
+}
+
+/** Each app a button that opens its steps in a sheet. */
+function ConnectApp() {
+  return (
+    <div className="grid grid-cols-2 gap-2 pt-1">
+      {(Object.keys(GUIDES) as AppId[]).map((id) => {
+        const g = GUIDES[id], Icon = iconOf(id)
+        return (
+          <button key={id} type="button" onClick={() => openDetail(detailPath(SETUP_DETAIL, id))} data-guide-for={id}
+            className="flex h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.5px] border-border px-3 text-[15px] font-medium hover:bg-foreground/[0.04]">
+            <Icon className="size-5 shrink-0" style={g.tint ? { color: g.tint } : undefined} /><span className="truncate">Set up {g.name}</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
+          </button>
+        )
+      })}
+    </div>
   )
 }
 const small = "inline-flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] border-[0.5px] border-border px-2.5 text-[13px] font-medium hover:bg-foreground/[0.05]"
@@ -216,7 +255,7 @@ export function ConnectionsView() {
                 {data.cloud.url && <SettingRow label="Address" sub={<code className="break-all text-[12px]">{data.cloud.url}</code>} chevron={Copy} onClick={() => void copyAddress(data.cloud.url!)} data-cloud-url />}
                 {data.url && <SettingRow label={data.cloud.url ? "Your tunnel's address" : "Address"} sub={<code className="break-all text-[12px]">{data.url}</code>} chevron={Copy} onClick={() => void copyAddress(data.url!)} />}
               </Group>
-              <ConnectApp address={(data.cloud.url ?? data.url)!} />
+              <ConnectApp />
               <Connect waiting={data.waiting} onDone={reload} />
             </Section>
           )}

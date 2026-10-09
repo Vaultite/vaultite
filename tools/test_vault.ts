@@ -4427,9 +4427,9 @@ check("properties: an unknown type is refused", code === 400)
   const pubMcp = new PublicMcp({} as Any, { url: "https://own.example", port: 0, redirectHosts: [], tools: null, approvalWait: 1 })
   pubMcp.cloudUrl = () => "https://alice.vaultite.app"
   const byDefault = new PublicMcp({} as Any, PublicMcp.cloudOnly())
-  check("public mcp sign-in: Claude, ChatGPT and Grok Bot (cursor.com) are let in by default, over https only",
-    ["https://claude.ai/api/mcp/auth_callback", "https://chatgpt.com/connector_platform_oauth_redirect", "https://www.cursor.com/agents/mcp/oauth/callback"].every((r) => byDefault.redirectOk(r))
-    && !byDefault.redirectOk("http://www.cursor.com/agents/mcp/oauth/callback") && !byDefault.redirectOk("https://cursor.com.evil.example/cb"))
+  check("public mcp sign-in: Claude, ChatGPT, Grok Bot (cursor.com) and Muse (agent.meta.ai) are let in by default, over https only",
+    ["https://claude.ai/api/mcp/auth_callback", "https://chatgpt.com/connector_platform_oauth_redirect", "https://www.cursor.com/agents/mcp/oauth/callback", "https://agent.meta.ai/api/hatch/oauth/callback"].every((r) => byDefault.redirectOk(r))
+    && !byDefault.redirectOk("http://www.cursor.com/agents/mcp/oauth/callback") && !byDefault.redirectOk("https://cursor.com.evil.example/cb") && !byDefault.redirectOk("https://evil.meta.ai/cb"))
   const viaCloud = { client: "mcp", agent: "claude-app", label: "Claude", source: "claude" }, viaNothing = { ...viaCloud }
   pubMcp.bases.set(viaCloud, "https://alice.vaultite.app")
   check("upload links: on the address the app reached (an app with the Cloud's can't reach the owner's tunnel), else the owner's",

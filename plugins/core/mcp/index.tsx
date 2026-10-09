@@ -2,7 +2,8 @@
 // internet).
 import { Copy, Plug } from "lucide-react"
 import { copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
-import { ConnectionsView } from "./Connections"
+import { ConnectionsView, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
+import { GrokBotIcon, MuseIcon } from "./marks"
 
 function Preview() {
   return (
@@ -39,6 +40,8 @@ function Connect() {
 export default definePlugin({
   preview: () => <Preview />,
   settingsPanel: () => <Connect />,
+  icons: { "grok-bot": GrokBotIcon, muse: MuseIcon },
+  details: { [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> } },
   views: { connections: { icon: Plug, title: () => "Connections", render: () => <ConnectionsView /> } },
   commands: [{ id: "mcp:connections", name: "Open connections", run: () => openView("connections", { newTab: true }) }],
 })
