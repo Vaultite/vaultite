@@ -4391,6 +4391,7 @@ await new Promise((r) => setTimeout(r, 2800))
 const recap = async (body: object = {}) => (await api("POST", "ops/activity.recap", body))[1]
 let [today] = (await recap()).days
 const texts = today.entries.map((e: Any) => e.text) as string[]
+console.log("DEBUGTEXTS", new Date().toString(), JSON.stringify(today.entries.map((e: Any) => `${e.time} ${e.text}`)))
 const has = (re: RegExp) => today.entries.find((e: Any) => re.test(e.text))
 check("recap: an edit in the app, with the text it added quoted", has(/^Edited \[\[Rc\/Idea\|Idea\]\] · 1 change$/)?.quote.join() === "Today's \\#line about [[Lighthouse]]", texts)
 check("recap: a task done in one file and moved to another is one, from and to", has(/^Completed "Call the bank" · \[\[Rc\/Open\|Open\]\] → \[\[Rc\/Closed\|Closed\]\]$/), texts)
