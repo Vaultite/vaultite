@@ -212,7 +212,7 @@ export function askMoveMany(paths: string[], opts: { before?: (path: string, fol
   const hidden = roots.every(isHidden), archived = roots.every(inArchive)
   const folders = ["", ...all].filter((f) => roots.some((p) => canMoveInto(p, f)) && roots.every((p) => f !== p && !f.startsWith(`${p}/`))
     && (!isHidden(f) || hidden) && (!archives(f) || archived))
-  pickFolder({ name: `${roots.length} items`, path: roots[0], folders, all, onPick: (f) => void moveManyInto(roots, f, { before: opts.before }) })
+  pickFolder({ label: "Move to folder", placeholder: `Move ${roots.length} items to…`, verb: "move", not: roots[0], folders, all, onPick: (f) => void moveManyInto(roots, f, { before: opts.before }) })
 }
 
 /** "Move file to…": pick a folder (fuzzy, "/"
@@ -229,7 +229,7 @@ export function askMove(path: string, opts: { before?: (folder: string) => unkno
     }
     await moveInto(path, f)
   }
-  pickFolder({ name: shownName(path), path, folders, all, onPick: (f) => void pick(f) })
+  pickFolder({ label: "Move to folder", placeholder: `Move "${shownName(path)}" to…`, verb: "move", not: path, folders, all, onPick: (f) => void pick(f) })
 }
 
 // ---------- icons (the tree and the tabs) ----------

@@ -8,6 +8,7 @@
   "settings": {
     "folder": {
       "type": "string",
+      "folder": true,
       "default": "Templates",
       "label": "Folder",
       "description": "the folder whose notes are templates"

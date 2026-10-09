@@ -10,8 +10,8 @@
   "settings": {
     "keep_days": { "type": "number", "default": 14, "min": 1, "max": 365, "label": "Days to keep", "description": "how long events and timings are kept on this machine" },
     "reads": { "type": "boolean", "default": true, "label": "Record reads", "description": "what agents and scripts read is recorded too, not only what they change" },
-    "recaps": { "type": "boolean", "default": true, "label": "Write day recaps", "description": "each day's recap goes in the vault (Recaps/<date>.md), with the text you changed quoted, to keep" },
-    "capture_folders": { "type": "list", "label": "Capture folders", "description": "folders whose new files are captures, like Transcripts for a transcriber's exports (clips and bookmarks are found without it)" }
+    "recaps": { "type": "boolean", "default": true, "label": "Write day recaps", "description": "each day's recap goes in the vault (Recaps/<date>.md; move the folder and new ones follow), with the text you changed quoted, to keep" },
+    "capture_folders": { "type": "list", "folder": true, "label": "Capture folders", "description": "folders whose new files are captures, like Transcripts for a transcriber's exports (clips and bookmarks are found without it)" }
   },
   "blocks": {
     "activity": {

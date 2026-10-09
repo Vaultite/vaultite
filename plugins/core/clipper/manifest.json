@@ -6,7 +6,7 @@
   "name": "Web clipper",
   "description": "Saves a web page to your vault as a Markdown note: its main content without menus and ads, with its source, title, author and date. From vau clip, an AI through MCP, or anything that posts a page.",
   "settings": {
-    "folder": { "type": "string", "default": "Clippings", "label": "Folder", "description": "where clipped pages are saved" },
+    "folder": { "type": "string", "folder": true, "default": "Clippings", "label": "Folder", "description": "where clipped pages are saved" },
     "tags": { "type": "list", "default": ["Clipping"], "label": "Tags", "description": "the tags each clipped page gets" },
     "inbox": { "type": "boolean", "default": false, "label": "Into the inbox", "description": "clipped pages land in the inbox to review (Inbox/), with the Inbox plugin on" }
   }

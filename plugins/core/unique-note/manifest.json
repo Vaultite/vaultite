@@ -6,7 +6,7 @@
   "name": "Unique note creator",
   "description": "Make a note named by the minute it was made (202610031542), like a Zettelkasten's: a new name every time, in a folder you choose.",
   "settings": {
-    "folder": { "type": "string", "default": "", "label": "Folder", "description": "where new unique notes go (empty: where new notes go)" },
+    "folder": { "type": "string", "folder": true, "default": "", "label": "Folder", "description": "where new unique notes go (empty: where new notes go)" },
     "format": { "type": "string", "default": "YYYYMMDDHHmm", "label": "Name format", "description": "the new note's name, from the time it was made (YYYY MM DD HH mm ss)" }
   }
 }

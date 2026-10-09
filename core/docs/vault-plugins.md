@@ -39,7 +39,8 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
   "options": {"months": {"type": "number", "default": 1, "description": "how many months back"}}}}`. `type` is
   `string`, `number`, `boolean`, `list`, `map` or `enum` (with `values`), or a list of them; optional `default`, `min`,
   `max`, `required`; descriptions are one lowercase line. The app checks blocks' options against it and suggests them.
-- `settings`: its `data.json`'s keys, in the same words plus a `label` (sentence case) and, for an enum, `labels`:
+- `settings`: its `data.json`'s keys, in the same words plus a `label` (sentence case), for an enum `labels`, and for a
+  vault folder (a string, or a list of them) `"folder": true`, which the form picks from the vault's:
   `{"months": {"type": "number", "default": 3, "min": 1, "label": "Months shown", "description": "how many months the
   summary covers"}}`. Its settings sheet draws them as a form; `default` is what it does when the key is left out.
 

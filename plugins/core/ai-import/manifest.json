@@ -7,7 +7,7 @@
   "description": "Bring your history from ChatGPT and Claude: their official exports become a note per chat (and per Claude project), and what they remembered about you a list you review before any of it reaches ME.md or People.",
   "tint": "purple",
   "settings": {
-    "folder": { "type": "string", "default": "Chats", "label": "Folder", "description": "where chats go, a subfolder per AI (Chats/ChatGPT, Chats/Claude)" },
+    "folder": { "type": "string", "folder": true, "default": "Chats", "label": "Folder", "description": "where chats go, a subfolder per AI (Chats/ChatGPT, Chats/Claude)" },
     "minMessages": { "type": "number", "default": 2, "min": 0, "label": "Fewest messages", "description": "chats with fewer messages are left out; 0 imports every one" },
     "images": { "type": "boolean", "default": true, "label": "Import small images", "description": "ChatGPT's images go into the chats' Attachments folder (Claude's exports have none)" },
     "maxImageKB": { "type": "number", "default": 2048, "min": 1, "label": "Largest image, in KB", "description": "a bigger image is left out" }

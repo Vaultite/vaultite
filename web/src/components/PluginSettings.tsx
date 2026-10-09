@@ -1,11 +1,11 @@
 // A plugin's settings sheet, the one place its options live: its `settingsPanel`, then a form of its declared
 // settings (choosing the default removes the key), or its settings file drawn. No menus inside: choices unfold.
-import { useEffect, useState } from "react"
-import { Check, ChevronDown, ChevronRight, FileJson, type LucideIcon } from "lucide-react"
-import { type Store } from "@/core/data"
+import { useEffect, useMemo, useState } from "react"
+import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
+import { type Store, useStore } from "@/core/data"
 import { get, patch, put } from "@/core/http"
 import type { Plugin } from "@/core/define"
-import { openFile, readFile } from "@/core/files"
+import { folderList, openFile, readFile } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { afterSheets } from "@/core/nav"
 import { notifyError } from "@/core/notify"
@@ -16,6 +16,7 @@ import { capitalize, cn } from "@/lib/utils"
 import { Group, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { JsonView } from "@/components/JsonView"
 import { Catch } from "@/components/Guard"
+import { chooseFolder } from "@/components/FolderPicker"
 import { valueProblem, type SettingDecl, type SettingDecls } from "../../../core/blocks.ts"
 
 const panelFailed = () => <p className="text-[15px] text-muted-foreground">Its settings couldn't be drawn. Its settings file is below.</p>
@@ -139,6 +140,8 @@ export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   if (ts.length === 1 && ts[0] === "enum" && d.values?.length) return <Choice k={k} d={d} value={shown} set={set} />
   if (ts.length === 1 && ts[0] === "number") return <NumberField k={k} d={d} value={value} set={set} />
   if (ts.length === 1 && ts[0] === "list" && d.values?.length) return <Chips k={k} d={d} value={shown} set={set} />
+  if (d.folder && ts.length === 1 && ts[0] === "list") return <Folders k={k} d={d} value={value} set={set} />
+  if (d.folder && ts.length === 1 && ts[0] === "string") return <FolderField k={k} d={d} value={value} set={set} />
   // (a list of records, not of words: its file says it best)
   const words = !Array.isArray(value) || value.every((x) => typeof x === "string" || typeof x === "number")
   if (ts.every((t) => t === "string" || t === "list") && words) return <TextField k={k} d={d} value={value} set={set} list={ts.includes("list")} />
@@ -218,6 +221,63 @@ function TextField({ k, d, value, set, list }: { k: string; d: SettingDecl; valu
         onChange={(e) => setTyped(e.target.value)} onBlur={save}
         onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
         className={cn(field, "w-full sm:w-48")} />
+    </SettingRow>
+  )
+}
+
+/** The vault's folders, followed live. */
+function useFolders() {
+  const files = useStore().store?.files
+  return useMemo(() => new Set(files ? folderList(files) : []), [files])
+}
+const missing = (f: string) => <span className="text-[var(--red)]">There's no folder {f}</span>
+
+/** A folder, chosen from the vault's (or a new one, made); one set that isn't there says so. Cleared, the default. */
+function FolderField({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
+  const folders = useFolders()
+  const v = typeof value === "string" ? value.replace(/^\/+|\/+$/g, "") : ""
+  return (
+    <SettingRow stack label={d.label} sub={v && !folders.has(v) ? missing(v) : capitalize(d.description)} data-setting={k}>
+      <div className="flex w-full items-center gap-1 sm:w-56">
+        <button type="button" aria-label={d.label} onClick={() => chooseFolder(d.label, set)} data-folder-field
+          className={cn(field, "flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 text-left hover:bg-foreground/[0.03]")}>
+          <Folder className="size-3.5 shrink-0 text-muted-foreground" strokeWidth={2} />
+          <span className={cn("min-w-0 flex-1 truncate", !v && "text-muted-foreground")}>{v || String(d.default ?? "") || "Choose a folder"}</span>
+        </button>
+        {v && (
+          <button type="button" aria-label={`Clear ${d.label.toLowerCase()}`} data-tip="Back to its default" onClick={() => set(null)}
+            className="grid size-8 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:size-7">
+            <X className="size-3.5" strokeWidth={2.25} />
+          </button>
+        )}
+      </div>
+    </SettingRow>
+  )
+}
+
+/** Folders, one chip each (one that isn't there in red), and one more chosen like FolderField's. */
+function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
+  const folders = useFolders()
+  const list = (Array.isArray(value) ? value : []).map((x) => String(x).replace(/^\/+|\/+$/g, "")).filter(Boolean)
+  const chip = "flex min-h-8 items-center gap-1 rounded-full border-[0.5px] text-[14px] md:min-h-7 md:text-[13px]"
+  return (
+    <SettingRow stack label={d.label} sub={capitalize(d.description)} data-setting={k}>
+      <div className="flex flex-wrap gap-1.5 sm:max-w-[60%] sm:justify-end">
+        {list.map((f) => (
+          <span key={f} data-folder-chip={f} data-tip={folders.has(f) ? undefined : `There's no folder ${f}`}
+            className={cn(chip, "pr-0.5 pl-2.5", folders.has(f) ? "border-border" : "border-[var(--red)] text-[var(--red)]")}>
+            {f}
+            <button type="button" aria-label={`Remove ${f}`} onClick={() => { const rest = list.filter((x) => x !== f); set(rest.length ? rest : null) }}
+              className="grid size-6 cursor-pointer place-items-center rounded-full text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
+              <X className="size-3" strokeWidth={2.25} />
+            </button>
+          </span>
+        ))}
+        <button type="button" data-folder-add onClick={() => chooseFolder(d.label, (f) => { if (!list.includes(f)) set([...list, f]) })}
+          className={cn(chip, "cursor-pointer border-border px-2.5 text-muted-foreground hover:text-foreground")}>
+          <Plus className="size-3.5" strokeWidth={2.25} /> Add a folder
+        </button>
+      </div>
     </SettingRow>
   )
 }

@@ -311,9 +311,10 @@ function ActionsEditor({ store }: { store: Store }) {
 
 export default definePlugin({
   fileBar: { dispatch: { sort: 60, render: (file) => <Buttons file={file} /> } },
-  fileMenu: (path) => (dispatchable(path) ? actionsOf(getStore()).map((a) => {
+  fileMenu: (path) => (dispatchable(path) ? actionsOf(getStore()).map((a, _, all) => {
     const where = whereLabel(a)
-    const it = { label: `Dispatch to ${a.label}${where ? ` (${where})` : ""}`, icon: iconOf(a), run: () => void dispatchHere(a, path) }
+    // The menu's other verbs are bare: only several actions need theirs named.
+    const it = { label: `${all.length > 1 ? `Dispatch to ${a.label}` : "Dispatch"}${where ? ` (${where})` : ""}`, icon: iconOf(a), run: () => void dispatchHere(a, path) }
     const each = onEach(a, path)
     return each.length ? { ...it, split: true, items: each } : it
   }) : []),

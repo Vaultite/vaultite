@@ -269,7 +269,9 @@ export function blocksDoc(decls: BlockDecls): string {
 
 /** A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip
  *  it). Choosing the `default` removes the key, so a vault only holds what the user chose. */
-export type SettingDecl = OptionDecl & { label: string; labels?: Record<string, string>; local?: boolean }
+export type SettingDecl = OptionDecl & { label: string; labels?: Record<string, string>; local?: boolean
+  /** A vault folder (a list: of them): the form picks from the vault's, or makes a new one. */
+  folder?: boolean }
 export type SettingDecls = Record<string, SettingDecl>
 
 /** A manifest's `settings` as declarations ({} when it has none). */
@@ -287,8 +289,9 @@ export function settingDeclProblems(settings: unknown, where: string): string[] 
   for (const [k, d] of Object.entries(settings)) {
     const at = `${where}: setting '${k}'`
     if (!isMap(d)) { out.push(`${at} must be an object with a type, a label and a description`); continue }
-    const { local, ...opt } = d
+    const { local, folder, ...opt } = d
     if (local !== undefined && typeof local !== "boolean") out.push(`${at}: local must be true or false`)
+    if (folder !== undefined && (folder !== true || !types(opt as OptionDecl).every((t) => t === "string" || t === "list"))) out.push(`${at}: folder is true, on a string or a list`)
     out.push(...optionProblems(opt, at))
     if (d.required !== undefined) out.push(`${at}: a setting is never required (left out, it's its default)`)
     if (!ONE_LINE(d.label)) out.push(`${at} needs a label (a few words, sentence case: what the settings form calls it)`)
@@ -306,5 +309,5 @@ export function settingsDoc(id: string, decls: SettingDecls): string {
   const keys = Object.keys(decls)
   if (!keys.length) return ""
   return [`Settings, \`.vaultite/plugins/${id}/data.json\` (each optional; the plugin's settings in the app too):`,
-    ...keys.map((k) => `- ${optionText(k, decls[k])}${decls[k].local ? " (this machine's own: bundles never save or set it)" : ""}`)].join("\n")
+    ...keys.map((k) => `- ${optionText(k, decls[k]).replace(/\(a (text|list)/, (m, t) => decls[k].folder ? `(${t === "list" ? "a list of folders" : "a folder"}` : m)}${decls[k].local ? " (this machine's own: bundles never save or set it)" : ""}`)].join("\n")
 }

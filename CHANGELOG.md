@@ -7,6 +7,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Shorter dispatch in a file's menu**: with one action it reads "Dispatch" (and where it runs), like the menu's other
+  verbs; several still name theirs.
 - **Context ring on 1M sessions**: a Claude Code session with a 1M context no longer shows red near 200k when its status
   line writes to `~/.claude` under another account.
 - **A default place per workspace**: pick the machine and account new terminals, agents (Open Claude Code, ⌘J) and
@@ -244,6 +246,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Phones get a row of extra keys. Closing a tab leaves what runs in it running.
 
 ### Setup and look
+- **Folder settings pick a folder**: a plugin's folder (Clipper's, Templates', Activity's capture folders and the rest)
+  opens a fuzzy list of the vault's folders; one typed that isn't there is made, and one set that's missing shows red.
 - **Settings opens sheets, never unfolds**: Plugin settings and Fonts open in a sheet like Keyboard shortcuts, so the
   page never shifts; Setup links to the Plugins page; a palette (a font picker) works over a sheet.
 - **Everything from the keyboard**: Tab passes a list (the file tree, a panel's rows) as one stop and comes back to

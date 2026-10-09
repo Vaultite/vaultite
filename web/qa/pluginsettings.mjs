@@ -4,7 +4,7 @@
 // (Logs); a vault plugin's declared settings; every way to open a sheet; 390px. WRITES plugins.json, files.json,
 // page-preview's, search's and workspaces' settings, and a vault plugin (put back / removed): throwaway server only.
 //   node web/qa/pluginsettings.mjs <base url> <vault path> [out dir]
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
 import { setAsideWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 
@@ -51,6 +51,8 @@ try {
       goal: { type: "number", default: 3, min: 1, max: 14, label: "Weekly goal", description: "sessions a week" },
       unit: { type: "enum", values: ["km", "mi"], default: "km", label: "Unit", description: "how distances read" },
       tags: { type: "list", label: "Tags", description: "tags each entry gets" },
+      where: { type: "string", folder: true, default: "Runs", label: "Folder", description: "where entries go" },
+      dirs: { type: "list", folder: true, label: "Watched folders", description: "folders whose files count" },
     } }, null, 2))
   const plugins = json(".vaultite/plugins.json") ?? {}
   // Workspaces on (a vault may have it off, as the sandbox does: da5190b): its sheet and its menu's Settings… are tested;
@@ -192,6 +194,30 @@ try {
     await until(() => vs.count(), 4000)
     await vs.locator("[data-setting=tags] input").fill("Run, Outdoors"); await vs.locator("[data-setting=tags] input").press("Enter")
     check("vault plugin: its declared settings as a form", !!(await until(() => JSON.stringify(json(`${VP}/data.json`)?.tags) === '["Run","Outdoors"]', 4000)), json(`${VP}/data.json`))
+
+    // A folder setting: the vault's folders, fuzzy, in a palette over the sheet; one typed that isn't there is made.
+    const some = readdirSync(VAULT, { withFileTypes: true }).find((d) => d.isDirectory() && !d.name.startsWith("."))?.name ?? ""
+    await vs.locator("[data-setting=where] [data-folder-field]").click()
+    const pal = page.locator("[role=dialog][aria-label=Folder]")
+    check("folder setting: a palette of folders over the sheet", !!(await until(() => pal.count(), 3000)) && await pal.locator("input").evaluate((el) => el === document.activeElement))
+    await page.keyboard.type(some.slice(0, 3))
+    await until(async () => (await pal.innerText()).includes(some), 2000)
+    await page.keyboard.press("Enter")
+    check("...picked, it's set", !!(await until(() => json(`${VP}/data.json`)?.where === some, 4000)), [some, json(`${VP}/data.json`)])
+    await shot(page, "folder-setting")
+    await vs.locator("[data-setting=dirs] [data-folder-add]").click()
+    const pal2 = page.locator("[role=dialog][aria-label='Watched folders']")
+    await until(() => pal2.count(), 3000)
+    await page.keyboard.type("QA made/Deep")
+    check("...one typed that isn't there: New folder", !!(await until(async () => (await pal2.innerText()).includes("New folder"), 2000)))
+    await page.keyboard.press("Shift+Enter")
+    check("...made, and added to the list", !!(await until(() => JSON.stringify(json(`${VP}/data.json`)?.dirs) === '["QA made/Deep"]' && existsSync(file("QA made/Deep")), 4000)), json(`${VP}/data.json`))
+    writeFileSync(file(`${VP}/data.json`), JSON.stringify({ ...json(`${VP}/data.json`), where: "Nowhere here" }))
+    check("...one set that isn't there says so", !!(await until(async () => (await vs.locator("[data-setting=where]").innerText()).includes("There's no folder Nowhere here"), 4000)))
+    await vs.locator("[data-setting=dirs] button[aria-label='Remove QA made/Deep']").click()
+    await vs.locator("[data-setting=where] button[aria-label^=Clear]").click()
+    check("...removed and cleared", !!(await until(() => { const d = json(`${VP}/data.json`) ?? {}; return d.where === undefined && !d.dirs }, 4000)), json(`${VP}/data.json`))
+    rmSync(file("QA made"), { recursive: true, force: true })
     await closeSheet(page)
 
     // The plugin's own sheet says where it's kept: a vault plugin's folder (Open shows it in the tree), an app plugin's data.json.

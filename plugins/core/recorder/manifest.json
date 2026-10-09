@@ -10,6 +10,6 @@
   "settings": {
     "minutes": { "type": "number", "default": 5, "min": 1, "max": 30, "label": "Minutes kept", "description": "how far back a report goes" },
     "typed_text": { "type": "boolean", "default": false, "label": "Record the letters typed", "description": "the keys themselves, not only how many; never in terminals or password fields" },
-    "folder": { "type": "string", "default": "Bug reports", "label": "Folder", "description": "where reports are saved" }
+    "folder": { "type": "string", "folder": true, "default": "Bug reports", "label": "Folder", "description": "where reports are saved" }
   }
 }
