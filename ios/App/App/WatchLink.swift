@@ -10,9 +10,8 @@ import WatchConnectivity
 ///     t}]), `unread`.
 ///   - `do: answer`, `id`, `answer` (approve, deny, read): the op inbox.answer -> `ok`.
 ///   - `do: wake`: nothing; it wakes this app so the recordings sent with it come in now.
-/// A short voice note comes as message data, the phone near, answered with its outcome (JSON). Otherwise it comes as a file (transferFile, metadata `do: voice`, `id`): transcribed here, on the device (Speech's
-/// SpeechTranscriber on iOS 26, else SFSpeechRecognizer), sent to the op inbox.voice, and the outcome sent back
-/// (transferUserInfo: `voice` (its id), `text`, `path` or `error`). Any failure is `error`, in the app's words.
+/// A short voice note comes as message data, the phone near, answered with its outcome (JSON). Otherwise it comes as a file (transferFile, metadata `do: voice`, `id`): sent on (Voice.send: transcribed here when
+/// short, else by the server), and the outcome sent back (transferUserInfo: `voice` (its id), `text`, `path` or `error`).
 final class WatchLink: NSObject, WCSessionDelegate {
     static let shared = WatchLink()
 
@@ -20,6 +19,9 @@ final class WatchLink: NSObject, WCSessionDelegate {
         guard WCSession.isSupported() else { return }
         WCSession.default.delegate = self
         WCSession.default.activate()
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { _ in
+            Task { await Voice.retry() }
+        }
     }
 
     /// With the watch app there, ask for speech recognition now, while the app is in front: a voice note wakes it in
@@ -54,23 +56,13 @@ final class WatchLink: NSObject, WCSessionDelegate {
             var outcome: [String: Any] = ["voice": id]
             do {
                 try data.write(to: url)
-                outcome.merge(try await self.voice(url)) { $1 }
+                outcome.merge(await Voice.send(url, from: "Apple Watch")) { $1 }
             } catch {
                 outcome["error"] = Servers.say(error)
             }
-            try? FileManager.default.removeItem(at: url)
             replyHandler((try? JSONSerialization.data(withJSONObject: outcome)) ?? Data())
             UIApplication.shared.endBackgroundTask(task)
         }
-    }
-
-    /// Transcribe a recording and give it to the server (the op inbox.voice): `text`, `path`, `terminal`.
-    private func voice(_ url: URL) async throws -> [String: Any] {
-        let text = try await Transcribe.file(url)
-        let r = try await Servers.call("POST", "ops/inbox.voice", ["text": text, "from": "Apple Watch"], from: "watch")
-        var out: [String: Any] = ["text": text, "path": r["path"] as? String ?? ""]
-        if let t = r["terminal"] as? String { out["terminal"] = t }
-        return out
     }
 
     private func handle(_ m: [String: Any]) async -> [String: Any] {
@@ -106,15 +98,72 @@ final class WatchLink: NSObject, WCSessionDelegate {
         let task = UIApplication.shared.beginBackgroundTask(withName: "voice")
         Task {
             var outcome: [String: Any] = ["voice": id]
-            do {
-                outcome.merge(try await self.voice(kept)) { $1 }
-            } catch {
-                outcome["error"] = Servers.say(error)
-            }
-            try? FileManager.default.removeItem(at: kept)
+            outcome.merge(await Voice.send(kept, from: "Apple Watch")) { $1 }
             WCSession.default.transferUserInfo(outcome)
             UIApplication.shared.endBackgroundTask(task)
         }
+    }
+}
+
+/// A recording on its way to the inbox, never lost: a short one transcribed here (the op inbox.voice); a long one, or one
+/// this phone couldn't transcribe or send, goes as it is to the server (audio-recorder/voice), which transcribes it or
+/// keeps the audio. It waits in Application Support/Voice notes until it's sent, so one the server can't be reached for
+/// (or the app stopped mid-way) goes the app's next time in front.
+@MainActor
+enum Voice {
+    /// Longer than this, the server transcribes it: here it'd outlast what iOS gives an app in the background.
+    static let longest: TimeInterval = 180
+    private static let waiting = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        .appendingPathComponent("Voice notes", isDirectory: true)
+    /// The ones being sent now (by send or retry: never both).
+    private static var sending = Set<String>()
+
+    /// Send it on; the file is taken. Its outcome: `text` (what was said, or where it is), `path` and `terminal` when this
+    /// phone transcribed it, `error` when it couldn't even be kept.
+    static func send(_ file: URL, from: String) async -> [String: Any] {
+        let client = from == "Apple Watch" ? "watch" : "iphone"
+        let url = waiting.appendingPathComponent("\(client)-\(Int(Date().timeIntervalSince1970))-\(UUID().uuidString).\(file.pathExtension)")
+        do {
+            try FileManager.default.createDirectory(at: waiting, withIntermediateDirectories: true)
+            try FileManager.default.moveItem(at: file, to: url)
+        } catch {
+            return ["error": Servers.say(error)]
+        }
+        sending.insert(url.lastPathComponent)
+        defer { sending.remove(url.lastPathComponent) }
+        let seconds = (try? AVAudioFile(forReading: url)).map { Double($0.length) / $0.fileFormat.sampleRate } ?? 0
+        if seconds > 0, seconds <= longest, let text = try? await Transcribe.file(url),
+           let r = try? await Servers.call("POST", "ops/inbox.voice", ["text": text, "from": from], from: client) {
+            try? FileManager.default.removeItem(at: url)
+            var out: [String: Any] = ["text": text, "path": r["path"] as? String ?? ""]
+            if let t = r["terminal"] as? String { out["terminal"] = t }
+            return out
+        }
+        do {
+            try await upload(url)
+            return ["text": "Sent to your server to transcribe: it'll be in your inbox"]
+        } catch {
+            return ["text": "Kept on your iPhone: it's sent when Vaultite next opens (\(Servers.say(error)))"]
+        }
+    }
+
+    /// Send the recordings still waiting, oldest first; what still can't go stays.
+    static func retry() async {
+        guard let names = try? FileManager.default.contentsOfDirectory(atPath: waiting.path) else { return }
+        for name in names.sorted() where !name.hasPrefix(".") && !sending.contains(name) {
+            sending.insert(name)
+            defer { sending.remove(name) }
+            do { try await upload(waiting.appendingPathComponent(name)) } catch { return }
+        }
+    }
+
+    /// To the server as it is, then gone from here.
+    private static func upload(_ url: URL) async throws {
+        let watch = url.lastPathComponent.hasPrefix("watch-")
+        let data = try Data(contentsOf: url)
+        _ = try await Servers.call("POST", "audio-recorder/voice", ["data": data.base64EncodedString(), "ext": url.pathExtension,
+                                   "from": watch ? "Apple Watch" : "iPhone"], from: watch ? "watch" : "iphone", timeout: 600)
+        try? FileManager.default.removeItem(at: url)
     }
 }
 

@@ -1121,6 +1121,9 @@ async function submit(ctx: OpCtx, id: string, text: string) {
   await ctx.api("POST", `terminals/${t}/send`, { text: "", enter: true })
 }
 
+/** Words past which a voice note isn't handed to the front door (about ten minutes of talk). */
+const LONG_VOICE = 1500
+
 /** Start the front door with a voice note: a new terminal running the agent (its id), the note its first prompt, given
  *  as it starts (typed in at its prompt, a fresh TUI could drop the start of it). */
 async function dispatch(ctx: OpCtx, agent: string, file: string, text: string): Promise<string> {
@@ -1136,7 +1139,7 @@ plugin.op({
   summary: "What the user said into their watch, phone or the app: kept in the inbox, and handed to the front-door agent when the setting dispatch names one.",
   help: `The iPhone app sends it (from the watch's microphone, transcribed on the phone), and so does the app's Record a
 voice note for your inbox. With dispatch set (claude, codex...), a new terminal runs that agent with the note, to write
-it down, do it, or say what it would do.
+it down, do it, or say what it would do; one past 1,500 words (a recording left running, a meeting) is only kept.
 
   vau inbox voice "Remind me to call Alice about the trip on Friday"`,
   kind: "write",
@@ -1157,7 +1160,9 @@ it down, do it, or say what it would do.
     const file = `${r.id}.md`
     const agent = settings().dispatch
     let terminal: string | null = null, why = ""
-    if (agent) {
+    // Past a few minutes of talk it's a recording left running or a meeting, not a request: kept, not handed on.
+    if (agent && words.length > LONG_VOICE) why = `${words.length} words is a recording, not a request: it's in the inbox`
+    else if (agent) {
       try { terminal = await dispatch(ctx, agent, file, said) } catch (e) { why = (e as Error).message }
     }
     return { path: file, terminal, why }

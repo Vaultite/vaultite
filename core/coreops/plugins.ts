@@ -16,13 +16,15 @@ export type PluginInfo = PluginDir & { name: string; description: string; requir
   /** Off until turned on (`enabled`), like a vault plugin: the vault's, and the app's with `offByDefault`. */
   optIn: boolean
   /** A vault plugin that's on but waits for this machine's owner to allow it (core/trust.ts). */
-  waiting?: boolean }
+  waiting?: boolean
+  /** A vault plugin whose edits run without asking on this machine (core/trust.ts). */
+  edits?: boolean }
 
 
 /** Every plugin: the app's built-in ones, then the vault's own (loaded or not). */
 export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
-    description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval }))
+    description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits }))
   return [...app.app.map((p): PluginInfo => ({ id: p.id, tier: p.tier, dir: p.dir, name: String(p.manifest.name ?? p.id),
     description: String(p.manifest.description ?? ""), requires: strings(p.manifest.requires), optIn: p.manifest.offByDefault === true })), ...own]
 }
@@ -121,7 +123,7 @@ off until turned on (they run code). vau plugins check: what's wrong with the va
       const ps = pluginList(app)
       const { own, on } = onOff(ps, app.vault.config("plugins"))
       return ps.map((p) => ({ id: p.id, name: p.name, tier: p.tier, on: on(p.id) && !p.waiting, switchedOn: own(p), requires: p.requires, description: p.description,
-        ...(p.waiting ? { waiting: true } : {}) }))
+        ...(p.waiting ? { waiting: true } : {}), ...(p.edits ? { edits: true } : {}) }))
     },
     // (the "core" tier is the app's built-in plugins: "core" alone is the app itself)
     text: (rows: Any[]) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +

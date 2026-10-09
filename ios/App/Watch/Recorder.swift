@@ -3,9 +3,11 @@ import Foundation
 import WatchKit
 
 /// The microphone: one recording at a time, AAC in an .m4a (small: mono, 16 kHz, 3 KB a second), handed to the phone
-/// when it stops.
+/// when it stops, or on its own at `longest` (one left running isn't hours of audio).
 @MainActor
-final class Recorder: NSObject, ObservableObject {
+final class Recorder: NSObject, ObservableObject, AVAudioRecorderDelegate {
+    static let longest: TimeInterval = 2 * 60 * 60
+
     @Published var recording = false
     @Published var started: Date?
     @Published var problem: String?
@@ -32,7 +34,8 @@ final class Recorder: NSObject, ObservableObject {
                 AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: 16_000, AVNumberOfChannelsKey: 1,
                 AVEncoderBitRateKey: 24_000,
             ])
-            guard r.record() else { throw PhoneLink.Failure("The microphone didn't start") }
+            r.delegate = self
+            guard r.record(forDuration: Self.longest) else { throw PhoneLink.Failure("The microphone didn't start") }
             recorder = r
             file = url
             recording = true
@@ -43,9 +46,14 @@ final class Recorder: NSObject, ObservableObject {
         }
     }
 
-    func stop() {
+    /// It reached `longest`: stopped by itself, sent like one stopped by hand.
+    nonisolated func audioRecorderDidFinishRecording(_ r: AVAudioRecorder, successfully flag: Bool) {
+        Task { @MainActor in if self.recorder === r { self.stop(at: Self.longest) } }
+    }
+
+    func stop(at seconds: TimeInterval? = nil) {
         guard let recorder, let file else { return }
-        let long = recorder.currentTime
+        let long = seconds ?? recorder.currentTime
         recorder.stop()
         try? AVAudioSession.sharedInstance().setActive(false)
         self.recorder = nil

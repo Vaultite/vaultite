@@ -6,6 +6,9 @@ import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
 import type { OpEntry } from "../../../core/ops.ts"
 import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
+import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
+import { hashed } from "../../../core/rules.ts"
+import type { Item } from "../../../core/vault.ts"
 import { blockedHost } from "../../../core/web.ts"
 import { toolsOf } from "./catalog.ts"
 import { type Client, handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
@@ -17,7 +20,6 @@ const GATED: Record<string, string> = {
   "plugin.install": "install a plugin from a repository",
   "plugin.update": "update installed plugins",
   "plugin.uninstall": "remove a plugin",
-  "plugin.new": "write a new plugin",
   "bundle.apply": "apply a bundle (it turns plugins on and off)",
   "bundle.import": "import a bundle",
   "bundle.restore": "restore the setup from before a bundle (it turns plugins on and off)",
@@ -27,12 +29,15 @@ const GATED: Record<string, string> = {
 }
 const APP_FILES = /^\/*\.vaultite(\/|$)/
 
-/** Why an app on the internet needs the owner's yes to run this operation with these parameters, or "" when it doesn't. */
-export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string, unknown>): string {
+/** Why an app on the internet needs the owner's yes to run this operation with these parameters, or "" when it doesn't.
+ *  `code`: whether a path is a vault plugin's code that runs only once the owner allows it as it is (writing it needs no
+ *  yes: allowing it does). */
+export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string, unknown>, code: (p: string) => boolean = () => false): string {
   if (id === "dispatch.run" && params.allow === true) return "run a shell command a setting names, on your machine"
+  if (id === "plugin.allow" && params.edits === true) return "let a vault plugin run code on this machine, and its later edits without asking"
   if (GATED[id]) return GATED[id]
   const strings = Object.values(params).flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v): v is string => typeof v === "string")
-  const app = kind !== "read" && strings.find((v) => APP_FILES.test(v.trim()))
+  const app = kind !== "read" && strings.find((v) => APP_FILES.test(v.trim()) && !code(v.trim()))
   if (app) return `write ${app.trim().replace(/^\/+/, "")} (the app's settings and plugins)`
   if (id === "clipper.save" && typeof params.url === "string") {
     let host = ""
@@ -526,7 +531,7 @@ export class PublicMcp {
    *  yes (gateOf). Throws ToolError when they said no, or haven't answered yet (call again with the same arguments). */
   async approved(grant: string, app: string, id: string, params: Record<string, unknown>) {
     const entry = this.plugin.host.catalog().find((e) => e.id === id)
-    const why = entry ? gateOf(id, entry.kind, params) : ""
+    const why = entry ? gateOf(id, entry.kind, params, await this.pluginCode()) : ""
     if (!why) return
     const ask = this.plugin.service("inbox:ask"), answerOf = this.plugin.service("inbox:answer")
     if (!ask || !answerOf) throw new ToolError(`This needs the user's yes (to ${why}), asked through Vaultite's Inbox, which is off: they can turn it on, or do it on their machine.`)
@@ -535,8 +540,7 @@ export class PublicMcp {
     const key = sha(JSON.stringify([grant, id, params]))
     let asked = this.asked.get(key)
     if (!asked) {
-      const detail = JSON.stringify(params)
-      const event = await ask({ source: "mcp", title: `${app} asks to ${why}`, body: `${id} ${detail.length > 300 ? `${detail.slice(0, 300)}...` : detail}` })
+      const event = await ask({ source: "mcp", title: `${app} asks to ${why}`, body: await this.askBody(id, params) })
       asked = { event, until: now + APPROVAL_TTL }
       this.asked.set(key, asked)
     }
@@ -545,6 +549,42 @@ export class PublicMcp {
     if (answer === "deny") { this.asked.delete(key); throw new ToolError(`The user said no to this (${id}): don't do it.`) }
     if (answer === "gone") { this.asked.delete(key); throw new ToolError("The request for the user's yes is gone: call again to ask again.") }
     throw new ToolError(`Waiting for the user's yes: Vaultite asked them on their phone (and in its Inbox) whether you may ${why}. Tell them, and once they approve, call this again with exactly the same arguments: it then runs at once.`)
+  }
+
+  /** Which paths are a vault plugin's code that runs only once this machine's owner allows it as changed: not the app's
+   *  plugins' settings, not its data.json or userFiles, not one whose edits run without asking (core/trust.ts). */
+  async pluginCode() {
+    const list = (await this.plugin.host.call("plugin.list", {})).result as { id: string; tier: string; edits?: boolean }[]
+    const app = new Set(list.filter((p) => p.tier !== "vault").map((p) => p.id)), edits = new Set(list.filter((p) => p.edits).map((p) => p.id))
+    const root = this.plugin.vault.abs(".vaultite/plugins")
+    return (p: string) => {
+      const abs = path.resolve(this.plugin.vault.abs(p.replace(/^\/+/, "")))
+      const [id, ...rest] = path.relative(root, abs).split(path.sep)
+      if (!id || id === ".." || !rest.length || !/^[a-z][a-z0-9-]*$/.test(id) || app.has(id) || edits.has(id)) return false
+      const dir = path.join(root, id)
+      return rest.join("/") !== "data.json" && hashed(dir, abs)
+    }
+  }
+
+  /** What the owner reads before saying yes: for a vault plugin to run, what it is, what it does beyond the vault and
+   *  which files changed since they last allowed it; else the operation and its parameters. */
+  async askBody(id: string, params: Record<string, unknown>) {
+    const detail = JSON.stringify(params)
+    const raw = `${id} ${detail.length > 2000 ? `${detail.slice(0, 2000)}...` : detail}`
+    if (id !== "plugin.allow" && id !== "plugin.enable") return raw
+    const q = String(params.id ?? "").toLowerCase().trim()
+    const list = (await this.plugin.host.call("plugin.list", {})).result as { id: string; name: string; tier: string }[]
+    const own = list.find((p) => p.tier === "vault" && (p.id === q || p.name.toLowerCase() === q))
+    const vp = own && ((await this.plugin.host.call("plugin.check", { dir: own.id })).result as Item[])[0]
+    if (!vp) return raw
+    const does = disclosed(vp.disclosures as Disclosures)
+    const changes = vp.approval as { state: string; changed: string[] } | null
+    return [
+      `${vp.name} (${vp.id})${vp.description ? `: ${vp.description}` : ""}`,
+      does.length ? `It ${does.join("; ")}.` : "It discloses nothing beyond the vault.",
+      changes ? `${changes.state === "new" ? "Never allowed here" : "Changed since allowed"}: ${changes.changed.join(", ") || "its files"}.` : "",
+      raw,
+    ].filter(Boolean).join("\n")
   }
 
   /** A one-time link for file.upload's bytes, 15 minutes, on the address the app reached; null when there's none. */
@@ -631,4 +671,4 @@ h1{font-size:22px;line-height:1.3;margin:0 0 8px}p{margin:0 0 16px}.muted{color:
 .code{font:600 34px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;padding:18px 0;margin:8px 0 20px;text-align:center;border:1px solid var(--line);border-radius:10px}`
 
 /** What the public server's instructions add: what waits for the user's yes here. */
-const WAITS = `What can run code on the user's machine (turning a plugin on, writing under .vaultite/, bundles, settings, palette commands, dispatch.run: a coding agent given a note to work on) waits for their yes on their phone: if a tool says it's waiting, tell them, and call it again with the same arguments once they approve.`
+const WAITS = `What can run code on the user's machine (turning a plugin on or allowing it, writing under .vaultite/ except a vault plugin's code, bundles, settings, palette commands, dispatch.run: a coding agent given a note to work on) waits for their yes on their phone: if a tool says it's waiting, tell them, and call it again with the same arguments once they approve.`

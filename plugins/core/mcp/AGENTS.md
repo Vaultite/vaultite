@@ -12,9 +12,11 @@ the `forAgents` line of each plugin that's on, and how to use the tools.
   listener of its own that a tunnel makes public, set in this machine's `data/config.json` (`mcp.public`: `url`, `port`).
   Sign-in has no accounts: the app's sign-in page shows a code, typed in view:connections, where connections are also
   ended. The same tools, `ops` and `call` too, without what only this machine's owner may run (terminals, the screen).
-  What can run code on this machine or change what does (turning a plugin on, writing under `.vaultite/`, bundles,
-  settings, palette commands, clipping a local address) waits for the owner's yes: Approve and Deny in the Inbox and on
-  the phone. Waiting past ~45 seconds, the tool says so: call it again with the same arguments once approved.
+  What can run code on this machine or change what does (turning a plugin on or allowing it, writing under
+  `.vaultite/`, bundles, settings, palette commands, clipping a local address) waits for the owner's yes: Approve and
+  Deny in the Inbox and on the phone. Writing a vault plugin's code doesn't (`plugin.new` too): it runs only once the
+  owner allows it as it is, and that yes says what it discloses and which files changed. Waiting past ~45 seconds, the
+  tool says so: call it again with the same arguments once approved.
 - **Vaultite Cloud** gives that listener an address without a tunnel of one's own: `https://<handle>.vaultite.app/mcp`.
   Signing in: the user gets a one-time code at https://cloud.vaultite.com/connect and types it in Connections or `vau cloud
   sign-in <code>` (ops `mcp.cloud-sign-in`, `mcp.cloud-status`, `mcp.cloud-sign-out`); never use a code from someone else.

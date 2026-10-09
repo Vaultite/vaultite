@@ -47,12 +47,12 @@ enum Servers {
     }
 
     /// A request to the current server's API (`route` after /api/), its JSON answer; a 4xx or 5xx throws the server's
-    /// error. `from`: what asks, as the server's activity names it (X-Vaultite-Client).
-    static func call(_ method: String, _ route: String, _ body: [String: Any]? = nil, from client: String = "iphone") async throws -> [String: Any] {
+    /// error. `from`: what asks, as the server's activity names it (X-Vaultite-Client); `timeout`: longer for an upload.
+    static func call(_ method: String, _ route: String, _ body: [String: Any]? = nil, from client: String = "iphone", timeout: TimeInterval = 30) async throws -> [String: Any] {
         guard let server = current, let url = URL(string: server.url + "/api/" + route) else {
             throw Failure("Open Vaultite and add your server first")
         }
-        var request = URLRequest(url: url, timeoutInterval: 30)
+        var request = URLRequest(url: url, timeoutInterval: timeout)
         request.httpMethod = method
         request.setValue(client, forHTTPHeaderField: "X-Vaultite-Client")
         if let body {

@@ -3,8 +3,8 @@ import Speech
 import SwiftUI
 
 /// A voice note on the phone (vaultite://record: the Action button, a control, a widget): it records as soon as it
-/// shows, then transcribes on the phone (Transcribe, WatchLink.swift) and sends the text to the op inbox.voice, like
-/// the watch's.
+/// shows, then goes to the inbox like the watch's (Voice, WatchLink.swift: transcribed here when short, else by the
+/// server).
 @MainActor
 final class VoiceNote: NSObject, ObservableObject {
     enum Step: Equatable { case starting, recording, sending, sent(String), failed(String) }
@@ -48,18 +48,16 @@ final class VoiceNote: NSObject, ObservableObject {
         finish()
         if long < 0.7 { try? FileManager.default.removeItem(at: file); return close() }
         step = .sending
-        do {
-            let text = try await Transcribe.file(file)
-            _ = try await Servers.call("POST", "ops/inbox.voice", ["text": text, "from": "iPhone"])
-            step = .sent(text)
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            try? await Task.sleep(for: .seconds(1.5))
-            close()
-        } catch {
-            step = .failed(Servers.say(error))
+        let outcome = await Voice.send(file, from: "iPhone")
+        if let error = outcome["error"] as? String {
+            step = .failed(error)
             UINotificationFeedbackGenerator().notificationOccurred(.error)
+            return
         }
-        try? FileManager.default.removeItem(at: file)
+        step = .sent(outcome["text"] as? String ?? "")
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        try? await Task.sleep(for: .seconds(1.5))
+        close()
     }
 
     func cancel() {

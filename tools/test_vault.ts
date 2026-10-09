@@ -1253,6 +1253,15 @@ check("trust: kept on this machine (VAULTITE_LOCAL/trust/), never in the vault",
   check("trust: turned on by someone else, it stays waiting", (r.result as Any).waiting === true && !(await vplugin()).loaded, r.result)
   const { gateOf } = await import("../plugins/core/mcp/public.ts")
   check("trust: plugin.allow is gated on the public MCP", gateOf("plugin.allow", "write", { id: "lighthouse" }).includes("run code"))
+  check("trust: allowing its later edits says so", gateOf("plugin.allow", "write", { id: "lighthouse", edits: true }).includes("later edits"))
+  check("trust: plugin.new isn't gated (what it makes waits to be allowed)", gateOf("plugin.new", "write", { id: "garden" }) === "")
+  const { PublicMcp } = await import("../plugins/core/mcp/public.ts")
+  const code = await new PublicMcp({ host: { call: (n: string, p: Any) => app.runOp(n, p) }, vault: app.vault } as Any, PublicMcp.cloudOnly()).pluginCode()
+  check("trust: a waiting vault plugin's code is written without a yes", code(".vaultite/plugins/lighthouse/plugin.ts") &&
+    gateOf("file.write", "write", { path: ".vaultite/plugins/lighthouse/plugin.ts" }, code) === "")
+  check("trust: its data, hidden files, the app's plugins and other settings still wait",
+    [".vaultite/plugins/lighthouse/data.json", ".vaultite/plugins/lighthouse/.x.ts", ".vaultite/plugins/lighthouse/../people/data.json",
+      ".vaultite/plugins/people/x.json", ".vaultite/plugins.json", ".vaultite/plugins/lighthouse"].every((f) => !code(f) && gateOf("file.write", "write", { path: f }, code) !== ""))
   const [hc] = await api("POST", "ops/plugin.allow", { id: "lighthouse", hash: "0000" })
   check("trust: allowing files other than the ones shown is refused", hc === 409 && !(await vplugin()).loaded, hc)
 }
@@ -4762,6 +4771,14 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   ;[st, b] = await api("POST", "ops/inbox.voice", { text: "Remind me to call Alice about the trip on Friday please, thanks", from: "Apple Watch" })
   check("voice: kept in the inbox, named by its first words", st === 200 && b.path === "Inbox/Remind me to call Alice about the trip…" + ".md" &&
     read("Inbox/Remind me to call Alice about the trip….md").includes("from: Apple Watch") && b.terminal === null, [st, b])
+  {
+    const conf = path.join(VAULT, ".vaultite/plugins/inbox/data.json"), was = exists(".vaultite/plugins/inbox/data.json") ? fs.readFileSync(conf, "utf8") : null
+    fs.writeFileSync(conf, JSON.stringify({ ...(was ? JSON.parse(was) : {}), dispatch: "claude" }))
+    const [vs, vb] = await api("POST", "ops/inbox.voice", { text: "word ".repeat(1600), from: "Apple Watch" })
+    check("voice: a recording left running is kept, not handed to the front door", vs === 200 && vb.terminal === null && vb.why.includes("1600 words") && exists(vb.path), [vs, vb])
+    if (was === null) fs.rmSync(conf); else fs.writeFileSync(conf, was)
+    fs.rmSync(path.join(VAULT, vb.path))
+  }
   ;[st, b] = await api("POST", "ops/inbox.done", { path: "Inbox/Remind me to call Alice about the trip….md", title: "Call Alice about the trip" })
   check("inbox.done: named anew and archived", st === 200 && b.path === "Inbox/.archive/Call Alice about the trip.md" &&
     read("Inbox/.archive/Call Alice about the trip.md").includes("status: done") && !exists("Inbox/Remind me to call Alice about the trip….md"), [st, b])

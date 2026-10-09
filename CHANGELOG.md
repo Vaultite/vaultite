@@ -7,6 +7,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Writing plugins from ChatGPT or claude.ai**: an app on the internet writes a vault plugin's code without asking each
+  time; it runs only once you allow it, and that request says what it discloses and which files changed.
 - **Secrets from any device**: `vau secret "<what>"` asks for a password or a key file in a hidden field on whatever
   device you're on (the phone too, through another machine), and hands it only to the command it's piped into.
 - **Shorter dispatch in a file's menu**: with one action it reads "Dispatch" (and where it runs), like the menu's other
@@ -152,6 +154,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - The desktop app can serve DevTools to agents on the Mac (`debugPort`, off by default).
 
 ### Apps
+- **Voice notes are never lost**: the watch stops a recording at 2 hours; a long one, or one the phone can't transcribe
+  or send, goes to the server as audio (kept when it can't be transcribed), waiting on the phone until it can; one past
+  1,500 words stays in the inbox instead of starting the front-door agent.
 - **A web page in another browser's tab**: plugins add buttons to the Web viewer's bar and its tab's menu; the
   BrowserOS plugin (Vaultite/plugins) opens the page in BrowserOS's own window, shown in a tab by App windows, where
   passkeys work.
