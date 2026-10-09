@@ -1,7 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type KeyboardEvent } from "react"
 import { ArrowDown, ArrowUp, Plus, Send, SquareTerminal, X } from "lucide-react"
 import {
-  agentsOn, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, getDefaultPlace, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify,
+  agentsOn, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, get, getDefaultPlace, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify,
   notifyError, op, openView, otherMachines, patch, pickIcon, places, Section, setDefaultPlace, settleFile, Switch, useAgents, useCommands, useDefaultPlace, useMachines, useStore, type Agent,
   type DefaultPlace, type FileHead, type Machine, type MenuItem, type Place, type Store,
 } from "@vaultite"
@@ -61,6 +61,24 @@ function whereLabel(a: Action, w = whereOf(a), there = others) {
   return [account, there.length || w.machine ? machine : ""].filter(Boolean).join(" · ")
 }
 
+/** The sessions dispatched from here that still run (dispatch/running), each by its action and note: its button wears a
+ *  dot. Asked while a button shows, every 5 s (none while the page is hidden), and after each dispatch. */
+type Run = { action: string; path: string; id: string }
+let runs: Run[] = []
+const runSubs = new Set<() => void>()
+let runTimer = 0
+async function loadRuns() {
+  try {
+    const next = await get<Run[]>("dispatch/running")
+    if (JSON.stringify(next) !== JSON.stringify(runs)) { runs = next; runSubs.forEach((f) => f()) }
+  } catch { /* asked again */ }
+}
+const useRuns = () => useSyncExternalStore((f) => {
+  runSubs.add(f)
+  if (runSubs.size === 1) { void loadRuns(); runTimer = window.setInterval(() => { if (!document.hidden) void loadRuns() }, 5000) }
+  return () => { runSubs.delete(f); if (!runSubs.size) clearInterval(runTimer) }
+}, () => runs)
+
 /** Save what's typed, start the action on the server (or on machine `m` through it), then open its terminal here (this
  *  device's window, focused) when it should (`open`, else the action's: an agent that reports runs in the background,
  *  a toast offering its session). */
@@ -86,6 +104,7 @@ async function dispatch(a: Action, path: string, m?: Machine, account?: string, 
     if (r.running) { show(); notify(`${a.label} is still on this note: opened its session`, { action: { label: "Dispatch again", run: () => void dispatch(a, path, m, account, open, true) } }) }
     else if (open ?? a.open ?? !r.handed) show()
     else notify(`Dispatched to ${a.label}${m ? ` on ${m.label}` : ""}: its report comes to your inbox`, { action: { label: "Open session", run: show } })
+    void loadRuns()
   } catch (e) {
     notifyError(e, `Couldn't dispatch to ${a.label}${m ? ` on ${m.label}` : ""}`)
   } finally {
@@ -138,6 +157,7 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   const agents = useAgents()
   const machines = useMachines()
   const all = useDefaultPlace()
+  const live = useRuns()
   useKnown()
   if (!dispatchable(file.path)) return null
   const there = elsewhere(machines)
@@ -146,19 +166,21 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
     const Icon = iconOf(a, agents)
     const keys = keysOf(a.id === "claude" ? CLAUDE : { id: `dispatch:${a.id}` })[0]
     const where = whereLabel(a, whereOf(a, all), there)
-    const name = `Dispatch to ${a.label}${where ? ` (${where})` : ""}`
+    const on = live.some((r) => r.action === a.id && r.path === file.path)
+    const name = on ? `${a.label} is on this note: open its session` : `Dispatch to ${a.label}${where ? ` (${where})` : ""}`
     return (
       // Option-click: its terminal opens too.
-      <button key={a.id} type="button" data-dispatch={a.id} aria-label={name} onClick={(e) => void dispatchHere(a, file.path, e.altKey || undefined)}
+      <button key={a.id} type="button" data-dispatch={a.id} data-running={on || undefined} aria-label={name} onClick={(e) => void dispatchHere(a, file.path, e.altKey || undefined)}
         // Right-click (or hold, on a phone): again, its other accounts and machines.
         onContextMenu={menuFor(() => onEach(a, file.path, there))}
         data-tip={`${name}${keys && bar ? ` (${keyCaps(keys).join("")})` : ""}${bar ? `; ${keyCaps("Alt").join("")}-click to watch it` : ""}${bar ? `; right-click to dispatch again${where ? ", in another account or on another machine, or for this workspace's default" : ""}` : ""}`}
-        className={cn("flex shrink-0 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground",
+        className={cn("relative flex shrink-0 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground",
           bar ? cn("h-7 rounded-[5px] hover:bg-foreground/[0.06]", where ? "gap-1 px-1.5" : "w-7")
             // (a phone's 44px target, laid out in the line's 32px)
             : "-my-1.5 size-11 active:opacity-50 md:my-0 md:size-8 md:rounded-[6px] md:hover:bg-foreground/[0.06]")}
         style={{ color: agentOf(a, agents)?.tint }}>
         <Icon className={bar ? "size-3.5" : "size-4"} strokeWidth={2.25} />
+        {on && <span aria-hidden data-dispatch-running className={cn("absolute size-[7px] rounded-full bg-current ring-[1.5px] ring-background", bar ? "top-[3px] left-[15px]" : "top-2.5 right-2.5 md:top-1 md:right-1")} />}
         {bar && where && <span data-dispatch-where className="max-w-40 truncate text-[12px] text-muted-foreground">{where}</span>}
       </button>
     )

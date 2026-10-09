@@ -110,9 +110,26 @@ async function onMachine(ctx: OpCtx, m: Machine, rel: string, a: Action, allow: 
 /** The sessions dispatch started here, by what they run (action, file, account): asked the same again while one still
  *  runs, that one answers (a second click, a phone's double tap), unless asked `again`. */
 const started = new Map<string, Promise<{ id: string; handed: boolean }>>()
-async function stillRuns(ctx: OpCtx, id: string) {
-  try { return ((await ctx.api("GET", "terminals/sessions")) as { sessions: { id: string }[] }).sessions.some((x) => x.id === id) } catch { return false }
+/** Whether session `id` runs: here, or (id@machine) on that machine. */
+async function stillRuns(id: string) {
+  const [own, machine] = id.split("@")
+  if (!machine) return !!(await plugin.ask<boolean>("terminal:runs", false, own))
+  return (await plugin.ask<string | null>("terminal:locate", null, own)) === machine
 }
+
+/** What each button shows as running: the sessions dispatched from here (or passed on to another machine) that still
+ *  run, by what they run; one that ends is let go. */
+type Run = { action: string; path: string; id: string }
+const runs = new Map<string, Run>()
+async function stillRunning(): Promise<Run[]> {
+  const out: Run[] = []
+  for (const [k, r] of [...runs]) if (await stillRuns(r.id)) out.push(r); else runs.delete(k)
+  return out
+}
+plugin.route("GET", "dispatch/running", async (req) => {
+  if (req.http && await plugin.refusal(req.http, "the terminal")) return []
+  return stillRunning()
+})
 
 /** Whether an action's terminal opens by itself: its `open`, else only when nothing comes back to the inbox. */
 export const opens = (a: Action, handed: boolean) => a.open ?? !handed
@@ -180,7 +197,7 @@ accounts (Claude Code: its config folders).
     let r: { id: string; handed: boolean; running?: boolean } | null = null
     if (m) r = await onMachine(ctx, m, rel, a, !!allow, account ?? "", !!again)
     else if (!again && started.has(key)) {
-      try { const was = await started.get(key)!; if (await stillRuns(ctx, was.id)) r = { ...was, running: true } } catch { /* it didn't start */ }
+      try { const was = await started.get(key)!; if (await stillRuns(was.id)) r = { ...was, running: true } } catch { /* it didn't start */ }
     }
     if (!r) {
       const p = startHere(ctx, a, rel, account ?? "", !!allow)
@@ -189,13 +206,14 @@ accounts (Claude Code: its config folders).
       r = await p
     }
     const { id, handed, running } = r
+    runs.set(id, { action: a.id, path: rel, id })
     let shown = false
     if (open ?? opens(a, handed)) {
       try { await ctx.ui({ action: "open", path: `view:terminal/${id}`, newTab: true }); shown = true } catch (e) {
         if (!(e instanceof OpError && e.status === 409)) throw e
       }
     }
-    return { id, action: a.id, path: rel, shown, handed, ...(running ? { running } : {}), ...(m ? { machine: m.id } : {}), ...(account ? { account } : {}) }
+    return { id, action: a.id, path: rel, shown, handed, ...(running ? { running: true } : {}), ...(m ? { machine: m.id } : {}), ...(account ? { account } : {}) }
   },
   text: (r) => `${r.running ? "Already running:" : "Dispatched"} ${r.path} to ${r.action}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""} in ${r.id}${r.shown ? "" : ` (${r.handed
     ? "in the background: its report comes to the inbox" : "no tab open"}; vau terminal screen ${r.machine ? `${r.id.split("@")[0]} on that machine` : r.id})`}.`,

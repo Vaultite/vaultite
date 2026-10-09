@@ -13,7 +13,8 @@ menu run at the workspace's default place, where its new terminals and agents op
 <workspace>", the workspace's `state["core:place"]`: `{machine, accounts: {claude: "personal"}}`), and the button says
 where ("Personal · M1") when there's more than one place; a default machine that's away gives way to this one.
 While a session a dispatch started still runs, the same dispatch again (a second click) opens that one rather than
-starting another (`running: true`); "Dispatch again" in that menu, or `--again`, starts another anyway. The server
+starting another (`running: true`), and its button wears a dot meanwhile (`GET /api/dispatch/running`); "Dispatch
+again" in that menu, or `--again`, starts another anyway. The server
 asked passes it to that machine's (both check it's the owner), once its copy of the file matches; the terminal there
 opens here as `<id>@<machine>`, and a reply to its report resumes the session there.
 

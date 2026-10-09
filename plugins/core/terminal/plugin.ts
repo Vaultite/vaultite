@@ -498,6 +498,8 @@ async function locate(id: string): Promise<string | null> {
   return found.find(Boolean) ?? null
 }
 plugin.provide("terminal:locate", locate)
+/** Whether session `id` runs on this machine. */
+plugin.provide("terminal:runs", runsHere)
 
 const starting = new Map<string, Promise<{ s: Session; fresh: boolean }>>() // two sockets to a new id get the same shell
 

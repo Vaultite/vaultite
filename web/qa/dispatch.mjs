@@ -104,6 +104,9 @@ const termFocused = (page) => until(() => page.evaluate(() => !!document.activeE
   const want = `-- ${PROMPT.replace("{path}", NOTE)}` // (ps shows the arguments unquoted)
   check("palette: claude runs with the prompt, then told to end with a report", await until(() => claudeArgs(id).includes(`${want}\\012\\012Do it all the way, then end with \`vau inbox report\``), 10000), claudeArgs(id).slice(-300))
   await go(page, NOTE)
+  // While its session runs, the button wears a dot.
+  check("running: the button wears a dot", await until(async () => (await shown(page, NOTE, "[data-dispatch=claude][data-running] [data-dispatch-running]").count()) === 1, 8000))
+  { const box = await btn.boundingBox(); await page.screenshot({ path: `${OUT}desktop-running.png`, clip: { x: Math.max(0, box.x - 60), y: Math.max(0, box.y - 12), width: 160, height: 52 } }) }
   await shown(page, NOTE, ".cm-content").click()
   const was = text(NOTE)
   before = await sessions()
@@ -119,7 +122,7 @@ const termFocused = (page) => until(() => page.evaluate(() => !!document.activeE
 
   // A file's menu (its tab's).
   await go(page, NOTE)
-  await page.locator("[data-tab-bar] [role=tab][aria-selected=true]").first().click({ button: "right" }); await wait(300)
+  await page.locator("[data-tab-bar] [role=tab][aria-selected=true]").first().click({ button: "right", position: { x: 8, y: 8 } }); await wait(300)
   const item = page.locator("[role=menu] [role=menuitem]").filter({ hasText: "Dispatch to Show it" })
   check("file menu: Dispatch to each action", (await item.count()) === 1 && (await page.locator("[role=menu] [role=menuitem]").filter({ hasText: "Dispatch to Claude Code" }).count()) === 1)
   before = await sessions()
@@ -194,6 +197,7 @@ for (const id of started) await api("DELETE", `terminals/${enc(id)}`).catch(() =
   await api("PATCH", "config/plugin/dispatch", { actions: [{ id: "claude", label: "Claude Code", icon: "claude", agent: "claude", prompt: PROMPT }, { id: "show", label: "Show it", command: "cat {file}" }] })
   const { ctx, page } = await open(390, 844, true)
   await go(page, NOTE)
+  check("390: its sessions ended, no dot", await until(async () => (await shown(page, NOTE, "[data-dispatch-running]").count()) === 0, 8000))
   const fit = await page.evaluate(() => {
     const bs = [...document.querySelectorAll(".file-view [data-dispatch]")].filter((e) => e.checkVisibility()).map((e) => e.getBoundingClientRect())
     return { n: bs.length, right: Math.round(Math.max(...bs.map((b) => b.right))), h: Math.round(Math.min(...bs.map((b) => b.height))), wide: document.documentElement.scrollWidth }

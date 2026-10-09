@@ -11,8 +11,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   dispatches open at there (right-click the dispatch button, Default in <workspace>, or "Choose where new terminals and
   agents open"); the button shows where, and a machine that's away gives way to this one. ⌃` opens a terminal here.
   ⌘⇧↩ works again with a single account.
-- **No double dispatch**: dispatching a note again while its session runs opens that session; "Dispatch again" starts
-  another.
+- **No double dispatch**: while a note's session runs, its dispatch button wears a dot and dispatching it again opens
+  that session; "Dispatch again" starts another.
+- **Terminals panel**: a session from another workspace shows that workspace's name before its context ring, so every
+  ring lines up at the row's edge.
 - **Claude Code on the web in the Terminals panel**: the desktop app lists your claude.ai/code sessions under Cloud
   (working, waiting on you or idle, and since when; a click opens one in a web tab), read with the Web viewer's
   claude.ai login (every 5 seconds while one works or waits, else 15), so no claude.ai tab needs to be open. A

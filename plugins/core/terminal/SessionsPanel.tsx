@@ -39,9 +39,10 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
           watching: no tab on any device, no tmux in a real terminal) is in the tooltip and the Terminals tab. */}
-      {a && s.meter && <Meters s={s} tint={a.tint} />}
       {page && <span className="mr-1 max-w-[50%] truncate text-[11px] text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true)].filter(Boolean).join(" · ")}</span>}
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{where}</span>}
+      {/* (last, so every row's ring lines up at its edge) */}
+      {a && s.meter && <Meters s={s} tint={a.tint} />}
       <button type="button" className={`${button} hidden group-hover/row:grid`} aria-label="End session" data-tip="End session"
         onClick={(e) => { e.preventDefault(); e.stopPropagation(); void endForGood(s.id) }} data-no-drag><X className="size-3.5" strokeWidth={2.25} /></button>
     </SidebarRow>
