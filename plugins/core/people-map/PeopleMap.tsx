@@ -141,15 +141,17 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
   const box = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MLMap | null>(null)
   const all: [number, number][] = [...people.map((p): [number, number] => [p.lat, p.lon]), ...(me ? [[me.lat, me.lon] as [number, number]] : [])]
+  const fitted = useRef(false)
   const fitAll = (animate = true) => {
-    const map = mapRef.current
+    const map = mapRef.current, all = live.current.all
     if (!map || !all.length) return
+    fitted.current = true
     if (all.length === 1) map.flyTo({ center: [all[0][1], all[0][0]], zoom: 9, animate })
     else map.fitBounds(boundsOf(all), { padding: PAD, maxZoom: 9, animate, duration: 700 })
   }
   // Latest props for the map's event handlers, which are bound once.
-  const live = useRef({ people, me, onOpen, onFail })
-  live.current = { people, me, onOpen, onFail }
+  const live = useRef({ people, me, onOpen, onFail, all })
+  live.current = { people, me, onOpen, onFail, all }
   const redraw = useRef<(() => void) | null>(null)
 
   // (made once it comes near the screen)
@@ -163,7 +165,7 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
     try {
       map = new maplibregl.Map({
         container: box.current, style: MAP_STYLE[t], renderWorldCopies: false,
-        center: [-98.5, 39.5], zoom: 2.6, minZoom: 1.5, maxZoom: 16,
+        center: [0, 20], zoom: 1.5, minZoom: 1.5, maxZoom: 16, // the world, until there are pins to fit
         dragRotate: false, pitchWithRotate: false, touchPitch: false,
         attributionControl: { compact: true },
       })
@@ -229,8 +231,13 @@ export default function PeopleMap({ people, me, onOpen, onFail, focus }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [near])
 
-  // People change (Claude wrote something while the page was open): redraw pins.
-  useEffect(() => { redraw.current?.() }, [people, me])
+  // People change (Claude wrote something while the page was open, a pin was looked up): redraw pins; the first ones fit.
+  useEffect(() => {
+    if (!redraw.current) return
+    if (!fitted.current) fitAll(false)
+    redraw.current()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [people, me])
 
   useEffect(() => {
     const map = mapRef.current

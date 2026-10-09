@@ -385,7 +385,8 @@ export type KindSpec = {
   key?: (item: Item) => string | null | undefined
   /** before a write: fill timestamps, geocode... */
   prepare?: (neu: Item, old: Item | null) => Awaitable<Item>
-  /** after reading a changed file (before = what it was): an item to write back with fields filled in, or null */
+  /** after the app wrote the file for someone (an edit in the app, a new file; before = what it was): an item to write
+   *  back with fields filled in (ids, dates), or null. Never on reading: files changed outside the app stay as they are. */
   fill?: (item: Item, before: Item | null) => Awaitable<Item | null>
   /** sort for /api/state (default: by id) */
   order?: (items: Item[]) => Item[]
@@ -394,6 +395,10 @@ export type KindSpec = {
   /** its files' view: blocks drawn on top of each file that doesn't place them itself (["person"]: ```block-person),
    *  or a function of its frontmatter. Never written into the files. */
   blocks?: string[] | ((fm: Item) => string[])
+  /** `## ` headings its files' view draws instead of their text (["timeline"]): only in its files, never in any note */
+  sections?: string[]
+  /** frontmatter keys the app keeps as UTC times ("YYYY-MM-DD HH:MM:SS"): shown in local time, not edited by hand */
+  stamps?: string[]
 }
 
 export class Kind {
@@ -980,36 +985,18 @@ export class Vault {
       const tops = new Set([...this.entries.keys()].map((r) => r.split("/")[0]))
       for (const top of this.missing.keys()) if (!tops.has(top)) this.missing.delete(top)
     }
-    const fills: [Kind, Item, string, string][] = []
     const unchanged = new Set<string>()
     // The first read of a vault (all of it) lets the event loop turn every so often: a server starting answers its web
     // app's files meanwhile. (Later syncs don't: a read request may be looking at the index.)
     const first = !this.entries.size
     let since = performance.now()
+    // (Reading never writes: a file changed outside the app stays as it is; fillIn runs on the app's own writes.)
     for (const rel of changed.sort()) {
       if (first && performance.now() - since > 20) { await turn(); since = performance.now() }
       const st = found.get(rel)!
       const was = this.entries.get(rel)
       const e = this.read(rel, st, texts.get(rel))
-      if (was && was.broken && e.broken && sameStat(was.stat, st) && same(was.problems, e.problems)) {
-        unchanged.add(rel) // still can't be read: nothing new
-        continue
-      }
-      const kind = e.kind
-      if (e.item !== null && kind && kind.fill && !e.broken) {
-        // (like parse: a plugin's fill, or a save iCloud refuses, leaves its file as it is, never the whole vault unread)
-        try {
-          const filled = await kind.fill({ ...e.item }, was && was.kind === kind ? was.item : null)
-          if (filled) fills.push([kind, filled, e.item.id, rel])
-        } catch (ex) { e.problems = [...e.problems, `${kind.plugin ?? "plugin"} couldn't fill in this file: ${(ex as Error).message}`]; console.error(ex) }
-      }
-    }
-    for (const [kind, item, id, rel] of fills) {
-      try { await this.save(kind.collection, item, id) } catch (ex) {
-        const e = this.entries.get(rel)
-        if (e) e.problems = [...e.problems, `couldn't save what ${kind.plugin ?? "a plugin"} filled in: ${(ex as Error).message}`]
-        console.error(ex)
-      }
+      if (was && was.broken && e.broken && sameStat(was.stat, st) && same(was.problems, e.problems)) unchanged.add(rel) // still can't be read: nothing new
     }
     changed = changed.filter((r) => !unchanged.has(r))
     if (changed.length || gone.length) this.version++
@@ -1158,50 +1145,69 @@ export class Vault {
     return e.item !== null ? { ...e.item } : null
   }
 
-  /** The file's new text, or null if unchanged: only changed frontmatter keys are rewritten (the rest keep their lines),
-   *  and the body change is applied as a patch, whole where a patch can't apply. */
+  /** After the app wrote `rel` for someone (an edit in the app, a new file): what its kind fills in (ids, dates), saved as
+   *  a small edit. `before`: its entry before that write. A fill that fails is the file's problem, not the write's. */
+  async fillIn(rel: string, before: Entry | null) {
+    const e = this.entries.get(rel), kind = e?.kind
+    if (!e || e.item === null || !kind?.fill || e.broken) return
+    try {
+      const filled = await kind.fill({ ...e.item }, before && before.kind === kind ? before.item : null)
+      if (filled) await this.save(kind.collection, filled, e.item.id)
+    } catch (ex) {
+      const now = this.entries.get(rel)
+      if (now) now.problems = [...now.problems, `${kind.plugin ?? "plugin"} couldn't fill in this file: ${(ex as Error).message}`]
+      console.error(ex)
+    }
+  }
+
+  /** The file's new text, or null if unchanged: only the frontmatter keys the save changed are rewritten (the rest keep
+   *  their lines; a value cleared keeps its key, empty, as Obsidian does), and the body change is applied as a patch.
+   *  A change that can't be applied as a small edit is a conflict, never a rewrite of the whole header or body. */
   private compose(k: Kind, e: Entry | null, old: Item | null, owned: Item, body: string): string | null {
     const full: Item = { type: k.type, ...owned }
     if (e === null) return frontmatter(mergeFm({}, full), body)
     let raw: string
     try {
       raw = readText(this.abs(e.rel))
-    } catch {
-      return frontmatter(mergeFm(e.fm, full), body)
+    } catch (ex) {
+      throw new ConflictError(`couldn't read ${e.rel} to change it (${(ex as Error).message}); try again`)
     }
     const m = FM.exec(raw)
     const [baseOwned, baseBody] = rendered(k, old!)
-    const baseFm: Item = { type: k.type, ...baseOwned }
     const changes: Item = {}
     const removals: string[] = []
-    for (const [key, v] of Object.entries(full)) {
-      if (norm(v) === norm(baseFm[key])) continue // the item didn't change it: leave the file's line alone
+    for (const [key, v] of Object.entries(owned)) {
+      if (norm(v) === norm(baseOwned[key])) continue // the item didn't change it: leave the file's line alone
       if (blank(v)) {
-        if (key in e.fm) removals.push(key)
+        if (!(key in e.fm) || blank(e.fm[key])) continue // not there, or already empty: as it is
+        // (`archived` is the core's flag: unarchiving takes it out)
+        if (key === "archived") removals.push(key)
+        else changes[key] = v === false ? false : Array.isArray(v) ? [] : null
       } else if (norm(v) !== norm(e.fm[key])) changes[key] = v
     }
     const bodyNew = body.trim() === baseBody.trim() ? e.body : this.patchBody(k, e, baseBody, body)
     const bodyChanged = bodyNew.trim() !== e.body.trim()
     if (!Object.keys(changes).length && !removals.length && !bodyChanged) return null
-    if (!("type" in e.fm)) changes.type = k.type
     const rest = m ? raw.slice(m[0].length) : raw
-    let fmText: string | null = null
-    if (m) {
-      fmText = patchFrontmatter(m[1] ?? "", e.fm, Object.fromEntries(Object.entries(changes).map(([x, v]) => [x, dates(v)])),
+    let fmText = m ? m[1] ?? "" : ""
+    if (Object.keys(changes).length || removals.length) {
+      const patched = patchFrontmatter(fmText, e.fm, Object.fromEntries(Object.entries(changes).map(([x, v]) => [x, dates(v)])),
         removals, Object.keys(full), (key, value) => dump({ [key]: value }), loadFm)
+      if (patched === null) throw new ConflictError(`${e.rel}'s properties can't be changed line by line; edit them in the file`)
+      fmText = patched
     }
-    if (fmText === null) fmText = frontmatter(mergeFm(e.fm, full)).trim().slice(4, -4).trim()
-    const head = fmText ? `---\n${fmText}\n---\n` : ""
+    const head = fmText || m ? `---\n${fmText}\n---\n` : ""
     if (!bodyChanged) return head + (m ? rest : rest.trim() ? "\n" + rest : "")
     const lead = m && rest.trim() ? rest.slice(0, rest.length - rest.replace(/^\n+/, "").length) : "\n"
     return bodyNew.trim() ? head + (head ? lead : "") + stripNl(bodyNew) + "\n" : head
   }
 
-  /** The body with the item's change applied as a patch, else written whole (also when the patch wouldn't read back as
-   *  the same item). Blocks stay either way: the patch goes around them. */
+  /** The body with the item's change applied as a patch; a conflict when it can't apply, or wouldn't read back as the
+   *  same item. Blocks stay: the patch goes around them. */
   private patchBody(k: Kind, e: Entry, baseBody: string, neu: string) {
+    const conflict = () => new ConflictError(`${e.rel} changed where this edit goes; reload it and try again`)
     const merged = merge3(stripNl(baseBody), stripNl(neu), stripNl(e.body), true)
-    if (merged === null) return keepBlocks(e.body, neu)
+    if (merged === null) throw conflict()
     const stem = stemOf(e.rel)
     let ok: boolean
     try {
@@ -1209,19 +1215,28 @@ export class Vault {
     } catch {
       ok = false
     }
-    return ok ? merged : keepBlocks(e.body, neu)
+    if (!ok) throw conflict()
+    return merged
   }
 
-  /** An item's file: its own, renamed in its folder if its name changed (moved where onArchive says when archived or
-   *  unarchived); a new one where its kind's files are, else the default folder; never another item's. */
+  /** An item's file: its own, renamed in its folder only if this save changed its name (moved where onArchive says when
+   *  archived or unarchived); a new one where its kind's files are, else the default folder; never another item's. */
   private target(k: Kind, item: Item, old: Item | null, archiving = false) {
     const cur = old ? old.id + ".md" : null
     const on = isArchived(item)
     const folder = cur === null ? this.home(k.collection) ?? k.folder ?? ""
       : ((archiving || on !== isArchived(old)) && this.placers.size ? this.placed(cur, on) : null) ?? dirOf(cur)
-    const want = k.filename(item, { folder, old }) + ".md"
+    let want = k.filename(item, { folder, old }) + ".md"
     if (cur === want) return cur
-    let rel = want, n = 2
+    if (cur !== null) {
+      // A save that didn't change what names it (its title) keeps the file's name, however the file was named.
+      const here = dirOf(cur)
+      if (k.filename(item, { folder: here, old }) === k.filename(old!, { folder: here, old })) {
+        if (folder === here) return cur
+        want = joinPath(folder, cur.slice(here ? here.length + 1 : 0))
+      }
+    }
+    let rel = want, n = 1
     while (this.entries.has(rel) || fs.existsSync(this.abs(rel))) {
       if (cur && sameFile(this.abs(rel), this.abs(cur))) break // case-only rename
       rel = `${want.slice(0, -3)} ${n}.md`

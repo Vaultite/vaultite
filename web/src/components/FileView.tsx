@@ -32,7 +32,7 @@ import { TimelineSection } from "@/components/Timeline"
 import { usePane } from "@/core/pane"
 import { usePrefs } from "@/core/prefs"
 import { useTextSize, useTextSizeWheel } from "@/core/textsize"
-import { BlockView, useKindBlocks } from "@/components/Blocks"
+import { BlockView, kindStamps, useKindBlocks, useKindSections } from "@/components/Blocks"
 import { openBlockMenu } from "@/components/BlockSource"
 import { optionNotes, parseOptions } from "../../../core/blocks.ts"
 import { Properties } from "@/components/Properties"
@@ -664,12 +664,14 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   editingRef.current = shown === "live"
   const { resolve, paste, ...wiring } = useVaultEditing(store, path, full)
 
-  // What the editor draws itself (each with React, into the editor): blocks, `## Timeline` sections, tables, [[links]].
+  // What the editor draws itself (each with React, into the editor): blocks, its kind's sections (a person's
+  // `## Timeline`), tables, [[links]].
   const [version, setVersion] = useState(0)
   const plugins = usePluginsVersion() // (a plugin's fences arriving)
   // (and when the view changes: a block's option notes show while editing only)
   useEffect(() => setVersion((v) => v + 1), [store, fm, disabled, shown, plugins])
   const kindBlocks = useKindBlocks(store, path)
+  const sections = useKindSections(store, path)
   const config = useMemo<PreviewConfig>(() => ({
     live: shown !== "source",
     writable: !ro,
@@ -677,7 +679,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     resolves: (t) => linkKind(resolve, t),
     asset: (name) => assetUrl(store, name),
     ...imageActions(store),
-    sections: ["timeline"],
+    sections,
     renderSection: (name, text, el) => island((t) => <TimelineSection text={t} title={name[0].toUpperCase() + name.slice(1)} kinds={timelineKinds(disabled)} path={ro || !isMd(path) ? undefined : path} />, text, el),
     renderBlock: (name, text, el, edit) => island((t) => <BlockView name={name} text={t} ctx={ctxRef.current} disabled={disabled} editing={editingRef.current} edit={edit} />, text, el),
     blockMenu: (name, text, at, edit) => openBlockMenu(at, { name, text, path, edit, showing: true }),
@@ -692,7 +694,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     follow: (link, newTab) => followLink(store, link, newTab, path),
     version,
     place: path,
-  }), [shown, ro, resolve, store, disabled, version, path, kindBlocks])
+  }), [shown, ro, resolve, store, disabled, version, path, kindBlocks, sections])
 
 
   // ⌘E switches between reading and editing; the palette also offers each view.
@@ -860,7 +862,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         {!source && <PageTabs store={store} path={path} pane={pane} className={page ? "-mt-1 mb-5" : "mt-3"} />}
         {notices}
         <div className={cn(!page && "mt-4")}>
-          {showProps && <Properties path={path} block={fm} readOnly={ro} onChange={setProps} types={store.propertyTypes} />}
+          {showProps && <Properties path={path} block={fm} readOnly={ro} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
           {isMd(path) && !source && !board && !drawing && <NoteTop head={fileHead} />}
           {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<div className="min-h-40" />}>
             {drawing ? (

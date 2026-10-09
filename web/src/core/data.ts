@@ -36,7 +36,11 @@ export type State = PluginState & {
   bundles?: { previous: { bundle: string; name: string; at: string } | null; onboarding: boolean }
   /** Property types (core/proptypes.ts): every declared one (Obsidian's too), and the keys .vaultite/types.json has. */
   propertyTypes?: { types: PropTypes; own: string[] }
+  /** What the app draws or keeps itself in a kind's files, by collection: `## ` sections its view draws (a person's
+   *  Timeline) and the UTC times it keeps (a note's created). */
+  kinds?: Record<string, KindInfo>
 }
+export type KindInfo = { sections: string[]; stamps: string[] }
 /** A vault plugin as the server lists it (core/vaultplugins.ts on the server). */
 export type VaultPluginInfo = {
   id: string; name: string; description: string; requires: string[]; enhances: string[]; runsOnServer: boolean; tint?: string; category?: string

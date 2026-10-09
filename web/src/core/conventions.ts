@@ -46,15 +46,18 @@ export function attachmentFolder(s: Store | null | undefined, from: string): str
 }
 
 /** Save pasted or dropped files as attachments of `from` where the vault says (or in `folder`), answering their paths.
- *  A taken name gets a number; a nameless screenshot is "Pasted image <date time>.png". */
+ *  A taken name gets a number; a nameless one (a screenshot, a photo from the camera) is "Pasted image
+ *  YYYYMMDDHHmmss.<ext>", as Obsidian names them. */
 export async function saveAttachments(s: Store, from: string, files: File[], folder = attachmentFolder(s, from)): Promise<string[]> {
   if (folder) await post("folder", { path: folder }).catch(() => {}) // (it's there already: fine)
   const out: string[] = []
   const d = new Date(), p2 = (n: number) => String(n).padStart(2, "0")
   const when = `${d.getFullYear()}${p2(d.getMonth() + 1)}${p2(d.getDate())}${p2(d.getHours())}${p2(d.getMinutes())}${p2(d.getSeconds())}`
   for (const f of files) {
-    const ext = (/\/(png|jpe?g|gif|webp|svg)/.exec(f.type)?.[1] ?? "png").replace("jpeg", "jpg")
-    const name = f.name && f.name !== "image.png" ? f.name : `Pasted image ${when}.${ext}`
+    // (a browser's generic "image.png", the iPhone camera's "image.jpg": nameless, as in Obsidian)
+    const nameless = !f.name || /^image\.\w+$/i.test(f.name)
+    const ext = (/\.(\w+)$/.exec(f.name)?.[1] ?? /\/(png|jpe?g|gif|webp|svg|heic|heif|avif)/.exec(f.type)?.[1] ?? "png").toLowerCase().replace("jpeg", "jpg")
+    const name = nameless ? `Pasted image ${when}.${ext}` : f.name
     const { path } = await post<{ path: string }>("upload/name", { folder, name })
     const bytes = new Uint8Array(await f.arrayBuffer())
     let bin = ""

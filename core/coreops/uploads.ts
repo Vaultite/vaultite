@@ -109,7 +109,10 @@ const embedOf = (p: string) => `![[${path.posix.basename(p)}]]`
 /** Write the bytes as a new attachment (a taken name gets a number) and embed it at the end of `note`. */
 export async function save(app: App, ctx: OpCtx, bytes: Buffer, named: string, mime: string, folder?: string, note?: string) {
   const ext = EXT[mime] ?? ""
-  let name = safeName(named.replace(/\.[^.]+$/, "") || `Upload ${localStamp()}`) + (path.posix.extname(named) || (ext ? `.${ext}` : ""))
+  // A nameless image (a phone's "image.jpg") is named as Obsidian names a pasted one.
+  const pasted = (!named || /^image\.\w+$/i.test(named)) && (/^image\//.test(mime) || /^image\./i.test(named))
+  const stem = pasted ? `Pasted image ${localStamp().replace(/\D/g, "")}` : named.replace(/\.[^.]+$/, "") || `Upload ${localStamp()}`
+  let name = safeName(stem) + (path.posix.extname(named) || (ext ? `.${ext}` : ""))
   if (!/\.[a-z0-9]+$/i.test(name) && !ext) name = `${name}.bin`
   const dir = folder !== undefined ? String(folder).replace(/^\/+|\/+$/g, "") : String(serviceOn(app, "attachments:folder")?.(note ?? "") ?? "Attachments")
   const f = note ? await ctx.api("GET", `file?path=${enc(note)}`) : null // (before saving: a wrong note saves nothing)

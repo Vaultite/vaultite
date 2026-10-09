@@ -4,16 +4,16 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent,
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
 import { op } from "@/core/http"
-import { propKind, readProps, renameProp, setProp, type PropKind } from "@/core/frontmatter"
+import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumber, type PropKind } from "@/core/frontmatter"
 import { notifyError } from "@/core/notify"
 import { menuBelow } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
 import { keepPropsOpen, propsOpen } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 
-function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type }: {
+function Field({ value, onCommit, readOnly, placeholder, className, inputMode, autoFocus, type, step }: {
   value: string; onCommit: (v: string) => void; readOnly: boolean; placeholder?: string; className?: string
-  inputMode?: "text" | "decimal"; autoFocus?: boolean; type?: "date" | "datetime-local"
+  inputMode?: "text" | "decimal"; autoFocus?: boolean; type?: "date" | "datetime-local"; step?: number
 }) {
   const [v, setV] = useState(value)
   useEffect(() => setV(value), [value])
@@ -23,7 +23,7 @@ function Field({ value, onCommit, readOnly, placeholder, className, inputMode, a
     return <div className={cn("min-h-8 px-1.5 py-1.5 text-[15px] leading-5 break-words", !value && "text-muted-foreground", className)}>{value || placeholder}</div>
   }
   return (
-    <input value={v} readOnly={readOnly} placeholder={placeholder} inputMode={inputMode} spellCheck={false} autoFocus={autoFocus} type={type}
+    <input value={v} readOnly={readOnly} placeholder={placeholder} inputMode={inputMode} spellCheck={false} autoFocus={autoFocus} type={type} step={step}
       onChange={(e) => setV(e.target.value)} onBlur={commit}
       onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); (e.target as HTMLInputElement).blur() } if (e.key === "Escape") { setV(value); (e.target as HTMLInputElement).blur() } }}
       className={cn("h-8 w-full min-w-0 rounded-[6px] bg-transparent px-1.5 text-[15px] outline-none placeholder:text-muted-foreground",
@@ -71,10 +71,9 @@ function summary(v: unknown): string {
   return String(v ?? "")
 }
 
-/** The app's UTC timestamps, shown in local time with what's stored in the tooltip; the app keeps them, so they aren't
- *  edited here. */
-const STAMPS = new Set(["created", "updated", "added"])
-const utc = (k: string, v: unknown) => STAMPS.has(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
+/** A UTC time the file's kind keeps (its `stamps`: a note's created), shown in local time with what's stored in the
+ *  tooltip; the app keeps it, so it isn't edited here. Any other key's value is the user's, whatever its name. */
+const utc = (stamps: string[], k: string, v: unknown) => stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
 
 /** Each type's icon, and a value's own when the key has none. */
 const ICONS: Record<PropType | PropKind, LucideIcon> = {
@@ -119,12 +118,10 @@ function TypeButton({ k, v, types, readOnly }: { k: string; v: unknown; types?: 
   )
 }
 
-/** "2026-09-27 18:00(:00)" <-> what a datetime-local input takes ("2026-09-27T18:00"). */
-const toLocal = (v: string) => (/^\d{4}-\d\d-\d\d$/.test(v.trim()) ? `${v.trim()}T00:00` : v.trim().replace(" ", "T").slice(0, 16))
-const fromLocal = (v: string) => v.replace("T", " ")
-
-function Value({ k, v, set, readOnly, autoFocus, type }: { k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null }) {
-  if (utc(k, v)) {
+function Value({ k, v, set, readOnly, autoFocus, type, stamps }: {
+  k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null; stamps: string[]
+}) {
+  if (utc(stamps, k, v)) {
     const d = new Date(`${(v as string).replace(" ", "T")}Z`)
     return (
       <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground tabular-nums" data-tip={`${v as string} UTC`}>
@@ -138,14 +135,17 @@ function Value({ k, v, set, readOnly, autoFocus, type }: { k: string; v: unknown
       return <div className="flex h-8 items-center px-1.5"><Switch on={v === true} onChange={(x) => set(x)} label={k} disabled={readOnly} /></div>
     case "number":
       return <Field value={empty ? "" : String(v)} readOnly={readOnly} inputMode="decimal" className="num" placeholder={empty ? "Empty" : undefined}
-        onCommit={(s) => { const n = Number(s); set(s.trim() === "" ? null : Number.isFinite(n) ? n : s) }} />
+        onCommit={(s) => set(typedNumber(s))} />
     case "list":
       return <Chips items={Array.isArray(v) ? v : empty ? [] : [v]} readOnly={readOnly} onChange={(x) => set(x)} />
     case "date":
       if (!type) break
       return <Field value={empty ? "" : String(v)} readOnly={readOnly} type="date" placeholder="Empty" className="num" onCommit={(s) => set(s || null)} />
-    case "datetime":
-      return <Field value={empty ? "" : toLocal(String(v))} readOnly={readOnly} type="datetime-local" placeholder="Empty" className="num" onCommit={(s) => set(s ? fromLocal(s) : null)} />
+    case "datetime": {
+      const was = empty ? "" : String(v), local = toLocal(was)
+      return <Field value={local} readOnly={readOnly} type="datetime-local" step={local.length > 16 ? 1 : undefined} placeholder="Empty" className="num"
+        onCommit={(s) => set(s ? fromLocal(s, was) : null)} />
+    }
     case "complex":
       return <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground" data-tip="Edit this in source mode">{summary(v)}</div>
   }
@@ -153,7 +153,7 @@ function Value({ k, v, set, readOnly, autoFocus, type }: { k: string; v: unknown
     onCommit={(s) => set(s)} />
 }
 
-export const Properties = memo(function Properties({ path, block, onChange, readOnly, extra, types }: {
+export const Properties = memo(function Properties({ path, block, onChange, readOnly, extra, types, stamps = [] }: {
   /** The file they're of: whether they're open is remembered for it (core/viewstate.ts). */
   path: string
   /** The frontmatter block ("---\n...\n---\n", or ""). */
@@ -162,6 +162,8 @@ export const Properties = memo(function Properties({ path, block, onChange, read
   extra?: ReactNode
   /** The vault's property types (the store's `propertyTypes`). */
   types?: { types: PropTypes; own: string[] }
+  /** The UTC times its kind keeps (KindSpec stamps): shown in local time, not edited. */
+  stamps?: string[]
 }) {
   const { props, error } = readProps(block)
   const keys = Object.keys(props)
@@ -223,7 +225,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
                   </div>
                   <div role="cell" className="flex min-w-0 items-start">
                     <div className="min-w-0 flex-1">
-                      <Value k={k} v={props[k]} type={type} readOnly={readOnly} autoFocus={k === added} set={(v) => onChange(setProp(block, k, v))} />
+                      <Value k={k} v={props[k]} type={type} stamps={stamps} readOnly={readOnly} autoFocus={k === added} set={(v) => onChange(setProp(block, k, v))} />
                       {why && <p className="px-1.5 pb-1 text-[13px] leading-[18px] text-muted-foreground" data-prop-note={k}>{k} {why}</p>}
                     </div>
                     {!readOnly && (

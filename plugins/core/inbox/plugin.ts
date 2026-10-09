@@ -53,6 +53,7 @@ plugin.kind(new Kind({
   order: (rs) => sortBy(sortBy(rs, latest, true), (r) => (r.status === "new" ? 0 : 1)),
   // Where it came from (a page's address): adding the same page again updates it.
   key: (r) => (truthy(r.source) ? str(r.source) : null),
+  stamps: ["created", "updated"],
 }))
 
 /** When a result last had news: its thread's latest report (`updated`), else when it came. */
@@ -577,7 +578,7 @@ plugin.route("POST", "inbox/hook", async (req) => {
     ending.delete(terminal)
     if (Date.now() - reportedAt < ENDING) {
       hand(terminal, false)
-      setTimeout(() => void plugin.runOp("terminal.end", { id: terminal }, undefined, req.http).catch(() => {}), 2000)
+      setTimeout(() => void plugin.runOp("terminal.end", { id: terminal, keepTabs: true }, undefined, req.http).catch(() => {}), 2000)
     }
   }
   // What the user knows it by: the terminal's name (Claude Code names it after the session), else its folder.

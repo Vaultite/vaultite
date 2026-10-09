@@ -12,7 +12,7 @@ import { renderMarkdown } from "@/core/markdown"
 import { notify } from "@/core/notify"
 import { timelineKinds, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
-import { BlockView, useKindBlocks } from "@/components/Blocks"
+import { BlockView, useKindBlocks, useKindSections } from "@/components/Blocks"
 import { assetUrl, drawEmbed, imageActions, island, linkKind, useVaultEditing } from "@/components/editing"
 import { TimelineSection } from "@/components/Timeline"
 import { Editor } from "@/editor/lazy"
@@ -88,6 +88,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
   const plugins = usePluginsVersion() // (a plugin's fences arriving)
   useEffect(() => setVersion((v) => v + 1), [store, fm, disabled, plugins])
   const kindBlocks = useKindBlocks(store, from)
+  const sections = useKindSections(store, from)
   const config = useMemo<PreviewConfig>(() => ({
     live: true,
     writable: editable,
@@ -95,14 +96,14 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
     resolves: (t) => linkKind(resolve, t),
     asset: (name) => assetUrl(store, name),
     ...imageActions(store),
-    sections: ["timeline"],
+    sections,
     renderSection: (name, t, el) => island((x) => <TimelineSection text={x} title={name[0].toUpperCase() + name.slice(1)} kinds={timelineKinds(disabled)} />, t, el),
     renderBlock: (name, t, el, edit) => island((x) => <BlockView name={name} text={x} ctx={ctx()} disabled={disabled} edit={edit} />, t, el),
     renderEmbed: (target, height, el, edit) => drawEmbed(store, target, height, el, from, edit),
     renderMarkdown: (md) => renderMarkdown(md, resolve),
     follow: (link, newTab) => followLink(store, link, newTab, from),
     version,
-  }), [editable, resolve, store, disabled, version, from, ctx, whole, kindBlocks])
+  }), [editable, resolve, store, disabled, version, from, ctx, whole, kindBlocks, sections])
   // Gone (ended with Escape, say): a blur as the editor is taken off the page isn't the user leaving it. (Layout
   // effects end before React takes the elements away.)
   const over = useRef(false)

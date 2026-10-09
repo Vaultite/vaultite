@@ -1,7 +1,8 @@
 ## The vault in full (files, links, blocks, page tabs, archiving)
 Every file is the only copy of what it holds. The app reads them live (a saved file shows on the next load) and edits
 them in place: only the frontmatter keys whose values changed (other keys, comments and order stay) and single lines
-of the body. It fills in what it can work out (coordinates, a note's id and dates). Files it can't read are listed at
+of the body, and only when someone asks it to (reading never writes). What it fills in (a note's id and dates) goes in
+only when the app makes the file or it's edited in the app. Files it can't read are listed at
 `GET /api/vault` and shown on the file in the app. Deleting a file deletes that thing; the app's deletes go to
 `.trash/`.
 
@@ -47,7 +48,8 @@ dashboard and pin it. A page with views (People: List and Map) is one file per v
 first file lists the others, `tabs: [People map]` (file names, like a `[[link]]`), each says its label, `tab: Map`;
 the app draws a switch under every file's title in the group, and only the first is pinned.
 
-**Timelines.** A `## Timeline` section in any file is drawn as a timeline: lines like `- 2026-09-28 · kind · text`
+**Timelines.** A `## Timeline` section in a file whose kind draws one (a person's) is drawn as a timeline (in other
+files it's Markdown as written): lines like `- 2026-09-28 · kind · text`
 (`vau docs people`). Its Add button (and `POST /api/timeline {path, date, kind, duration_min, notes}`) writes one line,
 placed by date (the section is made at the file's end when there's none).
 

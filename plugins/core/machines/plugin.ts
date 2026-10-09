@@ -146,18 +146,26 @@ plugin.route("GET", "machines/*/**", async (req) => {
 
 // --- adding itself
 
-/** Add this server to the list when it knows its own address and isn't there yet (by id or by address). */
+/** Add this server to the list once, when it knows its own address and isn't there yet (by id or by address). `added`
+ *  remembers that it did: one the user removed stays removed. */
 async function register() {
   const url = await ownUrl()
-  if (!/^https?:\/\//.test(url)) return
+  if (/^https?:\/\//.test(url)) join(url)
+}
+function join(url: string) {
   let cur: Item | null
   try { cur = plugin.readSettings() } catch { return } // there but unreadable (mid-sync): leave it
   const list = Array.isArray(cur?.machines) ? cur.machines as Item[] : []
+  const added = Array.isArray(cur?.added) ? (cur.added as unknown[]).map(String) : []
   const id = slug(HOST)
-  if (!id || list.some((m) => String(m?.url ?? "").replace(/\/+$/, "") === url || String(m?.id ?? "").toLowerCase() === id)) return
-  plugin.saveSettings({ ...(cur ?? {}), machines: [...list, { id, label: HOST, url }] })
+  if (!id) return
+  const listed = list.some((m) => String(m?.url ?? "").replace(/\/+$/, "") === url || String(m?.id ?? "").toLowerCase() === id)
+  if (added.includes(id)) return
+  // (listed by hand, or added before `added` was kept: noted once, so removing it later sticks too)
+  plugin.saveSettings({ ...(cur ?? {}), machines: listed ? list : [...list, { id, label: HOST, url }], added: [...added, id] })
   plugin.forget()
 }
+plugin.exports.join = join
 const first = setTimeout(() => { if (plugin.loaded) void register() }, 5000)
 const hourly = setInterval(() => { if (plugin.loaded) void register() }, 3600 * 1000)
 first.unref?.(); hourly.unref?.()

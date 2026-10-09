@@ -44,6 +44,21 @@ export function areas(): Item[] {
   }))
 }
 
+/** The area `given` (a slug, or a name: "Deep work") as its slug, added to the areas setting when it isn't there yet:
+ *  a log for a new area makes it (with the areas brought so far, which the setting then lists). */
+function ensureArea(given: string): string {
+  const known = areas()
+  const hit = known.find((a) => a.slug === given) ?? known.find((a) => str(a.name).toLowerCase() === given.toLowerCase())
+  if (hit) return hit.slug
+  const s = /^[a-z0-9][a-z0-9-]*$/.test(given) ? given : slug(given)
+  if (!s) throw new OpError(`'${given}' can't be an area's name`)
+  if (known.some((a) => a.slug === s)) return s
+  const cur = plugin.settings({}), set = cur.areas
+  const list = Array.isArray(set) && set.length ? set : brought()
+  plugin.saveSettings({ ...cur, areas: [...list, s === given ? { slug: s } : { slug: s, name: given }] })
+  return s
+}
+
 function areaName(slug: unknown) {
   return areas().find((a) => a.slug === slug)?.name ?? title(truthy(slug) ? str(slug) : "Other")
 }
@@ -76,10 +91,8 @@ function render(log: Item): [Item, string] {
 /** Where a log goes: an existing one stays in its folder unless its area changed; else where that area's logs are, else
  *  a folder named after the area next to the other areas' folders, else Logs/<Area>/. */
 function filename(log: Item, at: { folder: string; old: Item | null }) {
-  let t = safeName(str(log.title).split(/\s+/).filter(Boolean).join(" ") || areaName(log.area))
-  // Emojis make poor file names; the title in the frontmatter keeps them.
-  t = [...t].filter((ch) => /[\p{L}\p{N}]/u.test(ch) || (ch.codePointAt(0)! < 0x2190 && !/[\p{C}\p{Z}]/u.test(ch)) || ch === " ").join("")
-  t = t.split(/\s+/).filter(Boolean).join(" ")
+  // (only what a file name or a link can't hold goes: an emoji stays)
+  const t = safeName(str(log.title).split(/\s+/).filter(Boolean).join(" ") || areaName(log.area))
   const name = `${log.date} ${t || "Log"}`
   if (at.old && at.old.area === log.area) return joinPath(at.folder, name)
   const own = plugin.vault.home("logs", (l) => l.area === log.area)
@@ -93,9 +106,7 @@ plugin.kind(new Kind({
   type: "log", collection: "logs", folder: "Logs", recursive: true, parse, render, filename,
   prepare(log) {
     if (!truthy(log.area) || !/^\d{4}-\d\d-\d\d$/.test(String(log.date ?? ""))) throw new HTTPError(400, "a log needs an area (slug) and a date (YYYY-MM-DD)")
-    if (!areas().some((a) => a.slug === log.area)) {
-      throw new HTTPError(400, `no area '${log.area}'; the areas are in .vaultite/plugins/logs/data.json`)
-    }
+    log.area = ensureArea(str(log.area).trim())
     log.data ??= {}
     return log
   },
@@ -143,8 +154,8 @@ source and id (default: <area>-<date>-<title as a slug>), so logging it again wi
 merged. The area's fields (and anything else) go in data, or as parameters of their own (--kcal 650, numbers as
 numbers); estimates are fine for a meal (kcal, protein, carbs, fat). The date is the user's local date (default today);
 the source, who logged it (you). Areas and their fields: vau docs logs, or .vaultite/plugins/logs/data.json; an area
-that isn't there is refused with the list (a new one: ask the user first). The API's JSON (a log, or a list of them)
-as the one argument works too.
+that isn't there yet is added to them (use the existing one when it's the same thing). The API's JSON (a log, or a list
+of them) as the one argument works too.
 
   vau log "Chicken rice bowl" --area nutrition --meal Lunch --kcal 650 --protein 45
   vau log "Bouldering" --area workouts --duration 120 --kind Climbing --top_grade V3
@@ -168,16 +179,12 @@ as the one argument works too.
     const json = jsonOf(p.title)
     const given: Item[] = json ? (Array.isArray(json) ? json : [json]) as Item[]
       : [{ area: p.area, title: p.title, date: p.date, duration_min: p.duration_min ?? p.duration, data: p.data, notes: p.notes, ext_id: p.id ?? p.extId, source: p.source }]
-    const known = areas()
     const logs = given.map((x) => {
       if (!x || typeof x !== "object" || Array.isArray(x)) throw new OpError("a log is an object: {area, title, date, ...}")
-      const area = str(x.area).trim(), title = str(x.title).trim()
-      if (!area) throw new OpError("area is missing: the area's slug (workouts, sleep, nutrition...)")
+      const title = str(x.title).trim()
+      if (!str(x.area).trim()) throw new OpError("area is missing: the area's slug (workouts, sleep, nutrition...)")
       if (!title) throw new OpError("title is missing: a short title")
-      if (!known.some((a) => a.slug === area)) {
-        const list = known.map((a) => `${a.slug}${a.name ? ` (${a.name})` : ""}`).join(", ")
-        throw new OpError(`No area '${area}'. The areas: ${list || "none yet"}. A new one goes in .vaultite/plugins/logs/data.json: ask the user first.`)
-      }
+      const area = ensureArea(str(x.area).trim())
       const date = str(x.date).trim() || today()
       if (!/^\d{4}-\d\d-\d\d$/.test(date)) throw new OpError(`date is YYYY-MM-DD (got '${date}')`)
       const id = str(x.ext_id).trim() || `${area}-${date}-${slug(title)}`

@@ -9,11 +9,11 @@ export const plugin = new Plugin(import.meta.url)
 // An item archived or unarchived through the API (PUT /api/<collection>/<id>, item.update) moves too.
 plugin.onArchive((rel, archived) => (archived === inArchive(rel) ? null : dirOf(archiveTwin(rel))))
 
-/** `rel`, or "Name 2.md" and on when that's taken. */
+/** `rel`, or "Name 1.md" and on when that's taken. */
 function free(vault: Vault, rel: string) {
   const dot = rel.lastIndexOf("."), cut = dot > rel.lastIndexOf("/") + 1 ? dot : rel.length
   let out = rel
-  for (let n = 2; fs.existsSync(vault.abs(out)); n++) out = `${rel.slice(0, cut)} ${n}${rel.slice(cut)}`
+  for (let n = 1; fs.existsSync(vault.abs(out)); n++) out = `${rel.slice(0, cut)} ${n}${rel.slice(cut)}`
   return out
 }
 

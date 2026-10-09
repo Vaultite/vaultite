@@ -3,11 +3,25 @@
 import { bullets, daysBetween, HTTPError, Plugin, reply, section } from "../../../core/plugins.ts"
 import { entryLine, KINDS, parseEntry } from "../../../core/timeline.ts"
 import { cmp, isArchived, type Item, Kind, num, safeName, sortBy, splitTags, str, truthy } from "../../../core/vault.ts"
-import { geocode } from "./geocode.ts"
+import { geocoder, type Places } from "./geocode.ts"
 import { peopleOps } from "./ops.ts"
 
 export const plugin = new Plugin(import.meta.url)
-plugin.provide("geocode", geocode) // Me uses it for ME.md's place
+// Pins are looked up when a place is entered through the app or a map needs one, and kept in the plugin's cache, never
+// in the person's file (coordinates someone wrote there by hand win).
+const places = geocoder(() => (plugin.readCache({})!.places ?? {}) as Places, (ps) => plugin.writeCache({ ...plugin.readCache({}), places: ps }))
+/** A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place. */
+plugin.provide("geocode", places.locate)
+/** A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet). */
+plugin.provide("geocode:known", places.known)
+
+/** An item with its pin: the file's own coordinates, else the cached lookup of its location (never looked up here). */
+export function pinned<T extends Item>(x: T): T {
+  if (typeof x.lat === "number" && typeof x.lon === "number") return x
+  const ll = truthy(x.location) ? places.known(str(x.location)) : null
+  return ll ? { ...x, lat: ll[0], lon: ll[1] } : x
+}
+plugin.exports.pinned = pinned
 // [[Bob]] links to Bob Lee when only one person is called Bob, on the server too (core/links.ts), like the app's links.
 // (An archived person's first name counts only when nobody else has it: the resolver sees to that.)
 plugin.provide("link-names", (path: string) => {
@@ -165,34 +179,27 @@ function merge(old: Item, patch: Item): Item {
   return neu
 }
 
-/** Coordinates for a new or changed `location` whose coordinates weren't changed along with it. */
-async function locate(p: Item, before: Item | null) {
-  const moved = before !== null && p.location !== before.location && p.lat === before.lat && p.lon === before.lon
-  if (truthy(p.location) && (p.lat === null || p.lat === undefined || moved)) {
-    const ll = await geocode(p.location)
-    p.lat = ll ? ll[0] : null
-    p.lon = ll ? ll[1] : null
-    return true
-  }
-  if (!truthy(p.location) && before !== null && truthy(before.location) && p.lat === before.lat) {
-    p.lat = p.lon = null
-    return true
-  }
-  return false
+/** A place entered through the app is looked up (in the background: the pin goes to the cache, not the file). The
+ *  coordinates the file had stay unless the place changed without them: they were the old place's. */
+export function locate(p: Item, before: Item | null) {
+  const moved = before !== null && str(p.location) !== str(before.location)
+  if (moved && p.lat === before.lat && p.lon === before.lon) p.lat = p.lon = null
+  // (a pin the app showed, sent back whole: not the user's coordinates)
+  const ll = truthy(p.location) ? places.known(str(p.location)) : null
+  if (ll && (before === null || before.lat === null || before.lat === undefined) && p.lat === ll[0] && p.lon === ll[1]) p.lat = p.lon = null
+  if (truthy(p.location) && (before === null || moved)) void places.locate(str(p.location))
 }
 
 plugin.kind(new Kind({
   type: "person", collection: "people", folder: "People", titleKey: "name", parse, render, merge,
-  async prepare(p, before) {
+  prepare(p, before) {
     p.timeline ??= []
-    await locate(p, before)
+    locate(p, before)
     return p
-  },
-  async fill(p, before) {
-    return (await locate(p, before)) && p.lat !== null ? p : null
   },
   key: (p) => str(p.name).toLowerCase(),
   blocks: ["person"],
+  sections: ["timeline"],
   // `sort` is optional and never written by the app: those who have one first, by it; the rest after them, by name.
   order: (ps) => sortBy(ps, (p) => [p.sort ?? 1e9, p.name]),
 }))
@@ -207,7 +214,7 @@ plugin.state(() => {
       inter.push({ ...Object.fromEntries(FIELDS.map((f) => [f, i[f]])), id: `${p.id}#${k}`, person_id: p.id, source: "vault" })
     })
   }
-  return { people: ps.map(publicPerson), interactions: sortBy(inter, (i) => i.date, true) }
+  return { people: ps.map((p) => pinned(publicPerson(p))), interactions: sortBy(inter, (i) => i.date, true) }
 })
 
 function personFor(body: Item) {
@@ -263,9 +270,10 @@ plugin.route("DELETE", "interactions/*", async (req) => {
 
 peopleOps(plugin) // person.timeline-add, people.remember (ops.ts)
 
-/** What a location would be pinned at: /api/geocode?q=Austin, TX */
+/** What a location would be pinned at: /api/geocode?q=Austin, TX (looked up once, then from the cache; the map asks
+ *  for the pins it's missing). */
 plugin.route("GET", "geocode", async (req) => {
-  const ll = await geocode(req.query.q ?? "")
+  const ll = await places.locate(req.query.q ?? "")
   return { q: req.query.q ?? "", lat: ll && ll[0], lon: ll && ll[1] }
 })
 

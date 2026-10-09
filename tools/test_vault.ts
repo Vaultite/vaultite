@@ -21,6 +21,10 @@ else {
   fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins.json"), JSON.stringify({ disabled: [], enabled }, null, 2) + "\n")
 }
 fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n") // the user's own
+// The People map's lookups so far (its cache), so no test asks the network for a pin.
+fs.mkdirSync(path.join(VAULT, ".vaultite", "cache"), { recursive: true })
+fs.writeFileSync(path.join(VAULT, ".vaultite", "cache", "people.json"), JSON.stringify({ places: {
+  "chicago, il": [41.8781, -87.6298], "denver, co": [39.7392, -104.9903], "seattle, wa": [47.6062, -122.3321], "nowhere at all": null } }))
 process.env.VAULTITE_VAULT = VAULT
 process.env.VAULTITE_LOCAL = path.join(tmp, "local")
 // Claude Code's files: a made-up session (tools/fixtures/claude), never this machine's ~/.claude.
@@ -208,6 +212,8 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 let [, s] = await api("GET", "state")
 check("state loads", Array.isArray(s.people) && "vault" in s, Object.keys(s))
 check("no problems in the vault", !s.vault.problems.length, s.vault.problems.slice(0, 3))
+check("state: what kinds draw and keep (a person's Timeline; a note's UTC times), and only theirs",
+  JSON.stringify(s.kinds.people?.sections) === '["timeline"]' && JSON.stringify(s.kinds.notes?.stamps) === '["created","updated"]' && !s.kinds.notes.sections.length, s.kinds)
 check("the rules are the app's own file, short, no index", read(".vaultite/AGENTS.md").includes("## Rules") && !read(".vaultite/AGENTS.md").includes("- `query`:")
   && Buffer.byteLength(read(".vaultite/AGENTS.md")) < 3_000, Buffer.byteLength(read(".vaultite/AGENTS.md")))
 check("the rules: each plugin that's on adds its line, a setting filled in", read(".vaultite/AGENTS.md").includes("\n## Plugins\n") && read(".vaultite/AGENTS.md").includes("\n- `ME.md` is the user")
@@ -303,7 +309,16 @@ let code: number
 let p: Any
 ;[code, p] = await api("POST", "people", { name: "Test Person", relation: "friend", every_days: 14, location: "Chicago, IL" })
 check("POST person creates the file", code === 201 && exists("People/Test Person.md"), p)
-check("location is geocoded", p.lat !== null && p.lat !== undefined, p)
+check("a location's pin is never written to the person's file", !read("People/Test Person.md").includes("coordinates") && p.lat === null, p)
+;[, s] = await api("GET", "state")
+{
+  const tp = s.people.find((x: Any) => x.name === "Test Person")
+  check("its pin comes from the map's cache", tp.lat === 41.8781 && tp.lon === -87.6298, tp)
+  ;[, p] = await api("PUT", "people/Test Person", { ...tp, context: "From work" })
+  check("a pin the app showed, sent back whole, isn't written either", !read("People/Test Person.md").includes("coordinates") && read("People/Test Person.md").includes("context: From work"), read("People/Test Person.md"))
+  const [, g] = await api("GET", "geocode?q=Nowhere at all")
+  check("a place that wasn't found has no pin (no guess)", g.lat === null, g)
+}
 await api("POST", "interactions", { person: "Test Person", date: "2026-09-29", kind: "call", duration_min: 15, notes: "Hi" })
 check("interaction lands in the timeline", read("People/Test Person.md").includes("- 2026-09-29 · call · 15 min · Hi"))
 ;[code] = await api("POST", "interactions", { person: "Nobody", date: "2026-09-29", kind: "call" })
@@ -351,7 +366,9 @@ check("typed, it's a note, its body as it was", hw && read("Notes/Hand written.m
 check("its id is its title's", (await api("GET", "notes/note-hand-written"))[1].title === "Hand written")
 write("Notes/Typed by hand.md", "---\ntype: note\n---\n\nA body.\n")
 await api("GET", "state")
-check("a hand-written note in the app's format gets an id and times", /id: note-typed-by-hand\ncreated: '.+'\nupdated: '.+'/.test(read("Notes/Typed by hand.md")), read("Notes/Typed by hand.md"))
+check("a note written outside the app stays as it was written (reading never writes)", read("Notes/Typed by hand.md") === "---\ntype: note\n---\n\nA body.\n", read("Notes/Typed by hand.md"))
+await api("PUT", "file", { path: "Notes/Typed by hand.md", text: "---\ntype: note\n---\n\nA body, edited.\n" })
+check("...edited in the app, it gets an id and times", /id: note-typed-by-hand\ncreated: '.+'\nupdated: '.+'/.test(read("Notes/Typed by hand.md")), read("Notes/Typed by hand.md"))
 const [, upd] = await api("POST", "notes", { ext_id: "note-hand-written", title: "Hand written", body: "Rewritten." })
 check("a write by its id updates the hand-written file, and only then gets the app's keys", upd.id === "Notes/Hand written" && read("Notes/Hand written.md").includes("id: note-hand-written") && read("Notes/Hand written.md").includes("Rewritten."), upd)
 
@@ -362,8 +379,13 @@ await api("POST", "logs", [{ ...log, data: { protein: 45 } }])
 let [, logs] = await api("GET", "logs?area=health")
 mine = logs.filter((l: Any) => l.ext_id === "meal-test")
 check("log upsert merges data into one file", mine.length === 1 && JSON.stringify(mine[0].data) === JSON.stringify({ meal: "Lunch", kcal: 650, protein: 45 }), mine)
-;[code] = await api("POST", "logs", { area: "nope", date: "2026-09-29" })
-check("unknown area is a 400", code === 400, code)
+{
+  const had = vault.config("plugins/logs/data")
+  ;[code] = await api("POST", "logs", { area: "nope", date: "2026-09-29" })
+  check("a log for a new area adds the area", code === 201 && vault.config("plugins/logs/data")?.areas?.some((a: Any) => a.slug === "nope"), [code, vault.config("plugins/logs/data")])
+  if (had) vault.setConfig("plugins/logs/data", had); else vault.removeConfig("plugins/logs/data")
+  fs.rmSync(path.join(VAULT, "Logs/Nope"), { recursive: true, force: true })
+}
 ;[code] = await api("POST", "logs", { area: "nutrition", date: "yesterday", title: "Lunch" })
 check("a date that isn't YYYY-MM-DD is a 400", code === 400 && !fs.readdirSync(path.join(VAULT, "Logs"), { recursive: true }).some((f) => String(f).includes("yesterday")), code)
 
@@ -393,7 +415,8 @@ check("hotkeys.json keeps one command per key", read(".vaultite/hotkeys.json") =
 check("hotkeys are in the state's config", s.config.hotkeys["terminal:open"][0] === "Mod+Shift+T", s.config)
 let me: Any
 ;[, me] = await api("PUT", "me", { location: "Denver, CO" })
-check("ME.md is written, with coordinates", me.lat !== null && read("ME.md").includes("coordinates"), me)
+check("ME.md is written, without coordinates", me.lat === null && !read("ME.md").includes("coordinates"), me)
+check("the user's pin comes from the map's cache", (await api("GET", "state"))[1].me?.lat === 39.7392)
 {
   const { Kind } = await import("../core/vault.ts")
   const k = new Kind({ type: "me", collection: "me", file: "ME.md", parse: () => [{}, []], render: () => [{}, ""] })
@@ -539,7 +562,7 @@ let f: Any, f2: Any
 ;[code, f] = await api("POST", "file", { path: "Notes/Untitled.md", text: "", unique: true })
 check("new file", code === 201 && f.path === "Notes/Untitled.md", f)
 ;[code, f2] = await api("POST", "file", { path: "Notes/Untitled.md", text: "", unique: true })
-check("new file with a taken name gets a number", f2.path === "Notes/Untitled 2.md", f2)
+check("new file with a taken name gets a number, from 1 as in Obsidian", f2.path === "Notes/Untitled 1.md", f2)
 check("a new note stays as it was made (empty)", read("Notes/Untitled.md") === "", read("Notes/Untitled.md"))
 ;[, f] = await api("GET", "file?path=Notes/Untitled.md")
 const base = f.text
@@ -669,6 +692,16 @@ check("interaction ids count only entries", JSON.stringify(ids) === JSON.stringi
 write("People/Round Trip.md", read("People/Round Trip.md").replace("relation: friend", "relation: [friend"))
 ;[code] = await api("POST", "interactions", { person: "Round Trip", date: "2026-09-29", kind: "call" })
 check("no writes to a file whose header can't be read", code === 409 && read("People/Round Trip.md").includes("relation: [friend"), code)
+// A save changes only what it changed: an empty key stays, a cleared one stays empty, the file keeps its own name.
+write("People/Sam Lee (school).md", "---\ntype: person\nname: Sam Lee\nrelation: friend\ncontext:\n---\n\nMet at school.\n")
+await api("GET", "state")
+;[code] = await api("PUT", "people/People/Sam Lee (school)", { relation: "family" })
+check("save: one key's line changes, an empty one stays, the name stays the file's own",
+  code === 200 && read("People/Sam Lee (school).md") === "---\ntype: person\nname: Sam Lee\nrelation: family\ncontext:\n---\n\nMet at school.\n", [code, exists("People/Sam Lee (school).md") && read("People/Sam Lee (school).md")])
+;[code] = await api("PUT", "people/People/Sam Lee (school)", { relation: "" })
+check("save: a value cleared keeps its key, empty (as Obsidian does)", read("People/Sam Lee (school).md") === "---\ntype: person\nname: Sam Lee\nrelation: null\ncontext:\n---\n\nMet at school.\n", read("People/Sam Lee (school).md"))
+;[code] = await api("PUT", "people/People/Sam Lee (school)", { name: "Sam Leigh" })
+check("save: renamed only when its name changed", code === 200 && exists("People/Sam Leigh.md") && !exists("People/Sam Lee (school).md"), code)
 write("Notes/Gone.md", "x\n")
 await api("GET", "state")
 await api("DELETE", "file?path=Notes/Gone.md")
@@ -1654,6 +1687,20 @@ check("rules: another plugin's settings or plugins.json read from disk are flagg
   && settingsProblems('help: "in .vaultite/plugins/workspaces/data.json"', "x", "today").length === 0
   && settingsProblems('const off = plugin.vault.config("plugins").disabled', "x", "today").length === 1)
 check("services: the core finds People's geocoder by name", typeof (await import("../core/plugins.ts")).service(app.plugins, "geocode") === "function")
+{
+  const { geocoder } = await import("../plugins/core/people/geocode.ts")
+  let cache: Any = {}, asked: string[] = [], down = true
+  const g = geocoder(() => cache, (c) => { cache = c }, async (q) => {
+    asked.push(q)
+    if (down) throw new Error("offline")
+    return q === "Lisbon" ? [38.7223, -9.1393] : null
+  }, 0)
+  check("geocoder: offline is no pin, and not remembered", (await g.locate("Lisbon")) === null && !("lisbon" in cache), cache)
+  down = false
+  const [a, b] = await Promise.all([g.locate("Lisbon"), g.locate(" lisbon ")])
+  check("geocoder: one lookup for the same place, then the cache", a?.[0] === 38.7223 && b === a && asked.length === 2 && (await g.locate("LISBON")) === a && asked.length === 2, asked)
+  check("geocoder: not found is remembered as no pin", (await g.locate("Atlantis")) === null && cache.atlantis === null && g.known("Atlantis") === null && g.known("Paris") === undefined, cache)
+}
 
 // The vau CLI (core/cli.ts), in-process: its API calls go to the app, /api/ui to a Live with made-up windows.
 const { execute, servers } = await import("../core/cli.ts")
@@ -2819,6 +2866,18 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
   peer.close()
   fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
   fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"))
+  {
+    const join = app.plugins.find((x: Any) => x.id === "machines")!.exports.join
+    const conf = () => JSON.parse(read(".vaultite/plugins/machines/data.json"))
+    join("https://here.example.ts.net")
+    const one = conf()
+    join("https://here.example.ts.net")
+    check("machines: this one adds itself once", one.machines.length === 1 && one.added.length === 1 && JSON.stringify(conf()) === JSON.stringify(one), one)
+    write(".vaultite/plugins/machines/data.json", JSON.stringify({ ...one, machines: [] }))
+    join("https://here.example.ts.net")
+    check("machines: removed by the user, it stays removed", conf().machines.length === 0, conf())
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
+  }
 }
 
 // Terminal tabs on several machines: saved with their shell's machine (`<id>@<machine>`), shown to each app as its own
@@ -3300,13 +3359,18 @@ let cp: Any
 ;[code, cp] = await api("POST", "notes", { ext_id: "note-dup-source", title: "Dup source", body: "Original text" })
 await sleep(20)
 ;[code, cp] = await api("POST", "file/copy", { path: "Notes/Dup source.md" })
-check("duplicate: a copy next to it, named like Finder's", code === 201 && cp.path === "Notes/Dup source 1.md" && read("Notes/Dup source 1.md").includes("Original text"), [code, cp])
+check("duplicate: the file as it is, next to it, named like Obsidian's", code === 201 && cp.path === "Notes/Dup source 1.md" && read("Notes/Dup source 1.md") === read("Notes/Dup source.md"), [code, cp])
 let [, dupNotes] = await api("GET", "notes")
 const idOf = (t: string) => dupNotes.find((n: Any) => n.title === t)?.ext_id
-check("a duplicated note gets its own id; the original keeps its", idOf("Dup source") === "note-dup-source" && idOf("Dup source 1") && idOf("Dup source 1") !== "note-dup-source",
+const dupPath = (t: string) => dupNotes.find((n: Any) => n.title === t)?.id + ".md"
+check("a duplicated note keeps the original's id until it's edited", idOf("Dup source 1") === "note-dup-source", [idOf("Dup source"), idOf("Dup source 1")])
+await api("PUT", "file", { path: dupPath("Dup source 1"), text: read(dupPath("Dup source 1")).replace("Original text", "Copied text") })
+;[, dupNotes] = await api("GET", "notes")
+check("...edited in the app, it gets its own id; the original keeps its", idOf("Dup source") === "note-dup-source" && idOf("Dup source 1") && idOf("Dup source 1") !== "note-dup-source",
   [idOf("Dup source"), idOf("Dup source 1")])
 ;[code, cp] = await api("POST", "file/copy", { path: "Notes/Dup source 1.md" })
 check("a copy of 'Name 1' is 'Name 2'", cp.path === "Notes/Dup source 2.md", cp)
+await api("PUT", "file", { path: "Notes/Dup source 2.md", text: read("Notes/Dup source 2.md") + "More.\n" })
 ;[, dupNotes] = await api("GET", "notes")
 check("three copies, three ids", new Set(dupNotes.filter((n: Any) => n.title.startsWith("Dup source")).map((n: Any) => n.ext_id)).size === 3)
 ;[code] = await api("POST", "file/copy", { path: "Notes" })
@@ -3314,8 +3378,7 @@ check("a folder isn't duplicated", code === 400, code)
 write("Notes/Dup claims.md", "---\ntype: person\nname: Alice Park\naliases: [Alice]\nid: dup-claims\ncontext: Met at a course\n---\n\nText\n")
 await api("GET", "state")
 ;[code, cp] = await api("POST", "file/copy", { path: "Notes/Dup claims.md" })
-check("a duplicate leaves out what claims the original's name and id (name, aliases, id), the rest as it was",
-  read(cp.path) === "---\ntype: person\ncontext: Met at a course\n---\n\nText\n" && read("Notes/Dup claims.md").includes("aliases: [Alice]"), read(cp.path))
+check("a duplicate is byte for byte the original, as in Obsidian", read(cp.path) === read("Notes/Dup claims.md"), read(cp.path))
 del = undefined
 ;[code, del] = await api("DELETE", "file?path=Notes/Dup source 2.md")
 check("delete says where it went in the trash", code === 200 && typeof del.trashed === "string" && del.trashed.startsWith(".trash/Notes/Dup source 2 ") && exists(del.trashed), del)
@@ -3535,7 +3598,7 @@ kaiPut = (await api("PUT", "people/People/Kai New", { archived: false }))[1]
 check("archive: unarchiving removes the key and moves it back", kaiPut.id === "People/Kai New" && !exists("People/.archive/Kai New.md") &&
   read("People/Kai New.md") === "---\ntype: person\nrelation: friend\n---\n\nA new friend.\n", kaiPut)
 check("archive: links follow it back", read("Arch/To Kai.md") === "[[People/Kai New]] and [[Kai New]].\n", read("Arch/To Kai.md"))
-// The ops: any file, Markdown or not; a name taken on the way back gets " 2".
+// The ops: any file, Markdown or not; a name taken on the way back gets " 1".
 write("Arch/Plain.md", "Plain text.\n")
 write("Arch/Chart.png", "not really a png")
 write("Arch/See.md", "[[Arch/Plain]] ![[Arch/Chart.png]]\n")
@@ -3547,7 +3610,7 @@ check("archive.add: a file that isn't Markdown just moves", aop.path === "Arch/.
 check("archive.add: in an archive folder counts as archived", atree.others.find((f: Any) => f.path === "Arch/.archive/Chart.png")?.archived === true)
 write("Arch/Plain.md", "A new plain.\n")
 ;[, aop] = await api("POST", "ops/archive.restore", { path: "Arch/.archive/Plain.md" })
-check("archive.restore: back, key gone, a free name when taken", aop.path === "Arch/Plain 2.md" && read("Arch/Plain 2.md") === "Plain text.\n" && read("Arch/See.md").startsWith("[[Arch/Plain 2]]"), aop)
+check("archive.restore: back, key gone, a free name when taken", aop.path === "Arch/Plain 1.md" && read("Arch/Plain 1.md") === "Plain text.\n" && read("Arch/See.md").startsWith("[[Arch/Plain 1]]"), aop)
 check("archive.add: a hidden file or a folder is refused", (await api("POST", "ops/archive.add", { path: "Arch" }))[0] === 400)
 // By hand, the key alone doesn't move a file; archive.tidy moves those, once.
 write("Arch/By hand.md", "---\narchived: true\n---\n\nTyped.\n")
@@ -4427,8 +4490,15 @@ check("properties: an unknown type is refused", code === 400)
   check("mcp write_log: again corrects it, data merged", !t.error && read("Logs/Nutrition/2026-09-30 Rice bowl.md").includes("kcal: 650") && read("Logs/Nutrition/2026-09-30 Rice bowl.md").includes("protein: 40"), read("Logs/Nutrition/2026-09-30 Rice bowl.md"))
   await app.callOp("log.create", { area: "nutrition", title: "Rice bowl", date: "2026-09-30", data: { fat: 12 } }, (await import("../core/ops.ts")).whoOf("cli", "codex"))
   check("write_log: another AI correcting it by its id corrects the same log, not a second one", !exists("Logs/Nutrition/2026-09-30 Rice bowl 1.md") && read("Logs/Nutrition/2026-09-30 Rice bowl.md").includes("fat: 12") && read("Logs/Nutrition/2026-09-30 Rice bowl.md").includes("source: claude"), read("Logs/Nutrition/2026-09-30 Rice bowl.md"))
-  t = await tool("write_log", { area: "pottery", title: "Bowl" })
-  check("mcp write_log: an unknown area is refused, with the areas", t.error && t.text.includes("No area 'pottery'") && t.text.includes("nutrition"), t)
+  {
+    const areasBefore = vault.config("plugins/logs/data")
+    t = await tool("write_log", { area: "Pottery 🏺", date: "2026-09-30", title: "Bowl 🍵" })
+    const made = (vault.config("plugins/logs/data")?.areas ?? []) as Any[]
+    check("mcp write_log: a new area is added to the settings, the others kept; the emoji stays in the file name", !t.error && exists("Logs/Pottery 🏺/2026-09-30 Bowl 🍵.md")
+      && made.some((a) => a.slug === "pottery" && a.name === "Pottery 🏺") && made.some((a) => a.slug === "nutrition"), [t, made])
+    fs.rmSync(path.join(VAULT, "Logs/Pottery 🏺"), { recursive: true })
+    if (areasBefore) vault.setConfig("plugins/logs/data", areasBefore); else vault.removeConfig("plugins/logs/data")
+  }
   const up = listed.find((x) => x.name === "upload_file")
   check("mcp upload_file: ChatGPT is told which parameter takes the chat's file", same(up?._meta, { "openai/fileParams": ["file"] }) && up.inputSchema.properties.file.properties.download_url, up)
   const jpeg = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(60, 7)])
@@ -4494,6 +4564,14 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("clip: the clipper's frontmatter, in the note format", clipped.startsWith("---\ntype: note\nkind: note\ntitle: 'Lighthouse: a plant reminder'\naliases: ['Lighthouse: a plant reminder']\nsource: https://lighthouse.example.com/blog/plant-reminder\nauthor: [Alice Park]\npublished: 2026-09-20\ndescription: See which plants need water\ntags: [Clipping]\nid: note-lighthouse-a-plant-reminder\ncreated: '"), clipped.slice(0, 400))
   t = await tool("clip", { url: "https://lighthouse.example.com/blog/plant-reminder", html: page })
   check("clip: the same address again answers its note", !t.error && t.text.startsWith("Already clipped: Clippings/Lighthouse - a plant reminder.md") && !exists("Clippings/Lighthouse - a plant reminder 2.md"), t)
+  {
+    const at = "Clippings/Lighthouse - a plant reminder.md"
+    write(at, read(at).replace("tags: [Clipping]", "tags: [Clipping, Plants]"))
+    t = await tool("clip", { url: "https://lighthouse.example.com/blog/plant-reminder", html: page.replace("stand out at a glance", "stand out at once"), update: true })
+    const now = read(at)
+    check("clip: update clips the page into its note again, the note's own keys kept", !t.error && t.text.startsWith(`Updated ${at}`) && now.includes("stand out at once") && !now.includes("at a glance")
+      && now.includes("tags: [Clipping, Plants]") && now.includes("source: https://lighthouse.example.com/blog/plant-reminder") && !exists("Clippings/Lighthouse - a plant reminder 2.md"), [t, now])
+  }
   t = await tool("clip", { url: "https://lighthouse.example.com/review-me", html: page, inbox: true })
   const inClip = exists("Inbox/Lighthouse - a plant reminder.md") ? read("Inbox/Lighthouse - a plant reminder.md") : ""
   check("clip: into the inbox, to review", !t.error && inClip.startsWith("---\ntype: inbox\nstatus: new\nfrom: Claude Code\ntitle: 'Lighthouse: a plant reminder'") && inClip.includes("source: https://lighthouse.example.com/review-me"), inClip.slice(0, 300))
@@ -4562,8 +4640,6 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
     read(opBowl).includes("kcal: 500") && read(opBowl).includes("source: claude"), [t, exists(opBowl) && read(opBowl)])
   t = await run("log.create", { area: "nutrition", date: "2026-09-29", title: "Op bowl", data: { protein: 30 } })
   check("log.create: again corrects it, data merged", !t.error && read(opBowl).includes("kcal: 500") && read(opBowl).includes("protein: 30"), read(opBowl))
-  t = await run("log.create", { area: "pottery", title: "Vase" })
-  check("log.create: an unknown area is refused, with the areas", t.error && t.text.includes("No area 'pottery'") && t.text.includes("nutrition"), t)
   t = await run("log.create", { date: "2026-09-29", title: "No area" })
   check("log.create: an area is needed", t.error && t.text.includes("area is missing"), t)
   t = await run("log.create", { title: JSON.stringify([{ area: "nutrition", date: "2026-09-29", title: "Op snack" }, { area: "nutrition", date: "2026-09-29", title: "Op tea" }]) })
@@ -5284,10 +5360,10 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   for (const f of ["Prov", "Notes/Prov by mcp.md", "Notes/Prov by app.md", "People/Prov Person.md"]) fs.rmSync(path.join(VAULT, f), { recursive: true, force: true })
 }
 
-// ---------- Provenance for files that aren't notes: its list (files.json), labels in agents' new files' bytes ----------
+// ---------- Provenance for files that aren't notes: its list (files.json), their bytes never changed ----------
 {
   const zlib = await import("node:zlib")
-  const { saysAi, withAiLabel, AI_SOURCE } = await import("../plugins/core/provenance/xmp.ts")
+  const { saysAi, AI_SOURCE } = await import("../plugins/core/provenance/xmp.ts")
   const chunk = (type: string, data: Buffer) => {
     const b = Buffer.alloc(12 + data.length)
     b.writeUInt32BE(data.length, 0); b.write(type, 4, "latin1"); data.copy(b, 8)
@@ -5297,59 +5373,12 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   const ihdr = Buffer.from([0, 0, 0, 2, 0, 0, 0, 2, 8, 2, 0, 0, 0]) // 2x2, 8-bit RGB
   const png = Buffer.concat([Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]), chunk("IHDR", ihdr),
     chunk("IDAT", zlib.deflateSync(Buffer.from([0, 255, 0, 0, 255, 0, 0, 0, 255, 0, 0, 255, 0, 0]))), chunk("IEND", Buffer.alloc(0))])
-  /** A PNG's chunks, each one's CRC checked, and its pixels inflated: null when it doesn't read. */
-  const pngReads = (b: Buffer) => {
-    const types: string[] = [], idat: Buffer[] = []
-    for (let at = 8; at < b.length;) {
-      const len = b.readUInt32BE(at), type = b.subarray(at + 4, at + 8).toString("latin1")
-      if (zlib.crc32(b.subarray(at + 4, at + 8 + len)) !== b.readUInt32BE(at + 8 + len)) return null
-      types.push(type); if (type === "IDAT") idat.push(b.subarray(at + 8, at + 8 + len))
-      at += 12 + len
-    }
-    return zlib.inflateSync(Buffer.concat(idat)).length === 14 ? types : null
-  }
   const jpeg = Buffer.from("/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCAgICAgMCAgIDAwMDBAYEBAQEBAgGBgUGCQgKCgkICQkKDA8MCgsOCwkJDRENDg8QEBEQCgwSExIQEw8QEBD/2wBDAQMDAwQDBAgEBAgQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/wAARCAACAAIDAREAAhEBAxEB/8QAFAABAAAAAAAAAAAAAAAAAAAACP/EABQQAQAAAAAAAAAAAAAAAAAAAAD/xAAVAQEBAAAAAAAAAAAAAAAAAAAHCf/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/ADoDFU3/2Q==", "base64")
-  /** A JPEG's markers up to its scan, each segment's length in the file. */
-  const jpegMarkers = (b: Buffer) => {
-    const out: string[] = []
-    for (let at = 2; at < b.length && b[at] === 0xff;) {
-      out.push(b[at + 1].toString(16))
-      if (b[at + 1] === 0xda) return out
-      at += 2 + b.readUInt16BE(at + 2)
-    }
-    return null
-  }
-  const lossy = Buffer.from("UklGRjwAAABXRUJQVlA4IDAAAADQAQCdASoCAAIAAgA0JaACdLoB+AADsAD+8MQL/yC5YXXI1/8gP+QH/ID/+PIAAAA=", "base64")
-  const lossless = Buffer.from("UklGRhwAAABXRUJQVlA4TA8AAAAvAUAAAAcQ/Y/+ByKi/wEA", "base64")
-  /** A WebP's chunks, if its RIFF size and theirs add up. */
-  const webpChunks = (b: Buffer) => {
-    if (b.readUInt32LE(4) + 8 !== b.length) return null
-    const out: string[] = []
-    let at = 12
-    for (; at < b.length; at += 8 + b.readUInt32LE(at + 4) + (b.readUInt32LE(at + 4) % 2)) out.push(b.subarray(at, at + 4).toString("latin1"))
-    return at === b.length ? out : null
-  }
-  const box = (type: string, data: Buffer) => { const h = Buffer.alloc(8); h.writeUInt32BE(8 + data.length); h.write(type, 4, "latin1"); return Buffer.concat([h, data]) }
-  const mp4 = Buffer.concat([box("ftyp", Buffer.from("isom\0\0\x02\0isommp41", "latin1")), box("mdat", Buffer.alloc(32, 7)), box("moov", Buffer.alloc(16))])
   const svg = '<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2" data-x="a>b"><rect width="2" height="2"/></svg>\n'
 
-  const p2 = withAiLabel("a.png", png)!
-  check("provenance xmp: a PNG gets an iTXt XMP chunk after IHDR, every chunk's CRC right, its pixels the same", JSON.stringify(pngReads(p2)) === '["IHDR","iTXt","IDAT","IEND"]' && saysAi(p2) && !saysAi(png), pngReads(p2))
-  const j2 = withAiLabel("a.jpg", jpeg)!
-  check("provenance xmp: a JPEG gets an APP1 XMP segment after JFIF's, the rest as it was", JSON.stringify(jpegMarkers(j2)?.slice(0, 3)) === '["e0","e1","db"]' && saysAi(j2) && j2.subarray(-jpeg.length + 20).equals(jpeg.subarray(20)), jpegMarkers(j2))
-  const w1 = withAiLabel("a.webp", lossy)!, w2 = withAiLabel("a.webp", lossless)!
-  check("provenance xmp: a simple WebP becomes an extended one (VP8X, its 2x2 canvas, the XMP flag) with an XMP chunk",
-    JSON.stringify(webpChunks(w1)) === '["VP8X","VP8 ","XMP "]' && JSON.stringify(webpChunks(w2)) === '["VP8X","VP8L","XMP "]'
-      && w1[20] === 0x04 && w1.readUIntLE(24, 3) === 1 && w1.readUIntLE(27, 3) === 1 && saysAi(w1) && saysAi(w2), [webpChunks(w1), webpChunks(w2), w1.subarray(20, 30)])
-  const w3 = withAiLabel("a.webp", w1)
-  check("provenance xmp: one that has XMP isn't given a second", w3 === null && withAiLabel("a.png", p2) === null && withAiLabel("a.jpg", j2) === null)
-  const m2 = withAiLabel("a.mp4", mp4)!
-  check("provenance xmp: an MP4 gets XMP's uuid box at the end, nothing before it moved", m2.subarray(0, mp4.length).equals(mp4) && m2.readUInt32BE(mp4.length) === m2.length - mp4.length && saysAi(m2) && withAiLabel("a.mp4", m2) === null)
-  const s2 = withAiLabel("a.svg", Buffer.from(svg))!.toString()
-  check("provenance xmp: an SVG gets a <metadata> first in it, the rest as it was", s2.startsWith('<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2 2" data-x="a>b"><metadata><rdf:RDF') && s2.endsWith('</metadata><rect width="2" height="2"/></svg>\n') && s2.includes(AI_SOURCE), s2)
-  check("provenance xmp: a file cut short, or a format it doesn't write, is left alone",
-    withAiLabel("a.png", png.subarray(0, 40)) === null && withAiLabel("a.jpg", jpeg.subarray(0, 30)) === null && withAiLabel("a.webp", lossy.subarray(0, 30)) === null
-      && withAiLabel("a.mp4", mp4.subarray(0, 50)) === null && withAiLabel("a.pdf", Buffer.from("%PDF-1.4\n")) === null && withAiLabel("a.gif", Buffer.from("GIF89a")) === null)
+  // (an image an AI app marked: an XMP iTXt chunk after IHDR)
+  const p2 = Buffer.concat([png.subarray(0, 33), chunk("iTXt", Buffer.from(`XML:com.adobe.xmp\0\0\0\0\0<x:xmpmeta><Iptc4xmpExt:DigitalSourceType>${AI_SOURCE}</Iptc4xmpExt:DigitalSourceType></x:xmpmeta>`, "latin1")), png.subarray(33)])
+  check("provenance xmp: read in an XMP chunk, not in an image without one", saysAi(p2) && !saysAi(png) && !saysAi(jpeg))
   const composite = zlib.deflateSync(Buffer.from(`<x:xmpmeta><Iptc4xmpExt:DigitalSourceType>http://cv.iptc.org/newscodes/digitalsourcetype/compositeWithTrainedAlgorithmicMedia</Iptc4xmpExt:DigitalSourceType></x:xmpmeta>`))
   const zpng = Buffer.concat([png.subarray(0, 33), chunk("iTXt", Buffer.concat([Buffer.from("XML:com.adobe.xmp\0\x01\0\0\0", "latin1"), composite])), png.subarray(33)])
   check("provenance xmp: read in a compressed XMP chunk (composite with AI counts), in a tail, not in a camera's",
@@ -5362,17 +5391,22 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   const b64 = (b: Buffer) => b.toString("base64")
   await as("mcp", null, "POST", "ops/file.upload", { data: b64(png), name: "Prov chart.png", folder: "ProvM" })
   await as("cli", "claude-code", "POST", "ops/file.upload", { data: b64(jpeg), name: "Prov photo.jpg", folder: "ProvM" })
-  check("provenance files: an agent's upload is labelled ai in the list, and says so in its bytes", list()["ProvM/Prov chart.png"] === "ai" && list()["ProvM/Prov photo.jpg"] === "ai"
-    && saysAi(bytes("ProvM/Prov chart.png")) && pngReads(bytes("ProvM/Prov chart.png")) !== null && saysAi(bytes("ProvM/Prov photo.jpg")), list())
+  {
+    const [, cam] = await as("mcp", null, "POST", "ops/file.upload", { data: b64(jpeg), name: "image.jpg", folder: "ProvM" })
+    check("upload: a phone's nameless image.jpg is named as Obsidian names a pasted one", /^ProvM\/Pasted image \d{14}\.jpg$/.test(cam.path), cam)
+    fs.rmSync(path.join(VAULT, cam.path))
+  }
+  check("provenance files: an agent's upload is labelled ai in the list, its bytes as they came", list()["ProvM/Prov chart.png"] === "ai" && list()["ProvM/Prov photo.jpg"] === "ai"
+    && bytes("ProvM/Prov chart.png").equals(png) && bytes("ProvM/Prov photo.jpg").equals(jpeg), list())
   vault.setConfig("plugins/provenance/data", { label_user: true })
   await as("app/desktop", null, "POST", "upload", { path: "ProvM/Mine.png", data: b64(png) })
   check("provenance files: the user's upload from the app is human, its bytes untouched", list()["ProvM/Mine.png"] === "human" && bytes("ProvM/Mine.png").equals(png), list())
   await as("cli", "codex", "POST", "ops/file.upload", { data: b64(Buffer.from(svg)), name: "Drawing.svg", folder: "ProvM" })
   await as("cli", "codex", "POST", "ops/file.write", { path: "ProvM/Data.csv", text: "a,b\n1,2\n" })
-  check("provenance files: an agent's SVG (its metadata in it); a CSV through file.write labelled, not changed", list()["ProvM/Drawing.svg"] === "ai" && read("ProvM/Drawing.svg").includes(AI_SOURCE)
+  check("provenance files: an agent's SVG and a CSV through file.write labelled, not changed", list()["ProvM/Drawing.svg"] === "ai" && read("ProvM/Drawing.svg") === svg
     && list()["ProvM/Data.csv"] === "ai" && read("ProvM/Data.csv") === "a,b\n1,2\n", [list(), read("ProvM/Drawing.svg")])
   await as("cli", "codex", "PUT", "file", { path: "ProvM/Drawing.svg", text: read("ProvM/Drawing.svg").replace("<rect", "<circle"), base: read("ProvM/Drawing.svg") })
-  check("provenance files: an edit leaves the label and adds nothing", read("ProvM/Drawing.svg").split(AI_SOURCE).length === 2 && read("ProvM/Drawing.svg").includes("<circle"), read("ProvM/Drawing.svg"))
+  check("provenance files: an edit leaves the label and adds nothing", list()["ProvM/Drawing.svg"] === "ai" && read("ProvM/Drawing.svg") === svg.replace("<rect", "<circle"), read("ProvM/Drawing.svg"))
   await as("app/desktop", null, "POST", "upload", { path: "ProvM/From ChatGPT.png", data: b64(p2) })
   let [, o] = await as("cli", null, "POST", "ops/provenance.get", { path: "ProvM/From ChatGPT.png" })
   check("provenance files: an upload whose bytes say an AI made it isn't labelled the user's: it reads as ai, from the file", !("ProvM/From ChatGPT.png" in list()) && o.origin === "ai" && o.from === "file", [o, list()])
@@ -6302,9 +6336,10 @@ plugin.every("gone", null)
 const person: Any = vault.kinds.find((k: Any) => k.type === "person")!
 Object.defineProperty(person, "fill", { value: () => { throw new Error("a plugin bug") }, configurable: true })
 write("People/Fill Bug.md", "---\ntype: person\n---\n\nMade up.\n")
+await vault.sync()
 let synced: unknown = null
-try { await vault.sync(); synced = true } catch (e) { synced = e }
-check("resilience: a kind's fill that throws doesn't stop the sync", synced === true, String(synced))
+try { await vault.fillIn("People/Fill Bug.md", null); synced = true } catch (e) { synced = e }
+check("resilience: a kind's fill that throws doesn't fail the write", synced === true, String(synced))
 check("… the file is indexed, its problem said", vault.entries.get("People/Fill Bug.md")?.problems.some((x: string) => x.includes("couldn't fill in")), vault.entries.get("People/Fill Bug.md")?.problems)
 delete person.fill // (its class's again)
 fs.rmSync(path.join(VAULT, "People/Fill Bug.md"))

@@ -36,11 +36,11 @@ type Write =
   | { kind: "note"; ext: string; dir: string; name: string; fm: Record<string, unknown>; body: string }
   | { kind: "file"; rel: string; data: Buffer }
 
-/** A file name for `name` in `dir` that's free ("Name.md", "Name 2.md"...). */
+/** A file name for `name` in `dir` that's free ("Name.md", "Name 1.md"...). */
 function freePath(vault: Vault, dir: string, name: string, taken: Set<string>) {
   const base = [...safeName(name)].slice(0, 100).join("").replace(/^[.\s]+|[.\s]+$/g, "") || "Untitled"
-  for (let n = 1; ; n++) {
-    const rel = `${dir}/${n === 1 ? base : `${base} ${n}`}.md`
+  for (let n = 0; ; n++) {
+    const rel = `${dir}/${n ? `${base} ${n}` : base}.md`
     if (!taken.has(rel) && !vault.entries.has(rel) && !fs.existsSync(vault.abs(rel))) return rel
   }
 }

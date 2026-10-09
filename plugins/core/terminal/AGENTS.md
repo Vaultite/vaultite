@@ -22,6 +22,7 @@ an agent started from it is told it runs inside Vaultite where it takes that (Cl
 From a terminal, `vau terminal` lists this machine's sessions and the tabs showing them, and opens, resumes (a Claude Code
 session by its title too), reads (`screen`), types into (`send`) and ends them; `vau terminal tidy` closes the tabs of
 agents' sessions that are gone. A session ended for good (its tab's End session, its row's x, `vau terminal end`: an
-agent asked to close itself runs it without an id) closes its tabs, on every device. It has no files, blocks or settings in the vault besides
+agent asked to close itself runs it without an id) closes its tabs, on every device; an agent's session that ends by
+itself keeps them, saying so, with Restart. It has no files, blocks or settings in the vault besides
 `.vaultite/plugins/terminal/data.json`: `{"allowUsers": ["someone@example.com"]}` lets more tailnet logins in through
 Tailscale Serve (this machine's owner always may), `{"allowRemote": true}` lets anyone who reaches the app in (off by default).

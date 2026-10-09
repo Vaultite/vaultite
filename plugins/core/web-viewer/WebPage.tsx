@@ -87,7 +87,15 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
     try {
       const page = await web.html(id)
       const r = await post<{ path: string; title: string; existing?: boolean }>("clip", { url: page.url, html: page.html })
-      notify(r.existing ? `Already saved: ${r.title}` : `Saved "${r.title}"`, { action: { label: "Open", run: () => openInSplit(`file:${r.path}`) } })
+      if (!r.existing) notify(`Saved "${r.title}"`, { action: { label: "Open", run: () => openInSplit(`file:${r.path}`) } })
+      else {
+        // Saved before: its note, and the page as it is now only if asked.
+        openInSplit(`file:${r.path}`)
+        notify(`Already saved: ${r.title}`, { action: { label: "Update", run: async () => {
+          await post("clip", { url: page.url, html: page.html, update: true })
+          notify(`Updated "${r.title}"`)
+        } } })
+      }
     } catch (e) {
       notifyError(e, "Couldn't save the page")
     } finally {

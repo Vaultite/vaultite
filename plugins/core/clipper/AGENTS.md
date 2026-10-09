@@ -2,7 +2,8 @@
 A web page saved as a note: `POST /api/clip {"url", "html"?, "folder"?, "tags"?}` (or
 `vau clip <url>`, or MCP's `clip` tool). Without `html` the server fetches the page (public addresses only); with it,
 it clips the HTML given (a page you're logged in to), `url` saying where it's from. It answers `{path, title, words}`,
-or `{path, existing: true}` for a page already clipped (a file whose `source` is that address).
+or `{path, existing: true}` for a page already clipped (a file whose `source` is that address); `"update": true` clips
+it into that note again (its content as the page is now; tags and other keys the note has stay).
 ````
 ---
 type: note

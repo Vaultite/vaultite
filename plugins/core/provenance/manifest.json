@@ -4,7 +4,7 @@
   "category": "agents",
   "essential": true,
   "name": "Provenance",
-  "description": "Who wrote a file: you, an AI whose text you reviewed, you and an AI together, or an AI. One property, origin, shown and changed in every file's header and the status bar, with values you can change; those agents make through the API are marked AI, and yours can be marked too (a setting). Images and other files keep theirs in a list (labelling one never rewrites it), new ones agents upload carry the IPTC mark for AI-made media, and an image that carries it (ChatGPT's, Gemini's) shows as AI. A label, not a lock.",
+  "description": "Who wrote a file: you, an AI whose text you reviewed, you and an AI together, or an AI. One property, origin, shown and changed in every file's header and the status bar, with values you can change; those agents make through the API are marked AI, and yours can be marked too (a setting). Images and other files keep theirs in a list (their bytes are never changed), and an image that carries the IPTC mark for AI-made media (ChatGPT's, Gemini's) shows as AI. A label, not a lock.",
   "settings": {
     "label_user": {
       "type": "boolean",

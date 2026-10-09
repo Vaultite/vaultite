@@ -8,9 +8,11 @@ export const plugin = new Plugin(import.meta.url)
 /** Everyone by where they live, grouped like the card (PeoplePlaces.tsx): your place first, then the biggest; then the
  *  people who aren't on the map (no location, or one that wasn't found). */
 plugin.block("people-map", (ctx) => {
-  const people = plugin.vault.has("people") ? plugin.vault.items("people").filter((p) => !isArchived(p)) : []
+  // (pins: the files' coordinates, else People's cached lookups)
+  const pinned = (x: Item) => (plugin.peer("people")?.exports.pinned(x) ?? x) as Item
+  const people = plugin.vault.has("people") ? plugin.vault.items("people").filter((p) => !isArchived(p)).map(pinned) : []
   const on = (x: Item) => typeof x?.lat === "number" && typeof x?.lon === "number"
-  const me = plugin.vault.has("me") ? plugin.vault.get("me", "me") : null
+  const raw = plugin.vault.has("me") ? plugin.vault.get("me", "me") : null, me = raw && pinned(raw)
   ctx.source(me, people)
   const home = me && on(me) ? regionOf(me.lat, me.lon, str(me.location)) : null
   const places = new Map<string, string[]>(home ? [[home, ["you"]]] : [])

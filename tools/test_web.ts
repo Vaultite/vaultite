@@ -44,6 +44,9 @@ const fm: {
   setProp(block: string, key: string, value: unknown): string
   renameProp(block: string, from: string, to: string): string
   dumpKey(key: string, value: unknown): string
+  typedNumber(s: string): number | string | null
+  toLocal(v: string): string
+  fromLocal(s: string, was: string): string
 } = await web("core/frontmatter.ts")
 const merge: { merge3(base: string, mine: string, actual: string): string | null; opcodes<T>(a: T[], b: T[]): [string, number, number, number, number][]
   textChanges(a: string, b: string): { from: number; to: number; insert: string }[] } =
@@ -99,6 +102,16 @@ check("frontmatter: the app reads what the server reads", !r.error && same(r.pro
 check("frontmatter: YAML 1.1 like the server (23:15 a number, 07:15 and 1e3 text, yes true)",
   r.props.bed === 1395 && r.props.wake === "07:15" && r.props.big === "1e3" && r.props.ok === true && r.props.y === "y" && r.props.octal === 10, r.props)
 check("frontmatter: dates and times read as text", r.props.date === "2026-09-29" && r.props.at === "2026-09-28 18:00:00", r.props)
+check("properties: typed numbers stay as written unless they're the number's own text",
+  same(["12", "-3.5", "007", "1.50", "1e3", "0x1F", "+1", " ", "x"].map(fm.typedNumber), [12, -3.5, "007", "1.50", "1e3", "0x1F", "+1", null, "x"]))
+check("properties: '007' typed as text stays text in the file", fm.setProp("---\na: 1\n---\n", "a", "007") === "---\na: '007'\n---\n",
+  fm.setProp("---\na: 1\n---\n", "a", "007"))
+check("properties: a datetime keeps its seconds and offset when edited",
+  fm.toLocal("2026-09-28 18:00:05") === "2026-09-28T18:00:05" && fm.fromLocal("2026-09-28T19:30:05", "2026-09-28 18:00:05") === "2026-09-28 19:30:05" &&
+  fm.fromLocal("2026-09-28T19:30", "2026-09-28T18:00:00+02:00") === "2026-09-28T19:30:00+02:00" &&
+  fm.fromLocal("2026-09-29T18:00:05", "2026-09-28 18:00:05.25Z") === "2026-09-29 18:00:05.25Z" &&
+  fm.fromLocal("2026-09-28T19:30", "2026-09-28 18:00") === "2026-09-28 19:30" && fm.fromLocal("2026-09-28T19:30", "") === "2026-09-28 19:30",
+  [fm.fromLocal("2026-09-28T19:30", "2026-09-28T18:00:00+02:00")])
 check("frontmatter: a broken header is an error, not properties", fm.readProps("---\ntags: [a\n---\n").error !== null)
 check("frontmatter: a header that isn't key: value lines", fm.readProps("---\n- a\n---\n").error !== null)
 
@@ -166,14 +179,14 @@ Likes climbing.
 `
 const rel = "People/Alice Park.md"
 let n = 0
-/** The server's PUT and the app's setProp on the same file: the same text. `value` undefined: the key removed. */
+/** The server's PUT and the app's setProp on the same file: the same text. `value` null: the value cleared. */
 async function sameWrite(what: string, key: string, value: unknown) {
   const p = path.join(VAULT, rel)
   fs.mkdirSync(path.dirname(p), { recursive: true })
   fs.writeFileSync(p, PERSON)
   const t = Date.now() / 1000 + 2 + n++ // a new mtime, so the index reads it again
   fs.utimesSync(p, t, t)
-  const [code] = await api("PUT", "people/Alice Park", { [key]: value === undefined ? "" : value })
+  const [code] = await api("PUT", "people/Alice Park", { [key]: value === null ? "" : value })
   const byServer = fs.readFileSync(p, "utf8")
   const block = PERSON.slice(0, PERSON.indexOf("---\n\n") + 5)
   const byApp = fm.setProp(block, key, value) + PERSON.slice(block.length)
@@ -185,7 +198,7 @@ await sameWrite("a date is written plain", "want_to", "2026-10-01")
 await sameWrite("yes is quoted", "context", "yes")
 await sameWrite("a number", "every_days", 14)
 await sameWrite("a list, inline", "tags", ["University", "AI"])
-await sameWrite("a key removed", "want_to", undefined)
+await sameWrite("a value cleared keeps its key, empty", "context", null)
 await sameWrite("text with a colon and a quote", "context", "Met at: Sam's party")
 
 const block = "---\ntype: note   # kept\ntitle: Idea\n---\n\n"
@@ -560,7 +573,9 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 
   const F = { id: "f", to: "file:Inbox/x.md" }
   one([A, F, B], "f"); ws.closeFileTabs("Inbox/x.md")
-  check("tabs: a file archived or trashed closes its tabs", tabs() === "file:a.md,file:b.md *" && ws.canReopenTab(), tabs())
+  check("tabs: a file trashed closes its tabs", tabs() === "file:a.md,file:b.md *" && ws.canReopenTab(), tabs())
+  one([A, F, B], "f"); ws.retarget("Inbox/x.md", "Inbox/.archive/x.md")
+  check("tabs: a file archived or moved stays open where it went", tabs() === "file:a.md,file:Inbox/.archive/x.md,file:b.md *" && ws.activeTab().to === "file:Inbox/.archive/x.md", tabs())
   one([A, F], "f"); ws.closeFileTabs("Inbox")
   check("tabs: a folder's going closes its files' tabs", tabs() === "file:a.md *", tabs())
 

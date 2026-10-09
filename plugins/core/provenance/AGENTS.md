@@ -12,9 +12,9 @@ Files that aren't Markdown (images, videos, SVG, audio, PDFs, any attachment) ha
 `.vaultite/plugins/provenance/files.json` (`{"<vault path>": "<value>"}`), never in the file: relabelling never
 rewrites the user's photos. Read and set it with `vau origin <path>` / `vau origin set <path> ai` (the ops
 `provenance.get`, `provenance.set`, for notes too), not by editing that list. A file you upload (`upload_file`,
-`vau upload`) is labelled `ai` by itself, and a new PNG, JPEG, WebP, MP4/MOV or SVG gets the IPTC mark for AI-made
-media inside (XMP `Iptc4xmpExt:DigitalSourceType` = trainedAlgorithmicMedia). An unlabelled file whose bytes carry that
-mark (or a C2PA manifest saying so: ChatGPT's and Gemini's images) reads as `ai` (`from: file`). Labels follow files
+`vau upload`) is labelled `ai` by itself, in that list: its bytes stay as they came. An unlabelled file whose bytes carry
+the IPTC mark for AI-made media (XMP `Iptc4xmpExt:DigitalSourceType` = trainedAlgorithmicMedia, or a C2PA manifest
+saying so: ChatGPT's and Gemini's images) reads as `ai` (`from: file`). Labels follow files
 moved with `vau move` or the app. Agents set only `ai`: `provenance.set` refuses human, reviewed, mixed and removing a
 label from an agent. A database view over every file (a `.base`) filters attachments on `origin` too.
 

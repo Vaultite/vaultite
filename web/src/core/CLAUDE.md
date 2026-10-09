@@ -13,5 +13,5 @@
   - A move through the API is `moved` over the socket: tabs follow, unsaved typing goes to the new path (`whereNow`).
   - Shared settings are per-key writes (`PATCH /api/config/<name>`, null removes; pins one `POST /api/pins` per change),
     never a whole list: other devices, the CLI and AIs edit the same files.
-  - Two servers on one iCloud vault mustn't loop: the watcher only re-reads; the only writes on a read are `fill`s a
-    filled file doesn't trigger again.
+  - Two servers on one iCloud vault mustn't loop: the watcher only re-reads, and a read never writes (a kind's `fill`
+    runs on the app's own writes: `Vault.fillIn`).

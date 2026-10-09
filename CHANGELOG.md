@@ -134,8 +134,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Provenance**: an `origin: human | reviewed | mixed | ai` label on any file, shown in its header. Notes made by
   agents are labelled `ai`; yours stay unlabelled (no label is yours, and the header shows none) unless you turn on Label
   your notes. Images, videos, PDFs and other files get the same label and menu, kept in a list so your
-  photos are never rewritten (`vau origin`, `vau origin set`); files agents upload are labelled `ai` and carry the
-  IPTC "made by AI" mark readers like Photos show, and images from ChatGPT or Gemini that carry it show as `ai`.
+  photos are never rewritten (`vau origin`, `vau origin set`); files agents upload are labelled `ai` there, their
+  bytes as they came, and images from ChatGPT or Gemini that carry the IPTC "made by AI" mark show as `ai`.
 - **Dispatch**: the Claude button in a note's header (or ⌘⇧↩, "Dispatch to Claude Code") starts Claude Code in a new
   terminal, told to read the note and do what it asks; from the phone too. Add your own actions: another agent or
   prompt, or a shell command (`vau dispatch`).
@@ -454,10 +454,27 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - The server listens at once, caches what it computes and compresses responses (with ETags). `npm run build` takes
   about 3 s (TypeScript 7).
 - Swipe actions and quick taps (Done, Dismiss, Delete, a routine's tick, a card's rating) answer at once, with a tap
-  you feel: the row slides away before the server answers, and comes back with why if it fails. A note archived or
-  deleted (Done in the Inbox, Archive, from any device) closes its open tabs; Undo opens it again.
+  you feel: the row slides away before the server answers, and comes back with why if it fails. A note deleted from
+  any device closes its open tabs; one archived or moved (Done in the Inbox, Archive) keeps them, at its new place.
 
 ### Changed
+- **The app writes only what you changed**: a save rewrites only the properties it changed, keeps a cleared one empty
+  (as Obsidian does), adds `type:` only to a new file and renames a file only when its title changed; a change it can't
+  apply as a small edit is a conflict, never a rewrite of the whole file. Opening or syncing the vault never writes: a
+  note gets its id and dates when it's made or edited in the app.
+- **Duplicate copies the file as it is**, as Obsidian does, and new names count from 1 everywhere ("Untitled 1", "Name
+  1"), as in Obsidian.
+- **Clipping a page again**: the web viewer's Save to vault opens the note it made before and offers Update, which
+  clips the page as it is now into that note (`vau clip <url> --update`).
+- **Logs keep emoji in file names, and make new areas**: a log's file is named with its title as written (only what a
+  file name can't hold goes), and a log for an area that isn't in the settings yet adds it instead of being refused.
+- **Photos named as in Obsidian**: a photo from the camera or a nameless pasted image is "Pasted image
+  YYYYMMDDHHmmss", whatever its format.
+- **A machine you remove stays removed**: a server adds itself to Machines once, and no longer comes back after you
+  take it off the list.
+- **Map pins stay out of your files**: a person's or your own place is looked up when you enter it or the People map
+  needs it, and kept in the app's cache, never written as `coordinates`; a place that isn't found has no pin instead of
+  a guess, and the map starts on the whole world, then fits the pins.
 - **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
   Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until
@@ -503,6 +520,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   print a Markdown list; `vau terminal` replaces `ls`; `vau clip --html -` reads stdin.
 
 ### Fixed
+- **An agent's ended session keeps its tab**: when Claude Code or another agent's session ends by itself (it exited,
+  died, or finished after its report), its tab stays with "Session ended" and Restart, as in VS Code, instead of closing
+  in every workspace. End session and closing the tab still end it for good.
+- **Properties keep what you typed**: "007", "1.50" or "1e3" in a number field stays that text, not 7 or 1.5; editing a
+  date and time keeps its seconds and offset; only times a kind keeps itself (a note's created and updated) show locked
+  in local time, not every `created`, `updated` or `added`.
+- **Timeline view only in people**: a `## Timeline` heading in a note stays the Markdown you wrote; only a person's file
+  draws it as a timeline.
 - **Big files open and edit at any size**: a file over 1 MB (an Excalidraw drawing with images, a long note) no longer
   opens read-only, nor one over 8 MB as a card; typing in a 16 MB note is as quick as in a short one.
 - **Agent hooks reach a server on its own address**: with `HOST` set to one address, the inbox's and Activity's hooks

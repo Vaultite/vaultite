@@ -19,7 +19,10 @@
     the `Entry`. A new cache that depends on something else (the clock, live data) must key on that too.
 - **Writes are small edits, never rewrites** (`core/textedit.ts`, shared with the editor): `Vault.save` renders the old
   and the new item and applies only the difference (changed frontmatter keys' own lines, the body as a 3-way merge),
-  and writes nothing when nothing changed. A kind's `render` must be faithful (render(parse(file)) == file): People
+  and writes nothing when nothing changed. One that can't apply as a small edit is a 409 (ConflictError), never a
+  rewrite of the whole header or body; a value cleared keeps its key, empty (as Obsidian does); `type:` is written only
+  in a new file; a file is renamed only when the save changed its name. Reading never writes: a kind's `fill` (ids,
+  dates) runs only on the app's own writes (`Vault.fillIn`: an edit in the app, a new file). A kind's `render` must be faithful (render(parse(file)) == file): People
   keeps each timeline line's source (`_src`) and lines it can't read (`_raw`). Keys starting with `_` are private: the
   API strips them.
 - **Parse leniently, write canonically.** People edit files by hand: the timeline (`core/timeline.ts`, one parser for

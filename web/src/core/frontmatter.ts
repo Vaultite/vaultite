@@ -103,3 +103,32 @@ export async function setBlockText(path: string, name: string, nth: number, inne
   if (open?.path === path) { open.setText(text); await open.settle() }
   else await put<FileText>("file", { path, text, base: f.text })
 }
+
+/** Typed text as a number only when it's written the way the number is ("12", "-3.5"); "007", "1.50", "1e3" or "0x1F"
+ *  stay the text they are. */
+export function typedNumber(s: string): number | string | null {
+  const t = s.trim()
+  if (t === "") return null
+  const n = Number(t)
+  return Number.isFinite(n) && String(n) === t ? n : s
+}
+
+const DATETIME = /^(\d{4}-\d\d-\d\d)(?:([ T])(\d\d:\d\d)(?::(\d\d)(\.\d+)?)?)?(Z|[+-]\d\d:?\d\d)?$/
+
+/** A date and time as a datetime-local input takes it ("2026-09-27T18:00", with its seconds when it has them). */
+export function toLocal(v: string) {
+  const m = DATETIME.exec(v.trim())
+  if (!m) return v.trim().replace(" ", "T").slice(0, 16)
+  return `${m[1]}T${m[3] ?? "00:00"}${m[4] !== undefined ? `:${m[4]}` : ""}`
+}
+
+/** The input's value written the way `was` is: its separator, its seconds (and their fraction while they're the same)
+ *  and its offset kept, so editing the time changes only the time. */
+export function fromLocal(s: string, was: string) {
+  const [, date, , hm, sec] = DATETIME.exec(s) ?? []
+  if (!date) return s.replace("T", " ")
+  const m = DATETIME.exec(was.trim())
+  const seconds = sec ?? (m?.[4] !== undefined ? "00" : undefined)
+  const frac = m?.[5] && seconds === m[4] ? m[5] : ""
+  return `${date}${m?.[2] ?? " "}${hm ?? "00:00"}${seconds !== undefined ? `:${seconds}${frac}` : ""}${m?.[6] ?? ""}`
+}

@@ -69,12 +69,15 @@ function change(r: InboxItem, fields: Record<string, unknown>): Promise<InboxIte
 }
 
 /** Done: out of the way, into Inbox/.archive/ (the server makes done archived). Done on the result being read: the
- *  next one to review takes its place, rather than its tab closing (archived files' tabs do). */
+ *  next one to review takes its place (Undo brings it back), rather than its tab following it into the archive. */
 export function markDone(r: InboxItem, done = true) {
   const next = done && currentFile() === pathOf(r) ? nextToReview(r) : undefined
   const now = change(r, { status: done ? "done" : "new" })
   if (next) openFile(pathOf(next))
-  if (done) notify(`Marked “${r.title}” done`, { action: { label: "Undo", run: async () => { await change(await now, { status: "new" }) } } })
+  if (done) notify(`Marked “${r.title}” done`, { action: { label: "Undo", run: async () => {
+    const back = await change(await now, { status: "new" })
+    if (next) openFile(pathOf(back))
+  } } })
   return now
 }
 

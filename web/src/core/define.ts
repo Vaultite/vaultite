@@ -138,7 +138,7 @@ export type FormatCtx = { store: Store; path: string
   height?: number
   /** Embedded: what follows its name in the embed (`![[Books.base#Reading]]`: "Reading"), and the file it's in. */
   subpath?: string; host?: string }
-/** A kind of entry in a timeline (a `## Timeline` section in any file): how its rows look. */
+/** A kind of entry in a timeline (a `## Timeline` section a file's kind draws: a person's): how its rows look. */
 export type TimelineKind = { label: string; icon: LucideIcon; tint?: string }
 export type SearchDoc = {
   id: string; title: string; meta: string; kind: string; icon: LucideIcon; tint: string
@@ -491,7 +491,7 @@ export type PluginDef = {
   /** Code fences it draws by language (```base). Its backend reads one as text
    *  with the service `fence:<lang>`. */
   fences?: Record<string, (ctx: BlockCtx) => ReactNode>
-  /** Kinds of timeline entries it knows ("call": a phone icon), for `## Timeline` sections in any file. */
+  /** Kinds of timeline entries it knows ("call": a phone icon), for the `## Timeline` sections kinds draw (a person's). */
   timeline?: Record<string, TimelineKind>
   /** Tabs it can open that aren't files (see ViewDef), by name: `view:<name>`. */
   views?: Record<string, ViewDef>

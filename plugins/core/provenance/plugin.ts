@@ -1,9 +1,9 @@
 // Provenance: `origin`, a label never a lock: new notes get the agent value or (with `label_user`) the human one; other
-// files keep theirs in files.json (bytes unchanged), an agent's new one marked inside too (xmp.ts).
+// files keep theirs in files.json, their bytes never changed (an AI's mark already in them is read: xmp.ts).
 import fs from "node:fs"
 import { OpError, Plugin, vaultPath } from "../../../core/plugins.ts"
 import { isHiddenPath, readText, setPropertyText, type Vault, type Writer } from "../../../core/vault.ts"
-import { saysAi, withAiLabel } from "./xmp.ts"
+import { saysAi } from "./xmp.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -84,8 +84,8 @@ function relist(change: (list: List) => void) {
 const isNote = (rel: string) => /\.md$/i.test(rel)
 const under = (rel: string, dir: string) => rel === dir || rel.startsWith(`${dir}/`)
 
-// A new file an agent or the user makes through the API (an upload, an SVG): labelled like a new note, and an agent's
-// says so in its bytes too where the format takes it. One whose bytes already say an AI made it reads that way.
+// A new file an agent or the user makes through the API (an upload, an SVG): labelled like a new note, in the list
+// (its bytes as they came). One whose bytes already say an AI made it reads that way.
 plugin.onCreateFile((rel, bytes, writer) => {
   if (!writer || isHiddenPath(rel)) return
   const agent = byAgent(writer)
@@ -93,7 +93,6 @@ plugin.onCreateFile((rel, bytes, writer) => {
   try {
     relist((l) => { if (label) l[rel] = label; else delete l[rel] })
   } catch (e) { console.error(`provenance: couldn't label ${rel}: ${(e as Error).message}`) }
-  if (agent && label) return withAiLabel(rel, bytes) ?? undefined
 })
 
 // Labels follow their files: moved, into the trash and back; a file deleted for good loses its (onSync).

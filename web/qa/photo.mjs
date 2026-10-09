@@ -1,7 +1,7 @@
 // Add photo (the editing plugin): the system's picker (an image input, several at once) from the palette, Insert ▸
 // Photo in the editor's menu and /photo; each image saved in Attachments/ and embedded at the cursor on a line of its
-// own, the iPhone camera's "image.jpg" named "Photo <date time>.jpg", nothing on cancel. On a phone it's at the top of
-// the note's … menu and lands at the note's end while reading. Files are set on the input as Playwright's file chooser.
+// own, the iPhone camera's "image.jpg" named "Pasted image <YYYYMMDDHHmmss>.jpg", nothing on cancel. On a phone it's at
+// the top of the note's … menu and lands at the note's end while reading. Files are set on the input as Playwright's file chooser.
 // WRITES a "Qa photo" folder and images in Attachments/: throwaway only.
 //   node web/qa/photo.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
@@ -19,7 +19,7 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const img = (name, mimeType = "image/png") => ({ name, mimeType, buffer: PNG })
 
 for (const p of [DESK, PHONE]) await del(p)
-for (const p of await others()) if (/^Attachments\/(qa-photo|Photo \d)/.test(p)) await del(p)
+for (const p of await others()) if (/^Attachments\/(qa-photo|Pasted image \d)/.test(p)) await del(p)
 await put(DESK, "Before.\n\nAfter.\n")
 await put(PHONE, "A note read on a phone.\n")
 
@@ -54,8 +54,8 @@ await choose(page, async () => {
   await page.getByRole("menuitem", { name: "Insert" }).click(); await wait(200)
   await page.getByRole("menuitem", { name: "Photo" }).click()
 }, [img("image.jpg", "image/jpeg")])
-const named = await until(async () => /After\.\n!\[\[(Photo \d{4}-\d\d-\d\d \d\d\.\d\d\.\d\d\.jpg)\]\]\n/.exec(await read(DESK)), 6000)
-check("Insert ▸ Photo: the camera's image.jpg is named Photo <date time>.jpg", !!named, await read(DESK))
+const named = await until(async () => /After\.\n!\[\[(Pasted image \d{14}\.jpg)\]\]\n/.exec(await read(DESK)), 6000)
+check("Insert ▸ Photo: the camera's image.jpg is named Pasted image <YYYYMMDDHHmmss>.jpg", !!named, await read(DESK))
 if (named) check("  and saved under that name", (await others()).includes(`Attachments/${named[1]}`))
 await page.screenshot({ path: `${OUT}photo-desktop.png` })
 
@@ -81,7 +81,7 @@ const top = await page.locator("[role=menu]").first().locator(":scope > [role=me
 check("phone: Add photo at the top of the note's … menu", top.some((t) => t.trim() === "Add photo"), top)
 await page.screenshot({ path: `${OUT}photo-phone-menu.png` })
 await choose(page, () => page.getByRole("menuitem", { name: "Add photo" }).click(), [img("image.jpg", "image/jpeg")])
-check("  reading: the photo goes at the note's end", await until(async () => /^A note read on a phone\.\n!\[\[Photo [^\]]+\.jpg\]\]\n$/.test(await read(PHONE)), 6000), await read(PHONE))
+check("  reading: the photo goes at the note's end", await until(async () => /^A note read on a phone\.\n!\[\[Pasted image \d{14}[^\]]*\.jpg\]\]\n$/.test(await read(PHONE)), 6000), await read(PHONE))
 await wait(800)
 await page.screenshot({ path: `${OUT}photo-phone-note.png` })
 await page.context().close()

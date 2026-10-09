@@ -165,7 +165,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
-- `freeName(t, folder, base, ext?)`: A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 2"...).
+- `freeName(t, folder, base, ext?)`: A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 1"...: Obsidian's rule).
 - `get(path)`
 - `getDefaultPlace()`
 - `getStore()`: The store as it is now (for code outside React).
@@ -202,7 +202,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
-- `keepOpen(path)`: Something done in this file is about to archive it (a reply sent from a report): its tabs follow it into the archive instead of closing.
 - `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard, Hide keyboard at its end.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
 - `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
@@ -432,7 +431,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `textSize(kind)`: A kind's size now, in percent (100: as the app draws it).
 - `TextSizeKind`: A kind of content with a text size of its own.
 - `TimelineEntry`
-- `TimelineKind`: A kind of entry in a timeline (a `## Timeline` section in any file): how its rows look.
+- `TimelineKind`: A kind of entry in a timeline (a `## Timeline` section a file's kind draws: a person's): how its rows look.
 - `timelineOf(body)`: The timeline section of a whole body (under a "Timeline" heading, up to the next heading of its level or higher).
 - `tintNames()`: Plugins' colours: a manifest's `tint` ("orange") makes --<id> (--today: var(--orange)).
 - `tintOf(t?)`: `tint: people` -> var(--people): a colour token (never a hex, so schemes recolour it).

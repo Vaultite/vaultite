@@ -109,8 +109,9 @@ export function convert(v: unknown, type: (typeof TYPES)[number]): unknown {
       return t === "object" ? undefined : String(v)
     case "number": {
       if (t === "number") return v
+      // ("007" or "1.50" would lose what's written)
       const n = typeof v === "string" && v.trim() !== "" ? Number(v) : NaN
-      return Number.isFinite(n) ? n : undefined
+      return Number.isFinite(n) && String(n) === (v as string).trim() ? n : undefined
     }
     case "checkbox":
       if (t === "checkbox") return v

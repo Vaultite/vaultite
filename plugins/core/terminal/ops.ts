@@ -83,7 +83,8 @@ export function terminalOps(plugin: Plugin) {
 kept running apart from the server (Vaultite's own keeper, tmux, or herdr), so they outlive the app. A terminal's id
 names what it runs: <agent>-<id> a new session of that agent, resume-<agent>-<session id> an agent's session resumed in
 its folder, anything else a shell. Another machine's terminals (id@machine) are that machine's: ask its server (--url).
-After the sessions, the tabs whose terminal is gone: an agent's (it won't start again; terminal.tidy closes them) or a
+After the sessions, the tabs whose terminal is gone: an agent's (it won't start again by itself: it says
+its session ended, with Restart; terminal.tidy closes them) or a
 shell's (a new shell when shown). The others: vau terminal open|resume|screen|send|end|tidy.
 
   vau terminal`,
@@ -217,13 +218,13 @@ what you did first: the tab and what's in it go).
     kind: "destructive",
     params: {
       id: { type: "string", env: "VAULTITE_TERMINAL", description: "the terminal's id (vau terminal lists them); left out, the one you run in (VAULTITE_TERMINAL)" },
-      keepTabs: { type: "boolean", description: "leave its tabs open" },
+      keepTabs: { type: "boolean", description: "leave its tabs open, saying the session ended (with Restart)" },
     },
     args: ["id"],
     run: async ({ id, keepTabs }, ctx) => {
       if (!id) throw new OpError("which terminal? give its id (vau terminal lists them): you don't run in one of the app's")
       const t = localId(id)
-      const r = await ctx.api("DELETE", `terminals/${encodeURIComponent(t)}`)
+      const r = await ctx.api("DELETE", `terminals/${encodeURIComponent(t)}${keepTabs ? "?keep=1" : ""}`)
       return { ...r, closedTabs: keepTabs ? 0 : await closeTabs(ctx, t) }
     },
     text: (r) => `Ended ${r.id}${r.closedTabs ? `, closed its tab${r.closedTabs === 1 ? "" : "s"}` : ""}.`,
@@ -234,7 +235,8 @@ what you did first: the tab and what's in it go).
     id: "terminal.tidy",
     cli: "terminal tidy",
     summary: "Close the tabs whose agent's session is gone (an ended Claude Code, a machine restarted); shells' tabs stay.",
-    help: `The server runs it itself for an agent's session that dies.
+    help: `An agent's session that ends by itself keeps its tabs (saying it ended, with Restart) until you close them or
+run this.
 
   vau terminal tidy`,
     kind: "write",

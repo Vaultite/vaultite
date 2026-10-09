@@ -30,6 +30,7 @@ plugin.kind(new Kind({
     (b) => Math.min(STATUSES.includes(b.status) ? STATUSES.indexOf(b.status) : 2, 2)),
   key: (b) => str(b.title).toLowerCase(),
   blocks: ["book"],
+  stamps: ["created"],
 }))
 
 // ---------- operations (core/ops.ts)

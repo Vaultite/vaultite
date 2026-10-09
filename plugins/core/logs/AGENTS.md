@@ -19,8 +19,8 @@ Notes about it.
 ````
 
 - Areas: each area's name, icon, `tint`, parent, fields, `weekly_goal`, `blocks` (drawn under its fields in its
-  files) and `link: {label, url}` (on its card) are `areas` in `.vaultite/plugins/logs/data.json`; add an area there
-  rather than inventing one in a log. Without `areas` there, the areas are those of the plugins that are on (a vault
+  files) and `link: {label, url}` (on its card) are `areas` in `.vaultite/plugins/logs/data.json`; a log for an area
+  that isn't there yet adds it (use an existing one when it's the same thing). Without `areas` there, the areas are those of the plugins that are on (a vault
   plugin brings its own with `plugin.provide("log-areas", () => [{slug, name, icon, tint, parent, fields}])`); an area
   there without an icon or tint takes its plugin's.
 - `source` is who wrote it (claude, hevy, apple-health...); with `ext_id` it identifies the log for re-imports.

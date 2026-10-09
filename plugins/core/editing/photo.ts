@@ -17,14 +17,6 @@ export function pickImages(): Promise<File[]> {
   })
 }
 
-const p2 = (n: number) => String(n).padStart(2, "0")
-/** A photo the iPhone's camera takes is always "image.jpg": named for when it was added instead. */
-function named(f: File, d: Date) {
-  if (!/^image\.\w+$/i.test(f.name)) return f
-  const ext = f.name.split(".").pop()!.toLowerCase().replace("jpeg", "jpg")
-  return new File([f], `Photo ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}.${ext}`, { type: f.type })
-}
-
 /** Pick photos and add them to the note `path`: with `insert` (the slash menu's), else at the cursor when it's the note
  *  being edited, else at its end. */
 export async function addPhotos(path: string, insert?: (text: string) => void) {
@@ -34,8 +26,8 @@ export async function addPhotos(path: string, insert?: (text: string) => void) {
   const id = "add-photo"
   notify(files.length > 1 ? "Adding the photos…" : "Adding the photo…", { id, duration: Infinity })
   try {
-    const now = new Date()
-    const embed = await pasteAttachments(s, path, files.map((f) => named(f, now)))
+    // (the camera's "image.jpg" is named "Pasted image <time>" there, like a pasted one)
+    const embed = await pasteAttachments(s, path, files)
     await reload() // (the store has the file before the embed is drawn)
     if (insert) insert(embed)
     else if (activeFile()?.path === path) insertOnOwnLine(embed)

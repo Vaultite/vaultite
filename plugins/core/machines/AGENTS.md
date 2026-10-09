@@ -2,7 +2,8 @@
 Your other computers running Vaultite (one vault, many machines: the vault is the data, a machine is where things
 run). The list is `.vaultite/plugins/machines/data.json`: `{"machines": [{"id": "studio", "label": "Studio", "url":
 "https://studio.example.ts.net:8447"}]}` (`id`: lowercase letters, digits and -; `url`: where its app answers). A server
-served through Tailscale Serve adds itself once (with the Tailscale plugin on); edit the labels freely. `GET
+served through Tailscale Serve adds itself once (with the Tailscale plugin on; `added` remembers it, so one you remove stays removed); edit the labels
+freely. `GET
 /api/machines` says which answer and what each runs (`self`: this one); `GET /api/machines/<id>/<path>` is `GET
 /api/<path>` on that machine (read-only). In the `machines` block and the sidebar panel, a click (or a right-click, with the panel's own menu after it) opens a terminal or an agent there. Other
 plugins take `machine: <id>` in their blocks (Claude Code's, `tailscale`; in /api/render any block with it is drawn by

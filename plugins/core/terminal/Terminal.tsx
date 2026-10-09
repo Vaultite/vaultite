@@ -122,6 +122,8 @@ const REFUSED = 4003 // the server's close code: no shell for this page (it said
 const GONE = 4004 // the server's close code: asked only to attach, and the agent's session is gone
 
 type Status = { kind: "live" } | { kind: "connecting"; tries: number } | { kind: "exited"; code: number; signal: number }
+  /** An agent's session that ended by itself (or after its report): the tab stays, with Restart. */
+  | { kind: "ended" }
   | { kind: "refused"; reason: string }
   /** Another machine's shell, and that machine doesn't answer (or has no terminal): tried again, never started here. */
   | { kind: "away"; label: string; reason: string }
@@ -201,14 +203,14 @@ function create(id: string): Live {
 
   let ws: WebSocket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
   // Only the tab that made this id starts its session; one put back (a reload, the app reopened) only attaches, so an
-  // agent whose session is gone isn't started again by itself (the server says "gone"; Start a new one starts it).
+  // agent whose session is gone isn't started again by itself (the server says "gone"; Restart starts it).
   let attachOnly = !mintedHere(id), sessionGone = false
   let away: { label: string; reason: string } | null = null
   const enc = new TextEncoder()
   const setStatus = (st: Status) => { l.status = st; l.view?.status(st) }
   /** Its shell ended or it was refused while no view shows it: nothing to keep it for. */
   const over = () => { l.ended = true; if (!l.mounted) letGo(l) }
-  /** Its shell exited cleanly or was ended for good: its tab closes, shown or not. */
+  /** Its shell exited cleanly or was ended for good (End session, its tab closed): its tab closes, shown or not. */
   const closeIt = () => { l.ended = true; if (l.view) return l.view.close(); closeView(`terminal/${id}`); over() }
   // The replay after a reattach holds programs' old questions to the terminal; answered again, the answers would reach
   // the shell as typing and swallow keys until Enter, so replies aren't sent while it's drawn.
@@ -249,16 +251,18 @@ function create(id: string): Live {
         setStatus({ kind: "refused", reason: msg.reason ?? "" })
         over()
       } else if (msg.t === "gone") {
-        // An agent's session that ended while this tab was away (ended for good, died, the machine restarted): its tab
-        // closes, there's nothing in it to see.
+        // An agent's session that ended while this tab was away: ended for good, its tab closes; ended by itself (died,
+        // the machine restarted), the tab stays saying so, with Restart.
         sessionGone = true
-        return closeIt()
+        if (msg.ended) return closeIt()
+        setStatus({ kind: "ended" })
+        over()
       } else if (msg.t === "exit") {
         exited = true
-        // A clean exit (exit, ⌃D), one ended for good (End session, vau terminal end) or an agent's that died closes
-        // the tab; a plain shell's failure stays, with its output and Restart.
-        if (msg.ended || (!msg.code && !msg.signal) || agentOfTerminal(id)) return closeIt()
-        setStatus({ kind: "exited", code: msg.code ?? 0, signal: msg.signal ?? 0 })
+        // One ended for good (End session, vau terminal end) or a shell's clean exit (exit, ⌃D) closes the tab; an
+        // agent's session that ended by itself stays, saying so, and a shell's failure with its output, both with Restart.
+        if (msg.ended || (!agentOfTerminal(id) && !msg.code && !msg.signal)) return closeIt()
+        setStatus(agentOfTerminal(id) ? { kind: "ended" } : { kind: "exited", code: msg.code ?? 0, signal: msg.signal ?? 0 })
         over()
       }
     }
@@ -267,7 +271,7 @@ function create(id: string): Live {
       ws = null
       // Refused: retrying won't help, so it stops and says why.
       if (refused || e.code === REFUSED) { if (!refused) { setStatus({ kind: "refused", reason: "" }); over() } return }
-      if (sessionGone || e.code === GONE) { if (!sessionGone) closeIt(); return }
+      if (sessionGone || e.code === GONE) { if (!sessionGone) { setStatus({ kind: "ended" }); over() } return }
       if (exited || e.code === EXITED) { if (!exited) { setStatus({ kind: "exited", code: -1, signal: 0 }); over() } return }
       // Dropped (the server restarted, the machine slept), or its machine isn't answering: try again, slower each time.
       tries++
@@ -556,6 +560,7 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
         <EndBar role="status" away onRestart={restart} action="Try now">This terminal runs on {status.label}, which {status.reason}. Trying again…</EndBar>
       )}
       {status.kind === "refused" && <EndBar role="alert" onRestart={restart} action="Try again">No shell here: {status.reason || "the server refused this page"}.</EndBar>}
+      {status.kind === "ended" && <EndBar onRestart={restart} action="Restart">Session ended</EndBar>}
       {status.kind === "exited" && (
         <EndBar onRestart={restart} action="Restart">
           {status.code === -1 ? "The shell couldn't start" : `Process exited${status.signal ? ` (signal ${status.signal})` : status.code ? ` with code ${status.code}` : ""}`}

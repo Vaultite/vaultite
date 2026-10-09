@@ -76,7 +76,7 @@ export function retargetDetail(from: string, to: string) {
   if (from === to || p === null) return
   if (p === from || p.startsWith(`${from}/`)) replaceDetail(`file/${encodeURIComponent(to + p.slice(from.length))}`)
 }
-/** A file or folder was archived or deleted: a sheet showing it or a file in it closes, like its tabs do. */
+/** A file or folder was deleted: a sheet showing it or a file in it closes, like its tabs do. */
 export function closeDetailOf(path: string) {
   const p = sheetFile()
   if (p !== null && (p === path || p.startsWith(`${path}/`))) backDetail()

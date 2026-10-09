@@ -11,7 +11,7 @@ import { movePlaces } from "@/core/viewstate"
 import { homeFolder, inArchive, inPagesDir, isHiddenPath } from "../../../core/fileprops.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
-import { closeFileTabs, closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, isDesktop, retarget, targetOf } from "@/core/workspace"
+import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, isDesktop, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 
@@ -245,26 +245,7 @@ function followMove(from: string, to: string | null) {
   movePlaces(from, to) // (before the tabs follow: they look for their place under the new path)
   retarget(from, to)
   retargetDetail(from, to) // a phone's file sheet follows too, whatever moved it (the tree, Undo, a rename, an AI)
-  // Archived (Done, Archive): out of the way, so it closes; taken back soon after (Undo), it opens again. Unless
-  // archived by what the user did in it (a reply sent from a report): they're still reading it.
-  const keep = kept.get(from)
-  kept.delete(from)
-  if (inArchive(to) && !inArchive(from) && !(keep && Date.now() - keep < 60_000)) {
-    const shown = route().detail === `file/${encodeURIComponent(to)}`
-    if (closeFileTabs(to) || shown) shelved = { path: to, at: Date.now() }
-    closeDetailOf(to)
-  } else if (shelved?.path === from && Date.now() - shelved.at < 60_000 && !inArchive(to)) {
-    shelved = null
-    openFile(to)
-  }
 }
-/** Files to stay open when they're archived soon (in a minute): see keepOpen. */
-const kept = new Map<string, number>()
-/** Something done in this file is about to archive it (a reply sent from a report): its tabs follow it into the
- *  archive instead of closing. */
-export const keepOpen = (path: string) => { kept.set(path, Date.now()) }
-/** The file just closed by archiving it, for a quick Undo to open again. */
-let shelved: { path: string; at: number } | null = null
 onVaultMove(followMove)
 /** Now, as far as moves go: pass it to whereNow later. */
 export const moveMark = () => moveCount
@@ -355,12 +336,12 @@ export function folderList(t: FileTree) {
   return [...set].sort()
 }
 
-/** A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 2"...). */
+/** A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 1"...: Obsidian's rule). */
 export function freeName(t: FileTree, folder: string, base: string, ext = ".md") {
   const taken = new Set([...t.files, ...t.others].map((f) => f.path.toLowerCase()).concat(t.folders.map((f) => (f + ext).toLowerCase())))
   const at = (n: string) => joinPath(folder, n + ext).toLowerCase()
   if (!taken.has(at(base))) return base
-  let n = 2
+  let n = 1
   while (taken.has(at(`${base} ${n}`))) n++
   return `${base} ${n}`
 }

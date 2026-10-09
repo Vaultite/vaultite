@@ -11,8 +11,9 @@
   resumes, through the service `agent:<name>` of the plugin that brings it (AgentStart in core/codingagents.ts -> `{command, cwd}`; `context` is
   `context.md` plus the plugins' `forAgents`). App side: `agents` in a definition, `openAgent`, `agentOfTerminal`.
 - A tab opened from outside only attaches (a page starts only ids it minted), so `vau terminal open` starts the session
-  first. A session ended for good (or a clean exit) tells its sockets `ended` and its tabs close (`closeIt`) on every
-  device, Workspaces or not.
+  first. A session ended for good (or a shell's clean exit) tells its sockets `ended` and its tabs close (`closeIt`) on
+  every device, Workspaces or not; an agent's session that ends by itself (or after its report: `keepTabs`) keeps its
+  tabs, saying "Session ended" with Restart, as VS Code does.
 - The socket answers this machine, or through Tailscale Serve the owner or `allowUsers`; another Origin is refused.
 - Gotchas: node-pty's `spawn-helper` may lack its exec bit (fixed at start); a keeper whose checkout moved can't spawn,
   so it retires (`stale`); tmux takes PATH from the client that made the session (the rest per session, `-e`); shells drop

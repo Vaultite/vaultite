@@ -21,7 +21,7 @@ Markdown: ## headings, bullets, **bold** for key claims. No "# Title" line: the 
 
 - A journal entry: `tags: [Journal]` or `#journal` in its text, any case.
 - Plain Markdown in Notes/ (no `type`, no `id`) is a note too, and the app never rewrites it; its id is its title's
-  (`note-<slug>`). A note with `type: note` gets its `id` and dates filled in. A new one may be "Untitled" until renamed.
+  (`note-<slug>`). A note with `type: note` gets its `id` and dates filled in when it's edited in the app (or made by it). A new one may be "Untitled" until renamed.
 - Don't edit a bigger note when adding a smaller idea to it: link it.
 - Bodies can use Markdown's extras: callouts (`> [!tip] Title`, `[!warning]-` folded), footnotes (`[^1]` and
   `[^1]: text`), math (`$x^2$`, `$$ ... $$`), ```mermaid diagrams, fenced code with its language, `<details>`.

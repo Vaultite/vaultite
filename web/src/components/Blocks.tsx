@@ -34,6 +34,21 @@ export function useKindBlocks(store: Store, path: string): string[] | undefined 
   return useMemo(() => (key ? key.split(",") : undefined), [key])
 }
 
+const NONE: string[] = []
+/** The `## ` sections a file's kind draws (a person's Timeline), the same array while they're the same; none in any
+ *  other file. */
+export function useKindSections(store: Store, path: string): string[] {
+  const kind = store.files.files.find((f) => f.path === path)?.kind
+  const key = (kind && store.kinds?.[kind]?.sections.join(",")) || ""
+  return useMemo(() => (key ? key.split(",") : NONE), [key])
+}
+
+/** The UTC times a file's kind keeps (a note's created): shown, not edited. */
+export function kindStamps(store: Store, path: string): string[] {
+  const kind = store.files.files.find((f) => f.path === path)?.kind
+  return (kind && store.kinds?.[kind]?.stamps) || NONE
+}
+
 /** A body in pieces: its blocks, its embeds and the Markdown between them (blank-only text left out). `line`: where
  *  it starts in the body (0-based), so a drawn page and the editor can find the same place (FileView's keepPlace).
  *  `kind`: its file's kind's blocks, those it doesn't place drawn first. */

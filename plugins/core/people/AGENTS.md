@@ -7,7 +7,7 @@ type: person
 relation: friend            # partner | family | roommate | friend | mentor | contact (not really talked yet)
 every_days: 30              # how often the user wants to be in touch; leave out if no target
 context: Met at a design course at university    # how the user knows them, one line
-location: Austin, TX      # a place name; the app adds coordinates
+location: Austin, TX      # a place name; the app finds its pin
 tags: [University]
 want_to: Catch up about the move   # optional to-do about them; remove the line when done
 aliases: [Alice]              # optional other names, so [[Alice]] resolves
@@ -28,7 +28,7 @@ Durable facts about them, in short sentences.
   rename files unless asked (add `aliases`); then `vau move`, which updates links.
 
 More keys: `usual: call` (usual way to stay in touch), `coordinates: [30.27, -97.74]` (only when you know the exact
-spot; the app fills it from `location`), `moving_to: Baltimore, MD` (an upcoming move), `contact` (an email, URL or
+spot; else the map looks `location` up and keeps the pin in its cache, never in the file), `moving_to: Baltimore, MD` (an upcoming move), `contact` (an email, URL or
 handle), `sort: 3` (the order people are listed in, lower first; don't renumber it, the app never writes it).
 - The app also reads lines typed by hand: ` - ` or ` | ` between parts, "Call", "1h 30m", no kind (a note). A long
   entry may continue on indented lines under it. Other sections may follow the timeline (`## Gift ideas`); leave them.

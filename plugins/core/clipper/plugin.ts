@@ -1,9 +1,10 @@
 // Web clipper (Defuddle on linkedom): a page, fetched or given as `html` (a logged-in page), saved as
-// a note; one clipped before is answered, not clipped again. Only writing holds the vault (`lock: false`).
+// a note; one clipped before is answered (the app opens it and offers Update: `update` clips it into that note again).
+// Only writing holds the vault (`lock: false`).
 import fs from "node:fs"
 import path from "node:path"
 import { fetchPublic, HTTPError, OpError, pageText, Plugin, publicUrl, reply, vaultPath } from "../../../core/plugins.ts"
-import { frontmatter, type Item, nowUtc, safeName, str, writeAtomic } from "../../../core/vault.ts"
+import { FM, frontmatter, type Item, nowUtc, readText, safeName, setPropertyText, str, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -63,20 +64,35 @@ function settings() {
     inbox: s.inbox === true }
 }
 
-/** A file name for the title in `folder` that's free ("Title.md", "Title 2.md"...). */
+/** A file name for the title in `folder` that's free ("Title.md", "Title 1.md"...). */
 function freePath(folder: string, title: string) {
   // (no dots at either end: "Markdown." would be "Markdown..md", and a leading one hides the file)
   const name = [...safeName(title)].slice(0, 120).join("").replace(/^[.\s]+|[.\s]+$/g, "") || "Untitled"
-  for (let n = 1; ; n++) {
-    const rel = `${folder ? `${folder}/` : ""}${n === 1 ? name : `${name} ${n}`}.md`
+  for (let n = 0; ; n++) {
+    const rel = `${folder ? `${folder}/` : ""}${n ? `${name} ${n}` : name}.md`
     if (!plugin.vault.entries.has(rel) && !fs.existsSync(plugin.vault.abs(rel))) return rel
   }
 }
 
-type Clip = { path: string; title: string; url: string; words?: number; existing: boolean }
+type Clip = { path: string; title: string; url: string; words?: number; existing: boolean; updated?: boolean }
 
-/** Clip a page ({url, html?,
- *  folder?, tags?, inbox?, from?}, the route's body): its note, made or found. Holds the vault only to write it. */
+/** A note clipped before, with the page as it is now: its content and what the page says about itself (author,
+ *  published, description), `updated` now; the user's own keys (tags, a title) stay as they are. */
+export function updatedText(text: string, c: Clipped, now = nowUtc()): string {
+  let out: string | null = text
+  const set = (k: string, v: unknown) => { if (out !== null) out = setPropertyText(out, k, v) }
+  if (c.author) set("author", [c.author])
+  const published = dateOf(c.published)
+  if (published) set("published", published)
+  if (c.description) set("description", c.description.length > 300 ? `${c.description.slice(0, 297)}...` : c.description)
+  set("updated", now)
+  if (out === null) throw new HTTPError(409, "its frontmatter doesn't read: fix it before updating the clip")
+  const m = FM.exec(out)
+  return `${m ? m[0] : ""}\n${c.markdown.trim()}\n`
+}
+
+/** Clip a page ({url, html?, folder?, tags?, inbox?, from?, update?}, the route's body): its note, made, or found (with
+ *  `update`: clipped into again). Holds the vault only to write it. */
 async function clip(b: Item): Promise<Clip> {
   const raw = str(b.url).trim()
   if (!raw) throw new HTTPError(400, "url: the page's address")
@@ -93,7 +109,7 @@ async function clip(b: Item): Promise<Clip> {
   // Clipped before: that file.
   const known = () => [...plugin.vault.entries.values()].find((e) => typeof e.fm.source === "string" && sameUrl(e.fm.source) === sameUrl(url))
   const before = known()
-  if (before) return { path: before.rel, title: str(before.fm.title) || path.basename(before.rel, ".md"), url, existing: true }
+  if (before && b.update !== true) return { path: before.rel, title: str(before.fm.title) || path.basename(before.rel, ".md"), url, existing: true }
 
   let html: string
   if (typeof b.html === "string" && b.html.trim()) {
@@ -126,10 +142,18 @@ async function clip(b: Item): Promise<Clip> {
   return plugin.vault.lock(async () => {
     await plugin.vault.sync()
     const again = known()
-    if (again) return { path: again.rel, title: str(again.fm.title) || path.basename(again.rel, ".md"), url, existing: true }
+    if (again) {
+      const was = { path: again.rel, title: str(again.fm.title) || path.basename(again.rel, ".md"), url, existing: true }
+      if (b.update !== true) return was
+      const abs = plugin.vault.abs(again.rel), text = readText(abs), next = updatedText(text, c)
+      if (next !== text) writeAtomic(abs, next)
+      await plugin.vault.sync()
+      return { ...was, words: c.words, updated: true }
+    }
     const rel = freePath(folder, title)
     writeAtomic(plugin.vault.abs(rel), noteText(c, url, tags, title, nowUtc(), inboxFolder ? str(b.from).trim().slice(0, 60) || "Web clipper" : null))
     await plugin.vault.sync()
+    await plugin.vault.fillIn(rel, null) // (its id and dates, as the notes plugin gives a new note)
     return { path: rel, title, url, words: c.words, existing: false }
   })
 }
@@ -150,12 +174,14 @@ plugin.op({
 published date and description, in Clippings/ (the Web clipper's folder) unless folder says otherwise. The server
 fetches the page (public addresses only); to clip a page only you can see (logged in), give its HTML too (from a
 terminal: --html - < page.html), its links made absolute against the url. inbox puts it in the user's inbox to review
-(Inbox/) instead. A page clipped before isn't clipped again: its note is answered.
+(Inbox/) instead. A page clipped before isn't clipped again: its note is answered; update clips it into that note again
+(its content as the page is now, the note's own keys kept).
 
   vau clip https://example.com/posts/an-article
   vau clip https://example.com/a --folder Notes/Reading --tags "Clipping, Reading"
   vau clip https://example.com/private --html - < ~/Downloads/page.html
-  vau clip https://example.com/long-read --inbox`,
+  vau clip https://example.com/long-read --inbox
+  vau clip https://example.com/a --update`,
   kind: "write",
   lock: false, // fetching and reading the page holds nothing; writing the note holds the vault (clip)
   params: {
@@ -164,6 +190,7 @@ terminal: --html - < page.html), its links made absolute against the url. inbox 
     folder: { type: "string", description: "where the note goes (default Clippings, the plugin's setting)" },
     tags: { type: "array", items: { type: "string" }, description: "its tags (default Clipping)" },
     inbox: { type: "boolean", description: "put it in the user's inbox to review (Inbox/) instead of a folder" },
+    update: { type: "boolean", description: "clipped before: replace its note's content with the page as it is now" },
   },
   args: ["url"],
   run: async (p, ctx) => {
@@ -175,5 +202,7 @@ terminal: --html - < page.html), its links made absolute against the url. inbox 
       throw e
     }
   },
-  text: (r: Clip) => (r.existing ? `Already clipped: ${r.path} ("${r.title}").` : `Clipped "${r.title}" to ${r.path} (${r.words ?? "?"} words).`),
+  text: (r: Clip) => (r.updated ? `Updated ${r.path} ("${r.title}") with the page as it is now (${r.words ?? "?"} words).`
+    : r.existing ? `Already clipped: ${r.path} ("${r.title}"). To replace its content with the page as it is now: update.`
+    : `Clipped "${r.title}" to ${r.path} (${r.words ?? "?"} words).`),
 })

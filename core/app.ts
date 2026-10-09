@@ -174,6 +174,9 @@ export class App {
     out.config = Object.fromEntries(SETTINGS.map((n) => [n, this.vault.config(n)]))
     // Property types (core/proptypes.ts): every declared one, and which of them .vaultite/types.json declares.
     out.propertyTypes = { types: propertyTypes(this.vault, this.plugins), own: Object.keys(readTypes(this.vault.config("types"))) }
+    // What the app draws or keeps itself in a kind's files (KindSpec sections and stamps), by collection.
+    out.kinds = Object.fromEntries(this.vault.kinds.filter((k) => k.spec.sections?.length || k.spec.stamps?.length)
+      .map((k) => [k.collection, { sections: k.spec.sections ?? [], stamps: k.spec.stamps ?? [] }]))
     out.appearance = { themes: Look.listThemes(this.vault), snippets: Look.listSnippets(this.vault) }
     out.pluginSettings = settingsFiles(this.vault.path)
     out.bundles = B.status(this.vault) // the setup a bundle replaced (to restore), and a new vault's offer

@@ -85,14 +85,20 @@ plugin.kind(new Kind({
       const tags = splitTags(n.tags)
       if (!tags.some((t) => t.toLowerCase() === "journal")) n.tags = [...tags, "Journal"].join(", ")
     }
+    if (before !== null && n.ext_id === before.ext_id && copied(before)) { // a copy's first edit: a new note, its own id and dates
+      n.ext_id = newId(before.id.split("/").pop(), ids(before.id))
+      n.created_at = n.updated_at = nowUtc()
+      return n
+    }
     n.ext_id = n.ext_id || before?.ext_id || newId(n.title, ids())
     n.created_at = n.created_at || nowUtc()
     if (before === null) n.updated_at = n.updated_at || n.created_at
     else if (changed(n, before) && (n.updated_at ?? null) === (before.updated_at ?? null)) n.updated_at = nowUtc() // content changed
     return n
   },
-  /** A file written by hand: give it an id and times, and bump `updated` when its content changed without it. A copy of
-   *  another note (same id) gets a new id and dates. Plain Markdown (no `type`, no `id`) is never rewritten. */
+  /** A file edited in the app (not one changed outside it): give it an id and times, and bump `updated` when its content
+   *  changed without it. A copy of another note (same id) gets a new id and dates. Plain Markdown (no `type`, no `id`)
+   *  is never rewritten. */
   fill(n, before) {
     if (!n.ext_id && plugin.vault.entries.get(`${n.id}.md`)?.fm.type == null) return null
     const out = { ...n }
@@ -108,6 +114,7 @@ plugin.kind(new Kind({
     return CONTENT.concat(["ext_id", "created_at", "updated_at"]).some((k) => out[k] !== n[k]) ? out : null
   },
   key: keyOf,
+  stamps: ["created", "updated"],
   order: (ns) => sortBy(sortBy(ns, (n) => n.id, true), (n) => n.updated_at || n.modified || "", true),
 }))
 

@@ -53,7 +53,7 @@ export { opcodes } from "@/core/merge"
 export { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions } from "@/components/ConfirmDialog"
 export { copyText, fileMenu, filesMenu, grouped, linkTo, openItem, pluginFileGroups } from "@/components/FileActions"
-export { deleteFile, keepOpen, restoreFile } from "@/core/files"
+export { deleteFile, restoreFile } from "@/core/files"
 // "Move file to…": the folder picker, then the move (with Undo); `before` runs once a folder is picked. Or straight
 // into a folder (a drop on it), one toast with Undo.
 export { askMove, askMoveMany, moveManyInto, treeShownItems } from "@/components/FileTree"

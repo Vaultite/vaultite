@@ -57,6 +57,7 @@ const REFUSED = 4003 // close code: this request may not have a shell (the clien
 type Session = {
   id: string; backend: Backend; link: Link; clients: Set<WebSocket>; started: number
   ended: boolean // ended by us (close, idle): reported as SIGHUP, like a shell killed directly
+  kept?: boolean // ended by us, its tabs kept (end's `keep`)
   out: string[]; size: number // the last SCROLLBACK characters of output, in chunks (a backend without pictures)
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
   idle: ReturnType<typeof setTimeout> | null
@@ -349,12 +350,13 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     }
     // Ended by us: a SIGHUP, as when a shell is killed directly.
     const { code, signal } = s.ended ? { code: 0, signal: 1 } : exit ?? { code: 0, signal: 0 }
-    // A clean exit closes its tabs: the ones away now too (another device's), once they're put back.
-    if (!code && !signal) markEnded(id)
+    // A shell's clean exit closes its tabs: the ones away now too (another device's), once they're put back. An
+    // agent's session that ends by itself keeps its tabs, saying so, with Restart.
+    if (!code && !signal && !agentOf(id)) markEnded(id)
     try { fs.rmSync(stateFile(id), { force: true }) } catch { /* none */ }
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
-      ws.send(JSON.stringify({ t: "exit", code, signal, ...(s.ended ? { ended: true } : {}) }))
+      ws.send(JSON.stringify({ t: "exit", code, signal, ...(s.ended && !s.kept ? { ended: true } : {}) }))
       ws.close(EXITED, "exited")
     }
   })
@@ -365,7 +367,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   return { s, fresh }
 }
 
-/** The sessions ended for good here (End session, x, vau terminal end, an agent's report, a clean exit), lately: their tabs close,
+/** The sessions ended for good here (End session, x, vau terminal end, a shell's clean exit), lately: their tabs close,
  *  the ones open now (the exit says `ended`) and the ones put back later (they hear "gone", `ended`), on any device. */
 const endedOnPurpose = new Set<string>()
 function markEnded(id: string) {
@@ -373,10 +375,12 @@ function markEnded(id: string) {
   if (endedOnPurpose.size > 500) endedOnPurpose.delete(endedOnPurpose.values().next().value!)
 }
 
-/** Ends a session for good: its shell, not just this server's hold on it. */
-function end(s: Session) {
+/** Ends a session for good: its shell, not just this server's hold on it. `keep`: its tabs stay, saying it ended (an
+ *  agent's handed session after its report). */
+function end(s: Session, keep = false) {
   s.ended = true
-  markEnded(s.id)
+  if (!keep) markEnded(s.id)
+  else s.kept = true
   void s.backend.kill(s.id).catch(() => {})
 }
 
@@ -582,9 +586,8 @@ function titleOf(raw: string) {
  *  runs and what its agent's hooks said. Another program's own shells are `external`. */
 async function localList(): Promise<Listed[]> {
   const out = new Map<string, Listed>()
-  let whole = true
   for (const b of backends()) {
-    for (const x of (await b.list().catch(() => { whole = false; return [] as Shell[] })).map(byName)) {
+    for (const x of (await b.list().catch(() => [] as Shell[])).map(byName)) {
       if (x.spare || x.id.startsWith(SPARE) || out.has(x.id)) continue
       const s = sessions.get(x.id)
       // Who's watching: the app's sockets plus holds besides this server's own (tmux attach in a real terminal), so a session
@@ -598,7 +601,6 @@ async function localList(): Promise<Listed[]> {
         ...(x.external ? { external: true } : {}) })
     }
   }
-  if (whole) diedHere(out)
   // (an agent run by hand in a plain terminal goes by its program's name: claude, codex)
   const meters = plugin.service("terminal:meters"), agents = [...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : []))
   if (typeof meters === "function" && agents.length) {
@@ -606,20 +608,6 @@ async function localList(): Promise<Listed[]> {
     for (const [id, m] of Object.entries(by ?? {})) { const x = out.get(id); if (x?.busy) x.meter = m }
   }
   return [...out.values()].sort((a, b) => a.started - b.started)
-}
-
-/** Agents' new sessions seen running here: one gone from a whole list (not ended here: that closes its tabs itself)
- *  died, so its tabs close, in every workspace, and a tab put back later closes too. */
-const agentsSeen = new Set<string>()
-function diedHere(now: Map<string, Listed>) {
-  for (const id of agentsSeen) {
-    if (now.has(id) || starting.has(id)) continue
-    agentsSeen.delete(id)
-    if (endedOnPurpose.has(id)) continue
-    markEnded(id)
-    void plugin.runOp("terminal.tidy", { id }).catch(() => {})
-  }
-  for (const [id, x] of now) if (x.agent && !agentOf(id)?.resume) agentsSeen.add(id)
 }
 
 /** The other machines' sessions, as their lists said last: machine id -> its socket and list. */
@@ -757,9 +745,10 @@ plugin.route("DELETE", "terminals/*", async (req) => {
   await owner(req)
   const id = localId(req)
   const b = await mustRun(id)
-  const s = sessions.get(id)
-  if (s) end(s)
-  else { markEnded(id); await b.kill(id) }
+  // (?keep=1: its tabs stay, saying it ended)
+  const s = sessions.get(id), keep = req.query.keep === "1"
+  if (s) end(s, keep)
+  else { if (!keep) markEnded(id); await b.kill(id) }
   listChanged()
   return { id, ended: true }
 }, { lock: false })

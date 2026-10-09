@@ -2,7 +2,7 @@
 // (inbox.reply), so a report is answered where it's read.
 import { useEffect, useState, type KeyboardEvent } from "react"
 import { MessageSquareReply, SquareTerminal } from "lucide-react"
-import { cn, fetchMachines, get, keepOpen, keyHint, notify, notifyError, onMachine, op, openAgent, openView, Panel, parseTerminal, type BlockCtx } from "@vaultite"
+import { cn, fetchMachines, get, keyHint, notify, notifyError, onMachine, op, openAgent, openView, Panel, parseTerminal, type BlockCtx } from "@vaultite"
 
 const field = "w-full resize-y rounded-[7px] border-[0.5px] border-border bg-background px-2.5 py-1.5 text-[17px] leading-[22px] outline-none focus:border-primary md:text-[14px] md:leading-[20px]"
 const button = "inline-flex h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-3 text-[15px] font-medium disabled:cursor-default disabled:opacity-50 md:h-7 md:px-2.5 md:text-[13px]"
@@ -78,7 +78,6 @@ export function ReplyBlock({ store, path, body }: BlockCtx) {
     if (!said || sent) return
     setSent({ text: said, had: kept })
     setText("")
-    if (r.status !== "done") keepOpen(path) // the report is done once replied to: it stays open, into the archive
     try {
       const out = await op<{ how: string }>("inbox.reply", { path, text: said, ...(how ? { how } : {}) })
       notify(out.how === "resume" ? "Resumed its session with your reply" : out.how === "new" ? "Started a new session with your reply" : `Sent to ${r.from || "the agent"}`)

@@ -6,9 +6,8 @@ import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive, inPagesDir } from "./fileprops.ts"
 import { isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, SearchError } from "./searchquery.ts"
-import { merge3, patchFrontmatter } from "./textedit.ts"
+import { merge3 } from "./textedit.ts"
 import { textHash } from "./texthash.ts"
-import { dump, load } from "./yaml.ts"
 import { blocksIn } from "./sections.ts"
 import { tabNames } from "./tabs.ts"
 import { addEntry, entryLine, KINDS, type NewEntry } from "./timeline.ts"
@@ -310,15 +309,9 @@ function forget(vault: Vault, rel: string) {
   for (const r of [...vault.entries.keys()]) if (r === rel || r.startsWith(rel + "/")) vault.drop(r)
 }
 
-function unique(vault: Vault, rel: string) {
-  const [stem, ext] = splitext(rel)
-  let n = 2, out = rel
-  while (fs.existsSync(vault.abs(out))) out = `${stem} ${n++}${ext}`
-  return out
-}
-
-/** Where a dropped file or folder goes: its own name, or "Name 1", "Name 2"... when that's taken. */
-export function dropName(vault: Vault, rel: string) {
+/** `rel`, or "Name 1", "Name 2"... when that's taken: Obsidian's rule, everywhere the app names a new file or folder
+ *  (a dropped one, a restored one, "Untitled"). */
+export function freeName(vault: Vault, rel: string) {
   const [stem, ext] = splitext(rel)
   let n = 1, out = rel
   while (fs.existsSync(vault.abs(out))) out = `${stem} ${n++}${ext}`
@@ -361,28 +354,12 @@ function restore(vault: Vault, rel: string) {
   if (!fs.existsSync(vault.abs(rel))) throw new HTTPError(404, `${rel} isn't in the trash any more`)
   let [stem, ext] = splitext(rel.slice(".trash/".length))
   if (fs.statSync(vault.abs(rel)).isDirectory()) [stem, ext] = [stem + ext, ""]
-  const dst = unique(vault, stem.replace(STAMP, "") + ext)
+  const dst = freeName(vault, stem.replace(STAMP, "") + ext)
   fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
   fs.renameSync(vault.abs(rel), vault.abs(dst))
   return dst
 }
 
-
-/** Keys that say which file this is (its other names for links, its ids): a duplicate leaves them out, so it doesn't
- *  take the original's links or key. */
-const CLAIMS = ["aliases", "name", "id", "ext_id"]
-export function unclaimed(text: string): string {
-  const m = /^---\r?\n([\s\S]*?)\r?\n---[ \t]*(\r?\n|$)/.exec(text)
-  if (!m) return text
-  const read = (t: string) => (load(t) ?? {}) as Record<string, unknown>
-  let fm: Record<string, unknown>
-  try { fm = read(m[1]) } catch { return text }
-  const drop = CLAIMS.filter((k) => Object.hasOwn(fm, k))
-  if (!drop.length) return text
-  const inner = patchFrontmatter(m[1], fm, {}, drop, [], (k, v) => dump({ [k]: v }), read)
-  if (inner === null) return text
-  return inner.trim() ? `---\n${inner}\n---${m[2]}${text.slice(m[0].length)}` : text.slice(m[0].length).replace(/^\r?\n/, "")
-}
 
 /** Where a duplicate of a file goes: next to it, "Name 1", "Name 2"... (the number after an existing one's). */
 export function copyName(vault: Vault, rel: string) {
@@ -543,12 +520,13 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       let target = rel
       if (fs.existsSync(vault.abs(target))) {
         if (!body.unique) throw new HTTPError(409, `${target} already exists`)
-        target = unique(vault, target)
+        target = freeName(vault, target)
       }
       text = newText(vault, target, text) // what plugins add to a new file (plugin.onCreate, onCreateFile)
       valid(target, text)
       writeAtomic(vault.abs(target), text)
       await vault.sync()
+      await vault.fillIn(target, null) // (a note's id and dates)
       return reply(201, read(vault, target))
     }
     if (method === "PUT") {
@@ -572,8 +550,11 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       }
       if (cur === null) text = newText(vault, rel, text)
       valid(rel, text)
+      const before = vault.entries.get(rel) ?? null
       if (cur !== text) writeAtomic(vault.abs(rel), cur !== null && crlf(vault.abs(rel)) ? text.replace(/\n/g, "\r\n") : text)
-      await vault.sync() // plugins may fill things in (a note's id and dates): the editor gets the result
+      await vault.sync()
+      // An edit in the app: plugins may fill things in (a note's id and dates), and the editor gets the result.
+      if (cur !== text) await vault.fillIn(rel, before)
       const f = read(vault, rel)
       // (a big file's text back only when it isn't what was sent)
       if (body.lean && f.text === sent) { const { text: _, ...rest } = f; return { ...rest, same: true } }
@@ -618,10 +599,10 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (fs.statSync(vault.abs(src)).isDirectory()) throw new HTTPError(400, `'${src}' is a folder; only files can be duplicated`)
     const dst = copyName(vault, src)
     if (locked(dst)) throw new HTTPError(403, `${dst} is read-only`)
-    // Read and written (not cloned), so the copy is a new file with its own dates.
-    const raw = fs.readFileSync(vault.abs(src))
-    if (!writeNew(vault.abs(dst), /\.md$/i.test(src) ? unclaimed(raw.toString("utf8")) : raw)) throw new HTTPError(409, `${dst} already exists`)
-    await vault.sync() // a note's fill gives the copy its own id and dates
+    // The file as it is, as Obsidian copies it (read and written, not cloned, so it has its own dates). A note's copy gets
+    // its own id when it's first edited in the app.
+    if (!writeNew(vault.abs(dst), fs.readFileSync(vault.abs(src)))) throw new HTTPError(409, `${dst} already exists`)
+    await vault.sync()
     return reply(201, { path: dst })
   }
   if (route === "file/restore" && method === "POST") {
@@ -637,7 +618,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     const folder = body.folder ? clean(body.folder, true, vault) : ""
     if (folder && locked(folder)) throw new HTTPError(403, `${folder} is read-only`)
     const rel = clean(`${folder}/${String(body.name ?? "").replaceAll("/", " ")}`, false, vault)
-    return { path: dropName(vault, rel) }
+    return { path: freeName(vault, rel) }
   }
   if (route === "upload" && method === "POST") {
     const rel = clean(body.path, false, vault)
@@ -653,7 +634,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (locked(rel)) throw new HTTPError(403, `${rel} is read-only`)
     if (fs.existsSync(vault.abs(rel))) {
       if (!body.unique) throw new HTTPError(409, `${rel} already exists`)
-      rel = unique(vault, rel)
+      rel = freeName(vault, rel)
     }
     fs.mkdirSync(vault.abs(rel), { recursive: true })
     await vault.sync()

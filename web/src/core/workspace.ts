@@ -518,8 +518,7 @@ export function retarget(from: string, to: string) {
 
 const showing = (path: string) => (to: string) => isFile(to) && (to.slice(5) === path || to.slice(5).startsWith(`${path}/`))
 
-/** Close the tabs showing a file, or what's in a folder (archived: out of the way, like Mail's); they stay reopenable.
- *  Returns whether any was. */
+/** Close the tabs showing a file, or what's in a folder; they stay reopenable. Returns whether any was. */
 export function closeFileTabs(path: string) {
   const ids = groups().flatMap((g) => g.tabs).filter((t) => showing(path)(t.to)).map((t) => t.id)
   for (const id of ids) closeTab(id, true)

@@ -1,8 +1,8 @@
 // ```block-people-map: the lazy map plus the same people grouped by place, which works alone if the map can't load.
 // `places: false` leaves the list out.
-import { Component, lazy, Suspense, useMemo, useRef, useState, type ReactNode } from "react"
+import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, MapPin, MapPinOff } from "lucide-react"
-import { cn, detailPath, Empty, isArchived, List, openDetail, Panel, type Store } from "@vaultite"
+import { cn, detailPath, Empty, get, isArchived, List, openDetail, Panel, type Store } from "@vaultite"
 import type { Person } from "@plugins/core/people/types"
 import { colorOf, initials, located, meOf, placesOf, RELATIONS, YOU_COLOR, type Place } from "./places"
 import type { Focus } from "./PeopleMap"
@@ -58,10 +58,40 @@ function PersonRow({ p }: { p: Person }) {
   )
 }
 
+type Pin = [number, number] | null
+
+/** Pins for the places shown without one: asked of the server one by one (it looks each up once and remembers it,
+ *  never in the person's file), while the map is shown. */
+function usePins(places: string[]) {
+  const [pins, setPins] = useState<Record<string, Pin>>({})
+  const want = places.filter((l) => !(l in pins)).join("\n")
+  useEffect(() => {
+    if (!want) return
+    let gone = false
+    void (async () => {
+      for (const q of want.split("\n")) {
+        if (gone) return
+        const r = await get<{ lat: number | null; lon: number | null }>(`geocode?q=${encodeURIComponent(q)}`).catch(() => null)
+        if (!gone) setPins((was) => ({ ...was, [q]: r && r.lat !== null && r.lon !== null ? [r.lat, r.lon] : null }))
+      }
+    })()
+    return () => { gone = true }
+  }, [want])
+  return pins
+}
+
 export function PeoplePlaces({ store, list = true }: { store: Store; list?: boolean }) {
   const mapRef = useRef<HTMLElement>(null)
-  const people = useMemo(() => store.people.filter((p) => !isArchived(p)), [store.people])
-  const me = meOf(store)
+  const raw = useMemo(() => store.people.filter((p) => !isArchived(p)), [store.people])
+  const unpinned = [...new Set([...raw.filter((p) => p.location && !located(p)).map((p) => p.location),
+    ...(store.me?.location && typeof store.me.lat !== "number" ? [store.me.location as string] : [])])]
+  const pins = usePins(unpinned)
+  const people = useMemo(() => raw.map((p) => {
+    const ll = located(p) ? null : pins[p.location]
+    return ll ? { ...p, lat: ll[0], lon: ll[1] } : p
+  }), [raw, pins])
+  const meLl = store.me && typeof store.me.lat !== "number" ? pins[store.me.location] : null
+  const me = meLl ? { location: store.me!.location, lat: meLl[0], lon: meLl[1] } : meOf(store)
   const onMap = useMemo(() => people.filter(located), [people])
   const places = placesOf(people, me)
   const missing = people.filter((p) => !located(p))

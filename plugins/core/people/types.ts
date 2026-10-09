@@ -6,7 +6,7 @@ export type Person = {
   /** Its file has `archived: true` (the core's, on every item: isArchived from "@vaultite"). */
   archived?: boolean
   location: string; context: string; tags: string; want_to: string; contact: string; aliases: string[]
-  /** Map position for `location`; the server geocodes it when location changes. */
+  /** Map position: the file's `coordinates`, else the cached lookup of `location` (never written to the file). */
   lat: number | null; lon: number | null
   /** An upcoming move ("Baltimore, MD"); cleared once `location` is updated. */
   moving_to: string

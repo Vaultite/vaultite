@@ -1,5 +1,6 @@
 // Me: the user's own file (ME.md, or where the setting `path` says): who they are and how they want AIs to work with
-// them. The kind `me`, its place geocoded (People's geocoder, when it's on), and the service `me:file` others ask.
+// them. The kind `me`, its place pinned (People's geocoder, when it's on: in its cache, never in the file), and the
+// service `me:file` others ask.
 import { Plugin } from "../../../core/plugins.ts"
 import { type Item, Kind, num } from "../../../core/vault.ts"
 
@@ -13,16 +14,25 @@ export function settingPath(v: unknown) {
 }
 const path = () => settingPath(plugin.settings().path)
 
-/** A new place without new coordinates: geocoded (with a plugin's geocoder, if one that's on offers it: People). */
-async function locate(me: Item, before: Item | null): Promise<Item | null> {
+/** A place entered through the app is looked up in the background (People's geocoder, when it's on, keeps the pin in
+ *  its cache); the file's coordinates go only when the place changed without them (they were the old place's). */
+function locate(me: Item, before: Item | null) {
+  const moved = before !== null && (me.location ?? "") !== (before.location ?? "")
+  if (moved && me.lat === before.lat && me.lon === before.lon) me.lat = me.lon = null
+  const known = plugin.service("geocode:known"), ll = me.location && known ? known(me.location) : null
+  if (ll && (before === null || before.lat === null) && me.lat === ll[0] && me.lon === ll[1]) me.lat = me.lon = null
   const geocode = plugin.service("geocode")
-  const moved = before !== null && me.location !== before.location && me.lat === before.lat
-  if (me.location && (me.lat === null || me.lat === undefined || moved) && geocode) {
-    const ll = await geocode(me.location)
-    if (ll) return { ...me, lat: ll[0], lon: ll[1] }
-  }
-  return null
+  if (me.location && (before === null || moved) && geocode) void geocode(me.location)
+  return me
 }
+
+/** The user's place with its pin: the file's coordinates, else People's cached lookup. */
+function pinned(me: Item | null) {
+  if (!me || typeof me.lat === "number" || !me.location) return me
+  const known = plugin.service("geocode:known"), ll = known ? known(me.location) : null
+  return ll ? { ...me, lat: ll[0], lon: ll[1] } : me
+}
+plugin.exports.pinned = pinned
 
 plugin.kind(new Kind({
   type: "me", collection: "me", file: path,
@@ -32,8 +42,7 @@ plugin.kind(new Kind({
     return [{ location: fm.location ? String(fm.location) : "", lat: ok ? c[0] : null, lon: ok ? c[1] : null, body }, []]
   },
   render: (me) => [{ location: me.location || "", coordinates: me.lat !== null && me.lat !== undefined ? [me.lat, me.lon] : null }, me.body ?? ""],
-  fill: locate,
-  prepare: async (me, before) => (await locate(me, before)) ?? me,
+  prepare: locate,
 }))
 
 /** The user's file: where it is (the setting's path, or the one file of type me wherever it moved), else where it
@@ -54,4 +63,4 @@ plugin.onMove((from, to) => {
   plugin.saveSettings(Object.keys(next).length ? next : null)
 })
 
-plugin.state(() => ({ me: plugin.vault.get("me", "me") }))
+plugin.state(() => ({ me: pinned(plugin.vault.get("me", "me")) }))
