@@ -2,8 +2,9 @@
 # (x64 and arm64, each built on its own architecture: node-pty is compiled there).
 # - A v* tag (matching package.json's version) is that GitHub release, its notes CHANGELOG.md's section for it, and goes
 #   on the update feed (vaultite.com/updates: R2's vaultite-updates, which vaultite-cloud serves).
-# - Every night, if main changed, it's the `nightly` prerelease, replaced each time: version <next patch>-nightly.<time>,
-#   not on the feed. By hand: Actions, Release, Run workflow (on main).
+# - Every night, if main changed, it's Vaultite Nightly (electron/nightly.cjs: an app of its own), the `nightly`
+#   prerelease, replaced each time: version <next patch>-nightly.<time>, on the feed's nightly/ (where Vaultite Nightly
+#   updates from). By hand: Actions, Release, Run workflow (on main).
 # Secrets: MAC_CERT_P12 (the Developer ID Application certificate and key, base64) and MAC_CERT_PASSWORD; NOTARY_KEY (an
 # App Store Connect API key's .p8, base64), NOTARY_KEY_ID and NOTARY_ISSUER; for the feed, CLOUDFLARE_API_TOKEN (R2
 # edit) and CLOUDFLARE_ACCOUNT_ID.
@@ -91,7 +92,7 @@ jobs:
       - run: npx playwright-core install chromium
       - if: env.STABLE != 'true'
         run: npm pkg set version=${{ needs.plan.outputs.version }}
-      - run: npm run release
+      - run: npm run ${{ env.STABLE == 'true' && 'release' || 'release:nightly' }}
       - uses: actions/upload-artifact@v4
         with:
           name: mac
@@ -100,7 +101,7 @@ jobs:
             dist-app/*.dmg
             dist-app/*-mac.zip
             dist-app/*-mac.zip.blockmap
-            dist-app/latest-mac.yml
+            dist-app/*-mac.yml
 
   linux:
     needs: plan
@@ -120,7 +121,7 @@ jobs:
       - run: npx playwright-core install --with-deps chromium
       - if: env.STABLE != 'true'
         run: npm pkg set version=${{ needs.plan.outputs.version }}
-      - run: npm run release:linux
+      - run: npm run ${{ env.STABLE == 'true' && 'release:linux' || 'release:linux:nightly' }}
       - uses: actions/upload-artifact@v4
         with:
           name: linux-${{ runner.arch }}
@@ -128,7 +129,7 @@ jobs:
           path: |
             dist-app/*.AppImage
             dist-app/*.deb
-            dist-app/latest-linux*.yml
+            dist-app/*-linux*.yml
 
   publish:
     needs: [plan, mac, linux]
@@ -152,15 +153,16 @@ jobs:
           else
             gh release delete nightly --cleanup-tag --yes || true
             gh release create nightly out/*.dmg out/*.AppImage out/*.deb --prerelease --target "$GITHUB_SHA" \
-              --title "Nightly $V" --notes "main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. Doesn't update itself to the next nightly: download it again."
+              --title "Nightly $V" --notes "Vaultite Nightly: main at $GITHUB_SHA, built $(date -u '+%Y-%m-%d %H:%M') UTC. It installs beside Vaultite and updates itself to each next nightly."
           fi
-      # The feed's files, the update lists last so they never name a file that isn't there yet.
+      # The feed's files, the update lists last so they never name a file that isn't there yet (a nightly's are
+      # nightly-*.yml: electron-builder names them after the version's prerelease, as the app asks for).
       - name: The update feed
-        if: env.STABLE == 'true'
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/latest-*.yml; do
-            npx -y wrangler@4 r2 object put "vaultite-updates/$(basename "$f")" --file "$f" --remote
+          if [ "$STABLE" = true ]; then dir=""; else dir="nightly/"; fi
+          for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/*.yml; do
+            npx -y wrangler@4 r2 object put "vaultite-updates/$dir$(basename "$f")" --file "$f" --remote
           done

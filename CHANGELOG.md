@@ -160,6 +160,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - The desktop app can serve DevTools to agents on the Mac (`debugPort`, off by default).
 
 ### Apps
+- **Vaultite Nightly**: main built each night as an app of its own (a grey icon, its own data), installed beside
+  Vaultite and updating itself from one nightly to the next. A failed update you asked for says why in a line, with
+  Show log, instead of the build's output.
 - **Voice notes are never lost**: the watch stops a recording at 2 hours; a long one, or one the phone can't transcribe
   or send, goes to the server as audio (kept when it can't be transcribed), waiting on the phone until it can; one past
   1,500 words stays in the inbox instead of starting the front-door agent.

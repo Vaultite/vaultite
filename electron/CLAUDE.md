@@ -22,6 +22,8 @@
   (`app:update-safe`, web/src/core/unsaved.ts), `off` checks only from the menu. Test a
   release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check its
   privacy grants.
+  **Vaultite Nightly** (`electron/nightly.cjs`, build.json's `channel: "nightly"`) is a release of its own id, name,
+  icon and data, on the feed's `nightly/`: what to run day to day, rather than a build from a checkout.
   **Vaultite Dev** (`npm run app:dev` in a worktree) is a branch as its own app: it updates from it and opens the
   sandbox, never Set up (which writes outside the app).
 - **Debugging the real window**: `debugPort` in `vaults.json` (or `VAULTITE_DEBUG_PORT`, from the next launch) serves

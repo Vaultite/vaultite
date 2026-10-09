@@ -937,7 +937,7 @@ async function pickOutside(w: Win | null) {
 const BUILD = (() => {
   try {
     const b = JSON.parse(fs.readFileSync(path.join(ROOT, "electron", "build.json"), "utf8"))
-    return typeof b.commit === "string" && typeof b.repo === "string" ? b as { commit: string; repo: string; release?: boolean; channel?: "dev"; branch?: string } : null
+    return typeof b.commit === "string" && typeof b.repo === "string" ? b as { commit: string; repo: string; release?: boolean; channel?: "dev" | "nightly"; branch?: string } : null
   } catch {
     return null
   }
@@ -1010,11 +1010,18 @@ function checkForUpdate(byHand: boolean) {
     } else if (byHand && code === 3) {
       dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${BUILD!.commit.slice(0, 7)}, the newest on ${BRANCH}.` })
     } else if (byHand && !quitting) {
-      dialog.showErrorBox(`Couldn't update ${app.getName()}`, out.slice(-1500) || `update.sh stopped (exit ${code})`)
+      updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check." : "The new version didn't build.")
     }
     if (ready !== built()) ready = null
     buildMenu()
   })
+}
+
+/** Asked by hand, an update that failed: what went wrong in a line, the details in update.log. */
+function updateFailed(why: string) {
+  void dialog.showMessageBox({ type: "warning", message: `Couldn't update ${app.getName()}`, buttons: ["OK", "Show log"],
+    detail: `${why} ${app.getName()} keeps this version and tries again later.` })
+    .then((r) => { if (r.response === 1) void shell.openPath(path.join(app.getPath("logs"), "update.log")) })
 }
 
 /** The commit of the finished build in NEXT, when it's all there. */
@@ -1138,12 +1145,12 @@ async function checkRelease(byHand: boolean) {
     const u = await releaseUpdater()
     const r = await within(u.checkForUpdates(), 2 * 60_000, "The update feed didn't answer")
     if (r?.isUpdateAvailable) {
-      setStatus(`Downloading Vaultite ${r.updateInfo.version}…`)
+      setStatus(`Downloading ${app.getName()} ${r.updateInfo.version}…`)
       if (r.downloadPromise) await within(r.downloadPromise, 30 * 60_000, "The download stalled")
     }
-    else if (byHand) dialog.showMessageBox({ message: "Vaultite is up to date", detail: `It runs ${app.getVersion()}, the newest release.` })
+    else if (byHand) dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${app.getVersion()}, the newest ${BUILD?.channel === "nightly" ? "nightly" : "release"}.` })
   } catch (e) {
-    if (byHand && !quitting) dialog.showErrorBox("Couldn't update Vaultite", String((e as Error).message ?? e).slice(0, 1500))
+    if (byHand && !quitting) updateFailed(String((e as Error).message ?? e).split("\n")[0].slice(0, 200).replace(/\.?$/, "."))
   } finally {
     fetching = false
     setStatus(null)

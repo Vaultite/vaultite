@@ -26,7 +26,8 @@ server runs TypeScript directly) and, for the QA scripts, Playwright's Chromium
   allowing `userns` (Chromium's sandbox); `app:install` prints the one for its own copy.
 - Releases are built by GitHub Actions (`.github/workflows/release.yml`): a `v<version>` tag matching package.json's is
   that release (its notes CHANGELOG.md's section, its zips on the update feed), and main is the `nightly` prerelease
-  each night it changed. CI (`ci.yml`) builds and tests every push to main and every pull request.
+  each night it changed: Vaultite Nightly (`npm run release:nightly`, `electron/nightly.cjs`), an app of its own that
+  updates from the feed's `nightly/`. CI (`ci.yml`) builds and tests every push to main and every pull request.
 - iPhone app: `npm run ios` (needs Xcode); put your team in `ios/App/Local.xcconfig` (`DEVELOPMENT_TEAM = <team id>`).
   On the phone, add the address your Mac serves Vaultite at on the tailnet (`tailscale serve --https=8447 <port>`).
 - `vau service install --vault <folder>` keeps the server running (launchd on macOS, systemd on Linux).

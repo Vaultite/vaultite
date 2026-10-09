@@ -29,6 +29,8 @@
     "app:install": "node electron/install.ts",
     "release": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && node tools/build_helpers.ts && VAULTITE_RELEASE=1 electron-builder --mac --publish never",
     "release:linux": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --linux --publish never",
+    "release:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && node tools/build_helpers.ts && VAULTITE_RELEASE=1 electron-builder --mac --publish never -c electron/nightly.cjs",
+    "release:linux:nightly": "VAULTITE_CLEAN_BUILD=1 npm run build && npm run smoke && VAULTITE_RELEASE=1 VAULTITE_CHANNEL=nightly node electron/stamp.ts && VAULTITE_RELEASE=1 electron-builder --linux --publish never -c electron/nightly.cjs",
     "ios": "VAULTITE_CLEAN_BUILD=1 vite build && cap sync ios && cap open ios"
   },
   "dependencies": {

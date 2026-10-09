@@ -53,6 +53,8 @@ function stop() {
 }
 
 const browser = await launch()
+// Generous waits: a busy machine is slow, not broken (a broken build fails fast: the error screen, a pageerror).
+const SLOW = 60_000
 /** Each route on a desktop and a phone: it draws and throws nothing. */
 async function visit(base, prefix = "") {
   // A note to open (its editor is a chunk of its own).
@@ -62,16 +64,17 @@ async function visit(base, prefix = "") {
   for (const [name, opts] of Object.entries(sizes)) {
     const ctx = await browser.newContext(opts)
     const page = await ctx.newPage()
+    page.setDefaultNavigationTimeout(SLOW)
     const errors = []
     page.on("pageerror", (e) => errors.push(e.stack || e.message))
     const routes = ["", "#plugins", "#settings", ...(note ? [`#view/files/file/${encodeURIComponent(`${note}.md`)}`] : [])]
     for (const r of routes) {
       await page.goto(base + r)
-      const drawn = await page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root > *"), null, { timeout: 20000 }).catch(() => null)
+      const drawn = await page.waitForFunction(() => document.getElementById("vau-boot-error") || document.querySelector("#root > *"), null, { timeout: SLOW }).catch(() => null)
       await wait(1500) // (what comes just after: the store, lazy chunks, effects)
       const screen = await page.evaluate(() => document.getElementById("vau-boot-error")?.innerText ?? null)
       const label = `${prefix}${name}: ${r || "first page"}`
-      check(`${label} draws`, drawn && !screen, screen ?? "nothing drawn in 20 s")
+      check(`${label} draws`, drawn && !screen, screen ?? `nothing drawn in ${SLOW / 1000} s`)
       check(`${label} throws nothing`, !errors.length, errors.join("\n\n"))
       errors.length = 0
     }
@@ -96,6 +99,7 @@ try {
   const broken = async (label, how, expect) => {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     const page = await ctx.newPage()
+    page.setDefaultNavigationTimeout(SLOW)
     let main = null
     await page.route(/\/assets\/main-[^/]+\.js$/, async (route) => {
       main = route.request().url()
@@ -104,7 +108,7 @@ try {
       return route.fulfill({ response: res, body: `throw new Error("boot test: the app's code threw");\n${await res.text()}` })
     })
     await page.goto(base)
-    const text = await page.waitForFunction(() => document.getElementById("vau-boot-error")?.innerText, null, { timeout: 10000 }).then((h) => h.jsonValue()).catch(() => null)
+    const text = await page.waitForFunction(() => document.getElementById("vau-boot-error")?.innerText, null, { timeout: SLOW / 2 }).then((h) => h.jsonValue()).catch(() => null)
     check(`${label} shows the error screen`, main && text?.includes(expect), main ? text ?? "no screen" : "the page has no assets/main-*.js (not a build?)")
     await ctx.close()
   }
@@ -144,8 +148,9 @@ try {
     check("own vault: the plugins' pages are in .vaultite/pages, pinned", today?.type === "dashboard" && pinned.includes(today.path) && !st.files.folders.some((f) => f.startsWith(".vaultite")), [today, pinned])
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     const page = await ctx.newPage()
+    page.setDefaultNavigationTimeout(SLOW)
     await page.goto(`${ownBase}#file/${encodeURIComponent(".vaultite/pages/Dashboards/Today.md")}`)
-    check("own vault: a page there draws its blocks", await page.waitForSelector("[data-block=routines]", { timeout: 20000 }).then(() => true, () => false))
+    check("own vault: a page there draws its blocks", await page.waitForSelector("[data-block=routines]", { timeout: SLOW }).then(() => true, () => false))
     check("own vault: the sidebar lists it", await page.locator("aside >> text=Today").count() > 0)
     await ctx.close()
   }
