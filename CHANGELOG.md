@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.2.0 (2026-10-09)
+
+The first public release: the source on GitHub, signed and notarized Mac builds, Linux's AppImage and .deb, and a
+nightly. Plugin API 3.
+
 ### Agents
 - **Agents see everything, a page at a time**: read, render, query, search and list take `offset` and `limit`, and
   every cut answer says so and gives the next offset (a long query cell ends in "…"). `edit_file` (`vau edit`) changes

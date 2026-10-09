@@ -3,6 +3,6 @@
 // `VAULTITE_BUNDLE_ID = <yours>` when another team has app.vaultite.ios.
 VAULTITE_BUNDLE_ID = app.vaultite.ios
 VAULTITE_APP_GROUP = group.$(VAULTITE_BUNDLE_ID)
-MARKETING_VERSION = 0.1.0
+MARKETING_VERSION = 0.2.0
 CURRENT_PROJECT_VERSION = 1
 #include? "Local.xcconfig"
