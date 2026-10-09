@@ -1,8 +1,7 @@
 // The Terminals panel as a tab (view:terminals): every shell the server runs, the same rows as the sidebar's, with what
 // each is doing and since when, and buttons to open a new terminal or a coding agent (each plugin's that's on).
 import { Plus } from "lucide-react"
-import { openAgent, openView, useAgents, useTick } from "@vaultite"
-import { newId } from "./sessions"
+import { openAgent, openTerminal, useAgents, useTick } from "@vaultite"
 import { SessionList, useSessions } from "./SessionsPanel"
 
 const button = "flex h-7 cursor-pointer items-center gap-1.5 rounded-[6px] bg-foreground/[0.05] px-2.5 text-[13px] font-medium text-foreground hover:bg-foreground/[0.09] max-md:h-9 max-md:text-[15px]"
@@ -24,7 +23,7 @@ export function TerminalsView() {
             <a.icon className="size-3.5" strokeWidth={2} />New {a.label}
           </button>
         ))}
-        <button type="button" className={button} onClick={() => openView(`terminal/${newId()}`, { newTab: true })}>
+        <button type="button" className={button} onClick={() => void openTerminal()}>
           <Plus className="size-3.5" strokeWidth={2.25} />New terminal
         </button>
       </div>

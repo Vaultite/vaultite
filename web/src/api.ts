@@ -71,7 +71,10 @@ export { besideActive, newNoteFolder } from "@/core/conventions"
 export { fileAt, headOf, iconOf, isPage, namedIcon, offPlugin, pageOf, tintOf } from "@/core/pages"
 // Attachments (a pasted image, a recording): the folder they go in for a note, and saving files there as embeds.
 export { attachmentFolder, pasteAttachments } from "@/core/conventions"
-export { canRunAgents, choosePlace, mintedHere, openAgent, openPlace, openTerminal, places, terminalId, type Place } from "@/core/agents"
+export {
+  canRunAgents, chooseDefaultPlace, choosePlace, getDefaultPlace, defaultPlaceOf, mintedHere, openAgent, openPlace, openTerminal, places, resolvePlace, setDefaultPlace, terminalId, useDefaultPlace,
+  type DefaultPlace, type Place,
+} from "@/core/agents"
 // Your other machines (Machines plugin): their terminals are <id>@<machine>, their API is machines/<machine>/<path>.
 export { fetchMachines, machinePath, onMachine, otherMachines, splitMachine, useMachines, type Machine } from "@/core/machines"
 // Where the sidebars' setup comes from (.vaultite/sidebars.json, or a plugin that keeps its own: Workspaces).

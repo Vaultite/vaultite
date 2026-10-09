@@ -8,9 +8,12 @@ user's window. From outside the app: `vau dispatch <file>` (`--open` to open its
 
 On another of the Machines that has this vault (the same `vault` id): `vau dispatch <file> --machine <id>`; in another
 of the agent's accounts: `--account <id>` (personal). In the app: right-click (hold, on a phone) the header button, the
-file menu's submenu, the palette's "Dispatch to Claude Code (<account>) on <machine>". Each workspace keeps a default
-place per action (that menu's "Default in <workspace>", the workspace's `state["dispatch:where"]`): the button, ⌘⇧↩ and
-the file menu run there, and the button says where ("Personal · M1") when there's more than one place. The server
+file menu's submenu, the palette's "Dispatch to Claude Code (<account>) on <machine>". The button, ⌘⇧↩ and the file
+menu run at the workspace's default place, where its new terminals and agents open too (that menu's "Default in
+<workspace>", the workspace's `state["core:place"]`: `{machine, accounts: {claude: "personal"}}`), and the button says
+where ("Personal · M1") when there's more than one place; a default machine that's away gives way to this one.
+While a session a dispatch started still runs, the same dispatch again (a second click) opens that one rather than
+starting another (`running: true`); "Dispatch again" in that menu, or `--again`, starts another anyway. The server
 asked passes it to that machine's (both check it's the owner), once its copy of the file matches; the terminal there
 opens here as `<id>@<machine>`, and a reply to its report resumes the session there.
 

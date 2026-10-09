@@ -11,7 +11,10 @@ key) gives it its size again. The sidebar's Terminals panel lists every running 
 also lists Claude Code on the web's sessions under Cloud (with claude.ai signed in in the Web viewer; a click opens one
 in a web tab). With the Machines
 plugin on, other machines' shells are listed too, and a tab `view:terminal/<id>@<machine>` is a shell on that machine
-("Open a terminal or an agent on a machine…"); workspaces save every terminal tab with its machine, so a tab made on one
+("Open a terminal or an agent on a machine…"). New terminals and agents (Open terminal, Open Claude Code, the
+Terminals panel's buttons) open at the workspace's default place: a machine and each agent's account ("Choose where new
+terminals and agents open in this workspace…", `state["core:place"]`), else this machine when that one's away; ⌃` is
+always this machine. Workspaces save every terminal tab with its machine, so a tab made on one
 machine opens the same shell from the others (when that machine doesn't answer, the tab says so and keeps trying, rather
 than starting a shell of its own); an agent in one of its accounts is `view:terminal/claude_<account>-<id>`. A screenshot pasted into it is saved on the server's machine and its path pasted (Claude Code attaches it). Its shells have
 `VAULTITE=1`, `VAULTITE_URL`, `VAULTITE_VAULT`, `VAULTITE_CLIENT` (`desktop`, `iphone` or `web`), `VAULTITE_TERMINAL` (its id, for an agent started in it) and the `vau` CLI on PATH;

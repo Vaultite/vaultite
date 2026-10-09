@@ -79,6 +79,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ChipValuesEditor({ values, onChange, label })`: A chip's values as rows to reorder, remove and unfold (colour, icon, line); `onChange` gets the whole list.
 - `Choice`
 - `choose(c)`: Ask the user to pick one of `items`.
+- `chooseDefaultPlace()`: Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there.
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
 - `clearSelection()`
 - `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
@@ -100,6 +101,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `currentWorkspace()`: The current workspace (null: no plugin keeps workspaces).
 - `DateOptions`: How weeks count: the day they start on (`start`, 0 Sunday … 6 Saturday) and the day of January week 1 holds (`jan`, moment's doy: 1 for the week of January 1st); unset, ISO's (1 and 4).
 - `dateText(d, options)`: A date (or a time in ms) as text: `dateText(d, { day: "numeric", month: "short" })` is d.toLocaleString(undefined, { day: "numeric", month: "short" }), with the formatter kept.
+- `DefaultPlace`: Where new terminals and agents open in the current workspace when none is asked for (and where Dispatch runs): a machine (none: this one) and an account per agent (none: its own default).
+- `defaultPlaceOf(agent, machines, h?)`: The current workspace's default for agent `agent` (null: a shell), as ids: "" is this machine (also when the default names this one), and the agent's own account.
 - `definePlugin(def)`
 - `del(path)`
 - `deleteFile(path, opts?)`
@@ -161,6 +164,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
 - `freeName(t, folder, base, ext?)`: A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 2"...).
 - `get(path)`
+- `getDefaultPlace()`
 - `getStore()`: The store as it is now (for code outside React).
 - `getTabLayout()`
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
@@ -277,7 +281,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else the quick switcher.
-- `openTerminal(opts?)`: Open a plain terminal (on `machine`, or this one).
+- `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
 - `openView(to, opts?)`: Open a plugin's view.
 - `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Web viewer), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
@@ -328,6 +332,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
 - `reload()`
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
+- `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
 - `resolver(s)`: Resolve a wikilink target: plugins' exact names, then file names, paths and aliases, then weak names only one target has.
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
@@ -361,6 +366,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `selectItem(list, key)`: Phones (no keys): "Select" in a row's menu starts selecting with it.
 - `selectTab(id)`: Show a tab.
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
+- `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
 - `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
@@ -437,6 +443,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.
 - `useCommandList()`
 - `useCommands(make, deps)`: Register commands while a component is mounted (again whenever `deps` change).
+- `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
 - `useDrag()`
 - `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it.

@@ -2,7 +2,7 @@
 // the line above the title at 390px (a 44px target, nothing wider than the screen). Clicking one saves what's typed, starts
 // its terminal on the server and opens it in a new tab, focused: a shell command gets the note's path quoted, Claude Code
 // starts with the prompt, then told to end with `vau inbox report` (`claude ... -- '<prompt>\n\nDo it all the way...'`),
-// in the background (a toast's Open session opens its tab).
+// in the background (a toast's Open session opens its tab). The same dispatch while its session runs opens that one.
 // The palette's "Dispatch to Claude Code", ⌘⇧↩ in the editor, a file's menu and an inbox result's menu do the same; the
 // settings sheet lists the actions and Reset clears them; a command this machine hasn't run yet is shown and run once
 // confirmed. WRITES "QA dispatch/", the plugin's data.json and an inbox result, starts shells and Claude Code (told to
@@ -108,10 +108,14 @@ const termFocused = (page) => until(() => page.evaluate(() => !!document.activeE
   const was = text(NOTE)
   before = await sessions()
   await page.keyboard.press("ControlOrMeta+Shift+Enter")
-  id = await newSession(before, "claude-")
-  check("⌘⇧↩ in the editor starts it", !!id, await sessions())
-  await wait(1000)
+  // The palette's session still runs: the same dispatch again opens it, and its toast's Dispatch again starts another.
+  const still = page.locator("[data-sonner-toast]").filter({ hasText: "is still on this note" })
+  check("⌘⇧↩ while it runs: no second session, the running one opens", await until(async () => (await still.count()) === 1, 8000) &&
+    (await sessions()).length === before.length && await termFocused(page), await sessions())
   check("⌘⇧↩: the note's text is unchanged", text(NOTE) === was, text(NOTE))
+  await still.getByRole("button", { name: "Dispatch again" }).click()
+  id = await newSession(before, "claude-")
+  check("Dispatch again: another session", !!id, await sessions())
 
   // A file's menu (its tab's).
   await go(page, NOTE)
@@ -120,7 +124,7 @@ const termFocused = (page) => until(() => page.evaluate(() => !!document.activeE
   check("file menu: Dispatch to each action", (await item.count()) === 1 && (await page.locator("[role=menu] [role=menuitem]").filter({ hasText: "Dispatch to Claude Code" }).count()) === 1)
   before = await sessions()
   await item.click()
-  check("file menu: it runs", !!(await newSession(before)))
+  check("file menu: it runs (the shell still running: that one opens)", await termFocused(page) && (await sessions()).length === before.length)
 
   // A second Claude Code account: the button says which one it runs in, and its menu sets this workspace's default.
   const second = `${OUT}claude-second`
@@ -184,6 +188,8 @@ const termFocused = (page) => until(() => page.evaluate(() => !!document.activeE
 }
 
 // ---------- phone ----------
+// (the desktop's sessions ended first: once a dispatch's session ends, the same dispatch starts a new one)
+for (const id of started) await api("DELETE", `terminals/${enc(id)}`).catch(() => {})
 {
   await api("PATCH", "config/plugin/dispatch", { actions: [{ id: "claude", label: "Claude Code", icon: "claude", agent: "claude", prompt: PROMPT }, { id: "show", label: "Show it", command: "cat {file}" }] })
   const { ctx, page } = await open(390, 844, true)

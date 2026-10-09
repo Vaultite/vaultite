@@ -1,9 +1,9 @@
 import { useEffect, useState, useSyncExternalStore, type KeyboardEvent } from "react"
 import { ArrowDown, ArrowUp, Plus, Send, SquareTerminal, X } from "lucide-react"
 import {
-  agentsOn, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify, notifyError, op, openView,
-  otherMachines, patch, pickIcon, places, scopedState, Section, settleFile, Switch, useAgents, useCommands, useMachines, useScopedState, useStore, type Agent, type FileHead, type Machine, type MenuItem,
-  type Place, type Store,
+  agentsOn, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, getDefaultPlace, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify,
+  notifyError, op, openView, otherMachines, patch, pickIcon, places, Section, setDefaultPlace, settleFile, Switch, useAgents, useCommands, useDefaultPlace, useMachines, useStore, type Agent,
+  type DefaultPlace, type FileHead, type Machine, type MenuItem, type Place, type Store,
 } from "@vaultite"
 import type { Action } from "./types"
 
@@ -24,7 +24,7 @@ function elsewhere(list: Machine[] | null) {
 }
 // As the background last saw them, for the menus made on the spot: the other machines, and each agent's accounts on
 // every machine (places).
-let others: Machine[] = [], self = "", known: Place[] = []
+let others: Machine[] = [], self = "", selfId = "", seen = false, known: Place[] = []
 const subs = new Set<() => void>()
 const useKnown = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => known)
 
@@ -37,19 +37,16 @@ function placesOf(a: Action, there = others): Place[] {
 /** The account an action runs in by itself: its own (`claude_personal`), else the agent's default. */
 const ownAccount = (a: Action) => a.agent?.split("_")[1] ?? "default"
 
-/** Where each action runs by default in the current workspace, by its id (none: this machine, its own account). */
+/** Where an action runs by default in the current workspace: where its new terminals and agents open (the app's
+ *  default place), a machine (none: this one) and its agent's account (an action naming its own keeps that one). */
 type Where = { machine?: string; account?: string }
-const NOWHERE: Record<string, Where> = {}
-// Made on first use: the plugin API may not be ready while the module loads.
-let wheresState: ReturnType<typeof scopedState<Record<string, Where>>> | undefined
-const wheres = () => (wheresState ??= scopedState("dispatch:where", NOWHERE))
-const whereOf = (a: Action, all = wheres().get()): Where => all[a.id] ?? {}
-const isWhere = (a: Action, p: Pick<Place, "machine" | "profile">, w = whereOf(a)) => p.machine === (w.machine ?? "") && (!p.profile || p.profile === (w.account ?? ownAccount(a)))
-function setWhere(a: Action, p: Pick<Place, "machine" | "profile">) {
-  const w: Where = { ...(p.machine ? { machine: p.machine } : {}), ...(p.profile && p.profile !== ownAccount(a) ? { account: p.profile } : {}) }
-  const { [a.id]: _, ...rest } = wheres().get()
-  wheres().set(Object.keys(w).length ? { ...rest, [a.id]: w } : Object.keys(rest).length ? rest : undefined)
+function whereOf(a: Action, d: DefaultPlace = getDefaultPlace()): Where {
+  const machine = d.machine && d.machine !== selfId ? d.machine : undefined
+  const account = a.agent?.includes("_") ? undefined : a.agent ? d.accounts?.[a.agent] : undefined
+  return { ...(machine ? { machine } : {}), ...(account ? { account } : {}) }
 }
+const isWhere = (a: Action, p: Pick<Place, "machine" | "profile">, w = whereOf(a)) => p.machine === (w.machine ?? "") && (!p.profile || p.profile === (w.account ?? ownAccount(a)))
+const setWhere = (a: Action, p: Pick<Place, "machine" | "profile">) => setDefaultPlace(a.agent?.split("_")[0] ?? null, p.machine, p.profile)
 /** Its places, each account on each machine; one per machine for an agent without accounts (or a command). */
 function rowsOf(a: Action, there = others): Pick<Place, "machine" | "machineLabel" | "profile" | "profileLabel">[] {
   const ps = placesOf(a, there)
@@ -68,15 +65,15 @@ function whereLabel(a: Action, w = whereOf(a), there = others) {
  *  device's window, focused) when it should (`open`, else the action's: an agent that reports runs in the background,
  *  a toast offering its session). */
 const running = new Set<string>()
-async function dispatch(a: Action, path: string, m?: Machine, account?: string, open?: boolean) {
+async function dispatch(a: Action, path: string, m?: Machine, account?: string, open?: boolean, again?: boolean) {
   const key = `${a.id}\n${path}\n${m?.id ?? ""}\n${account ?? ""}`
   if (running.has(key)) return
   running.add(key)
-  const on = { ...(m ? { machine: m.id } : {}), ...(account && account !== ownAccount(a) ? { account } : {}) }
+  const on = { ...(m ? { machine: m.id } : {}), ...(account && account !== ownAccount(a) ? { account } : {}), ...(again ? { again: true } : {}) }
   try {
     await settleFile(path)
     if (m) notify(`Starting ${a.label} on ${m.label}…`)
-    let r: { id: string; handed?: boolean }
+    let r: { id: string; handed?: boolean; running?: boolean }
     try { r = await op<typeof r>("dispatch.run", { path, action: a.id, open: false, ...on }) } catch (e) {
       // A command this machine hasn't run (the setting may have come by sync or a shared vault): shown, and run once confirmed.
       if (!a.command || !String((e as Error)?.message ?? "").includes("hasn't run this action's command")) throw e
@@ -85,7 +82,9 @@ async function dispatch(a: Action, path: string, m?: Machine, account?: string, 
       r = await op<typeof r>("dispatch.run", { path, action: a.id, open: false, allow: true, ...on })
     }
     const show = () => openView(`terminal/${r.id}`, { newTab: true })
-    if (open ?? a.open ?? !r.handed) show()
+    // One still running for this note (a second click): its session, not another.
+    if (r.running) { show(); notify(`${a.label} is still on this note: opened its session`, { action: { label: "Dispatch again", run: () => void dispatch(a, path, m, account, open, true) } }) }
+    else if (open ?? a.open ?? !r.handed) show()
     else notify(`Dispatched to ${a.label}${m ? ` on ${m.label}` : ""}: its report comes to your inbox`, { action: { label: "Open session", run: show } })
   } catch (e) {
     notifyError(e, `Couldn't dispatch to ${a.label}${m ? ` on ${m.label}` : ""}`)
@@ -94,11 +93,16 @@ async function dispatch(a: Action, path: string, m?: Machine, account?: string, 
   }
 }
 
-/** Run it where this workspace runs it by default (a machine offline answers so). */
-function dispatchHere(a: Action, path: string, open?: boolean) {
+/** Run it where this workspace runs it by default; a machine that's away (offline, or without this vault, Dispatch or
+ *  Terminal) gives way to this one, saying so. */
+function dispatchHere(a: Action, path: string, open?: boolean, again?: boolean) {
   const w = whereOf(a)
-  const m = w.machine ? others.find((x) => x.id === w.machine) ?? ({ id: w.machine, label: w.machine } as Machine) : undefined
-  return dispatch(a, path, m, w.account, open)
+  let m = w.machine ? others.find((x) => x.id === w.machine) : undefined
+  if (w.machine && !m) {
+    if (seen) notify(`${w.machine} can't take it now: dispatched on this machine`)
+    else m = { id: w.machine, label: w.machine } as Machine // (not known yet: its server answers)
+  }
+  return dispatch(a, path, m, w.account, open, again)
 }
 
 /** An action in each place it can run (each account, on each machine), this machine's first, the workspace's default
@@ -106,7 +110,9 @@ function dispatchHere(a: Action, path: string, open?: boolean) {
 function onEach(a: Action, path: string, there = others): MenuItem[] {
   const Icon = iconOf(a)
   const rows = rowsOf(a, there)
-  if (rows.length < 2) return []
+  // Another session on it even while one runs (else a second dispatch opens that one).
+  const again: MenuItem = { label: "Dispatch again", icon: Icon, run: () => void dispatchHere(a, path, undefined, true) }
+  if (rows.length < 2) return [again]
   const row = (p: (typeof rows)[number], i: number) => ({
     label: `${a.label}${p.profileLabel ? ` · ${p.profileLabel}` : ""}`, icon: Icon, hint: p.machineLabel || undefined,
     checked: isWhere(a, p), sep: i > 0 && p.machine !== rows[i - 1].machine,
@@ -115,6 +121,7 @@ function onEach(a: Action, path: string, there = others): MenuItem[] {
   return [
     ...rows.map((p, i) => ({ ...row(p, i), run: () => void dispatch(a, path, there.find((x) => x.id === p.machine), p.profile || undefined) })),
     { label: desk ? `Default in ${desk.label}` : "Default", icon: Icon, sep: true, run: () => {}, items: rows.map((p, i) => ({ ...row(p, i), run: () => setWhere(a, p) })) },
+    again,
   ]
 }
 
@@ -130,7 +137,7 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   const { store } = useStore()
   const agents = useAgents()
   const machines = useMachines()
-  const [all] = useScopedState("dispatch:where", NOWHERE)
+  const all = useDefaultPlace()
   useKnown()
   if (!dispatchable(file.path)) return null
   const there = elsewhere(machines)
@@ -138,14 +145,14 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   return actionsOf(store).map((a) => {
     const Icon = iconOf(a, agents)
     const keys = keysOf(a.id === "claude" ? CLAUDE : { id: `dispatch:${a.id}` })[0]
-    const where = whereLabel(a, whereOf(a, all), there), more = !!where
+    const where = whereLabel(a, whereOf(a, all), there)
     const name = `Dispatch to ${a.label}${where ? ` (${where})` : ""}`
     return (
       // Option-click: its terminal opens too.
       <button key={a.id} type="button" data-dispatch={a.id} aria-label={name} onClick={(e) => void dispatchHere(a, file.path, e.altKey || undefined)}
-        // Right-click (or hold, on a phone): its other accounts and machines.
-        onContextMenu={more ? menuFor(() => onEach(a, file.path, there)) : undefined}
-        data-tip={`${name}${keys && bar ? ` (${keyCaps(keys).join("")})` : ""}${bar ? `; ${keyCaps("Alt").join("")}-click to watch it` : ""}${more && bar ? "; right-click for other accounts and machines, or this workspace's default" : ""}`}
+        // Right-click (or hold, on a phone): again, its other accounts and machines.
+        onContextMenu={menuFor(() => onEach(a, file.path, there))}
+        data-tip={`${name}${keys && bar ? ` (${keyCaps(keys).join("")})` : ""}${bar ? `; ${keyCaps("Alt").join("")}-click to watch it` : ""}${bar ? `; right-click to dispatch again${where ? ", in another account or on another machine, or for this workspace's default" : ""}` : ""}`}
         className={cn("flex shrink-0 cursor-pointer items-center justify-center text-muted-foreground hover:text-foreground",
           bar ? cn("h-7 rounded-[5px] hover:bg-foreground/[0.06]", where ? "gap-1 px-1.5" : "w-7")
             // (a phone's 44px target, laid out in the line's 32px)
@@ -165,7 +172,7 @@ function Commands() {
   const machines = useMachines()
   const agents = useAgents()
   const there = elsewhere(machines), here = machines?.find((m) => m.self)?.label ?? ""
-  useEffect(() => { others = there; self = here })
+  useEffect(() => { others = there; self = here; selfId = machines?.find((m) => m.self)?.id ?? ""; seen = machines !== null })
   const where = there.map((m) => `${m.id}:${m.label}`).join()
   // Each agent's accounts, here and on the machines online, for the menus and commands.
   useEffect(() => {

@@ -1,7 +1,7 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, LogOut, Server, SquareTerminal, SquareX } from "lucide-react"
-import { agentOfTerminal, AmbientButton, choosePlace, definePlugin, getTabLayout, isMac, isViewOpen, onTabLayoutChange, openView, Panel, viewsChanged } from "@vaultite"
-import { agentIn, current, endForGood, getSessions, labelOf, newId, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
+import { agentOfTerminal, AmbientButton, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, isMac, isViewOpen, onTabLayoutChange, openTerminal, openView, Panel, viewsChanged } from "@vaultite"
+import { agentIn, current, endForGood, getSessions, labelOf, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
 
@@ -93,9 +93,12 @@ export default definePlugin({
   textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns" } },
   background: () => <SessionNames />,
   commands: [
-    { id: "terminal:open", name: "Open terminal", keys: ["Ctrl+`"], run: () => openView(`terminal/${newId()}`, { newTab: true }), icon: SquareTerminal },
-    { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", run: () => openView(`terminal/${newId()}`, { split: true }) },
+    // New ones open where the workspace says (chooseDefaultPlace); ⌃` is always this machine, the way out when that one's away.
+    { id: "terminal:open", name: "Open terminal", run: () => void openTerminal(), icon: SquareTerminal },
+    { id: "terminal:open-here", name: "Open terminal on this machine", keys: ["Ctrl+`"], run: () => void openTerminal({ machine: "" }), icon: SquareTerminal },
+    { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", run: () => void openTerminal({ split: true }) },
     { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", run: () => void choosePlace(), icon: Server },
+    { id: "terminal:home", name: "Choose where new terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },
     { id: "terminal:end", name: "End terminal session", when: () => !!current(), run: () => { const c = current(); if (c) void endForGood(c.id) }, icon: SquareX },
     // Out of the shell without a mouse (Vim's ⌃\ ⌃N), so the app's keys work again. Off a Mac ⌃ is the app's ⌘ and ⌃\

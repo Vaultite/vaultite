@@ -4,11 +4,11 @@
 import { useContext, useEffect, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Cloud, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
-  choosePlace, cn, currentWorkspace, isViewOpen, menuBelow, openAgent, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag,
+  chooseDefaultPlace, choosePlace, cn, currentWorkspace, isViewOpen, menuBelow, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag,
   useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type SidebarCtx,
 } from "@vaultite"
 import { ago, cloudListed, getCloud, subscribeCloud } from "./cloud"
-import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, newId, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
+import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
  *  list the terminal tabs' names, colours and states come from too (sessions.ts). */
@@ -167,9 +167,10 @@ function CloudRows({ list, open, tab, page, after }: { list: CloudSession[]; ope
 /** The + button's menu: a terminal, then every coding agent that's on. */
 export function newMenu(e: MouseEvent, agents: Agent[]) {
   menuBelow(e, [
-    { label: "New terminal", icon: SquareTerminal, run: () => openView(`terminal/${newId()}`, { newTab: true }) },
+    { label: "New terminal", icon: SquareTerminal, run: () => void openTerminal() },
     ...agents.map((a, i) => ({ label: `New ${a.label}`, icon: a.icon, sep: i === 0, run: () => openAgent(a.name) })),
     { label: "Choose where…", icon: Monitor, sep: true, run: () => void choosePlace() },
+    { label: "Where new ones open…", icon: Monitor, run: () => void chooseDefaultPlace() },
   ])
 }
 
@@ -216,7 +217,7 @@ export function Sessions({ open, tab }: SidebarCtx) {
           {list && <Rows list={list} open={open} tab={tab} />}
           <CloudRows list={cloud} open={open} tab={tab} after={!!list?.length} />
           {empty && (
-            <button type="button" onClick={() => openView(`terminal/${newId()}`, { newTab: true })}
+            <button type="button" onClick={() => void openTerminal()}
               className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
               No terminals running. Open one
             </button>
@@ -236,7 +237,7 @@ export function SessionList() {
       {list && <Rows list={list} open tab="" page />}
       <CloudRows list={cloud} open tab="" page after={!!list?.length} />
       {list && !list.length && !cloud.length && (
-        <button type="button" onClick={() => openView(`terminal/${newId()}`, { newTab: true })}
+        <button type="button" onClick={() => void openTerminal()}
           className="flex h-7 min-w-0 cursor-pointer items-center truncate pl-1.5 text-left text-[13px] whitespace-nowrap text-tertiary hover:text-muted-foreground">
           No terminals running. Open one
         </button>
