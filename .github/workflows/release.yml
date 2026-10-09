@@ -78,6 +78,11 @@ jobs:
           # shellcheck disable=SC2046 # the runner's keychains, one word each (no spaces in their paths)
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
           echo "$NOTARY_KEY" | base64 --decode > "$RUNNER_TEMP/notary.p8"
+          # (base64 twice when it was stored from a file picker that already gave it as base64)
+          if ! grep -q "BEGIN PRIVATE KEY" "$RUNNER_TEMP/notary.p8"; then
+            base64 --decode < "$RUNNER_TEMP/notary.p8" > "$RUNNER_TEMP/key" && mv "$RUNNER_TEMP/key" "$RUNNER_TEMP/notary.p8"
+          fi
+          grep -q "BEGIN PRIVATE KEY" "$RUNNER_TEMP/notary.p8" || { echo "::error::NOTARY_KEY isn't a .p8 key"; exit 1; }
           xcrun notarytool store-credentials vaultite-notary --key "$RUNNER_TEMP/notary.p8" --key-id "$NOTARY_KEY_ID" \
             --issuer "$NOTARY_ISSUER" --keychain "$kc"
           rm "$RUNNER_TEMP/cert.p12" "$RUNNER_TEMP/notary.p8"
