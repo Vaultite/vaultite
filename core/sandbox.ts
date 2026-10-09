@@ -77,6 +77,7 @@ export function makeSandbox(dir: string, today = localToday(), source = SAMPLE):
     const p = path.join(root, rel)
     fs.mkdirSync(path.dirname(p), { recursive: true })
     fs.writeFileSync(p, data)
+    if (!rel.startsWith(".")) { const t = editedAt(rel, today); fs.utimesSync(p, t, t) }
     files++
   }
   for (const rel of (fs.readdirSync(source, { recursive: true }) as string[]).sort()) {
@@ -110,6 +111,14 @@ function rng(seed: string) {
     pick: <T>(xs: readonly T[]) => xs[Math.floor(next() * xs.length)],
     chance: (p: number) => next() < p,
   }
+}
+
+/** When a sample file was last edited, made up so they spread out (a calendar or "Recently edited" by `updated`): the
+ *  day in its name (a daily note, a log), else one of the four weeks before today; never later than now. */
+export function editedAt(rel: string, today: string): Date {
+  const r = rng(rel), named = rel.match(/\d{4}-\d\d-\d\d/)?.[0]
+  const day = named && named <= today ? named : localToday(new Date(new Date(`${today}T12:00`).getTime() - r.int(0, 27) * 86400000))
+  return new Date(Math.min(Date.now(), new Date(`${day}T${hm(r.int(8 * 60, 22 * 60))}:00`).getTime()))
 }
 
 const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`

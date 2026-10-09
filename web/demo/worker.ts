@@ -40,7 +40,8 @@ async function tx<T>(stores: string[], fn: (t: IDBTransaction) => IDBRequest<T> 
   return new Promise((ok, no) => { t.oncomplete = () => ok(r ? r.result : undefined); t.onerror = () => no(t.error) })
 }
 
-type Meta = { day: string; sample: string; edited: boolean }
+// (times: each file's mtime, which IndexedDB's bytes don't keep: the sample's are made up, sandbox.ts editedAt)
+type Meta = { day: string; sample: string; edited: boolean; times?: Record<string, number> }
 let meta: Meta | undefined
 /** Files changed since the last save (absolute paths), saved a moment later. */
 const dirty = new Set<string>()
@@ -57,7 +58,7 @@ function save() {
     const rel = abs.slice(VAULT.length + 1)
     const st = fs.statSync(abs, { throwIfNoEntry: false })
     if (!st) return void dels.push(rel)
-    if (!st.isDirectory()) return void puts.set(rel, fs.readFileSync(abs) as Uint8Array)
+    if (!st.isDirectory()) { (meta!.times ??= {})[rel] = st.mtimeMs; return void puts.set(rel, fs.readFileSync(abs) as Uint8Array) }
     puts.set(rel, null)
     for (const name of fs.readdirSync(abs) as string[]) add(`${abs}/${name}`)
   }
@@ -79,7 +80,13 @@ async function restore() {
   if (was && was.sample === sample && (was.edited || was.day === today)) {
     const [keys, values] = await Promise.all([tx<IDBValidKey[]>(["files"], (t) => t.objectStore("files").getAllKeys()),
       tx<(Uint8Array | null)[]>(["files"], (t) => t.objectStore("files").getAll())])
-    keys!.forEach((k, i) => { const p = `${VAULT}/${k}`; if (values![i]) { fs.mkdirSync(p.replace(/\/[^/]+$/, ""), { recursive: true }); fs.writeFileSync(p, values![i]) } else fs.mkdirSync(p, { recursive: true }) })
+    keys!.forEach((k, i) => {
+      const p = `${VAULT}/${k}`, t = was.times?.[k as string]
+      if (!values![i]) return void fs.mkdirSync(p, { recursive: true })
+      fs.mkdirSync(p.replace(/\/[^/]+$/, ""), { recursive: true })
+      fs.writeFileSync(p, values![i])
+      if (t) fs.utimesSync(p, t / 1000, t / 1000)
+    })
     meta = was
   } else {
     makeSandbox(VAULT, today)

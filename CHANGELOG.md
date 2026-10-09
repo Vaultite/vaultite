@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A busy day in a calendar stays small**: a query's month shows a day's first three files and "N more" to open the
+  rest. The sandbox's files were edited over the weeks before, not all just now.
 - **Web demo opens on a bundle**: `?bundle=<id>` starts it on that bundle, and the page around it (vaultite.com's
   picker) switches bundles live; what needs a machine stays off whichever is applied.
 - **Lines between sidebar panels**: Settings > Appearance (or the palette's Toggle lines between sidebar panels) draws

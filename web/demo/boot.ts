@@ -45,7 +45,8 @@ class DemoSocket extends EventTarget {
 }
 globalThis.WebSocket = DemoSocket as unknown as typeof WebSocket
 
-/** What says it's a demo: edits stay here, Reset, and where the app is. On phones, above their bottom bar. */
+/** What says it's a demo: edits stay here, Reset, and where the app is. On phones, above their bottom bar, on two lines
+ *  when narrow. */
 function badge() {
   const style = document.createElement("style")
   style.textContent = `
@@ -53,7 +54,9 @@ function badge() {
       gap: 10px; align-items: center; padding: 4px 6px 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--card);
       color: var(--muted-foreground); font: 12px/1.5 var(--font-sans, system-ui); box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); white-space: nowrap }
     #vau-demo button { font: inherit; color: var(--foreground); padding: 2px 10px; border-radius: 999px; background: var(--muted); cursor: pointer }
-    @media (max-width: 767px) { #vau-demo { bottom: calc(max(env(safe-area-inset-bottom), 0.25rem) + 58px) } }`
+    @media (max-width: 767px) { #vau-demo { bottom: calc(max(env(safe-area-inset-bottom), 0.25rem) + 58px) } }
+    @media (max-width: 479px) { #vau-demo { flex-wrap: wrap; justify-content: center; row-gap: 4px; width: max-content; max-width: calc(100vw - 24px);
+      padding: 6px 8px; border-radius: 16px } #vau-demo > span { flex-basis: 100%; text-align: center } }`
   const bar = document.createElement("div")
   bar.id = "vau-demo"
   const button = (label: string, run: () => void) => {
@@ -63,7 +66,9 @@ function badge() {
     b.onclick = run
     return b
   }
-  bar.append("Demo: your edits stay in this browser", button("Reset", reset), button("Get the app", () => window.open("https://vaultite.com/download", "_blank", "noopener")))
+  const say = document.createElement("span")
+  say.textContent = "Demo: your edits stay in this browser"
+  bar.append(say, button("Reset", reset), button("Get the app", () => window.open("https://vaultite.com/download", "_blank", "noopener")))
   document.head.append(style)
   document.body.append(bar)
 }

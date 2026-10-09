@@ -200,7 +200,12 @@ export function cpSync(from: unknown, to: unknown, o?: Opts) {
   for (const name of n.kids.keys()) cpSync(`${a}/${name}`, `${b}/${name}`, o)
 }
 export function chmodSync() {}
-export function utimesSync() {}
+export function utimesSync(p: unknown, _atime: unknown, mtime: Date | number | string) {
+  const n = get(abs(p), "utime")
+  const ms = mtime instanceof Date ? mtime.getTime() : typeof mtime === "number" ? mtime * 1000 : Date.parse(mtime)
+  n.ns = BigInt(Math.round(ms)) * 1_000_000n
+  if (n.ns < n.born) n.born = n.ns
+}
 
 // Files open for reading (only reads: what the server opens is to look at a file's start).
 const fds = new Map<number, string>()

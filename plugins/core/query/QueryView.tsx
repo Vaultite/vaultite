@@ -497,6 +497,9 @@ const dayLabel = (d: string) => dateText(parse(d), { weekday: "short", day: "num
 
 /** A month by the query's date key: a grid of weeks (Monday first) with each file on its day, or, in a narrow card
  *  (a phone), the days that have files as a list. Drag an item to another day (desktop) to move its date there. */
+/** How many files a day of the month grid shows before "N more". */
+const DAY_ROWS = 3
+
 const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth, save }: {
   groups: { name: string | null; rows: Row[] }[]; res: Result; resolve: Resolve; month: string; setMonth: (m: string) => void
   save: (r: Row, key: string, v: unknown) => void
@@ -545,6 +548,8 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
     </button>
   )
   const agenda = [...byDay].sort(([a], [b]) => a.localeCompare(b))
+  // A busy day shows its first few, and opens to all of them, so one day doesn't stretch the month.
+  const [open, setOpen] = useState<string | null>(null)
   return (
     <div ref={box} className="@container" data-query-calendar={month} data-no-edit>
       <div className="mb-2 flex items-center gap-1">
@@ -582,7 +587,15 @@ const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth,
                     {Number(d.slice(8))}
                   </span>
                 </div>
-                <div className="space-y-0.5">{rows.map(chip)}</div>
+                <div className="space-y-0.5">
+                  {(open === d ? rows : rows.slice(0, DAY_ROWS)).map(chip)}
+                  {rows.length > DAY_ROWS && open !== d && (
+                    <button type="button" data-cal-more onClick={() => setOpen(d)}
+                      className="block w-full cursor-pointer rounded-[4px] px-1 text-left text-[12px] leading-[18px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
+                      {rows.length - DAY_ROWS} more
+                    </button>
+                  )}
+                </div>
               </div>
             )
           })}

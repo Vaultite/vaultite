@@ -1,5 +1,5 @@
-// The sandbox (core/sandbox.ts): the same twice a day, dated up to today, safe about what it replaces, and every file,
-// block and view reads without a problem.   node tools/test_sandbox.ts (npm test)
+// The sandbox (core/sandbox.ts): the same twice a day, dated up to today, edited across the weeks before, safe about
+// what it replaces, and every file, block and view reads without a problem.   node tools/test_sandbox.ts (npm test)
 import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
@@ -51,6 +51,14 @@ const y = `Logs/Sleep/${S.addDays(today, -3)} Sleep.md`
 check("sandbox: a past day's files don't change the next day", fs.readFileSync(path.join(A, y), "utf8") === fs.readFileSync(path.join(tomorrow, y), "utf8"))
 check("sandbox: a calendar's month moves by its middle day", S.shiftDates("month: 2026-09", 7) === "month: 2026-09" && S.shiftDates("month: 2026-09", 18) === "month: 2026-10")
 check("sandbox: shiftDates leaves impossible dates alone", S.shiftDates("2026-02-30 and 2026-10-02", 1) === "2026-02-30 and 2026-10-03")
+// (as of the real today: a file's edit time is never later than now)
+const D = path.join(tmp, "d"), real = S.localToday()
+S.makeSandbox(D, real)
+const edited = Object.keys(tree(D)).filter((f) => !f.startsWith(".")).map((f) => [f, fs.statSync(path.join(D, f)).mtime] as const)
+const editDays = new Set(edited.map(([, t]) => S.localToday(t)))
+check("sandbox: files were edited across the weeks before, not all just now", editDays.size >= 10 && edited.every(([, t]) => t.getTime() <= Date.now()), [...editDays])
+const named = edited.find(([f]) => f.startsWith("Daily/") && !f.includes(real))
+check("sandbox: a dated file was edited on its day", !!named && named[0].includes(S.localToday(named[1])), named)
 
 // The folder it replaces: only a sandbox or an empty folder.
 const mine = path.join(tmp, "mine")
