@@ -1,14 +1,14 @@
-// Phones: a page pulled down past its top shows three actions, Chrome's: New note at the left, Refresh in the middle,
-// Close tab at the right. The finger picks one by going left or right, and letting go far enough runs it.
+// Phones: a page pulled down past its top shows three actions: New note at the left, Commands (the palette) in the
+// middle, Close tab at the right. The finger picks one by going left or right, and letting go far enough runs it.
 import { useEffect, useRef, useState } from "react"
-import { FilePlus, RotateCw, X, type LucideIcon } from "lucide-react"
+import { Command, FilePlus, X, type LucideIcon } from "lucide-react"
 import { haptic } from "@/core/haptics"
 import { cn } from "@/lib/utils"
 
-type Pick = "new" | "refresh" | "close"
+type Pick = "new" | "commands" | "close"
 const ACTIONS: { id: Pick; label: string; icon: LucideIcon }[] = [
   { id: "new", label: "New note", icon: FilePlus },
-  { id: "refresh", label: "Refresh", icon: RotateCw },
+  { id: "commands", label: "Commands", icon: Command },
   { id: "close", label: "Close tab", icon: X },
 ]
 /** How far down (px) a pull must go to run what's picked; how far sideways picks the left or right one. */
@@ -36,7 +36,7 @@ export function PullActions({ run }: { run: (what: Pick) => void }) {
     const start = (e: TouchEvent) => {
       g.current = null
       if (e.touches.length !== 1 || scrollY > 0 || busy(e.target) || document.querySelector("dialog[open]")) return
-      g.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, pick: "refresh", on: false }
+      g.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, dy: 0, pick: "commands", on: false }
     }
     const move = (e: TouchEvent) => {
       const p = g.current
@@ -48,7 +48,7 @@ export function PullActions({ run }: { run: (what: Pick) => void }) {
         if (dy < 12) return
         p.on = true
       }
-      const pick: Pick = dx < -SIDE ? "new" : dx > SIDE ? "close" : "refresh"
+      const pick: Pick = dx < -SIDE ? "new" : dx > SIDE ? "close" : "commands"
       if ((dy >= FAR) !== (p.dy >= FAR) || (dy >= FAR && pick !== p.pick)) haptic("selection")
       p.dy = Math.max(0, dy)
       p.pick = pick
@@ -83,7 +83,7 @@ export function PullActions({ run }: { run: (what: Pick) => void }) {
           <span key={id} data-pull={id} data-on={on || undefined} className="flex w-16 flex-col items-center gap-1">
             <span className={cn("grid size-11 place-items-center rounded-full transition-[background-color,color,scale] duration-150",
               on ? "scale-110 bg-primary text-primary-foreground" : "bg-foreground/[0.07] text-muted-foreground")}>
-              <Icon className="size-[21px]" strokeWidth={2} style={id === "refresh" && !ready ? { transform: `rotate(${k * 270}deg)` } : undefined} />
+              <Icon className="size-[21px]" strokeWidth={2} />
             </span>
             <span className={cn("text-[12px] whitespace-nowrap", on ? "text-foreground" : "text-muted-foreground")}>{label}</span>
           </span>

@@ -186,7 +186,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   to an app's tab never shows the desktop through it: the window stays behind the window while its tab is hidden
   (when nothing would show it), and the tab turns see-through only once the window is in place.
 - **Phone tabs like a browser's**: drag the bottom bar up and the page shrinks after your finger into the tab list;
-  pull a page down from its top for New note, Refresh or Close tab (go left or right to pick). The tab list's top
+  pull a page down from its top for New note, the command palette or Close tab (go left or right to pick). The tab list's top
   line is Chrome's: search the tabs, the workspace in the middle (its menu; swipe the list sideways for the next one),
   More (select tabs, close others, close all). The list opens and closes like Chrome's and Safari's: the page's
   picture flies between the page and its card on a spring while the other cards settle around it, with no blank

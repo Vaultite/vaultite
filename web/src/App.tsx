@@ -554,8 +554,8 @@ export default function App() {
         <PhoneBar system={SYSTEM_PAGES} active={active} listOpen={detail === "tabs"}
           onSearch={() => setSearching(true)} onCommands={() => setPalette("commands")} onNewNote={newNote} />
       )}
-      {/* Phones: a page pulled down from its top: New note, Refresh, Close tab. */}
-      {!desktop && store && <PullActions run={(w) => (w === "new" ? void newNote() : w === "refresh" ? void reload() : closeTab(activeTab().id))} />}
+      {/* Phones: a page pulled down from its top: New note, Commands, Close tab. */}
+      {!desktop && store && <PullActions run={(w) => (w === "new" ? void newNote() : w === "commands" ? setPalette("commands") : closeTab(activeTab().id))} />}
       {!desktop && store && <PhoneDrawers store={store} file={filePath} tab={targetOf(tab)} vaultName={vaultName} vaultMenu={vaultMenu} />}
     </>
   )

@@ -159,11 +159,12 @@ await drag(195, H - 25, 195, H - 55)
 s = await settled()
 check("bar dragged a little: springs back, no tab list", (await zooms()) === n && !(await P.isVisible("[data-tab-card]")) && clean(s), s)
 
-// The page pulled down from its top: New note, Refresh, Close tab, picked by going sideways.
+// The page pulled down from its top: New note, Commands, Close tab, picked by going sideways.
 const t0 = await title(), c0 = await count()
 const pulled = await drag(195, 300, 195, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
 await wait(400)
-check("pull down: Refresh picked in the middle, the tab stays", pulled.join() === "refresh" && (await title()) === t0 && (await count()) === c0, { pulled, t: await title() })
+check("pull down: Commands picked in the middle opens the palette, the tab stays", pulled.join() === "commands" && (await P.locator("[role=dialog][aria-label=\"Command palette\"]").count()) > 0 && (await title()) === t0 && (await count()) === c0, { pulled, t: await title() })
+await P.keyboard.press("Escape"); await wait(300)
 check("pull down: the page back in place", !(await P.evaluate(() => document.querySelector("#main-scroll > main")?.style.transform)) && !(await P.locator("[data-pull-actions]").count()))
 const right = await drag(195, 300, 300, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
 await wait(600)
