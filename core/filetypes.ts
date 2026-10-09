@@ -44,8 +44,8 @@ export function kindOf(path: string): FileKind {
 /** Kinds whose text the app reads (and writes); "other" is tried as text too. */
 export const isTextKind = (k: FileKind) => k === "markdown" || k === "json" || k === "notebook" || k === "code"
 
-/** Bigger than this isn't opened as text at all (the card instead). */
-export const TEXT_MAX = 8 << 20
+/** A file too big for JavaScript to hold as one buffer or string (around 512 MB): no limit of ours, the card instead. */
+export const tooBig = (e: unknown) => e instanceof RangeError || (e as { code?: string })?.code === "ERR_STRING_TOO_LONG"
 
 /** The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes). */
 export function contentType(path: string) {

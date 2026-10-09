@@ -500,8 +500,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   print a Markdown list; `vau terminal` replaces `ls`; `vau clip --html -` reads stdin.
 
 ### Fixed
-- **Big files stay editable**: a file over 1 MB (an Excalidraw drawing with images, a long note) no longer opens
-  read-only.
+- **Big files open and edit at any size**: a file over 1 MB (an Excalidraw drawing with images, a long note) no longer
+  opens read-only, nor one over 8 MB as a card; typing in a 16 MB note is as quick as in a short one.
 - **Agent hooks reach a server on its own address**: with `HOST` set to one address, the inbox's and Activity's hooks
   post there instead of to 127.0.0.1, which nothing answered.
 - **iPhone: never a blank screen**: a server's page that doesn't load (unreachable, or reloaded after iOS ended the page

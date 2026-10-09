@@ -1,9 +1,10 @@
 // The status bar (desktop, bottom right): plugins' ambient items, then the view and the word count of the file in the focused pane's active tab,
 // published by its view (usePublish), and plugins' status items.
-import { useDeferredValue, useLayoutEffect, useMemo, useRef, type MouseEvent, type ReactNode } from "react"
+import { useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { checklist, menuAbove, menuFor } from "@/components/ContextMenu"
 import { Catch, Drawn } from "@/components/Guard"
 import { MODES, status_, statusSubs, VIEWS } from "@/components/fileState"
+import { countText, type Counts } from "@/core/counts"
 import { numberText } from "@/core/data"
 import type { OpenFile } from "@/core/define"
 import { joinFm } from "@/core/files"
@@ -11,13 +12,10 @@ import { kindOf } from "@/core/filekinds"
 import { ambientItems, statusItems, usePluginsVersion } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { defaultOrder, keyList, placeKey } from "../../../core/slots.ts"
-import { withoutBlocks } from "../../../core/sections.ts"
 
-/** A notebook's cells (0 while its JSON doesn't parse). */
-const cells = (t: string) => { try { const c = JSON.parse(t).cells; return Array.isArray(c) ? c.length : 0 } catch { return 0 } }
-const words = (t: string) => t.match(/[\p{L}\p{N}][\p{L}\p{N}'’_-]*/gu)?.length ?? 0
-/** A note's text without its blocks (```block-person```: views, not words), so a dashboard doesn't count its fences. */
-const prose = (t: string) => withoutBlocks(t)
+/** Past this, a file's counts and plugins' items wait for typing to pause, and the counts are made in a worker: a 16 MB
+ *  note's take seconds. */
+const BIG = 1 << 20
 
 /** The plugins' ambient items the bar shows (appearance `statusBar`, else the ones not hidden), and all of them. */
 function ambientShown(disabled: string[], order: string[], saved: string[] | null) {
@@ -44,7 +42,7 @@ export function StatusBar() {
   const ambient = useMemo(() => ambientShown(disabled, order, statusBar).shown, [disabled, order, enabled, statusBar, plugins])
   // Counted after the keystroke is on screen: a long note's count takes a few milliseconds. The file comes late with
   // its text, so a file just opened is never measured (Steady) with the last one's counts.
-  const late = useDeferredValue(s)
+  const late = useSettled(s)
   const body = late?.body ?? "", fm = late?.fm ?? ""
   const head = late?.head, path = late?.path ?? ""
   // What plugins' items get: the file as typed (theirs are drawn after the keystroke too).
@@ -52,11 +50,7 @@ export function StatusBar() {
   const text = !!late && !late.info && !late.says
   const code = !!late && /^(code|other|notebook)$/.test(kindOf(path))
   const nb = !!late && /\.ipynb$/i.test(path)
-  const counts = useMemo(() => {
-    if (!text) return null
-    const t = code ? body : prose(body)
-    return { words: code ? 0 : words(t), chars: t.replace(/^\n+|\n+$/g, "").length, lines: body.replace(/\n$/, "").split("\n").length, cells: nb ? cells(body) : 0 }
-  }, [body, text, code, nb])
+  const counts = useCounts(path, body, text, code, nb)
   // (a plugin's item that throws is left out, its error in Errors: the bar is on every desktop tab, so it'd stop the app)
   const item_ = (key: string, draw: () => ReactNode) => <Catch key={key} reset={path} fallback={() => null}><Drawn draw={draw} /></Catch>
   const bar = "fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center gap-2 rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] text-muted-foreground tabular-nums md:flex"
@@ -92,6 +86,33 @@ export function StatusBar() {
       </Steady>
     </div>
   )
+}
+
+/** The file as it is, a moment after each keystroke; a big one's once typing pauses (another file's at once). */
+function useSettled(s: typeof status_) {
+  const deferred = useDeferredValue(s)
+  const big = (s?.body.length ?? 0) > BIG
+  const [settled, setSettled] = useState(s)
+  useEffect(() => { if (!big) return; const t = setTimeout(() => setSettled(s), 700); return () => clearTimeout(t) }, [s, big])
+  return big && settled?.path === s?.path ? settled : deferred
+}
+
+let worker: Worker | null = null, asked = 0
+/** The counts of the file's text: a big file's from the worker, none until it answers. */
+function useCounts(path: string, body: string, text: boolean, code: boolean, nb: boolean): Counts | null {
+  const big = body.length > BIG
+  const now = useMemo(() => (text && !big ? countText(body, code, nb) : null), [body, text, big, code, nb])
+  const [late, setLate] = useState<{ path: string; counts: Counts } | null>(null)
+  useEffect(() => {
+    if (!text || !big) return
+    const w = worker ??= new Worker(new URL("../core/counts.worker.ts", import.meta.url), { type: "module" })
+    const id = ++asked
+    const on = (e: MessageEvent<{ id: number; counts: Counts }>) => { if (e.data.id === id) setLate({ path, counts: e.data.counts }) }
+    w.addEventListener("message", on)
+    w.postMessage({ id, body, code, nb })
+    return () => w.removeEventListener("message", on)
+  }, [path, body, text, big, code, nb])
+  return !text ? null : big ? (late?.path === path ? late.counts : null) : now
 }
 
 /** The bar's counts, which never narrow while one file is open: as you type, what's left of them stays put. */

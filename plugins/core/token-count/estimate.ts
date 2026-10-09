@@ -3,7 +3,18 @@
 
 const PIECE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]|[\p{L}\p{M}]+|\p{N}+|[ \t]+|\n+|[\p{P}\p{S}]+|[^]/gu
 
+/** Past this, a text is estimated from evenly spaced samples, scaled up: a 16 MB note's takes milliseconds, not seconds. */
+const SAMPLE_PAST = 1 << 20, SAMPLES = 64, SAMPLE = 8192
+
 export function estimateTokens(text: string): number {
+  if (text.length <= SAMPLE_PAST) return Math.round(count(text))
+  const step = text.length / SAMPLES
+  let n = 0
+  for (let i = 0; i < SAMPLES; i++) n += count(text.slice(Math.floor(i * step), Math.floor(i * step) + SAMPLE))
+  return Math.round(n * text.length / (SAMPLES * SAMPLE))
+}
+
+function count(text: string): number {
   let n = 0
   for (const [p] of text.matchAll(PIECE)) {
     const c = p.charCodeAt(0), len = p.length
@@ -15,7 +26,7 @@ export function estimateTokens(text: string): number {
     else if (/^[\x21-\x7e]+$/.test(p)) n += Math.ceil(len / 2)
     else n += len // emoji and other symbols: a token or more each
   }
-  return Math.round(n)
+  return n
 }
 
 /** "~840 tokens", "~1.2k tokens", "~35k tokens", "~1.4M tokens". */

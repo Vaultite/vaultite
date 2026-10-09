@@ -1,11 +1,12 @@
 // A file's autosave (the file view, a canvas's note cards): saved 600 ms after typing stops, on top of a save on its
 // way; changes on disk merged in (3-way); what's pending sent when the view goes.
 import { useEffect, useLayoutEffect, useState } from "react"
-import { request } from "@/core/http"
+import { get, request } from "@/core/http"
 import { deletedHere, gone, moveMark, readFile, stem, whereNow, type FileText } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { merge3 } from "@/core/merge"
 import { notify } from "@/core/notify"
+import { LEAN_PAST, textHash } from "../../../core/texthash.ts"
 
 export type SaveStatus = { kind: "ok" } | { kind: "error"; message: string } | { kind: "conflict"; theirs: FileText } | { kind: "invalid"; message: string }
 
@@ -44,10 +45,24 @@ function makeAutosave(path: string, initial: string, options: Options) {
   let saving = false, again = false, recheck = false
   let status: SaveStatus = { kind: "ok" }
   const tell = (s: SaveStatus) => { status = s; o.current.onStatus(s) }
+  /** A save: a big file's sends its base's fingerprint, the base only if the server asks (it changed on disk), and gets
+   *  back no copy of its own text. */
+  const put = async (text: string, base: string | null, init?: RequestInit) => {
+    const lean = base !== null && (text.length > LEAN_PAST || base.length > LEAN_PAST)
+    let r = await request("PUT", "file", lean ? { path: where(), text, baseHash: textHash(base), lean } : { path: where(), text, base }, init)
+    if (r.status === 412) r = await request("PUT", "file", { path: where(), text, base, lean }, init)
+    return r
+  }
+  /** The server's answer, with the text it left out (the same as sent). */
+  const answer = async (r: Response, sent: string): Promise<FileText & { error?: string }> => {
+    const j = await r.json()
+    return j.same ? { ...j, text: sent } : j
+  }
 
   const s = {
-    /** What the server has: the base for merges. */
+    /** What the server has: the base for merges; and when it was written, once known. */
     disk: initial,
+    mtime: 0,
     /** The save on its way, so a later save or the last flush builds on it. */
     inflight: null as { text: string; done: Promise<void> } | null,
     alive: true,
@@ -89,11 +104,12 @@ function makeAutosave(path: string, initial: string, options: Options) {
       let finish = () => {}
       s.inflight = { text: sent, done: new Promise<void>((r) => { finish = r }) }
       try {
-        const r = await request("PUT", "file", { path: where(), text: sent, base })
-        const j = await r.json()
+        const r = await put(sent, base)
+        const j = await answer(r, sent)
         if (r.status === 409) return tell({ kind: "conflict", theirs: j })
         if (!r.ok) throw new Error(j.error || r.statusText)
         o.current.onDisk?.(j)
+        s.mtime = j.mtime
         const now = o.current.text()
         if (j.text === sent || now === sent) {
           s.disk = j.text
@@ -129,6 +145,8 @@ function makeAutosave(path: string, initial: string, options: Options) {
       recheck = false
       const before = s.disk
       try {
+        // (a big file is read again only when it changed since: the change is often this view's own save)
+        if (!known && s.mtime && before.length > LEAN_PAST && (await get<{ mtime: number }>(`file/info?path=${encodeURIComponent(where())}`)).mtime === s.mtime) return
         const r = known ?? await readFile(where())
         // Anything saved meanwhile makes this answer old: the save brought the new text.
         if (!s.alive || s.disk !== before || saving || timer || s.conflict || r.text === before) return
@@ -136,6 +154,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
         const merged = now === before ? r.text : merge3(before, now, r.text)
         if (merged === null) return tell({ kind: "conflict", theirs: r })
         s.disk = r.text
+        s.mtime = r.mtime
         o.current.onDisk?.(r)
         o.current.apply(merged)
         if (merged !== r.text) s.changed()
@@ -161,8 +180,9 @@ function makeAutosave(path: string, initial: string, options: Options) {
     flush(base: string, say: boolean) {
       const text = o.current.text()
       if (text === base || o.current.readOnly || (o.current.json && parses(text))) return
-      const put = async (base: string | null) => {
-        const r = await request("PUT", "file", { path: where(), text, base }, { keepalive: true })
+      // (keepalive takes 64 KB at most: a bigger save is a plain one, which a closed window may cut short)
+      const send = async (base: string | null) => {
+        const r = await put(text, base, { keepalive: text.length < 60_000 })
         if (r.status === 409) throw Object.assign(new Error("it changed elsewhere in the same lines"), { conflict: true })
         if (!r.ok) throw Object.assign(new Error((await r.json().catch(() => ({}))).error ?? r.statusText), { gone: r.status === 404 })
       }
@@ -170,15 +190,15 @@ function makeAutosave(path: string, initial: string, options: Options) {
       const unsaved = (e: unknown) => {
         const mine = !!(e as { conflict?: boolean }).conflict
         notify(`Couldn't save ${stem(path)}: ${(e as Error).message ?? e}`, { kind: "error", duration: 15_000, id,
-          action: { label: mine ? "Keep mine" : "Try again", run: async () => { await put(mine ? null : base); saved() } } })
+          action: { label: mine ? "Keep mine" : "Try again", run: async () => { await send(mine ? null : base); saved() } } })
       }
       if (s.conflict) { if (say) unsaved({ message: "it changed elsewhere in the same lines", conflict: true }); return }
-      put(base).catch((e) => {
+      send(base).catch((e) => {
         if (!say) return
         if (!(e as { gone?: boolean }).gone) unsaved(e)
         // (deleted in the app meanwhile: that's what the user did; elsewhere: the edits are offered back)
         else if (!deletedHere(path)) notify(`${stem(path)} was moved or deleted before your last edits were saved`, {
-          kind: "error", duration: 15_000, id, action: { label: "Save them", run: async () => { await put(null); saved() } },
+          kind: "error", duration: 15_000, id, action: { label: "Save them", run: async () => { await send(null); saved() } },
         })
       })
     },

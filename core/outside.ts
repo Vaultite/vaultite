@@ -2,7 +2,7 @@
 // app allowed over IPC (never a URL) can be read or written, so the web version answers 404 for every absolute path.
 import fs from "node:fs"
 import path from "node:path"
-import { kindOf, TEXT_MAX } from "./filetypes.ts"
+import { kindOf, tooBig } from "./filetypes.ts"
 import { HTTPError, reply } from "./plugins.ts"
 import { merge3 } from "./textedit.ts"
 import { readText, writeAtomic } from "./vault.ts"
@@ -50,11 +50,11 @@ function read(p: string) {
   let text: string, st: fs.Stats
   try {
     st = fs.statSync(p)
-    if (st.size > TEXT_MAX) throw new HTTPError(413, `'${p}' is too big to open as text`)
     text = readText(p)
     if (text.includes("\0")) throw new TypeError("binary")
   } catch (e) {
     if (e instanceof HTTPError) throw e
+    if (tooBig(e)) throw new HTTPError(413, `'${p}' is too big to open as text`)
     if (e instanceof TypeError) throw new HTTPError(415, `'${p}' isn't text`)
     throw new HTTPError(404, `no file '${p}'`)
   }

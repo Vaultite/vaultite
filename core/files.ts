@@ -4,9 +4,10 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive, inPagesDir } from "./fileprops.ts"
-import { isTextKind, kindOf, TEXT_MAX } from "./filetypes.ts"
+import { isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, SearchError } from "./searchquery.ts"
 import { merge3, patchFrontmatter } from "./textedit.ts"
+import { textHash } from "./texthash.ts"
 import { dump, load } from "./yaml.ts"
 import { blocksIn } from "./sections.ts"
 import { tabNames } from "./tabs.ts"
@@ -224,7 +225,8 @@ function textOf(data: Buffer) {
   if (data.subarray(0, 8000).includes(0)) return null
   try {
     return utf8.decode(data).replace(/\r\n?/g, "\n")
-  } catch {
+  } catch (e) {
+    if (tooBig(e)) throw e
     return null
   }
 }
@@ -234,13 +236,14 @@ export function read(vault: Vault, rel: string) {
   try {
     st = fs.statSync(vault.abs(rel), { bigint: true })
     if (st.isDirectory()) throw new HTTPError(400, `'${rel}' is a folder`)
-    if (Number(st.size) > TEXT_MAX) throw new HTTPError(413, `'${rel}' is too big to open as text`)
     data = fs.readFileSync(vault.abs(rel))
   } catch (e) {
     if (e instanceof HTTPError) throw e
+    if (tooBig(e)) throw new HTTPError(413, `'${rel}' is too big to open as text`)
     throw new HTTPError(404, `no file '${rel}'`)
   }
-  const text = textOf(data)
+  let text: string | null
+  try { text = textOf(data) } catch { throw new HTTPError(413, `'${rel}' is too big to open as text`) }
   if (text === null) throw new HTTPError(415, `'${rel}' isn't text`)
   const e = vault.entries.get(rel)
   return { path: rel, text, mtime: ms(st.mtimeNs), size: Number(st.size), kind: e && e.kind ? e.kind.collection : null, problems: e ? [...e.problems] : [] }
@@ -250,7 +253,7 @@ export function read(vault: Vault, rel: string) {
 async function downloaded(vault: Vault, rel: string, wait = 10_000) {
   let st: fs.Stats
   try { st = fs.statSync(vault.abs(rel)) } catch { return }
-  if (st.isDirectory() || st.size > TEXT_MAX) return
+  if (st.isDirectory()) return
   if (await readSoon(vault.abs(rel), wait).catch(() => true) === null) throw new HTTPError(503, `iCloud is still downloading ${rel}; try again in a moment`)
 }
 
@@ -259,7 +262,7 @@ function writable(vault: Vault, rel: string) {
   if (isTextKind(kindOf(rel))) return true
   try {
     const st = fs.statSync(vault.abs(rel))
-    return st.isFile() && st.size <= TEXT_MAX && textOf(fs.readFileSync(vault.abs(rel))) !== null
+    return st.isFile() && textOf(fs.readFileSync(vault.abs(rel))) !== null
   } catch {
     return false
   }
@@ -555,9 +558,13 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       } catch {
         cur = null
       }
-      const base = body.base ?? null
+      const base = body.base ?? null, baseHash = typeof body.baseHash === "string" ? body.baseHash : null, sent = text
       // An editor saving a file that was deleted or moved meanwhile: don't bring it back.
-      if (cur === null && base !== null) throw new HTTPError(404, `${rel} isn't in the vault any more (moved or deleted)`)
+      if (cur === null && (base !== null || baseHash !== null)) throw new HTTPError(404, `${rel} isn't in the vault any more (moved or deleted)`)
+      // A big file's save sends its base's fingerprint: the base itself only when the file changed on disk, to merge.
+      if (cur !== null && base === null && baseHash !== null && cur !== text && textHash(cur) !== baseHash) {
+        return reply(412, { error: "the file changed on disk: send its base to merge" })
+      }
       if (cur !== null && base !== null && cur !== base && cur !== text) {
         const merged = merge3(base, text, cur)
         if (merged === null) return reply(409, { error: "the file changed on disk in the same place", ...read(vault, rel) })
@@ -567,7 +574,10 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       valid(rel, text)
       if (cur !== text) writeAtomic(vault.abs(rel), cur !== null && crlf(vault.abs(rel)) ? text.replace(/\n/g, "\r\n") : text)
       await vault.sync() // plugins may fill things in (a note's id and dates): the editor gets the result
-      return read(vault, rel)
+      const f = read(vault, rel)
+      // (a big file's text back only when it isn't what was sent)
+      if (body.lean && f.text === sent) { const { text: _, ...rest } = f; return { ...rest, same: true } }
+      return f
     }
   }
   if (route === "timeline" && method === "POST") {
