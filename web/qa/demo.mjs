@@ -1,6 +1,6 @@
 // The web demo (npm run build:demo): the app with its server in the browser. Serves web/dist-demo under /demo/ (or uses
 // <base url>) and checks, in Chrome and WebKit, it starts, opens a note, Today and search, keeps an edit across a reload,
-// refuses a plugin that needs a machine, and that Reset brings the sample back.
+// refuses a plugin that needs a machine, opens on a bundle (?bundle=), and that Reset brings the sample back.
 // WRITES: only the browser profile it makes.
 //   node web/qa/demo.mjs [<base url>]
 import fs from "node:fs"
@@ -60,6 +60,13 @@ async function visit(name, browser) {
 
   const refused = await api("PATCH", "config/plugins", { disabled: [] })
   is("a plugin that needs a machine isn't turned on", refused.status === 403 && /needs the Vaultite app/.test(refused.json?.error), refused)
+
+  await page.goto("about:blank")
+  await page.goto(`${base}?bundle=everything`)
+  await drawn()
+  const bundles = (await api("GET", "bundles")).json, plugins = (await api("GET", "config/plugins")).json
+  is("?bundle= starts on that bundle, what needs a machine still off", bundles?.previous?.bundle === "everything" && !plugins?.enabled?.includes("machines"),
+    { previous: bundles?.previous, enabled: plugins?.enabled })
 
   const MARK = "Edited in the demo"
   await open("Notes/Lisbon trip.md")

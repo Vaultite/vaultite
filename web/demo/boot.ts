@@ -77,7 +77,29 @@ async function reset() {
   location.replace(location.pathname)
 }
 
+/** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id> opens on that bundle, and a message from
+ *  the page switches it, both only from the demo's own site. The page hears which one is on. */
+async function bundles() {
+  const api = (path: string, body?: unknown) => fetch(`api/${path}`, body === undefined ? undefined
+    : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json())
+  const tell = (bundle: string | null) => { if (parent !== window) parent.postMessage({ type: "vaultite-demo:bundle", bundle }, location.origin) }
+  const asked = new URLSearchParams(location.search).get("bundle")
+  let on: string | null = (await api("bundles")).previous?.bundle ?? null
+  if (asked && asked !== on) { const r = await api(`bundles/${encodeURIComponent(asked)}/apply`, { workspace: null, allowCode: false }); if (!r.error) on = asked }
+  tell(on)
+  addEventListener("message", async (e) => {
+    if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:apply" || typeof e.data.bundle !== "string") return
+    const { previewOf, applyBundle } = await import("@/core/bundles")
+    try {
+      const { bundle, plan } = await previewOf(e.data.bundle)
+      if (!plan.empty) await applyBundle(bundle, plan)
+      on = e.data.bundle
+    } finally { tell(on) }
+  })
+}
+
 await navigator.serviceWorker.register("sw.js", { scope: "./" })
 if (!navigator.serviceWorker.controller) await new Promise((ok) => navigator.serviceWorker.addEventListener("controllerchange", ok, { once: true }))
 await ready
+await bundles().catch(() => {}) // (the demo opens either way)
 badge()

@@ -17,3 +17,6 @@ vault. Static files in `web/dist-demo/`, relative paths, so any host serves them
   backend left out, and turning it on is refused with "needs the Vaultite app".
 - The app's own files the server reads (manifests, docs, pages, bundles, the sample) are mounted at `/app` as in the
   repo (`mount.ts`); each server module's `import.meta.url` says where it is there.
+- **Bundles**: the demo's copies of the built-in bundles have what needs a machine taken out (worker.ts `machineOff`),
+  so applying one never turns it on. `?bundle=<id>` and the page around it (vaultite.com's picker: a
+  `vaultite-demo:apply` message, same origin only) choose one; the demo answers `vaultite-demo:bundle` with the one on.

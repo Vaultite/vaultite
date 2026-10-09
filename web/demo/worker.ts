@@ -16,6 +16,17 @@ import type { IncomingMessage } from "node:http"
 
 const VAULT = "/Sandbox"
 
+/** What needs a machine stays off (machine.ts): in the sandbox's setup, and in every bundle the visitor applies. */
+function machineOff(file: string) {
+  const cfg = JSON.parse(fs.readFileSync(file, "utf8") as string)
+  cfg.disabled = [...new Set([...(cfg.disabled ?? []), ...MACHINE])]
+  cfg.enabled = (cfg.enabled ?? []).filter((id: string) => !MACHINE.includes(id))
+  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n")
+}
+for (const id of fs.readdirSync("/app/bundles") as string[]) {
+  if (fs.existsSync(`/app/bundles/${id}/plugins.json`)) machineOff(`/app/bundles/${id}/plugins.json`)
+}
+
 // ---------- the vault, kept in IndexedDB ----------
 const db = new Promise<IDBDatabase>((ok, no) => {
   const r = indexedDB.open("vaultite-demo", 1)
@@ -73,11 +84,7 @@ async function restore() {
   } else {
     makeSandbox(VAULT, today)
     fs.rmSync(`${VAULT}/${MARKER}`) // (the app's "changes here are lost" notice: here they're kept until Reset)
-    // What needs a machine starts off (machine.ts).
-    const file = `${VAULT}/.vaultite/plugins.json`, cfg = JSON.parse(fs.readFileSync(file, "utf8") as string)
-    cfg.disabled = [...new Set([...cfg.disabled, ...MACHINE])]
-    cfg.enabled = cfg.enabled.filter((id: string) => !MACHINE.includes(id))
-    fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n")
+    machineOff(`${VAULT}/.vaultite/plugins.json`)
     await tx(["files"], (t) => t.objectStore("files").clear())
     meta = { day: today, sample, edited: false }
     dirty.add(VAULT)

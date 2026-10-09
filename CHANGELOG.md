@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Web demo opens on a bundle**: `?bundle=<id>` starts it on that bundle, and the page around it (vaultite.com's
+  picker) switches bundles live; what needs a machine stays off whichever is applied.
 - **Lines between sidebar panels**: Settings > Appearance (or the palette's Toggle lines between sidebar panels) draws
   a line between the sidebars' panels; off by default.
 - **Properties start folded**: in reading and editing, a note's Properties are one line until you open them; a file
