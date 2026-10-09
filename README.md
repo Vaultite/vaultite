@@ -4,7 +4,7 @@
 </h1>
 
 <p align="center">
-  Your personal knowledge base and wiki, in plain Markdown files you own, collaborating with your AI.
+  <b>Own your memories.</b> A local knowledge base you and your AI write together, in plain Markdown files.
   <br>
   <a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg">Download</a>
   (<a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg">Intel</a>)
