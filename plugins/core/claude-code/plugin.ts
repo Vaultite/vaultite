@@ -504,7 +504,7 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
 })
 
 /** Its live sessions' context and cache, by terminal (the service "agent-meters:claude"): the last request in each
- *  transcript; the window is what the status line said (<account>/usage-snapshots/<id>.json, when one writes it), else
+ *  transcript; the window is what the status line said (<account>/usage-snapshots/<id>.json, or ~/.claude's), else
  *  200k, or 1M once a request read more. A process's terminal is asked once, a transcript read again only once it grew. */
 const terminals = new Map<string, string>() // pid@start -> terminal
 const lastRead = new Map<string, { size: number; meter: Omit<AgentMeter, "terminal" | "window"> | null }>()
@@ -528,7 +528,11 @@ plugin.provide("agent-meters:claude", async (): Promise<AgentMeter[]> => {
       const found = sessionFile(sid, true), m = found && lastRequest(found.file)
       if (!m) continue
       let window = 0
-      try { window = Number(JSON.parse(fs.readFileSync(path.join(a.dir, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0 } catch { /* none */ }
+      // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
+      for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
+        try { window = Number(JSON.parse(fs.readFileSync(path.join(dir, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0 } catch { /* none */ }
+        if (window) break
+      }
       out.push({ terminal, ...m, window: window || (m.tokens > 200_000 ? 1_000_000 : 200_000) })
     }
   }

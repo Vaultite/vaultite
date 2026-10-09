@@ -7,6 +7,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Context ring on 1M sessions**: a Claude Code session with a 1M context no longer shows red near 200k when its status
+  line writes to `~/.claude` under another account.
 - **A default place per workspace**: pick the machine and account new terminals, agents (Open Claude Code, ⌘J) and
   dispatches open at there (right-click the dispatch button, Default in <workspace>, or "Choose where new terminals and
   agents open"); the button shows where, and a machine that's away gives way to this one. ⌃` opens a terminal here.
