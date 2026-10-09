@@ -1,6 +1,6 @@
 // A plugin's settings sheet, the one place its options live: its `settingsPanel`, then a form of its declared
 // settings (choosing the default removes the key), or its settings file drawn. No menus inside: choices unfold.
-import { useEffect, useMemo, useState } from "react"
+import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
 import { type Store, useStore } from "@/core/data"
 import { get, patch, put } from "@/core/http"
@@ -231,20 +231,26 @@ function NumberField({ k, d, value, set }: { k: string; d: SettingDecl; value: u
 /** A text, or a list written as one (comma-separated). Saved on Enter or leaving it; emptied, it's the default again. */
 function TextField({ k, d, value, set, list }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void; list: boolean }) {
   const [typed, setTyped] = useState<string | null>(null)
-  const asText = (v: unknown) => (Array.isArray(v) ? v.join(", ") : typeof v === "string" || typeof v === "number" ? String(v) : "")
+  // (a list is comma-separated, or one item per line when its items may hold commas: `lines`)
+  const lines = list && d.lines === true, sep = lines ? "\n" : ", "
+  const asText = (v: unknown) => (Array.isArray(v) ? v.join(sep) : typeof v === "string" || typeof v === "number" ? String(v) : "")
   const text = typed ?? asText(value)
   const save = () => {
     if (typed === null) return
     const t = typed.trim()
-    set(list ? (t ? t.split(",").map((s) => s.trim()).filter(Boolean) : null) : t)
+    set(list ? (t ? t.split(lines ? /\r?\n/ : ",").map((s) => s.trim()).filter(Boolean) : null) : t)
     setTyped(null)
   }
+  const keys = (e: KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !lines) { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) }
+  }
   return (
-    <SettingRow stack label={d.label} sub={capitalize(d.description) + (list ? " (separate them with commas)" : "")} data-setting={k}>
-      <input aria-label={d.label} value={text} placeholder={asText(d.default)} spellCheck={false} autoComplete="off"
-        onChange={(e) => setTyped(e.target.value)} onBlur={save}
-        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { e.stopPropagation(); setTyped(null) } }}
-        className={cn(field, "w-full sm:w-48")} />
+    <SettingRow stack label={d.label} sub={capitalize(d.description) + (lines ? " (one per line)" : list ? " (separate them with commas)" : "")} data-setting={k}>
+      {lines
+        ? <textarea aria-label={d.label} value={text} placeholder={asText(d.default)} spellCheck={false} autoComplete="off" rows={Math.min(8, Math.max(3, text.split("\n").length + 1))}
+          onChange={(e) => setTyped(e.target.value)} onBlur={save} onKeyDown={keys} className={cn(field, "h-auto w-full resize-y py-1.5 font-mono md:h-auto sm:w-72")} />
+        : <input aria-label={d.label} value={text} placeholder={asText(d.default)} spellCheck={false} autoComplete="off"
+          onChange={(e) => setTyped(e.target.value)} onBlur={save} onKeyDown={keys} className={cn(field, "w-full sm:w-48")} />}
     </SettingRow>
   )
 }

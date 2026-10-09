@@ -374,15 +374,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   and are found by their name, so none is made twice; the templates folder follows `templates.json`, the attachment
   folder `attachmentFolderPath`, excluded files `userIgnoreFilters`. Set one in Vaultite and it wins; `.obsidian/` is
   never written.
-- **Excluded files**: a File explorer setting; they stay files you open, but search, the graph and unlinked mentions
-  leave them out and the quick switcher lists them last.
+- **Excluded files**: a File explorer setting, one path or /regex/ per line; they stay files you open, but search, the
+  graph and unlinked mentions leave them out and the quick switcher lists them last.
 - **Attachment folder**: a File explorer setting (a folder, the top, beside the note, or a folder beside it).
 - **Each kind's folder in its settings**: People, Notes, Logs, Daily notes, Dashboards and the rest show where new ones
   go (where most are, until you pick one), and keep to it.
 - **Daily notes**: their name format and template are Today's settings; "Open today's daily note" and `vau daily` make
   one from the template.
 - **Editor settings** (Settings > Editor, `.vaultite/editor.json`, as Obsidian's): spellcheck, indent with a tab
-  (the default) or spaces, auto-pair brackets and Markdown (typing `*` over a selection wraps it), readable line length,
+  (the default) or spaces for a note not indented yet (one that is keeps its own, as VS Code does), auto-pair brackets and Markdown (typing `*` over a selection wraps it), readable line length,
   and Properties in document (visible, hidden or source). A vault's `.obsidian/app.json` sets the ones you haven't.
 - **Live preview shows only the Markdown under the cursor**: the link, bold span or embed you're in, not its whole line;
   bullets and checkboxes stay drawn while you type their line.
@@ -558,13 +558,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   it. Links in query, base and log cells go to the file closest to their row's.
 - **Any folder can be a vault**: Manage vaults on the web opens folders outside the home folder and on external drives
   (only hidden and system folders are refused), and a vault asked for that isn't there (a typo, a drive not connected)
-  is made only once you say so, in the desktop app and the server alike.
+  is made only once you say so, in the desktop app and the server alike. Managing vaults on the web answers only this
+  machine's owner.
 - **Graph as in Obsidian**: the whole graph shows files with no links, and a local graph goes 1 link out by default (up
   to 5; the Local graph panel follows the setting).
 - **Kinds and relations of your own**: a timeline takes any kind of a word or two (Other in Add: coffee, game night) and
   a person any relation (colleague); the known ones keep their icons and groups, and nothing is flagged.
-- **Bases list every file**: templates and archived files too, as in Obsidian; a database view still hides archived
-  files, and says how many ("3 archived hidden").
+- **Bases list every file Obsidian sees**: templates and archived files too, but none in a hidden folder (`.archive/`);
+  a database view still hides archived files, and says how many ("3 archived hidden").
 - **Archived means archived: true or yes**: another value (a date, maybe) no longer hides a file.
 - **Token count flags only agent files**: CLAUDE.md, AGENTS.md, ME.md, skills and the rest keep their limits; an
   ordinary note has none unless you set one.

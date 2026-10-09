@@ -486,7 +486,7 @@ export class App {
   }
 
   /** Why this request isn't this machine's owner for `what` (core/owner.ts), or "". */
-  private async ownerWhy(http: IncomingMessage, what: string) {
+  async ownerWhy(http: IncomingMessage, what: string) {
     return ownerRefusal(http, { allowRemote: false, allowUsers: [], owner: typeof http.headers["tailscale-user-login"] === "string" ? await ownerLogin() : "" }, what)
   }
 

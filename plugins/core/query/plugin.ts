@@ -42,19 +42,20 @@ const otherRec = (rel: string, st: Stat, props?: FileProps | null): Rec => ({
 type FileProps = { version: string | number; of: (rel: string) => Item }
 const fileProps = () => (plugin.service("file-props")?.() ?? null) as FileProps | null
 
-/** Every Markdown file as something to query (a base: every file, templates too, as in Obsidian), but `self`: the file
- *  the view is in (a database in Projects/ listing Projects/ doesn't list itself). */
+/** Every Markdown file as something to query (a base: every file, templates too, but none in a hidden folder like
+ *  .archive/, as in Obsidian), but `self`: the file the view is in (a database in Projects/ doesn't list itself). */
+const HIDDEN = /(^|\/)\./
 function* records(vault: Vault, o: Opts, self?: string, base = false): Generator<Rec> {
   const skip = `${templatesFolder()}/`.toLowerCase()
   const from = (Array.isArray(o?.from) ? o.from : [o?.from]).map((f) => String(f ?? "").replace(/^\/+/, "").toLowerCase())
   const keep = base || from.some((f) => f && (f.startsWith(skip) || `${f}/` === skip))
   for (const [rel, e] of vault.entries) {
-    if (rel === self || (!keep && rel.toLowerCase().startsWith(skip))) continue
+    if (rel === self || (!keep && rel.toLowerCase().startsWith(skip)) || (base && HIDDEN.test(rel))) continue
     yield recOf(rel, e)
   }
   if (!base) return
   const props = fileProps()
-  for (const [rel, st] of vault.others) if (rel !== self && (keep || !rel.toLowerCase().startsWith(skip))) yield otherRec(rel, st, props)
+  for (const [rel, st] of vault.others) if (rel !== self && (keep || !rel.toLowerCase().startsWith(skip)) && !HIDDEN.test(rel)) yield otherRec(rel, st, props)
 }
 
 /** The file a base's `this` is, by path. */

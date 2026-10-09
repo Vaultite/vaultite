@@ -53,14 +53,25 @@ export const codeStyle = HighlightStyle.define([
 ])
 
 /** The file's own indentation: a tab, or the smallest run of leading spaces (2 or 4...). */
-export function indentOf(doc: string): string {
-  let tabs = 0, min = 0
+export const indentOf = (doc: string) => ownIndent(doc) ?? "  "
+
+/** The indentation a file already uses (a tab, or the smallest run of leading spaces), or null when no line is
+ *  indented. A note's frontmatter and code blocks don't count: they're YAML's and the code's, not the writer's. */
+export function ownIndent(doc: string, note = false): string | null {
+  let tabs = 0, min = 0, fence = "", i = 0
   for (const line of doc.split("\n", 2000)) {
+    if (note && i++ === 0 && line === "---") { fence = "---"; continue }
+    if (fence) {
+      if (fence === "---" ? line === "---" || line === "..." : line.trimStart().startsWith(fence)) fence = ""
+      continue
+    }
+    const open = note ? /^\s*(`{3,}|~{3,})/.exec(line) : null
+    if (open) { fence = open[1]; continue }
     const m = /^([ \t]+)\S/.exec(line)
     if (!m) continue
     if (m[1][0] === "\t") { tabs++; continue }
     if (m[1].length >= 2 && (!min || m[1].length < min)) min = m[1].length
   }
   if (tabs && !min) return "\t"
-  return " ".repeat(Math.min(min || 2, 8))
+  return min ? " ".repeat(Math.min(min, 8)) : null
 }

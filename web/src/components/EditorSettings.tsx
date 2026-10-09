@@ -34,7 +34,7 @@ export function EditorPanel({ store }: { store: Store }) {
           </div>
         </SettingRow>
         <FlagRow k="spellcheck" label="Spellcheck" row="spellcheck" value={e.spellcheck} />
-        <SettingRow stack label="Indent" sub="What Tab puts in" data-settings-row="indent">
+        <SettingRow stack label="Indent" sub="What Tab puts in a note not indented yet; one that is keeps its own" data-settings-row="indent">
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
             <ResetButton on={editorSet("useTab") || editorSet("tabSize")} label="Reset indent"
               onClick={() => setEditor({ useTab: null, tabSize: null })} />

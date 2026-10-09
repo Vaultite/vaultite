@@ -378,6 +378,9 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   if (parts.join("/") === "ui") { const [out, status] = live.handle(method, body); return json(res, out, status) } // core/live.ts
   if (parts.join("/") === "events/stream" && method === "GET") return events.stream(events.eventsOf(vault), req, res, query) // core/events.ts
   if (parts[0] === "vaults" && !DESKTOP) {
+    // (it browses and opens any folder of this machine, drives included: only its owner, like other apps' plugins)
+    const why = await app.ownerWhy(req, "Managing vaults")
+    if (why) return json(res, { error: why }, 403)
     try {
       return json(res, await vaults.handle(method, parts, query, (body ?? {}) as Record<string, unknown>, vault.path, switchTo))
     } catch (e) {

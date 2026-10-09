@@ -12,7 +12,7 @@ import { languages } from "@codemirror/language-data"
 import { tags } from "@lezer/highlight"
 import { Compartment, EditorSelection, EditorState, Prec, Text, Transaction, type Extension, type SelectionRange } from "@codemirror/state"
 import { EditorView, keymap, placeholder, tooltips, type ViewUpdate } from "@codemirror/view"
-import { codeStyle, indentOf, languageFor } from "./languages"
+import { codeStyle, indentOf, languageFor, ownIndent } from "./languages"
 import { fenceMenu, linkHandler, livePreview, offBlocks, previewConfig, textStart, type PreviewConfig } from "./livePreview"
 import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
@@ -172,11 +172,12 @@ const wrapTyped = EditorView.inputHandler.of((view, _from, _to, text) => {
   return true
 })
 
-/** A note's editor as its settings say (editorPrefs.ts): spelling, indent, what typed characters close or wrap. */
-function writing(e: EditorSettings) {
+/** A note's editor as its settings say (editorPrefs.ts): spelling, indent (the note's own, if it has any, as VS Code
+ *  does; else the setting's), what typed characters close or wrap. */
+function writing(e: EditorSettings, doc: string) {
   const brackets = [...(e.autoPairBrackets ? ["(", "[", "{", "'", '"'] : []), ...(e.autoPairMarkdown ? ["`"] : [])]
   return [
-    indentUnit.of(e.useTab ? "\t" : " ".repeat(e.tabSize)), EditorState.tabSize.of(e.tabSize),
+    indentUnit.of(ownIndent(doc, true) ?? (e.useTab ? "\t" : " ".repeat(e.tabSize))), EditorState.tabSize.of(e.tabSize),
     EditorView.contentAttributes.of({ spellcheck: e.spellcheck ? "true" : "false" }),
     brackets.length ? [Prec.highest(EditorState.languageData.of(() => [{ closeBrackets: { brackets } }])), closeBrackets(), keymap.of(closeBracketsKeymap)] : [],
     e.autoPairMarkdown ? wrapTyped : [],
@@ -351,7 +352,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           leaving, history(),
           EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged() }),
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
-          prose.current.of(writing(settings)),
+          prose.current.of(writing(settings, doc)),
           EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
           cfg.current.of(previewConfig.of(config)),
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
@@ -460,7 +461,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     view.current?.dispatch({ effects: cfg.current.reconfigure(previewConfig.of(config)) })
   }, [config])
   useEffect(() => {
-    if (language === undefined && !code) view.current?.dispatch({ effects: prose.current.reconfigure(writing(settings)) })
+    const v = view.current
+    if (v && language === undefined && !code) v.dispatch({ effects: prose.current.reconfigure(writing(settings, v.state.doc.toString())) })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings])
   useEffect(() => {

@@ -66,7 +66,8 @@ effect, these included.
 **Editor**, `.vaultite/editor.json` (`vau settings set editor '{"useTab": false}'`), one for every device; a key it
 doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `spellcheck`: true (default) | false. `useTab`: true (default: Tab indents with a tab) | false (with `tabSize`
-  spaces). `tabSize`: 1 to 8 (default 4).
+  spaces). `tabSize`: 1 to 8 (default 4). A note already indented keeps its own (a tab or its spaces); these are for
+  one that isn't.
 - `autoPairBrackets`: true (default: `( [ {` and quotes close themselves) | false. `autoPairMarkdown`: true (default:
   `* _ ~ = `` ` `` typed over a selection wrap it, a backtick closes itself) | false.
 - `readableLineLength`: true (default: a note's lines stop at `--line-width`) | false (the pane's width).

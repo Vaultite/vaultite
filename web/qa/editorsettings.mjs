@@ -145,6 +145,14 @@ check("spellcheck off", await page.locator(".file-view .cm-content").first().get
 check(`readable line length off: the pane's width (${(await article.boundingBox()).width})`, (await article.boundingBox()).width > w0 + 100)
 await fresh(); await page.keyboard.type("- a"); await page.keyboard.press("Enter"); await page.keyboard.press("Tab"); await page.keyboard.type("b")
 check("Tab indents with 2 spaces", (await body()) === "- a\n  - b", await body())
+// A note already indented keeps its own indent, as VS Code does: the setting is for one that isn't.
+for (const [indent, name] of [["    ", "4 spaces"], ["\t", "a tab"]]) {
+  const OWN = `Qa editor/Own indent ${name}.md`
+  await write(OWN, `---\ntype: note\ntags:\n  - x\n---\n\n- a\n${indent}- b\n- c\n`)
+  await open(OWN); await cursor("- c", 0); await page.keyboard.press("Tab")
+  check(`a note indented with ${name} keeps it`, (await body()).endsWith(`${indent}- c\n`), await body())
+}
+await open(TYPING)
 await fresh(); await page.keyboard.type("(x")
 check("( doesn't close itself", (await body()) === "(x", await body())
 await fresh()

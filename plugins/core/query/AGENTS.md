@@ -68,7 +68,7 @@ its own; `this.file`, `this.folder`, `this.tags` too), `{project: this}` in a ma
 
 Database views leave out the Templates folder's notes (patterns, not things) unless `from` names it, archived files
 unless `archived: true` (how many are hidden is said), and the file the view is in. A .base lists every file, templates
-and archived ones too, as in Obsidian. "New database" in the file tree's menu makes a note named after the folder (`Recipes
+and archived ones too, but none in a hidden folder like .archive/, as in Obsidian. "New database" in the file tree's menu makes a note named after the folder (`Recipes
 database.md`) with a table of it (`from: Recipes/`), in the folder, or where new notes go when it's a kind's (People/,
 Logs/...).
 

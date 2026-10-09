@@ -868,6 +868,14 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     && keys.options.some((o) => o.label === "wide") && !keys.options.some((o) => o.label === "limit"), keys?.options.map((o) => o.label))
   const vals = at("```block-card\nview: |\n```")
   check("editor: an enum's values after its key", vals?.options.map((o) => o.label).join() === "table,list", vals?.options)
+
+  // A note's indent is its own when it has one, as VS Code does (web/src/editor/languages.ts); the setting otherwise.
+  const { ownIndent } = await import("../web/src/editor/languages.ts")
+  check("editor: a note indented with 2 spaces keeps 2", ownIndent("- a\n  - b\n    - c\n", true) === "  ")
+  check("editor: a note indented with tabs keeps tabs", ownIndent("- a\n\t- b\n", true) === "\t")
+  check("editor: a note with no indented line has none of its own", ownIndent("# A\n\n- a\n- b\n", true) === null)
+  check("editor: a note's frontmatter and code blocks don't count", ownIndent("---\ntags:\n  - x\n---\n- a\n```js\n    f()\n```\n", true) === null
+    && ownIndent("---\ntags:\n  - x\n---\n- a\n\t- b\n", true) === "\t")
   check("editor: true and false with the enum's", at("```block-card\narchived: o|\n```")?.options.map((o) => o.label).join() === "only,true,false")
   check("editor: nothing outside a block, in another fence, or in an undeclared block", !at("text\nli|") && !at("```js\nli|\n```") && !at("```block-other\nli|\n```")
     && !at("```block-card\n```\nli|"))

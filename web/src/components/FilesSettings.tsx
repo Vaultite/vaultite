@@ -22,7 +22,7 @@ const DECLS: Record<"showHidden" | "showArchived" | "fileSort" | "folderLimit" |
   autoReveal: { type: "boolean", default: false, label: "Reveal the open file", description: "opens its folders in the tree and scrolls to it" },
   attachmentFolder: { type: "string", default: "Attachments", label: "Attachment folder",
     description: "where pasted and dropped files go: a folder, / for the top, ./ beside the note, ./name in a folder beside it" },
-  excluded: { type: "list", default: [], label: "Excluded files",
+  excluded: { type: "list", default: [], lines: true, label: "Excluded files",
     description: "paths they start with (Archive/) or /regular expressions/: out of search, the graph and unlinked mentions, last in the quick switcher" },
 }
 
