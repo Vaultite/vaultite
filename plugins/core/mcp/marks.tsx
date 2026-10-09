@@ -1,8 +1,8 @@
 import type { LucideIcon } from "lucide-react"
 import { BrandIcon } from "@vaultite"
 
-// Grok Bot's face (its app icon: a ball with two eyes), drawn here as a one-colour mark.
-const GROK_BOT = "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0ZM8.16 9.61L6.96 13.41A1.3 1.3 0 0 0 9.44 14.19L10.64 10.39A1.3 1.3 0 0 0 8.16 9.61ZM12.89 8.07L14.69 11.07A1.3 1.3 0 0 0 16.91 9.73L15.11 6.73A1.3 1.3 0 0 0 12.89 8.07Z"
+// Grok Bot's face (its app icon: a ball, two eyes leaning the same way), drawn here as a one-colour mark.
+const GROK_BOT = "M2 12a10 10 0 1 0 20 0a10 10 0 1 0-20 0ZM8.02 11.88L10.14 15.03A1.35 1.35 0 0 0 12.38 13.52L10.26 10.37A1.35 1.35 0 0 0 8.02 11.88ZM13.32 8.48L15.44 11.63A1.35 1.35 0 0 0 17.68 10.12L15.56 6.97A1.35 1.35 0 0 0 13.32 8.48Z"
 export const GrokBotIcon = ((p) => <BrandIcon d={GROK_BOT} fillRule="evenodd" {...p} />) as LucideIcon
 
 // Muse's squiggle m, from muse.ai's own mark (app-squiggle.svg), in one colour.
