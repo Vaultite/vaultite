@@ -257,6 +257,11 @@ try {
     await page.waitForSelector("[data-setup]", { state: "detached", timeout: 5000 }).catch(() => {})
   }
   await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections.png") })
+  await page.setViewportSize({ width: 390, height: 844 })
+  check("on a phone the buttons name just the app, whole", !!(await until(async () => (await page.innerText("[data-guide-for=grok-bot]")).trim() === "Grok Bot", 3000))
+    && await page.$$eval("[data-guide-for] .truncate", (els) => els.every((e) => e.scrollWidth <= e.clientWidth)))
+  await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections-phone.png") })
+  await page.setViewportSize({ width: 1200, height: 800 })
   const connected = await until(async () => { const s = (await opCall("mcp.cloud-status")).body; return s?.state === "connected" && s }, 8000)
   check("mcp.cloud-status: connected, with its address", connected?.url === "https://alice.vaultite.app/mcp", connected)
   check("the token is in data/config.json, not the vault", JSON.parse(fs.readFileSync(path.join(local, "config.json"), "utf8")).mcp?.cloud?.token?.length > 0

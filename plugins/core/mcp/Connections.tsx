@@ -220,14 +220,14 @@ export function SetupSheet({ id }: { id: AppId }) {
 /** Each app a button that opens its steps in a sheet. */
 function ConnectApp() {
   return (
-    <div className="grid grid-cols-2 gap-2 pt-1">
+    <div className="grid grid-cols-2 gap-2 pt-3">
       {(Object.keys(GUIDES) as AppId[]).map((id) => {
         const g = GUIDES[id], Icon = iconOf(id)
         return (
           <button key={id} type="button" onClick={() => openDetail(detailPath(SETUP_DETAIL, id))} data-guide-for={id}
             className="flex h-11 min-w-0 cursor-pointer items-center gap-2.5 rounded-[10px] border-[0.5px] border-border px-3 text-[15px] font-medium hover:bg-foreground/[0.04]">
-            <Icon className="size-5 shrink-0" style={g.tint ? { color: g.tint } : undefined} /><span className="truncate">Set up {g.name}</span>
-            <ChevronRight className="ml-auto size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
+            <Icon className="size-5 shrink-0" style={g.tint ? { color: g.tint } : undefined} /><span className="truncate"><span className="max-md:hidden">Set up </span>{g.name}</span>
+            <ChevronRight className="ml-auto size-4 shrink-0 text-tertiary max-md:hidden" strokeWidth={2.5} />
           </button>
         )
       })}
