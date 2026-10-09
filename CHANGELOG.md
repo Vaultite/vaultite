@@ -580,6 +580,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Names with odd characters**: a [[link]] or a new note named with `:`, `?` and the like makes a note named as the
   app names files (`:` a dash, the others spaces) with the name as typed as its alias, so the link finds it (no more
   "A B 1"); "/" makes folders. A rename to such a name is refused, saying which characters.
+- **Approvals show all they ask**: an app's request for your yes opens whole in a scrolling box (Approve in a row or on
+  the phone's notification only when it shows all of it), and a vault plugin waiting to be allowed lists every changed
+  file, with the exact count.
 - **Big files open and edit at any size**: a file over 1 MB (an Excalidraw drawing with images, a long note) no longer
   opens read-only, nor one over 8 MB as a card; typing in a 16 MB note is as quick as in a short one.
 - **No size limits**: File history keeps files of any size (one growing past 1 MB is no longer taken for deleted) and

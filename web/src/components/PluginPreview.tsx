@@ -85,7 +85,8 @@ const button = "h-9 cursor-pointer rounded-[8px] px-3.5 text-[15px] font-medium 
 function Approval({ plugin }: { plugin: Plugin }) {
   const a = plugin.meta!.approval!
   const says = disclosed(plugin.meta!.disclosures)
-  const shown = a.changed.slice(0, 8)
+  const [all, setAll] = useState(false)
+  const shown = all ? a.changed : a.changed.slice(0, 8)
   const host = plugin.tier === "hosted" ? hostOf(plugin) : null
   return (
     <div className="mb-5 rounded-[10px] bg-muted px-3.5 py-3" data-plugin-approval={plugin.id}>
@@ -100,8 +101,10 @@ function Approval({ plugin }: { plugin: Plugin }) {
         it only if you trust where it came from.
       </p>
       {a.state === "changed" && shown.length > 0 && (
-        <p className="mt-1.5 font-mono text-[12px] leading-[17px] break-words text-muted-foreground" data-plugin-changed>
-          {shown.join(", ")}{a.changed.length > shown.length ? ` and ${a.changed.length - shown.length} more` : ""}
+        <p className="mt-1.5 max-h-60 overflow-auto font-mono text-[12px] leading-[17px] break-words text-muted-foreground" data-plugin-changed>
+          {shown.join(", ")}
+          {a.changed.length > shown.length && <> <button type="button" onClick={() => setAll(true)} data-plugin-changed-all
+            className="cursor-pointer font-sans text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground">and {a.changed.length - shown.length} more</button></>}
         </p>
       )}
       {says.length > 0 && <p className="mt-1.5 text-[14px] leading-[19px] text-[var(--orange)] md:text-[13px] md:leading-[18px]" data-plugin-discloses>{host ? "A look at its code found it can" : "It says it"} {says.join("; ")}.</p>}

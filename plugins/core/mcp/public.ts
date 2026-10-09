@@ -576,8 +576,7 @@ export class PublicMcp {
   /** What the owner reads before saying yes: for a vault plugin to run, what it is, what it does beyond the vault and
    *  which files changed since they last allowed it; else the operation and its parameters. */
   async askBody(id: string, params: Record<string, unknown>) {
-    const detail = JSON.stringify(params)
-    const raw = `${id} ${detail.length > 2000 ? `${detail.slice(0, 2000)}...` : detail}`
+    const raw = `${id} ${JSON.stringify(params, null, 2)}`
     if (id !== "plugin.allow" && id !== "plugin.enable") return raw
     const q = String(params.id ?? "").toLowerCase().trim()
     const list = (await this.plugin.host.call("plugin.list", {})).result as { id: string; name: string; tier: string }[]

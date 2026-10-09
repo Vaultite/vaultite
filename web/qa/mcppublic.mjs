@@ -130,12 +130,14 @@ try {
   const docs = await rpc("tools/call", { name: "call", arguments: { id: "docs.list" } })
   check("call runs an ungated op at once", docs.body?.result?.isError === false && docs.body.result.content[0].text.includes("api"), docs.body)
   // A gated call: it waits (the server is started with a short wait), asks through the inbox, and runs once approved.
-  const gatedArgs = { name: "call", arguments: { id: "settings.set", params: { name: "plugin/qa-gate", values: { note: "hi" } } } }
+  const note = `hi${" there".repeat(500)}` // (longer than any cut: the owner reads all of it)
+  const gatedArgs = { name: "call", arguments: { id: "settings.set", params: { name: "plugin/qa-gate", values: { note } } } }
   const gatedFile = path.join(VAULT, ".vaultite/plugins/qa-gate/data.json")
   const gated = await rpc("tools/call", gatedArgs)
   check("settings wait for the owner's yes", gated.body?.result?.isError === true && /Waiting for the user's yes/.test(gated.body.result.content[0].text) && !fs.existsSync(gatedFile), gated.body)
   const asks = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.filter((e) => e.gate && !e.answer) ?? []
   check("it asks in the inbox, as a permission", asks.length === 1 && asks[0].ask === "permission" && asks[0].title.includes("Lighthouse AI"), asks)
+  check("it asks with the parameters whole, one per line", asks[0]?.body?.includes(`"note": "${note}"`), asks[0]?.body?.slice(-200))
   const selfApprove = await rpc("tools/call", { name: "call", arguments: { id: "inbox.answer", params: { id: asks[0]?.id, answer: "approve" } } })
   check("the app can't approve itself", selfApprove.body?.result?.isError === true, selfApprove.body)
   const askedAgain = await rpc("tools/call", gatedArgs)
@@ -143,7 +145,7 @@ try {
   const yes = await json(await fetch(`${BASE}/api/ops/inbox.answer`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: asks[0]?.id, answer: "approve" }) }))
   check("the owner approves (inbox.answer)", yes.status === 200, yes)
   const ran = await rpc("tools/call", gatedArgs)
-  check("called again once approved, it runs", ran.body?.result?.isError === false && JSON.parse(fs.readFileSync(gatedFile, "utf8")).note === "hi", ran.body)
+  check("called again once approved, it runs", ran.body?.result?.isError === false && JSON.parse(fs.readFileSync(gatedFile, "utf8")).note === note, ran.body)
   const twice = await rpc("tools/call", gatedArgs)
   check("a yes is for one call", twice.body?.result?.isError === true && /Waiting/.test(twice.body.result.content[0].text), twice.body)
   const ask2 = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.find((e) => e.gate && !e.answer)

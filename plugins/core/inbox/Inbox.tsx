@@ -3,11 +3,11 @@
 import { useEffect, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react"
 import {
   Bell, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen, Maximize2,
-  ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, Trash2, X,
+  ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
   askMove, askMoveMany, Badged, cn, currentFile, Empty, getStore, fmtAgo, haptic, isArchived, isViewOpen, menuBelow, menuFor, notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put,
-  rowMenu, selectClick, selectedAttr, setProperty, SidebarHeading, startSelecting, SwipeRow, useAgents, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick,
+  rowMenu, selectClick, selectedAttr, setProperty, SheetHead, SidebarHeading, startSelecting, SwipeRow, useAgents, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick,
   type MenuItem, type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
 import { useSettings } from "./settings"
@@ -247,16 +247,42 @@ const stop = (fn: () => void) => (e: MouseEvent) => { e.preventDefault(); e.stop
 const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answerGate(e, a)).then(
   () => notify(a === "approve" ? "Approved" : "Denied"), (err) => notifyError(err, "Couldn't answer it"))
 
-/** Approve and Deny, on a permission the server waits on (an app connected to the MCP) that isn't answered yet. */
+/** A row shows all of what it asks: one short line. */
+const shownWhole = (e: InboxEvent) => !e.body || (e.body.length <= 80 && !e.body.includes("\n"))
+
+/** Approve and Deny, on a permission the server waits on (an app connected to the MCP) that isn't answered yet. Approve
+ *  answers at once only when the row shows the whole request; else it opens it. */
 function GateButtons({ e, className, size }: { e: InboxEvent; className: string; size: string }) {
   if (!e.gate || e.answer) return null
   return <>
-    <button type="button" className={className} aria-label="Approve" data-tip="Approve" data-gate="approve" onClick={stop(() => void answer(e, "approve"))}>
+    <button type="button" className={className} aria-label="Approve" data-tip="Approve" data-gate="approve" onClick={stop(() => shownWhole(e) ? void answer(e, "approve") : openEvent(e))}>
       <Check className={size} strokeWidth={2.25} /></button>
     <button type="button" className={className} aria-label="Deny" data-tip="Deny" data-gate="deny" onClick={stop(() => void answer(e, "deny"))}>
       <X className={size} strokeWidth={2.25} /></button>
   </>
 }
+export const gateTitle = (id: string) => getEvents().events.find((e) => e.id === id)?.title ?? "Asks for your yes"
+const gateButton = "h-9 cursor-pointer rounded-[8px] px-3.5 text-[15px] font-medium transition-colors md:h-8 md:text-[13px]"
+
+/** A permission the server waits on, in a sheet: what it asks to run, whole, in a box that scrolls, and the answer. */
+export function GateSheet({ id }: { id: string }) {
+  const e = useEvents().events.find((x) => x.id === id)
+  if (!e) return <Empty>This request is gone: asked again, it comes back.</Empty>
+  return (
+    <div data-gate-sheet={e.id}>
+      <SheetHead icon={ShieldAlert} tint="var(--orange)" kicker="Inbox" title={e.title}
+        sub={e.answer ? (e.answer === "approve" ? "Approved" : "Denied") : undefined} />
+      {e.body && <pre data-gate-body className="max-h-[60vh] overflow-auto rounded-[10px] bg-muted p-3 font-mono text-[12px] leading-[17px] break-words whitespace-pre-wrap">{e.body}</pre>}
+      {!e.answer && (
+        <div className="mt-3 flex gap-2">
+          <button type="button" data-gate="approve" onClick={() => void answer(e, "approve")} className={cn(gateButton, "bg-primary text-primary-foreground hover:opacity-90")}>Approve</button>
+          <button type="button" data-gate="deny" onClick={() => void answer(e, "deny")} className={cn(gateButton, "bg-foreground/[0.06] hover:bg-foreground/[0.1]")}>Deny</button>
+        </div>
+      )}
+    </div>
+  )
+}
+
 /** The row that unfolds (or folds back) the earlier events. */
 function FoldButton({ earlier, all, toggle, className }: { earlier: number; all: boolean; toggle: () => void; className: string }) {
   if (!earlier) return null

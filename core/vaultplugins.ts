@@ -458,7 +458,7 @@ export class VaultPlugins {
         version: str("version"), author: str("author"), repo: str("repo"), fundingUrl: str("fundingUrl"), disclosures: disclosuresOf(m),
         // where it was installed from (.vaultite/plugins-lock.json: core/installs.ts), null for one made here
         source: lock[vp.id] && typeof lock[vp.id] === "object" ? lock[vp.id] : null,
-        approval: changes ? { state: changes.since ? "changed" : "new", since: changes.since, changed: changes.files.slice(0, 50) } : null,
+        approval: changes ? { state: changes.since ? "changed" : "new", since: changes.since, changed: changes.files } : null,
         blocked: vp.blocked, hash: vp.digest.content, edits: !!this.trust.approval(vp.id)?.edits,
         // its blocks as its manifest declares them (core/blocks.ts): the app checks their options against them
         blocks: declsOf(m),

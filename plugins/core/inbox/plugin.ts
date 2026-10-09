@@ -475,13 +475,14 @@ const apns = () => ((plugin.secrets().inbox ?? {}) as Item).apns as push.Apns ??
 export const waitsOnYou = (e: Pick<InboxEvent, "kind" | "link">) => e.kind === "waiting" || (e.kind === "done" && !!e.link)
 
 /** A new event to the phones (the setting `push`: all, waiting (what waits on you, the default), off). A permission an
- *  app terminal waits on gets Approve and Deny (Push.swift's category "permission"); the rest Mark read. Never fails the event. */
+ *  app terminal waits on gets Approve and Deny (Push.swift's category "permission") when the notification shows all it
+ *  asks; the rest Mark read. Never fails the event. */
 function pushed(e: InboxEvent) {
   const mode = settings().push
   if (e.read || mode === "off" || (mode === "waiting" && !waitsOnYou(e)) || !push.devices().length) return
   void push.send(apns(), {
     title: e.title, body: e.body,
-    category: e.ask === "permission" && (e.terminal || e.gate) ? "permission" : "event",
+    category: e.ask === "permission" && (e.terminal || e.gate) && (e.body ?? "").length <= push.BODY_MAX ? "permission" : "event",
     thread: e.terminal || e.session || e.source, urgent: e.kind === "waiting",
     data: { event: e.id },
   }).then((r) => { if (r.failed.length) console.error(`inbox: push failed: ${r.failed.join(", ")}`) }, (err) => console.error("inbox: push failed:", err))

@@ -9,6 +9,8 @@ import { str } from "../../../core/vault.ts"
 
 export type Device = { token: string; env: "sandbox" | "production"; topic: string; name: string; t: number; widgets?: boolean }
 export type Apns = { key_id: string; team_id: string; key: string }
+/** The most of a body a notification shows. */
+export const BODY_MAX = 500
 /** What a notification says and does: its buttons come from its category (Push.swift registers them). */
 export type Note = { title: string; body?: string; category?: "permission" | "event"; thread?: string; urgent?: boolean; data?: Record<string, string> }
 
@@ -76,7 +78,7 @@ function bearer(cfg: Apns, key: crypto.KeyObject) {
 export function payload(n: Note) {
   return {
     aps: {
-      alert: { title: n.title.slice(0, 200), ...(n.body ? { body: n.body.slice(0, 500) } : {}) },
+      alert: { title: n.title.slice(0, 200), ...(n.body ? { body: n.body.slice(0, BODY_MAX) } : {}) },
       sound: "default",
       ...(n.category ? { category: n.category } : {}),
       ...(n.thread ? { "thread-id": n.thread } : {}),

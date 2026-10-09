@@ -3,9 +3,9 @@
 import { useEffect, useRef } from "react"
 import { Check, CheckCheck, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
 import { AmbientButton, definePlugin, fmtDay, fmtTime, get, getStore, iso, onTabLayoutChange, notify, openFile, Panel, systemNotify, useStore, useVaultChange, type Store } from "@vaultite"
-import { focusedTarget, follow, getEvents, markRead, onFresh, openEvent, subscribeEvents, targetOf } from "./events"
+import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, subscribeEvents, targetOf } from "./events"
 import { ReplyBlock } from "./Reply"
-import { fileTo, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
+import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
 import { setSettings, useSettings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
@@ -20,7 +20,7 @@ function announce(e: InboxEvent, s: Settings) {
   if (getEvents().events.find((x) => x.id === e.id)?.read) return
   const to = targetOf(e)
   if (s.toasts !== false) {
-    notify(e.body ? `${e.title}: ${e.body}` : e.title, {
+    notify(e.body && !e.gate ? `${e.title}: ${e.body}` : e.title, {
       id: `inbox-${e.id}`, kind: e.kind === "error" ? "error" : undefined,
       action: to ? { label: "Open", run: () => openEvent(e) } : undefined,
     })
@@ -121,6 +121,7 @@ export default definePlugin({
     inbox: { title: "Inbox", heading: false, sort: 20, hidden: true, view: "inbox", flyout: { icon: InboxRailIcon }, render: (ctx) => <InboxPanel {...ctx} /> },
   },
   views: { inbox: { icon: InboxIcon, title: () => "Inbox", render: ({ store, focused }) => <InboxPage store={store} focused={focused} /> } },
+  details: { [GATE_DETAIL]: { title: (_s, [id]) => gateTitle(id), render: (_s, [id]) => <GateSheet id={id} /> } },
   blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} /> },
   files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)",
     kicker: ({ store, path }) => { const r = store.inbox?.find((x) => `${x.id}.md` === path); return r ? [r.status === "done" ? "Done" : "To review", r.from && `from ${r.from}`].filter(Boolean).join(" · ") : "Inbox" },

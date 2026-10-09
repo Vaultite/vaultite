@@ -1,9 +1,11 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
-import { agentsOn, canRunAgents, del, getTabLayout, isDesktop, isViewOpen, notifyError, onMachine, openDetail, openFile, openView, post, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, del, detailPath, getTabLayout, isDesktop, isViewOpen, notifyError, onMachine, openDetail, openFile, openView, post, type Agent, type TabLayout } from "@vaultite"
 import type { InboxEvent } from "./types"
 
 export type Events = { events: InboxEvent[]; unread: number; ready: boolean }
+/** The sheet of a permission the server waits on (Inbox.tsx's GateSheet): inbox-gate/<event id>. */
+export const GATE_DETAIL = "inbox-gate"
 let state: Events = { events: [], unread: 0, ready: false }
 const subs = new Set<() => void>()
 const fresh = new Set<(e: InboxEvent) => void>()
@@ -120,6 +122,7 @@ export const agentOf = (e: InboxEvent, agents: Agent[] = agentsOn()) => agents.f
 /** What a click on it opens, as a tab's target: its link, else the app's terminal it ran in (on a computer, with the
  *  Terminal on), else its agent's session (`AgentDef.session`), or null. */
 export function targetOf(e: InboxEvent): string | null {
+  if (e.gate) return `detail:${detailPath(GATE_DETAIL, e.id)}`
   if (e.link) return /^(view:|detail:|https?:)/.test(e.link) ? e.link : `file:${e.link.replace(/^file:/, "")}`
   const a = agentOf(e)
   if (e.terminal && isDesktop() && canRunAgents()) return `view:terminal/${e.terminal}`
