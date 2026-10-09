@@ -309,6 +309,8 @@
 .note-prose :where(th, td) { text-align: left; padding: 7px 14px 7px 0; border-bottom: 0.5px solid var(--border); vertical-align: top; }
 .note-prose th { font-weight: 600; }
 .note-prose img { max-width: 100%; border-radius: 10px; }
+/* `![[Note]]` in running text: drawn in its place, as on a line of its own */
+.note-prose .md-embed { display: block; margin: 0.5em 0; }
 /* Filter chips: on phones one sideways-scrolling row, no scrollbar, faded at the right edge; wrapped from md up. */
 @media (max-width: 767px) {
   .chip-row { scrollbar-width: none; -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
@@ -537,6 +539,8 @@ dialog { --vau-panel-top: 0px; }
 .vau-editor .cm-codemark { color: var(--muted-foreground); }
 /* An image sits on its line's first row (the line's number beside its top, no empty rows around it); under its Markdown
    while that shows. Its buttons and corner show on hover; phones have its menu (hold it). */
+/* `![[Note]]` in running text (livePreview's InlineEmbed): a block in its place; a file nothing draws, a link */
+.vau-editor .cm-inline-embed:not(.is-link) { display: block; margin: 4px 0; white-space: normal; }
 .vau-editor .cm-image-wrap { position: relative; display: inline-block; max-width: 100%; vertical-align: top; margin: 4px 0; line-height: 0; }
 .vau-editor .cm-image-wrap.is-source { display: block; width: fit-content; margin-top: 2px; }
 .vau-editor .cm-image-wrap.is-source ~ :is(.cm-widgetBuffer, br) { display: none; }

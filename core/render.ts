@@ -35,7 +35,7 @@ export async function blockText(vault: Vault, plugins: Plugin[], rel: string, fm
   async function drawn() {
     // `file:` draws it for another file (the app's fileFor in components/Blocks.tsx).
     if (typeof o.file === "string" && o.file.trim()) {
-      const other = otherFile(vault, o.file)
+      const other = otherFile(vault, o.file, rel)
       const e = other && vault.entries.get(other)
       if (!e) return `_(no file ${o.file} to draw this ${name} block for)_`
       ;[rel, fm, body, host] = [other!, e.fm, e.body, undefined]
@@ -148,7 +148,7 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
     const owner = p ?? off
     const decl = owner && Object.hasOwn(owner.blocks, name) ? owner.blocks[name] : null
     const o = resolveOptions(decl, parseOptions(text).options)
-    const other = typeof o.file === "string" && o.file.trim() ? otherFile(vault, o.file) : null
+    const other = typeof o.file === "string" && o.file.trim() ? otherFile(vault, o.file, rel) : null
     const out: BlockSources = { name, plugin: owner?.id ?? null, pluginName: owner ? String(owner.manifest.name ?? owner.id) : null, on: !!p,
       description: decl?.description ?? "", options: decl?.options ?? {}, path: rel, line, file: other !== rel ? other : null, sources: [] }
     if (!owner) return out
@@ -198,18 +198,16 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
   }
 }
 
-/** A block's `file:`: a path or file name (like a [[link]]), or a folder ending in / for its newest file. */
-export function otherFile(vault: Vault, target: string): string | null {
-  const t = target.trim().replace(/^\[\[|\]\]$/g, "").split("|")[0].trim(), low = t.toLowerCase()
-  const all = [...vault.entries.keys()]
+/** A block's `file:`: a link to a note (written in `from`, so the closest of its name), or a folder ending in / for its
+ *  newest file. */
+export function otherFile(vault: Vault, target: string, from?: string): string | null {
+  const t = target.trim().replace(/^\[\[|\]\]$/g, "").split("|")[0].trim()
   if (t.endsWith("/")) {
-    const dir = low.replace(/^\/+/, "")
-    return sortBy(all.filter((r) => r.toLowerCase().startsWith(dir)), (r) => -Number(vault.entries.get(r)!.stat.ns / 1000000n))[0] ?? null
+    const dir = t.toLowerCase().replace(/^\/+/, "")
+    return sortBy([...vault.entries.keys()].filter((r) => r.toLowerCase().startsWith(dir)), (r) => -Number(vault.entries.get(r)!.stat.ns / 1000000n))[0] ?? null
   }
-  return all.find((r) => r.toLowerCase() === low || r.toLowerCase() === `${low}.md`)
-    ?? all.find((r) => stemOf(r).toLowerCase() === low.replace(/\.md$/, ""))
-    ?? all.find((r) => { const a = vault.entries.get(r)!.fm.aliases; return (Array.isArray(a) ? a : a ? [a] : []).some((x) => String(x).toLowerCase() === low) })
-    ?? null
+  const hit = vault.resolveLink(t, from)
+  return hit && vault.entries.has(hit) ? hit : null
 }
 
 /** Where a file read as text is embedded: the file it's in (`host`) and the part after the name (`sub`: a base's
@@ -223,15 +221,14 @@ function formatReader(plugins: Plugin[], on: Set<string>, rel: string): ((text: 
 
 /** A file a plugin reads as text embedded on a line of its own (`![[Finance/Spending.html]]`), found as any
  *  embed is: by path or file name, with an optional part after it (`![[Books.base#Reading]]`). */
-function embedded(vault: Vault, plugins: Plugin[], on: Set<string>, target: string): string | null {
+function embedded(vault: Vault, plugins: Plugin[], on: Set<string>, target: string, from: string): string | null {
   const hash = target.indexOf("#")
   if (hash > 0) {
-    const hit = embedded(vault, plugins, on, target.slice(0, hash))
+    const hit = embedded(vault, plugins, on, target.slice(0, hash), from)
     return hit && formatReader(plugins, on, hit) ? hit : null
   }
-  const low = target.trim().toLowerCase()
-  const all = [...vault.others.keys()].filter((r) => formatReader(plugins, on, r))
-  return all.find((r) => r.toLowerCase() === low) ?? all.find((r) => r.split("/").pop()!.toLowerCase() === low) ?? null
+  const hit = vault.resolveLink(target, from)
+  return hit && vault.others.has(hit) && formatReader(plugins, on, hit) ? hit : null
 }
 
 /** A file's text as the plugin that reads it gives it, or null if none does. `at`: where it's embedded. */
@@ -328,14 +325,14 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
     parts.push(text.slice(at, m.index))
     at = m.index + m[0].length
     const target = m[1].trim()
-    const hit = embedded(vault, plugins, on, target)
+    const hit = embedded(vault, plugins, on, target, rel)
     if (hit) {
       const sub = target.includes("#") ? target.slice(target.indexOf("#") + 1).trim() : ""
       parts.push(`**${hit}${sub ? `#${sub}` : ""}**\n\n${otherText(vault, hit, plugins, on, { host: rel, ...(sub ? { sub } : {}) })}`)
       continue
     }
     const [name, anchor] = splitAnchor(target)
-    const note = name ? noteFile(vault, name) : rel
+    const note = name ? noteFile(vault, name, rel) : rel
     if (!note) { parts.push(m[0]); continue }
     const link = `[[${name ? stemOf(note) : ""}${anchor ? `#${anchor}` : ""}]]`
     const key = anchor ? `${note}#${anchor}` : note
@@ -355,10 +352,10 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
   return parts.join("")
 }
 
-/** A note an embed names (`![[Alice Park]]`, a path, an alias), or null. Images and other files aren't notes. */
-function noteFile(vault: Vault, name: string) {
+/** A note an embed in `from` names (`![[Alice Park]]`, a path, an alias), or null. Images and other files aren't notes. */
+function noteFile(vault: Vault, name: string, from: string) {
   if (/\.(?!md$)[A-Za-z][A-Za-z0-9]{0,9}$/i.test(name)) return null
-  return otherFile(vault, name)
+  return otherFile(vault, name, from)
 }
 
 export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) {

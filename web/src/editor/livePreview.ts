@@ -210,6 +210,45 @@ class Img extends WidgetType {
   ignoreEvent(e: Event) { return e.type === "contextmenu" || (e.target as Element).closest?.(".cm-image-tools, .cm-image-resize") != null }
 }
 
+const VOID = /^(br|img|wbr|hr)$/i
+/** Inline HTML (`<kbd>Esc</kbd>`, `<br>`, `<span style>`) drawn as reading shows it, sanitized (core/markdown.ts); a
+ *  click puts the cursor there, showing its Markdown, unless it's on a link in it. */
+class HtmlInline extends WidgetType {
+  html: string
+  constructor(html: string) { super(); this.html = html }
+  eq(o: HtmlInline) { return o.html === this.html }
+  toDOM(view: EditorView) {
+    const el = document.createElement("span")
+    el.className = "cm-html"
+    el.innerHTML = view.state.facet(previewConfig).renderMarkdown(this.html).trim().replace(/^<p>([\s\S]*)<\/p>$/, "$1")
+    return el
+  }
+  ignoreEvent() { return false }
+}
+
+/** `![[Note]]` in running text, drawn in its place as on a line of its own (Obsidian's way); a file nothing can draw stays
+ *  a link to it. */
+class InlineEmbed extends WidgetType {
+  target: string
+  constructor(target: string) { super(); this.target = target }
+  eq(o: InlineEmbed) { return o.target === this.target }
+  toDOM(view: EditorView) {
+    const el = document.createElement("span")
+    el.className = "cm-inline-embed"
+    const drawn = view.state.facet(previewConfig).renderEmbed(this.target, undefined, el, () => null)
+    if (drawn) inlineDrawn.set(el, drawn)
+    else {
+      el.className += " is-link cm-wikilink"
+      el.dataset.wiki = this.target
+      el.textContent = this.target
+    }
+    return el
+  }
+  destroy(dom: HTMLElement) { inlineDrawn.get(dom)?.destroy() }
+  ignoreEvent(e: Event) { return !(e.target as Element).closest?.(".cm-inline-embed.is-link") }
+}
+const inlineDrawn = new WeakMap<HTMLElement, Drawn>()
+
 const ZOOM_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3M11 8v6M8 11h6"/></svg>'
 const CODE_ICON = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 16 4-4-4-4M6 8l-4 4 4 4M14.5 4l-5 16"/></svg>'
 function toolButton(icon: string, label: string, run: () => void) {
@@ -573,12 +612,16 @@ function inline(view: EditorView): DecorationSet {
 
   // (nothing in a hidden frontmatter: editor/frontmatter.ts)
   const body = state.field(frontmatter, false) ?? 0
+  // Inline HTML drawn in its place (`H<sub>2</sub>O`): what's inside is the widget's, not the passes below.
+  const htmls: [number, number][] = []
+  const inHtml = (a: number, b: number) => htmls.some(([f, t]) => a < t && b > f)
   for (const r of view.visibleRanges) {
     const from = Math.max(r.from, body), to = r.to
     if (from > to) continue
     tree.iterate({
       from, to,
       enter: (ref) => {
+        if (inHtml(ref.from, ref.from + 1)) return false
         const n = ref.node, name = ref.name
         const h = /^ATXHeading(\d)$/.exec(name) ?? /^SetextHeading(\d)$/.exec(name)
         if (h) {
@@ -664,6 +707,21 @@ function inline(view: EditorView): DecorationSet {
           case "HorizontalRule":
             if (live && !touched(state, n.from, n.to)) out.push(Decoration.replace({ widget: new Rule() }).range(n.from, n.to))
             return false
+          case "HTMLTag": {
+            // An opening tag to its closing one on the same line, or a void one (<br>, <img>), off the cursor.
+            const tag = /^<([a-z][\w-]*)/i.exec(state.sliceDoc(n.from, n.to))
+            if (!live || !tag) return false
+            let end = n.to
+            if (!VOID.test(tag[1]) && state.sliceDoc(n.to - 2, n.to) !== "/>") {
+              const close = new RegExp(`</${tag[1]}\\s*>`, "i").exec(state.sliceDoc(n.to, state.doc.lineAt(n.from).to))
+              if (!close) return false
+              end = n.to + close.index + close[0].length
+            }
+            if (touched(state, n.from, end)) return false
+            htmls.push([n.from, end])
+            out.push(Decoration.replace({ widget: new HtmlInline(state.sliceDoc(n.from, end)) }).range(n.from, end))
+            return false
+          }
           case "FencedCode": case "CodeBlock": {
             const first = state.doc.lineAt(n.from).number, last = state.doc.lineAt(n.to).number
             for (let k = first; k <= last; k++) {
@@ -749,7 +807,7 @@ function inline(view: EditorView): DecorationSet {
         const a = l.from + m.index, b = a + m[0].length
         const [, bang, target, alias] = m
         const inCode = tree.resolveInner(a + 1, 1).name.includes("Code")
-        if (inCode) continue
+        if (inCode || inHtml(a, b)) continue
         const src = bang && live && IMAGE.test(target) ? cfg.asset(target.trim()) : null
         if (src) {
           const { width } = sized(alias ?? "")
@@ -757,6 +815,11 @@ function inline(view: EditorView): DecorationSet {
           out.push(Decoration.widget({ widget: new Img(src, target.trim(), target.trim(), width, a), side: 1 }).range(l.to))
         }
         const kind = cfg.resolves(target)
+        // (on a line of its own it's a block, drawn below)
+        if (bang && live && kind !== null && !IMAGE.test(target) && !touched(state, a, b) && !embedOf(l.text)) {
+          out.push(Decoration.replace({ widget: new InlineEmbed(target.trim()) }).range(a, b))
+          continue
+        }
         const cls = kind === null ? " is-missing" : kind ? ` ${kind}` : ""
         const attrs = { "data-wiki": target.trim() }
         if (!live || touched(state, a, b)) {
@@ -780,7 +843,7 @@ function inline(view: EditorView): DecorationSet {
         MATH.lastIndex = 0
         for (let m; (m = MATH.exec(l.text));) {
           const a = l.from + m.index, b = a + m[0].length
-          if (tree.resolveInner(a + 1, 1).name.includes("Code") || touched(state, a, b)) continue
+          if (tree.resolveInner(a + 1, 1).name.includes("Code") || touched(state, a, b) || inHtml(a, b)) continue
           out.push(Decoration.replace({ widget: new MathInline(m[1]) }).range(a, b))
         }
       }
@@ -897,6 +960,9 @@ type Cand = { from: number; to: number; a: number; b: number; decos: Range<Decor
   always?: boolean }
 type Cands = { cfg: PreviewConfig; read: boolean; list: Cand[] }
 
+/** A line that starts a block of raw HTML: a block-level tag, or a whole tag alone on its line (not a comment). */
+const HTML_BLOCK = /^\s{0,3}(?:<\/?(?:address|article|aside|blockquote|center|dd|dir|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|li|main|nav|ol|p|section|table|tbody|td|tfoot|th|thead|tr|ul)(?=[\s/>]|$)|<\/?[a-z][\w-]*(?:\s+[^<>]*)?\/?>\s*$)/i
+
 /** Every block the document could draw, in the order they win (fences, $$ and <details>; embeds; sections; comments;
  *  callouts and tables), worked out once per document version: a cursor move only picks among them again. */
 function candidates(state: EditorState): Cands {
@@ -952,6 +1018,14 @@ function candidates(state: EditorState): Cands {
       }
       if (end > lines.length) continue
       add(k, end, new Block("details", doc.sliceString(row(k).from, row(end).to), cfg.version, drawRich, cfg.place))
+      k = end
+      continue
+    }
+    // Raw HTML on lines of its own (CommonMark's HTML block, to a blank line): drawn as Obsidian does, sanitized.
+    if (HTML_BLOCK.test(t)) {
+      let end = k
+      while (end < lines.length && prose[end] && lines[end].trim()) end++
+      add(k, end, new Block("html", doc.sliceString(row(k).from, row(end).to), cfg.version, drawRich, cfg.place))
       k = end
     }
   }
@@ -1047,7 +1121,7 @@ function visible(c: Cands, state: EditorState): DecorationSet {
 
 // A change within one line that can't start, end or reshape a block, on a line no block holds, leaves every block as it
 // was, only moved: typing a sentence in a long file doesn't read it all again.
-const LOUD = /`{3}|~{3}|\$\$|<\/?details|%%|!\[\[|\||^\s{0,3}>|^\s{0,3}#{1,6}(?:\s|$)|^\s*$/i
+const LOUD = /`{3}|~{3}|\$\$|<\/?details|^\s{0,3}<\/?[a-z]|%%|!\[\[|\||^\s{0,3}>|^\s{0,3}#{1,6}(?:\s|$)|^\s*$/i
 function mapped(c: Cands, tr: Transaction): Cands | null {
   const before = tr.startState.doc, after = tr.state.doc
   let quiet = true

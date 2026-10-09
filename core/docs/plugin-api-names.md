@@ -163,7 +163,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
-- `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail, a #tag's files, a command link; a [[link]] to nothing yet makes that note where new notes go.
+- `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail, a #tag's files, a command link, a web or other app's link; a [[link]] to nothing yet makes that note where new…
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
@@ -213,8 +213,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `kindFolder(folder, disabled?)`: Whether a plain Markdown file in `folder` would be a kind's (People/, Logs/Gym/): such a folder holds only that kind, so another sort of note goes where new notes go instead.
 - `KV({ label, children })`: A label and its value, in a Group.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
-- `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), `weak` only when no other target has them.
-- `linkTo(path)`: A [[link]] to a file, as short as the app's links allow: its name when that finds it, else its path.
+- `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
+- `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.
 - `List({ children })`
 - `Loading({ error, className })`: A block's data on its way: "Loading…", or what went wrong getting it (`error`: the line to say, "Couldn't ask Tailscale.").
 - `lookUp`: The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them.
@@ -226,9 +226,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `MapPin`
 - `mapTheme()`: Light or dark, as the app is now (main.tsx toggles .dark on <html>).
 - `MapTheme`
-- `Markdown({ text, store, inline, full, className, from, plain })`: `inline`: one line in running text; else a document in a sheet's sizes unless `full`.
+- `Markdown({ text, store, inline, full, className, from, plain, seen })`: `inline`: one line in running text; else a document in a sheet's sizes unless `full`.
 - `markdownDrawn(el)`
-- `markdownHtml(text, { inline }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), tags, callouts, math and mermaid waiting for…
+- `markdownHtml(text, { inline, from }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for…
 - `markNew(path)`
 - `mentions(s, is, except?)`: Files that link to something (a note, a person), each with the line the link sits on.
 - `menuAbove(e, items)`: For a button at the bottom (the status bar): the menu above it.
@@ -286,7 +286,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).
-- `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else the quick switcher.
+- `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
 - `openView(to, opts?)`: Open a plugin's view.
 - `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Web viewer), else the system browser (a new browser tab on the web).
@@ -340,7 +340,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `reload()`
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
-- `resolver(s)`: Resolve a wikilink target: plugins' exact names, then file names, paths and aliases, then weak names only one target has.
+- `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then titles, aliases and plugins' names), or null.
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
 - `revealLabel`: Showing a file where it is: Finder on a Mac, the file manager elsewhere.
@@ -535,7 +535,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HTTPError`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
-- `linkResolver(files)`: A resolver over these files: a link target ("Alice", "Notes/Idea", "Idea#Heading") to a file's path, or null.
+- `linkResolver(files)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
 - `load(vault)`: Import every plugin.ts and register its kinds, in discover() order (manifest-only plugins too, for their AGENTS.md).
 - `LOADED`
 - `LOCAL`: This machine's own files: secrets.

@@ -50,6 +50,16 @@ function openVaultFile(abs: string) {
   try { const st = fs.statSync(abs); runs ||= st.isDirectory() || (st.mode & 0o111) !== 0 } catch { return }
   if (runs) shell.showItemInFolder(abs); else void shell.openPath(abs)
 }
+/** A link the app's page hands to the system, as Obsidian does: any app's scheme (obsidian://, zotero://, tel:), never
+ *  one that runs code; a file:// one as a vault file opens (with the Mac's app for it, an app or a folder shown in Finder). */
+function openLink(url: string) {
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(url) || /^(javascript|data|vbscript|blob|about|chrome|devtools):/i.test(url)) return
+  if (/^file:/i.test(url)) {
+    try { openVaultFile(fileURLToPath(url)) } catch { /* not a file address */ }
+    return
+  }
+  shell.openExternal(url).catch((e) => console.error(`couldn't open ${url.split(":")[0]}: link`, e))
+}
 // An uncaught exception or rejection here goes to the open vaults' Errors, never Electron's error box, which stops
 // everything and shows even over the QA scripts' quiet windows.
 function uncaught(kind: "uncaught" | "rejection", e: unknown) {
@@ -391,7 +401,7 @@ function guard(win: BrowserWindow, origin: string) {
   win.webContents.on("will-navigate", (e, url) => {
     if (url.startsWith(origin + "/") || url === origin) return
     e.preventDefault()
-    if (/^(https?|mailto):/.test(url)) shell.openExternal(url)
+    openLink(url)
   })
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`${origin}/?popout=`)) {
@@ -404,7 +414,7 @@ function guard(win: BrowserWindow, origin: string) {
       const w = [...wins.values()].find((x) => x.win === win)
       const rel = new URL(url).searchParams.get("path")
       if (w && rel && !rel.split("/").includes("..")) openVaultFile(path.join(w.vault.path, rel))
-    } else if (/^(https?|mailto):/.test(url)) shell.openExternal(url)
+    } else openLink(url)
     return { action: "deny" }
   })
 }

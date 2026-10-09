@@ -7,7 +7,7 @@ import { newNoteFolder, saveAttachments } from "@/core/conventions"
 import { copyFile, deleteFile, fileOf, folderList, inTrash, isHidden, isMd, isProtected, isReadOnly, openFile, openNew, restoreFile, shownName, stem } from "@/core/files"
 import { askRename } from "@/core/workspace"
 import { setProperty } from "@/core/frontmatter"
-import { resolver } from "@/core/links"
+import { shortestLink } from "@/core/links"
 import { PLUGINS, isEnabled } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { isLinux, isMac, revealLabel } from "@/core/platform"
@@ -43,15 +43,10 @@ export const copyPath = (path: string) => copied(path, "path")
 /** Copy a [[link]] to a file. */
 export const copyLink = (path: string) => copied(linkTo(path), "link")
 
-/** A [[link]] to a file, as short as the app's links allow: its name when that finds it, else its path. */
-export function linkTo(path: string) {
+/** A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it. */
+export function linkTo(path: string, from?: string) {
   const s = getStore()
-  const noMd = path.replace(/\.md$/i, "")
-  const name = /\.md$/i.test(path) ? stem(path) : path.split("/").pop()!
-  const resolve = s ? resolver(s) : null
-  for (const c of [name, noMd]) if (resolve?.(c)?.file === path) return `[[${c}]]`
-  // Not something links find by name (an image, a PDF): its file name, as embeds write it.
-  return `[[${s?.files.files.some((f) => f.path === path) ? noMd : name}]]`
+  return `[[${s ? shortestLink(s, path, from) : path.replace(/\.md$/i, "")}]]`
 }
 
 /** The vault's folder on the server's machine (for "From system root"). */
@@ -277,7 +272,7 @@ export function filesMenu(paths: string[], opts: { newTab?: (path: string) => vo
     locked ? [] : [{ label: "Move to…", icon: files.length === roots.length ? FileInput : FolderInput, run: () => askMoveMany(roots) }],
     files.length === roots.length ? pluginManyItems(files) : [],
     [{ label: "Copy paths", icon: Copy, run: () => void copied(roots.join("\n"), "paths") },
-      ...(files.length === roots.length ? [{ label: "Copy links", icon: Link, run: () => void copied(files.map(linkTo).join("\n"), "links") }] : [])],
+      ...(files.length === roots.length ? [{ label: "Copy links", icon: Link, run: () => void copied(files.map((f) => linkTo(f)).join("\n"), "links") }] : [])],
     locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => void trashMany(roots) }],
   ])
 }

@@ -32,9 +32,8 @@ export default definePlugin({
     tint: "var(--people)", detail: detailPath("person", p.id), file: `${p.id}.md`,
     text: [p.context, p.location, p.tags, plainText(p.notes), p.want_to].join(" "), recent: 0, weight: 10,
   })),
-  // [[Alice Park]], an alias, or a first name only one person has ([[Bob]]). An archived person's names count only when
-  // no one else answers to them (core/links.ts); search ranks them last (core/search.ts).
+  // [[Alice Park]] or an alias; an archived person's names count only when no one else answers to them (core/links.ts).
   links: (s) => s.people.map((p) => ({
-    kind: "person", id: p.id, title: p.name, detail: detailPath("person", p.id), names: [p.name, ...p.aliases], weak: [p.name.split(" ")[0]],
+    kind: "person", id: p.id, title: p.name, detail: detailPath("person", p.id), names: [p.name, ...p.aliases],
   })),
 })

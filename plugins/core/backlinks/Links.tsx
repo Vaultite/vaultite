@@ -21,7 +21,7 @@ function useLinks(store: Store, path: string) {
     const resolve = resolver(store)
     const seen = new Map<string, Out>()
     for (const [t, context] of f.links) {
-      const r = resolve(t)
+      const r = resolve(t, path)
       const key = r ? r.file || r.detail || r.id : `?${t.split("#")[0].trim().toLowerCase()}`
       if (r?.file === path || seen.has(key)) continue
       seen.set(key, { key, title: r ? (r.file ? stem(r.file) : r.title) : t.split("#")[0].trim(), context: snippet(context), file: r?.file, detail: r?.detail || undefined })

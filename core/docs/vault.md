@@ -17,8 +17,10 @@ folder is fine (a plain note, found by its name; its links count). Database view
 type. `.vaultite/` is the app's settings (`vau docs app`); `.vaultite/cache/` is live
 data plugins fetched and `.vaultite/generated/` the app's own copies, and `.vaultite/AGENTS.md` its rules for AIs: don't edit them.
 
-**Links.** `[[Alice Park]]`, `[[Note title]]`, `[[Bob Lee|Bobby]]` (other text). A first name works when only one
-person has it. `[[Note#Heading]]` goes to a heading, `[[Note#^id]]` to a paragraph or list item ending in ` ^id`,
+**Links.** `[[Alice Park]]`, `[[Note title]]`, `[[Bob Lee|Bobby]]` (other text), resolved as Obsidian does: a path, then
+a file name (the closest file to the link's when several have it; `[[Work/Idea]]` narrows it), then a title or an alias.
+A first name alone isn't a link: give the person an alias. Markdown links work too (`[x](Note)`, `[pdf](files/a.pdf)`,
+`obsidian://`). `[[Note#Heading]]` goes to a heading, `[[Note#^id]]` to a paragraph or list item ending in ` ^id`,
 `[[#Heading]]` to one in the same file. `![[Note]]` on a line of its own shows that note's text there
 (`![[Note#Heading]]` its section, `![[Note#^id]]` that block); `/api/render` inlines it as a quote. A Markdown link to
 `vaultite://command/<id>` runs that app command when clicked (`[Open Claude Code](vaultite://command/terminal:claude-split)`).

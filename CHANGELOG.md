@@ -516,6 +516,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Desktop: ⌃⌘P opens the palette from another app only while an app window's tab shows (App windows), no longer
   whenever one is open; the menu bar lists every command, and files from outside the vault are remembered however many
   you've opened, so restored tabs keep working.
+- **Links resolve as in Obsidian**: when several files share a name, the one closest to the linking file wins (not
+  whichever came first), `[[Work/Idea]]` finds any …/Work/Idea, and `[[` writes the shortest path that finds the file.
+  A first name alone (`[[Alice]]` for Alice Park) or a path that isn't there no longer goes somewhere silently: a click
+  asks "Did you mean" (add an alias to make it a link).
+- **Every link and image renders, as in Obsidian**: `[x](Note)`, `[pdf](files/a.pdf)` and links to other apps
+  (`obsidian://`, `zotero://`, `tel:`, `file://`) are links on every surface and the desktop app opens them; raw HTML
+  (`<br>`, `<sub>`, `<kbd>`, `<span style>`, `<img>`, `<details>`) is drawn, made safe; vault images show in embeds and
+  anywhere Markdown is drawn; `![[Note]]` in the middle of a line is an embed. Web pages asking to open another app ask
+  you first. A #tag clicked without the Tags plugin searches for it.
 - **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
   Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until

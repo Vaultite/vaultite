@@ -158,9 +158,9 @@ export type SearchDoc = {
   /** Archived (the core sets it from its `file`): ranked after everything else. */
   archived?: boolean
 }
-/** Something a [[wikilink]] can point to: `names` match exactly (any case), `weak` only when no other target has them.
- *  An archived one loses every tie. */
-export type LinkTarget = { kind: string; id: string; title: string; detail: string; names: string[]; weak?: string[]; archived?: boolean
+/** Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths. An archived
+ *  one loses every tie. */
+export type LinkTarget = { kind: string; id: string; title: string; detail: string; names: string[]; archived?: boolean
   /** The file it is, when it's one (filled in by the core from `id`, a vault path). Links to it open the file. */
   file?: string }
 

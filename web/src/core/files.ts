@@ -15,6 +15,7 @@ import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
 import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, isDesktop, retarget, targetOf } from "@/core/workspace"
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
+import { resolver } from "@/core/links"
 
 
 export type VaultFile = {
@@ -88,14 +89,15 @@ export const isJson = (path: string) => /\.json$/i.test(path)
 export const isMediaEmbed = (path: string) => /\.(pdf|mp3|m4a|aac|wav|ogg|oga|opus|flac|mp4|m4v|mov|webm|ogv)$/i.test(path)
 /** The artifact, table, PDF,
  *  player or plugin-drawn file an embed names (`![[Spending.html]]`): by its path, or its file name. */
-export function findEmbed(s: Store, target: string): string | null {
+export function findEmbed(s: Store, target: string, from?: string): string | null {
   // (a part after the name, `![[Books.base#Reading]]`, is the file's to read: found by its name)
   const hash = target.indexOf("#")
-  if (hash > 0) { const hit = findEmbed(s, target.slice(0, hash)); return hit && !isMd(hit) ? hit : null }
+  if (hash > 0) { const hit = findEmbed(s, target.slice(0, hash), from); return hit && !isMd(hit) ? hit : null }
+  // Found as a link is (the closest of its name); a hidden folder's file, which links don't name, by its path.
+  const hit = resolver(s)(target, from)?.file
+  if (hit) return isEmbeddable(hit) ? hit : null
   const low = target.trim().replace(/^\/+/, "").toLowerCase()
-  const all = [...s.files.files, ...s.files.others].map((f) => f.path).filter(isEmbeddable)
-  const is = (name: string) => name === low || name === `${low}.md` // (a drawn Markdown file named without its .md)
-  return all.find((p) => is(p.toLowerCase())) ?? all.find((p) => is(p.split("/").pop()!.toLowerCase())) ?? null
+  return [...s.files.files, ...s.files.others].map((f) => f.path).find((p) => isEmbeddable(p) && (p.toLowerCase() === low || p.toLowerCase() === `${low}.md`)) ?? null
 }
 /** Notes, JSON and pages plugins draw (artifacts, tables): the files that can be pages (pinned). The rest (code,
  *  images, PDFs...) open too. */

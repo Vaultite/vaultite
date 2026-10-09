@@ -138,7 +138,6 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `geocode:known` (people): A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet).
 - `history:<…>` (versions, text, changed): history
 - `inbox:<…>` (folder, hook, handed, event, drop, ask, answer): inbox
-- `link-names` (people)
 - `links:canvas` (canvas)
 - `log-areas` (health, learning, logs)
 - `logs:areas` (logs): The areas as the app has them (Today's routines take their icon and weekly goal).

@@ -38,8 +38,8 @@ export type V = null | number | string | boolean | BDate | BLink | BFile | BDura
 
 /** What an evaluation can reach beyond the file it tests. */
 export type Env = {
-  /** The file a link names (a name, a path, an alias), or null. */
-  resolve: (target: string) => Rec | null
+  /** The file a link written in `from` names (a name, a path, an alias), or null. */
+  resolve: (target: string, from?: string) => Rec | null
   /** `this`: the file the base is shown for (the base itself, or the note embedding it). */
   self: Rec | null
   /** A formula's value for a file (the caller keeps them, and stops a formula that refers to itself). */
@@ -507,7 +507,7 @@ function member(obj: V, name: string, s: Scope): V {
   }
   if (obj instanceof BLink) {
     // (a link's file's fields, like Obsidian's link.asFile().x, for the common case)
-    const r = s.env.resolve(obj.target)
+    const r = s.env.resolve(obj.target, s.rec?.path)
     return r ? fileField(new BFile(r), name, s) : null
   }
   if (isPlainObj(obj)) {
@@ -592,7 +592,7 @@ function global(name: string, args: Node[], s: Scope): V {
     case "file": {
       if (a[0] instanceof BFile) return a[0]
       const p = a[0] instanceof BLink ? a[0].target : typeof a[0] === "string" ? a[0].replace(/^\[\[|\]\]$/g, "") : null
-      const r = p ? s.env.resolve(p) : null
+      const r = p ? s.env.resolve(p, s.rec?.path) : null
       return r ? new BFile(r) : null
     }
     case "link": {
@@ -665,16 +665,16 @@ function method(obj: V, name: string, args: Node[], s: Scope): V {
       case "hasLink": {
         const want = pathOf(a[0], s.env)
         const wname = a[0] instanceof BFile ? stem(a[0].rec.path).toLowerCase() : a[0] instanceof BLink ? linkName(a[0].target) : typeof a[0] === "string" ? linkName(a[0].replace(/^\[\[|\]\]$/g, "")) : null
-        return (r.links?.() ?? []).some((t) => (want && s.env.resolve(t)?.path === want) || (wname !== null && linkName(t) === wname))
+        return (r.links?.() ?? []).some((t) => (want && s.env.resolve(t, r.path)?.path === want) || (wname !== null && linkName(t) === wname))
       }
       case "asFile": return obj
     }
   }
   if (obj instanceof BLink) {
     switch (name) {
-      case "asFile": { const r = s.env.resolve(obj.target); return r ? new BFile(r) : null }
+      case "asFile": { const r = s.env.resolve(obj.target, s.rec?.path); return r ? new BFile(r) : null }
       case "linksTo": {
-        const r = s.env.resolve(obj.target)
+        const r = s.env.resolve(obj.target, s.rec?.path)
         return r ? method(new BFile(r), "hasLink", args, s) : false
       }
       case "asLink": return obj

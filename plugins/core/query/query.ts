@@ -1,6 +1,7 @@
 // Database views: a query over the vault's files and frontmatter (options: AGENTS.md). One
 // evaluator, no Node, for the route and the block's text; comparisons are lenient ("[[A]]" is "A", any of a list).
 
+import { linkIndex } from "../../../core/links.ts"
 import { evaluate, type Env, ExprError, parse as parseExpr, plainOf, summary, SUMMARIES, truthy, type V, wrap } from "./expr.ts"
 
 export type Opts = Record<string, unknown>
@@ -429,17 +430,10 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   const note = (s: string) => { if (!notes.includes(s) && notes.length < 20) notes.push(s) }
 
   // Bases: links to files, formulas (each worked out once per file), backlinks when asked.
-  const names = new Map<string, Rec>()
-  const add = (n: string, r: Rec) => { const k = n.trim().toLowerCase(); if (k && !names.has(k)) names.set(k, r) }
-  // (by path, like the vault's links: a name two files have is the first's)
-  const byPath = [...all, ...(ctx.self ? [ctx.self] : [])].sort((a, b) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0))
-  for (const r of byPath) { add(r.path, r); add(r.path.replace(/\.md$/i, ""), r) }
-  for (const r of byPath) { const f = r.path.slice(r.path.lastIndexOf("/") + 1); add(f, r); add(f.replace(/\.md$/i, ""), r) }
-  for (const r of byPath) for (const a of list(r.fm.aliases)) add(a, r)
-  const resolve = (t: string) => {
-    const k = t.split("#")[0].split("|")[0].trim().toLowerCase().replace(/^\/+/, "")
-    return names.get(k) ?? names.get(k.replace(/\.md$/, "")) ?? null
-  }
+  // (like the vault's links, core/links.ts: a name several files have goes to the closest to the file it's written in)
+  const linkable = ctx.self && !all.some((r) => r.path === ctx.self!.path) ? [...all, ctx.self] : all
+  const index = linkIndex(linkable.map((r) => ({ value: r, path: r.path, labels: list(r.fm.aliases).map(String) })))
+  const resolve = (t: string, from?: string) => index.resolve(t.split("|")[0], from)
   // A key's declared type (frontmatter keys only: file, folder, formulas... are the engine's), and `this` for a where.
   const typeMemo = new Map<string, string | null>()
   const typeOfKey = (k: string) => {
@@ -463,7 +457,7 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     if (!back) {
       back = new Map()
       for (const x of all) for (const t of new Set(x.links?.() ?? [])) {
-        const to = resolve(t)?.path
+        const to = resolve(t, x.path)?.path
         if (to && to !== x.path) back.set(to, [...(back.get(to) ?? []), x.path])
       }
     }

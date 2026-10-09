@@ -14,16 +14,16 @@ export const topFolder = (path: string) => (path.includes("/") ? path.slice(0, p
 /** A file's name without its folder and without .md. */
 export const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "")
 
-/** The graph of these files, their links resolved with `resolve` (a target to a path, or null). Links to files that
- *  aren't in `files` and links to itself are left out. */
-export function buildGraph(files: GraphFile[], resolve: (target: string) => string | null): Graph {
+/** The graph of these files, their links resolved with `resolve` (a target written in a file to a path, or null). Links
+ *  to files that aren't in `files` and links to itself are left out. */
+export function buildGraph(files: GraphFile[], resolve: (target: string, from: string) => string | null): Graph {
   const known = new Set(files.map((f) => f.path))
   const seen = new Set<string>()
   const edges: GraphEdge[] = []
   const degree = new Map<string, number>()
   for (const f of files) {
     for (const t of f.links) {
-      const to = resolve(t)
+      const to = resolve(t, f.path)
       if (!to || to === f.path || !known.has(to)) continue
       const key = f.path < to ? `${f.path}\0${to}` : `${to}\0${f.path}`
       if (seen.has(key)) continue

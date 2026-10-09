@@ -600,7 +600,8 @@ t = read("Notes/Pics.md")
 check("renaming an image updates embeds, path links, Markdown links and frontmatter, not code", t === '---\ncover: "[[Words.jpeg]]"\n---\n![[Words.jpeg]] ![[Words.jpeg|300]] [[Img/Words.jpeg]] ![a](../Img/Words.jpeg)\nnot `[[Shot one.png]]`\n```\n![[Shot one.png]]\n```\n', [t, r])
 await api("POST", "file/move", { from: "Img", to: "Media/Img" })
 t = read("Notes/Pics.md")
-check("moving a folder updates path links to its files, and names stay", t.includes("![[Words.jpeg]] ![[Words.jpeg|300]] [[Media/Img/Words.jpeg]] ![a](../Media/Img/Words.jpeg)"), t)
+// ([[Img/Words.jpeg]] still finds Media/Img/Words.jpeg: a folder in front of a name narrows it, as in Obsidian)
+check("moving a folder updates Markdown links to its files; names, and paths that still find them, stay", t.includes("![[Words.jpeg]] ![[Words.jpeg|300]] [[Img/Words.jpeg]] ![a](../Media/Img/Words.jpeg)"), t)
 await api("POST", "file/move", { from: "Notes/Pics.md", to: "Pics.md" })
 t = read("Pics.md")
 check("a moved note's relative links still find their files", t.includes("![a](Media/Img/Words.jpeg)"), t)
@@ -3591,17 +3592,24 @@ check("graph: a pair linked both ways is one edge", graph.edges.filter((e: Any) 
 check("graph: links in code and to nothing aren't edges", !graph.nodes.some((n: Any) => /Not a link|Nobody here/.test(n.path)))
 check("graph: degree, folder, tags", gnode("Graph test/Hub.md").degree === 3 && gnode("Graph test/Hub.md").folder === "Graph test" && gnode("Graph test/Hub.md").tags.includes("Lab") && gnode("Graph test/Alone.md").degree === 0, gnode("Graph test/Hub.md"))
 check("graph: an embedded canvas is a node, and its cards link to files", !!gnode("Graph test/Board.canvas") && gedge("Graph test/Board.canvas", "Graph test/Spoke one.md") && gedge("Graph test/Board.canvas", "Graph test/Far.md"), gnode("Graph test/Board.canvas"))
-// First names resolve like the app's links: a person's, when only one person has it (People's `link-names`).
-write("People/Theo Park.md", "---\ntype: person\nrelation: friend\n---\n\nA friend.\n")
-write("People/Mia Chen.md", "---\ntype: person\nrelation: friend\n---\n\nA friend.\n")
-write("People/Mia Lopes.md", "---\ntype: person\nrelation: friend\n---\n\nA friend.\n")
-write("Graph test/Met.md", "Met [[Theo]] and [[Mia]].\n")
+// Obsidian's rules: a first name alone isn't a link (the app offers "Did you mean" instead); an alias is.
+write("People/Theo Park.md", "---\ntype: person\nrelation: friend\naliases: [Ted]\n---\n\nA friend.\n")
+write("Graph test/Met.md", "Met [[Theo]] and [[Ted]].\n")
 ;[, graph] = await api("GET", "graph")
-check("graph: a first name only one person has links to them", gedge("Graph test/Met.md", "People/Theo Park.md"), graph.edges.filter((e: Any) => e.from === "Graph test/Met.md"))
-check("graph: a first name two people share links to nobody", !graph.edges.some((e: Any) => e.from === "Graph test/Met.md" && e.to.startsWith("People/Mia")))
+check("graph: a first name alone links to nobody, an alias does", gedge("Graph test/Met.md", "People/Theo Park.md") && graph.edges.filter((e: Any) => e.from === "Graph test/Met.md").length === 1, graph.edges.filter((e: Any) => e.from === "Graph test/Met.md"))
 const { linkResolver } = await import("../core/links.ts")
-const lr = linkResolver([{ path: "Notes/Idea.md", aliases: ["Big idea"] }, { path: "People/Bob Lee.md", weak: ["Sam"] }, { path: "Idea.md" }])
-check("links: path, name, alias, heading and weak names resolve", lr("Notes/Idea") === "Notes/Idea.md" && lr("idea") === "Idea.md" && lr("Big idea#Part") === "Notes/Idea.md" && lr("sam") === "People/Bob Lee.md" && lr("Nobody") === null)
+const lr = linkResolver([{ path: "Notes/Idea.md", aliases: ["Big idea"] }, { path: "People/Bob Lee.md" }, { path: "Idea.md" }, { path: "Work/Idea.md" },
+  { path: "Work/Deep/Plan.md" }, { path: "files/a.pdf" }, { path: "Books/Dune Part One.md", title: "Dune: Part One" }, { path: "Dune: Part One.md" }])
+check("links: path, name, alias, title and heading resolve; a first name or a part of a path doesn't",
+  lr("Notes/Idea") === "Notes/Idea.md" && lr("Big idea#Part") === "Notes/Idea.md" && lr("Dune: Part One") === "Dune: Part One.md" && lr("Bob") === null &&
+  lr("Nobody") === null && lr("Deep/Plan") === "Work/Deep/Plan.md" && lr("eep/Plan") === null && lr("Other/Plan") === null && lr("a.pdf") === "files/a.pdf",
+  [lr("Notes/Idea"), lr("Big idea"), lr("Bob"), lr("Deep/Plan"), lr("eep/Plan"), lr("a.pdf")])
+check("links: of several files with a name, the closest to the link's file wins", lr("Idea", "Work/Deep/Plan.md") === "Work/Idea.md" && lr("Idea", "Notes/x.md") === "Notes/Idea.md" &&
+  lr("Idea", "Top.md") === "Idea.md" && lr("Idea", "Other/x.md") === "Idea.md" && lr("../Idea", "Work/Deep/Plan.md") === "Work/Idea.md" && lr("/Idea", "Work/x.md") === "Idea.md",
+  [lr("Idea", "Work/Deep/Plan.md"), lr("Idea", "Notes/x.md"), lr("Idea", "Top.md"), lr("Idea", "Other/x.md"), lr("../Idea", "Work/Deep/Plan.md"), lr("/Idea", "Work/x.md")])
+const { linkIndex } = await import("../core/links.ts")
+const lix = linkIndex([{ value: "alice", path: "People/Alice Park.md" }, { value: "plan", path: "Work/Plan.md" }])
+check("links: what a link to nothing may have meant", sameJson(lix.suggest("Alice"), ["alice"]) && sameJson(lix.suggest("Old/Plan"), ["plan"]) && sameJson(lix.suggest("Ali"), []), [lix.suggest("Alice"), lix.suggest("Old/Plan")])
 let [, localG] = await api("GET", "graph?path=Graph test/Far.md&depth=1")
 const lp = (g: Any) => g.nodes.map((n: Any) => n.path).sort()
 check("graph: a local graph is the file and its neighbours", JSON.stringify(lp(localG)) === JSON.stringify(["Graph test/Board.canvas", "Graph test/Far.md", "Graph test/Spoke one.md"]), lp(localG))
@@ -3686,12 +3694,11 @@ check("archived: the file row says so (and only then)", frow("Arch/Old note.md")
 const kaiOld = s.people.find((p: Any) => p.id === "People/Kai Old"), kaiNew = s.people.find((p: Any) => p.id === "People/Kai New")
 check("archived: every kind's item says so", kaiOld?.archived === true && !kaiNew?.archived, [kaiOld?.archived, kaiNew?.archived])
 ;[, graph] = await api("GET", "graph?archived=true")
-check("archived: a first name goes to the one not archived", gedge("Arch/Links.md", "People/Kai New.md"), graph.edges.filter((e: Any) => e.from === "Arch/Links.md"))
-check("archived: a full name, and a first name nobody else has, still find it", gedge("Arch/Links.md", "People/Kai Old.md") && gedge("Arch/Links.md", "People/Remy Gone.md"))
+check("archived: a full name still finds it; a first name finds nobody", gedge("Arch/Links.md", "People/Kai Old.md") && !gedge("Arch/Links.md", "People/Kai New.md") && !gedge("Arch/Links.md", "People/Remy Gone.md"))
 check("archived: an alias goes to the one not archived", gedge("Arch/Links.md", "Arch/New note.md") && !gedge("Arch/Links.md", "Arch/Old note.md"))
-const lra = linkResolver([{ path: "People/Kai Old.md", weak: ["Kai"], archived: true }, { path: "People/Kai New.md", weak: ["Kai"] },
-  { path: "A/Old.md", aliases: ["Twin"], archived: true }, { path: "B/New.md", aliases: ["Twin"] }, { path: "People/Remy Gone.md", weak: ["Remy"], archived: true }])
-check("links: archived files lose ties, and keep what's theirs alone", lra("Kai") === "People/Kai New.md" && lra("Twin") === "B/New.md" && lra("Remy") === "People/Remy Gone.md" && lra("Kai Old") === "People/Kai Old.md" && lra("A/Old") === "A/Old.md", [lra("Kai"), lra("Twin"), lra("Remy"), lra("Kai Old")])
+const lra = linkResolver([{ path: "A/Kai.md", archived: true }, { path: "B/Kai.md" }, { path: "A/Old.md", aliases: ["Twin"], archived: true }, { path: "B/New.md", aliases: ["Twin"] },
+  { path: "People/Remy.md", archived: true }])
+check("links: archived files lose ties, and keep what's theirs alone", lra("Kai", "A/x.md") === "B/Kai.md" && lra("Twin") === "B/New.md" && lra("Remy") === "People/Remy.md" && lra("A/Kai") === "A/Kai.md", [lra("Kai", "A/x.md"), lra("Twin"), lra("Remy")])
 ;[, graph] = await api("GET", "graph")
 check("archived: left out of the graph", !gnode("People/Kai Old.md") && !gnode("Arch/Old note.md") && !!gnode("People/Kai New.md"))
 ;[, localG] = await api("GET", "graph?path=Arch/Old note.md&depth=1")
@@ -3754,7 +3761,7 @@ check("archive.tidy --dry: lists what's marked but not moved", exists("Arch/By h
 check("archive.tidy: moves each into its folder's .archive", !aop.failed.length && exists("Arch/.archive/By hand.md") && exists("People/.archive/Kai Old.md") &&
   (await api("POST", "ops/archive.tidy", { dry: true }))[1].files.length === 0, aop)
 ;[, graph] = await api("GET", "graph?archived=true")
-check("archive.tidy: names still resolve to the archived file", gedge("Arch/Links.md", "People/.archive/Kai Old.md") && gedge("Arch/Links.md", "People/.archive/Remy Gone.md"),
+check("archive.tidy: names still resolve to the archived file", gedge("Arch/Links.md", "People/.archive/Kai Old.md"),
   graph.edges.filter((e: Any) => e.from === "Arch/Links.md"))
 // New files never go into an archive folder.
 const anote = (await api("POST", "notes", { ext_id: "idea-archive-test", title: "Archive me", body: "Soon gone.", kind: "idea", status: "seed" }))[1]

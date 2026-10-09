@@ -53,7 +53,7 @@ function extract() {
         }
         let after = "link"
         try { after = (await get<{ afterExtract?: string }>("config/plugin/note-composer")).afterExtract ?? after } catch { /* the default */ }
-        const insert = after === "none" ? "" : `${after === "embed" ? "!" : ""}${linkTo(to)}`
+        const insert = after === "none" ? "" : `${after === "embed" ? "!" : ""}${linkTo(to, sel.path)}`
         // Where the selection is now (typing meanwhile moved it).
         const doc = sel.view.state.doc
         const from = Math.min(sel.from, doc.length), end = Math.min(sel.to, doc.length)

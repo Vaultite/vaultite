@@ -55,8 +55,8 @@ type Props = {
   /** An undo or redo changed the hidden frontmatter (Properties show it). */
   onUndoFrontmatter?: () => void
   onOpen: (link: { wiki?: string; url?: string }, newTab: boolean) => void
-  /** Names to suggest after [[ (file names, people), with the file's path when it's one. */
-  names: () => { label: string; detail?: string; path?: string }[]
+  /** Names to suggest after [[ (file names, people), with the file's path when it's one and what picking it writes. */
+  names: () => { label: string; detail?: string; path?: string; insert?: string }[]
   /** Headings to suggest after [[Name# (a note's; "" is this file's). */
   headings?: (name: string) => Promise<string[]>
   /** Write links as Markdown, [name](Folder/Name.md), instead of [[name]] (.obsidian/app.json's useMarkdownLinks). */
@@ -248,7 +248,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
               const insert = `[${n.label}](${linkPath(n.path!)})`
               view.dispatch({ changes: { from: m.from, to: closed ? to + 2 : to, insert }, selection: { anchor: m.from + insert.length } })
             }
-            : closed ? n.label : `${n.label}]]`,
+            : closed ? n.insert ?? n.label : `${n.insert ?? n.label}]]`,
         })),
         validFor: /^[^[\]\n|]*$/,
       }

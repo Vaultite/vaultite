@@ -22,13 +22,6 @@ export function pinned<T extends Item>(x: T): T {
   return ll ? { ...x, lat: ll[0], lon: ll[1] } : x
 }
 plugin.exports.pinned = pinned
-// [[Bob]] links to Bob Lee when only one person is called Bob, on the server too (core/links.ts), like the app's links.
-// (An archived person's first name counts only when nobody else has it: the resolver sees to that.)
-plugin.provide("link-names", (path: string) => {
-  const e = plugin.vault.entries.get(path)
-  if (e?.kind?.collection !== "people") return null
-  return { weak: [path.slice(path.lastIndexOf("/") + 1).replace(/\.md$/i, "").split(" ")[0]] }
-})
 
 const RELATIONS = ["partner", "family", "roommate", "friend", "mentor", "contact"]
 const TIMELINE = "## Timeline"

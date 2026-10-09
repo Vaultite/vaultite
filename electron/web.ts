@@ -200,6 +200,17 @@ function stepOf(i: Input) {
   return [mod && "mod", MAC && i.control && "ctrl", i.alt && "alt", i.shift && "shift", key].filter(Boolean).join("+").toLowerCase()
 }
 
+/** A page's link to another app (zoommtg://, slack://, obsidian://), opened once the site may (asked like a permission,
+ *  as a browser asks first); mailto: opens the mail app. Never file: (a site doesn't open the Mac's files) or what runs
+ *  code. */
+async function otherApp(p: Page, to: string) {
+  if (!/^[a-z][a-z0-9+.-]*:/i.test(to) || /^(javascript|data|vbscript|blob|file|about|chrome|devtools|view-source):/i.test(to)) return
+  if (/^mailto:/i.test(to)) return void shell.openExternal(to)
+  const wc = p.view.webContents
+  if (wc.isDestroyed()) return
+  if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
+}
+
 function make(win: BrowserWindow, url: string, profile: string): Page {
   const view = new WebContentsView({
     webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false, webSecurity: true, spellcheck: true },
@@ -211,16 +222,16 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   pages.set(p.id, p)
   const wc = view.webContents
 
-  // Only to the web: a mailto: link opens the mail app, anything else (file:, an app's own scheme) goes nowhere.
+  // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.
   const refuse = (e: { preventDefault: () => void }, to: string) => {
     if (web(to)) return
     e.preventDefault()
-    if (/^mailto:/i.test(to)) void shell.openExternal(to)
+    void otherApp(p, to)
   }
   wc.on("will-navigate", (e) => refuse(e, e.url))
   wc.on("will-redirect", (e) => refuse(e, e.url))
   wc.setWindowOpenHandler(({ url: to, disposition, features }) => {
-    if (!web(to)) { if (/^mailto:/i.test(to)) void shell.openExternal(to); return { action: "deny" } }
+    if (!web(to)) { void otherApp(p, to); return { action: "deny" } }
     // A popup with a size (signing in with another site): a small window in the same session, which can answer the page.
     if (disposition === "new-window" && features) {
       return { action: "allow", overrideBrowserWindowOptions: {
@@ -233,7 +244,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   })
   wc.on("did-create-window", (child) => {
     child.webContents.on("will-navigate", (e) => refuse(e, e.url))
-    child.webContents.setWindowOpenHandler(({ url: to }) => { if (web(to)) void shell.openExternal(to); return { action: "deny" } })
+    child.webContents.setWindowOpenHandler(({ url: to }) => { if (web(to)) void shell.openExternal(to); else void otherApp(p, to); return { action: "deny" } })
   })
 
   revive(wc)

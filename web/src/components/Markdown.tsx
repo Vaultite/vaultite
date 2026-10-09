@@ -1,28 +1,51 @@
-// Markdown drawn read-only outside the editor (a book's notes, a timeline entry), looking like a read note. One-line
-// previews use `snippet` instead.
+// Markdown drawn read-only outside the editor (a book's notes, a timeline entry, an embed), looking like a read note.
+// One-line previews use `snippet` instead.
 import { useEffect, useMemo, useRef, type MouseEvent } from "react"
+import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
 import { followLink, resolver } from "@/core/links"
-import { renderInline, renderMarkdown } from "@/core/markdown"
+import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
 import { hydrate, markdownDrawn, richClick } from "@/core/richmd"
+import { assetPath } from "@/components/EmbedMenu"
+import { rawUrl } from "@/components/FileViewers"
+import { EmbedView } from "@/components/NoteEmbed"
 import { cn } from "@/lib/utils"
 
+/** What Markdown from `from` needs of the vault: its links resolved as written there, its images' addresses. */
+export function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
+  if (!s) return {}
+  const resolve = resolver(s)
+  return {
+    resolves: (t) => resolve(t, from),
+    asset: (name) => { const p = assetPath(s, name, from); return p ? new URL(rawUrl(p), document.baseURI).href : null },
+  }
+}
+
 /** `inline`: one line in running text; else a document in a sheet's sizes unless `full`. `from`: the file it's from
- *  (for `[[#Heading]]`). `plain`: without a note's look (`className` gives its own). */
-export function Markdown({ text, store, inline, full, className, from, plain }: { text: string; store?: Store; inline?: boolean; full?: boolean; className?: string; from?: string; plain?: boolean }) {
+ *  (for `[[#Heading]]` and the closest file of a name). `plain`: without a note's look (`className` gives its own).
+ *  `seen`: the notes embedding this text, so an embed in it never shows one of them again. */
+export function Markdown({ text, store, inline, full, className, from, plain, seen }: { text: string; store?: Store; inline?: boolean; full?: boolean; className?: string; from?: string; plain?: boolean; seen?: string[] }) {
   const s = store ?? getStore()
   const html = useMemo(() => {
-    const resolve = s ? resolver(s) : null
-    const resolves = resolve ? (t: string) => resolve(t) : undefined
-    return inline ? renderInline(text, resolves) : renderMarkdown(text, resolves)
-  }, [text, s, inline])
+    const opts = vaultOpts(s, from)
+    return inline ? renderInline(text, opts) : renderMarkdown(text, opts)
+  }, [text, s, inline, from])
   const ref = useRef<HTMLElement>(null)
+  const seenKey = (seen ?? (from ? [from] : [])).join("\n")
   useEffect(() => {
     if (!ref.current) return
     hydrate(ref.current); markdownDrawn(ref.current)
     // Its links have no address (a click follows them): Tab reaches them, and Enter presses them (core/keylist.ts).
     for (const a of ref.current.querySelectorAll<HTMLElement>("a[data-wiki], a[data-tag], a[data-url]")) { a.tabIndex = 0; a.setAttribute("role", "link") }
-  }, [html])
+    // `![[x]]` anywhere in the text: what it names, drawn in its place as on a line of its own (its own root).
+    if (!s) return
+    const roots = [...ref.current.querySelectorAll<HTMLElement>("[data-md-embed]")].map((el) => {
+      const root = createRoot(el)
+      root.render(<EmbedView store={s} target={el.dataset.mdEmbed!} from={from ?? ""} seen={seenKey ? seenKey.split("\n") : []} />)
+      return root
+    })
+    return () => { if (roots.length) setTimeout(() => { for (const r of roots) r.unmount() }, 0) }
+  }, [html, s, from, seenKey])
   const follow = (e: MouseEvent) => {
     if (e.button === 0 && ref.current && richClick(e, ref.current)) return
     const a = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag], [data-url]")
@@ -39,9 +62,8 @@ export function Markdown({ text, store, inline, full, className, from, plain }: 
 }
 
 /** Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault
- *  (`data-wiki`, `missing`), tags, callouts, math and mermaid waiting for `hydrateMarkdown`. */
-export function markdownHtml(text: string, { inline }: { inline?: boolean } = {}) {
-  const s = getStore(), resolve = s ? resolver(s) : null
-  const resolves = resolve ? (t: string) => resolve(t) : undefined
-  return inline ? renderInline(text, resolves) : renderMarkdown(text, resolves)
+ *  (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for `hydrateMarkdown`. */
+export function markdownHtml(text: string, { inline, from }: { inline?: boolean; from?: string } = {}) {
+  const opts = vaultOpts(getStore(), from)
+  return inline ? renderInline(text, opts) : renderMarkdown(text, opts)
 }

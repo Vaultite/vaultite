@@ -1,7 +1,9 @@
 // Markdown to HTML outside the editor, with its extras (wikilinks, callouts, footnotes, math, mermaid, tags,
-// highlights). Raw HTML shows as text but <details>; only http(s), mailto and # links work.
+// highlights). As in Obsidian: every link is one (a note, a file, any app's scheme), raw HTML is drawn (sanitized),
+// vault images show, and `![[Note]]` anywhere is an embed (a `data-md-embed` the caller draws; a link until then).
 import { Lexer, Marked, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
 import { COPY_ICON } from "./richmd"
+import { sanitizeHtml } from "./sanitize"
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 /** A wiki link's source: `[[target]]` or `[[target|shown]]` (groups 1 and 2), for building the patterns that need it. */
@@ -12,6 +14,15 @@ export const footnoteText = (s: string) => s.replace(/\[\[([^\]|]+\|)?|\]\]|[*_`
 
 /** What a [[target]] is (its kind tints it: person, book...), or null: nothing yet. */
 export type Resolves = (target: string) => { kind: string } | null
+/** What drawing needs from the vault: `resolves` links, `asset` a vault file's address (an image), or null. */
+export type MarkdownOpts = { resolves?: Resolves; asset?: (name: string) => string | null }
+
+const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|bmp|heic)$/i
+/** Addresses that run code where they open: drawn as text. */
+const UNSAFE = /^(javascript|data|vbscript|blob):/i
+const SCHEME = /^[a-z][a-z0-9+.-]*:/i
+/** An image's width written after its name or alt text (`|300`, `|300x200`), or 0. */
+const widthOf = (s: string) => Number(/^\s*(\d+)(?:x\d+)?\s*$/.exec(s)?.[1] ?? 0)
 
 // ---------- callouts ----------
 
@@ -54,7 +65,7 @@ function calloutType(name: string) {
 type FootnoteDef = Tokens.Generic & { label: string; tokens: Token[] }
 type Math = Tokens.Generic & { text: string; display: boolean }
 
-function make(resolves?: Resolves) {
+function make({ resolves, asset }: MarkdownOpts = {}) {
   // One document's footnotes, reset for each (preprocess): definitions by label (their text, then their HTML once
   // drawn), and the labels in the order they're first referenced (their numbers).
   let notes = new Map<string, { text: string; html?: string }>()
@@ -75,7 +86,13 @@ function make(resolves?: Resolves) {
     renderer(t) {
       const hit = !resolves || t.target.startsWith("#") ? { kind: "" } : resolves(t.target)
       const kind = hit && !["file", "note"].includes(hit.kind) ? hit.kind : ""
-      return `<a class="${esc(["wikilink", kind, hit ? "" : "missing"].filter(Boolean).join(" "))}" data-wiki="${esc(t.target)}"${t.embed ? " data-wiki-embed" : ""}>${esc(t.label)}</a>`
+      const link = `<a class="${esc(["wikilink", kind, hit ? "" : "missing"].filter(Boolean).join(" "))}" data-wiki="${esc(t.target)}"${t.embed ? " data-wiki-embed" : ""}>${esc(t.label)}</a>`
+      if (!t.embed || !hit) return link
+      // An image in the vault shows (`|300` its width); anything else embedded is drawn by the caller in its place.
+      const name = t.target.split("#")[0].trim(), src = asset && IMAGE.test(name) ? asset(name) : null
+      const alias = /\|([^\]]*)\]\]$/.exec(t.raw)?.[1] ?? ""
+      if (src) return img(src, name, widthOf(alias))
+      return `<span class="md-embed" data-md-embed="${esc(t.target)}">${link}</span>`
     },
   }
   const footnoteDef: TokenizerAndRendererExtension = {
@@ -183,6 +200,31 @@ function make(resolves?: Resolves) {
     renderer: () => "",
   }
 
+  const img = (src: string, alt: string, width = 0, title?: string | null) =>
+    `<img src="${esc(src)}" alt="${esc(alt)}"${title ? ` title="${esc(title)}"` : ""}${width ? ` width="${width}"` : ""} loading="lazy">`
+  /** A link's attributes by where it goes: a note or a file in the vault (`data-wiki`, followed like a [[link]]), an app
+   *  command, the web, or another app's scheme (`data-url`: obsidian://, zotero://, tel:, file://); null: not a link. */
+  const linkAttrs = (href: string): string | null => {
+    if (!href || UNSAFE.test(href)) return null
+    if (/^vaultite:\/\/command\/[\w:.-]+$/i.test(href)) return ` class="wikilink" data-url="${esc(href)}"`
+    if (/^https?:/i.test(href)) return ` href="${esc(href)}" target="_blank" rel="noreferrer"`
+    if (SCHEME.test(href)) return ` class="external-link" href="${esc(href)}" data-url="${esc(href)}"`
+    let t = href
+    try { t = decodeURIComponent(href) } catch { /* as written */ }
+    t = t.replace(/\.md(?=#|$)/i, "")
+    const hit = !resolves || t.startsWith("#") ? { kind: "" } : resolves(t)
+    return ` class="${hit ? "wikilink" : "wikilink missing"}" data-wiki="${esc(t)}"`
+  }
+  /** An image's address: the web's as it is, a vault file's from `asset`; null for neither. */
+  const imageSrc = (href: string): string | null => {
+    if (/^https?:/i.test(href)) return href
+    if (SCHEME.test(href) || !asset) return null
+    let t = href
+    try { t = decodeURIComponent(href) } catch { /* as written */ }
+    return asset(t.replace(/^(\.\.?\/)+/, ""))
+  }
+  const html = (text: string) => sanitizeHtml(text, { link: linkAttrs, image: imageSrc })
+
   const m = new Marked({ gfm: true })
   m.use({
     extensions: [wikilink, footnoteDef, footnoteRef, mathBlock, mathInline, highlight, tag, commentInline, commentBlock, blockId],
@@ -198,28 +240,19 @@ function make(resolves?: Resolves) {
       },
     },
     renderer: {
-      // Raw HTML is shown as text, except <details>/<summary> tags (a toggle); everything around them is escaped.
-      html: ({ text }: Tokens.HTML | Tokens.Tag) =>
-        text.replace(/(<\/?(?:details|summary)(?:\s+open(?:="")?)?\s*>)|[^<]+|</gi, (all: string, tag?: string) => (tag ? tag.toLowerCase().replace(/\s+/g, " ") : esc(all))),
+      // Raw HTML is drawn as Obsidian draws it, sanitized (core/sanitize.ts).
+      html: ({ text }: Tokens.HTML | Tokens.Tag) => html(text),
       // Classed by depth too (.note-prose sizes them by class).
       heading({ tokens, depth }: Tokens.Heading) { return `<h${depth} class="h${depth}">${this.parser.parseInline(tokens)}</h${depth}>\n` },
       link({ href, title, tokens }: Tokens.Link) {
-        const inner = this.parser.parseInline(tokens)
-        // A link into the vault (`[text](Some%20Note.md#Heading)`, `[text](#Heading)`): followed like a [[link]].
-        if (/^#|^(?![a-z][a-z0-9+.-]*:)[^?]*?\.md(?:#|$)/i.test(href)) {
-          let t = href
-          try { t = decodeURIComponent(href) } catch { /* as written */ }
-          t = t.replace(/^(\.\.?\/)+/, "").replace(/\.md(?=#|$)/i, "")
-          const hit = !resolves || t.startsWith("#") ? { kind: "" } : resolves(t)
-          return `<a class="${hit ? "wikilink" : "wikilink missing"}" data-wiki="${esc(t)}">${inner}</a>`
-        }
-        // A link that runs an app command (core/links.ts' COMMAND_LINK): followed on click like a [[link]].
-        if (/^vaultite:\/\/command\/[\w:.-]+$/i.test(href)) return `<a class="wikilink" data-url="${esc(href)}">${inner}</a>`
-        if (!/^(https?:|mailto:)/i.test(href)) return inner
-        const ext = /^https?:/i.test(href)
-        return `<a href="${esc(href)}"${title ? ` title="${esc(title)}"` : ""}${ext ? ' target="_blank" rel="noreferrer"' : ""}>${inner}</a>`
+        const inner = this.parser.parseInline(tokens), attrs = linkAttrs(href)
+        return attrs === null ? inner : `<a${attrs}${title ? ` title="${esc(title)}"` : ""}>${inner}</a>`
       },
-      image: ({ href, text }: Tokens.Image) => (/^https?:/i.test(href) ? `<img src="${esc(href)}" alt="${esc(text)}" loading="lazy">` : esc(text)),
+      // (`![alt|300](photo.png)`: a width after the alt text, as in Obsidian)
+      image({ href, text, title }: Tokens.Image) {
+        const src = imageSrc(href), w = /^(.*?)\|(\d+(?:x\d+)?)$/.exec(text)
+        return src ? img(src, w ? w[1] : text, w ? widthOf(w[2]) : 0, title) : esc(text)
+      },
       // Code: a label and a copy button over it; mermaid is drawn later (hydrate), its source showing until then.
       code({ text, lang }: Tokens.Code) {
         const name = (lang ?? "").trim().split(/\s+/)[0]
@@ -251,10 +284,10 @@ function make(resolves?: Resolves) {
 }
 
 const plain = make()
-const md = (resolves?: Resolves) => (resolves ? make(resolves) : plain)
+const md = (opts?: MarkdownOpts) => (opts?.resolves || opts?.asset ? make(opts) : plain)
 
 /** A Markdown document as HTML. */
-export const renderMarkdown = (text: string, resolves?: Resolves) => md(resolves).parse(text, { async: false }) as string
+export const renderMarkdown = (text: string, opts?: MarkdownOpts) => md(opts).parse(text, { async: false }) as string
 
 /** A line of Markdown (bold, links, code; no headings or lists) as HTML. */
-export const renderInline = (text: string, resolves?: Resolves) => md(resolves).parseInline(text, { async: false }) as string
+export const renderInline = (text: string, opts?: MarkdownOpts) => md(opts).parseInline(text, { async: false }) as string

@@ -233,22 +233,21 @@ function BlockNotes({ name, notes }: { name: string; notes: string[] }) {
 }
 
 /** `file:` in any block's options draws it for another file: a name or path like a [[link]], or a folder ending in /
- *  for its newest file. Server: otherFile in core/render.ts. */
-function fileFor(store: Store, target: string): string | null {
+ *  for its newest file; `from`, the file it is in (the closest of a name wins). Server: otherFile in core/render.ts. */
+function fileFor(store: Store, target: string, from?: string): string | null {
   const t = target.trim().replace(/^\[\[|\]\]$/g, "")
   if (t.endsWith("/")) {
     const dir = t.replace(/^\/+/, "").toLowerCase()
     const inside = store.files.files.filter((f) => f.path.toLowerCase().startsWith(dir) && f.path.endsWith(".md"))
     return inside.sort((a, b) => b.mtime - a.mtime)[0]?.path ?? null
   }
-  const exact = store.files.files.find((f) => f.path.toLowerCase() === t.toLowerCase() || f.path.toLowerCase() === `${t.toLowerCase()}.md`)
-  return exact?.path ?? resolver(store)(t)?.file ?? null
+  return resolver(store)(t, from)?.file ?? null
 }
 
 function OtherFile({ name, text, options, ctx, render, editing }: {
   name: string; text: string; options: Record<string, unknown>; ctx: FileCtx; render: Render; editing?: boolean
 }) {
-  const path = fileFor(ctx.store, String(options.file))
+  const path = fileFor(ctx.store, String(options.file), ctx.path)
   const mtime = ctx.store.files.files.find((f) => f.path === path)?.mtime
   const [other, setOther] = useState<{ path: string; fm: Record<string, unknown>; body: string } | null>(null)
   useEffect(() => {

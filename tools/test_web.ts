@@ -340,16 +340,33 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
   check("editor: a frontmatter over a few MB is one block", first?.name === "Frontmatter" && first.to === big.indexOf("\n# After"), [first?.name, first?.to])
 }
 
-const md: { renderMarkdown(text: string, resolves?: (t: string) => { kind: string } | null): string } = await web("core/markdown.ts")
+const md: { renderMarkdown(text: string, opts?: { resolves?: (t: string) => { kind: string } | null; asset?: (name: string) => string | null }): string } = await web("core/markdown.ts")
 const formats: { embedOf(line: string): { target: string; height?: number; note?: boolean } | null } = await web("core/formats.ts")
 const sec = await import(pathToFileURL(path.join(ROOT, "core", "sections.ts")).href)
 const html = md.renderMarkdown("A ==bright== idea #idea/new and `#code`, %%hidden%% text ^b1\n\n%%\nnot shown\n%%\n\n[[Note#Plans]] and [x](Some%20Note.md#Plans) and [[#Top]]\n\n^alone\n",
-  (t) => (t.startsWith("Some Note") || t.startsWith("Note") ? { kind: "file" } : null))
+  { resolves: (t) => (t.startsWith("Some Note") || t.startsWith("Note") ? { kind: "file" } : null) })
 check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"), html)
 check("markdown: #tags are clickable, not in code", html.includes('<a class="tag" data-tag="idea/new">#idea/new</a>') && html.includes("<code>#code</code>"), html)
 check("markdown: comments and block ids are hidden", !html.includes("hidden") && !html.includes("not shown") && !html.includes("^b1") && !html.includes("alone"), html)
 check("markdown: a heading link names the heading; same-file and Markdown links to notes are links",
   html.includes('data-wiki="Note#Plans">Note › Plans</a>') && html.includes('data-wiki="Some Note#Plans">x</a>') && html.includes('data-wiki="#Top">Top</a>'), html)
+// As in Obsidian: every Markdown link is a link, vault images show anywhere, `![[Note]]` mid-line embeds, raw HTML is drawn sanitized.
+const vopts = { resolves: (t: string) => (/^(Note|files\/a\.pdf|photo\.png|Idea)/.test(t) ? { kind: "file" } : null), asset: (n: string) => (/photo\.png$/.test(n) ? "/api/raw?path=Img/photo.png" : null) }
+const links = md.renderMarkdown("[a](Note) [b](files/a.pdf) [c](obsidian://open?vault=x) [d](zotero://select/items/1) [e](tel:+15551234) [f](file:///Users/x/a.pdf) [g](javascript:alert(1)) [h](https://example.com)", vopts)
+check("markdown: a link with no extension, a relative file and any app's scheme are links; javascript: isn't",
+  links.includes('data-wiki="Note">a</a>') && links.includes('data-wiki="files/a.pdf">b</a>') && links.includes('data-url="obsidian://open?vault=x">c</a>') &&
+  links.includes('data-url="zotero://select/items/1">d</a>') && links.includes('data-url="tel:+15551234">e</a>') && links.includes('data-url="file:///Users/x/a.pdf">f</a>') &&
+  !links.includes("javascript") && links.includes('href="https://example.com" target="_blank"'), links)
+const imgs = md.renderMarkdown("Before ![[photo.png|300]] and ![alt|200](../Img/photo.png) and ![[Idea]] after\n", vopts)
+check("markdown: vault images show (with widths), and an embed mid-line is drawn in its place",
+  imgs.includes('<img src="/api/raw?path=Img/photo.png" alt="photo.png" width="300"') && imgs.includes('alt="alt" width="200"') &&
+  imgs.includes('<span class="md-embed" data-md-embed="Idea"><a class="wikilink" data-wiki="Idea" data-wiki-embed>Idea</a></span>'), imgs)
+const raw = md.renderMarkdown('Line<br>two H<sub>2</sub>O x<sup>2</sup> <kbd>Cmd</kbd> <span style="color: red; position: fixed" onclick="x()">red</span>\n\n<details><summary>More</summary>\n\nInside\n\n</details>\n\n<script>alert(1)</script>\n\n<img src="photo.png" onerror="x()" width="50"> <a href="Idea">idea</a> <a href="javascript:x()">bad</a> <iframe src="https://x.test"></iframe> <custom>tag</custom>\n', vopts)
+check("markdown: raw HTML is drawn sanitized: safe tags and attributes, links and vault images; no scripts, handlers or frames",
+  raw.includes("Line<br>two") && raw.includes("<sub>2</sub>") && raw.includes("<sup>2</sup>") && raw.includes("<kbd>Cmd</kbd>") && raw.includes('<span style="color: red">red</span>') &&
+  raw.includes("<details><summary>More</summary>") && !raw.includes("alert") && !raw.includes("onclick") && !raw.includes("onerror") && !raw.includes("position") &&
+  raw.includes('<img src="/api/raw?path=Img/photo.png" width="50" loading="lazy">') && raw.includes('data-wiki="Idea">idea</a>') && raw.includes("<a>bad</a>") &&
+  !raw.includes("<iframe") && raw.includes("&#60;custom&#62;tag&#60;/custom&#62;"), raw)
 check("embeds: a note, a section, a block, a heading here", same([formats.embedOf("![[Idea]]"), formats.embedOf("![[Idea#Plans]]"), formats.embedOf("![[Idea#^b1]]"), formats.embedOf("![[#Top]]")].map((e) => e?.note),
   [true, true, true, true]) && formats.embedOf("![[photo.png]]") === null && formats.embedOf("![[v1.2 notes]]")?.note === true)
 const note = "---\ntags: [a]\n---\n# Top\n\nIntro #intro and `#no` [[X#y]] ^p1\n\n## Plans\n\n- one ^li\n  - under\n- two\n\n```\n# not a heading #no\n```\n\n## After\n"

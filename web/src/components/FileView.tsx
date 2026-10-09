@@ -707,7 +707,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     writable: !ro,
     kindBlocks,
     resolves: (t) => linkKind(resolve, t),
-    asset: (name) => assetUrl(store, name),
+    asset: (name) => assetUrl(store, name, path),
     ...imageActions(store),
     sections,
     renderSection: (name, text, el) => island((t) => <TimelineSection text={t} title={name[0].toUpperCase() + name.slice(1)} kinds={timelineKinds(disabled)} path={ro || !isMd(path) ? undefined : path} />, text, el),
@@ -720,7 +720,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       return { notes: optionNotes(decl, options, error), about: decl?.description }
     },
     renderEmbed: (target, height, el, edit) => drawEmbed(store, target, height, el, path, edit),
-    renderMarkdown: (md) => renderMarkdown(md, resolve),
+    renderMarkdown: (md) => renderMarkdown(md, { resolves: resolve, asset: (name) => assetUrl(store, name, path) }),
     follow: (link, newTab) => followLink(store, link, newTab, path),
     version,
     place: path,

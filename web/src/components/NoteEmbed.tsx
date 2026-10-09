@@ -27,7 +27,7 @@ const DEPTH = 4
 export function noteFor(store: Store, target: string, from: string): string | null {
   const [name] = splitAnchor(target)
   if (!name) return from && /\.md$/i.test(from) ? from : null
-  const hit = resolver(store)(name)?.file
+  const hit = resolver(store)(name, from || undefined)?.file
   return hit && /\.md$/i.test(hit) ? hit : null
 }
 
@@ -35,7 +35,7 @@ export function noteFor(store: Store, target: string, from: string): string | nu
  *  changes it in the note). */
 export function EmbedView({ store, target, height, from, seen = [], edit }: { store: Store; target: string; height?: number; from: string; seen?: string[]; edit?: () => EmbedEdit | null }) {
   usePrefs() // (what's embeddable follows the plugins that are on)
-  const path = findEmbed(store, target)
+  const path = findEmbed(store, target, from)
   return (
     <EmbedMenu store={store} target={target} from={from} edit={edit}>
       {!path ? <NoteEmbed store={store} target={target} from={from} seen={seen} />
@@ -100,7 +100,7 @@ export function NoteEmbed({ store, target, from, seen = [], fill }: { store: Sto
         <p className="note-embed-missing">No {anchor.startsWith("^") ? "block" : "heading"} {anchor} in {stem(path)}.</p>
       ) : (
         <div className="note-embed-body">
-          {segments(part, anchor ? undefined : kindBlocksOf(store, path)).map((s, i) => "md" in s ? <Markdown key={i} store={store} text={s.md} from={path} />
+          {segments(part, anchor ? undefined : kindBlocksOf(store, path)).map((s, i) => "md" in s ? <Markdown key={i} store={store} text={s.md} from={path} seen={inner} />
             : "embed" in s ? <EmbedView key={i} store={store} target={s.embed} height={s.height} from={path} seen={inner} />
             : <BlockView key={i} name={s.block} text={s.text} ctx={ctx} disabled={disabled} quiet />)}
         </div>

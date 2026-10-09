@@ -2,7 +2,7 @@
 // attachments and files plugins read links from; links resolve like the app's. Nothing is stored.
 import fs from "node:fs"
 import { frontmatterTargets, HTTPError, type LinkFile, linkResolver, LOADED, OpError, Plugin, wikiTargets } from "../../../core/plugins.ts"
-import { type Entry, type Item, readText, splitTags, stemOf, type Vault } from "../../../core/vault.ts"
+import { type Entry, readText, splitTags, stemOf, type Vault } from "../../../core/vault.ts"
 import { buildGraph, filterGraph, type Graph, type GraphFile, localGraph, localMarkdown } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -42,18 +42,12 @@ export function vaultGraph(vault: Vault): Graph {
   if (cached?.vault === vault && cached.version === version && cached.plugins.length === LOADED.length &&
     LOADED.every((p, i) => p === cached!.plugins[i])) return cached.graph
 
-  const off = vault.switchedOff()
-  const namers = LOADED.filter((p) => !off.has(p.id) && Object.hasOwn(p.services, "link-names"))
-    .map((p) => p.services["link-names"] as (path: string, fm: Item) => { names?: string[]; weak?: string[] } | null)
   const files: GraphFile[] = []
   const targets: LinkFile[] = []
   for (const [rel, e] of vault.entries) {
     const title = e.fm.title || e.fm.name || stemOf(rel)
     const aliases = e.fm.aliases
-    const t: LinkFile = { path: rel, title: typeof title === "string" ? title : String(title), aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), names: [], weak: [], archived: e.archived }
-    for (const named of namers) {
-      try { const n = named(rel, e.fm); t.names!.push(...(n?.names ?? [])); t.weak!.push(...(n?.weak ?? [])) } catch { /* a plugin's names failing must not break the rest */ }
-    }
+    const t: LinkFile = { path: rel, title: typeof title === "string" ? title : String(title), aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived }
     targets.push(t)
     files.push({
       path: rel, title: t.title!, type: e.type, tags: splitTags(e.fm.tags), links: linksIn(e), ...(e.archived ? { archived: true } : {}),
@@ -80,7 +74,7 @@ export function vaultGraph(vault: Vault): Graph {
   }
   const resolve = linkResolver(targets)
   const linked = new Set<string>()
-  for (const f of [...files, ...others]) for (const t of f.links) { const p = resolve(t); if (p) linked.add(p) }
+  for (const f of [...files, ...others]) for (const t of f.links) { const p = resolve(t, f.path); if (p) linked.add(p) }
   const graph = buildGraph([...files, ...others.filter((o) => o.links.length || linked.has(o.path))], resolve)
   cached = { vault, version, plugins: [...LOADED], graph: Object.freeze(graph) }
   return graph
@@ -130,7 +124,7 @@ plugin.op({
   id: "graph.links",
   mcp: "links",
   summary: "A file's links: what links to it (its backlinks), what it links to, and with depth, what's further out in the graph.",
-  help: `Links resolve like the app's ([[name]], an alias, a person's first name; embeds and a canvas's cards count). Archived
+  help: `Links resolve like the app's ([[name]], a path, an alias; embeds and a canvas's cards count). Archived
 files are left out unless asked for. depth 2 or 3 adds what's that many links away (the local graph).
 
   vau graph.links "Alice Park"

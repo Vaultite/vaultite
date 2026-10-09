@@ -10,7 +10,7 @@ import { dates, dump, load, YAMLError } from "./yaml.ts"
 import { blocksIn, fmTags, renameTagsIn, scan, tagName, tagsOf, withoutBlocks } from "./sections.ts"
 import { ARCHIVE_DIR, archiveTwin, effectiveType, homeFolder, inArchive, isArchived, PAGES_DIR } from "./fileprops.ts"
 import { kindOf } from "./filetypes.ts"
-import { type LinkFile, linkResolver, mapLinks, relativePath, resolvePath } from "./links.ts"
+import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
@@ -672,26 +672,39 @@ export class Vault {
     }
   }
 
+  /** Every file as links see it: its path, `title` (or `name`) and aliases. */
+  private linkFiles(): LinkFile[] {
+    const out: LinkFile[] = []
+    for (const [rel, e] of this.entries) {
+      const title = e.fm.title || e.fm.name, aliases = e.fm.aliases
+      out.push({ path: rel, title: title ? String(title) : undefined, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
+    }
+    for (const rel of this.others.keys()) out.push({ path: rel })
+    return out
+  }
+  private links: { version: number; resolve: Resolve<string> } | null = null
+  /** The file a [[link]] written in `from` goes to (core/links.ts: the closest of its name), or null. */
+  resolveLink(target: string, from?: string): string | null {
+    if (this.links?.version !== this.version) this.links = { version: this.version, resolve: linkResolver(this.linkFiles()) }
+    return this.links.resolve(target, from)
+  }
+
   /** Point links to moved files (already in the index at `to`) at their new paths. A link changes only
    *  when it found the file before and wouldn't now. Returns the files changed. */
   relink(moves: [string, string][]): string[] {
     if (!moves.length) return []
     const fwd = new Map(moves), back = new Map(moves.map(([f, t]) => [t, f]))
-    const now: LinkFile[] = []
-    for (const [rel, e] of this.entries) {
-      const title = e.fm.title || e.fm.name, aliases = e.fm.aliases
-      now.push({ path: rel, title: title ? String(title) : undefined, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
-    }
-    for (const rel of this.others.keys()) now.push({ path: rel })
+    const now = this.linkFiles()
     const before = linkResolver(now.map((f) => (back.has(f.path) ? { ...f, path: back.get(f.path)! } : f)))
     const after = linkResolver(now)
     const was = new Set(now.map((f) => back.get(f.path) ?? f.path)), is = new Set(now.map((f) => f.path))
     const base = (p: string) => p.slice(p.lastIndexOf("/") + 1)
-    const wiki = (t: string) => {
-      const old = before(t), np = old === null ? undefined : fwd.get(old)
-      if (np === undefined || after(t) === np) return null
+    // (each link as seen from its file, where it was and where it is: the closest file of a name wins)
+    const wiki = (t: string, was: string, now: string) => {
+      const old = before(t, was), np = old === null ? undefined : fwd.get(old)
+      if (np === undefined || after(t, now) === np) return null
       const name = /\.md$/i.test(np) && !/\.md$/i.test(t) ? np.slice(0, -3) : np
-      return !t.includes("/") && after(base(name)) === np ? base(name) : name
+      return !t.includes("/") && after(base(name), now) === np ? base(name) : name
     }
     // A Markdown link's path, relative to its file's folder or from the vault's top; ".md" may be left out.
     const find = (dir: string, h: string, files: Set<string>) => {
@@ -708,7 +721,7 @@ export class Vault {
       let text: string
       try { text = readText(this.abs(rel)) } catch { continue }
       const neu = mapLinks(text, (t, md) => {
-        if (!md) return wiki(t)
+        if (!md) return wiki(t, self, rel)
         const old = find(dirOf(self), t, was)
         if (!old) return null
         const np = fwd.get(old.p) ?? old.p

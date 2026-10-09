@@ -1,8 +1,14 @@
-// [[Links]] on the server, resolved the way the app does (web/src/core/links.ts): path, name, title or alias, then weak
-// names (a first name) only when one file has it. An archived file loses every tie. No Node.
+// [[Links]], resolved the way Obsidian does, on the server and in the app (web/src/core/links.ts, through `linkIndex`):
+// a path (or relative to the file), then a file name (a folder in front narrows it), then titles, aliases and plugins'
+// names. Several files answering: the closest to the linking file wins, an archived one last. No Node.
 
-/** A file as links see it. `names` and `weak` are what plugins add; `archived`: it loses ties. */
-export type LinkFile = { path: string; title?: string; aliases?: string[]; names?: string[]; weak?: string[]; archived?: boolean }
+/** A file as links see it. `names` are what plugins add (a person's name); `archived`: it loses ties. */
+export type LinkFile = { path: string; title?: string; aliases?: string[]; names?: string[]; archived?: boolean }
+/** Something a link can go to: a file (`path`), or only a name (`labels`) for what isn't one. `bare`: its name counts
+ *  without its extension too (by default, a note's). */
+export type LinkEntry<T> = { value: T; path?: string; bare?: boolean; labels?: string[]; archived?: boolean }
+/** Resolve a link target ("Alice Park", "Notes/Idea", "../Idea#Heading") written in `from`, or null. */
+export type Resolve<T> = (target: string, from?: string) => T | null
 
 const WIKI = () => /!?\[\[([^[\]\n|#^]+)(?:[#^][^[\]\n|]*)?(?:\|[^[\]\n]*)?\]\]/g
 const CODE = /(`+)(?:(?!\1).)+?\1/g
@@ -30,29 +36,92 @@ export function frontmatterTargets(fm: Record<string, unknown>): string[] {
   return out
 }
 
-/** A resolver over these files: a link target ("Alice", "Notes/Idea", "Idea#Heading") to a file's path, or null. */
-export function linkResolver(files: LinkFile[]): (target: string) => string | null {
-  const strong = new Map<string, string>()
-  const weak = new Map<string, string | null>(), weakArchived = new Map<string, string | null>()
-  const key = (n: string) => n.trim().toLowerCase()
-  const add = (n: string, path: string) => { const k = key(n); if (k && !strong.has(k)) strong.set(k, path) }
-  const byPath = (a: LinkFile, b: LinkFile) => (a.path < b.path ? -1 : a.path > b.path ? 1 : 0)
-  // Archived files after the others (their names only where nobody else has them), each by path.
-  const sorted = [...files].sort((a, b) => Number(!!a.archived) - Number(!!b.archived) || byPath(a, b))
-  const base = (p: string) => p.slice(p.lastIndexOf("/") + 1)
-  // Most exact first: paths, then file names, then titles, aliases and plugins' names.
-  for (const f of sorted) { add(f.path, f.path); add(f.path.replace(/\.md$/i, ""), f.path) }
-  for (const f of sorted) { add(base(f.path), f.path); add(base(f.path).replace(/\.md$/i, ""), f.path) }
-  for (const f of sorted) for (const n of [f.title ?? "", ...(f.aliases ?? []), ...(f.names ?? [])]) add(n, f.path)
-  for (const f of sorted) {
-    const into = f.archived ? weakArchived : weak
-    for (const n of f.weak ?? []) { const k = key(n); if (k) into.set(k, into.has(k) && into.get(k) !== f.path ? null : f.path) }
+const dirOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
+const baseOf = (p: string) => p.slice(p.lastIndexOf("/") + 1)
+const noExt = (p: string) => p.replace(/\.[^./]+$/, "")
+const segs = (dir: string) => (dir ? dir.split("/") : [])
+
+/** How far file `p` is from folder `dir`: folders up, then down (0 in the same folder). */
+function distance(dir: string, p: string) {
+  const a = segs(dir.toLowerCase()), b = segs(dirOf(p).toLowerCase())
+  let i = 0
+  while (i < a.length && i < b.length && a[i] === b[i]) i++
+  return a.length - i + (b.length - i)
+}
+
+/** An index of what links can go to, and how they resolve: `resolve`, and what a link to nothing may have meant
+ *  (`suggest`: a name that starts with it, "Alice" for Alice Park; a file of that name in another folder). */
+export function linkIndex<T>(entries: LinkEntry<T>[]): { resolve: Resolve<T>; suggest: (target: string, from?: string, max?: number) => T[] } {
+  const paths = new Map<string, LinkEntry<T>[]>(), names = new Map<string, LinkEntry<T>[]>(), labels = new Map<string, LinkEntry<T>[]>()
+  const put = (m: Map<string, LinkEntry<T>[]>, k: string, e: LinkEntry<T>) => {
+    if (!k) return
+    const l = m.get(k)
+    if (!l) m.set(k, [e])
+    else if (!l.includes(e)) l.push(e)
   }
-  const weakOf = (k: string) => (weak.has(k) ? weak.get(k) : weakArchived.get(k))
-  return (target) => {
-    const k = key(target.split("#")[0].split("^")[0]).replace(/^\/+/, "")
-    return strong.get(k) ?? strong.get(k.replace(/\.md$/, "")) ?? weakOf(k) ?? null
+  for (const e of entries) {
+    for (const n of e.labels ?? []) put(labels, n.trim().toLowerCase(), e)
+    if (!e.path) continue
+    const p = e.path.toLowerCase(), bare = e.bare ?? /\.md$/.test(p)
+    put(paths, p, e); put(names, baseOf(p), e)
+    if (bare) { put(paths, noExt(p), e); put(names, noExt(baseOf(p)), e) }
   }
+  // Closest first: not archived, then (from a file) its own folder and the fewest folders away, then the shortest path.
+  const rank = (l: LinkEntry<T>[], from?: string) => {
+    if (l.length < 2) return l
+    const dir = from === undefined ? null : dirOf(from)
+    const key = (e: LinkEntry<T>) => [Number(!!e.archived), dir === null || !e.path ? 0 : distance(dir, e.path), segs(dirOf(e.path ?? "")).length]
+    return [...l].sort((a, b) => {
+      const x = key(a), y = key(b)
+      for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i]
+      const pa = a.path ?? "", pb = b.path ?? ""
+      return pa < pb ? -1 : pa > pb ? 1 : 0
+    })
+  }
+  const clean = (target: string) => target.split("#")[0].split("^")[0].trim()
+  const resolve: Resolve<T> = (target, from) => {
+    const t = clean(target)
+    if (!t) return null
+    // A relative path (`../Idea`) from the linking file's folder first; else from the vault's top.
+    if (from !== undefined && /^\.\.?\//.test(t)) {
+      const p = resolvePath(dirOf(from), t)
+      const hit = p ? paths.get(p.toLowerCase()) : undefined
+      if (hit) return rank(hit, from)[0].value
+    }
+    // A path from the vault's top: a bare name is a name, so the closest file of that name wins over one at the top.
+    // (a relative one that isn't there is taken as written from the top: `../Media/a.png` as Media/a.png)
+    const k = t.replace(/^(\.\.?\/)+/, "").replace(/^\/+/, "").toLowerCase()
+    const exact = k.includes("/") || t.startsWith("/") ? paths.get(k) : undefined
+    if (exact) return rank(exact, from)[0].value
+    // A file name; a folder in front of it must be the end of the file's path (`[[Work/Idea]]`: any …/Work/Idea.md).
+    const base = baseOf(k)
+    let hits = names.get(base)
+    if (hits && k !== base) hits = hits.filter((e) => { const p = e.path!.toLowerCase(); return p.endsWith(`/${k}`) || ((e.bare ?? /\.md$/.test(p)) && noExt(p).endsWith(`/${k}`)) })
+    if (hits?.length) return rank(hits, from)[0].value
+    const label = labels.get(k)
+    return label ? rank(label, from)[0].value : null
+  }
+  const suggest = (target: string, from?: string, max = 5) => {
+    const k = clean(target).replace(/^(\.\.?\/)+/, "").replace(/^\/+/, "").toLowerCase()
+    if (!k) return []
+    const out: LinkEntry<T>[] = []
+    const add = (l?: LinkEntry<T>[]) => { for (const e of rank(l ?? [], from)) if (!out.includes(e)) out.push(e) }
+    // The file of that name elsewhere (a path that isn't there as written), then names that start with it.
+    if (k.includes("/")) add(names.get(baseOf(k)))
+    for (const m of [names, labels]) {
+      const starts: LinkEntry<T>[] = []
+      for (const [n, l] of m) if (n.length > k.length && n.startsWith(k) && /[\s\-_.,(]/.test(n[k.length])) starts.push(...l)
+      add(starts)
+    }
+    return out.slice(0, max).map((e) => e.value)
+  }
+  return { resolve, suggest }
+}
+
+/** A resolver over these files: a link target (written in `from`) to a file's path, or null. */
+export function linkResolver(files: LinkFile[]): Resolve<string> {
+  return linkIndex(files.map((f) => ({ value: f.path, path: f.path, archived: f.archived,
+    labels: [f.title ?? "", ...(f.aliases ?? []), ...(f.names ?? [])] }))).resolve
 }
 
 const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g

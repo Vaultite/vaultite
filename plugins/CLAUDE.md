@@ -54,8 +54,9 @@
   back. Examples: `tools/fixtures/lighthouse/`, `tools/fixtures/wordcount/`.
 
 ## Features
-- **Links and graph**: `[[...]]` resolves in `core/links.ts` and `web/src/core/links.ts` (plugins add names with the
-  service `link-names`); `POST /api/backlinks/link` rewrites only that stretch, 409 if the line changed.
+- **Links and graph**: `[[...]]` resolves by Obsidian's rules in `core/links.ts` (`linkIndex`, the app's too: the
+  closest file of a name wins; plugins' `links` add names after files'); `POST /api/backlinks/link` rewrites only that
+  stretch, 409 if the line changed.
 - **Obsidian vaults open as they are** (core/docs/from-other-apps.md): `core/sections.ts`, note embeds, the `other-apps`
   plugin's conventions from `.obsidian/app.json`, Obsidian themes as colour schemes (only colours carry over).
 - **Audio recorder, Slides, Export to PDF**: app-wide overlays drawn by each plugin's `background`, never a route or a

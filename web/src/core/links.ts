@@ -1,17 +1,21 @@
-// Wikilinks and backlinks: every file is linked by its name and `aliases`; plugins add names (a first
-// name) and targets that aren't files.
+// Wikilinks and backlinks: every file is linked by its name, path and `aliases`; plugins add names (a person's) and
+// targets that aren't files.
+import { FilePlus } from "lucide-react"
 import type { Store } from "@/core/data"
+import { type Choice, choose } from "@/components/Chooser"
+import { desktop } from "@/core/desktop"
 import { splitAnchor, tagName } from "../../../core/sections.ts"
 import { openAt } from "@/core/anchors"
 import { runCommandId } from "@/core/commands"
 import { detailPath } from "@/core/define"
-import { createNamed, fileOf, folderOf, stem, type VaultFile } from "@/core/files"
+import { cleanName, createNamed, folderOf, inVault, openView, stem, type VaultFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { newNoteFolder } from "@/core/conventions"
 import { notify } from "@/core/notify"
 import { active, type LinkTarget } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { WIKI_LINK } from "@/core/markdown"
+import { type LinkEntry, linkIndex } from "../../../core/links.ts"
 
 export type Target = LinkTarget
 
@@ -36,10 +40,13 @@ export function plainText(md: string) {
 /** Markdown as one line of plain text: a preview in a row, a card or a search result. */
 export const snippet = (md: string) => plainText(md).replace(/\s+/g, " ").trim()
 
-/** A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else the quick switcher. */
+/** A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in
+ *  Obsidian. */
 export function openTag(tag: string) {
   const { disabled, order } = getPrefs()
-  if (active(disabled, order).some((p) => p.details?.tag)) return openDetail(detailPath("tag", tagName(tag)))
+  const on = active(disabled, order)
+  if (on.some((p) => p.details?.tag)) return openDetail(detailPath("tag", tagName(tag)))
+  if (on.some((p) => p.views?.search)) return openView(`search/tag:#${tagName(tag)}`)
   runCommandId("switcher:open")
 }
 
@@ -53,7 +60,7 @@ function mdTarget(s: Store, href: string, from?: string) {
   const parts: string[] = from ? folderOf(from).split("/").filter(Boolean) : []
   for (const x of p.split("/")) { if (x === "..") parts.pop(); else if (x && x !== ".") parts.push(x) }
   const rel = parts.join("/")
-  const hit = fileOf(s, rel) ?? fileOf(s, `${rel}.md`) ? rel : p.replace(/^(\.\.?\/)+/, "").replace(/^\/+/, "")
+  const hit = inVault(s, rel) || inVault(s, `${rel}.md`) ? rel : p.replace(/^(\.\.?\/)+/, "").replace(/^\/+/, "")
   return `${hit.replace(/\.md$/i, "")}${anchor ? `#${anchor}` : ""}`
 }
 
@@ -98,9 +105,21 @@ if (typeof window !== "undefined") {
 /** A Markdown link that runs one of the app's commands: `[Open Claude Code](vaultite://command/terminal:claude-split)`.
  *  A click is the user running it, as from the palette (the sandbox's Start here opens Claude Code this way). */
 const COMMAND_LINK = /^vaultite:\/\/command\/([\w:.-]+)$/i
+/** Addresses that run code where they open: never followed. */
+const UNSAFE = /^(javascript|data|vbscript|blob):/i
 
-/** Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail,
- *  a #tag's files, a command link; a [[link]] to nothing yet makes that note where new notes go. */
+/** Open a link of any other scheme (mailto:, tel:, obsidian://, zotero://, file://) the system's way: a plugin's if one
+ *  takes it, else the app it belongs to (the desktop app opens file:// with the Mac's app for it). */
+function openOtherLink(url: string, mod = false) {
+  if (UNSAFE.test(url)) return notify("That link can't be opened")
+  if (takeSchemeLink(url, mod)) return
+  if (/^file:/i.test(url) && !desktop) return notify("File links open in the desktop app")
+  window.open(url, "_blank", "noopener,noreferrer")
+}
+
+/** Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail, a #tag's files, a command link,
+ *  a web or other app's link; a [[link]] to nothing yet makes that note where new notes go, or, when another file may
+ *  be what it meant, asks which. */
 export async function followLink(s: Store, link: { wiki?: string; url?: string; tag?: string }, newTab: boolean, from?: string) {
   if (link.tag) return openTag(link.tag)
   let wiki = link.wiki ?? ""
@@ -108,41 +127,47 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
     const cmd = COMMAND_LINK.exec(link.url)
     if (cmd) { if (!runCommandId(cmd[1])) notify("That isn't available here"); return }
     if (/^https?:/i.test(link.url)) return openWebLink(link.url, newTab)
-    if (/^mailto:/i.test(link.url)) { window.open(link.url, "_blank", "noopener,noreferrer"); return }
-    if (/^[a-z][a-z0-9+.-]*:/i.test(link.url)) { takeSchemeLink(link.url, newTab); return }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(link.url)) return openOtherLink(link.url, newTab)
     wiki = mdTarget(s, link.url, from)
   }
   const [name, anchor] = splitAnchor(wiki)
   if (!name) { if (from && anchor) openAt(from, anchor); return }
-  const t = resolver(s)(name)
-  if (t?.file) return openAt(t.file, anchor, { newTab })
-  if (t?.detail) return openDetail(t.detail)
-  const f = await createNamed(newNoteFolder(s, from), name)
-  if (f) openAt(f.path, "", { newTab })
+  const open = (t: Target) => (t.file ? openAt(t.file, anchor, { newTab }) : t.detail ? openDetail(t.detail) : undefined)
+  const t = resolver(s)(name, from)
+  if (t) return open(t)
+  // (a file of another kind, `[pdf](a.pdf)`, isn't made as a note)
+  const clean = /\.(?!md$)[A-Za-z][A-Za-z0-9]{0,9}$/i.test(name) ? "" : cleanName(name)
+  const create = async () => { const f = await createNamed(newNoteFolder(s, from), name); if (f) openAt(f.path, "", { newTab }) }
+  const maybe = didYouMean(s, name, from)
+  if (!maybe.length) return clean ? create() : notify(`No file ${name} in the vault`)
+  type Pick = Choice & { to?: Target }
+  const items: Pick[] = maybe.map((m, i) => ({ id: String(i), label: m.file ? stem(m.file) : m.title, detail: m.file ? folderOf(m.file) || undefined : undefined, to: m }))
+  if (clean) items.push({ id: "new", label: `Create “${clean}”`, icon: FilePlus })
+  choose<Pick>({ title: "Did you mean", heading: `No file is called “${name}”. Did you mean:`, placeholder: "Open or create…", items,
+    onPick: (c) => { if (c.to) open(c.to); else void create() } })
 }
 
-/** A file: by its name (a page's with or without its extension, `[[Report.html]]`), path, title and aliases. */
+/** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`), title and aliases. */
 const fileTarget = (f: VaultFile): Target => ({
   kind: "file", id: f.path.replace(/\.md$/i, ""), title: stem(f.path), detail: "", file: f.path,
-  names: [stem(f.path), f.path.replace(/\.md$/i, ""), f.path.split("/").pop()!, f.title, ...f.aliases], ...(f.archived ? { archived: true } : {}),
+  names: [f.title, ...f.aliases], ...(f.archived ? { archived: true } : {}),
 })
-/** Any other file (an image, a PDF), linked by its name with its extension. */
-const otherTarget = (path: string): Target => ({
-  kind: "file", id: path, title: path.split("/").pop()!, detail: "", file: path, names: [path.split("/").pop()!, path],
-})
+/** Any other file (an image, a PDF), linked by its name or path with its extension. */
+const otherTarget = (path: string): Target => ({ kind: "file", id: path, title: path.split("/").pop()!, detail: "", file: path, names: [] })
 
-type Resolve = (t: string) => Target | null
-const cache = new WeakMap<Store, Resolve>()
-// The last resolver and its targets: a store with the same targets gets the same resolver, so what's memoized on it
+type Resolve = (t: string, from?: string) => Target | null
+type Index = { resolve: Resolve; suggest: (t: string, from?: string) => Target[] }
+const cache = new WeakMap<Store, Index>()
+// The last index and its targets: a store with the same targets gets the same resolver, so what's memoized on it
 // (query tables' links, the editor's) stays.
-let made: { targets: Target[]; fn: Resolve } | null = null
+let made: { targets: Target[]; index: Index } | null = null
 const sameList = (a?: string[], b?: string[]) => a === b || (!!a && !!b && a.length === b.length && a.every((x, i) => x === b[i]))
 const sameTarget = (a: Target, b: Target) => a === b || (a.kind === b.kind && a.id === b.id && a.title === b.title &&
-  a.detail === b.detail && a.file === b.file && sameList(a.names, b.names) && sameList(a.weak, b.weak) && !a.archived === !b.archived)
+  a.detail === b.detail && a.file === b.file && sameList(a.names, b.names) && !a.archived === !b.archived)
 
-/** Resolve a wikilink target: plugins' exact names, then file names, paths and aliases, then weak names only one target
- *  has. Archived targets come after all others, like the server's (core/links.ts). */
-export function resolver(s: Store): Resolve {
+/** The vault's link index: files and plugins' targets (a person, a book), resolved as Obsidian does (core/links.ts). A
+ *  plugin's target of a file stands for that file. */
+function linkIndexOf(s: Store): Index {
   const hit = cache.get(s)
   if (hit) return hit
   const { disabled, order } = getPrefs()
@@ -150,40 +175,54 @@ export function resolver(s: Store): Resolve {
   for (const p of active(disabled, order)) {
     try { targets.push(...(p.links?.(s) ?? [])) } catch { /* a plugin's links failing must not break the rest */ }
   }
-  for (const f of s.files?.files ?? []) targets.push(fileTarget(f))
-  for (const o of s.files?.others ?? []) if (!o.path.split("/").some((p) => p.startsWith("."))) targets.push(otherTarget(o.path))
-  // A plugin's target of an archived file is archived too.
   const rows = new Map((s.files?.files ?? []).map((f) => [f.path.replace(/\.md$/i, ""), f]))
+  // A plugin's target of a file is that file's, archived with it.
   for (let i = 0; i < targets.length; i++) {
     const t = targets[i], row = rows.get(t.file ? t.file.replace(/\.md$/i, "") : t.id)
-    if (!t.archived && row?.archived) targets[i] = { ...t, archived: true }
+    if (row && (!t.file || (row.archived && !t.archived))) targets[i] = { ...t, file: row.path, ...(row.archived ? { archived: true } : {}) }
   }
+  for (const f of s.files?.files ?? []) targets.push(fileTarget(f))
+  for (const o of s.files?.others ?? []) if (!o.path.split("/").some((p) => p.startsWith("."))) targets.push(otherTarget(o.path))
   const was = made
   if (was && was.targets.length === targets.length && targets.every((t, i) => sameTarget(t, was.targets[i]))) {
-    cache.set(s, was.fn)
-    return was.fn
+    cache.set(s, was.index)
+    return was.index
   }
-  const files = new Map((s.files?.files ?? []).map((f) => [f.path.replace(/\.md$/i, ""), f.path]))
-  const strong = new Map<string, Target>()
-  const weak = new Map<string, Target | null>(), weakArchived = new Map<string, Target | null>()
-  for (const t of [...targets.filter((x) => !x.archived), ...targets.filter((x) => x.archived)]) {
-    const withFile = t.file || !files.has(t.id) ? t : { ...t, file: files.get(t.id) }
-    for (const n of t.names) { const k = n.trim().toLowerCase(); if (k && !strong.has(k)) strong.set(k, withFile) }
-    const into = t.archived ? weakArchived : weak
-    for (const n of t.weak ?? []) { const k = n.trim().toLowerCase(); into.set(k, into.has(k) ? null : withFile) }
+  // One entry per file (its first target: a plugin's before the plain file's), with every target's names.
+  const byFile = new Map<string, LinkEntry<Target>>(), entries: LinkEntry<Target>[] = []
+  for (const t of targets) {
+    const had = t.file ? byFile.get(t.file) : undefined
+    if (had) { had.labels!.push(...t.names); continue }
+    const e: LinkEntry<Target> = { value: t, labels: [...t.names], archived: t.archived, ...(t.file ? { path: t.file, bare: !!rows.get(t.file.replace(/\.md$/i, "")) } : {}) }
+    if (t.file) byFile.set(t.file, e)
+    entries.push(e)
   }
-  const fn = (target: string): Target | null => {
-    const k = target.split("#")[0].trim().toLowerCase()
-    const hit = strong.get(k) ?? strong.get(k.replace(/\.md$/, "")) ?? (weak.has(k) ? weak.get(k) : weakArchived.get(k))
-    if (hit !== undefined) return hit
-    // A path that isn't there as written (a Markdown link relative to a folder): the file by its name.
-    const last = k.includes("/") ? k.slice(k.lastIndexOf("/") + 1) : ""
-    return (last && (strong.get(last) ?? strong.get(last.replace(/\.md$/, "")))) || null
-  }
-  cache.set(s, fn)
-  made = { targets, fn }
-  return fn
+  const index = linkIndex(entries)
+  cache.set(s, index)
+  made = { targets, index }
+  return index
 }
+
+/** Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then titles,
+ *  aliases and plugins' names), or null. */
+export const resolver = (s: Store): Resolve => linkIndexOf(s).resolve
+
+/** How a [[link]] in `from` writes `path`: the shortest end of its path that finds it (its name when that's enough, as
+ *  Obsidian's "shortest path when possible"). A note or page without its extension. */
+export function shortestLink(s: Store, path: string, from?: string): string {
+  const resolve = resolver(s)
+  const parts = path.split("/"), named = stem(path)
+  const last = named !== parts[parts.length - 1] ? named : parts[parts.length - 1]
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const c = [...parts.slice(i, -1), last].join("/")
+    if (resolve(c, from)?.file === path) return c
+  }
+  return [...parts.slice(0, -1), last].join("/")
+}
+
+/** What a link to nothing may have meant: a name that starts with it ("Alice" for Alice Park), the file of that name in
+ *  another folder. */
+export const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
 
 /** Files that link to something (a note, a person), each with the line the link sits on. */
 export function mentions(s: Store, is: (t: Target) => boolean, except?: string) {
@@ -191,7 +230,7 @@ export function mentions(s: Store, is: (t: Target) => boolean, except?: string) 
   const out: { file: VaultFile; title: string; context: string }[] = []
   for (const f of s.files?.files ?? []) {
     if (f.path === except) continue
-    const hit = f.links.find(([t]) => { const r = resolve(t); return !!r && is(r) })
+    const hit = f.links.find(([t]) => { const r = resolve(t, f.path); return !!r && is(r) })
     if (hit) out.push({ file: f, title: stem(f.path), context: plainText(hit[1]).trim() })
   }
   return out.sort((a, b) => b.file.mtime - a.file.mtime)

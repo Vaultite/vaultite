@@ -6,6 +6,7 @@ import type { Store } from "@/core/data"
 import { openAt } from "@/core/anchors"
 import { kindOf } from "@/core/filekinds"
 import { findEmbed, isMd, openFile } from "@/core/files"
+import { resolver } from "@/core/links"
 import { notify, notifyError } from "@/core/notify"
 import { formatFor } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
@@ -20,16 +21,19 @@ import type { EmbedEdit } from "@/editor/livePreview"
 import { splitAnchor } from "../../../core/sections.ts"
 
 /** The vault file an image embed names (`![[photo.png]]`, `![](Attachments/photo.png)`), or null. */
-export function assetPath(store: Store, name: string): string | null {
-  let low = name.toLowerCase()
-  try { low = decodeURIComponent(low) } catch { /* as written */ }
-  low = low.replace(/^(\.\.?\/)+|^\/+/, "")
-  return store.files.others.find((o) => o.path.toLowerCase() === low || o.path.split("/").pop()!.toLowerCase() === low)?.path ?? null
+export function assetPath(store: Store, name: string, from?: string): string | null {
+  let t = name.trim()
+  try { t = decodeURIComponent(t) } catch { /* as written */ }
+  // Found as a link is (the closest of its name); a hidden folder's file, which links don't name, by its path.
+  const hit = resolver(store)(t, from)?.file
+  if (hit) return store.files.others.some((o) => o.path === hit) ? hit : null
+  const low = t.toLowerCase().replace(/^(\.\.?\/)+|^\/+/, "")
+  return store.files.others.find((o) => o.path.toLowerCase() === low)?.path ?? null
 }
 
 /** The file `![[target]]` shows (`from`: the note it's in, for `![[#Heading]]`), or null (a web image, nothing). */
 const embedPath = (store: Store, target: string, from = "") =>
-  findEmbed(store, target) ?? assetPath(store, target) ?? noteFor(store, target, from)
+  findEmbed(store, target, from) ?? assetPath(store, target, from) ?? noteFor(store, target, from)
 
 /** The menu for `![[target]]` (or an image's `![](target)`). `edit`: what changes it in the note it's in. */
 function embedItems(store: Store, target: string, edit?: EmbedEdit | null, from = ""): MenuItem[] {
