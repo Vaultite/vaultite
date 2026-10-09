@@ -571,6 +571,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   draws it as a timeline.
 - **Big files open and edit at any size**: a file over 1 MB (an Excalidraw drawing with images, a long note) no longer
   opens read-only, nor one over 8 MB as a card; typing in a 16 MB note is as quick as in a short one.
+- **No size limits**: File history keeps files of any size (one growing past 1 MB is no longer taken for deleted) and
+  its diff is right at any size; search reads every text file whole, however many (an embedded image's base64 aside);
+  books, web pages, sheets and CSVs give all their text; the graph reads links from files of any size; a PDF's page
+  count at any size; uploads (the app's, `POST /api/ops/file.upload` with the file as the body, MCP upload links, a
+  file pasted into a terminal) stream with no cap; a web image saved to the vault says why when it can't be.
 - **Agent hooks reach a server on its own address**: with `HOST` set to one address, the inbox's and Activity's hooks
   post there instead of to 127.0.0.1, which nothing answered.
 - **iPhone: never a blank screen**: a server's page that doesn't load (unreachable, or reloaded after iOS ended the page
@@ -667,6 +672,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   misses one reloads into the new version.
 
 ### Plugin API 3
+- `plugin.onCreateFile(fn)` gets the new file read-only, as `{ size, head(n), tail(n) }` (an upload can be any size),
+  and can no longer change its bytes; `diffLines` (app and server) diffs lines fast at any size; an op with `input`
+  takes bytes.
 - **A plugin's icon is its manifest's `icon`**, its one source (definePlugin has no `icon`): a Lucide name, one a plugin
   adds (`claude`, `github`) or a brand's mark as an SVG file, so Browse shows each plugin as it looks once installed.
 - `webPageActions` adds buttons to a web page's bar and its tab's menu; `appWindows.open(bundle, url)` opens a web

@@ -47,7 +47,10 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
   return ""
 }
 
-const APPROVAL_TTL = 10 * 60_000, UPLOAD_TTL = 15 * 60_000, MAX_UPLOAD = 25 << 20
+const APPROVAL_TTL = 10 * 60_000, UPLOAD_TTL = 15 * 60_000
+/** The most a request's body may be read into memory here: this server is on the internet, so it's kept, and a file's
+ *  bytes go through an upload link instead (streamed, any size). */
+const BODY_MAX = 4 << 20
 const REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.com", "agent.meta.ai"]
 const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_TTL = 120
 const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789" // no vowels (no words), no 0/O, 1/I/L
@@ -289,11 +292,9 @@ export class PublicMcp {
   async body(req: IncomingMessage): Promise<string> {
     let size = 0
     const parts: Buffer[] = []
-    for await (const c of req) {
-      size += (c as Buffer).length
-      if (size > 4 << 20) throw Object.assign(new Error("too big"), { status: 413 })
-      parts.push(c as Buffer)
-    }
+    // (past the limit the rest is read and dropped, so the sender gets the answer rather than a cut connection)
+    for await (const c of req) if ((size += (c as Buffer).length) <= BODY_MAX) parts.push(c as Buffer)
+    if (size > BODY_MAX) throw Object.assign(new Error("too big"), { status: 413 })
     return Buffer.concat(parts).toString("utf8")
   }
 
@@ -490,7 +491,13 @@ export class PublicMcp {
     if (req.method === "DELETE") { this.sessions.delete(sid); return this.json(res, 200, { ok: true }) }
     if (req.method !== "POST") return this.json(res, 405, { error: "method_not_allowed" })
     let body: unknown
-    try { body = JSON.parse(await this.body(req)) } catch { return this.json(res, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } }) }
+    try { body = JSON.parse(await this.body(req)) } catch (e) {
+      if ((e as { status?: number }).status === 413) {
+        return this.json(res, 413, { jsonrpc: "2.0", id: null, error: { code: -32600, message: `A request here is at most ${BODY_MAX >> 20} MB. ` +
+          "To save a file of any size, call upload_file without file, url or data: it answers a one-time upload link to PUT the bytes to (curl -T <file> <link>)." } })
+      }
+      return this.json(res, 400, { jsonrpc: "2.0", id: null, error: { code: -32700, message: "Parse error" } })
+    }
     this.touch(grant)
     // Marked as come through
     // a proxy, whatever the tunnel sends: an op or route only this machine's owner may use refuses it (core/owner.ts).
@@ -603,19 +610,13 @@ export class PublicMcp {
     const u = this.uploads.get(token)
     if (!u || u.until < Date.now()) return this.json(res, 404, { error: "this upload link is used or expired: ask for a new one" })
     this.uploads.delete(token)
-    const parts: Buffer[] = []
-    let size = 0
-    for await (const c of req) {
-      size += (c as Buffer).length
-      if (size > MAX_UPLOAD) return this.json(res, 413, { error: `over ${MAX_UPLOAD >> 20} MB` })
-      parts.push(c as Buffer)
-    }
-    if (!size) return this.json(res, 400, { error: "no bytes came: PUT the file as the body (curl -T <file> <link>)" })
     try {
-      const r = await this.plugin.host.call("file.upload", { ...u.pending, data: Buffer.concat(parts).toString("base64") }, u.who, { report: "mcp upload", http: req })
+      // (the bytes stream on into the vault, any size: file.upload's input)
+      const r = await this.plugin.host.call("file.upload", u.pending, u.who, { report: "mcp upload", http: req, input: req })
       return this.json(res, 201, { ...(r.result as object), text: r.text })
     } catch (e) {
-      return this.json(res, e instanceof OpError ? e.status : 500, { error: (e as Error).message })
+      const empty = e instanceof OpError && e.message === "the file is empty"
+      return this.json(res, e instanceof OpError ? e.status : 500, { error: empty ? "no bytes came: PUT the file as the body (curl -T <file> <link>)" : (e as Error).message })
     }
   }
 

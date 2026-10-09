@@ -1,4 +1,4 @@
-// Spreadsheets' server side: each sheet as a Markdown table of its formatted cells (up to ROWS) for /api/render and
+// Spreadsheets' server side: each sheet as a Markdown table of its formatted cells for /api/render and
 // search, with SheetJS loaded on first use.
 import { createRequire } from "node:module"
 import { Plugin } from "../../../core/plugins.ts"
@@ -6,9 +6,6 @@ import { Plugin } from "../../../core/plugins.ts"
 export const plugin = new Plugin(import.meta.url)
 
 export const EXTS = ["xlsx", "xlsm", "xls", "ods", "numbers"]
-/** Rows read a sheet (the rest is counted). */
-const ROWS = 1000
-
 type XLSX = typeof import("xlsx")
 let lib: XLSX | null = null
 const xlsx = () => (lib ??= createRequire(import.meta.url)("xlsx") as XLSX)
@@ -28,9 +25,10 @@ export function workbookMarkdown(bytes: Buffer): string {
     out.push(`## ${name}`)
     if (!rows.length || !width) { out.push("_(empty sheet)_"); continue }
     const fit = (r: string[]) => `| ${Array.from({ length: width }, (_, j) => r[j] ?? "").join(" | ")} |`
-    out.push(fit(rows[0]), `| ${Array(width).fill("---").join(" | ")} |`, ...rows.slice(1, ROWS).map(fit))
+    out.push(fit(rows[0]), `| ${Array(width).fill("---").join(" | ")} |`)
+    for (let i = 1; i < rows.length; i++) out.push(fit(rows[i])) // (not spread: a sheet's rows can pass the arguments limit)
     const n = rows.length - 1
-    out.push(`\n_${n} ${n === 1 ? "row" : "rows"}${n >= ROWS ? `, the first ${ROWS - 1} shown` : ""}._`)
+    out.push(`\n_${n} ${n === 1 ? "row" : "rows"}._`)
   }
   return out.join("\n") || "_(empty workbook)_"
 }

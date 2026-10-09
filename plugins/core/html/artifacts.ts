@@ -303,7 +303,7 @@ export function artifactText(vault: Vault, rel: string, html = readText(vault.ab
   const title = looks(vault, rel, -1).title
   const out = [`_Interactive page (${rel}), drawn by its own code${title ? `: ${title}` : ""}._`]
   if (reads.size) out.push(`Reads: ${[...reads].map((r) => `\`${r}\``).join(", ")}.`)
-  if (words) out.push(words.length > 4000 ? words.slice(0, 4000) + " …" : words)
+  if (words) out.push(words)
   return out.join("\n\n")
 }
 

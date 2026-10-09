@@ -75,7 +75,10 @@ function osc52(data: string) {
   return true
 }
 
-/** A file as base64 (for the socket). */
+/** How much of a pasted file goes in one message. */
+const PIECE = 1 << 20
+
+/** A file (or a piece of one) as base64 (for the socket). */
 const base64 = (f: Blob) => new Promise<string>((resolve, reject) => {
   const r = new FileReader()
   r.onload = () => resolve(String(r.result).slice(String(r.result).indexOf(",") + 1))
@@ -288,12 +291,18 @@ function create(id: string): Live {
   const onBinary = t.onBinary((d) => { if (!replaying) send(Uint8Array.from(d, (c) => c.charCodeAt(0) & 255)) })
   const onResize = t.onResize(() => send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows })))
 
-  // Files pasted or dropped (a screenshot) go to the server, since the shell there can't read this device's clipboard.
+  // Files pasted or dropped (a screenshot) go to the server, since the shell there can't read this device's clipboard: a
+  // piece at a time, any size, each sent once the socket has room (a big file never sits in memory whole).
+  let sending = Promise.resolve()
   const sendFiles = (files: File[]) => {
-    for (const f of files) {
-      if (f.size > 20 << 20) { t.write(`\r\n${f.name}: over 20 MB, not sent\r\n`); continue }
-      base64(f).then((data) => send(JSON.stringify({ t: "upload", name: f.name || `pasted.${f.type.split("/")[1] || "png"}`, data })), () => {})
-    }
+    for (const f of files) sending = sending.then(async () => {
+      const id = Math.random().toString(36).slice(2), name = f.name || `pasted.${f.type.split("/")[1] || "png"}`
+      for (let at = 0; at < f.size || at === 0; at += PIECE) {
+        while (ws?.readyState === WebSocket.OPEN && ws.bufferedAmount > PIECE * 4) await new Promise((r) => setTimeout(r, 50))
+        if (ws?.readyState !== WebSocket.OPEN) { t.write(`\r\n${name}: not sent (the connection dropped)\r\n`); return }
+        send(JSON.stringify({ t: "upload", id, name, data: await base64(f.slice(at, at + PIECE)), last: at + PIECE >= f.size }))
+      }
+    }, () => {})
   }
   const onPaste = (e: ClipboardEvent) => {
     const files = Array.from(e.clipboardData?.files ?? [])

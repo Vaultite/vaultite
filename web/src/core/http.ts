@@ -33,6 +33,15 @@ export async function send<T>(method: string, path: string, body?: unknown, cach
   if (!r.ok) throw Object.assign(new Error(j.error || r.statusText || `Error ${r.status}`), { status: r.status })
   return j
 }
+/** A new vault file at `path` with a file's bytes, sent as they are (streamed from disk, any size); tracked. */
+export function upload(path: string, file: Blob): Promise<{ path: string }> {
+  return tracked((async () => {
+    const r = await fetch(`api/upload?path=${encodeURIComponent(path)}`, { method: "POST", headers: { "X-Vaultite-Client": CLIENT, "Content-Type": "application/octet-stream" }, body: file })
+    const j = await r.json().catch(() => ({}))
+    if (!r.ok) throw Object.assign(new Error(j.error || r.statusText || `Error ${r.status}`), { status: r.status })
+    return j
+  })())
+}
 export const get = <T,>(path: string) => api<T>("GET", path)
 export const put = <T,>(path: string, body: unknown) => api<T>("PUT", path, body)
 export const post = <T,>(path: string, body: unknown) => api<T>("POST", path, body)

@@ -1,12 +1,15 @@
 // Files that aren't text (a photo from a chat, a PDF) saved into the vault as attachments, and embedded in a note.
+import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
+import type { Readable } from "node:stream"
+import { pipeline } from "node:stream/promises"
 import type { App } from "../app.ts"
 import { type Op, type OpCtx, OpError } from "../ops.ts"
 import { localStamp, safeName } from "../vault.ts"
 import { fetchPublic } from "../web.ts"
 import { type Any, enc, serviceOn } from "./common.ts"
 
-export const MAX_UPLOAD = 25 << 20
 const EXT: Record<string, string> = {
   "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/webp": "webp", "image/heic": "heic", "image/heif": "heif",
   "image/svg+xml": "svg", "application/pdf": "pdf", "audio/mpeg": "mp3", "audio/mp4": "m4a", "video/mp4": "mp4", "text/csv": "csv",
@@ -39,12 +42,15 @@ export function uploadOps(app: App): Op[] {
 note first, then upload its photo with note set to that file's path.
 
 The file comes as file (a file the app hands over: ChatGPT fills it in with the user's photo), url (a public address)
-or data (base64, small files only). With none of them, over MCP it answers a one-time upload link instead: PUT the
-file's bytes to it within 15 minutes (curl -T photo.jpg <link>) from a sandbox that can reach it; claude.ai's code
-sandbox sees the chat's files in /mnt/user-data/uploads/.
+or data (base64, small files only), at any size. Over HTTP, a file of any size is best sent as it is: its bytes as the
+body of POST /api/ops/file.upload, the parameters in the query (curl --data-binary @photo.jpg -H 'Content-Type:
+application/octet-stream' '<server>/api/ops/file.upload?name=Photo.jpg&note=...'). With none of them, over MCP it answers a
+one-time upload link instead: PUT the file's bytes to it within 15 minutes (curl -T photo.jpg <link>) from a sandbox
+that can reach it; claude.ai's code sandbox sees the chat's files in /mnt/user-data/uploads/.
 
   vau upload --url https://example.com/chart.png --note "Notes/Garden plan.md"
   vau upload --data "$(base64 -i photo.jpg)" --name "Paprika chicken.jpg" --note "Logs/Nutrition/2026-10-04 Lunch.md"`,
+    input: "the file",
     kind: "write",
     params: {
       file: {
@@ -62,7 +68,7 @@ sandbox sees the chat's files in /mnt/user-data/uploads/.
     },
     run: async (p, ctx) => {
       const { file, url, data, note } = p as { file?: Any; url?: string; data?: string; note?: string }
-      const given = [file, url, data].filter((x) => x !== undefined && x !== "").length
+      const given = [file, url, data, ctx.input].filter((x) => x !== undefined && x !== "").length
       if (given > 1) throw new OpError("give one of file, url or data")
       const fileId = typeof file?.file_id === "string" ? file.file_id : ""
       const again = fileId && saved.get(fileId)
@@ -73,30 +79,38 @@ sandbox sees the chat's files in /mnt/user-data/uploads/.
         if (!made) throw new OpError("give the file: file, url, or data (base64)")
         return { link: made.url, expires: made.expires, note: note ?? null }
       }
-      let bytes: Buffer, type = "", from = ""
-      if (data !== undefined) {
-        bytes = Buffer.from(String(data).replace(/^data:[^,]*,/, ""), "base64")
-      } else {
-        const src = url ?? file?.download_url
-        if (typeof src !== "string" || !src) throw new OpError("file has no download_url")
-        let got
-        try { got = await fetchPublic(src, { max: MAX_UPLOAD + 1, timeout: 30_000, types: /./ }) } catch (e) { throw new OpError(`couldn't download it: ${(e as Error).message}`) }
-        if (got.status < 200 || got.status >= 300) throw new OpError(`couldn't download it: ${got.status}`)
-        if (got.cut) throw new OpError(`it's over ${MAX_UPLOAD >> 20} MB`)
-        bytes = got.body
-        type = got.type.split(";")[0].trim()
-        from = new URL(got.url).pathname
+      // A file that isn't in memory (sent as it is, or downloaded) waits in a folder of its own until it's saved.
+      const dir = data === undefined ? fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-upload-")) : null
+      try {
+        let bytes: Buffer | string, type = "", from = ""
+        if (data !== undefined) bytes = Buffer.from(String(data).replace(/^data:[^,]*,/, ""), "base64")
+        else if (ctx.input) {
+          bytes = path.join(dir!, "file")
+          await pipeline(ctx.input, fs.createWriteStream(bytes))
+        } else {
+          const src = url ?? file?.download_url
+          if (typeof src !== "string" || !src) throw new OpError("file has no download_url")
+          bytes = path.join(dir!, "file")
+          let got
+          try { got = await fetchPublic(src, { to: bytes, timeout: 30_000, types: /./ }) } catch (e) { throw new OpError(`couldn't download it: ${(e as Error).message}`) }
+          if (got.status < 200 || got.status >= 300) throw new OpError(`couldn't download it: ${got.status}`)
+          if (got.cut) throw new OpError("couldn't download it: it stopped coming")
+          type = got.type.split(";")[0].trim()
+          from = new URL(got.url).pathname
+        }
+        const head = typeof bytes === "string" ? headOf(bytes) : bytes
+        if (!head.length) throw new OpError("the file is empty")
+        const named = String(p.name ?? file?.file_name ?? "").trim() || decodeURIComponent(path.posix.basename(from)) || ""
+        const mime = sniff(head) || (typeof file?.mime_type === "string" ? file.mime_type : "") || type
+        const out = await save(app, ctx, typeof bytes === "string" ? fs.createReadStream(bytes) : bytes, named, mime, p.folder, note)
+        if (fileId) {
+          for (const [k, v] of saved) if (v.until < Date.now()) saved.delete(k)
+          saved.set(fileId, { path: out.path, until: Date.now() + 600_000 })
+        }
+        return out
+      } finally {
+        if (dir) fs.rmSync(dir, { recursive: true, force: true })
       }
-      if (!bytes.length) throw new OpError("the file is empty")
-      if (bytes.length > MAX_UPLOAD) throw new OpError(`it's over ${MAX_UPLOAD >> 20} MB`)
-      const named = String(p.name ?? file?.file_name ?? "").trim() || decodeURIComponent(path.posix.basename(from)) || ""
-      const mime = sniff(bytes) || (typeof file?.mime_type === "string" ? file.mime_type : "") || type
-      const out = await save(app, ctx, bytes, named, mime, p.folder, note)
-      if (fileId) {
-        for (const [k, v] of saved) if (v.until < Date.now()) saved.delete(k)
-        saved.set(fileId, { path: out.path, until: Date.now() + 600_000 })
-      }
-      return out
     },
     text: (r) => r.link
       ? `Upload link (one use, until ${r.expires}): PUT the file's bytes to ${r.link}, e.g. curl -sS -T <file> '${r.link}'. It's saved as an attachment${r.note ? ` and embedded in ${r.note}` : ""} once it arrives; the answer says where.`
@@ -106,8 +120,15 @@ sandbox sees the chat's files in /mnt/user-data/uploads/.
 
 const embedOf = (p: string) => `![[${path.posix.basename(p)}]]`
 
-/** Write the bytes as a new attachment (a taken name gets a number) and embed it at the end of `note`. */
-export async function save(app: App, ctx: OpCtx, bytes: Buffer, named: string, mime: string, folder?: string, note?: string) {
+/** A file's first bytes (enough to tell its type). */
+function headOf(p: string) {
+  const fd = fs.openSync(p, "r")
+  try { const b = Buffer.alloc(64); return b.subarray(0, fs.readSync(fd, b, 0, 64, 0)) } finally { fs.closeSync(fd) }
+}
+
+/** Write the bytes (in memory, or a stream of any size) as a new attachment (a taken name gets a number) and embed it at
+ *  the end of `note`. */
+export async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named: string, mime: string, folder?: string, note?: string) {
   const ext = EXT[mime] ?? ""
   // A nameless image (a phone's "image.jpg") is named as Obsidian names a pasted one.
   const pasted = (!named || /^image\.\w+$/i.test(named)) && (/^image\//.test(mime) || /^image\./i.test(named))
@@ -118,10 +139,10 @@ export async function save(app: App, ctx: OpCtx, bytes: Buffer, named: string, m
   const f = note ? await ctx.api("GET", `file?path=${enc(note)}`) : null // (before saving: a wrong note saves nothing)
   if (dir) await ctx.api("POST", "folder", { path: dir }).catch(() => {}) // (there already: fine)
   const { path: rel } = await ctx.api("POST", "upload/name", { folder: dir, name })
-  await ctx.api("POST", "upload", { path: rel, data: bytes.toString("base64") })
+  await ctx.api("POST", "upload", { path: rel, bytes })
   if (f) {
     const text = String(f.text ?? "")
     await ctx.api("PUT", "file", { path: f.path ?? note, text: `${text.replace(/\s*$/, "")}\n\n${embedOf(rel)}\n`, base: text })
   }
-  return { path: rel, bytes: bytes.length, type: mime || null, embed: embedOf(rel), note: note ?? null }
+  return { path: rel, bytes: fs.statSync(app.vault.abs(rel)).size, type: mime || null, embed: embedOf(rel), note: note ?? null }
 }

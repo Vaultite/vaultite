@@ -180,6 +180,14 @@ try {
     && fs.readFileSync(path.join(VAULT, "Attachments/Lunch.jpg")).equals(jpeg) && fs.readFileSync(path.join(VAULT, "Notes/From the internet.md"), "utf8").includes("![[Lunch.jpg]]"), put.body)
   check("the link works once", (await fetch(link, { method: "PUT", body: jpeg })).status === 404)
   check("a made-up link does nothing", (await fetch(`${PUB}/upload/nope`, { method: "PUT", body: jpeg })).status === 404)
+  // A big file: through a link, any size (streamed); in a tool call, over this server's body limit, told to use a link.
+  const linked2 = await rpc("tools/call", { name: "upload_file", arguments: { name: "Scan.pdf" } })
+  const link2 = /PUT the file's bytes to (\S+),/.exec(linked2.body?.result?.content?.[0]?.text ?? "")?.[1]
+  const big = Buffer.concat([Buffer.from("%PDF-1.4\n"), Buffer.alloc(40 << 20, 7)])
+  const put2 = await json(await fetch(link2, { method: "PUT", body: big }))
+  check("a 40 MB file through a link is saved whole", put2.status === 201 && fs.statSync(path.join(VAULT, put2.body?.path ?? "none")).size === big.length, put2.body)
+  const tooBig = await rpc("tools/call", { name: "upload_file", arguments: { name: "Scan 2.pdf", data: big.subarray(0, 5 << 20).toString("base64") } })
+  check("a tool call over the body limit says to use an upload link", tooBig.status === 413 && /upload link/.test(tooBig.body?.error?.message ?? ""), [tooBig.status, tooBig.body])
   const forged = await rpc("tools/list", {}, `${tok.body.access_token.split(".")[0]}.AAAA`)
   check("a forged token is refused", forged.status === 401, forged.status)
 

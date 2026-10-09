@@ -1,14 +1,14 @@
 // File history: snapshots of text files on this machine (not the vault: disposable, and they
 // shouldn't sync), at most one per file per interval, so any bad edit can be undone. Restoring is an ordinary edit.
 import crypto from "node:crypto"
+import { once } from "node:events"
 import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, isTextKind, kindOf, LOADED, LOCAL, Plugin, Text, vaultHere } from "../../../core/plugins.ts"
-import { readSoon, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { fetchFromICloud, READ_WAIT, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-const MAX = 1 << 20 // bigger text files aren't kept
 const HOUR = 3600_000
 
 /** `ns`: the exact time (a rewrite of the same size within a millisecond, an agent's, changes only it). */
@@ -32,6 +32,7 @@ function state(vault: Vault): State {
   // The first prune a minute after the start (it looks at every snapshot: not while a server is starting), then hourly.
   s = { root, heads: new Map(), skip: new Map(), pruned: Date.now() - HOUR + 60_000, version: -1 }
   for (const name of fs.readdirSync(root)) {
+    if (name.startsWith("tmp-")) { fs.rmSync(path.join(root, name), { force: true }); continue } // (a copy a stop cut off)
     const m = readMeta(path.join(root, name))
     if (m && !m.gone) s.heads.set(m.path, m)
   }
@@ -47,28 +48,50 @@ function readMeta(dir: string): Meta | null {
 // (whole or not at all: a head cut off by a crash would become the next snapshot, losing the version to restore)
 const writeMeta = (s: State, m: Meta) => writeAtomic(path.join(dirOf(s, m.path), "meta.json"), JSON.stringify(m))
 
-/** A file's bytes if it's text we keep (UTF-8, no NUL bytes, up to MAX), else null; undefined while iCloud is slow to
- *  give it (readSoon). */
-const utf8 = new TextDecoder("utf-8", { fatal: true })
-async function readData(abs: string): Promise<Buffer | null | undefined> {
+/** A copy of a file's bytes for its history (`tmp()`), taken as they're read so what's hashed is what's kept, at any size
+ *  and never all in memory: its hash, or null when it isn't text we keep (not UTF-8, or NUL bytes; the copy removed);
+ *  undefined when it can't be read now (iCloud stalls giving it: looked at again on the next sync). */
+async function take(abs: string, to: string): Promise<string | null | undefined> {
+  const hash = crypto.createHash("sha1"), utf8 = new TextDecoder("utf-8", { fatal: true })
+  const src = fs.createReadStream(abs), out = fs.createWriteStream(to)
+  let read = 0, text = true, stalled = false, timer: ReturnType<typeof setTimeout> | undefined
+  const wait = () => { clearTimeout(timer); timer = setTimeout(() => { stalled = true; src.destroy() }, READ_WAIT) }
+  let result: string | null | undefined
   try {
-    const data = await readSoon(abs)
-    if (data === null) return undefined
-    if (data.length > MAX || data.subarray(0, 8000).includes(0)) return null
-    utf8.decode(data)
-    return data
-  } catch {
-    return null
+    wait()
+    for await (const chunk of src as AsyncIterable<Buffer>) {
+      wait()
+      if (read < 8000 && chunk.subarray(0, 8000 - read).includes(0)) { text = false; break }
+      read += chunk.length
+      try { utf8.decode(chunk, { stream: true }) } catch { text = false; break }
+      hash.update(chunk)
+      if (!out.write(chunk)) await once(out, "drain")
+    }
+    if (text) try { utf8.decode() } catch { text = false }
+    result = stalled ? undefined : text ? hash.digest("hex") : null
+  } catch (e) {
+    fetchFromICloud(abs, e)
+    result = stalled || Math.abs((e as NodeJS.ErrnoException).errno ?? 0) === 11 ? undefined : null
+  } finally {
+    clearTimeout(timer)
+    src.destroy()
+    out.end()
+    await once(out, "close").catch(() => {})
   }
+  if (typeof result !== "string") fs.rmSync(to, { force: true })
+  return result
 }
 
-/** The files to follow now: Markdown (the index) and text files by kind, up to MAX, none hidden. */
+let tmpN = 0
+const tmp = (s: State) => path.join(s.root, `tmp-${process.pid}-${++tmpN}`)
+
+/** The files to follow now: Markdown (the index) and text files by kind, any size, none hidden. */
 function candidates(vault: Vault) {
   const out = new Map<string, Stat>()
   const ms = (ns: bigint) => Number(ns / 1000000n)
-  for (const [rel, e] of vault.entries) if (e.stat.size <= MAX) out.set(rel, { mtime: ms(e.stat.ns), size: e.stat.size, ns: String(e.stat.ns) })
+  for (const [rel, e] of vault.entries) out.set(rel, { mtime: ms(e.stat.ns), size: e.stat.size, ns: String(e.stat.ns) })
   for (const [rel, st] of vault.others) {
-    if (st.size <= MAX && isTextKind(kindOf(rel))) out.set(rel, { mtime: ms(st.ns), size: st.size, ns: String(st.ns) })
+    if (isTextKind(kindOf(rel))) out.set(rel, { mtime: ms(st.ns), size: st.size, ns: String(st.ns) })
   }
   return out
 }
@@ -79,17 +102,21 @@ function settings() {
   return { interval: n(s.interval_min, 5) * 60_000, keep: n(s.keep_days, 7) * 24 * HOUR }
 }
 
-/** Keep `data` (a version saved at `t`) as a snapshot of the file. */
-function snapshot(s: State, rel: string, t: number, data: Buffer) {
-  const file = path.join(dirOf(s, rel), `${t}.snap`)
-  if (!fs.existsSync(file)) writeAtomic(file, data) // written, not copied: its own mtime says when it was taken
+/** Keep the head (the version saved at `t`) as a snapshot of the file: moved, not copied (a big file's is instant), and
+ *  dated now, as its own mtime says when it was taken. The head is gone after. */
+function snapshot(s: State, rel: string, t: number) {
+  const dir = dirOf(s, rel), file = path.join(dir, `${t}.snap`)
+  if (fs.existsSync(file)) return fs.rmSync(path.join(dir, "head"), { force: true })
+  fs.renameSync(path.join(dir, "head"), file)
+  const now = new Date()
+  fs.utimesSync(file, now, now)
 }
 
-/** Start following a file (or again): its content is the head. */
-function track(s: State, rel: string, st: Stat, data: Buffer, hash: string) {
+/** Start following a file (or again): its content (`copy`, take's) is the head. */
+function track(s: State, rel: string, st: Stat, copy: string, hash: string) {
   const dir = dirOf(s, rel)
   fs.mkdirSync(dir, { recursive: true })
-  writeAtomic(path.join(dir, "head"), data)
+  fs.renameSync(copy, path.join(dir, "head"))
   const m: Meta = { path: rel, ...st, hash, last: readMeta(dir)?.last ?? 0 }
   writeMeta(s, m)
   s.heads.set(rel, m)
@@ -98,9 +125,7 @@ function track(s: State, rel: string, st: Stat, data: Buffer, hash: string) {
 /** A file gone (deleted, moved away, or no longer text we keep): its last content becomes a snapshot. */
 function untrack(s: State, rel: string) {
   const m = s.heads.get(rel)!
-  const dir = dirOf(s, rel)
-  try { snapshot(s, rel, m.mtime, fs.readFileSync(path.join(dir, "head"))) } catch { /* its head went missing */ }
-  fs.rmSync(path.join(dir, "head"), { force: true })
+  try { snapshot(s, rel, m.mtime) } catch { /* its head went missing */ }
   writeMeta(s, { ...m, gone: true })
   s.heads.delete(rel)
 }
@@ -155,34 +180,32 @@ export async function follow(vault: Vault) {
   if (added.length || changed.length || gone.length) {
     const { interval } = settings()
     for (const rel of changed) {
-      const m = s.heads.get(rel)!, st = now.get(rel)!
-      const data = await readData(vault.abs(rel))
-      if (data === undefined) { s.version = -1; continue } // (looked at again next time)
-      if (data === null) { untrack(s, rel); s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
-      const hash = sha1(data)
+      const m = s.heads.get(rel)!, st = now.get(rel)!, copy = tmp(s)
+      const hash = await take(vault.abs(rel), copy)
+      if (hash === undefined) { s.version = -1; continue } // (looked at again next time)
+      if (hash === null) { untrack(s, rel); s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
       if (hash !== m.hash) {
         // The head is the previous content: kept, unless a snapshot was taken less than the interval ago.
         if (Date.now() - m.last >= interval) {
-          try { snapshot(s, rel, m.mtime, fs.readFileSync(path.join(dirOf(s, rel), "head"))); m.last = Date.now() } catch { /* no head */ }
+          try { snapshot(s, rel, m.mtime); m.last = Date.now() } catch { /* no head */ }
         }
-        writeAtomic(path.join(dirOf(s, rel), "head"), data)
+        fs.renameSync(copy, path.join(dirOf(s, rel), "head"))
         m.hash = hash
-      }
+      } else fs.rmSync(copy, { force: true })
       m.mtime = st.mtime; m.size = st.size; m.ns = st.ns
       writeMeta(s, m)
     }
     // A new path with a gone file's content is that file, renamed or moved.
     const byHash = new Map(gone.map((r) => [s.heads.get(r)!.hash, r]))
     for (const rel of added) {
-      const st = now.get(rel)!
-      const data = await readData(vault.abs(rel))
-      if (data === undefined) { s.version = -1; continue }
-      if (data === null) { s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
+      const st = now.get(rel)!, copy = tmp(s)
+      const hash = await take(vault.abs(rel), copy)
+      if (hash === undefined) { s.version = -1; continue }
+      if (hash === null) { s.skip.set(rel, `${st.mtime}:${st.size}`); continue }
       s.skip.delete(rel)
-      const hash = sha1(data)
       const from = byHash.get(hash)
       if (from) { byHash.delete(hash); gone.splice(gone.indexOf(from), 1); carry(s, from, rel) }
-      track(s, rel, st, data, hash)
+      track(s, rel, st, copy, hash)
     }
     for (const rel of gone) untrack(s, rel)
   }
@@ -313,7 +336,9 @@ plugin.route("GET", "history/version", async (req) => {
   if (!Number.isFinite(t)) throw new HTTPError(400, "which version? &t=<ms> from GET /api/history?path=")
   let data: Buffer
   try { data = fs.readFileSync(path.join(dirOf(s, rel), `${t}.snap`)) } catch { throw new HTTPError(404, `no version ${t} of '${rel}'`) }
-  return new Text(data.toString("utf8").replace(/\r\n?/g, "\n"), "text/plain; charset=utf-8")
+  let text: string | Buffer
+  try { text = data.toString("utf8").replace(/\r\n?/g, "\n") } catch { text = data } // (too big for one string: its bytes)
+  return new Text(text, "text/plain; charset=utf-8")
 })
 
 // ---------- operations (core/ops.ts)

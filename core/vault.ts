@@ -350,8 +350,24 @@ export type Writer = { client: string | null; agent: string | null }
 export const requestWriter = new AsyncLocalStorage<Writer>()
 /** onCreate's hooks (Vault.onCreate): the keys to add to a new file. `writer` is null outside a request over HTTP. */
 export type CreateHook = (path: string, fm: Item, writer: Writer | null) => Item | void
-/** onCreateFile's hooks (Vault.onCreateFile): a new file that isn't Markdown, as the bytes to write instead (or none). */
-export type FileCreateHook = (path: string, bytes: Buffer, writer: Writer | null) => Buffer | void
+/** A new file as onCreateFile's hooks see it, read-only: its size, and its first or last `n` bytes, read only when asked
+ *  (an upload can be any size). */
+export type NewFile = { size: number; head: (n: number) => Buffer; tail: (n: number) => Buffer }
+/** onCreateFile's hooks (Vault.onCreateFile): told of a new file that isn't Markdown; they never change its bytes. */
+export type FileCreateHook = (path: string, file: NewFile, writer: Writer | null) => void
+
+/** Bytes in memory as a NewFile. */
+export const newFile = (b: Buffer): NewFile => ({ size: b.length, head: (n) => b.subarray(0, n), tail: (n) => b.subarray(Math.max(0, b.length - n)) })
+
+/** A file on disk as a NewFile (an upload streamed there). */
+export function newFileAt(p: string): NewFile {
+  const size = fs.statSync(p).size
+  const part = (at: number, n: number) => {
+    const fd = fs.openSync(p, "r")
+    try { const b = Buffer.alloc(n); return b.subarray(0, fs.readSync(fd, b, 0, n, at)) } finally { fs.closeSync(fd) }
+  }
+  return { size, head: (n) => part(0, Math.min(n, size)), tail: (n) => part(Math.max(0, size - n), Math.min(n, size)) }
+}
 /** onMove's hooks (Vault.onMove): `to` null when trashed, then `trashed` is its path in .trash. */
 export type MoveHook = (from: string, to: string | null, trashed?: string) => void
 /** onArchive's hooks (Vault.onArchive): the folder a file being archived (or unarchived) moves to, or null. */
@@ -769,20 +785,18 @@ export class Vault {
   }
 
   private fileCreators = new Set<{ plugin: string; fn: FileCreateHook }>()
-  /** fn(path, bytes, writer) when the API makes a file that isn't Markdown (an upload, an SVG): the bytes it answers
-   *  are written instead (each hook gets the last one's). Only while `plugin` is on. Returns the function that removes it. */
+  /** fn(path, file, writer) when the API makes a file that isn't Markdown (an upload, an SVG), to look at, never to
+   *  change. Only while `plugin` is on. Returns the function that removes it. */
   onCreateFile(plugin: string, fn: FileCreateHook) {
     return added(this.fileCreators, { plugin, fn })
   }
-  /** A new file's bytes as the API writes them: what the onCreateFile hooks make of them (a Markdown file's are its
-   *  own: created() adds to those). */
-  createdFile(rel: string, bytes: Buffer): Buffer {
-    if (rel.toLowerCase().endsWith(".md")) return bytes
+  /** Tell the onCreateFile hooks of a new file the API writes (a Markdown file's are created()'s). */
+  fileCreated(rel: string, file: NewFile) {
+    if (rel.toLowerCase().endsWith(".md")) return
     const who = requestWriter.getStore() ?? null
     for (const fn of this.on(this.fileCreators)) {
-      try { bytes = fn(rel, bytes, who) ?? bytes } catch (e) { console.error(e) }
+      try { fn(rel, file, who) } catch (e) { console.error(e) }
     }
-    return bytes
   }
 
   register(kind: Kind) {

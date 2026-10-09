@@ -32,6 +32,7 @@ Live.web = webBuild
 const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
+const { tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
@@ -142,17 +143,16 @@ const json = (res: http.ServerResponse, obj: unknown, status = 200) =>
 /** Each API request's body once read (bodyOf), for plugins watching requests (plugin.onRequest). */
 const bodies = new WeakMap<http.IncomingMessage, unknown>()
 
-const BODY_MAX = 256 << 20
-/** The request's body: JSON, {} when there's none, undefined when it isn't JSON. */
+/** The request's body: JSON, {} when there's none, undefined when it isn't JSON. A file's bytes don't come as JSON:
+ *  uploads stream (App.streams), so a body too big for one string is told where to send them. */
 async function bodyOf(req: http.IncomingMessage): Promise<unknown> {
   const chunks: Buffer[] = []
-  let size = 0
-  for await (const c of req) {
-    // (an upload is base64 in JSON: past this it'd hold several times its size in memory, so it's refused before)
-    if ((size += (c as Buffer).length) > BODY_MAX) { req.resume(); throw new HTTPError(413, `the request is over ${BODY_MAX >> 20} MB`) }
-    chunks.push(c as Buffer)
+  for await (const c of req) chunks.push(c as Buffer)
+  let raw: string
+  try { raw = Buffer.concat(chunks).toString("utf8") } catch (e) {
+    if (!tooBig(e)) throw e
+    throw new HTTPError(413, "the request is too big for JSON: send a file's bytes as the body of POST /api/upload?path=, or of POST /api/ops/file.upload")
   }
-  const raw = Buffer.concat(chunks).toString("utf8")
   if (!raw) return {}
   try {
     const body = JSON.parse(raw)
@@ -358,7 +358,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   if (parts[0] === "raw" && (method === "GET" || method === "HEAD")) return raw(req, res, query)
   if (parts.join("/") === "file/open" && method === "POST") return openHere(req, res)
   // A route that reads its own body (an upload: plugin.route's `stream`) gets it unread.
-  const body = app.streams(method, parts) ? {} : await bodyOf(req)
+  const body = app.streams(method, parts, String(req.headers["content-type"] ?? "")) ? {} : await bodyOf(req)
   if (body === undefined) return json(res, { error: "the body isn't JSON" }, 400)
   if (parts.join("/") === "ui") { const [out, status] = live.handle(method, body); return json(res, out, status) } // core/live.ts
   if (parts.join("/") === "events/stream" && method === "GET") return events.stream(events.eventsOf(vault), req, res, query) // core/events.ts
@@ -474,7 +474,7 @@ const server = http.createServer(async (req, res) => {
 })
 
 // Plugins' WebSockets (plugin.socket): /api/<pattern>, refused when nothing matches, the plugin is off, or its accept
-// throws. 32 MB: a terminal's pasted file (up to 20 MB) arrives base64'd in one message.
+// throws. 32 MB a message: a terminal's pasted file comes in pieces of 1 MB (base64'd), so this is room to spare.
 const sockets = new WebSocketServer({ noServer: true, maxPayload: 32 << 20 })
 
 function refuse(socket: Duplex, status: number, message: string) {

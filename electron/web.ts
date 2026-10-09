@@ -39,8 +39,6 @@ const sessions = new Map<string, Session>()
 const web = (u: string) => /^https?:\/\//i.test(u)
 /** Images asked for with Save image to vault (their addresses), whose downloads go to the window instead. */
 const toVault = new Set<string>()
-/** The most an image saved to the vault may weigh. */
-const IMAGE_MAX = 50 * 1024 * 1024
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
 
 /** A profile's session, set up once. */
@@ -62,10 +60,11 @@ function webSession(profile: string) {
       const tmp = path.join(app.getPath("temp"), `vaultite-image-${crypto.randomUUID()}`)
       item.setSavePath(tmp)
       item.once("done", (_ev, state) => {
-        let data: Buffer | null = null
-        try { if (state === "completed" && fs.statSync(tmp).size <= IMAGE_MAX) data = fs.readFileSync(tmp) } catch { /* none */ }
+        // (any size; when there's none, the window says why)
+        let data: Buffer | null = null, error = state === "completed" ? "" : `the download was ${state}`
+        try { if (!error) data = fs.readFileSync(tmp) } catch (e) { error = (e as Error).message }
         fs.rm(tmp, { force: true }, () => {})
-        if (p && !p.win.isDestroyed()) tell(p.win, { type: "image", id: p.id, name: item.getFilename(), mime: item.getMimeType(), data })
+        if (p && !p.win.isDestroyed()) tell(p.win, { type: "image", id: p.id, name: item.getFilename(), mime: item.getMimeType(), data, ...(error ? { error } : {}) })
       })
       return
     }

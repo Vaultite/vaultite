@@ -47,7 +47,7 @@
   file per view.
 
 ## Features
-- **Files** (`core/files.ts`): any file opens (over 1 MB read-only, over 8 MB a card). Binary formats a plugin draws are
+- **Files** (`core/files.ts`): any file opens, at any size (a card only past what JavaScript can hold as one string). Binary formats a plugin draws are
   read-only, and their `text:<ext>` (given a Buffer) is what render and search read. They're untrusted: a Word document
   is drawn in a shadow root, a book's pages are cleaned of scripts and get a CSP, a deck's renderer escapes its text;
   keep it so when updating those libraries (pinned in package.json). Delete goes to `.trash` with Undo; the

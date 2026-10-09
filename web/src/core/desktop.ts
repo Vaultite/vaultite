@@ -2,7 +2,7 @@
 // without telling this page, so every focus here asks the main process for the keyboard back (`web.take`).
 import { available, commandList, isCustom, keysOf, onCommandsChanged, runCommandId } from "@/core/commands"
 import { getStore, onStore } from "@/core/data"
-import { get, post } from "@/core/http"
+import { get, post, upload as uploadFile } from "@/core/http"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
@@ -151,7 +151,7 @@ export type WebEvent =
   | { type: "key"; id: number; key: string; code: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }
   | { type: "download"; name: string; path: string; ok: boolean }
   /** An image saved to the vault from a page's menu: its bytes (null: it couldn't be had), its name and type. */
-  | { type: "image"; id: number; name: string; mime: string; data: Uint8Array | null }
+  | { type: "image"; id: number; name: string; mime: string; data: Uint8Array | null; error?: string }
   | { type: "pages" }
   /** A site's icon came or changed (a data URL), by host without "www.". */
   | { type: "icon"; host: string; icon: string }
@@ -299,12 +299,7 @@ export async function dropInto(dt: DataTransfer, folder: string, move: boolean):
   return made
 }
 
-async function send(file: File, to: string) {
-  const bytes = new Uint8Array(await file.arrayBuffer())
-  let bin = ""
-  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-  await post("upload", { path: to, data: btoa(bin) })
-}
+const send = async (file: File, to: string) => { await uploadFile(to, file) }
 
 async function upload(e: FileSystemEntry, to: string): Promise<void> {
   if (e.isFile) {

@@ -16,7 +16,7 @@ import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, r
 export type PreviewConfig = {
   /** false: plain Markdown (source mode). */
   live: boolean
-  /** The file can be changed (not the trash, not too big): checkboxes tick, even while reading. */
+  /** The file can be changed (not in the trash): checkboxes tick, even while reading. */
   writable: boolean
   /** What a [[link]] goes to: null for nothing (it shows grey), else its kind ("person", "book"; "" for a note or a
    *  file), coloured like links everywhere else (core/markdown.ts). */

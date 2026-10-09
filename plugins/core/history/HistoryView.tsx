@@ -1,8 +1,8 @@
 // A file's versions beside a diff with the file now; Restore writes one back as an ordinary edit (with Undo), Copy
 // copies it.
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Copy, History, RotateCcw } from "lucide-react"
-import { cn, copyText, dateText, get, opcodes, openFile, post, put, readFile, notify, notifyError, useVaultChange } from "@vaultite"
+import { cn, copyText, dateText, diffLines, get, openFile, post, put, readFile, notify, notifyError, useVaultChange } from "@vaultite"
 
 /** One kept here (`size`), or another plugin's (`source`: Git's commits, with their `id`, `title` and `by`). */
 type Version = { t: number; size?: number; source?: string; label?: string; id?: string; title?: string; by?: string }
@@ -22,17 +22,53 @@ const kb = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240
 
 type Line = { kind: "same" | "add" | "del"; text: string }
 /** The version's lines against the file's: kept, only in the version (add), only in the file now (del). */
-function diff(now: string, then: string): Line[] {
+async function diff(now: string, then: string): Promise<Line[]> {
   const lines = (t: string) => t.replace(/\n$/, "").split("\n")  // a file's last newline isn't a line of its own
   const a = lines(now), b = lines(then)
-  if (a.length + b.length > 20000) return b.map((text) => ({ kind: "same", text })) // too big to compare here
   const out: Line[] = []
-  for (const [tag, i1, i2, j1, j2] of opcodes(a, b)) {
+  for (const [tag, i1, i2, j1, j2] of await diffLines(a, b)) {
     if (tag === "equal") { for (let j = j1; j < j2; j++) out.push({ kind: "same", text: b[j] }); continue }
     for (let i = i1; i < i2; i++) out.push({ kind: "del", text: a[i] })
     for (let j = j1; j < j2; j++) out.push({ kind: "add", text: b[j] })
   }
   return out
+}
+
+const ROW = 19 // px: a diff line's height (leading-[19px], never wrapped)
+/** The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls. */
+function Rows({ lines }: { lines: Line[] }) {
+  const ref = useRef<HTMLDivElement>(null)
+  const [span, setSpan] = useState<[number, number]>([0, 200])
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const look = () => {
+      const r = el.getBoundingClientRect()
+      const from = Math.max(0, Math.floor(-r.top / ROW) - 50), to = Math.min(lines.length, Math.ceil((window.innerHeight - r.top) / ROW) + 50)
+      setSpan((s) => (s[0] === from && s[1] === to ? s : [from, Math.max(from, to)]))
+    }
+    look()
+    document.addEventListener("scroll", look, { capture: true, passive: true })
+    window.addEventListener("resize", look)
+    return () => { document.removeEventListener("scroll", look, { capture: true }); window.removeEventListener("resize", look) }
+  }, [lines])
+  // As wide as the longest line, so scrolling sideways doesn't change with the lines in sight.
+  const wide = lines.reduce((n, l) => Math.max(n, l.text.length), 0)
+  return (
+    <div ref={ref} className="relative" style={{ height: lines.length * ROW, minWidth: `calc(${wide}ch + 2.25rem)` }}>
+      {lines.slice(span[0], span[1]).map((l, k) => (
+        <div key={span[0] + k} data-diff={l.kind} style={{ position: "absolute", top: (span[0] + k) * ROW, left: 0, right: 0 }}
+          className={cn("flex min-w-max pr-3 whitespace-pre",
+            l.kind === "add" && "bg-[color-mix(in_srgb,var(--green)_16%,transparent)]",
+            l.kind === "del" && "bg-[color-mix(in_srgb,var(--red)_14%,transparent)] text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--red)_60%,transparent)]")}>
+          <span aria-hidden className={cn("w-6 shrink-0 text-center select-none", l.kind === "add" ? "text-[var(--green)]" : l.kind === "del" ? "text-[var(--red)]" : "text-tertiary")}>
+            {l.kind === "add" ? "+" : l.kind === "del" ? "−" : ""}
+          </span>
+          <span>{l.text || " "}</span>
+        </div>
+      ))}
+    </div>
+  )
 }
 
 export function HistoryView({ path }: { path: string }) {
@@ -63,7 +99,13 @@ export function HistoryView({ path }: { path: string }) {
     return () => { live = false }
   }, [url])
 
-  const lines = useMemo(() => (text === null || now === undefined ? null : diff(now ?? "", text)), [text, now])
+  const [lines, setLines] = useState<Line[] | null>(null)
+  useEffect(() => {
+    if (text === null || now === undefined) { setLines(null); return }
+    let live = true
+    diff(now ?? "", text).then((l) => { if (live) setLines(l) }, (e) => notifyError(e))
+    return () => { live = false }
+  }, [text, now])
   const changes = lines ? lines.filter((l) => l.kind !== "same").length : 0
 
   const restore = async () => {
@@ -128,17 +170,7 @@ export function HistoryView({ path }: { path: string }) {
               </button>
             </div>
             <div className="overflow-x-auto rounded-[10px] border-[0.5px] border-border bg-card py-2 font-mono text-[12.5px] leading-[19px] md:rounded-[8px]">
-              {lines === null ? <p className="px-3 font-sans text-[13px] text-muted-foreground">Loading…</p> : lines.map((l, i) => (
-                <div key={i} data-diff={l.kind}
-                  className={cn("flex min-w-max pr-3 whitespace-pre",
-                    l.kind === "add" && "bg-[color-mix(in_srgb,var(--green)_16%,transparent)]",
-                    l.kind === "del" && "bg-[color-mix(in_srgb,var(--red)_14%,transparent)] text-muted-foreground line-through decoration-[color-mix(in_srgb,var(--red)_60%,transparent)]")}>
-                  <span aria-hidden className={cn("w-6 shrink-0 text-center select-none", l.kind === "add" ? "text-[var(--green)]" : l.kind === "del" ? "text-[var(--red)]" : "text-tertiary")}>
-                    {l.kind === "add" ? "+" : l.kind === "del" ? "−" : ""}
-                  </span>
-                  <span>{l.text || " "}</span>
-                </div>
-              ))}
+              {lines === null ? <p className="px-3 font-sans text-[13px] text-muted-foreground">Loading…</p> : <Rows lines={lines} />}
             </div>
             <p className="mt-2 text-[12px] text-muted-foreground">
               <span className="text-[var(--green)]">+</span> in this version, <span className="text-[var(--red)]">−</span> in the file now. Restore makes the file this version (it can be undone).

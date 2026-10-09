@@ -1,6 +1,7 @@
 // The web from the server: fetching public pages only (link previews, the clipper). Local and tailnet hosts are refused
 // by name and again on what DNS answers at connect, so a route that fetches what it's asked can't look into the network.
 import dns from "node:dns"
+import fs from "node:fs"
 import http from "node:http"
 import https from "node:https"
 import type { LookupFunction } from "node:net"
@@ -111,10 +112,12 @@ const publicLookup: LookupFunction = (hostname, options, callback) => {
 export const BROWSER_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 
 export type FetchOptions = {
-  /** The most bytes of a body kept (decompressed); the rest isn't read. Default 1 MB. */
+  /** The most bytes of a body kept (decompressed); the rest isn't read. Default 1 MB, none with `to`. */
   max?: number
-  /** For the whole thing, redirects included (ms). Default 5000. */
+  /** For the whole thing, redirects included (ms). Default 5000. With `to`, how long the body may stop coming. */
   timeout?: number
+  /** A file the body is written to as it comes (a download of any size), instead of `body`. */
+  to?: string
   /** The body is read only when its Content-Type matches (default: HTML or XML); else it's empty. */
   types?: RegExp
   /** Default 5. */
@@ -123,12 +126,13 @@ export type FetchOptions = {
 }
 /** What fetchPublic got: the address it ended at, its status and type, and the body (empty when it wasn't 2xx or its
  *  type didn't match). `cut`: the body was longer than `max`. */
-export type Fetched = { url: string; status: number; type: string; body: Buffer; cut: boolean }
+export type Fetched = { url: string; status: number; type: string; body: Buffer; cut: boolean; size: number }
 
-type Once = { status: number; location?: string; type: string; body: Buffer; cut: boolean }
+type Once = { status: number; location?: string; type: string; body: Buffer; cut: boolean; size: number }
+type OnceOptions = Required<Omit<FetchOptions, "timeout" | "redirects" | "to">> & { to?: string; heard: () => void }
 
 /** GET one address (redirects not followed). */
-function getOnce(u: URL, o: Required<Omit<FetchOptions, "timeout" | "redirects">>, signal: AbortSignal): Promise<Once> {
+function getOnce(u: URL, o: OnceOptions, signal: AbortSignal): Promise<Once> {
   return new Promise((resolve, reject) => {
     const req = (u.protocol === "https:" ? https : http).get(u, {
       lookup: publicLookup, signal,
@@ -138,21 +142,30 @@ function getOnce(u: URL, o: Required<Omit<FetchOptions, "timeout" | "redirects">
       const type = String(res.headers["content-type"] ?? "").toLowerCase()
       if (status < 200 || status >= 300 || !o.types.test(type)) {
         res.resume()
-        return resolve({ status, location: res.headers.location, type, body: Buffer.alloc(0), cut: false })
+        return resolve({ status, location: res.headers.location, type, body: Buffer.alloc(0), cut: false, size: 0 })
       }
       const enc = String(res.headers["content-encoding"] ?? "").toLowerCase()
       const stream = enc === "gzip" || enc === "x-gzip" ? res.pipe(zlib.createGunzip())
         : enc === "br" ? res.pipe(zlib.createBrotliDecompress())
           : enc === "deflate" ? res.pipe(zlib.createInflate()) : res
       const chunks: Buffer[] = []
+      const file = o.to ? fs.createWriteStream(o.to) : null
+      file?.on("error", (e) => { res.destroy(); reject(e) })
       let size = 0, done = false
       const finish = (cut: boolean) => {
         if (done) return
         done = true
         res.destroy()
-        resolve({ status, type, body: Buffer.concat(chunks).subarray(0, o.max), cut })
+        const out = { status, type, body: file ? Buffer.alloc(0) : Buffer.concat(chunks).subarray(0, o.max), cut, size: Math.min(size, o.max) }
+        if (file) file.end(() => resolve(out))
+        else resolve(out)
       }
-      stream.on("data", (c: Buffer) => { chunks.push(c); size += c.length; if (size >= o.max) finish(true) })
+      stream.on("data", (c: Buffer) => {
+        o.heard()
+        if (file) { if (!file.write(c)) { stream.pause(); file.once("drain", () => stream.resume()) } } else chunks.push(c)
+        size += c.length
+        if (size >= o.max) finish(true)
+      })
       stream.on("end", () => finish(false))
       stream.on("error", (e) => (size ? finish(true) : reject(e)))
       res.on("error", (e) => (size ? finish(true) : reject(e)))
@@ -164,11 +177,18 @@ function getOnce(u: URL, o: Required<Omit<FetchOptions, "timeout" | "redirects">
 /** GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too. Throws when
  *  it can't be reached (a name that isn't public fails as not found). */
 export async function fetchPublic(raw: string | URL, options: FetchOptions = {}): Promise<Fetched> {
-  const o = { max: options.max ?? 1024 * 1024, types: options.types ?? /html|xml/, headers: options.headers ?? {} }
-  const signal = AbortSignal.timeout(options.timeout ?? 5000)
+  const wait = options.timeout ?? 5000, stop = new AbortController()
+  let timer = setTimeout(() => stop.abort(new Error("timed out")), wait)
+  // (a download to a file goes on while its bytes keep coming)
+  const heard = () => { if (options.to) { clearTimeout(timer); timer = setTimeout(() => stop.abort(new Error("timed out")), wait) } }
+  const o: OnceOptions = { max: options.max ?? (options.to ? Infinity : 1024 * 1024), types: options.types ?? /html|xml/, headers: options.headers ?? {}, to: options.to, heard }
+  try { return await follow(raw, o, stop.signal, options.redirects ?? 5) } finally { clearTimeout(timer) }
+}
+
+async function follow(raw: string | URL, o: OnceOptions, signal: AbortSignal, redirects: number): Promise<Fetched> {
   let u = publicUrl(String(raw))
   if (typeof u === "string") throw new Error(`can't fetch ${raw}: ${u}`)
-  for (let hops = 0; hops <= (options.redirects ?? 5); hops++) {
+  for (let hops = 0; hops <= redirects; hops++) {
     const r = await getOnce(u, o, signal)
     if (r.status >= 300 && r.status < 400 && r.location) {
       const next = publicUrl(new URL(r.location, u).href)
@@ -176,7 +196,7 @@ export async function fetchPublic(raw: string | URL, options: FetchOptions = {})
       u = next
       continue
     }
-    return { url: u.href, status: r.status, type: r.type, body: r.body, cut: r.cut }
+    return { url: u.href, status: r.status, type: r.type, body: r.body, cut: r.cut, size: r.size }
   }
   throw new Error(`${raw}: too many redirects`)
 }

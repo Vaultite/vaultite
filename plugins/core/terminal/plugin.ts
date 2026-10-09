@@ -69,7 +69,6 @@ const named = (app: string) => (PORT === 8793 ? app : `${app}-${PORT}`)
 const TMP = path.join(runtimeDir(), "vaultite-terminal")
 const UPLOADS = path.join(TMP, "uploads")
 const STATES = path.join(TMP, "states")
-const MAX_UPLOAD = 20 << 20
 /** How long what was pasted into a terminal stays once its shell has ended: as long as Claude Code keeps a session to
  *  resume by default (cleanupPeriodDays), so a resumed one still finds the files it was given. */
 const UPLOADS_KEPT = 30 * 86_400_000
@@ -108,15 +107,21 @@ async function backendOf(id: string): Promise<Backend | null> {
 /** A shell with this id runs here (in any backend). */
 const runsHere = async (id: string) => !!(await backendOf(id))
 
-/** A file the page sent (a pasted screenshot) into terminal `id`, saved where the shell can read it: its path. */
-function upload(id: string, name: unknown, data: unknown): string {
-  const bytes = Buffer.from(String(data ?? ""), "base64")
-  if (!bytes.length || bytes.length > MAX_UPLOAD) throw new Error("empty or over 20 MB")
-  const safe = String(name ?? "").replace(/[^\w.-]+/g, "-").replace(/^[.-]+/, "").slice(-80) || "file"
-  const dir = path.join(UPLOADS, id)
-  fs.mkdirSync(dir, { recursive: true })
-  const file = path.join(dir, `${Date.now().toString(36)}-${safe}`)
-  fs.writeFileSync(file, bytes)
+/** A file the page sends into terminal `id` (a pasted screenshot, any size), a piece at a time, saved where the shell
+ *  can read it: its path once the `last` piece came, else null. `files`: the socket's uploads under way, by the page's id. */
+function upload(id: string, files: Map<string, string>, msg: { id?: string; name?: string; data?: string; last?: boolean }): string | null {
+  const key = String(msg.id ?? "")
+  let file = files.get(key)
+  if (!file) {
+    const safe = String(msg.name ?? "").replace(/[^\w.-]+/g, "-").replace(/^[.-]+/, "").slice(-80) || "file"
+    const dir = path.join(UPLOADS, id)
+    fs.mkdirSync(dir, { recursive: true })
+    files.set(key, file = path.join(dir, `${Date.now().toString(36)}-${safe}`))
+  }
+  fs.appendFileSync(file, Buffer.from(String(msg.data ?? ""), "base64"))
+  if (!msg.last) return null
+  files.delete(key)
+  if (!fs.statSync(file).size) { fs.rmSync(file, { force: true }); throw new Error("an empty file") }
   return file
 }
 
@@ -399,6 +404,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     // The backend draws its screen again (the replay can end mid-screen).
     if (!fresh) s.link.redraw?.()
   }
+  const uploads = new Map<string, string>()
   ws.on("message", (data: RawData, binary: boolean) => {
     const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
     if (binary) {
@@ -407,18 +413,19 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
       if (buf.includes(13)) setTimeout(listChanged, 400)
       return
     }
-    let msg: { t?: string; cols?: number; rows?: number; name?: string; data?: string; lines?: number }
+    let msg: { t?: string; cols?: number; rows?: number; id?: string; name?: string; data?: string; last?: boolean; lines?: number }
     try { msg = JSON.parse(buf.toString("utf8")) } catch { return }
     if (msg.t === "resize") resize(s, clamp(msg.cols, 2, 1000, s.link.cols), clamp(msg.rows, 1, 500, s.link.rows))
     else if (msg.t === "close") end(s)
     else if (msg.t === "scroll") { if (Number.isInteger(msg.lines) && msg.lines) s.link.scroll?.(msg.lines!) }
     else if (msg.t === "upload") {
-      let file = ""
-      try { file = upload(s.id, msg.name, msg.data) } catch (e) { console.error("terminal upload:", e); return }
-      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: file }))
+      let file: string | null = null
+      try { file = upload(s.id, uploads, msg) } catch (e) { console.error("terminal upload:", e); return }
+      if (file && ws.readyState === ws.OPEN) ws.send(JSON.stringify({ t: "uploaded", path: file }))
     }
   })
   ws.on("close", () => {
+    for (const f of uploads.values()) fs.rmSync(f, { force: true }) // (cut off: never pasted)
     s.clients.delete(ws)
     s.pending.delete(ws)
     listChanged()

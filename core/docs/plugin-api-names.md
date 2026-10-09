@@ -112,6 +112,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `DetailDef`
 - `detailPath(kind, ...args)`: A detail path with its parts encoded (ids have slashes: "People/Alice Park").
 - `devicePref(key, fallback)`: A value a plugin keeps for this device only (the current workspace), in this device's prefs (localStorage), never in the vault.
+- `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
 - `dismissNotice(id)`: Close a toast before its time.
 - `dockAtEnd(key, side)`: Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's toggle, Move to the other sidebar, ticking it in the Panels menu), so where it…
 - `dockIcon()`: The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it.
@@ -518,6 +519,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `contentType(path)`: The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes).
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
 - `daysBetween(a, b)`: Days from a to b (YYYY-MM-DD).
+- `diffLines(a, b)`: How to turn a into b, as textedit's opcodes (equal runs and changed runs), for any number of lines.
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
 - `enabled(vault, plugins)`: Ids of the plugins that are on (not switched off, `offByDefault` ones turned on, and everything they require on).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
@@ -618,7 +620,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `effectiveType(kindType, fm)`: A file's type: its kind's (`kindType`, when a kind owns the file), else its frontmatter `type` when that's text, else a plugin's mark on it.
 - `Entry`
 - `fetchFromICloud(p, e)`
-- `FileCreateHook`: onCreateFile's hooks (Vault.onCreateFile): a new file that isn't Markdown, as the bytes to write instead (or none).
+- `FileCreateHook`: onCreateFile's hooks (Vault.onCreateFile): told of a new file that isn't Markdown; they never change its bytes.
 - `FM`
 - `formatInput(abs, rel)`: A file as a plugin's reader of its format gets it (the services `text:<ext>`): its text, or for a file that isn't text (a workbook, a Word document, a book: core/filetypes.ts's "binary") its bytes.
 - `frontmatter(data, body?)`
@@ -637,6 +639,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `mergeFm(existing, owned)`: The keys a kind owns, in its order (blank ones dropped), then every other key the file already had.
 - `MoveHook`: onMove's hooks (Vault.onMove): `to` null when trashed, then `trashed` is its path in .trash.
 - `ms(ns)`
+- `newFile(b)`: Bytes in memory as a NewFile.
+- `NewFile`: A new file as onCreateFile's hooks see it, read-only: its size, and its first or last `n` bytes, read only when asked (an upload can be any size).
+- `newFileAt(p)`: A file on disk as a NewFile (an upload streamed there).
 - `NotFound`: Something that isn't there (the API answers 404).
 - `nowUtc()`
 - `num(v)`: A number from YAML, or null.

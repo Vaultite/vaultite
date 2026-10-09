@@ -1,6 +1,6 @@
 // A day's recap, made from File history's versions (what each file said before and after each stretch of work) and
 // Activity's events (who did it, moves and deletes). What it needs comes in `Sources`, so tests give made-up ones.
-import { localTime, opcodes } from "../../../core/plugins.ts"
+import { diffLines, localTime, opcodes } from "../../../core/plugins.ts"
 import { archiveTwin, parseText, type Item } from "../../../core/vault.ts"
 import type { ActivityEvent } from "./model.ts"
 import { type RecapEntry, type RecapKind, taskLine, type TaskLine, taskState, type TaskState, transition, verbOf } from "./recap.ts"
@@ -161,8 +161,8 @@ async function stretchesOf(s: Sources, rel: string): Promise<Stretch[]> {
     }
     const code = fenced(b)
     const addedAt: number[] = []
-    // (a big file's lines aren't compared: told as edited, nothing quoted)
-    const ops = was.length + body.length > BIG ? [["replace", 0, 0, 0, 0] as const] : opcodes(a, b)
+    // (a big file's lines by the diff that's fast at any size)
+    const ops = was.length + body.length > BIG ? diffLines(a, b) : opcodes(a, b)
     for (const [tag, i1, i2, j1, j2] of ops) {
       if (tag === "equal") continue
       st.hunks++

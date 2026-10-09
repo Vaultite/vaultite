@@ -2,6 +2,7 @@
 // `vau docs api` are generated from the catalog so none can drift. `kind` decides locking and MCP hints.
 import { distance } from "./blocks.ts"
 import { actionProblems, type OpAction } from "./actions.ts"
+import type { Readable } from "node:stream"
 import type { Item, Vault } from "./vault.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -54,6 +55,8 @@ export type OpCtx = {
   /** Why the caller isn't this machine's owner for `what` (core/owner.ts), or "": for an op that's the owner's only in part
    *  (turning a vault plugin on approves it here). "" without a request (in-process, an approved MCP call). */
   refusal?: (what: string) => Promise<string>
+  /** The bytes it was given besides its parameters (an op with `input`): a raw request body, or an in-process caller's. */
+  input?: Readable
 }
 
 export type Op = {
@@ -88,6 +91,9 @@ export type Op = {
   text?: (result: Any, params: Any, who?: Who) => string
   /** Its text is printed as is when piped, no newline added (a secret going into another command). */
   exact?: boolean
+  /** It also takes bytes of any size (what they are: "the file"), as `ctx.input`: the raw body of POST /api/ops/<id>
+   *  (any type but JSON; the parameters then in the query), or an in-process caller's (call's `input`). */
+  input?: string
 }
 
 /** An op as the catalog lists it (no functions). */
@@ -106,6 +112,8 @@ export type OpEntry = {
   owner: string | null
   /** Op.exact: printed as is when piped. */
   exact?: boolean
+  /** Op.input: the bytes it takes as a raw body. */
+  input?: string
   action: OpAction | null
 }
 
@@ -156,7 +164,8 @@ export const toolName = (op: Op): string | null => (op.mcp ? (typeof op.mcp === 
 
 export function entryOf(op: Op, plugin: string | null): OpEntry {
   return { id: op.id, plugin, summary: op.summary, help: op.help ?? "", kind: op.kind, params: paramsSchema(op), args: op.args ?? [],
-    cli: op.cli ?? null, mcp: toolName(op), result: op.result ?? null, owner: op.owner ?? null, action: op.action ?? null, ...(op.exact ? { exact: true } : {}) }
+    cli: op.cli ?? null, mcp: toolName(op), result: op.result ?? null, owner: op.owner ?? null, action: op.action ?? null, ...(op.exact ? { exact: true } : {}),
+    ...(op.input ? { input: op.input } : {}) }
 }
 
 // ---------- checking and converting parameters ----------

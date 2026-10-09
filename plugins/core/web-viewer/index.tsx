@@ -31,7 +31,7 @@ function askAddress() {
 async function saveImage(m: Extract<WebEvent, { type: "image" }>) {
   const s = getStore()
   try {
-    if (!m.data || !s) throw new Error("Couldn't get the image")
+    if (!m.data || !s) throw new Error(m.error ? `Couldn't get the image: ${m.error}` : "Couldn't get the image")
     const ext = ({ "image/jpeg": "jpg", "image/svg+xml": "svg" } as Record<string, string>)[m.mime] ?? m.mime.split("/")[1] ?? "png"
     // (a data: image is "download.png": named for when it was saved instead)
     const when = new Date().toISOString().slice(0, 19).replace(/\D/g, "")

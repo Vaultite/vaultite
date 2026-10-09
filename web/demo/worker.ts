@@ -131,7 +131,8 @@ async function handle(ask: Ask): Promise<Answer> {
   if (parts[0] === "raw") return raw(query)
   if (route === "file/open") return json({ error: NEEDS_APP }, 501)
   let body: unknown = {}
-  if (ask.body && ask.body.byteLength) { try { body = JSON.parse(new TextDecoder().decode(ask.body)) } catch { return json({ error: "the body isn't JSON" }, 400) } }
+  if (method === "POST" && route === "upload") body = { bytes: Buffer.from(ask.body ?? new ArrayBuffer(0)) } // (its bytes: core/files.ts upload)
+  else if (ask.body && ask.body.byteLength) { try { body = JSON.parse(new TextDecoder().decode(ask.body)) } catch { return json({ error: "the body isn't JSON" }, 400) } }
   if (parts[0] === "vaults") return vaults.handle(method, parts, query, body as Record<string, unknown>, VAULT, () => { throw new HTTPError(501, NEEDS_APP) })
     .then((out) => json(out), (e) => json({ error: e.message }, e instanceof HTTPError ? e.status : 500))
   if (route === "ui") { const [out, status] = live.handle(method, body as Record<string, unknown>); return json(out, status) }

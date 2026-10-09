@@ -1,11 +1,8 @@
-// E-books' server side: an EPUB's or FictionBook's text (title, authors, chapters in spine order, capped at MAX) for
+// E-books' server side: an EPUB's or FictionBook's text (title, authors, chapters in spine order, all of it) for
 // /api/render and search. Kindle files and comics are only drawn.
 import { Plugin, unzip, xmlDecode, zipText } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
-
-/** The most text a book gives (the rest is cut, and says so). */
-const MAX = 400_000
 
 /** (X)HTML as Markdown-ish text: headings as headings, blocks a paragraph apart, every other tag gone. */
 export function htmlText(html: string) {
@@ -28,8 +25,6 @@ const resolve = (dir: string, href: string) => {
   return parts.join("/")
 }
 
-const cut = (s: string) => (s.length > MAX ? `${s.slice(0, MAX)}\n\n_(the rest of the book is left out)_` : s)
-
 /** An EPUB's metadata and text as Markdown. */
 export function epubMarkdown(bytes: Buffer): string {
   const zip = unzip(bytes)
@@ -49,15 +44,12 @@ export function epubMarkdown(bytes: Buffer): string {
   const authors = meta("creator")
   if (authors.length) head.push(`By ${authors.join(", ")}`)
   const chapters: string[] = []
-  let size = 0
   for (const part of spine) {
-    if (size > MAX) break
     const html = zipText(zip, part)
-    if (!html) continue
-    const text = htmlText(html)
-    if (text) { chapters.push(text); size += text.length }
+    const text = html ? htmlText(html) : ""
+    if (text) chapters.push(text)
   }
-  return cut([head.join("\n\n"), ...chapters].join("\n\n"))
+  return [head.join("\n\n"), ...chapters].join("\n\n")
 }
 
 /** A FictionBook's title, authors and text as Markdown. */
@@ -71,7 +63,7 @@ export function fb2Markdown(xml: string): string {
     .replace(/<(\/?)(section|subtitle|poem|stanza|v|epigraph|cite|empty-line)\b[^>]*>/g, "<$1p>"))
   const head = [`# ${title ? xmlDecode(title).trim() : "Untitled"}`]
   if (authors.length) head.push(`By ${authors.join(", ")}`)
-  return cut([head.join("\n\n"), ...bodies.map((b) => htmlText(`<body>${b}</body>`))].join("\n\n"))
+  return [head.join("\n\n"), ...bodies.map((b) => htmlText(`<body>${b}</body>`))].join("\n\n")
 }
 
 plugin.provide("text:epub", (bytes: Buffer | string) => epubMarkdown(Buffer.isBuffer(bytes) ? bytes : Buffer.from(bytes)))

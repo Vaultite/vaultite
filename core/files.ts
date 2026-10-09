@@ -1,8 +1,11 @@
 // The vault as files, for the file tree and the editor: /api/files, /api/file (+ move, copy, restore), /api/search,
 // /api/raw. Hidden files are out of reach unless shown, but the app's own settings open by exact path (SETTINGS).
 import fs from "node:fs"
+import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
+import { Readable } from "node:stream"
+import { pipeline } from "node:stream/promises"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
 import { ARCHIVE_DIR, inArchive, inPagesDir } from "./fileprops.ts"
 import { isTextKind, kindOf, tooBig } from "./filetypes.ts"
@@ -12,7 +15,7 @@ import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { tabNames } from "./tabs.ts"
 import { addEntry, entryLine, KINDS, type NewEntry } from "./timeline.ts"
-import { cmp, type Entry, type Item, ms, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew } from "./vault.ts"
+import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -282,17 +285,30 @@ function crlf(abs: string) {
   }
 }
 
-/** A PDF's page count, when it's cheap to see (its page objects are plain in the file); null otherwise. */
-function pdfPages(abs: string, size: number) {
-  if (size > 64 << 20) return null
-  const s = fs.readFileSync(abs).toString("latin1")
-  const counts = [...s.matchAll(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)|\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages\b/g)].map((m) => Number(m[1] ?? m[2]))
-  if (counts.length) return Math.max(...counts)
-  const pages = s.match(/\/Type\s*\/Page\b(?!s)/g)?.length ?? 0
-  return pages || null
+/** A PDF's page count, when it's cheap to see (its page objects are plain in the file); null otherwise. Read a piece at a
+ *  time off the main thread, at any size: a match is counted in the piece it starts in, the last MB carried over. */
+async function pdfPages(abs: string) {
+  const PIECE = 32 << 20, OVER = 1 << 20
+  let most = 0, pages = 0, carry = "", at = 0
+  const fh = await fs.promises.open(abs)
+  try {
+    const buf = Buffer.alloc(Math.min(PIECE, (await fh.stat()).size + 1))
+    for (;;) {
+      const { bytesRead, buffer } = await fh.read(buf, 0, buf.length, at)
+      at += bytesRead
+      const s = carry + buffer.subarray(0, bytesRead).toString("latin1"), end = bytesRead < buf.length ? s.length : s.length - OVER
+      for (const m of s.matchAll(/\/Type\s*\/Pages\b[^>]*?\/Count\s+(\d+)|\/Count\s+(\d+)[^>]*?\/Type\s*\/Pages\b/g)) if (m.index < end) most = Math.max(most, Number(m[1] ?? m[2]))
+      for (const m of s.matchAll(/\/Type\s*\/Page\b(?!s)/g)) if (m.index < end) pages++
+      if (bytesRead < buf.length) break
+      carry = s.slice(end)
+    }
+  } finally {
+    await fh.close()
+  }
+  return most || pages || null
 }
 
-function info(vault: Vault, rel: string) {
+async function info(vault: Vault, rel: string) {
   let st: fs.BigIntStats
   try {
     st = fs.statSync(vault.abs(rel), { bigint: true })
@@ -301,7 +317,7 @@ function info(vault: Vault, rel: string) {
   }
   const kind = kindOf(rel)
   const out: Item = { path: rel, kind, size: Number(st.size), mtime: ms(st.mtimeNs), ctime: statFrom(st).born }
-  if (kind === "pdf") out.pages = pdfPages(vault.abs(rel), out.size)
+  if (kind === "pdf") out.pages = await pdfPages(vault.abs(rel)).catch(() => null)
   return out
 }
 
@@ -320,11 +336,11 @@ export function freeName(vault: Vault, rel: string) {
   return out
 }
 
-/** A new text file's text with what plugins add: a note's keys (onCreate), another file's bytes (onCreateFile: an SVG's). */
+/** A new text file's text with what plugins add to a note (onCreate); another file's are told of it (onCreateFile). */
 function newText(vault: Vault, rel: string, text: string) {
   if (/\.md$/i.test(rel)) return vault.created(rel, text)
-  const bytes = Buffer.from(text, "utf8"), out = vault.createdFile(rel, bytes)
-  return out === bytes ? text : out.toString("utf8")
+  vault.fileCreated(rel, newFile(Buffer.from(text, "utf8")))
+  return text
 }
 
 /** A JSON file must stay JSON (plugins read their settings from it), and a notebook too. */
@@ -410,10 +426,17 @@ export function copyName(vault: Vault, rel: string) {
   return out
 }
 
-/** Text files' text for search, re-read when changed (capped per file and in count); files that aren't text but a
- *  plugin reads (`text:<ext>`: a workbook's cells) as that plugin gives it. */
-const SEARCH_MAX = 256 << 10, SEARCH_FILES = 5000, READ_MAX = 64 << 20
-const cache = new WeakMap<Vault, Map<string, { ns: bigint; text: string }>>()
+/** Every file's text for search besides the notes (whole, any number of them): text files as they are, and files a
+ *  plugin reads (`text:<ext>`: a workbook's cells) as it gives them. Read off the main thread, again only when changed;
+ *  kept in memory up to KEEP in all, the rest read again by each search (memory stays bounded, nothing is left out). */
+const KEEP = 256 << 20
+/** Bigger than this, a file is read a piece at a time (one string can't hold much more): a query matches a piece. */
+const PIECE = 128 << 20
+/** `text`: its text kept; "disk": text, read when searched; null: not text (or nothing a reader could read). */
+type Indexed = { ns: bigint; reader: Reader | null; text: string | "disk" | null }
+type Index = { files: Map<string, Indexed>; kept: number; version: string; busy: Promise<void> | null }
+const indexes = new WeakMap<Vault, Index>()
+const DISK = "disk"
 
 /** The plugins that are on and read some kind of file as text (`text:<ext>`). */
 function readerPlugins(vault: Vault) {
@@ -421,31 +444,113 @@ function readerPlugins(vault: Vault) {
   return LOADED.filter((p) => !off.has(p.id) && Object.keys(p.services).some((k) => k.startsWith("text:")))
 }
 
-function searchable(vault: Vault): [string, string, bigint, number][] {
-  let texts = cache.get(vault)
-  if (!texts) cache.set(vault, (texts = new Map()))
-  const out: [string, string, bigint, number][] = []
-  const seen = new Set<string>()
+type Reader = (b: Buffer, rel: string) => string
+/** The files search reads besides the notes, each with the plugin reader that turns it into text, if any. */
+function searchFiles(vault: Vault) {
   const readers = readerPlugins(vault)
-  for (const [rel, st] of vault.others) {
+  const out = new Map<string, Reader | null>()
+  for (const rel of vault.others.keys()) {
     const k = kindOf(rel)
-    const reader = k === "binary" && st.size <= READ_MAX ? serviceFor(readers, "text", rel) as ((b: Buffer, rel: string) => string) | null : null
-    if (out.length >= SEARCH_FILES || !(reader || (st.size <= SEARCH_MAX && (k === "code" || k === "json")))) continue
-    seen.add(rel)
-    let hit = texts.get(rel)
-    if (!hit || hit.ns !== st.ns) {
-      let text = ""
-      try {
-        const bytes = fs.readFileSync(vault.abs(rel))
-        text = reader ? String(reader(bytes, rel) ?? "").slice(0, SEARCH_MAX) : textOf(bytes) ?? ""
-      } catch { /* gone meanwhile, or a file its reader can't read */ }
-      hit = { ns: st.ns, text }
-      texts.set(rel, hit)
-    }
-    if (hit.text) out.push([rel, hit.text, st.ns, st.born])
+    if (k === "image" || k === "pdf" || k === "audio" || k === "video") continue
+    const reader = k === "binary" ? serviceFor(readers, "text", rel) as Reader | null : null
+    if (k !== "binary" || reader) out.set(rel, reader)
   }
-  for (const rel of texts.keys()) if (!seen.has(rel)) texts.delete(rel)
   return out
+}
+
+/** Embedded files' bytes (a data: URL's base64: a drawing's pasted images) aren't text anyone looks for, and short
+ *  words would match inside them: left out of what's searched. */
+const DATA_URL = /(data:[\w.+-]+\/[\w.+-]+;base64,)[A-Za-z0-9+/=]{256,}/g
+const searchText = (t: string) => t.replace(DATA_URL, "$1…")
+
+/** A file's text to search, read now: null when it isn't text; DISK when it's too big to keep (read when searched);
+ *  undefined while it's only in iCloud (asked for, not waited on: tried again next time). */
+async function readIndexed(abs: string, rel: string, reader: Reader | null, room: number): Promise<string | null | undefined> {
+  const st = await fs.promises.stat(abs)
+  if (st.blocks === 0 && st.size > 0) { fetchFromICloud(abs, { errno: 11 }); return undefined }
+  if (reader) {
+    const text = String(reader(await fs.promises.readFile(abs), rel) ?? "")
+    return text.length > room ? DISK : text
+  }
+  const fh = await fs.promises.open(abs)
+  try {
+    const head = Buffer.alloc(Math.min(st.size, 8000))
+    await fh.read(head, 0, head.length, 0)
+    if (head.includes(0)) return null
+    if (st.size > PIECE || st.size > room) return DISK
+    const text = textOf(await fh.readFile())
+    return text === null ? null : searchText(text)
+  } finally {
+    await fh.close()
+  }
+}
+
+/** Bring the index up to date: files new or changed since are read (a few at a time), gone ones dropped. */
+function refresh(vault: Vault): Promise<void> {
+  let ix = indexes.get(vault)
+  if (!ix) indexes.set(vault, ix = { files: new Map(), kept: 0, version: "", busy: null })
+  const idx = ix
+  if (idx.busy) return idx.busy.then(() => refresh(vault))
+  // (plugins turned on or off read other files, or none)
+  const version = `${vault.version}:${LOADED.length}:${[...vault.switchedOff()].join(",")}`
+  if (idx.version === version) return Promise.resolve()
+  const want = searchFiles(vault)
+  const drop = (rel: string) => {
+    const had = idx.files.get(rel)
+    if (had && typeof had.text === "string" && had.text !== DISK) idx.kept -= had.text.length
+    idx.files.delete(rel)
+  }
+  for (const rel of [...idx.files.keys()]) if (!want.has(rel)) drop(rel)
+  const todo = [...want].filter(([rel, reader]) => { const f = idx.files.get(rel); return f?.ns !== vault.others.get(rel)?.ns || f?.reader !== reader })
+  let missed = false
+  const work = async () => {
+    while (todo.length) {
+      const [rel, reader] = todo.pop()!
+      const st = vault.others.get(rel)
+      if (!st) continue
+      let text: string | null | undefined = null
+      try { text = await readIndexed(vault.abs(rel), rel, reader, KEEP - idx.kept) } catch (e) { if (tooBig(e)) text = DISK }
+      drop(rel)
+      if (text === undefined) { missed = true; continue }
+      idx.files.set(rel, { ns: st.ns, reader, text })
+      if (text !== null && text !== DISK) idx.kept += text.length
+    }
+  }
+  idx.busy = Promise.all(Array.from({ length: 8 }, work)).then(() => { if (!missed) idx.version = version }).finally(() => { idx.busy = null })
+  return idx.busy
+}
+
+/** Read the index ahead (the file tree was asked for: a search may follow), off any request. */
+export function warmSearch(vault: Vault) {
+  refresh(vault).catch((e) => console.error(`search index: ${(e as Error).message}`))
+}
+
+/** A file the index didn't keep, a piece at a time (whole when it fits one), cut at line ends. */
+async function* pieces(abs: string): AsyncGenerator<string> {
+  const dec = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
+  const crlf = (s: string) => s.replace(/\r\n?/g, "\n")
+  let carry = ""
+  try {
+    for await (const chunk of fs.createReadStream(abs, { highWaterMark: PIECE })) {
+      const text = carry + dec.decode(chunk as Buffer, { stream: true })
+      const cut = text.lastIndexOf("\n")
+      if (cut < 0 && text.length < PIECE) { carry = text; continue }
+      yield searchText(crlf(cut < 0 ? text : text.slice(0, cut)))
+      carry = cut < 0 ? "" : text.slice(cut + 1)
+    }
+    carry += dec.decode()
+  } catch { /* gone meanwhile, or not UTF-8 after all */ }
+  if (carry) yield searchText(crlf(carry))
+}
+
+/** The texts to search a file in: the one kept, or read now (by its reader, or in pieces). */
+async function* textsOf(vault: Vault, rel: string, f: Indexed): AsyncGenerator<string> {
+  if (f.text === null) return
+  if (f.text !== DISK) { yield f.text; return }
+  if (!f.reader) { yield* pieces(vault.abs(rel)); return }
+  let text = ""
+  try { text = String(f.reader(await fs.promises.readFile(vault.abs(rel)), rel) ?? "") } catch { /* gone meanwhile */ }
+  if (text) yield text
 }
 
 /** How results can be ordered: by how well they match (the default), name, or when they were changed or made. */
@@ -463,7 +568,7 @@ type SearchOpts = { lines?: number; folder?: string; matchCase?: boolean; sort?:
 
 /** Files matching a query (core/searchquery.ts: words, "phrases", -not, OR, file:, path:, tag:, line:(), [property]...),
  *  with the first line that matched, and with `lines` every such line (and `context` lines around each). */
-export function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}) {
+export async function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}) {
   if (!q.trim()) return []
   let node: Node
   try { node = parse(q, { matchCase: opts.matchCase }) } catch (e) {
@@ -472,25 +577,19 @@ export function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {
   }
   if (node.t === "all") return []
   const marks = highlighter(node, "text"), names = highlighter(node, "name")
-  const out: Item[] = []
-  const all: [string, string, bigint, number, Entry | null][] = [
-    ...[...vault.entries].map(([rel, e]): [string, string, bigint, number, Entry | null] => [rel, e.body, e.stat.ns, e.stat.born, e]),
-    ...searchable(vault).map(([rel, text, ns, born]): [string, string, bigint, number, Entry | null] => [rel, text, ns, born, null]),
-  ]
   const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
   const whole = q.trim().toLowerCase()
-  for (const [rel, body, ns, born, e] of all) {
-    if (folder && !rel.startsWith(`${folder}/`)) continue
+  /** The file's item when `body` (its text, or the piece of it from line `from` on) matches. */
+  const check = (rel: string, body: string, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
     const file = rel.split("/").pop()!
     const name = e ? stemOf(rel) : file
-    if (!matches(node, { name, file, path: rel, text: body, tags: e?.tags, props: e?.fm })) continue
-    const lines = body.split("\n")
-    const first = lines.find((l) => marks(l).length) ?? ""
+    if (!matches(node, { name, file, path: rel, text: body, tags: e?.tags, props: e?.fm })) return null
     const score = names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0)
-    const item: Item = { path: rel, title: name, context: context(first, marks), score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
+    const item: Item = { path: rel, title: name, context: "", score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
     // The search tab (view:search) shows every line that matched, like a search editor; `context` lines around each
     // come marked `ctx: true`, each line once.
     if (opts.lines) {
+      const lines = body.split("\n")
       const hits: number[] = []
       lines.forEach((l, i) => { if (marks(l).length) hits.push(i) })
       const hit = new Set(hits)
@@ -501,13 +600,43 @@ export function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {
         for (let k = Math.max(0, i - around); k <= Math.min(lines.length - 1, i + around); k++) {
           if (shown.has(k)) continue
           shown.add(k)
-          matched.push({ line: k + 1, text: chars(lines[k].trim(), 300), ...(hit.has(k) ? {} : { ctx: true as const }) })
+          matched.push({ line: from + k + 1, text: chars(lines[k].trim(), 300), ...(hit.has(k) ? {} : { ctx: true as const }) })
         }
       }
+      item.context = context(hits.length ? lines[hits[0]] : "", marks)
       item.matches = matched.sort((a, b) => a.line - b.line)
       item.count = hits.length
+    } else {
+      // (line by line, not split: a big file's first match is near its top more often than not)
+      for (let i = 0; i <= body.length;) {
+        const j = body.indexOf("\n", i), end = j < 0 ? body.length : j, line = body.slice(i, end)
+        if (marks(line).length) { item.context = context(line, marks); break }
+        i = end + 1
+      }
     }
-    out.push(item)
+    return item
+  }
+  const out: Item[] = []
+  for (const [rel, e] of vault.entries) {
+    if (folder && !rel.startsWith(`${folder}/`)) continue
+    const item = check(rel, e.body, e.stat.ns, e.stat.born, e)
+    if (item) out.push(item)
+  }
+  await refresh(vault)
+  for (const [rel, f] of indexes.get(vault)!.files) {
+    const st = vault.others.get(rel)
+    if (!st || (folder && !rel.startsWith(`${folder}/`))) continue
+    // A file read in pieces matches when one of them does; its lines are counted on from piece to piece.
+    let item: Item | null = null, from = 0
+    for await (const text of textsOf(vault, rel, f)) {
+      const got = check(rel, text, st.ns, st.born, null, from)
+      from += (text.match(/\n/g)?.length ?? 0) + 1
+      if (!got) continue
+      if (!item) { item = got; if (!opts.lines) break; continue }
+      item.matches = [...item.matches, ...got.matches]
+      item.count += got.count
+    }
+    if (item) out.push(item)
   }
   // Archived files last (core/fileprops.ts), like the quick switcher.
   const [key, reverse] = SORTS[opts.sort ?? ""] ?? SORTS.relevance
@@ -516,10 +645,39 @@ export function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {
   return [...sorted.filter((r) => !r.archived), ...sorted.filter((r) => r.archived)].slice(from, from + limit)
 }
 
+let uploadN = 0
+/** POST /api/upload?path=: a new file of any size, its bytes (the request's body; in-process, `bytes`: a Buffer or a
+ *  stream) streamed beside where it goes, hidden, then put there holding the vault: never over a file. The vault is held
+ *  only for that, not while the bytes come. */
+export async function upload(vault: Vault, query: Record<string, string>, body: Item, http: IncomingMessage | undefined, hold: <T>(fn: () => Promise<T>) => Promise<T>) {
+  const rel = clean(query.path ?? body.path, false, vault)
+  if (locked(rel)) throw new HTTPError(403, `${rel} is read-only`)
+  const abs = vault.abs(rel)
+  if (fs.existsSync(abs)) throw new HTTPError(409, `${rel} already exists`)
+  const bytes = Buffer.isBuffer(body.bytes) ? body.bytes : null
+  const src = bytes ? null : body.bytes instanceof Readable ? body.bytes : http instanceof Readable && !http.readableEnded ? http : null
+  if (!bytes && !src) throw new HTTPError(400, "send the file's bytes as the request's body")
+  fs.mkdirSync(path.dirname(abs), { recursive: true })
+  const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.upload-${process.pid}-${++uploadN}`)
+  try {
+    if (bytes) fs.writeFileSync(tmp, bytes, { flag: "wx" })
+    else await pipeline(src!, fs.createWriteStream(tmp, { flags: "wx" }))
+    return await hold(async () => {
+      vault.fileCreated(rel, newFileAt(tmp)) // (plugins look at it: onCreateFile)
+      if (fs.existsSync(abs)) throw new HTTPError(409, `${rel} already exists`)
+      fs.renameSync(tmp, abs)
+      await vault.sync()
+      return reply(201, { path: rel })
+    })
+  } finally {
+    fs.rmSync(tmp, { force: true })
+  }
+}
+
 /** The file routes, or undefined if the request isn't one of them. */
 export async function handle(vault: Vault, method: string, parts: string[], query: Record<string, string>, body: Item): Promise<unknown> {
   const route = parts.join("/")
-  if (route === "files" && method === "GET") return tree(vault)
+  if (route === "files" && method === "GET") { warmSearch(vault); return tree(vault) }
   if (route === "search" && method === "GET") {
     const n = (v: string | undefined, max: number) => Math.max(0, Math.min(max, Math.floor(Number(v) || 0)))
     if (query.sort && !(query.sort in SORTS)) throw new HTTPError(400, `sort is one of ${Object.keys(SORTS).join(", ")}`)
@@ -659,15 +817,6 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     if (folder && locked(folder)) throw new HTTPError(403, `${folder} is read-only`)
     const rel = clean(`${folder}/${String(body.name ?? "").replaceAll("/", " ")}`, false, vault)
     return { path: freeName(vault, rel) }
-  }
-  if (route === "upload" && method === "POST") {
-    const rel = clean(body.path, false, vault)
-    if (locked(rel)) throw new HTTPError(403, `${rel} is read-only`)
-    if (typeof body.data !== "string") throw new HTTPError(400, "data must be base64 text")
-    if (fs.existsSync(vault.abs(rel))) throw new HTTPError(409, `${rel} already exists`)
-    if (!writeNew(vault.abs(rel), vault.createdFile(rel, Buffer.from(body.data, "base64")))) throw new HTTPError(409, `${rel} already exists`)
-    await vault.sync()
-    return reply(201, { path: rel })
   }
   if (route === "folder" && method === "POST") {
     let rel = clean(body.path, false, vault)

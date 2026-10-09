@@ -86,10 +86,12 @@ const under = (rel: string, dir: string) => rel === dir || rel.startsWith(`${dir
 
 // A new file an agent or the user makes through the API (an upload, an SVG): labelled like a new note, in the list
 // (its bytes as they came). One whose bytes already say an AI made it reads that way.
-plugin.onCreateFile((rel, bytes, writer) => {
+plugin.onCreateFile((rel, file, writer) => {
   if (!writer || isHiddenPath(rel)) return
   const agent = byAgent(writer)
-  const label = agent ? agentValue() : saysAi(bytes) ? "" : userValue()
+  // (its head and tail, as scan reads them: an upload can be any size)
+  const says = () => file.size <= HEAD + TAIL ? saysAi(file.head(file.size)) : saysAi(file.head(HEAD), file.tail(TAIL))
+  const label = agent ? agentValue() : says() ? "" : userValue()
   try {
     relist((l) => { if (label) l[rel] = label; else delete l[rel] })
   } catch (e) { console.error(`provenance: couldn't label ${rel}: ${(e as Error).message}`) }

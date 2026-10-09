@@ -1,5 +1,5 @@
 ## File history
-Earlier versions of the vault's text files (Markdown, and code, JSON, HTML and CSV up to 1 MB) are kept automatically on
+Earlier versions of the vault's text files (Markdown, and code, JSON, HTML and CSV, of any size) are kept automatically on
 the machine that runs the server, not in the vault: when a file changes (through the app, an AI, or on disk), its previous
 content is saved, at most once per file every `interval_min` minutes (default 5), for `keep_days` days (default 7).
 Deleted and renamed files keep theirs. Its settings are below.

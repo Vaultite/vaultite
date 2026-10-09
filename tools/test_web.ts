@@ -232,6 +232,37 @@ check("merge: nothing changed on disk gives mine", merge.merge3(base, "a\nb\nnew
 check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [["equal", 0, 1, 0, 1], ["replace", 1, 2, 1, 2], ["equal", 2, 3, 2, 3]]),
   merge.opcodes(["a", "b", "c"], ["a", "x", "c"]))
 
+// A line diff at any size (File history's): what it says equal is equal, and it rebuilds the other side exactly.
+{
+  const { diffLines } = await import("../core/linediff.ts")
+  const rebuilds = (a: string[], b: string[]) => {
+    const out: string[] = []
+    let i = 0, j = 0
+    for (const [tag, i1, i2, j1, j2] of diffLines(a, b)) {
+      if (i1 !== i || j1 !== j) return false
+      if (tag === "equal" && a.slice(i1, i2).join("\n") !== b.slice(j1, j2).join("\n")) return false
+      for (let k = j1; k < j2; k++) out.push(b[k])
+      i = i2; j = j2
+    }
+    return i === a.length && j === b.length && out.join("\n") === b.join("\n")
+  }
+  const rnd = (n: number) => Math.floor(Math.random() * n)
+  let ok = true
+  for (let k = 0; k < 500 && ok; k++) {
+    const a = Array.from({ length: rnd(30) }, () => String(rnd(5))), b = a.slice()
+    for (let e = rnd(6); e > 0; e--) { const p = rnd(b.length + 1); if (rnd(2)) b.splice(p, 1); else b.splice(p, 0, String(rnd(7))) }
+    ok = rebuilds(a, b)
+  }
+  check("diff: random small edits are told right", ok)
+  const big = Array.from({ length: 300_000 }, (_, k) => `line ${k}`), edited = big.slice()
+  edited.splice(150_000, 1, "changed"); edited.splice(10, 0, "added")
+  const t0 = performance.now(), ops = diffLines(big, edited)
+  check("diff: 300k lines, two edits, quickly and exactly", rebuilds(big, edited) && ops.filter((o) => o[0] !== "equal").length === 2 && performance.now() - t0 < 3000,
+    [ops.length, performance.now() - t0])
+  const x = Array.from({ length: 50_000 }, (_, k) => String(k % 3)), y = x.slice().reverse()
+  check("diff: what's too tangled to compare is still right", rebuilds(x, y))
+}
+
 // A change on disk shown in the editor: one change per changed run, so a cursor between them stays put.
 {
   const apply = (a: string, cs: { from: number; to: number; insert: string }[]) => {

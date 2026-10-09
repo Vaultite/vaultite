@@ -48,6 +48,7 @@ export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, type TabInfo } from "
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { opcodes } from "@/core/merge"
+export { diffLines } from "@/core/diff"
 // The one drag primitive: plugins' drop targets (Workspaces' switcher rows take a dragged tab) and things they drag (a
 // database view's cards).
 export { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"

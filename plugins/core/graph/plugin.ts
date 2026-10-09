@@ -32,6 +32,9 @@ function linksIn(e: Entry) {
   return t
 }
 
+// Other files' links, kept until the file or its reader changes: a big drawing is read once, not on every change.
+const otherLinks = new WeakMap<Vault, Map<string, { ns: bigint; read: unknown; links: string[] }>>()
+
 /** The whole vault's graph, built again only when the vault's files changed or the plugins that are off did (their
  *  services name links); the same object meanwhile, frozen (so the server serializes it once). */
 export function vaultGraph(vault: Vault): Graph {
@@ -58,11 +61,19 @@ export function vaultGraph(vault: Vault): Graph {
   }
   // Other files: those a plugin reads links out of, and the ones something links to (attachments).
   const others: GraphFile[] = []
+  let known = otherLinks.get(vault)
+  if (!known) otherLinks.set(vault, known = new Map())
+  for (const rel of known.keys()) if (!vault.others.has(rel)) known.delete(rel)
   for (const [rel, st] of vault.others) {
     const read = linkReader(vault, rel)
     let links: string[] = []
-    if (read && st.size < 4_000_000) {
-      try { links = read(readText(vault.abs(rel))) } catch { /* half-written: no links this time */ }
+    const had = known.get(rel)
+    if (read && had?.ns === st.ns && had.read === read) links = had.links
+    else if (read) {
+      try {
+        links = read(readText(vault.abs(rel)))
+        known.set(rel, { ns: st.ns, read, links })
+      } catch { /* half-written: no links this time */ }
     }
     others.push({ path: rel, title: rel.slice(rel.lastIndexOf("/") + 1), type: null, tags: [], links })
     targets.push({ path: rel })

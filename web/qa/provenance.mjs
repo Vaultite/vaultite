@@ -176,9 +176,11 @@ function marked(b64) {
 }
 const IMG_AI = `${DIR}/Chart.png`, IMG_MINE = `${DIR}/Photo.png`, IMG_MARKED = `${DIR}/From an AI app.png`
 const listed = () => { try { return JSON.parse(text(".vaultite/plugins/provenance/files.json")) } catch { return {} } }
-await api("POST", "upload", { path: IMG_AI, data: PNG })
-await api("POST", "upload", { path: IMG_MINE, data: PNG }, { "X-Vaultite-Client": "app/desktop" })
-await api("POST", "upload", { path: IMG_MARKED, data: marked(PNG) }, { "X-Vaultite-Client": "app/desktop" })
+// (the bytes as the body: POST /api/upload)
+const upload = (p, b64, headers = {}) => fetch(`${B}/api/upload?path=${enc(p)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream", ...headers }, body: Buffer.from(b64, "base64") })
+await upload(IMG_AI, PNG)
+await upload(IMG_MINE, PNG, { "X-Vaultite-Client": "app/desktop" })
+await upload(IMG_MARKED, marked(PNG), { "X-Vaultite-Client": "app/desktop" })
 check("files: an agent's upload is listed ai and its PNG carries the mark", listed()[IMG_AI] === "ai" && readFileSync(file(IMG_AI)).includes(MARK), listed())
 check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE] === "human" && readFileSync(file(IMG_MINE)).toString("base64") === PNG, listed())
 {

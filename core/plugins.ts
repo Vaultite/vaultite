@@ -4,6 +4,7 @@ import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
+import type { Readable } from "node:stream"
 import os from "node:os"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
@@ -29,8 +30,9 @@ export { contentType, isTextKind, kindOf } from "./filetypes.ts"
 export { API_VERSION, APP_VERSION } from "./version.ts"
 /** [[Links]]: the targets in a file, and a resolver like the app's (core/links.ts). */
 export { frontmatterTargets, type LinkFile, linkResolver, wikiTargets } from "./links.ts"
-/** A line diff (difflib's opcodes), for what changed between two texts. */
+/** A line diff (difflib's opcodes), for what changed between two texts; diffLines: the same, fast at any size. */
 export { opcodes } from "./textedit.ts"
+export { diffLines } from "./linediff.ts"
 // The sidebars' setup (.vaultite/sidebars.json), read and compared the app's way (Workspaces keeps copies).
 export { readSidebars, sameSidebars, type Sidebars } from "./sidebars.ts"
 export { pinFile, pinKind, placePin, repinList, withPinFile } from "./pins.ts"
@@ -253,7 +255,7 @@ export type OpsHost = {
   catalog: () => OpEntry[]
   /** Run an op as `who`, holding the vault for a write (as POST /api/ops does). Always pass `http` (req.http) when
    *  there is one, or anyone who reached your route could do what only the owner may. */
-  call: (name: string, params: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage }) => Promise<{ entry: OpEntry; params: Item; result: unknown; text: string }>
+  call: (name: string, params: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage; input?: Readable }) => Promise<{ entry: OpEntry; params: Item; result: unknown; text: string }>
   /** A route of the HTTP API in-process as `who` (held for a write, synced for a read): its body; a 4xx or 5xx throws an
    *  OpError with its message. `report`, `http`: as call's. */
   api: (method: string, route: string, body?: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage }) => Promise<unknown>
@@ -409,8 +411,9 @@ export class Plugin {
     return this.attach(fn, (v) => v.onCreate(this.id, fn))
   }
 
-  /** fn(path, bytes, writer) before the API writes a new file that isn't Markdown (an upload, an SVG): the bytes it
-   *  returns are written instead (a label inside the file). Only while on; files written on disk aren't heard. */
+  /** fn(path, file, writer) before the API writes a new file that isn't Markdown (an upload, an SVG): `file` (NewFile)
+   *  is read-only and read only as far as asked, as an upload can be any size. Only while on; files written on disk
+   *  aren't heard. */
   onCreateFile(fn: FileCreateHook) {
     return this.attach(fn, (v) => v.onCreateFile(this.id, fn))
   }

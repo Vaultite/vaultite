@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
+import type { Readable } from "node:stream"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import * as Look from "./appearance.ts"
@@ -302,12 +303,15 @@ export class App {
   unlocked(method: string, parts: string[]) {
     // An op holds the vault itself, only for a write (callOp), so an op that waits (events.wait) holds nothing.
     if (method === "POST" && parts.length === 2 && parts[0] === "ops") return true
-    const o = match(this.plugins, method, parts)?.[2]
-    return o?.lock === false || o?.stream === true
+    if (this.streams(method, parts)) return true
+    return match(this.plugins, method, parts)?.[2].lock === false
   }
 
-  /** Does this route read its request's body itself (plugin.route's `stream: true`: an upload)? */
-  streams(method: string, parts: string[]) {
+  /** Does this route read its request's body itself (an upload: the core's, plugin.route's `stream: true`, or an op
+   *  that takes bytes, sent as they are: `type`, the body's Content-Type, isn't JSON)? */
+  streams(method: string, parts: string[], type = "") {
+    if (method === "POST" && parts.length === 1 && parts[0] === "upload") return true
+    if (method === "POST" && parts.length === 2 && parts[0] === "ops") return !!type && !/json/i.test(type) && !!this.opNamed(parts[1])?.op.input
     return match(this.plugins, method, parts)?.[2].stream === true
   }
 
@@ -333,6 +337,7 @@ export class App {
     // A file from outside the vault, opened in the desktop app (core/outside.ts)
     if (parts.join("/") === "file" && O.isOutside(method === "GET" ? query.path : obj.path)) return O.handle(method, method === "GET" ? query.path : obj.path, obj)
     if (parts.join("/") === "file/info" && method === "GET" && O.isOutside(query.path)) return O.info(query.path)
+    if (method === "POST" && parts.join("/") === "upload") return await F.upload(this.vault, query, obj, http, (fn) => this.hold(fn))
     const res = (await F.handle(this.vault, method, parts, query, obj)) ?? Look.handle(this.vault, method, parts, obj)
     if (res !== undefined) return res
     // The core's own routes for vault plugins, before any plugin's.
@@ -421,7 +426,7 @@ export class App {
 
   /** Run an op as `who`, its params checked here. `http` is the request it came in, which routes it calls see as their
    *  own so owner checks still apply; without one (tests) nothing is refused. Throws OpError. */
-  async runOp(name: string, given: unknown, { who = this.who(), http }: { who?: Who; http?: IncomingMessage } = {}): Promise<{ op: Op; params: Item; result: unknown; who: Who }> {
+  async runOp(name: string, given: unknown, { who = this.who(), http, input }: { who?: Who; http?: IncomingMessage; input?: Readable } = {}): Promise<{ op: Op; params: Item; result: unknown; who: Who }> {
     const hit = this.opNamed(name)
     if (!hit) throw this.noOp(name)
     const { op, plugin } = hit
@@ -456,6 +461,7 @@ export class App {
         return await this.ui(message)
       },
       refusal,
+      ...(input && op.input ? { input } : {}),
     }
     // Plugins' middleware (plugin.around), the outermost first; one that throws before next() is skipped, unless it refuses.
     const arounds = this.on().flatMap((p) => p.arounds.filter(([ids]) => typeMatches(op.id, ids)).map(([, fn]) => [p.id, fn] as const))
@@ -501,8 +507,11 @@ export class App {
       return entryOf(hit.op, hit.plugin)
     }
     if (method !== "POST") return reply(405, { error: "POST /api/ops/<id> runs an op; GET lists them" })
+    // Bytes sent as they are (an op that takes them): its parameters are the query's.
+    const raw = http && this.streams(method, ["ops", parts[0]], String(http.headers?.["content-type"] ?? ""))
+    const given = raw ? Object.fromEntries(Object.entries(query).filter(([k]) => k !== "as")) : body
     // (server.ts synced the vault for it: unlocked() above; callOp holds it for a write)
-    const { result, text } = await this.callOp(parts[0], body, undefined, { synced: true, http })
+    const { result, text } = await this.callOp(parts[0], given, undefined, { synced: true, http, input: raw ? http : undefined })
     return query.as !== "text" ? result ?? null : new Text(text)
   }
 
@@ -536,12 +545,12 @@ export class App {
 
   /** Run an op as every surface does: a read after a sync, unheld; a write holding the vault (unless `lock: false`),
    *  as `who`, then `op.done` on the events. Throws OpError; `report` tells request watchers (Activity). */
-  async callOp(name: string, given: unknown, who: Who = this.who(), opts: { synced?: boolean; report?: string; http?: IncomingMessage } = {}) {
+  async callOp(name: string, given: unknown, who: Who = this.who(), opts: { synced?: boolean; report?: string; http?: IncomingMessage; input?: Readable } = {}) {
     const hit = this.opNamed(name)
     if (!hit) throw this.noOp(name)
     const { op, plugin } = hit
     const write = op.kind !== "read"
-    const run = () => requestWriter.run({ client: who.client, agent: who.agent }, () => this.runOp(op.id, given, { who, http: opts.http }))
+    const run = () => requestWriter.run({ client: who.client, agent: who.agent }, () => this.runOp(op.id, given, { who, http: opts.http, input: opts.input }))
     const t0 = performance.now()
     const end = this.reported("POST", `ops/${op.id}`, {}, who, opts.report)
     try {
@@ -606,7 +615,7 @@ export class App {
     const bus = eventsOf(this.vault)
     hostOps(this.vault, {
       catalog: () => this.catalog(),
-      call: (name, params, who, o) => this.callOp(name, params, who, { report: o?.report, http: o?.http }),
+      call: (name, params, who, o) => this.callOp(name, params, who, { report: o?.report, http: o?.http, input: o?.input }),
       api: (method, route, body, who, o) => this.apiAs(method, route, body, who, o),
       emit: (type, data) => bus.emit(type, data ?? {}),
     })

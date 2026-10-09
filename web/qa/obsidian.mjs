@@ -65,7 +65,7 @@ const png = await (async () => {
   const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), ch("IHDR", ihdr), ch("IDAT", deflateSync(raw)), ch("IEND", Buffer.alloc(0))])
 })()
-await fetch(`${B}api/upload`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: `${DIR}/Pics/qa-photo.png`, data: png.toString("base64") }) })
+await fetch(`${B}api/upload?path=${encodeURIComponent(`${DIR}/Pics/qa-photo.png`)}`, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: png })
 const appJson = path.join(VAULT, ".obsidian", "app.json")
 const hadApp = fs.existsSync(appJson) ? fs.readFileSync(appJson, "utf8") : null
 // Outline and Tags are hidden until shown (`hidden`): shown for the run, under the default panels in sidebars.json (put

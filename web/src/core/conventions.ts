@@ -2,7 +2,7 @@
 // unless a plugin that's on answers otherwise (`conventions`: a vault's .obsidian/app.json). First answer wins.
 import type { Conventions } from "@/core/define"
 import type { Store } from "@/core/data"
-import { post } from "@/core/http"
+import { post, upload } from "@/core/http"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { unarchived } from "../../../core/fileprops.ts"
@@ -59,10 +59,7 @@ export async function saveAttachments(s: Store, from: string, files: File[], fol
     const ext = (/\.(\w+)$/.exec(f.name)?.[1] ?? /\/(png|jpe?g|gif|webp|svg|heic|heif|avif)/.exec(f.type)?.[1] ?? "png").toLowerCase().replace("jpeg", "jpg")
     const name = nameless ? `Pasted image ${when}.${ext}` : f.name
     const { path } = await post<{ path: string }>("upload/name", { folder, name })
-    const bytes = new Uint8Array(await f.arrayBuffer())
-    let bin = ""
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
-    await post("upload", { path, data: btoa(bin) })
+    await upload(path, f)
     out.push(path)
   }
   return out
