@@ -24,6 +24,9 @@ server runs TypeScript directly) and, for the QA scripts, Playwright's Chromium
   architecture: node-pty is compiled there), or `npm run app:install` to install this checkout for your user, updating
   itself from main. On Ubuntu 24.04+, `npm run app` needs an AppArmor profile for `node_modules/electron/dist/electron`
   allowing `userns` (Chromium's sandbox); `app:install` prints the one for its own copy.
+- Releases are built by GitHub Actions (`.github/workflows/release.yml`): a `v<version>` tag matching package.json's is
+  that release (its notes CHANGELOG.md's section, its zips on the update feed), and main is the `nightly` prerelease
+  each night it changed. CI (`ci.yml`) builds and tests every push to main and every pull request.
 - iPhone app: `npm run ios` (needs Xcode); put your team in `ios/App/Local.xcconfig` (`DEVELOPMENT_TEAM = <team id>`).
   On the phone, add the address your Mac serves Vaultite at on the tailnet (`tailscale serve --https=8447 <port>`).
 - `vau service install --vault <folder>` keeps the server running (launchd on macOS, systemd on Linux).
