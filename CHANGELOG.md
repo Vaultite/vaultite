@@ -586,9 +586,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   in local time, not every `created`, `updated` or `added`.
 - **Timeline view only in people**: a `## Timeline` heading in a note stays the Markdown you wrote; only a person's file
   draws it as a timeline.
-- **Edits survive a closed window**: what you typed stays on the device until the server has it; a window closed or
-  killed mid-save offers it back (Restore them) the next time the file opens. A big note's last save no longer fails
-  as the window closes.
+- **Edits survive a closed window**: what you typed, at any size, stays on the device until the server has it; a
+  window closed or killed mid-save offers it back (Restore them) the next time the file opens. A big note's last save
+  no longer fails as the window closes.
 - **JSON saves as you type it**: a .json file (comments, a half-done edit), a notebook or a canvas source is saved as
   it is, with a note while it isn't valid JSON; a plugin's settings file that doesn't parse keeps working from its last
   good copy.

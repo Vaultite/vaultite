@@ -670,7 +670,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Edits a closed window didn't get saved (core/drafts.ts), offered back while nothing typed here is pending.
   const [leftover, setLeftover] = useState<Draft | null>(null)
   useEffect(() => {
-    if (!ro && full() === saver.disk) setLeftover(draftOf(path, initial.text))
+    let live = true
+    if (!ro && full() === saver.disk) void draftOf(path, initial.text).then((d) => { if (live && full() === saver.disk) setLeftover(d) })
+    return () => { live = false }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, initial, ro, saver])
   const restoreUnsaved = (u: Draft) => {

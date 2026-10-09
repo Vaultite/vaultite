@@ -10,7 +10,8 @@ const read = (p) => { try { return readFileSync(`${VAULT}/${p}`, "utf8") } catch
 const post = (path, text) => fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, text }) })
 rmSync(`${VAULT}/Qa safe`, { recursive: true, force: true })
 await wait(1500)
-const big = `---\ntype: note\n---\n\n${"A line of a long note, long enough to pass what keepalive takes.\n".repeat(1500)}End.\n`
+// (past what keepalive takes, and what localStorage holds: kept whole all the same)
+const big = `---\ntype: note\n---\n\n${"A line of a long note, long enough to pass what keepalive takes.\n".repeat(60_000)}End.\n`
 await post("Qa safe/Big.md", big)
 await post("Qa safe/settings.json", '{\n  "a": 1\n}\n')
 await post("Qa safe/Links.md", "Go to [[Qa colon: test]] and [[Qa safe/Sub/Deep note]].\n\nLinks end.\n")
