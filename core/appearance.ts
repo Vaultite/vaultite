@@ -117,7 +117,8 @@ const SNIPPET = `/* A CSS snippet: turn it on in Settings > Appearance > CSS sni
 
 type Converted = { modes: Mode[]; light: Vars; dark: Vars }
 
-/** Obsidian's own defaults (its app.css), so a theme that only sets a few base colours still maps. */
+/** The default values of Obsidian's documented CSS variables (docs.obsidian.md, CSS variables), so a theme that only
+ *  sets a few base colours still maps. */
 const BASE: Vars = {
   "accent-h": "254", "accent-s": "80%", "accent-l": "68%",
   "color-accent-hsl": "var(--accent-h), var(--accent-s), var(--accent-l)",

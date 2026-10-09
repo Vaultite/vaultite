@@ -83,3 +83,6 @@ Then add `https://<machine>.<tailnet>.ts.net:8447` in the app, and apply the Sel
 ## License
 
 [Apache 2.0](LICENSE).
+
+Obsidian is a trademark of Dynalist Inc. Vaultite is not affiliated with or endorsed by it; the name is used only to
+say what Vaultite is compatible with.

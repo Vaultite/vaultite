@@ -1,2 +1,16 @@
 Vaultite
 Copyright 2026 Lucas Takayasu / Vaultite
+
+This product includes third-party software and assets:
+
+- Lucide icons (https://lucide.dev), ISC License, Copyright (c) Lucide Contributors and Cole Bemis: the menu icons
+  in electron/menu-icons/ are rendered from them, and web/src/core/lucide-tags.json lists their search tags.
+- shadcn/ui (https://ui.shadcn.com), MIT License, Copyright (c) 2023 shadcn: web/src/shadcn.css and
+  web/src/components/ui/button.tsx are adapted from it.
+- Geist (https://vercel.com/font), SIL Open Font License 1.1, Copyright (c) 2023 Vercel: bundled through
+  @fontsource-variable/geist.
+- Colour palettes in web/src/themes/, each under the licence listed in web/src/themes/LICENSES.md.
+
+Obsidian is a trademark of Dynalist Inc. Vaultite is not affiliated with or endorsed by Dynalist Inc.; the name is used
+only to say which files, plugins and themes it is compatible with. Other names and logos are trademarks of their
+respective owners.

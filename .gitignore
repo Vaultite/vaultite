@@ -11,3 +11,6 @@ electron/cli.json
 http:/
 CLAUDE.local.md
 web/dist-demo/
+
+# The vault this checkout is opened as (the app writes its own here)
+.vaultite/

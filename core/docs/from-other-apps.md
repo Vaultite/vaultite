@@ -20,3 +20,4 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
   turning one on turns the other off. More are in the Plugins page's Browse, in that plugin's tab.
 - Not read: `workspace.json`, hotkeys and appearance. Renames update `[[links]]`,
   not Markdown links.
+- Obsidian is a trademark of Dynalist Inc.; Vaultite is not affiliated with or endorsed by it.

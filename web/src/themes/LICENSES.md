@@ -20,9 +20,10 @@ permissive licences that allow this with attribution.
 | github.css | GitHub (Primer) | github.com/primer/primitives | MIT |
 | flexoki.css | Flexoki | github.com/kepano/flexoki (Steph Ango) | MIT |
 
-Two more are the app's own palettes, not published ones: amethyst.css (white pages, a purple accent) and paper.css
-(warm text on white, a calm blue). Only colour values; no CSS, fonts or images of any other app's. Their ids were
-`obsidian` and `notion` until October 2026 and still work; the app isn't affiliated with either of those apps.
+Two more aren't from a published palette. amethyst.css uses the colour values of Obsidian's default theme (white
+pages, a purple accent), so a vault coming from it looks familiar; paper.css is the app's own (warm text on white, a
+calm blue). Both are colour values only: no CSS, fonts or images of any other app's. Obsidian is a trademark of
+Dynalist Inc.; the app isn't affiliated with or endorsed by it.
 
 Some surfaces the originals don't define (a card a step off the page, a sidebar a step darker) are mixed from their
 own colours. Obsidian themes the user drops in their vault are converted at runtime (core/appearance.ts) and are not
