@@ -103,6 +103,19 @@ shell's (a new shell when shown). The others: vau terminal open|resume|screen|se
   })
 
   plugin.op({
+    id: "terminal.instructions",
+    cli: "terminal instructions",
+    summary: "What a coding agent started in one of the app's terminals is told, word for word.",
+    help: `Added to an agent's own instructions when it takes them (a system prompt's addition, an instructions file): that
+it runs inside Vaultite, then each plugin's line for agents. The vault's rules, .vaultite/AGENTS.md, have the same lines.
+
+  vau terminal instructions`,
+    kind: "read",
+    run: async (_p, ctx) => ctx.api("GET", "terminals/instructions"),
+    text: (r) => String(r.text ?? ""),
+  })
+
+  plugin.op({
     owner: "the terminal",
     id: "terminal.open",
     cli: "terminal open",

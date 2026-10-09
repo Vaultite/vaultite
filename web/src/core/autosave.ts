@@ -6,6 +6,7 @@ import { deletedHere, gone, moveMark, readFile, stem, whereNow, type FileText } 
 import { useVaultChange } from "@/core/live"
 import { merge3 } from "@/core/merge"
 import { notify } from "@/core/notify"
+import { trackUnsaved } from "@/core/unsaved"
 import { LEAN_PAST, textHash } from "../../../core/texthash.ts"
 
 export type SaveStatus = { kind: "ok" } | { kind: "error"; message: string } | { kind: "conflict"; theirs: FileText } | { kind: "invalid"; message: string }
@@ -72,8 +73,10 @@ function makeAutosave(path: string, initial: string, options: Options) {
       s.alive = true
       const leave = () => s.flush(s.inflight?.text ?? s.disk, false)
       addEventListener("pagehide", leave)
+      const untrack = trackUnsaved(() => !o.current.readOnly && (!!timer || saving || status.kind !== "ok" || o.current.text() !== s.disk))
       return () => {
         s.alive = false
+        untrack()
         removeEventListener("pagehide", leave)
         s.stopTimer()
         if (s.inflight) s.inflight.done.then(() => s.flush(s.disk, true))

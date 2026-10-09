@@ -11,7 +11,6 @@ export const plugin = new Plugin(import.meta.url)
 const MINUTE = 60_000, HOUR = 3_600_000, DAY = 86_400_000
 const BURST = 10_000 // the same error again within this long is counted on the next line written, not a line of its own
 const RECENT = 30 // times kept in memory per kind (the rest are in the files)
-const NOTIFY_GAP = 30_000 // at most one toast this often
 
 // ---------- where it's kept
 
@@ -100,7 +99,8 @@ function loaded() {
 
 /** The same error within BURST of the last line written for it: counted here and written with the next line. */
 const held = new Map<string, { at: number; n: number; last: ErrorEvent }>()
-let lastToast = 0
+/** The kinds of error a toast told of since the server started: one each, the rest only listed (Errors). */
+const toldOf = new Set<string>()
 
 function record(e: Omit<ErrorEvent, "id">) {
   const event: ErrorEvent = { id: kindOf(e.source, e.message, e.stack), ...e }
@@ -136,13 +136,14 @@ const flusher = setInterval(() => {
 flusher.unref()
 plugin.onUnload(() => { clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
 
-/** A new kind of error: tell the user (a toast, kept in the inbox), not for an older build's file (the app reloaded:
- *  nothing to do) or one that ended the server (nobody left to tell it). */
+/** A new error: tell the user (a toast, kept in the inbox) once per kind (the app's, the app stopping, the server's)
+ *  while the server runs; not for an older build's file (the app reloaded: nothing to do) or one that ended the server
+ *  (nobody left to tell it). */
 function tell(g: ErrorGroup) {
   if (!settings().notify || g.kind === "stale" || g.latest.fatal && g.source === "server") return
-  if (Date.now() - lastToast < NOTIFY_GAP) return
-  lastToast = Date.now()
   const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Error in the app") : "Error in the server"
+  if (toldOf.has(where)) return
+  toldOf.add(where)
   // After this turn: the error may have come from inside a write that holds the vault.
   setImmediate(() => {
     try {

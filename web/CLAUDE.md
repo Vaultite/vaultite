@@ -85,7 +85,8 @@
 ## Running, tests and QA
 - The app never shows a blank window: index.html says "Vaultite couldn't start" (or "stopped") with the error. Errors
   are queued for the Errors plugin (`core/errors.ts`), the console kept for `vau dev console` (core/dev.ts, main.tsx's
-  first import); a vanished chunk reloads into the new build.
+  first import); a vanished chunk reloads into the new build when nothing would be lost (`core/unsaved.ts`: no unsaved
+  edits, no typing in the last 30 s), else offers Reload.
 - UI QA: `node web/qa/<script>.mjs <base> [<vault path>]` (or `QA_BASE`), playwright-core on Playwright's Chromium (`CHROME` from qa.mjs; never
   launch /Applications/Google Chrome: a headless one left running hides the user's Chrome); shared
   setup is `web/qa/lib/qa.mjs`. Most scripts WRITE: throwaway servers only. Always `layout.mjs` after UI changes,

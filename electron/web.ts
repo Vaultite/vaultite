@@ -1,6 +1,8 @@
 // The Web viewer's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BrowserWindow, clipboard, type Input, Menu, type MenuItemConstructorOptions, nativeImage, session, shell, type Session, WebContentsView, type WebContents } from "electron"
+import { app, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, session, shell, type Session, systemPreferences,
+  WebContentsView, type WebContents } from "electron"
+import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -20,7 +22,8 @@ const PARTITION = "persist:web"
 /** The session's partition for a profile ("" or a workspace's "2"; anything else is the shared one). */
 const partitionOf = (profile: string) => (/^[a-z0-9-]{1,32}$/.test(profile) ? `${PARTITION}-${profile}` : PARTITION)
 const profileOf = (x: unknown) => (typeof x === "string" && /^[a-z0-9-]{1,32}$/.test(x) ? x : "")
-/** Pages let go of that each window keeps (the oldest ends first). */
+/** Pages let go of that each window keeps even when the Mac runs short of memory (more are kept until it does, the
+ *  oldest ending first then, like Chrome's discarding). */
 const KEEP = 4
 const MAC = process.platform === "darwin"
 /** Keys a page keeps even when the app has a shortcut on them: editing text, finding, a rich editor's marks. */
@@ -47,9 +50,12 @@ function webSession(profile: string) {
   const s = session.fromPartition(partitionOf(profile))
   // A plain Chrome: some sites turn away "embedded" browsers by their user agent.
   s.setUserAgent(s.getUserAgent().replace(/\s(Electron|vaultite|Vaultite)\/\S+/g, ""))
-  const allowed = (perm: string) => perm === "clipboard-sanitized-write" || perm === "notifications"
-  s.setPermissionRequestHandler((_wc, perm, ok) => ok(allowed(perm)))
-  s.setPermissionCheckHandler((_wc, perm) => allowed(perm))
+  s.setPermissionRequestHandler((wc, perm, ok, details) => void askPermission(profile, wc, perm, details).then(ok, () => ok(false)))
+  s.setPermissionCheckHandler((_wc, perm, origin, details) => {
+    if (FREE.has(perm)) return true
+    const kind = perm === "media" ? (details.mediaType === "video" ? "camera" : details.mediaType === "audio" ? "microphone" : "") : perm
+    return !!kind && permissionOf(profile, siteOf(hostOfUrl(origin)), kind) === true
+  })
   s.on("will-download", (_e, item, wc) => {
     const p = wc && pageOf(wc)
     if (toVault.delete(item.getURL())) {
@@ -72,6 +78,69 @@ function webSession(profile: string) {
   })
   sessions.set(profile, s)
   return s
+}
+
+// ---------- what sites may use: asked once per site and profile, like a browser, kept in userData web-permissions.json
+
+/** Allowed without asking, as browsers do. */
+const FREE = new Set(["clipboard-sanitized-write", "notifications", "fullscreen", "pointerLock", "keyboardLock", "speaker-selection",
+  "storage-access", "top-level-storage-access"])
+/** Asked: what the question says the site wants to do. Anything else is refused. */
+const ASKED: Record<string, string> = {
+  camera: "use your camera", microphone: "use your microphone", geolocation: "know your location", "clipboard-read": "see what you copy",
+  midi: "use your MIDI devices", midiSysex: "control your MIDI devices", "idle-detection": "know when you're away from the computer",
+  "window-management": "see your screens and place windows on them", fileSystem: "edit files on this Mac", openExternal: "open another app",
+}
+type Answers = Record<string, Record<string, Record<string, boolean>>> // profile -> site -> what -> allowed
+let answers: Answers | null = null
+const answersFile = () => path.join(app.getPath("userData"), "web-permissions.json")
+function loadAnswers(): Answers {
+  if (answers) return answers
+  try { const j = JSON.parse(fs.readFileSync(answersFile(), "utf8")); answers = j && typeof j === "object" ? j : {} } catch { answers = {} }
+  return answers!
+}
+const permissionOf = (profile: string, site: string, kind: string): boolean | undefined => loadAnswers()[profile]?.[site]?.[kind]
+function answer(profile: string, site: string, kind: string, yes: boolean | null) {
+  const all = loadAnswers(), of = (all[profile] ??= {}), at = (of[site] ??= {})
+  if (yes === null) delete at[kind]; else at[kind] = yes
+  if (!Object.keys(at).length) delete of[site]
+  try { fs.writeFileSync(answersFile(), JSON.stringify(all)) } catch { /* asked again next time */ }
+}
+/** Questions on screen, so a site asking twice at once gets one. */
+const asking = new Map<string, Promise<boolean>>()
+
+/** Whether a page may do `perm`: free, else its site's answer, else asked in a box over its window (Allow, Don't allow;
+ *  remembered unless unticked). The camera and microphone then need macOS's yes too. */
+async function askPermission(profile: string, wc: WebContents, perm: string, details: { mediaTypes?: string[]; requestingUrl?: string; externalURL?: string }) {
+  if (FREE.has(perm)) return true
+  const kinds = perm === "media" ? [...new Set((details.mediaTypes ?? []).map((t) => (t === "video" ? "camera" : "microphone")))] : [perm]
+  if (!kinds.length || kinds.some((k) => !ASKED[k])) return false
+  const site = siteOf(hostOfUrl(details.requestingUrl || wc.getURL()))
+  if (!site) return false
+  const known = kinds.map((k) => permissionOf(profile, site, k))
+  if (known.some((k) => k === false)) return false
+  let yes = known.every((k) => k === true)
+  if (!yes) {
+    const key = `${profile} ${site} ${kinds.join(",")}`
+    let q = asking.get(key)
+    if (!q) {
+      const win = pageOf(wc)?.win ?? BrowserWindow.fromWebContents(wc) ?? undefined
+      const what = kinds.map((k) => ASKED[k]).join(" and ").replace(/ and use your /, " and ")
+      const box = { type: "question" as const, message: `${site} wants to ${what}`, buttons: ["Allow", "Don't allow"], defaultId: 1, cancelId: 1,
+        checkboxLabel: "Remember for this site", checkboxChecked: true }
+      q = (win ? dialog.showMessageBox(win, box) : dialog.showMessageBox(box)).then((r) => {
+        const allow = r.response === 0
+        if (r.checkboxChecked) for (const k of kinds) answer(profile, site, k, allow)
+        return allow
+      }).finally(() => asking.delete(key))
+      asking.set(key, q)
+    }
+    yes = await q
+  }
+  if (yes && MAC && perm === "media") {
+    for (const k of kinds) if (!(await systemPreferences.askForMediaAccess(k === "camera" ? "camera" : "microphone"))) return false
+  }
+  return yes
 }
 
 /** "name.pdf", else "name 1.pdf"... like Finder. */
@@ -112,8 +181,9 @@ const notifyShim = (mark: string) => `(() => {
   window.Notification = Notification
   if (window.ServiceWorkerRegistration) ServiceWorkerRegistration.prototype.showNotification = function (title, o) { send(title, o); return Promise.resolve() }
 })()`
-/** Notifications a page may send a minute (more are dropped). */
+/** Notifications a page sends a minute; more wait their turn (past QUEUED, they're told as one, with how many). */
 const RATE = 6
+const QUEUED = 200
 
 const sendState = (p: Page) => tell(p.win, { type: "state", id: p.id, state: stateOf(p) })
 /** The window's pages came or went, or one was let go of or taken back (the Web pages panel). */
@@ -171,7 +241,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   const changed = () => sendState(p)
   wc.on("did-start-loading", () => { p.error = undefined; changed() })
   wc.on("did-stop-loading", changed)
-  wc.on("did-navigate", (_e, to) => { noteVisit(profile, to); changed() })
+  wc.on("did-navigate", (_e, to) => { noteVisit(profile, to); if (siteOf(hostOfUrl(to)) === CLOUD.site) cloudOpened.add(profile); changed() })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
   wc.on("page-title-updated", changed)
   wc.on("did-fail-load", (_e, code, desc, _u, main) => {
@@ -189,18 +259,30 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
     void wc.executeJavaScript(notifyShim(mark)).catch(() => {})
   })
   const sent: number[] = []
-  wc.on("console-message", (e) => {
-    if (!mark || !e.message.startsWith(mark)) return
+  const waiting: { title: string; body: string; url: string }[] = []
+  let more = 0, timer: ReturnType<typeof setTimeout> | null = null
+  const send = (n: { title: string; body: string; url: string }) => {
+    sent.push(Date.now())
+    tell(win, { type: "notify", id: p.id, profile: p.profile, url: n.url, site: siteOf(hostOfUrl(n.url)), title: n.title, body: n.body })
+  }
+  const drain = () => {
+    if (timer) { clearTimeout(timer); timer = null }
     const now = Date.now()
     while (sent.length && now - sent[0] > 60_000) sent.shift()
-    if (sent.length >= RATE) return
+    while (waiting.length && sent.length < RATE) send(waiting.shift()!)
+    if (!waiting.length && more && sent.length < RATE) { send({ title: `${more} more notifications`, body: "", url: wc.isDestroyed() ? "" : wc.getURL() }); more = 0 }
+    if ((waiting.length || more) && !timer) timer = setTimeout(drain, sent[0] + 60_000 - now + 50)
+  }
+  wc.on("destroyed", () => { if (timer) clearTimeout(timer) })
+  wc.on("console-message", (e) => {
+    if (!mark || !e.message.startsWith(mark)) return
     let j: { title?: unknown; body?: unknown }
     try { j = JSON.parse(e.message.slice(mark.length)) } catch { return }
     const text = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/g, " ").trim().slice(0, n) : "")
     const title = text(j.title, 200), body = text(j.body, 500), url = wc.getURL()
     if (!title && !body) return
-    sent.push(now)
-    tell(win, { type: "notify", id: p.id, profile: p.profile, url, site: siteOf(hostOfUrl(url)), title, body })
+    if (waiting.length < QUEUED) waiting.push({ title, body, url }); else more++
+    drain()
   })
 
   wc.on("before-input-event", (e, i) => {
@@ -264,10 +346,23 @@ function end(p: Page) {
   if (!p.view.webContents.isDestroyed()) p.view.webContents.close()
 }
 
-/** Keep at most KEEP pages let go of in a window: the oldest end. */
-function trim(win: BrowserWindow) {
-  const loose = [...pages.values()].filter((p) => p.win === win && !p.held).sort((a, b) => b.let - a.let)
-  for (const p of loose.slice(KEEP)) end(p)
+/** Pages let go of are kept (hidden, so Chromium throttles them): only when memory runs short does each window keep
+ *  just its KEEP newest, the older ones ending. */
+async function trim(win?: BrowserWindow) {
+  const loose = (w: BrowserWindow) => [...pages.values()].filter((p) => p.win === w && !p.held && !p.closing).sort((a, b) => b.let - a.let)
+  const wins = win ? [win] : [...new Set([...pages.values()].map((p) => p.win))]
+  if (!wins.some((w) => loose(w).length > KEEP) || !(await shortOfMemory())) return
+  for (const w of wins) for (const p of loose(w).slice(KEEP)) end(p)
+}
+setInterval(() => void trim(), 60_000).unref()
+
+/** Whether the computer is short of memory: macOS's memory pressure (warn or critical), Linux's available memory. */
+function shortOfMemory(): Promise<boolean> {
+  if (MAC) return new Promise((done) => execFile("/usr/sbin/sysctl", ["-n", "kern.memorystatus_vm_pressure_level"], { timeout: 2000 }, (e, out) => done(!e && Number(out) >= 2)))
+  try {
+    const m = fs.readFileSync("/proc/meminfo", "utf8"), kb = (k: string) => Number(new RegExp(`^${k}:\\s+(\\d+)`, "m").exec(m)?.[1] ?? 0)
+    return Promise.resolve(kb("MemTotal") > 0 && kb("MemAvailable") / kb("MemTotal") < 0.1)
+  } catch { return Promise.resolve(false) }
 }
 
 /** The page a window's keyboard last came from as it was hidden, till the window asks (`web:take`) or it's shown. */
@@ -341,7 +436,7 @@ export function webWindow(win: BrowserWindow) {
     if (!d.isMainFrame || d.isSameDocument) return
     void float(win, [])
     for (const p of pages.values()) if (p.win === win && p.held) { p.held = false; p.let = Date.now(); p.view.setVisible(false) }
-    trim(win)
+    void trim(win)
   })
 }
 
@@ -381,7 +476,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     p.held = false
     p.let = Date.now()
     p.view.setVisible(false)
-    trim(win)
+    void trim(win)
     pagesChanged(win)
   },
   "web:close": (win, url, profile) => {
@@ -419,6 +514,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     }
     await s.clearData({ origins: [`https://${name}`, `https://www.${name}`], dataTypes: ["cookies", "localStorage", "indexedDB", "serviceWorkers", "cache", "fileSystems"] }).catch(() => {})
     accounts.delete(`${prof} ${name}`)
+    for (const k of Object.keys(loadAnswers()[prof]?.[name] ?? {})) answer(prof, name, k, null) // what it may use is asked again
     // Its pages in that profile show it signed out.
     for (const p of pages.values()) if (p.profile === prof && siteOf(hostOfUrl(p.view.webContents.getURL())) === name) p.view.webContents.reload()
   },
@@ -636,17 +732,9 @@ const cloudNext = new Map<string, { at: number; wait: number }>()
 let cloudTimer: ReturnType<typeof setInterval> | undefined
 let cloudReading = false
 
-/** The profiles this Mac has logins for: their partitions on disk, and those set up since. */
-function cloudProfiles() {
-  const out = new Set(sessions.keys())
-  try {
-    for (const d of fs.readdirSync(path.join(app.getPath("userData"), "Partitions"))) {
-      const m = /^web(?:-([a-z0-9-]{1,32}))?$/.exec(d)
-      if (m) out.add(m[1] ?? "")
-    }
-  } catch { /* no pages yet */ }
-  return [...out]
-}
+/** The profiles with a claude.ai page opened since the app started: only theirs are asked, never on load alone. */
+const cloudOpened = new Set<string>()
+const cloudProfiles = () => [...cloudOpened]
 
 /** A profile's sessions, or null when it isn't signed in to claude.ai. From one of its claude.ai pages when one is open
  *  (the site's own origin), else with the session's cookies from here, like accountOf. */

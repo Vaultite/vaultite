@@ -9,7 +9,7 @@
   cache come from Agent meters (the service `terminal:meters`, from each agent plugin's `agent-meters:<name>`) as `meter`.
 - **Agents**: id `<name>-<id>` starts agent `<name>`, `<name>_<account>-<id>` in an account, `resume-<name>-<session>`
   resumes, through the service `agent:<name>` of the plugin that brings it (AgentStart in core/codingagents.ts -> `{command, cwd}`; `context` is
-  `context.md` plus the plugins' `forAgents`). App side: `agents` in a definition, `openAgent`, `agentOfTerminal`.
+  `context.md` plus the plugins' `forAgents`, shown word for word by `view:terminal-instructions` and `vau terminal instructions`). App side: `agents` in a definition, `openAgent`, `agentOfTerminal`.
 - A tab opened from outside only attaches (a page starts only ids it minted), so `vau terminal open` starts the session
   first. A session ended for good (or a shell's clean exit) tells its sockets `ended` and its tabs close (`closeIt`) on
   every device, Workspaces or not; an agent's session that ends by itself (or after its report: `keepTabs`) keeps its

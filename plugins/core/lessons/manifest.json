@@ -25,7 +25,7 @@
     },
     "remind_at": {
       "type": "string", "default": "08:00", "label": "Remind at",
-      "description": "when the day's reminder comes to your Inbox (and phone) if cards are due, HH:MM; empty for none. One at a time: it goes once you've reviewed them"
+      "description": "when the day's reminder comes to your Inbox (and phone) if cards are due and you've reviewed cards before, HH:MM; empty for none. One at a time: it goes once you've reviewed them"
     }
   }
 }

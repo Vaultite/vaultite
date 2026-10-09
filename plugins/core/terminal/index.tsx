@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
-import { Bot, LogOut, Server, SquareTerminal, SquareX } from "lucide-react"
-import { agentOfTerminal, AmbientButton, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, isMac, isViewOpen, onTabLayoutChange, openTerminal, openView, Panel, viewsChanged } from "@vaultite"
+import { Bot, FileText, LogOut, Server, SquareTerminal, SquareX } from "lucide-react"
+import { agentOfTerminal, AmbientButton, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
+  PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
 import { agentIn, current, endForGood, getSessions, labelOf, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
@@ -56,6 +57,21 @@ function AgentsAtWork() {
     tint={asking.length ? "var(--yellow)" : undefined} onClick={() => openTab(asking.length ? `view:terminal/${asking[0].id}` : "view:terminals")} />
 }
 
+/** What a coding agent started in a terminal here is told, word for word (GET /api/terminals/instructions). */
+function Instructions() {
+  const { data, error } = useLive<{ text: string }>("terminals/instructions")
+  return (
+    <div data-terminal-instructions>
+      <PageHeader title="What agents are told" subtitle={"A coding agent started in a terminal here gets this added to its instructions, when it takes added " +
+        "instructions. The plugins' lines come from the plugins that are on; the vault's rules, .vaultite/AGENTS.md, have them too."} />
+      {data ? <pre className="rounded-[8px] bg-muted px-4 py-3 font-mono text-[13px] leading-[19px] whitespace-pre-wrap select-text">{data.text}</pre>
+        : <Loading error={error && "Couldn't read them."} />}
+    </div>
+  )
+}
+
+const showInstructions = () => openTab("view:terminal-instructions")
+
 export default definePlugin({
   // view:terminal/<session id>: that session's shell, kept across reloads. Agent ids run the agent, and @<machine> ids
   // are another machine's.
@@ -88,7 +104,13 @@ export default definePlugin({
     },
     // The sidebar's Terminals panel as a tab (drag its heading onto a pane, or the command).
     terminals: { icon: SquareTerminal, title: () => "Terminals", render: () => <TerminalsView /> },
+    "terminal-instructions": { icon: FileText, title: () => "What agents are told", render: () => <Instructions /> },
   },
+  settingsPanel: () => (
+    <Group>
+      <SettingRow label="What agents are told" sub="Added to a coding agent's instructions when it starts in a terminal here" onClick={showInstructions} />
+    </Group>
+  ),
   // Its text size, apart from the app's zoom (⌘+scroll over a terminal, the commands, Settings > Appearance).
   textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns" } },
   background: () => <SessionNames />,
@@ -100,6 +122,7 @@ export default definePlugin({
     { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", run: () => void choosePlace(), icon: Server },
     { id: "terminal:home", name: "Choose where new terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },
+    { id: "terminal:instructions", name: "Show what agents in terminals are told", run: showInstructions, icon: FileText },
     { id: "terminal:end", name: "End terminal session", when: () => !!current(), run: () => { const c = current(); if (c) void endForGood(c.id) }, icon: SquareX },
     // Out of the shell without a mouse (Vim's ⌃\ ⌃N), so the app's keys work again. Off a Mac ⌃ is the app's ⌘ and ⌃\
     // toggles the sidebar, so no default there.

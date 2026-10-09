@@ -3061,10 +3061,19 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
     cr.includes("## Codex plan limits"), String(cr).slice(0, 400))
 }
 
+{
+  const [c, ins] = await api("GET", "terminals/instructions")
+  check("terminal: what agents are told, word for word: inside Vaultite, then the plugins' lines", c === 200 && ins.text.startsWith("You're running in a terminal inside Vaultite") &&
+    ins.text.includes("- `.vaultite/AGENTS.md` is the vault's rules"), [c, ins])
+}
+
 // Cursor (plugins/core/cursor): chats from the fixture's IDE and CLI files, usage from the fake Cursor API.
 {
   const ide = "c0ffee00-1111-4222-8333-444455556666", cli = "5a5a5a5a-2222-4333-8444-555566667777"
   let [c, u] = await api("GET", "cursor?days=30")
+  check("cursor: the account isn't read until the user allows it, chats are", c === 200 && !u.limits && cursorSeen.length === 0 && u.sessions.length === 2, [c, u?.limits, cursorSeen])
+  write(".vaultite/plugins/cursor/data.json", JSON.stringify({ account: true }))
+  ;[c, u] = await api("GET", "cursor?days=30")
   check("cursor: the plan and its allowances from Cursor's dashboard", c === 200 && u.plan?.name === "Pro" && u.plan.monthly === 20 &&
     u.limits?.windows.map((w: Any) => `${w.id}:${w.used}`).join() === "month:46.5,grok-bot:12" && !!u.limits.windows[0].resets_at, [c, u?.plan, u?.limits])
   check("cursor: usage totals from the metered requests (a request with no tokens is worth what it charged)",
@@ -3117,6 +3126,7 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
   const [, page] = await api("GET", "render?path=Dashboards/Cursor.md")
   check("cursor: its page as text", typeof page === "string" && page.includes("Included usage: 46.5% used") && page.includes("Search box debounce") &&
     page.includes("## Cursor by project") && page.includes("- Grok Bot: $0.05"), String(page).slice(0, 600))
+  fs.rmSync(path.join(VAULT, ".vaultite/plugins/cursor/data.json"))
   cursorApi.close()
 }
 
@@ -4217,8 +4227,11 @@ await actHeard("POST", "logs", [{ area: "workouts", date: "2026-09-20", source: 
 ev = await actEvents("&actor=agent")
 check("activity: the CLI under a coding agent is that agent, its log worded", ev.some((e: Any) => e.actor.name === "Claude Code" && e.text === "Logged Push day" && e.route === "logs"), ev)
 await actHeard("GET", "render?path=ME.md", undefined, null)
+check("activity: reads aren't recorded unless asked", !(await actEvents("&actor=script")).some((e: Any) => e.action === "read"))
+write(".vaultite/plugins/activity/data.json", JSON.stringify({ reads: true }))
+await actHeard("GET", "render?path=ME.md", undefined, null)
 ev = await actEvents("&actor=script")
-check("activity: reads by others are kept, the app's aren't", ev.some((e: Any) => e.action === "read" && e.paths?.includes("ME.md") && e.actor.name === "curl"), ev)
+check("activity: asked, reads by others are kept, the app's aren't", ev.some((e: Any) => e.action === "read" && e.paths?.includes("ME.md") && e.actor.name === "curl"), ev)
 await actHeard("GET", "state", undefined, "app/web")
 check("activity: the app's reads are only timed", !(await actEvents("&actor=you")).some((e: Any) => e.action === "read"))
 await actHeard("PATCH", "config/plugins", { panels: ["files:files"] }, "app/web")
@@ -4271,6 +4284,7 @@ const [, blk] = await api("GET", "render?path=Act/a.md")
 write("Act/feed.md", "```block-activity\npath: Act/a.md\n```\n")
 const [, feedText] = await api("GET", "render?path=Act/feed.md")
 check("activity: its block as text links files", /Edited \[\[Act\/a\]\]/.test(feedText) && typeof blk === "string", feedText)
+fs.rmSync(path.join(VAULT, ".vaultite/plugins/activity/data.json"))
 check("activity: kept outside the vault", fs.existsSync(path.join(tmp, "local", "activity")) && !fs.existsSync(path.join(VAULT, "activity")))
 
 // ---------- Activity's recaps (Recaps/<date>.md): what you did each day, from File history's versions and the events ----------
@@ -4809,7 +4823,10 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
 
 // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
 {
-  const { fromHook, prune } = await import("../plugins/core/inbox/plugin.ts")
+  const { fromHook, prune, waitsOnYou } = await import("../plugins/core/inbox/plugin.ts")
+  check("inbox push: by default only what waits on you (an agent asking, a report), not a finished turn, an error or news",
+    waitsOnYou({ kind: "waiting" }) && waitsOnYou({ kind: "done", link: "Inbox/Report.md" }) && !waitsOnYou({ kind: "done" }) &&
+    !waitsOnYou({ kind: "error" }) && !waitsOnYou({ kind: "info", link: "Notes/a.md" }))
   let [st, b] = await api("POST", "inbox", { title: "Plant care apps compared", body: "## Findings\n- One", from: "Claude", source: "https://example.com/tools" })
   check("inbox: a result is a file in Inbox/, new", st === 201 && read("Inbox/Plant care apps compared.md").startsWith("---\ntype: inbox\nstatus: new\nfrom: Claude\nsource: https://example.com/tools\ncreated: '") &&
     read("Inbox/Plant care apps compared.md").includes("## Findings"), [st, b])
@@ -4860,9 +4877,15 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
     check("inbox events: a key keeps one of a kind, the newest", mine(l).length === 1 && mine(l)[0].title === "5 cards to review" && mine(l)[0].link === "detail:review", mine(l))
     await api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: [...(vault.config("plugins").enabled ?? []), "lessons"] })
     write(".vaultite/plugins/lessons/data.json", JSON.stringify({ remind_at: "00:00" }))
-    write("Cards/Reminder test.md", "---\ntype: cards\n---\n## What's two and two?\nFour.\n\n## What's the capital of France?\nParis.\n")
+    write("Cards/Reminder test.md", "---\ntype: cards\n---\n## What's two and two?\nFour.\n\n## What's the capital of France?\nParis.\n\n## What's the capital of Italy?\nRome.\n")
     await vault.synced()
     let [st2] = await api("POST", "ops/schedule.run", { id: "lessons/reminder" })
+    ;[, l] = await api("GET", "inbox/events")
+    check("lessons: no reminder for someone who never reviewed a card", st2 === 200 && mine(l).length === 0, mine(l))
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/lessons/reminded.json"), { force: true })
+    const [, first] = await api("POST", "ops/cards.due", { limit: 1 })
+    await api("POST", "ops/cards.review", { source: first.cards[0].source, card: first.cards[0].card, rating: "again" })
+    ;[st2] = await api("POST", "ops/schedule.run", { id: "lessons/reminder" })
     ;[, l] = await api("GET", "inbox/events")
     check("lessons: the day's reminder says how many cards are due, in place of the last", st2 === 200 && mine(l).length === 1 && /^\d+ cards to review$/.test(mine(l)[0].title) && mine(l)[0].title !== "5 cards to review", [st2, mine(l)])
     const [, due] = await api("POST", "ops/cards.due", { limit: 100 })

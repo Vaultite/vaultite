@@ -331,7 +331,8 @@ async function talk(id: string): Promise<Talk | null> {
 }
 
 // ---------- Cursor's account: the dashboard's API with the IDE's sign-in (a JWT: read for each fetch, sent only to
-// Cursor, never logged or kept, not once expired). Tokens and cost live only there. CURSOR_API_URL: the tests' fake.
+// Cursor, never logged or kept, not once expired), only once the user allowed it (`account`, asked by the limits block).
+// Tokens and cost live only there. CURSOR_API_URL: the tests' fake.
 
 const API = (process.env.CURSOR_API_URL || "https://cursor.com").replace(/\/+$/, "")
 const TIMEOUT = 15_000
@@ -435,7 +436,9 @@ async function cursorAccount(days: number): Promise<Account> {
   lastGood = { summary: s === undefined ? lastGood.summary : s, events: e === undefined ? lastGood.events : e }
   return lastGood
 }
-const account = () => plugin.memo(300, cursorAccount, scanDays())
+/** Whether the user allowed reading their account (unset: not asked yet). */
+const allowed = () => plugin.settings().account === true
+const account = (): Promise<Account> => (allowed() ? plugin.memo(300, cursorAccount, scanDays()) : Promise.resolve({ summary: null, events: null }))
 
 // ---------- usage
 
@@ -593,7 +596,8 @@ plugin.provide("agent:cursor", async ({ resume, prompt }: AgentStart) => {
 
 plugin.block("cursor-limits", async () => {
   const [lim, p] = [await limits(), await plan()]
-  if (!lim) return section("Cursor plan", `_${p ? `${p.name}. ` : ""}No usage read yet: it comes from Cursor's dashboard, with Cursor.app signed in on this machine._`)
+  if (!lim) return section("Cursor plan", `_${p ? `${p.name}. ` : ""}${allowed() ? "No usage read yet: it comes from Cursor's dashboard, with Cursor.app signed in on this machine."
+    : "Usage from the Cursor account isn't read: allow it in Cursor's settings (Read usage from your Cursor account)."}_`)
   return section("Cursor plan", ...(p ? [`${p.name}${p.monthly ? `, $${p.monthly} a month` : ""}.`] : []), limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`)
 })
 

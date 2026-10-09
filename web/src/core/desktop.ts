@@ -7,6 +7,7 @@ import { openFile } from "@/core/files"
 import { dismissNotice, notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
 import { recentFiles, subscribeScoped, workspacePins } from "@/core/scope"
+import { safeToRestart } from "@/core/unsaved"
 import { whenIdle } from "@/lib/utils"
 
 export type DesktopApi = {
@@ -39,8 +40,11 @@ export type DesktopApi = {
   ready: () => Promise<string[]>
   /** Quit, install the build that's ready and open again. */
   restartToUpdate: () => Promise<unknown>
+  /** How this Mac takes updates (automatic, notify, off; `available`: this build updates at all), and, automatic, this
+   *  page saying whether a restart would lose nothing now. Older builds don't have it. */
+  updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
   /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
-  on: (fn: (msg: { type: string; id?: string; path?: string; version?: string; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
+  on: (fn: (msg: { type: string; id?: string; path?: string; version?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
   /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
    *  have it. */
   syncMenu?: (snap: MenuSnapshot) => Promise<unknown>
@@ -66,6 +70,20 @@ export type DesktopApi = {
   learnWord?: (word: string) => Promise<unknown>
   /** The window (or a rectangle of it, in CSS pixels) as a PNG, base64 (`vau dev screenshot`). Builds from before it don't have it. */
   capture?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<{ png: string; width: number; height: number }>
+}
+
+export type UpdateMode = "automatic" | "notify" | "off"
+
+/** Automatic updates: tell the desktop app whether a restart would lose nothing in this page, as that changes. */
+let reporting = false
+function reportSafety(d: DesktopApi) {
+  if (reporting || !d.updates) return
+  reporting = true
+  let said: boolean | null = null
+  const say = () => { const now = safeToRestart(); if (now !== said) { said = now; void d.updates!.safe(now).catch(() => {}) } }
+  say()
+  setInterval(say, 15_000)
+  document.addEventListener("visibilitychange", say)
 }
 
 /** What the menu bar shows of a window (electron/menu.ts's MenuSnapshot). */
@@ -341,8 +359,11 @@ export function startDesktop() {
     else if (m.type === "open" && m.path) open(m.path)
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spelled({ word: m.word ?? "", suggestions: m.suggestions ?? [] })
-    else if (m.type === "update")
-      notify(`A new version of Vaultite is ready (${m.version})`, { id: "update", duration: Infinity, action: { label: "Restart to update", run: () => desktop.restartToUpdate() } })
+    else if (m.type === "update") {
+      notify(`A new version of Vaultite is ready (${m.version})${m.auto ? ". It restarts into it while you're away" : ""}`,
+        { id: "update", duration: Infinity, action: { label: "Restart to update", run: () => desktop.restartToUpdate() } })
+      if (m.auto) reportSafety(desktop)
+    }
     // What the update is doing (checking, building, downloading, restarting): the same toast, staying until it's done.
     else if (m.type === "update-status") {
       if (m.restart) dismissNotice("update") // the Restart to update toast, when it was the menu that restarted

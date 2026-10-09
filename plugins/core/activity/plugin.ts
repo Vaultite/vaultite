@@ -30,7 +30,7 @@ const dir = () => plugin.localDir()
 
 function settings() {
   const s = plugin.loaded ? plugin.settings() : {}
-  return { keep: Math.max(1, Number(s.keep_days) || 14), reads: s.reads !== false }
+  return { keep: Math.max(1, Number(s.keep_days) || 14), reads: s.reads === true }
 }
 
 function append(kind: "events" | "perf", t: number, rows: unknown[]) {

@@ -4,11 +4,11 @@
   "category": "system",
   "essential": true,
   "name": "Errors",
-  "description": "The errors the app and the server hit, kept on this machine: when the app stopped or a block failed, with what you were doing, and the server's own. The same error again is one line with a count; a new kind shows a toast.",
+  "description": "The errors the app and the server hit, kept on this machine: when the app stopped or a block failed, with what you were doing, and the server's own. The same error again is one line with a count; the first new error of a kind (the app's, the server's) since the server started shows a toast, the rest are only listed.",
   "tint": "red",
   "settings": {
     "keep_days": { "type": "number", "default": 30, "min": 1, "max": 365, "label": "Days to keep", "description": "how long errors are kept on this machine" },
-    "notify": { "type": "boolean", "default": true, "label": "Tell me about new errors", "description": "a toast, kept in the inbox, the first time a kind of error happens" }
+    "notify": { "type": "boolean", "default": true, "label": "Tell me about new errors", "description": "a toast, kept in the inbox, for the first new error in the app and in the server since the server started; the others are only listed here" }
   },
   "blocks": {
     "errors": {

@@ -5,6 +5,8 @@ import type { LucideIcon } from "lucide-react"
 import { BarChart3, Boxes, ChevronRight, FolderGit2, Gauge, Terminal } from "lucide-react"
 import { AmbientButton } from "@/components/Ambient"
 import { Bars, Empty, List, Loading, Panel, Row, Section, Segmented, Stat } from "@/components/kit"
+import { usePluginSettings } from "@/components/PluginSettings"
+import { Button } from "@/components/ui/button"
 import { dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, useLive } from "@/core/data"
 import type { BlockCtx } from "@/core/define"
 import { isViewOpen, openView } from "@/core/files"
@@ -30,6 +32,8 @@ export type AgentSource = {
   noLimits?: string
   /** What `cost` is, when it isn't the value at API list prices ("What Cursor charged"). */
   costNote?: string
+  /** A plugin setting that must be yes before its limits are read from the user's account: asked in the limits block. */
+  consent?: { setting: string; ask: string; detail: string }
 }
 
 export type Window = { id: string; label: string; minutes: number; used: number; resets_at: string | null }
@@ -164,6 +168,23 @@ function Limits({ src, lim }: { src: AgentSource; lim: AgentUsage["limits"] }) {
 const iconFor = (src: AgentSource, fm: Record<string, unknown>, icon: LucideIcon) =>
   namedIcon(typeof fm.icon === "string" ? fm.icon : null) === src.icon ? icon : src.icon
 
+/** Asked once, where the account's usage would show: yes reads it from now on, Not now leaves it off (both kept in the
+ *  plugin's settings, where it can be changed). */
+function Consent({ src, consent }: { src: AgentSource; consent: NonNullable<AgentSource["consent"]> }) {
+  const [, set] = usePluginSettings(src.path)
+  const answer = (yes: boolean) => void set({ [consent.setting]: yes }).catch(() => notify(`Couldn't save ${src.label}'s setting`))
+  return (
+    <div className="space-y-3">
+      <p className="text-[15px] leading-[20px]">{consent.ask}</p>
+      <p className="text-[13px] text-muted-foreground">{consent.detail}</p>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={() => answer(true)}>Read usage</Button>
+        <Button size="sm" variant="outline" onClick={() => answer(false)}>Not now</Button>
+      </div>
+    </div>
+  )
+}
+
 /** Its plan's limits in the status bar (AmbientItem): each account's tightest window, a click to `open`. */
 export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => void }) {
   // (30 days: the same request as the limits block's)
@@ -180,11 +201,14 @@ export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => v
 /** Its plan's allowances; with several accounts, each one's under its name (`account:` for one). */
 export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource }) {
   const { data, error, on } = useAgentUsage(src, options)
+  const [settings] = usePluginSettings(src.path)
   const each = data?.accounts && data.accounts.length > 1 ? data.accounts : null
+  // (another machine's account is that machine's to allow)
+  const ask = !on && src.consent && settings && settings[src.consent.setting] === undefined ? src.consent : null
   return (
     <Panel title={`Plan limits${on}`} icon={iconFor(src, fm, Gauge)} tint={src.tint}
       action={!each && data?.plan && <span className="text-[13px] text-muted-foreground">{data.plan.name}</span>}>
-      {!data ? <Waiting src={src} error={error} on={on} className={src.noLimits ? undefined : "min-h-[150px]"} /> : each ? (
+      {ask ? <Consent src={src} consent={ask} /> : !data ? <Waiting src={src} error={error} on={on} className={src.noLimits ? undefined : "min-h-[150px]"} /> : each ? (
         <div className="space-y-5">
           {each.map((a) => (
             <Section key={a.id} title={a.plan ? `${a.label} · ${a.plan.name}` : a.label}><Limits src={src} lim={a.limits} /></Section>

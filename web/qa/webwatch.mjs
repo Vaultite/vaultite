@@ -4,7 +4,7 @@
 // is asked or listed; signed in, the Terminals tab lists them under Cloud and a click opens one in a web tab. A session
 // going running -> idle is "Claude Code finished" in the Inbox (named by the session, linking to it), -> requires_action
 // "Claude Code needs you"; idle -> running and a first sighting are no news; nothing with notifications off; after a
-// restart, no claude.ai page open, they're read with the logins alone; restarted in workspace 2, workspace 1's logins too.
+// restart, nothing is asked until a claude.ai page opens again (never on load alone), nor with another workspace's logins.
 // WRITES: the throwaway vault only.
 //   node web/qa/webwatch.mjs <vault copy> [port for the made-up claude.ai, default 8863]
 import { _electron } from "playwright-core"
@@ -115,30 +115,31 @@ await wait(3000)
 check("notifications off: none", (await events()).length === count, await events())
 await setting({ notifications: null })
 
-// A restart with another tab in front: no claude.ai page, read with the logins alone.
+// A restart with another tab in front: no claude.ai page, so claude.ai isn't asked with the logins alone.
 await openLink(1)
 await until(async () => (await all()).some((p) => p.url === `${SITE}/other` && p.visible), 10000)
 await app.close()
+asked = 0
 await launch()
-await wait(2000)
-check("after a restart: no claude.ai page", !(await all()).some((p) => p.url.startsWith(`${SITE}/code`)), await all())
+await ui({ action: "command", id: "terminal:open-list" })
+await wait(4000)
+check("after a restart: no claude.ai page, nothing asked", !(await all()).some((p) => p.url.startsWith(`${SITE}/code`)) && asked === 0, { asked, pages: await all() })
+await openLink(0)
 const since = Date.now()
 setState("a", "running")
 await wait(4000)
 setState("a", "idle")
 // (the Inbox keeps one event a session: this news replaces the last)
-check("… and still read", await until(async () => (await titled("Claude Code finished")).some((e) => e.body === "Fix the build" && e.t >= since), 10000), await events())
+check("… read again once a claude.ai page opens", await until(async () => (await titled("Claude Code finished")).some((e) => e.body === "Fix the build" && e.t >= since), 10000), await events())
 
-// Restarted in another workspace: workspace 1's logins are read too, saying whose.
+// Restarted in another workspace: workspace 1's logins aren't asked with.
 await ui({ action: "command", id: "workspace:2" })
 await wait(1500)
 await app.close()
+asked = 0
 await launch()
-await wait(3000)
-setState("b", "running")
 await wait(4000)
-setState("b", "idle")
-check("in workspace 2: workspace 1's sessions too, saying whose", await until(async () => (await events()).some((e) => e.body === "Write the docs · In workspace 1"), 10000), await events())
+check("in workspace 2: workspace 1's logins aren't asked with", asked === 0, asked)
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()

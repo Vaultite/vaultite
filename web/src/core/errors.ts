@@ -1,6 +1,9 @@
 // The app's errors, queued for the Errors plugin (localStorage: one that stopped the app is sent after the reload), heard
-// in the core since the worst take the plugins down. A chunk that didn't load reloads once the server answers.
+// in the core since the worst take the plugins down. A chunk that didn't load reloads once the server answers, when
+// nothing is lost by it (unsaved.ts), else offers Reload.
 import { onActivity } from "@/core/activity"
+import { notify } from "@/core/notify"
+import { safeToReload } from "@/core/unsaved"
 
 export type AppError = {
   t: number
@@ -120,6 +123,9 @@ function reconnecting() {
   return () => { clearTimeout(timer); box?.remove() }
 }
 
+/** Reloading would lose what the user is doing: the new build is offered instead (the toast live.ts shows too). */
+const newVersion = () => notify("A new version of Vaultite is ready", { id: "update", duration: Infinity, action: { label: "Reload", run: () => location.reload() } })
+
 /** A file of the app didn't load (an older build's, or the server away): waits for the server (2 min at most), then
  *  reloads. True when it's reloading; false when reloading can't help. `say`: "Reconnecting to Vaultite…" meanwhile. */
 let reloading: Promise<boolean> | null = null
@@ -133,7 +139,10 @@ export function recoverFromStaleBuild(error: unknown, say = true): Promise<boole
       if (build !== null) {
         const file = fileIn(error)
         const back = (!!BUILD && !!build && build !== BUILD) || !file || (await loads(file))
-        if (!back || !mayReload()) { done(); return false }
+        if (!back) { done(); return false }
+        // (typing, or edits not yet saved: the user reloads when they're ready)
+        if (!safeToReload()) { done(); newVersion(); return false }
+        if (!mayReload()) { done(); return false }
         noteAppError("stale", error)
         location.reload()
         return true

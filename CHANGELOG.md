@@ -29,8 +29,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   ring lines up at the row's edge.
 - **Claude Code on the web in the Terminals panel**: the desktop app lists your claude.ai/code sessions under Cloud
   (working, waiting on you or idle, and since when; a click opens one in a web tab), read with the Web viewer's
-  claude.ai login (every 5 seconds while one works or waits, else 15), so no claude.ai tab needs to be open. A
-  session finishing or needing you is in the Inbox again.
+  claude.ai login once you've opened claude.ai in it since the app started, never on launch alone (every 5 seconds
+  while one works or waits, else 15; the tab needn't stay open). A session finishing or needing you is in the Inbox
+  again.
 - **Terminals show their agent's state**, as Claude Code's agent view does: an agent's icon keeps its colour while it
   works, turns yellow with a dot while it waits on you, and grey once idle; the Terminals panel lists the waiting ones
   first, then working, idle and plain shells, and holds still while the pointer is over it. Another machine's terminal
@@ -494,6 +495,27 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   - The trash is emptied of what's been there 30 days, like Recently deleted, once a day by one machine; restore works
     until then.
   - Agent files deletes a root AGENTS.md or CLAUDE.md only when it made it for its line; yours stay, even empty.
+- **Nothing personal leaves without a yes**: Cursor's usage is read from your Cursor account only once you allow it
+  (asked in its plan card, kept in Cursor's settings); Activity no longer records what agents and scripts read unless
+  Record reads is on, and its description says how it names who called.
+- **Updates on your terms** (desktop app): Settings, Updates is Automatic (it restarts into a new version while you're
+  away, with nothing unsaved), Notify (the default: ready in the background, then Restart to update) or Off. A new
+  build of the page reloads by itself only when nothing would be lost; while you type or have unsaved edits, it says
+  "A new version of Vaultite is ready" with Reload.
+- **Web pages ask, like a browser**: a site that wants the camera, microphone, location and the like asks once (Allow,
+  Don't allow, remembered for the site; signing out of it forgets); pages you left are kept rather than reloaded
+  (the oldest end only when the Mac runs short of memory), and a page's notifications past six a minute wait their
+  turn instead of being dropped.
+- **Fewer interruptions**: the phone gets a push only for what waits on you (an agent asking, a report on work you
+  sent; Inbox settings, Phone notifications); an error toasts once per kind while the server runs, the rest only
+  listed in Errors; the cards reminder comes only once you've reviewed cards.
+- **What agents in terminals are told**, word for word: Show what agents in terminals are told (the palette, Terminal's
+  settings) or `vau terminal instructions`.
+- The iPhone's share sheet takes photos and files: they go to the inbox in a note with the text shared with them,
+  saved in the attachments folder.
+- Desktop: ⌃⌘P opens the palette from another app only while an app window's tab shows (App windows), no longer
+  whenever one is open; the menu bar lists every command, and files from outside the vault are remembered however many
+  you've opened, so restored tabs keep working.
 - **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
   Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until

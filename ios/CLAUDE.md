@@ -5,7 +5,8 @@
   web app in place, so the app is always the server's version (only the first screen and native code need a build).
   The page keeps Capacitor's bridge for "Switch server…" (`web/src/core/phoneapp.ts`, no `@capacitor/core` in the web
   bundle). Native: `App/ShellPlugin.swift` (servers, probing, `snapshot` for tab cards), `Shared/Servers.swift` (the
-  list, in the app group), `Share/` (the share extension: a page to `POST /api/clip`, other text to `POST /api/inbox`).
+  list, in the app group), `Share/` (the share extension: a page to `POST /api/clip`, other text to `POST /api/inbox`; photos and files to
+  the inbox too, each through the op file.upload, embedded in that note, streamed from a temporary file).
   Signing: `App/Local.xcconfig` (not in git: `DEVELOPMENT_TEAM`, `VAULTITE_BUNDLE_ID`). The project file is Capacitor's
   template plus the extra targets, edited by hand: no generators.
 - **Permissions** (App/Info.plist): what a page asks the system for (camera, microphone, speech) needs its usage

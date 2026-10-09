@@ -679,6 +679,9 @@ async function mustRun(id: string): Promise<Backend> {
   return b
 }
 
+// What a coding agent started here is told, exactly (Show what agents are told; vau terminal instructions).
+plugin.route("GET", "terminals/instructions", () => ({ text: agentContext() }))
+
 plugin.route("GET", "terminals/sessions", async (req) => {
   await owner(req)
   return { sessions: await localList(), backend: (await backendForNew()).name, tmux: !!tmuxShells }

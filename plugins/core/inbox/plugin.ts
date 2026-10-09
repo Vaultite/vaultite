@@ -96,7 +96,7 @@ const dir = () => plugin.localDir(false)
 
 function settings() {
   const s = plugin.loaded ? plugin.settings({}) : {}
-  return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "all",
+  return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "waiting",
     turns: str(s.turns) === "notify" ? "notify" : "quiet", audio: s.voice_audio !== false,
     dispatch: AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }
@@ -470,11 +470,15 @@ plugin.route("DELETE", "inbox/events/*", async (req) => {
 
 const apns = () => ((plugin.secrets().inbox ?? {}) as Item).apns as push.Apns ?? null
 
-/** A new event to the phones (the setting `push`: all, waiting, off). A permission an app terminal waits on gets
- *  Approve and Deny (Push.swift's category "permission"); the rest Mark read. Never fails the event. */
+/** What waits on the user: an agent asking (permission, a question, a plan), or work they sent finished with something
+ *  to open (an agent's report, a cloud session); not a turn ending in a terminal, an error or news. */
+export const waitsOnYou = (e: Pick<InboxEvent, "kind" | "link">) => e.kind === "waiting" || (e.kind === "done" && !!e.link)
+
+/** A new event to the phones (the setting `push`: all, waiting (what waits on you, the default), off). A permission an
+ *  app terminal waits on gets Approve and Deny (Push.swift's category "permission"); the rest Mark read. Never fails the event. */
 function pushed(e: InboxEvent) {
   const mode = settings().push
-  if (e.read || mode === "off" || (mode === "waiting" && e.kind !== "waiting" && e.kind !== "error") || !push.devices().length) return
+  if (e.read || mode === "off" || (mode === "waiting" && !waitsOnYou(e)) || !push.devices().length) return
   void push.send(apns(), {
     title: e.title, body: e.body,
     category: e.ask === "permission" && (e.terminal || e.gate) ? "permission" : "event",

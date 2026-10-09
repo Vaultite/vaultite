@@ -4,9 +4,12 @@
   "category": "agents",
   "essential": true,
   "name": "Cursor",
-  "description": "What Cursor and its CLI do on this machine: the plan's included usage and when it renews, chats open now, usage and its value at API rates, by day, project and model. Chats read from Cursor's own files, usage from Cursor's dashboard; nothing saved.",
+  "description": "What Cursor and its CLI do on this machine: the plan's included usage and when it renews, chats open now, usage and its value at API rates, by day, project and model. Chats read from Cursor's own files; the plan's usage from Cursor's dashboard, once you allow it; nothing saved.",
   "runsOnServer": true,
   "enhances": ["projects", "terminal"],
+  "settings": {
+    "account": { "type": "boolean", "label": "Read usage from your Cursor account", "description": "with Cursor.app's sign-in on this machine, the plan's usage and what each request was worth are read from cursor.com every few minutes; the sign-in goes only to Cursor and nothing is kept. Off until you allow it" }
+  },
   "blocks": {
     "cursor-limits": {
       "description": "the plan's included usage this billing month, and Grok Bot's week: how much is used and when each renews",

@@ -4,7 +4,7 @@
   "category": "system",
   "essential": true,
   "name": "Terminal",
-  "description": "A shell in a tab, opened in the vault's folder, to run a coding agent (Claude Code, Codex, OpenCode, Cursor) on your notes. Runs on this machine, or on your other machines (Machines); closing the tab keeps the shell going.",
+  "description": "A shell in a tab, opened in the vault's folder, to run a coding agent (Claude Code, Codex, OpenCode, Cursor) on your notes. Runs on this machine, or on your other machines (Machines); closing the tab keeps the shell going. An agent started here is told it runs inside Vaultite, plus each plugin's line for agents: Show what agents in terminals are told has it word for word.",
   "replaces": { "obsidian": ["terminal"] },
   "runsOnServer": true,
   "enhances": [

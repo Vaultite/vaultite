@@ -18,10 +18,11 @@ const waiting = new Map<number, (res: Record<string, unknown>) => void>()
  *  it (only while that window is focused), and `at`, where it stands (the tab's rect and its own frame; null: parked). */
 type Shown = { bundle: string; win: BrowserWindow; rect: Rect | null; behind: boolean; at: { rect: Rect; frame: Rect } | null }
 const shown = new Map<number, Shown>()
-/** While an app tab is open, the palette from anywhere (the app in front has the keyboard, so the window's keys don't work). */
+/** While an app tab is shown, the palette from anywhere (the app in front has the keyboard, so the window's keys don't
+ *  work); taken from other apps only then. */
 const PALETTE = "Control+Command+P"
 function hotkey() {
-  const want = shown.size > 0
+  const want = [...shown.values()].some((s) => s.rect && !s.win.isDestroyed())
   if (want === globalShortcut.isRegistered(PALETTE)) return
   if (!want) return globalShortcut.unregister(PALETTE)
   globalShortcut.register(PALETTE, () => {

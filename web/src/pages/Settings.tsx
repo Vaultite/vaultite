@@ -1,9 +1,9 @@
 // Settings: the app's own, short (plugins' options are their settings sheets), saved in the vault (prefs.ts). Search
 // finds the app's rows and every plugin's settings (`settingsSearch`), opening its sheet there.
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { ChevronRight, SlidersHorizontal } from "lucide-react"
 import type { Store } from "@/core/data"
-import { desktop as desktopApp } from "@/core/desktop"
+import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { go, isDesktop } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, tintOfPlugin } from "@/core/plugins"
@@ -12,7 +12,7 @@ import { usePrefs } from "@/core/prefs"
 import { textSizeKinds } from "@/core/textsize"
 import { capitalize } from "@/lib/utils"
 import { Hotkeys } from "@/pages/Hotkeys"
-import { FilterField, PageHeader, Panel, SettingRow, SheetHead } from "@/components/kit"
+import { FilterField, PageHeader, Panel, Segmented, SettingRow, SheetHead } from "@/components/kit"
 import { AppearancePanel } from "@/components/Appearance"
 import { openBundles, restoreSetup } from "@/core/bundles"
 import { notifyError } from "@/core/notify"
@@ -71,6 +71,26 @@ function SetupPanel({ store }: { store: Store }) {
   )
 }
 
+const UPDATES: Record<UpdateMode, string> = {
+  automatic: "Downloaded, then the app restarts into it while you're away, with nothing unsaved",
+  notify: "Downloaded, then Restart to update when you're ready",
+  off: "Only when you choose Check for updates in the menu",
+}
+
+/** How this Mac's desktop app takes updates (kept by the app, not the vault); only in a build that updates. */
+function UpdatesRow() {
+  const [mode, setMode] = useState<UpdateMode | null>(null)
+  useEffect(() => { void desktopApp?.updates?.get().then((u) => { if (u.available) setMode(u.mode) }, () => {}) }, [])
+  if (!mode) return null
+  const choose = (m: UpdateMode) => { setMode(m); desktopApp!.updates!.set(m).catch((e) => notifyError(e, "Couldn't change it")) }
+  return (
+    <SettingRow stack label="Updates" sub={UPDATES[mode]} data-settings-row="updates">
+      <Segmented<UpdateMode> label="Updates" value={mode} onChange={choose} className="w-full shrink-0 sm:w-[260px]"
+        options={[{ value: "automatic", label: "Automatic" }, { value: "notify", label: "Notify" }, { value: "off", label: "Off" }]} />
+    </SettingRow>
+  )
+}
+
 /** The vault this window shows (Manage vaults: the others, a new one) and the app's version. */
 function VaultPanel({ store }: { store: Store }) {
   const path = store.vault.path
@@ -81,6 +101,7 @@ function VaultPanel({ store }: { store: Store }) {
         <SettingRow label={name} sub={<span className="break-all">{path}</span>} value="Manage vaults" data-settings-vault
           onClick={() => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") }} />
         <SettingRow label="Vaultite" data-settings-row="version" sub={`Plugin API ${API_VERSION}`} value={APP_VERSION} />
+        <UpdatesRow />
       </div>
     </Panel>
   )
@@ -117,6 +138,7 @@ function findable(store: Store, disabled: string[], order: string[], back: () =>
     { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vault", words: "vault folder",
       run: () => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") } },
     row("version", "Version", "Vault", '[data-settings-row="version"]', "Vaultite and its plugin API"),
+    ...(desktopApp?.updates ? [{ ...row("updates", "Updates", "Vault", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
   ]
   const plugins = PLUGINS.filter((p) => hasSettings(p, store.pluginSettings ?? [])).sort((a, b) => byName.compare(a.name, b.name)).flatMap((p) => {
     const where = isEnabled(p.id, disabled) ? p.name : `${p.name} (off)`

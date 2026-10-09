@@ -172,7 +172,10 @@
       ],
       "hardenedRuntime": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Vaultite records audio into your notes when you ask it to.",
+        "NSMicrophoneUsageDescription": "Vaultite records audio into your notes when you ask it to, and web pages you allow use the microphone.",
+        "NSCameraUsageDescription": "Web pages in Vaultite use the camera when you allow them.",
+        "NSLocationUsageDescription": "Web pages in Vaultite know your location when you allow them.",
+        "NSLocationWhenInUseUsageDescription": "Web pages in Vaultite know your location when you allow them.",
         "NSAppleEventsUsageDescription": "Scripts in Vaultite's terminals want to control another app."
       }
     },

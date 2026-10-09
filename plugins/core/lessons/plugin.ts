@@ -133,9 +133,10 @@ plugin.every("reminder", { every: "15m" }, () => {
   remind(now)
 })
 
+/** Only for someone who uses cards: due ones, and a review done before (new cards alone never remind). */
 function remind(now = new Date()) {
   const due = queue(sources(), reviews(), now, settings().newPerDay)
-  if (!due.length) return void inbox("inbox:drop")?.("lessons", KEY)
+  if (!due.length || !Object.values(reviews()).some((r) => Object.keys(r ?? {}).length)) return void inbox("inbox:drop")?.("lessons", KEY)
   const from = [...new Set(due.map((d) => d.title))]
   inbox("inbox:event")?.({ source: "lessons", kind: "info", key: KEY, link: "detail:review",
     title: `${due.length} card${due.length === 1 ? "" : "s"} to review`,

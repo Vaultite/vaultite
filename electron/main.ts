@@ -84,12 +84,18 @@ let zoom = 1
 /** Chromium's DevTools protocol on 127.0.0.1:<port> for agents (VAULTITE_DEBUG_PORT, else vaults.json's `debugPort`).
  *  Off unless set: any process on this Mac that reaches the port controls the app. */
 let debugPort: number | undefined
+/** How this Mac takes updates: "automatic" restarts into one once every window says nothing would be lost, "notify"
+ *  (the default) gets it ready and offers Restart to update, "off" checks only when asked (the menu). */
+type UpdateMode = "automatic" | "notify" | "off"
+const UPDATE_MODES: UpdateMode[] = ["automatic", "notify", "off"]
+let updates: UpdateMode = "notify"
 try {
   const v = JSON.parse(fs.readFileSync(LIST(), "utf8"))
   known = Array.isArray(v.vaults) ? v.vaults.filter((x: Known) => x && typeof x.path === "string") : []
   remotes = Array.isArray(v.servers) ? v.servers.filter((x: Remote) => x && typeof x.url === "string" && /^https?:\/\//.test(x.url)) : []
   if (typeof v.zoom === "number" && v.zoom >= ZOOMS[0] && v.zoom <= ZOOMS[ZOOMS.length - 1]) zoom = v.zoom
   if (Number.isInteger(v.debugPort) && v.debugPort > 1024 && v.debugPort < 65536) debugPort = v.debugPort
+  if (UPDATE_MODES.includes(v.updates)) updates = v.updates
 } catch { /* first launch */ }
 const envPort = Number(process.env.VAULTITE_DEBUG_PORT)
 const devtools = Number.isInteger(envPort) && envPort > 1024 && envPort < 65536 ? envPort : debugPort
@@ -103,7 +109,8 @@ function save(now = false) {
   saveTimer = null
   const write = () => {
     fs.mkdirSync(path.dirname(LIST()), { recursive: true })
-    fs.writeFileSync(LIST(), JSON.stringify({ vaults: known, ...(remotes.length ? { servers: remotes } : {}), ...(zoom === 1 ? {} : { zoom }), ...(debugPort ? { debugPort } : {}) }, null, 2) + "\n")
+    fs.writeFileSync(LIST(), JSON.stringify({ vaults: known, ...(remotes.length ? { servers: remotes } : {}), ...(zoom === 1 ? {} : { zoom }), ...(debugPort ? { debugPort } : {}),
+      ...(updates === "notify" ? {} : { updates }) }, null, 2) + "\n")
   }
   if (now) write()
   else saveTimer = setTimeout(write, 500)
@@ -411,7 +418,7 @@ function send(w: Win, file: string) {
 /** A file from outside the vault may be opened in this window: its server may now read and write it. */
 function allowIn(w: Win, abs: string) {
   const list = w.vault.outside ?? []
-  w.vault.outside = [abs, ...list.filter((x) => x !== abs)].slice(0, 50)
+  w.vault.outside = [abs, ...list.filter((x) => x !== abs)]
   save()
   w.server.send({ type: "allow", paths: [abs] })
 }
@@ -783,10 +790,23 @@ handle("app:ready", (w) => {
   return w.queue.splice(0)
 })
 handle("app:update-restart", () => restartToUpdate())
+handle("app:updates", () => ({ mode: updates, available: updatable() }))
+handle("app:updates-set", (_w, mode: UpdateMode) => {
+  if (!UPDATE_MODES.includes(mode) || mode === updates) return
+  updates = mode
+  save()
+  for (const w of wins.values()) tell(w)
+  if (mode !== "off" && !ready) checkForUpdate(false)
+})
+ipcMain.handle("app:update-safe", (e, safe: boolean) => {
+  if (!who(e)) return
+  if (safe === true) safeNow.add(e.sender); else safeNow.delete(e.sender)
+  restartIfSafe()
+})
 // The page's commands, pins and recent files for the menu bar (web/src/core/desktop.ts): kept, and shown while it's focused.
 handle("menu:sync", (w, snap: MenuSnapshot) => {
   if (!w || !snap || !Array.isArray(snap.commands)) return
-  const list = <T,>(x: unknown, ok: (v: T) => boolean): T[] => (Array.isArray(x) ? (x as T[]).filter(ok).slice(0, 400) : [])
+  const list = <T,>(x: unknown, ok: (v: T) => boolean): T[] => (Array.isArray(x) ? (x as T[]).filter(ok) : [])
   w.menu = {
     commands: list<MenuSnapshot["commands"][number]>(snap.commands, (c) => typeof c?.id === "string" && typeof c.name === "string" && Array.isArray(c.keys))
       .map((c) => ({ id: c.id, name: c.name, keys: c.keys.filter((k) => typeof k === "string"), custom: !!c.custom, on: !!c.on })),
@@ -947,6 +967,7 @@ function updateLog() {
 /** Build the newest main if this app doesn't run it. By hand (the menu), say how it went; on the timer, only a toast
  *  when there's a new build. */
 function checkForUpdate(byHand: boolean) {
+  if (!byHand && updates === "off") return
   if (RELEASE) return void checkRelease(byHand)
   if (!updatable() || checking) return
   const log = updateLog()
@@ -995,9 +1016,22 @@ function built() {
   }
 }
 
-/** Offer the update in a window (a toast with Restart). */
+/** Offer the update in a window (a toast with Restart); automatic, the window says when it's safe to restart. */
 function tell(w: Win) {
-  if (w.ready && ready) w.win.webContents.send("vaultite", { type: "update", version: RELEASE ? ready : ready.slice(0, 7) })
+  if (!w.ready || !ready) return
+  const msg = { type: "update", version: RELEASE ? ready : ready.slice(0, 7), auto: updates === "automatic" }
+  w.win.webContents.send("vaultite", msg)
+  for (const [wc, of] of popouts) if (of === w && !wc.isDestroyed()) wc.send("vaultite", msg)
+}
+
+/** The pages that said a restart would lose nothing now (`app:update-safe`). */
+const safeNow = new WeakSet<WebContents>()
+/** Automatic: restart into the update once every window (pop-outs too) said so; another machine's can't say, so not
+ *  while one is open. */
+function restartIfSafe() {
+  if (updates !== "automatic" || !ready || remoteWins.size) return
+  const pages = [...[...wins.values()].map((w) => w.win.webContents), ...popouts.keys()].filter((wc) => !wc.isDestroyed())
+  if (pages.length && pages.every((wc) => safeNow.has(wc))) restartToUpdate()
 }
 
 /** Show (or, null, take down) what the update is doing in every window. */

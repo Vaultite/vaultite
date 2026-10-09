@@ -4,12 +4,12 @@
   "category": "system",
   "essential": true,
   "name": "Activity",
-  "description": "Everything done to your vault and the app, and by whom: your edits and moves, coding agents working through the CLI or the API, changes on disk. Kept on this machine for two weeks, and each day's recap in the vault for good: what you made and changed, tasks done, things captured. Plus how fast the server and the app are.",
+  "description": "Everything done to your vault and the app, and by whom: your edits and moves, coding agents working through the CLI or the API, changes on disk. Kept on this machine for two weeks, and each day's recap in the vault for good: what you made and changed, tasks done, things captured. Plus how fast the server and the app are. Who called the API from this Mac is named by the program at the other end of its connection (lsof, or ss on Linux).",
   "forAgents": "What the user did on a day (notes changed and what changed, tasks done, captures, logs): `activity.recap` (`vau recap 2026-10-06`), kept in `Recaps/<date>.md`.",
   "tint": "indigo",
   "settings": {
     "keep_days": { "type": "number", "default": 14, "min": 1, "max": 365, "label": "Days to keep", "description": "how long events and timings are kept on this machine" },
-    "reads": { "type": "boolean", "default": true, "label": "Record reads", "description": "what agents and scripts read is recorded too, not only what they change" },
+    "reads": { "type": "boolean", "default": false, "label": "Record reads", "description": "what agents and scripts read and search is recorded too, not only what they change" },
     "recaps": { "type": "boolean", "default": true, "label": "Write day recaps", "description": "each day's recap goes in the vault (Recaps/<date>.md; move the folder and new ones follow), with the text you changed quoted, to keep" },
     "capture_folders": { "type": "list", "folder": true, "label": "Capture folders", "description": "folders whose new files are captures, like Transcripts for a transcriber's exports (clips and bookmarks are found without it)" }
   },

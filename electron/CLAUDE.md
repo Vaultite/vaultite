@@ -16,7 +16,10 @@
   tests). An app for the other architecture gets its native packages from package-lock.json (`natives.cjs`), so one
   `npm ci` builds both. Uploading the feed (latest-mac.yml, both zips and their blockmaps) is by hand, never part of a
   build; a build from a checkout runs `update.sh` every half hour (the repo's newest main built in `userData/source`,
-  log `userData/logs/update.log`, for this Mac), and Restart to update swaps the app and reopens the vaults. Test a
+  log `userData/logs/update.log`, for this Mac), and Restart to update swaps the app and reopens the vaults.
+  How this Mac takes them is vaults.json's `updates` (Settings, Updates): `notify` (left out: the default) gets one
+  ready and offers Restart to update, `automatic` restarts once every window says nothing would be lost
+  (`app:update-safe`, web/src/core/unsaved.ts), `off` checks only from the menu. Test a
   release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check its
   privacy grants.
   **Vaultite Dev** (`npm run app:dev` in a worktree) is a branch as its own app: it updates from it and opens the

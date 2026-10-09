@@ -44,6 +44,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   dialogSync: (kind, options) => ipcRenderer.sendSync("dialog:sync", kind, options),
   ready: call("app:ready"),
   restartToUpdate: call("app:update-restart"),
+  updates: { get: call("app:updates"), set: call("app:updates-set"), safe: call("app:update-safe") },
   printToPDF: call("print:pdf"),
   revealPdf: call("print:reveal"),
   microphone: call("media:microphone"),
