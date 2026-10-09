@@ -86,6 +86,8 @@ export type Op = {
   /** The result as Markdown, for an agent or a terminal (else JSON). `who` asked: an answer may read differently for an
    *  MCP client (`who.client` "mcp": a file's path before its text) than for vau, which prints a file exactly. */
   text?: (result: Any, params: Any, who?: Who) => string
+  /** Its text is printed as is when piped, no newline added (a secret going into another command). */
+  exact?: boolean
 }
 
 /** An op as the catalog lists it (no functions). */
@@ -102,6 +104,8 @@ export type OpEntry = {
   result: Schema | null
   /** Only this machine's owner may run it (Op.owner): what it is, else null. */
   owner: string | null
+  /** Op.exact: printed as is when piped. */
+  exact?: boolean
   action: OpAction | null
 }
 
@@ -152,7 +156,7 @@ export const toolName = (op: Op): string | null => (op.mcp ? (typeof op.mcp === 
 
 export function entryOf(op: Op, plugin: string | null): OpEntry {
   return { id: op.id, plugin, summary: op.summary, help: op.help ?? "", kind: op.kind, params: paramsSchema(op), args: op.args ?? [],
-    cli: op.cli ?? null, mcp: toolName(op), result: op.result ?? null, owner: op.owner ?? null, action: op.action ?? null }
+    cli: op.cli ?? null, mcp: toolName(op), result: op.result ?? null, owner: op.owner ?? null, action: op.action ?? null, ...(op.exact ? { exact: true } : {}) }
 }
 
 // ---------- checking and converting parameters ----------

@@ -580,12 +580,12 @@ async function runOp(e: OpEntry, argv: string[], c: Ctx, how: Shape): Promise<st
   }
   if (out) return loc.out!(r.body, params, given.extra)
   if (list) return await listed(r.body, how, c)
-  return json ? JSON.stringify(r.body, null, 2) : String(r.body ?? "").replace(/\n+$/, "")
+  return json ? JSON.stringify(r.body, null, 2) : e.exact ? String(r.body ?? "") : String(r.body ?? "").replace(/\n+$/, "")
 }
 
 /** Run one command line: [exit code, stdout, stderr]. Nothing is printed (bin/vau prints; tests read). A command is an
  *  operation of the server's catalog, by id or CLI name, else one that runs here (COMMANDS, the plugins'). */
-export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ code: number; out: string; err: string }> {
+export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ code: number; out: string; err: string; exact?: boolean }> {
   const all = await commands()
   const a = parseArgs(argv, all.flatMap((c) => c.bool ?? []))
   const words = leadingWords(argv)
@@ -634,7 +634,8 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
   const rest = [...argv]
   for (const w of [...(help ? ["help"] : []), ...(op.id === which ? [which] : said(op))]) rest.splice(rest.indexOf(w), 1)
   try {
-    return { code: 0, out: await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths }), err: "" }
+    const out = await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths })
+    return { code: 0, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
   } catch (e) {
     if (e instanceof CliError) return { code: 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}` }
     throw e
@@ -660,8 +661,8 @@ export async function toClipboard(text: string, platform: string = process.platf
 }
 
 /** A command line's result printed: stdout, stderr, and with --copy the output on the clipboard too. */
-export async function print(r: { code: number; out: string; err: string }, copy = false) {
-  if (r.out) process.stdout.write(r.out.endsWith("\n") ? r.out : r.out + "\n")
+export async function print(r: { code: number; out: string; err: string; exact?: boolean }, copy = false) {
+  if (r.out) process.stdout.write(r.out.endsWith("\n") || (r.exact && !process.stdout.isTTY) ? r.out : r.out + "\n")
   if (r.err) process.stderr.write(r.err + "\n")
   if (copy && r.code === 0 && r.out) {
     const why = await toClipboard(r.out.replace(/\n$/, ""))

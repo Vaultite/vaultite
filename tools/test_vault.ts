@@ -1978,6 +1978,22 @@ answers["dev:screenshot"] = () => ({ png: png.toString("base64"), width: 2, heig
 const shot = path.join(tmp, "shots", "one.png")
 cr = await vau("dev", "screenshot", "--out", shot)
 check("vau dev screenshot: saved where asked, its path printed", cr.code === 0 && cr.out === shot && fs.readFileSync(shot).equals(png), cr)
+// secret.ask (core/coreops/secret.ts): a hidden field in the window; only the value comes back, printed as is.
+answers["secret:"] = (m) => ({ value: `pw for ${m.prompt}`, base64: false })
+cr = await vau("secret", "Wi-Fi password")
+check("vau secret: the value given, nothing else", cr.code === 0 && cr.out === "pw for Wi-Fi password" && (cr as Any).exact === true && w2.got.findLast((x: Any) => x.action === "secret")?.file === false, cr)
+answers["secret:"] = () => null
+cr = await vau("secret", "A key", "--file")
+check("vau secret: dismissed, it fails and prints nothing", cr.code === 1 && !cr.out && cr.err.includes("didn't give it") && w2.got.findLast((x: Any) => x.action === "secret")?.file === true, cr)
+delete answers["secret:"]
+const secretEntry = app.catalog().find((e) => e.id === "secret.ask")
+check("secret.ask: no MCP tool (secrets stay on the user's machines), printed exactly", secretEntry?.mcp === null && secretEntry?.exact === true, secretEntry)
+const mcpRefused = await app.callOp("secret.ask", { prompt: "x" }, { client: "mcp", agent: null, label: "Claude", source: "claude" }).then(() => null, (e: Any) => e)
+check("secret.ask: refused over MCP (its call tool too)", mcpRefused?.status === 403, mcpRefused?.message)
+const waiting = uiLive.drive({ action: "secret", key: "k1", prompt: "x", timeout: 30 })
+await new Promise((r) => setTimeout(r, 20))
+await uiLive.drive({ action: "ask-cancel", key: "k1" })
+check("ask-cancel: a keyed ask ends with nothing (answered elsewhere), its window told to close it", (await waiting) === null && w2.got.at(-1)?.action === "ask-end", w2.got.at(-1))
 delete answers["dev:eval"]
 let t0 = Date.now()
 cr = await vau("dev", "eval", "1", "--timeout", "1")

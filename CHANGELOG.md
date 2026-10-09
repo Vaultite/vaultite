@@ -7,6 +7,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 ### Agents
+- **Secrets from any device**: `vau secret "<what>"` asks for a password or a key file in a hidden field on whatever
+  device you're on (the phone too, through another machine), and hands it only to the command it's piped into.
 - **Shorter dispatch in a file's menu**: with one action it reads "Dispatch" (and where it runs), like the menu's other
   verbs; several still name theirs.
 - **Context ring on 1M sessions**: a Claude Code session with a 1M context no longer shows red near 200k when its status

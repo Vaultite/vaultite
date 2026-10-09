@@ -11,9 +11,9 @@ import { type TreeWatcher, watchTree } from "./treewatch.ts"
 
 const QUIET = 100, MAX = 500, PING = 25_000, UI_ANSWER_MS = 3000, ASK_MS = 10_000
 /** What a window answers with a result (drive's asks): its palette's commands, the dev tools (core/coreops/dev.ts), the
- *  user's pick from a list (ui.choose). Never through POST /api/ui (`handle`): only ops reach them, and the dev ones are
- *  the owner's. Seconds an ask may wait at most: a person picking gets longer than a window answering. */
-const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600]])
+ *  user's pick from a list (ui.choose), a secret they type (secret.ask). Never through POST /api/ui (`handle`): only ops
+ *  reach them, and the dev ones are the owner's. Seconds an ask may wait at most: a person gets longer than a window. */
+const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600]])
 type Answer = { ran?: boolean; result?: unknown; error?: unknown }
 
 /** Changes nobody needs to hear about. */
@@ -40,6 +40,7 @@ export class Live {
   private answers = new Map<string, (a: Answer) => void>() // windows answering what they were sent (a command ran, an ask's result)
   private answering = new WeakSet<WebSocket>() // windows that answer (an older app doesn't)
   private asked = new Map<string, WebSocket>() // an ask's window, so its closing ends the wait
+  private keyed = new Map<string, () => void>() // asks given a key, which "ask-cancel" ends (answered on another machine)
   private pending = new Set<string>()
   private all = false
   private first = 0
@@ -209,6 +210,7 @@ export class Live {
    *  open), or an OpError with its status. */
   drive = async (message: Record<string, unknown> | null): Promise<unknown> => {
     if (message && ASKS.has(String(message.action))) return this.ask(message)
+    if (message?.action === "ask-cancel") { this.keyed.get(String(message.key))?.(); return { ok: true } }
     // A command says whether the window could run it (one that needs an open note may not); an older app never says.
     const to = this.last()
     const rid = message?.action === "command" && to && this.answering.has(to) ? crypto.randomUUID() : null
@@ -231,15 +233,17 @@ export class Live {
     if (!this.answering.has(to)) throw new OpError("the app window open is an older version that can't answer: reload it", 409)
     const most = ASKS.get(String(message.action)) ?? 120
     const ms = typeof message.timeout === "number" && message.timeout > 0 ? Math.min(message.timeout, most) * 1000 : ASK_MS
-    const rid = crypto.randomUUID()
-    let timer: ReturnType<typeof setTimeout> | undefined
+    const rid = crypto.randomUUID(), key = typeof message.key === "string" ? message.key : null
+    let timer: ReturnType<typeof setTimeout> | undefined, got: Answer | null | undefined
     try {
-      const got = await new Promise<Answer | null>((done) => {
+      got = await new Promise<Answer | null | undefined>((done) => {
         this.answers.set(rid, done)
         this.asked.set(rid, to)
+        if (key) this.keyed.set(key, () => done(undefined))
         timer = setTimeout(() => done(null), ms)
         to.send(JSON.stringify({ ...message, type: "ui", rid }))
       })
+      if (got === undefined) return null
       if (!got) throw new OpError(`the app window didn't answer within ${ms / 1000} s`, 504)
       if (got.error !== undefined && got.error !== null) throw new OpError(String(got.error), 422)
       return got.result ?? null
@@ -247,6 +251,9 @@ export class Live {
       clearTimeout(timer)
       this.answers.delete(rid)
       this.asked.delete(rid)
+      if (key) this.keyed.delete(key)
+      // Not answered (its time is up, or answered elsewhere): the window closes what it shows.
+      if (!got && to.readyState === to.OPEN) to.send(JSON.stringify({ type: "ui", action: "ask-end", rid }))
     }
   }
 

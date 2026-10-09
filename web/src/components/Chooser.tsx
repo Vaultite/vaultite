@@ -54,7 +54,7 @@ export function Chooser() {
 // An agent's list (ui.choose, core/coreops.ts): the index picked, what was typed ({typed}), or null when dismissed or
 // when its time is up (the server has stopped waiting).
 const TYPED = "\u0000typed"
-answerUi("choose", (m) => new Promise((done) => {
+answerUi("choose", (m, ended) => new Promise((done) => {
   const items = (Array.isArray(m.items) ? m.items : []) as { label?: unknown; detail?: unknown; icon?: unknown }[]
   const str = (v: unknown) => (typeof v === "string" && v ? v : undefined)
   let c: Choose, typed = ""
@@ -73,6 +73,7 @@ answerUi("choose", (m) => new Promise((done) => {
     onPick: (it) => end(it.id === TYPED ? { typed } : { index: Number(it.id) }),
     onDismiss: () => end(null),
   }
+  ended.addEventListener("abort", () => { if ((asking as unknown) === c) choose(null) })
   choose(c)
 }))
 

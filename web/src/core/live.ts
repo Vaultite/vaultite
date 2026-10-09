@@ -70,9 +70,11 @@ export type UiAction = { action: string; path?: string; split?: "right" | "down"
 let uiHandler: ((m: UiAction) => unknown) | null = null
 export const onUiAction = (fn: (m: UiAction) => unknown) => { uiHandler = fn }
 /** What the server asks this window for, by action (its commands, the dev tools: core/dev.ts): the result, sent back as
- *  the answer (an error's message if it throws). */
-const askers = new Map<string, (m: Record<string, unknown>) => unknown>()
-export const answerUi = (action: string, fn: (m: Record<string, unknown>) => unknown) => { askers.set(action, fn) }
+ *  the answer (an error's message if it throws). `ended` aborts when the server stops waiting (answered elsewhere). */
+type Asker = (m: Record<string, unknown>, ended: AbortSignal) => unknown
+const askers = new Map<string, Asker>()
+const asking = new Map<string, AbortController>()
+export const answerUi = (action: string, fn: Asker) => { askers.set(action, fn) }
 
 /** Tell the server this window is the one in use (so `ui` messages come here). */
 let said = 0
@@ -128,13 +130,18 @@ function connect() {
       emit(m.paths ?? null)
     } else if (m.type === "moved" && m.from) {
       for (const fn of [...moveSubs]) { try { fn(m.from, m.to ?? null) } catch (e) { console.error(e) } }
+    } else if (m.type === "ui" && m.action === "ask-end") {
+      if (m.rid) asking.get(m.rid)?.abort()
     } else if (m.type === "ui" && m.action && askers.has(m.action)) {
+      const ended = new AbortController()
+      if (m.rid) asking.set(m.rid, ended)
       const reply = (a: object) => {
+        if (m.rid) asking.delete(m.rid)
         let text: string
         try { text = JSON.stringify({ type: "ui-done", rid: m.rid, ...a }) } catch (e) { text = JSON.stringify({ type: "ui-done", rid: m.rid, ran: false, error: `the answer isn't JSON (${(e as Error).message})` }) }
         if (s.readyState === WebSocket.OPEN) s.send(text)
       }
-      Promise.resolve().then(() => askers.get(m.action!)!(m as Record<string, unknown>))
+      Promise.resolve().then(() => askers.get(m.action!)!(m as Record<string, unknown>, ended.signal))
         .then((result) => reply({ ran: true, result }), (e) => reply({ ran: false, error: e instanceof Error ? e.message : String(e) }))
     } else if (m.type === "ui" && m.action) {
       let ran = true
