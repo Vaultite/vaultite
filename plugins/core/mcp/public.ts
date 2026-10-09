@@ -43,7 +43,7 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
 }
 
 const APPROVAL_TTL = 10 * 60_000, UPLOAD_TTL = 15 * 60_000, MAX_UPLOAD = 25 << 20
-const REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com"]
+const REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.com"]
 const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_TTL = 120
 const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789" // no vowels (no words), no 0/O, 1/I/L
 
@@ -368,9 +368,7 @@ export class PublicMcp {
   redirectOk(r: string) {
     try {
       const u = new URL(r)
-      // An entry with "://" is one exact return address, for an app whose isn't https (Grok Bot's is a localhost one).
-      if (this.settings.redirectHosts.includes(u.href)) return true
-      return u.protocol === "https:" && this.settings.redirectHosts.some((h) => !h.includes("://") && (u.hostname === h || u.hostname.endsWith(`.${h}`)))
+      return u.protocol === "https:" && this.settings.redirectHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
     } catch { return false }
   }
 
