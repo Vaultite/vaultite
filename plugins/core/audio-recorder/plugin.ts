@@ -285,11 +285,15 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
 // POST /api/audio-recorder/voice?ext=&from=: the recording as the body, any size, onto this machine's disk as it comes.
 plugin.route("POST", "audio-recorder/voice", async (req) => {
   if (!req.http) throw new HTTPError(400, "the recording comes over HTTP, as the body")
-  const ext = /^[a-z0-9]{1,5}$/i.test(String(req.query.ext ?? "")) ? String(req.query.ext) : "webm"
+  // TEMPORARY: remove once the phone runs 814bd1c4 (older iPhone apps send {data: base64, ext, from} as JSON).
+  const old = /json/i.test(String(req.http.headers["content-type"] ?? "")) ? await oldBody(req.http) : null
+  const params = old ?? req.query
+  const ext = /^[a-z0-9]{1,5}$/i.test(String(params.ext ?? "")) ? String(params.ext) : "webm"
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-voice-"))
   const file = path.join(dir, `voice.${ext}`)
   try {
-    await pipeline(req.http, fs.createWriteStream(file))
+    if (old) fs.writeFileSync(file, Buffer.from(String(old.data ?? ""), "base64"))
+    else await pipeline(req.http, fs.createWriteStream(file))
     if (!fs.statSync(file).size) throw new HTTPError(400, "the body is empty: send the recording")
   } catch (e) {
     fs.rmSync(dir, { recursive: true, force: true })
@@ -300,9 +304,16 @@ plugin.route("POST", "audio-recorder/voice", async (req) => {
   const job: Job = { id: `${Date.now().toString(36)}-${++n}`, path: "", note: "", state: "queued", started: Date.now() }
   jobs.unshift(job)
   jobs.splice(50)
-  queue = queue.then(() => voice(job, dir, file, String(req.query.from ?? "").trim(), who, req.http))
+  queue = queue.then(() => voice(job, dir, file, String(params.from ?? "").trim(), who, req.http))
   return reply(202, job)
 }, { lock: false, stream: true })
+
+/** An older iPhone app's JSON body ({data, ext, from}). */
+async function oldBody(http: IncomingMessage): Promise<Record<string, unknown>> {
+  const parts: Buffer[] = []
+  for await (const c of http) parts.push(c as Buffer)
+  try { return JSON.parse(Buffer.concat(parts).toString("utf8")) } catch { throw new HTTPError(400, "the body isn't JSON") }
+}
 
 plugin.route("GET", "audio-recorder/jobs", () => jobs)
 plugin.route("GET", "audio-recorder/jobs/*", (req) => {

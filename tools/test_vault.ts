@@ -4213,6 +4213,18 @@ check("the file tree lets go of a deleted folder", !bin() && !filesNow.folders.i
     read(v.note).includes(`![[${heard}]]\n\nHeard voice.webm.`), v.note && read(v.note))
   if (heard) fs.rmSync(path.join(VAULT, "Attachments", heard))
   check("audio: a voice note leaves no temporary copy", !fs.readdirSync(os.tmpdir()).some((f) => f.startsWith("vaultite-voice-")), fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith("vaultite-voice-")))
+  {
+    // (TEMPORARY, with the route's bridge: an older iPhone app's JSON body, base64)
+    const json = Buffer.from(JSON.stringify({ data: Buffer.from("not really audio").toString("base64"), ext: "m4a", from: "Apple Watch" }))
+    const [so, oj] = await api("POST", "audio-recorder/voice", {}, Object.assign(Readable.from([json]), { headers: { "content-type": "application/json" } }) as unknown as IncomingMessage)
+    let o = oj
+    for (let i = 0; i < 50 && (o.state === "queued" || o.state === "running"); i++) { await sleep(100); [, o] = await api("GET", `audio-recorder/jobs/${oj.id}`) }
+    const said = /^!\[\[(Voice note [^\]]+\.m4a)\]\]$/m.exec(o.note ? read(o.note) : "")?.[1]
+    check("audio: an older app's JSON voice note still arrives", so === 202 && o.state === "done" && read(o.note).includes("from: Apple Watch") &&
+      !!said && read(`Attachments/${said}`) === "not really audio", [o, o.note && read(o.note)])
+    if (said) fs.rmSync(path.join(VAULT, "Attachments", said))
+    if (o.note) fs.rmSync(path.join(VAULT, o.note))
+  }
   const [s7] = await api("POST", "audio-recorder/voice", {}, sent(Buffer.alloc(0)))
   check("audio: a voice note needs its recording", s7 === 400, s7)
   if (v.note) fs.rmSync(path.join(VAULT, v.note))
