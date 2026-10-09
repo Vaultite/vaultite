@@ -191,6 +191,8 @@ export { ChipValuesEditor, chipLabel, chipMenu, chipValues, CHIP_TINTS, Property
 export { askMicrophone, captureWindow, savePdf } from "@/core/desktop"
 // The iPhone app's voice note, as its widgets open it (Audio recorder's "Record a voice note"); false in a browser.
 export { phoneVoiceNote } from "@/core/phoneapp"
+/** In the iPhone app, where buying is the App Store's: no links to plans there (Publish). */
+export { inPhoneApp } from "@/core/phoneapp"
 /** Is this plugin on now (and what it requires)? For a `when` that needs another plugin's API (Inbox's ops). */
 export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.

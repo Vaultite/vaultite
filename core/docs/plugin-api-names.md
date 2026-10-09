@@ -194,6 +194,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
 - `inKeyList()`: The keyboard is on a row of a list.
 - `inPagesDir`
+- `inPhoneApp()`: In the iPhone app (not a browser).
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
 - `isDesktop()`

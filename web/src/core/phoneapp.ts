@@ -34,6 +34,9 @@ const call = (method: string) => (options?: object) => cap!.nativePromise("Shell
 export const phoneApp: ShellPlugin | null = cap?.isNativePlatform?.() && cap.isPluginAvailable?.("Shell")
   ? { servers: call("servers"), setServers: call("setServers"), probe: call("probe"), open: call("open"), launcher: call("launcher"), snapshot: call("snapshot"), haptic: call("haptic"), pending: call("pending") }
   : null
+/** In the iPhone app (not a browser). */
+export const inPhoneApp = () => !!phoneApp
+
 /** Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an
  *  address it doesn't serve to the system, which gives it back to the app. False in a browser. */
 export function phoneVoiceNote() {
