@@ -44,9 +44,8 @@ export function kindOf(path: string): FileKind {
 /** Kinds whose text the app reads (and writes); "other" is tried as text too. */
 export const isTextKind = (k: FileKind) => k === "markdown" || k === "json" || k === "notebook" || k === "code"
 
-/** Bigger than this isn't opened as text at all (the card instead); bigger than EDIT_MAX opens read-only. */
+/** Bigger than this isn't opened as text at all (the card instead). */
 export const TEXT_MAX = 8 << 20
-export const EDIT_MAX = 1 << 20
 
 /** The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes). */
 export function contentType(path: string) {

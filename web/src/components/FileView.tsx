@@ -16,7 +16,7 @@ import { followLink } from "@/core/links"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
 import { cleanName, folderOf, gone, inPagesDir, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop, takeRename } from "@/core/workspace"
-import { EDIT_MAX, formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
+import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
 import { FileCard, ImageView, PdfView, PlayerView, rawUrl, useFileInfo } from "@/components/FileViewers"
 import { assetUrl, imageActions } from "@/components/editing"
 import { readProps, setProp } from "@/core/frontmatter"
@@ -403,9 +403,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const mode = override ?? (drawn ? "read" : format ? (isDesktop() ? "live" : "read") : saved)
   const pick = useCallback((m: Mode) => { if (drawn || code || format) { setOverride(m); return } setOverride(null); setSaved(m) }, [setSaved, drawn, code, format])
   // Hidden files are nobody's notes, so no plugin draws them; the trash and the app's generated copies can be read, not
-  // changed, and neither can a very big file (the editor would crawl).
-  const big = (initial.size ?? initial.text.length) > EDIT_MAX
-  const json = isJson(path), hidden = isHidden(path), ro = isReadOnly(path) || big
+  // changed.
+  const json = isJson(path), hidden = isHidden(path), ro = isReadOnly(path)
   // Their editing is their source: no live preview to pick (it would only glitch into source).
   const shown: Mode = code ? "source" : readOnlyDrawn && mode === "live" ? "source" : mode
   const views = code ? CODE_VIEWS : readOnlyDrawn ? SOURCE_VIEWS : VIEWS
@@ -793,7 +792,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const notices = <>
     {inTrash(path) && <InTrash path={path} note=" Restore it to edit it." />}
     {isReadOnly(path) && !inTrash(path) && <Banner tone="info"><span className="flex-1">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</span></Banner>}
-    {big && !isReadOnly(path) && <Banner tone="info"><span className="flex-1">A large file ({formatSize(initial.size ?? initial.text.length)}), so it's read-only here.</span></Banner>}
     {status.kind === "conflict" && (
       <Banner tone="warn">
         <span className="flex-1">This file changed somewhere else, in the same lines you edited.</span>

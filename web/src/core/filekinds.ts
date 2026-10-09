@@ -6,7 +6,7 @@ import {
 } from "lucide-react"
 import { extOf, kindOf, type FileKind } from "../../../core/filetypes.ts"
 
-export { EDIT_MAX, extOf, kindOf, TEXT_MAX, type FileKind } from "../../../core/filetypes.ts"
+export { extOf, kindOf, TEXT_MAX, type FileKind } from "../../../core/filetypes.ts"
 
 /** Opened by a viewer, never read as text (images, PDFs, audio, video, and known binary files). */
 export const isMedia = (k: FileKind) => k === "image" || k === "pdf" || k === "audio" || k === "video" || k === "binary"
