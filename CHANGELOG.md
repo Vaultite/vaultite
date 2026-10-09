@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Publish** (a Vaultite plugin, off by default): notes and folders as public pages on your Vaultite Cloud site, from a
+  note's or folder's menu, the palette or `vau publish`, with links between them and their images; Published lists
+  them. Needs a Publish plan, bought in the browser.
 - **A busy day in a calendar stays small**: a query's month shows a day's first three files and "N more" to open the
   rest. The sandbox's files were edited over the weeks before, not all just now, and one made before (desktop, the
   web demo's saved copy) is made again.
