@@ -133,7 +133,7 @@ Over the API the answer is the bundle's JSON; vau writes it to <id>.bundle.json,
     summary: "Add a bundle from its JSON (an export): it's added, not applied.",
     help: `${HELP}
 
-Over the API, bundle is the bundle's JSON ({"vaultite": "bundle", "format": 1, "id", "files": {path: text}}); vau
+Over the API, bundle is the bundle's JSON ({"vaultite": "bundle", "format": 1, "id", "files": {path: text, or {"base64": ...} for bytes}}); vau
 reads it from a file, or a folder shaped like a bundle.`,
     kind: "write",
     params: { bundle: { format: "json", required: true, description: "the bundle: its JSON (vau: a .bundle.json file or a bundle's folder)" } },

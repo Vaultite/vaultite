@@ -24,11 +24,13 @@ export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys"]
 /** The app's own appearance when a key isn't set (web/src/core/prefs.ts DEFAULTS): a bundle setting one of these
  *  removes the key instead, so a vault never holds a default. */
 const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", fileIcons: true, tabBar: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
-const MAX_FILES = 400
-const MAX_BYTES = 4 * 1024 * 1024
+/** A bundle is read whole each time the bundles are listed: past this it's listed with the error, not read. */
+const MAX_BYTES = 64 * 1024 * 1024
 
-export type Files = Record<string, string>
-export type Bundle = { id: string; source: "app" | "vault"; files: Files }
+/** A bundle's files by relative path: text, or the bytes of one that isn't (an image, a font, wasm). */
+export type Files = Record<string, string | Buffer>
+/** `error`: why its files couldn't be read (then there are none). */
+export type Bundle = { id: string; source: "app" | "vault"; files: Files; error?: string }
 /** What the bundle code needs of the app (core/app.ts): its vault, plugins, and its own API to make the edits. */
 export type Host = {
   vault: Vault
@@ -47,7 +49,9 @@ export type Host = {
 const isObj = (v: unknown): v is Item => !!v && typeof v === "object" && !Array.isArray(v)
 const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [])
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
-const hash = (text: string) => crypto.createHash("sha256").update(text).digest("hex").slice(0, 16)
+const hash = (data: string | Buffer) => crypto.createHash("sha256").update(data).digest("hex").slice(0, 16)
+/** A bundle file's text ("" for bytes that aren't). */
+const textOf = (f: string | Buffer | undefined) => (typeof f === "string" ? f : "")
 export const slug = (name: string) => name.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)
 const ID = /^[a-z0-9][a-z0-9-]*$/
 
@@ -56,21 +60,20 @@ const ID = /^[a-z0-9][a-z0-9-]*$/
 /** A path a bundle may hold: relative, no `..`, no hidden segment. */
 export const safePath = (p: string) => !!p && !p.startsWith("/") && p.split("/").every((s) => !!s && s !== ".." && !s.startsWith("."))
 
-/** A folder's files as text, by relative path (hidden ones left out). */
+const tooBig = () => new HTTPError(413, `a bundle holds at most ${MAX_BYTES / 1024 / 1024} MB`)
+
+/** A folder's files by relative path (hidden ones left out): text, or bytes when it isn't UTF-8. */
 function readFolder(dir: string): Files {
   const out: Files = {}
   let bytes = 0
   const walk = (sub: string) => {
     for (const e of fs.readdirSync(path.join(dir, sub), { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
       if (e.name.startsWith(".")) continue
-      const rel = sub ? `${sub}/${e.name}` : e.name
+      const rel = sub ? `${sub}/${e.name}` : e.name, abs = path.join(dir, rel)
       if (e.isDirectory()) walk(rel)
       else if (e.isFile()) {
-        if (Object.keys(out).length >= MAX_FILES) throw new HTTPError(413, `a bundle holds at most ${MAX_FILES} files`)
-        const text = readText(path.join(dir, rel))
-        bytes += text.length
-        if (bytes > MAX_BYTES) throw new HTTPError(413, "a bundle holds at most 4 MB of text")
-        out[rel] = text
+        if ((bytes += fs.statSync(abs).size) > MAX_BYTES) throw tooBig()
+        try { out[rel] = readText(abs) } catch (err) { if (!(err instanceof TypeError)) throw err; out[rel] = fs.readFileSync(abs) }
       }
     }
   }
@@ -87,7 +90,9 @@ export function list(vault: Vault): Bundle[] {
     for (const id of names) {
       if (!ID.test(id) || RESERVED.has(id) || !fs.existsSync(path.join(dir, id, "bundle.json"))) continue
       if (out.some((b) => b.id === id)) continue // (a user's bundle can't take one of the app's ids)
-      try { out.push({ id, source, files: readFolder(path.join(dir, id)) }) } catch { /* unreadable: left out */ }
+      try { out.push({ id, source, files: readFolder(path.join(dir, id)) }) } catch (e) {
+        out.push({ id, source, files: {}, error: `it can't be read: ${(e as Error).message}` })
+      }
     }
   }
   return out
@@ -105,7 +110,7 @@ function json(b: Bundle | Files, rel: string): Item | null {
   const files = "files" in b && typeof (b as Bundle).id === "string" ? (b as Bundle).files : b as Files
   const t = files[rel]
   if (t === undefined) return null
-  try { const o = JSON.parse(t); if (isObj(o)) return o } catch { /* below */ }
+  try { const o = JSON.parse(textOf(t)); if (isObj(o)) return o } catch { /* below */ }
   throw new HTTPError(400, `the bundle's ${rel} isn't a JSON object`)
 }
 
@@ -156,7 +161,7 @@ function homeOf(b: Bundle, host: Host, pinned: string[] | null): HomeBlock[] | n
   if (!first) return []
   let text = ""
   try { text = readText(host.vault.abs(host.vault.relocated(first))) } catch {
-    text = b.files[first] ?? templates(host.plugins()).find(([, rel]) => rel === first)?.[2] ?? ""
+    text = textOf(b.files[first]) || (templates(host.plugins()).find(([, rel]) => rel === first)?.[2] ?? "")
   }
   const out: HomeBlock[] = []
   for (const b of blocksIn(text)) {
@@ -184,7 +189,8 @@ export function info(b: Bundle, host: Host): Info {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
     sort: typeof m.sort === "number" ? m.sort : 1000, more: b.source === "app" && m.more === true,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
-    on, pinned, panels, home: homeOf(b, host, pinned), code: parts(b.files).code, hotkeys: b.files["hotkeys.json"] !== undefined, problems: problems(b.files),
+    on, pinned, panels, home: homeOf(b, host, pinned), code: parts(b.files).code, hotkeys: b.files["hotkeys.json"] !== undefined,
+    problems: b.error ? [b.error] : problems(b.files),
   }
 }
 
@@ -194,7 +200,7 @@ export function problems(files: Files): string[] {
   if (files["bundle.json"] === undefined) out.push("it has no bundle.json")
   for (const f of Object.keys(files)) {
     if (!safePath(f)) out.push(`${f}: not a path a bundle may hold`)
-    if (f.endsWith(".json")) { try { const o = JSON.parse(files[f]); if (!isObj(o)) out.push(`${f} isn't a JSON object`) } catch { out.push(`${f} isn't valid JSON`) } }
+    if (f.endsWith(".json")) { try { const o = JSON.parse(textOf(files[f])); if (!isObj(o)) out.push(`${f} isn't a JSON object`) } catch { out.push(`${f} isn't valid JSON`) } }
   }
   const ok = (rel: string) => { try { return json(files, rel) } catch { return null } }
   const m = ok("bundle.json")
@@ -327,6 +333,8 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
     const cur = v.config(`plugins/${id}/data`)
     for (const [key, to] of Object.entries(want)) {
       if (k.settings[key]?.local) { skipped.push({ plugin: id, key, why: "this machine's own (who may reach it), never set by a bundle" }); continue }
+      // (a number the user set, a history's days: one lower would cut what it keeps)
+      if (typeof cur[key] === "number" && typeof to === "number" && to < cur[key]) { skipped.push({ plugin: id, key, why: `yours is higher (${cur[key]}), never lowered by a bundle` }); continue }
       if (!same(cur[key], to)) set.push({ plugin: id, key, from: cur[key] ?? null, to })
     }
   }
@@ -430,11 +438,11 @@ function patchOf(cur: Item, next: Item) {
   return out
 }
 
-/** Copy a text file into the vault (a vault plugin's, a dashboard): never over one that's there. */
-function addFile(v: Vault, rel: string, text: string, added: Previous["added"]) {
+/** Copy a file into the vault (a vault plugin's, a dashboard): never over one that's there. */
+function addFile(v: Vault, rel: string, data: string | Buffer, added: Previous["added"]) {
   if (fs.existsSync(v.abs(rel)) || v.relocated(rel) !== rel) return
-  writeAtomic(v.abs(rel), text)
-  added.push({ path: rel, hash: hash(text) })
+  writeAtomic(v.abs(rel), data)
+  added.push({ path: rel, hash: hash(data) })
 }
 
 /** Make a list of pinned pages `want`, one pin at a time: the vault's (POST /api/pins) or workspace n's own. */
@@ -455,6 +463,7 @@ export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.
 /** `remember: false`: no previous setup to restore (a new vault's first, core/start.ts, or the offer skipped). */
 export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true } = {}) {
   const v = host.vault
+  if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const p = await plan(b, host, n)
   const { code, vaultFiles } = parts(b.files)
   if (runsCode(p) && !allowCode) {
@@ -576,9 +585,9 @@ export async function restore(host: Host) {
   // Files it added, while they're as it wrote them: to the trash.
   const trashed: string[] = []
   for (const a of prev.added) {
-    let text: string
-    try { text = readText(v.abs(a.path)) } catch { continue }
-    if (hash(text) !== a.hash) continue
+    let data: Buffer
+    try { data = fs.readFileSync(v.abs(a.path)) } catch { continue }
+    if (hash(data) !== a.hash) continue
     toTrash(v, a.path)
     trashed.push(a.path)
   }
@@ -621,7 +630,7 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
   })
   for (const id of vaultOn) {
     const dir = v.abs(`.vaultite/plugins/${id}`)
-    for (const [rel, text] of Object.entries(readFolder(dir))) if (rel !== "data.json") files[`plugins/${id}/${rel}`] = text
+    for (const [rel, data] of Object.entries(readFolder(dir))) if (rel !== "data.json") files[`plugins/${id}/${rel}`] = data
   }
   // Settings: declared ones (manifest.json's `settings`) set to something other than their default, of plugins that are
   // on; never `local` ones (this machine's).
@@ -656,7 +665,7 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
   for (const p of pinned) add(p)
   const scheme = typeof look.scheme === "string" && look.scheme.startsWith("theme:") ? look.scheme.slice(6) : null
   if (scheme && safePath(scheme)) {
-    try { for (const [rel, text] of Object.entries(readFolder(v.abs(`.vaultite/themes/${scheme}`)))) files[`themes/${scheme}/${rel}`] = text } catch { /* not there */ }
+    try { for (const [rel, data] of Object.entries(readFolder(v.abs(`.vaultite/themes/${scheme}`)))) files[`themes/${scheme}/${rel}`] = data } catch (e) { if (e instanceof HTTPError) throw e }
   }
   for (const s of strs(look.snippets)) {
     try { if (safePath(s)) files[`snippets/${s}.css`] = readText(v.abs(`.vaultite/snippets/${s}.css`)) } catch { /* not there */ }
@@ -671,7 +680,7 @@ function writeBundle(v: Vault, id: string, files: Files, replace: boolean) {
     if (!replace) throw new HTTPError(409, `there's a bundle '${id}' already`)
     v.toTrash(rel)
   }
-  for (const [f, text] of Object.entries(files)) writeAtomic(v.abs(`${rel}/${f}`), text)
+  for (const [f, data] of Object.entries(files)) writeAtomic(v.abs(`${rel}/${f}`), data)
 }
 
 /** A free id for a new bundle of the user's, from its name (not one of the app's, nor a route). */
@@ -691,12 +700,14 @@ export async function save(host: Host, o: SaveOptions) {
   return { bundle: info(find(host.vault, id), host) }
 }
 
-/** A bundle as one JSON file. */
+/** A bundle as one JSON file: a JSON file as its JSON, text as a string, other bytes as `{"base64": ...}`. */
 export function exportOf(b: Bundle) {
+  if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const files: Record<string, unknown> = {}
-  for (const [f, text] of Object.entries(b.files)) {
-    if (f.endsWith(".json")) { try { files[f] = JSON.parse(text); continue } catch { /* as text */ } }
-    files[f] = text
+  for (const [f, data] of Object.entries(b.files)) {
+    if (typeof data !== "string") { files[f] = { base64: data.toString("base64") }; continue }
+    if (f.endsWith(".json")) { try { files[f] = JSON.parse(data); continue } catch { /* as text */ } }
+    files[f] = data
   }
   return { vaultite: "bundle", format: 1, id: b.id, files }
 }
@@ -710,14 +721,14 @@ export function importOf(v: Vault, body: unknown, host: Host) {
   let bytes = 0
   for (const [f, val] of Object.entries(o.files)) {
     if (!safePath(f)) throw new HTTPError(400, `${f}: not a path a bundle may hold`)
-    const text = typeof val === "string" ? val : JSON.stringify(val, null, 2) + "\n"
-    bytes += text.length
-    files[f] = text
+    const data = typeof val === "string" ? val
+      : !f.endsWith(".json") && isObj(val) && typeof val.base64 === "string" ? Buffer.from(val.base64, "base64") : JSON.stringify(val, null, 2) + "\n"
+    if ((bytes += Buffer.byteLength(data)) > MAX_BYTES) throw tooBig()
+    files[f] = data
   }
-  if (Object.keys(files).length > MAX_FILES || bytes > MAX_BYTES) throw new HTTPError(413, "that bundle is too big (at most 400 files, 4 MB)")
   const bad = problems(files)
   if (bad.length) throw new HTTPError(400, `that bundle can't be read: ${bad.join("; ")}`)
-  const name = String(JSON.parse(files["bundle.json"]).name)
+  const name = String(JSON.parse(textOf(files["bundle.json"])).name)
   const id = freeId(v, typeof o.id === "string" && ID.test(o.id) ? o.id : name, false)
   writeBundle(v, id, files, false)
   return { bundle: info(find(v, id), host) }
@@ -730,7 +741,7 @@ function pageLooks(b: Bundle, host: Host, paths: string[]) {
   const out: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> = {}
   for (const p of paths) {
     let text = ""
-    try { text = readText(host.vault.abs(p)) } catch { text = b.files[p] ?? tpl.get(p) ?? "" }
+    try { text = readText(host.vault.abs(p)) } catch { text = textOf(b.files[p]) || (tpl.get(p) ?? "") }
     const fm = /^---\n([\s\S]*?)\n---/.exec(text)?.[1] ?? ""
     const key = (k: string) => new RegExp(`^${k}:\\s*['"]?([\\w-]+)['"]?\\s*$`, "m").exec(fm)?.[1] ?? null
     out[p] = { icon: key("icon"), tint: key("tint"), plugin: key("plugin") }

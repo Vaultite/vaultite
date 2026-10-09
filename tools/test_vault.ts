@@ -5733,6 +5733,42 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("bundles: delete one of yours (to the trash)", code === 200 && !exists(".vaultite/bundles/my-desk-2"))
   ;[code] = await api("DELETE", "bundles/life-os")
   check("bundles: the app's can't be deleted", code === 400, code)
+
+  // Files that aren't text (an image) go in and out as their bytes; one that can't be read is listed, saying why.
+  const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe, 0x01])
+  write(".vaultite/bundles/pics/bundle.json", JSON.stringify({ name: "Pics" }))
+  fs.mkdirSync(path.join(VAULT, ".vaultite/bundles/pics/Lighthouse"), { recursive: true })
+  fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/pics/Lighthouse/lamp.png"), png)
+  ;[code, r] = await api("GET", "bundles")
+  check("bundles: one with an image is listed, readable", r.bundles.some((b: Any) => b.id === "pics" && !b.problems.length), r.bundles.map((b: Any) => [b.id, b.problems]))
+  ;[code, r] = await api("GET", "bundles/pics/export")
+  const pics = JSON.parse(r)
+  check("bundles: export keeps an image's bytes", Buffer.from(pics.files["Lighthouse/lamp.png"]?.base64 ?? "", "base64").equals(png), pics.files)
+  ;[code, r] = await api("POST", "bundles/import", pics)
+  check("bundles: import writes them back", code === 200 && fs.readFileSync(path.join(VAULT, `.vaultite/bundles/${r.bundle?.id}/Lighthouse/lamp.png`)).equals(png), [code, r])
+  await api("DELETE", `bundles/${r.bundle?.id}`)
+  ;[code] = await api("POST", "bundles/pics/apply", {})
+  check("bundles: applied, the image is in the vault as it was", code === 200 && fs.readFileSync(path.join(VAULT, "Lighthouse/lamp.png")).equals(png), code)
+  ;[code, r] = await api("POST", "bundles/restore")
+  check("bundles: restored, the image unchanged goes to the trash", code === 200 && !exists("Lighthouse/lamp.png") && r.trashed.includes("Lighthouse/lamp.png"), r)
+  await api("DELETE", "bundles/pics")
+  write(".vaultite/bundles/locked/bundle.json", JSON.stringify({ name: "Locked" }))
+  fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o000)
+  ;[code, r] = await api("GET", "bundles")
+  const locked = r.bundles.find((b: Any) => b.id === "locked")
+  check("bundles: one that can't be read is listed with why", /can't be read/.test(locked?.problems?.[0] ?? ""), locked)
+  ;[code] = await api("POST", "bundles/locked/apply", {})
+  check("bundles: and isn't applied", code === 400, code)
+  fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o644)
+  fs.rmSync(path.join(VAULT, ".vaultite/bundles/locked"), { recursive: true })
+
+  // A number the user set higher stays: a bundle never lowers it.
+  const hist = conf("plugins/history/data")
+  setConf("plugins/history/data", { keep_days: 90 })
+  ;[, r] = await api("GET", "bundles/self-hosted")
+  check("bundles: a number you set higher is never lowered", !r.plan.settings.some((x: Any) => x.plugin === "history" && x.key === "keep_days") &&
+    r.plan.skipped.some((x: Any) => x.plugin === "history" && x.key === "keep_days" && /higher/.test(x.why)), [r.plan.settings, r.plan.skipped])
+  if (hist) setConf("plugins/history/data", hist); else fs.rmSync(path.join(VAULT, ".vaultite/plugins/history/data.json"), { force: true })
 }
 
 // Binary formats (Spreadsheets, Documents, Presentations, E-books): their text for /api/render and search, from made-up

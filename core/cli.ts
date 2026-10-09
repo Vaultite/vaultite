@@ -351,10 +351,14 @@ const LOCAL: Record<string, Local> = {
       if (typeof b !== "string" || /^\s*\{/.test(b)) return p
       const from = local(b)
       if (fs.existsSync(from) && fs.statSync(from).isDirectory()) {
-        const files: Record<string, string> = {}
+        const files: Record<string, string | { base64: string }> = {}
+        const utf8 = new TextDecoder("utf-8", { fatal: true })
         for (const rel of fs.readdirSync(from, { recursive: true }) as string[]) {
           const full = path.join(from, rel)
-          if (fs.statSync(full).isFile() && !rel.split(path.sep).some((x) => x.startsWith("."))) files[rel.split(path.sep).join("/")] = fs.readFileSync(full, "utf8")
+          if (!fs.statSync(full).isFile() || rel.split(path.sep).some((x) => x.startsWith("."))) continue
+          // (a file that isn't text, an image or a font, as its bytes: the export's form)
+          const data = fs.readFileSync(full)
+          try { files[rel.split(path.sep).join("/")] = utf8.decode(data) } catch { files[rel.split(path.sep).join("/")] = { base64: data.toString("base64") } }
         }
         return { ...p, bundle: { vaultite: "bundle", format: 1, id: path.basename(from), files } }
       }

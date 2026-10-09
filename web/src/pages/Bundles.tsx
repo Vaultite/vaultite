@@ -496,7 +496,7 @@ export function BundlePreview({ id }: { id: string }) {
             {plan.appearance.map((c) => <Setting key={c.key} label={APPEARANCE[c.key] ?? c.key} from={c.from} to={c.to} />)}
           </Panel>
         )}
-        {(plan.settings.length > 0 || plan.hotkeys.length > 0) && (
+        {(plan.settings.length > 0 || plan.hotkeys.length > 0 || plan.skipped.length > 0) && (
           <Panel title="Settings" icon={Settings2}>
             {plan.settings.map((s) => {
               const pl = pluginById(s.plugin)
@@ -504,6 +504,8 @@ export function BundlePreview({ id }: { id: string }) {
               return <Setting key={`${s.plugin}.${s.key}`} label={`${pl?.name ?? s.plugin}: ${decl?.label ?? s.key}`} from={s.from} to={s.to} labels={decl?.labels} />
             })}
             {plan.hotkeys.map((h) => <Setting key={h.key} label={`Hotkey: ${h.key}`} from={h.from} to={h.to} />)}
+            {plan.skipped.length > 0 && <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground" data-bundle-skipped>Kept as they are: {plan.skipped.map((x) =>
+              `${pluginById(x.plugin)?.name ?? x.plugin}: ${pluginById(x.plugin)?.settingsDecls?.[x.key]?.label ?? x.key} (${x.why})`).join("; ")}</p>}
           </Panel>
         )}
         {plan.files.add.length > 0 && (

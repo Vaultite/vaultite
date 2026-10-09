@@ -22,7 +22,9 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
   ```
   Each file is optional: a part left out stays as it is when the bundle is applied (no plugins.json: plugins aren't
   touched). `icon` is a lucide name, `tint` a colour's name. Settings marked "this machine's own" (who may reach it: allowUsers,
-  allowRemote, a port) are never saved in a bundle nor set by one.
+  allowRemote, a port) are never saved in a bundle nor set by one, and a number the user set higher (a history's days)
+  is never lowered. Files may be text or not (an image, a font), up to 64 MB in all; one that can't be read is listed
+  with why.
 - Applying makes small edits: the plugin switches that change, the keys its files set (an appearance value that is the
   default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
   deleted). Pins become the bundle's pages, then the user's own as they were; dashboards the app brings (plugins' and
@@ -36,6 +38,6 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
   API: `GET /api/bundles`, `GET /api/bundles/<id>?workspace=<n>` (what applying would change: `plan`), `POST
   /api/bundles/<id>/apply {workspace}`, `POST /api/bundles/restore`, `POST /api/bundles {name, description, hotkeys,
   vaultPlugins, workspace}` (save the current setup), `GET /api/bundles/<id>/export` (one JSON file:
-  `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON or text>}}`), `POST /api/bundles/import`.
+  `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`), `POST /api/bundles/import`.
 - To make one for the user, write the folder (pick blocks for its dashboards from `Dashboards/Design.md`), check it
   with `vau bundle show <id>`, and let them apply it: never apply one without asking, and never one that runs code.
