@@ -111,7 +111,7 @@ if (f) {
 
 // A note with both embedded, being read.
 await page.goto(`${B}#file/${enc("QA/QA note.md")}`)
-await page.evaluate(() => localStorage.setItem("vaultite.fileMode", "read"))
+await page.evaluate(() => { localStorage.setItem("vaultite.fileMode", "read"); localStorage.removeItem("vaultite.tabModes") })
 await page.reload()
 await wait(2000)
 f = await frameOf(page)

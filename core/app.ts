@@ -15,7 +15,7 @@ import * as O from "./outside.ts"
 import * as pages from "./pages.ts"
 import { setUpNew } from "./start.ts"
 import type { ServerError } from "./serverlog.ts"
-import { enabled, hostOps, HTTPError, LOADED, LOCAL, load as loadPlugins, vaultHere, match, matchServed, type Plugin, propertyTypes, Reply, reply, type RequestEnd, type RequestStart, Request, service, Text } from "./plugins.ts"
+import { enabled, hostOps, HTTPError, LOADED, LOCAL, load as loadPlugins, vaultHere, match, matchServed, type Plugin, propertyTypes, Reply, reply, type RequestEnd, type RequestStart, Request, service, settingDefaults, Text } from "./plugins.ts"
 import { readTypes } from "./proptypes.ts"
 import { blockOn, blockSources, render } from "./render.ts"
 import { COMMON } from "./blocks.ts"
@@ -23,6 +23,7 @@ import { topic, topics } from "./docs.ts"
 import * as SP from "./statepatch.ts"
 import { coreOps } from "./coreops.ts"
 import { SETTINGS } from "./coreops/settings.ts"
+import { filing } from "./filing.ts"
 import { checkParams, entryOf, jsonBlock, nearest, type Op, type OpCtx, OpError, opsDoc, pathAsSaid, type Who, whoOf } from "./ops.ts"
 import { eventOps, eventsOf, matching, summary, typeMatches, type VaultEvent } from "./events.ts"
 import { ARCHIVED, setMarks } from "./fileprops.ts"
@@ -97,6 +98,7 @@ export class App {
     this.plugins = this.app
     // Templates' notes are patterns, not people or logs, whatever their `type` (Vault.kindFor).
     this.vault.plain = () => { const f = service(this.plugins, "templates:folder")?.(); return typeof f === "string" && f ? [f] : [] }
+    this.vault.defaults = () => settingDefaults(this.vault, this.plugins)
     this.vaultPlugins = new VaultPlugins(this.vault, this.app)
     // A version the directory blocks doesn't load: matched by the repo it was installed from, its manifest's, or its id.
     this.vaultPlugins.blocked = (vp) => this.index.blockedWhy(vp.id, typeof vp.manifest.version === "string" ? vp.manifest.version : null,
@@ -185,6 +187,8 @@ export class App {
       .map((k) => [k.collection, { sections: k.spec.sections ?? [], stamps: k.spec.stamps ?? [] }]))
     out.appearance = { themes: Look.listThemes(this.vault), snippets: Look.listSnippets(this.vault) }
     out.pluginSettings = settingsFiles(this.vault.path)
+    out.settingDefaults = settingDefaults(this.vault, this.plugins) // (another app's, under the vault's own: never written)
+    out.filing = filing(this.vault)
     out.bundles = B.status(this.vault) // the setup a bundle replaced (to restore), and a new vault's offer
     this.stated = { version, plugins, state: Object.freeze(out) }
     return out

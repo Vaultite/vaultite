@@ -407,5 +407,5 @@ plugin.block("codex-limits", async () => {
   return section("Codex plan limits", limitRows(lim.windows), `_${p ? `${p.name} plan, from` : "From"} the ${lim.source}, ${ago(lim.observed)}._`)
 })
 
-codingAgent(plugin, { id: "codex", name: "Codex", prefix: "codex", value: "at API prices", state: (s) => (s.status === "busy" ? "Working" : "Idle"),
+codingAgent(plugin, { id: "codex", name: "Codex", prefix: "codex", value: "estimated at list prices", state: (s) => (s.status === "busy" ? "Working" : "Idle"),
   sessionId: SESSION_ID, usage, session, updated: (ms) => new Date(ms).toISOString() })

@@ -471,6 +471,11 @@ check("its person is still there", s.people.some((x: Any) => x.name === "Broken 
 write("People/Broken Test.md", good)
 ;[, s] = await api("GET", "state")
 check("fixing it clears the problem", !s.vault.problems.some((x: Any) => x.file === "People/Broken Test.md"))
+write("People/Colleague Test.md", "---\ntype: person\nrelation: colleague\n---\n")
+;[, s] = await api("GET", "state")
+check("a relation of one's own is fine, not a problem", !s.vault.problems.some((x: Any) => x.file === "People/Colleague Test.md") &&
+  s.people.find((x: Any) => x.name === "Colleague Test")?.relation === "colleague", s.vault.problems)
+fs.rmSync(path.join(VAULT, "People/Colleague Test.md"))
 
 // Small edits: hand-written files keep their shape when the app writes to them
 const hand = `---
@@ -548,8 +553,14 @@ check("an empty timeline gets its first line", read("Trips/Empty timeline.md") =
 write("Trips/No timeline.md", "Text.\n")
 await api("POST", "timeline", { path: "Trips/No timeline.md", date: "2026-09-29", kind: "email", notes: "Asked" })
 check("a file without a timeline gets one at its end", read("Trips/No timeline.md") === "Text.\n\n## Timeline\n\n- 2026-09-29 · email · Asked\n", read("Trips/No timeline.md"))
+;[code] = await api("POST", "timeline", { path: "Trips/Trip.md", date: "2026-09-29", kind: "Game  night", notes: "Won" })
+check("a timeline line takes a kind of its own, a word or two", code === 201 || code === 200, code)
+check("...written as one and read back as one", read("Trips/Trip.md").includes("- 2026-09-29 · game night · Won\n") &&
+  (await import("../core/timeline.ts")).parseEntry("- 2026-09-29 · game night · Won")?.kind === "game night", read("Trips/Trip.md"))
 ;[code] = await api("POST", "timeline", { path: "Trips/Trip.md", date: "2026-09-29", kind: "dance" })
-check("a timeline line needs a known kind", code === 400, code)
+check("...but not alone (it would read as a note)", code === 400, code)
+;[code] = await api("POST", "timeline", { path: "Trips/Trip.md", date: "2026-09-29", kind: "a · b", notes: "x" })
+check("a kind that wouldn't read back is refused", code === 400, code)
 ;[code] = await api("POST", "timeline", { path: "Trips/Trip.md", date: "2026-09-29", kind: "note" })
 check("a note line needs its text", code === 400, code)
 await api("POST", "timeline", { path: "People/Hand Made.md", date: "2026-09-29", kind: "call", duration_min: 20 })
@@ -923,13 +934,13 @@ check("render of a person file", (await api("GET", "render?path=People/Block Per
 }
 check("render of a missing file is a 404", (await api("GET", "render?path=Nope.md"))[0] === 404)
 // The block contract (core/blocks.ts): options checked against the manifests' declarations, noted after the block's text.
-write("Notes/Block options.md", "```block-week-goals\ntitel: Mine\n```\n\n```block-graph\ndepth: 5\nheight: tall\n```\n\n" +
+write("Notes/Block options.md", "```block-week-goals\ntitel: Mine\n```\n\n```block-graph\ndepth: 9\nheight: tall\n```\n\n" +
   "```block-area\n```\n\n```block-week-goals\nareas: [workouts]\nwide: true\nstack: true\n```\n\n```block-routines\n- not: options\n```\n\n```block-nope\n```\n")
 txt = (await api("GET", "render?path=Notes/Block options.md"))[1]
 check("render: an unknown option is noted after the block, with the name it's closest to",
   txt.includes("_(week-goals block: unknown option `titel` (did you mean `title`?))_") && txt.includes("## This week"), txt)
 check("render: wrong types and values are noted, the block still drawn",
-  txt.includes("_(graph block: `depth` should be one of 1, 2, 3, not 5; `height` should be a number, not \"tall\")_"), txt)
+  txt.includes("_(graph block: `depth` should be one of 1, 2, 3, 4, 5, not 9; `height` should be a number, not \"tall\")_"), txt)
 check("render: a required option left out is noted", txt.includes("_(area block: `area` is required)_"), txt)
 check("render: the options every block takes are fine anywhere", !/week-goals block: .*(wide|stack)/.test(txt), txt)
 check("render: options that aren't a map are noted", txt.includes("_(routines block: its options should be `key: value` lines)_"), txt)
@@ -1266,7 +1277,7 @@ check("outside: an allowed file opens", code === 200 && o.text === "Outside text
 check("outside: saves in place", code === 200 && fs.readFileSync(outsideFile, "utf8") === "Outside text.\nMore.\n", o)
 check("outside: not indexed", ![...vault.entries.keys()].some((k) => k.includes("Outside")))
 
-// Manage vaults on the web (core/vaults.ts): a list on this machine, folders from home down, never hidden ones.
+// Manage vaults on the web (core/vaults.ts): a list on this machine, any folder but hidden and system ones.
 const vaultsMod = await import("../core/vaults.ts")
 const opened: string[] = []
 const home = os.homedir()
@@ -1279,7 +1290,21 @@ check("vaults: a hidden folder can't be browsed", vr.status === 403 || vr.status
 vr = await vh("POST", "open", {}, { path: home })
 check("vaults: home itself can't be a vault", vr.status === 403 && !opened.length, vr)
 vr = await vh("POST", "open", {}, { path: "/etc" })
-check("vaults: nothing outside home", vr.status === 403 && !opened.length, vr)
+check("vaults: never a system folder", vr.status === 403 && !opened.length, vr)
+vr = await vh("POST", "open", {}, { path: "/" })
+check("vaults: nor the root folder", vr.status === 403 && !opened.length, vr)
+vr = await vh("POST", "open", {}, { path: path.join(home, "Library") })
+check("vaults: nor ~/Library", vr.status === 403 && !opened.length, vr)
+check("vaults: a drive, a cloud drive and a folder outside home can be", ["/Volumes/Drive/Notes", "/run/media/alice/Drive/Notes",
+  "/mnt/data/Notes", path.join(home, "Library", "Mobile Documents", "com~apple~CloudDocs", "Notes")].every((p) => vaultsMod.refused(p, { vault: true }) === null))
+{
+  const outside = fs.mkdtempSync(process.platform === "darwin" ? "/private/tmp/vaults-" : path.join(os.tmpdir(), "vaults-"))
+  vr = await vh("POST", "open", {}, { path: outside })
+  check("vaults: a folder outside home opens", opened.at(-1) === outside, vr)
+  vr = await vh("GET", "folders", { path: "/" })
+  check("vaults: the root's folders can be browsed, system ones left out", vr.parent === null && !vr.folders.some((f: Any) => ["etc", "usr", "System"].includes(f.name)), vr)
+  fs.rmSync(outside, { recursive: true })
+}
 vr = await vh("GET", "", {})
 check("vaults: the served one is listed", vr.current === VAULT && vr.vaults.some((v: Any) => v.path === VAULT), vr)
 
@@ -1652,6 +1677,16 @@ live.close()
   check("query: templates are left out", !qr.groups.flatMap((g: Any) => g.rows).some((r: Any) => r.path.startsWith("Templates/")), qr)
   ;[, qr] = await api("POST", "query", { from: "Templates/", type: "qtest" })
   check("query: unless from names their folder", qr.groups.flatMap((g: Any) => g.rows).some((r: Any) => r.path.startsWith("Templates/")), qr)
+  write("Query test/Old Pal.md", "---\ntype: qtest\nrelation: friend\narchived: true\n---\n")
+  ;[, qr] = await api("POST", "query", { type: "qtest" })
+  check("query: archived files are hidden, and how many is said", !qr.groups.flatMap((g: Any) => g.rows).some((r: Any) => r.path === "Query test/Old Pal.md")
+    && qr.archivedHidden === 1, qr)
+  ;[, qr] = await api("POST", "query", { type: "qtest", archived: true })
+  check("...archived: true shows them", qr.groups.flatMap((g: Any) => g.rows).some((r: Any) => r.path === "Query test/Old Pal.md") && !qr.archivedHidden, qr)
+  ;[, qr] = await api("POST", "query", { base: "filters: 'type == \"qtest\"'\n" })
+  const based = qr.groups.flatMap((g: Any) => g.rows).map((r: Any) => r.path)
+  check("a base lists archived files and templates, as in Obsidian", based.includes("Query test/Old Pal.md") && based.includes("Templates/Qtest person.md"), based)
+  fs.rmSync(path.join(VAULT, "Query test/Old Pal.md"))
   ;[code, qr] = await api("POST", "query", { from: "Query test/", where: "relation" })
   check("a bad query is a 400 saying why", code === 400 && /expected/.test(qr.error), qr)
   const [, md] = await api("GET", "render?path=Query test/View.md")
@@ -2721,6 +2756,7 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
   const [, cr] = await api("GET", "render?path=Dashboards/Claude.md")
   check("the Claude page has projects and models as two blocks", typeof cr === "string" && cr.includes("## Claude Code by project") &&
     cr.includes("## Claude Code by model") && cr.includes("lighthouse"), String(cr).slice(0, 400))
+  check("Claude Code's costs are labelled estimates at list prices", cr.includes("_Costs estimated at list prices._"), String(cr).slice(0, 600))
   const tpl = fs.readFileSync(path.join(import.meta.dirname, "..", "plugins", "core", "claude-code", "pages", "Claude.md"), "utf8")
   check("the Claude page template has both blocks", tpl.includes("```block-claude-projects\n```") && tpl.includes("```block-claude-models\n```"), tpl)
 }
@@ -3795,7 +3831,7 @@ const { archivedValue, isArchived, archiveTwin, unarchived, isHiddenPath, inArch
 check("archive: paths", archiveTwin("People/Kai.md") === "People/.archive/Kai.md" && archiveTwin("Top.md") === ".archive/Top.md" && archiveTwin("A/.archive/B.md") === "A/B.md" &&
   unarchived("A/.archive/B/.archive/c.md") === "A/B/c.md" && inArchive(".archive/x.md") && !inArchive("A/.archive") && !isHiddenPath("A/.archive/b.md") && isHiddenPath(".trash/a.md") &&
   homeOf(["People/.archive/a.md", "People/.archive/b.md", "People/c.md"], "People") === "People")
-check("archived: what counts", [true, "yes", "2026-09-01", 1].every(archivedValue) && ![false, "false", "no", 0, "", null, undefined].some(archivedValue) && isArchived({ archived: true }) && !isArchived(null))
+check("archived: only true or yes counts", [true, "yes", "True", " YES "].every(archivedValue) && ![false, "false", "no", 0, 1, "", "2026-09-01", "maybe", [1], { a: 1 }, null, undefined].some(archivedValue) && isArchived({ archived: true }) && !isArchived(null))
 
 // ---------- Books' created, journal entries as a tag, people's sort ----------
 await api("POST", "books", { title: "New created", author: "Alice Park", status: "want" })
@@ -3985,6 +4021,15 @@ const hadObsidian = s.obsidian
 write(".obsidian/app.json", JSON.stringify({ newFileLocation: "folder", newFileFolderPath: "Inbox/", attachmentFolderPath: "./assets", useMarkdownLinks: true, theme: "moonstone" }))
 ;[, s] = await api("GET", "state")
 check("obsidian: .obsidian/app.json's settings that apply are in the state", same(s.obsidian, { newFileLocation: "folder", newFileFolderPath: "Inbox", attachmentFolderPath: "./assets", useMarkdownLinks: true }) && hadObsidian === null, [hadObsidian, s.obsidian])
+write(".obsidian/app.json", JSON.stringify({ spellcheck: false, useTab: false, tabSize: 2, autoPairBrackets: false, readableLineLength: false, propertiesInDocument: "source", autoPairMarkdown: "yes", strictLineBreaks: true }))
+;[, s] = await api("GET", "state")
+check("obsidian: its editor settings are in the state (only well-formed ones)", same(s.obsidian, { spellcheck: false, useTab: false, autoPairBrackets: false, readableLineLength: false, tabSize: 2, propertiesInDocument: "source" }), s.obsidian)
+{
+  const [c] = await api("POST", "ops/settings.set", { name: "editor", values: { useTab: true } })
+  ;[, s] = await api("GET", "state")
+  check("editor.json: a settings file of the app, in the state as written", c === 200 && same(s.config.editor, { useTab: true }), [c, s.config.editor])
+  fs.rmSync(path.join(VAULT, ".vaultite/editor.json"), { force: true })
+}
 write(".obsidian/app.json", "{}")
 ;[, s] = await api("GET", "state")
 check("obsidian: an empty app.json changes nothing", same(s.obsidian, {}), s.obsidian)
@@ -4824,7 +4869,11 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   t = await run("person.timeline-add", { person: "Sam", kind: "call", text: "x" })
   check("person.timeline-add: a first name two people have is asked about", t.error && t.text.includes("Sam Park") && t.text.includes("Sam Reyes"), t)
   t = await run("person.timeline-add", { person: "Sam Park", kind: "chat", text: "x" })
-  check("person.timeline-add: a kind it doesn't know is refused with the kinds", t.error && t.text.includes("kind") && t.text.includes("hang out"), t)
+  check("person.timeline-add: an alias is written as its kind", !t.error && t.result.kind === "message" && read("People/Sam Park.md").includes("· message · x"), t)
+  t = await run("person.timeline-add", { person: "Sam Park", kind: "Board games", text: "Won" })
+  check("person.timeline-add: a kind of one's own is taken", !t.error && read("People/Sam Park.md").includes("· board games · Won"), t)
+  t = await run("person.timeline-add", { person: "Sam Park", kind: "a · b · c", text: "x" })
+  check("person.timeline-add: what wouldn't read back as a kind is refused, saying what a kind is", t.error && t.text.includes("a word or two"), t)
   t = await run("people.remember", { fact: "Keeps bees." })
   check("people.remember: about the user, under About me", !t.error && /## About me\n[\s\S]*- Keeps bees\./.test(read("ME.md")) && t.text.startsWith("Remembered in ME.md under About me"), [t, read("ME.md")])
   t = await run("people.remember", { fact: "Keeps bees." })
@@ -4872,6 +4921,96 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("routine.list: the routines, which are done that day and that week", !t.error && t.result.date === "2026-09-25" && t.result.week_start === "2026-09-21" &&
     t.result.routines.some((x: Any) => x.name === "Stretch" && x.done === true && x.auto === false && x.on === true && x.ticked === true && x.week[4] === true && x.week[5] === false && x.target === 7), t)
   await run("routine.check", { routine: "Stretch", date: "2026-09-25", done: false })
+  {
+    // Daily notes: today.daily makes one where they go; Obsidian's daily-notes.json names them, finds them and fills them.
+    t = await run("today.daily", { date: "2026-09-22" })
+    check("today.daily: a day's note made in Daily/, typed (no folder set finds them)", !t.error && t.result.path === "Daily/2026-09-22.md" && t.result.made && read("Daily/2026-09-22.md").startsWith("---\ntype: day\n---"), t)
+    t = await run("today.daily", { date: "2026-09-22" })
+    check("today.daily: there already, it's the same note", !t.error && t.result.path === "Daily/2026-09-22.md" && !t.result.made, t)
+    fs.rmSync(path.join(VAULT, "Daily/2026-09-22.md"))
+    write(".obsidian/daily-notes.json", JSON.stringify({ folder: "Journal/", format: "YYYY/MM/DD-MM-YYYY", template: "Tpl/Day.md" }))
+    write("Tpl/Day.md", "---\nmood: \n---\n# {{date:dddd}}\n")
+    write("Journal/2026/09/24-09-2026.md", "Rain.\n")
+    write("Journal/2026/09/Plans.md", "Not a day.\n")
+    let [, st] = await api("GET", "state")
+    const days = st.files.files.filter((f: Any) => f.kind === "days").map((f: Any) => f.path)
+    check("daily notes: one without a type is found by its name in Obsidian's folder and format", days.includes("Journal/2026/09/24-09-2026.md") && !days.includes("Journal/2026/09/Plans.md"), days)
+    check("daily notes: Obsidian's settings are the defaults, never written", st.settingDefaults["plugins/today/data"]?.format === "YYYY/MM/DD-MM-YYYY" &&
+      st.filing.homes.find((h: Any) => h.key === "days")?.folder === "Journal" && !exists(".vaultite/plugins/today/data.json") && !exists(".vaultite/folders.json"), [st.settingDefaults, st.filing])
+    t = await run("routine.check", { routine: "Stretch", date: "2026-09-24" })
+    check("daily notes: a tick goes into the note found by its name, no other made", !t.error && read("Journal/2026/09/24-09-2026.md").includes("done: [Stretch]") &&
+      read("Journal/2026/09/24-09-2026.md").includes("Rain.") && !read("Journal/2026/09/24-09-2026.md").includes("type:") && !exists("Daily/2026-09-24.md"), [t, read("Journal/2026/09/24-09-2026.md")])
+    t = await run("today.daily", { date: "2026-09-23" })
+    check("today.daily: named in the format, in the folder, from the template filled for that day", !t.error && t.result.path === "Journal/2026/09/23-09-2026.md" &&
+      read("Journal/2026/09/23-09-2026.md") === "---\nmood: \n---\n\n# Wednesday\n", [t, exists(t.result?.path ?? "x") && read(t.result.path)])
+    write(".obsidian/templates.json", JSON.stringify({ folder: "Tpl/", dateFormat: "D MMM YYYY" }))
+    let [, tpl] = await api("GET", "templates")
+    check("templates: Obsidian's templates.json's folder and formats, while unset", tpl.folder === "Tpl" && tpl.dateFormat === "D MMM YYYY" && tpl.timeFormat === "HH:mm", tpl)
+    write(".vaultite/plugins/templates/data.json", JSON.stringify({ folder: "Templates" }))
+    ;[, tpl] = await api("GET", "templates")
+    check("templates: the app's own folder over Obsidian's", tpl.folder === "Templates" && tpl.dateFormat === "D MMM YYYY", tpl)
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/templates/data.json"))
+    fs.rmSync(path.join(VAULT, ".obsidian/templates.json"))
+    write(".vaultite/plugins/today/data.json", JSON.stringify({ format: "YYYY-MM-DD", template: "" }))
+    write(".vaultite/folders.json", JSON.stringify({ days: "Days" }))
+    t = await run("today.daily", { date: "2026-09-21" })
+    check("today.daily: the app's own settings over Obsidian's", !t.error && t.result.path === "Days/2026-09-21.md" && read(t.result.path) === "", t)
+    for (const f of [".obsidian/daily-notes.json", ".vaultite/plugins/today/data.json", ".vaultite/folders.json"]) fs.rmSync(path.join(VAULT, f))
+    for (const d of ["Journal", "Tpl", "Days"]) fs.rmSync(path.join(VAULT, d), { recursive: true })
+    await app.vault.sync()
+  }
+  {
+    // A kind's folder: set, new files go there whatever most of its files say; unset, back to the guess.
+    write(".vaultite/folders.json", JSON.stringify({ notes: "Ideas/Fresh" }))
+    t = await run("note.create", { title: "Op folder set", body: "Here." })
+    check("folders.json: a new note goes in its kind's folder", !t.error && exists("Ideas/Fresh/Op folder set.md"), t)
+    const [, st] = await api("GET", "state")
+    check("folders.json: the state shows each kind's folder, set or guessed", st.filing.homes.some((h: Any) => h.key === "notes" && h.folder === "Ideas/Fresh" && h.set) &&
+      st.filing.homes.some((h: Any) => h.key === "people" && h.folder === "People" && !h.set) && st.filing.homes.some((h: Any) => h.key === "dashboards"), st.filing.homes)
+    fs.rmSync(path.join(VAULT, ".vaultite/folders.json"))
+    fs.rmSync(path.join(VAULT, "Ideas"), { recursive: true })
+    await app.vault.sync()
+  }
+  {
+    // Excluded files: Obsidian's userIgnoreFilters, else files.json's: out of search, the graph and unlinked mentions.
+    const hadApp = exists(".obsidian/app.json") ? read(".obsidian/app.json") : null
+    write(".obsidian/app.json", JSON.stringify({ userIgnoreFilters: ["Ops/Hidden/", "/Zebra \\d+/"] }))
+    write("Ops/Hidden/Secret.md", "A zebracorn, and [[Seen]].\n")
+    write("Ops/Zebra 7.md", "Another zebracorn.\n")
+    write("Ops/Seen.md", "A zebracorn in plain sight.\n")
+    let [, hits] = await api("GET", "search?q=zebracorn")
+    check("excluded files: search leaves them out", same(hits.map((h: Any) => h.path), ["Ops/Seen.md"]), hits)
+    const [, st] = await api("GET", "state")
+    const row = (p: string) => st.files.files.find((f: Any) => f.path === p)
+    check("excluded files: still files, marked", row("Ops/Hidden/Secret.md")?.excluded === true && row("Ops/Zebra 7.md")?.excluded === true && !row("Ops/Seen.md")?.excluded, [row("Ops/Hidden/Secret.md"), row("Ops/Seen.md")])
+    const [, g] = await api("GET", "graph")
+    check("excluded files: the graph leaves them out", !g.nodes.some((n: Any) => n.path === "Ops/Hidden/Secret.md") && g.nodes.some((n: Any) => n.path === "Ops/Seen.md"), g.nodes.length)
+    ;[, hits] = await api("GET", "search?q=zebracorn&folder=Ops/Hidden")
+    check("excluded files: a search in their folder finds them", same(hits.map((h: Any) => h.path), ["Ops/Hidden/Secret.md"]), hits)
+    write(".vaultite/files.json", JSON.stringify({ ...JSON.parse(exists(".vaultite/files.json") ? read(".vaultite/files.json") : "{}"), excluded: [] }))
+    ;[, hits] = await api("GET", "search?q=zebracorn")
+    check("excluded files: the vault's own setting (none) over Obsidian's", hits.length === 3, hits)
+    const files = JSON.parse(read(".vaultite/files.json"))
+    delete files.excluded
+    write(".vaultite/files.json", JSON.stringify(files))
+    if (hadApp === null) fs.rmSync(path.join(VAULT, ".obsidian/app.json")); else write(".obsidian/app.json", hadApp)
+    for (const f of ["Ops/Hidden/Secret.md", "Ops/Zebra 7.md", "Ops/Seen.md"]) fs.rmSync(path.join(VAULT, f))
+    fs.rmSync(path.join(VAULT, "Ops/Hidden"), { recursive: true })
+    await app.vault.sync()
+  }
+  {
+    // The attachment folder: files.json's, written Obsidian's way ("./sub": beside the note).
+    write("Ops/Pics/Note.md", "A note.\n")
+    write(".vaultite/files.json", JSON.stringify({ ...JSON.parse(exists(".vaultite/files.json") ? read(".vaultite/files.json") : "{}"), attachmentFolder: "./assets" }))
+    // (held as the server holds a write op: the upload route holds the vault too, which a raw vault.lock would wedge)
+    const up = await app.hold(() => app.runOp("file.upload", { data: Buffer.from("hello").toString("base64"), name: "hello.txt", note: "Ops/Pics/Note.md" }, { who: claude }))
+    check("attachment folder: ./assets puts an upload beside its note", (up.result as Any).path === "Ops/Pics/assets/hello.txt", up.result)
+    const files = JSON.parse(read(".vaultite/files.json"))
+    delete files.attachmentFolder
+    write(".vaultite/files.json", JSON.stringify(files))
+    fs.rmSync(path.join(VAULT, "Ops/Pics"), { recursive: true })
+    await app.vault.sync()
+  }
   write("Ops/Link a.md", "Links [[Link b]] and #topic/one.\n")
   write("Ops/Link b.md", "---\ntags: [topic]\n---\n\nLinks [[Link c]].\n")
   write("Ops/Link c.md", "Nothing.\n")
@@ -6191,6 +6330,8 @@ plugin.every("gone", null)
   check("token-count: imports outside the vault and missing ones are named, a mention isn't", root?.outside?.join() === "~/elsewhere.md" && root?.missing?.join() === "gone.md", root)
   check("token-count: a file's own max_tokens is its limit", r.files.find((s: Any) => s.path === "Size/Long.md")?.level === "over")
   check("token-count: agent files in hidden folders count (a skill over 5k)", r.files.find((s: Any) => s.path === ".claude/skills/demo/SKILL.md")?.limit === 5000)
+  check("token-count: an ordinary note has no limit by default", r.files.every((s: Any) => s.path !== "Size/code.md" || s.limit === 0) &&
+    (await sized({ path: "Size/code.md" })).r.files[0]?.limit === 0)
   check("token-count: the text says what's over", /Over their limit[\s\S]*Size\/Long\.md[\s\S]*Loaded at startup[\s\S]*@Size\/rules\.md/.test(text), text)
   const st = (await app.state()).tokenCount
   check("token-count: the app gets the flagged files and the chains, not every file", st.files.some((s: Any) => s.path === "Size/CLAUDE.md") && !st.files.some((s: Any) => s.path === "Size/code.md") && st.limits.limits["CLAUDE.md"] === 3000, st)

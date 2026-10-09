@@ -46,10 +46,12 @@ async function makeExamples() {
   void pickTemplate("new", made)
 }
 
-/** Where a new note from this template goes: the folder most files of its `type` are in (the files' type is the core's,
- *  core/fileprops.ts). */
+/** Where a new note from this template goes: its `type`'s folder (a kind's, as its settings show it), else the folder
+ *  most files of that type are in (the files' type is the core's, core/fileprops.ts). */
 function folderFor(s: Store, template: string, dir: string) {
   const type = /^type:[ \t]*["']?([\w-]+)/m.exec(splitFm(template).fm)?.[1]
+  const home = type && s.filing?.homes.find((h) => h.type.toLowerCase() === type.toLowerCase())
+  if (home) return home.folder
   if (type) {
     const count = new Map<string, number>()
     for (const f of s.files.files) if (f.type === type && !f.archived && !f.path.startsWith(`${dir}/`)) count.set(folderOf(f.path), (count.get(folderOf(f.path)) ?? 0) + 1)

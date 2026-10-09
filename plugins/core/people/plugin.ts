@@ -1,7 +1,7 @@
 // People: a file per person, profile in frontmatter, facts, then "## Timeline". The timeline is read leniently and an
 // entry the app didn't change is written back exactly as it was; new ones use the canonical form.
 import { bullets, daysBetween, HTTPError, Plugin, reply, section } from "../../../core/plugins.ts"
-import { entryLine, KINDS, parseEntry } from "../../../core/timeline.ts"
+import { entryLine, entryProblem, parseEntry, timelineKind } from "../../../core/timeline.ts"
 import { cmp, isArchived, type Item, Kind, num, safeName, sortBy, splitTags, str, truthy } from "../../../core/vault.ts"
 import { geocoder, type Places } from "./geocode.ts"
 import { peopleOps } from "./ops.ts"
@@ -23,7 +23,6 @@ export function pinned<T extends Item>(x: T): T {
 }
 plugin.exports.pinned = pinned
 
-const RELATIONS = ["partner", "family", "roommate", "friend", "mentor", "contact"]
 const TIMELINE = "## Timeline"
 const HEADING = /^(#{1,6})\s+(.*?)\s*#*\s*$/
 const FIELDS = ["date", "kind", "duration_min", "subject", "notes", "url"] as const
@@ -79,7 +78,6 @@ function splitBody(body: string): [string, string, string[], string] {
 function parse(fm: Item, body: string, stem: string): [Item, string[]] {
   const problems: string[] = []
   const rel = truthy(fm.relation) ? fm.relation : ""
-  if (rel && !RELATIONS.includes(rel)) problems.push(`relation \`${str(rel)}\` is not one of ${pyList([...RELATIONS].sort())}`)
   const every = fm.every_days
   if (every !== undefined && every !== null && !((num(every) ?? 0) > 0)) problems.push("every_days must be a whole number of days, 1 or more")
   let coords = fm.coordinates
@@ -100,9 +98,6 @@ function parse(fm: Item, body: string, stem: string): [Item, string[]] {
   }
   return [p, [...problems, ...bad]]
 }
-
-/** Python's way of writing a list in a message: ['a', 'b']. */
-const pyList = (xs: string[]) => `[${xs.map((x) => `'${x}'`).join(", ")}]`
 
 /** The real entries of a timeline, with their index in it (the index is the interaction's id). */
 function entries(p: Item): [number, Item][] {
@@ -235,9 +230,13 @@ plugin.route("POST", "interactions", async (req) => {
   const body = { ...req.body }
   let p = personFor(body)
   const i: Item = Object.fromEntries(FIELDS.map((k) => [k, truthy(body[k]) ? body[k] : k === "duration_min" ? null : ""]))
-  if (!KINDS.has(i.kind) || !/^\d{4}-\d\d-\d\d$/.test(str(i.date))) {
-    throw new HTTPError(400, `need a date (YYYY-MM-DD) and a kind: one of ${pyList([...KINDS].sort())}`)
+  const kind = timelineKind(i.kind)
+  if (!kind || !/^\d{4}-\d\d-\d\d$/.test(str(i.date))) {
+    throw new HTTPError(400, "need a date (YYYY-MM-DD) and a kind, a word or two (call, hang out, coffee, note)")
   }
+  i.kind = kind
+  const why = entryProblem({ date: i.date, kind, duration_min: Number(i.duration_min) || null, subject: str(i.subject), notes: str(i.notes), url: str(i.url) })
+  if (why) throw new HTTPError(400, why)
   const tl = [...p.timeline]
   const es = entries(p)
   let at = es.find(([, x]) => x.date <= i.date)?.[0]

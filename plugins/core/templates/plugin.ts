@@ -5,14 +5,14 @@ import { fillVars, FORMATS, mergeFm } from "./fill.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-/** The templates folder, without slashes at either end. */
+/** The templates folder, without slashes at either end (Obsidian's templates.json's when unset: plugin.seeded). */
 export function folder() {
-  const f = plugin.settings({}).folder
+  const f = plugin.seeded().folder
   return typeof f === "string" && f.trim() ? f.trim().replace(/^\/+|\/+$/g, "") : "Templates"
 }
 
 /** A format setting, or its default. */
-const format = (key: string, d: string) => { const f = plugin.settings({})[key]; return typeof f === "string" && f.trim() ? f : d }
+const format = (key: string, d: string) => { const f = plugin.seeded()[key]; return typeof f === "string" && f.trim() ? f : d }
 
 plugin.route("GET", "templates", () => ({ folder: folder(), dateFormat: format("dateFormat", "YYYY-MM-DD"), timeFormat: format("timeFormat", "HH:mm") }))
 
@@ -29,9 +29,9 @@ plugin.route("POST", "templates/expand", (req) => {
 
 const FM = /^---\n[\s\S]*?\n---[ \t]*\n?/
 /** A template's text as a note's, as the app makes it (fill.ts), its frontmatter merged into `into`'s (a new file's
- *  own keys win): for plugins that make notes on the server. */
-plugin.exports.fill = (text: string, title: string, into = "") => {
-  const t = fillVars(text, title, formatDate, new Date(), { date: format("dateFormat", FORMATS.date), time: format("timeFormat", FORMATS.time) })
+ *  own keys win): for plugins that make notes on the server. `now`: what {{date}} is (a daily note's day). */
+plugin.exports.fill = (text: string, title: string, into = "", now = new Date()) => {
+  const t = fillVars(text, title, formatDate, now, { date: format("dateFormat", FORMATS.date), time: format("timeFormat", FORMATS.time) })
   const fm = FM.exec(t)?.[0] ?? "", own = FM.exec(into)?.[0] ?? ""
   return (fm ? mergeFm(own, fm) : own) + t.slice(fm.length).replace(/^\n+/, "")
 }

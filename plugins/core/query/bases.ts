@@ -56,7 +56,7 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
   }
   const filters = [cfg.filters, v.filters].filter((f) => f !== undefined && f !== null && f !== "")
   const opts: Opts = {
-    title: views[index].name, view,
+    title: views[index].name, view, archived: true, // (Obsidian has no archive: every file is in a base)
     ...(filters.length ? { filters: filters.length === 1 ? filters[0] : { and: filters } } : {}),
     ...(obj(cfg.formulas) ? { formulas: cfg.formulas } : {}),
     ...(obj(cfg.properties) ? { properties: cfg.properties } : {}),

@@ -27,14 +27,14 @@ function Caps({ keys, onRemove }: { keys: string; onRemove: () => void }) {
   )
 }
 
-/** Settings' Hotkeys: one row saying how many commands have keys of their own; it opens the sheet. Desktop only (a
- *  phone has no keyboard shortcuts). */
+/** Settings' Hotkeys: one row saying how many commands have keys of their own; it opens the sheet. Shown at every
+ *  width: a narrow window, an iPad or a phone may have a keyboard. */
 export function Hotkeys() {
   const known = useKnownCommands()
   useCommandList() // redraw when hotkeys.json changes
   const changed = known.filter((c) => isCustom(c.id)).length
   return (
-    <Panel title="Hotkeys" className="max-md:hidden">
+    <Panel title="Hotkeys">
       <SettingRow label="Keyboard shortcuts" sub={`Every command's keys (${known.length}), saved in .vaultite/hotkeys.json`}
         value={changed ? `${changed} changed` : "Default"} onClick={() => openDetail("hotkeys")} data-hotkeys-open />
     </Panel>

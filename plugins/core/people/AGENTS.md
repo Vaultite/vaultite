@@ -4,7 +4,7 @@ timeline line, placed by date), or edit the file:
 ````
 ---
 type: person
-relation: friend            # partner | family | roommate | friend | mentor | contact (not really talked yet)
+relation: friend            # partner, family, roommate, friend, mentor, contact (not really talked yet), or any other
 every_days: 30              # how often the user wants to be in touch; leave out if no target
 context: Met at a design course at university    # how the user knows them, one line
 location: Austin, TX      # a place name; the app finds its pin
@@ -22,8 +22,8 @@ Durable facts about them, in short sentences.
 - 2026-09-18 · note · A fact the user told you about them, dated
 ````
 - Timeline lines newest first, one each: `- YYYY-MM-DD · kind[ · N min] · text`; optional `**Subject**` after the kind
-  and `<https://url>` at the end. Kinds: call, hang out, meet, study, text, message, email (being in touch) and note (a
-  fact). Log notable exchanges, not every chat. Something that may change (a job move considered) is a dated note.
+  and `<https://url>` at the end. Kinds: call, hang out, meet, study, text, message, email or any other word or two
+  (being in touch), and note (a fact). Log notable exchanges, not every chat. Something that may change (a job move considered) is a dated note.
 - Never delete a timeline or "fix" the user's own lines (the app reads hand-typed ones); add yours in this form. Don't
   rename files unless asked (add `aliases`); then `vau move`, which updates links.
 

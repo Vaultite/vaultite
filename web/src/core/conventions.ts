@@ -1,11 +1,11 @@
-// Where new files go and how links are written: new notes at the top, pasted images in Attachments/, [[wikilinks]],
-// unless a plugin that's on answers otherwise (`conventions`: a vault's .obsidian/app.json). First answer wins.
+// Where new files go and how links are written: new notes at the top, [[wikilinks]], unless a plugin that's on answers
+// otherwise (`conventions`: a vault's .obsidian/app.json; first answer wins); pasted files where the settings say.
 import type { Conventions } from "@/core/define"
 import type { Store } from "@/core/data"
 import { post, upload } from "@/core/http"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
-import { unarchived } from "../../../core/fileprops.ts"
+import { attachmentDir, unarchived } from "../../../core/fileprops.ts"
 import { activeFile } from "@/core/active"
 import { folderOf, isHidden } from "@/core/files"
 import { isPage } from "@/core/pages"
@@ -37,12 +37,16 @@ export function besideActive<T>(fallback: T, skip?: (path: string) => boolean): 
   return open && !isHidden(open) && !isPage(open) && !skip?.(open) ? folderOf(unarchived(open)) : fallback
 }
 
+/** The editor's settings the vault sets itself (another app's), under .vaultite/editor.json's. */
+export const vaultEditor = (s: Store | null | undefined) => (s ? ask("editor", s) : undefined) ?? {}
+
 /** Links are written [name](path.md), not [[name]]: only when the vault says so. */
 export const markdownLinks = (s: Store | null | undefined) => (s ? ask("markdownLinks", s) : undefined) === true
 
-/** The folder a file pasted into the note `from` goes in: Attachments, unless the vault says otherwise. */
+/** The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when
+ *  unset: core/filing.ts), else Attachments. */
 export function attachmentFolder(s: Store | null | undefined, from: string): string {
-  return (s ? ask("attachmentFolder", s, unarchived(from)) : undefined) ?? "Attachments"
+  return attachmentDir(s?.filing?.attachments ?? "Attachments", unarchived(from))
 }
 
 /** Save pasted or dropped files as attachments of `from` where the vault says (or in `folder`), answering their paths.

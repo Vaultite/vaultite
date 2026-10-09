@@ -3,7 +3,7 @@
 import { SquareArrowOutUpRight, Waypoints } from "lucide-react"
 import { currentFile, definePlugin, isViewOpen, notify, openView, Panel } from "@vaultite"
 import { FollowingGraph, GraphView, LocalGraph, LocalGraphPanel } from "./GraphView"
-import { nameOf } from "./graph"
+import { MAX_DEPTH, nameOf } from "./graph"
 
 const openLocal = (path?: string | null) => {
   if (!path) return notify("Open a file to see its local graph")
@@ -47,7 +47,7 @@ export default definePlugin({
   fileMenu: (path) => [{ label: "Open local graph", icon: Waypoints, section: "more", run: () => openLocal(path) }],
   blocks: {
     graph: ({ path, options }) => {
-      const depth = Math.max(1, Math.min(3, Number(options.depth) || 1))
+      const depth = Math.max(1, Math.min(MAX_DEPTH, Number(options.depth) || 1))
       const height = Math.max(160, Math.min(800, Number(options.height) || 300))
       return (
         <Panel title={typeof options.title === "string" ? options.title : "Graph"} icon={Waypoints} tint="var(--purple)"

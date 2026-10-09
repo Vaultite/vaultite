@@ -46,6 +46,7 @@ const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 // The server answers while it reads the vault, so the web app's files load meanwhile; what needs the vault waits for
 // `ready`. A vault that can't be opened still ends the server.
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
+await vaultThere(VAULT_AT)
 let app: App, vault: Vault, live: LiveType
 const ready = open(VAULT_AT).then((a) => {
   app = a
@@ -60,6 +61,20 @@ const ready = open(VAULT_AT).then((a) => {
   process.exit(1)
 })
 onServerError((e) => app?.serverError(e)) // (one before the vault is read has nobody to hear it but the log)
+
+/** A vault named that isn't there (a typo, a drive not connected) isn't made unasked: a terminal is asked; without one
+ *  it's made only in a folder that's there. */
+async function vaultThere(p: string) {
+  if (!process.env.VAULTITE_VAULT || fs.existsSync(p)) return
+  if (process.stdin.isTTY) {
+    const rl = (await import("node:readline/promises")).createInterface({ input: process.stdin, output: process.stdout })
+    const yes = /^y(es)?$/i.test((await rl.question(`There's no folder ${p}. Create a new vault there? [y/N] `)).trim())
+    rl.close()
+    if (yes) return
+  } else if (fs.existsSync(path.dirname(p))) return
+  else console.error(`vaultite: there's no folder ${p} or the folder it would go in (a drive that isn't connected?)`)
+  process.exit(1)
+}
 
 /** Plugins that follow changes on disk (plugin.onChange) hear of each, after the vault read them. */
 function watch(l: LiveType) {

@@ -59,7 +59,7 @@ check("Undo: bold gone", !(await text()).includes(`**${W}**`), (await text()).sp
 await tap(key("Redo"))
 check("Redo: bold back", (await text()).includes(`- **${W}**`))
 await tap(key("Indent"))
-check("Indent: the item one level in", (await text()).includes(`\n  - **${W}**`), (await text()).split("\n").filter((l) => l.includes(W)))
+check("Indent: the item one level in (a tab, the editor's default)", (await text()).includes(`\n\t- **${W}**`), (await text()).split("\n").filter((l) => l.includes(W)))
 await tap(key("Unindent"))
 check("Unindent: back out", (await text()).includes(`\n- **${W}**`), (await text()).split("\n").filter((l) => l.includes(W)))
 await tap(key("Task"))

@@ -5,6 +5,14 @@ export type ObsidianSettings = {
   newFileFolderPath?: string
   attachmentFolderPath?: string
   useMarkdownLinks?: boolean
+  /** The editor's (web/src/core/editorPrefs.ts reads them under the app's own editor.json). */
+  spellcheck?: boolean
+  useTab?: boolean
+  tabSize?: number
+  autoPairBrackets?: boolean
+  autoPairMarkdown?: boolean
+  readableLineLength?: boolean
+  propertiesInDocument?: "visible" | "hidden" | "source"
 }
 
 declare module "@vaultite" {

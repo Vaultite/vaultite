@@ -72,6 +72,7 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
       <div className="space-y-5">
         {on && plugin.settingsPanel && <Catch fallback={panelFailed}>{plugin.settingsPanel({ store })}</Catch>}
         {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!plugin.settingsPanel && on} />}
+        <Homes store={store} plugin={plugin.id} />
         {!declared && !(plugin.settingsPanel && on) && (hasFile ? <SettingsJson path={settingsFile(plugin.id)} /> : (
           <p className="text-[15px] text-muted-foreground">Nothing set yet.</p>
         ))}
@@ -102,9 +103,12 @@ export function Where({ path, lead, icon: Icon = FileJson, open }: { path: strin
 
 function SettingsForm({ id, decls, titled }: { id: string; decls: SettingDecls; titled: boolean }) {
   const [data, setData] = useSettingsFile(id)
+  // (another app's settings make some defaults: .obsidian/templates.json's folder)
+  const seeds = useStore().store?.settingDefaults?.[`plugins/${id}/data`]
+  const declOf = (k: string): SettingDecl => (seeds && Object.hasOwn(seeds, k) ? { ...decls[k], default: seeds[k] as SettingDecl["default"] } : decls[k])
   if (!data) return <Group><div className="min-h-12" aria-busy /></Group>
   const set = (k: string, v: unknown) => {
-    const d = decls[k]
+    const d = declOf(k)
     // The default again: the key goes (null), so the vault keeps only what was chosen.
     const next = v === undefined || v === null || v === "" || JSON.stringify(v) === JSON.stringify(d.default) ? null : v
     const was = data
@@ -115,10 +119,30 @@ function SettingsForm({ id, decls, titled }: { id: string; decls: SettingDecls; 
   }
   const form = (
     <Group>
-      {Object.entries(decls).map(([k, d]) => <Field key={k} k={k} d={d} value={data[k]} set={(v) => set(k, v)} />)}
+      {Object.keys(decls).map((k) => <Field key={k} k={k} d={declOf(k)} value={data[k]} set={(v) => set(k, v)} />)}
     </Group>
   )
   return titled ? <Section title="Options">{form}</Section> : form
+}
+
+/** The folders new files of the plugin's kinds go in (and its pages, for Dashboards): each shows the one that applies
+ *  (set in .vaultite/folders.json, else another app's or where most of them are); clearing it goes back to that. */
+function Homes({ store, plugin }: { store: Store; plugin: string }) {
+  const homes = (store.filing?.homes ?? []).filter((h) => h.plugin === plugin)
+  if (!homes.length) return null
+  const save = (key: string, v: unknown) =>
+    patch("config/folders", { [key]: typeof v === "string" ? v : null }).catch((e) => notifyError(e, "Couldn't save it"))
+  return (
+    <Section title="Folders">
+      <Group>
+        {homes.map((h) => (
+          <Field key={h.key} k={`folder-${h.key}`} value={h.set ? h.folder : undefined} set={(v) => void save(h.key, v)}
+            d={{ type: "string", folder: true, default: h.folder, label: homes.length > 1 ? `${h.label} folder` : "Folder",
+              description: `where new ${h.label.toLowerCase()} go` }} />
+        ))}
+      </Group>
+    </Section>
+  )
 }
 
 const field = "h-8 min-w-0 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[16px] outline-none focus:border-primary md:h-7 md:text-[14px]"

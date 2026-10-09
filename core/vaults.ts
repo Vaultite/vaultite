@@ -1,5 +1,5 @@
-// Manage vaults on the web (the desktop app has a server per vault, so 404 there). The list is this machine's; only
-// folders under home and outside hidden ones can be vaults, so a page on the tailnet can't serve ~/.ssh.
+// Manage vaults on the web (the desktop app has a server per vault, so 404 there). The list is this machine's; any
+// folder can be one (external drives too) but hidden and system ones, so a page on the tailnet can't serve ~/.ssh or /etc.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -41,7 +41,25 @@ function isDir(p: string) {
   }
 }
 
-/** A folder that may be browsed or served: absolute, in the home folder, no hidden folder on the way. */
+/** Folders of the system and of apps' own data: never browsed or served. Cloud drives live in ~/Library, and Linux
+ *  mounts drives under /run/media. */
+const SYSTEM = ["/System", "/Library", "/Applications", "/usr", "/bin", "/sbin", "/lib", "/lib32", "/lib64", "/libx32", "/etc",
+  "/dev", "/proc", "/sys", "/boot", "/root", "/run", "/srv", "/snap", "/opt", "/cores", "/private/etc", "/private/var", "/var",
+  path.join(HOME, "Library"), path.join(HOME, "snap")]
+const OPEN_IN_SYSTEM = ["/run/media", path.join(HOME, "Library", "Mobile Documents"), path.join(HOME, "Library", "CloudStorage")]
+
+const inside = (p: string, dir: string) => { const rel = path.relative(dir, p); return rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel)) }
+
+/** Why a folder can't be browsed (or, with `vault`, served), or null. */
+export function refused(p: string, { vault = false } = {}): string | null {
+  if (p.split(path.sep).some((x) => x.startsWith("."))) return "not inside a hidden folder"
+  if (SYSTEM.some((d) => inside(p, d)) && !OPEN_IN_SYSTEM.some((d) => inside(p, d))) return "not a system folder"
+  if (vault && path.dirname(p) === p) return "the root folder can't be a vault"
+  if (vault && (p === HOME || p === fs.realpathSync(HOME))) return "the home folder itself can't be a vault"
+  return null
+}
+
+/** A folder that may be browsed or served: absolute, not hidden or the system's, there. */
 function safe(p: unknown, { vault = false } = {}) {
   if (typeof p !== "string" || !path.isAbsolute(p)) throw new HTTPError(400, "a full path, please")
   const abs = path.resolve(p)
@@ -51,12 +69,10 @@ function safe(p: unknown, { vault = false } = {}) {
   } catch {
     throw new HTTPError(404, `no folder '${abs}'`)
   }
-  // Both the path and where it points (a symlink to iCloud Drive) must be in the home folder.
-  for (const [where, home] of [[abs, HOME], [real, fs.realpathSync(HOME)]]) {
-    const rel = path.relative(home, where)
-    if (rel.startsWith("..") || path.isAbsolute(rel)) throw new HTTPError(403, "only folders in the home folder")
-    if (rel.split(path.sep).some((x) => x.startsWith("."))) throw new HTTPError(403, "not inside a hidden folder")
-    if (vault && rel === "") throw new HTTPError(403, "the home folder itself can't be a vault")
+  // Both the path and where it points (a symlink to iCloud Drive) are checked.
+  for (const where of [abs, real]) {
+    const why = refused(where, { vault })
+    if (why) throw new HTTPError(403, why)
   }
   if (!isDir(real)) throw new HTTPError(404, `no folder '${abs}'`)
   return abs
@@ -105,10 +121,10 @@ export async function handle(method: string, parts: string[], query: Record<stri
   if (route === "folders" && method === "GET") {
     const p = safe(query.path || HOME)
     const folders = fs.readdirSync(p, { withFileTypes: true })
-      .filter((e) => !e.name.startsWith(".") && (e.isDirectory() || (e.isSymbolicLink() && isDir(path.join(p, e.name)))))
+      .filter((e) => (e.isDirectory() || (e.isSymbolicLink() && isDir(path.join(p, e.name)))) && !refused(path.join(p, e.name)))
       .map((e) => ({ name: e.name, vault: fs.existsSync(path.join(p, e.name, ".vaultite")) }))
       .sort((a, b) => a.name.localeCompare(b.name))
-    return { path: p, home: HOME, parent: path.resolve(p) === HOME ? null : path.dirname(p), folders }
+    return { path: p, home: HOME, parent: path.dirname(p) === p ? null : path.dirname(p), folders }
   }
   throw new HTTPError(404, "not found")
 }

@@ -1,7 +1,7 @@
 // The Markdown editor (CodeMirror 6): live preview, [[link]] and block-option suggestions, a file's whole text with its
 // frontmatter hidden (drawn as Properties) or shown (source mode; YAML, JSON, code). Plugins' extensions first. Lazy chunk.
 import { useEffect, useRef } from "react"
-import { autocompletion, closeCompletion, completionStatus, type CompletionContext } from "@codemirror/autocomplete"
+import { autocompletion, closeBrackets, closeBracketsKeymap, closeCompletion, completionStatus, type CompletionContext } from "@codemirror/autocomplete"
 import { defaultKeymap, history, historyKeymap, indentLess, indentMore, isolateHistory, redo, undo } from "@codemirror/commands"
 import { html as htmlLang } from "@codemirror/lang-html"
 import { json as jsonLang } from "@codemirror/lang-json"
@@ -30,6 +30,7 @@ import { pastedFiles } from "@/core/files"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { usePane } from "@/core/pane"
+import { useEditorSettings, type EditorSettings } from "@/core/editorPrefs"
 import { cn, scrollingBox } from "@/lib/utils"
 import { trace } from "@/core/trace"
 
@@ -59,8 +60,9 @@ type Props = {
   /** An undo or redo changed the hidden frontmatter (Properties show it). */
   onUndoFrontmatter?: () => void
   onOpen: (link: { wiki?: string; url?: string }, newTab: boolean) => void
-  /** Names to suggest after [[ (file names, people), with the file's path when it's one and what picking it writes. */
-  names: () => { label: string; detail?: string; path?: string; insert?: string }[]
+  /** Names to suggest after [[ (file names, people), with the file's path when it's one and what picking it writes; an
+   *  alias with the link to what it stands for (`link`), put in as [[link|alias]]. */
+  names: () => { label: string; detail?: string; path?: string; insert?: string; link?: string }[]
   /** Headings to suggest after [[Name# (a note's; "" is this file's). */
   headings?: (name: string) => Promise<string[]>
   /** Write links as Markdown, [name](Folder/Name.md), instead of [[name]] (.obsidian/app.json's useMarkdownLinks). */
@@ -159,6 +161,28 @@ const wrap = (m: string) => (view: EditorView) => {
   return true
 }
 
+/** Markdown's marks a selection is wrapped in when one is typed over it (autoPairMarkdown). */
+const MD_PAIRS = new Set(["*", "_", "~", "=", "`"])
+const wrapTyped = EditorView.inputHandler.of((view, _from, _to, text) => {
+  if (!MD_PAIRS.has(text) || view.state.selection.ranges.every((r) => r.empty) || view.state.readOnly) return false
+  view.dispatch(view.state.changeByRange((r) => (r.empty
+    ? { changes: { from: r.from, insert: text }, range: EditorSelection.cursor(r.from + 1) }
+    : { changes: [{ from: r.from, insert: text }, { from: r.to, insert: text }], range: EditorSelection.range(r.anchor + 1, r.head + 1) })),
+  { userEvent: "input.type", scrollIntoView: true })
+  return true
+})
+
+/** A note's editor as its settings say (editorPrefs.ts): spelling, indent, what typed characters close or wrap. */
+function writing(e: EditorSettings) {
+  const brackets = [...(e.autoPairBrackets ? ["(", "[", "{", "'", '"'] : []), ...(e.autoPairMarkdown ? ["`"] : [])]
+  return [
+    indentUnit.of(e.useTab ? "\t" : " ".repeat(e.tabSize)), EditorState.tabSize.of(e.tabSize),
+    EditorView.contentAttributes.of({ spellcheck: e.spellcheck ? "true" : "false" }),
+    brackets.length ? [Prec.highest(EditorState.languageData.of(() => [{ closeBrackets: { brackets } }])), closeBrackets(), keymap.of(closeBracketsKeymap)] : [],
+    e.autoPairMarkdown ? wrapTyped : [],
+  ]
+}
+
 /** A path in a Markdown link: spaces and parentheses escaped. */
 const linkPath = (p: string) => p.replace(/%/g, "%25").replace(/ /g, "%20").replace(/\(/g, "%28").replace(/\)/g, "%29")
 
@@ -216,7 +240,9 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   const lang = useRef(new Compartment())
   const plugged = useRef(new Compartment())
   const nums = useRef(new Compartment())
+  const prose = useRef(new Compartment())
   const { disabled, enabled, order, lineNumbers: numbersOn } = usePrefs()
+  const settings = useEditorSettings()
   const plugins = usePluginsVersion()
   const { tab } = usePane()
   const showNumbers = !!numbered && numbersOn && language === undefined
@@ -255,7 +281,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
               const insert = `[${n.label}](${linkPath(n.path!)})`
               view.dispatch({ changes: { from: m.from, to: closed ? to + 2 : to, insert }, selection: { anchor: m.from + insert.length } })
             }
-            : closed ? n.insert ?? n.label : `${n.insert ?? n.label}]]`,
+            : `${n.link ? `${n.link}|${n.label}` : n.insert ?? n.label}${closed ? "" : "]]"}`,
         })),
         validFor: /^[^[\]\n|]*$/,
       }
@@ -325,7 +351,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           leaving, history(),
           EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged() }),
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
-          indentUnit.of("  "),
+          prose.current.of(writing(settings)),
           EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
           cfg.current.of(previewConfig.of(config)),
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
@@ -347,7 +373,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
             ...markdownKeymap, ...defaultKeymap, ...historyKeymap,
           ]),
           hides ? hiddenFrontmatter(placeholderText ?? "Start writing") : placeholder(placeholderText ?? "Start writing"),
-          EditorView.contentAttributes.of({ spellcheck: "true", autocorrect: "on", autocapitalize: "sentences", "aria-label": label ?? "Note" }),
+          EditorView.contentAttributes.of({ autocorrect: "on", autocapitalize: "sentences", "aria-label": label ?? "Note" }),
           EditorView.updateListener.of((u) => {
             const start = u.state.field(frontmatter, false) ?? 0
             if (u.docChanged && !u.transactions.every((t) => t.annotation(Transaction.remote))) cb.current.onChange(u.state.doc.toString(), start)
@@ -433,6 +459,10 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
   useEffect(() => {
     view.current?.dispatch({ effects: cfg.current.reconfigure(previewConfig.of(config)) })
   }, [config])
+  useEffect(() => {
+    if (language === undefined && !code) view.current?.dispatch({ effects: prose.current.reconfigure(writing(settings)) })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings])
   useEffect(() => {
     if (language === undefined) view.current?.dispatch({ effects: nums.current.reconfigure(showNumbers ? numberGutter() : []) })
     // eslint-disable-next-line react-hooks/exhaustive-deps

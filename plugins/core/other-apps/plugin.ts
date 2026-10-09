@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { OpError, Plugin, type OpCtx } from "../../../core/plugins.ts"
-import { obsidianSettings, obsidianTypes } from "./settings.ts"
+import { obsidianDefaults, obsidianSettings, obsidianTypes } from "./settings.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -12,16 +12,8 @@ plugin.state(() => ({ obsidian: obsidianSettings(plugin.vault), obsidianOffer: p
   obsidianRunning: typeof plugin.service("obsidian:run") === "function" }))
 plugin.provide("property-types", () => obsidianTypes(plugin.vault))
 
-/** Where a file attached to `from` goes, as the app's attachmentFolder convention says (index.tsx); undefined: unset. */
-plugin.provide("attachments:folder", (from: string) => {
-  const p = obsidianSettings(plugin.vault)?.attachmentFolderPath
-  if (p === undefined) return undefined
-  const here = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : ""
-  if (p === "/" || p === "") return ""
-  if (p === "./" || p === ".") return here
-  if (p.startsWith("./")) return [here, p.slice(2).replace(/^\/+|\/+$/g, "")].filter(Boolean).join("/")
-  return p.replace(/^\/+|\/+$/g, "")
-})
+// Its settings as the defaults of the app's own (excluded files, attachments, templates, daily notes): never written.
+plugin.provide("setting-defaults", () => obsidianDefaults(plugin.vault))
 
 // A plugin that runs Obsidian's plugins themselves says so (`replaces: {"obsidian": ["*"]}`, the "runner") and offers the
 // services `obsidian:originals` (those it has: id, enabled, allowed) and `obsidian:run` ({ids, on, owner}).

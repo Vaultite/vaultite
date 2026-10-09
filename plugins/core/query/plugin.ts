@@ -12,7 +12,7 @@ type Stat = Vault["others"] extends Map<string, infer S> ? S : never
 /** The Templates plugin's folder (its settings), whose notes are patterns, not things: a query leaves them out unless
  *  its `from` (or a base's filters) names that folder. */
 function templatesFolder() {
-  const f = plugin.peer("templates")?.settings().folder
+  const f = plugin.peer("templates")?.seeded().folder
   if (typeof f === "string" && f.trim()) return f.trim().replace(/^\/+|\/+$/g, "")
   return "Templates"
 }
@@ -42,12 +42,12 @@ const otherRec = (rel: string, st: Stat, props?: FileProps | null): Rec => ({
 type FileProps = { version: string | number; of: (rel: string) => Item }
 const fileProps = () => (plugin.service("file-props")?.() ?? null) as FileProps | null
 
-/** Every Markdown file as something to query (a base: every file), but `self`: the file the view is in (a database in
- *  Projects/ listing Projects/ doesn't list itself). */
+/** Every Markdown file as something to query (a base: every file, templates too, as in Obsidian), but `self`: the file
+ *  the view is in (a database in Projects/ listing Projects/ doesn't list itself). */
 function* records(vault: Vault, o: Opts, self?: string, base = false): Generator<Rec> {
   const skip = `${templatesFolder()}/`.toLowerCase()
   const from = (Array.isArray(o?.from) ? o.from : [o?.from]).map((f) => String(f ?? "").replace(/^\/+/, "").toLowerCase())
-  const keep = from.some((f) => f && (f.startsWith(skip) || `${f}/` === skip)) || (base && JSON.stringify(o?.filters ?? "").toLowerCase().includes(skip.slice(0, -1)))
+  const keep = base || from.some((f) => f && (f.startsWith(skip) || `${f}/` === skip))
   for (const [rel, e] of vault.entries) {
     if (rel === self || (!keep && rel.toLowerCase().startsWith(skip))) continue
     yield recOf(rel, e)

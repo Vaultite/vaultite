@@ -97,8 +97,9 @@ function filename(log: Item, at: { folder: string; old: Item | null }) {
   if (at.old && at.old.area === log.area) return joinPath(at.folder, name)
   const own = plugin.vault.home("logs", (l) => l.area === log.area)
   if (own !== null) return joinPath(own, name)
-  const most = plugin.vault.home("logs") // (an area's folder, or the Logs folder itself when logs sit right in it)
-  const base = most === null ? "Logs" : most.split("/").pop() === "Logs" ? most : dirOf(most)
+  // (the folder set for logs holds the areas' folders; else where most are: an area's folder, or the Logs folder itself)
+  const set = plugin.vault.folderSet("logs"), most = set ?? plugin.vault.home("logs")
+  const base = set ?? (most === null ? "Logs" : most.split("/").pop() === "Logs" ? most : dirOf(most))
   return joinPath(joinPath(base, safeName(areaName(log.area))), name)
 }
 

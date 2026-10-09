@@ -37,6 +37,8 @@ export type Result = {
   summaries?: Summary[]
   /** What was left out or couldn't be worked out (a filter that doesn't parse, a formula that fails), in words. */
   notes?: string[]
+  /** How many archived files match but are hidden (the options don't ask for archived ones). */
+  archivedHidden?: number
   /** A map: the key the pins come from, and how many matches have no place on it. */
   coordinates?: string; unplaced?: number
   /** A Bases file's views (bases.ts), and which one this is. */
@@ -339,8 +341,10 @@ export function compile(o: Opts, env: WhereEnv = {}) {
   const arch = o.archived === undefined || o.archived === null ? false : o.archived === "only" ? "only" : o.archived === true || o.archived === "true" ? true
     : o.archived === false || o.archived === "false" ? false : null
   if (arch === null) throw new QueryError(`archived is true, false or only, not '${String(o.archived)}'`)
+  /** Left out for being archived (or, with `only`, for not being). */
+  const outByArchive = (r: Rec) => (arch === "only" ? !r.archived : !arch && !!r.archived)
+  /** Everything but the archive test. */
   const match = (r: Rec, get: Get) => {
-    if (arch === "only" ? !r.archived : !arch && r.archived) return false
     const low = r.path.toLowerCase()
     if (from.length && !from.some((f) => low.startsWith(f.endsWith("/") ? f : `${f}/`) || low === f)) return false
     if (types.length && !types.includes(String(valueOf(r, "type") ?? "").toLowerCase())) return false
@@ -353,7 +357,7 @@ export function compile(o: Opts, env: WhereEnv = {}) {
   }
   const keyName = (k: unknown) => (typeof k === "string" ? keyOf(k) : "")
   return {
-    match, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
+    match, outByArchive, hidesArchived: arch === false, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
     title: typeof o.title === "string" ? o.title : "",
     coordinates: keyName(o.coordinates) || "coordinates", markerColor: keyName(o.markerColor), markerIcon: keyName(o.markerIcon),
   }
@@ -512,12 +516,16 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     filter = filterOf(o.filters, env, note) ?? null
   }
   let hits = all.filter((r) => q.match(r, get) && (!filter || filter(r)))
+  // Archived files matching are hidden (archived: true shows them); how many is said, so nothing goes missing unseen.
+  let archived = q.hidesArchived ? hits.filter((r) => r.archived) : []
+  hits = hits.filter((r) => !q.outByArchive(r))
   // A calendar: the files whose date falls in its month.
   let date: string | undefined, month: string | undefined
   if (q.view === "calendar") {
     date = q.date ?? (hits.some((r) => dayOf(get(r, "date"))) ? "date" : "created")
     month = q.month ?? `${now.getFullYear()}-${pad(now.getMonth() + 1)}`
     hits = hits.filter((r) => dayOf(get(r, date!))?.startsWith(`${month}-`))
+    archived = archived.filter((r) => dayOf(get(r, date!))?.startsWith(`${month}-`))
   }
   // No columns asked: the name and the keys most of the matches have (up to 4).
   let cols = q.columns
@@ -625,7 +633,7 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   return {
     title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: rows.length, ...(q.offset ? { offset: q.offset } : {}), sort,
     ...(q.group ? { group: q.group } : {}), ...(date ? { date, month } : {}), ...(summaries ? { summaries } : {}),
-    ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(notes.length ? { notes } : {}), ...(Object.keys(types).length ? { types } : {}),
+    ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(notes.length ? { notes } : {}), ...(archived.length ? { archivedHidden: archived.length } : {}), ...(Object.keys(types).length ? { types } : {}),
   }
 }
 
@@ -706,6 +714,7 @@ export function markdown(res: Result, level = 2): string {
     [`[[${r.title}]]`, ...res.columns.filter((c) => c.key !== "file" && c.key !== skip).map((c) => cell(text(r.values[c.key]))).filter(Boolean)].join(" · ")
   const parts = [`${h(0)} ${res.title || "Query"}`]
   for (const n of res.notes ?? []) parts.push(`_(${n})_`)
+  if (res.archivedHidden) parts.push(`_(${res.archivedHidden} archived ${res.archivedHidden === 1 ? "file" : "files"} hidden: \`archived: true\` shows them)_`)
   if (res.view === "calendar") {
     parts.push(`${h(1)} ${monthName(res.month!)}`)
     if (!res.total) parts.push("_Nothing this month._")

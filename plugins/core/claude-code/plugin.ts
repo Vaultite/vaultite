@@ -583,7 +583,7 @@ plugin.block("claude-limits", async (ctx) => {
 })
 
 codingAgent(plugin, {
-  id: "claude-code", name: "Claude Code", prefix: "claude", value: "at API prices", sessionId: SESSION_ID, usage, session,
+  id: "claude-code", name: "Claude Code", prefix: "claude", value: "estimated at list prices", sessionId: SESSION_ID, usage, session,
   // (for "New Claude Code" in one)
   accounts: () => accounts().map(({ id, label, private: p }) => ({ id, label, private: p })),
   state: (s) => (s.status === "busy" ? "Working" : cap(String(s.status).toLowerCase()) || "Open"),

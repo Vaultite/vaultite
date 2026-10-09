@@ -527,6 +527,12 @@ export class Plugin {
     return this.vault.config(this.settingsName(file), fallback)
   }
 
+  /** This plugin's settings with the defaults another app's settings give them under its own (Vault.configWithDefaults):
+   *  what applies; never saved back (settings() is what's written). */
+  seeded(file = "data"): Item {
+    return this.vault.configWithDefaults(this.settingsName(file))
+  }
+
   /** The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from
    *  core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty. */
   readSettings(file = "data"): Item | null {
@@ -793,6 +799,19 @@ export function propertyTypes(vault: Vault, plugins: Plugin[] = LOADED, own = tr
   const on = enabled(vault, plugins)
   const other = service(plugins.filter((p) => on.has(p.id)), "property-types")
   return { ...readTypes(typeof other === "function" ? { types: other() } : null), ...(own ? readTypes(vault.config("types")) : {}) }
+}
+
+/** The defaults other apps' settings give the vault's settings files, by file ("files", "plugins/<id>/data"): each plugin
+ *  that's on answers `setting-defaults` (Vaults from other apps: .obsidian/); the first to set a key wins. */
+export function settingDefaults(vault: Vault, plugins: Plugin[] = LOADED): Record<string, Item> {
+  const on = enabled(vault, plugins), out: Record<string, Item> = {}
+  for (const p of plugins) {
+    const fn = on.has(p.id) && Object.hasOwn(p.services, "setting-defaults") ? p.services["setting-defaults"] : null
+    if (typeof fn !== "function") continue
+    const got = fn()
+    if (got && typeof got === "object") for (const [name, keys] of Object.entries(got as Record<string, Item>)) out[name] = { ...keys, ...out[name] }
+  }
+  return out
 }
 
 /** The first plugin's service called `name` (plugin.provide), or null when no plugin offers it. */

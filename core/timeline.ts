@@ -2,6 +2,7 @@
 // One parser for the server and the editor, so they agree; no Node here.
 export type Entry = { date: string; kind: string; duration_min: number | null; subject: string; notes: string; url: string }
 
+/** The kinds the app knows (an icon each, aliases below); any other word or two is a kind too ("coffee", "game night"). */
 export const CONTACT_KINDS = ["call", "hang out", "meet", "study", "text", "message", "email"]
 export const KINDS = new Set([...CONTACT_KINDS, "note"])
 const ALIASES: Record<string, string> = {
@@ -22,6 +23,16 @@ export function minutes(part: string): number | null {
   return Math.round(Number(m[1] ?? 0) * 60 + Number(m[3] ?? 0))
 }
 export const kindOf = (part: string) => { const k = part.toLowerCase().split(/\s+/).join(" "); return KINDS.has(k) ? k : ALIASES[k] ?? null }
+/** What reads as a kind of its own at an entry's start: a word or two of letters. */
+const OWN_KIND = /^\p{L}[\p{L} ]{0,15}$/u
+const ownKind = (part: string) => OWN_KIND.test(part) && part.split(/\s+/).length <= 2
+
+/** A kind to write (a known one by any alias, else any word or two, lower case), or null when it wouldn't read back
+ *  as one. */
+export function timelineKind(v: unknown): string | null {
+  const s = typeof v === "string" ? v.trim().split(/\s+/).join(" ") : ""
+  return kindOf(s) ?? (ownKind(s) ? s.toLowerCase() : null)
+}
 
 export function parseEntry(line: string): Entry | null {
   const m = ENTRY.exec(line)
@@ -34,7 +45,7 @@ export function parseEntry(line: string): Entry | null {
   if (!parts.length) parts = [""]
   const i: Entry = { date: `${y}-${mo.padStart(2, "0")}-${d.padStart(2, "0")}`, kind: "", duration_min: null, subject: "", notes: "", url: "" }
   let k = kindOf(parts[0])
-  if (k === null && parts.length > 1 && /^[A-Za-z][A-Za-z ]{0,15}$/.test(parts[0]) && parts[0].split(/\s+/).length <= 2) k = parts[0].toLowerCase()
+  if (k === null && parts.length > 1 && ownKind(parts[0])) k = parts[0].toLowerCase()
   if (k !== null) parts = parts.slice(1)
   i.kind = k ?? "note"
   const stuck = k === null && parts.length ? /^(.+?)\s+(\d+\s*(?:m|min|mins|minutes?|h|hr|hrs|hours?))$/i.exec(parts[0]) : null
@@ -90,6 +101,12 @@ export function timelineOf(body: string): Entry[] {
 
 /** An entry to write: what's left out isn't written. */
 export type NewEntry = { date: string; kind: string; duration_min?: number | null; subject?: string; notes?: string; url?: string }
+
+/** Why an entry can't be written as it is, or null: a kind of the user's own alone would read back as a note. */
+export function entryProblem(e: NewEntry): string | null {
+  if (KINDS.has(e.kind) || e.duration_min || e.subject || e.notes?.trim() || e.url) return null
+  return `'${e.kind}' alone would read as a note: add what it was about or how long`
+}
 
 /** The canonical line for an entry, `- 2026-09-26 · call · 20 min · **Subject** · notes · <https://url>` (notes on
  *  several lines continue indented). */

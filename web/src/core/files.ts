@@ -39,8 +39,10 @@ export type VaultFile = {
   tab?: string; tabs?: string[]
   /** `archived: true` in its frontmatter (core/fileprops.ts): dimmed in the tree, left out of lists. */
   archived?: boolean
+  /** Excluded files (the File explorer's setting): out of search and the graph, last in the quick switcher. */
+  excluded?: boolean
 }
-export type FileTree = { files: VaultFile[]; others: { path: string; mtime: number; ctime: number; size: number }[]; folders: string[] }
+export type FileTree = { files: VaultFile[]; others: { path: string; mtime: number; ctime: number; size: number; excluded?: boolean }[]; folders: string[] }
 export type FileText = { path: string; text: string; mtime: number; size?: number; kind: string | null; problems: string[] }
 
 /** A file's name as the app shows it: without .md, or the extension of a page a plugin draws (an artifact's .html, a
@@ -76,9 +78,10 @@ export function nameable(typed: string) {
   if (bad.length) notice(`A file name can't have ${bad.join(" ")}`, { kind: "error", id: "bad-name" })
   return !bad.length
 }
-/** Where new files of a kind (its collection: "notes", "days") go: where most of its files are, folders named like
- *  `fallback` first (Personal/Notes/, not Clippings/), else `fallback`. Folders are the user's (core/fileprops.ts). */
+/** Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set,
+ *  else where most of its files are), else `fallback`. Folders are the user's (core/fileprops.ts). */
 export const homeOf = (s: Store | null | undefined, kind: string, fallback: string) =>
+  s?.filing?.homes.find((h) => h.key === kind)?.folder ??
   homeFolder((s?.files.files ?? []).filter((f) => f.kind === kind).map((f) => f.path), fallback.split("/").pop(), kind === "logs") ?? fallback
 export const fileOf = (s: Store, path: string) => fileAt(s.files.files, path)
 /** Is there a file at `path` in the vault, Markdown or not. */

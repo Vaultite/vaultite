@@ -33,6 +33,7 @@ import { Catch, Drawn, Guard } from "@/components/Guard"
 import { TimelineSection } from "@/components/Timeline"
 import { usePane } from "@/core/pane"
 import { usePrefs } from "@/core/prefs"
+import { useEditorSettings } from "@/core/editorPrefs"
 import { useTextSize, useTextSizeWheel } from "@/core/textsize"
 import { BlockView, kindStamps, useKindBlocks, useKindSections } from "@/components/Blocks"
 import { openBlockMenu } from "@/components/BlockSource"
@@ -368,7 +369,7 @@ function Missing({ path, pane }: { path: string; pane: boolean }) {
 
 function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileText; pane: boolean; onGone: () => void }) {
   const path = initial.path
-  const [saved, setSaved] = useMode()
+  const [saved, setSaved, tabId] = useMode()
   // A note just made with New note opens in editing, with its name selected.
   const [fresh] = useState(() => takeNew(path))
   // Just renamed from its title: still editing (and on to the text if Enter did it).
@@ -469,16 +470,16 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     const late = setTimeout(show, 400)
     return keepPlace(s, ed?.api ?? null, fmLines(cur.current), art, show, show)
   }
-  // Switched from another pane (one mode for every file): this one keeps its place too.
+  // Switched from elsewhere (another window showing this tab): it keeps its place too.
   const follows = override === null && !drawn && !code && !format
   const followsNow = useRef(follows)
   followsNow.current = follows
   useEffect(() => {
-    const before = (m: Mode) => { if (followsNow.current && m !== shownNow.current && !spot.current) noteSpot() }
+    const before = (m: Mode, tab: string) => { if (tab === tabId && followsNow.current && m !== shownNow.current && !spot.current) noteSpot() }
     beforeMode.add(before)
     return () => { beforeMode.delete(before) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [tabId])
   const canFocus = !ro && !hidden && isDesktop() && !(format && shown !== "source")
   const focusText = useTextFocus(editor, article, shownNow, cur)
   // A block's "Edit source" (editAt in core/anchors.ts): into editing, the cursor on that line of the file, scrolled to.
@@ -496,12 +497,18 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [ro, hidden, pick, edit, focusText])
   const articleEl = useCallback(() => article.current, [])
   useEditAt(path, articleEl, toLine)
-  // A block's "This file's properties" while reading: into editing, where they are.
+  // A block's "This file's properties": where they're edited (into editing from reading; source mode while the setting
+  // hides them).
+  const { propertiesInDocument: propsIn, readableLineLength: readable } = useEditorSettings(store)
   useEffect(() => {
-    const on = (e: Event) => { if ((e as CustomEvent).detail === path && !ro && !hidden && shownNow.current === "read") pick(edit) }
+    const on = (e: Event) => {
+      if ((e as CustomEvent).detail !== path || ro || hidden) return
+      const to = propsIn === "hidden" ? "source" : edit
+      if (shownNow.current !== to && (shownNow.current === "read" || propsIn === "hidden")) pick(to)
+    }
     addEventListener("vau:properties", on)
     return () => removeEventListener("vau:properties", on)
-  }, [path, ro, hidden, pick, edit])
+  }, [path, ro, hidden, pick, edit, propsIn])
   useLayoutEffect(() => {
     // (going to a line: the place being read isn't kept)
     if (revealing.current) { revealing.current = false; spot.current = null }
@@ -787,9 +794,10 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const source = shown === "source"
   const kicker = source ? null : view?.kicker?.(ctx)
   const aside = kicker == null ? null : view?.aside?.(ctx)
-  // Properties are for editing: reading shows the file as it reads (a person's or a project's block already shows its
-  // fields), editing has them folded at the top. The same for every kind of file, in a tab, a sheet or on a phone.
-  const showProps = shown !== "read" && !source && !json && !notebook && !format
+  // Properties above the text, as the editor's setting says (Obsidian's "Properties in document"): visible (read-only
+  // while reading), hidden, or the frontmatter as text while editing (`fmText`). The same in a tab, a sheet or a phone.
+  const fmText = propsIn === "source" && shown === "live"
+  const showProps = !source && !json && !notebook && !format && (shown === "read" ? propsIn !== "hidden" : propsIn === "visible")
   // Drawn JSON isn't an editor: merges from disk only update the text it's drawn from.
   useEffect(() => { if ((json || notebook || format) && !source) editor.current = null }, [json, notebook, format, source])
 
@@ -882,9 +890,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }
 
   const fileArticle = (
-    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && (board || code || notebook || format ? "max-w-[1040px]" : "max-w-(--line-width)"))} data-path={path} data-kind={kind}
+    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && (board || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       onContextMenu={outsideMenu} data-file-drop={droppable ? "" : undefined} onDragOver={droppable ? (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault() } : undefined} onDrop={droppable ? onDrop : undefined}
-      style={zoom ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
+      style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
       {pathBar()}
       {phoneToggle}
       <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
@@ -908,7 +916,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         {!source && <PageTabs store={store} path={path} pane={pane} className={page ? "-mt-1 mb-5" : "mt-3"} />}
         {notices}
         <div className={cn(!page && "mt-4")}>
-          {showProps && <Properties path={path} block={fm} readOnly={ro} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
+          {showProps && <Properties path={path} block={fm} readOnly={ro || shown === "read"} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
           {isMd(path) && !source && !board && !drawing && <NoteTop head={fileHead} />}
           {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<div className="min-h-40" />}>
             {drawing ? (
@@ -925,11 +933,11 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                 onReady={(api) => { editor.current = { api, source: true }; ready(api, true); if (kept?.write) toText() }}
                 onChange={(text) => typed(text, null)} />
             ) : (
-              <Editor key={`${path}:text`} doc={full()} keep={path} frontmatter editable={shown === "live" && !ro} config={config} {...wiring} label={stem(path)}
+              <Editor key={`${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} frontmatter={!fmText} editable={shown === "live" && !ro} config={config} {...wiring} label={stem(path)}
                 docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}
                 placeholderText={shown === "read" ? "" : "Start writing"} numbered={shown !== "read"}
                 onReady={(api) => { editor.current = { api, source: false }; ready(api, false); if (kept?.write) toText() }}
-                onChange={typed} onUndoFrontmatter={() => revealProps(article.current)} />
+                onChange={(text, start) => typed(text, fmText ? null : start)} onUndoFrontmatter={() => revealProps(article.current)} />
             )}
           </Suspense>}
         </div>

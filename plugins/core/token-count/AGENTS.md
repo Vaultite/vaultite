@@ -1,5 +1,5 @@
 ## Token count (`max_tokens`)
-Every Markdown file has a token limit; agent files a stricter one. Over it, the app marks the file (red in the status
+Agent files have a token limit (other files only when the user sets one). Over it, the app marks the file (red in the status
 bar and the file tree, listed in the Agent context panel): it only warns, nothing stops a save. Keep the files agents
 load at startup (CLAUDE.md, AGENTS.md, ME.md, skills) short: move detail into files read when needed.
 - `max_tokens: 4000` in a file's frontmatter is its own limit (`0`: none). Set it only when the user asks.
@@ -7,7 +7,7 @@ load at startup (CLAUDE.md, AGENTS.md, ME.md, skills) short: move detail into fi
   its limit too.
 - `vau size` lists what's over or near its limit and what each loads; `vau size <file>` one file.
 
-Defaults (tokens, estimated like the status bar): any file 10k (Claude Code's large-file warning was 40k characters);
+Defaults (tokens, estimated like the status bar): any other file none (a long note is fine);
 CLAUDE.md, AGENTS.md, ME.md, SOUL.md 3k (Claude Code: under 200 lines, imports included); SKILL.md 5k (skills: body
 under 500 lines); MEMORY.md 6k (Claude Code loads its first 200 lines or 25KB); `.vaultite/AGENTS.md` 1k. Sources:
 code.claude.com/docs/en/memory, Agent Skills best practices, Codex (32 KiB of AGENTS.md in all), OpenClaw (20,000

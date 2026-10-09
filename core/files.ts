@@ -14,7 +14,7 @@ import { merge3 } from "./textedit.ts"
 import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { tabNames } from "./tabs.ts"
-import { addEntry, entryLine, KINDS, type NewEntry } from "./timeline.ts"
+import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
@@ -164,13 +164,13 @@ export function tree(vault: Vault): Tree {
         if (!e.body.includes("](")) rows.set(e, r)
       }
       // Its kind's blocks, drawn on top where it doesn't place them (a log's can follow its area's settings).
-      const view = e.kind?.blocksFor(e.fm) ?? []
-      files.push(view.length ? { ...r, kindBlocks: view } : r)
+      const view = e.kind?.blocksFor(e.fm) ?? [], out = vault.excluded(rel)
+      files.push(view.length || out ? { ...r, ...(view.length ? { kindBlocks: view } : {}), ...(out ? { excluded: true } : {}) } : r)
     }
     // Files a plugin makes pages (its `looks:<ext>`: an artifact, a table) are files you open, like notes, named by their
     // title (else their name without the extension); the rest (images, PDFs, canvases) are only served.
     for (const [r, st] of [...vault.others].sort(([a], [b]) => cmp(a, b))) {
-      const base = { path: r, mtime: ms(st.ns), ctime: st.born, size: st.size, ...(inArchive(r) ? { archived: true } : {}) }
+      const base = { path: r, mtime: ms(st.ns), ctime: st.born, size: st.size, ...(inArchive(r) ? { archived: true } : {}), ...(vault.excluded(r) ? { excluded: true } : {}) }
       const looks = serviceFor(pages, "looks", r) as Looks | null
       if (!looks) {
         others.push(base)
@@ -345,15 +345,18 @@ function newText(vault: Vault, rel: string, text: string) {
 
 /** A timeline entry sent to POST /api/timeline, checked. */
 function newEntry(b: Item): NewEntry {
-  const kind = String(b.kind ?? "").trim().toLowerCase()
-  if (!/^\d{4}-\d\d-\d\d$/.test(String(b.date ?? "")) || !KINDS.has(kind)) {
-    throw new HTTPError(400, `need a date (YYYY-MM-DD) and a kind: one of ${[...KINDS].sort().join(", ")}`)
+  const kind = timelineKind(b.kind)
+  if (!/^\d{4}-\d\d-\d\d$/.test(String(b.date ?? "")) || !kind) {
+    throw new HTTPError(400, "need a date (YYYY-MM-DD) and a kind, a word or two (call, hang out, coffee, note)")
   }
   const min = b.duration_min === null || b.duration_min === undefined || b.duration_min === "" ? null : Number(b.duration_min)
   if (min !== null && !(Number.isFinite(min) && min > 0)) throw new HTTPError(400, "duration_min is a number of minutes, more than 0")
   const text = (k: string) => (typeof b[k] === "string" ? b[k].trim() : "")
   if (kind === "note" && !text("notes")) throw new HTTPError(400, "a note needs its text (notes)")
-  return { date: b.date, kind, duration_min: min, subject: text("subject"), notes: text("notes"), url: text("url") }
+  const e = { date: b.date, kind, duration_min: min, subject: text("subject"), notes: text("notes"), url: text("url") }
+  const why = entryProblem(e)
+  if (why) throw new HTTPError(400, why)
+  return e
 }
 
 /** Put a trashed file or folder back where it came from, minus the time trashing added to its name. */
@@ -574,6 +577,8 @@ export async function searchAll(vault: Vault, q: string, limit = 60, opts: Searc
   const marks = highlighter(node, "text"), names = highlighter(node, "name")
   const folder = (opts.folder ?? "").replace(/^\/+|\/+$/g, "")
   const whole = q.trim().toLowerCase()
+  // (excluded files are left out, unless the search is in an excluded folder or file: asked for by name)
+  const excluded = folder && vault.excluded(`${folder}/`) ? () => false : (rel: string) => vault.excluded(rel)
   /** The file's item when `body` (its text, or the piece of it from line `from` on) matches. */
   const check = (rel: string, body: string, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
     const file = rel.split("/").pop()!
@@ -612,7 +617,7 @@ export async function searchAll(vault: Vault, q: string, limit = 60, opts: Searc
     return item
   }
   const out: Item[] = []
-  const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.path && rel !== opts.path)
+  const skip = (rel: string) => (folder && !rel.startsWith(`${folder}/`)) || (opts.path ? rel !== opts.path : excluded(rel))
   for (const [rel, e] of vault.entries) {
     if (skip(rel)) continue
     const item = check(rel, e.body, e.stat.ns, e.stat.born, e, e.bodyLine)

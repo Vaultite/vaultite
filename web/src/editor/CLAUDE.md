@@ -1,7 +1,9 @@
 # Notes for `web/src/editor/`
 
-- **Editor** (CodeMirror 6, one lazy chunk: `editor/lazy.ts`): reading / live preview / source per device, autosave
-  600 ms after typing (core/autosave.ts). Markdown's extras get their HTML from `web/src/core/markdown.ts` only; raw HTML
+- **Editor** (CodeMirror 6, one lazy chunk: `editor/lazy.ts`): reading / live preview / source per tab
+  (components/fileState.ts), autosave 600 ms after typing (core/autosave.ts). Its settings (spellcheck, indent,
+  auto-pair, line length, Properties) are Obsidian's, `core/editorPrefs.ts`; live preview shows the Markdown of only the
+  element under the cursor (a heading's, a quote's or a block's whole lines). Markdown's extras get their HTML from `web/src/core/markdown.ts` only; raw HTML
   stays escaped except `<details>`. Outside a file's view it's `NoteEditor` / `FileEditor` (components/NoteEditor.tsx),
   wired like FileView (`useVaultEditing`, components/editing.tsx).
 - A file's editor holds its whole text in every mode, so positions are the file's (plugins, Obsidian's included):

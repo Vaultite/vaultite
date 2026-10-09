@@ -66,7 +66,7 @@ const canvas = page.locator("[data-graph-canvas=view] canvas")
 await canvas.waitFor({ timeout: 15000 })
 const linked = new Set(all.edges.flatMap((e) => [e.from, e.to])).size
 const shownNodes = Number(await canvas.getAttribute("data-graph-nodes"))
-check(`files with no links are hidden by default (${shownNodes} of ${all.nodes.length})`, shownNodes === linked)
+check(`files with no links are shown by default, as in Obsidian (${shownNodes} of ${all.nodes.length})`, shownNodes === all.nodes.length)
 // Frames while the layout settles.
 const fps = await page.evaluate(() => new Promise((r) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else r(n / 2) }; requestAnimationFrame(f) }))
 // Headless Chrome draws the canvas in software (about 20 fps here); a real window draws the same 1800 nodes at 60.
@@ -103,9 +103,13 @@ await page.fill("[data-graph-search]", "")
 // Filters: files with no links.
 await page.click("[data-graph-filters]"); await wait(300)
 await page.getByText("Show files with no links").click(); await wait(800)
+const withoutOrphans = Number(await page.locator("[data-graph-canvas=view] canvas").getAttribute("data-graph-nodes"))
+check(`the filter hides files with no links (${withoutOrphans})`, withoutOrphans === linked)
+check("the setting is saved in .vaultite/plugins/graph/data.json", existsSync(SETTINGS) && JSON.parse(readFileSync(SETTINGS, "utf8")).orphans === false)
+await page.click("[data-graph-filters]"); await wait(300)
+await page.getByText("Show files with no links").click(); await wait(800)
 const withOrphans = Number(await page.locator("[data-graph-canvas=view] canvas").getAttribute("data-graph-nodes"))
-check(`the filter shows files with no links (${withOrphans})`, withOrphans === all.nodes.length)
-check("the setting is saved in .vaultite/plugins/graph/data.json", existsSync(SETTINGS) && JSON.parse(readFileSync(SETTINGS, "utf8")).orphans === true)
+check(`...and shows them again (${withOrphans})`, withOrphans === all.nodes.length)
 
 // Legend: hide a group, then show it again.
 const first = page.locator("[data-graph-group]").first()

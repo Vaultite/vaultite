@@ -4,9 +4,9 @@
   "category": "agents",
   "essential": true,
   "name": "Token count",
-  "description": "An estimate of how many tokens Claude reads for the open file, in the status bar next to its words and characters, and a limit for every Markdown file: amber near it, red and marked in the file tree over it. The files agents load at startup (CLAUDE.md, AGENTS.md, ME.md, skills) have stricter limits, and the Agent context panel lists what each loads with its imports. Counted on this device, without Claude's tokenizer. Only warns: nothing stops a file from growing.",
+  "description": "An estimate of how many tokens Claude reads for the open file, in the status bar next to its words and characters, and limits for the files agents load at startup (CLAUDE.md, AGENTS.md, ME.md, skills): amber near one, red and marked in the file tree over it. Other files have a limit only when you set one, and the Agent context panel lists what each loads with its imports. Counted on this device, without Claude's tokenizer. Only warns: nothing stops a file from growing.",
   "settings": {
-    "limit": { "type": "number", "default": 10000, "min": 0, "label": "Limit for any file", "description": "tokens a Markdown file may have before it's flagged; 0: no limit. A file's own max_tokens wins" },
+    "limit": { "type": "number", "default": 0, "min": 0, "label": "Limit for any file", "description": "tokens any other Markdown file may have before it's flagged; 0: no limit. A file's own max_tokens wins" },
     "limits": {
       "type": "map",
       "default": { "CLAUDE.md": 3000, "CLAUDE.local.md": 3000, "AGENTS.md": 3000, "ME.md": 3000, "SOUL.md": 3000, "MEMORY.md": 6000, "SKILL.md": 5000, ".vaultite/AGENTS.md": 1000 },

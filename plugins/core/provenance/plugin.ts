@@ -58,7 +58,7 @@ plugin.onCreate((path, fm, writer) => {
   const kind = plugin.vault.kindFor(path, fm) // (its `type`, wherever it is)
   const type = kind ? kind.type : typeof fm.type === "string" && fm.type.trim() ? fm.type : null
   if (type !== null && type !== "note") return
-  const templates = String(plugin.peer("templates")?.settings().folder ?? "Templates").replace(/^\/+|\/+$/g, "")
+  const templates = String(plugin.peer("templates")?.seeded().folder ?? "Templates").replace(/^\/+|\/+$/g, "")
   if (templates && path.startsWith(templates + "/")) return
   const label = byAgent(writer) ? agentValue() : userValue()
   return label ? { origin: label } : undefined

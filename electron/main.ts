@@ -1204,7 +1204,8 @@ function buildMenu() {
     update: updatable() ? (ready
       ? { label: "Restart to update", click: restartToUpdate }
       : { label: checking || fetching ? "Checking for updates…" : "Check for updates…", enabled: !checking && !fetching, click: () => checkForUpdate(true) }) : null,
-    vaults: [...recent.map((v) => ({ label: nameOf(v.path), sublabel: v.path, type: "checkbox" as const, checked: wins.has(v.path), click: () => openVault(v.path).catch(() => {}) })),
+    vaults: [...recent.map((v) => ({ label: nameOf(v.path), sublabel: v.path, type: "checkbox" as const, checked: wins.has(v.path),
+      click: () => openVault(v.path).catch((e) => dialog.showErrorBox(`Couldn't open ${nameOf(v.path)}`, String(e.message ?? e))) })),
       ...remotes.map((r) => ({ label: r.name, sublabel: r.url, type: "checkbox" as const, checked: remoteWins.has(r.url), click: () => openRemote(r.url) }))],
     manageVaults: showManager,
     setup: showSetup,
@@ -1244,6 +1245,15 @@ function unsandboxedNotice() {
 function asked() {
   const i = process.argv.indexOf("--vault")
   return i > 0 && process.argv[i + 1] ? path.resolve(process.argv[i + 1]) : null
+}
+/** A vault asked for that isn't there (a typo, a drive not connected) is made only once the user says so. */
+async function madeIfAsked(p: string) {
+  if (fs.existsSync(p)) return true
+  const r = await dialog.showMessageBox({ type: "question", message: `There's no folder ${p}`, detail: "Create a new vault there?",
+    buttons: ["Create vault", "Cancel"], defaultId: 0, cancelId: 1 })
+  if (r.response !== 0) return false
+  fs.mkdirSync(p, { recursive: true })
+  return true
 }
 /** The vaults to open at launch: the one asked for, else those open when the app last quit. */
 const reopening = () => { const a = asked(); return a ? [a] : known.filter((v) => v.open).map((v) => v.path) }
@@ -1287,7 +1297,10 @@ else {
 app.on("second-instance", (_e, argv, cwd) => {
   const i = argv.indexOf("--vault")
   const files = MAC ? [] : argFiles(argv, cwd)
-  if (i > 0 && argv[i + 1]) void openVault(path.resolve(cwd, argv[i + 1])).catch((e) => dialog.showErrorBox("Couldn't open the vault", String(e.message ?? e)))
+  if (i > 0 && argv[i + 1]) {
+    const p = path.resolve(cwd, argv[i + 1])
+    void madeIfAsked(p).then(async (go) => { if (go) await openVault(p) }).catch((e) => dialog.showErrorBox("Couldn't open the vault", String(e.message ?? e)))
+  }
   else if (files.length) void openFiles(files, null)
   else {
     const w = focusedVault()?.win ?? manager ?? setupWin
@@ -1312,9 +1325,9 @@ app.whenReady().then(async () => {
   if (DEV) app.dock?.setBadge("dev")
   buildMenu()
   const a = asked()
-  if (a) fs.mkdirSync(a, { recursive: true })
   started = true
-  await Promise.all(reopening().map((p) => openVault(p).catch((e) => console.error(e))))
+  const go = !a || await madeIfAsked(a) // (else the vaults list)
+  await Promise.all((go ? reopening() : []).map((p) => openVault(p).catch((e) => console.error(e))))
   if (!asked()) for (const r of remotes.filter((x) => x.open)) openRemote(r.url)
   if (firstRun() && !asked() && DEV) await sandbox().catch((e) => console.error(e))
   else if (firstRun() && !asked()) showSetup()

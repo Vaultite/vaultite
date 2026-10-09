@@ -47,11 +47,31 @@ the buttons New note, Open a file, the command palette). `vau newtab` (show, hid
 opened for the first time) puts the plugins' pages in `.vaultite/pages/` instead of among the user's files: drawn,
 pinned and linked as usual, left out of the file tree. Moving one into a folder is fine: it's updated where it is.
 
+**Files**, `.vaultite/files.json` (the File explorer's settings): `attachmentFolder`, where pasted and uploaded files
+go (a folder, `/` the top, `./` beside the note, `./name` a folder beside it; unset: Obsidian's `attachmentFolderPath`,
+else `Attachments`); `excluded`, files left out of search, the graph and unlinked mentions and listed last in the quick
+switcher, still files you open (each a path they start with, `Archive/`, or a `/regex/`; unset: Obsidian's
+`userIgnoreFilters`; `[]` none).
+
+**Folders**, `.vaultite/folders.json`: where new files of a kind go, by its name in the API (`{"people": "Personal/People",
+"days": "Journal", "dashboards": "Pages"}`); one unset goes where most of that kind's files are (daily notes: Obsidian's
+daily notes folder). Each shows in its plugin's settings.
+
 **Hotkeys**, `.vaultite/hotkeys.json`: `{"<command id>": ["Mod+Shift+T"]}` (`Mod` is ⌘ on a Mac, Ctrl elsewhere;
 `Ctrl`, `Alt`, `Shift`; `[]` takes a command's keys away); a command not listed keeps its defaults. A sequence is
 steps separated by spaces, `["G G"]`, `["Space F F"]` (a step without `Mod`, `Ctrl` or `Alt` never fires while
 typing). Settings > Hotkeys lists the commands and their ids. In the desktop app the menu bar shows the keys in
 effect, these included.
+
+**Editor**, `.vaultite/editor.json` (`vau settings set editor '{"useTab": false}'`), one for every device; a key it
+doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
+- `spellcheck`: true (default) | false. `useTab`: true (default: Tab indents with a tab) | false (with `tabSize`
+  spaces). `tabSize`: 1 to 8 (default 4).
+- `autoPairBrackets`: true (default: `( [ {` and quotes close themselves) | false. `autoPairMarkdown`: true (default:
+  `* _ ~ = `` ` `` typed over a selection wrap it, a backtick closes itself) | false.
+- `readableLineLength`: true (default: a note's lines stop at `--line-width`) | false (the pane's width).
+- `propertiesInDocument`: `visible` (default: Properties above the text, reading too) | `hidden` | `source` (the
+  frontmatter as text in live preview).
 
 **Appearance**, `.vaultite/appearance.json` (or `vau appearance <key> <value>`), one for every device:
 - `theme`: `system` | `light` | `dark`. `scheme`: `gruvbox` (default), `default` (Classic: Apple's colours), `catppuccin`,

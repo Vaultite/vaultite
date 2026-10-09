@@ -154,7 +154,7 @@ async function suite(file, label) {
   const page = await ctx.newPage()
   page.on("pageerror", (e) => console.log(`page error: ${e.message}`))
   // Load: a fresh page on the file, in reading view.
-  await page.addInitScript(() => { try { localStorage.setItem("vaultite.fileMode", "read") } catch {} })
+  await page.addInitScript(() => { try { localStorage.setItem("vaultite.fileMode", "read"); localStorage.removeItem("vaultite.tabModes") } catch {} })
   await page.goto(`${base}${hash(file)}`)
   await page.waitForSelector("#main-scroll article, #main-scroll main, article.file-view")
   if (STEPS.includes("load")) await measure(page, `${label}: load`, null, async () => {}, 2500)

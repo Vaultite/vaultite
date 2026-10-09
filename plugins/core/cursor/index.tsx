@@ -8,7 +8,7 @@ import { CursorIcon } from "./CursorIcon"
 const SRC: AgentSource = {
   path: "cursor", label: "Cursor", icon: CursorIcon, tint: "var(--purple)", agent: "cursor", view: "cursor-session",
   noLimits: "No usage yet. It comes from Cursor's dashboard, with Cursor.app signed in on this machine and reading it allowed in Cursor's settings.",
-  costNote: "Value at API rates, as Cursor meters it against the plan",
+  costNote: "Estimated at list prices, as Cursor meters it against the plan",
   consent: { setting: "account", ask: "Read your Cursor plan usage from your account?",
     detail: "With Cursor.app's sign-in on this machine, Vaultite asks cursor.com for the plan's usage every few minutes. The sign-in goes only to Cursor; nothing is kept. Chats are read from this Mac either way." },
 }

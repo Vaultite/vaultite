@@ -24,14 +24,10 @@ export const inPagesDir = (rel: string) => rel === PAGES_DIR || rel.startsWith(`
  *  files are shown. */
 export const isHiddenPath = (rel: string) => !inPagesDir(rel) && rel.split("/").some((p) => p.startsWith(".") && p !== ARCHIVE_DIR)
 
-/** Whether a value of `archived` means archived: anything set, but false, no, off, 0 and blanks (so `archived: yes` or a
- *  date archive it, like the Python-like truthiness the app reads other flags with). */
+/** Whether a value of `archived` means archived: true or yes only (YAML reads both as true; quoted, they're text), so
+ *  a stray `archived: 2024` or `archived: maybe` doesn't hide a file. */
 export function archivedValue(v: unknown): boolean {
-  if (v === null || v === undefined || v === false || v === 0 || v === "") return false
-  if (typeof v === "string") return v.trim() !== "" && !/^(false|no|off|0)$/i.test(v.trim())
-  if (Array.isArray(v)) return v.length > 0
-  if (typeof v === "object") return Object.keys(v).length > 0
-  return true
+  return v === true || (typeof v === "string" && /^(true|yes)$/i.test(v.trim()))
 }
 
 /** Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of
@@ -72,3 +68,33 @@ export function homeFolder(paths: Iterable<string>, name?: string | null, nested
   }
   return (name ? pick(named) : null) ?? pick(() => true)
 }
+
+/** Excluded files (the File explorer's setting, else another app's: Obsidian's userIgnoreFilters), as in Obsidian: each a
+ *  path a file's starts with (`Archive/`) or a `/regex/`. They stay files you open; search, the graph and unlinked
+ *  mentions leave them out, the quick switcher and link suggestions list them last. */
+export function excluder(filters: unknown): (rel: string) => boolean {
+  const tests = (Array.isArray(filters) ? filters : []).flatMap((f): ((rel: string) => boolean)[] => {
+    const t = typeof f === "string" ? f.trim() : ""
+    if (!t) return []
+    if (t.length > 2 && t.startsWith("/") && t.endsWith("/")) {
+      try { const re = new RegExp(t.slice(1, -1)); return [(rel) => re.test(rel)] } catch { return [] }
+    }
+    const p = t.replace(/^\/+/, "")
+    return p ? [(rel) => rel.startsWith(p)] : []
+  })
+  return tests.length ? (rel) => tests.some((t) => t(rel)) : () => false
+}
+
+/** The folder a file attached to the note `from` goes in, by an attachment folder as Obsidian writes it: "/" the top,
+ *  "./" beside the note, "./sub" a folder beside it, else that folder. */
+export function attachmentDir(spec: string, from: string): string {
+  const p = spec.trim(), here = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : ""
+  if (p === "/" || p === "") return ""
+  if (p === "./" || p === ".") return here
+  if (p.startsWith("./")) return [here, p.slice(2).replace(/^\/+|\/+$/g, "")].filter(Boolean).join("/")
+  return p.replace(/^\/+|\/+$/g, "")
+}
+
+/** A folder new files go in, as settings show it (core/filing.ts): `set` when the vault's folders.json names it
+ *  (else another app's setting or the guess). Keyed by a kind's collection, or `dashboards` (the plugins' pages). */
+export type Home = { key: string; type: string; plugin: string; label: string; folder: string; set: boolean }

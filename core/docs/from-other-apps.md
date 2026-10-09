@@ -7,8 +7,10 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
 - Sidebar: Outline and Tags panels (shown from the sidebar's right-click menu, or as tabs), next to Files and Links
   (backlinks).
 - Bases: `.base` files open as their views, embedded or inline (`vau docs query`).
-- `.obsidian/app.json`: where new notes and pasted images go, and Markdown links; `.obsidian/types.json`: property
-  types (`vau docs other-apps`, `vau docs properties`).
+- `.obsidian/app.json`: where new notes and pasted images go, excluded files, and Markdown links; `daily-notes.json`
+  and `templates.json`: daily notes' folder, name format and template, the templates folder and formats;
+  `.obsidian/types.json`: property types (`vau docs other-apps`, `vau docs properties`). They're the defaults of the
+  app's own settings: set one here and it wins.
 - Themes and CSS snippets, copied into `.vaultite/themes/` and `.vaultite/snippets/` (`vau docs app`).
 - Its notes stay plain notes: a file is a person, a log, a book... by its `type:` only, so a `People/` folder brought
   over is still notes until `vau type People --apply` gives its files `type: person` (`vau type` lists such folders).

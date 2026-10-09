@@ -32,7 +32,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `agentsOn(disabled?, order?)`: The coding agents of the plugins that are on, in the plugins' order.
 - `AgentSource`: Which agent, and where its plugin answers.
 - `AgentUsage`
-- `AgentUsageBlock({ src, options, fm })`: Its value at API prices (or tokens) per day, today and the period (`days: 30`).
+- `AgentUsageBlock({ src, options, fm })`: Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`).
 - `AgentWindow`
 - `AmbientButton({ icon, text, tip, tint, onClick, className })`
 - `AmbientItem`: Drawn at the start of the desktop status bar whatever is open (routines done today, agents at work, the inbox): small, a click away from its page.
@@ -51,7 +51,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).
 - `askMove(path, opts?)`: "Move file to…": pick a folder (fuzzy, "/" the top level), then move it there.
 - `askMoveMany(paths, opts?)`: "Move to…" for several: one folder for them all (one none of them is, nor is inside).
-- `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: Attachments, unless the vault says otherwise.
+- `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.
 - `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
@@ -184,7 +184,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `headOf(files, path)`
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes.
-- `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: where most of its files are, folders named like `fallback` first (Personal/Notes/, not Clippings/), else `fallback`.
+- `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
 - `HostedPlugin`: A plugin another plugin runs (a plugin written for another app, run by its host): listed on the Plugins page in its host's group and drawn like any plugin, while its host answers its switch, its…
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math and mermaid diagrams.
@@ -586,6 +586,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `serverUrl()`: This server, as commands on this machine reach it (a shell's VAULTITE_URL, an agent's hooks).
 - `service(plugins, name)`: The first plugin's service called `name` (plugin.provide), or null when no plugin offers it.
 - `serviceFor(plugins, kind, rel)`: The service `<kind>:<ext>` a plugin offers for a file by its extension (a double one first: "excalidraw.md"), or null.
+- `settingDefaults(vault, plugins?)`: The defaults other apps' settings give the vault's settings files, by file ("files", "plugins/<id>/data"): each plugin that's on answers `setting-defaults` (Vaults from other apps: .obsidian/);…
 - `Socket`
 - `SocketAccept`: Runs before the upgrade: throw an HTTPError to refuse it.
 - `SocketHandler`: Runs once the socket is open.

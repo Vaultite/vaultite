@@ -2,8 +2,8 @@
 
 /** A file as the graph sees it: where it is, what it's called and what it links to (the targets as written); its type
  *  is the core's (core/fileprops.ts: its kind's, else its frontmatter's). */
-export type GraphFile = { path: string; title: string; type: string | null; tags: string[]; links: string[]; archived?: boolean }
-export type GraphNode = { path: string; title: string; type: string | null; folder: string; tags: string[]; degree: number; archived?: boolean }
+export type GraphFile = { path: string; title: string; type: string | null; tags: string[]; links: string[]; archived?: boolean; excluded?: boolean }
+export type GraphNode = { path: string; title: string; type: string | null; folder: string; tags: string[]; degree: number; archived?: boolean; excluded?: boolean }
 /** A link from one file to another (paths); a pair linked both ways is one edge. */
 export type GraphEdge = { from: string; to: string }
 export type Graph = { nodes: GraphNode[]; edges: GraphEdge[] }
@@ -33,7 +33,7 @@ export function buildGraph(files: GraphFile[], resolve: (target: string, from: s
       degree.set(to, (degree.get(to) ?? 0) + 1)
     }
   }
-  const nodes = files.map((f): GraphNode => ({ path: f.path, title: f.title, type: f.type, folder: topFolder(f.path), tags: f.tags, degree: degree.get(f.path) ?? 0, ...(f.archived ? { archived: true } : {}) }))
+  const nodes = files.map((f): GraphNode => ({ path: f.path, title: f.title, type: f.type, folder: topFolder(f.path), tags: f.tags, degree: degree.get(f.path) ?? 0, ...(f.archived ? { archived: true } : {}), ...(f.excluded ? { excluded: true } : {}) }))
   return { nodes, edges }
 }
 
@@ -45,6 +45,9 @@ export function adjacency(g: Graph) {
   return adj
 }
 
+/** How far out a local graph goes at most, as in Obsidian. */
+export const MAX_DEPTH = 5
+
 /** The local graph around `path`: it, what's within `depth` links of it (either way), and the edges between them.
  *  Each node's `dist` is how many links away it is. */
 export function localGraph(g: Graph, path: string, depth = 1): Graph & { dist: Map<string, number> } {
@@ -53,7 +56,7 @@ export function localGraph(g: Graph, path: string, depth = 1): Graph & { dist: M
   if (!adj.has(path)) return { nodes: [], edges: [], dist }
   dist.set(path, 0)
   let ring = [path]
-  for (let d = 1; d <= Math.max(1, Math.min(3, depth)); d++) {
+  for (let d = 1; d <= Math.max(1, Math.min(MAX_DEPTH, depth)); d++) {
     const next: string[] = []
     for (const p of ring) for (const q of adj.get(p) ?? []) if (!dist.has(q)) { dist.set(q, d); next.push(q) }
     ring = next

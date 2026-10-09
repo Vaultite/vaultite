@@ -14,6 +14,7 @@ import { capitalize } from "@/lib/utils"
 import { Hotkeys } from "@/pages/Hotkeys"
 import { FilterField, PageHeader, Panel, Segmented, SettingRow, SheetHead } from "@/components/kit"
 import { AppearancePanel } from "@/components/Appearance"
+import { EditorPanel } from "@/components/EditorSettings"
 import { openBundles, restoreSetup } from "@/core/bundles"
 import { notifyError } from "@/core/notify"
 import { API_VERSION, APP_VERSION } from "../../../core/version.ts"
@@ -112,8 +113,6 @@ function VaultPanel({ store }: { store: Store }) {
 /** A setting search finds: `where` it is (Appearance, a plugin's name), and what choosing it does. */
 type Found = { id: string; label: string; sub?: string; where: string; words: string; run: () => void }
 
-const phone = () => window.matchMedia("(max-width: 767px)").matches
-
 /** Everything on this page and in plugins' sheets that search can find. `back`: choosing a row of this page clears the
  *  search first, so the row is drawn to go to. */
 function findable(store: Store, disabled: string[], order: string[], back: () => void): Found[] {
@@ -134,7 +133,13 @@ function findable(store: Store, disabled: string[], order: string[], back: () =>
     ...textSizeKinds(disabled, order).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),
     { ...row("snippets", "CSS snippets", "Appearance", 'section[aria-label="CSS snippets"]'), words: "styles custom" },
-    ...(phone() ? [] : [{ id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => openDetail("hotkeys") }]),
+    { ...row("readable-line-length", "Readable line length", "Editor", '[data-settings-row="readable-line-length"]'), words: "width wide column" },
+    { ...row("properties-in-document", "Properties in document", "Editor", '[data-settings-row="properties-in-document"]', "Visible, hidden or source"), words: "frontmatter yaml metadata" },
+    { ...row("spellcheck", "Spellcheck", "Editor", '[data-settings-row="spellcheck"]'), words: "spelling spell check" },
+    { ...row("indent", "Indent", "Editor", '[data-settings-row="indent"]', "Tab or spaces"), words: "tabs spaces tab size" },
+    { ...row("auto-pair-brackets", "Auto-pair brackets", "Editor", '[data-settings-row="auto-pair-brackets"]'), words: "close brackets quotes autopair" },
+    { ...row("auto-pair-markdown", "Auto-pair Markdown", "Editor", '[data-settings-row="auto-pair-markdown"]'), words: "wrap selection bold italic autopair" },
+    { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => openDetail("hotkeys") },
     { id: "vaults", label: "Manage vaults", sub: store.vault.path, where: "Vault", words: "vault folder",
       run: () => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") } },
     row("version", "Version", "Vault", '[data-settings-row="version"]', "Vaultite and its plugin API"),
@@ -145,6 +150,7 @@ function findable(store: Store, disabled: string[], order: string[], back: () =>
     const own = [
       ...Object.entries(p.settingsDecls ?? {}).map(([key, d]) => ({ key, label: d.label, description: d.description })),
       ...(p.settingsSearch ?? []),
+      ...(store.filing?.homes ?? []).filter((h) => h.plugin === p.id).map((h) => ({ key: `folder-${h.key}`, label: `${h.label} folder`, description: `where new ${h.label.toLowerCase()} go` })),
     ]
     return [
       { id: `plugin:${p.id}`, label: settingsTitle(p.name), where: "Plugin", words: "", run: () => openPluginSettings(p.id) },
@@ -194,6 +200,7 @@ export function Settings({ store }: { store: Store }) {
         <div className="grid grid-cols-1 gap-4">
           <SetupPanel store={store} />
           <AppearancePanel />
+          <EditorPanel store={store} />
           <Hotkeys />
           <VaultPanel store={store} />
         </div>

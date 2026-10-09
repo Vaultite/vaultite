@@ -45,7 +45,8 @@ plugin.route("GET", "backlinks/unlinked", (req) => {
   const limit = Math.max(1, Math.floor(Number(req.query.limit) || PAGE))
   const mentions: object[] = []
   let total = 0, files = 0
-  const all = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel !== rel), (e) => -Number(e.stat.ns / 1000000n))
+  // (excluded files aren't searched for mentions, as in Obsidian)
+  const all = sortBy([...plugin.vault.entries.values()].filter((e) => e.rel !== rel && !plugin.vault.excluded(e.rel)), (e) => -Number(e.stat.ns / 1000000n))
   for (const e of all) {
     const ms = mentionsIn(e, names, lower)
     if (ms.length) files++

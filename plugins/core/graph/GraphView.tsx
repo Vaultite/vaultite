@@ -57,7 +57,7 @@ const tool = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8p
 export function GraphView({ arg }: { arg: string }) {
   const [settings, save] = useSettings()
   const by = settings.colorBy ?? "folder"
-  const depth = settings.depth ?? 2
+  const depth = settings.depth ?? 1
   // (A file's own graph asks for archived files too: that file may be one.)
   const { data, error } = useGraph(undefined, 1, !!settings.archived || !!arg)
   const [q, setQ] = useState("")
@@ -70,7 +70,7 @@ export function GraphView({ arg }: { arg: string }) {
     if (!data) return null
     let g: Graph = arg ? localGraph(data, arg, depth) : data
     g = filterGraph(g, (n) => ((!hidden.has(`${by}:${groupOf(by, n)}`) && (!n.archived || settings.archived)) || n.path === arg))
-    if (!arg && !settings.orphans) {
+    if (!arg && settings.orphans === false) {
       const linked = new Set(g.edges.flatMap((e) => [e.from, e.to]))
       g = filterGraph(g, (n) => linked.has(n.path))
     }
@@ -86,9 +86,9 @@ export function GraphView({ arg }: { arg: string }) {
   const filters = (e: MouseEvent) => {
     const items: MenuItem[] = []
     if (!arg) {
-      items.push({ label: "Show files with no links", checked: !!settings.orphans, run: () => save({ orphans: !settings.orphans }) })
+      items.push({ label: "Show files with no links", checked: settings.orphans !== false, run: () => save({ orphans: settings.orphans === false }) })
       items.push({ label: "Show archived files", checked: !!settings.archived, run: () => save({ archived: !settings.archived }) })
-    } else for (const d of [1, 2, 3]) items.push({ label: d === 1 ? "Direct links" : `${d} links away`, checked: depth === d, run: () => save({ depth: d }) })
+    } else for (const d of [1, 2, 3, 4, 5]) items.push({ label: d === 1 ? "Direct links" : `${d} links away`, checked: depth === d, run: () => save({ depth: d }) })
     items.push({ label: "Colour by folder", checked: by === "folder", sep: true, run: () => save({ colorBy: "folder" }) })
     items.push({ label: "Colour by type", checked: by === "type", run: () => save({ colorBy: "type" }) })
     if (hidden.size) items.push({ label: "Show every group", sep: true, run: () => save({ hidden: [] }) })
@@ -145,8 +145,11 @@ export function GraphView({ arg }: { arg: string }) {
 }
 
 /** A file's neighbours as a small graph (a block, the sidebar panel), with a button that opens it as a tab. */
-export function LocalGraph({ path, depth = 1, height = 260, compact = true, empty }: { path: string; depth?: number; height?: number | string; compact?: boolean; empty?: ReactNode }) {
+export function LocalGraph({ path, depth: asked, height = 260, compact = true, empty }: { path: string
+  /** Else the settings' Local graph depth. */
+  depth?: number; height?: number | string; compact?: boolean; empty?: ReactNode }) {
   const [settings] = useSettings()
+  const depth = asked ?? settings.depth ?? 1
   const by = settings.colorBy ?? "folder"
   const { data, error } = useGraph(path, depth, !!settings.archived)
   const { colorOf } = useMemo(() => colours(data, by), [data, by])

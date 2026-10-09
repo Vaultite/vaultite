@@ -1,5 +1,5 @@
 import { ListChecks } from "lucide-react"
-import { AmbientButton, createFile, definePlugin, dow, getStore, homeOf, isArchived, openFile, pageOf, Panel, plainText, today, useStore } from "@vaultite"
+import { AmbientButton, definePlugin, dow, isArchived, notifyError, op, openFile, pageOf, Panel, plainText, today, useStore } from "@vaultite"
 import { RoutineDay, RoutineHistory } from "./RoutineDetail"
 import { RoutineGrid } from "./RoutineGrid"
 import { mockRoutines } from "./mock"
@@ -35,13 +35,12 @@ export default definePlugin({
       title: (s, [id]) => s.routines.find((x) => x.id === id)?.name ?? "",
     },
   },
-  // Daily notes: today's <date>.md where the daily notes are (Daily/), made (type: day) when there's none yet.
+  // Daily notes: today's, made when there's none yet where daily notes go, named and filled as the settings say (the
+  // server's today.daily).
   commands: [{
     id: "today:daily-note", name: "Open today's daily note",
     run: async () => {
-      const s = getStore(), date = today()
-      const there = s?.files.files.find((f) => f.kind === "days" && f.path.split("/").pop() === `${date}.md`)
-      openFile(there ? there.path : (await createFile(homeOf(s, "days", "Daily"), date, "---\ntype: day\n---\n\n")).path)
+      try { openFile((await op<{ path: string }>("today.daily", { date: today() })).path) } catch (e) { notifyError(e, "Couldn't open today's daily note") }
     },
   }],
   search: (s) => s.routines.map((r) => ({

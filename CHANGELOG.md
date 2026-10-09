@@ -367,6 +367,26 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Show all; embeds nest 20 deep (a loop is still caught), and HTML pages and notebook output are never clipped. Tabs
   synced between devices keep every tab and its whole name. Export to PDF waits for every image, saying how many are
   left when it's slow. A tab whose editor was put away keeps its undo history and selection.
+- **Obsidian's settings as defaults**: daily notes follow `.obsidian/daily-notes.json` (folder, name format, template)
+  and are found by their name, so none is made twice; the templates folder follows `templates.json`, the attachment
+  folder `attachmentFolderPath`, excluded files `userIgnoreFilters`. Set one in Vaultite and it wins; `.obsidian/` is
+  never written.
+- **Excluded files**: a File explorer setting; they stay files you open, but search, the graph and unlinked mentions
+  leave them out and the quick switcher lists them last.
+- **Attachment folder**: a File explorer setting (a folder, the top, beside the note, or a folder beside it).
+- **Each kind's folder in its settings**: People, Notes, Logs, Daily notes, Dashboards and the rest show where new ones
+  go (where most are, until you pick one), and keep to it.
+- **Daily notes**: their name format and template are Today's settings; "Open today's daily note" and `vau daily` make
+  one from the template.
+- **Editor settings** (Settings > Editor, `.vaultite/editor.json`, as Obsidian's): spellcheck, indent with a tab
+  (the default) or spaces, auto-pair brackets and Markdown (typing `*` over a selection wraps it), readable line length,
+  and Properties in document (visible, hidden or source). A vault's `.obsidian/app.json` sets the ones you haven't.
+- **Live preview shows only the Markdown under the cursor**: the link, bold span or embed you're in, not its whole line;
+  bullets and checkboxes stay drawn while you type their line.
+- **Properties while reading**: shown above the text in reading view too, and open unless you fold them.
+- **⌘E switches only the tab in front**: each tab keeps its own view, as in Obsidian; a new one starts in the last you
+  picked.
+- **Aliases link to their file**: choosing an alias after `[[` writes `[[File|Alias]]`.
 - **Editing keys over the phone's keyboard**: while you write a note, a row of undo, redo, link, task, indent, bold,
   italic, highlight, bullet list and photo sits above the keyboard, like the terminal's keys; pick them in Editing commands'
   settings.
@@ -533,6 +553,21 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   drawn, made safe; vault images show in embeds and anywhere Markdown is drawn; `![[Note]]` in the middle of a line is
   an embed. Web pages asking to open another app ask you first. A #tag clicked without the Tags plugin searches for
   it. Links in query, base and log cells go to the file closest to their row's.
+- **Any folder can be a vault**: Manage vaults on the web opens folders outside the home folder and on external drives
+  (only hidden and system folders are refused), and a vault asked for that isn't there (a typo, a drive not connected)
+  is made only once you say so, in the desktop app and the server alike.
+- **Graph as in Obsidian**: the whole graph shows files with no links, and a local graph goes 1 link out by default (up
+  to 5; the Local graph panel follows the setting).
+- **Kinds and relations of your own**: a timeline takes any kind of a word or two (Other in Add: coffee, game night) and
+  a person any relation (colleague); the known ones keep their icons and groups, and nothing is flagged.
+- **Bases list every file**: templates and archived files too, as in Obsidian; a database view still hides archived
+  files, and says how many ("3 archived hidden").
+- **Archived means archived: true or yes**: another value (a date, maybe) no longer hides a file.
+- **Token count flags only agent files**: CLAUDE.md, AGENTS.md, ME.md, skills and the rest keep their limits; an
+  ordinary note has none unless you set one.
+- **Costs say they're estimates**: Claude Code's, Codex's and Cursor's are labelled estimated at list prices, in the
+  app and in what agents read.
+- **Keyboard shortcuts on any window**: Settings shows them on narrow windows, iPads and phones (with a keyboard) too.
 - **Built-in is the core; the rest are Vaultite plugins**: the Plugins page lists the app's essential plugins under
   Built-in and its other ones (Today, People, Logs, Projects, the format viewers...) apart as Vaultite plugins, off
   until turned on, by hand or by a bundle (Life OS, Everything; Minimal is the core). Vim is built in again, off until

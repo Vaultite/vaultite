@@ -143,9 +143,15 @@ export function locate(vault: Vault, list: [string, string, string][]): Map<stri
   return out
 }
 
-/** Where new pages go: the folder most of the pages already in the vault are in (core/fileprops.ts), else Dashboards/. */
+/** Where new pages go unless a folder is set: the folder most of the pages already in the vault are in
+ *  (core/fileprops.ts), else Dashboards/. */
 const homeOf = (at: Map<string, { path: string; evicted: boolean } | null>) =>
   homeFolder([...at.values()].flatMap((v) => (v ? [v.path] : [])), FOLDER) ?? FOLDER
+
+/** Where new pages go as the settings show it: the folder set (folders.json `dashboards`), else the one most dashboards
+ *  are in (install's guess, from the index), else Dashboards/. */
+export const pagesHome = (vault: Vault) => vault.folderSet("dashboards") ??
+  homeFolder([...vault.entries.values()].filter((e) => e.fm.type === "dashboard").map((e) => e.rel), FOLDER) ?? FOLDER
 
 /** Plugins' pages are copied among the vault's files unless its pages.json says `"install": false` (a folder of the
  *  user's own, opened in Set up Vaultite): then into PAGES_DIR, so nothing is written outside .vaultite/. */
@@ -158,7 +164,7 @@ export function install(vault: Vault, plugins: Plugin[], opts: { pin?: boolean }
   const versions = new Versions(vault)
   const on = enabled(vault, plugins)
   const list = templates(plugins.filter((p) => on.has(p.id))), at = locate(vault, list)
-  const home = installs(vault) ? homeOf(at) : `${PAGES_DIR}/${FOLDER}`
+  const home = installs(vault) ? vault.folderSet("dashboards") ?? homeOf(at) : `${PAGES_DIR}/${FOLDER}`
   for (const [, rel, text] of list) {
     const kept = vault.abs(`.vaultite/generated/${rel}`), where = at.get(rel) ?? null
     const base = read(kept)

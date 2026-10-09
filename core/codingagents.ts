@@ -547,7 +547,7 @@ type Words = {
   /** What a session is called ("chat"), and what's counted as one ("conversation"). */
   noun?: string
   count?: string
-  /** How its cost is reckoned ("at API prices"). */
+  /** How its cost is reckoned ("estimated at list prices"). */
   value: string
   /** Its time working is an estimate, said only for today. */
   estimate?: boolean
@@ -602,7 +602,7 @@ function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: un
     const open = new Set(data.live.map((s) => s.id))
     const recent = bullets(data.sessions.filter((s) => !open.has(s.id)).map((s) => `${sessionLine(s)} (${ago(s.last)})`)
       .slice(0, Math.trunc(Number(ctx.options.recent || 5))), `No ${noun}s yet.`)
-    return section(`${w.name} sessions`, "### Now", now, "### Recent", recent, ...(w.more?.(data) ?? []))
+    return section(`${w.name} sessions`, "### Now", now, "### Recent", recent, `_Costs ${w.value}._`, ...(w.more?.(data) ?? []))
   })
   plugin.block(usageBlock, async (ctx) => {
     const days = daysOf(ctx.options.days)
@@ -621,12 +621,12 @@ function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: un
     const data = await usage(days, ctx.options.account)
     const rows = data.projects.map((p) => `${p.name}: ${money(p.cost)}, ${tokens(p.tokens)} tokens, ${plural(p.sessions, count)}` +
       (p.active_min >= 1 ? working(p.active_min) : ""))
-    return section(`${w.name} by project, last ${days} days`, bullets(rows, `No ${noun}s yet.`))
+    return section(`${w.name} by project, last ${days} days`, bullets(rows, `No ${noun}s yet.`), `_Costs ${w.value}._`)
   })
   plugin.block(models, async (ctx) => {
     const days = daysOf(ctx.options.days)
     const data = await usage(days, ctx.options.account)
-    return section(`${w.name} by model, last ${days} days`, bullets(data.models.map((m) => `${m.name}: ${money(m.cost)}, ${tokens(m.tokens)} tokens`), "None yet."))
+    return section(`${w.name} by model, last ${days} days`, bullets(data.models.map((m) => `${m.name}: ${money(m.cost)}, ${tokens(m.tokens)} tokens`), "None yet."), `_Costs ${w.value}._`)
   })
   plugin.block(project, async (ctx) => {
     // The names a project file answers to: the block's `project`, else its name, its path's folder, its repo.

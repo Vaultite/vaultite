@@ -60,7 +60,7 @@ async function surface(name, { w, file, mode, size }) {
   const mobile = w < 768 && w !== 600
   const ctx = await browser.newContext({ viewport: { width: w, height: 844 }, deviceScaleFactor: 2, isMobile: mobile, hasTouch: mobile, colorScheme: "dark" })
   await ctx.addInitScript(([m, size]) => {
-    localStorage.setItem("vaultite.fileMode", m); localStorage.setItem("vaultite.editMode", m)
+    localStorage.setItem("vaultite.fileMode", m); localStorage.setItem("vaultite.editMode", m); localStorage.removeItem("vaultite.tabModes")
     // A note text size (a CSS zoom on the note): this device's pref.
     if (size) { const p = JSON.parse(localStorage.getItem("vaultite.prefs") ?? "{}"); localStorage.setItem("vaultite.prefs", JSON.stringify({ ...p, device: { ...p.device, "textSize:note": size } })) }
   }, [mode, size])

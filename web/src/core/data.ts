@@ -12,6 +12,7 @@ import { applyPatch, type Patch } from "../../../core/statepatch.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { PropTypes } from "../../../core/proptypes.ts"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
+import type { Home } from "../../../core/fileprops.ts"
 import type { PluginState } from "@/api"
 
 /** GET /api/state: what each plugin's plugin.ts puts in it (`PluginState`, which plugins extend: see api.ts), plus the
@@ -34,6 +35,11 @@ export type State = PluginState & {
   /** Bundles (core/bundles.ts): the setup the last one applied replaced (to restore), and whether a new vault is still
    *  being offered them. */
   bundles?: { previous: { bundle: string; name: string; at: string } | null; onboarding: boolean }
+  /** Defaults another app's settings give the vault's settings files ("files", "plugins/<id>/data"): what applies while
+   *  a key is unset there, never written (core/plugins.ts settingDefaults). */
+  settingDefaults?: Record<string, Record<string, unknown>>
+  /** Where things go (core/filing.ts): the attachment folder, the excluded files, each kind's folder. */
+  filing?: { attachments: string; excluded: string[]; homes: Home[] }
   /** Property types (core/proptypes.ts): every declared one (Obsidian's too), and the keys .vaultite/types.json has. */
   propertyTypes?: { types: PropTypes; own: string[] }
   /** What the app draws or keeps itself in a kind's files, by collection: `## ` sections its view draws (a person's

@@ -8,7 +8,7 @@ import { setImmediate as turn } from "node:timers/promises"
 import { merge3, patchFrontmatter, renameKey, same } from "./textedit.ts"
 import { dates, dump, load, YAMLError } from "./yaml.ts"
 import { blocksIn, fmTags, renameTagsIn, scan, tagName, tagsOf, withoutBlocks } from "./sections.ts"
-import { ARCHIVE_DIR, archiveTwin, effectiveType, homeFolder, inArchive, isArchived, PAGES_DIR } from "./fileprops.ts"
+import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived, PAGES_DIR } from "./fileprops.ts"
 import { kindOf } from "./filetypes.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
@@ -396,6 +396,10 @@ export type KindSpec = {
   /** its usual folder ("People"; "Logs" holds subfolders when recursive is true): only where its first file goes
    *  (Vault.home). Its files are the ones whose `type` is its, wherever they are (Vault.kindFor). */
   folder?: string
+  /** what settings call its files ("Daily notes"; else its collection's name) */
+  label?: string
+  /** files it claims without a `type` (a daily note by its name in its folder): asked at each sync, so keep it cheap */
+  owns?: (rel: string) => boolean
   /** or a single file ("ME.md", in any case; a function when a setting names it), its kind with or without a `type`;
    *  elsewhere, the one file of its type */
   file?: string | (() => string)
@@ -588,7 +592,7 @@ export class Vault {
   folders: string[] = []                   // every folder, for the file tree
   private missing = new Map<string, number>() // top-level folders gone from disk, since when (sync)
   version = 0                              // bumps on every change to the files (other files and folders too), so callers can cache derived data
-  settingsVersion = 0                      // the same for settings: .vaultite/ (see settingsStats) and Obsidian's app.json, types.json
+  settingsVersion = 0                      // the same for settings: .vaultite/ (see settingsStats) and the .obsidian/ files the app reads
   private settingsSeen = ""                // the settings files' stats at the last sync (settingsStats)
   private ordered = new Map<Kind, Item[]>() // each kind's items in order, until one of its files is read or dropped
   private settings = new Map<string, string | null>() // settings files read since the last sync began (their text)
@@ -601,6 +605,10 @@ export class Vault {
   /** The folders whose files are patterns, never items (the Templates plugin's, through the service
    *  `templates:folder`: core/app.ts): a `type: person` template there isn't a person. */
   plain: () => string[] = () => []
+  /** Defaults another app's settings give the vault's settings files, by file (`files`, `plugins/<id>/data`): what
+   *  applies to a key a file doesn't set, never written (the plugins' `setting-defaults`: core/app.ts). */
+  defaults: () => Record<string, Item> = () => ({})
+  private seeds: { version: number; all: Record<string, Item> } | null = null // defaults(), until the settings change
   /** The app's plugins that are off until turned on (manifest `offByDefault`), set as they load (core/plugins.ts). */
   optIn = new Set<string>()
   /** Files a sync went on without, still being read (iCloud downloading them): as last read, or not indexed yet. */
@@ -852,11 +860,15 @@ export class Vault {
 
   // --- reading
 
-  /** A file's kind: its `type`'s wherever it is, else the kind kept in that one file (ME.md); never its folder's. Files
-   *  in a folder of patterns (Templates/) are plain whatever they say. */
+  /** A file's kind: its `type`'s wherever it is, else the kind kept in that one file (ME.md), else, with no `type`, one
+   *  claiming it by name (a daily note: KindSpec.owns); never its folder's alone. Files in a folder of patterns
+   *  (Templates/) are plain whatever they say. */
   kindFor(rel: string, fm: Item): Kind | null {
     for (const d of this.plainDirs) if (rel.startsWith(d + "/")) return null
-    return this.typed(fm) ?? this.kinds.find((k) => k.owns(rel)) ?? null
+    const typed = this.typed(fm)
+    if (typed) return typed
+    const untyped = typeof fm.type !== "string" || !fm.type.trim()
+    return this.kinds.find((k) => k.owns(rel) || (untyped && !!k.spec.owns?.(rel))) ?? null
   }
 
   /** The kind a file's `type` names, or null. */
@@ -883,9 +895,19 @@ export class Vault {
     return hit ?? rel
   }
 
-  /** The folder new files of a kind go to: where most of its files are, preferring folders named like it, or null. So
-   *  moving People/ into Personal/ moves where new people go too. */
+  /** The folder set for new files of a kind (.vaultite/folders.json by its collection, or `dashboards`; else another
+   *  app's: Obsidian's daily notes), null when none is: see home. */
+  folderSet(collection: string): string | null {
+    const f = this.configWithDefaults("folders")[collection]
+    return typeof f === "string" ? f.trim().replace(/^\/+|\/+$/g, "") : null
+  }
+
+  /** The folder new files of a kind go to: the one set for it (folderSet), else where most of its files are (those
+   *  `where` picks: then always), preferring folders named like it, or null. So, unset, moving People/ into Personal/
+   *  moves where new people go too. */
   home(collection: string, where?: (item: Item) => boolean): string | null {
+    const set = where ? null : this.folderSet(collection)
+    if (set !== null) return set
     const k = this.kind(collection), paths: string[] = []
     for (const e of this.entries.values()) {
       // (not a folder that's gone for now: sync keeps its files a moment, but nothing new goes there)
@@ -953,7 +975,7 @@ export class Vault {
   }
 
   /** The stats of the settings: .vaultite/ (but what isn't settings: artifacts' storage, which artifacts write often,
-   *  plugins' caches of live data and the app's own copies in generated/) and Obsidian's app.json and types.json. */
+   *  plugins' caches of live data and the app's own copies in generated/) and the .obsidian/ files the app reads. */
   private settingsStats() {
     const out: string[] = []
     const stack = [".vaultite"]
@@ -978,7 +1000,7 @@ export class Vault {
         else out.push(`${rel}:${st.mtimeNs}:${st.size}`)
       }
     }
-    for (const name of ["app.json", "types.json"]) {
+    for (const name of ["app.json", "types.json", "daily-notes.json", "templates.json"]) {
       try {
         const st = fs.statSync(this.abs(`.obsidian/${name}`), { bigint: true })
         out.push(`${name}:${st.mtimeNs}:${st.size}`)
@@ -1339,6 +1361,24 @@ export class Vault {
       this.settings.set(name, text)
     }
     return text === null ? fallback ?? {} : JSON.parse(text)
+  }
+
+  /** Whether a file is excluded (files.json `excluded`, else another app's: core/fileprops.ts excluder): still a file
+   *  you open, but out of search, the graph and unlinked mentions. */
+  excluded(rel: string): boolean {
+    if (this.exclusions?.version !== this.settingsVersion) this.exclusions = { version: this.settingsVersion, test: excluder(this.configWithDefaults("files").excluded) }
+    return this.exclusions.test(rel)
+  }
+  private exclusions: { version: number; test: (rel: string) => boolean } | null = null
+
+  /** A settings file with another app's defaults (`defaults`) under its own keys: what applies, never to write back. */
+  configWithDefaults(name: string): Item {
+    if (this.seeds?.version !== this.settingsVersion) {
+      let all: Record<string, Item> = {}
+      try { all = this.defaults() } catch (e) { console.error(e) }
+      this.seeds = { version: this.settingsVersion, all }
+    }
+    return { ...this.seeds.all[name], ...this.config(name) }
   }
 
   /** A settings file as on disk, for read-modify-write: null when there's none; ConfigError when it can't be read safely

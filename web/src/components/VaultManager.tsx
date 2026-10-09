@@ -203,7 +203,7 @@ const BackButton = ({ onClick }: { onClick: () => void }) => (
   </button>
 )
 
-/** The server's folders, from the home folder down (web only; the desktop app has the native picker). */
+/** The server's folders, from the home folder (web only; the desktop app has the native picker). */
 function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: VaultBackend; label: string
   onPick: (path: string) => void; onCancel: () => void; onHome: (home: string) => void }) {
   const [at, setAt] = useState<FolderList | null>(null)

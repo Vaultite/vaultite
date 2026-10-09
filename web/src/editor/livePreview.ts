@@ -1,5 +1,6 @@
-// Live preview: Markdown drawn formatted, a line showing its Markdown again while the cursor is on it. Inline marks are
-// decorated from what's on screen; blocks (sections, tables, callouts, embeds, ```block-<name>) are a state field.
+// Live preview: Markdown drawn formatted, an element (a link, a bold span, a heading's line, a block) showing its Markdown
+// again while the cursor is in it. Inline marks are decorated from what's on screen; blocks (sections, tables, callouts,
+// embeds, ```block-<name>) are a state field.
 import { syntaxTree } from "@codemirror/language"
 import { EditorSelection, Facet, Prec, StateEffect, StateField, type EditorState, type Range, type Text, type Transaction } from "@codemirror/state"
 import { Decoration, EditorView, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view"
@@ -90,9 +91,21 @@ const menuGone = ViewPlugin.define((view) => {
   return { destroy: () => document.removeEventListener("focusin", check) }
 })
 
-/** Is any part of from..to on a line the cursor (or selection) is on? */
+const editing = (state: EditorState) => state.field(focused) && state.facet(EditorView.editable)
+/** Is the cursor in from..to or at its edge, or a selection over it? Only that element shows its Markdown, as in
+ *  Obsidian, not the rest of its line. */
 function touched(state: EditorState, from: number, to: number) {
-  if (!state.field(focused) || !state.facet(EditorView.editable)) return false
+  return editing(state) && state.selection.ranges.some((r) => r.to >= from && r.from <= to)
+}
+/** A line's leading marker (a list item's bullet or checkbox, a footnote's label): shown only with the cursor inside it
+ *  or a selection over it, so it stays drawn while its line is typed. */
+function touchedInside(state: EditorState, from: number, to: number) {
+  return editing(state) && state.selection.ranges.some((r) => (r.empty ? r.head > from && r.head < to : r.to > from && r.from < to))
+}
+/** Is any part of from..to on a line the cursor (or selection) is on? Headings, quotes and blocks show their Markdown
+ *  for the whole line. */
+function touchedLines(state: EditorState, from: number, to: number) {
+  if (!editing(state)) return false
   const a = state.doc.lineAt(from).from, b = state.doc.lineAt(to).to
   return state.selection.ranges.some((r) => r.to >= a && r.from <= b)
 }
@@ -626,7 +639,7 @@ function inline(view: EditorView): DecorationSet {
         const h = /^ATXHeading(\d)$/.exec(name) ?? /^SetextHeading(\d)$/.exec(name)
         if (h) {
           out.push(line(`cm-h cm-h${h[1]}`).range(state.doc.lineAt(n.from).from))
-          if (live && name.startsWith("ATX") && !touched(state, n.from, n.to)) {
+          if (live && name.startsWith("ATX") && !touchedLines(state, n.from, n.to)) {
             for (const m of child(n, "HeaderMark")) {
               const end = state.sliceDoc(m.to, m.to + 1) === " " ? m.to + 1 : m.to
               if (m.from === n.from) out.push(hide.range(m.from, end)); else out.push(hide.range(m.from, m.to))
@@ -698,7 +711,7 @@ function inline(view: EditorView): DecorationSet {
                 from: n.from, to: n.to,
                 enter: (q) => {
                   if (q.name !== "QuoteMark") return
-                  if (!touched(state, q.from, q.to)) out.push(hide.range(q.from, state.sliceDoc(q.to, q.to + 1) === " " ? q.to + 1 : q.to))
+                  if (!touchedLines(state, q.from, q.to)) out.push(hide.range(q.from, state.sliceDoc(q.to, q.to + 1) === " " ? q.to + 1 : q.to))
                 },
               })
             }
@@ -731,7 +744,7 @@ function inline(view: EditorView): DecorationSet {
             const marks = child(n, "CodeMark"), info = child(n, "CodeInfo")[0]
             const lang = info ? state.sliceDoc(info.from, info.to) : ""
             // Off the cursor: the ``` lines give way to a header (language, copy) and a closing edge.
-            if (name === "FencedCode" && live && !touched(state, n.from, n.to) && !lang.startsWith("block-")) {
+            if (name === "FencedCode" && live && !touchedLines(state, n.from, n.to) && !lang.startsWith("block-")) {
               const open = state.doc.line(first), closed = marks.length > 1 && last > first
               const code = last - first > (closed ? 1 : 0) ? state.sliceDoc(state.doc.line(first + 1).from, state.doc.line(closed ? last - 1 : last).to) : ""
               out.push(line("cm-fence-top").range(open.from))
@@ -751,11 +764,11 @@ function inline(view: EditorView): DecorationSet {
             if (!lm) return
             const task = n.getChild("Task")?.getChild("TaskMarker")
             const bullet = n.parent?.name === "BulletList"
-            const active = touched(state, lm.from, lm.to)
             // Hanging indent: a long item wraps under its text, not under its bullet.
             const ln = state.doc.lineAt(lm.from)
             const end = (task ?? lm).to
             const space = state.sliceDoc(end, end + 1) === " " ? " " : ""
+            const active = touchedInside(state, lm.from, end + space.length)
             const indent = state.sliceDoc(ln.from, lm.from)
             // Nested items (live): each level starts under its parent's text, with a guide line down from
             // each parent's marker, instead of however wide the tabs or spaces happen to be.
@@ -852,7 +865,7 @@ function inline(view: EditorView): DecorationSet {
         const d = FN_DEF.exec(l.text)
         if (d) {
           out.push(line("cm-footnote-def").range(l.from))
-          if (live && !touched(state, l.from, l.to)) {
+          if (live && !touchedInside(state, l.from, l.from + d[0].length)) {
             out.push(Decoration.replace({ widget: new FootnoteLabel(`${notes.num.get(d[1]) ?? d[1]}.`) }).range(l.from, l.from + d[0].length))
           } else out.push(mark("cm-footnote-mark").range(l.from, l.from + d[0].length))
         }
@@ -1106,7 +1119,7 @@ function visible(c: Cands, state: EditorState): DecorationSet {
   const out: Range<Decoration>[] = []
   const covered = new Uint8Array(state.doc.lines + 2)
   for (const x of c.list) {
-    if (!x.always && touched(state, x.from, x.to)) {
+    if (!x.always && touchedLines(state, x.from, x.to)) {
       if (x.fence && !c.read) out.push(Decoration.widget({ widget: new Foot(x.fence.name, x.fence.text, c.cfg.blockNotes?.(x.fence.name, x.fence.text) ?? { notes: [] }), block: true, side: 1 }).range(x.to))
       continue
     }
@@ -1273,7 +1286,7 @@ export const fenceMenu = EditorView.domEventHandlers({
     const cfg = view.state.facet(previewConfig)
     const pos = view.posAtCoords({ x: e.clientX, y: e.clientY })
     if (!cfg.blockMenu || pos === null || (e as PointerEvent).pointerType === "touch") return false
-    const find = () => view.state.field(blockField, false)?.c.list.find((c) => c.fence && pos >= c.from && pos <= c.to && touched(view.state, c.from, c.to)) ?? null
+    const find = () => view.state.field(blockField, false)?.c.list.find((c) => c.fence && pos >= c.from && pos <= c.to && touchedLines(view.state, c.from, c.to)) ?? null
     const x = find()
     if (!x?.fence) return false
     e.preventDefault()

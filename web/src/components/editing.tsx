@@ -62,10 +62,10 @@ export function linkKind(resolve: (t: string) => Target | null, target: string):
 /** What [[ suggests in `from`: every file by its name (and folder), and its aliases; attachments (images, PDFs) by name.
  *  Picking one writes the shortest path that finds it from there (its name, unless another file closer has it). */
 function linkNames(store: Store, from: string) {
-  const out: { label: string; detail?: string; path?: string; insert?: string }[] = []
+  const out: { label: string; detail?: string; path?: string; insert?: string; link?: string }[] = []
   for (const f of store.files.files) {
     out.push({ label: stem(f.path), detail: folderOf(f.path) || undefined, path: f.path, insert: shortestLink(store, f.path, from) })
-    for (const a of f.aliases) if (a !== stem(f.path)) out.push({ label: a, detail: `→ ${stem(f.path)}` })
+    for (const a of f.aliases) if (a !== stem(f.path)) out.push({ label: a, detail: `→ ${stem(f.path)}`, path: f.path, link: shortestLink(store, f.path, from) })
   }
   for (const f of store.files.others) out.push({ label: stem(f.path), detail: folderOf(f.path) || undefined, path: f.path, insert: shortestLink(store, f.path, from) })
   return out

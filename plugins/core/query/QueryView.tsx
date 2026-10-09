@@ -124,8 +124,9 @@ export function useQueryResult(url: string) {
   return { res, error: error && !data ? error : res ? null : error, loading: !res && !error, groups, sort, setSort, save }
 }
 
-/** "12 files", "50 of 120 files". */
+/** "12 files", "50 of 120 files", "12 files · 3 archived hidden". */
 export const countText = (res: Result) => `${res.total > res.shown ? `${res.shown} of ${res.total}` : res.total} ${res.total === 1 ? "file" : "files"}`
+  + (res.archivedHidden ? ` · ${res.archivedHidden} archived hidden` : "")
 
 /** What a database view draws, by its view: notes on what was left out, then the table, cards, list, board, calendar
  *  or map. `fill`: it has a box of its own to fill (a .base in its tab), so a map takes the height it's given. */

@@ -1,5 +1,6 @@
 // Vaults from other apps: a vault another app also opens keeps its settings, and the app follows the ones that mean the
-// same here (`conventions`: new notes, attachments, Markdown links). Only keys .obsidian/app.json sets change anything.
+// same here (`conventions`: new notes, links, the editor; attachments and more through the server's
+// setting-defaults). Only keys .obsidian/ sets change anything.
 import { useEffect } from "react"
 import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, type Store } from "@vaultite"
 import { OtherPlugins } from "./Plugins"
@@ -36,16 +37,12 @@ export default definePlugin({
       }
       return undefined
     },
-    // "/" the top, "./" beside the note, "./sub" a folder beside it, else a folder
-    attachmentFolder: (s, from) => {
-      const p = settings(s)?.attachmentFolderPath
-      if (p === undefined) return undefined
-      const here = folderOf(from)
-      if (p === "/" || p === "") return ""
-      if (p === "./" || p === ".") return here
-      if (p.startsWith("./")) return [here, p.slice(2).replace(/^\/+|\/+$/g, "")].filter(Boolean).join("/")
-      return p.replace(/^\/+|\/+$/g, "")
-    },
     markdownLinks: (s) => settings(s)?.useMarkdownLinks,
+    editor: (s) => {
+      const o = settings(s)
+      if (!o) return undefined
+      const { spellcheck, useTab, tabSize, autoPairBrackets, autoPairMarkdown, readableLineLength, propertiesInDocument } = o
+      return { spellcheck, useTab, tabSize, autoPairBrackets, autoPairMarkdown, readableLineLength, propertiesInDocument }
+    },
   },
 })

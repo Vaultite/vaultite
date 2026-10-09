@@ -601,6 +601,6 @@ plugin.block("cursor-limits", async () => {
   return section("Cursor plan", ...(p ? [`${p.name}${p.monthly ? `, $${p.monthly} a month` : ""}.`] : []), limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`)
 })
 
-codingAgent(plugin, { id: "cursor", name: "Cursor", prefix: "cursor", noun: "chat", count: "conversation", value: "at API rates", estimate: true,
+codingAgent(plugin, { id: "cursor", name: "Cursor", prefix: "cursor", noun: "chat", count: "conversation", value: "estimated at list prices", estimate: true,
   state: (s) => `${s.status === "busy" ? "Working" : "Open"}${s.kind === "IDE" ? " in Cursor" : ""}`, sessionId: SESSION_ID, usage, session,
   updated: (ms) => new Date(ms).toISOString() })

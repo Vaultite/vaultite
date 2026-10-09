@@ -7,14 +7,14 @@
   until it arrives: `readSoon`), and API writes go straight to the files. Never wipe the vault; back it up before bulk
   changes.
   - **Folders are the user's** (reorganizing must never break anything): a file's kind is its `type:` wherever it is,
-    never its folder (`Vault.kindFor`; never in the templates folder: `vault.plain`). A kind's `folder` is only a
-    default: new files go where its files are (`Vault.home`), an item keeps its folder when renamed, pages are found by
+    never its folder alone (`Vault.kindFor`; a daily note without one by its name in the folder set: `KindSpec.owns`; never in the templates folder: `vault.plain`). A kind's `folder` is only a
+    default: new files go in the folder set for it (folders.json), else where its files are (`Vault.home`), an item keeps its folder when renamed, pages are found by
     name, type and plugin, and a path from before a folder moved outside the app is found by `Vault.relocated`. Never
     hard-code `Dashboards/...` or `People/...`: find files by type or plugin, ids, or `homeOf`.
   - The server runs in a browser too, for the web demo (`web/demo/CLAUDE.md`): a new `node:` module or native package
     needs its shim or stub there.
   - **Caching is keyed on the vault's versions**: `vault.version` (its files) and `vault.settingsVersion`
-    (`.vaultite/` but caches and generated/, `.obsidian/app.json`). The file tree, `/api/state`, the graph and database
+    (`.vaultite/` but caches and generated/, the .obsidian/ files it reads). The file tree, `/api/state`, the graph and database
     views are kept until what they read changes and answered frozen (`jsonOf` serializes once); per-file data hangs off
     the `Entry`. A new cache that depends on something else (the clock, live data) must key on that too.
 - **Writes are small edits, never rewrites** (`core/textedit.ts`, shared with the editor): `Vault.save` renders the old

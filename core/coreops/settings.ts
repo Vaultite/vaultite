@@ -91,7 +91,7 @@ export function normalizeKeys(s: string) {
 
 /** The app's own settings files, .vaultite/<name>.json: what the app's state holds and its routes and ops may change
  *  (a plugin's data.json is plugin/<id>). */
-export const SETTINGS = ["appearance", "plugins", "sidebars", "newtab", "files", "pages", "hotkeys"]
+export const SETTINGS = ["appearance", "editor", "plugins", "sidebars", "newtab", "files", "folders", "pages", "hotkeys"]
 function settingsName(name: string) {
   const n = name.trim().replace(/^\.vaultite\//, "").replace(/\.json$/, "")
   const plugin = /^plugins?\/([a-z0-9][a-z0-9-]*)(\/data)?$/.exec(n)
@@ -105,14 +105,14 @@ export function settingsOps(app: App): Op[] {
   return [{
     id: "settings.get",
     cli: "settings",
-    summary: "A settings file of the app (appearance, plugins, sidebars, newtab, files, pages, hotkeys) or a plugin's (plugin/<id>), as JSON.",
+    summary: "A settings file of the app (appearance, editor, plugins, sidebars, newtab, files, folders, pages, hotkeys) or a plugin's (plugin/<id>), as JSON.",
     help: `The app's settings are files in the vault's .vaultite/ (vau docs app has every key); a plugin's are its
 .vaultite/plugins/<id>/data.json (vau docs <id> lists them). Unset keys are the app's defaults.
 
   vau settings appearance
   vau settings plugin/workspaces`,
     kind: "read",
-    params: { name: { type: "string", required: true, description: "appearance, plugins, sidebars, newtab, files, pages, hotkeys, or plugin/<id>" } },
+    params: { name: { type: "string", required: true, description: "appearance, editor, plugins, sidebars, newtab, files, folders, pages, hotkeys, or plugin/<id>" } },
     args: ["name"],
     run: ({ name }) => app.vault.config(settingsName(name)),
     text: jsonBlock,
@@ -128,7 +128,7 @@ checked here: vau appearance and vau hotkey check theirs.
   vau settings set plugin/today '{"week_starts": "monday"}'`,
     kind: "write",
     params: {
-      name: { type: "string", required: true, description: "appearance, plugins, sidebars, newtab, files, pages, hotkeys, or plugin/<id>" },
+      name: { type: "string", required: true, description: "appearance, editor, plugins, sidebars, newtab, files, folders, pages, hotkeys, or plugin/<id>" },
       values: { type: "object", required: true, description: "the keys to change and their new values (null removes one)" },
     },
     args: ["name", "values"],

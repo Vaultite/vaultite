@@ -30,7 +30,7 @@ export type AgentSource = {
   view: string
   /** Said when there are no limits (yet): where they come from. */
   noLimits?: string
-  /** What `cost` is, when it isn't the value at API list prices ("What Cursor charged"). */
+  /** What `cost` is, when it isn't an estimate at list prices ("Cost as Hermes recorded it"). */
   costNote?: string
   /** A plugin setting that must be yes before its limits are read from the user's account: asked in the limits block. */
   consent?: { setting: string; ask: string; detail: string }
@@ -104,6 +104,8 @@ export function openSession(src: AgentSource, s: { id: string; terminal?: string
 const titleOf = (s: { title: string; private?: boolean }, untitled: string) => (s.private ? "Private session" : s.title || untitled)
 
 const daysOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.days === "number" ? Math.round(o.days) : 30, 1), 3650)
+/** What a cost is: an estimate at list prices, unless the source says otherwise. */
+export const costNote = (src: AgentSource) => src.costNote ?? "Estimated at list prices"
 export const money = (v: number) => (v < 100 ? `$${v.toFixed(2)}` : `$${numberText(Math.round(v))}`)
 export const tokens = (n: number) =>
   n >= 1e9 ? `${(n / 1e9).toFixed(1)}B` : n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n)
@@ -269,6 +271,7 @@ export function AgentSessions({ src, options, fm }: BlockCtx & { src: AgentSourc
               {recent.length ? <List>{recent.map((s) => <SessionRow key={s.id} src={src} s={s} machine={machine} />)}</List> : <Empty>Nothing yet.</Empty>}
             </Section>
           )}
+          {[...data.live, ...recent].some((s) => s.cost) && <p className="mt-2 text-[13px] text-muted-foreground">{costNote(src)}.</p>}
           {!!data.servers?.length && (
             <Section title="Remote Control" className="mt-4">
               <List>
@@ -290,7 +293,7 @@ export function AgentSessions({ src, options, fm }: BlockCtx & { src: AgentSourc
   )
 }
 
-/** Its value at API prices (or tokens) per day, today and the period (`days: 30`). */
+/** Its value estimated at list prices (or tokens) per day, today and the period (`days: 30`). */
 export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSource }) {
   const days = daysOf(options)
   const [by, setBy] = useState<"cost" | "tokens">("cost")
@@ -319,7 +322,7 @@ export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSou
           </div>
           <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
             <p className="text-[13px] text-muted-foreground">
-              {src.costNote ?? "Value at API list prices"}{data.total.unpriced ? ", models without a price left out" : ""}{plan ? `; ${plan.name} is ${money(plan.monthly!)} a month` : ""}.
+              {costNote(src)}{data.total.unpriced ? ", models without a price left out" : ""}{plan ? `; ${plan.name} is ${money(plan.monthly!)} a month` : ""}.
             </p>
             <Segmented label="Show" value={by} onChange={setBy} options={[{ value: "cost", label: "Value" }, { value: "tokens", label: "Tokens" }]} />
           </div>
@@ -364,6 +367,7 @@ function Shares({ src, options, fm, by }: BlockCtx & { src: AgentSource; by: "pr
           ))}
         </List>
       )}
+      {!!list?.some((x) => x.cost) && <p className="mt-2 text-[13px] text-muted-foreground">{costNote(src)}.</p>}
     </Panel>
   )
 }
@@ -392,7 +396,7 @@ export function AgentProject({ src, ...ctx }: BlockCtx & { src: AgentSource }) {
     <div className="space-y-3">
       {p && (
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-          <Stat label={`${src.speaker ?? src.label}, 30 days`} value={money(p.cost)} hint={src.costNote ? undefined : "at API prices"} />
+          <Stat label={`${src.speaker ?? src.label}, 30 days`} value={money(p.cost)} hint={src.costNote ? undefined : "estimated at list prices"} />
           <Stat label="Tokens" value={tokens(p.tokens)} />
           <Stat label="Sessions" value={p.sessions ?? 0} />
           <Stat label="Working" value={fmtMin(Math.round(p.active_min ?? 0))} />

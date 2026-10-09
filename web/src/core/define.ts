@@ -10,6 +10,7 @@ import type { MenuItem } from "@/components/ContextMenu"
 import type { Sidebars } from "../../../core/sidebars.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { TextSizeKind } from "@/core/textsize"
+import type { EditorSettings } from "@/core/editorPrefs"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
 
 export type Manifest = {
@@ -157,6 +158,8 @@ export type SearchDoc = {
   weight?: number
   /** Archived (the core sets it from its `file`): ranked after everything else. */
   archived?: boolean
+  /** In the excluded files (the core sets it from its `file`): ranked after the rest, never suggested. */
+  excluded?: boolean
 }
 /** Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths. An archived
  *  one loses every tie. */
@@ -395,10 +398,10 @@ export type SlashItem = { id: string; title: string
 export type Conventions = {
   /** The folder a new note goes in ("" = the top). `from`: the file the user is on ("" for none). */
   newNoteFolder?: (store: Store, from: string) => string | undefined
-  /** The folder a file pasted into the note `from` goes in ("" = the top). */
-  attachmentFolder?: (store: Store, from: string) => string | undefined
   /** Links are written as Markdown links (`[Note](Note.md)`), not [[wikilinks]]: [[ suggestions, pasted images. */
   markdownLinks?: (store: Store) => boolean | undefined
+  /** The editor's settings the vault sets (spellcheck, indent...), under the app's own editor.json. */
+  editor?: (store: Store) => Partial<EditorSettings> | undefined
 }
 /** Which editor a plugin's editor extensions go into: a note (Markdown, live preview or source), a code file, or other
  *  text (JSON, an artifact's HTML, a CSV's source); `path`: its file, when it's one. */

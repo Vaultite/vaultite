@@ -6,6 +6,8 @@ import type { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import type { App } from "../app.ts"
 import { type Op, type OpCtx, OpError } from "../ops.ts"
+import { attachmentDir, unarchived } from "../fileprops.ts"
+import { filing } from "../filing.ts"
 import { localStamp, safeName } from "../vault.ts"
 import { fetchPublic } from "../web.ts"
 import { type Any, enc, serviceOn } from "./common.ts"
@@ -135,7 +137,7 @@ export async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named
   const stem = pasted ? `Pasted image ${localStamp().replace(/\D/g, "")}` : named.replace(/\.[^.]+$/, "") || `Upload ${localStamp()}`
   let name = safeName(stem) + (path.posix.extname(named) || (ext ? `.${ext}` : ""))
   if (!/\.[a-z0-9]+$/i.test(name) && !ext) name = `${name}.bin`
-  const dir = folder !== undefined ? String(folder).replace(/^\/+|\/+$/g, "") : String(serviceOn(app, "attachments:folder")?.(note ?? "") ?? "Attachments")
+  const dir = folder !== undefined ? String(folder).replace(/^\/+|\/+$/g, "") : attachmentDir(filing(app.vault).attachments, unarchived(note ?? ""))
   const f = note ? await ctx.api("GET", `file?path=${enc(note)}`) : null // (before saving: a wrong note saves nothing)
   if (dir) await ctx.api("POST", "folder", { path: dir }).catch(() => {}) // (there already: fine)
   const { path: rel } = await ctx.api("POST", "upload/name", { folder: dir, name })

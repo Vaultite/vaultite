@@ -4,7 +4,7 @@
   "category": "agents",
   "essential": true,
   "name": "Claude Code",
-  "description": "What Claude Code does on this machine, in each of its accounts: plan limits and when they renew, sessions running now and Remote Control servers, usage and its value at API prices, by day, project and model. Read from Claude Code's own files, nothing saved.",
+  "description": "What Claude Code does on this machine, in each of its accounts: plan limits and when they renew, sessions running now and Remote Control servers, usage and its value estimated at list prices, by day, project and model. Read from Claude Code's own files, nothing saved.",
   "runsOnServer": true,
   "enhances": [
     "projects",
@@ -30,7 +30,7 @@
       }
     },
     "claude-usage": {
-      "description": "its value at API prices and tokens per day, today and over the last days",
+      "description": "its value estimated at list prices and tokens per day, today and over the last days",
       "live": "Claude Code's own files on this machine (~/.claude)",
       "options": {
         "days": { "type": "number", "default": 30, "min": 1, "max": 3650, "description": "how many days back it covers" },

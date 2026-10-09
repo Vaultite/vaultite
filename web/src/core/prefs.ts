@@ -62,12 +62,14 @@ export type Prefs = {
   collapsedCategories: string[]
   /** Values plugins keep for this device only (Workspaces: the current workspace), by key; see devicePref. */
   device: Record<string, unknown>
+  /** The keys .vaultite/editor.json sets, as written (core/editorPrefs.ts reads them with their defaults). */
+  editor: Record<string, unknown>
 }
 
 const KEY = "vaultite.prefs"
 // (the appearance ones are core/bundles.ts' LOOK_DEFAULTS too: keep them the same)
 const DEFAULTS: Prefs = {
-  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, fileSort: "name", folderLimit: 0, autoReveal: false, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null }, collapsedCategories: [], device: {},
+  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, fileSort: "name", folderLimit: 0, autoReveal: false, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null }, collapsedCategories: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
@@ -123,14 +125,18 @@ export function setPrefs(changes: Partial<Prefs>) {
   // newtab.json: only its keys that changed (null removes one: back to the default).
   const tab = changes.newTab && (Object.keys(changes.newTab) as (keyof NewTabSetup)[]).filter((k) => JSON.stringify(changes.newTab![k]) !== JSON.stringify(before.newTab[k]))
   const newTab = tab?.length ? [patch("config/newtab", Object.fromEntries(tab.map((k) => [k, prefs.newTab[k]]))).then(() => {}, () => {})] : []
+  // editor.json: only its keys that changed (one taken out: null, back to the default).
+  const ed = changes.editor && [...new Set([...Object.keys(before.editor), ...Object.keys(changes.editor)])]
+    .filter((k) => JSON.stringify(changes.editor![k]) !== JSON.stringify(before.editor[k]))
+  const editor = ed?.length ? [patch("config/editor", Object.fromEntries(ed.map((k) => [k, prefs.editor[k] ?? null]))).then(() => {}, () => {})] : []
   const whole = (Object.keys(WHOLE) as (keyof typeof WHOLE)[]).filter((k) => k in changes).map((k) =>
     put(`config/${WHOLE[k]}`, prefs[k] ?? {}).then(() => {}, () => {}))
-  return Promise.all([...whole, ...newTab, ...(Object.keys(FILES) as File[]).filter((file) => FILES[file].some((k) => k in changes)).map((file) => save(file, Object.keys(changes)))]).then(() => {})
+  return Promise.all([...whole, ...newTab, ...editor, ...(Object.keys(FILES) as File[]).filter((file) => FILES[file].some((k) => k in changes)).map((file) => save(file, Object.keys(changes)))]).then(() => {})
 }
 
 /** The vault's settings arrived: they're the truth, a key a file doesn't have the default. */
-export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab", Record<string, unknown>>>) {
-  const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab) }
+export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab" | "editor", Record<string, unknown>>>) {
+  const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab), editor: isObject(config.editor) ? config.editor : {} }
   for (const file of Object.keys(FILES) as File[]) {
     const got: unknown = config[file], saved = isObject(got) ? got : {}
     for (const k of FILES[file]) (next as Record<string, unknown>)[k] = k in saved && fits(k, saved[k]) ? saved[k] : DEFAULTS[k]

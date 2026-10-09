@@ -1,7 +1,7 @@
 // People's operations: a timeline line, and a lasting fact kept where it belongs (ME.md or a person's file), finding
 // the person as the user says the name (file, alias, a first name only one has), never by a guess.
 import { OpError, type Plugin, today } from "../../../core/plugins.ts"
-import { KINDS } from "../../../core/timeline.ts"
+import { timelineKind } from "../../../core/timeline.ts"
 import { type Item, str } from "../../../core/vault.ts"
 
 const nameOf = (id: unknown) => String(id).split("/").pop()!
@@ -62,8 +62,9 @@ export function peopleOps(plugin: Plugin) {
     cli: "person timeline",
     mcp: "add_timeline",
     summary: "Add a line to someone's timeline (People/<Name>.md), placed by date: a call, a meeting, a message, or a dated note about them.",
-    help: `Kinds call, hang out, meet, study, text, message and email count as being in touch; note is a fact, not contact
-(something that may change: a new job, a move). Log notable exchanges, not every chat. The person must exist: their
+    help: `Any kind but note counts as being in touch: call, hang out, meet, study, text, message and email get icons, and
+any other word or two works too (coffee, game night). note is a fact, not contact (something that may change: a new
+job, a move). Log notable exchanges, not every chat. The person must exist: their
 name as in People/, an alias, or a first name only one person has (else it says who it could be). Every other line of
 the file stays as it was.
 
@@ -72,7 +73,7 @@ the file stays as it was.
     kind: "write",
     params: {
       person: { type: "string", required: true, description: "their name, as in People/<Name>.md (an alias or a first name only they have works)" },
-      kind: { type: "string", required: true, enum: [...KINDS].sort(), description: "what it was: call, hang out, meet, study, text, message, email, or note (a fact, not contact)" },
+      kind: { type: "string", required: true, description: "what it was, a word or two: call, hang out, meet, study, text, message, email (these get icons), any other (coffee), or note (a fact, not contact)" },
       text: { type: "string", required: true, description: "what it was about, one line" },
       date: { type: "string", format: "date", description: "YYYY-MM-DD, the user's local date (default today)" },
       subject: { type: "string", description: "an email's subject, or a short headline" },
@@ -88,7 +89,7 @@ the file stays as it was.
       for (const k of ["subject", "url"]) if (str(p[k]).trim()) body[k] = str(p[k]).trim()
       if (p.duration_min !== undefined) body.duration_min = p.duration_min
       const r = await ctx.api("POST", "interactions", body)
-      return { person: name, path: `${r.person}.md`, date, kind: p.kind, text: body.notes }
+      return { person: name, path: `${r.person}.md`, date, kind: timelineKind(p.kind) ?? p.kind, text: body.notes }
     },
     text: (r) => `Added to ${r.person}'s timeline: ${r.date} · ${r.kind} · ${r.text}`,
   })

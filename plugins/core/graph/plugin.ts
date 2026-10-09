@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import { frontmatterTargets, HTTPError, type LinkFile, linkResolver, LOADED, OpError, Plugin, wikiTargets } from "../../../core/plugins.ts"
 import { type Entry, readText, splitTags, stemOf, type Vault } from "../../../core/vault.ts"
-import { buildGraph, filterGraph, type Graph, type GraphFile, localGraph, localMarkdown } from "./graph.ts"
+import { buildGraph, filterGraph, type Graph, type GraphFile, type GraphNode, localGraph, localMarkdown, MAX_DEPTH } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -38,7 +38,7 @@ const otherLinks = new WeakMap<Vault, Map<string, { ns: bigint; read: unknown; l
 /** The whole vault's graph, built again only when the vault's files changed or the plugins that are off did (their
  *  services name links); the same object meanwhile, frozen (so the server serializes it once). */
 export function vaultGraph(vault: Vault): Graph {
-  const version = `${vault.version}:${[...vault.switchedOff()].join(",")}`
+  const version = `${vault.version}:${vault.settingsVersion}:${[...vault.switchedOff()].join(",")}`
   if (cached?.vault === vault && cached.version === version && cached.plugins.length === LOADED.length &&
     LOADED.every((p, i) => p === cached!.plugins[i])) return cached.graph
 
@@ -51,6 +51,7 @@ export function vaultGraph(vault: Vault): Graph {
     targets.push(t)
     files.push({
       path: rel, title: t.title!, type: e.type, tags: splitTags(e.fm.tags), links: linksIn(e), ...(e.archived ? { archived: true } : {}),
+      ...(vault.excluded(rel) ? { excluded: true } : {}),
     })
   }
   // Other files: those a plugin reads links out of, and the ones something links to (attachments).
@@ -69,7 +70,7 @@ export function vaultGraph(vault: Vault): Graph {
         known.set(rel, { ns: st.ns, read, links })
       } catch { /* half-written: no links this time */ }
     }
-    others.push({ path: rel, title: rel.slice(rel.lastIndexOf("/") + 1), type: null, tags: [], links })
+    others.push({ path: rel, title: rel.slice(rel.lastIndexOf("/") + 1), type: null, tags: [], links, ...(vault.excluded(rel) ? { excluded: true } : {}) })
     targets.push({ path: rel })
   }
   const resolve = linkResolver(targets)
@@ -88,16 +89,20 @@ function linkNameFor(vault: Vault) {
   return (p: string) => ((count.get(nm(p)) ?? 0) > 1 ? p.replace(/\.md$/i, "") : stemOf(p))
 }
 
-const depthOf = (v: unknown) => Math.max(1, Math.min(3, Math.trunc(Number(v) || 1)))
+const depthOf = (v: unknown) => Math.max(1, Math.min(MAX_DEPTH, Math.trunc(Number(v) || 1)))
 
-/** The graph without archived files (but `keep`, the file a local graph is of), unless the settings or the request
- *  (`all`) ask for them. The same object for the same graph, so the whole vault's is still serialized once. */
-const shownCache = new WeakMap<Graph, Graph>()
+/** The graph without excluded files, nor archived ones unless the settings or the request (`all`) ask for them; but
+ *  `keep`, the file a local graph is of. The same object for the same graph, so the whole vault's is serialized once. */
+const shownCache = new WeakMap<Graph, Map<boolean, Graph>>()
 function shown(g: Graph, all: boolean, keep = "") {
-  if (all || plugin.settings().archived === true || !g.nodes.some((n) => n.archived && n.path !== keep)) return g
-  if (keep) return filterGraph(g, (n) => !n.archived || n.path === keep)
-  let hit = shownCache.get(g)
-  if (!hit) shownCache.set(g, hit = Object.freeze(filterGraph(g, (n) => !n.archived)))
+  const archived = all || plugin.settings().archived === true
+  const hide = (n: GraphNode) => n.path !== keep && (!!n.excluded || (!archived && !!n.archived))
+  if (!g.nodes.some(hide)) return g
+  if (keep) return filterGraph(g, (n) => !hide(n))
+  let byAll = shownCache.get(g)
+  if (!byAll) shownCache.set(g, byAll = new Map())
+  let hit = byAll.get(archived)
+  if (!hit) byAll.set(archived, hit = Object.freeze(filterGraph(g, (n) => !hide(n))))
   return hit
 }
 
@@ -125,14 +130,14 @@ plugin.op({
   mcp: "links",
   summary: "A file's links: what links to it (its backlinks), what it links to, and with depth, what's further out in the graph.",
   help: `Links resolve like the app's ([[name]], a path, an alias; embeds and a canvas's cards count). Archived
-files are left out unless asked for. depth 2 or 3 adds what's that many links away (the local graph).
+files are left out unless asked for. depth 2 to 5 adds what's that many links away (the local graph).
 
   vau graph.links "Alice Park"
   vau graph.links Notes/Idea.md --depth 2`,
   kind: "read",
   params: {
     path: { type: "string", format: "path", required: true, description: "the file (Notes/Idea.md, or its name: Alice Park)" },
-    depth: { type: "integer", minimum: 1, maximum: 3, default: 1, description: "how many links out (2 or 3: the files beyond its neighbours too)" },
+    depth: { type: "integer", minimum: 1, maximum: 5, default: 1, description: "how many links out (2 to 5: the files beyond its neighbours too)" },
     archived: { type: "boolean", description: "archived files too" },
   },
   args: ["path"],

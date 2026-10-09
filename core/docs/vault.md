@@ -10,9 +10,10 @@ only when the app makes the file or it's edited in the app. Files it can't read 
 note, even in `People/` (`vau type` lists such files and gives them one). A kind kept in one file (the user's `ME.md`,
 `Work.md`) is also that file without a `type:`. Folders are the user's: moving or renaming one never changes what its
 files are. Each kind has a usual folder (`People/`, `Notes/`, `Logs/<Area>/`, `Routines/`, `Daily/`, `Books/`,
-`Projects/`; dashboards in `Dashboards/`), but new files go where that kind's files already are (a
-new person where most people are, a log where its area's logs are), and only into the usual folder when there are
-none. Notes in the templates folder (`Templates/`) are never items, whatever their type. Any other Markdown file or
+`Projects/`; dashboards in `Dashboards/`): new files go in the folder its plugin's settings set (`.vaultite/folders.json`),
+else where that kind's files already are (a new person where most people are, a log where its area's logs are), and
+only into the usual folder when there are none. Daily notes are also found by their name in their folder (`vau docs
+today`). Notes in the templates folder (`Templates/`) are never items, whatever their type. Any other Markdown file or
 folder is fine (a plain note, found by its name; its links count). Database views, the graph and the app all go by the
 type. `.vaultite/` is the app's settings (`vau docs app`); `.vaultite/cache/` is live
 data plugins fetched and `.vaultite/generated/` the app's own copies, and `.vaultite/AGENTS.md` its rules for AIs: don't edit them.
@@ -59,7 +60,7 @@ placed by date (the section is made at the file's end when there's none).
 moves a file into `.archive/` in its own folder and sets `archived: true`; `vau unarchive` moves it back and removes the
 key. Links follow both ways. A file with the key, or in an `.archive/` folder, is archived: it still opens and its
 links resolve, but it's left out of plugins' lists and blocks, `/api/notes` and `/api/logs` (unless `archived=true`), the
-graph, database views (unless `archived: true` or `only`), the sidebar and first-name or alias links another file also
+graph, database views (unless `archived: true` or `only`; a .base lists them, as in Obsidian), the sidebar and first-name or alias links another file also
 answers to; search lists it last. Writing the key by hand doesn't move the file: `vau archive tidy` does.
 
 **The CLI.** `vau --help`: `vau context` first, then `vau render`, `vau open <file>` (in the user's window), `vau

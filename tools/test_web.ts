@@ -320,12 +320,24 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
   // The file view works it out for the file being edited: its row's type when a kind owns it, else what's typed.
   const row = { kind: "people", type: "person" }
   check("type: the file being edited keeps its kind's type, whatever is typed", fp.effectiveType(row.kind ? row.type : null, { type: "dashboard" }) === "person")
-  check("archived: true, yes or a date archive; false, no or nothing don't", fp.isArchived({ archived: true }) && fp.isArchived({ archived: "2026-09-01" }) &&
-    !fp.isArchived({ archived: false }) && !fp.isArchived({ archived: "no" }) && !fp.isArchived({}) && !fp.isArchived(undefined))
+  check("archived: true or yes archive; a date, false, no or nothing don't", fp.isArchived({ archived: true }) && fp.isArchived({ archived: "yes" }) &&
+    !fp.isArchived({ archived: "2026-09-01" }) && !fp.isArchived({ archived: false }) && !fp.isArchived({ archived: "no" }) && !fp.isArchived({}) && !fp.isArchived(undefined))
   // What a file's properties become after Archive and Unarchive (the app's setProperty is setProp on the file's header).
   const head = "---\ntype: note\ntags: [a]  # mine\n---\n"
   const on = fm.setProp(head, "archived", true)
   check("archived: Archive adds one line, Unarchive takes it away", on === "---\ntype: note\ntags: [a]  # mine\narchived: true\n---\n" && fm.setProp(on, "archived", undefined) === head, on)
+}
+
+// ---------- Excluded files and the attachment folder (core/fileprops.ts), written as Obsidian writes them ----------
+{
+  const fp: { excluder(f: unknown): (rel: string) => boolean; attachmentDir(spec: string, from: string): string } =
+    await import(pathToFileURL(path.join(ROOT, "core", "fileprops.ts")).href)
+  const ex = fp.excluder(["Archive/", "/^Daily\\/\\d{4}-01/", "/(/", 3, " "])
+  check("excluded: a path they start with, or a /regex/; a broken one or not text is nothing", ex("Archive/Old.md") && ex("Daily/2026-01-02.md") &&
+    !ex("Daily/2026-02-02.md") && !ex("Notes/Archive/Old.md") && !fp.excluder(undefined)("Archive/x.md"))
+  check("attachments: / the top, ./ beside the note, ./sub beside it, else that folder", fp.attachmentDir("/", "A/B/N.md") === "" &&
+    fp.attachmentDir("./", "A/B/N.md") === "A/B" && fp.attachmentDir("./assets/", "A/N.md") === "A/assets" && fp.attachmentDir("./assets", "N.md") === "assets" &&
+    fp.attachmentDir("Files/Pasted/", "A/N.md") === "Files/Pasted")
 }
 
 // ---------- Markdown's extras: headings and blocks to go to, tags, comments, highlights, note embeds ----------

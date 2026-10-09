@@ -1,18 +1,20 @@
 // A `## Timeline` section drawn newest first. Add writes a line through the server (placed by date, as an AI's would
 // be), and the change comes back into the editor like any other.
 import { useState, type FormEvent } from "react"
-import { Circle, Plus, StickyNote } from "lucide-react"
+import { Circle, Ellipsis, Plus, StickyNote } from "lucide-react"
 import type { TimelineKind } from "@/core/define"
 import { fmtDay, fmtMin, today } from "@/core/data"
 import { post } from "@/core/http"
 import { notifyError } from "@/core/notify"
-import { CONTACT_KINDS, parseTimeline, strayLines, type Entry } from "../../../core/timeline.ts"
+import { CONTACT_KINDS, entryProblem, parseTimeline, strayLines, timelineKind, type Entry } from "../../../core/timeline.ts"
 import { useSheetGuard } from "@/components/DetailSheet"
 import { Empty, List } from "@/components/kit"
 import { Markdown } from "@/components/Markdown"
 import { capitalize, cn } from "@/lib/utils"
 
 const NOTE: TimelineKind = { label: "Note", icon: StickyNote }
+/** The kind chip that asks for a kind of the user's own. */
+const OTHER = " other"
 
 /** `path`: the file it's in, which Add writes to (left out, or read-only: no Add). */
 export function TimelineSection({ text, title, kinds, path }: { text: string; title: string; kinds: Record<string, TimelineKind>; path?: string }) {
@@ -61,16 +63,21 @@ export function AddToTimeline({ path, kinds }: { path: string; kinds: Record<str
 
 const field = "h-11 min-w-0 rounded-[8px] border-[0.5px] border-border bg-card px-2.5 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-7.5 md:text-[13px]"
 
-/** The form Add opens: a kind, the day (today), minutes and what it was about. Enter adds, Escape closes. */
+/** The form Add opens: a kind (the known ones, or Other: one of the user's own), the day (today), minutes and what it
+ *  was about. Enter adds, Escape closes. */
 function AddEntry({ path, kinds, close }: { path: string; kinds: Record<string, TimelineKind>; close: () => void }) {
-  const [kind, setKind] = useState("call")
+  const [picked, setKind] = useState("call")
+  const [own, setOwn] = useState("")
   const [date, setDate] = useState(today)
   const [min, setMin] = useState("")
   const [notes, setNotes] = useState("")
   const [busy, setBusy] = useState(false)
+  const other = picked === OTHER
+  const kind = other ? timelineKind(own) ?? "" : picked
   const note = kind === "note"
   useSheetGuard(() => notes.trim() ? [notes.trim()] : [])
-  const ready = /^\d{4}-\d\d-\d\d$/.test(date) && (!note || !!notes.trim()) && (!min || Number(min) > 0)
+  const ready = /^\d{4}-\d\d-\d\d$/.test(date) && !!kind && (!note || !!notes.trim()) && (!min || Number(min) > 0)
+    && !entryProblem({ date, kind, duration_min: Number(min) || null, notes })
   const submit = async (e: FormEvent) => {
     e.preventDefault()
     if (!ready || busy) return
@@ -85,9 +92,9 @@ function AddEntry({ path, kinds, close }: { path: string; kinds: Record<string, 
       aria-label={`Add to ${path.split("/").pop()!.replace(/\.md$/i, "")}'s timeline`}
       className="mt-1 mb-3 flex flex-col gap-2.5 rounded-[10px] bg-foreground/[0.04] p-3">
       <div role="radiogroup" aria-label="Kind" className="flex flex-wrap gap-1.5">
-        {[...CONTACT_KINDS, "note"].map((k) => {
-          const d = kinds[k] ?? (k === "note" ? NOTE : { label: capitalize(k), icon: Circle })
-          const on = k === kind
+        {[...CONTACT_KINDS, "note", OTHER].map((k) => {
+          const d = k === OTHER ? { label: "Other", icon: Ellipsis } : kinds[k] ?? (k === "note" ? NOTE : { label: capitalize(k), icon: Circle })
+          const on = k === picked
           return (
             <button key={k} type="button" role="radio" aria-checked={on} onClick={() => setKind(k)}
               className={cn("flex min-h-11 cursor-pointer items-center gap-1.5 rounded-full px-3 text-[15px] md:min-h-7 md:px-2.5 md:text-[13px]",
@@ -99,6 +106,8 @@ function AddEntry({ path, kinds, close }: { path: string; kinds: Record<string, 
         })}
       </div>
       <div className="flex flex-wrap gap-2">
+        {other && <input autoFocus value={own} onChange={(e) => setOwn(e.target.value)} placeholder="Kind, like coffee"
+          aria-label="Other kind" aria-invalid={!!own.trim() && !kind} className={cn(field, "w-40")} />}
         <input type="date" value={date} onChange={(e) => setDate(e.target.value)} aria-label="Day" className={cn(field, "w-40")} />
         {!note && (
           <label className="flex items-center gap-1.5 text-[15px] text-muted-foreground md:text-[13px]">

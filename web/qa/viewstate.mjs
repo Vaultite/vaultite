@@ -1,6 +1,6 @@
 // Where you left a place (core/viewstate.ts): a tab comes back scrolled to where it was (another tab and back, the app
-// reloaded, a phone's tab), and Properties are folded in editing, never shown in reading, the same for a note and a
-// project, and stay open on a file once opened. Switching views (reading, live preview, source; FileView's keepPlace)
+// reloaded, a phone's tab), and Properties are open in editing and reading (read-only), the same for a note and a
+// project, and stay folded on a file once folded. Switching views (reading, live preview, source; FileView's keepPlace)
 // keeps the same line at the top, on a computer and on a phone, and a dashboard the card at the top. WRITES to the vault (a long note): throwaway server only.
 //   node web/qa/viewstate.mjs <base url> <vault path>
 import { writeFileSync } from "node:fs"
@@ -30,12 +30,12 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
   const props = page.locator("article section[aria-label=Properties]")
   const propsOpen = () => props.locator("button[aria-expanded]").first().getAttribute("aria-expanded")
   await page.goto(`${B}${hash(LONG)}`); await wait(2000)
-  check("editing a note: Properties folded", await props.count() === 1 && await propsOpen() === "false")
+  check("editing a note: Properties open", await props.count() === 1 && await propsOpen() === "true")
   await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 3000 }); await wait(600)
   const left = await top(), leftAt = await headingAt(page)
   await page.evaluate((h) => { location.hash = h }, hash("Projects/Lighthouse.md")); await wait(1500)
   check(`another file starts at its top (${await top()})`, await top() < 50)
-  check("editing a project: Properties folded too", await props.count() === 1 && await propsOpen() === "false")
+  check("editing a project: Properties open too", await props.count() === 1 && await propsOpen() === "true")
   await page.evaluate((h) => { location.hash = h }, hash(LONG)); await wait(1500)
   check(`back to the note: where it was left (${said(leftAt)} / ${said(await headingAt(page))})`, left > 2900 && same(await headingAt(page), leftAt))
   await page.reload(); await wait(2500)
@@ -43,16 +43,16 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
   await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 0 }); await wait(300)
   await props.locator("button[aria-expanded]").first().click(); await wait(200)
   await page.evaluate((h) => { location.hash = h }, hash("Projects/Lighthouse.md")); await wait(1200)
-  check("opening one file's Properties leaves another's folded", await propsOpen() === "false")
+  check("folding one file's Properties leaves another's open", await propsOpen() === "true")
   await page.evaluate((h) => { location.hash = h }, hash(LONG)); await wait(1200)
-  check("a file whose Properties were opened keeps them open", await propsOpen() === "true")
+  check("a file whose Properties were folded keeps them folded", await propsOpen() === "false")
+  await props.locator("button[aria-expanded]").first().click(); await wait(200)
   await page.keyboard.press("ControlOrMeta+e"); await wait(800)
-  check("reading a note: no Properties", await props.count() === 0)
-  // (The view may carry over to the next file: reading it is the one with no Properties either way.)
+  check("reading a note: Properties, read-only", await props.count() === 1 && await props.locator("input, button[aria-label^=Remove]").count() === 0)
   await page.evaluate((h) => { location.hash = h }, hash("Projects/Lighthouse.md")); await wait(1200)
-  const reading = await props.count() === 0
+  const reading = await props.count() === 1
   await page.keyboard.press("ControlOrMeta+e"); await wait(800)
-  check("reading a project: no Properties (editing it: Properties)", reading !== (await props.count() === 0))
+  check("a project: Properties reading and editing", reading && await props.count() === 1)
   // Switching views keeps the place: the same heading at the same height, whatever the view adds above it.
   const palette = async (name) => { await page.keyboard.press("ControlOrMeta+p"); await wait(300); await page.keyboard.type(name); await wait(300); await page.keyboard.press("Enter"); await wait(900) }
   await page.evaluate((h) => { location.hash = h }, hash(LONG)); await wait(1500)

@@ -66,18 +66,20 @@ function index(store: Store, disabled: string[], order: string[]): Doc[] {
     docs.push({ id: `file-${f.path}`, title: /\.md$/i.test(name) ? stem(f.path) : name, meta: folderOf(f.path).split("/").join(" / ") || "Top level", kind: "File", icon: FileText,
       tint: "var(--muted-foreground)", file: f.path, text: [folderOf(f.path), ...f.aliases].join(" "), recent: f.mtime, weight: 6 })
   }
-  // What's archived: marked, and ranked last (search).
+  // What's archived: marked, and ranked last (search); excluded files last too.
   const archived = new Set((store.files?.files ?? []).filter((f) => f.archived).map((f) => f.path))
-  if (archived.size) for (let i = 0; i < docs.length; i++) {
+  const excluded = new Set([...store.files?.files ?? [], ...store.files?.others ?? []].filter((f) => f.excluded).map((f) => f.path))
+  if (archived.size || excluded.size) for (let i = 0; i < docs.length; i++) {
     const d = docs[i]
     if (d.file && archived.has(d.file)) docs[i] = { ...d, archived: true, meta: d.meta ? `Archived · ${d.meta}` : "Archived" }
+    if (d.file && excluded.has(d.file)) docs[i] = { ...docs[i], excluded: true }
   }
   // And every file that isn't a note (code, images, PDFs), by its full name.
   for (const f of store.files?.others ?? []) {
     if (covered.has(f.path) || f.path.startsWith(".trash/")) continue
     docs.push({ id: `file-${f.path}`, title: f.path.split("/").pop()!, meta: folderOf(f.path).split("/").join(" / ") || "Top level", kind: "File",
       icon: formatFor(f.path, getPrefs().disabled)?.format.icon ?? kindIcon(f.path),
-      tint: "var(--muted-foreground)", file: f.path, text: folderOf(f.path), recent: f.mtime, weight: 5 })
+      tint: "var(--muted-foreground)", file: f.path, text: folderOf(f.path), recent: f.mtime, weight: 5, ...(f.excluded ? { excluded: true } : {}) })
   }
   return docs
 }
@@ -129,7 +131,8 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
       out.push({ ...d, ...shown(d, words, false), marks: marksOf(wordRanges(d.title, words)), score: 10 + (d.weight ?? 0) / 2 })
     }
   }
-  return out.sort((a, b) => Number(!!a.archived) - Number(!!b.archived) || b.score - a.score || b.recent - a.recent).slice(0, limit)
+  const last = (h: Hit) => Number(!!h.archived) + Number(!!h.excluded)
+  return out.sort((a, b) => last(a) - last(b) || b.score - a.score || b.recent - a.recent).slice(0, limit)
 }
 
 /** Files that count as "recently changed" (the quick switcher's suggestions, a new tab's list): not the trash's or
@@ -143,7 +146,7 @@ export function suggestions(docs: Doc[], opened: string[] = []): Hit[] {
   const byFile = new Map(docs.filter((d) => d.file && d.kind !== "Page" && !d.archived).map((d) => [d.file!, d]))
   const mine = opened.flatMap((p) => byFile.get(p) ?? []).slice(0, 6)
   const seen = new Set(mine.map((d) => d.file))
-  const files = docs.filter((d) => d.file && d.recent && !d.archived && isRecentable(d.file) && !seen.has(d.file)).sort((a, b) => b.recent - a.recent).slice(0, Math.max(3, 6 - mine.length))
+  const files = docs.filter((d) => d.file && d.recent && !d.archived && !d.excluded && isRecentable(d.file) && !seen.has(d.file)).sort((a, b) => b.recent - a.recent).slice(0, Math.max(3, 6 - mine.length))
   const shown = new Set([...mine, ...files].map((d) => d.file))
   return [...mine, ...files, ...pages.filter((d) => !shown.has(d.file))].map((d) => ({ ...d, marks: [], score: 0 }))
 }
