@@ -27,6 +27,7 @@ export const sha256 = (b: string | Buffer) => crypto.createHash("sha256").update
 export const pageHash = (title: string, markdown: string) => sha256(`${title}\n${markdown}`)
 
 const stem = (rel: string) => rel.slice(rel.lastIndexOf("/") + 1).replace(/\.md$/i, "")
+const nameOf = (rel: string) => rel.slice(rel.lastIndexOf("/") + 1).replace(/\.[^.]+$/, "")
 const ext = (rel: string) => /\.([^./]+)$/.exec(rel)?.[1].toLowerCase() ?? ""
 
 /** A note's address part: its name in lowercase letters, digits and hyphens. */
@@ -65,7 +66,7 @@ export function slugsOf(notes: string[]): Map<string, string> {
 }
 
 /** Text as it reads in Markdown, its link-making characters escaped. */
-const plain = (s: string) => s.replace(/([\\[\]*_`<>])/g, "\\$1")
+const plain = (s: string) => s.replace(/([\\[\]*_`<])/g, "\\$1")
 const WIKI = /(!?)\[\[([^[\]\n|#^]*)([#^][^[\]\n|]*)?(?:\|([^[\]\n]*))?\]\]/g
 const MDLINK = /(!?)\[([^\]\n]*)\]\((<[^>\n]+>|[^)\s]+)(\s+"[^"\n]*")?\)/g
 const CODE = /(`+)[^`\n][\s\S]*?\1|``/g
@@ -114,7 +115,7 @@ export function collect(src: Source, items: string[]): Collected {
       const rel = t ? fileOf(t, from) : from
       const shown = alias?.trim() || (head ? `${t || titleOf(from)} > ${head.slice(1)}` : t)
       if (bang) {
-        if (rel && IMAGE.test(rel)) return image(rel, /^\d+(x\d+)?$/.test(alias?.trim() ?? "") ? `${stem(rel)}|${alias!.trim()}` : alias?.trim() || stem(rel))
+        if (rel && IMAGE.test(rel)) return image(rel, /^\d+(x\d+)?$/.test(alias?.trim() ?? "") ? `${nameOf(rel)}|${alias!.trim()}` : alias?.trim() || nameOf(rel))
         return rel && slugs.has(rel) ? `[${plain(alias?.trim() || titleOf(rel))}](${slugs.get(rel)})` : ""
       }
       return rel && slugs.has(rel) ? `[${plain(shown)}](${slugs.get(rel)})` : plain(shown)

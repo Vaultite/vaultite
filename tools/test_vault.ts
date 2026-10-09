@@ -4663,7 +4663,7 @@ check("properties: an unknown type is refused", code === 400)
   check("mcp: the tools from before the operations are ops now, once each; ops and call last", ["search", "read", "render", "list", "query", "write_note", "write_log", "add_timeline", "remember", "clip", "inbox_add"].every((n) => names.includes(n))
     && new Set(names).size === names.length && same(names.slice(-2), ["ops", "call"]), names)
   check("mcp: every tool has a schema, a description and its hints", listed.every((t) => t.inputSchema.type === "object" && t.description.length > 40 && typeof t.annotations.readOnlyHint === "boolean"), listed.filter((t) => t.description.length <= 40).map((t) => t.name))
-  check("mcp: hints from the op's kind (read only; a write isn't destructive; call may be)", listed.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort().join() === "actions,calendar,cards_due,choose,docs,events_wait,history,inbox,links,list,ops,query,read,read_version,render,routines,search,tags,today"
+  check("mcp: hints from the op's kind (read only; a write isn't destructive; call may be)", listed.filter((t) => t.annotations.readOnlyHint).map((t) => t.name).sort().join() === "actions,calendar,cards_due,choose,docs,events_wait,history,inbox,links,list,ops,publish_list,query,read,read_version,render,routines,search,tags,today"
     && listed.find((t) => t.name === "open").annotations.destructiveHint === false && listed.find((t) => t.name === "call").annotations.destructiveHint === true, listed.map((t) => [t.name, t.annotations]))
   const fake = { id: "lantern.clear", plugin: "lantern", summary: "Clear the lantern's log: every line goes.", help: "", kind: "destructive" as const, params: { type: "object" as const, properties: {} }, args: [], cli: null, mcp: "lantern_clear", result: null, owner: null, action: null }
   check("mcp: a destructive op is destructiveHint, titled by its summary's first clause", same(toolOf(fake).annotations, { readOnlyHint: false, destructiveHint: true }) && toolOf(fake).title === "Clear the lantern's log", toolOf(fake))
@@ -6759,6 +6759,96 @@ plugin.every("gone", null)
   const after = await sk.host().call("POST", "bundles/onboarding", {}) as { onboarding: boolean; previous: unknown }
   check("skipping the offer: Minimal, nothing offered or to restore", conf(skipped, "plugins")?.disabled?.includes("activity") && !after.onboarding && !after.previous
     && !fs.existsSync(path.join(skipped, ".vaultite/bundles/previous.json")), [after, conf(skipped, "plugins")])
+}
+
+// ---------- Publish (plugins/core/publish): the chosen notes as Markdown for Vaultite Cloud, sent to a fake relay ----------
+{
+  const { collect, pageHash, sha256, slugOf } = await import("../plugins/core/publish/collect.ts")
+  const { push, PublishError } = await import("../plugins/core/publish/push.ts")
+  write("Garden/Tomatoes.md", "---\ntitle: Growing tomatoes\n---\n\nSee [[Basil|the basil]] and [[Secret plan]], [[Peppers#Soil]].\n\n![[tomato.png|300]]\n\n" +
+    "![leaf](leaf.png)\n\n```block-tasks\nx: 1\n```\n\n`[[Basil]]` stays code. %%private%% Public.\n\n%%\nhidden\n%%\n\n![[Basil]]\n\n![[Secret plan]]\n\n" +
+    "[web](https://example.com) [md](Peppers.md) [gone](Secret%20plan.md)\n\n```\n[[Basil]] in code\n```\n")
+  write("Garden/Basil.md", "Basil body\n")
+  write("Garden/Peppers.md", "Peppers\n")
+  write("Garden/.archive/Old.md", "old\n")
+  write("Garden/Archived.md", "---\narchived: true\n---\nx\n")
+  write("Secret plan.md", "not published\n")
+  write("Notes/Basil.md", "another basil\n")
+  const png = Buffer.from("89504e470d0a1a0a0000000d4948445200000001", "hex")
+  fs.writeFileSync(path.join(VAULT, "Garden", "tomato.png"), png)
+  fs.writeFileSync(path.join(VAULT, "Garden", "leaf.png"), Buffer.concat([png, Buffer.from([1])]))
+  fs.writeFileSync(path.join(VAULT, "Garden", "photo.heic"), "x")
+  write("Garden/Photo note.md", "![[photo.heic]]\n")
+  await vault.sync()
+  check("publish: a slug is the name in lowercase letters, digits and hyphens", slugOf("Crème brûlée & Co!") === "creme-brulee-co" && slugOf("???") === "note", slugOf("Crème brûlée & Co!"))
+  const set = collect(vault as Any, ["Garden"])
+  check("publish: a folder is its notes at any depth, not archived ones", JSON.stringify(set.pages.map((p) => p.path)) ===
+    JSON.stringify(["Garden/Basil.md", "Garden/Peppers.md", "Garden/Photo note.md", "Garden/Tomatoes.md"]), set.pages.map((p) => p.path))
+  const t = set.pages.find((p) => p.path === "Garden/Tomatoes.md")!
+  const tomato = sha256(png)
+  check("publish: the title is the note's, its slug its file name's", t.title === "Growing tomatoes" && t.slug === "tomatoes", t)
+  check("publish: links to published notes are relative links, others plain text", t.markdown.includes("See [the basil](basil) and Secret plan, [Peppers > Soil](peppers).") &&
+    t.markdown.includes("[md](peppers) gone") && t.markdown.includes("[web](https://example.com)"), t.markdown)
+  check("publish: images are assets by hash, with their width", t.markdown.includes(`![tomato|300](assets/${tomato})`) && /!\[leaf\]\(assets\/[0-9a-f]{64}\)/.test(t.markdown) &&
+    set.assets.length === 2 && set.assets.some((a) => a.hash === tomato && a.type === "image/png"), { md: t.markdown, assets: set.assets })
+  check("publish: a published note's embed is a link, an unpublished one's goes", t.markdown.includes("[Basil](basil)") && !t.markdown.includes("Secret plan]") && !t.markdown.includes("not published"), t.markdown)
+  check("publish: block views and %% comments %% are left out, code kept", !t.markdown.includes("block-tasks") && !t.markdown.includes("private") && !t.markdown.includes("hidden") &&
+    t.markdown.includes("`[[Basil]]` stays code.  Public.") && t.markdown.includes("[[Basil]] in code"), t.markdown)
+  check("publish: an image browsers can't show is left out, said once", set.warnings.length === 1 && set.warnings[0].includes("photo.heic"), set.warnings)
+  check("publish: the hash is Vaultite Cloud's (title, a line, the Markdown)", t.hash === pageHash(t.title, t.markdown) && t.hash === sha256(`${t.title}\n${t.markdown}`))
+  const both = collect(vault as Any, ["Garden", "Notes/Basil"])
+  check("publish: two notes of one name get different slugs", both.pages.find((p) => p.path === "Notes/Basil.md")?.slug === "basil-2" &&
+    both.pages.find((p) => p.path === "Garden/Basil.md")?.slug === "basil", both.pages.map((p) => [p.path, p.slug]))
+
+  // A fake Vaultite Cloud, as the relay's protocol says
+  const site = { entitled: false, pages: new Map<string, { title: string; hash: string }>(), assets: new Set<string>(), calls: [] as string[], status: 0 }
+  const relay = async (route: string, init: RequestInit = {}) => {
+    const method = init.method ?? "GET"
+    site.calls.push(`${method} ${route}`)
+    if (site.status) return Response.json({ error: "invalid_token" }, { status: site.status })
+    if (route === "/api/publish") return Response.json({ url: "https://publish.vaultite.app/alice", entitled: site.entitled, billing: "https://cloud.vaultite.com/billing?plan=publish",
+      pages: [...site.pages].map(([slug, p]) => ({ slug, ...p, updated: 0 })), assets: [...site.assets] })
+    if (!site.entitled && method === "PUT") return Response.json({ error: "not_entitled" }, { status: 402 })
+    const a = /^\/api\/publish\/assets\/([0-9a-f]{64})$/.exec(route)
+    if (a) { const b = Buffer.from(init.body as Uint8Array); if (sha256(b) !== a[1]) return Response.json({ error: "hash_mismatch" }, { status: 400 }); site.assets.add(a[1]); return Response.json({ ok: true }) }
+    const pg = /^\/api\/publish\/pages\/([a-z0-9-]+)$/.exec(route)
+    if (pg) { const { title, markdown } = JSON.parse(String(init.body)); site.pages.set(pg[1], { title, hash: sha256(`${title}\n${markdown}`) }); return Response.json({ ok: true }) }
+    if (route === "/api/publish/sync") {
+      const keep = new Set(JSON.parse(String(init.body)).keep as string[]); let removed = 0
+      for (const s of [...site.pages.keys()]) if (!keep.has(s)) { site.pages.delete(s); removed++ }
+      return Response.json({ ok: true, removed })
+    }
+    return Response.json({ error: "not_found" }, { status: 404 })
+  }
+  const err = await push(relay, set).catch((e) => e)
+  check("publish: without a Publish plan it says where to get one, and sends nothing", err instanceof PublishError && err.status === 402 && err.message.includes("billing?plan=publish") &&
+    site.calls.length === 1, { err: String(err), calls: site.calls })
+  site.entitled = true; site.calls = []
+  const first = await push(relay, set)
+  check("publish: the first push sends the images, every page, then what to keep", first.images === 2 && first.changed === 4 && first.pages === 4 &&
+    site.calls.at(-1) === "POST /api/publish/sync" && site.pages.size === 4, { first, calls: site.calls })
+  site.calls = []
+  const again = await push(relay, set)
+  check("publish: unchanged pages and images aren't sent again", again.changed === 0 && again.images === 0 && site.calls.length === 2, site.calls)
+  site.calls = []
+  const fewer = await push(relay, collect(vault as Any, ["Garden/Basil"]))
+  check("publish: pages left out are removed", fewer.removed === 3 && fewer.changed === 0 && site.pages.size === 1 && site.pages.has("basil"), { fewer, pages: [...site.pages.keys()] })
+  site.status = 401
+  const signedOut = await push(relay, set).catch((e) => e)
+  check("publish: a revoked sign-in says to sign in again", signedOut instanceof PublishError && signedOut.status === 401 && /sign in again/.test(signedOut.message), String(signedOut))
+
+  // The ops, on this machine, which isn't signed in to Vaultite Cloud
+  const [ls, listed] = await api("POST", "ops/publish.list", {})
+  check("publish.list: not signed in, it still lists what's chosen", ls === 200 && /signed in/.test(listed.result?.error ?? listed.error ?? "") , [ls, listed])
+  const [as, added] = await api("POST", "ops/publish.add", { path: "Garden" })
+  check("publish.add: not signed in, it says so and chooses nothing", as === 401 && /signed in to Vaultite Cloud/.test(JSON.stringify(added)) &&
+    !(vault.config("plugins/publish/data").published ?? []).length, [as, added])
+  const [rs, removed] = await api("POST", "ops/publish.remove", { path: "Garden/Basil" })
+  check("publish.remove: what isn't published can't be unpublished", rs === 409, [rs, removed])
+  const [ns] = await api("POST", "ops/publish.add", { path: "No such thing" })
+  check("publish.add: an unknown note or folder is a 404", ns === 404, ns)
+  for (const f of ["Garden", "Notes", "Secret plan.md"]) fs.rmSync(path.join(VAULT, f), { recursive: true, force: true })
+  await vault.sync()
 }
 
 // ---------- One file or setting can't take the vault down: a fill that throws, a link back up, a settings file that's null ----------
