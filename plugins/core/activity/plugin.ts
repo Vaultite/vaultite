@@ -919,13 +919,14 @@ async function sourcesOf(date: string): Promise<Sources> {
   }
 }
 
-/** A day's entries made now from what this machine has (a few seconds' cache: every window asks). */
-const built = new Map<string, { at: number; entries: Promise<RecapEntry[]> }>()
+/** A day's entries made now from what this machine has (a few seconds' cache: every window asks; a file changed since
+ *  makes them again). */
+const built = new Map<string, { at: number; version: number; entries: Promise<RecapEntry[]> }>()
 function build(date: string) {
-  const hit = built.get(date)
-  if (hit && Date.now() - hit.at < 20_000) return hit.entries
+  const hit = built.get(date), version = plugin.vault.version
+  if (hit && hit.version === version && Date.now() - hit.at < 20_000) return hit.entries
   const entries = sourcesOf(date).then(buildRecap)
-  built.set(date, { at: Date.now(), entries })
+  built.set(date, { at: Date.now(), version, entries })
   if (built.size > 40) built.delete(built.keys().next().value!)
   entries.catch(() => built.delete(date))
   return entries

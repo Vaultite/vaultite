@@ -4363,6 +4363,7 @@ at("Rc/Done.md", "done\n", Y2)
 await settled()
 at("Rc/Idea.md", "# Idea\n\nFirst thought\nYesterday's line\n", Y)
 await settled()
+await api("POST", "ops/activity.recap", {}) // (asked just before: what follows is still in the next one)
 // Today: an edit in the app, tasks done, moved, dropped, recurring and in a status of the Tasks plugin's own.
 await actHeard("PUT", "file", { path: "Rc/Idea.md", text: "# Idea\n\nFirst thought\nYesterday's line\nToday's #line about [[Lighthouse]]\n" }, "app/desktop")
 write("Rc/Open.md", "- [-] Print the flyers ❌ 2026-10-06\n  - Reason: the venue has screens\n- [ ] Take out the trash 🔁 every week 📅 2026-10-13\n- [x] Take out the trash 🔁 every week 📅 2026-10-06 ✅ 2026-10-06\n- [d] Ask Alice\n")
@@ -4391,8 +4392,6 @@ await new Promise((r) => setTimeout(r, 2800))
 const recap = async (body: object = {}) => (await api("POST", "ops/activity.recap", body))[1]
 let [today] = (await recap()).days
 const texts = today.entries.map((e: Any) => e.text) as string[]
-console.log("DEBUGHIST", JSON.stringify(await api("GET", "history?path=Rc/Idea.md")).slice(0, 600), JSON.stringify(((await api("GET", "history"))[1] as Any[]).filter((x: Any) => x.path.startsWith("Rc/"))).slice(0, 800), JSON.stringify((await api("POST", "ops/activity.recap", {}))[1]).slice(0, 300))
-console.log("DEBUGTEXTS", new Date().toString(), JSON.stringify(today.entries.map((e: Any) => `${e.time} ${e.text}`)))
 const has = (re: RegExp) => today.entries.find((e: Any) => re.test(e.text))
 check("recap: an edit in the app, with the text it added quoted", has(/^Edited \[\[Rc\/Idea\|Idea\]\] · 1 change$/)?.quote.join() === "Today's \\#line about [[Lighthouse]]", texts)
 check("recap: a task done in one file and moved to another is one, from and to", has(/^Completed "Call the bank" · \[\[Rc\/Open\|Open\]\] → \[\[Rc\/Closed\|Closed\]\]$/), texts)
