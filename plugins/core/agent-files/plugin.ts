@@ -3,7 +3,7 @@
  *  (and a file the app made for it). */
 import fs from "node:fs"
 import path from "node:path"
-import { agentLines, LOADED, Plugin, ROOT } from "../../../core/plugins.ts"
+import { agentLines, LOADED, Plugin, ROOT, WriteRefused } from "../../../core/plugins.ts"
 import { fetchFromICloud, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -89,21 +89,26 @@ function apply() {
   if (key !== written) { writeRules(on); written = key }
   const pointing = on && plugin.settings().rootFiles === true
   if (pointing === pointed) return
-  pointed = pointing
   for (const name of Object.keys(LINES)) point((rel) => v.abs(rel), name, pointing)
+  pointed = pointing // (after: one refused is tried again)
 }
 
 // A failed write is tried again after a wait that doubles up to 5 minutes, not at every sync (which run many times a
 // second while files change: a refused write, EPERM, made hundreds of errors in minutes).
-let failures = 0, retryAt = 0
+let failures = 0, retryAt = 0, refusedAt = -1
 plugin.onSync(() => {
   if (Date.now() < retryAt) return
+  // (refused by the write gate: again once the settings change, the user's answer among them)
+  if (refusedAt === plugin.vault.settingsVersion) return
   try {
     apply()
     failures = 0
+    refusedAt = -1
   } catch (e) {
     // (iCloud downloading it: tried again in a moment, quietly; it logged thousands of these on a Mac sharing the vault)
     if (notHereYet(e)) { retryAt = Date.now() + 10_000; return }
+    // (the root files wait for the user's yes, asked by the app: core/grants.ts; the gate said so once)
+    if (e instanceof WriteRefused) { refusedAt = plugin.vault.settingsVersion; return }
     retryAt = Date.now() + Math.min(5 * 60_000, 2_000 * 2 ** failures++)
     console.error("agent-files:", e)
   }

@@ -239,7 +239,17 @@ check("the rules: each plugin that's on adds its line, a setting filled in", rea
     await api("GET", "state")
   }
   check("agent files: off by default, nothing outside .vaultite/", !exists("AGENTS.md") && read("CLAUDE.md") === "@AGENTS.md\n")
+  // The write gate (core/writegate.ts): Agent files writes the root files on its own, so only once the user allowed it.
   await setRoot(true)
+  await api("GET", "state")
+  const grants = () => JSON.parse(fs.existsSync(path.join(VAULT, ".vaultite/grants.json")) ? read(".vaultite/grants.json") : "{}")
+  check("write gate: a plugin's own write outside .vaultite/ is refused without a grant", !exists("AGENTS.md") && read("CLAUDE.md") === "@AGENTS.md\n", read("CLAUDE.md"))
+  check("write gate: ...and its declared place is marked for the app to ask", grants()["agent-files"]?.["AGENTS.md"] === "ask", grants())
+  const [, writes] = await api("POST", "ops/plugin.writes", { id: "agent-files" })
+  check("write gate: plugin.writes lists what it declares, and the answers", writes.writes.length === 2 && writes.writes[0].answer === "ask" && writes.writes[0].why.includes("pointing"), writes)
+  const [gc] = await api("POST", "ops/plugin.grant", { id: "agent-files" })
+  await setRoot(true)
+  check("write gate: allowed, it writes", gc === 200 && exists("AGENTS.md") && grants()["agent-files"]?.["CLAUDE.md"] === "allowed", [gc, grants()])
   check("agent files: on, a new AGENTS.md is the pointer", read("AGENTS.md") === AG + "\n", read("AGENTS.md"))
   check("agent files: on, CLAUDE.md keeps its line and gets the import", read("CLAUDE.md") === "@AGENTS.md\n\n@.vaultite/AGENTS.md\n", read("CLAUDE.md"))
   await setRoot(false)
@@ -307,6 +317,31 @@ check("the rules: each plugin that's on adds its line, a setting filled in", rea
   try { writeAtomic(path.join(VAULT, "Taken"), "text") } catch { threw = true }
   check("a failed write leaves no temporary file", threw && fs.readdirSync(VAULT).every((n) => !n.includes(".tmp-")), fs.readdirSync(VAULT))
   fs.rmSync(path.join(VAULT, "Taken"), { recursive: true })
+}
+
+// The write gate (core/writegate.ts): the user's own writes always pass; a plugin acting on its own writes outside
+// .vaultite/ only where it's granted, refused and told otherwise; timers it starts keep acting as it.
+{
+  const { Vault, writeAtomic } = await import("../core/vault.ts")
+  const { byUser, onItsOwn, WriteRefused } = await import("../core/writegate.ts")
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-gate-"))
+  const gv = new Vault(dir), told: string[] = []
+  gv.mayWrite = (id, rel) => id === "recaps" && rel.startsWith("Recaps/")
+  gv.writeRefused = (id, rel) => { told.push(`${id}:${rel}`) }
+  const w = (rel: string) => { try { writeAtomic(path.join(dir, rel), "x"); return true } catch (e) { if (e instanceof WriteRefused) return false; throw e } }
+  check("write gate: the user's own write passes", w("Notes/a.md") && byUser(() => w("Notes/b.md")))
+  check("write gate: a plugin on its own, no grant: refused, nothing written, told", !onItsOwn("other", () => w("Notes/c.md")) && !fs.existsSync(path.join(dir, "Notes/c.md")) && told.join() === "other:Notes/c.md", told)
+  check("write gate: ...but .vaultite/ is the app's own", onItsOwn("other", () => w(".vaultite/plugins/other/data.json")))
+  check("write gate: with a grant, where it's granted only", onItsOwn("recaps", () => w("Recaps/2026-10-09.md")) && !onItsOwn("recaps", () => w("Notes/d.md")))
+  check("write gate: the core's own work isn't a plugin's", onItsOwn("core", () => w("Notes/e.md")))
+  const late = await onItsOwn("other", () => new Promise<boolean>((r) => setTimeout(() => r(w("Notes/later.md")), 1)))
+  check("write gate: a timer a plugin started acts as it", !late && !fs.existsSync(path.join(dir, "Notes/later.md")))
+  check("write gate: a request inside it is the user's", onItsOwn("other", () => byUser(() => w("Notes/f.md"))))
+  const { writesProblems } = await import("../core/rules.ts")
+  check("write gate: a manifest's writes is checked", !writesProblems({ writes: [{ folder: "Recaps", why: "a recap" }, { file: "AGENTS.md", why: "a line" }] }).length &&
+    [[{ folder: ".vaultite/x", why: "x" }], [{ folder: "A" }], [{ folder: "A", file: "B", why: "x" }], [{ folder: "../up", why: "x" }], { folder: "A", why: "x" }]
+      .every((writes) => writesProblems({ writes }).length === 1))
+  fs.rmSync(dir, { recursive: true, force: true })
 }
 
 // People: API -> file
@@ -650,7 +685,7 @@ for (const bad of [".trash/x.md", ".vaultite/.secret/x.json", ".vaultite/x.txt",
   check(`no ${bad} with hidden files off`, code === 400, code)
 }
 ;[, cfg] = await api("GET", "files")
-check("hidden files aren't listed", !JSON.stringify(cfg).includes(".vaultite/"), null)
+check("hidden files aren't listed (but the plugins' built-in pages)", !JSON.stringify(cfg).replaceAll(".vaultite/pages/", "").includes(".vaultite/"), null)
 let res: Any
 ;[, res] = await api("GET", "search?q=Linker")
 check("search finds by name", res.length && res[0].path === "Notes/Linker.md", res.slice(0, 2))
@@ -820,72 +855,71 @@ await api("POST", "logs", [{ area: "nutrition", date: "2026-09-29", source: "cla
 t = read(lg.id + ".md")
 check("re-posting a log changes only its text", !t.includes("```") && t.includes("Three slices") && !t.includes("Two slices"), t)
 
-// Pages are files: each plugin's dashboards are copied in once and pinned; then they're the user's (a new template is
-// only offered, and a deleted one stays deleted).
+// Plugins' pages are built in (core/pages.ts): kept in .vaultite/pages as their templates are now, pinned once,
+// read-only; Copy to my vault makes one the user's file (pins and links follow), and only then is it theirs to change.
+const BI = (n: string) => `.vaultite/pages/Dashboards/${n}.md`
+const pinsNow = (): string[] => vault.config("pages").pinned ?? []
 const made = app.installPages()
-check("dashboards are installed", exists("Dashboards/Today.md") && exists("Dashboards/People.md"), made)
-const pinned: string[] = vault.config("pages").pinned ?? []
-check("and pinned, only files (no phone Files page)", pinned.includes("Dashboards/Today.md") && !pinned.includes("files"), pinned)
+check("pages are built in: nothing outside .vaultite/", exists(BI("Today")) && exists(BI("People")) && !exists("Dashboards/Today.md"), made)
+const pinned = pinsNow()
+check("and pinned, only files (no phone Files page)", pinned.includes(BI("Today")) && !pinned.includes("files"), pinned)
 check("a new vault's pins follow the plugins' pageSort",
-  pinned.slice(0, 5).join() === "Dashboards/Today.md,Dashboards/Health.md,Dashboards/Learning.md,Dashboards/People.md,Dashboards/Projects.md", pinned)
-check("the core's own page (Design) is installed and pinned", exists("Dashboards/Design.md") && pinned.includes("Dashboards/Design.md"), pinned)
-check("a page's other tab is installed but not pinned", exists("Dashboards/People map.md") && !pinned.includes("Dashboards/People map.md")
-  && pinned.includes("Dashboards/People.md"), pinned)
-// An app update never changes a page by itself (core/pages.ts): a newer template is offered (dashboard.updates), its
-// difference shown, then applied or dismissed until the template changes again.
-const keptToday = ".vaultite/generated/Dashboards/Today.md", keptPeople = ".vaultite/generated/Dashboards/People.md"
-fs.writeFileSync(path.join(VAULT, keptToday), read(keptToday).replace("icon: sun", "icon: star")) // as if installed from an older template
-write("Dashboards/Today.md", read("Dashboards/Today.md").replace("icon: sun", "icon: star") + "\nMy own line.\n")
-fs.writeFileSync(path.join(VAULT, keptPeople), read(keptPeople).replace("icon: users", "icon: star"))
-write("Dashboards/People.md", read("Dashboards/People.md").replace("icon: users", "icon: star"))
-/** Forget the versions a page's template had (the copy installed "before" is made up after the fact). */
-const forgetVersions = (...rels: string[]) => {
-  const v = JSON.parse(read(".vaultite/generated/versions.json"))
-  for (const r of rels) delete v[r]
-  fs.writeFileSync(path.join(VAULT, ".vaultite/generated/versions.json"), JSON.stringify(v))
+  pinned.slice(0, 5).join() === ["Today", "Health", "Learning", "People", "Projects"].map(BI).join(), pinned)
+check("the core's own page (Design) is built in and pinned", exists(BI("Design")) && pinned.includes(BI("Design")), pinned)
+check("a page's other tab is built in but not pinned", exists(BI("People map")) && !pinned.includes(BI("People map")) && pinned.includes(BI("People")), pinned)
+fs.writeFileSync(path.join(VAULT, BI("Today")), read(BI("Today")).replace("icon: sun", "icon: star")) // as if an older app's
+app.installPages()
+check("a built-in page updates with its plugin", read(BI("Today")).includes("icon: sun"), read(BI("Today")).slice(0, 80))
+let [rc] = await api("PUT", "file", { path: BI("Today"), text: "changed" })
+check("a built-in page is read-only", rc === 403 && read(BI("Today")).includes("icon: sun"), rc)
+;[rc] = await api("DELETE", `file?path=${encodeURIComponent(BI("Today"))}`)
+check("...and isn't deleted (unpin it, or turn its plugin off)", rc >= 400 && exists(BI("Today")), rc)
+{
+  const conf = vault.config("plugins")
+  await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "health") })
+  app.installPages()
+  check("its plugin off, its page goes", !exists(BI("Health")))
+  await api("POST", "pins", { path: BI("Health"), pinned: false }).catch(() => {})
+  await api("PUT", "config/plugins", conf)
+  const back = app.installPages()
+  check("on again, it's back, not pinned again as new", exists(BI("Health")) && !back.includes(BI("Health")), back)
 }
-forgetVersions("Dashboards/Today.md", "Dashboards/People.md")
+// Copy to my vault: its pins and links follow the copy; the built-in one goes and stays gone while the copy's there.
+write("Notes/To today.md", "Open [[.vaultite/pages/Dashboards/Today|Today]].\n")
+let [cc, copied] = await api("POST", "ops/dashboard.copy", { path: "Today", folder: "Dashboards" })
+check("copy to my vault: the page is the user's file", cc === 200 && copied.path === "Dashboards/Today.md" && read("Dashboards/Today.md").includes("plugin: today") && !exists(BI("Today")), [cc, copied])
+check("...its pin follows it, in its place", pinsNow()[0] === "Dashboards/Today.md" && !pinsNow().includes(BI("Today")), pinsNow())
+check("...and so do links to it", !read("Notes/To today.md").includes(".vaultite/pages") && read("Notes/To today.md").includes("Today"), read("Notes/To today.md"))
 app.installPages()
-check("an app update changes no page, edited or not", read("Dashboards/Today.md").includes("icon: star") && read("Dashboards/Today.md").includes("My own line.") &&
-  read("Dashboards/People.md").includes("icon: star"), [read("Dashboards/Today.md"), read("Dashboards/People.md")])
-const offered = async () => ((await api("POST", "ops/dashboard.updates", {}))[1].updates as Any[])
-let ups = await offered()
-check("...it offers them, the one the user changed flagged", ups.find((u) => u.path === "Dashboards/People.md")?.edited === false &&
-  ups.find((u) => u.path === "Dashboards/Today.md")?.edited === true, ups)
-check("...and only that page's when asked for one", (await api("POST", "ops/dashboard.updates", { path: "Dashboards/People.md" }))[1].updates.length === 1)
-const [, pdiff] = await api("POST", "ops/dashboard.diff", { path: "People" })
-check("the difference: the page now against the new version", pdiff.diff.includes("- icon: star") && pdiff.diff.includes("+ icon: users") && !pdiff.edited, pdiff)
-await api("POST", "ops/dashboard.update", { path: "Dashboards/People.md" })
-check("update: the page is the new version, and isn't offered any more", read("Dashboards/People.md").includes("icon: users") &&
-  !(await offered()).some((u) => u.path === "Dashboards/People.md"), read("Dashboards/People.md"))
-await api("POST", "ops/dashboard.dismiss", { path: "Today" })
-check("dismiss: the page stays, not offered again", read("Dashboards/Today.md").includes("My own line.") && !(await offered()).some((u) => u.path === "Dashboards/Today.md"))
-app.vault.patchConfig("pages", { dismissedUpdates: { "Dashboards/Today.md": "an older version" } }) // as if its template changed since
-check("...until its template changes again", (await offered()).some((u) => u.path === "Dashboards/Today.md"))
-await api("POST", "ops/dashboard.dismiss", { path: "Today" })
-fs.rmSync(path.join(VAULT, "Dashboards/Health.md"))
-app.installPages()
-check("a deleted dashboard isn't brought back", !exists("Dashboards/Health.md"))
-// Folders are the user's: a page moved into another folder is still found (its name, type and plugin) and updated there,
-// never copied in again; a path written before the move still renders; new pages go where the others are.
+check("...and the built-in one doesn't come back", !exists(BI("Today")))
+;[cc] = await api("POST", "ops/dashboard.copy", { path: "Notes/To today.md" })
+check("only a built-in page is copied", cc === 400 || cc === 404, cc)
+// Every other page copied too, as a vault from before pages were built in had them (the tests below use them).
+for (const n of fs.readdirSync(path.join(VAULT, ".vaultite/pages/Dashboards")).filter((x) => x.endsWith(".md"))) {
+  await api("POST", "ops/dashboard.copy", { path: `.vaultite/pages/Dashboards/${n}`, folder: "Dashboards" })
+}
+write("Dashboards/Today.md", read("Dashboards/Today.md").replace("icon: sun", "icon: star"))
+// A vault from before: the copies the user never changed can go once (asked once); the built-in ones come back.
+let [, cps] = await api("POST", "ops/dashboard.copies", {})
+check("copies: the unchanged ones are listed, not the one the user changed", !cps.offered && cps.copies.some((c: Any) => c.path === "Dashboards/Health.md") &&
+  !cps.copies.some((c: Any) => c.path === "Dashboards/Today.md"), cps)
+const learnPinned = pinsNow().indexOf("Dashboards/Learning.md")
+;[cc] = await api("POST", "ops/dashboard.uncopy", { paths: ["Dashboards/Learning.md"] })
+check("uncopy: to the trash, the built-in back where its pin was", cc === 200 && !exists("Dashboards/Learning.md") && exists(BI("Learning")) &&
+  learnPinned >= 0 && pinsNow()[learnPinned] === BI("Learning"), pinsNow())
+;[cc] = await api("POST", "ops/dashboard.uncopy", { keep: true })
+;[, cps] = await api("POST", "ops/dashboard.copies", {})
+check("keep: the rest stay, and it isn't offered again", cc === 200 && cps.offered && exists("Dashboards/People.md"), cps)
+// Folders are the user's: a copy moved into another folder is still the user's page (its name, type and plugin);
+// a path written before the move still renders.
 {
   const dash = () => fs.readdirSync(path.join(VAULT, "Dashboards")).filter((n) => n.endsWith(".md"))
   const pinsWere = read(".vaultite/pages.json")
   fs.mkdirSync(path.join(VAULT, "Personal/Dashboards"), { recursive: true })
   for (const n of dash()) fs.renameSync(path.join(VAULT, "Dashboards", n), path.join(VAULT, "Personal/Dashboards", n))
-  fs.writeFileSync(path.join(VAULT, keptPeople), read(keptPeople).replace("icon: users", "icon: moon"))
-  write("Personal/Dashboards/People.md", read("Personal/Dashboards/People.md").replace("icon: users", "icon: moon"))
-  forgetVersions("Dashboards/People.md")
-  fs.rmSync(path.join(VAULT, ".vaultite/generated/Dashboards/Design.md"))
-  fs.rmSync(path.join(VAULT, "Personal/Dashboards/Design.md"))
-  const madeNow = app.installPages()
-  t = read("Personal/Dashboards/People.md")
-  check("pages: one moved to another folder is offered its update there, not copied in again", t.includes("icon: moon") &&
-    (await offered()).some((u) => u.path === "Personal/Dashboards/People.md") && !exists("Dashboards/People.md"), dash())
-  await api("POST", "ops/dashboard.update", { path: "Personal/Dashboards/People.md" })
-  check("pages: a new one goes where the others are", madeNow.join() === "Personal/Dashboards/Design.md" && exists("Personal/Dashboards/Design.md") &&
-    !exists("Dashboards/Design.md"), madeNow)
   await vault.sync()
+  const madeNow = app.installPages()
+  check("pages: a copy moved to another folder is still the user's, no built-in one made", !madeNow.length && !exists(BI("People")), madeNow)
   const [, moved] = await api("GET", "render?path=Dashboards/Today.md")
   check("render: a path from before a move still reads the file", typeof moved === "string" && moved.includes("# Today") && moved.includes("plugin: today"), String(moved).slice(0, 80))
   const [, movedState] = await api("GET", "state")
@@ -894,6 +928,7 @@ check("a deleted dashboard isn't brought back", !exists("Dashboards/Health.md"))
   for (const n of fs.readdirSync(path.join(VAULT, "Personal/Dashboards"))) fs.renameSync(path.join(VAULT, "Personal/Dashboards", n), path.join(VAULT, "Dashboards", n))
   fs.rmSync(path.join(VAULT, "Personal"), { recursive: true })
   fs.writeFileSync(path.join(VAULT, ".vaultite/pages.json"), pinsWere)
+  await vault.sync()
 }
 let tree: Any
 ;[, tree] = await api("GET", "files")
@@ -1224,18 +1259,6 @@ await api("PUT", "config/plugins", plugOn)
 ;[, s] = await api("GET", "files")
 check("back on: pages again", s.files.some((f: Any) => f.path === "Finance/Spend.html" && f.title === "Spend") && s.files.some((f: Any) => f.path === "Finance/Tx.csv"))
 
-// Two servers on one synced vault, one running an older app: the older one leaves the newer generated files alone.
-const { templates, Versions } = await import("../core/pages.ts")
-const [, tplPath, tplText] = templates(app.plugins).find(([, rel]) => exists(rel))!
-const newer = read(tplPath) + "\nFrom a newer app.\n"
-fs.writeFileSync(path.join(VAULT, `.vaultite/generated/${tplPath}`), newer) // what a newer app installs...
-write(tplPath, newer)
-const vs = new Versions(vault)
-vs.add(tplPath, tplText, newer) // ...and remembers
-vs.save()
-app.installPages()
-check("an older app's templates don't undo a newer one's", read(tplPath).includes("From a newer app.") && read(tplPath) === read(`.vaultite/generated/${tplPath}`))
-
 // Files dropped in from a browser: a free name like Finder's, bytes never over an existing file.
 let up: Any
 await api("POST", "folder", { path: "Inbox" })
@@ -1391,9 +1414,9 @@ check("vault plugins: with its Tailwind classes, under the app's", bundle.includ
 check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(bundle) &&
   !/@layer plugin-variants[^]*md\\\\:hidden/.test(bundle), bundle.slice(0, 600))
 check("vault plugins: its docs join the topics", (await api("GET", "docs"))[1].some((t: Any) => t.id === "lighthouse"))
-check("vault plugins: its dashboard installs and is pinned", read("Dashboards/Lighthouse.md").includes("block-lighthouse")
-  && vault.config("pages").pinned.includes("Dashboards/Lighthouse.md"))
-;[, out] = await api("GET", "render?path=Dashboards/Lighthouse.md")
+check("vault plugins: its dashboard installs and is pinned", read(".vaultite/pages/Dashboards/Lighthouse.md").includes("block-lighthouse")
+  && vault.config("pages").pinned.includes(".vaultite/pages/Dashboards/Lighthouse.md"))
+;[, out] = await api("GET", "render?path=.vaultite/pages/Dashboards/Lighthouse.md")
 check("vault plugins: its block as text", out.includes("## Lighthouse") && out.includes("[[Bob Lee]]: night shift"), out)
 check("vault plugins: its block declared, nothing to fix", !lh.warnings.length && lh.blocks.lighthouse?.description, lh)
 check("vault plugins: its blocks in /api/blocks", (await api("GET", "blocks"))[1].blocks.some((b: Any) => b.name === "lighthouse" && b.plugin === "lighthouse" && b.on && b.text), "")
@@ -5832,8 +5855,8 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   ;[code, r] = await api("GET", "bundles/pages?workspace=1")
   const plan = r.plan
   check("bundles: the preview says what changes", code === 200 && plan.plugins.off.includes("today") && plan.settings.some((s: Any) => s.plugin === "page-preview" && s.key === "trigger" && s.to === "hover") &&
-    plan.pins.list.join() === "Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md" && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
-    plan.files.add.includes("Dashboards/Home.md") && !plan.empty, plan)
+    plan.pins.list.join() === ".vaultite/pages/Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md" && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
+    plan.files.add.includes(".vaultite/pages/Dashboards/Home.md") && !plan.empty, plan)
   ;[code, r] = await api("POST", "bundles/pages/apply", { workspace: 1 })
   check("bundles: apply", code === 200 && r.applied === "Pages and databases", r)
   const pj = conf("plugins"), look = conf("appearance")
@@ -5841,23 +5864,23 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("bundles: appearance keeps the keys the bundle doesn't set; one it sets to the default is removed", look.textFont === "Georgia" && !("theme" in look) && look.scheme === "paper" &&
     look.density === "comfortable", look)
   check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))
-  check("bundles: pins are the bundle's, then the user's own; a plugin's page it doesn't pin is unpinned", conf("pages").pinned.join() === "Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", conf("pages"))
-  check("bundles: its dashboard is added", exists("Dashboards/Home.md") && read("Dashboards/Home.md").includes("block-query"))
+  check("bundles: pins are the bundle's, then the user's own; a plugin's page it doesn't pin is unpinned", conf("pages").pinned.join() === ".vaultite/pages/Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", conf("pages"))
+  check("bundles: its dashboard is added", exists(".vaultite/pages/Dashboards/Home.md") && read(".vaultite/pages/Dashboards/Home.md").includes("block-query"))
   check("bundles: sidebars.json is the bundle's", JSON.stringify(conf("sidebars").left) === JSON.stringify(["search:search", "pages:pages", "files:files"]), conf("sidebars"))
   let d = await slot1()
-  check("bundles: the current workspace follows: its own panels go, its pins get the same edits, the rest stays", d.name === "Desk" && !d.sidebars && d.pinned?.join() === "Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", d)
+  check("bundles: the current workspace follows: its own panels go, its pins get the same edits, the rest stays", d.name === "Desk" && !d.sidebars && d.pinned?.join() === ".vaultite/pages/Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", d)
   ;[, s] = await api("GET", "state")
   check("bundles: /api/state says what can be restored", s.bundles?.previous?.name === "Pages and databases" && s.bundles.onboarding === false, s.bundles)
   ;[, r] = await api("GET", "bundles/pages?workspace=1")
   check("bundles: applied again it changes nothing", r.plan.empty === true, r.plan)
   ;[code, r] = await api("POST", "bundles/restore")
-  check("bundles: restore", code === 200 && r.restored === "Pages and databases" && r.trashed.includes("Dashboards/Home.md"), r)
+  check("bundles: restore", code === 200 && r.restored === "Pages and databases" && r.trashed.includes(".vaultite/pages/Dashboards/Home.md"), r)
   const after = Object.fromEntries(NAMES.map((n) => [n, conf(n)]))
   check("bundles: apply then restore is a round trip (every settings file as it was, absent ones absent)", JSON.stringify(after) === JSON.stringify(before),
     NAMES.filter((n) => JSON.stringify(after[n]) !== JSON.stringify(before[n])).map((n) => [n, before[n], after[n]]))
   d = await slot1()
   check("bundles: the workspace is as it was", JSON.stringify({ n: d.name, s: d.sidebars, p: d.pinned }) === JSON.stringify({ n: deskBefore.name, s: deskBefore.sidebars, p: deskBefore.pinned }), [d, deskBefore])
-  check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists("Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
+  check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists(".vaultite/pages/Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
   ;[code] = await api("POST", "bundles/restore")
   check("bundles: restore twice is a 404", code === 404, code)
 
@@ -6232,6 +6255,7 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   m.schedule = [{ name: "tick", every: "1h", command: ["node", "-e", "require('fs').writeFileSync(process.env.VAULTITE_PLUGIN_STATE + '/tick.txt', process.env.VAULTITE_SCHEDULE)"] },
     { every: "1d", at: "07:00", op: "note.create", params: { title: "Morning" } },
     { name: "now", every: "1m", op: "note.create", params: { title: "Scheduled note", body: "From a schedule." } }]
+  m.writes = [{ folder: "Notes", why: "notes on a schedule" }]
   write(`${WC}/manifest.json`, JSON.stringify(m, null, 2))
   write(".vaultite/plugins/guard/manifest.json", JSON.stringify({ id: "guard", name: "Guard", description: "A test's middleware.", apiVersion: 1 }))
   write(".vaultite/plugins/guard/plugin.ts", `import { OpError, Plugin } from "@vaultite/core/plugins.ts"
@@ -6254,12 +6278,23 @@ plugin.every("gone", null)
   const state = path.join(process.env.VAULTITE_LOCAL!, "plugin-state", fs.readdirSync(path.join(process.env.VAULTITE_LOCAL!, "plugin-state"))[0], "wordcount")
   check("schedule: a manifest's command ran, told which", fs.existsSync(path.join(state, "tick.txt")) && fs.readFileSync(path.join(state, "tick.txt"), "utf8") === "tick")
   await vault.synced()
+  // The write gate: a schedule acts on its own, so its writes outside .vaultite/ wait for the user's grant.
+  check("write gate: a schedule's write outside .vaultite/ is refused without a grant", !fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")))
+  check("write gate: ...and the app is told to ask", JSON.parse(read(".vaultite/grants.json")).wordcount?.Notes === "ask", read(".vaultite/grants.json"))
+  const [, gw] = await api("GET", "state")
+  check("write gate: /api/state lists it", gw.writeGrants.some((g: Any) => g.plugin === "wordcount" && g.place === "Notes" && g.answer === "ask" && g.on), gw.writeGrants)
+  await api("POST", "ops/plugin.grant", { id: "wordcount", allow: false })
+  await api("POST", "ops/schedule.run", { id: "wordcount/now" })
+  check("write gate: Not now, still refused", !fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")) && JSON.parse(read(".vaultite/grants.json")).wordcount?.Notes === "not now")
+  await api("POST", "ops/plugin.grant", { id: "wordcount" })
+  await api("POST", "ops/schedule.run", { id: "wordcount/now" })
+  await vault.synced()
   check("schedule: a manifest's op ran, as a schedule (the middleware saw who)", fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")) && read("Notes/Scheduled note.md").includes("From a schedule. (schedule)"), fs.existsSync(path.join(VAULT, "Notes/Scheduled note.md")) && read("Notes/Scheduled note.md"))
   check("schedule: plugin.every ran", vault.config("plugins/guard/data").beat === true)
   let [st, body] = await api("POST", "ops/schedule.list", {})
   const ids = (body as Any[]).map((r) => r.id)
   check("schedule: schedule.list has every job, with when it last ran and next runs", st === 200 && ["wordcount/tick", "wordcount/note.create", "wordcount/now", "guard/beat"].every((i) => ids.includes(i)) && !ids.includes("guard/gone") &&
-    (body as Any[]).find((r) => r.id === "wordcount/note.create").ran === null && (body as Any[]).find((r) => r.id === "wordcount/tick").ran !== null, body)
+    (body as Any[]).find((r) => r.id === "wordcount/tick").ran !== null, body)
   ;[st, body] = await api("POST", "ops/schedule.run", { id: "wordcount/note.create" })
   check("schedule: schedule.run runs one now", st === 200 && body === null && fs.existsSync(path.join(VAULT, "Notes/Morning.md")), [st, body])
   const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "100.64.0.9" } } as Any
@@ -6676,20 +6711,24 @@ plugin.every("gone", null)
   fs.rmSync(front, { recursive: true, force: true })
 }
 
-// A vault opened for the first time starts from Minimal (core/start.ts): a new one with Start here, a folder of the
-// user's unchanged. Last: opening another vault binds the plugins to it.
+// A vault opened for the first time starts from Minimal (core/start.ts), writing nothing outside .vaultite/; a new one
+// gets Start here only when the user chose it (vault.starter). Last: opening another vault binds the plugins to it.
 {
   const conf = (dir: string, name: string) => { try { return JSON.parse(fs.readFileSync(path.join(dir, `.vaultite/${name}.json`), "utf8")) } catch { return null } }
   const fresh = path.join(tmp, "Fresh vault")
   fs.mkdirSync(fresh)
-  await open(fresh)
-  const pj = conf(fresh, "plugins"), look = conf(fresh, "appearance"), pages = conf(fresh, "pages")
+  const freshApp = await open(fresh)
+  const pj = conf(fresh, "plugins"), look = conf(fresh, "appearance")
   check("new vault: Minimal's plugins (a terminal and Claude Code, none of Life OS)", !(pj?.enabled ?? []).includes("people") && !(pj?.enabled ?? []).includes("today") && !pj?.disabled?.includes("terminal")
     && !pj.disabled.includes("claude-code") && !pj.disabled.includes("provenance"), pj)
   check("new vault: Minimal's look (Gruvbox, the default: unset)", !look?.scheme && look?.fileIcons === false, look)
-  check("new vault: Start here, the only pin; plugins' pages out of the user's files", JSON.stringify(pages?.pinned) === '["Start here.md"]' && pages.install === false
-    && fs.readFileSync(path.join(fresh, "Start here.md"), "utf8").includes("claude") && !fs.existsSync(path.join(fresh, "Dashboards")), [pages, fs.readdirSync(fresh)])
-  check("new vault: agents started in it find its rules", /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(fresh, "CLAUDE.md"), "utf8")))
+  check("new vault: nothing outside .vaultite/ until asked", JSON.stringify(fs.readdirSync(fresh)) === '[".vaultite"]', fs.readdirSync(fresh))
+  await freshApp.callOp("vault.starter", {})
+  const fp = conf(fresh, "pages")
+  check("new vault, starter content chosen: Start here, the only pin", JSON.stringify(fp?.pinned) === '["Start here.md"]'
+    && fs.readFileSync(path.join(fresh, "Start here.md"), "utf8").includes("claude") && !fs.existsSync(path.join(fresh, "Dashboards")), [fp, fs.readdirSync(fresh)])
+  await freshApp.vault.sync()
+  check("new vault, starter content chosen: agents started in it find its rules", fs.existsSync(path.join(fresh, "CLAUDE.md")) && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(fresh, "CLAUDE.md"), "utf8")), fs.readdirSync(fresh))
   check("new vault: nothing to restore, nothing offered", !fs.existsSync(path.join(fresh, ".vaultite/bundles/previous.json")) && !fs.existsSync(path.join(fresh, ".vaultite/bundles/onboarding.json")))
   const own = path.join(tmp, "Own notes")
   fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })

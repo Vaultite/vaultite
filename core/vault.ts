@@ -13,6 +13,7 @@ import { kindOf } from "./filetypes.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
+import { guard, setGate } from "./writegate.ts"
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
 export { hasTag, tagName, tagsOf } from "./sections.ts"
 // A file's type (its kind's, else its frontmatter's), whether it's archived (`archived: true`) and archive folders:
@@ -193,6 +194,7 @@ const HELD_LONG = 30_000
 /** A new file, whole or not at all (a full disk or a crash mid-write leaves no cut-off file to be refused as "already
  *  exists"); false if one came at `p` meanwhile. Renamed, not hard-linked: iCloud Drive's folders may not take links. */
 export function writeNew(p: string, data: string | Buffer): boolean {
+  guard(p)
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
@@ -208,6 +210,7 @@ export function writeNew(p: string, data: string | Buffer): boolean {
 
 /** A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only). */
 export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?: number } = {}) {
+  guard(p)
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
@@ -615,8 +618,15 @@ export class Vault {
   downloading: string[] = []
   private arrivals = new Set<(rel: string) => void>()
 
+  /** May the plugin acting on its own write `rel` (outside .vaultite/)? The App asks the grants (core/grants.ts);
+   *  without one, never. */
+  mayWrite: (plugin: string, rel: string) => boolean = () => false
+  /** Told of each write the gate refused (core/writegate.ts): the App logs it and asks the user. */
+  writeRefused: (plugin: string, rel: string) => void = (plugin, rel) => console.error(`write refused: ${plugin} may not write ${rel} on its own`)
+
   constructor(p: string) {
     this.path = p
+    setGate(p, { may: (plugin, rel) => this.mayWrite(plugin, rel), refused: (plugin, rel) => this.writeRefused(plugin, rel) })
   }
 
   /** Run fn with the vault to itself: writes (and the sync before them) take turns, so a file is never half-updated. */
@@ -1306,6 +1316,8 @@ export class Vault {
       n++
     }
     if (cur && fs.existsSync(this.abs(cur))) {
+      guard(this.abs(cur))
+      guard(this.abs(rel))
       fs.mkdirSync(path.dirname(this.abs(rel)), { recursive: true })
       fs.renameSync(this.abs(cur), this.abs(rel))
       this.drop(cur)
@@ -1331,6 +1343,7 @@ export class Vault {
 
   /** Move a file or folder to .trash, named with the time (" 2", " 3"... when taken); returns where it went. Index untouched. */
   toTrash(rel: string) {
+    guard(this.abs(rel))
     const ext = fs.statSync(this.abs(rel)).isDirectory() ? "" : path.extname(rel), stem = `.trash/${rel.slice(0, rel.length - ext.length)} ${localStamp()}`
     let to = stem + ext
     for (let n = 2; fs.existsSync(this.abs(to)); n++) to = `${stem} ${n}${ext}`

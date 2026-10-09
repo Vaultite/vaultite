@@ -107,6 +107,7 @@ export function metaProblems(m: Record<string, unknown>, where = "manifest.json"
   if (m.userFiles !== undefined && (!Array.isArray(m.userFiles) || !m.userFiles.every((f) => typeof f === "string" && userFileOk(f)))) {
     out.push(`${where}: userFiles lists the files it writes as the user's own, by path in its folder (["init.vim"]), never code or manifest.json`)
   }
+  out.push(...writesProblems(m, where))
   if (m.disclosures !== undefined) {
     const d = m.disclosures
     if (!isMap(d)) out.push(`${where}: disclosures is an object: {"network": ["api.example.com"], "shell": true, "outsideVault": true, "clipboard": true}`)
@@ -119,6 +120,17 @@ export function metaProblems(m: Record<string, unknown>, where = "manifest.json"
   }
   return out
 }
+
+/** What's wrong with a manifest's `writes`, or []. */
+export function writesProblems(m: Record<string, unknown>, where = "manifest.json"): string[] {
+  if (m.writes === undefined) return []
+  const ok = Array.isArray(m.writes) && m.writes.every((w) => isMap(w) && typeof w.why === "string" && w.why.trim() &&
+    (typeof w.folder === "string") !== (typeof w.file === "string") && tidy(String(w.folder ?? w.file)) !== "" &&
+    !tidy(String(w.folder ?? w.file)).startsWith(".vaultite") && !String(w.folder ?? w.file).split("/").includes(".."))
+  return ok ? [] : [`${where}: writes lists where it writes outside .vaultite/ on its own: [{"folder": "Recaps", "why": "a daily recap of your day"}] (or "file": "AGENTS.md")`]
+}
+
+const tidy = (s: string) => s.trim().replace(/^\/+|\/+$/g, "")
 
 /** What a plugin installed from a repository also needs: its `version` and `repo`, and the version its tag says. */
 export function installProblems(m: Record<string, unknown>, tag: string | null, where = "manifest.json") {

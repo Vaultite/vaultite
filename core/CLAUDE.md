@@ -40,9 +40,16 @@
   through `GET /api/events/stream`, `events.wait`, `vau events` and `plugin.onEvent`; the last 500 in memory.
 - **Versions** (`core/version.ts`): `APP_VERSION` is package.json's; bump `API_VERSION` only for a change that breaks
   plugins (note it in CHANGELOG.md; raise `MIN_API_VERSION` when old ones can't load).
-- **Pages are files** (`core/pages.ts`): a plugin's dashboard templates (`pages/<Name>.md`; Design in `core/pages/`) are
-  copied in once its plugin is on, where the other pages are, never over one that's there: a newer template is offered
-  wherever it moved (`locate`; the installed copy in `.vaultite/generated/Dashboards/`); a deleted one stays deleted.
+- **Plugins' pages are built in** (`core/pages.ts`): a plugin's dashboard templates (`pages/<Name>.md`; Design in
+  `core/pages/`) are kept in `.vaultite/pages/` while its plugin is on, as the template is now (they update with it),
+  read-only (`locked`). Copy to my vault (`dashboard.copy`) makes one the user's file, its pins and links following;
+  while the user has a copy (same name, type and plugin, anywhere: `copies`) no built-in one is kept.
+- **The app writes nothing outside `.vaultite/` on its own** (`core/writegate.ts`): every write (writeAtomic, writeNew,
+  the file routes' moves and deletes) passes `guard`. A request is the user's (their app, the CLI, an agent): always
+  allowed. A plugin acting on its own (its jobs, onEvent, onChange, onSync, the timers it starts as it loads, a vault
+  plugin's hook commands: `X-Vaultite-Actor`) writes outside `.vaultite/` only where its manifest's `writes` declares
+  and the user allowed (`core/grants.ts`, `.vaultite/grants.json`); otherwise `WriteRefused`, logged, and the app asks
+  once. A new background writer declares its `writes`; never work around the gate with `byUser`.
   Pinned (`plugins/core/pages/`) and Dashboards are plugins; tabs (`core/tabs.ts`) stay core: a page with views is one
   file per view.
 

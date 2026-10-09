@@ -15,6 +15,7 @@ import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { tabNames } from "./tabs.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
+import { guard } from "./writegate.ts"
 import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
@@ -26,10 +27,11 @@ export function showHidden(vault: Vault | null) {
   return !!(vault && vault.config("files").showHidden)
 }
 
-/** Read-only: the trash (restore or delete things there) and the app's generated copies. (The rules for AIs,
- *  .vaultite/AGENTS.md, take the user's own under their heading: Agent files.) */
+/** Read-only: the trash (restore or delete things there), the app's generated copies and the plugins' built-in pages
+ *  (Copy to my vault makes one the user's: core/pages.ts). (The rules for AIs, .vaultite/AGENTS.md, take the user's
+ *  own under their heading: Agent files.) */
 export function locked(rel: string) {
-  return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")
+  return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/") || inPagesDir(rel)
 }
 
 /** [stem, extension] like Python's os.path.splitext: a leading dot isn't an extension. */
@@ -366,6 +368,7 @@ function restore(vault: Vault, rel: string) {
   let [stem, ext] = splitext(rel.slice(".trash/".length))
   if (fs.statSync(vault.abs(rel)).isDirectory()) [stem, ext] = [stem + ext, ""]
   const dst = freeName(vault, stem.replace(STAMP, "") + ext)
+  guard(vault.abs(dst))
   fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
   fs.renameSync(vault.abs(rel), vault.abs(dst))
   return dst
@@ -659,6 +662,7 @@ export async function upload(vault: Vault, query: Record<string, string>, body: 
   const bytes = Buffer.isBuffer(body.bytes) ? body.bytes : null
   const src = bytes ? null : body.bytes instanceof Readable ? body.bytes : http instanceof Readable && !http.readableEnded ? http : null
   if (!bytes && !src) throw new HTTPError(400, "send the file's bytes as the request's body")
+  guard(abs)
   fs.mkdirSync(path.dirname(abs), { recursive: true })
   const tmp = path.join(path.dirname(abs), `.${path.basename(abs)}.upload-${process.pid}-${++uploadN}`)
   try {
@@ -700,7 +704,9 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       if (rel === ".vaultite" || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")) {
         throw new HTTPError(403, `${rel} is the app's; it can't be deleted`)
       }
+      if (inPagesDir(rel)) throw new HTTPError(403, `${rel} is a plugin's page: unpin it, or turn its plugin off`)
       let trashed: string | undefined
+      guard(vault.abs(rel))
       if (rel === ".trash" || rel.startsWith(".trash/")) fs.rmSync(vault.abs(rel), { recursive: true }) // gone for good
       else {
         trashed = vault.toTrash(rel)
@@ -782,6 +788,8 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     const same = fs.existsSync(vault.abs(dst)) && sameFile(vault.abs(src), vault.abs(dst))
     if (fs.existsSync(vault.abs(dst)) && !same) throw new HTTPError(409, `${dst} already exists`)
     if (dst.startsWith(src + "/")) throw new HTTPError(400, "can't move a folder into itself")
+    guard(vault.abs(src))
+    guard(vault.abs(dst))
     fs.mkdirSync(path.dirname(vault.abs(dst)), { recursive: true })
     fs.renameSync(vault.abs(src), vault.abs(dst))
     forget(vault, src)
@@ -827,6 +835,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       if (!body.unique) throw new HTTPError(409, `${rel} already exists`)
       rel = freeName(vault, rel)
     }
+    guard(vault.abs(rel))
     fs.mkdirSync(vault.abs(rel), { recursive: true })
     await vault.sync()
     return reply(201, { path: rel })

@@ -10,6 +10,7 @@ import { checkVaultPlugin, digestOf } from "../vaultplugins.ts"
 import { placePanel, readSidebars, sideOf } from "../sidebars.ts"
 import { API_VERSION } from "../version.ts"
 import { writeAtomic } from "../vault.ts"
+import * as G from "../grants.ts"
 import { type Any, strings } from "./common.ts"
 
 export type PluginInfo = PluginDir & { name: string; description: string; requires: string[]
@@ -202,6 +203,49 @@ can then run code here through it: never for one from elsewhere).
     run: ({ id, hash, edits }) => allowPlugin(app, id, hash, edits),
     text: (r) => (r.edits ? "Later edits to it run without asking on this machine. " : "") + (r.on ? (r.loaded ? `${r.name} is allowed on this machine, and running.` : `${r.name} is allowed on this machine, but doesn't load: ${r.problems[0] ?? "vau plugins check"}`)
       : `${r.name} is allowed on this machine; it runs once it's on (vau plugin on ${r.id}).`),
+  }, {
+    id: "plugin.writes",
+    cli: "plugin writes",
+    summary: "Where plugins write outside .vaultite/ on their own (timers, schedules, hooks), and whether the user allowed it.",
+    help: `A plugin acting on its own (not on something the user or their agent asked) writes the user's files only where
+its manifest's \`writes\` declares and the user allowed (.vaultite/grants.json); any other write is refused and
+logged. answer: allowed, not now (asked, not given), ask (a write wanted it: the app asks), or none (never asked).
+
+  vau plugin writes
+  vau plugin writes activity`,
+    kind: "read",
+    params: { id: { type: "string", description: "only this plugin's (id or name)" } },
+    args: ["id"],
+    run: ({ id }) => {
+      const only = id ? findPlugin(pluginList(app), id).id : null
+      return { writes: G.grantList(app.vault, app.plugins).filter((g) => !only || g.plugin === only) }
+    },
+    text: (r) => r.writes.length ? r.writes.map((g: G.Grant) => `${g.name}: ${g.at}${g.folder ? "/" : ""} (${g.why}): ${g.answer ?? "never asked"}${g.on ? "" : ", off"}`).join("\n")
+      : "No plugin writes outside .vaultite/ on its own.",
+  }, {
+    id: "plugin.grant",
+    cli: "plugin grant",
+    summary: "Allow a plugin to write where its manifest says, on its own (or take that back with allow: false).",
+    help: `What the app asks once per plugin ("Activity wants to write daily recaps into Recaps/"). Ask the user first:
+it's their yes. allow: false is "Not now" (also how a grant is taken back). place: only that one of its writes.
+
+  vau plugin grant activity
+  vau plugin grant activity --allow false`,
+    kind: "write",
+    params: {
+      id: ID,
+      allow: { type: "boolean", description: "false: not now, or take it back (default true)" },
+      place: { type: "string", description: "only this folder or file of its writes (as plugin writes lists it)" },
+    },
+    args: ["id"],
+    run: ({ id, allow, place }) => {
+      const info = findPlugin(pluginList(app), id), p = app.plugins.find((x) => x.id === info.id)
+      if (!p) throw new OpError(`${info.name} isn't loaded: turn it on (and allow it) first`, 409)
+      const places = G.answer(app.vault, p, allow !== false, place ? String(place) : undefined)
+      if (!places.length) throw new OpError(place ? `${info.name} doesn't write ${place} (vau plugin writes ${info.id})` : `${info.name} writes nothing outside .vaultite/ on its own`, 404)
+      return { id: info.id, name: info.name, allowed: allow !== false, places }
+    },
+    text: (r) => `${r.name} ${r.allowed ? "may now write" : "won't write"} ${r.places.join(", ")} on its own.`,
   }, {
     id: "plugin.disable",
     cli: "plugin off",

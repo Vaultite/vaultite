@@ -43,9 +43,15 @@ now (its plugin off) isn't drawn. Unset: the default page (every section not hid
 the buttons New note, Open a file, the command palette). `vau newtab` (show, hide, move; `button add`, `remove`,
 `move`, `icon`); right-click a blank tab (or a button: Change icon) to change it there. The same on every device and workspace.
 
-**Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). Its `"install": false` (a vault
-opened for the first time) puts the plugins' pages in `.vaultite/pages/` instead of among the user's files: drawn,
-pinned and linked as usual, left out of the file tree. Moving one into a folder is fine: it's updated where it is.
+**Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). The plugins' pages are
+built in, in `.vaultite/pages/`: drawn, pinned and linked as usual, left out of the file tree, read-only, and they
+update with their plugin. `vau dashboard copy <page>` makes one the user's file (to change it); `copiesOffered`: the
+user answered the offer to remove unchanged copies a vault had from before (`vau dashboard copies`).
+
+**Writes on its own**, `.vaultite/grants.json`: where each plugin may write outside `.vaultite/` when it acts on its own
+(timers, schedules, hooks), as its manifest's `writes` declares: `{"activity": {"Recaps": "allowed"}}` ("not now":
+asked and not given; "ask": a write wanted it, so the app asks). `vau plugin writes`, `vau plugin grant <id>` (ask the
+user first). What the user or their agent asks for is never gated.
 
 **Files**, `.vaultite/files.json` (the File explorer's settings): `attachmentFolder`, where pasted and uploaded files
 go (a folder, `/` the top, `./` beside the note, `./name` a folder beside it; unset: Obsidian's `attachmentFolderPath`,

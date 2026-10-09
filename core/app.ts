@@ -30,6 +30,8 @@ import { ARCHIVED, setMarks } from "./fileprops.ts"
 import { hookOps } from "./hooks.ts"
 import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
 import { VaultPlugins } from "./vaultplugins.ts"
+import * as G from "./grants.ts"
+import { byUser, logFailure, onItsOwn, WriteRefused } from "./writegate.ts"
 import { readLock } from "./installs.ts"
 import { PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
@@ -99,6 +101,12 @@ export class App {
     // Templates' notes are patterns, not people or logs, whatever their `type` (Vault.kindFor).
     this.vault.plain = () => { const f = service(this.plugins, "templates:folder")?.(); return typeof f === "string" && f ? [f] : [] }
     this.vault.defaults = () => settingDefaults(this.vault, this.plugins)
+    // The write gate (core/writegate.ts): a plugin acting on its own writes outside .vaultite/ only where it's granted.
+    this.vault.mayWrite = (id, rel) => G.may(this.vault, this.plugins, id, rel)
+    this.vault.writeRefused = (id, rel) => {
+      const asking = G.refused(this.vault, this.plugins, id, rel)
+      eventsOf(this.vault).emit("plugin.write-refused", { plugin: id, path: rel, asking })
+    }
     this.vaultPlugins = new VaultPlugins(this.vault, this.app)
     // A version the directory blocks doesn't load: matched by the repo it was installed from, its manifest's, or its id.
     this.vaultPlugins.blocked = (vp) => this.index.blockedWhy(vp.id, typeof vp.manifest.version === "string" ? vp.manifest.version : null,
@@ -187,6 +195,7 @@ export class App {
       .map((k) => [k.collection, { sections: k.spec.sections ?? [], stamps: k.spec.stamps ?? [] }]))
     out.appearance = { themes: Look.listThemes(this.vault), snippets: Look.listSnippets(this.vault) }
     out.pluginSettings = settingsFiles(this.vault.path)
+    out.writeGrants = G.grantList(this.vault, this.plugins) // (what plugins write on their own, and the user's answers)
     out.settingDefaults = settingDefaults(this.vault, this.plugins) // (another app's, under the vault's own: never written)
     out.filing = filing(this.vault)
     out.bundles = B.status(this.vault) // the setup a bundle replaced (to restore), and a new vault's offer
@@ -281,7 +290,7 @@ export class App {
 
   /** Files changed on disk (core/live.ts, after reading them): plugins that follow them (plugin.onChange) hear which. */
   changed(paths: string[] | null) {
-    for (const p of this.on()) for (const fn of p.changeFns) { try { fn(paths) } catch (e) { console.error(e) } }
+    for (const p of this.on()) for (const fn of p.changeFns) { try { onItsOwn(p.id, () => fn(paths)) } catch (e) { logFailure(`${p.id}: onChange:`, e) } }
   }
 
   /** GET /<prefix>/<rest> outside /api/, when a plugin that's on serves that prefix (plugin.serve: HTML's /v/ and
@@ -325,7 +334,9 @@ export class App {
     try {
       // Who asked, for the hooks its writes run (plugin.onCreate): only a request over HTTP says.
       const h = (k: string) => { const v = http?.headers[k]; return typeof v === "string" && v ? v.slice(0, 200) : null }
-      return asReply(http ? await requestWriter.run({ client: h("x-vaultite-client"), agent: h("x-vaultite-agent") }, () => this.dispatch(method, parts, query, body, http))
+      // A request is the user's own action, unless a plugin's command says it acts on its own (core/hooks.ts).
+      const actor = h("x-vaultite-actor"), as = <T>(fn: () => T) => (actor ? onItsOwn(actor, fn) : byUser(fn))
+      return asReply(http ? await as(() => requestWriter.run({ client: h("x-vaultite-client"), agent: h("x-vaultite-agent") }, () => this.dispatch(method, parts, query, body, http)))
         : await this.dispatch(method, parts, query, body, http))
     } catch (e) {
       const out = errorReply(e)
@@ -633,7 +644,7 @@ export class App {
     for (const p of this.on()) {
       for (const [filter, fn] of p.eventFns) {
         const seen = matching(ev, filter)
-        if (seen) try { fn(seen) } catch (e) { console.error(`${p.id}: onEvent:`, e) }
+        if (seen) try { onItsOwn(p.id, () => fn(seen)) } catch (e) { logFailure(`${p.id}: onEvent:`, e) }
       }
     }
     this.vaultPlugins.heard(ev)
@@ -696,6 +707,7 @@ function errorReply(e: unknown): Reply | null {
   if (e instanceof OpError) return reply(e.status, { error: e.message, ...(e.problems.length ? { problems: e.problems } : {}) })
   if (e instanceof HTTPError || e instanceof ConfigError) return reply(e.status, { error: e.message })
   if (e instanceof NotFound) return reply(404, { error: e.message })
+  if (e instanceof WriteRefused) return reply(403, { error: e.message })
   if (e instanceof ConflictError) return reply(409, { error: e.message })
   return null
 }
@@ -728,7 +740,6 @@ export async function open(vaultPath: string, { start = true } = {}) {
   // A vault the app has never opened (no .vaultite/ yet): it starts from Minimal (core/start.ts); until then, no
   // plugin's pages are installed (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
-  const empty = fresh && fs.readdirSync(vaultPath).every((f) => f === ".DS_Store")
   const app = await new App(vaultPath).init()
   if (fresh) B.markNew(app.vault)
   if (start) {
@@ -736,7 +747,7 @@ export async function open(vaultPath: string, { start = true } = {}) {
     app.installPages()
     await turn()
     await app.vault.sync()
-    if (fresh) await setUpNew(app.host(), empty).catch((e) => console.error("setting up the new vault:", e))
+    if (fresh) await setUpNew(app.host()).catch((e) => console.error("setting up the new vault:", e))
   }
   return app
 }

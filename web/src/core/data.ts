@@ -8,6 +8,7 @@ import { notifyError } from "@/core/notify"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
 import { hydrateHotkeys } from "@/core/commands"
 import type { FileTree } from "@/core/files"
+import type { Grant } from "@/core/grants"
 import { applyPatch, type Patch } from "../../../core/statepatch.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { PropTypes } from "../../../core/proptypes.ts"
@@ -32,6 +33,8 @@ export type State = PluginState & {
   appearance?: VaultAppearance
   /** The plugins (ids) with a settings file, .vaultite/plugins/<id>/data.json: Settings lists them. */
   pluginSettings?: string[]
+  /** Where plugins write outside .vaultite/ on their own, and the user's answers (core/grants.ts). */
+  writeGrants?: Grant[]
   /** Bundles (core/bundles.ts): the setup the last one applied replaced (to restore), and whether a new vault is still
    *  being offered them. */
   bundles?: { previous: { bundle: string; name: string; at: string } | null; onboarding: boolean }

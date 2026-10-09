@@ -18,6 +18,7 @@ import { reload } from "@/core/data"
 import { op } from "@/core/http"
 import { notify, notifyError } from "@/core/notify"
 import { openDetail } from "@/core/nav"
+import { askGrant } from "@/core/grants"
 import { CATEGORIES, categoryOf, OTHER } from "../../../core/categories.ts"
 import { setMarks } from "../../../core/fileprops.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
@@ -193,6 +194,8 @@ export function setSwitch(p: Plugin, on: boolean, quiet = false) {
 function turn(p: Plugin, on: boolean) {
   const { disabled, enabled } = getPrefs()
   if (on) { showPanelsOf(p); showSectionsOf(p) }
+  // Turned on: what it writes on its own is asked now, once (core/grants.ts).
+  if (on) void askGrant(p.id)
   if (optIn(p)) return setPrefs({ enabled: on ? [...enabled.filter((id) => id !== p.id), p.id] : enabled.filter((id) => id !== p.id) })
   return setPrefs({ disabled: on ? disabled.filter((id) => id !== p.id) : [...disabled.filter((id) => id !== p.id), p.id] })
 }

@@ -1,7 +1,8 @@
-import { ArrowUpCircle, LayoutDashboard } from "lucide-react"
-import { dateText, definePlugin, PageHeader, type PageCtx } from "@vaultite"
+import { Copy, LayoutDashboard } from "lucide-react"
+import { dateText, definePlugin, inPagesDir, PageHeader, type PageCtx } from "@vaultite"
 import { Dashboard } from "./Dashboard"
-import { UpdateBar, UpdateView } from "./Update"
+import { BuiltInBar, copyToVault } from "./BuiltIn"
+import { CopiesOffer } from "./Copies"
 
 // Dashboards: a `type: dashboard` file is a page of blocks while read; editing it edits the file. Off, it's a
 // Markdown file with its blocks one under another.
@@ -13,8 +14,8 @@ const subtitleOf = (fm: Record<string, unknown>) => typeof fm.subtitle === "stri
 function Header({ title, fm, place, path }: PageCtx) {
   const sub = subtitleOf(fm)
   // In a tab the page's name and subtitle are its title; in a sheet the file's title is there already.
-  if (place === "page") return <><PageHeader title={title} subtitle={sub} /><UpdateBar path={path} /></>
-  return <>{sub && <p className="mt-0.5 text-[15px] text-muted-foreground">{sub}</p>}<UpdateBar path={path} /></>
+  if (place === "page") return <><PageHeader title={title} subtitle={sub} /><BuiltInBar path={path} plugin={fm.plugin} /></>
+  return <>{sub && <p className="mt-0.5 text-[15px] text-muted-foreground">{sub}</p>}<BuiltInBar path={path} plugin={fm.plugin} /></>
 }
 
 export default definePlugin({
@@ -22,14 +23,10 @@ export default definePlugin({
     types: ["dashboard"], icon: LayoutDashboard,
     page: { header: (ctx) => <Header {...ctx} />, render: (ctx) => <Dashboard ctx={ctx} className={ctx.place === "sheet" ? "mt-4" : undefined} /> },
   },
-  // A tab at view:page-update/<vault path>: the page against its plugin's newer version (Update.tsx).
-  views: {
-    "page-update": {
-      icon: ArrowUpCircle,
-      title: (path) => `${path.split("/").pop()!.replace(/\.md$/i, "")}: update`,
-      render: ({ arg }) => <UpdateView key={arg} path={arg} />,
-    },
-  },
+  // A plugin's built-in page becomes the user's file (BuiltIn.tsx).
+  fileMenu: (path) => (inPagesDir(path) ? [{ label: "Copy to my vault", icon: Copy, section: "change", run: () => copyToVault(path) }] : []),
+  // Once: offer to remove copies of plugins' pages the user never changed (Copies.tsx).
+  background: () => <CopiesOffer />,
   // What a dashboard looks like: Today's, with made-up data.
   preview: "today",
 })

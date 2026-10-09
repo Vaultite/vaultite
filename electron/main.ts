@@ -587,7 +587,7 @@ setupHandle("setup:pick", async () => {
 })
 /** Choose the vault: a new folder (made now, empty) or a folder of the user's (none of its files change). Its server
  *  starts, and sets up a vault it has never opened (core/start.ts: Minimal, and a new one's Start here). */
-setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: string } | { kind: "open"; path: string } | null) => {
+setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: string; starter?: boolean } | { kind: "open"; path: string } | null) => {
   dropChosen()
   if (!c) return null
   let p: string, made = false
@@ -603,7 +603,12 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
     if (!fs.statSync(p, { throwIfNoEntry: false })?.isDirectory()) throw new Error(`${p} isn't a folder`)
   }
   chosen = { path: p, made, added: !find(p) }
-  await serverFor(remember(p))
+  const [, port] = await serverFor(remember(p))
+  // Starter content only when the user asked for it (core/start.ts): opening a folder writes nothing outside .vaultite/.
+  if (c.kind === "new" && c.starter) {
+    const r = await fetch(`http://127.0.0.1:${port}/api/ops/vault.starter`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/desktop" }, body: "{}" })
+    if (!r.ok) console.error("starter content:", r.status, await r.text())
+  }
   return chosen
 })
 setupHandle("setup:vau", async (system: boolean) => {

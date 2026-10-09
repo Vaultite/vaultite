@@ -33,6 +33,8 @@
      `core/vault.ts`, `core/client.ts`, `core/timeline.ts` (`core/codingagents.ts` and `core/terminalids.ts`: the coding agent plugins'), Node
      and npm packages, a required plugin through `plugin.peer(id).exports`. Settings are read through the API, never
      from disk (`settingsProblems` flags direct reads).
+  5. What it writes outside `.vaultite/` on its own (a job, a hook, a timer) its manifest's `writes` declares, and the
+     user allows once (core/writegate.ts); else it's refused. Its ops and routes, run for the user, aren't gated.
 - **A block needs both sides and a declaration** (`npm run check` fails an app plugin without them; a vault plugin
   loads with warnings): the React render in `index.tsx`, the text in `plugin.ts` (`plugin.block`, what `GET
   /api/render` shows an agent), and its manifest entry. The declaration is the contract: both sides take defaults from

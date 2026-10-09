@@ -16,8 +16,8 @@ export const archiveTwin = (rel: string) => {
   const i = rel.lastIndexOf("/")
   return `${rel.slice(0, i + 1)}${ARCHIVE_DIR}/${rel.slice(i + 1)}`
 }
-/** Where the plugins' pages go in a folder of the user's own (pages.json `install: false`), never among their notes. The
- *  vault indexes it like any folder (a page there is drawn, pinned and linked as usual); the file tree leaves it out. */
+/** Where the plugins' pages are built in (core/pages.ts), never among the user's notes. The vault indexes it like any
+ *  folder (a page there is drawn, pinned and linked as usual); the file tree leaves it out. */
 export const PAGES_DIR = ".vaultite/pages"
 export const inPagesDir = (rel: string) => rel === PAGES_DIR || rel.startsWith(`${PAGES_DIR}/`)
 /** A dot folder or file somewhere in the path, other than an archive folder or the pages folder: hidden unless hidden

@@ -6,6 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Plugins' pages are built in**: they live in `.vaultite/pages`, update with their plugin, and never land among your
+  files; Copy to my vault (the page's bar, its menu) makes one yours to change, its pins and links following. A vault
+  with unchanged copies from before is asked once whether to use the built-in ones. A new vault's Start here note and
+  its AGENTS.md and CLAUDE.md lines come only when you tick "Start with example pages".
+- **Plugins ask before writing on their own**: what a plugin writes outside `.vaultite/` by itself (Activity's day
+  recaps, Agent files' pointer lines) needs your yes once ("Activity wants to write a recap of each day into
+  Recaps/"), kept in its settings under Writes on its own; anything else is refused and logged. What you or your agents
+  ask for never asks.
+
 ## 0.2.0 (2026-10-09)
 
 The first public release: the source on GitHub, signed and notarized Mac builds, Linux's AppImage and .deb, and a

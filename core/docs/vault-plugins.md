@@ -7,7 +7,7 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
 **`manifest.json`**: `{"id" (= the folder's name, not one the app has), "name", "description", "icon", "version": "1.0.0",
 "author", "repo": "owner/name", "fundingUrl", "disclosures", "requires": [plugin ids it can't work without],
 "enhances", "runsOnServer", "tint": "green", "category": "life", "apiVersion": 3, "minAppVersion": "0.1.0", "forAgents",
-"blocks", "settings", "replaces", "userFiles", "marks"}`. A folder with only `data.json` is settings, not a plugin.
+"blocks", "settings", "replaces", "userFiles", "marks", "writes"}`. A folder with only `data.json` is settings, not a plugin.
 - `version` (semver), `author`, `repo` (its GitHub repository) and `fundingUrl` (https): shown in its sheet; one to
   install from GitHub needs `version` and `repo`.
 - `disclosures`: what it does beyond the vault, shown before anyone allows it: `{"network": ["api.example.com"],
@@ -92,10 +92,15 @@ its scripts is a plugin). Each `command` is an argv array run in the plugin's fo
   with whole days; `name` to tell them apart). One machine runs it: Machines' first, or the one its `machine` names. A
   run missed while the server was down runs once when it's back. `vau schedule list`, `vau schedule run <id>`.
 Their environment: `VAULTITE_URL` (this server), `VAULTITE_VAULT`, `VAULTITE_BIN` (the `vau` CLI, its folder first on
-`PATH`), `VAULTITE_PLUGIN_ID`, `VAULTITE_PLUGIN_DIR`, `VAULTITE_PLUGIN_STATE` (a folder of its own on this machine, for
+`PATH`), `VAULTITE_ACTOR` (a hook's: `vau` says it acts on its own), `VAULTITE_PLUGIN_ID`, `VAULTITE_PLUGIN_DIR`, `VAULTITE_PLUGIN_STATE` (a folder of its own on this machine, for
 what isn't the user's files or settings), and `VAULTITE_OP` + `VAULTITE_PARAMS_JSON` (an op) or `VAULTITE_PLUGIN_EVENT`
 (the type, `startup` or `schedule` with `VAULTITE_SCHEDULE` its name) + `VAULTITE_EVENT_JSON` (an event). `timeout` is seconds (ops 60, hooks 120, at most 600).
 What they did: `vau vault-plugin.log <id>` (each run's command, exit, time and stderr).
+- `"writes": [{"folder": "Recaps", "why": "a recap of each day"}]` (or `"file": "AGENTS.md"`): where it writes outside
+  `.vaultite/` on its own (its `schedule`, `events` and `startup` commands, `plugin.every`, `plugin.onEvent`, the timers
+  it starts). The user is asked once ("Lighthouse wants to write a recap of each day into Recaps/"); until they allow it,
+  such a write is refused (`WriteRefused`, a 403 for `vau`) and logged. What a user or their agent asks for (its ops,
+  routes) is never gated. Data it wants anyway goes in `.vaultite/` (its `data.json`, `plugin.writeCache`).
 
 **`index.tsx`** (optional; the app): `export default definePlugin({ blocks: { "<name>": (ctx) => <Panel
 title="...">...</Panel> }, files, details, search, links, commands, sidebar, header, settingsPanel, editor })` from

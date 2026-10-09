@@ -93,7 +93,8 @@ async function api(method: string, p: string, body?: unknown): Promise<[number, 
 app.installPages() // what the server does on start: the plugins' pages
 const [, v] = await api("GET", "vault")
 check("sandbox: the app reads every file", v.problems.length === 0, v.problems)
-const pages = ["Start here.md", ...fs.readdirSync(path.join(C, "Dashboards")).filter((f) => f.endsWith(".md")).map((f) => `Dashboards/${f}`)]
+const BUILT = ".vaultite/pages/Dashboards" // (the plugins' pages are built in: core/pages.ts)
+const pages = ["Start here.md", ...fs.readdirSync(path.join(C, BUILT)).filter((f) => f.endsWith(".md")).map((f) => `${BUILT}/${f}`)]
 const notes: string[] = []
 for (const p of [...pages, "Notes/How this vault works.md", "People/Alice Martin.md", cfiles.find((f) => f.startsWith("Logs/Workouts/"))!]) {
   const [code, text] = await api("GET", `render?path=${encodeURIComponent(p)}`)
@@ -105,12 +106,12 @@ const [, people] = await api("GET", "render?path=Start%20here.md")
 check("sandbox: the tour shows who's due", /Dave Kim/.test(people), people.slice(0, 600))
 const [, state] = await api("GET", "state")
 check("sandbox: only its two pages are pinned (the pages plugins bring aren't)", JSON.stringify(state.pinned) === '["Start here.md","Notes/How this vault works.md"]', state.pinned)
-check("sandbox: a plugin that's off brings no page", !fs.existsSync(path.join(C, "Dashboards/Codex.md")) && fs.existsSync(path.join(C, "Dashboards/Today.md")))
+check("sandbox: a plugin that's off brings no page", !fs.existsSync(path.join(C, BUILT, "Codex.md")) && fs.existsSync(path.join(C, BUILT, "Today.md")))
 const pj = path.join(C, ".vaultite/plugins.json"), pconf = JSON.parse(fs.readFileSync(pj, "utf8"))
 fs.writeFileSync(pj, JSON.stringify({ ...pconf, disabled: pconf.disabled.filter((x: string) => x !== "codex") }))
 await api("GET", "vault") // the change is read
 await api("GET", "vault") // and the plugins follow it
-check("sandbox: turned on, it brings its page (not pinned here: pinNew)", fs.existsSync(path.join(C, "Dashboards/Codex.md")) &&
+check("sandbox: turned on, it brings its page (not pinned here: pinNew)", fs.existsSync(path.join(C, BUILT, "Codex.md")) &&
   JSON.parse(fs.readFileSync(path.join(C, ".vaultite/pages.json"), "utf8")).pinned.length === 2)
 const [, gym] = await api("GET", `query?q=${encodeURIComponent(JSON.stringify({ type: "log", where: "area = workouts" }))}`)
 check("sandbox: the workout logs are found", gym.total > 10, gym.total)

@@ -7,6 +7,7 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
 import { disclosuresOf, ICON_NAME, iconOf } from "./pluginmeta.ts"
+import { onItsOwn } from "./writegate.ts"
 import { blockProblems, hashed, inside, installProblems, pluginProblems, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, settingsOf } from "./blocks.ts"
 import type { VaultEvent } from "./events.ts"
@@ -361,7 +362,7 @@ export class VaultPlugins {
       const file = path.join(vp.dir, "plugin.ts")
       let p: Plugin
       if (fs.existsSync(file)) {
-        const mod = await import(`${pathToFileURL(file).href}?plugin=${encodeURIComponent(vp.id)}&v=${vp.hash}`)
+        const mod = await onItsOwn(vp.id, () => import(`${pathToFileURL(file).href}?plugin=${encodeURIComponent(vp.id)}&v=${vp.hash}`))
         if (!(mod.plugin instanceof Plugin)) throw new Error("plugin.ts must export `plugin`: export const plugin = new Plugin(import.meta.url)")
         p = mod.plugin
       } else p = new Plugin(path.join(vp.dir, "manifest.json"))

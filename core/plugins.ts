@@ -22,6 +22,10 @@ import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
 import { type PropTypes, readTypes } from "./proptypes.ts"
 import { trustOf } from "./trust.ts"
+import { onItsOwn } from "./writegate.ts"
+/** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
+ *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
+export { WriteRefused } from "./writegate.ts"
 import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, type Item, Kind, type MoveHook, readText, type Vault, writeAtomic } from "./vault.ts"
 
 /** What kind of file a name is (core/filetypes.ts), for plugins that treat text files differently, and the type it is served with. */
@@ -396,7 +400,7 @@ export class Plugin {
   /** fn(vault) runs after every sync of the vault (before each request, and when files change on disk: core/live.ts),
    *  to follow the files themselves (File history keeps their earlier versions). Keep it cheap: it runs often. */
   onSync(fn: (vault: Vault) => void) {
-    return this.attach(fn, (v) => v.afterSync(fn))
+    return this.attach(fn, (v) => v.afterSync((vault) => onItsOwn(this.id, () => fn(vault))))
   }
 
   /** fn(from, to) when the API moves, restores or trashes a file (to: null; `trashed`: where it went), so what the
@@ -756,7 +760,8 @@ export async function load(vault: Vault): Promise<Plugin[]> {
     const file = path.join(d, "plugin.ts")
     // (one that fails to load is left out, said in the log, not the server kept from starting)
     try {
-      const p: Plugin = fs.existsSync(file) ? (await import(pathToFileURL(file).href)).plugin : new Plugin(path.join(d, "manifest.json"))
+      // (loaded as the plugin acting on its own: the timers it starts as it loads keep that: core/writegate.ts)
+      const p: Plugin = fs.existsSync(file) ? (await onItsOwn(path.basename(d), () => import(pathToFileURL(file).href))).plugin : new Plugin(path.join(d, "manifest.json"))
       if (!(p instanceof Plugin)) throw new Error("plugin.ts exports no plugin")
       p.vault = vault
       for (const k of p.kinds) vault.register(k)

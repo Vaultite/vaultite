@@ -840,7 +840,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [props, resolve, path])
   const notices = <>
     {inTrash(path) && <InTrash path={path} note=" Restore it to edit it." />}
-    {isReadOnly(path) && !inTrash(path) && <Banner tone="info"><span className="flex-1">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</span></Banner>}
+    {isReadOnly(path) && !inTrash(path) && !inPagesDir(path) && <Banner tone="info"><span className="flex-1">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</span></Banner>}
     {status.kind === "conflict" && (
       <Banner tone="warn">
         <span className="flex-1">This file changed somewhere else, in the same lines you edited.</span>

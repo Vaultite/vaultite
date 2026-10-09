@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import { type Op, OpError } from "./ops.ts"
 import { writeAtomic } from "./vault.ts"
+import { onItsOwn, WriteRefused } from "./writegate.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Item = Record<string, any>
@@ -101,21 +102,25 @@ export class Scheduler {
     for (const { plugin, job } of this.jobs()) {
       const key = `${plugin}/${job.name}`
       if (this.running.has(key) || nextRun(job, this.last(key, now)) > now || !(await this.here(job.machine))) continue
-      due.push(this.run(key, job, now))
+      due.push(this.run(key, plugin, job, now))
     }
     this.save()
     await Promise.all(due)
   }
 
-  private async run(key: string, job: Job, now = Date.now()) {
+  /** A job runs as its plugin acting on its own (run now too: it does what the schedule would), so its writes outside
+   *  .vaultite/ need the user's grant (core/writegate.ts). */
+  private async run(key: string, plugin: string, job: Job, now = Date.now()) {
     this.running.add(key)
     const t0 = performance.now()
     let error: string | undefined
     try {
-      await job.run()
+      await onItsOwn(plugin, () => job.run())
     } catch (e) {
       error = String((e as Error)?.message ?? e).slice(0, 500)
-      console.error(`schedule ${key}: ${error}`)
+      // (a write the user hasn't allowed yet isn't the server's error: the app asks them)
+      if (e instanceof WriteRefused) console.warn(`schedule ${key}: ${error}`)
+      else console.error(`schedule ${key}: ${error}`)
     } finally {
       this.running.delete(key)
     }
@@ -147,7 +152,7 @@ export class Scheduler {
     const hit = this.jobs().find(({ plugin, job }) => `${plugin}/${job.name}` === id)
     if (!hit) throw new OpError(`no job '${id}' (vau schedule list)`, 404)
     if (this.running.has(id)) throw new OpError(`${id} is running`, 409)
-    return (await this.run(id, hit.job)) ?? null
+    return (await this.run(id, hit.plugin, hit.job)) ?? null
   }
 }
 

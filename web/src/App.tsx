@@ -8,6 +8,7 @@ import { loadActions } from "@/core/actions"
 import { currentEditor } from "@/core/editors"
 import { desktop as desktopApp, otherVaults } from "@/core/desktop"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
+import { GrantAsker } from "@/components/GrantAsker"
 import { createFile, freeName, isProtected, inVault, isReadOnly, openNew, openFile, stem } from "@/core/files"
 import { activeTab, askRename, canReopenTab, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, isDesktop, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { hasSiblings, moveToSplit, splitTab } from "@/core/splits"
@@ -548,6 +549,7 @@ export default function App() {
       {/* Plugins' background work (Workspaces keeping the tabs and the vault in step), drawn nowhere; one that throws
           stops alone (its error goes to Errors), not the app on every load. */}
       {store && backgrounds(disabled, order).map(({ key, Run }) => <Catch key={key} fallback={() => null}><Run store={store} /></Catch>)}
+      {store && <GrantAsker store={store} />}
 
       {/* Phones: the bar at the bottom (Back, search, a new tab, the tab list, the menu) and the sidebars as drawers. */}
       {!desktop && (

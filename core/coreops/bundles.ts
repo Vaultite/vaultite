@@ -1,6 +1,7 @@
 // Bundles' ops (core/bundles.ts) through their routes, in-process. Apply, show and save act on the workspace the
 // user's window is on unless told another.
 import type { App } from "../app.ts"
+import { starter } from "../start.ts"
 import { type Op, OpError, type Param } from "../ops.ts"
 import { type Any, enc, lines, windowWorkspace } from "./common.ts"
 
@@ -33,8 +34,21 @@ app's own are Minimal, Life OS and Agents (then Pages and databases, Self-hosted
   vau bundle export my-desk
   vau bundle import ~/Downloads/my-desk.bundle.json`
 
-export function bundleOps(_app: App): Op[] {
+export function bundleOps(app: App): Op[] {
   return [{
+    id: "vault.starter",
+    cli: "vault starter",
+    summary: "Give a new vault its starter content: a Start here note (pinned) and a line pointing agents at its rules in AGENTS.md and CLAUDE.md.",
+    help: `What Set up Vaultite's "Start with a Start here note" does for a new vault. Opening a folder writes nothing
+outside .vaultite/; this writes Start here.md (unless there's one), pins it, and has Agent files add its pointer
+line to the vault's AGENTS.md and CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
+
+  vau vault starter`,
+    kind: "write",
+    lock: false,
+    run: async () => ({ wrote: await starter(app.host()) }),
+    text: (r) => `Wrote ${r.wrote.join(", ")}.`,
+  }, {
     id: "bundle.list",
     cli: "bundle list",
     summary: "Bundles: setups of the app (plugins, settings, panels, pins, look) to apply, save, export and import.",

@@ -214,7 +214,7 @@ export class Hooks {
       if (s.op) return { ...when, name, run: () => plugin.runOp(s.op, s.params ?? {}, whoOf("schedule", null)) }
       return { ...when, name, run: async () => {
         const timeout = typeof s.timeout === "number" ? s.timeout : HOOK_TIMEOUT
-        const r = await this.run(p, s.command, { what: `schedule ${name}`, stdin: "", timeout, env: { VAULTITE_PLUGIN_EVENT: "schedule", VAULTITE_SCHEDULE: name } })
+        const r = await this.run(p, s.command, { what: `schedule ${name}`, stdin: "", timeout, env: { VAULTITE_PLUGIN_EVENT: "schedule", VAULTITE_SCHEDULE: name, VAULTITE_ACTOR: p.id } })
         if (r.timedOut) throw new Error(`took longer than ${timeout} s and was ended`)
         if (r.exit !== 0) throw new Error(r.error ?? `exit ${r.exit}${r.stderr.trim() ? `: ${tail(r.stderr, 3)}` : ""}`)
       } }
@@ -227,7 +227,7 @@ export class Hooks {
     if (this.started.has(p.id)) return
     this.started.add(p.id)
     for (const h of Array.isArray(p.manifest.startup) ? p.manifest.startup as Item[] : []) {
-      void this.run(p, h.command, { what: "startup", stdin: "", timeout: typeof h.timeout === "number" ? h.timeout : HOOK_TIMEOUT, env: { VAULTITE_PLUGIN_EVENT: "startup" } })
+      void this.run(p, h.command, { what: "startup", stdin: "", timeout: typeof h.timeout === "number" ? h.timeout : HOOK_TIMEOUT, env: { VAULTITE_PLUGIN_EVENT: "startup", VAULTITE_ACTOR: p.id } })
     }
   }
 
@@ -268,7 +268,7 @@ export class Hooks {
     this.busy.set(key, state)
     const json = JSON.stringify(ev)
     void this.run(p, h.command, { what: `event ${ev.type}`, stdin: json, timeout: typeof h.timeout === "number" ? h.timeout : HOOK_TIMEOUT,
-      env: { VAULTITE_PLUGIN_EVENT: ev.type, VAULTITE_EVENT_JSON: json } }).then(() => {
+      env: { VAULTITE_PLUGIN_EVENT: ev.type, VAULTITE_EVENT_JSON: json, VAULTITE_ACTOR: p.id } }).then(() => {
       this.busy.delete(key)
       if (state.pending) this.fire(p, h, key, state.pending)
     })

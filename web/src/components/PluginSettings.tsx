@@ -11,6 +11,7 @@ import { afterSheets } from "@/core/nav"
 import { notifyError } from "@/core/notify"
 import { isEnabled, names, setSwitch, tintOfPlugin } from "@/core/plugins"
 import { revealRow, settingsFile, takeGoingTo } from "@/core/pluginSettings"
+import { grantsOf, setGrant } from "@/core/grants"
 import { usePrefs } from "@/core/prefs"
 import { capitalize, cn } from "@/lib/utils"
 import { Group, Section, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
@@ -73,6 +74,7 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
         {on && plugin.settingsPanel && <Catch fallback={panelFailed}>{plugin.settingsPanel({ store })}</Catch>}
         {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!plugin.settingsPanel && on} />}
         <Homes store={store} plugin={plugin.id} />
+        <Writes store={store} plugin={plugin.id} />
         {!declared && !(plugin.settingsPanel && on) && (hasFile ? <SettingsJson path={settingsFile(plugin.id)} /> : (
           <p className="text-[15px] text-muted-foreground">Nothing set yet.</p>
         ))}
@@ -139,6 +141,23 @@ function Homes({ store, plugin }: { store: Store; plugin: string }) {
           <Field key={h.key} k={`folder-${h.key}`} value={h.set ? h.folder : undefined} set={(v) => void save(h.key, v)}
             d={{ type: "string", folder: true, default: h.folder, label: homes.length > 1 ? `${h.label} folder` : "Folder",
               description: `where new ${h.label.toLowerCase()} go` }} />
+        ))}
+      </Group>
+    </Section>
+  )
+}
+
+/** Where it writes outside .vaultite/ on its own (core/grants.ts): each place, allowed or not, to change. */
+function Writes({ store, plugin }: { store: Store; plugin: string }) {
+  const list = grantsOf(plugin, store)
+  if (!list.length) return null
+  return (
+    <Section title="Writes on its own">
+      <Group>
+        {list.map((g) => (
+          <SettingRow key={g.place} label={`${g.at}${g.folder ? "/" : ""}`} sub={`${capitalize(g.why)}, on its own. ${g.answer === "allowed" ? "Allowed" : "Not allowed: it keeps that to itself"}`} data-grant={g.place}>
+            <Switch on={g.answer === "allowed"} onChange={(v) => void setGrant(g, v)} label={`Let ${g.name} write ${g.place}`} />
+          </SettingRow>
         ))}
       </Group>
     </Section>

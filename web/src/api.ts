@@ -24,7 +24,9 @@ export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conven
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
-export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, splitFm, stem } from "@/core/files"
+export { closeView, createFile, createNamed, folderOf, freeName, homeOf, inPagesDir, isDoc, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, splitFm, stem } from "@/core/files"
+/** A folder of the vault, picked in the palette (one typed that isn't there is made). */
+export { chooseFolder } from "@/components/FolderPicker"
 export { currentFile, isDesktop, useFocusedFile, type FocusedFile } from "@/core/workspace"
 export { openInSplit } from "@/core/splits"
 /** CSV, the vault's tables, parsed the same way everywhere (core/csv.ts, shared with the server). */

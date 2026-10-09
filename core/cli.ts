@@ -159,7 +159,10 @@ export class Ctx {
    *  Code sets CLAUDECODE, Codex CODEX_SANDBOX..., the server also looks at the calling process), and the command. */
   private who(): Record<string, string> {
     const agent = this.agentName()
-    return { "X-Vaultite-Client": this.client, ...(agent ? { "X-Vaultite-Agent": agent } : {}), ...(this.command ? { "X-Vaultite-Command": this.command } : {}) }
+    // (a vault plugin's schedule, startup or event command acts on its own: core/writegate.ts)
+    const actor = process.env.VAULTITE_ACTOR
+    return { "X-Vaultite-Client": this.client, ...(agent ? { "X-Vaultite-Agent": agent } : {}), ...(this.command ? { "X-Vaultite-Command": this.command } : {}),
+      ...(actor ? { "X-Vaultite-Actor": actor } : {}) }
   }
 
   /** The coding agent this runs under, by its variables ("claude-code", "codex"...), or "". */

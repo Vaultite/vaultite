@@ -1,109 +1,78 @@
-// Plugins' newer page templates, offered rather than written over the user's pages (core/pages.ts): which pages have
-// one, the difference, taking it, saying no to it. The page's bar uses the same ops.
+// Plugins' pages are built in (core/pages.ts): copying one into the vault to make it the user's, and the one-time offer
+// to remove copies of them a vault has from before that the user never changed.
 import fs from "node:fs"
 import type { App } from "../app.ts"
-import { type Op, OpError, type Param } from "../ops.ts"
-import { applied, DISMISSED, dismissal, updates } from "../pages.ts"
-import { opcodes } from "../textedit.ts"
+import { inPagesDir } from "../fileprops.ts"
+import { type Op, OpError } from "../ops.ts"
+import { copyPage, uncopy, unedited } from "../pages.ts"
 import { lines } from "./common.ts"
 
-const PAGE: Param = { type: "string", required: true, description: "the page: its vault path (Dashboards/Health.md) or its name (Health)" }
+/** pages.json: the user answered the offer to remove unedited copies. */
+const OFFERED = "copiesOffered"
 
-/** Their copy against the template, line by line: `- ` only in theirs, `+ ` only in the template. */
-export function diffText(mine: string, text: string) {
-  const a = mine.replace(/\n$/, "").split("\n"), b = text.replace(/\n$/, "").split("\n")
-  const out: string[] = []
-  for (const [tag, i1, i2, j1, j2] of opcodes(a, b)) {
-    if (tag === "equal") { for (let i = i1; i < i2; i++) out.push(`  ${a[i]}`); continue }
-    for (let i = i1; i < i2; i++) out.push(`- ${a[i]}`)
-    for (let j = j1; j < j2; j++) out.push(`+ ${b[j]}`)
-  }
-  return out.join("\n")
+/** What the offer leaves behind once answered: the copies the app last installed and their versions. */
+function forgetOld(app: App) {
+  for (const p of [".vaultite/generated/Dashboards", ".vaultite/generated/versions.json"]) fs.rmSync(app.vault.abs(p), { recursive: true, force: true })
+  app.vault.patchConfig("pages", { [OFFERED]: true, dismissedUpdates: null })
 }
-
-/** A page's update, by its path or name; a 404 naming the pages that have one. */
-function find(app: App, q: string) {
-  const p = String(q).trim().replace(/^\/+/, "")
-  const direct = p.endsWith(".md") && fs.existsSync(app.vault.abs(p)) ? updates(app.vault, app.plugins, p) : []
-  if (direct.length) return direct[0]
-  const all = updates(app.vault, app.plugins)
-  const name = (s: string) => s.toLowerCase().replace(/\.md$/i, "").split("/").pop()
-  const hit = all.find((u) => u.path === p) ?? all.find((u) => name(u.path) === name(p))
-  if (!hit) throw new OpError(`no update for '${q}'. ${all.length ? `Pages with one: ${all.map((u) => u.path).join(", ")}` : "No page has one."}`, 404)
-  return hit
-}
-
-const row = (u: { path: string; plugin: string; edited: boolean }) => `${u.path} (${u.plugin})${u.edited ? ": you changed your copy" : ""}`
 
 export function pageOps(app: App): Op[] {
   return [{
-    id: "dashboard.updates",
-    cli: "dashboard updates",
-    summary: "The pages whose plugin has a newer version of them: the app never changes a page by itself.",
-    help: `Lists the pages (plugins' dashboards) whose template changed since the vault's copy came from it, and whether the
-user changed their copy since. Each is offered in the page's bar until updated or dismissed. path: only that page.
+    id: "dashboard.copy",
+    cli: "dashboard copy",
+    summary: "Copy a plugin's built-in page into the vault, to change it: from then on it's the user's file.",
+    help: `Plugins' pages are built in (.vaultite/pages/): read-only, and they update with their plugin. Copying one makes
+it a file of the user's, in folder (else where their pages are, Dashboards/ by default); its pins and links follow the
+copy, and the built-in one goes. The copy no longer updates with its plugin.
 
-  vau dashboard updates
-  vau dashboard diff Health
-  vau dashboard update Health      (or: vau dashboard dismiss Health)`,
-    kind: "read",
-    params: { path: { type: "string", description: "only this page (a vault path)" } },
-    run: ({ path }) => ({
-      updates: updates(app.vault, app.plugins, path && fs.existsSync(app.vault.abs(String(path))) ? String(path) : undefined)
-        .filter((u) => !path || u.path === path).map(({ path, template, plugin, edited }) => ({ path, template, plugin, edited })),
-    }),
-    text: (r) => lines(r.updates.map(row), "No page has an update."),
-  }, {
-    id: "dashboard.diff",
-    cli: "dashboard diff",
-    summary: "A page against its plugin's newer version: what updating it would change.",
-    help: `Shows the page as the vault has it against its plugin's new template, line by line: "- " only in the page now,
-"+ " only in the new version. When the user changed their copy, updating replaces those changes too: say so.
-
-  vau dashboard diff Health`,
-    kind: "read",
-    params: { path: PAGE },
-    args: ["path"],
-    run: ({ path }) => {
-      const u = find(app, path)
-      return { path: u.path, template: u.template, plugin: u.plugin, edited: u.edited, mine: u.mine, text: u.text, diff: diffText(u.mine, u.text) }
-    },
-    text: (r) => `${r.path}, ${r.plugin}'s newer version${r.edited ? " (you changed your copy: updating replaces your changes)" : ""}.\n` +
-      `- only in the page now, + only in the new version:\n\n${r.diff}`,
-  }, {
-    id: "dashboard.update",
-    cli: "dashboard update",
-    summary: "Make a page its plugin's newer version (the old one stays in file history).",
-    help: `Replaces the page with its plugin's new template (an ordinary edit: file history keeps the page as it was, to
-restore). Changes the user made to their copy go too: read vau dashboard diff first and ask when they made some.
-
-  vau dashboard update Health`,
-    kind: "destructive",
-    params: { path: PAGE },
-    args: ["path"],
-    run: async ({ path }, ctx) => {
-      const u = find(app, path)
-      await ctx.api("PUT", "file", { path: u.path, text: u.text, base: u.mine })
-      applied(app.vault, u)
-      return { path: u.path, edited: u.edited }
-    },
-    text: (r) => `Updated ${r.path} to its plugin's version${r.edited ? " (your changes to it are in its file history)" : ""}.`,
-  }, {
-    id: "dashboard.dismiss",
-    cli: "dashboard dismiss",
-    summary: "Don't offer a page's update again (until its plugin's version changes again).",
-    help: `Keeps the page as it is and stops offering this version of its template (in the page's bar and in vau
-dashboard updates); a later version is offered again. Kept in .vaultite/pages.json.
-
-  vau dashboard dismiss Health`,
+  vau dashboard copy .vaultite/pages/Dashboards/Today.md
+  vau dashboard copy Today --folder Personal/Dashboards`,
     kind: "write",
-    params: { path: PAGE },
-    args: ["path"],
-    run: ({ path }) => {
-      const u = find(app, path)
-      app.vault.patchConfig("pages", { [DISMISSED]: dismissal(app.vault, u) })
-      return { path: u.path }
+    params: {
+      path: { type: "string", required: true, description: "the built-in page: its path (.vaultite/pages/Dashboards/Today.md) or name (Today)" },
+      folder: { type: "string", description: "the vault folder to copy it into (else where the user's pages are)" },
     },
-    text: (r) => `Kept ${r.path} as it is; this version won't be offered again.`,
+    args: ["path"],
+    run: ({ path, folder }) => {
+      const q = String(path).trim().replace(/^\/+/, "")
+      const page = inPagesDir(q) ? q : [...app.vault.entries.keys()].find((r) => inPagesDir(r) && r.split("/").pop()!.toLowerCase() === `${q.replace(/\.md$/i, "")}.md`.toLowerCase())
+      if (!page) throw new OpError(`no built-in page '${path}'`, 404)
+      return { from: page, path: copyPage(app.vault, page, folder ? String(folder) : null) }
+    },
+    text: (r) => `Copied ${r.from} to ${r.path}: it's yours now (pins and links follow it).`,
+  }, {
+    id: "dashboard.copies",
+    cli: "dashboard copies",
+    summary: "Pages in the vault that are unchanged copies of a plugin's page (from before pages were built in).",
+    help: `A vault from before plugins' pages were built in has them as copies among its files. The ones the user never
+changed can go (vau dashboard uncopy): the built-in page comes back in each one's place, pins and links following, and
+updates with its plugin. offered: the app has asked the user once already.
+
+  vau dashboard copies`,
+    kind: "read",
+    run: () => ({ offered: app.vault.config("pages")[OFFERED] === true, copies: unedited(app.vault, app.plugins) }),
+    text: (r) => lines(r.copies.map((c: { path: string; plugin: string }) => `${c.path} (${c.plugin})`), "No unchanged copies.") +
+      (r.offered ? "\n(the user was asked about them already)" : ""),
+  }, {
+    id: "dashboard.uncopy",
+    cli: "dashboard uncopy",
+    summary: "Remove unchanged copies of plugins' pages (to the trash): the built-in pages come back in their place.",
+    help: `Moves the copies vau dashboard copies lists (or only paths) to the trash; each one's built-in page comes back,
+its pins and links following. keep: remove none, only record that the user said no (the app asks once). Ask first.
+
+  vau dashboard uncopy
+  vau dashboard uncopy --paths '["Dashboards/Today.md"]'
+  vau dashboard uncopy --keep`,
+    kind: "write",
+    params: {
+      paths: { type: "array", items: { type: "string" }, description: "only these copies" },
+      keep: { type: "boolean", description: "remove none: the user keeps them" },
+    },
+    run: ({ paths, keep }) => {
+      const removed = keep ? [] : uncopy(app.vault, app.plugins, Array.isArray(paths) ? paths.map(String) : undefined)
+      if (!paths || keep) forgetOld(app)
+      return { removed: removed.map((r) => r.path) }
+    },
+    text: (r) => (r.removed.length ? `Moved to the trash: ${r.removed.join(", ")}. Their built-in pages are back.` : "Kept them."),
   }]
 }

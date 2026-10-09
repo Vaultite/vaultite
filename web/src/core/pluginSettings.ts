@@ -15,7 +15,7 @@ export const settingsTitle = (name: string) => (/\bsettings$/i.test(name) ? name
 /** Whether a plugin has anything to set (whether it's on or not). `files`: the ids with a settings file. */
 export function hasSettings(p: Plugin, files: string[] = getStore()?.pluginSettings ?? []) {
   return !!p.settingsPanel || Object.keys(p.settingsDecls ?? {}).length > 0 || files.includes(p.id) ||
-    !!getStore()?.filing?.homes.some((h) => h.plugin === p.id)
+    !!getStore()?.filing?.homes.some((h) => h.plugin === p.id) || !!getStore()?.writeGrants?.some((g) => g.plugin === p.id)
 }
 
 /** The plugins whose settings can be opened now: on, with something to set. */

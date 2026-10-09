@@ -83,6 +83,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Choice`
 - `choose(c)`: Ask the user to pick one of `items`.
 - `chooseDefaultPlace()`: Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there.
+- `chooseFolder(label, onPick)`: A folder for a setting: one of the vault's (not hidden or archive ones), or one typed, made first.
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
 - `clearSelection()`
 - `closeTab(id, force?)`: Close a tab (`force`: without its view asking first, e.g.
@@ -192,6 +193,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
 - `inKeyList()`: The keyboard is on a row of a list.
+- `inPagesDir`
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
 - `isDesktop()`
@@ -608,6 +610,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `whoOf(client, agent)`: Who asked, from the request's X-Vaultite-Client and -Agent (or an MCP client's own name, given as the agent).
 - `wikiTargets(text)`: The targets of every [[link]] (and ![[embed]]) in Markdown, outside code (fences and inline).
 - `withPinFile(entry, file)`: The entry with its file moved to `file` (a search as it is).
+- `WriteRefused`: A write the gate refused: a 403 for the API.
 - `xmlDecode(s)`: XML or HTML text with its entities decoded (&amp;, &#233;, &#x2014;).
 - `zipText(zip, name)`: An entry's text (UTF-8), or null when there's no such entry.
 
@@ -650,7 +653,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NotFound`: Something that isn't there (the API answers 404).
 - `nowUtc()`
 - `num(v)`: A number from YAML, or null.
-- `PAGES_DIR`: Where the plugins' pages go in a folder of the user's own (pages.json `install: false`), never among their notes.
+- `PAGES_DIR`: Where the plugins' pages are built in (core/pages.ts), never among the user's notes.
 - `parseText(text)`: [frontmatter, body].
 - `prose(body)`: The body without its blocks: what a kind parses.
 - `publicOf(x)`: An item without its private `_` keys and empty records.

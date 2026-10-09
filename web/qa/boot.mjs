@@ -5,7 +5,8 @@
 // Settings and a note in the editor (its chunk loads then). Then the screen itself: the app's code throwing as it loads,
 // and not loading at all, must each show it (rather than a blank window). Last, a vault of the user's own (Obsidian's,
 // plain Markdown, their AGENTS.md): opening it must change none of their files and add nothing outside .vaultite/, nor
-// must picking a setup for it as Set up Vaultite does.
+// must picking a setup for it as Set up Vaultite does, nor every plugin on with their schedules run (core/writegate.ts:
+// a plugin acting on its own writes outside .vaultite/ only once the user allowed it).
 // WRITES: only the throwaway vault it makes (none with <base url>, which should be a throwaway server too).
 //   node web/qa/boot.mjs [<base url>]
 import { spawn, spawnSync } from "node:child_process"
@@ -131,9 +132,8 @@ try {
     const after = files(own)
     const touched = Object.keys({ ...before, ...after }).filter((f) => before[f] !== after[f])
     check("own vault: opening it changes none of the user's files and adds none outside .vaultite/", !touched.length, touched.join(", "))
-    // Set up Vaultite's way (electron/main.ts): its pages kept out (pages.json `install: false`), then a setup picked.
+    // Set up Vaultite's way (electron/main.ts): a setup picked (the plugins' pages are built in, in .vaultite/pages).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
-    await call("PATCH", "config/pages", { install: false })
     const applied = []
     for (const id of ["pages", "life-os"]) applied.push((await call("POST", `bundles/${id}/apply`, {})).status)
     await fetch(`${ownBase}api/state`)
@@ -153,6 +153,26 @@ try {
     check("own vault: a page there draws its blocks", await page.waitForSelector("[data-block=routines]", { timeout: SLOW }).then(() => true, () => false))
     check("own vault: the sidebar lists it", await page.locator("aside >> text=Today").count() > 0)
     await ctx.close()
+    // Every plugin on, the app running a while and every schedule run (as its plugin does, on its own): nothing outside
+    // .vaultite/ changes but what the user did, until a plugin is allowed to write there.
+    const list = await (await call("GET", "plugins")).json()
+    await call("PATCH", "config/plugins", { disabled: [], enabled: list.filter((p) => p.optIn || p.tier === "vault").map((p) => p.id) })
+    await fetch(`${ownBase}api/state`)
+    await call("PUT", "file", { path: "Notes/Plain.md", text: "Just a thought, edited.\n" }) // (the user's own: Activity's recap has a day to write)
+    const edited = files(own)
+    await wait(6000) // (the scheduler's first turn, timers, the change heard)
+    const jobs = await (await call("POST", "ops/schedule.list", {})).json()
+    const runs = await Promise.all(jobs.map((j) => call("POST", "ops/schedule.run", { id: j.id }).then((r) => r.json(), () => null)))
+    await wait(2000)
+    const later2 = files(own)
+    const wrote = Object.keys({ ...edited, ...later2 }).filter((f) => edited[f] !== later2[f])
+    const grants = await (await call("POST", "ops/plugin.writes", {})).json()
+    check("own vault: every plugin on, schedules run: nothing written outside .vaultite/ without a grant", jobs.length > 0 && !wrote.length, [jobs.map((j) => j.id), wrote, runs])
+    check("own vault: ...the refused write asks the user (Activity's recaps)", grants.writes.some((g) => g.plugin === "activity" && g.answer === "ask"), grants)
+    await call("POST", "ops/plugin.grant", { id: "activity" })
+    await call("POST", "ops/schedule.run", { id: "activity/recaps" })
+    const recaps = fs.existsSync(path.join(own, "Recaps")) ? fs.readdirSync(path.join(own, "Recaps")) : []
+    check("own vault: allowed, Activity writes its recap", recaps.length === 1, recaps)
   }
 } finally {
   await browser.close()

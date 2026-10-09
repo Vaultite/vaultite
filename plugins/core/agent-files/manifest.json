@@ -6,6 +6,10 @@
   "name": "Agent files",
   "description": "The vault's rules for AIs, .vaultite/AGENTS.md: the app's own rules, a line from each plugin that's on (your file ME.md, the inbox...), and your own rules under their heading at the end, which are kept when the app rewrites the rest. Turned off, the app stops writing it and takes its part out. Point AIs at the rules has agents started anywhere else find it too: one line is added to the vault's AGENTS.md and CLAUDE.md (made if missing), and taken out when you turn it off (a file it made goes too; yours stay). Nothing else in them is touched.",
   "forAgents": "`.vaultite/AGENTS.md` is the vault's rules: read it before writing; the docs have each kind's format.",
+  "writes": [
+    { "file": "AGENTS.md", "why": "a line pointing agents at the vault's rules" },
+    { "file": "CLAUDE.md", "why": "a line pointing Claude at the vault's rules" }
+  ],
   "settings": {
     "rootFiles": { "type": "boolean", "default": false, "label": "Point AIs at the rules", "description": "adds one line pointing at .vaultite/AGENTS.md to the vault's AGENTS.md and CLAUDE.md, for agents started outside the app; off takes it out" }
   }

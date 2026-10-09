@@ -111,8 +111,9 @@ export { inArchive, inPagesDir }
 export const inTrash = (path: string) => path.startsWith(".trash/")
 /** The app's own: can't be renamed, moved or deleted (the settings folder, the trash, the generated copies). */
 export const isProtected = (path: string) => path === ".vaultite" || path === ".trash" || path === ".vaultite/generated" || path.startsWith(".vaultite/generated/")
-/** Read-only in the editor: things in the trash (restore them to edit) and the app's generated copies. */
-export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/")
+/** Read-only in the editor: things in the trash (restore them to edit), the app's generated copies and plugins' built-in
+ *  pages (Copy to my vault makes one the user's). */
+export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/") || inPagesDir(path)
 
 /** Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body. */
 export function splitFm(text: string): { fm: string; body: string } {

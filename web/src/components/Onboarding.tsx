@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils"
 
 type Vau = { path: string | null; onPath: boolean; system: boolean; other: string | null }
 type Chosen = { path?: string; made?: boolean; added?: boolean } | null
-type VaultChoice = { kind: "new"; name: string; parent: string } | { kind: "open"; path: string }
+type VaultChoice = { kind: "new"; name: string; parent: string; starter: boolean } | { kind: "open"; path: string }
 type Info = { places: { icloud: string | null; documents: string; home: string }; obsidian: { path: string; name: string }[]; vau: Vau }
 
 /** The preload's window.vaultite.onboarding (electron/preload.cjs): answered only for this window. */
@@ -32,6 +32,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
   const [kind, setKind] = useState<"new" | "open">("new")
   const [name, setName] = useState("Vault")
   const [parent, setParent] = useState("")
+  const [starter, setStarter] = useState(true)
   const [folder, setFolder] = useState("")
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState("")
@@ -55,7 +56,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
     try { await fn() } catch (e) { setError(message(e)) } finally { setBusy(false) }
   }
   const go = () => run(async () => {
-    await setup.choose(kind === "new" ? { kind, name: name.trim(), parent } : { kind, path: folder })
+    await setup.choose(kind === "new" ? { kind, name: name.trim(), parent, starter } : { kind, path: folder })
     await setup.finish()
   })
   const pick = async (set: (p: string) => void) => { const p = await setup.pick(); if (p) set(p) }
@@ -86,6 +87,13 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
                   <Chip on={parent !== documents && parent !== icloud} onClick={() => void pick(setParent)}>{parent !== documents && parent !== icloud ? short(parent, home) : "Choose…"}</Chip>
                 </div>
               </div>
+              {/* Nothing outside .vaultite/ unless asked: a Start here note, and AGENTS.md and CLAUDE.md pointing agents at the rules. */}
+              <label className="flex items-start gap-3"><span className="w-16 shrink-0" />
+                <span className="flex flex-1 items-start gap-2">
+                  <input type="checkbox" checked={starter} onChange={(e) => setStarter(e.target.checked)} data-starter className="mt-0.5 size-3.5 accent-[var(--primary)]" />
+                  <span>Start with example pages<span className="block text-muted-foreground">A Start here note, and AGENTS.md and CLAUDE.md pointing agents at the vault's rules.</span></span>
+                </span>
+              </label>
             </div>
           ) : (
             <div className="flex flex-col gap-1">
