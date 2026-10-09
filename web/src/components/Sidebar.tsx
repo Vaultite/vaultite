@@ -49,7 +49,7 @@ const intoHint = (side: Side) => {
 export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { head?: React.ReactNode
   /** The left sidebar or the right one: each draws its own panels, and takes panels dropped on it. */
   side?: Side }) {
-  const { disabled, order, sidebarScroll } = usePrefs()
+  const { disabled, order, sidebarScroll, panelDividers } = usePrefs()
   const setup = useSidebars()
   const panels = (ctx.phone ? drawerPanels : panelsIn)(side, setup, disabled, order)
   // Each panel scrolls in its own box, under a divider that sets its height, or the sidebar scrolls them all as one
@@ -138,6 +138,10 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
               </div>
             </div>
           </div>
+          {/* A line between it and the next one (appearance `panelDividers`), where its divider is: it takes no room. */}
+          {panelDividers && i < panels.length - 1 && (
+            <div aria-hidden data-panel-divider className="relative h-0 shrink-0"><div className="absolute inset-x-1.5 top-0 border-t-[0.5px] border-border" /></div>
+          )}
           {/* Its divider, like VS Code's: drag to move room between the panels around it (`heights` in sidebars.json),
               double-click to fit the one above again. Overlaps the gap below the panel, taking no room. */}
           {divider && (

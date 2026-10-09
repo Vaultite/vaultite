@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Lines between sidebar panels**: Settings > Appearance (or the palette's Toggle lines between sidebar panels) draws
+  a line between the sidebars' panels; off by default.
 - **Properties start folded**: in reading and editing, a note's Properties are one line until you open them; a file
   whose Properties you open keeps them open on that device.
 - **Plugins' pages are built in**: they live in `.vaultite/pages`, update with their plugin, and never land among your

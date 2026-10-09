@@ -23,7 +23,7 @@ const RESERVED = new Set(["restore", "import", "onboarding", "previous"])
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys"] as const
 /** The app's own appearance when a key isn't set (web/src/core/prefs.ts DEFAULTS): a bundle setting one of these
  *  removes the key instead, so a vault never holds a default. */
-const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", fileIcons: true, tabBar: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
+const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", panelDividers: false, fileIcons: true, tabBar: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
 /** A bundle is read whole each time the bundles are listed: past this it's listed with the error, not read. */
 const MAX_BYTES = 64 * 1024 * 1024
 

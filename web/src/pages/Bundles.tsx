@@ -520,7 +520,7 @@ export function BundlePreview({ id }: { id: string }) {
 }
 
 const APPEARANCE: Record<string, string> = {
-  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", lineNumbers: "Line numbers", statusBar: "Status bar", sidebarScroll: "Sidebar scrolling",
+  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", lineNumbers: "Line numbers", statusBar: "Status bar", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels",
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
 }
 

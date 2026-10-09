@@ -1962,12 +1962,13 @@ check("vau appearance: sets one key, keeps the rest", cr.code === 0 && conf("app
 await vau("appearance", "density", "comfortable")
 await vau("appearance", "fileIcons", "off")
 await vau("appearance", "lineNumbers", "on")
+await vau("appearance", "panelDividers", "on")
 cr = await vau("appearance", "snippets", "wide, big")
 check("vau appearance snippets: ones that aren't there are refused", cr.code === 1 && cr.err.includes("wide"), cr)
 write(".vaultite/snippets/wide.css", "")
 write(".vaultite/snippets/big.css", "")
 await vau("appearance", "snippets", "wide, big")
-check("vau appearance: numbers, booleans and lists", conf("appearance").density === "comfortable" && conf("appearance").fileIcons === false && conf("appearance").lineNumbers === true &&
+check("vau appearance: numbers, booleans and lists", conf("appearance").density === "comfortable" && conf("appearance").fileIcons === false && conf("appearance").lineNumbers === true && conf("appearance").panelDividers === true &&
   JSON.stringify(conf("appearance").snippets) === '["wide","big"]', conf("appearance"))
 cr = await vau("appearance", "scheme", "tokyo-night")
 check("vau appearance scheme: the app's schemes", cr.code === 0 && conf("appearance").scheme === "tokyo-night", cr)

@@ -39,6 +39,7 @@ export const APPEARANCE: Record<string, Setting> = {
   },
   density: { about: "compact or comfortable (row heights and spacing)", parse: oneOf("compact", "comfortable") },
   sidebarScroll: { about: "panels (each sidebar panel scrolls in its own box, dividers set heights; the default) or sidebar (the whole sidebar scrolls as one)", parse: oneOf("panels", "sidebar") },
+  panelDividers: { about: "true or false (default): a line between the sidebars' panels", parse: bool("panelDividers") },
   interfaceFont: { about: "the interface's font family (a font installed on the device; Settings lists them)", parse: (v) => v },
   textFont: { about: "the font of notes' text", parse: (v) => v },
   monoFont: { about: "the font of code and source mode", parse: (v) => v },

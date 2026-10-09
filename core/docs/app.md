@@ -88,6 +88,7 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   only its colours carry over; `GET /api/themes` lists them).
 - `density`: `compact` (default) | `comfortable`. `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).
+  `panelDividers`: true | false (default), a line between the sidebars' panels.
 - `interfaceFont`, `textFont` (notes), `monoFont` (code): a font's name or a CSS font-family list; empty is the app's.
   `fileIcons`: true | false. `tabBar`: true (default) | false: off, each pane's bar shows only the tab on screen, not
   the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard). `lineNumbers`: true | false (default), line numbers beside a file's text while editing

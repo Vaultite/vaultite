@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Keyboard, Layers, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
+import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Keyboard, Layers, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { newNoteFolder } from "@/core/conventions"
 import { runCommandId, typingIn, useCommands } from "@/core/commands"
@@ -388,6 +388,7 @@ export default function App() {
     { id: "density:toggle", name: "Toggle comfortable density", run: () => setPrefs({ density: getPrefs().density === "comfortable" ? "compact" : "comfortable" }), icon: UnfoldVertical },
     { id: "editor:toggle-line-numbers", name: "Toggle line numbers", run: () => setPrefs({ lineNumbers: !getPrefs().lineNumbers }), icon: ListOrdered },
     { id: "file-icons:toggle", name: "Toggle file icons", run: () => setPrefs({ fileIcons: !getPrefs().fileIcons }), icon: Shapes },
+    { id: "sidebar:toggle-panel-dividers", name: "Toggle lines between sidebar panels", run: () => setPrefs({ panelDividers: !getPrefs().panelDividers }), icon: SeparatorHorizontal },
     { id: "tab-bar:toggle", name: "Toggle tab bar", run: () => setPrefs({ tabBar: !getPrefs().tabBar }), icon: PanelTop },
     // The note's history while the keyboard is beside its text, not in it (a property just removed, a chip clicked).
     { id: "editor:undo", name: "Undo", keys: ["Mod+Z"], when: besideText, run: () => currentEditor()?.undo?.(), icon: Undo2 },

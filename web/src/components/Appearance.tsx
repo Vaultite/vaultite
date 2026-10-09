@@ -228,6 +228,9 @@ export function AppearancePanel() {
         <SettingRow label="Scroll sidebar panels separately" data-settings-row="sidebar-scroll">
           <Switch on={prefs.sidebarScroll !== "sidebar"} onChange={(on) => setPrefs({ sidebarScroll: on ? "panels" : "sidebar" })} label="Scroll sidebar panels separately" />
         </SettingRow>
+        <SettingRow label="Lines between sidebar panels" data-settings-row="panel-dividers">
+          <Switch on={prefs.panelDividers} onChange={(panelDividers) => setPrefs({ panelDividers })} label="Lines between sidebar panels" />
+        </SettingRow>
         <Fonts />
         {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (
           <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
