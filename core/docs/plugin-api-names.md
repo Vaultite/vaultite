@@ -3,6 +3,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 `vau docs plugin-api`.
 
 ### `"@vaultite"` (index.tsx)
+- `accountsOf(a, machine, fresh?)`: Agent `a`'s accounts on `machine` ("": this one), none if it has none or they can't be read; kept a minute, unless `fresh`.
 - `ActionButtons({ phone, open, panel, dock })`: The buttons: the commands newtab.json lists (or the default ones) that are there now, each drawn as the command is.
 - `activeFile()`
 - `ActiveFile`
@@ -12,6 +13,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `addKeys(owner, keys)`: Give commands more default keys, by command id, under `owner` (a plugin's id); null takes them away.
 - `AddToTimeline({ path, kinds })`: Add to a file's timeline where it has none yet (a person's profile): the same form, and the line comes with its `## Timeline` section (the server makes it at the file's end).
 - `Agent`: A coding agent of a plugin that's on (see AgentDef): `name` is its key ("codex"), `plugin` the plugin's id.
+- `AgentAccount`: One of an agent's accounts, as its plugin lists them (`accounts` in its definition): the first is its bare name's.
 - `AgentDay`
 - `AgentDef`: A coding agent it brings (Claude Code, Codex), run by the Terminal plugin in a tab (`view:terminal/<name>-<id>`; resume-<name>-<session> resumes).
 - `AgentEntry`
@@ -474,6 +476,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
 - `useTabLabels(store)`: What each tab shows (its label and icon), as its bar does: for plugins (the Tabs panel).
 - `useTabLayout()`
+- `useTerminalAccount(id, a)`: The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the first (its bare name's).
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
 - `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size instead of zooming the page.
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.

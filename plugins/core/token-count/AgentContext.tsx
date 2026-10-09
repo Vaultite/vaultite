@@ -34,6 +34,8 @@ function Row({ path, size, tip, level, depth = 0, big }: { path: string; size: s
   const open = (e: { metaKey: boolean; ctrlKey: boolean }) => openFile(path, { newTab: e.metaKey || e.ctrlKey })
   return (
     <div role="button" tabIndex={0} data-keyrow data-context-row={path} data-level={level} data-preview={path.endsWith(".md") ? path : undefined}
+      // (a note's whole path is in its preview; another file's, cut off, in the tooltip)
+      data-tip={path.endsWith(".md") ? undefined : path} data-tip-trunc
       onPointerDown={(e) => startDrag(e, { from: "row", path, to: `file:${path}`, label: name(path) })}
       onClick={open} onKeyDown={(e) => { if (e.key === "Enter" && e.target === e.currentTarget) open(e) }}
       className={cn("flex min-w-0 cursor-pointer items-center gap-2 rounded-[5px] pr-1.5 hover:bg-foreground/[0.04]", big ? "h-8 text-[15px]" : "h-7 text-[13px]")}

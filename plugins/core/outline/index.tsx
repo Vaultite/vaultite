@@ -3,6 +3,10 @@ import { cn, definePlugin, openView, SidebarHeading, stem, useFocusedFile, useOu
 
 // Outline: the focused file's headings, following scrolling and typing (the editor's text, not the
 // saved file: core/anchors.ts). A hidden sidebar panel and a tab.
+
+/** A heading as it reads: links by their text, without Markdown's marks. */
+const plain = (t: string) => t.replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, "$2").replace(/[*_`=]/g, "") || "Untitled"
+
 function OutlineList({ path }: { path: string }) {
   const md = /\.md$/i.test(path)
   const { headings, current, go } = useOutline(md ? path : "")
@@ -13,12 +17,12 @@ function OutlineList({ path }: { path: string }) {
   return (
     <div role="list" data-keylist>
       {headings.map((h, i) => (
-        <button key={`${h.line}:${h.text}`} type="button" role="listitem" data-keyrow onClick={() => go(h)} data-outline-item={h.text}
+        <button key={`${h.line}:${h.text}`} type="button" role="listitem" data-keyrow onClick={() => go(h)} data-outline-item={h.text} data-tip={plain(h.text)} data-tip-trunc
           aria-current={i === current ? "location" : undefined}
           className={cn("flex h-7 w-full min-w-0 cursor-pointer items-center rounded-[5px] pr-1 text-left text-[13px] hover:bg-foreground/[0.04]",
             i === current ? "bg-foreground/[0.08] font-medium text-foreground" : "text-muted-foreground")}
           style={{ paddingLeft: `calc(${h.level - top} * 14px + 6px)` }}>
-          <span className="truncate">{h.text.replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, "$2").replace(/[*_`=]/g, "") || "Untitled"}</span>
+          <span className="truncate">{plain(h.text)}</span>
         </button>
       ))}
     </div>

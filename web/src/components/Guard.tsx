@@ -50,7 +50,7 @@ export class Guard extends Component<Props, State> {
     const message = textOf(error)
     if (size === "small") {
       return (
-        <p role="alert" data-guard-failed={what} title={message} className="px-2 py-1 text-[13px] text-muted-foreground">
+        <p role="alert" data-guard-failed={what} data-tip={message} className="px-2 py-1 text-[13px] text-muted-foreground">
           {stale === "waiting" ? "Reconnecting…" : <>{what} couldn't be drawn. <button type="button" className="underline underline-offset-2 hover:text-foreground" onClick={this.retry}>Try again</button></>}
         </p>
       )

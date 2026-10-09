@@ -30,7 +30,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Terminals show their agent's state**, as Claude Code's agent view does: an agent's icon keeps its colour while it
   works, turns yellow with a dot while it waits on you, and grey once idle; the Terminals panel lists the waiting ones
   first, then working, idle and plain shells, and holds still while the pointer is over it. Another machine's terminal
-  has its name on its icon ("M4"); "detached" is in its tooltip, not on its row.
+  has its name on its icon ("M4"); "detached" is in its tooltip, not on its row. The tooltip shows in the open
+  sidebar too, with the account it runs in when its agent has several.
 - **Agent meters** (a plugin, off until turned on): a Claude Code terminal's context used, as a ring that fills up, a
   percent or tokens beside its name, and its prompt cache's time left while idle: its icon keeps its colour only as far
   as the cache lasts, draining from the top, or an inner ring.
@@ -254,6 +255,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Phones get a row of extra keys. Closing a tab leaves what runs in it running.
 
 ### Setup and look
+- **Tooltips only say what you can't see**: a sidebar row, an inbox item, an outline heading or a links item cut off
+  shows its whole name on hover, in the open sidebar as in the rail; one that fits shows none.
 - **Folder settings pick a folder**: a plugin's folder (Clipper's, Templates', Activity's capture folders and the rest)
   opens a fuzzy list of the vault's folders; one typed that isn't there is made, and one set that's missing shows red.
 - **Settings opens sheets, never unfolds**: Plugin settings and Fonts open in a sheet like Keyboard shortcuts, so the

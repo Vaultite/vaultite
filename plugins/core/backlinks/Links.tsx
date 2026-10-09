@@ -68,7 +68,7 @@ function Item({ icon: Icon, title, context, faint, onOpen, action, tip, path }: 
   return (
     <div className={cn("group/item relative flex min-w-0 flex-col rounded-[5px] py-1 pr-1 pl-1.5", onOpen && "cursor-pointer hover:bg-foreground/[0.04]", faint && "opacity-60")}
       onPointerDown={path ? (e) => { if (!(e.target as HTMLElement).closest("button")) startDrag(e, { from: "row", path, to: `file:${path}`, label: title }) } : undefined}
-      onClick={onOpen} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} data-keyrow={onOpen ? "" : undefined} data-tip={tip} data-link-item={title} data-preview={path}
+      onClick={onOpen} role={onOpen ? "button" : undefined} tabIndex={onOpen ? 0 : undefined} data-keyrow={onOpen ? "" : undefined} data-tip={tip ?? (path ? undefined : title)} data-tip-trunc={tip ? undefined : ""} data-link-item={title} data-preview={path}
       onKeyDown={(e) => { if (onOpen && e.key === "Enter" && e.target === e.currentTarget) onOpen() }}>
       <div className="flex h-5 min-w-0 items-center gap-2 text-[13px]">
         <Icon className={cn("size-4 shrink-0", faint ? "text-tertiary" : "text-muted-foreground")} strokeWidth={2} />

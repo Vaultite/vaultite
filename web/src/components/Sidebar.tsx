@@ -243,7 +243,7 @@ function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: S
   }, [d])
   return (
     <div ref={icon}>
-      <SidebarRow icon={Icon} label={panel.title} open={false} active={open} tip={open ? undefined : panel.title} data-flyout-icon={ctx.panel}
+      <SidebarRow icon={Icon} label={panel.title} open={false} active={open} tip={open ? null : undefined} data-flyout-icon={ctx.panel}
         data-open={open ? "" : undefined} onClick={() => setOpen(!open)} />
       {open && createPortal(
         <div ref={box} data-flyout={ctx.panel} role="dialog" aria-label={panel.title}
@@ -312,19 +312,21 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
   badge?: boolean
   /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
   tag?: string
-  /** The tooltip in the rail (defaults to the label when it's text). `onClick` hears a middle-click too (`e.button`
-   *  1: open it in a new tab). */
-  tip?: string
+  /** Its tooltip (defaults to the label when it's text): always in the rail; in the open sidebar only when it says
+   *  something the row doesn't, else when the label is cut off. A label that isn't text counts as said by `tip`;
+   *  null: none. `onClick` hears a middle-click too (`e.button` 1: open it in a new tab). */
+  tip?: string | null
   onClick?: (e: React.MouseEvent) => void; onContextMenu?: (e: React.MouseEvent) => void
   /** Drawn at the right end (a button, a count). */
   children?: React.ReactNode
   /** What a finger swiping it shows (the buttons a mouse finds on hover: SwipeRow). */
   swipe?: () => SwipeAction[]
 } & Record<`data-${string}`, string | undefined>) {
-  const text = tip ?? (typeof label === "string" ? label : undefined)
+  const text = tip === null ? undefined : tip ?? (typeof label === "string" ? label : undefined)
+  const more = typeof label === "string" && text !== label
   const side = useContext(SidebarSide)
   const row = (
-    <a href={href ?? "#"} data-keyrow {...rest} data-tip={open ? undefined : text} data-tip-side={side === "right" ? "left" : "right"} aria-label={text}
+    <a href={href ?? "#"} data-keyrow {...rest} data-tip={text} data-tip-trunc={open && !more ? "" : undefined} data-tip-side={side === "right" ? "left" : "right"} aria-label={text ?? (typeof label === "string" ? label : undefined)}
       onClick={(e) => { if (!onClick) return; e.preventDefault(); onClick(e) }} onContextMenu={onContextMenu}
       // A middle-click is a click that asks for a new tab (e.button 1), as in the file tree: never the browser's new tab.
       onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); onClick?.(e) }}

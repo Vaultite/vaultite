@@ -169,8 +169,8 @@ export type LinkTarget = { kind: string; id: string; title: string; detail: stri
 export type AgentDef = { label: string; icon: LucideIcon; tint?: string
   /** Its program's names, when it runs in a plain terminal ("codex"): that terminal shows as the agent too. */
   process?: string[]
-  /** Its accounts, when it has several: a route answering [{id, label}]. The terminal id then names the account
-   *  (`<name>_<account>-<id>`), passed to "agent:<name>" as AgentStart.profile. */
+  /** Its accounts, when it has several: a route answering [{id, label}], the one its bare name runs first. The terminal
+   *  id then names the account (`<name>_<account>-<id>`), passed to "agent:<name>" as AgentStart.profile. */
   accounts?: string
   /** The view that shows one of its sessions, `view:<session>/<session id>` ("claude-session"): where a click on
    *  something about a session goes when no terminal of the app runs it (the Inbox's events). */

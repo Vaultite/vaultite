@@ -118,6 +118,30 @@ for (const [tier, d] of found.values()) {
   for (const f of walk(d)) if (/\.tsx?$/.test(f) && !f.endsWith(".d.ts") && !nodeSide(f)) problems.push(...loadTimeProblems(f, path.relative(ROOT, f)))
 }
 
+// Tooltips are the app's (`data-tip`, components/Tooltip.tsx), never the browser's `title=` (web/CLAUDE.md): slow,
+// unstyled, the one hover that looked different. A component's own `title` prop is fine.
+const OWN_TITLE = new Set(["svg", "title", "iframe", "abbr", "webview"])
+function titleProblems(file: string, rel: string): string[] {
+  const src = fs.readFileSync(file, "utf8")
+  if (!/\btitle=/.test(src)) return []
+  let ast: unknown
+  try { ast = parseAst(src, { lang: "tsx" }, file) } catch { return [] } // (a plugin's said above; the core's, by the build)
+  const out: string[] = []
+  const visit = (n: unknown): void => {
+    if (!n || typeof n !== "object") return
+    if (Array.isArray(n)) return n.forEach(visit)
+    const node = n as Node
+    const name = node.type === "JSXOpeningElement" ? node.name as Node & { name?: string } : null
+    if (name?.type === "JSXIdentifier" && /^[a-z]/.test(name.name!) && !OWN_TITLE.has(name.name!))
+      for (const a of node.attributes as Node[]) if (a.type === "JSXAttribute" && (a.name as { name?: string }).name === "title")
+        out.push(`${rel}:${src.slice(0, a.start).split("\n").length}: <${name.name} title=…> is the browser's tooltip: use data-tip (data-tip-trunc for cut-off text)`)
+    for (const [k, v] of Object.entries(node)) if (k !== "type" && k !== "start" && k !== "end") visit(v)
+  }
+  visit(ast)
+  return out
+}
+for (const d of [path.join(ROOT, "web", "src"), PLUGINS]) for (const f of walk(d)) if (f.endsWith(".tsx")) problems.push(...titleProblems(f, path.relative(ROOT, f)))
+
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "pages", "Design.md"), path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
   ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f)), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),

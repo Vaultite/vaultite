@@ -72,8 +72,8 @@ export { fileAt, headOf, iconOf, isPage, namedIcon, offPlugin, pageOf, tintOf } 
 // Attachments (a pasted image, a recording): the folder they go in for a note, and saving files there as embeds.
 export { attachmentFolder, pasteAttachments } from "@/core/conventions"
 export {
-  canRunAgents, chooseDefaultPlace, choosePlace, getDefaultPlace, defaultPlaceOf, mintedHere, openAgent, openPlace, openTerminal, places, resolvePlace, setDefaultPlace, terminalId, useDefaultPlace,
-  type DefaultPlace, type Place,
+  accountsOf, canRunAgents, chooseDefaultPlace, choosePlace, getDefaultPlace, defaultPlaceOf, mintedHere, openAgent, openPlace, openTerminal, places, resolvePlace, setDefaultPlace, terminalId, useDefaultPlace,
+  useTerminalAccount, type AgentAccount, type DefaultPlace, type Place,
 } from "@/core/agents"
 // Your other machines (Machines plugin): their terminals are <id>@<machine>, their API is machines/<machine>/<path>.
 export { fetchMachines, machinePath, onMachine, otherMachines, splitMachine, useMachines, type Machine } from "@/core/machines"

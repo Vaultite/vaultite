@@ -5,7 +5,7 @@ import { useContext, useEffect, useRef, useState, useSyncExternalStore, type Mou
 import { Cloud, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
   chooseDefaultPlace, choosePlace, cn, currentWorkspace, isViewOpen, menuBelow, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag,
-  useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type SidebarCtx,
+  useTerminalAccount, useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type SidebarCtx,
 } from "@vaultite"
 import { ago, cloudListed, getCloud, subscribeCloud } from "./cloud"
 import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
@@ -20,26 +20,31 @@ const useCloud = () => cloudListed(useSyncExternalStore(subscribeCloud, getCloud
 
 const button = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
-/** One session's row (in the rail: its icon, in its colour, with its name and state as the tooltip). `page`: in the
+/** One session's row (its icon in its colour, with its name and what the row can't say as the tooltip). `page`: in the
  *  Terminals tab (view:terminals), with what it's doing and since when spelled out. */
 function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: string; page?: boolean
   /** Shown only in other workspaces' tabs: their names. */
   where?: string }) {
   const to = `view:terminal/${s.id}`
   const a = agentIn(s, useAgents())
+  const account = useTerminalAccount(s.id, a)
   const d = useDrag()
+  // What the row shows only as colours and rings, or not at all: its state, account, machine, workspace, meters.
+  const tip = [labelOf(s, a) + (a ? stateTip(s) : ""),
+    [account && `${account} account`, s.machineLabel && `on ${s.machineLabel}`, where && `in ${where}`, !s.clients && "detached"].filter(Boolean).join(", "),
+    a && s.meter && cap(meterText(s))].filter(Boolean).join("\n")
   return (
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
     <SidebarRow icon={a?.icon ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={waiting(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
-      active={tab === to} tip={labelOf(s, a) + (a ? stateTip(s) : "") + (a && s.meter ? `\n${cap(meterText(s))}` : "") + (s.machineLabel ? `, on ${s.machineLabel}` : "") + (where ? `, in ${where}` : "") + (s.clients ? "" : ", detached")} data-session={s.id} data-state={s.state} data-agent={a?.name}
+      active={tab === to} tip={tip} data-session={s.id} data-state={s.state} data-agent={a?.name}
       data-where={where}
       data-machine={s.machine}
       swipe={() => [{ label: "End", icon: X, danger: true, run: () => void endForGood(s.id) }]}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
           watching: no tab on any device, no tmux in a real terminal) is in the tooltip and the Terminals tab. */}
-      {page && <span className="mr-1 max-w-[50%] truncate text-[11px] text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true)].filter(Boolean).join(" · ")}</span>}
+      {page && <span className="mr-1 max-w-[50%] truncate text-[11px] text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true, account)].filter(Boolean).join(" · ")}</span>}
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{where}</span>}
       {/* (last, so every row's ring lines up at its edge) */}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
@@ -248,11 +253,11 @@ export function SessionList() {
 }
 
 /** A session's state in words, for search: "Working · started 5 min ago · detached"; `short`, for its row (next to its
- *  name, on a phone too): "Working · 5 min · detached". */
-export function about(s: Session, a: Agent | null, short?: boolean) {
+ *  name, on a phone too): "Working · 5 min · detached". `account`: its agent's, when it has several (useTerminalAccount). */
+export function about(s: Session, a: Agent | null, short?: boolean, account?: string) {
   const st = a ? stateTip(s).replace(/^ \((.*)\)$/, "$1") : ""
   const mins = Math.max(0, Math.round((Date.now() - s.started) / 60000))
   const n = mins < 60 ? `${mins} min` : mins < 60 * 24 ? `${Math.round(mins / 60)} h` : `${Math.round(mins / 1440)} d`
   const age = short ? (mins < 1 ? "<1 min" : n) : mins < 1 ? "started just now" : `started ${n} ago`
-  return [s.machineLabel && `on ${s.machineLabel}`, st && st[0].toUpperCase() + st.slice(1), a && s.meter && meterText(s), age, !s.clients && "detached"].filter(Boolean).join(" · ")
+  return [account, s.machineLabel && `on ${s.machineLabel}`, st && st[0].toUpperCase() + st.slice(1), a && s.meter && meterText(s), age, !s.clients && "detached"].filter(Boolean).join(" · ")
 }

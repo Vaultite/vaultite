@@ -38,7 +38,7 @@ function cameAt(r: InboxItem) {
   const t = latestAt(r)
   if (!t) return null
   const d = new Date(t)
-  return <span title={d.toLocaleString()}>{fmtDay(iso(d))}, {fmtTime(d.toISOString())}</span>
+  return <span data-tip={d.toLocaleString()}>{fmtDay(iso(d))}, {fmtTime(d.toISOString())}</span>
 }
 
 function Background({ store }: { store: Store }) {

@@ -16,7 +16,9 @@
   (`useSheetGuard`). No bottom sheets.
 - **Never the browser's `alert`, `confirm`, `prompt`, `title=` or context menu.** Feedback: `notify()` /
   `notifyError(e, "Couldn't move")`, one line, one action at most, nothing on autosave. What can be undone acts and
-  offers Undo; only the irreversible asks (`confirmDialog()`). Tooltips: `data-tip` (`data-tip-trunc`). Menus:
+  offers Undo; only the irreversible asks (`confirmDialog()`). Tooltips (`data-tip`) say only what can't be seen: an
+  icon's name, a cut-off label whole (`data-tip-trunc`), what a row shows as colour or not at all; none on a row that
+  previews (`data-preview`). Menus:
   `menuFor` / `menuBelow` (components/ContextMenu.tsx); a held finger is the right-click (`watchHolds`), so a menu is
   always an onContextMenu (`data-own-hold` for what holds for itself).
 - **A file's menus** are groups (`grouped`, FileActions.ts): open, new, change, keep, the plugins' sections, path and

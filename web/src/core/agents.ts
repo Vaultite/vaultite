@@ -1,5 +1,6 @@
 // Coding agents in terminal tabs (the Terminal plugin runs them; a plugin brings one with `agents` in its definition
 // and the service "agent:<name>" in its backend): open a new session, or resume one in the folder it ran in.
+import { useEffect, useState } from "react"
 import { SquareTerminal } from "lucide-react"
 import { choose } from "@/components/Chooser"
 import { get } from "@/core/http"
@@ -9,7 +10,7 @@ import { notify } from "@/core/notify"
 import { agentsOn, isEnabled, type Agent } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { currentWorkspace, scopedState, useScopedState } from "@/core/scope"
-import { agentIn, newTerminalId, resumeTerminalId } from "../../../core/terminalids.ts"
+import { agentIn, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 
 /** The ids made on this page: their tabs start their session (an agent); any other tab only attaches (mintedHere). */
 const minted = new Set<string>()
@@ -85,6 +86,38 @@ export async function openTerminal(opts: { machine?: string | null; split?: bool
   return openView(`terminal/${onMachine(terminalId(), machine)}`, { newTab: !opts.split, split: opts.split })
 }
 
+// ---------- an agent's accounts ----------
+/** One of an agent's accounts, as its plugin lists them (`accounts` in its definition): the first is its bare name's. */
+export type AgentAccount = { id: string; label: string }
+const accountLists = new Map<string, { at: number; list: Promise<AgentAccount[]> }>()
+/** Agent `a`'s accounts on `machine` ("": this one), none if it has none or they can't be read; kept a minute, unless
+ *  `fresh`. */
+export function accountsOf(a: Agent, machine: string, fresh = false): Promise<AgentAccount[]> {
+  if (!a.accounts) return Promise.resolve([])
+  const key = `${a.name}@${machine}`, had = accountLists.get(key)
+  if (had && !fresh && Date.now() - had.at < 60_000) return had.list
+  const list = get<AgentAccount[]>(machinePath(machine, a.accounts)).catch(() => [])
+  accountLists.set(key, { at: Date.now(), list })
+  return list
+}
+
+/** The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the
+ *  first (its bare name's). A resumed session's isn't in its id: "". */
+export function useTerminalAccount(id: string, a: Agent | null) {
+  const [label, setLabel] = useState("")
+  useEffect(() => {
+    const t = parseTerminal(id)
+    if (!a?.accounts || !t || t.resume || t.agent !== a.name) return setLabel("")
+    let live = true
+    void accountsOf(a, t.machine ?? "").then((list) => {
+      const acc = list.length > 1 ? (t.profile ? list.find((x) => x.id === t.profile) : list[0]) : undefined
+      if (live) setLabel(acc?.label ?? "")
+    })
+    return () => { live = false }
+  }, [id, a])
+  return label
+}
+
 /** A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one. */
 export type Place = { agent: Agent | null; machine: string; machineLabel: string; profile: string; profileLabel: string }
 
@@ -100,8 +133,7 @@ export async function places(): Promise<Place[]> {
     const here: Place[] = [{ agent: null, machine: w.machine, machineLabel: w.label, profile: "", profileLabel: "" }]
     for (const a of agents) {
       if (w.plugins && !w.plugins.includes(a.plugin)) continue
-      let accts: { id: string; label: string }[] = []
-      if (a.accounts) try { accts = await get<{ id: string; label: string }[]>(machinePath(w.machine, a.accounts)) } catch { /* none */ }
+      const accts = await accountsOf(a, w.machine, true)
       if (accts.length > 1) for (const x of accts) here.push({ agent: a, machine: w.machine, machineLabel: w.label, profile: x.id, profileLabel: x.label })
       else here.push({ agent: a, machine: w.machine, machineLabel: w.label, profile: "", profileLabel: "" })
     }

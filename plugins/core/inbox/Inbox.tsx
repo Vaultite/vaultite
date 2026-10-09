@@ -226,7 +226,7 @@ function PanelRow({ icon, label, time, active, dim, select, swipe, onClick, onCo
   const picked = useSelected(SELECT, select)
   return (
     <SwipeRow actions={swipe} className="rounded-[5px]">
-      <a href="#" data-keyrow {...rest} data-select-key={select} {...selectedAttr(picked)} aria-label={label}
+      <a href="#" data-keyrow data-tip={label} data-tip-trunc {...rest} data-select-key={select} {...selectedAttr(picked)} aria-label={label}
         onClick={(e) => { e.preventDefault(); if (!selectClick(e, SELECT, select)) onClick() }} onContextMenu={onContextMenu}
         className={cn("group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap hover:bg-foreground/[0.04]", active && "bg-foreground/[0.08] font-medium",
           dim && "opacity-50 hover:opacity-100")}>

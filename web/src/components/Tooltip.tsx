@@ -29,9 +29,10 @@ export function Tooltips() {
       const text = el.getAttribute("data-tip")
       if (!text) return
       if (el.hasAttribute("data-tip-trunc")) {
-        const t = el.querySelector<HTMLElement>(".truncate") ?? (el as HTMLElement)
-        // (a label hidden altogether, like a narrow tab's, counts as cut off)
-        if (t.getClientRects().length && t.scrollWidth <= t.clientWidth) return
+        // Its label, or any part of it (a site and its account), cut off; a label hidden altogether, like a narrow
+        // tab's, counts as cut off.
+        const ts = [...el.querySelectorAll<HTMLElement>(".truncate")], t = ts[0] ?? (el as HTMLElement)
+        if (t.getClientRects().length && !(ts.length ? ts : [t]).some((x) => x.scrollWidth > x.clientWidth)) return
       }
       const r = el.getBoundingClientRect()
       const want = el.getAttribute("data-tip-side")
