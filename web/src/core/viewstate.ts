@@ -83,8 +83,8 @@ export function movePlaces(from: string, to: string) {
   if (changed) save()
 }
 
-/** Whether a file's Properties are open (unless they were folded). */
-export const propsOpen = (path: string) => all().get(`file:${path}`)?.props ?? true
+/** Whether a file's Properties are open (folded unless they were opened). */
+export const propsOpen = (path: string) => all().get(`file:${path}`)?.props ?? false
 export const keepPropsOpen = (path: string, open: boolean) => update(`file:${path}`, { props: open })
 /** Show a file's Properties, open (its view goes to editing if it's being read): a block's "This file's properties". */
 export function revealProperties(path: string) {

@@ -167,7 +167,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
 }) {
   const { props, error } = readProps(block)
   const keys = Object.keys(props)
-  // Open by default; fold them and that file keeps them folded (on this device).
+  // Folded by default; open them and that file keeps them open (on this device).
   const [open, setOpenState] = useState(() => propsOpen(path))
   useEffect(() => setOpenState(propsOpen(path)), [path])
   const setOpen = (o: boolean) => { setOpenState(o); keepPropsOpen(path, o) }

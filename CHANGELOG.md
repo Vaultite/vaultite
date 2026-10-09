@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Properties start folded**: in reading and editing, a note's Properties are one line until you open them; a file
+  whose Properties you open keeps them open on that device.
 - **Plugins' pages are built in**: they live in `.vaultite/pages`, update with their plugin, and never land among your
   files; Copy to my vault (the page's bar, its menu) makes one yours to change, its pins and links following. A vault
   with unchanged copies from before is asked once whether to use the built-in ones. A new vault's Start here note and
