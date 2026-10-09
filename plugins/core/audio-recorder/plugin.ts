@@ -6,6 +6,7 @@ import fs from "node:fs"
 import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
+import { pipeline } from "node:stream/promises"
 import { HTTPError, LOCAL, Plugin, reply, type Who, whoOf } from "../../../core/plugins.ts"
 import { writeAtomic } from "../../../core/vault.ts"
 import { embedsAudio, paragraphs, type Segment, textParagraphs, withTranscript } from "./transcript.ts"
@@ -255,7 +256,7 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
         job.language = language
         const text = paras.join("\n\n").trim()
         if (!text) throw new Error("nothing was heard")
-        const r = await plugin.runOp("inbox.voice", { text, from, audio: fs.readFileSync(file).toString("base64"), ext: path.extname(file).slice(1) }, who, http)
+        const r = await plugin.host.call("inbox.voice", { text, from, ext: path.extname(file).slice(1) }, who, { http, input: fs.createReadStream(file) })
         job.note = String((r.result as { path?: unknown })?.path ?? "")
       } catch (e) {
         if (job.note) throw e
@@ -265,7 +266,7 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
     if (why) {
       const d = new Date(), p2 = (n: number) => String(n).padStart(2, "0")
       const when = `${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`
-      const up = await plugin.runOp("file.upload", { data: fs.readFileSync(file).toString("base64"), name: `Voice note ${when}${path.extname(file)}` }, who, http)
+      const up = await plugin.host.call("file.upload", { name: `Voice note ${when}${path.extname(file)}` }, who, { http, input: fs.createReadStream(file) })
       const saved = String((up.result as { path?: unknown })?.path ?? "")
       const r = await plugin.runOp("inbox.add", { title: `Voice note ${when}`, from, body: `![[${path.posix.basename(saved)}]]\n\n_Not transcribed: ${why}_` }, who, http)
       job.note = String((r.result as { path?: unknown })?.path ?? "")
@@ -281,21 +282,27 @@ async function voice(job: Job, dir: string, file: string, from: string, who: Who
   job.finished = Date.now()
 }
 
+// POST /api/audio-recorder/voice?ext=&from=: the recording as the body, any size, onto this machine's disk as it comes.
 plugin.route("POST", "audio-recorder/voice", async (req) => {
-  const data = typeof req.body.data === "string" ? Buffer.from(req.body.data, "base64") : null
-  if (!data?.length) throw new HTTPError(400, "data: the recording, base64")
-  const ext = /^[a-z0-9]{1,5}$/i.test(String(req.body.ext ?? "")) ? String(req.body.ext) : "webm"
+  if (!req.http) throw new HTTPError(400, "the recording comes over HTTP, as the body")
+  const ext = /^[a-z0-9]{1,5}$/i.test(String(req.query.ext ?? "")) ? String(req.query.ext) : "webm"
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-voice-"))
   const file = path.join(dir, `voice.${ext}`)
-  fs.writeFileSync(file, data)
+  try {
+    await pipeline(req.http, fs.createWriteStream(file))
+    if (!fs.statSync(file).size) throw new HTTPError(400, "the body is empty: send the recording")
+  } catch (e) {
+    fs.rmSync(dir, { recursive: true, force: true })
+    throw e instanceof HTTPError ? e : new HTTPError(400, `the recording broke off: ${(e as Error).message}`)
+  }
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }
   const who = whoOf(h("x-vaultite-client"), h("x-vaultite-agent"))
   const job: Job = { id: `${Date.now().toString(36)}-${++n}`, path: "", note: "", state: "queued", started: Date.now() }
   jobs.unshift(job)
   jobs.splice(50)
-  queue = queue.then(() => voice(job, dir, file, String(req.body.from ?? "").trim(), who, req.http))
+  queue = queue.then(() => voice(job, dir, file, String(req.query.from ?? "").trim(), who, req.http))
   return reply(202, job)
-}, { lock: false })
+}, { lock: false, stream: true })
 
 plugin.route("GET", "audio-recorder/jobs", () => jobs)
 plugin.route("GET", "audio-recorder/jobs/*", (req) => {

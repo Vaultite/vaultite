@@ -43,8 +43,9 @@ export type Who = { client: string | null; agent: string | null; label: string; 
 export type OpCtx = {
   vault: Vault
   who: Who
-  /** Run another op (its parameters checked like a request's); throws its OpError. */
-  op: (id: string, params?: Item) => Promise<Any>
+  /** Run another op (its parameters checked like a request's; `input`: the bytes for one that takes them); throws its
+   *  OpError. */
+  op: (id: string, params?: Item, input?: Readable) => Promise<Any>
   /** A route of the HTTP API, in-process: its body; a 4xx or 5xx throws an OpError with its message. */
   api: (method: string, route: string, body?: unknown) => Promise<Any>
   /** Drive the user's open window (POST /api/ui's message: open, command, notify; null: which windows are open): its

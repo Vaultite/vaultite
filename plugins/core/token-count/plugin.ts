@@ -16,7 +16,6 @@ export const limits = () => limitsOf(plugin.settings(), DEFAULTS)
 // Read again only when a file's stat changed: the text's tokens, its imports and its frontmatter.
 type Read = { ns: bigint; size: number; tokens: number; imports: string[]; fm: Record<string, unknown> }
 const reads = new Map<string, Read>()
-const BIG = 4 * 1024 * 1024
 
 function readAt(vault: Vault, rel: string, stat?: { ns: bigint; size: number }): Read | null {
   const abs = vault.abs(rel)
@@ -26,9 +25,8 @@ function readAt(vault: Vault, rel: string, stat?: { ns: bigint; size: number }):
   }
   const had = reads.get(abs)
   if (had && had.ns === st.ns && had.size === st.size) return had
-  if (st.size > BIG) return null
   let text: string
-  try { text = fs.readFileSync(abs, "utf8") } catch { return null }
+  try { text = fs.readFileSync(abs, "utf8") } catch { return null } // (any size the index reads too; past what a string holds, none)
   let fm: Record<string, unknown> = {}
   if (rel.endsWith(".md")) try { fm = parseText(text)[0] } catch { /* a header that doesn't parse: no max_tokens */ }
   const r = { ns: st.ns, size: st.size, tokens: estimateTokens(text), imports: rel.endsWith(".md") ? importsOf(text) : [], fm }

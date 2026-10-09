@@ -1,7 +1,7 @@
 // Recording: one at a time for the whole app, saved as an attachment of its note and embedded, then transcribed when
 // the server can. Indicator.tsx draws what's recording.
 import {
-  activeFile, askMicrophone, attachmentFolder, choose, createFile, currentFile, dismissNotice, folderOf, get, getStore, insertOnOwnLine,
+  activeFile, appDevice, askMicrophone, attachmentFolder, choose, createFile, currentFile, dismissNotice, folderOf, get, getStore, insertOnOwnLine,
   newNoteFolder, notify, notifyError, openFile, pasteAttachments, phoneVoiceNote, post, put, readFile, reload, stem,
 } from "@vaultite"
 
@@ -205,11 +205,11 @@ async function sendVoice() {
   notify("Sending your voice note…", { id, duration: Infinity })
   try {
     if (!blob.size) throw new Error("nothing was recorded")
-    const bytes = new Uint8Array(await blob.arrayBuffer())
-    let bin = ""
-    for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000))
     const from = matchMedia("(pointer: coarse)").matches ? "Phone" : "Computer"
-    let job = await post<Job>("audio-recorder/voice", { data: btoa(bin), ext: extOf(type), from })
+    // (the recording as it is, any length: streamed from the page, never base64)
+    const res = await fetch(`api/audio-recorder/voice?ext=${extOf(type)}&from=${encodeURIComponent(from)}`, { method: "POST", headers: { "Content-Type": blob.type || "application/octet-stream", "X-Vaultite-Client": `app/${appDevice}` }, body: blob })
+    let job = await res.json() as Job
+    if (!res.ok) throw new Error((job as unknown as { error?: string }).error || res.statusText)
     while (job.state === "queued" || job.state === "running") {
       await new Promise((r) => setTimeout(r, 1500))
       try { job = await get<Job>(`audio-recorder/jobs/${job.id}`) } catch { /* asked again */ }

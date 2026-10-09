@@ -8,7 +8,6 @@ import { FM, frontmatter, type Item, nowUtc, readText, safeName, setPropertyText
 
 export const plugin = new Plugin(import.meta.url)
 
-const MAX_HTML = 8 * 1024 * 1024
 const TIMEOUT = 15_000
 
 /** What a page reads as: Defuddle's answer, the Markdown and what it says about itself. */
@@ -113,14 +112,13 @@ async function clip(b: Item): Promise<Clip> {
 
   let html: string
   if (typeof b.html === "string" && b.html.trim()) {
-    if (b.html.length > MAX_HTML) throw new HTTPError(413, `the page's HTML is over ${MAX_HTML >> 20} MB`)
     html = b.html
   } else {
     const ok = publicUrl(url)
     if (typeof ok === "string") throw new HTTPError(400, `the server doesn't fetch ${url} (${ok}): send its html instead`)
     let page
     try {
-      page = await fetchPublic(ok, { max: MAX_HTML, timeout: TIMEOUT, types: /html|xml/ })
+      page = await fetchPublic(ok, { max: Infinity, timeout: TIMEOUT, types: /html|xml/ }) // (the whole page, any size)
     } catch (e) {
       throw new HTTPError(502, `couldn't fetch ${url}: ${(e as Error).message}`)
     }

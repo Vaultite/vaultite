@@ -329,7 +329,6 @@ export function saveState(vault: Vault, body: Item) {
   const data = body.data
   if (!data || typeof data !== "object" || Array.isArray(data)) throw new HTTPError(400, "data must be an object of strings")
   const text = JSON.stringify(Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])), null, 2) + "\n"
-  if (text.length > 2_000_000) throw new HTTPError(413, "an artifact keeps at most 2 MB")
   const file = vault.abs(statePath(rel))
   fs.mkdirSync(path.dirname(file), { recursive: true })
   let cur: string | null = null

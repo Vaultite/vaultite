@@ -1154,10 +1154,11 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
   params: {
     text: { type: "string", required: true, description: "what was said, transcribed" },
     from: { type: "string", description: "where it was said (Apple Watch, iPhone)" },
-    audio: { type: "string", description: "the recording, base64: kept as an attachment, embedded above what was said" },
+    audio: { type: "string", description: "the recording, base64 (a short one; any size goes as the op's input): kept as an attachment, embedded above what was said" },
     ext: { type: "string", description: "the recording's extension (m4a, webm)" },
   },
   args: ["text"],
+  input: "the recording, any size (instead of audio)",
   run: async ({ text, from, audio, ext }, ctx) => {
     const said = text.trim()
     if (!said) throw new OpError("nothing was said")
@@ -1168,9 +1169,10 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
     const origin = (plugin.service(ctx.who.client === "mcp" ? "provenance:agent" : "provenance:user") as (() => string) | null)?.() || undefined
     // The recording above its words, as a note's recording sits above its transcript.
     let body = said
-    if (audio && settings().audio) {
+    if ((audio || ctx.input) && settings().audio) {
       const kind = /^[a-z0-9]{1,5}$/i.test(str(ext)) ? str(ext).toLowerCase() : "m4a"
-      const up = await ctx.op("file.upload", { data: audio, name: `Voice note ${localStamp().replace(/(\d\d)(\d\d)(\d\d)$/, "$1.$2.$3")}.${kind}` })
+      const name = `Voice note ${localStamp().replace(/(\d\d)(\d\d)(\d\d)$/, "$1.$2.$3")}.${kind}`
+      const up = ctx.input ? await ctx.op("file.upload", { name }, ctx.input) : await ctx.op("file.upload", { data: audio, name })
       body = `![[${path.posix.basename(str(up.path))}]]\n\n${said}`
     }
     const r = await ctx.api("POST", "inbox", { title, body, from: str(from).trim() || ctx.who.label, origin })

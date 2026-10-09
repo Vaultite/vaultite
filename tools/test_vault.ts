@@ -4187,7 +4187,10 @@ check("the file tree lets go of a deleted folder", !bin() && !filesNow.folders.i
   const [s4, e4] = await api("POST", "audio-recorder/transcribe", { path: "Attachments/loose.m4a" })
   check("audio: only audio, into a note that's there; a file no note embeds needs one named", s2 === 400 && s3 === 404 && s4 === 400 && /no note embeds/.test(e4.error), [s2, s3, s4, e4])
   // A voice note (Record a voice note for your inbox): transcribed, then inbox.voice, the recording kept above its words.
-  const [s6, vj] = await api("POST", "audio-recorder/voice", { data: Buffer.from("not really audio").toString("base64"), ext: "webm", from: "Computer" })
+  // (the recording as the body, any size, as the app sends it)
+  const { Readable } = await import("node:stream")
+  const sent = (b: Buffer) => Object.assign(Readable.from([b]), { headers: { "content-type": "audio/webm" } }) as unknown as IncomingMessage
+  const [s6, vj] = await api("POST", "audio-recorder/voice?ext=webm&from=Computer", {}, sent(Buffer.from("not really audio")))
   let v = vj
   for (let i = 0; i < 50 && (v.state === "queued" || v.state === "running"); i++) { await sleep(100); [, v] = await api("GET", `audio-recorder/jobs/${vj.id}`) }
   check("audio: a voice note is transcribed into the inbox, from where it was said", s6 === 202 && v.state === "done" && v.note.startsWith("Inbox/Heard voice") &&
@@ -4197,7 +4200,7 @@ check("the file tree lets go of a deleted folder", !bin() && !filesNow.folders.i
     read(v.note).includes(`![[${heard}]]\n\nHeard voice.webm.`), v.note && read(v.note))
   if (heard) fs.rmSync(path.join(VAULT, "Attachments", heard))
   check("audio: a voice note leaves no temporary copy", !fs.readdirSync(os.tmpdir()).some((f) => f.startsWith("vaultite-voice-")), fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith("vaultite-voice-")))
-  const [s7] = await api("POST", "audio-recorder/voice", { data: "" })
+  const [s7] = await api("POST", "audio-recorder/voice", {}, sent(Buffer.alloc(0)))
   check("audio: a voice note needs its recording", s7 === 400, s7)
   if (v.note) fs.rmSync(path.join(VAULT, v.note))
   fs.copyFileSync(fake, path.join(VAULT, "fake.sh")); fs.chmodSync(path.join(VAULT, "fake.sh"), 0o755)
@@ -4217,7 +4220,7 @@ check("the file tree lets go of a deleted folder", !bin() && !filesNow.folders.i
   ;[, tr] = await api("GET", "audio-recorder/transcriber")
   check("audio: no transcriber says why, not what to install", !tr.available && !/install/i.test(tr.why) && /Apple/.test(tr.why), tr)
   {
-    const [sk, kj] = await api("POST", "audio-recorder/voice", { data: Buffer.from("not really audio").toString("base64"), ext: "m4a", from: "Computer" })
+    const [sk, kj] = await api("POST", "audio-recorder/voice?ext=m4a&from=Computer", {}, sent(Buffer.from("not really audio")))
     let k = kj
     for (let i = 0; i < 50 && (k.state === "queued" || k.state === "running"); i++) { await sleep(100); [, k] = await api("GET", `audio-recorder/jobs/${kj.id}`) }
     const kept = k.note ? read(k.note) : ""

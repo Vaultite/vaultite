@@ -5,7 +5,7 @@ import fs from "node:fs"
 import { isBuiltin, registerHooks } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { LOCAL, Plugin, ROOT } from "./plugins.ts"
+import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
 import { disclosuresOf, ICON_NAME, iconOf } from "./pluginmeta.ts"
 import { blockProblems, hashed, inside, installProblems, pluginProblems, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, settingsOf } from "./blocks.ts"
@@ -119,6 +119,17 @@ async function styles(dir: string, used: Set<string>) {
   return out ? `${out}${[...new Set(props)].join("\n")}\n` : ""
 }
 
+/** A package's stylesheet with the files it names beside it (its fonts: Excalidraw's Assistant) in it as data: URLs:
+ *  inlined into the page, a relative url() would be read against the page's address, where nothing is. */
+function withAssets(file: string, css: string) {
+  const modules = fs.realpathSync(path.join(ROOT, "node_modules")) + path.sep
+  return css.replace(/url\((["']?)(\.{1,2}\/[^"')?#]+)([?#][^"')]*)?\1\)/g, (all, _q: string, rel: string) => {
+    const at = path.resolve(path.dirname(fs.realpathSync(file)), rel)
+    if (!at.startsWith(modules) || !fs.statSync(at, { throwIfNoEntry: false })?.isFile()) return all
+    return `url("data:${contentType(at)};base64,${fs.readFileSync(at).toString("base64")}")`
+  })
+}
+
 /** The bundle: its styles and the plugins it requires first, then the module (its default export: the
  *  definePlugin({...})), and the chunks its import()s load. `tiers`: the app's plugins, id -> tier. */
 async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
@@ -165,7 +176,7 @@ async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
       load(id) {
         if (id === ENTRY) return entry
         if (id.startsWith("\0vau:")) return `module.exports = globalThis.__vaultite.modules[${JSON.stringify(id.slice(5))}]`
-        if (id.endsWith(".css")) { sheets.push(readText(id)); return { code: "", moduleType: "js" } }
+        if (id.endsWith(".css")) { sheets.push(withAssets(id, readText(id))); return { code: "", moduleType: "js" } }
         return null
       },
     }],

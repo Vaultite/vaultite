@@ -330,6 +330,16 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
 
 // ---------- Markdown's extras: headings and blocks to go to, tags, comments, highlights, note embeds ----------
 
+// The editor reads a frontmatter of any size as one block (read on until it closes, not only its first MB).
+{
+  const { frontmatterSyntax } = await web("editor/frontmatter.ts")
+  const { parser } = await import("@lezer/markdown")
+  const big = `---\nnotes: ${"x".repeat(3 << 20)}\n---\n# After\n`
+  const tree = parser.configure([frontmatterSyntax]).parse(big)
+  const first = tree.topNode.firstChild
+  check("editor: a frontmatter over a few MB is one block", first?.name === "Frontmatter" && first.to === big.indexOf("\n# After"), [first?.name, first?.to])
+}
+
 const md: { renderMarkdown(text: string, resolves?: (t: string) => { kind: string } | null): string } = await web("core/markdown.ts")
 const formats: { embedOf(line: string): { target: string; height?: number; note?: boolean } | null } = await web("core/formats.ts")
 const sec = await import(pathToFileURL(path.join(ROOT, "core", "sections.ts")).href)

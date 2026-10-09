@@ -451,7 +451,7 @@ export class App {
       who,
       plugin,
       // (as the op runs: a write op holds the vault already, and so do routes that run ops while holding it)
-      op: async (id, p) => (await this.runOp(id, p ?? {}, { who, http })).result,
+      op: async (id, p, input) => (await this.runOp(id, p ?? {}, { who, http, input })).result,
       api: async (method, route, body) => {
         const { parts, query } = routeOf(route)
         return bodyOrThrow(await this.dispatchOrReply(method, parts, query, body, http))

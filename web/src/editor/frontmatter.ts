@@ -103,7 +103,14 @@ export const frontmatterSyntax: MarkdownConfig = {
       // (the closing line is looked for ahead: once a line is taken it can't be given back)
       const input = (cx as unknown as { input?: { length: number; read: (from: number, to: number) => string } }).input
       if (cx.lineStart !== 0 || line.text !== "---" || !input) return false
-      const m = /^---\n(?:[\s\S]*?\n)?---[ \t]*(?=\n|$)/.exec(input.read(0, Math.min(input.length, 1 << 20)))
+      // (read on until it closes, twice as far each time: a frontmatter of any size, the rest of a big file not read)
+      let m: RegExpExecArray | null = null
+      for (let n = 1 << 16; !m; n *= 2) {
+        const upto = Math.min(input.length, n)
+        m = /^---\n(?:[\s\S]*?\n)?---[ \t]*(?=\n|$)/.exec(input.read(0, upto))
+        if (m && m[0].length === upto && upto < input.length) m = null // (the closing line may go on past what was read)
+        if (upto === input.length) break
+      }
       if (!m) return false
       const end = m[0].length
       for (;;) {
