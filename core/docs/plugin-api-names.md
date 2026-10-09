@@ -97,6 +97,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Conventions`: How the vault wants new files placed and links written, when it says so itself (another app's settings in it); undefined leaves it to the app.
 - `copyText(text)`: Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy.
 - `createFile(folder, name?, text?)`
+- `createNamed(folder, typed, text?)`: A note named as typed (a link's target, the quick switcher's query): with "/", at that path from the top of the vault, else in `folder`.
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
 - `currentEditor()`: The editor the user means now, or null (the focused tab isn't a text file: a dashboard's grid, a terminal).
 - `currentFile()`: The vault file in the focused tab ("" when it shows something else, or a file from outside the vault).
@@ -306,6 +307,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseTerminal(id)`: The agent terminal `id` runs, in which account, the session it resumes and the machine it's on; null: a shell.
 - `parseTimeline(text)`: The entries in a timeline section (the Markdown under its heading), in file order.
 - `pasteAttachments(s, from, files)`: Save pasted files as attachments of `from` (saveAttachments) and answer what to type for them: `![[name]]` (or `![](path)` with Markdown links), one per line.
+- `pastedFiles(d)`: The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as text and a picture of them.
 - `patch(path, body)`
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji.

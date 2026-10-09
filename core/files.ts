@@ -343,7 +343,6 @@ function newText(vault: Vault, rel: string, text: string) {
   return text
 }
 
-/** A JSON file must stay JSON (plugins read their settings from it), and a notebook too. */
 /** A timeline entry sent to POST /api/timeline, checked. */
 function newEntry(b: Item): NewEntry {
   const kind = String(b.kind ?? "").trim().toLowerCase()
@@ -355,15 +354,6 @@ function newEntry(b: Item): NewEntry {
   const text = (k: string) => (typeof b[k] === "string" ? b[k].trim() : "")
   if (kind === "note" && !text("notes")) throw new HTTPError(400, "a note needs its text (notes)")
   return { date: b.date, kind, duration_min: min, subject: text("subject"), notes: text("notes"), url: text("url") }
-}
-
-function valid(rel: string, text: string) {
-  if (!/\.(json|ipynb)$/i.test(rel)) return
-  try {
-    JSON.parse(text)
-  } catch (e) {
-    throw new HTTPError(400, `not valid JSON: ${(e as Error).message}`)
-  }
 }
 
 /** Put a trashed file or folder back where it came from, minus the time trashing added to its name. */
@@ -721,7 +711,6 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         target = freeName(vault, target)
       }
       text = newText(vault, target, text) // what plugins add to a new file (plugin.onCreate, onCreateFile)
-      valid(target, text)
       writeAtomic(vault.abs(target), text)
       await vault.sync()
       await vault.fillIn(target, null) // (a note's id and dates)
@@ -747,7 +736,6 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         text = merged
       }
       if (cur === null) text = newText(vault, rel, text)
-      valid(rel, text)
       const before = vault.entries.get(rel) ?? null
       if (cur !== text) writeAtomic(vault.abs(rel), cur !== null && crlf(vault.abs(rel)) ? text.replace(/\n/g, "\r\n") : text)
       await vault.sync()

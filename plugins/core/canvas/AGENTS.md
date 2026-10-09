@@ -27,5 +27,5 @@ The shape (other apps write it indented with tabs; keep keys you don't know):
   `toEnd` (`none` or `arrow`; default: an arrow where it ends only) and `label`.
 - `color` on a node or an edge: `"1"` red, `"2"` orange, `"3"` yellow, `"4"` green, `"5"` cyan, `"6"` purple, or a hex
   colour like `"#4a90d9"`. Leave it out for none.
-- Keep the JSON valid: the app saves only while it parses. Sentence case on cards, no emojis.
+- Keep the JSON valid: a canvas that doesn't parse isn't drawn. Sentence case on cards, no emojis.
 - The board's settings (below) are also `GET`/`PUT /api/canvas/settings`.

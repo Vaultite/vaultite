@@ -12,10 +12,12 @@ const SETTLE = 800 // a tab has to stay focused this long to count as opened
 const safe = <A extends unknown[]>(f: (...a: A) => void) => (...a: A) => { try { f(...a) } catch { /* never into the app */ } }
 
 function send(path: string, body: unknown, keepalive = false) {
+  const text = JSON.stringify(body)
+  // (keepalive takes 64 KB at most: a bigger batch is a plain request)
   return fetch(`api/${path}`, {
-    method: "POST", keepalive,
+    method: "POST", keepalive: keepalive && text.length < 60_000,
     headers: { "Content-Type": "application/json", "X-Vaultite-Client": `app/${DEVICE}` },
-    body: JSON.stringify(body),
+    body: text,
   }).then(() => undefined, () => undefined)
 }
 

@@ -10,7 +10,7 @@ import { getStore, reload, type Store } from "@/core/data"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
 import { isMac } from "@/core/platform"
-import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
+import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
 import { currentFile, getWorkspace, isDesktop, onWorkspaceChange } from "@/core/workspace"
 import { leaves, type Workspace } from "@/core/layout"
 import { openInSplit } from "@/core/splits"
@@ -399,6 +399,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   }
   const rename = async (n: Node, name: string) => {
     setRenaming(null)
+    if (!nameable(name)) return focusRow(n.path)
     const clean = cleanName(name)
     if (!clean || clean === n.name) return focusRow(n.path)
     const ext = n.folder || n.other ? "" : n.path.slice(n.path.lastIndexOf("."))

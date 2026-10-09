@@ -1,6 +1,6 @@
 // Obsidian's own links, obsidian://open, new and search (notes written in Obsidian keep them), followed here.
 // Other actions (a plugin's, obsidian://advanced-uri) are left to whoever registered them.
-import { createFile, get, getStore, newNoteFolder, notify, openAt, openView, post, put, resolver } from "@vaultite"
+import { createNamed, get, getStore, newNoteFolder, notify, openAt, openView, post, put, resolver } from "@vaultite"
 
 const params = (u: URL) => Object.fromEntries([...u.searchParams].map(([k, v]) => [k.toLowerCase(), v]))
 
@@ -41,7 +41,8 @@ async function make(p: Record<string, string>, mod: boolean) {
   const text = p.content ?? (p.clipboard !== undefined ? await navigator.clipboard.readText().catch(() => "") : "")
   const target = p.file ?? p.path
   if (!target) {
-    const f = await createFile(newNoteFolder(s!, ""), p.name ?? "Untitled", text)
+    const f = await createNamed(newNoteFolder(s!, ""), p.name || "Untitled", text)
+    if (!f) return
     if (p.silent === undefined) openAt(f.path, "", { newTab: mod })
     return
   }

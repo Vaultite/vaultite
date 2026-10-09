@@ -42,10 +42,6 @@ export function FolderPicker() {
   return p ? <Picker key={`${p.label}\n${p.not ?? ""}`} p={p} onClose={() => pickFolder(null)} /> : null
 }
 
-/** A typed folder path, made safe the way renames are ("a/b:c" -> "a/b c"). */
-const cleanFolder = (s: string) =>
-  s.split("/").map(cleanName).filter((x) => x && x !== "." && x !== "..").join("/")
-
 type Item = { id: string; path: string; label: string; marks: number[]; create: boolean }
 
 function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
@@ -55,7 +51,7 @@ function Picker({ p, onClose }: { p: FolderPick; onClose: () => void }) {
     const all = p.folders.map((f) => ({ id: `f-${f}`, path: f, label: f || "/", marks: [] as number[], score: 0, create: false }))
     if (!query) return all
     const out: Item[] = all.flatMap((h) => { const m = fuzzy(query, h.label); return m ? [{ ...h, ...m }] : [] }).sort((a, b) => b.score - a.score)
-    const name = cleanFolder(query)
+    const name = cleanName(query) // ("a/b:c" -> "a/b c")
     const taken = new Set(p.all.map((f) => f.toLowerCase()))
     if (name && !taken.has(name.toLowerCase()) && !isHidden(name) && (!p.not || (name !== p.not && !name.startsWith(`${p.not}/`)))) {
       out.push({ id: `new-${name}`, path: name, label: name, marks: [], create: true })

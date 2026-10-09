@@ -9,12 +9,12 @@ import { mediaItems } from "@/components/EmbedMenu"
 import { typingIn, useCommandKeys, useCommands } from "@/core/commands"
 import { dropActiveFile, setActiveFile, type ActiveFile } from "@/core/active"
 import { askMove, revealInTree } from "@/components/FileTree"
-import { type Store } from "@/core/data"
+import { fmtAgo, type Store } from "@/core/data"
 import { isOutside } from "@/core/desktop"
 import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
-import { cleanName, folderOf, gone, inPagesDir, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
+import { cleanName, folderOf, gone, inPagesDir, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop, takeRename } from "@/core/workspace"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
 import { FileCard, ImageView, PdfView, PlayerView, rawUrl, useFileInfo } from "@/components/FileViewers"
@@ -22,7 +22,9 @@ import { assetUrl, imageActions } from "@/components/editing"
 import { readProps, setProp } from "@/core/frontmatter"
 import { changeIcon } from "@/components/FileActions"
 import { renderMarkdown } from "@/core/markdown"
-import { notifyError } from "@/core/notify"
+import { notify, notifyError } from "@/core/notify"
+import { merge3 } from "@/core/merge"
+import { draftOf, dropDraft, keepDraft, type Draft } from "@/core/drafts"
 import { blockFor, fileBarItems, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, type FileCtx, type PageCtx } from "@/core/plugins"
 import type { FileFormat, FileHead } from "@/core/define"
 import { headOf } from "@/core/pages"
@@ -116,8 +118,10 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
   )
 })
 
-/** Rename a file to what was typed (cleaned of characters names can't have). False if it stayed as it was. */
+/** Rename a file to what was typed ("/" moves it into folders; characters names can't have are refused, as Obsidian
+ *  does). False if it stayed as it was. */
 async function rename(path: string, typed: string, settle: () => Promise<void>, undo = true, after?: { mode: Mode; write: boolean }) {
+  if (!nameable(typed)) return false
   const next = cleanName(typed)
   if (!next || next === stem(path)) return false
   const ext = path.split("/").pop()!.slice(stem(path).length)  // (.md, a page's .html or .csv; other files show theirs in the name)
@@ -409,7 +413,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const shown: Mode = code ? "source" : readOnlyDrawn && mode === "live" ? "source" : mode
   const views = code ? CODE_VIEWS : readOnlyDrawn ? SOURCE_VIEWS : VIEWS
   const edit: Mode = code || readOnlyDrawn ? "source" : format ? "live" : editMode()
-  // Plugins read their settings from JSON files, and a notebook must stay one: saved only while it parses.
+  // JSON (a plugin's settings, a notebook, a canvas) saves as typed, with a note while it doesn't parse.
   const strict = json || notebook || !!format?.json
   const [body, setBody] = useState(first.body)
   const [status, setStatus] = useState<SaveStatus>({ kind: "ok" })
@@ -612,7 +616,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [])
 
   const saver = useAutosave(path, initial.text, {
-    text: full, apply, onStatus: setStatus, json: strict, readOnly: ro,
+    text: full, apply, onStatus: setStatus, readOnly: ro,
     onDisk: (f) => { seen.set(path, f); setProblems(f.problems ?? []) },
     onGone: () => { seen.delete(path); onGone() },
   })
@@ -645,6 +649,32 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [editAround])
 
   useEffect(() => onSettle(path, settle), [path, settle])
+
+  const [badJson, setBadJson] = useState<string | null>(null)
+  useEffect(() => {
+    if (!strict) return
+    const t = setTimeout(() => {
+      const text = full()
+      try { if (text.trim()) JSON.parse(text); setBadJson(null) } catch (e) { setBadJson(String((e as Error).message ?? e)) }
+    }, 600)
+    return () => clearTimeout(t)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [strict, fm, body])
+  // Edits a closed window didn't get saved (core/drafts.ts), offered back while nothing typed here is pending.
+  const [leftover, setLeftover] = useState<Draft | null>(null)
+  useEffect(() => {
+    if (!ro && full() === saver.disk) setLeftover(draftOf(path, initial.text))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [path, initial, ro, saver])
+  const restoreUnsaved = (u: Draft) => {
+    setLeftover(null)
+    editAround((u.base ? merge3(u.base, u.text, full()) : null) ?? u.text)
+  }
+  const discardUnsaved = (u: Draft) => {
+    setLeftover(null)
+    dropDraft(path)
+    notify("Discarded the unsaved edits", { action: { label: "Undo", run: () => { keepDraft(path, u.text, u.base); setLeftover(u) } } })
+  }
 
   // A file from outside the vault isn't watched: check it now and then.
   useEffect(() => {
@@ -811,7 +841,14 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
           onClick={() => { const rest = aliasesOf(props).filter((a) => a !== alias); setProperty("aliases", rest.length ? rest : undefined) }}>Remove the alias</button>}
       </Banner>
     ))}
-    {status.kind === "invalid" && <Banner tone="warn"><span className="flex-1">Not valid JSON, so not saved yet: {status.message}</span></Banner>}
+    {leftover && (
+      <Banner tone="warn">
+        <span className="flex-1">Edits from {fmtAgo(new Date(leftover.t).toISOString())} weren't saved before the app closed.</span>
+        <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => restoreUnsaved(leftover)}>Restore them</button>
+        <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => discardUnsaved(leftover)}>Discard</button>
+      </Banner>
+    )}
+    {strict && badJson && <Banner tone="warn"><span className="flex-1">Invalid JSON (saved as it is): {badJson}</span></Banner>}
     {status.kind === "error" && <Banner tone="warn"><span className="flex-1">Couldn't save: {status.message}</span>
       <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => save(true)}>Try again</button></Banner>}
     {!!problems.length && (

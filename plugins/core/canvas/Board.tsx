@@ -5,7 +5,7 @@ import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight, ArrowRight, ArrowUpRight,
   ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight, Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, put, saveAttachments, useDropTarget, useLive, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, put, saveAttachments, useDropTarget, useLive, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -470,7 +470,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     paste: (e) => {
       if (!editable || !e.clipboardData) return
       e.preventDefault()
-      const files = [...e.clipboardData.files]
+      const files = pastedFiles(e.clipboardData)
       if (files.length) void pasteFiles(files)
       else pasteText(e.clipboardData.getData("text/plain"))
     },

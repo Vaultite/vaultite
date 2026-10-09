@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { TextSearch } from "lucide-react"
 import { getStore, type Store } from "@/core/data"
 import { get } from "@/core/http"
-import { cleanName, createFile, folderOf, openFile, openNew, openView, stem } from "@/core/files"
+import { cleanName, createNamed, folderOf, openFile, openNew, openView, stem } from "@/core/files"
 import { currentFile } from "@/core/workspace"
 import { newNoteFolder } from "@/core/conventions"
 import { snippet } from "@/core/links"
@@ -70,11 +70,10 @@ export function SearchPalette({ store, onClose }: { store: Store; onClose: () =>
   }
   // ⇧Enter: a note named what was typed, where every new note goes (newNoteFolder).
   const create = async (newTab: boolean) => {
-    const name = cleanName(q)
-    if (!name) return
+    if (!cleanName(q)) return
     onClose()
-    const f = await createFile(newNoteFolder(getStore(), currentFile()), name)
-    openNew(f.path, { newTab })
+    const f = await createNamed(newNoteFolder(getStore(), currentFile()), q)
+    if (f) openNew(f.path, { newTab })
   }
 
   return (

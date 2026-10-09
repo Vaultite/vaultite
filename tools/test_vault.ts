@@ -630,7 +630,9 @@ check("a settings file opens by its path with hidden files off", code === 200 &&
 ;[code] = await api("PUT", "file", { path: ".vaultite/plugins.json", text: cfg.text, base: cfg.text })
 check("and saves", code === 200, code)
 ;[code] = await api("PUT", "file", { path: ".vaultite/plugins.json", text: "{nope", base: cfg.text })
-check("only as JSON", code === 400, code)
+check("saves as typed, valid JSON or not; the settings read keep the last good copy", code === 200 && read(".vaultite/plugins.json") === "{nope" &&
+  JSON.stringify(vault.config("plugins")) === JSON.stringify(JSON.parse(cfg.text)), code)
+;[code] = await api("PUT", "file", { path: ".vaultite/plugins.json", text: cfg.text, base: "{nope" })
 for (const bad of [".trash/x.md", ".vaultite/.secret/x.json", ".vaultite/x.txt", ".git/config"]) {
   ;[code] = await api("GET", `file?path=${bad}`)
   check(`no ${bad} with hidden files off`, code === 400, code)
@@ -1507,8 +1509,12 @@ check("a huge file reads as text, at any size", code === 200 && out.text.length 
   ;[code, out] = await api("PUT", "file", { path: "Code/huge.log", text: mine + "more\n", base: mine, lean: true })
   check("and with it, merged", code === 200 && read("Code/huge.log") === "theirs\n" + mine + "more\n" && out.text === read("Code/huge.log"), code)
 }
-;[code] = await api("PUT", "file", { path: "Code/analysis.ipynb", text: "{ not json", base: read("Code/analysis.ipynb") })
-check("a notebook stays JSON", code === 400, code)
+;{
+  const was = read("Code/analysis.ipynb")
+  ;[code] = await api("PUT", "file", { path: "Code/analysis.ipynb", text: "{ not json", base: was })
+  check("a notebook saves as typed, even half-edited", code === 200 && read("Code/analysis.ipynb") === "{ not json", code)
+  await api("PUT", "file", { path: "Code/analysis.ipynb", text: was, base: "{ not json" })
+}
 ;[code] = await api("POST", "file", { path: "Code/new.py", text: "x = 1\n" })
 check("a new code file", code === 201 && read("Code/new.py") === "x = 1\n", code)
 ;[code, out] = await api("GET", "file/info?path=Code/statement.pdf")

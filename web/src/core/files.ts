@@ -9,6 +9,7 @@ import { onUiAction, onVaultChange, onVaultMove, touches } from "@/core/live"
 import { isMedia, kindOf } from "@/core/filekinds"
 import { movePlaces } from "@/core/viewstate"
 import { homeFolder, inArchive, inPagesDir, isHiddenPath } from "../../../core/fileprops.ts"
+import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
 import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, isDesktop, retarget, targetOf } from "@/core/workspace"
@@ -50,10 +51,30 @@ export function stem(path: string) {
   return ext ? name.slice(0, -ext.length - 1) : name
 }
 export const folderOf = (path: string) => path.split("/").slice(0, -1).join("/")
+/** The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as
+ *  text and a picture of them. (A file copied in Finder brings its name as text, which isn't its own.) */
+export function pastedFiles(d: DataTransfer | null | undefined): File[] {
+  const files = [...(d?.files ?? [])]
+  const text = d?.getData("text/plain").trim() ?? ""
+  if (!files.length || !text) return files
+  const names = new Set(files.map((f) => f.name))
+  return text.split(/\r?\n/).every((l) => names.has(l.trim().split("/").pop()!)) ? files : []
+}
 /** `name` in `folder` ("" is the top of the vault). */
 export const joinPath = (folder: string, name: string) => (folder ? `${folder}/${name}` : name)
-/** A name as typed, made one a file can have: characters names can't have and runs of spaces become one space. */
-export const cleanName = (typed: string) => typed.replace(/[*"\\/<>:|?#^[\]]/g, " ").replace(/\s+/g, " ").trim()
+/** Characters a file name can't have (the server refuses * " \ < > : | ?) or a [[link]] can't reach (# ^ [ ]). */
+const UNNAMEABLE = /[*"\\<>:|?#^[\]]/g
+/** A name as typed, made one a file can have, as the server's safeName: "/" makes folders, ":" a dash, other
+ *  characters names can't have and runs of spaces one space. */
+export const cleanName = (typed: string) => typed.split("/").map((p) => p.replaceAll(":", " -").replace(UNNAMEABLE, " ").replace(/\s+/g, " ").trim())
+  .filter((p) => p && p !== "." && p !== "..").join("/")
+/** Whether a file can have the name typed; if not, a toast says which characters it can't (a rename refuses them, as
+ *  Obsidian does). */
+export function nameable(typed: string) {
+  const bad = [...new Set(typed.match(UNNAMEABLE) ?? [])]
+  if (bad.length) notice(`A file name can't have ${bad.join(" ")}`, { kind: "error", id: "bad-name" })
+  return !bad.length
+}
 /** Where new files of a kind (its collection: "notes", "days") go: where most of its files are, folders named like
  *  `fallback` first (Personal/Notes/, not Clippings/), else `fallback`. Folders are the user's (core/fileprops.ts). */
 export const homeOf = (s: Store | null | undefined, kind: string, fallback: string) =>
@@ -222,6 +243,17 @@ export async function createFile(folder: string, name = "Untitled", text = "") {
   const f = await post<FileText>("file", { path: joinPath(folder, `${name}.md`), text, unique: true })
   await reload()
   return f
+}
+
+/** A note named as typed (a link's target, the quick switcher's query): with "/", at that path from the top of the
+ *  vault, else in `folder`. Characters a name can't have become spaces, and the name as typed is its alias, so a link
+ *  to it finds it. Null when nothing of the name is left. */
+export async function createNamed(folder: string, typed: string, text = "") {
+  const name = cleanName(typed)
+  if (!name) return null
+  const asTyped = typed.split("/").pop()!.trim()
+  const fm = asTyped !== name.split("/").pop() ? `---\n${dump({ aliases: [asTyped] })}\n---\n` : ""
+  return createFile(typed.includes("/") ? "" : folder, name, joinFm(fm, text))
 }
 
 export async function createFolder(parent: string, name = "New folder") {

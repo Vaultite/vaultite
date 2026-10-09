@@ -25,6 +25,7 @@ import { docChanged, registerDoc } from "@/core/anchors"
 import { registerEditor } from "@/core/editors"
 import { runShortcut } from "@/core/commands"
 import { textChanges } from "@/core/merge"
+import { pastedFiles } from "@/core/files"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { cn, scrollingBox } from "@/lib/utils"
@@ -317,7 +318,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           // Files pasted (a screenshot) or dropped from the computer: saved as attachments, embedded where they went
           // (not read into the note as text, which is what the editor would do with dropped ones).
           EditorView.domEventHandlers({
-            paste: (e, view) => attach(e, view, [...(e.clipboardData?.files ?? [])], view.state.selection.main, "input.paste", cb.current.onPasteFiles),
+            paste: (e, view) => attach(e, view, pastedFiles(e.clipboardData), view.state.selection.main, "input.paste", cb.current.onPasteFiles),
             drop(e, view) {
               const at = view.posAtCoords({ x: e.clientX, y: e.clientY }) ?? view.state.selection.main.head
               return attach(e, view, [...(e.dataTransfer?.files ?? [])], { from: at, to: at }, "input.drop", cb.current.onPasteFiles)

@@ -569,6 +569,17 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   in local time, not every `created`, `updated` or `added`.
 - **Timeline view only in people**: a `## Timeline` heading in a note stays the Markdown you wrote; only a person's file
   draws it as a timeline.
+- **Edits survive a closed window**: what you typed stays on the device until the server has it; a window closed or
+  killed mid-save offers it back (Restore them) the next time the file opens. A big note's last save no longer fails
+  as the window closes.
+- **JSON saves as you type it**: a .json file (comments, a half-done edit), a notebook or a canvas source is saved as
+  it is, with a note while it isn't valid JSON; a plugin's settings file that doesn't parse keeps working from its last
+  good copy.
+- **Paste keeps the text**: cells copied from Excel, Numbers or Word paste as their text, as in Obsidian, not as a
+  picture of them; a picture alone is still attached. Also in canvases and terminals.
+- **Names with odd characters**: a [[link]] or a new note named with `:`, `?` and the like makes a note named as the
+  app names files (`:` a dash, the others spaces) with the name as typed as its alias, so the link finds it (no more
+  "A B 1"); "/" makes folders. A rename to such a name is refused, saying which characters.
 - **Big files open and edit at any size**: a file over 1 MB (an Excalidraw drawing with images, a long note) no longer
   opens read-only, nor one over 8 MB as a card; typing in a 16 MB note is as quick as in a short one.
 - **No size limits**: File history keeps files of any size (one growing past 1 MB is no longer taken for deleted) and

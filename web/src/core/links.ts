@@ -5,7 +5,7 @@ import { splitAnchor, tagName } from "../../../core/sections.ts"
 import { openAt } from "@/core/anchors"
 import { runCommandId } from "@/core/commands"
 import { detailPath } from "@/core/define"
-import { cleanName, createFile, fileOf, folderOf, stem, type VaultFile } from "@/core/files"
+import { createNamed, fileOf, folderOf, stem, type VaultFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { newNoteFolder } from "@/core/conventions"
 import { notify } from "@/core/notify"
@@ -117,10 +117,8 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
   const t = resolver(s)(name)
   if (t?.file) return openAt(t.file, anchor, { newTab })
   if (t?.detail) return openDetail(t.detail)
-  const clean = cleanName(name)
-  if (!clean) return
-  const f = await createFile(newNoteFolder(s, from), clean)
-  openAt(f.path, "", { newTab })
+  const f = await createNamed(newNoteFolder(s, from), name)
+  if (f) openAt(f.path, "", { newTab })
 }
 
 /** A file: by its name (a page's with or without its extension, `[[Report.html]]`), path, title and aliases. */

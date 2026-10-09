@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, openMenu, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, openMenu, pastedFiles, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -305,7 +305,7 @@ function create(id: string): Live {
     }, () => {})
   }
   const onPaste = (e: ClipboardEvent) => {
-    const files = Array.from(e.clipboardData?.files ?? [])
+    const files = pastedFiles(e.clipboardData)
     if (!files.length) return // text: xterm.js pastes it
     e.preventDefault(); e.stopImmediatePropagation()
     sendFiles(files)
