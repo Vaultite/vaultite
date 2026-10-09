@@ -11,6 +11,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 The first public release: the source on GitHub, signed and notarized Mac builds, Linux's AppImage and .deb, and a
 nightly. Plugin API 3.
 
+- **Agents**: Claude Code and others in the app's terminals, their state and usage at a glance; a note dispatched to
+  an agent on any of your machines.
+- **From another Markdown app**: an Obsidian vault opens as it is, with its settings, themes and many of its plugins.
+- **Apps**: an iPhone app, the desktop app on Linux, day recaps, lessons, and Vaultite Nightly beside Vaultite.
+- **Files**: no size limits, and the app writes only what you changed.
+
 ### Agents
 - **Agents see everything, a page at a time**: read, render, query, search and list take `offset` and `limit`, and
   every cut answer says so and gives the next offset (a long query cell ends in "…"). `edit_file` (`vau edit`) changes

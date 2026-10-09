@@ -1,6 +1,6 @@
 # The desktop app: a signed and notarized Mac build (dmg and zip, Apple silicon and Intel) and Linux's AppImage and .deb
 # (x64 and arm64, each built on its own architecture: node-pty is compiled there).
-# - A v* tag (matching package.json's version) is that GitHub release, its notes CHANGELOG.md's section for it, and goes
+# - A v* tag (matching package.json's version) is that GitHub release, its notes the summary atop CHANGELOG.md's section for it, and goes
 #   on the update feed (vaultite.com/updates: R2's vaultite-updates, which vaultite-cloud serves).
 # - Every night, if main changed, it's Vaultite Nightly (electron/nightly.cjs: an app of its own), the `nightly`
 #   prerelease, replaced each time: version <next patch>-nightly.<time>, on the feed's nightly/ (where Vaultite Nightly
@@ -146,8 +146,9 @@ jobs:
           V: ${{ needs.plan.outputs.version }}
         run: |
           if [ "$STABLE" = true ]; then
-            awk -v h="## $V" 'index($0, h) == 1 { on = 1; next } on && /^## / { exit } on' CHANGELOG.md > notes.md
-            [ -s notes.md ] || echo "Vaultite $V." > notes.md
+            # The notes are the section's summary, above its first ### (the rest is in the changelog, linked)
+            awk -v h="## $V" 'index($0, h) == 1 { on = 1; next } on && /^##/ { exit } on' CHANGELOG.md > notes.md
+            printf '\nEvery change: [CHANGELOG.md](%s/blob/%s/CHANGELOG.md).\n' "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" "$GITHUB_REF_NAME" >> notes.md
             gh release create "$GITHUB_REF_NAME" out/*.dmg out/*.AppImage out/*.deb --verify-tag --title "Vaultite $V" \
               --notes-file notes.md
           else
