@@ -249,7 +249,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Folder settings pick a folder**: a plugin's folder (Clipper's, Templates', Activity's capture folders and the rest)
   opens a fuzzy list of the vault's folders; one typed that isn't there is made, and one set that's missing shows red.
 - **Settings opens sheets, never unfolds**: Plugin settings and Fonts open in a sheet like Keyboard shortcuts, so the
-  page never shifts; Setup links to the Plugins page; a palette (a font picker) works over a sheet.
+  page never shifts; Setup links to the Plugins page in a plain row like the others; a palette (a font picker) works
+  over a sheet.
 - **Everything from the keyboard**: Tab passes a list (the file tree, a panel's rows) as one stop and comes back to
   the row it was on; F6 and ⇧F6 move between the sidebars and panes; ⇧F10 (or the menu key) opens the menu of what has
   the keyboard, a row or the editor at its cursor; the sidebar and split edges resize with the arrows (Enter resets);

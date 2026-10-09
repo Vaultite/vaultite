@@ -64,7 +64,7 @@ function SetupPanel({ store }: { store: Store }) {
         <SettingRow label="Bundles" onClick={openBundles} data-settings-bundles />
         {prev && <SettingRow label="Restore previous setup"
           onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))} data-settings-restore />}
-        <SettingRow label="Plugins" sub="Turn plugins on and off, add your own" onClick={openPlugins} data-settings-plugins />
+        <SettingRow label="Plugins" onClick={openPlugins} data-settings-plugins />
         <PluginSettingsRow store={store} />
       </div>
     </Panel>
