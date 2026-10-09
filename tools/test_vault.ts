@@ -1294,7 +1294,7 @@ check("vaults: never a system folder", vr.status === 403 && !opened.length, vr)
 vr = await vh("POST", "open", {}, { path: "/" })
 check("vaults: nor the root folder", vr.status === 403 && !opened.length, vr)
 vr = await vh("POST", "open", {}, { path: path.join(home, "Library") })
-check("vaults: nor ~/Library", vr.status === 403 && !opened.length, vr)
+check("vaults: nor ~/Library", (vr.status === 403 || (vr.status === 404 && !fs.existsSync(path.join(home, "Library")))) && !opened.length, vr) // (none on Linux)
 check("vaults: a drive, a cloud drive and a folder outside home can be", ["/Volumes/Drive/Notes", "/run/media/alice/Drive/Notes",
   "/mnt/data/Notes", path.join(home, "Library", "Mobile Documents", "com~apple~CloudDocs", "Notes")].every((p) => vaultsMod.refused(p, { vault: true }) === null))
 {
