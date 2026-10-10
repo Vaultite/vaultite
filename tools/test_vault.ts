@@ -4763,6 +4763,26 @@ check("properties: an unknown type is refused", code === 400)
   pubMcp.bases.set(viaCloud, "https://alice.vaultite.app")
   check("upload links: on the address the app reached (an app with the Cloud's can't reach the owner's tunnel), else the owner's",
     pubMcp.uploadLink({}, viaCloud)!.url.startsWith("https://alice.vaultite.app/upload/") && pubMcp.uploadLink({}, viaNothing)!.url.startsWith("https://own.example/upload/"))
+  {
+    // Connect (plugins/core/mcp/connect.ts): Vaultite Cloud's signed header for the handle's owner.
+    const { MCP_PATHS, ownerOnly, verifyConnect } = await import("../plugins/core/mcp/connect.ts")
+    const { refusal: ownerRefusal } = await import("../core/owner.ts")
+    const crypto = await import("node:crypto")
+    const sign = (c: Record<string, unknown>, key = "k1") => { const b = Buffer.from(JSON.stringify(c)).toString("base64url"); return `${b}.${crypto.createHmac("sha256", key).update(b).digest("base64url")}` }
+    const t0 = 1_800_000_000, claims = { sub: "u1", handle: "alice", role: "owner", exp: t0 + 300 }
+    check("connect: the owner's signed header holds", verifyConnect("k1", sign(claims), "alice", t0)?.sub === "u1")
+    check("connect: not with another key, handle, role, once expired, or far in the future", !verifyConnect("k2", sign(claims), "alice", t0) && !verifyConnect("k1", sign(claims), "bob", t0)
+      && !verifyConnect("k1", sign({ ...claims, role: "viewer" }), "alice", t0) && !verifyConnect("k1", sign(claims), "alice", t0 + 301)
+      && !verifyConnect("k1", sign({ ...claims, exp: t0 + 7200 }), "alice", t0) && !verifyConnect(null, sign(claims), "alice", t0) && !verifyConnect("k1", "x.y", "alice", t0))
+    check("connect: MCP's routes are never the app's", ["/mcp", "/register", "/token", "/authorize", "/authorize/status", "/.well-known/oauth-authorization-server", "/upload/abc", "/favicon.ico"].every((x) => MCP_PATHS.test(x))
+      && !["/", "/api/state", "/assets/main.js", "/index.html"].some((x) => MCP_PATHS.test(x)))
+    check("connect: terminals, dispatch, screens and settings refused without owner tools; the rest not",
+      ["/api/terminals", "/api/terminal/x", "/api/dispatch", "/api/ops/terminal.list", "/api/ops/dispatch.run", "/api/ops/settings.set", "/api/ops/ui.command", "/api/vaults/open"].every((x) => ownerOnly(x))
+      && !["/api/state", "/api/ops/docs.read", "/api/events", "/api/file"].some((x) => ownerOnly(x)))
+    const fake = (headers: Record<string, string>) => ({ headers: { host: "127.0.0.1:8793", ...headers }, socket: { remoteAddress: "127.0.0.1" } }) as Any
+    check("connect: the app's owner checks refuse what Connect marks, even with allowRemote", ownerRefusal(fake({ "x-vaultite-connect": "1" }), { allowRemote: true, owner: "" }, "the terminal").includes("Vaultite Connect")
+      && ownerRefusal(fake({}), { owner: "" }, "the terminal") === "")
+  }
   t = await tool("add_timeline", { person: "Sammy", kind: "call", text: "Talked about the show", date: "2026-09-29", duration_min: 30 })
   check("mcp add_timeline: by an alias, placed by date", !t.error && read("People/Sam Reyes.md").includes("- 2026-09-29 · call · 30 min · Talked about the show"), read("People/Sam Reyes.md"))
   t = await tool("add_timeline", { person: "Sam", kind: "call", text: "x" })

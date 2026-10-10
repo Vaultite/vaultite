@@ -521,6 +521,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BlockCtx`: What a block's text gets: the file it's in (or the one its `file:` names), its options (the block's YAML, with the manifest's declared defaults filled in: core/blocks.ts) and today (YYYY-MM-DD).
 - `BROWSER_UA`
 - `bullets(rows, empty?)`: A Markdown list, or a line saying there's nothing.
+- `CONNECT_HEADER`: Set by Connect (plugins/core/mcp/connect.ts) on what it hands the app while the owner's tools are off over it.
 - `contentType(path)`: The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes).
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
 - `daysBetween(a, b)`: Days from a to b (YYYY-MM-DD).

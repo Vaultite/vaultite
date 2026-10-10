@@ -2,11 +2,11 @@
 // per app in a sheet (with the code field), let one in by its code, disconnect. Polls while shown, faster while an app is connecting.
 import { useEffect, useState, type ReactNode } from "react"
 import { Bot, Check, ChevronRight, Copy, ExternalLink, Plug, type LucideIcon } from "lucide-react"
-import { confirmDialog, copyText, del, detailPath, Empty, fmtAgo, get, Group, iconNamed, Loading, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead } from "@vaultite"
+import { confirmDialog, copyText, del, detailPath, Empty, fmtAgo, get, Group, iconNamed, Loading, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead, Switch } from "@vaultite"
 
 type Connection = { id: string; name: string; created: string; used: string | null }
-type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; connectUrl: string; message?: string }
-type State = { url: string | null; cloud: Cloud; connections: Connection[]; waiting: number
+type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; connectUrl: string; message?: string }
+type State = { url: string | null; cloud: Cloud; connect?: { ownerTools: boolean }; connections: Connection[]; waiting: number
   /** Apps let in by their code that haven't finished signing in: a row each, till they're connections. */
   finishing?: string[] }
 
@@ -110,6 +110,28 @@ function CloudSection({ cloud, onDone }: { cloud: Cloud; onDone: () => void }) {
         <SettingRow label={CLOUD_STATE[cloud.state]} sub={cloud.state === "connected" ? `Signed in as ${cloud.handle}` : cloud.message || `Signed in as ${cloud.handle}`} data-cloud-state={cloud.state}>
           {cloud.state === "replaced" && <button type="button" disabled={busy} onClick={() => void run("mcp.cloud-sign-in")} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-primary hover:bg-foreground/[0.05]" data-cloud-take-over>Use this machine</button>}
           <button type="button" disabled={busy} onClick={() => void signOut()} className="shrink-0 cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-destructive hover:bg-foreground/[0.05]" data-cloud-sign-out>Sign out</button>
+        </SettingRow>
+      </Group>
+    </Section>
+  )
+}
+
+/** Connect: the whole app at the handle's address, for its owner, while this Mac is on. */
+function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: boolean; onDone: () => void }) {
+  const [busy, setBusy] = useState(false)
+  const turn = async (on: boolean) => {
+    setBusy(true)
+    try { await post("mcp/connect", { ownerTools: on }); onDone() } catch (e) { notifyError(e) } finally { setBusy(false) }
+  }
+  return (
+    <Section title="Open from anywhere">
+      <p className="pb-2 text-[15px] leading-[20px]" data-connect-app>
+        Your phone and any browser can now reach this Mac's Vaultite at this address while the Mac is on. Sign in there with your Vaultite account.
+      </p>
+      <Group>
+        <SettingRow label="Address" sub={<code className="break-all text-[12px]">{app}</code>} chevron={ExternalLink} onClick={() => openWebLink(app)} data-connect-url />
+        <SettingRow label="Terminals and coding agents" sub="Off: over this address the app doesn't run anything on this Mac">
+          <Switch on={ownerTools} onChange={(on) => void turn(on)} label="Terminals and coding agents over this address" disabled={busy} />
         </SettingRow>
       </Group>
     </Section>
@@ -249,6 +271,7 @@ export function ConnectionsView() {
       <Panel title="Connections" icon={Plug}>
         <div className="flex flex-col gap-4">
           <CloudSection cloud={data.cloud} onDone={reload} />
+          {data.cloud.app && data.cloud.state === "connected" && <AppAddress app={data.cloud.app} ownerTools={!!data.connect?.ownerTools} onDone={reload} />}
           {(data.url || data.cloud.url) && (
             <Section title="Connect an app">
               <Group>

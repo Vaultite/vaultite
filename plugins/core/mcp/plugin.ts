@@ -90,11 +90,14 @@ function publicMcp() {
   if (!pub) {
     pub = new PublicMcp(plugin, settings ?? PublicMcp.cloudOnly())
     pub.cloudUrl = () => cloud.stored()?.url.replace(/\/+$/, "") ?? null
+    pub.connect = { key: () => cloud.connectKey, handle: () => cloud.stored()?.handle ?? null, ownerTools }
     pub.start()
   }
   return pub
 }
 const cloud = new Cloud(plugin, () => publicMcp().ready)
+/** Connect: whether terminals, coding agents and the like answer the owner over the relay (data/config.json, this Mac's). */
+const ownerTools = () => (plugin.secrets().mcp as { connect?: { ownerTools?: boolean } } | undefined)?.connect?.ownerTools === true
 let signedIn = false
 cloud.onChange = (s) => {
   // Told once signed in, and when it stops on its own (revoked, another machine): not every reconnect.
@@ -113,7 +116,21 @@ plugin.onUnload(() => { pub?.stop(); cloud.stop() })
 /** The apps connected from the internet, how many sign-ins wait for their code, those finishing, and Vaultite Cloud. */
 plugin.route("GET", "mcp/connections", async (req) => {
   await allowed(req)
-  return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connections: pub?.list() ?? [], waiting: pub?.waiting() ?? 0, finishing: pub?.finishing() ?? [] }
+  return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connect: { ownerTools: ownerTools() }, connections: pub?.list() ?? [], waiting: pub?.waiting() ?? 0, finishing: pub?.finishing() ?? [] }
+}, { lock: false })
+
+/** Connect's owner tools on or off: only from this Mac (or the owner's tailnet), never over the relay itself. */
+plugin.route("POST", "mcp/connect", async (req) => {
+  await allowed(req)
+  const why = req.http ? await plugin.refusal(req.http, "Changing what answers over Vaultite Connect") : ""
+  if (why) throw new HTTPError(403, why)
+  const on = (req.body as { ownerTools?: unknown })?.ownerTools === true
+  const all = structuredClone((plugin.secrets().mcp ?? {}) as Record<string, unknown>)
+  const c = { ...(all.connect as object | undefined) } as Record<string, unknown>
+  if (on) c.ownerTools = true; else delete c.ownerTools
+  if (Object.keys(c).length) all.connect = c; else delete all.connect
+  plugin.saveSecrets(all)
+  return { ownerTools: on }
 }, { lock: false })
 
 /** Let in the app whose sign-in page shows this code. */
@@ -139,13 +156,13 @@ function cloudText(s: CloudStatus) {
   const why = s.message ? ` (${s.message})` : ""
   switch (s.state) {
     case "off": return `Not signed in to Vaultite Cloud${why}. To sign in, open ${s.connectUrl}, sign in there, and type the code it shows: vau cloud sign-in <code>`
-    case "connected": return `Connected. Add ${s.url} as a custom connector in claude.ai or ChatGPT; its sign-in page shows a code to type in Connections.`
+    case "connected": return `Connected. Add ${s.url} as a custom connector in claude.ai or ChatGPT; its sign-in page shows a code to type in Connections.${s.app ? ` The phone and any browser reach this Mac's app at ${s.app} while it's on (signed in with the Vaultite account).` : ""}`
     case "replaced": return `Signed in as ${s.handle}, but another machine took over the address (${s.message}). Use this machine again: vau cloud sign-in`
     default: return `Signed in as ${s.handle} (${s.url}): ${s.state}${why}.`
   }
 }
 
-const statusResult = { type: "object" as const, description: "state (off, connecting, connected, reconnecting, offline, replaced), handle, url (the MCP address), connectUrl (where to get a code), message" }
+const statusResult = { type: "object" as const, description: "state (off, connecting, connected, reconnecting, offline, replaced), handle, url (the MCP address), app (where the owner opens the app from anywhere), connectUrl (where to get a code), message" }
 
 plugin.op({
   id: "mcp.cloud-status",
