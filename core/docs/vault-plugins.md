@@ -154,7 +154,8 @@ lists every vault plugin with `problems` (why it didn't load or build: its manif
 
 **From GitHub**: `vau plugin install owner/name` (`@v1.2.0`, a git URL or a folder too; `owner/name/folder` for one
 of several plugins in a repository, tagged `<folder>/v1.2.0`) fetches it at its newest version tag, checks it, copies it to `.vaultite/plugins/<id>/` and records where from in `.vaultite/plugins-lock.json`;
-it's off until turned on. `vau plugin update` says what a newer tag changes (files, disclosures) and `--apply` installs
+it's off until turned on. A zip at an https address works too, pinned by its hash (`vau plugin install
+"https://example.com/x-1.2.0.zip#sha256=<hex>"`: the plugin at the zip's top or in its one folder; no updates). `vau plugin update` says what a newer tag changes (files, disclosures) and `--apply` installs
 it (to be allowed again); `vau plugin uninstall <id>`. Writing one in its own folder: `vau plugin install <folder>`, turn
 it on, then after each edit `vau plugin update <id> --apply` (it keeps running); a `.vaultiteignore` (like .gitignore)
 leaves its tests and QA out of installs. The Plugins page's Browse (`vau plugin search`) lists the plugin

@@ -1,6 +1,8 @@
 // Vault plugins installed from a git repository (GitHub's owner/name, a git URL, or a folder on this machine): fetched with
 // git (argv, no shell) at a tag, checked, copied into .vaultite/plugins/<id>/ off, and recorded in the vault's lock file.
+// Or from a zip at an https address pinned by its hash (`…/x.zip#sha256=<hex>`), for plugins that aren't in a repository.
 import { execFile } from "node:child_process"
+import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -11,6 +13,7 @@ import { DISCLOSURES, disclosuresOf } from "./pluginmeta.ts"
 import { ignoreOf, userFilesOf, walk } from "./rules.ts"
 import { compareVersions, tagVersion } from "./version.ts"
 import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
+import { unzip } from "./unzip.ts"
 import type { Item, Vault } from "./vault.ts"
 
 /** Where a plugin came from, as .vaultite/plugins-lock.json keeps it (so another machine knows): `source` as asked,
@@ -19,8 +22,15 @@ export type Locked = { source: string; repo: string | null; tag: string | null; 
 export const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
 
 /** What a source names: a git address to clone (or a plain folder to copy), its GitHub repo, the plugin's folder in it
- *  (`dir`, for a repository of several plugins: its tags are `<dir>/v1.2.0`), a tag asked for. */
-export type Source = { given: string; url: string | null; folder: string | null; repo: string | null; dir: string | null; tag: string | null }
+ *  (`dir`, for a repository of several plugins: its tags are `<dir>/v1.2.0`), a tag asked for; or a zip to download
+ *  (`archive`: its address and the sha256 it must have). */
+export type Source = { given: string; url: string | null; folder: string | null; repo: string | null; dir: string | null; tag: string | null
+  archive?: { url: string; sha256: string } }
+
+/** A zip's address: https (http only to this machine), its path ending in .zip, `#sha256=<64 hex>` after it. */
+const ARCHIVE = /^(https?):\/\/([^/?#]+)(\/[^?#]*\.zip)(\?[^#]*)?(?:#sha256=([0-9a-fA-F]{64}))?$/i
+const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i
+export const ZIP_MAX = 64 << 20, UNZIPPED_MAX = 256 << 20, ENTRIES_MAX = 5000
 
 const STABLE = /^v?\d+\.\d+\.\d+$/
 const GIT_TIMEOUT = 120_000
@@ -39,6 +49,15 @@ export function parseSource(given: string, tag?: string | null): Source {
     if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new OpError(`there's no folder ${dir}`, 404)
     return fs.existsSync(path.join(dir, ".git")) ? { given, url: pathToFileURL(dir).href, folder: null, repo: null, dir: null, tag: at }
       : { given, url: null, folder: dir, repo: null, dir: null, tag: null }
+  }
+  const zip = ARCHIVE.exec(s)
+  if (zip) {
+    const [, scheme, host, file, , hash] = zip
+    if (scheme.toLowerCase() !== "https" && !LOOPBACK.test(host)) throw new OpError(`a plugin's zip is fetched over https only: ${scheme}://${host}${file}`)
+    if (!hash) throw new OpError(`a plugin's zip needs its hash after its address, #sha256=<64 hex digits>, so what's installed is what was meant: ${scheme}://${host}${file}`)
+    // (recorded and shown without its query: a short-lived signed address isn't kept in the vault's lock file)
+    return { given: `${scheme}://${host}${file}#sha256=${hash.toLowerCase()}`, url: null, folder: null, repo: null, dir: null, tag: null,
+      archive: { url: s.replace(/#.*$/, ""), sha256: hash.toLowerCase() } }
   }
   if (/^(https?|ssh|git|file):\/\//i.test(s) || /^[\w.-]+@[\w.-]+:/.test(s)) {
     cut(/@([\w.+-]+)$/)
@@ -90,6 +109,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
   try {
     let from: string, tag: string | null = null, commit: string | null = null, untagged = false
     if (src.folder) from = src.folder
+    else if (src.archive) from = await unpack(src, path.join(tmp, "zip"))
     else {
       tag = src.tag ?? (await tagsOf(src.url!, src.dir))[0] ?? null
       untagged = !tag
@@ -126,6 +146,51 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
     done()
     throw e
   }
+}
+
+/** A source's zip downloaded (at most ZIP_MAX), checked against its sha256 and unpacked into `to` (its files at the
+ *  top, or in its one top folder): the folder. Names that would leave the folder, too many files or too many bytes
+ *  unpacked are refused. */
+async function unpack(src: Source, to: string): Promise<string> {
+  const { url, sha256 } = src.archive!, shown = src.given.replace(/#.*$/, "")
+  let r: Response
+  try { r = await fetch(url, { redirect: "follow", signal: AbortSignal.timeout(GIT_TIMEOUT) }) } catch (e) {
+    throw new OpError(`couldn't download ${shown}: ${(e as Error).message}`, 502)
+  }
+  if (!r.ok) throw new OpError(`couldn't download ${shown}: it answered ${r.status}`, 502)
+  if (r.redirected && !/^https:/i.test(r.url) && !LOOPBACK.test(new URL(r.url).host)) throw new OpError(`${shown} sent the download elsewhere over plain http`, 502)
+  if (Number(r.headers.get("content-length") ?? 0) > ZIP_MAX) throw new OpError(`${shown} is over ${ZIP_MAX >> 20} MB`, 413)
+  const parts: Buffer[] = []
+  let size = 0
+  for await (const chunk of r.body as AsyncIterable<Uint8Array>) {
+    size += chunk.length
+    if (size > ZIP_MAX) throw new OpError(`${shown} is over ${ZIP_MAX >> 20} MB`, 413)
+    parts.push(Buffer.from(chunk))
+  }
+  const buf = Buffer.concat(parts)
+  const got = crypto.createHash("sha256").update(buf).digest("hex")
+  if (got !== sha256) throw new OpError(`${shown} isn't the file its #sha256 names (it's ${got}): not installed`, 422)
+  let entries: Map<string, () => Buffer>
+  try { entries = unzip(buf) } catch (e) { throw new OpError(`${shown} isn't a zip that can be read: ${(e as Error).message}`, 422) }
+  if (entries.size > ENTRIES_MAX) throw new OpError(`${shown} has over ${ENTRIES_MAX} files`, 422)
+  const names = [...entries.keys()]
+  const bad = names.find((n) => n.startsWith("/") || n.includes("\\") || n.split("/").some((p) => p === ".." || p === "."))
+  if (bad) throw new OpError(`${shown} has a file outside its folder: ${bad}`, 422)
+  const tops = new Set(names.map((n) => n.split("/")[0]))
+  const strip = !entries.has("manifest.json") && tops.size === 1 && entries.has(`${[...tops][0]}/manifest.json`) ? `${[...tops][0]}/` : ""
+  let total = 0
+  for (const [name, read] of entries) {
+    const rel = name.slice(strip.length)
+    if (!rel) continue
+    let bytes: Buffer
+    try { bytes = read() } catch (e) { throw new OpError(`${shown}: ${(e as Error).message}`, 422) }
+    total += bytes.length
+    if (total > UNZIPPED_MAX) throw new OpError(`${shown} unpacks to over ${UNZIPPED_MAX >> 20} MB`, 422)
+    const out = path.join(to, ...rel.split("/"))
+    fs.mkdirSync(path.dirname(out), { recursive: true })
+    fs.writeFileSync(out, bytes)
+  }
+  return to
 }
 
 export function readLock(vault: Vault): Record<string, Locked> {
@@ -191,6 +256,7 @@ export function diff(installed: string, next: string, was: Item, now: Item) {
 export async function newer(l: Locked): Promise<{ tag: string | null; commit: string | null } | null> {
   const src = parseSource(l.source)
   if (src.folder) return { tag: null, commit: null } // (a folder on this machine: what's there now is looked at)
+  if (src.archive) return null // (a zip pinned by its hash is one version: a newer one is installed from its own address)
   if (!src.url) return null
   if (l.tag) {
     const latest = (await tagsOf(src.url, src.dir))[0]

@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `npm run check` flags a plugin's panel that has none (a warning for vault plugins).
 - **Terminal rows have a menu**: right-click (or hold) a session in the Terminals panel or tab to copy its agent's
   session ID or its terminal ID, open the agent's conversation, or end it; `vau terminal list` shows the session ID too.
+- **A plugin from a zip**: `vau plugin install "https://…/x.zip#sha256=<hex>"` installs a plugin downloaded from an
+  https address, checked against its hash, for plugins that aren't in a repository.
 - **A busy day in a calendar stays small**: a query's month shows a day's first three files and "N more" to open the
   rest. The sandbox's files were edited over the weeks before, not all just now, and one made before (desktop, the
   web demo's saved copy) is made again.

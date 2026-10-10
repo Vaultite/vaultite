@@ -6446,6 +6446,63 @@ plugin.every("gone", null)
   check("install: a tag that isn't there fails, saying so", cr.code === 1 && /git clone/.test(cr.err), cr)
   check("install: plugin.install is gated on the public MCP", (await import("../plugins/core/mcp/public.ts")).gateOf("plugin.install", "write", { source: "a/b" }).includes("install"))
 
+  // From a zip at an address pinned by its hash: a made-up server on this machine (http is allowed only to loopback).
+  {
+    const http = await import("node:http"), crypto = await import("node:crypto"), zlib = await import("node:zlib")
+    const zipOf = (files: Record<string, string>) => {
+      const local: Buffer[] = [], central: Buffer[] = []
+      let at = 0
+      for (const [name, text] of Object.entries(files)) {
+        const n = Buffer.from(name), data = Buffer.from(text), packed = zlib.deflateRawSync(data)
+        const crc = zlib.crc32(data)
+        const h = Buffer.alloc(30); h.writeUInt32LE(0x04034b50, 0); h.writeUInt16LE(20, 4); h.writeUInt16LE(8, 8); h.writeUInt32LE(crc, 14)
+        h.writeUInt32LE(packed.length, 18); h.writeUInt32LE(data.length, 22); h.writeUInt16LE(n.length, 26)
+        const c = Buffer.alloc(46); c.writeUInt32LE(0x02014b50, 0); c.writeUInt16LE(20, 6); c.writeUInt16LE(8, 10); c.writeUInt32LE(crc, 16)
+        c.writeUInt32LE(packed.length, 20); c.writeUInt32LE(data.length, 24); c.writeUInt16LE(n.length, 28); c.writeUInt32LE(at, 42)
+        local.push(h, n, packed); central.push(c, n); at += 30 + n.length + packed.length
+      }
+      const cd = Buffer.concat(central), end = Buffer.alloc(22)
+      end.writeUInt32LE(0x06054b50, 0); end.writeUInt16LE(central.length / 2, 8); end.writeUInt16LE(central.length / 2, 10); end.writeUInt32LE(cd.length, 12); end.writeUInt32LE(at, 16)
+      return Buffer.concat([...local, cd, end])
+    }
+    const MOORING = { "mooring/manifest.json": manifest({ id: "mooring", name: "Mooring", version: "0.3.0", repo: "alicepark/mooring" }),
+      "mooring/plugin.ts": PLUGIN_TS.replaceAll("harbor", "mooring"), "mooring/AGENTS.md": "## Mooring\n" }
+    const zips: Record<string, Buffer> = { "/mooring.zip": zipOf(MOORING), "/flat.zip": zipOf({ "manifest.json": manifest({ id: "flat", version: "1.0.0" }) }),
+      "/escape.zip": zipOf({ "manifest.json": manifest({ id: "escape" }), "../outside.txt": "x" }) }
+    const asked: string[] = []
+    const server = http.createServer((req, res) => {
+      asked.push(req.url!)
+      const z = zips[new URL(req.url!, "http://x").pathname]
+      if (!z) { res.writeHead(404); return res.end() }
+      res.writeHead(200, { "content-type": "application/zip" }); res.end(z)
+    })
+    await new Promise<void>((r) => server.listen(0, "127.0.0.1", r))
+    const base = `http://127.0.0.1:${(server.address() as Any).port}`
+    const sha = (p: string) => crypto.createHash("sha256").update(zips[p]).digest("hex")
+    let [zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/mooring.zip?t=one-time-secret#sha256=${sha("/mooring.zip")}` })
+    check("install from a zip: downloaded, its hash checked, its one folder unpacked, off", zc === 200 && zo.id === "mooring" && zo.version === "0.3.0" &&
+      read(".vaultite/plugins/mooring/AGENTS.md") === "## Mooring\n" && exists(".vaultite/plugins/mooring/plugin.ts") && !(conf("plugins").enabled ?? []).includes("mooring") &&
+      asked.at(-1) === "/mooring.zip?t=one-time-secret", [zc, zo])
+    check("install from a zip: the lock keeps its address without the query, and its hash", lock().mooring?.source === `${base}/mooring.zip#sha256=${sha("/mooring.zip")}` &&
+      lock().mooring.tag === null && !JSON.stringify(lock()).includes("one-time-secret"), lock().mooring)
+    const [, up] = await api("POST", "ops/plugin.update", { id: "mooring" })
+    check("install from a zip: pinned, so it's up to date", up[0]?.current === true, up)
+    ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/flat.zip#sha256=${"0".repeat(64)}` })
+    check("install from a zip: a download that isn't its hash is refused", zc === 422 && /isn't the file its #sha256 names/.test(zo.error) && !exists(".vaultite/plugins/flat"), [zc, zo])
+    ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/flat.zip#sha256=${sha("/flat.zip")}` })
+    check("install from a zip: the plugin at the zip's top", zc === 200 && zo.id === "flat", [zc, zo])
+    ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/escape.zip#sha256=${sha("/escape.zip")}` })
+    check("install from a zip: a file outside its folder is refused", zc === 422 && /outside its folder/.test(zo.error) && !exists(".vaultite/plugins/escape"), [zc, zo])
+    ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/flat.zip` })
+    check("install from a zip: without its hash it's refused", zc === 400 && /#sha256=/.test(zo.error), [zc, zo])
+    ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `http://example.com/x.zip#sha256=${"a".repeat(64)}` })
+    check("install from a zip: plain http elsewhere is refused", zc === 400 && /https only/.test(zo.error), [zc, zo])
+    ;[zc, zo] = await api("POST", "ops/plugin.install", { source: `${base}/gone.zip#sha256=${"a".repeat(64)}` })
+    check("install from a zip: a missing file says so", zc === 502 && /answered 404/.test(zo.error), [zc, zo])
+    for (const id of ["mooring", "flat"]) await api("POST", "ops/plugin.uninstall", { id })
+    server.close()
+  }
+
   await vau("plugin", "on", "harbor")
   check("install: turned on by this machine's owner, it's allowed and runs", (await harbor()).loaded && (await api("GET", "harbor"))[1].tide === "high")
   write(".vaultite/plugins/harbor/data.json", JSON.stringify({ mine: 1 }) + "\n")

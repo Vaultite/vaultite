@@ -11,7 +11,7 @@ import { compareVersions } from "../version.ts"
 import { DIR, digestOf } from "../vaultplugins.ts"
 import { type Any, strings } from "./common.ts"
 
-const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, or a folder on this machine" }
+const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" }
 
 export function installOps(app: App): Op[] {
   const tiers = () => new Map(app.app.map((p) => [p.id, p.tier]))
@@ -77,10 +77,16 @@ it needs version and repo), copies it to .vaultite/plugins/<id>/ and records whe
 .vaultite/plugins-lock.json. It's off until turned on (\`vau plugin on <id>\`: it runs code on this machine, so ask the
 user first, and show them what it says it does: its disclosures).
 
+A plugin that isn't in a repository can come as a zip from an https address, pinned by its hash after it
+(#sha256=<64 hex digits>, refused if the download differs): the plugin's files at its top or in its one folder. Its
+address is recorded without its query (a short-lived signed one isn't kept); it has no updates: a newer version is
+another address.
+
   vau plugin install alice/lighthouse
   vau plugin install alice/lighthouse@v1.2.0
   vau plugin install alice/plugins/lighthouse
-  vau plugin install ~/code/lighthouse`,
+  vau plugin install ~/code/lighthouse
+  vau plugin install "https://example.com/lighthouse-1.2.0.zip#sha256=<hex>"`,
     kind: "write",
     owner: "installing a plugin",
     lock: false, // (fetching waits on the network: it writes only at the end)
