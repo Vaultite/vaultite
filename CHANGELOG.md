@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Suggestions land after the link**: picking a `[[link`, `![[embed`, `[[Note#heading` or slash menu item with Enter,
+  Tab or a click puts the cursor after it (past the `]]`, so typing on no longer goes inside the link), and Escape
+  closes the list for good while you keep typing there (Ctrl-Space brings it back).
 - **A new vault has Connections**: Minimal keeps the MCP plugin on, so Settings > Setup and a blank tab offer Claude,
   ChatGPT, Muse and Grok Bot from the start (nothing is on the internet until you sign in to Vaultite Cloud).
 - **Grok Bot connects**: desktop apps sign in through their own localhost address, and a connection takes the name of

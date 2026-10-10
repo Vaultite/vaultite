@@ -17,6 +17,7 @@ import { fenceMenu, linkHandler, livePreview, offBlocks, previewConfig, textStar
 import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
 import { blockOptionSource } from "./blockOptions"
+import { pickLink, quiet, suggestKeys } from "./suggest"
 import { numberGutter } from "./numbers"
 import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
@@ -257,7 +258,6 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     const complete = async (ctx: CompletionContext) => {
       const m = ctx.matchBefore(/\[\[[^[\]\n]*/)
       if (!m) return null
-      const closed = ctx.state.sliceDoc(ctx.pos, ctx.pos + 2) === "]]"
       const md = !!cb.current.markdownLinks?.()
       // [[Note# (or [[# in this file): its headings.
       const hash = m.text.indexOf("#")
@@ -268,7 +268,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         if (!list.length) return null
         return {
           from: m.from + hash + 1,
-          options: list.map((h) => ({ label: h, apply: closed ? h : `${h}]]` })),
+          options: list.map((h) => ({ label: h, apply: pickLink(h) })),
           validFor: /^[^[\]\n|#^]*$/,
         }
       }
@@ -278,13 +278,15 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           label: n.label, detail: n.detail,
           // Markdown links: the whole [[… becomes [name](path.md)
           apply: md && n.path
-            ? (view: EditorView, _c: unknown, _from: number, to: number) => {
+            ? (view: EditorView, _c: unknown, from: number, to: number) => {
               const insert = `[${n.label}](${linkPath(n.path!)})`
-              view.dispatch({ changes: { from: m.from, to: closed ? to + 2 : to, insert }, selection: { anchor: m.from + insert.length } })
+              const end = view.state.sliceDoc(to, to + 2) === "]]" ? to + 2 : to
+              view.dispatch({ changes: { from: from - 2, to: end, insert }, selection: { anchor: from - 2 + insert.length }, userEvent: "input.complete" })
             }
-            : `${n.link ? `${n.link}|${n.label}` : n.insert ?? n.label}${closed ? "" : "]]"}`,
+            : pickLink(n.link ? `${n.link}|${n.label}` : n.insert ?? n.label),
         })),
-        validFor: /^[^[\]\n|]*$/,
+        // (a # asks again: the note's headings)
+        validFor: /^[^[\]\n|#]*$/,
       }
     }
     // Ending editing (a caller that has one): Escape, ⌘Enter, the focus leaving. An open suggestion list closes first;
@@ -367,7 +369,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
               return attach(e, view, [...(e.dataTransfer?.files ?? [])], { from: at, to: at }, "input.drop", cb.current.onPasteFiles)
             },
           }),
-          autocompletion({ override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl)], icons: false }),
+          suggestKeys,
+          autocompletion({ override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl)].map(quiet), icons: false }),
           keymap.of([
             { key: "Mod-b", run: wrap("**") }, { key: "Mod-i", run: wrap("*") },
             { key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess },

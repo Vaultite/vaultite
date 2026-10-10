@@ -13,6 +13,8 @@
   (`SHARED_EDITOR`, core/rules.ts), never their own copy.
 - Every editor registers in `core/editors.ts`, so commands find the one meant (`currentEditor()`): Find and replace
   (`plugins/core/find`) and Folding (`plugins/core/folding`) load their CodeMirror code lazily.
+- Suggestion lists (CodeMirror's autocompletion) share `editor/suggest.ts`: a source is wrapped in `quiet` (Escape
+  keeps it closed), a link's pick is `pickLink` (the cursor after the `]]`); Tab picks as Enter does.
 - Switching views keeps the place (`keepPlace`, components/filePlace.ts).
 - An editor going (its tab no longer drawn, source mode and back) leaves its history and selection for the next one of
   that tab and file (`editor/kept.ts`), brought up to the text as it is then.
@@ -20,5 +22,5 @@
 - Right-click: an image or embed has one menu (components/EmbedMenu.tsx); text has Editing commands' (made of commands
   by id); the desktop app lets the event reach the system first for spelling.
 - Phones: Editing commands' keys sit over the keyboard (`KeyBar`, the terminal's too).
-- QA: `keylists.mjs`, `editing.mjs`, `viewstate.mjs`, `stability.mjs`, `images.mjs`,
+- QA: `suggest.mjs`, `keylists.mjs`, `editing.mjs`, `viewstate.mjs`, `stability.mjs`, `images.mjs`,
   `embedmenus.mjs`, `editormenu.mjs`, `notekeys.mjs`, `keptedits.mjs`.
