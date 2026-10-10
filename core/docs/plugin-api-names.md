@@ -466,7 +466,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.
-- `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
+- `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`; not the plugins' built-in pages (the app opens them itself, as a device's first tab;…
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `usePane()`
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.

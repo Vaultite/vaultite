@@ -1,6 +1,6 @@
 // Recent files, one source for every list of them: opened lately in the workspace, and changed lately on disk.
 import type { Store } from "@/core/data"
-import { openFile, stem, type VaultFile } from "@/core/files"
+import { inPagesDir, openFile, stem, type VaultFile } from "@/core/files"
 import { usePrefs } from "@/core/prefs"
 import { useRecentFiles } from "@/core/scope"
 import { isRecentable } from "@/core/search"
@@ -15,9 +15,10 @@ const SELECT = "recent"
 
 export type RecentKind = "opened" | "changed"
 
-/** The files opened lately in this workspace that are still there (not archived), newest first, at most `n`. */
+/** The files opened lately in this workspace that are still there (not archived), newest first, at most `n`; not the
+ *  plugins' built-in pages (the app opens them itself, as a device's first tab; Pinned has them). */
 export function useOpenedFiles(store: Store, n: number): string[] {
-  const exists = new Set(store.files.files.filter((f) => !f.archived).map((f) => f.path))
+  const exists = new Set(store.files.files.filter((f) => !f.archived && !inPagesDir(f.path)).map((f) => f.path))
   return useRecentFiles().filter((p) => exists.has(p)).slice(0, n)
 }
 

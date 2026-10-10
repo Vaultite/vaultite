@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react"
 import { FileText } from "lucide-react"
 import type { Store } from "@/core/data"
 import { kindIcon } from "@/core/filekinds"
-import { folderOf, isHidden, stem } from "@/core/files"
+import { folderOf, inPagesDir, isHidden, stem } from "@/core/files"
 import { active, formatFor, type SearchDoc } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { excerpt, marksOf, wordRanges } from "../../../core/searchquery.ts"
@@ -136,15 +136,16 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
 }
 
 /** Files that count as "recently changed" (the quick switcher's suggestions, a new tab's list): not the trash's or
- *  other hidden ones, nor the vault's AGENTS.md and CLAUDE.md (instructions for AIs, not notes). */
-export const isRecentable = (path: string) => !isHidden(path) && path !== "AGENTS.md" && path !== "CLAUDE.md"
+ *  other hidden ones, nor the plugins' built-in pages (written by the app, not the user: a copy of one is the user's),
+ *  nor the vault's AGENTS.md and CLAUDE.md (instructions for AIs, not notes). */
+export const isRecentable = (path: string) => !isHidden(path) && !inPagesDir(path) && path !== "AGENTS.md" && path !== "CLAUDE.md"
 
 /** With an empty query: the files opened lately in this workspace (`opened`, newest first), then recently changed
  *  ones, then the pages. */
 export function suggestions(docs: Doc[], opened: string[] = []): Hit[] {
   const pages = docs.filter((d) => d.kind === "Page")
   const byFile = new Map(docs.filter((d) => d.file && d.kind !== "Page" && !d.archived).map((d) => [d.file!, d]))
-  const mine = opened.flatMap((p) => byFile.get(p) ?? []).slice(0, 6)
+  const mine = opened.flatMap((p) => (inPagesDir(p) ? [] : byFile.get(p) ?? [])).slice(0, 6)
   const seen = new Set(mine.map((d) => d.file))
   const files = docs.filter((d) => d.file && d.recent && !d.archived && !d.excluded && isRecentable(d.file) && !seen.has(d.file)).sort((a, b) => b.recent - a.recent).slice(0, Math.max(3, 6 - mine.length))
   const shown = new Set([...mine, ...files].map((d) => d.file))

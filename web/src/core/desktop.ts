@@ -3,7 +3,7 @@
 import { available, commandList, isCustom, keysOf, onCommandsChanged, runCommandId } from "@/core/commands"
 import { getStore, onStore } from "@/core/data"
 import { get, post, upload as uploadFile } from "@/core/http"
-import { openFile } from "@/core/files"
+import { inPagesDir, openFile } from "@/core/files"
 import { dismissNotice, notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
 import { recentFiles, subscribeScoped, workspacePins } from "@/core/scope"
@@ -395,7 +395,7 @@ function syncMenu(sync: (snap: MenuSnapshot) => Promise<unknown>) {
     const snap: MenuSnapshot = {
       commands: commandList().map((c) => ({ id: c.id, name: c.name, keys: keysOf(c), custom: isCustom(c.id), on: available([c]).length > 0 })),
       pinned: (Array.isArray(pins) ? pins : []).filter((p) => exists.has(p)).map((p) => ({ path: p, title: title(p) })),
-      recent: recentFiles().filter((p) => exists.has(p)).slice(0, 15).map((p) => ({ path: p, title: title(p) })),
+      recent: recentFiles().filter((p) => exists.has(p) && !inPagesDir(p)).slice(0, 15).map((p) => ({ path: p, title: title(p) })),
     }
     const json = JSON.stringify(snap)
     if (json === last) return

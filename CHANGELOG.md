@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Recent files are yours**: a blank tab's Recently changed and Recently opened, the quick switcher and Open Recent
+  leave out the plugins' built-in pages (Agents, Errors, a bundle's dashboards); a copy of one in your vault still shows.
 - **The playground, by one name**: the vault menu, the Help menu and the made-up vault itself call it the playground,
   and Manage vaults offers it too.
 - **Terminals run the app's own vau**: it comes first on PATH once your shell's startup files have run, so another
