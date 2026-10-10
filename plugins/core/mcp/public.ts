@@ -10,6 +10,7 @@ import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
 import type { Item } from "../../../core/vault.ts"
 import { blockedHost } from "../../../core/web.ts"
+import { byUser } from "../../../core/writegate.ts"
 import { toolsOf } from "./catalog.ts"
 import { type ConnectOptions, MCP_PATHS, serveApp, SIGNED_HEADER, upgradeApp, verifyConnect } from "./connect.ts"
 import { type Client, handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
@@ -124,8 +125,9 @@ export class PublicMcp {
   }
 
   start() {
+    // An app it signed in acts for the user, like the app's own requests (core/app.ts), not as this plugin on its own.
     this.server = http.createServer((req, res) => {
-      this.handle(req, res).catch((e) => {
+      byUser(() => this.handle(req, res)).catch((e) => {
         console.error("mcp public:", e)
         if (!res.headersSent) this.json(res, 500, { error: "server_error" })
         else res.end()
