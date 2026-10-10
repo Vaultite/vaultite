@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Terminals run the app's own vau**: it comes first on PATH once your shell's startup files have run, so another
+  vau installed elsewhere (Homebrew's, an older one) no longer runs instead.
 - **Suggestions land after the link**: picking a `[[link`, `![[embed`, `[[Note#heading` or slash menu item with Enter,
   Tab or a click puts the cursor after it (past the `]]`, so typing on no longer goes inside the link), and Escape
   closes the list for good while you keep typing there (Ctrl-Space brings it back).

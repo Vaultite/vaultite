@@ -102,10 +102,67 @@ export interface Backend {
 /** How long typed text needs before its Enter: an agent takes a long text as a paste, and an Enter inside that is a new line. */
 const settle = (text: string) => Math.min(1000, 150 + Math.floor(text.length / 4))
 
+// ---------- Vaultite's vau first on PATH: a login shell's files (macOS' path_helper, Homebrew's shellenv) put theirs
+// before what the shell was given, so the shell puts VAULTITE_BIN first again once they've run.
+
+/** The shells' startup files (`shellFiles`): zsh's ZDOTDIR and bash's rcfile. */
+export const SHELL_DIR = path.join(runtimeDir(), "vaultite-terminal", "shell")
+/** Each of zsh's files runs the user's own (from their ZDOTDIR, which their .zshenv may move), with ZDOTDIR theirs
+ *  meanwhile; the last one read (.zlogin, or .zshrc when not a login shell) gives ZDOTDIR back and puts vau first. */
+const zshDone = [
+  "if [[ -z $VAULTITE_USER_ZDOTDIR && $ZDOTDIR == $HOME ]]; then unset ZDOTDIR; fi",
+  "if [[ -n $VAULTITE_BIN ]]; then path=($VAULTITE_BIN ${path:#${(b)VAULTITE_BIN}}); fi",
+  "unset _vau_ours _vau_zdot",
+]
+const zshFile = (name: string, last: string[] = []) => [
+  "# Vaultite's terminals start zsh here (ZDOTDIR): the user's own startup files, then Vaultite's vau first on PATH.",
+  ...(name === ".zshenv" ? ["_vau_ours=$ZDOTDIR _vau_zdot=${VAULTITE_USER_ZDOTDIR:-$HOME}"] : []),
+  "ZDOTDIR=$_vau_zdot",
+  `if [[ -r $ZDOTDIR/${name} ]]; then source $ZDOTDIR/${name}; fi`,
+  ...(name === ".zlogin" ? zshDone : ["_vau_zdot=$ZDOTDIR ZDOTDIR=$_vau_ours", ...last]),
+  "",
+].join("\n")
+const SHELL_FILES: Record<string, string> = {
+  ".zshenv": zshFile(".zshenv"),
+  ".zprofile": zshFile(".zprofile"),
+  ".zshrc": zshFile(".zshrc", ["if [[ ! -o login ]]; then", "  ZDOTDIR=$_vau_zdot", ...zshDone.map((l) => `  ${l}`), "fi"]),
+  ".zlogin": zshFile(".zlogin"),
+  bashrc: [
+    "# Vaultite's terminals start bash with this (--rcfile): a login shell's files, then Vaultite's vau first on PATH.",
+    "if [ -r /etc/profile ]; then . /etc/profile; fi",
+    "for _vau_f in ~/.bash_profile ~/.bash_login ~/.profile; do if [ -r \"$_vau_f\" ]; then . \"$_vau_f\"; break; fi; done",
+    "unset _vau_f",
+    "if [ -n \"$VAULTITE_BIN\" ]; then PATH=\"$VAULTITE_BIN:$PATH\"; fi",
+    "",
+  ].join("\n"),
+}
+/** Write the startup files where they're missing or old (the folder is a temporary one). */
+export function shellFiles() {
+  fs.mkdirSync(SHELL_DIR, { recursive: true })
+  for (const [name, text] of Object.entries(SHELL_FILES)) {
+    const file = path.join(SHELL_DIR, name)
+    let now = ""
+    try { now = fs.readFileSync(file, "utf8") } catch { /* not yet */ }
+    if (now !== text) fs.writeFileSync(file, text)
+  }
+}
+
+/** A login shell's arguments: zsh's own (ZDOTDIR, in the shell's variables, does the rest), bash's files read by
+ *  SHELL_DIR's rcfile, fish's PATH set after its config. */
+export function loginArgs(shell: string): string[] {
+  const name = path.basename(shell)
+  if (name === "bash") return ["--rcfile", path.join(SHELL_DIR, "bashrc"), "-i"]
+  if (name === "fish") return ["-l", "-C", "if set -q VAULTITE_BIN; set -gx PATH $VAULTITE_BIN $PATH; end"]
+  return ["-l"]
+}
+
 /** The login shell's arguments: interactive (so it has the user's PATH) running the agent's command first, then a
- *  plain login shell in its place. */
+ *  plain login shell in its place (zsh's through SHELL_DIR again: its .zlogin gave ZDOTDIR back). */
 export function shellArgs(shell: string, run: AgentRun | null) {
-  return run ? ["-l", "-i", "-c", `${run.command}; exec '${shell.replaceAll("'", "")}' -l`] : ["-l"]
+  const login = loginArgs(shell)
+  if (!run) return login
+  const zdot = path.basename(shell) === "zsh" ? `if [ -n "$VAULTITE_ZDOTDIR" ]; then export ZDOTDIR="$VAULTITE_ZDOTDIR"; fi; ` : ""
+  return [...login.filter((a) => a !== "-i"), "-i", "-c", `${run.command}; ${zdot}exec ${[shell, ...login].map(quote).join(" ")}`]
 }
 /** The script a ready shell sources to become an agent's (typed into it as one short line). */
 export function runScript(file: string, id: string, run: AgentRun) {

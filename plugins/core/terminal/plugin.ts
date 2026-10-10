@@ -8,10 +8,10 @@ import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentStart, type AgentState, quote } from "../../../core/codingagents.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 import {
-  agentLines, HTTPError, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine, type Request,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine, type Request,
 } from "../../../core/plugins.ts"
 import {
-  limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, shellArgs, Tail, type AgentRun, type Backend, type Link, type Listed as Shell,
+  limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, type AgentRun, type Backend, type Link, type Listed as Shell,
 } from "./backend.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
@@ -169,6 +169,21 @@ function env(): Record<string, string> {
 /** The app's folder (the repo, or the packaged app's resources): its bin/ holds the `vau` CLI. */
 const APP_ROOT = path.resolve(plugin.dir, "..", "..", "..")
 
+/** The folder whose vau a terminal finds first: the app's bin/ when Node runs the server; the desktop app has no `node`,
+ *  so there it's a vau in LOCAL/bin that runs bin/vau with the app as Node (as Set up Vaultite's does). */
+function vauBin(): string {
+  if (!process.versions.electron) return path.join(APP_ROOT, "bin")
+  const dir = path.join(LOCAL_DIR, "bin"), file = path.join(dir, "vau")
+  const text = `#!/bin/sh\n# vau for Vaultite's terminals (plugins/core/terminal), remade as needed.\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(path.join(APP_ROOT, "bin", "vau"))} "$@"\n`
+  try {
+    if (fs.readFileSync(file, "utf8") !== text) throw new Error("old")
+  } catch {
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(file, text, { mode: 0o755 })
+  }
+  return dir
+}
+
 /** Where a terminal is opened from: through Tailscale Serve, and which app (the iPhone app sets a cookie: core/phoneapp.ts). */
 type From = { remote: boolean; client: "desktop" | "iphone" | "web" }
 const LOCAL: From = { remote: false, client: process.env.VAULTITE_DESKTOP === "1" ? "desktop" : "web" }
@@ -179,13 +194,21 @@ function fromReq(req: IncomingMessage): From {
 
 /** What a shell is told about where it runs (see the docstring): Vaultite's variables, and PATH with the app's bin/. */
 function context(id: string | null, from: From): Record<string, string> {
+  const bin = vauBin()
+  shellFiles()
   const out: Record<string, string> = {
     VAULTITE: "1",
     VAULTITE_URL: serverUrl(),
     VAULTITE_VAULT: plugin.vault.path,
     VAULTITE_CLIENT: from.client,
     ...(id ? { VAULTITE_TERMINAL: id } : {}),
-    PATH: [path.join(APP_ROOT, "bin"), env().PATH].filter(Boolean).join(":"),
+    VAULTITE_BIN: bin,
+    PATH: [bin, env().PATH].filter(Boolean).join(":"),
+  }
+  // zsh reads its startup files from SHELL_DIR, which reads the user's (backend.ts) and puts VAULTITE_BIN first.
+  if (path.basename(shell()) === "zsh") {
+    Object.assign(out, { ZDOTDIR: SHELL_DIR, VAULTITE_ZDOTDIR: SHELL_DIR })
+    if (process.env.ZDOTDIR) out.VAULTITE_USER_ZDOTDIR = process.env.ZDOTDIR
   }
   if (from.remote) out.VAULTITE_REMOTE = "tailscale"
   return out

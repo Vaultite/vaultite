@@ -16,6 +16,9 @@
   every device, Workspaces or not; an agent's session that ends by itself (or after its report: `keepTabs`) keeps its
   tabs, saying "Session ended" with Restart, as VS Code does.
 - The socket answers this machine, or through Tailscale Serve the owner or `allowUsers`; another Origin is refused.
+- **The app's vau first on PATH** (`VAULTITE_BIN`: bin/, or under the desktop app a vau in LOCAL/bin running it): a
+  login shell's files (path_helper, Homebrew) put theirs first, so shells start through `SHELL_DIR` (backend.ts: zsh's
+  ZDOTDIR, bash's rcfile, fish's -C), which runs the user's files and then puts it first.
 - Gotchas: node-pty's `spawn-helper` may lack its exec bit (fixed at start); a keeper whose checkout moved can't spawn,
   so it retires (`stale`); tmux takes PATH from the client that made the session (the rest per session, `-e`); shells drop
   `ELECTRON_RUN_AS_NODE`; whether a shell runs something is its tty's foreground group (`inFront`), not its name;

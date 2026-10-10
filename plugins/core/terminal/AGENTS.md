@@ -18,7 +18,7 @@ terminals and agents open in this workspace…", `state["core:place"]`), else th
 always this machine. Workspaces save every terminal tab with its machine, so a tab made on one
 machine opens the same shell from the others (when that machine doesn't answer, the tab says so and keeps trying, rather
 than starting a shell of its own); an agent in one of its accounts is `view:terminal/claude_<account>-<id>`. A screenshot pasted into it is saved on the server's machine and its path pasted (Claude Code attaches it); it stays while the shell runs and 30 days after. Its shells have
-`VAULTITE=1`, `VAULTITE_URL`, `VAULTITE_VAULT`, `VAULTITE_CLIENT` (`desktop`, `iphone` or `web`), `VAULTITE_TERMINAL` (its id, for an agent started in it) and the `vau` CLI on PATH;
+`VAULTITE=1`, `VAULTITE_URL`, `VAULTITE_VAULT`, `VAULTITE_CLIENT` (`desktop`, `iphone` or `web`), `VAULTITE_TERMINAL` (its id, for an agent started in it) and this app's `vau` CLI first on PATH;
 an agent started from it is told it runs inside Vaultite where it takes that (Claude Code, OpenCode; the others read this file).
 From a terminal, `vau terminal` lists this machine's sessions (with an agent's own session id, when it says) and the tabs showing them, and opens, resumes (a Claude Code
 session by its title too), reads (`screen`), types into (`send`) and ends them; `vau terminal tidy` closes the tabs of
