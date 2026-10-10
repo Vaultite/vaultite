@@ -6,6 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.4.0 (2026-10-10)
+
+Every AI app connects, from a new vault's first minute.
+
+- **Connections from the start**: a new vault offers Claude, ChatGPT, Muse and Grok Bot; Grok Bot connects too.
+- **Plugins update on their own**, and Claude's plan limits are read live.
+- **Fixes from a new user's first hour**: suggestions land after the link, recent files are yours, terminals run the
+  app's own vau, and the playground has one name.
+
 - **Recent files are yours**: a blank tab's Recently changed and Recently opened, the quick switcher and Open Recent
   leave out the plugins' built-in pages (Agents, Errors, a bundle's dashboards); a copy of one in your vault still shows.
 - **The playground, by one name**: the vault menu, the Help menu and the made-up vault itself call it the playground,
