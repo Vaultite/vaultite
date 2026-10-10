@@ -55,13 +55,18 @@ export function PluginSettingsSheet({ store }: { store: Store }) {
   )
 }
 
+/** The plugins' rows in Setup (`setup`), of those that are on. */
+const setupRows = (disabled: string[]) => PLUGINS.flatMap((p) => (p.setup && isEnabled(p.id, disabled) ? [{ id: p.id, ...p.setup }] : []))
+
 /** Bundles (core/bundles.ts): a whole setup of the app at once, and the one from before the last applied; then the
  *  Plugins page and each plugin's settings. */
 function SetupPanel({ store }: { store: Store }) {
   const prev = store.bundles?.previous ?? null
+  const { disabled } = usePrefs()
   return (
     <Panel title="Setup">
       <div className="hairline flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+        {setupRows(disabled).map((r) => <SettingRow key={r.id} label={r.label} sub={r.sub} onClick={r.run} data-settings-setup={r.id} />)}
         <SettingRow label="Bundles" onClick={openBundles} data-settings-bundles />
         {prev && <SettingRow label="Restore previous setup"
           onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))} data-settings-restore />}
@@ -119,6 +124,7 @@ function findable(store: Store, disabled: string[], order: string[], back: () =>
   const row = (id: string, label: string, where: string, selector: string, sub = ""): Found =>
     ({ id, label, sub, where, words: "", run: () => { back(); revealRow(selector) } })
   const app: Found[] = [
+    ...setupRows(disabled).map((r) => ({ id: `setup-${r.id}`, label: r.label, sub: r.sub, where: "Setup", words: "", run: r.run })),
     { id: "bundles", label: "Bundles", sub: "A whole setup of the app at once", where: "Setup", words: "setup", run: openBundles },
     ...(store.bundles?.previous ? [row("restore", "Restore previous setup", "Setup", "[data-settings-restore]")] : []),
     { id: "plugins", label: "Plugins", sub: "Turn plugins on and off, add your own", where: "Setup", words: "extensions", run: openPlugins },

@@ -32,18 +32,23 @@ draws as pages.
 - **Everything is a plugin.** Modular and hot-reloadable. Even the file tree is one; Vaultite's own (People, logs, notes)
   come with it, off until a bundle or you turn them on; write your own in the vault.
 - **Also a full editor and workspace**: live preview, tabs and splits, backlinks, graph, terminals for your agents, on
-  the Mac, the web and the iPhone.
+  the Mac, Linux and the web. iPhone coming soon.
 
 ## Get started
 
-[**Download Vaultite.dmg**](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg) (an Intel
-Mac: [this one](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg); macOS 13 or later), drag
-it to Applications, and open it (on Linux: the [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest);
-`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+): make a vault (or open a folder of Markdown, changing none of it), and it opens, minimal, with a
-terminal to run Claude Code or Codex in. Or try the playground (a made-up vault) first. More is a
-bundle away (Life OS: your days, people and health), and the MCP plugin puts claude.ai and ChatGPT on it.
+1. **Download** [Vaultite for Mac](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg)
+   ([Intel](https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg); macOS 13 or later) and drag
+   it to Applications. On Linux, the [AppImage or the .deb](https://github.com/Vaultite/vaultite/releases/latest)
+   (`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+).
+2. **Make a vault**, or open a folder of Markdown you already have: Vaultite changes none of it. Or try the playground,
+   a made-up vault, first.
+3. **Connect your AI** in Settings, Connections: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone. Claude
+   Code and Codex in Vaultite's terminals already know the vault.
 
-Agents started in Vaultite's terminals already know the vault; elsewhere, by hand:
+Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". More is a bundle away: Life OS for
+your days, people and health.
+
+Agents outside Vaultite:
 
 ```sh
 claude mcp add vaultite -- vau mcp
@@ -51,8 +56,6 @@ claude mcp add vaultite -- vau mcp
 
 Skills that teach any agent the vault's rules and how to write a plugin: `npx skills add Vaultite/vaultite`, or in
 Claude Code `/plugin marketplace add Vaultite/vaultite` and `/plugin install vaultite@vaultite`.
-
-Try "log a 30 minute run this morning" or "what did I tell you about Alice?".
 
 ## Run from source
 

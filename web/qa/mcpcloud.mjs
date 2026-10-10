@@ -250,7 +250,15 @@ try {
   const popups = []
   page.on("popup", (p) => { popups.push(p.url()); void p.close() })
   await page.goto(`${BASE}/#view/connections`)
-  await page.click("[data-cloud-sign-in]", { timeout: 20_000 })
+  await page.waitForSelector("[data-app-cards]", { timeout: 20_000 }).catch(() => {})
+  check("Connections leads with the four apps, none connected", (await page.$$eval("[data-app-cards] [data-guide-for]", (els) => els.map((e) => e.dataset.guideFor))).join() === "claude,chatgpt,muse,grok-bot"
+    && !(await page.$("[data-app-connected]")))
+  await page.click("[data-guide-for=muse]")
+  await page.waitForSelector("[data-setup=muse] [data-cloud-sign-in]", { timeout: 5000 }).catch(() => {})
+  check("with no address, an app's sheet starts with Vaultite Cloud's sign-in", await page.isVisible("[data-setup=muse] [data-cloud-sign-in]") && !(await page.isVisible("[data-setup=muse] [data-guide]")))
+  await page.keyboard.press("Escape")
+  await page.waitForSelector("[data-setup]", { state: "detached", timeout: 5000 }).catch(() => {})
+  await page.click("[data-connections] [data-cloud-sign-in]", { timeout: 20_000 })
   check("Connections: Sign in opens /connect and asks for its code", await page.isVisible("[data-cloud-code]") && !!(await until(() => popups.includes(`${relay.url}/connect`), 3000)), popups)
   await page.fill("[data-cloud-code]", "zzzz-zzzz")
   await page.click("[data-cloud-redeem]")
@@ -286,7 +294,7 @@ try {
   }
   await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections.png") })
   await page.setViewportSize({ width: 390, height: 844 })
-  check("on a phone the buttons name just the app, whole", !!(await until(async () => (await page.innerText("[data-guide-for=grok-bot]")).trim() === "Grok Bot", 3000))
+  check("on a phone the buttons name just the app, whole", !!(await until(async () => (await page.innerText("[data-guide-for=grok-bot] [data-app-name]")).trim() === "Grok Bot", 3000))
     && await page.$$eval("[data-guide-for] .truncate", (els) => els.every((e) => e.scrollWidth <= e.clientWidth)))
   await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections-phone.png") })
   await page.setViewportSize({ width: 1200, height: 800 })

@@ -17,7 +17,7 @@ Open a terminal (⌘P, or Ctrl+P off a Mac, then Open terminal) and run \`claude
 
 - ⌘O (Ctrl+O) finds any file, ⌘P (Ctrl+P) runs any command.
 - Settings, Bundles turns on a whole setup at once: Life OS for your days, people and health. Settings, Plugins turns on one feature at a time.
-- The MCP plugin lets claude.ai and ChatGPT use this vault, on the web and on your phone.
+- Settings, Connections puts Claude, ChatGPT, Muse and Grok Bot in this vault, on the web and on your phone.
 - Delete this note when you're done with it.
 `
 

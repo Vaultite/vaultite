@@ -119,7 +119,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `fileRows`: Rows of the file tree it draws into itself, by path (see FileRow); call `fileRowsChanged()` when they change. Keep a row's object the same while it says the same: only rows whose object changed are drawn again.
 - `home`: Where a device's first tab goes and where a phone with nowhere to be goes: a tab target, or null. The first plugin that's on and answers wins; with none, a new tab.
 - `newTab`: Sections it adds to a blank tab's page, by name ("<plugin id>:<name>", arranged in newtab.json).
-- `settingsPanel`: Its settings sheet, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Plugins never add to the Settings page: it's the app's own.
+- `setup`: A row in Settings' Setup panel, for a plugin that's part of setting the app up (Connections). Nothing else of a plugin is on the Settings page.
+- `settingsPanel`: Its settings sheet, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Plugins never add to the Settings page, but for `setup`.
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).
 - `newFiles`: Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile).
 - `background`: Runs while it's on, drawn nowhere, in every open window and device: listen and draw there (Workspaces keeps tabs in step), never write on a timer. What must happen once is the server's: plugin.every. Return null.
