@@ -29,10 +29,11 @@ import { eventOps, eventsOf, matching, summary, typeMatches, type VaultEvent } f
 import { ARCHIVED, setMarks } from "./fileprops.ts"
 import { hookOps } from "./hooks.ts"
 import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
-import { VaultPlugins } from "./vaultplugins.ts"
+import { digestOf, VaultPlugins } from "./vaultplugins.ts"
 import * as G from "./grants.ts"
 import { byUser, logFailure, onItsOwn, WriteRefused } from "./writegate.ts"
-import { readLock } from "./installs.ts"
+import { type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
+import { autoUpdates } from "./updates.ts"
 import { PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault } from "./vault.ts"
@@ -76,6 +77,8 @@ export class App {
         const on = enabled(this.vault, this.plugins)
         // The core's own: .trash emptied of what's been there 30 days (one machine does it, so iCloud sees each delete once).
         return [{ plugin: "core", job: { name: "trash", every: "1d", run: () => F.emptyTrash(this.vault) } },
+          // Installed plugins that update on their own (core/updates.ts): one machine fetches them, the others follow (adopt).
+          { plugin: "core", job: { name: "plugin-updates", every: "1h", run: () => Object.keys(readLock(this.vault)).length ? this.runOp("plugin.update", { auto: true }) : null } },
           ...this.plugins.filter((p) => on.has(p.id)).flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job })))]
       },
       here: (machine) => this.runsHere(machine),
@@ -123,6 +126,7 @@ export class App {
    *  plugin's kinds apply to them; `refresh`: their dashboards follow. */
   async syncPlugins(refresh = true) {
     const changed = await this.vaultPlugins.sync()
+    this.adopt()
     if (changed) {
       this.plugins = [...this.app, ...this.vaultPlugins.loaded()]
       LOADED.splice(0, LOADED.length, ...this.plugins)
@@ -131,6 +135,56 @@ export class App {
     // Only the pages of plugins that are on are installed (core/pages.ts): one turned on brings its pages now.
     if (refresh && (changed || this.pagesOf !== this.onKey())) this.installPages()
     return changed
+  }
+
+  private adopting = new Map<string, number>() // plugin id + hash -> when it was last checked against its source
+
+  /** An installed plugin another machine updated on its own (the vault synced its files), waiting here: when this
+   *  machine allowed it before and it updates on its own, it's fetched from its source at the lock's version and, the
+   *  same files, allowed here too. The lock is a vault file, so its word alone is never enough. */
+  private adopt() {
+    const lock = readLock(this.vault)
+    const vps = this.vaultPlugins
+    for (const vp of vps.found.values()) {
+      const l = lock[vp.id], a = vps.trust.approval(vp.id)
+      if (!l?.history?.length || !a || a.edits || l.hash !== vp.digest.content || vps.trust.approved(vp.id, vp.digest.content)) continue
+      if (!vps.enabled().has(vp.id) || vp.problems.length || !autoUpdates(this.vault.config("plugins"), vp.id, l.source)) continue
+      const key = `${vp.id}\0${vp.digest.content}`
+      if (Date.now() - (this.adopting.get(key) ?? 0) < 10 * 60_000) continue
+      this.adopting.set(key, Date.now())
+      vps.adopting.add(vp.id)
+      void (async () => {
+        let f: Fetched | null = null
+        try {
+          f = await fetchSource({ ...parseSource(l.source), tag: l.tag }, new Map(this.app.map((p) => [p.id, p.tier])), [...vps.found.keys()].filter((x) => x !== vp.id))
+          const d = digestOf(f.dir)
+          if (d.content !== vp.digest.content || digestOf(vp.dir).content !== d.content) return
+          vps.allow(vp.id, { version: l.version, digest: d })
+          await this.syncPlugins()
+          const u = l.history!.at(-1)!
+          await this.tellUpdated([{ id: vp.id, name: typeof vp.manifest.name === "string" ? vp.manifest.name : vp.id, to: l.version, notes: u.to === l.version ? u.notes : [] }])
+        } catch (e) {
+          console.error(`plugin updates: ${vp.id} couldn't be checked against its source:`, (e as Error).message)
+        } finally {
+          f?.done()
+          vps.adopting.delete(vp.id)
+        }
+      })()
+    }
+  }
+
+  /** Tell the user plugins updated on their own: one notification for them all, kept in the inbox (else a toast). */
+  async tellUpdated(rows: { id: string; name: string; to: string; notes?: string[] }[]) {
+    if (!rows.length) return
+    const one = rows.length === 1 ? rows[0] : null
+    const title = one ? `${one.name} updated to ${one.to}${one.notes?.length ? `: ${one.notes[0]}` : ""}`
+      : `${rows.length} plugins updated: ${rows.map((r) => `${r.name} ${r.to}`).join(", ")}`
+    const link = one ? `detail:plugin/${one.id}` : "view:plugins"
+    try {
+      const r = await this.dispatchOrReply("POST", ["inbox", "events"], {}, { source: "plugins", kind: "info", title, link })
+      if (r.status < 300) return
+    } catch { /* no Inbox: a toast */ }
+    try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "What's new", open: link } }) } catch { /* no window */ }
   }
 
   /** Which plugins are on, as one string (what installPages was last run for); "offering" while a new vault is being

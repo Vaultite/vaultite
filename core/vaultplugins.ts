@@ -14,6 +14,7 @@ import type { VaultEvent } from "./events.ts"
 import { hookProblems, Hooks } from "./hooks.ts"
 import type { Op } from "./ops.ts"
 import { type Digest, trustOf, type Trust } from "./trust.ts"
+import { official } from "./updates.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
 
 export const DIR = ".vaultite/plugins"
@@ -260,6 +261,8 @@ export class VaultPlugins {
   trust: Trust
   /** Why the plugin index blocks a plugin's version, or null (the App sets it: core/pluginindex.ts). */
   blocked: (vp: VaultPlugin) => string | null = () => null
+  /** Updated elsewhere on their own, being checked against their source to be allowed here (App.adopt). */
+  adopting = new Set<string>()
   private queue: Promise<unknown> = Promise.resolve()
   private declared = new WeakSet<Op>() // the ops a plugin got from its manifest (dropped when it's loaded again)
 
@@ -458,8 +461,8 @@ export class VaultPlugins {
         folder: `${DIR}/${vp.id}`, on: on.has(vp.id), loaded: !!vp.plugin, problems: [...vp.problems, ...failed, ...(vp.blocked ? [vp.blocked] : [])], warnings: vp.warnings,
         version: str("version"), author: str("author"), repo: str("repo"), fundingUrl: str("fundingUrl"), disclosures: disclosuresOf(m),
         // where it was installed from (.vaultite/plugins-lock.json: core/installs.ts), null for one made here
-        source: lock[vp.id] && typeof lock[vp.id] === "object" ? lock[vp.id] : null,
-        approval: changes ? { state: changes.since ? "changed" : "new", since: changes.since, changed: changes.files } : null,
+        source: lock[vp.id] && typeof lock[vp.id] === "object" ? { ...lock[vp.id], official: official(String(lock[vp.id].source ?? "")) } : null,
+        approval: changes ? { state: this.adopting.has(vp.id) ? "updating" : changes.since ? "changed" : "new", since: changes.since, changed: changes.files } : null,
         blocked: vp.blocked, hash: vp.digest.content, edits: !!this.trust.approval(vp.id)?.edits,
         // its blocks as its manifest declares them (core/blocks.ts): the app checks their options against them
         blocks: declsOf(m),

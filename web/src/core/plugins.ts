@@ -20,6 +20,7 @@ import { notify, notifyError } from "@/core/notify"
 import { openDetail } from "@/core/nav"
 import { askGrant } from "@/core/grants"
 import { CATEGORIES, categoryOf, OTHER } from "../../../core/categories.ts"
+import { autoUpdates, byPolicy } from "../../../core/updates.ts"
 import { setMarks } from "../../../core/fileprops.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 
@@ -150,6 +151,50 @@ export async function allowPlugin(p: Plugin, edits?: boolean) {
     return true
   } catch (e) {
     notifyError(e, `Couldn't allow ${p.name} on this machine`)
+    return false
+  }
+}
+
+/** Whether an installed plugin updates on its own (core/updates.ts: the vault's policy, or its own choice). */
+export function autoUpdating(p: Plugin, prefs = getPrefs()) {
+  const src = p.meta?.source
+  return !!src && autoUpdates(prefs, p.id, src.source)
+}
+
+/** Have it update on its own, or not: kept as its own choice only when it differs from the vault's policy. */
+export function setAutoUpdate(p: Plugin, on: boolean) {
+  const src = p.meta?.source
+  if (!src) return
+  const { updatesOn, updatesOff } = getPrefs()
+  const own = on !== byPolicy(getPrefs(), src.source)
+  return setPrefs({ updatesOn: [...updatesOn.filter((id) => id !== p.id), ...(own && on ? [p.id] : [])],
+    updatesOff: [...updatesOff.filter((id) => id !== p.id), ...(own && !on ? [p.id] : [])] })
+}
+
+/** Update an installed plugin now and let it run here (the user asked for it here): the version it went to, or null. */
+export async function updatePlugin(p: Plugin) {
+  try {
+    const [row] = await op<{ applied?: boolean; to?: string; error?: string; current?: boolean }[]>("plugin.update", { id: p.id, apply: true })
+    if (row?.error) throw new Error(row.error)
+    if (!row?.applied) { notify(`${p.name} is up to date`); return null }
+    if (switchedOn(p)) await op("plugin.allow", { id: p.id })
+    void reload()
+    return row.to ?? null
+  } catch (e) {
+    notifyError(e, `Couldn't update ${p.name}`)
+    return null
+  }
+}
+
+/** Put it back to the version before its last update (core/coreops/installs.ts plugin.rollback). */
+export async function rollbackPlugin(p: Plugin) {
+  try {
+    const r = await op<{ to: string; from: string }>("plugin.rollback", { id: p.id })
+    void reload()
+    notify(`${p.name} is back to ${r.to}. It won't update to ${r.from} on its own.`)
+    return true
+  } catch (e) {
+    notifyError(e, `Couldn't roll back ${p.name}`)
     return false
   }
 }

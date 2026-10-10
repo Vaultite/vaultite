@@ -1,11 +1,14 @@
 // A plugin's detail sheet: what it does, its switch and settings, a vault plugin's approval on this machine (what changed,
 // what it says it does, Allow), and an inert live preview of its dashboards with made-up data (core/mock.ts).
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { ChevronRight, Folder, Server, Settings2, ShieldAlert } from "lucide-react"
+import { ChevronRight, Folder, RefreshCw, Server, Settings2, ShieldAlert } from "lucide-react"
 import { dateText, PreviewLive, type Store } from "@/core/data"
 import { mockStore } from "@/core/mock"
 import { noteParts } from "@/core/frontmatter"
-import { allowPlugin, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, setSwitch, switchedOn, templatesOf, tintOfPlugin, usePluginsVersion, type Plugin } from "@/core/plugins"
+import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tintOfPlugin,
+  updatePlugin, usePluginsVersion, type Plugin } from "@/core/plugins"
+import { op } from "@/core/http"
+import { updatable } from "../../../core/updates.ts"
 import { openWebLink } from "@/core/links"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { usePrefs } from "@/core/prefs"
@@ -15,6 +18,7 @@ import { showInTree } from "@/components/FileTree"
 import { Where } from "@/components/PluginSettings"
 import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
+import { notify, notifyError } from "@/core/notify"
 import { List, PageHeader, Row, Section, SheetHead, Switch } from "@/components/kit"
 import { capitalize, cn } from "@/lib/utils"
 
@@ -81,9 +85,23 @@ function Kept({ plugin, files }: { plugin: Plugin; files: string[] }) {
 const sentence = (s: string) => s[0].toUpperCase() + s.slice(1)
 const button = "h-9 cursor-pointer rounded-[8px] px-3.5 text-[15px] font-medium transition-colors md:h-8 md:text-[13px]"
 
+/** Updated on its own on another machine: checked against its source before it runs here, nothing to do. */
+function Updating({ plugin }: { plugin: Plugin }) {
+  const m = plugin.meta!
+  return (
+    <div className="mb-5 flex items-center gap-2.5 rounded-[10px] bg-muted px-3.5 py-3" data-plugin-updating={plugin.id}>
+      <RefreshCw className="size-[18px] shrink-0 animate-spin text-muted-foreground" strokeWidth={2} />
+      <p className="text-[15px] leading-[20px] md:text-[13px] md:leading-[18px]">
+        Updating to {m.version}: checking it matches {m.source?.repo ?? "its source"} before it runs on this machine.
+      </p>
+    </div>
+  )
+}
+
 /** On in the vault but not allowed on this machine at this version: why, what changed, what it says it does, and Allow. */
 function Approval({ plugin }: { plugin: Plugin }) {
   const a = plugin.meta!.approval!
+  if (a.state === "updating") return <Updating plugin={plugin} />
   const says = disclosed(plugin.meta!.disclosures)
   const [all, setAll] = useState(false)
   const shown = all ? a.changed : a.changed.slice(0, 8)
@@ -144,6 +162,83 @@ function About({ plugin }: { plugin: Plugin }) {
   )
 }
 
+const HOW = { auto: "on its own", manual: "by hand", rollback: "rolled back" } as const
+
+/** An installed plugin's updates: whether it updates on its own, a check for a newer version, and what each update
+ *  brought, newest first (the last one can be rolled back). */
+function Updates({ plugin }: { plugin: Plugin }) {
+  const prefs = usePrefs()
+  const src = plugin.meta!.source!
+  const [busy, setBusy] = useState<"check" | "update" | "back" | null>(null)
+  const [found, setFound] = useState<{ to: string } | "current" | null>(null)
+  const history = [...(src.history ?? [])].reverse()
+  const last = history[0]
+  const canBack = !!last && last.how !== "rollback" && last.to === src.version && !!src.tag
+  const check = async () => {
+    setBusy("check")
+    try {
+      const [row] = await op<{ current?: boolean; to?: string; error?: string }[]>("plugin.update", { id: plugin.id })
+      if (row?.error) throw new Error(row.error)
+      setFound(row?.current || !row?.to ? "current" : { to: row.to })
+    } catch (e) { notifyError(e, `Couldn't check ${plugin.name} for updates`) } finally { setBusy(null) }
+  }
+  const update = async () => {
+    setBusy("update")
+    const to = await updatePlugin(plugin)
+    if (to) { setFound(null); notify(`${plugin.name} updated to ${to}`) }
+    setBusy(null)
+  }
+  const back = async () => {
+    if (!await confirmDialog({ title: `Roll back ${plugin.name} to ${last.from}?`, body: `It won't update to ${last.to} on its own again; a newer version will.`, confirm: "Roll back" })) return
+    setBusy("back")
+    await rollbackPlugin(plugin)
+    setBusy(null)
+  }
+  return (
+    <Section title="Updates" className="mb-5">
+      <div className="space-y-2" data-plugin-updates={plugin.id}>
+        <List>
+          {updatable(src.source) && (
+            <Row title="Update on its own" meta={src.skip ? `Skips ${src.skip}, rolled back from` : undefined}
+              right={<Switch on={autoUpdating(plugin, prefs)} onChange={(v) => void setAutoUpdate(plugin, v)} label={`Update ${plugin.name} on its own`} />} />
+          )}
+          {updatable(src.source) && (
+            <Row title={found === "current" ? "Up to date" : found ? `${found.to} is out` : "Check for updates"} data-plugin-update-check
+              right={found && found !== "current"
+                ? <button type="button" disabled={!!busy} onClick={() => void update()} className={cn(button, "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50")}>{busy === "update" ? "Updating…" : "Update"}</button>
+                : <button type="button" disabled={!!busy} onClick={() => void check()} className={cn(button, "bg-foreground/[0.06] hover:bg-foreground/[0.1] disabled:opacity-50")}>{busy === "check" ? "Checking…" : "Check"}</button>} />
+          )}
+        </List>
+        {history.length > 0 && (
+          <List>
+            {history.slice(0, 10).map((u, i) => (
+              <div key={`${u.at}-${i}`} className="py-2.5" data-plugin-update-entry={u.to}>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-[15px] font-medium md:text-[14px]">{u.how === "rollback" ? `Back to ${u.to}` : u.to}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] text-muted-foreground md:text-[12px]">
+                    from {u.from}, {HOW[u.how]}, {dateText(new Date(u.at), { day: "numeric", month: "short", year: "numeric" })}
+                  </span>
+                  {i === 0 && canBack && (
+                    <button type="button" disabled={!!busy} onClick={() => void back()} data-plugin-rollback
+                      className="shrink-0 cursor-pointer text-[13px] text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground disabled:opacity-50 md:text-[12px]">
+                      {busy === "back" ? "Rolling back…" : `Roll back to ${u.from}`}
+                    </button>
+                  )}
+                </div>
+                {u.notes.length > 0 && (
+                  <ul className="mt-1 list-disc space-y-0.5 pl-4 text-[14px] leading-[19px] text-muted-foreground md:text-[13px] md:leading-[18px]">
+                    {u.notes.map((n) => <li key={n}>{n}</li>)}
+                  </ul>
+                )}
+              </div>
+            ))}
+          </List>
+        )}
+      </div>
+    </Section>
+  )
+}
+
 // (the "core" tier's plugins are the app's built-in ones: "core" alone is the app itself; those not `essential` are
 // Vaultite plugins, first-party extras)
 const kickerOf = (p: Plugin) => (p.tier === "vault" ? "Vault plugin" : p.essential ? "Built-in plugin" : "Vaultite plugin")
@@ -187,6 +282,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
           <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
         </button>
       )}
+      {plugin.meta?.source && <Updates plugin={plugin} />}
       {plugin.meta && <About plugin={plugin} />}
       {/* Only what this plugin builds on, like VS Code's Dependencies tab (never what builds on it). */}
       {(plugin.requires || plugin.enhances || plugin.runsOnServer) && (

@@ -8,6 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - **Claude's plan limits, asked live**: each account's are asked of Claude Code as /usage does (every two minutes, or
   now with the refresh button), no open session needed; a status line no longer shows one account's limits as another's.
+- **Plugins update on their own**: Vaultite's installed plugins update by themselves every hour (Plugins page: Vaultite's,
+  all or none; each plugin's page can say otherwise), one notification says what's new, and every machine that allowed a
+  plugin runs the new version once it matches its source. Each plugin's page lists its updates with what each brought,
+  and can roll back the last one; the day's recap lists them too (`vau plugin history`, `vau plugin rollback`).
 
 ## 0.3.0 (2026-10-10)
 

@@ -3,7 +3,7 @@
 import { useMemo, useState, type ComponentType } from "react"
 import {
   Bookmark, Bot, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, CircleDot, CircleX, Dot, FilePlus, FolderInput, ListPlus,
-  Pencil, RotateCcw, Trash2,
+  Pencil, Puzzle, RotateCcw, Trash2,
 } from "lucide-react"
 import { addDays, cn, dow, Empty, fmtDay, fmtLongDay, Loading, Markdown, openFile, Panel, Segmented, today, type FileCtx, type Store } from "@vaultite"
 import { Chips } from "./Feed"
@@ -25,9 +25,10 @@ const LOOKS: Record<RecapKind, Look> = {
   started: { icon: CircleDot, tint: "var(--blue)", label: "Task started" },
   reopened: { icon: RotateCcw, tint: "var(--gray)", label: "Task reopened" },
   agent: { icon: Bot, tint: "var(--orange)", label: "Agent" },
+  updated: { icon: Puzzle, tint: "var(--indigo)", label: "Plugin updated" },
   other: { icon: Dot, tint: "var(--gray)", label: "" },
 }
-export const GROUP_TINT: Record<RecapGroup, string> = { notes: "var(--purple)", tasks: "var(--teal)", captures: "var(--blue)", logs: "var(--pink)", agents: "var(--orange)" }
+export const GROUP_TINT: Record<RecapGroup, string> = { notes: "var(--purple)", tasks: "var(--teal)", captures: "var(--blue)", logs: "var(--pink)", agents: "var(--orange)", plugins: "var(--indigo)" }
 
 /** An entry's line without its verb (the label says it), and what the label adds after it: "Captured · Raindrop". */
 function partsOf(e: RecapEntry) {
@@ -35,6 +36,7 @@ function partsOf(e: RecapEntry) {
   const rest = verb && e.text.startsWith(`${verb} `) ? e.text.slice(verb.length + 1) : e.text
   const bits = rest.split(" · ")
   if (e.kind === "captured" && bits.length > 1) return { label: `Captured · ${bits[1]}`, title: [bits[0], ...bits.slice(2)].join(" · ") }
+  if (e.kind === "updated" && e.text.startsWith("Rolled back ")) return { label: "Plugin rolled back", title: e.text.slice(12) }
   if (e.kind === "agent") { const m = /^(.+?) changed (.+)$/.exec(bits[0]); if (m) return { label: m[1], title: [`Changed ${m[2]}`, ...bits.slice(1)].join(" · ") } }
   return { label: LOOKS[e.kind].label, title: rest }
 }

@@ -916,7 +916,21 @@ async function sourcesOf(date: string): Promise<Sources> {
     kindOf: (type) => ({ life: !!type && life.has(type), log: type === "log" }),
     captureFolders: recapSettings().folders,
     statuses: taskStatuses(),
+    updates: pluginUpdates(),
   }
+}
+
+/** Installed plugins' updates (.vaultite/plugins-lock.json's history: core/installs.ts), as the recap reads them. Read
+ *  from the file, not through plugin.history: a recap is made while a request may hold the vault. */
+function pluginUpdates(): NonNullable<Sources["updates"]> {
+  const lock = plugin.vault.config("plugins-lock")
+  return Object.entries(lock).flatMap(([id, l]) => {
+    const history = l && typeof l === "object" && Array.isArray((l as { history?: unknown }).history) ? (l as { history: Record<string, unknown>[] }).history : []
+    const m = LOADED.find((p) => p.id === id)?.manifest
+    const name = typeof m?.name === "string" && m.name ? m.name : id
+    return history.filter((u) => u && typeof u.at === "string").map((u) => ({ t: Date.parse(u.at as string), name, from: String(u.from), to: String(u.to),
+      how: u.how === "auto" || u.how === "rollback" ? u.how : "manual" as const, notes: Array.isArray(u.notes) ? u.notes.map(String) : [] }))
+  })
 }
 
 /** A day's entries made now from what this machine has (a few seconds' cache: every window asks; a file changed since

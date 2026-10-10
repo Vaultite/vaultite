@@ -12,7 +12,8 @@ says which workspace the user's window is on.
 
 **Plugins**, `.vaultite/plugins.json`: `disabled` (app plugins off), `enabled` (vault plugins and off-by-default ones
 on: Vaultite plugins like today, people, logs), their order, `collapsedCategories` (the Plugins page's folded sections,
-`<group>:<category>`: `core:navigation`, `vaultite:life`, `vault:other`), `index` (the plugin directory's address, an https URL; unset: Vaultite's). A
+`<group>:<category>`: `core:navigation`, `vaultite:life`, `vault:other`), `index` (the plugin directory's address, an https URL; unset: Vaultite's), `updates` (which installed plugins update on their
+own: `vaultite`, the default, `all` or `off`) with `updatesOn` / `updatesOff` (plugin ids that do or don't, whatever it says). A
 plugin's settings: `.vaultite/plugins/<id>/data.json` (`vau docs <id>`).
 
 **Sidebar panels**, `.vaultite/sidebars.json`: each sidebar a stack of panels top to bottom, the folded ones, and the

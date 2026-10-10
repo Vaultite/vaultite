@@ -156,7 +156,13 @@ lists every vault plugin with `problems` (why it didn't load or build: its manif
 of several plugins in a repository, tagged `<folder>/v1.2.0`) fetches it at its newest version tag, checks it, copies it to `.vaultite/plugins/<id>/` and records where from in `.vaultite/plugins-lock.json`;
 it's off until turned on. A zip at an https address works too, pinned by its hash (`vau plugin install
 "https://example.com/x-1.2.0.zip#sha256=<hex>"`: the plugin at the zip's top or in its one folder; no updates). `vau plugin update` says what a newer tag changes (files, disclosures) and `--apply` installs
-it (to be allowed again); `vau plugin uninstall <id>`. Writing one in its own folder: `vau plugin install <folder>`, turn
+it (to be allowed again); `vau plugin uninstall <id>`. Installed plugins update on their own: every hour one machine
+(Machines' first) runs `vau plugin update --auto` for those plugins.json's `updates` covers (`vaultite`, the default:
+Vaultite's own; `all`; `off`; a plugin's own choice in `updatesOn` / `updatesOff`), and every machine that allowed one
+before allows the new version once its files match its source at that tag (the lock alone isn't trusted). Not one edited
+here, nor one that says it does more beyond the vault than it did. Each update is kept in its lock entry's `history`
+with what's new (its commits' subjects since, upkeep left out): `vau plugin history`; `vau plugin rollback <id>` goes
+back to the version before and skips the newer one from then on. Writing one in its own folder: `vau plugin install <folder>`, turn
 it on, then after each edit `vau plugin update <id> --apply` (it keeps running); a `.vaultiteignore` (like .gitignore)
 leaves its tests and QA out of installs. The Plugins page's Browse (`vau plugin search`) lists the plugin
 directory: every GitHub repository with the topic `vaultite-plugin` and a version tag, read daily into one index

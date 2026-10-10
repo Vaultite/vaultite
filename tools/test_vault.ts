@@ -6405,11 +6405,11 @@ plugin.every("gone", null)
   const { execFileSync } = await import("node:child_process")
   const g = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main",
     "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...args], { cwd, stdio: "pipe" }).toString()
-  const repo = (name: string, files: Record<string, string>, tag: string | null) => {
+  const repo = (name: string, files: Record<string, string>, tag: string | null, message = "x") => {
     const d = path.join(tmp, "repos", name)
     for (const [f, t] of Object.entries(files)) { fs.mkdirSync(path.dirname(path.join(d, f)), { recursive: true }); fs.writeFileSync(path.join(d, f), t) }
     if (!fs.existsSync(path.join(d, ".git"))) g(d, "init", "-q")
-    g(d, "add", "-A"); g(d, "commit", "-q", "-m", "x")
+    g(d, "add", "-A"); g(d, "commit", "-q", "-m", message)
     if (tag) g(d, "tag", tag)
     return d
   }
@@ -6658,6 +6658,101 @@ plugin.every("gone", null)
   delete process.env.VAULTITE_PLUGIN_INDEX
   for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(harbor|notags|dinghy|ketch|skipper) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
   fs.rmSync(path.join(VAULT, ".vaultite/cache/plugin-index.json"), { force: true })
+
+  // Updating on their own (core/updates.ts): Vaultite's by default, what's new from the commits since, kept in the lock's
+  // history (plugin.history, the day's recap); rolled back, that version is skipped; another machine checks the synced
+  // files against their source before letting them run.
+  {
+    process.env.VAULTITE_GITHUB = pathToFileURL(path.join(tmp, "repos")).href
+    const lm = (id: string, v: string, o: Any = {}) => JSON.stringify({ id, name: id[0].toUpperCase() + id.slice(1), description: "A made-up plugin: the harbour's lights.",
+      version: v, author: "Alice Park", repo: id === "lantern" ? "Vaultite/plugins" : "boblee/buoy", apiVersion: 1, disclosures: {}, ...o })
+    const lts = (id: string, light: string) => PLUGIN_TS.replaceAll("harbor", id).replace('"high"', `"${light}"`)
+    const light = async () => (await api("GET", "lantern"))[1]?.tide
+    repo("Vaultite/plugins", { "lantern/manifest.json": lm("lantern", "1.0.0"), "lantern/plugin.ts": lts("lantern", "dim") }, "lantern/v1.0.0", "feat(lantern): a light")
+    repo("boblee/buoy", { "manifest.json": lm("buoy", "1.0.0"), "plugin.ts": lts("buoy", "red") }, "v1.0.0")
+    for (const source of ["Vaultite/plugins/lantern", "boblee/buoy"]) await api("POST", "ops/plugin.install", { source })
+    await vau("plugin", "on", "lantern"); await vau("plugin", "on", "buoy")
+    const vaultiteRow = (await vplugin("lantern")).source
+    check("auto updates: a source of Vaultite's is flagged official, another's isn't", vaultiteRow?.official === true && (await vplugin("buoy")).source?.official === false, vaultiteRow)
+    repo("Vaultite/plugins", { "lantern/plugin.ts": lts("lantern", "bright") }, null, "feat(lantern): brighter at night")
+    repo("Vaultite/plugins", { "README.md": "Lights.\n" }, null, "feat: a readme, not the lantern's")
+    repo("Vaultite/plugins", { "lantern/AGENTS.md": "## Lantern\n" }, null, "chore(lantern): tidy")
+    repo("Vaultite/plugins", { "lantern/manifest.json": lm("lantern", "1.1.0") }, "lantern/v1.1.0", "fix(lantern): flickers less")
+    repo("boblee/buoy", { "manifest.json": lm("buoy", "1.1.0"), "plugin.ts": lts("buoy", "green") }, "v1.1.0")
+    await api("DELETE", "inbox/events")
+    let [ac, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    const lr = (ao as Any[]).find((r) => r.id === "lantern")
+    check("auto updates: by default only Vaultite's, applied and allowed here (it was before), running", ac === 200 && lr?.applied && lr.allowed &&
+      !(ao as Any[]).some((r) => r.id === "buoy") && await light() === "bright" && lock().buoy.version === "1.0.0", ao)
+    const hist = lock().lantern.history
+    check("auto updates: the lock keeps it in its history, what's new from its folder's commits (upkeep left out)", hist?.length === 1 && hist[0].from === "1.0.0" &&
+      hist[0].to === "1.1.0" && hist[0].how === "auto" && JSON.stringify(hist[0].notes) === '["Brighter at night","Flickers less"]', hist)
+    let [, inboxUp] = await api("GET", "inbox/events")
+    check("auto updates: one notification, kept in the inbox, opening the plugin", inboxUp.events[0]?.title === "Lantern updated to 1.1.0: Brighter at night" &&
+      inboxUp.events[0].link === "detail:plugin/lantern" && inboxUp.events[0].source === "plugins", inboxUp.events[0])
+    const ht = (await vau("plugin", "history")).out
+    check("history: vau plugin history says each update, how and what's new", /Lantern 1\.0\.0 -> 1\.1\.0 \(on its own\)\n  Brighter at night\n  Flickers less/.test(ht), ht)
+    check("history: --since leaves earlier ones out", (await api("POST", "ops/plugin.history", { since: "2999-01-01" }))[1].length === 0)
+    const rc = (await vau("recap")).out
+    check("history: the day's recap has it, under Plugins", rc.includes("Updated Lantern to 1.1.0 · from 1.0.0, on its own") && rc.includes("> Brighter at night"), rc)
+    const { parseRecap, groupOf } = await import("../plugins/core/activity/recap.ts")
+    check("history: a recap's update line reads back as one", groupOf(parseRecap("- 10:00 Updated Lantern to 1.1.0 · from 1.0.0\n- 10:05 Rolled back Lantern to 1.0.0 · from 1.1.0\n").entries.map((e) => e.kind)[1]) === "plugins")
+
+    // A plugin's own choice over the vault's: buoy on its own, then all of them but buoy.
+    write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updatesOn: ["buoy"] }))
+    ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    check("auto updates: updatesOn takes one the policy leaves", (ao as Any[]).find((r) => r.id === "buoy")?.applied && lock().buoy.version === "1.1.0" &&
+      (await api("GET", "buoy"))[1]?.tide === "green", ao)
+    repo("boblee/buoy", { "manifest.json": lm("buoy", "1.2.0") }, "v1.2.0")
+    write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: "all", updatesOn: null, updatesOff: ["buoy"] }))
+    ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    check("auto updates: updatesOff keeps one out, even with all", !(ao as Any[]).some((r) => r.id === "buoy") && lock().buoy.version === "1.1.0", ao)
+    write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: "off", updatesOff: null }))
+    ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    check("auto updates: off, none", (ao as Any[]).length === 0, ao)
+    write(".vaultite/plugins.json", JSON.stringify({ ...conf("plugins"), updates: null }))
+
+    // Rolled back: the version before, still running; that version is skipped from now on, a newer one isn't.
+    let [bc, bo] = await api("POST", "ops/plugin.rollback", { id: "lantern" })
+    check("rollback: back to the version before, allowed, its history says so, the newer one skipped", bc === 200 && bo.to === "1.0.0" && bo.allowed && await light() === "dim" &&
+      lock().lantern.version === "1.0.0" && lock().lantern.skip === "1.1.0" && lock().lantern.history.at(-1).how === "rollback", [bo, lock().lantern])
+    ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    check("rollback: updating on its own skips that version", (ao as Any[]).find((r) => r.id === "lantern")?.skipped === "1.1.0" && lock().lantern.version === "1.0.0", ao)
+    ;[bc, bo] = await api("POST", "ops/plugin.rollback", { id: "lantern" })
+    check("rollback: not twice in a row (nothing before a rollback to go back to)", bc === 409, [bc, bo])
+    repo("Vaultite/plugins", { "lantern/manifest.json": lm("lantern", "1.2.0"), "lantern/plugin.ts": lts("lantern", "steady") }, "lantern/v1.2.0", "feat(lantern): a steady light")
+    ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    check("rollback: a newer version is taken (what's new since the one it had), and the skip is gone", (ao as Any[]).find((r) => r.id === "lantern")?.applied && await light() === "steady" && !lock().lantern.skip &&
+      JSON.stringify(lock().lantern.history.at(-1).notes) === '["Brighter at night","Flickers less","A steady light"]', [ao, lock().lantern])
+    repo("Vaultite/plugins", { "lantern/manifest.json": lm("lantern", "1.3.0", { disclosures: { network: ["lights.example.com"] } }) }, "lantern/v1.3.0", "feat(lantern): weather")
+    ;[, ao] = await api("POST", "ops/plugin.update", { auto: true })
+    check("auto updates: not one that says it does more beyond the vault now (that's the user's call)", /does more beyond the vault/.test((ao as Any[]).find((r) => r.id === "lantern")?.error) &&
+      lock().lantern.version === "1.2.0", ao)
+
+    // Another machine updated it (the vault synced its files and lock): checked against the source, then allowed here.
+    const now = await vplugin("lantern")
+    app.vaultPlugins.trust.approve("lantern", { content: "0".repeat(16), files: {} }, "1.0.0")
+    await app.syncPlugins()
+    const waitFor = async (ok: () => Promise<boolean>) => { for (let i = 0; i < 100 && !await ok(); i++) await new Promise((r) => setTimeout(r, 100)); return ok() }
+    await api("DELETE", "inbox/events")
+    check("adopt: updated elsewhere, the same files as its source's: allowed here, running, said once", await waitFor(async () => (await vplugin("lantern")).loaded) &&
+      await light() === "steady" && app.vaultPlugins.trust.approved("lantern", now.hash) &&
+      (await waitFor(async () => (await api("GET", "inbox/events"))[1].events[0]?.title === "Lantern updated to 1.2.0: Brighter at night")), [await vplugin("lantern"), (await api("GET", "inbox/events"))[1].events])
+    write(".vaultite/plugins/lantern/plugin.ts", lts("lantern", "a stranger's"))
+    await app.syncPlugins()
+    const forged = (await vplugin("lantern")).hash
+    write(".vaultite/plugins-lock.json", JSON.stringify({ ...lock(), lantern: { ...lock().lantern, hash: forged } }))
+    app.vaultPlugins.trust.approve("lantern", { content: "0".repeat(16), files: {} }, "1.0.0")
+    await app.syncPlugins()
+    await waitFor(async () => !app.vaultPlugins.adopting.has("lantern"))
+    const after = await vplugin("lantern")
+    check("adopt: files that aren't the source's (the lock agreeing) wait for the user", !after.loaded && after.approval?.state === "changed" && !app.vaultPlugins.trust.approved("lantern", forged), after)
+
+    for (const id of ["lantern", "buoy"]) await api("POST", "ops/plugin.uninstall", { id })
+    for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(lantern|buoy) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
+    await api("DELETE", "inbox/events")
+    delete process.env.VAULTITE_GITHUB
+  }
 
   // Trust on a vault this machine hasn't opened: none of its plugins run (a shared vault), a new install's first one neither.
   {

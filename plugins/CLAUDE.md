@@ -50,7 +50,8 @@
   (`digestOf`), in `VAULTITE_LOCAL/trust/`. Turned on by the owner it's allowed; otherwise, or changed since, it waits
   (`approval`); `edits` lets later edits run. **Risk**: once allowed it's code on the server's machine; the rules are hygiene, not a
   sandbox. From elsewhere: `plugin.install` (git, at a version tag), the directory's index and blocklist
-  (core/installs.ts, core/pluginindex.ts, `tools/plugin-index.ts`). A changed `plugin.ts` is imported again under a new
+  (core/installs.ts, core/pluginindex.ts, `tools/plugin-index.ts`); updates on their own (core/updates.ts, App.adopt:
+  another machine's update runs here only once its files match the source's, never on the lock's word). A changed `plugin.ts` is imported again under a new
   `?v=<hash>`; `index.tsx` is bundled with rolldown against the app's one React and CodeMirror. Without code, herdr-style
   (core/hooks.ts): the manifest's `ops`, `events`, `startup` and `schedule` run argv commands (no shell) that call `vau`
   back. Examples: `tools/fixtures/lighthouse/`, `tools/fixtures/wordcount/`.

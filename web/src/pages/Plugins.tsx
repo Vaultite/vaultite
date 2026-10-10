@@ -6,6 +6,7 @@ import { allowPlugin, byCategory, hostOf, hostsNow, isEnabled, names, pluginById
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { categoryOf } from "../../../core/categories.ts"
+import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 import { cn } from "@/lib/utils"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
@@ -158,8 +159,29 @@ function Waiting({ list }: { list: Plugin[] }) {
   )
 }
 
+const POLICY_HINT: Record<UpdatePolicy, string> = {
+  vaultite: "Vaultite's own update by themselves; others wait for you to update them.",
+  all: "Every installed plugin updates by itself, on each machine that allowed it.",
+  off: "None: update each from its page, or from Browse.",
+}
+
+/** Which installed plugins update on their own (plugins.json `updates`): Vaultite's, all of them, or none. */
+function AutoUpdates() {
+  const policy = policyOf(usePrefs())
+  return (
+    <div className="mb-3 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5 max-md:flex-col max-md:items-stretch" data-plugins-updates>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] md:text-[13px] md:font-medium">Update on their own</span>
+        <span className="block text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">{POLICY_HINT[policy]}</span>
+      </span>
+      <Segmented value={policy} onChange={(v) => void setPrefs({ updates: v })} label="Which plugins update on their own" className="w-full shrink-0 md:w-[230px]"
+        options={[{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]} />
+    </div>
+  )
+}
+
 /** One tier's plugins: its heading on the page's left edge, then a section per category. */
-function Group({ tier, title, list, intro, searching, files, originals }: { tier: string; title: string; list: Plugin[]; intro?: React.ReactNode; searching: boolean; files: string[]; originals: Map<string, Plugin> }) {
+function Group({ tier, title, list, intro, below, searching, files, originals }: { tier: string; title: string; list: Plugin[]; intro?: React.ReactNode; below?: React.ReactNode; searching: boolean; files: string[]; originals: Map<string, Plugin> }) {
   const collapsed = usePrefs().collapsedCategories ?? []
   const sections = byCategory(list)
   const keys = sections.map((s) => sectionKey(tier, s.id))
@@ -178,6 +200,7 @@ function Group({ tier, title, list, intro, searching, files, originals }: { tier
         )}
       </div>
       {intro && <p className="mb-2 text-[13px] leading-[18px] text-muted-foreground">{intro}</p>}
+      {below}
       {sections.map((s) => (
         <Category key={s.id} id={sectionKey(tier, s.id)} label={s.label} list={s.plugins} searching={searching} files={files} originals={originals}
           foldAll={(fold) => foldTier(keys, fold)} />
@@ -293,13 +316,14 @@ export function Plugins({ store }: { store: Store }) {
           </label>
         )}
       </div>
-      {tab === "installed" && <Waiting list={all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval)} />}
+      {tab === "installed" && <Waiting list={all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")} />}
       {tab === "browse" ? <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={(id) => { setTab("installed"); reveal(id) }} /> : TIERS.map(({ tier, title }) => {
         const list = shown.filter((p) => groupOf(p) === tier)
         const total = all.filter((p) => groupOf(p) === tier).length
         // Filtering: a tier with nothing left leaves (the vault one too, unless it has none at all and nothing's filtered).
         if (!list.length && (tier !== "vault" || filtering || total)) return null
-        return <Group key={tier} tier={tier} title={title} list={list} searching={!!q} intro={tier === "vault" ? vaultIntro : tier === "vaultite" ? vaultiteIntro : undefined} files={files} originals={originals} />
+        return <Group key={tier} tier={tier} title={title} list={list} searching={!!q} intro={tier === "vault" ? vaultIntro : tier === "vaultite" ? vaultiteIntro : undefined}
+          files={files} originals={originals} below={tier === "vault" && !filtering && all.some((p) => p.meta?.source) ? <AutoUpdates /> : null} />
       })}
       {/* Plugins other plugins run (Obsidian's), a group per host, without categories. */}
       {tab === "installed" && hostsNow().map(([h, info]) => {

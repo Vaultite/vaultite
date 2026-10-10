@@ -2,9 +2,9 @@
 // reads anywhere. Written by plugin.ts (build.ts makes the entries), read back by the app; no imports, so both sides can.
 
 /** What an entry is about: a file made, changed, moved or deleted; something captured (a clip, a bookmark, a
- *  recording); a log or another record of your life; a task's state; an agent's session of changes. */
+ *  recording); a log or another record of your life; a task's state; an agent's session of changes; a plugin updated. */
 export type RecapKind = "created" | "edited" | "moved" | "deleted" | "captured" | "logged" | "done" | "cancelled" | "started"
-  | "reopened" | "agent" | "other"
+  | "reopened" | "agent" | "updated" | "other"
 
 export type RecapEntry = {
   /** HH:MM, local. */
@@ -25,6 +25,7 @@ export const RECAP_GROUPS = [
   { id: "captures", label: "Captures", kinds: ["captured"] },
   { id: "logs", label: "Logs", kinds: ["logged"] },
   { id: "agents", label: "Agents", kinds: ["agent"] },
+  { id: "plugins", label: "Plugins", kinds: ["updated"] },
 ] as const satisfies readonly { id: string; label: string; kinds: readonly RecapKind[] }[]
 export type RecapGroup = typeof RECAP_GROUPS[number]["id"]
 export const groupOf = (k: RecapKind): RecapGroup | null => RECAP_GROUPS.find((g) => (g.kinds as readonly string[]).includes(k))?.id ?? null
@@ -32,7 +33,7 @@ export const groupOf = (k: RecapKind): RecapGroup | null => RECAP_GROUPS.find((g
 /** Each kind's first word in the line ("Completed" a task); an agent's line is its name, then "changed". */
 const VERBS: [RecapKind, string][] = [["created", "Created"], ["edited", "Edited"], ["moved", "Moved"], ["deleted", "Deleted"],
   ["captured", "Captured"], ["logged", "Logged"], ["done", "Completed"], ["cancelled", "Cancelled"], ["started", "Started"],
-  ["reopened", "Reopened"]]
+  ["reopened", "Reopened"], ["updated", "Updated"], ["updated", "Rolled"]]
 export const verbOf = (k: RecapKind) => VERBS.find(([x]) => x === k)?.[1] ?? ""
 const kindOfLine = (text: string): RecapKind => {
   const w = text.split(" ")[0]

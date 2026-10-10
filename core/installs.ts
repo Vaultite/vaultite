@@ -11,6 +11,7 @@ import { OpError } from "./ops.ts"
 import { today } from "./plugins.ts"
 import { DISCLOSURES, disclosuresOf } from "./pluginmeta.ts"
 import { ignoreOf, userFilesOf, walk } from "./rules.ts"
+import { notesOf, type Update } from "./updates.ts"
 import { compareVersions, tagVersion } from "./version.ts"
 import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
 import { unzip } from "./unzip.ts"
@@ -18,8 +19,13 @@ import type { Item, Vault } from "./vault.ts"
 
 /** Where a plugin came from, as .vaultite/plugins-lock.json keeps it (so another machine knows): `source` as asked,
  *  `repo` on GitHub, the tag and commit fetched (null from a plain folder), its content hash and version then. */
-export type Locked = { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; hash: string; installed: string }
+export type Locked = { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; hash: string; installed: string
+  /** Its updates, oldest first (at most HISTORY_MAX). */
+  history?: Update[]
+  /** A version rolled back from: updating on its own skips it (a newer one is taken). */
+  skip?: string }
 export const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
+export const HISTORY_MAX = 30
 
 /** What a source names: a git address to clone (or a plain folder to copy), its GitHub repo, the plugin's folder in it
  *  (`dir`, for a repository of several plugins: its tags are `<dir>/v1.2.0`), a tag asked for; or a zip to download
@@ -209,8 +215,10 @@ function writeLock(vault: Vault, id: string, entry: Locked | null) {
 
 
 /** Put a fetched plugin's files in the vault as `.vaultite/plugins/<id>/` (its settings, data.json, kept), swapping the
- *  whole folder at once; records it in the lock. */
-export function place(vault: Vault, f: Fetched, src: Source): Locked {
+ *  whole folder at once; records it in the lock, with `change` in its history (an update: how, its notes, a version to
+ *  skip from now on). */
+export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Update["how"]; notes: string[]; skip?: string }): Locked {
+  const was = readLock(vault)[f.id]
   const root = vault.abs(DIR), target = path.join(root, f.id)
   const fresh = path.join(root, `.${f.id}.new`), old = path.join(root, `.${f.id}.old`)
   fs.rmSync(fresh, { recursive: true, force: true })
@@ -226,8 +234,11 @@ export function place(vault: Vault, f: Fetched, src: Source): Locked {
   if (fs.existsSync(target)) fs.renameSync(target, old)
   fs.renameSync(fresh, target)
   fs.rmSync(old, { recursive: true, force: true })
+  const version = String(f.manifest.version ?? "")
+  const history = [...(was?.history ?? []), ...(change && was ? [{ from: was.version, to: version, at: new Date().toISOString(), how: change.how, notes: change.notes }] : [])]
   const entry: Locked = { source: src.given, repo: src.repo ?? (typeof f.manifest.repo === "string" ? f.manifest.repo : null), tag: f.tag, commit: f.commit,
-    version: String(f.manifest.version ?? ""), hash: digestOf(target).content, installed: today() }
+    version, hash: digestOf(target).content, installed: today(), ...(history.length ? { history: history.slice(-HISTORY_MAX) } : {}),
+    ...(change?.skip ? { skip: change.skip } : {}) }
   writeLock(vault, f.id, entry)
   return entry
 }
@@ -249,6 +260,27 @@ export function diff(installed: string, next: string, was: Item, now: Item) {
   for (const h of hosts0) if (!hosts1.includes(h)) disclosures.push(`no longer talks to ${host(h)}`)
   for (const k of ["shell", "outsideVault", "clipboard"] as const) if (!!d0[k] !== !!d1[k]) disclosures.push(`${d1[k] ? "now" : "no longer"} ${DISCLOSURES[k]}`)
   return { files, disclosures }
+}
+
+/** What's new between two commits of a source (its folder's, for a repository of several): its commits' subjects as
+ *  release notes (core/updates.ts). A treeless clone, so only commits and folders are fetched; [] when it can't tell. */
+export async function releaseNotes(src: Source, from: string | null, to: string | null): Promise<string[]> {
+  if (!src.url || !from || !to || from === to) return []
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-notes-"))
+  try {
+    await git(["clone", "--quiet", "--bare", "--filter=blob:none", src.url, tmp])
+    const out = await git(["log", "--reverse", "--format=%s", `${from}..${to}`, ...(src.dir ? ["--", src.dir] : [])], tmp)
+    return notesOf(out.split("\n").filter(Boolean))
+  } catch {
+    return []
+  } finally {
+    fs.rmSync(tmp, { recursive: true, force: true })
+  }
+}
+
+/** The tag of one of a source's versions (to go back to it), or null. */
+export async function tagOf(src: Source, version: string) {
+  return src.url ? (await tagsOf(src.url, src.dir)).find((t) => tagVersion(t) === version) ?? null : null
 }
 
 /** An installed plugin's newer version, if there may be one: by tag (a newer version tag), by commit for one installed

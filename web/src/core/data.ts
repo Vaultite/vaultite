@@ -68,13 +68,17 @@ export type VaultPluginInfo = {
   bundle: string | null
   pages: { name: string; text: string }[]
 } & VaultMeta
+import type { Update } from "../../../core/updates.ts"
 /** What a vault plugin says about itself and where it came from, and whether this machine lets it run (core/trust.ts). */
 export type VaultMeta = {
   version: string | null; author: string | null; repo: string | null; fundingUrl: string | null; disclosures: Disclosures
   /** Where it was installed from (.vaultite/plugins-lock.json), null for one made here. */
-  source: { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; installed: string } | null
-  /** On, but waiting for this machine's owner to allow it: new here, or changed since (`changed`: its files that did). */
-  approval: { state: "new" | "changed"; since: string | null; changed: string[] } | null
+  source: { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; installed: string
+    /** Its updates, oldest first (core/installs.ts Update); a version rolled back from; whether it's Vaultite's own. */
+    history?: Update[]; skip?: string; official: boolean } | null
+  /** On, but waiting for this machine's owner to allow it: new here, or changed since (`changed`: its files that did);
+   *  `updating`: updated on its own elsewhere, being checked against its source to run here too. */
+  approval: { state: "new" | "changed" | "updating"; since: string | null; changed: string[] } | null
   /** Why the plugin directory blocks this version, or null. */
   blocked: string | null
   /** Its files' hash: allowing it is refused if they changed since it was shown. */

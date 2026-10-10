@@ -28,6 +28,8 @@ export type Sources = {
   captureFolders: string[]
   /** The Tasks plugin's own statuses, by symbol. */
   statuses?: Record<string, TaskState>
+  /** Installed plugins' updates (the op plugin.history): when, the plugin's name, versions, how, what's new. */
+  updates?: { t: number; name: string; from: string; to: string; how: "auto" | "manual" | "rollback"; notes: string[] }[]
 }
 
 /** A file's properties and body; one whose properties can't be read is all body. */
@@ -279,6 +281,12 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
       if (agentName) add(e.t, "agent", "", [], { agent: { name: agentName, session: e.actor.session ?? e.actor.terminal, rel: p } })
       else add(e.t, "deleted", `Deleted ${plainName(p)}`)
     }
+  }
+
+  for (const u of s.updates ?? []) {
+    if (!inDay(u.t)) continue
+    if (u.how === "rollback") add(u.t, "updated", `Rolled back ${u.name} to ${u.to} · from ${u.from}`)
+    else add(u.t, "updated", `Updated ${u.name} to ${u.to} · from ${u.from}${u.how === "auto" ? ", on its own" : ""}`, u.notes.slice(0, QUOTE_LINES).map(quoteLine))
   }
 
   for (let i = made.length - 1; i >= 0; i--) {

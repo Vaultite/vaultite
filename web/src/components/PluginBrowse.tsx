@@ -14,7 +14,7 @@ import { menuBelow } from "@/components/ContextMenu"
 import { cn } from "@/lib/utils"
 import { disclosed, type Disclosures } from "../../../core/pluginmeta.ts"
 import type { BrowseEntry, BrowseSource } from "@/core/define"
-import { hostsNow, usePluginsVersion } from "@/core/plugins"
+import { hostsNow, pluginById, updatePlugin, usePluginsVersion } from "@/core/plugins"
 
 type Sort = "stars" | "new" | "updated"
 type Entry = {
@@ -197,8 +197,9 @@ function Directory({ query, showInstalled }: { query: string; showInstalled: (id
     setBusy(e.id)
     try {
       if (e.update) {
-        await op("plugin.update", { id: e.id, apply: true })
-        notify(`${e.name} is updated: allow it to run again`, { action: { label: "Review", run: () => openDetail(`plugin/${e.id}`) } })
+        const p = pluginById(e.id)
+        const to = p ? await updatePlugin(p) : null
+        if (to) notify(`${e.name} updated to ${to}`, { action: { label: "What's new", run: () => openDetail(`plugin/${e.id}`) } })
       } else {
         await op("plugin.install", { source: e.source })
         notify(`${e.name} is installed, off until you turn it on`, { action: { label: "Show", run: () => showInstalled(e.id) } })
