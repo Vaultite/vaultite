@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Every sidebar panel opens in a tab**: Buttons now has a tab (drag its heading onto a pane, or Open in a tab), and
+  `npm run check` flags a plugin's panel that has none (a warning for vault plugins).
 - **A busy day in a calendar stays small**: a query's month shows a day's first three files and "N more" to open the
   rest. The sandbox's files were edited over the weeks before, not all just now, and one made before (desktop, the
   web demo's saved copy) is made again.

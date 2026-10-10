@@ -306,11 +306,17 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
 }
 
 /** The keys of `<key>: { ... }` in a plugin's definePlugin (index.tsx's source; depth 1 only, strings and comments
- *  skipped): "blocks", the blocks it draws in the app; "icons", the icons it adds by name. */
-export function defKeys(src: string, key: "blocks" | "icons"): string[] {
+ *  skipped): "blocks", the blocks it draws in the app; "icons", the icons it adds by name; "sidebar", its panels. */
+export function defKeys(src: string, key: "blocks" | "icons" | "sidebar"): string[] {
+  return defEntries(src, key).map((e) => e.key)
+}
+
+/** defKeys with each key's value as source text. */
+export function defEntries(src: string, key: "blocks" | "icons" | "sidebar"): { key: string; value: string }[] {
   const at = src.search(new RegExp(`\\b${key}:\\s*\\{`))
   if (at < 0) return []
-  const out: string[] = []
+  const out: { key: string; value: string; from: number }[] = []
+  const close = (to: number) => { const e = out.at(-1); if (e && !e.value) e.value = src.slice(e.from, to) }
   let i = src.indexOf("{", at) + 1, depth = 1, expectKey = true
   while (i < src.length && depth > 0) {
     const c = src[i]
@@ -318,16 +324,17 @@ export function defKeys(src: string, key: "blocks" | "icons"): string[] {
     if (c === "/" && src[i + 1] === "*") { i = src.indexOf("*/", i) + 2; continue }
     if (depth === 1 && expectKey) {
       const m = /^\s*(?:"([\w-]+)"|'([\w-]+)'|([A-Za-z_$][\w$]*))\s*:/.exec(src.slice(i))
-      if (m) { out.push(m[1] ?? m[2] ?? m[3]); i += m[0].length; expectKey = false; continue }
+      if (m) { out.push({ key: m[1] ?? m[2] ?? m[3], value: "", from: i + m[0].length }); i += m[0].length; expectKey = false; continue }
     }
     if (c === '"' || c === "'" || c === "`") { const q = c; i++; while (i < src.length && src[i] !== q) i += src[i] === "\\" ? 2 : 1; i++; continue }
     if ("{([".includes(c)) depth++
     else if ("})]".includes(c)) depth--
-    else if (c === "," && depth === 1) expectKey = true
+    else if (c === "," && depth === 1) { close(i); expectKey = true }
     else if (!/\s/.test(c)) expectKey = false
     i++
   }
-  return out
+  close(i - 1)
+  return out.map(({ key, value }) => ({ key, value }))
 }
 
 /** Every icon a manifest can name (npm run check and a plugin's CI, where the app's source is): Lucide's (their own
@@ -356,7 +363,7 @@ export function textBlockNames(dir: string): string[] {
 }
 
 /** What breaks a plugin's declarations: its blocks' and settings' own problems, a drawn block that isn't declared or
- *  has no text side, a declared block it doesn't draw. */
+ *  has no text side, a declared block it doesn't draw, a sidebar panel with no tab to show it in. */
 export function blockProblems(dir: string, m: Record<string, unknown>, label: string): string[] {
   const where = `${label}/manifest.json`
   const out = [...declProblems(m.blocks, where), ...settingDeclProblems(m.settings, where)]
@@ -368,5 +375,7 @@ export function blockProblems(dir: string, m: Record<string, unknown>, label: st
     if (!texts.has(b)) out.push(`${label}: block '${b}' has no text side: plugin.block("${b}", ...) in plugin.ts, what /api/render shows`)
   }
   for (const b of Object.keys(decls)) if (!drawn.includes(b)) out.push(`${where}: declares block '${b}', which index.tsx doesn't draw`)
+  for (const p of defEntries(src, "sidebar")) if (!/\bview\s*:/.test(p.value))
+    out.push(`${label}/index.tsx: sidebar panel '${p.key}' has no view: give it one (a tab showing it), so it drags onto a pane and opens in a tab`)
   return out
 }

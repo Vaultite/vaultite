@@ -272,7 +272,7 @@ export type SidebarPanel = {
    *  source, so keep them a plain list of strings. */
   names?: string[]
   /** The view that shows this panel in a tab, so its heading drags onto a pane and its menu has "Open in a tab". Give
-   *  every panel one: without it, it reads as a panel that can't be dragged. */
+   *  every panel one: without it, it reads as a panel that can't be dragged (`npm run check` says so). */
   view?: string
 }
 export type SidebarCtx = { store: Store
