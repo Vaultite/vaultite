@@ -6,6 +6,18 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.3.0 (2026-10-10)
+
+Your AI apps up front, and your Mac's Vaultite from anywhere.
+
+- **Connections**: Claude, ChatGPT, Muse and Grok Bot on one page, from Settings or a blank tab, each set up in one sheet.
+- **From anywhere**: the phone and any browser reach your Mac's Vaultite at your vaultite.app address while it's on.
+- **Plugins**: their pages built in, a yes before they write on their own, and installs from a zip.
+
+- **Connections leads with your AI apps**: Claude, ChatGPT, Muse and Grok Bot as cards that say whether each is
+  connected, each opening its steps in a sheet (signing in to Vaultite Cloud first when there's no address yet), with
+  the account and addresses last. It's first in Settings > Setup and on a blank tab until an app is connected; what an
+  app writes is named as it signed in.
 - **Open your Mac's Vaultite from anywhere**: signed in to Vaultite Cloud, the phone and any browser reach the whole app
   at `https://<handle>.vaultite.app` while the Mac is on, after signing in with the Vaultite account; terminals and
   coding agents stay off there unless turned on in Connections.
