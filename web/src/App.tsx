@@ -113,7 +113,7 @@ const manageVaults = () => (desktopApp ? desktopApp.manageVaults() : openDetail(
 const VAULT_MENU = (): MenuItem[] => [
   ...otherVaults().map((v) => ({ label: `Open ${v.name}`, run: () => { (desktopApp ? desktopApp.openVault(v.path) : webVaults.open(v.path)).catch((e) => notifyError(e, "Couldn't open it")) } })),
   { label: "Manage vaults", sep: !!otherVaults().length, run: () => { manageVaults() } },
-  ...(desktopApp?.openSandbox ? [{ label: "Open the sandbox", run: () => { desktopApp!.openSandbox!() } }] : []), // a made-up vault to try things in
+  ...(desktopApp?.openSandbox ? [{ label: "Open the playground", run: () => { desktopApp!.openSandbox!() } }] : []), // a made-up vault to try things in
   ...(phoneApp ? [{ label: "Switch server…", run: () => { phoneApp!.launcher() } }] : []), // the iPhone app's servers
 ]
 
@@ -293,7 +293,7 @@ export default function App() {
   const [palette, setPalette] = useState<"search" | "commands" | null>(null)
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
-  const vaultName = store ? (store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
+  const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
   const vaultMenu = (e: React.MouseEvent) => menuBelow(e, VAULT_MENU())
   const newNote = async () => {
     const s = getStore()
@@ -399,7 +399,7 @@ export default function App() {
     { id: "files:hide-archived", name: "Hide archived files", when: () => getPrefs().showArchived, run: () => setPrefs({ showArchived: false }), icon: ArchiveX },
     { id: "vault:reload", name: "Reload the vault", run: () => reload(), icon: RefreshCw },
     { id: "vault:manage", name: "Manage vaults", run: manageVaults, icon: Vault },
-    { id: "vault:sandbox", name: "Open the sandbox vault", when: () => !!desktopApp?.openSandbox, run: () => desktopApp?.openSandbox?.(), icon: FlaskConical },
+    { id: "vault:sandbox", name: "Open the playground", when: () => !!desktopApp?.openSandbox, run: () => desktopApp?.openSandbox?.(), icon: FlaskConical },
     { id: "app:setup", name: "Set up Vaultite", when: () => !!desktopApp?.setup, run: () => desktopApp?.setup?.(), icon: CirclePlay },
     { id: "app:switch-server", name: "Switch server…", when: () => !!phoneApp, run: () => phoneApp?.launcher(), icon: Server },
     { id: "file:open-outside", name: "Open file from outside the vault…", when: () => !!desktopApp, run: () => desktopApp?.pickOutside(), icon: FileInput },
@@ -569,6 +569,6 @@ let sandboxTold = false
 function sandboxNotice() {
   if (sandboxTold) return
   sandboxTold = true
-  notify("This is the sandbox: changes here are lost when it's opened again. Make a vault of your own to keep notes.", { duration: 10000, id: "sandbox",
+  notify("This is the playground: changes here are lost when it's opened again. Make a vault of your own to keep notes.", { duration: 10000, id: "sandbox",
     ...(desktopApp?.setup ? { action: { label: "Set up my vault", run: () => desktopApp!.setup!() } } : {}) })
 }

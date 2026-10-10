@@ -125,7 +125,8 @@ function save(now = false) {
   if (now) write()
   else saveTimer = setTimeout(write, 500)
 }
-const nameOf = (p: string) => path.basename(p) || p
+// (the sandbox is the playground wherever its name shows)
+const nameOf = (p: string) => (p === sandboxPath() ? "Playground" : path.basename(p) || p)
 const find = (p: string) => known.find((v) => v.path === p)
 function remember(p: string) {
   let v = find(p)

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **The playground, by one name**: the vault menu, the Help menu and the made-up vault itself call it the playground,
+  and Manage vaults offers it too.
 - **Terminals run the app's own vau**: it comes first on PATH once your shell's startup files have run, so another
   vau installed elsewhere (Homebrew's, an older one) no longer runs instead.
 - **Suggestions land after the link**: picking a `[[link`, `![[embed`, `[[Note#heading` or slash menu item with Enter,

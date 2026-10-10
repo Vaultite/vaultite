@@ -42,7 +42,7 @@ export type MenuContext = {
   showLogs: () => void
   /** Window ▸ Maximize (off a Mac, whose Zoom is a role): the focused window maximized, or back. */
   maximize: () => void
-  /** Help ▸ Open sandbox vault, when the app has one. */
+  /** Help ▸ Open the playground (the sandbox), when the app has one. */
   sandbox?: () => void
 }
 
@@ -292,7 +292,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       { label: "Vaultite help", icon: icon("circle-help"), click: () => ctx.openDoc("README.md") },
       { label: "Release notes", icon: icon("scroll-text"), click: () => ctx.openDoc("CHANGELOG.md") },
       cmd("hotkeys:open", "Keyboard shortcuts", "keyboard", { always: true }),
-      !!ctx.sandbox && { label: "Open sandbox vault", icon: icon("flask-conical"), click: ctx.sandbox! },
+      !!ctx.sandbox && { label: "Open the playground", icon: icon("flask-conical"), click: ctx.sandbox! },
       sep,
       !!ctx.issues && { label: "Report an issue", icon: icon("bug"), click: () => ctx.openExternal(ctx.issues!) },
       { label: "Show logs", icon: icon("file-terminal"), click: ctx.showLogs },

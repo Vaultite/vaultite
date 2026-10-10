@@ -1,14 +1,14 @@
 // Manage vaults: known vaults, create one, open a folder, or (desktop) connect to another machine's server. The desktop app
 // shows it in its own window with the native picker; the web in a sheet, switching which vault the server serves.
 import { useEffect, useState, type ReactNode } from "react"
-import { ChevronLeft, ChevronRight, Ellipsis, Folder, FolderOpen, FolderPlus, Server, Vault } from "lucide-react"
+import { ChevronLeft, ChevronRight, Ellipsis, FlaskConical, Folder, FolderOpen, FolderPlus, Server, Vault } from "lucide-react"
 import { menuBelow } from "@/components/ContextMenu"
 import { api } from "@/core/http"
 import { revealLabel } from "@/core/platform"
 import { cn } from "@/lib/utils"
 
 export type KnownVault = { path: string; name: string; open?: boolean
-  /** The sandbox (desktop): made up, made afresh each time it opens. */
+  /** The playground (desktop; the sandbox in code): made up, made afresh each time it opens. */
   sandbox?: boolean
   /** Another machine's server (desktop; `path` is its address). */
   remote?: boolean }
@@ -26,6 +26,8 @@ export type VaultBackend = {
   reveal?: (path: string) => void
   /** Open another machine's server by its address (desktop). */
   connect?: (address: string) => Promise<unknown>
+  /** Make the playground (the sandbox: a made-up vault) afresh and open it (desktop). */
+  playground?: () => Promise<unknown>
 }
 
 /** The web's: the server's list, and its folders. Opening one reloads the app on the new vault. */
@@ -156,6 +158,11 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
         {backend.connect && (
           <Setting icon={Server} title="Connect to a server" sub="A Vaultite server on your network, like a Mac at home or a Linux server.">
             <Btn onClick={() => setStep("connect")} disabled={busy}>Connect</Btn>
+          </Setting>
+        )}
+        {backend.playground && (
+          <Setting icon={FlaskConical} title="Try the playground" sub="A made-up vault to try Vaultite in, fresh each time it opens.">
+            <Btn onClick={() => void run(backend.playground!)} disabled={busy} data-playground>Open</Btn>
           </Setting>
         )}
       </div>

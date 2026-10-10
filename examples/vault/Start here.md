@@ -5,7 +5,7 @@ tint: blue
 subtitle: A made-up life, to try Vaultite
 ---
 
-This is the **sandbox**: the vault of someone made up, so you can try Vaultite without touching your own. Every page here is drawn from plain Markdown files. Change anything: the sandbox starts fresh each time it opens.
+This is the **playground**: the vault of someone made up, so you can try Vaultite without touching your own. Every page here is drawn from plain Markdown files. Change anything: the playground starts fresh each time it opens.
 
 ## Talk to it
 

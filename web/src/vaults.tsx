@@ -17,7 +17,7 @@ dark.addEventListener("change", theme)
 const app = desktop
 const backend: VaultBackend = app ? {
   list: app.vaults, open: app.openVault, create: app.createVault, remove: app.removeVault,
-  pick: app.pickFolder, reveal: (p) => { app.revealVault(p) }, connect: app.connectServer,
+  pick: app.pickFolder, reveal: (p) => { app.revealVault(p) }, connect: app.connectServer, playground: app.openSandbox,
 } : webVaults
 
 createRoot(document.getElementById("root")!).render(

@@ -1,7 +1,7 @@
 ---
 type: note
 kind: note
-tags: [Sandbox]
+tags: [Playground]
 id: note-how-this-vault-works
 created: '2026-09-29 09:00:00'
 updated: '2026-10-01 09:00:00'

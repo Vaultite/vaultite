@@ -3,8 +3,8 @@
 // shows one screen; a new vault in iCloud Drive starts from Minimal, its Start here written, pinned and opened, vau
 // installed (it runs without Node and serves MCP), no AI app's config touched; a relaunch doesn't show it, the menu does;
 // an Obsidian vault opened changes none of its files; Manage vaults connects to another machine's server, opened in a
-// window with no bridge; "Try the playground first" opens the sandbox, and the next launch shows setup again. Screenshots,
-// light and dark. WRITES: temp folders only (its own userData, home, vaults and server).
+// window with no bridge; "Try the playground first" opens the sandbox, and the next launch shows setup again; Manage vaults
+// offers the playground too. Screenshots, light and dark. WRITES: temp folders only (its own userData, home, vaults and server).
 //   node web/qa/onboarding.mjs [<shots dir>]
 import { _electron } from "playwright-core"
 import { spawn, spawnSync } from "node:child_process"
@@ -120,7 +120,7 @@ try {
   check("vau mcp serves the vault's tools", await until(() => /"write_file"/.test(said), 20000), errors || said.slice(-300))
   mcp.kill()
   await vw.click("nav[aria-label=App] button[aria-haspopup=menu]")
-  check("the vault menu has Open the sandbox", await until(() => vw.$("[role=menu] >> text=Open the sandbox"), 3000))
+  check("the vault menu has Open the playground", await until(() => vw.$("[role=menu] >> text=Open the playground"), 3000))
   await vw.keyboard.press("Escape")
   await app.close()
 
@@ -192,14 +192,17 @@ try {
   check("the next launch shows setup again", !!w && !!(await until(() => w.$("[data-next]"), 15000)))
   await app.close()
 
-  // ---------- 5. Manage vaults doesn't push the sandbox ----------
+  // ---------- 5. Manage vaults with no vault yet: the playground offered ----------
   fs.mkdirSync(path.join(TMP, "userData-done"), { recursive: true })
   fs.writeFileSync(path.join(TMP, "userData-done/setup.json"), JSON.stringify({ done: new Date().toISOString() }))
   app = await launch("userData-done")
   const mgr2 = await until(() => app.windows().find((x) => x.url().endsWith("vaults.html")), 15000)
   await mgr2?.waitForSelector("text=Open folder as vault")
   check("set up before, no vaults: the manager", !!mgr2)
-  check("Manage vaults has no sandbox row", !(await mgr2.$("text=Try the sandbox")))
+  check("Manage vaults lists no vault, and offers the playground", !(await mgr2.$("nav[aria-label=Vaults] button[data-tip]")) && !!(await mgr2.$("[data-playground]")))
+  await mgr2.click("[data-playground]")
+  const box2 = await until(() => app.windows().find((x) => x.url().startsWith("http://127.0.0.1")), 60000)
+  check("its Open opens the playground", !!box2 && fs.existsSync(path.join(TMP, "userData-done/Sandbox/.vaultite/sandbox.json")))
   await app.close()
 } catch (e) {
   check(String(e?.stack ?? e), false)
