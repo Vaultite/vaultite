@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentStart, type AgentState, quote } from "../../../core/codingagents.ts"
+import { type AgentMeter, type AgentStart, type AgentState, quote } from "../../../core/codingagents.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 import {
   agentLines, HTTPError, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine, type Request,
@@ -553,6 +553,8 @@ let follow: ReturnType<typeof setInterval> | null = null
 
 type Listed = { id: string; agent: string | null; process: string; busy: boolean; clients: number; started: number; title?: string
   state?: string; machine?: string; machineLabel?: string; backend?: string; external?: boolean
+  /** Its agent's own session id (what it resumes), when the agent says (its service "agent-meters:<name>"). */
+  session?: string
   /** Its agent's context and prompt cache, with Agent meters on (the service "terminal:meters"). */
   meter?: unknown }
 
@@ -583,12 +585,27 @@ async function localList(): Promise<Listed[]> {
     }
   }
   // (an agent run by hand in a plain terminal goes by its program's name: claude, codex)
-  const meters = plugin.service("terminal:meters"), agents = [...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : []))
-  if (typeof meters === "function" && agents.length) {
-    const by = await Promise.resolve(meters(agents)).catch(() => null) as Record<string, unknown> | null
-    for (const [id, m] of Object.entries(by ?? {})) { const x = out.get(id); if (x?.busy) x.meter = m }
+  const meters = plugin.service("terminal:meters"), agents = [...new Set([...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : [])))]
+  const live = (await Promise.all(agents.map((a) => liveOf(a, typeof meters === "function")))).flat().filter((m) => out.get(m.terminal)?.busy)
+  for (const m of live) if (m.session) out.get(m.terminal)!.session = m.session
+  if (typeof meters === "function" && live.length) {
+    const by = await Promise.resolve(meters(live)).catch(() => null) as Record<string, unknown> | null
+    for (const [id, m] of Object.entries(by ?? {})) { const x = out.get(id); if (x) x.meter = m }
   }
   return [...out.values()].sort((a, b) => a.started - b.started)
+}
+
+// Asked on every list (every 2 s while watched): agents' answers are kept a few seconds.
+const kept = new Map<string, { at: number; list: Promise<AgentMeter[]> }>()
+/** An agent's live sessions by terminal (its plugin's service "agent-meters:<name>"), with their meters when drawn. */
+function liveOf(agent: string, meters: boolean): Promise<AgentMeter[]> {
+  const fn = plugin.service(`agent-meters:${agent}`)
+  if (typeof fn !== "function") return Promise.resolve([])
+  const key = `${agent}:${meters}`, was = kept.get(key)
+  if (was && Date.now() - was.at < 3000) return was.list
+  const list = Promise.resolve(fn(meters)).then((l) => (Array.isArray(l) ? l as AgentMeter[] : []), () => [])
+  kept.set(key, { at: Date.now(), list })
+  return list
 }
 
 /** The other machines' sessions, as their lists said last: machine id -> its socket and list. */

@@ -246,9 +246,10 @@ export const busyFirst = (live: Item[]) => sortBy(live, (s) => [s.status !== "bu
 // ---------- Terminal runs them (the service "agent:<name>")
 
 export type AgentState = "working" | "waiting" | "idle"
-/** A live session's context and prompt cache, by the app's terminal it runs in (the service "agent-meters:<name>", for
- *  Agent meters): `tokens` its last request read of a `window`, which cached for `ttl` seconds from `last` (ms). */
-export type AgentMeter = { terminal: string; tokens: number; window: number; last: number; ttl: number }
+/** A live session, by the app's terminal it runs in (the service "agent-meters:<name>", asked by Terminal): `session`
+ *  the agent's own id (what it resumes). Asked `meters` (Agent meters on): `tokens` its last request read of a
+ *  `window`, which cached for `ttl` seconds from `last` (ms). */
+export type AgentMeter = { terminal: string; session?: string; tokens?: number; window?: number; last?: number; ttl?: number }
 /** What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login
  *  shell, which then stays a plain shell. Ids: <name>-<id>, <name>_<profile>-<id>, resume-<name>-<session>. */
 export type AgentStart = {

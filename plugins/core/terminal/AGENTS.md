@@ -6,7 +6,8 @@ keeper (or in tmux, the setting `backend`, or in herdr with that plugin's `newTe
 screen and history again. Only the tab that opened an agent starts it: a tab put back (a reload, the app reopened, another device)
 reattaches, and if that agent's session is gone it says so and offers a new one rather than starting it by itself. A
 shell open on two devices has the size of the last one used: going back to one (focusing its tab or window, a click, a
-key) gives it its size again. The sidebar's Terminals panel lists every running shell (click to open it, x to end it); it's also a tab,
+key) gives it its size again. The sidebar's Terminals panel lists every running shell (click to open it, x to end it, right-click to copy its
+id or its agent's session id, or open that conversation); it's also a tab,
 `view:terminals`, and a terminal's tab shows the same name (an agent's session name) as its row. In the desktop app it
 also lists Claude Code on the web's sessions under Cloud (with claude.ai signed in in the Web viewer; a click opens one
 in a web tab). With the Machines
@@ -19,7 +20,7 @@ machine opens the same shell from the others (when that machine doesn't answer, 
 than starting a shell of its own); an agent in one of its accounts is `view:terminal/claude_<account>-<id>`. A screenshot pasted into it is saved on the server's machine and its path pasted (Claude Code attaches it); it stays while the shell runs and 30 days after. Its shells have
 `VAULTITE=1`, `VAULTITE_URL`, `VAULTITE_VAULT`, `VAULTITE_CLIENT` (`desktop`, `iphone` or `web`), `VAULTITE_TERMINAL` (its id, for an agent started in it) and the `vau` CLI on PATH;
 an agent started from it is told it runs inside Vaultite where it takes that (Claude Code, OpenCode; the others read this file).
-From a terminal, `vau terminal` lists this machine's sessions and the tabs showing them, and opens, resumes (a Claude Code
+From a terminal, `vau terminal` lists this machine's sessions (with an agent's own session id, when it says) and the tabs showing them, and opens, resumes (a Claude Code
 session by its title too), reads (`screen`), types into (`send`) and ends them; `vau terminal tidy` closes the tabs of
 agents' sessions that are gone. A session ended for good (its tab's End session, its row's x, `vau terminal end`: an
 agent asked to close itself runs it without an id) closes its tabs, on every device; an agent's session that ends by

@@ -1,7 +1,8 @@
 // Agent meters (plugins/core/agent-meters): a terminal running Claude Code (a stand-in program named claude, and a faked
 // session in <claude dir>/sessions with a transcript whose last request read 51k tokens 2.5 min ago, 5 min cache) shows
 // its context as a ring beside its row's name and, idle, its icon in its colour dimmed from the top as far as the cache
-// ran out; an expired cache greys it; "As a ring" draws the cache as an inner ring instead. Turns the plugin on and writes
+// ran out; an expired cache greys it; "As a ring" draws the cache as an inner ring instead. Its row's menu copies its
+// session id (listed with Agent meters off too) and terminal id, and opens the conversation. Turns the plugin on and writes
 // its settings and the sidebars (put back), runs a shell, writes in <claude dir>: a throwaway server started with
 // CLAUDE_CONFIG_DIR=<claude dir>, never the real ~/.claude.
 //   node web/qa/agentmeters.mjs <base url> <vault path> <claude dir> [out dir]
@@ -83,6 +84,26 @@ try {
   const pct = await page.$eval(`${row} [data-meter='context']`, (e) => e.textContent).catch(() => null)
   check('  "Percent used": its context as a number', pct === "26%", pct)
   await page.screenshot({ path: `${OUT}rings.png`, clip: { x: 0, y: 160, width: 240, height: 80 } })
+
+  // Its row's menu: its agent's session id and its terminal id copied, the conversation opened.
+  const sid = async () => (await api("terminals/sessions")).sessions?.find((x) => x.id === term)?.session
+  check("the list says its agent's own session id", (await sid()) === SID, await sid())
+  await page.evaluate(() => { window.__copied = []; navigator.clipboard.writeText = async (t) => { window.__copied.push(t) } })
+  const menu = async () => { await page.click(row, { button: "right" }); await wait(300); return page.$$eval("[role=menu] [role^=menuitem]", (els) => els.map((e) => e.textContent.trim())) }
+  const items = await menu()
+  check("its menu: Copy session ID, Copy terminal ID, Open conversation, End session", ["Copy session ID", "Copy terminal ID", "Open conversation", "End session"].every((l) => items.includes(l)), items)
+  await page.locator("[role=menu] [role^=menuitem]", { hasText: "Copy session ID" }).click(); await wait(200)
+  await menu(); await page.locator("[role=menu] [role^=menuitem]", { hasText: "Copy terminal ID" }).click(); await wait(200)
+  const copied = await page.evaluate(() => window.__copied)
+  check("  they copy its session id and its terminal id", copied[0] === SID && copied[1] === term, copied)
+  await menu(); await page.locator("[role=menu] [role^=menuitem]", { hasText: "Open conversation" }).click()
+  const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
+  check("  Open conversation opens its Claude Code session", !!(await until(async () => (await hash()).includes(`claude-session/${SID}`), 5000)), await hash())
+  await page.screenshot({ path: `${OUT}menu.png` })
+
+  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: ["workspaces"], enabled: pluginsBefore.enabled ?? [] }) })
+  check("with Agent meters off, the list still says its session id", !!(await until(async () => !(await api("terminals/sessions")).sessions?.find((x) => x.id === term)?.meter && (await sid()) === SID, 10000)),
+    (await api("terminals/sessions")).sessions?.find((x) => x.id === term))
 } finally {
   await fetch(new URL(`/api/terminals/${encodeURIComponent(term)}`, B), { method: "DELETE" }).catch(() => {})
   await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: pluginsBefore.disabled ?? [], enabled: pluginsBefore.enabled ?? [] }) })

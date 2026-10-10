@@ -6,7 +6,8 @@ import { OpError, type OpCtx, type Plugin } from "../../../core/plugins.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
-type Session = { id: string; agent: string | null; process: string; clients: number; started: number; title?: string; state?: string; backend?: string }
+type Session = { id: string; agent: string | null; process: string; clients: number; started: number; title?: string; state?: string; backend?: string
+  session?: string }
 type TabAt = { workspace: number; tab: string }
 
 /** A new session id, like the app's (8 letters and digits). */
@@ -82,7 +83,8 @@ export function terminalOps(plugin: Plugin) {
     help: `The Terminal plugin's sessions on the machine the server runs on: shells and coding agents (Claude Code, Codex...),
 kept running apart from the server (Vaultite's own keeper, tmux, or herdr), so they outlive the app. A terminal's id
 names what it runs: <agent>-<id> a new session of that agent, resume-<agent>-<session id> an agent's session resumed in
-its folder, anything else a shell. Another machine's terminals (id@machine) are that machine's: ask its server (--url).
+its folder, anything else a shell. "session <id>": the agent's own session id (what it resumes; Claude Code's names its
+transcript), when the agent says. Another machine's terminals (id@machine) are that machine's: ask its server (--url).
 After the sessions, the tabs whose terminal is gone: an agent's (it won't start again by itself: it says
 its session ended, with Restart; terminal.tidy closes them) or a
 shell's (a new shell when shown). The others: vau terminal open|resume|screen|send|end|tidy.
@@ -96,7 +98,7 @@ shell's (a new shell when shown). The others: vau terminal open|resume|screen|se
       return { sessions: ss.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone }
     },
     text: (r) => {
-      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state})` : ""}${s.title ? `  "${s.title}"` : ""}  ${ago(s.started)} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
+      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state})` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}  ${ago(s.started)} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
       const gone = (r.gone as { id: string; tabs: TabAt[]; agent: boolean }[]).map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
       return (rows.length ? rows.join("\n") : "(no terminal sessions on this machine)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "")
     },

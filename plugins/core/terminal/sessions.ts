@@ -38,6 +38,8 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   /** Where it runs (backend.ts: vaultite, tmux, herdr...), and whether it's another program's own (a herdr pane the
    *  user opened there: listed only while a tab shows it, never ended by closing one). */
   backend?: string; external?: boolean
+  /** Its agent's own session id (what it resumes; Claude Code's names its transcript), when the agent says. */
+  session?: string
   /** Its agent's context and prompt cache, with Agent meters on (its service terminal:meters), drawn as it says (`as`). */
   meter?: Meter }
 export type Meter = { context?: { tokens: number; window: number; as: "bar" | "percent" | "tokens" }; cache?: { until: number; ttl: number; as: "icon" | "bar" } }

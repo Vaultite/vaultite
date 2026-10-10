@@ -2,10 +2,10 @@
 // and other machines' sessions, sorted by state (waiting on you first). With Workspaces, the current workspace's come first.
 // Under them, Claude Code on the web's sessions (cloud.ts), on the desktop app.
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
-import { Cloud, Monitor, Plus, SquareTerminal, X } from "lucide-react"
+import { Cloud, Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
-  chooseDefaultPlace, choosePlace, cn, currentWorkspace, isViewOpen, menuBelow, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag,
-  useTerminalAccount, useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type SidebarCtx,
+  chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, isViewOpen, menuBelow, menuFor, notify, notifyError, onMachine, openAgent, openTerminal, openView, PanelFold,
+  SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount, useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { ago, cloudListed, getCloud, subscribeCloud } from "./cloud"
 import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
@@ -45,6 +45,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       data-where={where}
       data-machine={s.machine}
       swipe={() => [{ label: "End", icon: X, danger: true, run: () => void endForGood(s.id) }]}
+      onContextMenu={menuFor(() => menuOf(s, a))}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
           watching: no tab on any device, no tmux in a real terminal) is in the tooltip and the Terminals tab. */}
@@ -57,6 +58,18 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
     </SidebarRow>
     </div>
   )
+}
+
+const copy = (text: string, what: string) => () => void copyText(text).then(() => notify(`Copied the ${what}`, { id: "copied" }), (e) => notifyError(e))
+/** A session's menu: its ids (its agent's own when it says, what `claude --resume` takes), its agent's conversation, End. */
+function menuOf(s: Session, a: Agent | null): MenuItem[] {
+  const conversation = a?.session && s.session && `view:${a.session}/${onMachine(s.session, s.machine)}`
+  return [
+    ...(s.session ? [{ label: "Copy session ID", icon: Copy, run: copy(s.session, "session ID") }] : []),
+    { label: "Copy terminal ID", icon: Copy, run: copy(s.id, "terminal ID") },
+    ...(conversation ? [{ label: "Open conversation", icon: MessagesSquare, sep: true, run: () => openView(conversation, { newTab: !isViewOpen(conversation) }) }] : []),
+    { label: "End session", icon: X, danger: true, sep: true, run: () => void endForGood(s.id) },
+  ]
 }
 
 const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)

@@ -504,12 +504,14 @@ plugin.provide("agent-session:claude", (id: string): { transcript: string; last:
   return { transcript: found.file, last, ttl: /"ephemeral_1h_input_tokens":\s*[1-9]/.test(tail) ? 3600 : 300, account: found.account.id }
 })
 
-/** Its live sessions' context and cache, by terminal (the service "agent-meters:claude"): the last request in each
- *  transcript; the window is what the status line said (<account>/usage-snapshots/<id>.json, or ~/.claude's), else
- *  200k, or 1M once a request read more. A process's terminal is asked once, a transcript read again only once it grew. */
+/** Its live sessions by terminal, with their ids (the service "agent-meters:claude"); with `meters`, their context and
+ *  cache: the last request in each transcript; the window is what the status line said (<account>/usage-snapshots/<id>.json,
+ *  or ~/.claude's), else 200k, or 1M once a request read more. A process's terminal is asked once, a transcript read
+ *  again only once it grew. */
 const terminals = new Map<string, string>() // pid@start -> terminal
-const lastRead = new Map<string, { size: number; meter: Omit<AgentMeter, "terminal" | "window"> | null }>()
-plugin.provide("agent-meters:claude", async (): Promise<AgentMeter[]> => {
+type Read = { tokens: number; last: number; ttl: number }
+const lastRead = new Map<string, { size: number; meter: Read | null }>()
+plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMeter[]> => {
   const out: AgentMeter[] = []
   for (const a of accounts()) {
     const d = path.join(a.dir, "sessions")
@@ -526,15 +528,15 @@ plugin.provide("agent-meters:claude", async (): Promise<AgentMeter[]> => {
         if (!terminal) continue
         terminals.set(key, terminal)
       }
-      const found = sessionFile(sid, true), m = found && lastRequest(found.file)
-      if (!m) continue
+      const found = meters && sessionFile(sid, true), m = found && lastRequest(found.file)
+      if (!m) { out.push({ terminal, session: sid }); continue }
       let window = 0
       // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
       for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
         try { window = Number(JSON.parse(fs.readFileSync(path.join(dir, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0 } catch { /* none */ }
         if (window) break
       }
-      out.push({ terminal, ...m, window: window || (m.tokens > 200_000 ? 1_000_000 : 200_000) })
+      out.push({ terminal, session: sid, ...m, window: window || (m.tokens > 200_000 ? 1_000_000 : 200_000) })
     }
   }
   return out
@@ -556,7 +558,7 @@ function lastRequest(file: string) {
     } finally { fs.closeSync(fd) }
   } catch { return null }
   const int = (v: unknown) => Math.trunc(Number(v) || 0)
-  let meter: Omit<AgentMeter, "terminal" | "window"> | null = null
+  let meter: Read | null = null
   for (const line of tail.split("\n").reverse()) {
     if (!line.includes('"type":"assistant"') || !line.includes('"usage"') || line.includes('"isSidechain":true')) continue
     try {

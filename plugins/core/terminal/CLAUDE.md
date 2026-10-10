@@ -6,7 +6,8 @@
   server's own children. Names follow the port, so a QA server's shells stay out of the live list.
 - One shell has one size, the last device's; a view used again that doesn't match sends its own (Terminal.tsx `claim`;
   QA `termsize.mjs`). Agents' states are a file per terminal (`<run>/vaultite-terminal/states/<id>`); their context and
-  cache come from Agent meters (the service `terminal:meters`, from each agent plugin's `agent-meters:<name>`) as `meter`.
+  cache come from each agent plugin's `agent-meters:<name>` (asked with Agent meters off too: its `session`, the agent's
+  own id), drawn as Agent meters says (the service `terminal:meters`) as `meter`.
 - **Agents**: id `<name>-<id>` starts agent `<name>`, `<name>_<account>-<id>` in an account, `resume-<name>-<session>`
   resumes, through the service `agent:<name>` of the plugin that brings it (AgentStart in core/codingagents.ts -> `{command, cwd}`; `context` is
   `context.md` plus the plugins' `forAgents`, shown word for word by `view:terminal-instructions` and `vau terminal instructions`). App side: `agents` in a definition, `openAgent`, `agentOfTerminal`.
