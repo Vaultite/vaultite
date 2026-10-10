@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A new vault has Connections**: Minimal keeps the MCP plugin on, so Settings > Setup and a blank tab offer Claude,
+  ChatGPT, Muse and Grok Bot from the start (nothing is on the internet until you sign in to Vaultite Cloud).
+- **Grok Bot connects**: desktop apps sign in through their own localhost address, and a connection takes the name of
+  the app whose sheet you typed its code in (Grok Bot signs in as Cursor).
+
 - **Claude's plan limits, asked live**: each account's are asked of Claude Code as /usage does (every two minutes, or
   now with the refresh button), no open session needed; a status line no longer shows one account's limits as another's.
 - **Plugins update on their own**: Vaultite's installed plugins update by themselves every hour (Plugins page: Vaultite's,
