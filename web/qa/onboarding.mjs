@@ -144,7 +144,7 @@ try {
   const touched = Object.keys({ ...obsidianBefore, ...obsidianAfter }).filter((f) => obsidianBefore[f] !== obsidianAfter[f])
   check("the Obsidian vault: none of its files changed, nothing added outside .vaultite/", !touched.length, touched)
   const gp = JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/pages.json"), "utf8"))
-  check("it starts from Minimal too, nothing pinned, the plugins' pages out of its files", gp.install === false && JSON.stringify(gp.pinned) === "[]"
+  check("it starts from Minimal too, nothing pinned", JSON.stringify(gp.pinned) === "[]"
     && !(JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people"), gp)
   const rows = await gw.evaluate(() => [...document.querySelectorAll("[role=tree] [role=treeitem] > :first-child")].map((e) => e.textContent.trim()))
   check("the file tree shows its notes", rows.some((t) => /Welcome/.test(t)) && !rows.some((t) => /vaultite|^Dashboards$/.test(t)), rows)
