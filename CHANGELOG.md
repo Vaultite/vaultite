@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Open your Mac's Vaultite from anywhere**: signed in to Vaultite Cloud, the phone and any browser reach the whole app
+  at `https://<handle>.vaultite.app` while the Mac is on, after signing in with the Vaultite account; terminals and
+  coding agents stay off there unless turned on in Connections.
 - **Every sidebar panel opens in a tab**: Buttons now has a tab (drag its heading onto a pane, or Open in a tab), and
   `npm run check` flags a plugin's panel that has none (a warning for vault plugins).
 - **Terminal rows have a menu**: right-click (or hold) a session in the Terminals panel or tab to copy its agent's

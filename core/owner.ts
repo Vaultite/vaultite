@@ -51,10 +51,13 @@ export type Access = { allowRemote?: boolean; allowUsers?: string[]; owner: stri
 /** Requests from apps on the internet (MCP's public listener): never the owner, whatever their headers say. */
 const internet = new WeakSet<IncomingMessage>()
 export const fromInternet = (req: IncomingMessage) => { internet.add(req) }
+/** Set by Connect (plugins/core/mcp/connect.ts) on what it hands the app while the owner's tools are off over it. */
+export const CONNECT_HEADER = "x-vaultite-connect"
 
 /** Why this request may not have what `what` ("the terminal") hands out, or "" when it may. */
 export function refusal(req: IncomingMessage, { allowRemote, allowUsers, owner }: Access, what = "this"): string {
   if (internet.has(req)) return `${what} only answers this machine's owner, not an app on the internet`
+  if (CONNECT_HEADER in req.headers) return `${what} is off over Vaultite Connect (turn on owner tools in Connections on this Mac)`
   const h = req.headers
   const host = String(h.host ?? "").toLowerCase()
   const origin = h.origin

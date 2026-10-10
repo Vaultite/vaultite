@@ -1,7 +1,8 @@
 // Vaultite Cloud (plugins/core/mcp/cloud.ts) against a fake relay speaking its protocol: signing in with a code (bad, 429),
 // the tunnel forwarding requests, SSE streamed chunk by chunk, cancel, ping, reconnecting, 4000 (another machine), 4001 and 401
 // (revoked), sign-out; then a server signed in from Connections (Chrome) and its ops, an app connecting through the relay
-// (OAuth addresses from the forwarded host, never a spoofed one), and only the public listener reachable. Own servers and
+// (OAuth addresses from the forwarded host, never a spoofed one), only the public listener reachable unsigned, and Connect:
+// the app for a request signed with the relay's key (pages, /api, its live WebSocket), owner tools refused. Own servers and
 // temp folders; WRITES only to the vault copy given.
 //   node web/qa/mcpcloud.mjs <vault copy>
 import { spawn, spawnSync } from "node:child_process"
@@ -20,7 +21,8 @@ const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-mcpcloud-"))
 async function fakeRelay() {
   const port = await freePort()
   const url = `http://127.0.0.1:${port}`
-  const r = { url, names: [], revoked: [], tokens: new Set(), codes: new Set(), conn: null, conns: 0, frames: [], pending: new Map(), n: 0, slow: 0 }
+  const r = { url, names: [], revoked: [], tokens: new Set(), codes: new Set(), conn: null, conns: 0, frames: [], pending: new Map(), n: 0, slow: 0,
+    key: crypto.randomBytes(32).toString("base64url"), sockets: new Map() }
   const body = (req) => new Promise((res) => { let s = ""; req.on("data", (c) => (s += c)); req.on("end", () => res(s ? JSON.parse(s) : {})) })
   const send = (res, status, d) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(d)) }
   const server = http.createServer(async (req, res) => {
@@ -53,6 +55,13 @@ async function fakeRelay() {
       ws.on("message", (m) => {
         const f = JSON.parse(String(m))
         r.frames.push(f)
+        if (f.t === "hello" && r.key) ws.send(JSON.stringify({ t: "connect", key: r.key }))
+        const so = r.sockets.get(f.id)
+        if (so) {
+          if (f.t === "wsok" || f.t === "wsno") { so.status = f.t === "wsok" ? 101 : f.status; so.opened() }
+          else if (f.t === "wsmsg") so.messages.push(f.text ?? Buffer.from(f.data, "base64").toString())
+          else if (f.t === "wsclose") so.closed = f.code ?? 1000
+        }
         const p = r.pending.get(f.id)
         if (!p) return
         if (f.t === "res") { p.status = f.status; p.headers = f.headers }
@@ -75,6 +84,22 @@ async function fakeRelay() {
     r.conn?.send(JSON.stringify({ t: "req", id, method, path: p, headers: [["host", "alice.vaultite.app"], ["x-forwarded-proto", "https"], ...host, ...headers], ...(body ? { body: Buffer.from(body).toString("base64") } : {}) }))
     out.finished = Promise.race([done, wait(10_000)]).then(() => ({ ...out, text: out.chunks.map((c) => c.text).join("") }))
     return out
+  }
+  /** Vaultite Cloud's x-vaultite-cloud for the owner: claims signed with the key it handed the Mac. */
+  r.sign = (claims = {}, key = r.key) => {
+    const body = Buffer.from(JSON.stringify({ sub: "u1", handle: "alice", role: "owner", exp: Math.floor(Date.now() / 1000) + 300, ...claims })).toString("base64url")
+    return `${body}.${crypto.createHmac("sha256", key).update(body).digest("base64url")}`
+  }
+  /** A WebSocket relayed to the Mac (Connect): its status once answered, its messages, its close code. */
+  r.socket = (p, headers = []) => {
+    const id = `w${++r.n}`
+    const so = { id, status: 0, messages: [], closed: 0 }
+    so.ready = new Promise((res) => { so.opened = res })
+    r.sockets.set(id, so)
+    r.conn?.send(JSON.stringify({ t: "ws", id, path: p, headers: [["host", "alice.vaultite.app"], ["x-forwarded-host", "alice.vaultite.app"], ...headers] }))
+    so.send = (text) => r.conn?.send(JSON.stringify({ t: "wsmsg", id, text }))
+    so.close = () => r.conn?.send(JSON.stringify({ t: "wsclose", id, code: 1000 }))
+    return so
   }
   r.close = () => { for (const c of wss.clients) c.terminate(); server.close() }
   return r
@@ -235,6 +260,9 @@ try {
   await page.click("[data-cloud-redeem]")
   await page.waitForSelector("[data-cloud-state=connected]", { timeout: 15_000 }).catch(() => {})
   check("then shows it connected, and the address", await page.isVisible("[data-cloud-state=connected]") && (await page.textContent("[data-cloud-url]"))?.includes("https://alice.vaultite.app/mcp"))
+  await page.waitForSelector("[data-connect-app]", { timeout: 10_000 }).catch(() => {})
+  check("Connect: Connections says the phone and web reach this Mac at the handle's address", /phone and any browser/.test(await page.textContent("[data-connect-app]").catch(() => "") ?? "")
+    && (await page.textContent("[data-connect-url]"))?.includes("https://alice.vaultite.app"))
   await page.click("[data-guide-for=claude]")
   await page.waitForSelector("[data-setup=claude] [data-connect-code]", { timeout: 5000 }).catch(() => {})
   check("Set up Claude opens a sheet with its steps (open, copy the name and the address) and the code field", await page.isVisible("[data-setup=claude] [data-guide=claude] [data-guide-open]")
@@ -313,6 +341,56 @@ try {
   }
   const unauth = await through("POST", "/mcp", { headers: [["content-type", "application/json"]], body: "{}" })
   check("no token: 401 naming the Cloud's metadata", unauth.status === 401 && unauth.headers.some(([k, v]) => k.toLowerCase() === "www-authenticate" && v.includes("https://alice.vaultite.app/.well-known")), unauth.headers)
+
+  // --- Connect: the app for its owner, signed by the relay with the key it handed this Mac
+  const status = (await opCall("mcp.cloud-status")).body
+  check("Connect: the relay's key makes the app's address known", status?.app === "https://alice.vaultite.app", status)
+  const signed = (extra = [], claims) => [["x-vaultite-cloud", relay.sign(claims)], ...extra]
+  const home = await through("GET", "/", { headers: signed([["accept", "text/html"]]) })
+  check("Connect: a signed request gets the app's page", home.status === 200 && home.text.includes('<script type="module"') && !home.headers.some(([k]) => k.toLowerCase() === "access-control-allow-origin"), [home.status, home.text.slice(0, 120)])
+  const asset = /src="\.?\/?(assets\/[^"]+\.js)"/.exec(home.text)?.[1]
+  check("Connect: and its assets", !!asset && (await through("GET", `/${asset}`, { headers: signed() })).status === 200, asset)
+  const state = await through("GET", "/api/state", { headers: signed() })
+  check("Connect: and /api", state.status === 200 && state.text.length > 100, state.status)
+  check("Connect: unsigned, /api stays MCP's 404", (await through("GET", "/api/state")).status === 404)
+  check("Connect: another key's signature is refused", (await through("GET", "/api/state", { headers: [["x-vaultite-cloud", relay.sign({}, "not-the-key")]] })).status === 401)
+  check("Connect: an expired one too", (await through("GET", "/api/state", { headers: signed([], { exp: 1000 }) })).status === 401)
+  check("Connect: another handle's too", (await through("GET", "/api/state", { headers: signed([], { handle: "bob" }) })).status === 401)
+  check("Connect: a viewer's too (owner only)", (await through("GET", "/api/state", { headers: signed([], { role: "viewer" }) })).status === 401)
+  const signedMeta = JSON.parse((await through("GET", "/.well-known/oauth-authorization-server", { headers: signed() })).text || "{}")
+  check("Connect: MCP's routes stay MCP's, signed or not", signedMeta.issuer === "https://alice.vaultite.app", signedMeta)
+  const origin = ["origin", "https://alice.vaultite.app"]
+  const readOp = await through("POST", "/api/ops/docs.read", { headers: signed([origin, ["content-type", "application/json"]]), body: "{}" })
+  check("Connect: an op from the app's page runs", readOp.status === 200, [readOp.status, readOp.text.slice(0, 200)])
+  const evil = await through("POST", "/api/ops/docs.read", { headers: signed([["origin", "https://evil.example"], ["content-type", "application/json"]]), body: "{}" })
+  check("Connect: a write from another site's page is refused", evil.status === 403, evil.status)
+  for (const [m, p] of [["POST", "/api/ops/terminal.list"], ["POST", "/api/ops/mcp.cloud-sign-out"], ["POST", "/api/ops/dispatch.run"], ["GET", "/api/vaults"], ["POST", "/api/mcp/connect"]]) {
+    const r = await through(m, p, { headers: signed([origin, ["content-type", "application/json"]]), ...(m === "POST" ? { body: p === "/api/mcp/connect" ? '{"ownerTools":true}' : "{}" } : {}) })
+    check(`Connect: owner tools are off over the relay (${m} ${p})`, r.status === 403, [r.status, r.text.slice(0, 160)])
+  }
+  const live = relay.socket("/api/events", signed([origin]))
+  await Promise.race([live.ready, wait(8000)])
+  await until(() => live.messages.length > 0, 5000)
+  check("Connect: the live WebSocket comes through the tunnel and says hello", live.status === 101 && JSON.parse(live.messages[0] ?? "{}").type === "hello", live)
+  const n0 = live.messages.length
+  fs.writeFileSync(path.join(VAULT, "Connect live check.md"), "# Live\n")
+  check("Connect: a change on disk reaches it live", !!(await until(() => live.messages.slice(n0).some((m) => m.includes("Connect live check")), 8000)), live.messages.slice(n0))
+  fs.rmSync(path.join(VAULT, "Connect live check.md"), { force: true })
+  live.close()
+  const term = relay.socket("/api/terminals", signed([origin]))
+  await Promise.race([term.ready, wait(8000)])
+  check("Connect: a terminal's WebSocket is refused", term.status === 403, term)
+  const plain = relay.socket("/api/events", [origin])
+  await Promise.race([plain.ready, wait(8000)])
+  check("Connect: unsigned, no WebSocket", plain.status === 404, plain)
+  const foreignWs = relay.socket("/api/events", signed([["origin", "https://evil.example"]]))
+  await Promise.race([foreignWs.ready, wait(8000)])
+  check("Connect: a WebSocket from another site's page is refused", foreignWs.status === 403, foreignWs)
+  const on = await fetch(`${BASE}/api/mcp/connect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"ownerTools":true}' })
+  const termOn = await through("POST", "/api/ops/terminal.list", { headers: signed([origin, ["content-type", "application/json"]]), body: "{}" })
+  check("Connect: owner tools turned on from this Mac answer over the relay", on.status === 200 && termOn.status !== 403, [on.status, termOn.status, termOn.text.slice(0, 160)])
+  await fetch(`${BASE}/api/mcp/connect`, { method: "POST", headers: { "Content-Type": "application/json" }, body: '{"ownerTools":false}' })
+  check("Connect: and off again", (await through("POST", "/api/ops/terminal.list", { headers: signed([origin, ["content-type", "application/json"]]), body: "{}" })).status === 403)
 
   relay.conn.close(4000, "replaced by this machine again")
   await page.waitForSelector("[data-cloud-state=replaced]", { timeout: 15_000 }).catch(() => {})

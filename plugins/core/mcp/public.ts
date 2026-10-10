@@ -11,6 +11,7 @@ import { hashed } from "../../../core/rules.ts"
 import type { Item } from "../../../core/vault.ts"
 import { blockedHost } from "../../../core/web.ts"
 import { toolsOf } from "./catalog.ts"
+import { type ConnectOptions, MCP_PATHS, serveApp, SIGNED_HEADER, upgradeApp, verifyConnect } from "./connect.ts"
 import { type Client, handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
 
 /** Operations that can run code on this machine, or change what does: why each waits for the owner's yes. */
@@ -93,6 +94,8 @@ export class PublicMcp {
   lastNotice = 0
   /** Vaultite Cloud's address while this machine is signed in (cloud.ts). */
   cloudUrl: () => string | null = () => null
+  /** Connect (connect.ts): the key Vaultite Cloud signs the owner's requests with, its handle, whether owner tools are on. */
+  connect: { key: () => string | null; handle: () => string | null; ownerTools: () => boolean } = { key: () => null, handle: () => null, ownerTools: () => false }
   /** The port it listens on, once it does (mcp.public.port, or any free one for Vaultite Cloud alone). */
   ready: Promise<number>
   private listening!: (port: number) => void
@@ -138,6 +141,12 @@ export class PublicMcp {
       wait = Math.min(wait * 2, 60_000)
     })
     server.on("listening", () => this.listening((server.address() as { port: number }).port))
+    server.on("upgrade", (req: IncomingMessage, socket, head: Buffer) => {
+      socket.on("error", () => socket.destroy())
+      const signed = this.signedOwner(req)
+      if (signed !== true) return socket.end(`HTTP/1.1 ${signed ? 401 : 404} ${signed ? "Unauthorized" : "Not Found"}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`)
+      upgradeApp(req, socket, head, this.connectOptions())
+    })
     server.listen(this.settings.port, "127.0.0.1")
   }
 
@@ -271,6 +280,23 @@ export class PublicMcp {
     fromInternet(req)
   }
 
+  /** Connect: true when Vaultite Cloud's tunnel brought this signed by the owner (a path that isn't MCP's), "bad" when its
+   *  signature doesn't hold, null when it isn't the app's. Reads the header before untrusted() drops it. */
+  signedOwner(req: IncomingMessage): true | "bad" | null {
+    const token = req.headers[SIGNED_HEADER]
+    this.untrusted(req)
+    const p = new URL(req.url ?? "/", "http://localhost").pathname
+    if (token === undefined || !this.relayed(req) || MCP_PATHS.test(p)) return null
+    return verifyConnect(this.connect.key(), token, this.connect.handle()) ? true : "bad"
+  }
+
+  connectOptions(): ConnectOptions {
+    const port = Number(process.env.PORT || 8793)
+    let host: string | null = null
+    try { host = new URL(this.cloudUrl() ?? "").host.toLowerCase() } catch { /* signed out */ }
+    return { appPort: () => port, publicHost: () => host, ownerTools: this.connect.ownerTools, from: (req) => this.from(req) }
+  }
+
   /** An operation by its id or CLI name, as host.call finds it. */
   entryOf(name: string) {
     const all = this.plugin.host.catalog()
@@ -308,7 +334,9 @@ export class PublicMcp {
   }
 
   async handle(req: IncomingMessage, res: ServerResponse) {
-    this.untrusted(req)
+    const signed = this.signedOwner(req)
+    if (signed === true) return serveApp(req, res, this.connectOptions())
+    if (signed === "bad") return this.json(res, 401, { error: "sign_in", message: "Vaultite Cloud's sign-in for this Mac didn't check out: sign in again" })
     const url = new URL(req.url ?? "/", "http://localhost")
     const p = url.pathname.replace(/\/+$/, "") || "/"
     res.setHeader("Access-Control-Allow-Origin", "*")
