@@ -168,14 +168,14 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
     ],
   },
   chatgpt: {
-    name: "ChatGPT", icon: "openai", match: /chatgpt|openai/i, sub: "On the web and the phone, once added on the web.",
+    name: "ChatGPT", icon: "openai", match: /chatgpt|openai/i, sub: "On the web and the phone, once added on the web. Added before? Delete that Vaultite in its Plugins first: ChatGPT can't change an address.",
     steps: (address, icon) => [
       { text: <>Open ChatGPT's <B>Plugins</B>, then <B>Add</B>, <B>Add custom MCP server</B></>, open: "https://chatgpt.com/plugins" },
       { text: <>Name it <B>{NAME}</B></>, copy: { label: "Copy name", value: NAME } },
       { text: <>Paste the address as its <B>Server URL</B></>, copy: { label: "Copy address", value: address } },
       { text: <>Add <a className="text-primary" href={icon} target="_blank" rel="noreferrer" data-connector-icon>Vaultite's icon</a> if you like (save it, then choose it as the <B>Icon</B>)</> },
       { text: <>Keep <B>OAuth</B>, tick <B>I understand</B> and choose <B>Create as a plugin</B></> },
-      { text: <>Sign in when it asks: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>Choose <B>Continue to Vaultite</B>: Vaultite's sign-in page shows a code. Type it below.</> },
       { text: <>It's connected when Vaultite is in <B>Settings</B>, <B>Plugins</B></>, open: "https://chatgpt.com/settings/plugins-settings" },
     ],
   },
@@ -192,8 +192,7 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
     name: "Grok Bot", icon: "grok-bot", match: /grok/i, sub: "Every bot on your account gets it.",
     steps: (address) => [
       { text: <>Open the Grok Bot app and send this in a chat</>, copy: { label: "Copy message", value: `Add a custom MCP server called ${NAME} at ${address}` } },
-      { text: <>Choose <B>Add it</B> when it shows the name and address</> },
-      { text: <>Choose <B>Authorize</B> on the card it posts: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>It adds Vaultite and starts signing in: Vaultite's sign-in page shows a code. Type it below.</> },
       { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
     ],
   },

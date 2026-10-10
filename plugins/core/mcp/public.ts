@@ -404,6 +404,8 @@ export class PublicMcp {
   redirectOk(r: string) {
     try {
       const u = new URL(r)
+      // A desktop app's own loopback (Grok Bot's, RFC 8252): the code still goes only to that machine, after the user's code.
+      if (u.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname)) return true
       return u.protocol === "https:" && this.settings.redirectHosts.some((h) => u.hostname === h || u.hostname.endsWith(`.${h}`))
     } catch { return false }
   }

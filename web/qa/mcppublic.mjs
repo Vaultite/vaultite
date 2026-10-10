@@ -43,6 +43,9 @@ try {
   // Registration: only apps that return to an allowed host.
   const evil = await json(await fetch(`${PUB}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: "Evil", redirect_uris: ["https://evil.example.net/cb"] }) }))
   check("registration refuses another return address", evil.status === 400, evil)
+  const loop = await json(await fetch(`${PUB}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: "Desk", redirect_uris: ["http://localhost:8787/callback"] }) }))
+  const lan = await json(await fetch(`${PUB}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: "Lan", redirect_uris: ["http://192.168.1.9:8787/callback"] }) }))
+  check("a desktop app's loopback return address is let in, another plain http one isn't", loop.status === 201 && lan.status === 400, [loop, lan])
   const reg = await json(await fetch(`${PUB}/register`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ client_name: "Lighthouse AI", redirect_uris: [REDIRECT], token_endpoint_auth_method: "none" }) }))
   const clientId = reg.body?.client_id
   check("registration", reg.status === 201 && clientId && reg.body.token_endpoint_auth_method === "none", reg)
