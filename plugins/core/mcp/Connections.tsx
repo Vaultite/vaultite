@@ -25,14 +25,15 @@ function useConnections() {
   return { data, error, reload: () => setTick((n) => n + 1) }
 }
 
-function Connect({ waiting, onDone }: { waiting: number; onDone: () => void }) {
+/** The code field; in an app's sheet (`as`), the connection takes that app's name, whatever it signs in as. */
+function Connect({ waiting, onDone, as }: { waiting: number; onDone: () => void; as?: string }) {
   const [code, setCode] = useState("")
   const [busy, setBusy] = useState(false)
   const send = async () => {
     if (!code.trim() || busy) return
     setBusy(true)
     try {
-      const r = await post<{ name: string }>("mcp/connections", { code })
+      const r = await post<{ name: string }>("mcp/connections", { code, as })
       notify(`${r.name} can now finish connecting`)
       setCode("")
       onDone()
@@ -192,7 +193,8 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
     name: "Grok Bot", icon: "grok-bot", match: /grok/i, sub: "Every bot on your account gets it.",
     steps: (address) => [
       { text: <>Open the Grok Bot app and send this in a chat</>, copy: { label: "Copy message", value: `Add a custom MCP server called ${NAME} at ${address}` } },
-      { text: <>It adds Vaultite and starts signing in: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>Choose <B>Authorize</B> on the Vaultite card it posts, then <B>Continue</B>: Vaultite's sign-in page opens in your browser with a code (it says Cursor, Grok Bot's maker). Type it below.</> },
+      { text: <>It's connected when the card says <B>Added</B></> },
       { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
     ],
   },
@@ -244,7 +246,7 @@ export function SetupSheet({ id }: { id: AppId }) {
           {address ? (
             <>
               <Section title="Steps"><Guide id={id} address={address} /></Section>
-              <Section title="Code"><Connect waiting={data.waiting} onDone={reload} /></Section>
+              <Section title="Code"><Connect waiting={data.waiting} onDone={reload} as={g.name} /></Section>
               {!!data.finishing?.length && (
                 <Group>{data.finishing.map((name, i) => <Row key={i} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />)}</Group>
               )}

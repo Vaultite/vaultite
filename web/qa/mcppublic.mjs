@@ -84,10 +84,10 @@ try {
   const page2 = await (await auth({})).text()
   const code2 = /<div class="code"[^>]*>([^<]+)</.exec(page2)?.[1]?.replace(/\s/g, "")
   const id2 = /const id = "([^"]+)"/.exec(page2)?.[1]
-  await fetch(`${BASE}/api/mcp/connections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code2 }) })
+  await fetch(`${BASE}/api/mcp/connections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code2, as: "Lighthouse Desk" }) })
   const finishing = async () => (await json(await fetch(`${BASE}/api/mcp/connections`))).body?.finishing
   const f1 = await finishing()
-  check("let in, it's finishing (a row till it's connected)", f1?.length === 1 && f1[0] === "Lighthouse AI", f1)
+  check("let in from its app's sheet, it's finishing under that app's name (a row till it's connected)", f1?.length === 1 && f1[0] === "Lighthouse Desk", f1)
   const to2 = new URL((await (await fetch(`${PUB}/authorize/status?id=${encodeURIComponent(id2)}`)).json()).to)
   const f2 = await finishing()
   check("… still, taken back to the app with its code", f2?.length === 1, f2)
@@ -139,7 +139,7 @@ try {
   const gated = await rpc("tools/call", gatedArgs)
   check("settings wait for the owner's yes", gated.body?.result?.isError === true && /Waiting for the user's yes/.test(gated.body.result.content[0].text) && !fs.existsSync(gatedFile), gated.body)
   const asks = (await json(await fetch(`${BASE}/api/inbox/events`))).body?.events?.filter((e) => e.gate && !e.answer) ?? []
-  check("it asks in the inbox, as a permission", asks.length === 1 && asks[0].ask === "permission" && asks[0].title.includes("Lighthouse AI"), asks)
+  check("it asks in the inbox, as a permission", asks.length === 1 && asks[0].ask === "permission" && asks[0].title.includes("Lighthouse Desk"), asks)
   check("it asks with the parameters whole, one per line", asks[0]?.body?.includes(`"note": "${note}"`), asks[0]?.body?.slice(-200))
   const selfApprove = await rpc("tools/call", { name: "call", arguments: { id: "inbox.answer", params: { id: asks[0]?.id, answer: "approve" } } })
   check("the app can't approve itself", selfApprove.body?.result?.isError === true, selfApprove.body)
@@ -176,7 +176,7 @@ try {
   const wrote = await rpc("tools/call", { name: "write_note", arguments: { title: "From the internet", body: "Written through the public MCP." } })
   check("a write runs", wrote.body?.result?.isError === false, wrote.body)
   const fm = fs.readFileSync(path.join(VAULT, "Notes/From the internet.md"), "utf8").split("\n---")[0]
-  check("it's named as the app signed in, not its MCP client's name", /lighthouse-ai/i.test(fm) && !/^source: lighthouse$/m.test(fm), fm)
+  check("it's named as the app signed in, not its MCP client's name", /lighthouse-desk/i.test(fm) && !/^source: lighthouse$/m.test(fm), fm)
   // A photo from an app whose sandbox can PUT (claude.ai's): a one-time link, then the bytes, embedded in the note.
   const linked = await rpc("tools/call", { name: "upload_file", arguments: { name: "Lunch", note: "Notes/From the internet.md" } })
   const link = /PUT the file's bytes to (\S+),/.exec(linked.body?.result?.content?.[0]?.text ?? "")?.[1]
@@ -202,7 +202,7 @@ try {
   const ref = await token({ grant_type: "refresh_token", refresh_token: tok.body.refresh_token, client_id: clientId })
   check("a refresh gets new tokens", ref.status === 200 && ref.body?.refresh_token && ref.body.refresh_token !== tok.body.refresh_token, ref.body)
   const list = await json(await fetch(`${BASE}/api/mcp/connections`))
-  const conn = list.body?.connections?.find((c) => c.name === "Lighthouse AI")
+  const conn = list.body?.connections?.find((c) => c.name === "Lighthouse Desk")
   check("the owner sees the connection", !!conn && list.body.url === `${PUB}/mcp`, list.body)
   check("the public listener never shows the connections", (await fetch(`${PUB}/api/mcp/connections`)).status === 404)
   await fetch(`${BASE}/api/mcp/connections/${encodeURIComponent(conn?.id ?? "x")}`, { method: "DELETE" })

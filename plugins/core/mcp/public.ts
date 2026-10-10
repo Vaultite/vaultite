@@ -215,12 +215,14 @@ export class PublicMcp {
 
   /** The owner typed a sign-in's code: it may go on (the page it's on takes the app back with an authorization code).
    *  The app's name, or null when no sign-in waits with that code. */
-  approve(code: string) {
+  /** Lets in the sign-in waiting with `code`; `as`: the app the owner set up (Grok Bot signs in as Cursor), its name here. */
+  approve(code: string, as?: string) {
     const c = code.toUpperCase().replace(/[^A-Z0-9]/g, "")
     this.prune()
     const s = [...this.signIns.values()].find((x) => !x.done && x.code === c)
     if (!s) return null
     const authCode = crypto.randomBytes(24).toString("base64url")
+    if (as) s.app = { ...s.app, name: as.slice(0, 80) }
     this.codes.set(authCode, { clientId: s.clientId, app: s.app, redirect: s.redirect, challenge: s.challenge, until: now() + CODE_TTL })
     const to = new URL(s.redirect)
     to.searchParams.set("code", authCode)

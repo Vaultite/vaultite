@@ -137,7 +137,8 @@ plugin.route("POST", "mcp/connect", async (req) => {
 plugin.route("POST", "mcp/connections", async (req) => {
   await allowed(req)
   if (!pub) throw new HTTPError(404, "MCP isn't on the internet here: sign in to Vaultite Cloud, or set mcp.public.url in data/config.json")
-  const name = pub.approve(String((req.body as { code?: unknown })?.code ?? ""))
+  const b = (req.body ?? {}) as { code?: unknown; as?: unknown }
+  const name = pub.approve(String(b.code ?? ""), typeof b.as === "string" && b.as.trim() ? b.as.trim() : undefined)
   if (!name) throw new HTTPError(404, "No sign-in waits with that code: check it, or start again from the app (a code lasts 10 minutes)")
   return { ok: true, name }
 }, { lock: false })
