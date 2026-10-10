@@ -7,7 +7,7 @@ import { ClaudeIcon } from "./ClaudeIcon"
 // Claude Code's blocks and session tabs are the app's agent components (AgentUsage.tsx) on GET /api/claude-code.
 const SRC: AgentSource = {
   path: "claude-code", label: "Claude Code", speaker: "Claude", icon: ClaudeIcon, tint: "var(--orange)", agent: "claude", view: "claude-session",
-  noLimits: "No limits yet. They come from Claude Code's status line or the Claude app on this machine.",
+  noLimits: "No limits yet. They come from Claude Code, signed in on this machine, or else its status line or the Claude app.",
 }
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()

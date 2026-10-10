@@ -2,18 +2,20 @@
 // one request every 15 s; `machine:` and `account:` pick another machine or account.
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
-import { BarChart3, Boxes, ChevronRight, FolderGit2, Gauge, Terminal } from "lucide-react"
+import { BarChart3, Boxes, ChevronRight, FolderGit2, Gauge, RefreshCw, Terminal } from "lucide-react"
 import { AmbientButton } from "@/components/Ambient"
 import { Bars, Empty, List, Loading, Panel, Row, Section, Segmented, Stat } from "@/components/kit"
 import { usePluginSettings } from "@/components/PluginSettings"
 import { Button } from "@/components/ui/button"
 import { dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, useLive } from "@/core/data"
+import { api } from "@/core/http"
 import type { BlockCtx } from "@/core/define"
 import { isViewOpen, openView } from "@/core/files"
 import { namedIcon } from "@/core/pages"
 import { machinePath, onMachine, useMachines } from "@/core/machines"
 import { notify } from "@/core/notify"
 import { useEnabled } from "@/core/plugins"
+import { cn } from "@/lib/utils"
 
 /** Which agent, and where its plugin answers. */
 export type AgentSource = {
@@ -68,7 +70,8 @@ const EVERY = 15_000
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 
 /** A block's data, from its options' `machine` and `account`: the same path at the same moment for every block (so they
- *  share one request), again every 15 s while visible. `on` names another machine (" on Studio"). */
+ *  share one request), again every 15 s while visible. `on` names another machine (" on Studio"); `refresh` has the
+ *  plugin ask again what it remembers (the account's limits) and fetches it. */
 function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days = 30) {
   const machine = str(options.machine), account = str(options.account)
   const machines = useMachines()
@@ -78,11 +81,13 @@ function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days 
     const id = setInterval(() => { if (!document.hidden) setTick(Math.floor(Date.now() / EVERY)) }, 1000)
     return () => clearInterval(id)
   }, [])
-  const { data, error } = useLive<AgentUsage>(machinePath(machine, `${src.path}?days=${days}${account ? `&account=${encodeURIComponent(account)}` : ""}`), tick)
+  const [again, setAgain] = useState(0)
+  const { data, error } = useLive<AgentUsage>(machinePath(machine, `${src.path}?days=${days}${account ? `&account=${encodeURIComponent(account)}` : ""}`), `${tick}.${again}`)
   useEffect(() => {
     if (data) for (const s of [...data.sessions, ...data.live]) if (s.title) titles.set(`${src.view}/${onMachine(s.id, machine)}`, s.title)
   }, [data, src.view, machine])
-  return { data, error: data ? null : error, on, machine }
+  const refresh = () => api("POST", machinePath(machine, `${src.path}/refresh`)).then(() => setAgain((n) => n + 1))
+  return { data, error: data ? null : error, on, machine, refresh }
 }
 
 /** Sessions' titles seen so far, by "<view>/<id>", for their tabs' labels (sessionTitle). */
@@ -202,14 +207,29 @@ export function AgentLimitsChip({ src, open }: { src: AgentSource; open: () => v
 
 /** Its plan's allowances; with several accounts, each one's under its name (`account:` for one). */
 export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource }) {
-  const { data, error, on } = useAgentUsage(src, options)
+  const { data, error, on, refresh } = useAgentUsage(src, options)
   const [settings] = usePluginSettings(src.path)
+  const [asking, setAsking] = useState(false)
+  const again = () => {
+    setAsking(true)
+    refresh().catch(() => notify(`Couldn't ask ${src.label} again`)).finally(() => setAsking(false))
+  }
   const each = data?.accounts && data.accounts.length > 1 ? data.accounts : null
   // (another machine's account is that machine's to allow)
   const ask = !on && src.consent && settings && settings[src.consent.setting] === undefined ? src.consent : null
   return (
     <Panel title={`Plan limits${on}`} icon={iconFor(src, fm, Gauge)} tint={src.tint}
-      action={!each && data?.plan && <span className="text-[13px] text-muted-foreground">{data.plan.name}</span>}>
+      action={
+        <div className="flex items-center gap-1">
+          {!each && data?.plan && <span className="text-[13px] text-muted-foreground">{data.plan.name}</span>}
+          {data && !ask && (
+            <button type="button" onClick={again} disabled={asking} aria-label="Ask for the limits again" data-tip="Refresh" data-limits-refresh
+              className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50 max-md:size-11">
+              <RefreshCw className={cn("size-4", asking && "animate-spin")} strokeWidth={2} />
+            </button>
+          )}
+        </div>
+      }>
       {ask ? <Consent src={src} consent={ask} /> : !data ? <Waiting src={src} error={error} on={on} className={src.noLimits ? undefined : "min-h-[150px]"} /> : each ? (
         <div className="space-y-5">
           {each.map((a) => (

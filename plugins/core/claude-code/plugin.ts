@@ -1,6 +1,6 @@
 // Claude Code: what it does on this machine, in each of its accounts (config folders), read from its own files; nothing is
 // written anywhere. Value = the tokens at API list prices (PRICES), not what was paid.
-import { execFileSync } from "node:child_process"
+import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -273,8 +273,8 @@ async function live(recent: Item[], accts: Account[]) {
       } catch {
         continue
       }
-      if (!alive(pid, s.procStart)) continue
       const sid = s.sessionId || "", cwd = s.cwd || ""
+      if (isAsking(cwd) || !alive(pid, s.procStart)) continue
       const u = byId.get(sid) ?? {}
       const ms = (k: string) => (typeof s[k] === "number" ? iso(s[k] / 1000) : null)
       out.push({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "", name: a.private ? "" : s.name || "",
@@ -287,33 +287,117 @@ async function live(recent: Item[], accts: Account[]) {
   return busyFirst(out)
 }
 
-// ---------- plan limits: the status line's snapshots, else the Claude app's history; the plan from .claude.json
+// ---------- plan limits: asked of Claude Code itself, else the status line's snapshots, else the Claude app's history;
+// the plan from .claude.json
 
 const LABELS: Record<string, string> = { session: "Current session", week: "This week", opus: "This week, Opus", sonnet: "This week, Sonnet" }
 
-const window = (key: string, minutes: number, used: number, resets: number | null, now: number) =>
-  limitWindow(key, LABELS[key], minutes, used, resets, now, iso)
+const window = (key: string, minutes: number, used: number, resets: number | null, now: number, label = LABELS[key]) =>
+  limitWindow(key, label, minutes, used, resets, now, iso)
 
-/** The newest status line snapshot (written on every render of Claude Code's status line). */
-function statusLineLimits(now: number, dir: string) {
-  const d = path.join(dir, "usage-snapshots")
-  let rl: Item, observed: number
-  try {
-    const files = fs.readdirSync(d).filter((n) => n.endsWith(".json")).map((n) => path.join(d, n))
-    if (!files.length) return null
-    const newest = files.reduce((a, b) => (fs.statSync(b).mtimeMs > fs.statSync(a).mtimeMs ? b : a))
-    rl = JSON.parse(fs.readFileSync(newest, "utf8")).rate_limits || {}
-    observed = fs.statSync(newest).mtimeMs / 1000
-  } catch {
-    return null
-  }
+/** The claude binary: the server's PATH (launchd's) may not have it. */
+function claudeBin() {
+  const dirs = [...(process.env.PATH ?? "").split(":"), path.join(HOME, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"]
+  return dirs.filter(Boolean).map((d) => path.join(d, "claude")).find((p) => { try { return fs.statSync(p).isFile() } catch { return false } }) ?? null
+}
+
+/** Where the asking runs: its brief session is told apart from the user's by this folder (live() leaves it out). */
+const ASKING_DIR = path.join(os.tmpdir(), "vaultite-claude-limits")
+let askingReal = ""
+const isAsking = (cwd: string) => !!askingReal && cwd === askingReal
+
+/** Asks Claude Code (stream-json, its SDK's control requests; no prompt, so nothing is sent to a model) what the
+ *  account's plan has used: what /usage shows, with the account's own login. Null when it can't say. */
+function askClaude(dir: string): Promise<Item | null> {
+  const bin = claudeBin()
+  if (!bin) return Promise.resolve(null)
+  try { fs.mkdirSync(ASKING_DIR, { recursive: true }); askingReal ||= fs.realpathSync(ASKING_DIR) } catch { return Promise.resolve(null) }
+  return new Promise((resolve) => {
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: [path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
+    if (dir === path.join(HOME, ".claude")) delete env.CLAUDE_CONFIG_DIR
+    else env.CLAUDE_CONFIG_DIR = dir
+    const child = spawn(bin, ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
+      "--no-session-persistence", "--strict-mcp-config"], { cwd: ASKING_DIR, stdio: ["pipe", "pipe", "ignore"], env })
+    let buf = "", done = false
+    const finish = (v: Item | null) => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      child.kill()
+      resolve(v)
+    }
+    const timer = setTimeout(() => finish(null), 20000)
+    const send = (m: Item) => { try { child.stdin.write(JSON.stringify(m) + "\n") } catch { finish(null) } }
+    child.on("error", () => finish(null))
+    child.on("exit", () => finish(null))
+    child.stdout.on("data", (chunk: Buffer) => {
+      buf += chunk.toString("utf8")
+      for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
+        const line = buf.slice(0, nl)
+        buf = buf.slice(nl + 1)
+        if (!line.includes('"control_response"')) continue
+        let r: Item
+        try { r = JSON.parse(line).response ?? {} } catch { continue }
+        if (r.subtype !== "success") return finish(null)
+        if (r.request_id === "init") send({ type: "control_request", request_id: "usage", request: { subtype: "get_usage", skipBehaviors: true } })
+        else if (r.request_id === "usage") finish(r.response ?? null)
+      }
+    })
+    send({ type: "control_request", request_id: "init", request: { subtype: "initialize" } })
+  })
+}
+
+/** What Claude Code says now, asked at most every two minutes (a failure too, so a missing login isn't asked for every
+ *  block). memo() tells its functions apart by name: this has one. */
+const asked = (dir: string) => plugin.memo(120, async function claudeUsage(d: string) { return { at: Date.now() / 1000, got: await askClaude(d) } }, dir)
+
+const at = (v: unknown) => { const t = typeof v === "string" ? Date.parse(v) / 1000 : NaN; return Number.isFinite(t) ? t : null }
+
+async function accountLimits(now: number, dir: string) {
+  const { at: observed, got } = await asked(dir)
+  const rl = got?.rate_limits_available ? got.rate_limits : null
+  if (!rl || typeof rl !== "object") return null
   const keys: Record<string, [string, number]> = { five_hour: ["session", 300], seven_day: ["week", 10080],
     seven_day_opus: ["opus", 10080], seven_day_sonnet: ["sonnet", 10080] }
   const wins = Object.entries(keys).flatMap(([name, [k, m]]) => {
     const w = rl[name]
-    return w && typeof w === "object" && typeof w.used_percentage === "number" ? [window(k, m, w.used_percentage, w.resets_at ?? null, now)] : []
+    return w && typeof w === "object" && typeof w.utilization === "number" ? [window(k, m, w.utilization, at(w.resets_at), now)] : []
   })
-  return wins.length && now - observed < 7 * 86400 ? { source: "status line", observed, windows: wins } : null
+  // A week of one model only ("This week, Fable"), when the plan has one.
+  for (const l of Array.isArray(rl.limits) ? rl.limits : []) {
+    const name = l?.kind === "weekly_scoped" && typeof l.percent === "number" ? l.scope?.model?.display_name : null
+    if (typeof name === "string" && name && !wins.some((w) => w.label === `This week, ${name}`))
+      wins.push(window(`week-${name.toLowerCase()}`, 10080, l.percent, at(l.resets_at), now, `This week, ${name}`))
+  }
+  return wins.length ? { source: "Claude account", observed, windows: wins } : null
+}
+
+/** The newest status line snapshot of this account's sessions (written on every render of Claude Code's status line):
+ *  in its folder, or ~/.claude's (a status line may write there whatever account runs it), with limits in it. */
+function statusLineLimits(now: number, a: Account) {
+  const files: string[] = []
+  for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
+    const d = path.join(dir, "usage-snapshots")
+    try { for (const n of fs.readdirSync(d)) if (n.endsWith(".json")) files.push(path.join(d, n)) } catch { /* none */ }
+  }
+  let projects: string[] = []
+  try { projects = fs.readdirSync(path.join(a.dir, "projects")).map((n) => path.join(a.dir, "projects", n)) } catch { return null }
+  const mine = (sid: string) => projects.some((p) => fs.existsSync(path.join(p, `${sid}.jsonl`)))
+  const keys: Record<string, [string, number]> = { five_hour: ["session", 300], seven_day: ["week", 10080],
+    seven_day_opus: ["opus", 10080], seven_day_sonnet: ["sonnet", 10080] }
+  const byAge = files.flatMap((f) => { try { return [[fs.statSync(f).mtimeMs / 1000, f] as const] } catch { return [] } }).sort((x, y) => y[0] - x[0])
+  for (const [observed, f] of byAge) {
+    if (now - observed > 7 * 86400) break
+    let rl: Item
+    try { rl = JSON.parse(fs.readFileSync(f, "utf8")).rate_limits } catch { continue }
+    if (!rl || typeof rl !== "object" || !mine(path.basename(f, ".json"))) continue
+    const wins = Object.entries(keys).flatMap(([name, [k, m]]) => {
+      const w = rl[name]
+      return w && typeof w === "object" && typeof w.used_percentage === "number" ? [window(k, m, w.used_percentage, w.resets_at ?? null, now)] : []
+    })
+    if (wins.length) return { source: "status line", observed, windows: wins }
+  }
+  return null
 }
 
 const hour = (ts: number) => ts - (ts % 3600) // allowances renew on the hour, in UTC
@@ -377,7 +461,9 @@ async function plan(a: Account) {
 
 async function limits(a: Account) {
   const now = Date.now() / 1000
-  const found = [statusLineLimits(now, a.dir), appLimits(now, (await plugin.memo(300, login, accountJson(a))).organizationUuid ?? null, scanOf(a))]
+  const live = await accountLimits(now, a.dir)
+  if (live) return { ...live, observed: iso(live.observed) }
+  const found = [statusLineLimits(now, a), appLimits(now, (await plugin.memo(300, login, accountJson(a))).organizationUuid ?? null, scanOf(a))]
     .filter((x) => x !== null)
   if (!found.length) return null
   const best = found.reduce((x, y) => (y.observed > x.observed ? y : x))
@@ -579,7 +665,7 @@ plugin.block("claude-limits", async (ctx) => {
   const each = await Promise.all(accountsFor(ctx.options.account).map(async (a) => ({ a, lim: await limits(a) })))
   return section("Plan limits", ...each.flatMap(({ a, lim }) => {
     const head = each.length > 1 ? `### ${a.label}` : ""
-    if (!lim) return [head, "_No limits read yet: they come from Claude Code's status line or the Claude app._"]
+    if (!lim) return [head, "_No limits read yet: they come from Claude Code (signed in), its status line or the Claude app._"]
     return [head, limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`]
   }))
 })

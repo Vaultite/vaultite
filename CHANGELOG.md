@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Claude's plan limits, asked live**: each account's are asked of Claude Code as /usage does (every two minutes, or
+  now with the refresh button), no open session needed; a status line no longer shows one account's limits as another's.
+
 ## 0.3.0 (2026-10-10)
 
 Your AI apps up front, and your Mac's Vaultite from anywhere.

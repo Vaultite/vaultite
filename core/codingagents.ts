@@ -589,6 +589,12 @@ export function codingAgent(plugin: Plugin, a: CodingAgent) {
     return { id, ...head, ...page(entries, req) }
   })
   if (a.accounts) plugin.route("GET", `${a.id}/accounts`, a.accounts)
+  // Refresh: what it remembers (its limits as the account last said them) is asked again, at most every 10 s.
+  let forgot = 0
+  plugin.route("POST", `${a.id}/refresh`, () => {
+    if (Date.now() - forgot > 10_000) { forgot = Date.now(); plugin.forget() }
+    return { ok: true }
+  })
   usageBlocks(plugin, a, a.usage)
 }
 
