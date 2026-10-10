@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import path from "node:path"
-import type { OpEntry } from "../../../core/ops.ts"
+import { type OpEntry, whoOf } from "../../../core/ops.ts"
 import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who } from "../../../core/plugins.ts"
 import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
@@ -540,7 +540,8 @@ export class PublicMcp {
       instructions: () => instructionsOf(agentLines(this.plugin.vault).map((l) => l.text), this.plugin.host.catalog(), [WAITS]),
       identity: { icons: [{ src: `${base}/icon.png`, mimeType: "image/png", sizes: ["256x256"] }, { src: `${base}/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] },
       ctx: (client, tool) => {
-        const who: Who = { ...client, client: "mcp", label: client.label || grant[1].name }
+        // Named as it signed in (Connections' name), not as its MCP client calls itself ("An MCP client", a skill's name).
+        const who: Who = whoOf("mcp", grant[1].name)
         this.bases.set(who, base)
         return { client, op: async (name, params) => {
           const entry = this.entryOf(name)

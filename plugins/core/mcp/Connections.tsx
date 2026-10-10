@@ -164,13 +164,13 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
       { text: <>Paste the address as its <B>MCP server URL</B>, then <B>Continue</B></>, copy: { label: "Copy address", value: address } },
       { text: <>Keep the defaults, scroll down and choose <B>Add</B></> },
       { text: <>Choose <B>Connect</B>: Vaultite's sign-in page shows a code. Type it below.</> },
-      { text: <>It's connected when Vaultite has a check in <B>Connectors</B>, <B>Yours</B></>, open: "https://claude.ai/customize/connectors/yours" },
+      { text: <>It's connected when Vaultite shows <B>Connected</B> in <B>Customize</B>, <B>Connectors</B>, <B>Yours</B></>, open: "https://claude.ai/customize/connectors/yours" },
     ],
   },
   chatgpt: {
     name: "ChatGPT", icon: "openai", match: /chatgpt|openai/i, sub: "On the web and the phone, once added on the web.",
     steps: (address, icon) => [
-      { text: <>Open ChatGPT's <B>Plugins</B>, then <B>Add</B>, <B>Create custom MCP server</B></>, open: "https://chatgpt.com/plugins" },
+      { text: <>Open ChatGPT's <B>Plugins</B>, then <B>Add</B>, <B>Add custom MCP server</B></>, open: "https://chatgpt.com/plugins" },
       { text: <>Name it <B>{NAME}</B></>, copy: { label: "Copy name", value: NAME } },
       { text: <>Paste the address as its <B>Server URL</B></>, copy: { label: "Copy address", value: address } },
       { text: <>Add <a className="text-primary" href={icon} target="_blank" rel="noreferrer" data-connector-icon>Vaultite's icon</a> if you like (save it, then choose it as the <B>Icon</B>)</> },
@@ -183,14 +183,15 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
     name: "Muse", icon: "muse", tint: "var(--blue)", match: /muse/i, sub: "On the web, the phone and WhatsApp.",
     steps: (address) => [
       { text: <>In Muse, send this in a chat</>, copy: { label: "Copy message", value: `Add a custom connector called ${NAME}: a remote MCP server at ${address} (streamable HTTP, OAuth).` }, open: "https://muse.ai" },
-      { text: <>Open the sign-in link it answers with: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>Choose <B>Connect</B> on the Vaultite card it posts, then <B>Connect</B> again: Vaultite's sign-in page shows a code. Type it below.</> },
+      { text: <>Muse asks before each request to your vault: <B>Always allow</B> stops the questions</> },
       { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
     ],
   },
   "grok-bot": {
     name: "Grok Bot", icon: "grok-bot", match: /grok/i, sub: "Every bot on your account gets it.",
     steps: (address) => [
-      { text: <>In Grok Bot, send this in a chat</>, copy: { label: "Copy message", value: `Add a custom MCP server called ${NAME} at ${address}` } },
+      { text: <>Open the Grok Bot app and send this in a chat</>, copy: { label: "Copy message", value: `Add a custom MCP server called ${NAME} at ${address}` } },
       { text: <>Choose <B>Add it</B> when it shows the name and address</> },
       { text: <>Choose <B>Authorize</B> on the card it posts: Vaultite's sign-in page shows a code. Type it below.</> },
       { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },

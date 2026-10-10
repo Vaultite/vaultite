@@ -172,6 +172,8 @@ try {
   check("a tool runs", search.body?.result?.isError === false, search.body)
   const wrote = await rpc("tools/call", { name: "write_note", arguments: { title: "From the internet", body: "Written through the public MCP." } })
   check("a write runs", wrote.body?.result?.isError === false, wrote.body)
+  const fm = fs.readFileSync(path.join(VAULT, "Notes/From the internet.md"), "utf8").split("\n---")[0]
+  check("it's named as the app signed in, not its MCP client's name", /lighthouse-ai/i.test(fm) && !/^source: lighthouse$/m.test(fm), fm)
   // A photo from an app whose sandbox can PUT (claude.ai's): a one-time link, then the bytes, embedded in the note.
   const linked = await rpc("tools/call", { name: "upload_file", arguments: { name: "Lunch", note: "Notes/From the internet.md" } })
   const link = /PUT the file's bytes to (\S+),/.exec(linked.body?.result?.content?.[0]?.text ?? "")?.[1]
