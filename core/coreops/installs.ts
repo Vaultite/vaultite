@@ -20,9 +20,8 @@ export function installOps(app: App): Op[] {
   const vaultIds = () => [...app.vaultPlugins.found.keys()]
   const blocked = (id: string, version: string, repos: (string | null)[]) => app.index.blockedWhy(id, version, repos)
 
-  /** Each installed plugin with a newer version: what it would change (files, disclosures), from a fetched copy.
-   *  `auto`: only those that update on their own (core/updates.ts), applied, and allowed here when this machine allowed
-   *  them before (a version it skips, rolled back from, is left). */
+  /** Installed plugins with a newer version and what it changes, from a fetched copy. `auto`: only self-updating ones,
+   *  applied, allowed here if this machine allowed them before (a version it skips or rolled back from is left). */
   const updates = async (only: string | null, apply: boolean, force: boolean, auto = false) => {
     const lock = readLock(app.vault)
     const ids = (only ? [only] : Object.keys(lock).sort()).filter((id) => !auto || (lock[id] && autoUpdates(app.vault.config("plugins"), id, lock[id].source)))

@@ -1,6 +1,5 @@
-// Web viewer: pages in desktop app tabs (native views, electron/web.ts), a viewer next to your notes rather than a
-// browser. Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions become
-// Inbox events.
+// Web viewer: pages in desktop app tabs (native views, electron/web.ts), a viewer beside your notes, not a browser.
+// Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
 import { ExternalLink, Globe, PencilLine, Scissors, Search } from "lucide-react"
 import { choose, definePlugin, focusGroup, getStore, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type WebEvent } from "@vaultite"

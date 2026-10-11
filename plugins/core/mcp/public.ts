@@ -31,9 +31,8 @@ const GATED: Record<string, string> = {
 }
 const APP_FILES = /^\/*\.vaultite(\/|$)/
 
-/** Why an app on the internet needs the owner's yes to run this operation with these parameters, or "" when it doesn't.
- *  `code`: whether a path is a vault plugin's code that runs only once the owner allows it as it is (writing it needs no
- *  yes: allowing it does). */
+/** Why an internet app needs the owner's yes for this op with these params, or "" if not. `code`: a path is a vault
+ *  plugin's code, which runs only once allowed as it is (writing it needs no yes: allowing it does). */
 export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string, unknown>, code: (p: string) => boolean = () => false): string {
   if (id === "dispatch.run" && params.allow === true) return "run a shell command a setting names, on your machine"
   if (id === "plugin.allow" && params.edits === true) return "let a vault plugin run code on this machine, and its later edits without asking"
@@ -216,9 +215,8 @@ export class PublicMcp {
     return true
   }
 
-  /** The owner typed a sign-in's code: it may go on (the page it's on takes the app back with an authorization code).
-   *  The app's name, or null when no sign-in waits with that code. */
-  /** Lets in the sign-in waiting with `code`; `as`: the app the owner set up (Grok Bot signs in as Cursor), its name here. */
+  /** Lets in the sign-in waiting with `code` (its page then takes the app back with an authorization code): its name,
+   *  or null if none waits. `as`: the app the owner set up (Grok Bot signs in as Cursor), its name here. */
   approve(code: string, as?: string) {
     const c = code.toUpperCase().replace(/[^A-Z0-9]/g, "")
     this.prune()

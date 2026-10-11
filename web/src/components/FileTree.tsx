@@ -232,8 +232,7 @@ export function askMove(path: string, opts: { before?: (folder: string) => unkno
 }
 
 // ---------- icons (the tree and the tabs) ----------
-/** A file's icon: its own `icon`, then a robot for the vault's top-level AGENTS.md and CLAUDE.md, then its plugin's
- *  for its kind, else the core's. */
+/** A file's icon: its own `icon`, a robot for the top AGENTS.md and CLAUDE.md, its kind's plugin's, else the core's. */
 export function fileIcon(path: string, type: string | null, disabled: string[], file?: VaultFile): { icon: LucideIcon; tint?: string } {
   // Its own icon (a dashboard's `icon: sun`, or the plugin's that brought it), in its colour.
   const own = file && (file.icon || file.plugin) ? iconOf(file) : null
@@ -322,8 +321,7 @@ function keepSame(prev: Node | null, next: Node): Node {
 const looks = (f?: VaultFile) => (f ? `${f.type}\0${f.kind}\0${f.icon ?? ""}\0${f.tint ?? ""}\0${f.plugin ?? ""}\0${f.archived ? 1 : 0}` : "")
 
 // ---------- the tree ----------
-/** Hidden files open in tabs (they show in the tree while they're open, with hidden files off), one per line. Archived
- *  ones aren't: one shows only while it's the open file (`active`). */
+/** Hidden files open in tabs, one per line: they show in the tree while open. Archived ones only while active. */
 const openHiddenIn = (ws: Workspace, hidden: boolean) => hidden ? "" : [...new Set(leaves(ws.root).flatMap((g) => g.tabs.map((t) => t.to))
   .filter((to) => to.startsWith("file:") && isHidden(to.slice(5)) && !archives(to.slice(5))).map((to) => to.slice(5)))].sort().join("\n")
 

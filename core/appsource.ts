@@ -12,9 +12,8 @@ export type PluginDir = { id: string; tier: string; dir: string }
 /** A palette command with a fixed id: its default keys (none: []); `note`: "desktop app only". */
 export type CommandDef = { id: string; name: string; keys: string[]; note?: string }
 
-/** A sidebar panel: `<plugin>:<name>`, its title (its `heading` when it has another: "Pinned"), its default place
- *  (`sort`), whether it's out of the default setup (`hidden`), other names it goes by (`names`), and whether a phone can
- *  dock it (`dockable`). */
+/** A sidebar panel `<plugin>:<name>`: `heading` when it differs from its title ("Pinned"), `sort` its default place,
+ *  `hidden` out of the default setup, `names` other names it goes by, `dockable` a phone can dock it. */
 export type PanelDef = { key: string; title: string; heading?: string; sort: number; plugin: string; hidden: boolean; names: string[]; dockable?: true }
 
 /** A plugin's section of a new tab's page: `<plugin>:<name>`, its title, default place, whether it's out of the default

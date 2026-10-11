@@ -24,9 +24,8 @@ export function useVisibleArea(on: boolean) {
 
 export type BarKey = { name: string; label: ReactNode; run: () => void }
 
-/** The row above the keyboard, Hide keyboard at its end. Its buttons never take focus (press and touch end cancelled,
- *  nothing selectable), since on iOS that moves focus off the text and the keyboard goes; they act as the finger lifts.
- *  `scroll`: keys a finger's width each, the row scrolling sideways when they don't fit (else they share it). */
+/** The row above the keyboard. Its buttons never take focus (on iOS the keyboard would go) and act as the finger
+ *  lifts. `scroll`: keys a finger wide, the row scrolling sideways when they don't fit. */
 export function KeyBar({ label, keys, hide, scroll, className }: { label: string; keys: BarKey[]; hide: () => void; scroll?: boolean; className?: string }) {
   const key = cn("grid h-9 cursor-pointer place-items-center rounded-[8px] bg-card font-mono text-[13px] text-foreground active:bg-foreground/[0.12]",
     scroll ? "min-w-11 shrink-0 flex-1 px-1" : "min-w-0 flex-1")

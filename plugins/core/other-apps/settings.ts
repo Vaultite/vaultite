@@ -88,9 +88,8 @@ function obsidianJson(vault: Vault, name: string): Item | null {
 const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined)
 const keys = (o: Item) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
-/** What the vault's .obsidian/ settings make the defaults of the app's own, by settings file (core/plugins.ts
- *  settingDefaults): excluded files and the attachment folder (app.json), the templates folder and formats
- *  (templates.json), daily notes' folder, name format and template (daily-notes.json). Only keys they set. */
+/** The defaults .obsidian/ sets for the app's settings, by file (settingDefaults): excluded files, attachments,
+ *  templates folder and formats, daily notes' folder, format and template. Only keys they set. */
 export function obsidianDefaults(vault: Vault): Record<string, Item> {
   const app = obsidianSettings(vault)
   if (app === null) return {}

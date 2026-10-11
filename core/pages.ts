@@ -1,6 +1,5 @@
-// Plugins' pages are built in: each template (a plugin's pages/*.md, the core's Design) is kept in PAGES_DIR while its
-// plugin is on, the template as it is now (they update with the plugin), read-only. Copy to my vault makes one the
-// user's (`copyPage`): from then on their file wins and the built-in one goes. Nothing is written outside .vaultite/.
+// Plugins' pages are built in: each template is kept in PAGES_DIR, read-only, while its plugin is on, updating with it.
+// Copy to my vault makes one the user's (`copyPage`): then their file wins. Nothing is written outside .vaultite/.
 import fs from "node:fs"
 import path from "node:path"
 import { enabled, HTTPError, type Plugin, ROOT, service } from "./plugins.ts"
@@ -52,9 +51,8 @@ const baseName = (rel: string) => rel.slice(rel.lastIndexOf("/") + 1)
 
 const SKIP = new Set(["node_modules", "__pycache__"])
 
-/** The user's own copy of each template, if they have one: a dashboard of the same plugin by the same name among their
- *  files (hidden folders left out: the trash, PAGES_DIR), or one iCloud holds for now (nothing is made over it). One
- *  without `plugin:` (the core's page, an older copy) is matched by its icon. Read from disk: the index may lag. */
+/** The user's own copy of each template: a dashboard of the same plugin and name among their files, or one iCloud
+ *  holds for now (never made over); one without `plugin:` matched by icon. Read from disk: the index may lag. */
 export function copies(vault: Vault, list: [string, string, string][]): Map<string, string> {
   const want = new Map<string, [string, string][]>() // file name -> its templates [path, text]
   for (const [, rel, text] of list) want.set(baseName(rel), [...(want.get(baseName(rel)) ?? []), [rel, text]])
@@ -86,9 +84,8 @@ export function copies(vault: Vault, list: [string, string, string][]): Map<stri
   return out
 }
 
-/** Keep the built-in pages as their templates are now: one for each template of a plugin that's on and the user has no
- *  copy of; none for the others. Returns the pages it made. `pin: false`: Pinned isn't told (a new vault's bundle just
- *  pinned what it wants). */
+/** Keep built-in pages as their templates are now: one per template of an on plugin the user has no copy of. Returns
+ *  the pages made. `pin: false`: Pinned isn't told (a new vault's bundle pinned what it wants). */
 export function install(vault: Vault, plugins: Plugin[], opts: { pin?: boolean } = {}) {
   const made: string[] = []
   const on = enabled(vault, plugins)

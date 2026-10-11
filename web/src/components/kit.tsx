@@ -28,10 +28,7 @@ export function PageHeader({ title, subtitle, children, className }: { title: st
   )
 }
 
-/** The top of a detail sheet: tinted kind line, the title (labels the sheet), a subtitle, then any extras. */
-/** The app's own mark, where a lucide icon would go (the Vaults sheet). */
-/** An icon with a status dot on its corner while
- *  `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
+/** An icon with a status dot on its corner while `on` (an agent waiting for you), the same wherever the icon is.
  *  `tag`: a tiny label on its bottom corner (the machine a terminal runs on: "M1"). */
 export function Badged({ on, tag, children }: { on?: boolean; tag?: string; children: ReactNode }) {
   if (!on && !tag) return <>{children}</>
@@ -211,7 +208,6 @@ export function Section({ title, children, className }: { title: ReactNode; chil
   )
 }
 
-/** iOS segmented control ("List / Map"). */
 /** A setting: name and line on the left, control on the right, with even room so hairline-separated rows look alike.
  *  `stack`: control under the name on phones; `onClick`: the whole row is a button with `value` and a chevron. */
 export function SettingRow({ label, sub, stack, value, onClick, chevron = ChevronRight, children, ...rest }: {

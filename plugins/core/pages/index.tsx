@@ -67,11 +67,8 @@ function PageCommands({ store }: { store: Store }) {
   return null
 }
 
-/** A phone's new tab: the pinned pages first, as tiles (the sidebar's, a tap away from +). Sized in the page's units
- *  (it's drawn a size up: NewTab), spread evenly with the first icon under the heading's text and the last at the same
- *  inset from the right: each column is an icon (9 units) and room either side, and the grid reaches out to the edges
- *  by that room less the inset (1.5 units, SidebarRow's), so (W - 2·inset - n·icon) / (2n - 2) a side. A name stays
- *  within the icon and its inset either side (the column reaches past the page's edge), on up to two lines. */
+/** A phone's new tab: pinned pages first, as tiles, in page units (drawn a size up). Spread evenly, first icon under
+ *  the heading's text: each icon gets (W - 2·inset - n·icon) / (2n - 2) a side, inset 1.5 (SidebarRow's). */
 function Tiles({ store }: { store: Store }) {
   const pages = shownPinned(store)
   if (!pages.length) return null

@@ -451,9 +451,8 @@ const BLOCKS: Record<AgentBlock, (ctx: BlockCtx & { src: AgentSource }) => React
   limits: AgentLimits, sessions: AgentSessions, usage: AgentUsageBlock, projects: AgentProjects, models: AgentModels, project: AgentProject,
 }
 
-/** A coding agent plugin's definition (its index.tsx): its blocks (each an agent block by name, or its own), a session's
- *  view, its agent in Terminal and the commands opening it (literal: the server reads them), made-up usage for the
- *  demo. It runs while the plugin loads, so it reads nothing but its arguments until called on. */
+/** A coding agent plugin's definition: its blocks, a session's view, its agent in Terminal, the commands opening it
+ *  (literal: the server reads them), demo usage. It runs at load, so it reads only its arguments until called. */
 export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
   blocks: Record<string, AgentBlock | ((ctx: BlockCtx) => ReactNode)>
   /** Its program's names, its accounts' route (AgentDef). */

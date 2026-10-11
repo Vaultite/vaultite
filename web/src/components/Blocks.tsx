@@ -49,9 +49,8 @@ export function kindStamps(store: Store, path: string): string[] {
   return (kind && store.kinds?.[kind]?.stamps) || NONE
 }
 
-/** A body in pieces: its blocks, its embeds and the Markdown between them (blank-only text left out). `line`: where
- *  it starts in the body (0-based), so a drawn page and the editor can find the same place (FileView's keepPlace).
- *  `kind`: its file's kind's blocks, those it doesn't place drawn first. */
+/** A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped). `line`: its 0-based start, so a
+ *  drawn page and the editor find the same place; `kind`: its kind's blocks, the unplaced ones drawn first. */
 export type Segment = ({ block: string; text: string } | { md: string } | { embed: string; height?: number }) & { line: number }
 export function segments(body: string, kind?: string[]): Segment[] {
   const out: Segment[] = onTop(kind, body).map((block) => ({ block, text: "", line: 0 }))

@@ -7,9 +7,8 @@ import type { Any, VaultTest } from "./harness.ts"
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, write, TOOLS } = $
   const { vplugin, vau, conf } = $.vars
-  // Plugins from elsewhere (core/installs.ts): installed from a made-up git repo at its newest tag, off until on, updated
-  // by tag, blocked by the index, uninstalled to the trash; and tools/plugin-index.ts on made-up GitHub. (Signing off: a
-  // global commit.gpgSign or tag.gpgSign would ask for a key, or a message, in these made-up repos.)
+  // Plugins from elsewhere (core/installs.ts) from made-up git repos, and tools/plugin-index.ts on made-up GitHub.
+  // Signing off: a global commit.gpgSign or tag.gpgSign would ask for a key, or a message, in these repos.
   {
     const { execFileSync } = await import("node:child_process")
     const g = (cwd: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "init.defaultBranch=main",
@@ -268,9 +267,8 @@ export default async ($: VaultTest) => {
     for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(harbor|notags|dinghy|ketch|skipper) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
     fs.rmSync(path.join(VAULT, ".vaultite/cache/plugin-index.json"), { force: true })
 
-    // Updating on their own (core/updates.ts): Vaultite's by default, what's new from the commits since, kept in the lock's
-    // history (plugin.history, the day's recap); rolled back, that version is skipped; another machine checks the synced
-    // files against their source before letting them run.
+    // Updating on their own (core/updates.ts): Vaultite's by default, notes from commits since, in the lock's history;
+    // a version rolled back is skipped; another machine checks synced files against their source before they run.
     {
       process.env.VAULTITE_GITHUB = pathToFileURL(path.join(tmp, "repos")).href
       const lm = (id: string, v: string, o: Any = {}) => JSON.stringify({ id, name: id[0].toUpperCase() + id.slice(1), description: "A made-up plugin: the harbour's lights.",

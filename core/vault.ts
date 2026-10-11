@@ -29,8 +29,6 @@ export type Item = Record<string, any>
 export class ConflictError extends Error {}
 /** Something that isn't there (the API answers 404). */
 export class NotFound extends Error {}
-/** A settings file that's there but can't be used now (readConfig): `busy` when it can't be read (iCloud syncing it),
- *  else it isn't a JSON object. */
 /** A settings file that can't be read safely for a read-modify-write: `busy` (mid-sync, try again: 503), else broken (409). */
 export class ConfigError extends Error {
   busy: boolean
@@ -892,9 +890,8 @@ export class Vault {
 
   // --- reading
 
-  /** A file's kind: its `type`'s wherever it is, else the kind kept in that one file (ME.md), else, with no `type`, one
-   *  claiming it by name (a daily note: KindSpec.owns); never its folder's alone. Files in a folder of patterns
-   *  (Templates/) are plain whatever they say. */
+  /** A file's kind: its `type`'s anywhere, else the one file's kind (ME.md), else, with no `type`, one claiming it by
+   *  name (a daily note); never its folder's alone. Files in a patterns folder (Templates/) are plain. */
   kindFor(rel: string, fm: Item): Kind | null {
     for (const d of this.plainDirs) if (rel.startsWith(d + "/")) return null
     const typed = this.typed(fm)
@@ -934,9 +931,8 @@ export class Vault {
     return typeof f === "string" ? f.trim().replace(/^\/+|\/+$/g, "") : null
   }
 
-  /** The folder new files of a kind go to: the one set for it (folderSet), else where most of its files are (those
-   *  `where` picks: then always), preferring folders named like it, or null. So, unset, moving People/ into Personal/
-   *  moves where new people go too. */
+  /** Where new files of a kind go: its set folder (unless `where`), else where most of those files are, preferring a
+   *  folder named like it; else null. So, unset, moving People/ into Personal/ moves where new people go too. */
   home(collection: string, where?: (item: Item) => boolean): string | null {
     const set = where ? null : this.folderSet(collection)
     if (set !== null) return set
@@ -1255,9 +1251,8 @@ export class Vault {
     }
   }
 
-  /** The file's new text, or null if unchanged: only the frontmatter keys the save changed are rewritten (the rest keep
-   *  their lines; a value cleared keeps its key, empty, as Obsidian does), and the body change is applied as a patch.
-   *  A change that can't be applied as a small edit is a conflict, never a rewrite of the whole header or body. */
+  /** The file's new text, or null if unchanged: only changed frontmatter keys are rewritten (a cleared value keeps its
+   *  key, as Obsidian does) and the body is patched; what can't be a small edit is a conflict, never a rewrite. */
   private compose(k: Kind, e: Entry | null, old: Item | null, owned: Item, body: string): string | null {
     const full: Item = { type: k.type, ...owned }
     if (e === null) return frontmatter(mergeFm({}, full), body)

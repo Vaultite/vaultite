@@ -201,9 +201,8 @@ function stepOf(i: Input) {
   return [mod && "mod", MAC && i.control && "ctrl", i.alt && "alt", i.shift && "shift", key].filter(Boolean).join("+").toLowerCase()
 }
 
-/** A page's link to another app (zoommtg://, slack://, obsidian://), opened once the site may (asked like a permission,
- *  as a browser asks first); mailto: opens the mail app. Never file: (a site doesn't open the Mac's files) or what runs
- *  code. */
+/** A page's link to another app (zoommtg://, slack://), opened once the site may (asked like a permission, as
+ *  browsers do); mailto: opens Mail. Never file: (a site doesn't open the Mac's files) or what runs code. */
 async function otherApp(p: Page, to: string) {
   if (!/^[a-z][a-z0-9+.-]*:/i.test(to) || /^(javascript|data|vbscript|blob|file|about|chrome|devtools|view-source):/i.test(to)) return
   if (/^mailto:/i.test(to)) return void shell.openExternal(to)
@@ -420,9 +419,8 @@ function mine(win: BrowserWindow, id: unknown) {
   return p
 }
 
-/** A page whose renderer died (a `pkill -f` that matched Chromium's flags, memory, a crash) loads again, three times
- *  a minute at most so one dying as it loads doesn't loop. `gone` hears of each death first, `giveUp` of the one it's
- *  left at (the window's to say so, rather than stay blank). */
+/** A page whose renderer died (a stray `pkill -f`, memory, a crash) loads again, three times a minute at most so one
+ *  dying as it loads doesn't loop. `gone` hears each death, `giveUp` the last (the window says so, not blank). */
 export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) {
   let times: number[] = []
   wc.on("render-process-gone", (_e, d) => {

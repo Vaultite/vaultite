@@ -93,9 +93,8 @@ function builtCss() {
 /** A class name as a CSS selector writes it (CSS.escape, for the characters Tailwind's names have). */
 const escapeClass = (c: string) => c.replace(/^(\d)/, "\\3$1 ").replace(/[^\w-]/g, (ch) => `\\${ch}`)
 
-/** Its Tailwind classes, compiled against the app's stylesheet, in the `plugins` layer (under the app's utilities in
- *  web/index.html: it never restyles the app). Variants the app doesn't have (`md:-m-1`) go in `plugin-variants`,
- *  above them, so they win over the app's plain classes on its own elements, as they would in the app. */
+/** Its Tailwind classes in the `plugins` layer, under the app's utilities, so it never restyles the app. Variants the
+ *  app lacks (`md:-m-1`) go in `plugin-variants` above them, to win on its own elements as they would in the app. */
 async function styles(dir: string, used: Set<string>) {
   const { compile } = await import("@tailwindcss/node")
   const { Scanner } = await import("@tailwindcss/oxide")
@@ -233,9 +232,8 @@ export function digestOf(dir: string): Digest {
   return { content: whole.digest("hex").slice(0, 16), files }
 }
 
-/** What's wrong with a vault plugin's folder, checked as `label` (.vaultite/plugins/<id>): its manifest (read here unless
- *  given), files and commands, and for one to install (`installable`, `tag`: what its version must be) version and repo.
- *  `ids`: every plugin there is, id -> tier. Warnings break the block contract: it loads anyway. */
+/** What's wrong with a vault plugin's folder, as `label`: its manifest (read unless given), files, commands, and for
+ *  one to install (`installable`, `tag`) its version and repo. `ids`: id -> tier. Warnings: it loads anyway. */
 export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; label: string; tag?: string | null; installable?: boolean; manifest?: Item }) {
   const { ids, label } = o
   let manifest: Item | null = o.manifest ?? null, unread = ""

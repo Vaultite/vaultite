@@ -1,6 +1,5 @@
-// What a plugin may write outside .vaultite/ on its own (core/writegate.ts): its manifest's `writes` declares where and
-// why, and the user answers once per plugin, kept in .vaultite/grants.json ({"activity": {"Recaps": "allowed"}}).
-// "ask": a write wanted it before the user was asked, so the app asks; "not now": asked, and not given.
+// Where a plugin may write outside .vaultite/ on its own (core/writegate.ts): its manifest's `writes`, answered once
+// per plugin in .vaultite/grants.json; "ask": a write wanted it before the user was asked; "not now": refused.
 import type { Plugin } from "./plugins.ts"
 import { enabled } from "./plugins.ts"
 import type { Item, Vault } from "./vault.ts"

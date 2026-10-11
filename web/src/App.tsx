@@ -286,8 +286,7 @@ export default function App() {
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
   const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
   const vaultMenu = (e: React.MouseEvent) => menuBelow(e, VAULT_MENU())
-  // The app's commands (⌘P lists them; their keys work everywhere). File commands act on the active tab's file (in the
-  // vault: not one from outside it, "file:/…").
+  // The app's commands (⌘P lists them); file commands act on the active tab's file, in the vault only (not "file:/…").
   // The file the user means: the editor's (a sheet's over the page too), else the focused tab's.
   const actionTarget = () => currentEditor()?.path ?? currentFile()
   const tabFile = () => (isDesktop() ? currentFile() : "")

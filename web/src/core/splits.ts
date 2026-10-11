@@ -229,9 +229,7 @@ export function splitTab(side: Side, id = activeTab().id) {
   show(tab.to, true)
 }
 
-/** Open something in a split on the right (or below): the group on that side of the focused one (a new tab there, or
- *  its blank one), made if there's none. */
-/** `to` in a pane beside the focused one (`focus` false: shown there, the focus stays where it is). */
+/** `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is. */
 export function openInSplit(to: string, side: "right" | "bottom" = "right", focusIt = true) {
   const { root, focus } = getWorkspace()
   const right = neighbourOf(root, focus, side)

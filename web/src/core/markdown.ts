@@ -1,6 +1,5 @@
-// Markdown to HTML outside the editor, with its extras (wikilinks, callouts, footnotes, math, mermaid, tags,
-// highlights). As in Obsidian: every link is one (a note, a file, any app's scheme), raw HTML is drawn (sanitized),
-// vault images show, and `![[Note]]` anywhere is an embed (a `data-md-embed` the caller draws; a link until then).
+// Markdown to HTML outside the editor, with its extras (wikilinks, callouts, footnotes, math, mermaid, tags). As in
+// Obsidian, every link is one, raw HTML is drawn (sanitized) and `![[Note]]` is an embed (`data-md-embed`, caller's).
 import { Lexer, Marked, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
 import { COPY_ICON } from "./richmd"
 import { sanitizeHtml } from "./sanitize"

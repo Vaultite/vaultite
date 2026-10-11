@@ -21,9 +21,8 @@ function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
   }
 }
 
-/** `inline`: one line in running text; else a document in a sheet's sizes unless `full`. `from`: the file it's from
- *  (for `[[#Heading]]` and the closest file of a name). `plain`: without a note's look (`className` gives its own).
- *  `seen`: the notes embedding this text, so an embed in it never shows one of them again. */
+/** `inline`: one line in running text; else a document at a sheet's sizes unless `full`. `from`: its file (for
+ *  `[[#Heading]]`, closest names); `plain`: no note look; `seen`: notes embedding it, never embedded again. */
 export function Markdown({ text, store, inline, full, className, from, plain, seen }: { text: string; store?: Store; inline?: boolean; full?: boolean; className?: string; from?: string; plain?: boolean; seen?: string[] }) {
   const s = store ?? getStore()
   const html = useMemo(() => {

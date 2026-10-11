@@ -1,6 +1,5 @@
-// What a terminal's id says it runs, read and made in one place (server, app and plugins): "<agent>-<random>" a coding
-// agent, "<agent>_<profile>-…" in one of its accounts, "resume-<agent>-<session>" resuming a session, "@<machine>" after
-// any of them on another machine; anything else is a plain shell. Node-free: the web imports it.
+// A terminal's id says what it runs: "<agent>-<random>", "<agent>_<profile>-…" (account), "resume-<agent>-<session>",
+// then "@<machine>" when elsewhere; else a plain shell. Read and made only here; Node-free: the web imports it.
 
 /** An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal"). */
 export const AGENT = /^[a-z][a-z0-9]*(?:_[a-z0-9]{1,32})?$/

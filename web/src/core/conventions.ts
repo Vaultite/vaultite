@@ -49,9 +49,8 @@ export function attachmentFolder(s: Store | null | undefined, from: string): str
   return attachmentDir(s?.filing?.attachments ?? "Attachments", unarchived(from))
 }
 
-/** Save pasted or dropped files as attachments of `from` where the vault says (or in `folder`), answering their paths.
- *  A taken name gets a number; a nameless one (a screenshot, a photo from the camera) is "Pasted image
- *  YYYYMMDDHHmmss.<ext>", as Obsidian names them. */
+/** Save pasted or dropped files as `from`'s attachments where the vault says (or `folder`), answering their paths. A
+ *  taken name gets a number; a nameless one is "Pasted image YYYYMMDDHHmmss.<ext>", as Obsidian names them. */
 export async function saveAttachments(s: Store, from: string, files: File[], folder = attachmentFolder(s, from)): Promise<string[]> {
   if (folder) await post("folder", { path: folder }).catch(() => {}) // (it's there already: fine)
   const out: string[] = []

@@ -103,9 +103,8 @@ function deliver() {
   t.take(line, find)
 }
 
-/** Open a file in editing with the cursor at a line (0-based, frontmatter counted: as the server numbers a file's
- *  lines), scrolled to: a block's "Edit source" while it's read, a line search found (`find`: the match, selected).
- *  The file's view may still be on its way. */
+/** Open a file in editing, the cursor at a 0-based line counting frontmatter (as the server numbers lines), scrolled
+ *  to; `find`: the match there, selected. The file's view may still be on its way. */
 export function editAt(path: string, line: number, opts: { newTab?: boolean; pane?: string; find?: string } = {}) {
   openFile(path, { newTab: opts.newTab, pane: opts.pane })
   wanted = { path, line, find: opts.find, until: Date.now() + 4000 }

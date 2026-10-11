@@ -1,6 +1,5 @@
-// What this branch changed, checked: build and check always; the web modules' test, the vault test's areas, the QA
-// scripts whose header names a changed path and the smoke test, as the changes need them. Prints each stage's time.
-//   node tools/verify.ts [--base main] [--dry]     (npm run verify)
+// What this branch changed, checked: build and check, then the web test, vault test areas, QA scripts whose header
+// names a changed path and the smoke test, as needed, timing each. node tools/verify.ts [--base main] [--dry]
 import { spawnSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"

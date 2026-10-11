@@ -28,8 +28,7 @@ export const mintedHere = (id: string) => minted.has(id.replace(/@.*$/, "").spli
 export const canRunAgents = () => isEnabled("terminal", getPrefs().disabled)
 
 // ---------- where new ones open, per workspace ----------
-/** Where new terminals and agents open in the current workspace when none is asked for (and where Dispatch runs): a
- *  machine (none: this one) and an account per agent (none: its own default). */
+/** Where new terminals and agents (and Dispatch) open unasked: a machine (none: this one), an account per agent. */
 export type DefaultPlace = { machine?: string; accounts?: Record<string, string> }
 const NOWHERE: DefaultPlace = {}
 const placeState = scopedState<DefaultPlace>("core:place", NOWHERE)

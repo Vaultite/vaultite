@@ -12,9 +12,8 @@ import type { IPty } from "node-pty"
 /** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/codingagents.ts). */
 export type AgentRun = { command: string; cwd?: string | null }
 
-/** A new shell: the login shell, in `cwd`, running `run` first when it's an agent's. `env` is the server's environment
- *  less what's about the server; `ctx` Vaultite's variables (VAULTITE_URL..., and PATH with the app's bin/ first);
- *  `scrollback` the lines of history it keeps (the setting's). */
+/** A new shell: the login shell in `cwd`, running `run` first for an agent. `env`: the server's less what's about it;
+ *  `ctx`: Vaultite's variables (VAULTITE_URL..., PATH with the app's bin/ first); `scrollback`: lines kept. */
 export type Spec = { shell: string; run: AgentRun | null; cwd: string; env: Record<string, string>; ctx: Record<string, string>; cols: number; rows: number
   scrollback: number }
 

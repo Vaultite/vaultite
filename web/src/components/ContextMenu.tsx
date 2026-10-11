@@ -31,9 +31,8 @@ export type MenuItem = {
    *  comes from). `run` is unused. */
   caption?: boolean
 }
-/** Commands as menu rows (by id), those offered now: their name, icon and first keys, so a menu and the palette say the
- *  same (the File explorer's Show hidden files, a tab bar's Reopen closed tab). A pair that swaps (Show / Hide) is both
- *  ids: only the one offered shows. */
+/** Commands as menu rows (by id), those offered now, named and keyed as in the palette. A swapping pair (Show / Hide)
+ *  is both ids: only the one offered shows. */
 export function commandItems(...ids: string[]): MenuItem[] {
   return ids.flatMap((id) => {
     const c = offeredCommand(id)
@@ -93,12 +92,8 @@ export type CheckItem = { key: string; label: string; hint?: string; disabled?: 
 /** The rows each checklist of the open menu showed when it opened (its ticked ones, More's groups), by its id. */
 const listed = new Map<string, { rows: CheckItem[]; more: CheckItem[][] }>()
 
-/** Which things are on, as menu rows (the panels a sidebar shows, the pinned pages, a new tab's sections and buttons):
- *  the ones on, ticked, in their order, then More ▸ with the rest (`off`, groups with a line between). Every row is a
- *  checkbox that leaves the menu open, so several can change at once, and keeps its place until the menu closes:
- *  unticked and ticked again, it's back where it was; ticked in More, it stays there, on at the end (listed with the
- *  others next time). `set(key, on, before)`: turn it on before `before` (null: at the end), or off. `id` tells a
- *  menu's lists apart. */
+/** Which things are on, as menu rows: on ones ticked, in order, then More ▸ with `off`. Each is a checkbox keeping the
+ *  menu open and its place till it closes, so several change at once; `set`'s `before` null: at the end. */
 export function checklist(id: string, { on, off = [], set }: {
   on: CheckItem[]; off?: CheckItem[][]; set: (key: string, on: boolean, before: string | null) => void
 }): MenuItem[] {

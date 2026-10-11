@@ -1,6 +1,5 @@
-// Connect: the whole app at https://<handle>.vaultite.app for its owner. Vaultite Cloud signs the owner in and sends each
-// request with `x-vaultite-cloud` (HMAC with this machine's key, from the tunnel); with it the public listener hands the
-// request to the app on loopback. What runs code on this machine stays off unless the owner turns it on (ownerTools).
+// Connect: the whole app at https://<handle>.vaultite.app for its owner. Only requests Vaultite Cloud signed (HMAC in
+// `x-vaultite-cloud`) reach the app on loopback; what runs code stays off unless the owner turns it on (ownerTools).
 import crypto from "node:crypto"
 import http, { type IncomingMessage, type ServerResponse } from "node:http"
 import net from "node:net"

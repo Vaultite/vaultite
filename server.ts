@@ -189,10 +189,8 @@ function started(req: http.IncomingMessage, url: URL) {
     remote: req.socket.remoteAddress ?? "", port: req.socket.remotePort ?? 0, forwarded: !!(req.headers["x-forwarded-for"] || req.headers["tailscale-user-login"]) })
 }
 
-/** A vault file's bytes (range requests so players can seek; `as=jpeg` for HEIC; `download=1`), or an allowed outside
- *  file. Documents are sandboxed so an SVG or HTML can't run script; PDFs can't be (the browser's viewer). */
-/** iCloud may leave a file (an image no sync reads) as a placeholder a read here can't materialize (errno 11, EDEADLK,
- *  under launchd): ask iCloud for it and wait a while for it to come down. False if it hasn't by then. */
+/** iCloud may leave a file as a placeholder a read here can't materialize (errno 11, EDEADLK, under launchd): ask
+ *  iCloud for it and wait a while for it to come down. False if it hasn't by then. */
 async function downloaded(abs: string, wait = 30_000) {
   for (const start = Date.now(); ;) {
     try {
@@ -208,6 +206,8 @@ async function downloaded(abs: string, wait = 30_000) {
   }
 }
 
+/** A vault file's bytes (range requests so players can seek; `as=jpeg` for HEIC; `download=1`), or an allowed outside
+ *  file. Documents are sandboxed so an SVG or HTML can't run script; PDFs can't be (the browser's viewer). */
 async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: Record<string, string>) {
   let rel: string, abs: string, st: fs.Stats
   try {

@@ -1,6 +1,5 @@
-// The plugin directory's index.json (core/pluginindex.ts), built daily in the Vaultite/plugins repository: repos with the
-// topic vaultite-plugin plus listed.json's, at their latest release (several in one: each folder's newest <folder>/v1.2.0).
-// node tools/plugin-index.ts [--listed l.json] [--blocked b.json] [--out index.json]; GITHUB_TOKEN
+// The plugin directory's index.json (core/pluginindex.ts), built daily in Vaultite/plugins (GITHUB_TOKEN): repos with
+// topic vaultite-plugin or in listed.json, at their latest release. [--listed l.json] [--blocked b.json] [--out f.json]
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"

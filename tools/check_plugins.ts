@@ -77,9 +77,8 @@ for (const [name, [tier, d]] of found) {
   Object.assign(decls, declsOf(m))
 }
 
-// Nothing of the plugin API runs while an app plugin's module loads: the core module behind it may not have run yet
-// (the Dock icon plugin once threw at its top level and the app never started). Vault plugins load later: not theirs.
-// (agentPlugin is a function declaration that reads only its arguments then.)
+// Nothing of the plugin API runs while an app plugin's module loads: the core behind it may not have run yet (the Dock
+// icon plugin once threw then and the app never started). Vault plugins load later; agentPlugin reads only its args.
 const AT_LOAD = new Set(["agentPlugin", "cell", "definePlugin", "devicePref", "pluginSettings"])
 type Node = { type: string; start: number; [k: string]: unknown }
 const INSIDE = new Set(["FunctionDeclaration", "FunctionExpression", "ArrowFunctionExpression", "ClassBody"])
@@ -267,6 +266,30 @@ for (const [f, text] of Object.entries(generate())) {
   if (!fs.existsSync(f) || fs.readFileSync(f, "utf8") !== text) problems.push(`${path.relative(ROOT, f)} is out of date: node tools/plugin_api_doc.ts`)
 }
 fs.rmSync(SCRATCH, { recursive: true, force: true })
+
+// Comments are at most 2 lines (CLAUDE.md): consecutive `//` lines or one `/* */` block; directives don't count.
+const DIRECTIVE = /^\/\/\s*(eslint-|@ts-|prettier-|#region|#endregion)|^\/\/\//
+const sources = ["core", "web/src", "plugins", "electron", "bin", "tools/test", "tools/evals", "tools/perf"].flatMap((d) => walk(path.join(ROOT, d)))
+  .concat(path.join(ROOT, "server.ts"), fs.readdirSync(path.join(ROOT, "tools")).map((n) => path.join(ROOT, "tools", n)))
+for (const f of sources.filter((f) => /\.(ts|tsx|mjs)$/.test(f))) {
+  const lines = fs.readFileSync(f, "utf8").split("\n")
+  let start = 0, n = 0, block = false
+  const flush = () => {
+    if (n > 2) problems.push(`${path.relative(ROOT, f)}:${start + 1}: a comment of ${n} lines (at most 2: CLAUDE.md)`)
+    n = 0
+  }
+  lines.forEach((l, i) => {
+    const t = l.trim()
+    let comment = block
+    if (block) block = !t.includes("*/")
+    else if (t.startsWith("/*")) { comment = true; block = !t.includes("*/") }
+    else comment = t.startsWith("//") && !DIRECTIVE.test(t)
+    if (!comment) return flush()
+    if (!n) start = i
+    n++
+  })
+  flush()
+}
 
 if (warnings.length) console.log(`Warnings (vault plugins: they still load):\n${warnings.join("\n")}\n`)
 console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared, drawn as text and in the design system; every operation checked`)

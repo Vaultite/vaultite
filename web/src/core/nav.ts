@@ -1,5 +1,4 @@
-// Detail sheets live in the hash after the tab, so they deep-link and Back closes them. Sheets stack: one opened from
-// another pushes an entry (history.state = { sheet: depth, prev }); Close pops the whole stack.
+// Detail sheets live in the hash (deep links; Back closes them); one opened from another pushes an entry, Close all.
 /** Scroll the page: on desktop the main area scrolls by itself (#main-scroll, below the tab bar), on phones the window. */
 export function scrollPage(top: number, smooth = false) {
   const el = document.getElementById("main-scroll")

@@ -110,9 +110,8 @@ export class PluginIndex {
     this.vault = vault
   }
 
-  /** Where the index is: VAULTITE_PLUGIN_INDEX (this machine's: may be a file, for tests), else plugins.json's `index`
-   *  (an http(s) address or a file in a GitHub repository, owner/name/index.json: a vault's setting never reads this
-   *  machine's files), else the directory's. */
+  /** Where the index is: VAULTITE_PLUGIN_INDEX (may be a file, for tests), else plugins.json's `index` (http(s) or a
+   *  GitHub repo's file: a vault's setting never reads this machine's files), else the directory's. */
   url() {
     const env = process.env.VAULTITE_PLUGIN_INDEX
     if (env) return env

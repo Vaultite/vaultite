@@ -1,7 +1,5 @@
-// Backend test, in-process: the API against a throwaway vault (or a copy of one), both directions, files and API.
-// Its areas are tools/test/vault/<area>.ts, run in order against one app (index.ts: which need which).
-//   node tools/test_vault.ts [area...] [--vault <dir>]   the named areas and the ones they need; none: all (npm test)
-//   node tools/test_vault.ts --list | --report           the areas | the slowest and recently failed ones
+// Backend test, in-process: the API against a throwaway vault (or a copy), by area (tools/test/vault/).
+//   node tools/test_vault.ts [area...] [--vault <dir>] | --list | --report      (npm test: all)
 import fs from "node:fs"
 import path from "node:path"
 import { report, section, summary } from "./test/lib.ts"

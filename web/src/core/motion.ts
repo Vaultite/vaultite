@@ -56,9 +56,8 @@ export function spring(damping = 0.74, settle = 0.3) {
 export const zooms = () =>
   typeof document !== "undefined" && typeof document.documentElement.animate === "function" && !matchMedia("(prefers-reduced-motion: reduce)").matches
 
-// The tab list opens and closes like Chrome's and Safari's: one picture of the page (the hero) flies between the page
-// and its card on a uniform scale, its bottom clipped to the card's shape; the cards around settle in (or out) a little,
-// the sheet's ground and bars fade. Nothing is ever scaled up but the hero: iOS drops the tiles of a big scaled layer.
+// The tab list opens like Chrome's and Safari's: a picture of the page (the hero) flies to its card on a uniform scale,
+// the rest settle and fade. Nothing but the hero is ever scaled up: iOS drops the tiles of a big scaled layer.
 const OPEN = { duration: 380, easing: spring(0.96, 0.38), fill: "both" } as const
 const SHOW = { duration: 460, easing: spring(0.86, 0.46), fill: "both" } as const
 /** How far the cards around are drawn back (the list settling in as the page shrinks into its card). */

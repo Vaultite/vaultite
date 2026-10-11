@@ -1,6 +1,5 @@
-// [[Links]], resolved the way Obsidian does, on the server and in the app (web/src/core/links.ts, through `linkIndex`):
-// a path (or relative to the file), then a file name (a folder in front narrows it), then titles, aliases and plugins'
-// names. Several files answering: the closest to the linking file wins, an archived one last. No Node.
+// [[Links]] resolved as Obsidian does, on server and app (web/src/core/links.ts): a path, a file name, then titles,
+// aliases and plugins' names; of several, the closest to the linking file wins, an archived one last. No Node.
 
 /** A file as links see it. `names` are what plugins add (a person's name); `archived`: it loses ties. */
 export type LinkFile = { path: string; title?: string; aliases?: string[]; names?: string[]; archived?: boolean }

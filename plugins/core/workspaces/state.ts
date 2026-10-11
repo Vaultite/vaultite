@@ -24,6 +24,7 @@ for (const ev of ["hashchange", "popstate"]) addEventListener(ev, (e) => { if (e
 
 // ---------- the slots: the store's, with this app's own changes on top until the store brings them back ----------
 // An unused slot (blank.ts) reads as null everywhere here, and a change leaving one like that empties it in the vault.
+
 /** A workspace's sidebars are the default: none of its own, or the same as sidebars.json's. */
 export const defaultSidebars = (x: unknown) => x === undefined || sameSidebars(readSidebars(x), savedSidebars())
 const unusedIfBlank = (list: unknown[]): Slots => SLOTS.map((n) => {
@@ -125,6 +126,7 @@ export function setState(key: string, value: unknown) {
 
 // ---------- the workspace's pinned pages (POST /api/workspaces/<n>/pins: one change, on the list as it is) ----------
 // Without a list of its own it shows the vault's; its first change copies that list (server and here alike).
+
 /** The current workspace's own pinned pages, or null: none of its own (the vault's apply). */
 const pinnedHere = (): string[] | null => { const n = current(); const p = n ? slots()?.[n - 1]?.pinned : undefined; return Array.isArray(p) ? p : null }
 function pinHere(path: string, on: boolean, before: string | null | undefined, base: string[]) {
@@ -190,8 +192,7 @@ function clear(n: number) {
 }
 
 // ---------- tabs ----------
-/** What each tab keeps for this visit only, not saved in the vault: its back/forward history and the tab it was opened
- *  beside (Tab.from). */
+/** What a tab keeps only for this visit, not saved in the vault: its back/forward history, the tab it opened beside. */
 const VISIT = new Set(["back", "fwd", "from"])
 /** The tabs as saved in the vault: without what's kept for this visit. */
 const strip = (l: TabLayout): TabLayout => JSON.parse(JSON.stringify(l, (k, v) => (VISIT.has(k) ? undefined : v)))
@@ -227,8 +228,6 @@ function apply(l: TabLayout | null, merge = false) {
 }
 export const saveTabsSoon = () => { if (applying) return; clearTimeout(timer); timer = window.setTimeout(saveTabs, 1000) }
 
-/** The vault changed: the current workspace's tabs as they are there now (an unused one's: a blank tab). A change of
- *  ours still on its way wins (last write wins); a device on no workspace yet takes the first. */
 /** The first sync of this page has happened (what it arrived at is opened then). */
 let synced = false
 const UNSAVED = "vaultite.workspaces.unsaved"
@@ -251,6 +250,8 @@ function arrive() {
   else if (at.length > 1 && location.hash !== at) replaceHash(at)
 }
 
+/** The vault changed: the current workspace's tabs as they are there now (an unused one's: a blank tab). A change of
+ *  ours still on its way wins (last write wins); a device on no workspace yet takes the first. */
 export function sync() {
   const list = slots()
   if (!list) return

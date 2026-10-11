@@ -10,8 +10,7 @@ import {
 } from "./state"
 
 // ---------- the header ----------
-/** Workspace n's row in the switcher's list while it's renamed (Rename, in its menu): its name in a field. Enter (or a
- *  click elsewhere, or the list closing) keeps it, Escape leaves it as it was. */
+/** Workspace n's row while renamed: a field; Enter, a click elsewhere or the list closing keeps it, Escape doesn't. */
 function Rename({ n, on, end }: { n: number; on: boolean; end: (enter: boolean) => void }) {
   const done = (name: string | null) => renamed(n, name)
   return (

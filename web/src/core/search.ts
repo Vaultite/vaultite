@@ -135,9 +135,8 @@ export function search(docs: Doc[], query: string, limit = 40): Hit[] {
   return out.sort((a, b) => last(a) - last(b) || b.score - a.score || b.recent - a.recent).slice(0, limit)
 }
 
-/** Files that count as "recently changed" (the quick switcher's suggestions, a new tab's list): not the trash's or
- *  other hidden ones, nor the plugins' built-in pages (written by the app, not the user: a copy of one is the user's),
- *  nor the vault's AGENTS.md and CLAUDE.md (instructions for AIs, not notes). */
+/** Files that count as recently changed: not hidden ones (the trash), the plugins' built-in pages (the app wrote
+ *  them), nor the vault's AGENTS.md and CLAUDE.md (instructions for AIs, not notes). */
 export const isRecentable = (path: string) => !isHidden(path) && !inPagesDir(path) && path !== "AGENTS.md" && path !== "CLAUDE.md"
 
 /** With an empty query: the files opened lately in this workspace (`opened`, newest first), then recently changed

@@ -1,7 +1,5 @@
-// Agent evals: can an agent use the vault through its tools? On a sandbox vault (core/sandbox.ts), never a real one.
-//   node tools/evals/run.ts          every op's docs usable, then each task's MCP calls scripted, in-process (no model)
-//   node tools/evals/run.ts --live   the same tasks through `claude -p` on a cheap model (haiku; a few cents) against a
-//                                    sandbox server, graded on the files, with its tool calls and failed ones counted
+// Agent evals: can an agent use the vault through its tools? On a sandbox vault, never a real one.
+//   node tools/evals/run.ts [--live]   scripted MCP calls in-process; --live: `claude -p` on haiku (a few cents)
 import { spawn, spawnSync } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"

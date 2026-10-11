@@ -4,9 +4,8 @@ import type { EditorView } from "@codemirror/view"
 import { NoteKeys } from "./keys"
 import { addPhotos } from "./photo"
 
-// Editing commands with Obsidian's ids, so its names and keys carry over; they win over the editor's own keys, and make
-// up its right-click menu (menu.ts). edit.ts loads with the first editor; then they act at once, so a caller (an Obsidian
-// plugin) sees the change when the command returns.
+// Editing commands with Obsidian's ids, so names and keys carry over; they win over the editor's keys and make its
+// menu. edit.ts loads with the first editor; then they act at once, so a caller sees the change on return.
 let loading: Promise<typeof import("./edit")> | null = null, edit: typeof import("./edit") | null = null
 const load = () => (loading ??= import("./edit").then((m) => (edit = m)))
 

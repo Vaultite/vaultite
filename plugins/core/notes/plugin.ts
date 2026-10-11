@@ -96,9 +96,8 @@ plugin.kind(new Kind({
     else if (changed(n, before) && (n.updated_at ?? null) === (before.updated_at ?? null)) n.updated_at = nowUtc() // content changed
     return n
   },
-  /** A file edited in the app (not one changed outside it): give it an id and times, and bump `updated` when its content
-   *  changed without it. A copy of another note (same id) gets a new id and dates. Plain Markdown (no `type`, no `id`)
-   *  is never rewritten. */
+  /** A file edited in the app: give it an id and times, bumping `updated` if its content changed without it. A copy of
+   *  another note (same id) gets a new id and dates; plain Markdown (no `type`, no `id`) is never rewritten. */
   fill(n, before) {
     if (!n.ext_id && plugin.vault.entries.get(`${n.id}.md`)?.fm.type == null) return null
     const out = { ...n }

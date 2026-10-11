@@ -517,10 +517,8 @@ function tail(file: string) {
 /** How long a transcript's prompt cache lasts: an hour when its tail wrote 1 h cache, else five minutes. */
 const ttlOf = (tail: string) => (/"ephemeral_1h_input_tokens":\s*[1-9]/.test(tail) ? 3600 : 300)
 
-/** Its live sessions by terminal, with their ids (the service "agent-meters:claude"); with `meters`, their context and
- *  cache: the last request in each transcript; the window is what the status line said (<account>/usage-snapshots/<id>.json,
- *  or ~/.claude's), else 200k, or 1M once a request read more. A process's terminal is asked once, a transcript read
- *  again only once it grew. */
+/** Live sessions by terminal ("agent-meters:claude"); `meters`: context from each transcript's last request, the window
+ *  the status line's (else 200k, 1M once exceeded). A terminal is asked once, a transcript reread only when grown. */
 const terminals = new Map<string, string>() // pid@start -> terminal
 type Read = { tokens: number; last: number; ttl: number }
 const lastRead = new Map<string, { size: number; meter: Read | null }>()

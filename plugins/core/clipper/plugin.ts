@@ -1,6 +1,5 @@
-// Web clipper (Defuddle on linkedom): a page, fetched or given as `html` (a logged-in page), saved as
-// a note; one clipped before is answered (the app opens it and offers Update: `update` clips it into that note again).
-// Only writing holds the vault (`lock: false`).
+// Web clipper (Defuddle on linkedom): a page, fetched or given as `html` (logged in), saved as a note; one clipped
+// before is answered, so the app offers Update (`update` clips into it again). Only writing holds the vault.
 import fs from "node:fs"
 import path from "node:path"
 import { fetchPublic, HTTPError, OpError, pageText, Plugin, publicUrl, reply, vaultPath } from "../../../core/plugins.ts"

@@ -10,9 +10,8 @@ import type { Vault } from "./vault.ts"
 import { type TreeWatcher, watchTree } from "./treewatch.ts"
 
 const QUIET = 100, MAX = 500, PING = 25_000, UI_ANSWER_MS = 3000, ASK_MS = 10_000
-/** What a window answers with a result (drive's asks): its palette's commands, the dev tools (core/coreops/dev.ts), the
- *  user's pick from a list (ui.choose), a secret they type (secret.ask). Never through POST /api/ui (`handle`): only ops
- *  reach them, and the dev ones are the owner's. Seconds an ask may wait at most: a person gets longer than a window. */
+/** What a window answers (drive's asks: palette commands, dev tools, ui.choose, secret.ask), only through ops, never
+ *  POST /api/ui: the dev ones are the owner's. Seconds an ask may wait: a person gets longer than a window. */
 const ASKS = new Map([["commands", 120], ["dev", 120], ["choose", 600], ["secret", 600]])
 type Answer = { ran?: boolean; result?: unknown; error?: unknown }
 

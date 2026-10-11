@@ -1,11 +1,5 @@
-// The coding agents on a server (written for Linux, runs on a Mac too), end to end against a throwaway sandbox server:
-// OpenClaw and Hermes (and Claude Code, Codex, OpenCode) in Vaultite's terminals, connect and the vault's MCP tools,
-// usage, conversations, memory, scheduled jobs, resuming, a server restart, file watching and process cleanup.
-//   node tools/test_agents_linux.ts                         fixtures and fake agents only (free, runs anywhere)
-//   VAULTITE_AGENT_LIVE=1 node tools/test_agents_linux.ts   also the real agents on a real model (a few cents)
-// VAULTITE_TEST_PORT (8911), VAULTITE_AGENT_MODEL (openai/gpt-6-luna, through OpenRouter), VAULTITE_AGENT_KEEP=1 keeps
-// the temporary folder. Never touches the real vault or the agents' own state: their homes are copies (live: config
-// copied, the key files only linked), the server's HOME is a temporary one, and its port names its terminals.
+// The coding agents on a server, end to end on a sandbox; never the real vault or agents' state (homes are copies).
+// VAULTITE_AGENT_LIVE=1: real models too (a few cents); VAULTITE_TEST_PORT, VAULTITE_AGENT_MODEL, VAULTITE_AGENT_KEEP=1.
 import { type ChildProcess, execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

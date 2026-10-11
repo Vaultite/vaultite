@@ -473,9 +473,8 @@ const apns = () => ((plugin.secrets().inbox ?? {}) as Item).apns as push.Apns ??
  *  to open (an agent's report, a cloud session); not a turn ending in a terminal, an error or news. */
 export const waitsOnYou = (e: Pick<InboxEvent, "kind" | "link">) => e.kind === "waiting" || (e.kind === "done" && !!e.link)
 
-/** A new event to the phones (the setting `push`: all, waiting (what waits on you, the default), off). A permission an
- *  app terminal waits on gets Approve and Deny (Push.swift's category "permission") when the notification shows all it
- *  asks; the rest Mark read. Never fails the event. */
+/** A new event to the phones (`push`: all, waiting (default), off). A permission prompt gets Approve and Deny
+ *  (Push.swift's "permission") when the notification shows all it asks; the rest Mark read. Never fails the event. */
 function pushed(e: InboxEvent) {
   const mode = settings().push
   if (e.read || mode === "off" || (mode === "waiting" && !waitsOnYou(e)) || !push.devices().length) return

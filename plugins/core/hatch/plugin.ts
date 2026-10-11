@@ -1,6 +1,5 @@
-// Hatch: what a Hatch agent (a personal AI on its own VM, like one named Muse) keeps in its home folder, read live
-// through an agent machine's file agent (Machines) or on this machine (HATCH_HOME): who it is, its runs, what it learned,
-// its dreams, its feed and its scheduled jobs. Nothing is written to the vault; what's new reaches the Inbox.
+// Hatch: what a Hatch agent (a personal AI on its own VM) keeps in its home, read live through a machine's file agent
+// or here (HATCH_HOME): who it is, runs, learnings, dreams, feed, jobs. Never written to; what's new reaches the Inbox.
 import os from "node:os"
 import { ago } from "../../../core/codingagents.ts"
 import { bullets as list, HTTPError, Plugin, type Request, section } from "../../../core/plugins.ts"

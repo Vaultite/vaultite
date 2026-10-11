@@ -1,6 +1,5 @@
-// The app's errors, queued for the Errors plugin (localStorage: one that stopped the app is sent after the reload), heard
-// in the core since the worst take the plugins down. A chunk that didn't load reloads once the server answers, when
-// nothing is lost by it (unsaved.ts), else offers Reload.
+// The app's errors, queued for the Errors plugin (localStorage: one that stopped the app is sent after the reload),
+// heard in the core since the worst take the plugins down. A failed chunk reloads once safe (unsaved.ts), else asks.
 import { onActivity } from "@/core/activity"
 import { notify } from "@/core/notify"
 import { safeToReload } from "@/core/unsaved"

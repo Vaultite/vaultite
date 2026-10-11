@@ -302,9 +302,8 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
   badge?: boolean
   /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
   tag?: string
-  /** Its tooltip (defaults to the label when it's text): always in the rail; in the open sidebar only when it says
-   *  something the row doesn't, else when the label is cut off. A label that isn't text counts as said by `tip`;
-   *  null: none. `onClick` hears a middle-click too (`e.button` 1: open it in a new tab). */
+  /** Its tooltip (default the label, when text): always in the rail; open, only when it adds to the row or the label is
+   *  cut off. A non-text label counts as said by `tip`; null: none. `onClick` hears middle-click too (new tab). */
   tip?: string | null
   onClick?: (e: React.MouseEvent) => void; onContextMenu?: (e: React.MouseEvent) => void
   /** Drawn at the right end (a button, a count). */

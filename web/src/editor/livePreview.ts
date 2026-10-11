@@ -1,6 +1,5 @@
-// Live preview: Markdown drawn formatted, an element (a link, a bold span, a heading's line, a block) showing its Markdown
-// again while the cursor is in it. Inline marks are decorated from what's on screen; blocks (sections, tables, callouts,
-// embeds, ```block-<name>) are a state field.
+// Live preview: Markdown drawn formatted, an element showing its Markdown again while the cursor's in it. Inline marks
+// are decorated from what's on screen; blocks (sections, tables, callouts, embeds, block fences) are a state field.
 import { syntaxTree } from "@codemirror/language"
 import { EditorSelection, Facet, Prec, StateEffect, StateField, type EditorState, type Range, type Text, type Transaction } from "@codemirror/state"
 import { Decoration, EditorView, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view"

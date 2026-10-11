@@ -115,17 +115,15 @@ const optIn = (p: Plugin) => p.tier === "vault" || !!p.offByDefault
 const hostedOwn = (p: Plugin, disabled: string[], seen: string[]) =>
   !!hostedOn.get(p.id) && !p.problems?.length && !p.meta?.approval && isEnabled(p.host!, disabled, [...seen, p.id])
 
-/** On: not switched off (an opt-in plugin: switched on, and nothing wrong with it), and everything it requires is on
- *  (all the way down). */
-/** The vault's plugins (and Obsidian's) off for this window's visit, the crash screen's "Reload with vault plugins
- *  off": code written for this vault can't keep the app from opening, and the Plugins page can turn that one off.
- *  Nothing is written; turnPluginsBackOn ends it. The app's own stay on (the file tree is one). */
+/** The vault's plugins (and Obsidian's) off for this visit (the crash screen's "Reload with vault plugins off"), so
+ *  their code can't keep the app from opening. The app's own stay on; turnPluginsBackOn ends it. */
 export const safeMode = (() => { try { return sessionStorage.getItem("vaultite.safe") === "1" } catch { return false } })()
 export function turnPluginsBackOn() {
   try { sessionStorage.removeItem("vaultite.safe") } catch { /* none kept */ }
   location.reload()
 }
 
+/** On: not switched off (opt-in: switched on, and nothing wrong with it), and everything it requires is on too. */
 export function isEnabled(id: string, disabled: string[], seen: string[] = []): boolean {
   const p = pluginById(id)
   if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted"))) return false
@@ -428,7 +426,6 @@ export function dockAtEnd(key: string, side: Side) {
 }
 /** Hide a panel (out of both sidebars; its plugin stays on). */
 export const hidePanel = (key: string) => changeSidebars((s) => withoutPanel(s, key))
-/** Give a panel a height (px; a divider dragged), or none (null: as tall as what it draws). */
 /** Give a panel a height (null: as tall as what it draws); `at`: its sidebar's height now, so other screens draw the
  *  heights in proportion (core/sidebars.ts heightsAt). */
 export const setPanelHeight = (key: string, px: number | null, at?: number) => changeSidebars((s) => setHeight(s, key, px, at))
@@ -439,12 +436,12 @@ export const setPanelDocked = (key: string, docked: boolean) => changeSidebars((
 /** Fold a panel to its heading, or open it again. */
 export const togglePanelCollapsed = (key: string) => changeSidebars((s) => setCollapsed(s, key, !s.collapsed.includes(key)))
 
-/** Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel
- *  unfolded. Not one the user hid, or whose plugin is off: false then. */
 // (a phone shows a sidebar as a drawer: components/PhoneDrawer.tsx opens it)
 let drawerOpener: ((side: Side) => void) | null = null
 export const setDrawerOpener = (fn: (side: Side) => void) => { drawerOpener = fn }
 
+/** Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel
+ *  unfolded. Not one the user hid, or whose plugin is off: false then. */
 export function revealPanel(key: string) {
   const prefs = getPrefs(), s = sidebars(prefs), side = sideIn(s, key)
   if (!side || !sidebarPanels(prefs.disabled, prefs.order).some((x) => x.key === key)) return false
@@ -574,8 +571,6 @@ export function kindFolder(folder: string, disabled = getPrefs().disabled) {
   return PLUGINS.some((p) => p.files?.folders && isEnabled(p.id, disabled) && p.files.folders.some((f) => parts.includes(f)))
 }
 
-/** The plugin that's on and draws files like this one (by extension, the longest that fits: "excalidraw.md" before a
- *  plain "md"; see FileFormat), or null. */
 /** Whether a file takes its whole pane in a tab (its format's `layout: "pane"`: a canvas, a drawing). */
 export const fillsPane = (path: string, disabled: string[]) => (fileFormatFor(path, disabled) ?? formatFor(path, disabled)?.format)?.layout === "pane"
 
@@ -590,6 +585,8 @@ export function fileFormatFor(path: string, disabled: string[]) {
   return null
 }
 
+/** The plugin that's on and draws files like this one (by extension, the longest that fits: "excalidraw.md" before a
+ *  plain "md"; see FileFormat), or null. */
 export function formatFor(path: string, disabled: string[]) {
   const name = path.slice(path.lastIndexOf("/") + 1).toLowerCase()
   let best: { plugin: Plugin; format: FileFormat; ext: string } | null = null
@@ -634,7 +631,6 @@ export function blockFor(name: string, disabled: string[]) {
   return { plugin: p, render: on ? on.blocks![name] : null, decl }
 }
 
-/** Timeline entry kinds from every enabled plugin ("call" from People). */
 // Views' titles and icons can follow live data a plugin keeps (a terminal's session name and state): the plugin says
 // when it changed, and whatever draws tabs (useTabInfo) draws them again.
 const views = signal()

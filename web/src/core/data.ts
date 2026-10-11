@@ -159,10 +159,8 @@ function remember(path: string, data: unknown, json: string) {
   }, 1000)
 }
 
-/** Live data from a plugin's own route: loaded once per mount (the last answer shown meanwhile), and again when its
- *  plugin's cache or settings change, after a disconnect, when `version` changes, and with `files` when the vault's
- *  files change (true: any note; or which, by path: a query over the vault follows them). `every` ms: asked again while
- *  the page shows, and on coming back to it. */
+/** Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a
+ *  reconnect, `version`, vault files (`files`: any, or by path) and every `every` ms while shown. */
 export function useLive<T>(path: string | null, version?: string | number, files?: boolean | ((path: string) => boolean), every?: number) {
   const follow = useRef(files)
   follow.current = files

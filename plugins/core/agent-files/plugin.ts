@@ -1,6 +1,5 @@
-/** The vault's rules for AIs, `.vaultite/AGENTS.md`: core/AGENTS.md, each plugin's `forAgents` line, then the user's
- *  own under OWN, always kept. With `rootFiles` on, one pointer line in the vault's AGENTS.md and CLAUDE.md; off, it goes
- *  (and a file the app made for it). */
+/** The vault's rules for AIs, `.vaultite/AGENTS.md`: core/AGENTS.md, each plugin's `forAgents`, then the user's own
+ *  under OWN, always kept. `rootFiles` on: a pointer line in the vault's AGENTS.md and CLAUDE.md; off, it goes. */
 import fs from "node:fs"
 import path from "node:path"
 import { agentLines, LOADED, Plugin, ROOT, WriteRefused } from "../../../core/plugins.ts"

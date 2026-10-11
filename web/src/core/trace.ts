@@ -1,6 +1,5 @@
-// What the app did, for debugging: `window.__vauTrace`, the latest events per topic in memory (heights and scroll
-// restores; "editor": each editor's changes, cursor jumps, views and mounts, never the text; "activity", "console").
-// Cheap enough to be always on; read with `vau dev eval __vauTrace.editor`, or hear them all (`onTrace`: Bug recorder).
+// What the app did, for debugging: `window.__vauTrace`, recent events per topic in memory ("editor": changes, cursor
+// jumps, mounts, never the text). Always on, it's cheap: `vau dev eval __vauTrace.editor`, or `onTrace` (Bug recorder).
 const MAX: Record<string, number> = { editor: 2000 }
 export type TraceEvent = { t: number; at: string; [k: string]: unknown }
 const topics: Record<string, TraceEvent[]> = {}

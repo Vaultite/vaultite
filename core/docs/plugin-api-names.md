@@ -4,7 +4,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 
 ### `"@vaultite"` (index.tsx)
 - `accountsOf(a, machine, fresh?)`: Agent `a`'s accounts on `machine` ("": this one), none if it has none or they can't be read; kept a minute, unless `fresh`.
-- `ActionButtons({ phone, open, panel, dock })`: The buttons: the commands newtab.json lists (or the default ones) that are there now, each drawn as the command is.
+- `ActionButtons({ phone, open, panel, dock })`: The commands newtab.json lists (else the default) that exist now, drawn as the command is.
 - `activeFile()`
 - `ActiveFile`
 - `ActivityNote`
@@ -23,7 +23,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentMock`: Made-up usage for the demo, times in minutes ago: `daily`, ten days' value repeated over 30 days and growing, each dollar `per` so many tokens and minutes working, a session per so many dollars;…
 - `AgentModels(ctx)`
 - `agentOfTerminal(id, list?)`: The agent a terminal runs, by its id ("codex-<id>", "claude_<account>-<id>", "resume-<name>-<session>", "@<machine>" suffixes), or null for a plain shell (core/terminalids.ts).
-- `agentPlugin(src, o)`: A coding agent plugin's definition (its index.tsx): its blocks (each an agent block by name, or its own), a session's view, its agent in Terminal and the commands opening it (literal: the server…
+- `agentPlugin(src, o)`: A coding agent plugin's definition: its blocks, a session's view, its agent in Terminal, the commands opening it (literal: the server reads them), demo usage.
 - `AgentProject({ src, … })`: In a project file: that project's last 30 days and its sessions (`project: Name` for another).
 - `AgentProjects(ctx)`
 - `AgentSession({ src, id })`
@@ -56,7 +56,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `attachmentFolder(s, from)`: The folder a file pasted into the note `from` goes in: the File explorer's attachment folder (another app's when unset: core/filing.ts), else Attachments.
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.
-- `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (a coding agent waiting for you): the same wherever the icon is (a tab, the tab list, the sidebar's row).
+- `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (an agent waiting for you), the same wherever the icon is.
 - `BarKey`
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
@@ -79,7 +79,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Cell`
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
 - `CheckItem`: One thing a checklist turns on or off.
-- `checklist(id, { on, off, set })`: Which things are on, as menu rows (the panels a sidebar shows, the pinned pages, a new tab's sections and buttons): the ones on, ticked, in their order, then More ▸ with the rest (`off`, groups…
+- `checklist(id, { on, off, set })`: Which things are on, as menu rows: on ones ticked, in order, then More ▸ with `off`.
 - `CHIP_TINTS`: The colours a value can have: the app's colour tokens, which every colour scheme sets.
 - `chipLabel(v)`: A value's name: its label, else the value itself in sentence case.
 - `chipMenu({ file, prop, values, unset })`: The choices: each value, then the one that removes the key.
@@ -97,7 +97,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with.
 - `cn`
-- `commandItems(...ids)`: Commands as menu rows (by id), those offered now: their name, icon and first keys, so a menu and the palette say the same (the File explorer's Show hidden files, a tab bar's Reopen closed tab).
+- `commandItems(...ids)`: Commands as menu rows (by id), those offered now, named and keyed as in the palette.
 - `commandKeys(id)`: Those keys as `keyHint` writes them, "" without any: for a button's tooltip, so it never names keys of its own.
 - `commandList()`: Every command registered now, available or not (`available` says which can run).
 - `confirmDialog(opts)`: Ask; resolves true when confirmed, false when cancelled.
@@ -105,7 +105,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Conventions`: How the vault wants new files placed and links written, when it says so itself (another app's settings in it); undefined leaves it to the app.
 - `copyText(text)`: Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy.
 - `createFile(folder, name?, text?)`
-- `createNamed(folder, typed, text?)`: A note named as typed (a link's target, the quick switcher's query): with "/", at that path from the top of the vault, else in `folder`.
+- `createNamed(folder, typed, text?)`: A note named as typed (a link's target, the switcher's query): with "/" from the vault's top, else in `folder`.
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
 - `currentEditor()`: The editor the user means now, or null (the focused tab isn't a text file: a dashboard's grid, a terminal).
 - `currentFile()`: The vault file in the focused tab ("" when it shows something else, or a file from outside the vault).
@@ -113,11 +113,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `currentWorkspace()`: The current workspace (null: no plugin keeps workspaces).
 - `DateOptions`: How weeks count: the day they start on (`start`, 0 Sunday … 6 Saturday) and the day of January week 1 holds (`jan`, moment's doy: 1 for the week of January 1st); unset, ISO's (1 and 4).
 - `dateText(d, options)`: A date (or a time in ms) as text: `dateText(d, { day: "numeric", month: "short" })` is d.toLocaleString(undefined, { day: "numeric", month: "short" }), with the formatter kept.
-- `DefaultPlace`: Where new terminals and agents open in the current workspace when none is asked for (and where Dispatch runs): a machine (none: this one) and an account per agent (none: its own default).
+- `DefaultPlace`: Where new terminals and agents (and Dispatch) open unasked: a machine (none: this one), an account per agent.
 - `defaultPlaceOf(agent, machines, h?)`: The current workspace's default for agent `agent` (null: a shell), as ids: "" is this machine (also when the default names this one), and the agent's own account.
 - `definePlugin(def)`
 - `del(path)`
-- `deleteFile(path, opts?)`
+- `deleteFile(path, opts?)`: Move a file or folder to the trash (in the trash: delete it for good; .trash itself: empty it), with Undo unless `quiet`.
 - `DetailDef`
 - `detailPath(kind, ...args)`: A detail path with its parts encoded (ids have slashes: "People/Alice Park").
 - `devicePref(key, fallback)`: A value a plugin keeps for this device only (the current workspace), in this device's prefs (localStorage), never in the vault.
@@ -173,7 +173,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
-- `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail, a #tag's files, a command link, a web or other app's link; a [[link]] to nothing yet makes that note where new…
+- `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
@@ -196,7 +196,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes.
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
-- `HostedPlugin`: A plugin another plugin runs (a plugin written for another app, run by its host): listed on the Plugins page in its host's group and drawn like any plugin, while its host answers its switch, its…
+- `HostedPlugin`: A plugin another runs (one written for another app): listed in its host's group on the Plugins page, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math and mermaid diagrams.
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
@@ -216,7 +216,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
-- `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard, Hide keyboard at its end.
+- `KeyBar({ label, keys, hide, scroll, className })`: The row above the keyboard.
 - `keyboardBusy(mine?)`: Whether the keyboard is someone else's (an overlay, or a field outside `mine`), so a view focusing itself (a terminal reconnecting) must leave it.
 - `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
 - `keyCaps(keys)`: A shortcut as the keycaps to draw: "Mod+Shift+F" -> ["⌘", "⇧", "F"].
@@ -239,7 +239,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `MapPin`
 - `mapTheme()`: Light or dark, as the app is now (main.tsx toggles .dark on <html>).
 - `MapTheme`
-- `Markdown({ text, store, inline, full, className, from, plain, seen })`: `inline`: one line in running text; else a document in a sheet's sizes unless `full`.
+- `Markdown({ text, store, inline, full, className, from, plain, seen })`: `inline`: one line in running text; else a document at a sheet's sizes unless `full`.
 - `markdownDrawn(el)`
 - `markdownHtml(text, { inline, from }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for…
 - `markNew(path)`
@@ -261,7 +261,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `newNoteFolder(s, from?)`: The folder every new note goes in ("" = the top), unless the vault says otherwise.
 - `newTab(gid?)`: A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one: a blank tab, one per pane (the blank tab it has already moves next to the active one instead; none, or the…
 - `NewTabCtx`
-- `NewTabSection`: A section of a blank tab's page (see `newTab` in PluginDef).
+- `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.
 - `NoteBody({ store, path, body, fm, whole, className })`: `path`'s body (no frontmatter), drawn read-only.
 - `NoteEditor(props)`: Markdown that isn't a file, edited like a note (a canvas's text card).
 - `NoteEditorProps`
@@ -293,7 +293,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `OpenFile`: The file a status item is drawn for: its head, and its whole text, frontmatter included ("" for a file that isn't text: an image), as typed (each change redraws it, a moment after the keystroke).
 - `openingSoon(path, now?)`
 - `openInList(newTab?)`: Do what a click on the row does (`newTab`: as a ⌘-click, opening a file in a new tab).
-- `openInSplit(to, side?, focusIt?)`: `to` in a pane beside the focused one (`focus` false: shown there, the focus stays where it is).
+- `openInSplit(to, side?, focusIt?)`: `to` in a pane beside the focused one (right or below, made if none); `focus` false: the focus stays where it is.
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
@@ -364,7 +364,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
 - `revealLabel`: Showing a file where it is: Finder on a Mac, the file manager elsewhere.
-- `revealPanel(key)`
+- `revealPanel(key)`: Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel unfolded.
 - `Ring({ value, goal, color, size })`: Progress ring for "x of goal this week".
 - `Row({ title, meta, right, lead, className, onOpen, href, wrap, … })`: A list row: title (two lines at most) and meta line; `onOpen` makes it a disclosure row, `href` a new-tab link.
 - `rowMenu(list, key, own)`: A row's menu: the list's menu for the selection when the row is in one, else its own.
@@ -372,7 +372,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `runCommandNamed(text)`: Run a command that's available now by its id ("switcher:open") or its name as the palette lists it ("Open quick switcher", any case): false if there's none (Vim's :cmd).
 - `runShortcut(e)`: Take a keydown if the app's keys have it (a command, or a sequence step): true if taken.
 - `sameSidebars`
-- `saveAttachments(s, from, files, folder?)`: Save pasted or dropped files as attachments of `from` where the vault says (or in `folder`), answering their paths.
+- `saveAttachments(s, from, files, folder?)`: Save pasted or dropped files as `from`'s attachments where the vault says (or `folder`), answering their paths.
 - `savedSidebars(prefs?)`: sidebars.json as saved (null: unset, the default).
 - `savePdf(name)`: In the desktop app: the window, as it prints, saved as a PDF where the user picks (Export to PDF).
 - `Scope`
@@ -381,11 +381,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
-- `Segment`: A body in pieces: its blocks, its embeds and the Markdown between them (blank-only text left out).
+- `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
 - `Segmented({ value, options, onChange, label, className })`
 - `segments(body, kind?)`
 - `Selectable`: What a list's selected things can do together: its rows' right-click and the phone's bar.
-- `selectClick(e, list, key, current?)`: For a row's click: ⌘ (Ctrl elsewhere) adds or takes it, ⇧ selects the run from the last one picked (`current`, the row lit as open, is where a first ⌘- or ⇧-click starts from: Finder's way), a…
+- `selectClick(e, list, key, current?)`: A row's click: ⌘ (Ctrl) adds or takes it, ⇧ the run from the last picked (first from `current`, the open row, as in Finder); a phone selecting adds or takes.
 - `selectedAttr(on)`: What a row draws while selected: `data-selected`, styled once in index.css.
 - `selectedIn(list)`: The keys selected in a list, in the order they were picked (none: empty).
 - `selectedText(ed?)`: The text selected in an editor (the one the user means by default): its selections, or in reading view the page's selection inside it; "" for none.
@@ -482,7 +482,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useFocusedFile()`
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key)`: holdHeight for a React element: put the ref on it.
-- `useLive(path, version?, files?, every?)`: Live data from a plugin's own route: loaded once per mount (the last answer shown meanwhile), and again when its plugin's cache or settings change, after a disconnect, when `version` changes, and…
+- `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.

@@ -8,9 +8,8 @@ import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, Plugin } from "../..
 
 export const plugin = new Plugin(import.meta.url)
 
-/** An action (types.ts has it for the app): an agent started with `prompt`, or a shell `command` typed into a new shell.
- *  `report: false`: the agent isn't told to end with a report (nor its terminal ended after one). `open`: its terminal's
- *  tab opens in the user's window (by itself only when nothing comes back to the inbox: a command, no report). */
+/** An action: an agent started with `prompt`, or a `command` typed into a new shell. `report: false`: no report asked
+ *  (nor terminal ended). `open`: its tab opens in the user's window (unasked only when nothing reports back). */
 export type Action = { id: string; label: string; icon?: string; agent?: string; prompt?: string; command?: string; report?: boolean; open?: boolean }
 
 export const DEFAULT_PROMPT = "Read the note {path} and do what it asks."

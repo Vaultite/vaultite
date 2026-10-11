@@ -244,9 +244,8 @@ function GroupCard({ store, group, name, info, current, lit, onOpen }: { store: 
   )
 }
 
-/** Cards slide into their new places (FLIP) when one goes or the others make room for a lifted one, starting from where
- *  they show (mid-glide too); the card let go glides from its picture. When one goes, the list keeps its height, or the
- *  scroller at its end would jump up with all of it; given back as it's scrolled up. */
+/** Cards glide to new places (FLIP) when one goes or room's made for a lifted one, from where they show, mid-glide
+ *  too. When one goes the list keeps its height until scrolled up, or a scroller at its end would jump. */
 function useFlip(box: RefObject<HTMLDivElement | null>, live: boolean) {
   const last = useRef(new Map<string, { x: number; y: number }>())
   const height = useRef(0)

@@ -1,6 +1,5 @@
-// Me: the user's own file (ME.md, or where the setting `path` says): who they are and how they want AIs to work with
-// them. The kind `me`, its place pinned (People's geocoder, when it's on: in its cache, never in the file), and the
-// service `me:file` others ask.
+// Me: the user's own file (ME.md, or the setting `path`): who they are and how they want AIs to work with them. The
+// kind `me`, its place pinned (People's geocoder, cached there, never in the file), and the service `me:file`.
 import { Plugin } from "../../../core/plugins.ts"
 import { type Item, Kind, num } from "../../../core/vault.ts"
 

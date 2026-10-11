@@ -1,6 +1,5 @@
 // Set up Vaultite on a made-up home folder: the desktop app's side (electron/setup.ts: Obsidian's vaults, vau without
-// Node) and `vau service` (core/service.ts).
-// node tools/test_setup.ts (npm test)
+// Node) and `vau service` (core/service.ts). In npm test.
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"

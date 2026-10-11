@@ -252,9 +252,8 @@ export async function createFile(folder: string, name = "Untitled", text = "") {
   return f
 }
 
-/** A note named as typed (a link's target, the quick switcher's query): with "/", at that path from the top of the
- *  vault, else in `folder`. Characters a name can't have become spaces, and the name as typed is its alias, so a link
- *  to it finds it. Null when nothing of the name is left. */
+/** A note named as typed (a link's target, the switcher's query): with "/" from the vault's top, else in `folder`.
+ *  Bad characters become spaces and the typed name is its alias, so a link finds it. Null when no name is left. */
 export async function createNamed(folder: string, typed: string, text = "") {
   const name = cleanName(typed)
   if (!name) return null
@@ -333,13 +332,13 @@ export async function restoreFile(path: string) {
   return r.path
 }
 
-/** Move a file or folder to the trash (in the trash: delete it for good; .trash itself: empty it), with Undo unless
- *  `quiet`. Returns where it went in .trash (null when deleted for good). */
 // Deleted here, a moment ago: an editor of it losing its last keystrokes is what the user asked for (Undo brings the
 // file back), not something to warn about.
 const deleting = new Set<string>()
 export const deletedHere = (path: string) => [...deleting].some((d) => path === d || path.startsWith(`${d}/`))
 
+/** Move a file or folder to the trash (in the trash: delete it for good; .trash itself: empty it), with Undo unless
+ *  `quiet`. Returns where it went in .trash (null when deleted for good). */
 export async function deleteFile(path: string, opts: { quiet?: boolean } = {}): Promise<string | null> {
   const wasOpen = leaves(getWorkspace().root).some((g) => g.tabs.some((t) => t.to === `file:${path}`))
   deleting.add(path)

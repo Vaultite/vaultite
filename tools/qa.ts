@@ -1,6 +1,5 @@
-// Every UI QA script (web/qa/*.mjs), each on a fresh sandbox and server; exit 1 on any failure.
-// node tools/qa.ts [script...] [--repeat 3] [--jobs 3]     (npm run qa; after npm run build); each run kept
-// (tools/test/lib.ts record); --lint: the [data-x] and #id selectors QA scripts use that no source draws.
+// Every UI QA script (web/qa/*.mjs), each on a fresh sandbox and server, runs kept; exit 1 on any failure (npm run qa).
+// node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"

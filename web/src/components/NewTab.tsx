@@ -169,9 +169,8 @@ function PanelSection({ panel, id, store, phone }: { panel: SidebarPanel; id: st
   return <div className="flex flex-col" data-newtab-panel={id}><Drawn draw={() => panel.render({ store, open: true, file: "", tab: "", phone })} /></div>
 }
 
-/** The buttons: the commands newtab.json lists (or the default ones) that are there now, each drawn as the command is.
- *  The new tab's (the page's menu), and the Buttons panel's (`panel`: their own; `open` false: the rail, icons only;
- *  `dock`: a phone's dock, 44px icons in a row, each held for its name and menu). */
+/** The commands newtab.json lists (else the default) that exist now, drawn as the command is. `panel`: the Buttons
+ *  panel's own (`open` false: the rail, icons only); `dock`: a phone's dock, 44px icons, held for name and menu. */
 export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boolean; open?: boolean; panel?: string; dock?: boolean }) {
   const { newTab } = usePrefs()
   const byId = new Map(useCommandList().map((c) => [c.id, c]))

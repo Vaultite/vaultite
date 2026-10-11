@@ -117,9 +117,8 @@ function openOtherLink(url: string, mod = false) {
   window.open(url, "_blank", "noopener,noreferrer")
 }
 
-/** Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail, a #tag's files, a command link,
- *  a web or other app's link; a [[link]] to nothing yet makes that note where new notes go, or, when another file may
- *  be what it meant, asks which. */
+/** Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app
+ *  link). A [[link]] to nothing makes that note, or asks which when another file may be what it meant. */
 export async function followLink(s: Store, link: { wiki?: string; url?: string; tag?: string }, newTab: boolean, from?: string) {
   if (link.tag) return openTag(link.tag)
   let wiki = link.wiki ?? ""

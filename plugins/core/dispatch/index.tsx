@@ -62,9 +62,8 @@ type Run = { action: string; path: string; id: string }
 const dispatched = cell(0)
 const useRuns = () => useLive<Run[]>("dispatch/running", dispatched.use(), undefined, 5000).data ?? []
 
-/** Save what's typed, start the action on the server (or on machine `m` through it), then open its terminal here (this
- *  device's window, focused) when it should (`open`, else the action's: an agent that reports runs in the background,
- *  a toast offering its session). */
+/** Save what's typed, start the action on the server (or machine `m` through it), then open its terminal here when it
+ *  should (`open`, else the action's: a reporting agent runs in the background, a toast offering its session). */
 const running = new Set<string>()
 async function dispatch(a: Action, path: string, m?: Machine, account?: string, open?: boolean, again?: boolean) {
   const key = `${a.id}\n${path}\n${m?.id ?? ""}\n${account ?? ""}`

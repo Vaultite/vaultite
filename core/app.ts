@@ -139,9 +139,8 @@ export class App {
 
   private adopting = new Map<string, number>() // plugin id + hash -> when it was last checked against its source
 
-  /** An installed plugin another machine updated on its own (the vault synced its files), waiting here: when this
-   *  machine allowed it before and it updates on its own, it's fetched from its source at the lock's version and, the
-   *  same files, allowed here too. The lock is a vault file, so its word alone is never enough. */
+  /** A plugin another machine updated (its files synced) is allowed here only if this machine allowed it before and a
+   *  fetch from its source at the lock's version has the same files: the lock is a vault file, not enough alone. */
   private adopt() {
     const lock = readLock(this.vault)
     const vps = this.vaultPlugins

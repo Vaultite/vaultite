@@ -27,9 +27,8 @@ export function showHidden(vault: Vault | null) {
   return !!(vault && vault.config("files").showHidden)
 }
 
-/** Read-only: the trash (restore or delete things there), the app's generated copies and the plugins' built-in pages
- *  (Copy to my vault makes one the user's: core/pages.ts). (The rules for AIs, .vaultite/AGENTS.md, take the user's
- *  own under their heading: Agent files.) */
+/** Read-only: the trash, the app's generated copies and plugins' built-in pages (Copy to my vault makes one the
+ *  user's). Not .vaultite/AGENTS.md: the user's own rules go in it, under Agent files. */
 export function locked(rel: string) {
   return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/") || inPagesDir(rel)
 }
@@ -409,9 +408,8 @@ export function copyName(vault: Vault, rel: string) {
   return out
 }
 
-/** Every file's text for search besides the notes (whole, any number of them): text files as they are, and files a
- *  plugin reads (`text:<ext>`: a workbook's cells) as it gives them. Read off the main thread, again only when changed;
- *  kept in memory up to KEEP in all, the rest read again by each search (memory stays bounded, nothing is left out). */
+/** Non-note files' text for search (text files, and `text:<ext>` a plugin reads: a workbook's cells), read off the main
+ *  thread when changed; up to KEEP bytes stay in memory, the rest is reread per search: bounded, nothing left out. */
 const KEEP = 256 << 20
 /** Bigger than this, a file is read a piece at a time (one string can't hold much more): a query matches a piece. */
 const PIECE = 128 << 20
@@ -638,9 +636,8 @@ export async function searchAll(vault: Vault, q: string, limit = 60, opts: Searc
 }
 
 let uploadN = 0
-/** POST /api/upload?path=: a new file of any size, its bytes (the request's body; in-process, `bytes`: a Buffer or a
- *  stream) streamed beside where it goes, hidden, then put there holding the vault: never over a file. The vault is held
- *  only for that, not while the bytes come. */
+/** POST /api/upload?path=: a new file of any size, streamed to a hidden file beside its place, then moved there
+ *  holding the vault (never over a file): the vault is held only for the move, not while the bytes come. */
 export async function upload(vault: Vault, query: Record<string, string>, body: Item, http: IncomingMessage | undefined, hold: <T>(fn: () => Promise<T>) => Promise<T>) {
   const rel = clean(query.path ?? body.path, false, vault)
   if (locked(rel)) throw new HTTPError(403, `${rel} is read-only`)

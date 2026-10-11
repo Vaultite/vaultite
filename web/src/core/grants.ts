@@ -1,6 +1,5 @@
-// Writes on its own (core/grants.ts, core/writegate.ts): a plugin acting on its own (timers, schedules, hooks) writes
-// outside .vaultite/ only where the user allowed. Asked once per plugin, like a phone's permissions: when it's turned on,
-// or when a write first wanted it ("ask"); answered in its settings later.
+// Writes on its own (core/grants.ts): a plugin acting by itself writes outside .vaultite/ only where the user allowed,
+// asked once per plugin like a phone's permissions (when turned on, or first needed: "ask"); changed in its settings.
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { getStore, reload, type Store } from "@/core/data"
 import { op } from "@/core/http"

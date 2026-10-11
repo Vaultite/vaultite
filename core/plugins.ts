@@ -71,8 +71,6 @@ export { allowedPath as outsidePath } from "./outside.ts"
 /** A safe path in the vault from what a request names, or an HTTPError: 400 for one outside it (`..`) or hidden while
  *  hidden files aren't shown, 404 (`mustExist`) for one that isn't there (core/files.ts's `clean`). */
 export { clean as vaultPath } from "./files.ts"
-/** The web from the server: a public page, never this machine or the networks it's on (core/web.ts: Canvas's link
- *  previews, the Web clipper). */
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
 export { type Op, type OpCtx, type OpEntry, OpError, type Param, type Schema, type Who, whoOf } from "./ops.ts"
@@ -427,9 +425,8 @@ export class Plugin {
     return this.attach(fn, (v) => v.onCreate(this.id, fn))
   }
 
-  /** fn(path, file, writer) before the API writes a new file that isn't Markdown (an upload, an SVG): `file` (NewFile)
-   *  is read-only and read only as far as asked, as an upload can be any size. Only while on; files written on disk
-   *  aren't heard. */
+  /** fn(path, file, writer) before the API writes a new non-Markdown file: `file` (NewFile) is read-only and read only
+   *  as far as asked, as an upload can be any size. Only while on; files written on disk aren't heard. */
   onCreateFile(fn: FileCreateHook) {
     return this.attach(fn, (v) => v.onCreateFile(this.id, fn))
   }
@@ -475,9 +472,8 @@ export class Plugin {
     return fn
   }
 
-  /** fn on a timer, run by the server: `every` "15m", "2h", "1d", "1w"; `at` "07:00" (this machine's time) with whole days;
-   *  `machine` a Machines id (else the first listed). Runs once at a time; `vau schedule list` shows it. Called again by
-   *  name it's replaced; `when` null removes it (a schedule its settings set). */
+  /** fn on a server timer: `every` "15m", "2h", "1d", "1w", or `at` "07:00" (local) with whole days; `machine`
+   *  a Machines id (else the first). One run at a time; a name again replaces it, `when` null removes it. */
   every(name: string, when: When | null, fn: () => unknown = () => {}) {
     const problems = when ? whenProblems(when, `${this.id}: ${name}`) : []
     if (problems.length) throw new Error(problems.join("; "))
@@ -537,8 +533,7 @@ export class Plugin {
   }
 
   // --- what a plugin may use
-  /** This plugin's settings, .vaultite/plugins/<id>/data.json (another's: plugin.peer(id)?.settings()). `file`: another
-   *  file of its own, for parts written often, so devices changing different parts never write the same file. */
+  /** Its settings (data.json); `file`: a file of its own for a part written often, so devices collide less. */
   settings(fallback?: Item, file = "data"): Item {
     return this.withLocal(this.vault.config(this.settingsName(file), fallback), file)
   }

@@ -152,8 +152,7 @@ export function goSide(side: "left" | "right" | "top" | "bottom") {
 
 
 // ---------- Tab past a list ----------
-// A list is one stop for Tab, as a tree or grid is: Tab and ⇧Tab leave its rows (and a row's own buttons, which its menu
-// has), and coming back in lands on the row it was on.
+// A list is one Tab stop, as a tree or grid is: Tab leaves its rows (their menu has their buttons); back in, its row.
 const FOCUSABLE = "a[href], button:not(:disabled), input:not(:disabled):not([type=hidden]), select:not(:disabled), textarea:not(:disabled), [tabindex], [contenteditable=true]"
 /** The rows Tab passes over together: a list's, else a sidebar panel's. */
 const runOf = (row: HTMLElement) => row.closest<HTMLElement>("[data-keylist]") ?? row.closest<HTMLElement>("[data-panel]")

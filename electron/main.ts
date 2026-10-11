@@ -153,8 +153,7 @@ function vaultOf(p: string): [Known, string] | null {
 }
 
 // ---------- servers ----------
-/** A vault's port: the one it had (its localStorage is kept by origin), else a new one. Never probed first (that
- *  waits behind Electron's startup): a taken one fails with PortTaken and the vault gets another. */
+/** A vault's port: its last (localStorage is by origin), else new; never probed (slow at startup): PortTaken. */
 function portFor(v: Known, taken = false) {
   if (v.port && !taken) return v.port
   let p: number
@@ -317,9 +316,8 @@ async function openVault(p: string, file?: string) {
     w.server.kill()
     buildMenu()
   })
-  // The server ends on its own only when it failed. Soon after starting, it's a vault it can't open (it answers before
-  // it has read the vault): say why and close the window. Later, a crash: a new one on the same port, which the page
-  // reconnects to (errors.ts), three times a minute at most.
+  // The server ends on its own only on failure: soon after start, a vault it can't open (say why, close the window);
+  // later, a crash: a new one on the same port, which the page reconnects to (errors.ts), three times a minute at most.
   let said = "", since = Date.now(), restarts: number[] = []
   const watchServer = (child: ChildProcess) => {
     child.stderr!.on("data", (b: Buffer) => { said = (said + b.toString()).slice(-2000) })

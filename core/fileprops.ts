@@ -69,9 +69,8 @@ export function homeFolder(paths: Iterable<string>, name?: string | null, nested
   return (name ? pick(named) : null) ?? pick(() => true)
 }
 
-/** Excluded files (the File explorer's setting, else another app's: Obsidian's userIgnoreFilters), as in Obsidian: each a
- *  path a file's starts with (`Archive/`) or a `/regex/`. They stay files you open; search, the graph and unlinked
- *  mentions leave them out, the quick switcher and link suggestions list them last. */
+/** Excluded files as in Obsidian (userIgnoreFilters): a path prefix (`Archive/`) or a `/regex/`. They still open;
+ *  search, the graph and unlinked mentions leave them out, the switcher and link suggestions list them last. */
 export function excluder(filters: unknown): (rel: string) => boolean {
   const tests = (Array.isArray(filters) ? filters : []).flatMap((f): ((rel: string) => boolean)[] => {
     const t = typeof f === "string" ? f.trim() : ""

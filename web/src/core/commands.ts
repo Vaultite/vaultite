@@ -225,8 +225,7 @@ export function shortcutOf(e: KeyboardEvent) {
 }
 
 // ---------- pressing keys ----------
-/** Every command's keys as steps (canonical, lower case), made when commands or hotkeys change: every keystroke typed
- *  comes here, so a key is looked up before any command's `when` is asked. */
+/** Commands by their key steps, rebuilt when they or hotkeys change: every keystroke looks here before any `when`. */
 let byKeys: Map<string, { c: Command; steps: string[] }[]> | null = null
 function table() {
   if (!byKeys) {

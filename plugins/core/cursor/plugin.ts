@@ -289,9 +289,8 @@ async function talk(id: string): Promise<Talk | null> {
   return t
 }
 
-// ---------- Cursor's account: the dashboard's API with the IDE's sign-in (a JWT: read for each fetch, sent only to
-// Cursor, never logged or kept, not once expired), only once the user allowed it (`account`, asked by the limits block).
-// Tokens and cost live only there. CURSOR_API_URL: the tests' fake.
+// ---------- Cursor's account: its dashboard API with the IDE's sign-in, once allowed (`account`) ----------
+// The JWT is read per fetch, sent only to Cursor, never logged or kept, not once expired. CURSOR_API_URL: the tests'.
 
 const API = (process.env.CURSOR_API_URL || "https://cursor.com").replace(/\/+$/, "")
 const TIMEOUT = 15_000

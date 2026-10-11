@@ -1,6 +1,5 @@
-// The one gate every write to a vault passes (writeAtomic, writeNew, moves and deletes: core/vault.ts, core/files.ts).
-// The user's own actions (a request: the app, the CLI, an agent, an op) always pass; a plugin acting on its own (its
-// jobs, timers, hooks: `onItsOwn`) writes outside .vaultite/ only where the user granted it (core/grants.ts).
+// The one gate every vault write passes (core/vault.ts, core/files.ts). The user's own actions always pass; a plugin
+// acting on its own (`onItsOwn`: jobs, timers, hooks) writes outside .vaultite/ only where granted (core/grants.ts).
 import { AsyncLocalStorage } from "node:async_hooks"
 import path from "node:path"
 

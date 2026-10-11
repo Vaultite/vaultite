@@ -1,7 +1,5 @@
-// Selecting several things in a list (files in the tree, tabs, pinned pages, the inbox), one way everywhere, as in
-// Finder: ⌘-click adds or takes one, ⇧-click a run from the last one clicked, ⇧↑ ⇧↓ and ⌘A from the keyboard, Esc or
-// a click elsewhere lets go. A right-click or a drag on a selected row acts on all of them. Phones have no keys: Select
-// in a row's menu starts it, a tap then adds or takes one, and SelectionBar has what they can do together.
+// Selecting several things in a list, one way everywhere, as in Finder: ⌘-click, ⇧-click, ⇧↑ ⇧↓, ⌘A, Esc; a right-click
+// or drag on a selected row acts on all. Phones: Select in a row's menu, then taps, with SelectionBar.
 import { useEffect, useRef } from "react"
 import { CheckSquare, SquareDashed, SquareMousePointer } from "lucide-react"
 import { registerCommands } from "@/core/commands"
@@ -73,9 +71,8 @@ function rowsOf(el: Element | null, list: string) {
   return [...box.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0).map((r) => r.dataset.selectKey!)
 }
 
-/** For a row's click: ⌘ (Ctrl elsewhere) adds or takes it, ⇧ selects the run from the last one picked (`current`, the
- *  row lit as open, is where a first ⌘- or ⇧-click starts from: Finder's way), a phone selecting adds or takes it.
- *  True when the click was that (the row then opens nothing); a plain click lets a selection go and is the row's own. */
+/** A row's click: ⌘ (Ctrl) adds or takes it, ⇧ the run from the last picked (first from `current`, the open row, as
+ *  in Finder); a phone selecting adds or takes. True when it was that; a plain click lets go and is the row's. */
 export function selectClick(e: React.MouseEvent | MouseEvent, list: string, key: string, current?: string | null) {
   if (fromKeys || e.button !== 0) return false
   const mine = sel?.list === list ? sel : null

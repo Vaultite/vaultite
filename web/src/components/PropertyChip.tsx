@@ -128,9 +128,8 @@ function iconChoices(): [string, LucideIcon][] {
 const field = "h-8 min-w-0 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[16px] outline-none focus:border-primary md:h-7 md:text-[14px]"
 const iconBtn = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-30 md:size-7"
 
-/** A text saved on Enter or leaving it; Escape puts it back. */
-/** A field that saves on blur; Enter saves too (its default stopped: the keypress after it would land on whatever takes
- *  the focus next, a list's row the keyboard goes back to, which Enter opens). */
+/** A field saved on blur or Enter; Escape puts it back. Enter's default is stopped, or the keypress lands on whatever
+ *  takes the focus next (a list's row, which Enter opens). */
 function Text({ value, placeholder, label, set, className, check }: {
   value: string; placeholder?: string; label: string; set: (v: string) => void; className?: string; check?: (v: string) => string
 }) {

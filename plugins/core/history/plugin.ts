@@ -48,9 +48,8 @@ function readMeta(dir: string): Meta | null {
 // (whole or not at all: a head cut off by a crash would become the next snapshot, losing the version to restore)
 const writeMeta = (s: State, m: Meta) => writeAtomic(path.join(dirOf(s, m.path), "meta.json"), JSON.stringify(m))
 
-/** A copy of a file's bytes for its history (`tmp()`), taken as they're read so what's hashed is what's kept, at any size
- *  and never all in memory: its hash, or null when it isn't text we keep (not UTF-8, or NUL bytes; the copy removed);
- *  undefined when it can't be read now (iCloud stalls giving it: looked at again on the next sync). */
+/** Copy a file's bytes for its history as they're read (what's hashed is what's kept, never all in memory): its hash;
+ *  null if not text we keep (not UTF-8, NULs: copy removed); undefined if unreadable now (iCloud: next sync). */
 async function take(abs: string, to: string): Promise<string | null | undefined> {
   const hash = crypto.createHash("sha1"), utf8 = new TextDecoder("utf-8", { fatal: true })
   const src = fs.createReadStream(abs), out = fs.createWriteStream(to)

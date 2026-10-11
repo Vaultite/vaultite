@@ -1,6 +1,5 @@
-// Vault plugins installed from a git repository (GitHub's owner/name, a git URL, or a folder on this machine): fetched with
-// git (argv, no shell) at a tag, checked, copied into .vaultite/plugins/<id>/ off, and recorded in the vault's lock file.
-// Or from a zip at an https address pinned by its hash (`…/x.zip#sha256=<hex>`), for plugins that aren't in a repository.
+// Vault plugins installed from a git repository (owner/name, a URL or a local folder; git argv, no shell) at a tag, or
+// a zip pinned by hash (`…/x.zip#sha256=<hex>`): checked, copied into .vaultite/plugins/<id>/ off, and locked.
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -27,9 +26,8 @@ export type Locked = { source: string; repo: string | null; tag: string | null; 
 export const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
 export const HISTORY_MAX = 30
 
-/** What a source names: a git address to clone (or a plain folder to copy), its GitHub repo, the plugin's folder in it
- *  (`dir`, for a repository of several plugins: its tags are `<dir>/v1.2.0`), a tag asked for; or a zip to download
- *  (`archive`: its address and the sha256 it must have). */
+/** What a source names: a git address or folder, its GitHub repo, `dir` the plugin's folder in a repo of several (tags
+ *  `<dir>/v1.2.0`), a tag; or `archive`, a zip's address and the sha256 it must have. */
 export type Source = { given: string; url: string | null; folder: string | null; repo: string | null; dir: string | null; tag: string | null
   archive?: { url: string; sha256: string } }
 
@@ -154,9 +152,8 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
   }
 }
 
-/** A source's zip downloaded (at most ZIP_MAX), checked against its sha256 and unpacked into `to` (its files at the
- *  top, or in its one top folder): the folder. Names that would leave the folder, too many files or too many bytes
- *  unpacked are refused. */
+/** A source's zip downloaded (at most ZIP_MAX), checked against its sha256 and unpacked into `to` (at its top or in its
+ *  one top folder). Names leaving the folder, too many files or too many bytes are refused. */
 async function unpack(src: Source, to: string): Promise<string> {
   const { url, sha256 } = src.archive!, shown = src.given.replace(/#.*$/, "")
   let r: Response
@@ -214,9 +211,8 @@ function writeLock(vault: Vault, id: string, entry: Locked | null) {
 }
 
 
-/** Put a fetched plugin's files in the vault as `.vaultite/plugins/<id>/` (its settings, data.json, kept), swapping the
- *  whole folder at once; records it in the lock, with `change` in its history (an update: how, its notes, a version to
- *  skip from now on). */
+/** Put a fetched plugin in `.vaultite/plugins/<id>/`, swapping the whole folder at once and keeping its settings; locks
+ *  it, with `change` in its history (an update: how, its notes, a version to skip from now on). */
 export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Update["how"]; notes: string[]; skip?: string }): Locked {
   const was = readLock(vault)[f.id]
   const root = vault.abs(DIR), target = path.join(root, f.id)

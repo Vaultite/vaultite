@@ -495,11 +495,11 @@ const WEEKDAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 /** "2026-09-27" -> "Sun 27 Sep". */
 const dayLabel = (d: string) => dateText(parse(d), { weekday: "short", day: "numeric", month: "short" })
 
-/** A month by the query's date key: a grid of weeks (Monday first) with each file on its day, or, in a narrow card
- *  (a phone), the days that have files as a list. Drag an item to another day (desktop) to move its date there. */
 /** How many files a day of the month grid shows before "N more". */
 const DAY_ROWS = 3
 
+/** A month by the query's date key: a grid of weeks (Monday first) with each file on its day, or, in a narrow card
+ *  (a phone), the days that have files as a list. Drag an item to another day (desktop) to move its date there. */
 const Calendar = memo(function Calendar({ groups, res, resolve, month, setMonth, save }: {
   groups: { name: string | null; rows: Row[] }[]; res: Result; resolve: Resolve; month: string; setMonth: (m: string) => void
   save: (r: Row, key: string, v: unknown) => void

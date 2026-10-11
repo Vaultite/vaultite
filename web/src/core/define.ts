@@ -222,10 +222,8 @@ export type ViewCtx = { store: Store; arg: string
   /** Change its tab's arg in place (no history entry): `view:search/<query>` as the query is typed (see `argState`). */
   setArg: (arg: string) => void }
 export type NewTabCtx = { store: Store; phone: boolean }
-/** A section of a blank tab's page (see `newTab` in PluginDef). The page is the app's sections (Buttons sort 10,
- *  Recently opened here 20, Recently changed 30) and the plugins', in .vaultite/newtab.json's order, else by `sort`.
- *  Drawn at the sidebar's sizes (SidebarRow: 13px text, h-7 rows, text at `pl-1.5`, no padding of its own): the page
- *  draws every section a size up as one (`data-size-up`, on phones too). */
+/** A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in
+ *  newtab.json's order, else by `sort`. Drawn at sidebar sizes (SidebarRow); the page draws them all a size up. */
 export type NewTabSection = {
   /** Its name where the page is changed (the blank tab's right-click menu, `vau newtab`): "Terminals". */
   title: string
@@ -605,9 +603,8 @@ export type Plugin = Omit<Manifest, "blocks" | "settings" | "icon"> & PluginDef 
 
 export const definePlugin = (def: PluginDef) => def
 
-/** A plugin another plugin runs (a plugin written for another app, run by its host): listed on the Plugins
- *  page in its host's group and drawn like any plugin, while its host answers its switch, its approval and its removal
- *  (PluginHost). */
+/** A plugin another runs (one written for another app): listed in its host's group on the Plugins page, drawn like
+ *  any, while its host answers its switch, approval and removal (PluginHost). */
 export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideIcon; description?: string; category?: string; tint?: string
   version?: string; author?: string
   /** Its home page (the author's or its repository's), shown in its sheet. */

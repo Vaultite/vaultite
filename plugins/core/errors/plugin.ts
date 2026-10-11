@@ -108,9 +108,8 @@ const flusher = setInterval(() => {
 flusher.unref()
 plugin.onUnload(() => { clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
 
-/** A new error: tell the user (a toast, kept in the inbox) once per kind (the app's, the app stopping, the server's)
- *  while the server runs; not for an older build's file (the app reloaded: nothing to do) or one that ended the server
- *  (nobody left to tell it). */
+/** A new error: a toast, kept in the inbox, once per kind while the server runs; not for an older build's file (the
+ *  app reloaded: nothing to do) or one that ended the server (nobody left to tell). */
 function tell(g: ErrorGroup) {
   if (!settings().notify || g.kind === "stale" || g.latest.fatal && g.source === "server") return
   const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Error in the app") : "Error in the server"

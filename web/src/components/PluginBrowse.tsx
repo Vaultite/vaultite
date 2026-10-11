@@ -1,6 +1,5 @@
-// The Plugins page's Browse tab: the plugin directory (GitHub repos with the topic vaultite-plugin, through the op
-// plugin.search: core/pluginindex.ts), by stars, newest or last updated, each with what it discloses and Install; and
-// the sources hosts offer (Obsidian's community plugins: PluginHost.browse).
+// The Plugins page's Browse tab: the plugin directory (repos with the topic vaultite-plugin: core/pluginindex.ts), each
+// with its disclosures and Install; and the sources hosts offer (Obsidian's community plugins: PluginHost.browse).
 import { useEffect, useState } from "react"
 import { Download, MoreHorizontal, Puzzle, RefreshCw, Star } from "lucide-react"
 import { dateText, fmtAgo } from "@/core/data"

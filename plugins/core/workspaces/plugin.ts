@@ -192,8 +192,7 @@ plugin.provide("pins:installed", (paths: string[]) => {
 })
 
 // ---------- files moving: pins and tabs follow ----------
-/** A file moved or trashed (dst null): every workspace's pins and tabs follow (a trashed file's tab stays, showing it's
- *  gone), so an AI's move leaves nothing stale in workspaces nobody's looking at. */
+/** A file moved or trashed (dst null): every workspace's pins and tabs follow, so nothing goes stale unseen. */
 function follow(src: string, dst: string | null) {
   const list = slotList()
   const moved = (p: string) => (p === src ? dst : p.startsWith(src + "/") ? (dst === null ? null : dst + p.slice(src.length)) : p)

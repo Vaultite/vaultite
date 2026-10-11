@@ -37,9 +37,8 @@ function eatClick() {
   setTimeout(() => removeEventListener("click", eat, { capture: true }), 400)
 }
 
-/** Watch `bar` (touch-action: none) for an upward drag, not while `off()`. The page is lifted only while a finger
- *  holds it: its end is heard on the window (where it arrives even if the bar lost the pointer), and a finger whose end
- *  never came (the app went away mid-drag, or only its touch ended) puts it back, as does any next press. */
+/** Watch `bar` (touch-action: none) for an upward drag, unless `off()`. The page lifts only while held: its end is
+ *  heard on the window, and an end that never came (the app went away mid-drag) or the next press puts it back. */
 export function liftFrom(bar: HTMLElement, off: () => boolean) {
   let g: { id: number; x: number; y: number; on: boolean; ready: boolean; dy: number; t: number; v: number; els: Part[] } | null = null
   const scale = (dy: number) => 1 - 0.42 * Math.min(1, dy / (innerHeight * 0.55))

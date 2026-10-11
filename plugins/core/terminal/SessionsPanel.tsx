@@ -1,6 +1,5 @@
-// The Terminals panel: every shell the server runs (sessions outlive tabs), live, with agents' states from their hooks
-// and other machines' sessions, sorted by state (waiting on you first). With Workspaces, the current workspace's come first.
-// Under them, Claude Code on the web's sessions (cloud.ts), on the desktop app.
+// The Terminals panel: every shell the server runs (sessions outlive tabs), live, with agents' states and other
+// machines' sessions, waiting on you first; on the desktop app, then Claude Code on the web's (cloud.ts).
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Cloud, Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {

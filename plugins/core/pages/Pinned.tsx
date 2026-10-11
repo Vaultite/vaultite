@@ -32,9 +32,8 @@ function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
  *  the list, elsewhere in the sidebar (unpinned). */
 type PinDrop = { before: string | null; y: number; known: boolean } | { out: true }
 
-/** The list's menu (Pinned pages ▸): the entries shown, ticked, then More ▸ with every page not pinned (a file a plugin
- *  draws as one: a dashboard) and the file on screen; a `checklist`. Read from the store as it is now: the menu is drawn
- *  again after each click. Two of one name say their folders. */
+/** The list's menu (Pinned pages ▸): the shown ones ticked, then More ▸ with unpinned pages (dashboards) and the file
+ *  on screen; a `checklist` from the store as is, redrawn after each click. Same-named ones say their folders. */
 function pinChecklist(file: string | undefined): MenuItem[] {
   const store = getStore()
   if (!store) return []

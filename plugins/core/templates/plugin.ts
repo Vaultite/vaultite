@@ -19,9 +19,8 @@ plugin.route("GET", "templates", () => ({ folder: folder(), dateFormat: format("
 /** Its folder's notes are patterns: the vault never reads them as items (a `type: person` template isn't a person). */
 plugin.provide("templates:folder", folder)
 
-/** Other plugins expand a template further (Templater's `<% %>`): the service `template:expand` gets {text, template,
- *  path, mode: "new" | "insert"} and the request, and answers {text, path?, notice?} (path: where the note goes now),
- *  or null when the user cancelled. Without one the text is as it was. */
+/** Other plugins expand a template further (Templater's `<% %>`): service `template:expand` gets {text, template, path,
+ *  mode} and the request, answering {text, path?, notice?} or null if cancelled. Without one the text stays. */
 plugin.route("POST", "templates/expand", (req) => {
   const fn = plugin.service("template:expand")
   return fn ? fn(req.body, req) : { text: req.body.text }

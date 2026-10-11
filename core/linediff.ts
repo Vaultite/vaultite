@@ -1,6 +1,5 @@
-// Line diffs fast at any size (a file's history, a day's recap): common ends trimmed, lines found once on each side as
-// anchors (patience diff), Myers' diff between them. A stretch too tangled to compare cheaply is told as replaced: never
-// a wrong diff, at worst a longer one. No Node: both sides use it.
+// Line diffs fast at any size: common ends trimmed, unique lines as anchors (patience), Myers' between. A stretch too
+// tangled to compare cheaply is told as replaced: never wrong, at worst longer. No Node: both sides use it.
 import type { Opcode } from "./textedit.ts"
 
 /** Past this many steps of Myers' diff in one stretch, it's told as replaced. */

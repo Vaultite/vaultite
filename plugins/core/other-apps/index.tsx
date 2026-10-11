@@ -1,6 +1,5 @@
-// Vaults from other apps: a vault another app also opens keeps its settings, and the app follows the ones that mean the
-// same here (`conventions`: new notes, links, the editor; attachments and more through the server's
-// setting-defaults). Only keys .obsidian/ sets change anything.
+// Vaults from other apps: the app follows the settings that mean the same here (`conventions`: new notes, links, the
+// editor; more through the server's setting-defaults). Only keys .obsidian/ sets change anything.
 import { useEffect } from "react"
 import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, plural, type Store } from "@vaultite"
 import { OtherPlugins } from "./Plugins"

@@ -1,6 +1,5 @@
-// A vault the app opens for the first time starts from Minimal (bundles/minimal), so there's no setup to pick first:
-// more is a bundle or a plugin away. Only .vaultite/ is written; a new vault gets starter content (a Start here note,
-// pointers for agents) only when the user chose it in setup (vault.starter).
+// A new vault starts from Minimal (bundles/minimal), so there's no setup to pick first. Only .vaultite/ is written;
+// starter content (a Start here note, pointers for agents) only when the user chose it in setup (vault.starter).
 import fs from "node:fs"
 import * as B from "./bundles.ts"
 
@@ -28,9 +27,8 @@ export async function setUpNew(host: B.Host) {
   await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false })
 }
 
-/** The starter content a new vault can begin with, when the user chose it (Set up Vaultite's "Start with a Start here
- *  note"): the note, pinned, and agents started outside the app pointed at the vault's rules (one line in AGENTS.md and
- *  CLAUDE.md, made: Agent files, allowed to keep them). Returns what it wrote. */
+/** The starter content, chosen in setup: a pinned Start here note, and a line in AGENTS.md and CLAUDE.md pointing
+ *  agents started outside the app at the vault's rules (Agent files, allowed to keep them). Returns what it wrote. */
 export async function starter(host: B.Host) {
   const wrote: string[] = []
   await host.call("POST", "ops/plugin.grant", { id: "agent-files" })

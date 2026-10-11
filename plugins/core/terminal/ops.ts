@@ -10,9 +10,8 @@ type Session = { id: string; agent: string | null; process: string; clients: num
   session?: string }
 type TabAt = { workspace: number; tab: string }
 
-/** A new session id, like the app's (8 letters and digits). */
-/** An id that starts a new agent's session (`claude-k3j2h1g0`, `claude_personal-k3j2h1g0`): a tab showing one that's
- *  gone offers a new one, it never starts again by itself. Plain shells (`k3j2h1g0`) start again; resumes resume. */
+/** An id that starts a new agent's session (`claude-k3j2h1g0`): a tab of one that's gone offers a new one, never
+ *  starts it by itself. Plain shells (`k3j2h1g0`) start again; resumes resume. */
 const freshAgent = (id: string) => { const t = parseTerminal(id); return !!t && !t.resume && !t.machine }
 
 async function sessions(ctx: OpCtx): Promise<Session[]> {
