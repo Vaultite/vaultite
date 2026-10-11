@@ -113,7 +113,17 @@ async function switchTo(p: string) {
 process.on("message", (m: { type?: string; paths?: unknown }) => {
   if (m && m.type === "allow") allow(m.paths)
 })
-if (DESKTOP) process.on("disconnect", () => process.exit(0)) // the app is gone (even if it crashed): so is its server
+// Going (the app gone, even if it crashed; a stop): the vault's own plugins stop first (onUnload), so what they run does.
+// (listening the whole time: signal-exit kills the process at once when it's the only listener left)
+let going = false
+const bye = (code: number) => {
+  if (going) process.exit(code)
+  going = true
+  void Promise.race([app?.vaultPlugins.close(), new Promise((r) => setTimeout(r, 1000))]).finally(() => process.exit(code))
+}
+if (DESKTOP) process.on("disconnect", () => bye(0))
+process.on("SIGTERM", () => bye(143))
+process.on("SIGINT", () => bye(130))
 
 /** Text worth compressing (images, fonts and media already are). */
 const COMPRESSIBLE = /^(text\/|application\/(json|javascript|manifest\+json|wasm)|image\/svg)/
