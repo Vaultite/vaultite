@@ -127,7 +127,8 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
     return { ok: false, ms: Date.now() - t, out: String(e) }
   } finally {
     servers.forEach(stop)
-    fs.rmSync(tmp, { recursive: true, force: true })
+    // (a server still exiting may write one last file: retried, and a leftover temp folder never ends the run)
+    try { fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 }) } catch { /* the OS's temp cleanup */ }
   }
 }
 
