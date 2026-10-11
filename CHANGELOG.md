@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Machines can show cloud agents’ folders and files through a read-only file agent, with enrollment codes and revocable access.
+
 ## 0.4.0 (2026-10-10)
 
 Every AI app connects, from a new vault's first minute.

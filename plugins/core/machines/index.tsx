@@ -1,10 +1,11 @@
 import type { MouseEvent } from "react"
-import { ArrowUpRight, Monitor, Server, SquareTerminal } from "lucide-react"
+import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
-  canRunAgents, definePlugin, Empty, fetchMachines, List, Loading, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, panelMenu, places,
+  canRunAgents, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, panelMenu, places,
   SidebarHeading, SidebarRow,
   useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
+import { MachineFiles, EnrollMachine } from "./Files"
 
 // Machines: your other computers running Vaultite, each with whether it answers and what it runs; a click opens a
 // terminal, an agent or its app there.
@@ -12,19 +13,29 @@ import {
 const dot = (m: Machine) => (m.online ? "var(--green)" : "var(--gray)")
 const about = (m: Machine) => m.online
   ? [m.self && "This one", m.host, m.platform === "darwin" ? "macOS" : m.platform === "linux" ? "Linux" : m.platform,
-    m.version && `Vaultite ${m.version}${m.commit ? ` (${m.commit})` : ""}`].filter(Boolean).join(" · ")
+    m.dial && "Read-only files", m.version && `Vaultite ${m.version}${m.commit ? ` (${m.commit})` : ""}`].filter(Boolean).join(" · ")
   : `Offline${m.error ? `: ${m.error}` : ""}`
 
 /** A machine's menu: a terminal or an agent there, and its app in the browser. */
 const hasTerminal = (m: Machine) => canRunAgents() && m.online && (m.self || !!m.plugins?.includes("terminal"))
 
+async function revokeMachine(m: Machine) {
+  if (!await confirmDialog({ title: `Revoke ${m.label}?`, body: "Its file agent will disconnect. You can enroll it again later.", confirm: "Revoke" })) return
+  try { await op("machines.revoke", { id: m.id }); notify("File access revoked") } catch (e) { notifyError(e) }
+}
+
+
 async function machineItems(m: Machine): Promise<MenuItem[]> {
   const terminal = hasTerminal(m)
   const here = terminal ? (await places()).filter((p) => p.machine === (m.self ? "" : m.id) && p.agent) : []
   return [
+    ...(m.dial ? [
+      { label: "Browse files", icon: FolderOpen, run: () => openView(`machine-files/${m.id}`, { newTab: true }) },
+      { label: "Revoke file access", run: () => revokeMachine(m) },
+    ] : []),
     ...(terminal ? [{ label: "New terminal", icon: SquareTerminal, run: () => openTerminal({ machine: m.self ? "" : m.id }) }] : []),
     ...here.map((p, i) => ({ label: `New ${[p.agent!.label, p.profileLabel].filter(Boolean).join(" · ")}`, icon: p.agent!.icon, sep: i === 0, run: () => openPlace(p) })),
-    ...(!m.self ? [{ label: "Open its app", icon: ArrowUpRight, sep: terminal, run: () => window.open(m.url, "_blank", "noopener") }] : []),
+    ...(!m.self && !m.dial ? [{ label: "Open its app", icon: ArrowUpRight, sep: terminal, run: () => window.open(m.url, "_blank", "noopener") }] : []),
   ]
 }
 
@@ -92,7 +103,7 @@ function MachinesPanel({ open, panel }: SidebarCtx) {
 }
 
 function MachinesView() {
-  return <div className="pt-2 pb-10"><MachinesBlock /></div>
+  return <div className="space-y-6 pt-2 pb-10"><MachinesBlock /><EnrollMachine /></div>
 }
 
 const mock: Machine[] = [
@@ -109,8 +120,8 @@ function machineDocs(): SearchDoc[] {
     const terminal = hasTerminal(m)
     return {
       id: `machine-${m.id}`, title: m.label, kind: "Machine", icon: m.platform === "linux" ? Server : Monitor, tint: m.online ? "var(--machines)" : "var(--muted-foreground)",
-      meta: `Machine · ${!m.online ? "offline" : terminal ? "opens a terminal there" : m.self ? "this one" : "opens its app"}`,
-      run: () => (terminal ? openTerminal({ machine: m.self ? "" : m.id }) : m.online && !m.self ? void window.open(m.url, "_blank", "noopener") : openView("machines", { newTab: true })),
+      meta: `Machine · ${m.dial ? "read-only files" : !m.online ? "offline" : terminal ? "opens a terminal there" : m.self ? "this one" : "opens its app"}`,
+      run: () => (m.dial ? openView(`machine-files/${m.id}`, { newTab: true }) : terminal ? openTerminal({ machine: m.self ? "" : m.id }) : m.online && !m.self ? void window.open(m.url, "_blank", "noopener") : openView("machines", { newTab: true })),
       text: [m.host, m.self && "this one"].filter(Boolean).join(" "), recent: 0, weight: 5,
     }
   })
@@ -127,7 +138,7 @@ export default definePlugin({
     },
   },
   sidebar: { machines: { title: "Machines", heading: false, sort: 32, hidden: true, view: "machines", render: (ctx) => <MachinesPanel {...ctx} /> } },
-  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> } },
+  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, render: (ctx) => <MachineFiles {...ctx} /> } },
   commands: [{ id: "machines:open-tab", name: "Open machines in a tab", run: () => openView("machines", { newTab: true }) }],
   mockLive: () => ({ machines: mock }),
   preview: () => <MachinesBlock />,

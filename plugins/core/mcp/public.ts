@@ -145,9 +145,12 @@ export class PublicMcp {
     server.on("listening", () => this.listening((server.address() as { port: number }).port))
     server.on("upgrade", (req: IncomingMessage, socket, head: Buffer) => {
       socket.on("error", () => socket.destroy())
-      const signed = this.signedOwner(req)
-      if (signed !== true) return socket.end(`HTTP/1.1 ${signed ? 401 : 404} ${signed ? "Unauthorized" : "Not Found"}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`)
-      upgradeApp(req, socket, head, this.connectOptions())
+      void (async () => {
+        if (await this.plugin.ask("machines:upgrade", false, req, socket, head)) return
+        const signed = this.signedOwner(req)
+        if (signed !== true) return socket.end(`HTTP/1.1 ${signed ? 401 : 404} ${signed ? "Unauthorized" : "Not Found"}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`)
+        upgradeApp(req, socket, head, this.connectOptions())
+      })().catch(() => socket.destroy())
     })
     server.listen(this.settings.port, "127.0.0.1")
   }
@@ -338,6 +341,7 @@ export class PublicMcp {
   }
 
   async handle(req: IncomingMessage, res: ServerResponse) {
+    if (await this.plugin.ask("machines:public", false, req, res, this.base(req))) return
     const signed = this.signedOwner(req)
     if (signed === true) return serveApp(req, res, this.connectOptions())
     if (signed === "bad") return this.json(res, 401, { error: "sign_in", message: "Vaultite Cloud's sign-in for this Mac didn't check out: sign in again" })

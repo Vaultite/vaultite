@@ -6,12 +6,14 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { API_VERSION, APP_VERSION, bullets, HTTPError, LOADED, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { dialIn, type DialEntry } from "./dial.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
 export type Machine = {
   id: string; label: string; url: string; online: boolean; self: boolean
+  dial?: boolean; readOnly?: boolean; via?: string; home?: string
   host?: string; platform?: string; version?: string; commit?: string; plugins?: string[]; vault?: string; error?: string
 }
 
@@ -35,13 +37,14 @@ const commit = new Promise<string>((resolve) => {
 })
 
 /** The machines in the settings, checked: a usable id and an http(s) url, each id once. */
-function listed(): { id: string; label: string; url: string }[] {
+function listed(): DialEntry[] {
   const raw = plugin.settings({}).machines
-  const out: { id: string; label: string; url: string }[] = []
+  const out: DialEntry[] = []
   for (const m of Array.isArray(raw) ? raw as Item[] : []) {
     const id = String(m?.id ?? "").toLowerCase(), url = String(m?.url ?? "").replace(/\/+$/, "")
-    if (!ID.test(id) || !/^https?:\/\//.test(url) || out.some((o) => o.id === id)) continue
-    out.push({ id, label: String(m.label || id), url })
+    const via = typeof m.via === "string" && ID.test(m.via) && m.via !== id ? m.via : undefined
+    if (!ID.test(id) || (!via && !/^https?:\/\//.test(url)) || out.some((o) => o.id === id)) continue
+    out.push({ id, label: String(m.label || id), url: via ? "" : url, ...(via ? { via } : {}) })
   }
   return out
 }
@@ -74,9 +77,22 @@ const LOOPBACK = new RegExp(`^https?://(127\\.0\\.0\\.1|localhost|\\[::1\\]):${P
 /** This server's own address on the network (Tailscale Serve's handler to its port), or "". */
 const ownUrl = async () => String(await plugin.ask("machines:url", "")).replace(/\/+$/, "")
 /** An entry whose address is this very server's (no need to ask it). */
-const isOwn = (url: string, own: string) => LOOPBACK.test(url) || (!!own && url === own)
+const knownOwn = new Set<string>()
+const isOwn = (url: string, own: string) => LOOPBACK.test(url) || (!!own && url === own) || knownOwn.has(url)
 
-async function probe(m: { id: string; label: string; url: string }, own: string): Promise<Machine> {
+const dial = dialIn(plugin, listed, selfId)
+
+async function probe(m: DialEntry, own: string): Promise<Machine> {
+  if (m.via) {
+    const via = listed().find((e) => e.id === m.via && !e.via)
+    if (via && (isOwn(via.url, own) || (await probe(via, own)).self)) return { ...m, ...dial.summary(m.id) }
+    try {
+      if (!via) throw new Error("missing relay")
+      const r = await fetch(`${via.url}/api/machines/${m.id}/info`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
+      if (!r.ok) throw new Error("relay offline")
+      return { ...m, ...(await r.json()), self: false, dial: true, readOnly: true, plugins: [] }
+    } catch { return { ...m, online: false, self: false, dial: true, readOnly: true, plugins: [], error: "relay unavailable" } }
+  }
   if (isOwn(m.url, own)) {
     const s = await self()
     return { ...m, online: true, self: true, host: s.host, platform: s.platform, version: s.version, commit: s.commit || undefined, plugins: s.plugins, vault: s.vault || undefined }
@@ -85,6 +101,7 @@ async function probe(m: { id: string; label: string; url: string }, own: string)
     const r = await fetch(`${m.url}/api/machines/self`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
     if (!r.ok) return { ...m, online: false, self: false, error: `answered ${r.status}` }
     const s = await r.json() as Item
+    if (s.instance === INSTANCE) knownOwn.add(m.url)
     return { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
       commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined }
   } catch (e) {
@@ -106,7 +123,7 @@ async function selfId(): Promise<string | null> {
   const list = listed()
   if (!list.length) return null
   const own = await ownUrl()
-  const hit = list.find((m) => isOwn(m.url, own))
+  const hit = list.find((m) => !m.via && isOwn(m.url, own))
   if (hit) return hit.id
   return (await machines()).find((m) => m.self)?.id ?? null
 }
@@ -128,10 +145,24 @@ plugin.route("GET", "machines/*/**", async (req) => {
   const id = req.arg(0), rest = req.arg(1)
   const m = listed().find((x) => x.id === id)
   if (!m) throw new HTTPError(404, `no machine '${id}' (the machines are in .vaultite/plugins/machines/data.json)`)
+  if (m.via) {
+    if (!["info", "fs/list", "fs/read"].includes(rest)) throw new HTTPError(404, "This machine only lists folders and reads files")
+    const why = req.http ? await plugin.refusal(req.http, "Reading an agent machine's files") : ""
+    if (why) throw new HTTPError(403, why)
+    const via = listed().find((e) => e.id === m.via && !e.via)
+    if (!via) throw new HTTPError(502, "The relay machine is missing")
+    const own = await ownUrl()
+    if (isOwn(via.url, own) || (await probe(via, own)).self) {
+      if (rest === "info") return dial.summary(m.id)
+      const op = rest === "fs/list" ? "ls" : "read"
+      return dial.request(m.id, op, { path: req.query.path ?? "~" })
+    }
+    m.url = `${via.url}/api/machines/${encodeURIComponent(m.id)}`
+  }
   const qs = new URLSearchParams(req.query).toString()
   let r: Response
   try {
-    r = await fetch(`${m.url}/api/${rest.split("/").map(encodeURIComponent).join("/")}${qs ? `?${qs}` : ""}`,
+    r = await fetch(`${m.url}${m.via ? "/" : "/api/"}${rest.split("/").map(encodeURIComponent).join("/")}${qs ? `?${qs}` : ""}`,
       { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(15000) })
   } catch {
     throw new HTTPError(502, `${m.label} doesn't answer`)
@@ -142,7 +173,7 @@ plugin.route("GET", "machines/*/**", async (req) => {
   let err: unknown = { error: body.toString("utf8").slice(0, 500) }
   if (type.includes("json")) try { err = JSON.parse(body.toString("utf8")) } catch { /* as text */ }
   return reply(r.status, err)
-})
+}, { lock: false })
 
 // --- adding itself
 
@@ -177,5 +208,65 @@ plugin.block("machines", async () => {
   const ms = await machines()
   return section("Machines", bullets(ms.map((m) => `${m.label}${m.self ? " (this one)" : ""}: ${m.online
     ? ["online", m.host, m.version && `Vaultite ${m.version}${m.commit ? ` (${m.commit})` : ""}`].filter(Boolean).join(", ")
-    : `offline (${m.error})`}, ${m.url}`), "No machines yet: add them to .vaultite/plugins/machines/data.json."))
+    : `offline (${m.error})`}${m.dial ? `, read-only files via ${m.via}` : `, ${m.url}`}`), "No machines yet: add them to .vaultite/plugins/machines/data.json."))
+})
+
+
+plugin.route("GET", "machines/enrollment", async (req) => {
+  const why = req.http ? await plugin.refusal(req.http, "Enrolling agent machines") : ""
+  if (why) throw new HTTPError(403, why)
+  return { pending: dial.pending() }
+}, { lock: false })
+
+plugin.op({
+  id: "machines.approve", owner: "Enrolling an agent machine", kind: "write",
+  summary: "Approve a read-only file agent using the enrollment code it shows.",
+  help: "The VM generates its own key and shows an eight-digit code. Approve that code on the Vaultite server it dialed. Files then appear in Machines on every device sharing the vault.\n\n  vau machines.approve 12345678",
+  args: ["code"], params: { code: { type: "string", required: true, description: "the file agent's eight-digit code" }, label: { type: "string", description: "the machine's display name" } },
+  run: (p) => dial.approve(p.code, p.label),
+})
+plugin.op({
+  id: "machines.revoke", owner: "Revoking an agent machine", kind: "write",
+  summary: "Revoke a file agent's key and close its connection on this server.",
+  help: "Run on the machine shown as its relay. The entry remains offline until enrolled again.\n\n  vau machines.revoke sandbox",
+  args: ["id"], params: { id: { type: "string", required: true, description: "the agent machine's id" } },
+  run: async (p) => {
+    const m = listed().find((e) => e.id === p.id), via = listed().find((e) => e.id === m?.via && !e.via)
+    if (via) {
+      const own = await ownUrl()
+      if (!isOwn(via.url, own) && !(await probe(via, own)).self) return relayWrite(via, "ops/machines.revoke", { id: p.id })
+    }
+    if (!m?.via) throw new HTTPError(404, "No such agent machine")
+    return dial.revoke(p.id)
+  },
+})
+
+
+async function relayWrite(via: DialEntry, route: string, body: Item) {
+  let r: Response
+  try { r = await fetch(`${via.url}/api/${route}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" }, body: JSON.stringify(body), signal: AbortSignal.timeout(15000) }) }
+  catch { throw new HTTPError(502, `${via.label} doesn't answer`) }
+  const answer = await r.json() as Item
+  if (!r.ok) throw new HTTPError(r.status, String(answer.error || "The relay refused the request"))
+  return answer
+}
+plugin.route("POST", "machines/*/approve", async (req) => {
+  const why = req.http ? await plugin.refusal(req.http, "Enrolling agent machines") : ""
+  if (why) throw new HTTPError(403, why)
+  const via = listed().find((e) => e.id === req.arg(0) && !e.via)
+  if (!via) throw new HTTPError(404, "No such relay server")
+  const own = await ownUrl()
+  if (isOwn(via.url, own) || (await probe(via, own)).self) return dial.approve(String(req.body.code ?? ""))
+  return relayWrite(via, "ops/machines.approve", { code: String(req.body.code ?? "") })
+}, { lock: false })
+
+
+for (const [id, route, summary] of [
+  ["machines.files", "list", "List a folder on a read-only agent machine."],
+  ["machines.read", "read", "Read a regular file on a read-only agent machine (text or base64, at most 1 MB)."],
+]) plugin.op({
+  id, kind: "read", owner: "Reading an agent machine's files", summary,
+  help: "The machine must be enrolled and online. Paths are on that machine; ~ is its home. Nothing is written or executed.\n\n  vau " + id + " sandbox --path ~",
+  args: ["machine"], params: { machine: { type: "string", required: true, description: "the enrolled agent machine's id" }, path: { type: "string", description: "the VM path (default: its home folder)" } },
+  run: (p, ctx) => ctx.api("GET", `machines/${encodeURIComponent(p.machine)}/fs/${route}?path=${encodeURIComponent(p.path || "~")}`),
 })

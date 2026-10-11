@@ -16,7 +16,7 @@
     "start": "node server.ts",
     "build": "tsc -b & vite build; v=$?; wait $! && exit $v",
     "build:demo": "vite build -c vite.demo.config.ts",
-    "test": "node tools/test_web.ts && node tools/test_vault.ts && node tools/test_sandbox.ts && node tools/test_setup.ts && node tools/test_stall.ts",
+    "test": "node tools/test_web.ts && node tools/test_vault.ts && node tools/test_sandbox.ts && node tools/test_setup.ts && node tools/test_stall.ts && node tools/test_machines.ts",
     "check": "node tools/check_plugins.ts",
     "smoke": "node web/qa/boot.mjs",
     "qa": "node tools/qa.ts",

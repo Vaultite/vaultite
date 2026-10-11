@@ -9,6 +9,7 @@ import { getPrefs } from "@/core/prefs"
  *  `vault`, its vault's id (the same as this one's: it has this vault). */
 export type Machine = {
   id: string; label: string; url: string; online: boolean; self: boolean
+  dial?: boolean; readOnly?: boolean; via?: string; home?: string
   host?: string; platform?: string; version?: string; commit?: string; plugins?: string[]; vault?: string; error?: string
 }
 
