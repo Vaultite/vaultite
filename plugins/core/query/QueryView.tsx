@@ -6,7 +6,8 @@ import {
   addDays, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, Panel, parse, PinMap, range, resolver, setProperty, startDrag,
   today, typedValue, useDrag, useDropHit, useDropTarget, useLive, useRowsNear, useVaultChange, weekStart, type BlockCtx, type MapPin, type MenuItem,
 } from "@vaultite"
-import { byKeys, compare, comparer, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
+import { compare } from "./expr"
+import { byKeys, comparer, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
 
 export const TINT = "var(--indigo)"
 type Resolve = ReturnType<typeof resolver>

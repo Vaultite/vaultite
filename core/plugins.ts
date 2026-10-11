@@ -12,7 +12,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
 import { type BlockDecls, blocksDoc, declsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
-import { entryOf, type Op, type OpCtx, type OpEntry, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
+import { entryOf, type Op, type OpCtx, type OpDid, type OpEntry, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { CONNECT_HEADER, fromInternet } from "./owner.ts"
@@ -73,7 +73,7 @@ export { allowedPath as outsidePath } from "./outside.ts"
 export { clean as vaultPath } from "./files.ts"
 /** The files a block shows, from a helper that has no ctx (ctx.source in a block): see core/sources.ts. */
 export { source } from "./sources.ts"
-export { type Op, type OpCtx, type OpEntry, OpError, type Param, type Schema, type Who, whoOf } from "./ops.ts"
+export { type Op, type OpCtx, type OpDid, type OpEntry, OpError, type Param, quoted, type Schema, type Who, whoOf } from "./ops.ts"
 export type { EventFilter, VaultEvent } from "./events.ts"
 /** A path as the user says it ("Today", "Alice Park") made a vault path, given GET /api/files (core/ops.ts): for an op's
  *  parameter that may be a path or something else (a tab's id). */
@@ -264,6 +264,8 @@ export type OpsHost = {
   /** A route of the HTTP API in-process as `who` (held for a write, synced for a read): its body; a 4xx or 5xx throws an
    *  OpError with its message. `report`, `http`: as call's. */
   api: (method: string, route: string, body?: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage }) => Promise<unknown>
+  /** What a call of an op did, given these params, as its `did` words it (null: it has none, or couldn't say). */
+  did: (name: string, params: unknown) => OpDid | null
   /** Tell the vault's event bus (core/events.ts). */
   emit: (type: string, data?: Item) => VaultEvent
 }

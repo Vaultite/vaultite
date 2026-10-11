@@ -3,7 +3,8 @@
 import type { App } from "../app.ts"
 import { unarchived } from "../fileprops.ts"
 import { type Op, OpError } from "../ops.ts"
-import { dirOf, type Kind, setPropertyText } from "../vault.ts"
+import { dirOf, type Kind } from "../vault.ts"
+import { setPropertyText } from "../frontmatter.ts"
 import { type Any, enc } from "./common.ts"
 
 type Group = { folder: string; type: string; files: string[] }

@@ -14,7 +14,7 @@ export default async ($: VaultTest) => {
       const hit = app.opNamed(id)!
       const go = () => app.runOp(id, params, { who: claude })
       try {
-        const r = hit.op.kind === "read" || hit.op.lock === false ? await vault.synced().then(go) : await vault.lock(async () => { await vault.sync(); return go() })
+        const r = hit.op.kind === "read" || hit.op.lock === false ? await vault.synced().then(go) : await app.hold(go)
         return { error: false, text: r.op.text ? r.op.text(r.result, r.params) : JSON.stringify(r.result), result: r.result as Any }
       } catch (e) {
         return { error: true, text: (e as Error).message, result: null }

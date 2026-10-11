@@ -7,7 +7,7 @@ import { type RawData, WebSocket } from "ws"
 import { startAgent } from "../../../core/codingagents.ts"
 import { AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 import {
-  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, reply, splitMachine,
+  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, type OpCtx, type Request,
 } from "../../../core/plugins.ts"
 import { isArchived, type Item, Kind, localStamp, nowUtc, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
@@ -671,6 +671,7 @@ tldr goes on top, so the user knows what it says before reading it: two or three
     return { path: `${r.id}.md`, title: r.title }
   },
   text: (r) => `In the user's inbox: ${r.path} (they'll see it marked new).`,
+  did: (p) => ({ action: "create", text: `Left ${quoted(p.title)} in the inbox` }),
 })
 
 /** A result's body with its TL;DR on top, a callout (Obsidian's `[!tldr]`): what it says in short, read first. */
@@ -1020,6 +1021,7 @@ plugin.op({
   args: ["ids"],
   run: async ({ ids }, ctx) => ({ ...(await ctx.api("POST", "inbox/events/read", ids?.length ? { ids } : {})), all: !ids?.length }),
   text: (r) => (r.all ? "Every event is read." : `Read. ${r.unread} unread.`),
+  did: ({ ids }) => ({ action: "save", text: ids?.length ? `Marked ${ids.length} inbox event${ids.length === 1 ? "" : "s"} read` : "Marked the inbox read" }),
 })
 
 plugin.op({
@@ -1034,6 +1036,7 @@ plugin.op({
     return await ctx.api("POST", "inbox/events/unread", { ids })
   },
   text: (r) => `Unread. ${r.unread} unread.`,
+  did: ({ ids }) => ({ action: "save", text: `Marked ${ids.length || "some"} inbox event${ids.length === 1 ? "" : "s"} unread` }),
 })
 
 plugin.op({
@@ -1043,6 +1046,7 @@ plugin.op({
   kind: "destructive",
   run: async (_p, ctx) => await ctx.api("DELETE", "inbox/events"),
   text: () => "Forgot every event.",
+  did: () => ({ action: "delete", text: "Cleared the inbox's events" }),
 })
 
 plugin.op({

@@ -29,8 +29,25 @@ export default async ($: VaultTest) => {
     check("query: sort (blanks last), limit, then groups in order", g.total === 3 && g.shown === 2 &&
       JSON.stringify(g.groups.map((x: Any) => [x.name, x.rows.map((r: Any) => r.title)])) === '[["Family",["Bob Lee"]],["friend",["Alice Park"]]]'
       && g.groups[1].rows[0].values.folder === "Q", g.groups)
+    // A where runs on Bases' engine (expr.ts) with its own lenient comparisons.
+    check("query where: case, a link is its name, a list matches when any value does", JSON.stringify(names({ where: "relation = FRIEND and with = 'bob LEE'" })) === '["Alice Park"]'
+      && JSON.stringify(names({ where: "with = '[[Bob Lee|Bob]]'" })) === '["Alice Park"]' && JSON.stringify(names({ where: "tags = ai or tags = work" })) === '["Alice Park","Bob Lee"]'
+      && JSON.stringify(names({ where: "type = qtest and tags != work" })) === '["Alice Park","Lee Park"]', names({ where: "type = qtest and tags != work" }))
+    check("query where: has, not and parentheses", JSON.stringify(names({ where: "has note or not (has tags)" })) === '["Lee Park","Lighthouse"]'
+      && JSON.stringify(names({ where: "not has tags and (status = live or relation = friend)" })) === '["Lee Park","Lighthouse"]', names({ where: "has note or not (has tags)" }))
+    const { typedValue } = await import("../../../core/proptypes.ts")
+    const types = { of: (k: string) => (k === "met" ? "date" : k === "every_days" ? "number" : null), value: typedValue }
+    const typedNames = (o: Any) => run(o, recs, new Date(), { types }).groups.flatMap((g: Any) => g.rows.map((r: Any) => r.title))
+    check("query where: typed keys compare dates by time and numbers as numbers", JSON.stringify(names({ where: "met > 'Mar 1, 2025'" })) === "[]"
+      && JSON.stringify(typedNames({ where: "met > 'Mar 1, 2025'" })) === '["Alice Park"]' && JSON.stringify(typedNames({ where: "every_days >= 10" })) === '["Alice Park","Lighthouse"]',
+    typedNames({ where: "met > 'Mar 1, 2025'" }))
+    const self = { path: "P/Here.md", fm: { tags: ["Work", "AI"], relation: "family" }, mtime: 0 }
+    const selfNames = (o: Any) => run(o, recs, new Date(), { self }).groups.flatMap((g: Any) => g.rows.map((r: Any) => r.title))
+    check("query where: this.<key> is any of its values (none of them, for !=), in a map too", JSON.stringify(selfNames({ where: "tags = this.tags" })) === '["Alice Park","Bob Lee"]'
+      && JSON.stringify(selfNames({ where: "tags != this.tags" })) === '["Lee Park","Lighthouse"]' && JSON.stringify(selfNames({ where: { relation: "this.relation" } })) === '["Bob Lee"]',
+    selfNames({ where: "tags != this.tags" }))
     let bad = 0
-    for (const w of ["relation =", "(a = 1", "a = 1 b", "= 3", "a ~ 2", "'open", "a = 1 or", ")", "((((".repeat(20) + "a = 1"]) {
+    for (const w of["relation =", "(a = 1", "a = 1 b", "= 3", "a ~ 2", "'open", "a = 1 or", ")", "((((".repeat(20) + "a = 1"]) {
       try { parseWhere(w) } catch (e) { if (e instanceof QueryError) bad++ }
     }
     check("query: garbage is an error, never a crash", bad === 9, bad)

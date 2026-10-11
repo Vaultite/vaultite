@@ -200,6 +200,7 @@ replace: this changes only the key's own lines.
   run: async ({ from, to }, ctx) => await ctx.api("POST", "properties/rename", { from, to }),
   text: (r: { changed: string[]; skipped: Skipped[] }, p) => [`Renamed ${p.from} to ${p.to} in ${nFiles(r.changed.length)}.`,
     ...r.skipped.map((s) => `  left alone: ${s.path} (${s.reason})`)].join("\n"),
+  did: ({ from, to }) => ({ action: "edit", text: `Renamed the property ${from} to ${to}` }),
 })
 
 plugin.op({
@@ -219,4 +220,5 @@ plugin.op({
   run: async ({ key, type }, ctx) => await ctx.api("POST", "properties/retype", { key, type }),
   text: (r: { changed: { path: string }[]; skipped: Skipped[] }, p) => [`Made ${p.key} a ${p.type} in ${nFiles(r.changed.length)}.`,
     ...r.skipped.map((s) => `  left alone: ${s.path} (${s.reason})`)].join("\n"),
+  did: ({ key, type }) => ({ action: "edit", text: `Made the property ${key} a ${type}` }),
 })

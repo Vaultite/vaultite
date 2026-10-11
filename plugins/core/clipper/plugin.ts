@@ -202,4 +202,5 @@ terminal: --html - < page.html), its links made absolute against the url. inbox 
   text: (r: Clip) => (r.updated ? `Updated ${r.path} ("${r.title}") with the page as it is now (${r.words ?? "?"} words).`
     : r.existing ? `Already clipped: ${r.path} ("${r.title}"). To replace its content with the page as it is now: update.`
     : `Clipped "${r.title}" to ${r.path} (${r.words ?? "?"} words).`),
+  did: (p) => ({ action: "create", text: `Clipped ${p.url.trim().slice(0, 120) || "a web page"}${p.inbox ? " into the inbox" : ""}` }),
 })

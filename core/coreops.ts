@@ -18,7 +18,7 @@ import { typeOps } from "./coreops/types.ts"
 import { commandList } from "./appsource.ts"
 import { propTypeOps } from "./coreops/proptypes.ts"
 import { topic, topics } from "./docs.ts"
-import { type Op, OpError } from "./ops.ts"
+import { type Op, OpError, quoted } from "./ops.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -124,6 +124,7 @@ current tab. On a phone it opens in the sheet. For something the user should loo
     args: ["path"],
     run: ({ path, split, newTab }, ctx) => ctx.ui({ action: "open", path, split: split ?? null, newTab: !!newTab }).catch(noWindow),
     text: (_r, p) => `Opened ${p.path}${p.split ? ` in a split ${p.split}` : ""}.`,
+    did: ({ path, split }) => ({ action: "ui", text: `Opened ${path} in the app${split ? ` (split ${split})` : ""}`, paths: path && !path.startsWith("view:") ? [path] : [] }),
   }, {
     id: "ui.command",
     cli: "command",
@@ -139,6 +140,7 @@ command that isn't available right then (it needs an open file) runs nothing, an
     args: ["id"],
     run: ({ id }, ctx) => ctx.ui({ action: "command", id }).catch(noWindow),
     text: (_r, p) => `Sent ${p.id}.`,
+    did: ({ id }) => ({ action: "ui", text: `Ran the command ${id} in the app` }),
   }, {
     id: "ui.commands",
     cli: "commands",
@@ -208,6 +210,7 @@ names it; "Open" by default; the inbox's toast always says Open). error shows it
       return { inbox: false, window: await ctx.ui({ action: "notify", text, kind: error ? "error" : null, button }).catch(noWindow) }
     },
     text: (r, p) => `Shown: ${p.text}${p.actionOpen ? ` [${r.inbox ? "Open" : p.actionLabel ?? "Open"}: ${p.actionOpen}]` : ""}${r.inbox ? " (kept in the inbox)" : ""}`,
+    did: ({ text }) => ({ action: "ui", text: `Showed ${quoted(text)}` }),
   }, {
     id: "ui.choose",
     cli: "choose",

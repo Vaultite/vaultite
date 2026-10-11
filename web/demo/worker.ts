@@ -155,9 +155,7 @@ async function handle(ask: Ask): Promise<Answer> {
   // (who asks: a page on the network, so never the owner: what's the owner's only isn't offered)
   const req = { method, url: url.pathname + url.search, headers: { ...ask.headers, host: "demo" }, socket: { remoteAddress: "192.0.2.1", remotePort: 0 } } as unknown as IncomingMessage
   await app.syncPlugins()
-  const out = method === "GET" || app.unlocked(method, parts)
-    ? await app.vault.synced().then(() => app.run(method, parts, query, body, req))
-    : await app.hold(() => app.run(method, parts, query, body, req))
+  const out = await app.run(method, parts, query, body, req)
   return reply(out)
 }
 

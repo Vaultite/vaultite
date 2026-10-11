@@ -30,7 +30,9 @@
   the one catalog come `POST /api/ops/<id>`, `vau`, the MCP tools and the docs. Defaults (ids, slugs, `source`) live in
   the op, never in a client.
 - An op keeps its request (`{http}`) so the routes it calls apply their owner checks: pass it whenever calling a route
-  in-process. Writes run under `App.hold` (reentrant); call `callOp` outside any raw `vault.lock`.
+  in-process. Every API call (HTTP, ops' `ctx.api`, `plugin.host.api`, bundles) goes through one path (`App.respond`), and
+  writes run under `App.hold` (reentrant): call `run`, `callOp` and the API outside any raw `vault.lock`, or they wait
+  on themselves.
 - What only the app's source knows (palette commands, panels, page icons) is read in `appsource.ts`: keep it greppable.
 - `API_VERSION` (`version.ts`) changes only for a change that breaks plugins (note it in CHANGELOG.md; raise
   `MIN_API_VERSION` when old ones can't load).

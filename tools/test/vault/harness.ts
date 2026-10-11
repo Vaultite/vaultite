@@ -115,10 +115,7 @@ export async function vaultHarness(from?: string) {
   /** A route run as the server runs it: [status, body]. */
   async function run(method: string, parts: string[], query: Record<string, string>, body?: unknown, http?: IncomingMessage): Promise<[number, Any]> {
     await app.syncPlugins() // the vault's own plugins first, like the server
-    const res = app.unlocked(method, parts) ? await vault.synced().then(() => app.run(method, parts, query, body ?? {}, http)) : await vault.lock(async () => {
-      await vault.sync()
-      return app.run(method, parts, query, body ?? {}, http)
-    })
+    const res = await app.run(method, parts, query, body ?? {}, http)
     return [res.status, res.body instanceof Text ? res.body.text : publicOf(res.body)]
   }
   /** One API call, like the server makes it: [status, body]. */

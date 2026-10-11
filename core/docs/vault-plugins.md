@@ -60,12 +60,15 @@ or the API).
 
 **Operations** (what agents and scripts can do with it, `vau docs api`): `plugin.op({ id: "finance.import", summary,
 help, kind: "read" | "write" | "destructive", params: { file: { type: "string", required: true, description } } (`format`: "date", "path", or "json" for any value), args:
-["file"], cli: "finance import", mcp: true, run: async (params, ctx) => result, text: (result) => "Markdown" })` is
+["file"], cli: "finance import", mcp: true, run: async (params, ctx) => result, text: (result) => "Markdown", did:
+(params) => ({ action: "create", text: "Imported " + params.file }) })` is
 one operation, served at once as `POST /api/ops/finance.import`, `vau finance import <file>` (`vau finance.import`),
 an MCP tool (`finance_import`) and in its docs; only while it's on. Its id starts with the plugin's id (or that without
 a last s, or a kind it owns); parameters are checked and converted before `run` (`ctx.vault`, `ctx.who`, `ctx.op(id,
 params)`, `ctx.api(method, route, body)`); throw `OpError("what to do instead")`. A read never holds the vault; a write
-does while it runs (`lock: false` for one that waits on the network and writes through the API). `action: { on:
+does while it runs (`lock: false` for one that waits on the network and writes through the API). `did` is what a
+call did, as Activity lists it (else "Ran finance.import (<file>)"): a sentence, an `action` (create, edit, save,
+delete, move, run, ui, settings) and the `paths` it was about. `action: { on:
 ["book"], param: "book", from: "name", label: "Lend it" }` makes it one of that kind of file's actions. Also:
 `plugin.runOp(id, params, who)` runs any op of the catalog, `plugin.onEvent({ types: ["file.changed"], path: "Notes/"
 }, (ev) => ...)` hears the vault's events and `plugin.emit("finance.imported", {...})` tells its own (`vau docs
@@ -81,7 +84,8 @@ its scripts is a plugin). Each `command` is an argv array run in the plugin's fo
   "mcp": true, "command": [...], "timeout": 60}]`: operations like `plugin.op`'s. The command gets the checked
   parameters as JSON on stdin; what it prints is the answer (JSON when it parses, else text); a non-zero exit is the
   op's error, with stderr's last lines. It never holds the vault: write through `"$VAULTITE_BIN" note ...` or the API.
-  `"owner": "the backup"` keeps one to this machine's owner (anyone else on the tailnet is refused).
+  `"owner": "the backup"` keeps one to this machine's owner (anyone else on the tailnet is refused). `"did": "Synced
+  {account}"` is what a call did, as Activity lists it (its params in braces).
   `"action"` makes it one of a kind of file's actions, as `plugin.op`'s.
 - `"events": [{"on": "file.changed", "path": "Finance/", "command": [...]}]`: a command per matching event (`on` a type
   or an area), the event as JSON on stdin; in the background, one at a time per hook, at most 30 a minute (don't

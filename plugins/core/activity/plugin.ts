@@ -316,11 +316,8 @@ function opKind(id: string): "read" | "write" | "destructive" | null {
   return null
 }
 
-const quoted = (v: unknown, n = 80) => { const t = str(v).replace(/\s+/g, " "); return t.length > n ? `"${t.slice(0, n)}…"` : `"${t}"` }
-const listOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : str(v) ? str(v).split(",").map((x) => x.trim()).filter(Boolean) : [])
-
-/** What an op call did, in the app's words (the ones that write the vault or drive the app, by name; the rest by their
- *  id and what they were about); a read is left out like the app's reads (`reads`: false, or the app's own). */
+/** What an op call did, in its own words (its `did`); a read is left out like the app's reads (`reads`: false, or the
+ *  app's own). */
 function describeOp(id: string, b: Record<string, unknown>, byApp: boolean): Did {
   const kind = opKind(id)
   if (kind === "read") {
@@ -329,38 +326,10 @@ function describeOp(id: string, b: Record<string, unknown>, byApp: boolean): Did
     if (id === "docs.read") return { action: "read", text: `Read the docs${str(b.topic) ? ` on ${str(b.topic)}` : ""}`, paths: [] }
     return { action: "read", text: `Read ${id}${p ? ` for ${p}` : ""}`, paths: p ? [p] : [] }
   }
+  const own = plugin.host.did(id, b)
+  if (own) return { action: own.action ?? (kind === "destructive" ? "delete" : "request"), text: own.text, paths: own.paths ?? [] }
+  // Any other op: its id, and what it was about.
   const p = str(b.path)
-  switch (id) {
-    case "note.create": return { action: "save", text: `Saved the note ${str(b.title).slice(0, 120) || "untitled"}`, paths: [] }
-    case "log.create": {
-      const t = str(b.title)
-      return { action: "save", text: t.startsWith("[") ? "Logged several things" : `Logged ${t.startsWith("{") ? "an entry" : t.slice(0, 120) || "something"}${str(b.area) ? ` (${str(b.area)})` : ""}`, paths: [] }
-    }
-    case "person.timeline-add": return { action: "save", text: `Added to ${str(b.person)}'s timeline${str(b.kind) ? ` (${str(b.kind)})` : ""}`, paths: [] }
-    case "people.remember": {
-      const about = str(b.about)
-      return { action: "save", text: `Remembered ${quoted(b.fact)}${about && !/^(me|user|myself|i)$/i.test(about) ? (/^pref/i.test(about) ? " (how to work with them)" : ` about ${about}`) : ""}`, paths: [] }
-    }
-    case "clipper.save": return { action: "create", text: `Clipped ${str(b.url).slice(0, 120) || "a web page"}${b.inbox === true || b.inbox === "true" ? " into the inbox" : ""}`, paths: [] }
-    case "inbox.add": return { action: "create", text: `Left ${quoted(b.title)} in the inbox`, paths: [] }
-    case "inbox.read": return { action: "save", text: listOf(b.ids).length ? `Marked ${listOf(b.ids).length} inbox event${listOf(b.ids).length === 1 ? "" : "s"} read` : "Marked the inbox read", paths: [] }
-    case "inbox.unread": return { action: "save", text: `Marked ${listOf(b.ids).length || "some"} inbox event${listOf(b.ids).length === 1 ? "" : "s"} unread`, paths: [] }
-    case "inbox.clear": return { action: "delete", text: "Cleared the inbox's events", paths: [] }
-    case "ui.open": return { action: "ui", text: `Opened ${p} in the app${str(b.split) ? ` (split ${str(b.split)})` : ""}`, paths: p && !p.startsWith("view:") ? [p] : [] }
-    case "ui.command": return { action: "ui", text: `Ran the command ${str(b.id)} in the app`, paths: [] }
-    case "ui.notify": return { action: "ui", text: `Showed ${quoted(b.text)}`, paths: [] }
-    case "terminal.open": return { action: "run", text: `Opened a terminal${str(b.agent) ? ` running ${str(b.agent)}` : ""}`, paths: [] }
-    case "terminal.resume": return { action: "run", text: `Resumed the session ${quoted(b.session, 60)} in a terminal`, paths: [] }
-    case "terminal.send": return { action: "run", text: `Typed ${quoted(b.text, 60)} into the terminal ${str(b.id)}`, paths: [] }
-    case "terminal.end": return { action: "delete", text: `Ended the terminal ${str(b.id)}`, paths: [] }
-    case "terminal.tidy": return { action: "ui", text: "Closed the tabs of terminals that are gone", paths: [] }
-    case "property.rename": return { action: "edit", text: `Renamed the property ${str(b.from)} to ${str(b.to)}`, paths: [] }
-    case "property.retype": return { action: "edit", text: `Made the property ${str(b.key)} a ${str(b.type)}`, paths: [] }
-    case "routine.check": return { action: "save", text: `${b.done === false || b.done === "false" ? "Unticked" : "Ticked"} ${str(b.routine)}${str(b.date) ? ` for ${str(b.date)}` : ""}`, paths: str(b.date) ? [dayFile(str(b.date))] : [] }
-    case "ai-import.run": return { action: "create", text: `Imported ${p || "an AI's export"}`, paths: [] }
-    case "ai-import.apply": return { action: "save", text: `Added the memories ticked in ${p}`, paths: [] }
-  }
-  // Any other op (a vault plugin's too): its id, and what it was about.
   const about = str(b.path) || str(b.title) || str(b.name) || str(b.person) || str(b.url) || str(b.id) || str(b.key)
   return { action: kind === "destructive" ? "delete" : "request", text: `Ran ${id}${about ? ` (${about.slice(0, 100)})` : ""}`, paths: p ? [p] : [] }
 }

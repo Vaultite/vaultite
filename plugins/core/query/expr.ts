@@ -47,6 +47,10 @@ export type Env = {
   /** The paths of the files that link to a file (file.backlinks; worked out once, when first asked). */
   backlinks: (rec: Rec) => string[]
   now: number
+  /** A where's key as written for a file (`file`, `folder`, frontmatter...: query.ts), and a value as its key's
+   *  declared type compares it (undefined: as it is). */
+  key: (rec: Rec, key: string) => unknown
+  typed: (key: string, v: unknown) => unknown
 }
 
 type Scope = { rec: Rec | null; env: Env; vars?: Record<string, V> }
@@ -129,7 +133,7 @@ export function durationText(ms: number) {
 // ---------- the language
 
 type Tok = { t: "num" | "str" | "re" | "id" | "op" | "p"; v: string; at: number; re?: RegExp }
-type Node =
+export type Node =
   | { k: "lit"; v: V }
   | { k: "id"; name: string }
   | { k: "member"; obj: Node; name: string }
@@ -139,6 +143,10 @@ type Node =
   | { k: "bin"; op: string; a: Node; b: Node }
   | { k: "list"; items: Node[] }
   | { k: "obj"; entries: [string, Node][] }
+  // A where compiles to these (query.ts), never parsed: a key's value as written (`self`: this note's), and its tests.
+  | { k: "key"; name: string; self?: boolean }
+  | { k: "has"; a: Node }
+  | { k: "loose"; op: string; a: Node; b: Node }
 
 const OPS = ["==", "!=", ">=", "<=", "&&", "||", ">", "<", "+", "-", "*", "/", "%", "!", "="]
 const ID_START = /[\p{L}_$]/u, ID_PART = /[\p{L}\p{N}_$]/u
@@ -573,6 +581,9 @@ function ev(n: Node, s: Scope): V {
       }
       return arith(n.op, a, b)
     }
+    case "key": { const r = n.self ? s.env.self : s.rec; return r ? s.env.key(r, n.name) as V : null }
+    case "has": return !blank(ev(n.a, s))
+    case "loose": return loose(n, s)
     case "call": {
       if (n.fn.k === "id") return global(n.fn.name, n.args, s)
       const fn = n.fn as { k: "member"; obj: Node; name: string }
@@ -771,7 +782,6 @@ const ALIASES: Record<string, string> = { mean: "average", avg: "average", total
 /** A built-in summary of values, or undefined when `name` isn't one. */
 export function summary(name: string, values: V[]): V | undefined {
   const key = ALIASES[name.toLowerCase()] ?? name.toLowerCase()
-  const blank = (v: V) => v === null || v === undefined || v === "" || (Array.isArray(v) && !v.length)
   const numbers = values.filter((v) => typeof v === "number" || (typeof v === "string" && v.trim() !== "" && !isNaN(Number(v)))).map(Number)
   const dates = values.map((v) => (v instanceof BDate ? v : typeof v === "string" ? parseDate(v) : null)).filter((x): x is BDate => !!x)
   switch (key) {
@@ -800,4 +810,60 @@ export function summary(name: string, values: V[]): V | undefined {
     }
   }
   return undefined
+}
+
+// ---------- a where's lenient tests (query.ts compiles a where to them; AGENTS.md has the rules)
+
+/** "[[Alice Park|Alice]]" -> "Alice Park"; anything else as it is. */
+export const unlink = (v: unknown) => (typeof v === "string" ? v.trim().replace(WIKI, "$1").trim() : v)
+export const blank = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)
+const isNum = (v: unknown) => typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()))
+/** Text without case, "2" before "10" (one collator: localeCompare with options makes one per comparison). */
+export const byText = new Intl.Collator("en", { sensitivity: "base", numeric: true })
+
+/** Two values in order: numbers as numbers, text without case (and 2 before 10), blanks last. */
+export function compare(a: unknown, b: unknown): number {
+  if (blank(a) || blank(b)) return blank(a) && blank(b) ? 0 : blank(a) ? 1 : -1
+  if (Array.isArray(a)) a = a[0]
+  if (Array.isArray(b)) b = b[0]
+  if (isNum(a) && isNum(b)) return Number(a) - Number(b)
+  if (typeof a === "boolean" || typeof b === "boolean") return Number(a === true) - Number(b === true)
+  return byText.compare(String(unlink(a)), String(unlink(b)))
+}
+
+/** The same value, leniently: text without case, "[[A]]" is "A", 7 is "7", blanks alike. */
+export const same = (a: unknown, b: unknown) => {
+  if (a === null || b === null) return blank(a) && blank(b)
+  if (typeof a === "boolean" || typeof b === "boolean") return String(a).toLowerCase() === String(b).toLowerCase()
+  if (isNum(a) && isNum(b)) return Number(a) === Number(b)
+  return String(unlink(a)).toLowerCase() === String(unlink(b)).toLowerCase()
+}
+
+/** A where's comparison of a key with a value, `this` (whether it names the note) or `this.<key>` (any of its values;
+ *  all, for !=). */
+function loose(n: { op: string; a: Node; b: Node }, s: Scope): boolean {
+  const v: unknown = ev(n.a, s), key = n.a.k === "key" ? n.a.name : "", self = s.env.self
+  if (n.b.k === "id" && n.b.name === "this") {
+    const is = (Array.isArray(v) ? v : [v]).some((x) => !!self && typeof x === "string" && s.env.resolve(String(unlink(x)))?.path === self.path)
+    return n.op === "!=" ? !is : n.op === "=" || n.op === "contains" ? is : false
+  }
+  const w: unknown = ev(n.b, s)
+  const ws = n.b.k !== "key" ? [w] : Array.isArray(w) && w.length ? w : [blank(w) ? null : w]
+  return ws[n.op === "!=" ? "every" : "some"]((x) => one(key, n.op, v, x, s.env))
+}
+
+/** One comparison of a file's value with one wanted value, both as the key's declared type (if any). */
+function one(key: string, op: string, v: unknown, w: unknown, env: Env): boolean {
+  const vs = Array.isArray(v) ? v : [v]
+  const as = (x: unknown) => { const t = env.typed(key, x); return t === undefined ? x : t }
+  const eq = (x: unknown) => same(as(x), as(w))
+  if (op === "!=") return !vs.some(eq)
+  if (blank(v)) return w === null && op === "="
+  if (op === "=") return vs.some(eq)
+  if (op === "contains") {
+    const want = String(unlink(w)).toLowerCase()
+    return Array.isArray(v) ? v.some((x) => same(x, w)) : String(unlink(v)).toLowerCase().includes(want)
+  }
+  const c = vs.map((x) => compare(as(x), as(w)))
+  return c.some((d) => (op === "<" ? d < 0 : op === "<=" ? d <= 0 : op === ">" ? d > 0 : d >= 0))
 }

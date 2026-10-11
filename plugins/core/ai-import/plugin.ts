@@ -217,6 +217,7 @@ computer you're on: vau import <file> (it uploads it). wait: answer once it's do
     return p.wait ? await jobOf(job.id, true) : job
   },
   text: (job: Job) => jobText(job),
+  did: ({ path }) => ({ action: "create", text: `Imported ${path || "an AI's export"}` }),
 })
 
 plugin.op({
@@ -274,6 +275,7 @@ under it. Don't tick memories for the user: this adds what they ticked.
   },
   text: (r) => (!r.added && !r.failed ? "Nothing ticked to add." : [`Added ${r.added} memor${r.added === 1 ? "y" : "ies"}${r.failed ? `; ${r.failed} couldn't be (why is under each)` : ""}.`,
     ...r.results.map((x: Applied) => `- ${x.fact}: ${x.error ? `not added: ${x.error}` : x.where}`)].join("\n")),
+  did: ({ path }) => ({ action: "save", text: `Added the memories ticked in ${path}` }),
 })
 
 // ```block-memory-review as text: what's left to review in the file it's in.

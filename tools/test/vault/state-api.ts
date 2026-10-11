@@ -64,7 +64,7 @@ export default async ($: VaultTest) => {
   let syncs = 0
   const offSync = vault.afterSync(() => { syncs++ })
   write("Notes/Burst.md", "---\ntype: note\n---\n\nWritten just before the reads.\n")
-  const burst = await Promise.all([1, 2, 3, 4, 5].map(() => vault.synced().then(() => app.run("GET", ["files"], {}, {}))))
+  const burst = await Promise.all([1, 2, 3, 4, 5].map(() => app.run("GET", ["files"], {}, {})))
   check("reads asked together share one sync", syncs === 1, syncs)
   check("a shared sync reads a file written before the reads came", burst.every((r) => (r.body as Any).files.some((f: Any) => f.path === "Notes/Burst.md")))
   await vault.synced()

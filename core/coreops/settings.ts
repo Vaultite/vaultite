@@ -7,7 +7,8 @@ import { closest, COMMON, optionText, tidyKindBlocks } from "../blocks.ts"
 import { jsonBlock, type Op, OpError } from "../ops.ts"
 import { type Any, lines, strings } from "./common.ts"
 import { pluginList } from "./plugins.ts"
-import { FM, readText, writeAtomic } from "../vault.ts"
+import { readText, writeAtomic } from "../vault.ts"
+import { FM } from "../frontmatter.ts"
 
 
 /** A text read as JSON when it is (numbers, true, lists), else the text. */

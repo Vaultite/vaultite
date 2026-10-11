@@ -6,6 +6,7 @@ import path from "node:path"
 import { settingsOf, type SettingDecls } from "./blocks.ts"
 import { copies, templates } from "./pages.ts"
 import { inPagesDir, PAGES_DIR } from "./fileprops.ts"
+import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
 import { blocksIn } from "./sections.ts"
 import { readSidebars, type Sidebars } from "./sidebars.ts"
@@ -42,7 +43,7 @@ export type Host = {
   plugins: () => Plugin[]
   /** The vault's own plugins, loaded or not (GET /api/plugins). */
   vaultPlugins: () => Item[]
-  /** One request to this API (method, route under /api/, body): its body; HTTPError when it fails. */
+  /** One request to this API (method, route under /api/, body): its body; OpError when it fails. */
   call: (method: string, route: string, body?: unknown) => Promise<unknown>
   /** Load or unload vault plugins after plugins.json changed, and install their pages. */
   syncPlugins: () => Promise<unknown>
@@ -478,7 +479,7 @@ function addFile(v: Vault, rel: string, data: string | Buffer, added: Previous["
 async function pinTo(host: Host, cur: string[], want: string[], n: number | null) {
   for (const op of pinOps(cur, want)) {
     try { await host.call("POST", n ? `workspaces/${n}/pins` : "pins", op) } catch (e) {
-      if (!(e instanceof HTTPError) || e.status !== 404) throw e // (a page that's gone meanwhile: skipped)
+      if (!(e instanceof OpError) || e.status !== 404) throw e // (a page that's gone meanwhile: skipped)
     }
   }
 }

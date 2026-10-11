@@ -17,7 +17,8 @@ export default async ($: VaultTest) => {
     m.ops.push({ id: "wordcount.env", summary: "Its environment (a test's).", kind: "read", command: ["node", "-e",
       "const e = process.env; let i = ''; process.stdin.on('data', (d) => i += d).on('end', () => console.log(JSON.stringify({ id: e.VAULTITE_PLUGIN_ID, dir: e.VAULTITE_PLUGIN_DIR, state: e.VAULTITE_PLUGIN_STATE, bin: e.VAULTITE_BIN, url: e.VAULTITE_URL, vault: e.VAULTITE_VAULT, op: e.VAULTITE_OP, params: e.VAULTITE_PARAMS_JSON, stdin: i, cwd: process.cwd() })))"],
       params: { n: { type: "integer", default: 2, description: "a number" } } })
-    m.ops.push({ id: "wordcount.fail", summary: "Fails (a test's).", kind: "write", command: ["node", "-e", "console.error('first'); console.error('the reason'); process.exit(3)"] })
+    m.ops.push({ id: "wordcount.fail", summary: "Fails (a test's).", kind: "write", params: { why: { type: "string", description: "why" } }, did: "Failed on purpose: {why}",
+      command: ["node", "-e", "console.error('first'); console.error('the reason'); process.exit(3)"] })
     m.ops.push({ id: "wordcount.slow", summary: "Too slow (a test's).", kind: "read", timeout: 0.3, command: ["node", "-e", "setTimeout(() => {}, 5000)"] })
     write(`${WC}/manifest.json`, JSON.stringify(m, null, 2))
     const vp = async () => ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "wordcount")
@@ -48,6 +49,9 @@ export default async ($: VaultTest) => {
     ;[st, body] = await api("POST", "ops/wordcount.fail", {})
     check("hooks: stderr's last lines say why it failed; a write's failure is op.done too", st === 500 && /exit 3\): first\nthe reason$/.test(body.error) && eventsOf(vault).last({ types: ["op.done"] }, 1)[0].id === "wordcount.fail", body)
     check("hooks: a manifest op never holds the vault (its command writes through the API)", app.ops().find((o) => o.op.id === "wordcount.fail")?.op.lock === false)
+    const { didOf } = await import("../../../core/ops.ts")
+    const did = didOf(app.ops().find((o) => o.op.id === "wordcount.fail")!.op, { why: "a test" })
+    check("hooks: a manifest op's did is its params filled in", did?.text === "Failed on purpose: a test", did)
     ;[st, body] = await api("POST", "ops/wordcount.slow", {})
     check("hooks: a command past its timeout is ended", st === 504 && body.error.includes("longer than 0.3 s"), [st, body])
     const tools = (await import("../../../plugins/core/mcp/catalog.ts")).toolsOf(app.catalog())
@@ -75,11 +79,11 @@ export default async ($: VaultTest) => {
       { id: "other.thing", summary: "x", kind: "read", command: ["node", "count.mjs"] },
       { id: "wordcount.shell", summary: "x", kind: "read", command: "node count.mjs" },
       { id: "wordcount.up", summary: "x", kind: "write", command: ["../../escape.sh"] },
-      { id: "wordcount.nope", summary: "x", kind: "maybe", command: ["./missing.sh"], params: { x: { type: "string" } }, extra: 1 },
+      { id: "wordcount.nope", summary: "x", kind: "maybe", command: ["./missing.sh"], params: { x: { type: "string" } }, extra: 1, did: 3 },
     ], events: [{ on: "File Changed", command: ["node"] }], startup: [["node", "x.mjs"]] }, dir)
     const has = (s: string) => probs.some((p) => p.includes(s))
     check("hooks: the manifest's problems", has("'other.thing' should start with 'wordcount.'") && has("argv array of strings") && has("outside the plugin's folder") && has("isn't in the plugin's folder") &&
-      has("kind is read, write or destructive") && has("param 'x' has no description") && has("'extra' isn't a key of an op") && has("events[0]: on is an event type") && has("startup[0] must be"), probs)
+      has("kind is read, write or destructive") && has("param 'x' has no description") && has("'extra' isn't a key of an op") && has("did is what a call did") && has("events[0]: on is an event type") && has("startup[0] must be"), probs)
     check("hooks: the fixture has none", hookProblems(JSON.parse(fs.readFileSync(path.join(TOOLS, "fixtures", "wordcount", "manifest.json"), "utf8")), path.join(TOOLS, "fixtures", "wordcount")).length === 0)
     m.ops.push({ id: "wordcount.bad", summary: "x", kind: "read", command: "rm -rf /" })
     write(`${WC}/manifest.json`, JSON.stringify(m, null, 2))

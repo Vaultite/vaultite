@@ -182,4 +182,5 @@ codex...). The API's JSON as the one argument works too.
     return { path: `${r.id}.md`, id: r.ext_id ?? note.ext_id, title: r.title ?? title }
   },
   text: (r) => `Saved ${r.path} (id: ${r.id}).`,
+  did: (p) => ({ action: "save", text: `Saved the note ${p.title.trim().slice(0, 120) || "untitled"}` }),
 })

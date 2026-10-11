@@ -66,13 +66,14 @@ export function hookProblems(m: Item, dir: string, where = "manifest.json"): str
     const at = `${where}: ops[${i}]`
     if (!o || typeof o !== "object") return void out.push(`${at} must be an object`)
     const op = o as Item
-    const known = new Set(["id", "summary", "help", "kind", "params", "args", "cli", "mcp", "owner", "command", "timeout", "result", "action"])
+    const known = new Set(["id", "summary", "help", "kind", "params", "args", "cli", "mcp", "owner", "command", "timeout", "result", "action", "did"])
     for (const k of Object.keys(op)) if (!known.has(k)) out.push(`${at}: '${k}' isn't a key of an op (${[...known].join(", ")})`)
     if (op.params !== undefined && (!op.params || typeof op.params !== "object" || Array.isArray(op.params))) out.push(`${at}: params is an object of parameters`)
     if (op.args !== undefined && (!Array.isArray(op.args) || !op.args.every((a: unknown) => typeof a === "string"))) out.push(`${at}: args is a list of parameter names`)
     if (op.mcp !== undefined && typeof op.mcp !== "boolean" && typeof op.mcp !== "string") out.push(`${at}: mcp is true or a tool name`)
     if (op.action !== undefined && (!op.action || typeof op.action !== "object" || Array.isArray(op.action))) out.push(`${at}: action is an object ({"on": ["person"], "param": "person", "from": "name", "label": "..."})`)
     if (op.owner !== undefined && (typeof op.owner !== "string" || !op.owner.trim())) out.push(`${at}: owner names what only this machine's owner may do ("the backup")`)
+    if (op.did !== undefined && (typeof op.did !== "string" || !op.did.trim())) out.push(`${at}: did is what a call did, for Activity, its params in braces ("Synced {account}")`)
     out.push(...opProblems({ ...op, run: () => null } as unknown as Op).map((p) => `${at}: ${p}`))
     if (typeof op.id === "string") {
       if (!inArea(op.id, id)) out.push(`${at}: '${op.id}' should start with '${id}.' (a plugin's ops are in its own area)`)
@@ -117,6 +118,8 @@ export function hookProblems(m: Item, dir: string, where = "manifest.json"): str
 
 // ---------- running ----------
 
+/** A manifest op's `did` with its params filled in: "Synced {account}". */
+const fillIn = (did: string, params: Item) => did.replace(/\{(\w+)\}/g, (_, k: string) => (params[k] == null || typeof params[k] === "object" && !Array.isArray(params[k]) ? "" : String(params[k])))
 const tail = (s: string, lines = 12) => s.replace(/\s+$/, "").split("\n").slice(-lines).join("\n").slice(-2000)
 
 export class Hooks {
@@ -192,6 +195,7 @@ export class Hooks {
     return ops.map((d): Op => ({
       id: d.id, summary: d.summary, help: d.help, kind: d.kind, params: d.params as Record<string, Param> | undefined, args: d.args,
       cli: d.cli, mcp: d.mcp, result: d.result, owner: d.owner, action: d.action, lock: false,
+      ...(typeof d.did === "string" ? { did: (params: Item) => ({ text: fillIn(d.did, params) }) } : {}),
       run: async (params) => {
         const json = JSON.stringify(params)
         const timeout = typeof d.timeout === "number" ? d.timeout : OP_TIMEOUT

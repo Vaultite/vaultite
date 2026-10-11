@@ -362,12 +362,8 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
       throw e
     }
   }
-  // Writes hold the vault from the sync to their last write, so a file edited meanwhile is read first; reads don't, so a
-  // slow live fetch never holds up the rest. Routes with `lock: false` sync like a read and hold it only to write.
   await app.syncPlugins()
-  const out = method === "GET" || app.unlocked(method, parts)
-    ? await vault.synced().then(() => app.run(method, parts, query, body, req))
-    : await app.hold(() => app.run(method, parts, query, body, req))
+  const out = await app.run(method, parts, query, body, req)
   if (out.status >= 400) failures.set(req, String((out.body as { error?: unknown } | null)?.error ?? ""))
   if (out.body instanceof Text) return send(res, out.status, out.body.text, out.body.type, out.body.headers)
   send(res, out.status, jsonOf(out.body), "application/json")

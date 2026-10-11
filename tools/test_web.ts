@@ -64,7 +64,7 @@ const VAULT = path.join(tmp, "vault")
 fs.mkdirSync(VAULT)
 process.env.VAULTITE_VAULT = VAULT
 process.env.VAULTITE_LOCAL = path.join(tmp, "local")
-const { loadFm } = await import("../core/vault.ts")
+const { loadFm } = await import("../core/frontmatter.ts")
 {
   const { mapLinks, relativePath, resolvePath } = await import("../core/links.ts")
   const to = (t: string) => (t === "a" ? "b c" : t === "x/a.png" ? "y/a (1).png" : null)
@@ -153,10 +153,7 @@ const { publicOf } = await import("../core/vault.ts")
 const app = await open(VAULT, { start: false })
 async function api(method: string, route: string, body?: unknown): Promise<[number, Any]> {
   const parts = route.split("/").filter(Boolean).map(decodeURIComponent)
-  const res = await app.vault.lock(async () => {
-    await app.vault.sync()
-    return app.run(method, parts, {}, body ?? {})
-  })
+  const res = await app.run(method, parts, {}, body ?? {})
   return [res.status, res.body instanceof Text ? res.body.text : publicOf(res.body)]
 }
 

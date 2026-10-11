@@ -1,8 +1,10 @@
-// Database views: a query over the vault's files and frontmatter (options: AGENTS.md). One
-// evaluator, no Node, for the route and the block's text; comparisons are lenient ("[[A]]" is "A", any of a list).
+// Database views: a query over the vault's files and frontmatter (options: AGENTS.md). One evaluator, no Node, for the
+// route and the block's text: a where compiles to Bases' expressions (expr.ts), with its lenient comparisons.
 
 import { linkIndex } from "../../../core/links.ts"
-import { evaluate, type Env, ExprError, parse as parseExpr, plainOf, summary, SUMMARIES, truthy, type V, wrap } from "./expr.ts"
+import {
+  blank, byText, compare, evaluate, type Env, ExprError, type Node as Expr, parse as parseExpr, plainOf, same, summary, SUMMARIES, truthy, unlink, type V, wrap,
+} from "./expr.ts"
 
 export type Opts = Record<string, unknown>
 /** A file to query: path, frontmatter, mtime, created (lazy), tags (frontmatter and inline), type (core/fileprops.ts)
@@ -154,11 +156,29 @@ export function parseWhere(src: string): Node | null {
 /** `this` -> "" and `this.status` -> "status" (the note the view is in, or its key), else undefined: plain text. */
 const refOf = (w: string) => { const m = /^this(?:\.(.+))?$/i.exec(w.trim()); return m ? m[1] ?? "" : undefined }
 
+/** A where as Bases' expression: and / or / not as theirs, each comparison its lenient one; `this` is Bases' `this`, and
+ *  `this.<key>` that note's value of the key. */
+function exprOf(n: Node): Expr {
+  switch (n.k) {
+    case "and": case "or": return { k: "bin", op: n.k === "and" ? "&&" : "||", a: exprOf(n.a), b: exprOf(n.b) }
+    case "not": return { k: "un", op: "!", a: exprOf(n.a) }
+    case "has": return { k: "has", a: { k: "key", name: n.key } }
+  }
+  return { k: "loose", op: n.op, a: { k: "key", name: n.key }, b: wantOf(n.value, n.ref) }
+}
+const wantOf = (value: unknown, ref?: string): Expr =>
+  ref === undefined ? { k: "lit", v: (value ?? null) as V } : ref === "" ? { k: "id", name: "this" } : { k: "key", name: keyOf(ref), self: true }
+
+/** A `where` map ({relation: friend, tags: [a, b]}): every key must match (a list: any of its values; `this` and
+ *  `this.<key>` as in a where's text). */
+function mapExpr(m: Record<string, unknown>): Expr {
+  const all = (xs: Expr[], op: "&&" | "||"): Expr => (xs.length ? xs.reduce((a, b) => ({ k: "bin", op, a, b })) : { k: "lit", v: op === "&&" })
+  return all(Object.entries(m).map(([k, want]) => all((Array.isArray(want) ? want : [want]).map((w) =>
+    ({ k: "loose", op: "=", a: { k: "key", name: keyOf(k) }, b: wantOf(w, typeof w === "string" ? refOf(w) : undefined) })), "||")), "&&")
+}
+
 // ---------- values
 
-const WIKI = /^\[\[([^[\]|#]+)(?:#[^[\]|]*)?(?:\|[^[\]]*)?\]\]$/
-/** "[[Alice Park|Alice]]" -> "Alice Park"; anything else as it is. */
-const unlink = (v: unknown) => (typeof v === "string" ? v.trim().replace(WIKI, "$1").trim() : v)
 const stemOf = (p: string) => p.split("/").pop()!.replace(/\.md$/i, "")
 const folderOf = (p: string) => p.split("/").slice(0, -1).join("/")
 const pad = (n: number) => String(n).padStart(2, "0")
@@ -185,75 +205,6 @@ export function valueOf(r: Rec, key: string): unknown {
   return k ? r.fm[k] : undefined
 }
 
-const isNum = (v: unknown) => typeof v === "number" || (typeof v === "string" && /^-?\d+(\.\d+)?$/.test(v.trim()))
-const blank = (v: unknown) => v === undefined || v === null || v === "" || (Array.isArray(v) && !v.length)
-
-/** Two values in order: numbers as numbers, text without case (and 2 before 10), blanks last. */
-export function compare(a: unknown, b: unknown): number {
-  if (blank(a) || blank(b)) return blank(a) && blank(b) ? 0 : blank(a) ? 1 : -1
-  if (Array.isArray(a)) a = a[0]
-  if (Array.isArray(b)) b = b[0]
-  if (isNum(a) && isNum(b)) return Number(a) - Number(b)
-  if (typeof a === "boolean" || typeof b === "boolean") return Number(a === true) - Number(b === true)
-  return byText.compare(String(unlink(a)), String(unlink(b)))
-}
-/** Text without case, "2" before "10" (one collator: localeCompare with options makes one per comparison). */
-const byText = new Intl.Collator("en", { sensitivity: "base", numeric: true })
-
-const same = (a: unknown, b: unknown) => {
-  if (a === null || b === null) return blank(a) && blank(b)
-  if (typeof a === "boolean" || typeof b === "boolean") return String(a).toLowerCase() === String(b).toLowerCase()
-  if (isNum(a) && isNum(b)) return Number(a) === Number(b)
-  return String(unlink(a)).toLowerCase() === String(unlink(b)).toLowerCase()
-}
-
-type Get = (r: Rec, key: string) => unknown
-
-/** What a where reads besides the file: `this` (the note the view is in: whether a value names it, and its keys), and
- *  a value as its key's declared type compares it (undefined: as it is). */
-type WhereEnv = { here?: { is: (v: unknown) => boolean; get: (key: string) => unknown } | null; typed?: (key: string, v: unknown) => unknown }
-/** The note itself, as a value to compare with. */
-const THIS = Symbol("this")
-
-/** What a comparison compares with: its value, `this`, or each of this note's values of a key (none: blank). */
-function wanted(n: { value: unknown; ref?: string }, env: WhereEnv): unknown[] {
-  if (n.ref === undefined) return [n.value]
-  if (n.ref === "") return [THIS]
-  const v = env.here?.get(n.ref)
-  return Array.isArray(v) && v.length ? v : [blank(v) ? null : v]
-}
-
-function test(n: Node, r: Rec, get: Get, env: WhereEnv = {}): boolean {
-  switch (n.k) {
-    case "and": return test(n.a, r, get, env) && test(n.b, r, get, env)
-    case "or": return test(n.a, r, get, env) || test(n.b, r, get, env)
-    case "not": return !test(n.a, r, get, env)
-    case "has": return !blank(get(r, n.key))
-  }
-  const v = get(r, n.key)
-  return wanted(n, env)[n.op === "!=" ? "every" : "some"]((w) => one(n.key, n.op, v, w, env))
-}
-
-/** One comparison of a file's value with one wanted value (`this`: names the note; else as its key's type, if any). */
-function one(key: string, op: string, v: unknown, w: unknown, env: WhereEnv): boolean {
-  const vs = Array.isArray(v) ? v : [v]
-  if (w === THIS) {
-    const is = vs.some((x) => !!env.here?.is(x))
-    return op === "!=" ? !is : op === "=" || op === "contains" ? is : false
-  }
-  const as = (x: unknown) => { const t = env.typed?.(key, x); return t === undefined ? x : t }
-  const eq = (x: unknown) => same(as(x), as(w))
-  if (op === "!=") return !vs.some(eq)
-  if (blank(v)) return w === null && op === "="
-  if (op === "=") return vs.some(eq)
-  if (op === "contains") {
-    const want = String(unlink(w)).toLowerCase()
-    return Array.isArray(v) ? v.some((x) => same(x, w)) : String(unlink(v)).toLowerCase().includes(want)
-  }
-  const c = vs.map((x) => compare(as(x), as(w)))
-  return c.some((d) => (op === "<" ? d < 0 : op === "<=" ? d <= 0 : op === ">" ? d > 0 : d >= 0))
-}
-
 // ---------- options
 
 const list = (v: unknown): string[] =>
@@ -278,19 +229,6 @@ export function keyOf(k: string): string {
 export const propKey = (k: string): string | null =>
   SPECIAL.includes(k) || k.startsWith("formula.") || k.startsWith("file.") ? null : k
 
-/** A `where` map ({relation: friend, tags: [a, b]}) as a filter: every key must match (a list: any of its values;
- *  `this` and `this.<key>` as in a where's text). */
-function whereMap(m: Record<string, unknown>, env: WhereEnv): (r: Rec, get: Get) => boolean {
-  return (r, get) => Object.entries(m).every(([k, want]) => {
-    const key = keyOf(k), v = get(r, key)
-    const ws = (Array.isArray(want) ? want : [want]).flatMap((w) => {
-      const ref = typeof w === "string" ? refOf(w) : undefined
-      return ref === undefined ? [w ?? null] : wanted({ value: w, ref }, env)
-    })
-    return ws.some((w) => (w === null ? blank(v) || one(key, "=", v, w, env) : one(key, "=", v, w, env)))
-  })
-}
-
 /** A sort given as text ("-updated", "file") or the Bases way ({property: file.mtime, direction: DESC}). */
 function sortOf(v: unknown): SortKey[] {
   const items = Array.isArray(v) ? v : v === undefined || v === null ? [] : typeof v === "string" ? v.split(",") : [v]
@@ -307,16 +245,16 @@ function sortOf(v: unknown): SortKey[] {
 }
 
 /** The options checked: throws QueryError on a bad `where`, sort or view. */
-export function compile(o: Opts, env: WhereEnv = {}) {
+export function compile(o: Opts) {
   if (!o || typeof o !== "object" || Array.isArray(o)) throw new QueryError("the query's options must be a map of key: value lines")
   const from = list(o.from).map((f) => f.replace(/^\/+/, "").toLowerCase())
   const types = list(o.type).map((t) => t.toLowerCase())
   const tags = list(o.tags).map((t) => t.replace(/^#/, "").toLowerCase())
-  let where: (r: Rec, get: Get) => boolean = () => true
+  let where: Expr | null = null
   if (typeof o.where === "string") {
     const n = parseWhere(o.where)
-    if (n) where = (r, get) => test(n, r, get, env)
-  } else if (o.where && typeof o.where === "object" && !Array.isArray(o.where)) where = whereMap(o.where as Record<string, unknown>, env)
+    if (n) where = exprOf(n)
+  } else if (o.where && typeof o.where === "object" && !Array.isArray(o.where)) where = mapExpr(o.where as Record<string, unknown>)
   else if (o.where !== undefined && o.where !== null) throw new QueryError("where is an expression (relation = friend) or a map ({relation: friend})")
   const sort = sortOf(o.sort)
   const view = (o.view === undefined ? "table" : String(o.view)) as View
@@ -343,8 +281,8 @@ export function compile(o: Opts, env: WhereEnv = {}) {
   if (arch === null) throw new QueryError(`archived is true, false or only, not '${String(o.archived)}'`)
   /** Left out for being archived (or, with `only`, for not being). */
   const outByArchive = (r: Rec) => (arch === "only" ? !r.archived : !arch && !!r.archived)
-  /** Everything but the archive test. */
-  const match = (r: Rec, get: Get) => {
+  /** Where it is (from, type, tags): the where is evaluated with the run's Env. */
+  const inScope = (r: Rec) => {
     const low = r.path.toLowerCase()
     if (from.length && !from.some((f) => low.startsWith(f.endsWith("/") ? f : `${f}/`) || low === f)) return false
     if (types.length && !types.includes(String(valueOf(r, "type") ?? "").toLowerCase())) return false
@@ -353,11 +291,11 @@ export function compile(o: Opts, env: WhereEnv = {}) {
       const has = (r.tags ?? list(r.fm.tags)).map((t) => t.replace(/^#/, "").toLowerCase())
       if (!tags.every((t) => has.some((h) => h === t || h.startsWith(`${t}/`)))) return false
     }
-    return where(r, get)
+    return true
   }
   const keyName = (k: unknown) => (typeof k === "string" ? keyOf(k) : "")
   return {
-    match, outByArchive, hidesArchived: arch === false, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
+    inScope, where, outByArchive, hidesArchived: arch === false, sort, view, limit, offset, group, groupDesc, groups: list(o.groups), date, month, columns: list(o.columns).map(keyOf),
     title: typeof o.title === "string" ? o.title : "",
     coordinates: keyName(o.coordinates) || "coordinates", markerColor: keyName(o.markerColor), markerIcon: keyName(o.markerIcon),
   }
@@ -445,15 +383,8 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     if (!typeMemo.has(k)) typeMemo.set(k, ctx.types.of(k))
     return typeMemo.get(k)!
   }
-  const self = ctx.self ?? null
-  const q = compile(o, {
-    here: self && {
-      is: (v) => (typeof v === "string" ? resolve(String(unlink(v)))?.path === self.path : false),
-      get: (k) => valueOf(self, keyOf(k)),
-    },
-    typed: (k, v) => { const t = typeOfKey(k); return t ? ctx.types!.value(t, v) : undefined },
-  })
-  if (!self && (typeof o.where === "string" ? /(^|[\s(=<>!])this(\.|\s|\)|$)/i.test(o.where) : JSON.stringify(o.where ?? "").includes('"this'))) {
+  const q = compile(o)
+  if (!ctx.self && (typeof o.where === "string" ? /(^|[\s(=<>!])this(\.|\s|\)|$)/i.test(o.where) : JSON.stringify(o.where ?? "").includes('"this'))) {
     note("`this` is the note the view is in, and there's none here: it matches nothing")
   }
   let back: Map<string, string[]> | null = null
@@ -477,6 +408,8 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
   const busy = new Set<string>()
   const env: Env = {
     resolve, self: ctx.self ?? null, backlinks, now: now.getTime(),
+    key: (r, k) => get(r, k),
+    typed: (k, v) => { const t = typeOfKey(k); return t ? ctx.types!.value(t, v) : undefined },
     formula: (r, name) => {
       let m = cache.get(r)
       if (!m) cache.set(r, m = new Map())
@@ -508,14 +441,15 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     }
     return wrap(valueOf(r, key))
   }
-  const get: Get = (r, key) => (key.startsWith("formula.") || key.startsWith("file.") ? plainOf(raw(r, key)) : valueOf(r, key))
+  const get = (r: Rec, key: string): unknown => (key.startsWith("formula.") || key.startsWith("file.") ? plainOf(raw(r, key)) : valueOf(r, key))
 
   // Bases filters: the file is in when they're true; one that can't be read is left out (and said so).
   let filter: ((r: Rec) => boolean) | null = null
   if (o.filters !== undefined && o.filters !== null) {
     filter = filterOf(o.filters, env, note) ?? null
   }
-  let hits = all.filter((r) => q.match(r, get) && (!filter || filter(r)))
+  const where = q.where
+  let hits = all.filter((r) => q.inScope(r) && (!where || truthy(evaluate(where, r, env))) && (!filter || filter(r)))
   // Archived files matching are hidden (archived: true shows them); how many is said, so nothing goes missing unseen.
   let archived = q.hidesArchived ? hits.filter((r) => r.archived) : []
   hits = hits.filter((r) => !q.outByArchive(r))

@@ -8,7 +8,8 @@ import { pageTabs, tabNames, type TabFile } from "./tabs.ts"
 import { type BlockCtx, enabled, HTTPError, type Plugin, propertyTypes, service, serviceFor, today } from "./plugins.ts"
 import { typeNotes } from "./proptypes.ts"
 import { noteHere, source, traced } from "./sources.ts"
-import { FM, formatInput, type Item, prose, readText, sortBy, stemOf, type Vault } from "./vault.ts"
+import { formatInput, type Item, readText, sortBy, stemOf, type Vault } from "./vault.ts"
+import { FM, prose } from "./frontmatter.ts"
 
 /** Who draws block `name`: the plugin that's on and declares it (manifest.json) or has its text (plugin.block), else
  *  one that's off. */

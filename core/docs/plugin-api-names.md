@@ -593,6 +593,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PROP_TYPES`
 - `propertyTypes(vault, plugins?, own?)`: The vault's property types: another app's (the service `property-types` of a plugin that's on), with `.vaultite/types.json`'s over them (`own`: false leaves those out).
 - `publicUrl(raw)`: A web address the server may fetch: http(s) only, no user or password, on a public host (by its name; its addresses are checked as it's fetched).
+- `quoted(v, n?)`: Text in quotes on one line, cut at `n` characters: a description's way to cite what a call was given.
 - `readSidebars(raw)`: sidebars.json as it's saved (or a workspace's copy), checked; null when it has neither sidebar (unset: the default).
 - `readTypes(file)`: A types file's `types` ({"due": "date"}), read leniently: unknown types and odd keys are left out.
 - `relocatedPin(vault, entry)`: A pin as it is now: its file where it was moved outside the app (Vault.relocated); a search as it is.

@@ -91,13 +91,19 @@ plugin.kind(new Kind({
   key: (d) => d.date ?? null,
 }))
 
+/** A date's daily note's path, made or not. */
+function dayPath(date: string) {
+  const d = plugin.vault.get("days", date)
+  return d ? `${d.id}.md` : `${joinPath(plugin.vault.home("days") ?? "Daily", dailyName(date))}.md`
+}
+
 /** A date's daily note, made where they go (from their template, with `type: day` unless their folder finds them) when
  *  there's none yet. Its path, and whether it was made. */
 async function dailyNote(date: string): Promise<{ path: string; made: boolean }> {
-  const d = plugin.vault.get("days", date)
-  if (d) return { path: `${d.id}.md`, made: false }
+  const rel = dayPath(date)
+  if (plugin.vault.get("days", date)) return { path: rel, made: false }
   const { template, folder } = dailySpec()
-  const name = dailyName(date), rel = `${joinPath(plugin.vault.home("days") ?? "Daily", name)}.md`
+  const name = dailyName(date)
   const own = folder === null ? "---\ntype: day\n---\n" : ""
   let text = own ? `${own}\n` : ""
   if (template) {
@@ -214,6 +220,7 @@ The routine by its name (any case); the day's note (Daily/<date>.md) gets it in 
     return { routine: r.name, date: day, done }
   },
   text: (r) => `${r.done ? "Ticked" : "Unticked"} ${r.routine} for ${r.date}.`,
+  did: ({ routine, date, done }) => ({ action: "save", text: `${done ? "Ticked" : "Unticked"} ${routine.trim()}${date ? ` for ${date}` : ""}`, paths: date ? [dayPath(date)] : [] }),
 })
 
 plugin.op({

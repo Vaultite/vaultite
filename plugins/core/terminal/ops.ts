@@ -2,7 +2,7 @@
 // can do what the routes allow and nothing more.
 import { startAgent } from "../../../core/codingagents.ts"
 import { AGENT, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
-import { fmtAgo, OpError, type OpCtx, type Plugin } from "../../../core/plugins.ts"
+import { fmtAgo, OpError, type OpCtx, type Plugin, quoted } from "../../../core/plugins.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -137,6 +137,7 @@ reads it). An agent with accounts starts in one with <agent>_<account> (claude_p
       return { ...r, id: t }
     },
     text: (r, p) => `Opened ${r.id}${p.agent ? ` (${p.agent})` : ""}.`,
+    did: ({ agent }) => ({ action: "run", text: `Opened a terminal${agent ? ` running ${agent}` : ""}` }),
   })
 
   plugin.op({
@@ -177,6 +178,7 @@ days); several are listed. Other agents: their session's id.
       return { id: t, session: sid, title }
     },
     text: (r) => `Resumed ${r.title ? `"${r.title}" ` : ""}in ${r.id}.`,
+    did: ({ session }) => ({ action: "run", text: `Resumed the session ${quoted(session, 60)} in a terminal` }),
   })
 
   plugin.op({
@@ -213,6 +215,7 @@ days); several are listed. Other agents: their session's id.
       return await ctx.api("POST", `terminals/${encodeURIComponent(t)}/send`, { text: text ?? "", enter })
     },
     text: (r, p) => `Typed into ${r.id}${p.text ? `: ${p.text.length > 60 ? `${p.text.slice(0, 60)}…` : p.text}` : ""}${r.enter ? " (Enter)" : ""}.`,
+    did: ({ id, text }) => ({ action: "run", text: `Typed ${quoted(text, 60)} into the terminal ${id}` }),
   })
 
   plugin.op({
@@ -238,6 +241,7 @@ what you did first: the tab and what's in it go).
       return { ...r, closedTabs: keepTabs ? 0 : await closeTabs(ctx, t) }
     },
     text: (r) => `Ended ${r.id}${r.closedTabs ? `, closed its tab${r.closedTabs === 1 ? "" : "s"}` : ""}.`,
+    did: ({ id }) => ({ action: "delete", text: `Ended the terminal ${id}` }),
   })
 
   plugin.op({
@@ -260,5 +264,6 @@ run this.
       return { closed: dead, tabs: closed }
     },
     text: (r) => (r.closed.length ? `Closed ${r.tabs} tab${r.tabs === 1 ? "" : "s"} of gone sessions: ${r.closed.join(", ")}.` : "No tabs of gone sessions."),
+    did: () => ({ action: "ui", text: "Closed the tabs of terminals that are gone" }),
   })
 }

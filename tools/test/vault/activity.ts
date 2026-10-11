@@ -70,10 +70,20 @@ export default async ($: VaultTest) => {
   await actHeard("POST", "ops/note.create", { title: "Act op note", body: "From an op." }, "cli", "claude-code")
   await actHeard("POST", "ops/person.timeline-add", { person: "Alice Park", kind: "call", text: "About the op" }, "mcp", "codex")
   await actHeard("POST", "ops/property.list", {}, null)
+  await actHeard("POST", "ops/inbox.add", { title: "Act op read", body: "For later." }, "mcp", "codex")
+  await actHeard("POST", "ops/file.write", { path: "Act/op.md", text: "by an op\n" }, "cli")
+  // (a describer that throws is a bug of its op's: the call is still listed, by its id)
+  const create = app.ops().find((o) => o.op.id === "note.create")!.op, own = create.did
+  create.did = () => { throw new Error("a test's") }
+  await actHeard("POST", "ops/note.create", { title: "Act op broken" }, "cli")
+  create.did = own
   await actHeard("POST", "ops/nope.thing", { path: "Act/a.md" }, "cli")
   ev = await actEvents()
   check("activity: an op is worded, as who asked", ev.some((e: Any) => e.actor.name === "Claude Code" && e.text === "Saved the note Act op note" && e.route === "ops/note.create" && e.action === "save") &&
-    ev.some((e: Any) => e.actor.name === "Codex" && e.text === "Added to Alice Park's timeline (call)"), ev.slice(0, 4))
+    ev.some((e: Any) => e.actor.name === "Codex" && e.text === "Added to Alice Park's timeline (call)"), ev.slice(0, 7))
+  check("activity: an op says what a call did (its did)", ev.some((e: Any) => e.text === "Left \"Act op read\" in the inbox" && e.action === "create"), ev.slice(0, 7))
+  check("activity: an op without one, or whose did throws, is its id and what it was about", ev.some((e: Any) => e.text === "Ran file.write (Act/op.md)" && e.action === "request" && e.paths.includes("Act/op.md")) &&
+    ev.some((e: Any) => e.text === "Ran note.create (Act op broken)"), ev.slice(0, 7))
   check("activity: a read op is a read", ev.some((e: Any) => e.action === "read" && e.text === "Read property.list" && e.actor.name === "curl"), ev.slice(0, 4))
   check("activity: a call the CLI got wrong is kept with why (vau activity --action failed)", (await actEvents("&action=failed")).some((e: Any) =>
     e.text.startsWith("nope.thing failed: no operation 'nope.thing'") && e.status === 404), await actEvents("&action=failed"))

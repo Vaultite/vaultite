@@ -203,6 +203,10 @@ of them) as the one argument works too.
   text: (r) => r.logs.length === 1
     ? `Logged ${r.logs[0].path ?? `${r.logs[0].title} on ${r.logs[0].date}`} (id: ${r.logs[0].id}).`
     : `Logged ${r.logs.length}: ${r.logs.map((l: Item) => l.path ?? l.title).join(", ")}.`,
+  did: (p) => {
+    const t = str(p.title).trim(), area = str(p.area).trim()
+    return { action: "save", text: t.startsWith("[") ? "Logged several things" : `Logged ${t.startsWith("{") ? "an entry" : t.slice(0, 120) || "something"}${area ? ` (${area})` : ""}` }
+  },
 })
 
 // ---------- blocks as text (GET /api/render) ----------

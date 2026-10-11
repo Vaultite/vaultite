@@ -91,11 +91,38 @@ export type Op = {
   /** The result as Markdown, for an agent or a terminal (else JSON). `who` asked: an answer may read differently for an
    *  MCP client (`who.client` "mcp": a file's path before its text) than for vau, which prints a file exactly. */
   text?: (result: Any, params: Any, who?: Who) => string
+  /** What a call did, for Activity ("Left "Idea" in the inbox"), from its checked params; without it Activity says "Ran
+   *  <id> (what it was about)". */
+  did?: (params: Any) => OpDid
   /** Its text is printed as is when piped, no newline added (a secret going into another command). */
   exact?: boolean
   /** It also takes bytes of any size (what they are: "the file"), as `ctx.input`: the raw body of POST /api/ops/<id>
    *  (any type but JSON; the parameters then in the query), or an in-process caller's (call's `input`). */
   input?: string
+}
+
+/** A call as Activity lists it: what kind of change (default request, delete for a destructive op), a sentence in the
+ *  past tense, and the files it was about. */
+export type OpDid = { action?: "create" | "edit" | "save" | "delete" | "move" | "run" | "ui" | "settings"; text: string; paths?: string[] }
+
+/** A call's description (Op.did) from what it was given; null when the op has none or it can't say. */
+export function didOf(op: Op, given: unknown): OpDid | null {
+  if (!op.did) return null
+  let params: Item
+  try { params = checkParams(op, given) } catch { return null }
+  try {
+    const d = op.did(params)
+    return d && typeof d.text === "string" && d.text ? d : null
+  } catch (e) {
+    console.error(`${op.id}: did:`, e)
+    return null
+  }
+}
+
+/** Text in quotes on one line, cut at `n` characters: a description's way to cite what a call was given. */
+export function quoted(v: unknown, n = 80) {
+  const t = (typeof v === "string" ? v : "").trim().replace(/\s+/g, " ")
+  return t.length > n ? `"${t.slice(0, n)}…"` : `"${t}"`
 }
 
 /** An op as the catalog lists it (no functions). */

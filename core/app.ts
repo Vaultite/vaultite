@@ -24,7 +24,7 @@ import * as SP from "./statepatch.ts"
 import { coreOps } from "./coreops.ts"
 import { SETTINGS } from "./coreops/settings.ts"
 import { filing } from "./filing.ts"
-import { checkParams, entryOf, jsonBlock, nearest, type Op, type OpCtx, OpError, opsDoc, pathAsSaid, type Who, whoOf } from "./ops.ts"
+import { checkParams, didOf, entryOf, jsonBlock, nearest, type Op, type OpCtx, OpError, opsDoc, pathAsSaid, type Who, whoOf } from "./ops.ts"
 import { eventOps, eventsOf, matching, summary, typeMatches, type VaultEvent } from "./events.ts"
 import { ARCHIVED, setMarks } from "./fileprops.ts"
 import { hookOps } from "./hooks.ts"
@@ -183,7 +183,7 @@ export class App {
       : `${rows.length} plugins updated: ${rows.map((r) => `${r.name} ${r.to}`).join(", ")}`
     const link = one ? `detail:plugin/${one.id}` : "view:plugins"
     try {
-      const r = await this.dispatchOrReply("POST", ["inbox", "events"], {}, { source: "plugins", kind: "info", title, link })
+      const r = await this.respond("POST", ["inbox", "events"], {}, { source: "plugins", kind: "info", title, link })
       if (r.status < 300) return
     } catch { /* no Inbox: a toast */ }
     try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "What's new", open: link } }) } catch { /* no window */ }
@@ -293,19 +293,14 @@ export class App {
     return snap
   }
 
-  /** What bundles (core/bundles.ts) work with: the vault, the plugins, and this API for their edits (a request made
-   *  from inside one that holds the vault: it doesn't take the lock again). */
+  /** What bundles (core/bundles.ts) work with: the vault, the plugins, and this API for their edits (apiAs, as the
+   *  plugins call it: held, as `http`'s caller). */
   host(http?: IncomingMessage): B.Host {
     return {
       vault: this.vault,
       plugins: () => this.plugins,
       vaultPlugins: () => this.vaultPlugins.list(),
-      call: async (method, route, body) => {
-        const { parts, query } = routeOf(route)
-        const res = await this.run(method, parts, query, body ?? {}, http)
-        if (res.status >= 400) throw new HTTPError(res.status, String((res.body as Item)?.error ?? res.status))
-        return res.body
-      },
+      call: (method, route, body) => this.apiAs(method, route, body, this.who(), { http }),
       syncPlugins: () => this.syncPlugins(),
       allow: async (ids) => {
         if (http && await this.ownerWhy(http, "allowing vault plugins")) return
@@ -383,19 +378,17 @@ export class App {
     return match(this.plugins, method, parts)?.[2].stream === true
   }
 
-  /** One API request (parts: the path under /api/, decoded; `http`: the HTTP request it came in, for the routes that
-   *  look at who's asking). Never throws: errors are answers too. */
+  /** One API request as it comes in (parts: the path under /api/, decoded; `http`: the HTTP request, for the routes
+   *  that look at who's asking), held like every call (respond). Never throws: errors are answers too. */
   async run(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<Reply> {
     try {
       // Who asked, for the hooks its writes run (plugin.onCreate): only a request over HTTP says.
       const h = (k: string) => { const v = http?.headers[k]; return typeof v === "string" && v ? v.slice(0, 200) : null }
       // A request is the user's own action, unless a plugin's command says it acts on its own (core/hooks.ts).
       const actor = h("x-vaultite-actor"), as = <T>(fn: () => T) => (actor ? onItsOwn(actor, fn) : byUser(fn))
-      return asReply(http ? await as(() => requestWriter.run({ client: h("x-vaultite-client"), agent: h("x-vaultite-agent") }, () => this.dispatch(method, parts, query, body, http)))
-        : await this.dispatch(method, parts, query, body, http))
+      const go = () => this.respond(method, parts, query, body, http)
+      return http ? await as(() => requestWriter.run({ client: h("x-vaultite-client"), agent: h("x-vaultite-agent") }, go)) : await go()
     } catch (e) {
-      const out = errorReply(e)
-      if (out) return out
       console.error(e)
       return reply(500, { error: String((e as Error).message ?? e) })
     }
@@ -515,7 +508,7 @@ export class App {
     // Paths as the user says them ("Today", "Alice Park") are read as the vault's (core/ops.ts pathAsSaid).
     const paths = Object.entries(op.params ?? {}).filter(([k, p]) => p.format === "path" && params[k] !== undefined)
     if (paths.length) {
-      const tree = (await this.dispatchOrReply("GET", ["files"], {}, {})).body as Item
+      const tree = (await this.respond("GET", ["files"], {}, {}, undefined, true)).body as Item
       for (const [k, p] of paths) params[k] = p.type === "array" ? (params[k] as string[]).map((x) => pathAsSaid(tree, x)) : pathAsSaid(tree, params[k] as string)
     }
     const ctx: OpCtx = {
@@ -526,7 +519,7 @@ export class App {
       op: async (id, p, input) => (await this.runOp(id, p ?? {}, { who, http, input })).result,
       api: async (method, route, body) => {
         const { parts, query } = routeOf(route)
-        return bodyOrThrow(await this.dispatchOrReply(method, parts, query, body, http))
+        return bodyOrThrow(await this.respond(method, parts, query, body, http, true))
       },
       ui: async (message) => {
         if (!this.ui) throw new OpError("the app's window can only be driven through the server (it isn't running one here)", 503)
@@ -558,7 +551,7 @@ export class App {
     return ownerRefusal(http, {}, what)
   }
 
-  /** dispatch() as an answer (errors as replies), for an op's in-process API calls. */
+  /** dispatch() as an answer (errors as replies; a bug still throws). */
   private async dispatchOrReply(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<Reply> {
     try {
       return asReply(await this.dispatch(method, parts, query, body, http))
@@ -654,10 +647,9 @@ export class App {
     return new OpError(`no operation '${name}'${near ? `: did you mean ${near}?` : ""} (vau ops lists them)`, 404)
   }
 
-  /** A route of the API in-process (a path under /api/ with its query string): a read after a sync (unless `synced`),
-   *  a write held like server.ts holds one (at once inside a hold). Its answer, errors as answers. */
-  private async request(method: string, route: string, body: unknown, http?: IncomingMessage, synced = false): Promise<Reply> {
-    const { parts, query } = routeOf(route)
+  /** The one way into the API, over HTTP (run) or in-process: a read after a sync (unless `synced`), a write held from
+   *  its sync to its last write (at once inside a hold); `lock: false` routes and ops sync like a read. */
+  private async respond(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage, synced = false): Promise<Reply> {
     const go = () => this.dispatchOrReply(method, parts, query, body ?? {}, http)
     if (this.holding.getStore()?.on) return go()
     if (method === "GET" || this.unlocked(method, parts)) return synced ? go() : this.vault.synced().then(go)
@@ -672,7 +664,7 @@ export class App {
     const end = this.reported(method, parts.join("/"), query, who, opts.report)
     let res: Reply
     try {
-      res = await requestWriter.run({ client: who.client, agent: who.agent }, () => this.request(method, route, body, opts.http))
+      res = await requestWriter.run({ client: who.client, agent: who.agent }, () => this.respond(method, parts, query, body, opts.http))
     } catch (e) {
       end?.({ status: 500, ms: performance.now() - t0, body })
       throw e
@@ -689,6 +681,7 @@ export class App {
       catalog: () => this.catalog(),
       call: (name, params, who, o) => this.callOp(name, params, who, { report: o?.report, http: o?.http, input: o?.input }),
       api: (method, route, body, who, o) => this.apiAs(method, route, body, who, o),
+      did: (name, params) => { const hit = this.opNamed(name); return hit ? didOf(hit.op, params) : null },
       emit: (type, data) => bus.emit(type, data ?? {}),
     })
     // Heard after the emitter's turn and outside its call (not holding the vault, not as its request), so a plugin

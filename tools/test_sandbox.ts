@@ -92,7 +92,7 @@ async function api(method: string, p: string, body?: unknown): Promise<[number, 
   const parts = route.split("/").filter(Boolean).map(decodeURIComponent)
   const query: Record<string, string> = qs ? Object.fromEntries(qs.split("&").map((x) => x.split("=", 2).map(decodeURIComponent) as [string, string])) : {}
   await app.syncPlugins()
-  const res = await app.vault.lock(async () => { await app.vault.sync(); return app.run(method, parts, query, body ?? {}) })
+  const res = await app.run(method, parts, query, body ?? {})
   return [res.status, res.body instanceof Text ? res.body.text : publicOf(res.body)]
 }
 app.installPages() // what the server does on start: the plugins' pages

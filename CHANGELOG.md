@@ -27,6 +27,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   only its owner changes them; a plugin whose required plugin is off is off too.
 - Activity keeps the calls an agent, the CLI or a script got wrong, and why (`vau activity --action failed`); `vau`
   names the command a stray word belongs to (`vau errors 3f9a` → `vau errors show 3f9a`).
+- A plugin's operation says what a call did in Activity (`did`; a manifest's: `"did": "Synced {account}"`), instead
+  of "Ran <id>".
 - Errors and Activity keep updating after you leave and come back; an edit in a JSON view stays on its field.
 - Cursor's limits reset when their window ends, and Hermes is named in Activity.
 - A plugin update that says it does more beyond the vault waits for you to allow it, also updated by hand; another

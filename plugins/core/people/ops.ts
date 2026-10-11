@@ -1,6 +1,6 @@
 // People's operations: a timeline line, and a lasting fact kept where it belongs (ME.md or a person's file), finding
 // the person as the user says the name (file, alias, a first name only one has), never by a guess.
-import { OpError, type Plugin, today } from "../../../core/plugins.ts"
+import { OpError, type Plugin, quoted, today } from "../../../core/plugins.ts"
 import { timelineKind } from "../../../core/timeline.ts"
 import { type Item, str } from "../../../core/vault.ts"
 
@@ -92,6 +92,7 @@ the file stays as it was.
       return { person: name, path: `${r.person}.md`, date, kind: timelineKind(p.kind) ?? p.kind, text: body.notes }
     },
     text: (r) => `Added to ${r.person}'s timeline: ${r.date} · ${r.kind} · ${r.text}`,
+    did: (p) => ({ action: "save", text: `Added to ${p.person.trim()}'s timeline${p.kind.trim() ? ` (${p.kind.trim()})` : ""}` }),
   })
 
   /** The user's own file (the Me plugin's: ME.md, or wherever theirs is), or why there's none. */
@@ -150,5 +151,10 @@ The same fact twice is kept once.
       return { path: rel, heading: heading?.slice(3) ?? null, line, person, already: false }
     },
     text: (r) => (r.already ? `${r.path} already says that.` : `Remembered in ${r.path}${r.heading ? ` under ${r.heading}` : ""}: ${r.line}`),
+    did: (p) => {
+      const about = str(p.about).trim()
+      const whom = !about || /^(me|user|myself|i)$/i.test(about) ? "" : /^pref/i.test(about) ? " (how to work with them)" : ` about ${about}`
+      return { action: "save", text: `Remembered ${quoted(p.fact)}${whom}` }
+    },
   })
 }
