@@ -1,7 +1,7 @@
 // Provenance, pinned properties and Token count: a file's `origin` label in its header and the status bar (choosing
 // writes only that key), `origin: ai` for an agent's note through the API, none for the app's (the header then shows no
 // label) and `human` once the vault labels the user's (`label_user`), images' labels
-// in files.json (an agent's upload carries the IPTC mark), the values from the settings sheet, pinned property chips,
+// in files.json (an agent's upload labelled, its bytes as sent), the values from the settings sheet, pinned property chips,
 // Token count following typing, and 390px. Screenshots light and dark. WRITES files in "QA provenance/", plugins.json,
 // appearance.json, both plugins' data.json and Provenance's files.json (put back): throwaway server only.
 //   node web/qa/provenance.mjs <base url> <vault path> [out dir]
@@ -181,7 +181,7 @@ const upload = (p, b64, headers = {}) => fetch(`${B}/api/upload?path=${enc(p)}`,
 await upload(IMG_AI, PNG)
 await upload(IMG_MINE, PNG, { "X-Vaultite-Client": "app/desktop" })
 await upload(IMG_MARKED, marked(PNG), { "X-Vaultite-Client": "app/desktop" })
-check("files: an agent's upload is listed ai and its PNG carries the mark", listed()[IMG_AI] === "ai" && readFileSync(file(IMG_AI)).includes(MARK), listed())
+check("files: an agent's upload is listed ai, its bytes as sent", listed()[IMG_AI] === "ai" && readFileSync(file(IMG_AI)).toString("base64") === PNG, listed())
 check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE] === "human" && readFileSync(file(IMG_MINE)).toString("base64") === PNG, listed())
 {
   const { ctx, page } = await open(1280, 800)
@@ -202,9 +202,9 @@ check("files: the user's is listed human, its bytes as sent", listed()[IMG_MINE]
   check("files desktop: Reviewed from the header goes in the list, the image untouched", await until(() => listed()[IMG_AI] === "reviewed") && readFileSync(file(IMG_AI)).toString("base64") === bytes, listed())
   check("files desktop: both places follow", await until(async () => (await head.getAttribute("data-value")) === "reviewed" && (await status.getAttribute("data-value")) === "reviewed"))
   await status.click(); await wait(200); await choose(page, "Unlabeled")
-  // (its bytes carry the mark: unlisted, it says what they say)
-  check("files desktop: Unlabeled takes it out of the list; then it's AI as its bytes say", await until(() => !(IMG_AI in listed()))
-    && await until(async () => (await head.getAttribute("data-value")) === "ai" && /file says/.test(await head.getAttribute("data-tip"))), listed())
+  // (its bytes don't carry the mark: unlisted, it's unlabeled)
+  check("files desktop: Unlabeled takes it out of the list; then it says nothing its bytes don't", await until(() => !(IMG_AI in listed()))
+    && await until(async () => (await status.getAttribute("data-value")) === "none"), [listed(), await status.getAttribute("data-value")])
   await go(page, IMG_MINE)
   check("files desktop: the user's image says Human", await until(async () => (await shown(page, IMG_MINE, "[data-chip=origin]").getAttribute("data-value")) === "human"))
   await go(page, IMG_MARKED)

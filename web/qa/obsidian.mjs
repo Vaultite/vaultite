@@ -182,7 +182,7 @@ await page.goto("about:blank"); await page.goto(`${B}#plugins`); await wait(2000
 await page.locator("[data-plugin-gear=other-apps]").click(); await wait(1500)
 const op = page.locator("[data-obsidian-plugins]")
 check("Obsidian's sheet lists the vault's Obsidian plugins, each with what stands in for it", await op.locator('[data-obsidian-plugin="recent-files-obsidian"]', { hasText: "Recent files" }).count() === 1 &&
-  await op.locator('[data-obsidian-plugin="tag-wrangler"]', { hasText: "Tags" }).count() === 1 && await op.locator('[data-obsidian-plugin="qa-made-up"]', { hasText: "your agent can write one" }).count() === 1)
+  await op.locator('[data-obsidian-plugin="tag-wrangler"]', { hasText: "Tags" }).count() === 1 && await op.locator('[data-obsidian-plugin="qa-made-up"]', { hasText: /Off$/ }).locator("[role=switch]").count() === 1, await op.innerText().catch(() => ""))
 await op.screenshot({ path: `${OUT}obsidian-plugins.png` })
 await page.keyboard.press("Escape"); await wait(500)
 if (hadCommunity === null) fs.rmSync(community); else fs.writeFileSync(community, hadCommunity)
@@ -241,7 +241,7 @@ await palette(page, "Create new note", 700); await wait(1500)
 check(`a new note goes to newFileFolderPath: ${await page.evaluate(() => decodeURIComponent(location.hash))}`, await page.evaluate(() => decodeURIComponent(location.hash)).then((h) => h.includes(`${"Qa obsidian"}/Inbox/Untitled`)))
 
 // ---- the Design page ----
-await open("Dashboards/Design.md")
+await open(".vaultite/pages/Dashboards/Design.md") // (the core's page, built in: core/pages.ts)
 const dash = page.locator(".dash-prose")
 check("Design: a highlight and a tag", await dash.locator("mark").count() >= 1 && await dash.locator("a.tag").count() >= 1)
 check("Design: an embedded block", await page.locator(".file-view .note-embed").count() >= 1)

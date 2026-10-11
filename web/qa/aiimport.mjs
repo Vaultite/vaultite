@@ -54,7 +54,8 @@ await importVia("chatgpt-export.zip")
 const done1 = toast("ChatGPT: 3 chats")
 await done1.waitFor({ timeout: 30_000 })
 const t1 = await done1.innerText()
-check("the toast says what it did", /2 new/.test(t1) && /1 short one skipped/.test(t1) && /1 image/.test(t1) && /6 memories to review/.test(t1), t1)
+// (a one-message chat is kept too: Fewest messages is 1)
+check("the toast says what it did", /3 chats \(3 new\)/.test(t1) && !/skipped/.test(t1) && /1 image/.test(t1) && /6 memories to review/.test(t1), t1)
 check("with Review memories", (await done1.locator("[data-button]").innerText()) === "Review memories")
 await page.screenshot({ path: `${OUT}toast.png` })
 const chats = await files("Chats/ChatGPT/")
@@ -88,7 +89,7 @@ check("the card counts what's left", /4 to review, 0 ticked/.test(await counted(
 
 // 3. Again: nothing new, nothing doubled.
 await importVia("chatgpt-export.zip")
-const done2 = toast("2 already here")
+const done2 = toast("3 already here")
 await done2.waitFor({ timeout: 30_000 }).catch(() => {})
 check("importing again: already here, no memories come back", (await done2.isVisible()) && !/memories to review/.test(await done2.innerText()), await page.locator("[data-sonner-toast]").allInnerTexts())
 check("no second files", (await files("Chats/ChatGPT/")).length === chats.length, await files("Chats/ChatGPT/"))

@@ -10,8 +10,11 @@ import path from "node:path"
 import { CHROME, qa, ROOT, wait } from "./lib/qa.mjs"
 
 if (!fs.existsSync(CHROME)) { console.log("secret: skipped (no Google Chrome here)"); process.exit(0) }
-const { args: [arg, other], browser, check, done } = await qa(import.meta.url)
+const { args: [arg, given], browser, check, done } = await qa(import.meta.url)
 const base = arg.endsWith("/") ? arg : `${arg}/`
+// (npm run qa passes the one server twice: another machine needs a second server sharing the vault)
+const other = given && given.replace(/\/*$/, "/") !== base ? given : null
+if (given && !other) console.log("secret: another machine skipped (the same server given twice)")
 /** vau running in the background, stdout piped: its exit status and output once it ends. */
 const vau = (args) => new Promise((resolve) => {
   const p = spawn(process.execPath, [path.join(ROOT, "bin/vau"), ...args], { env: { ...process.env, VAULTITE_URL: base.replace(/\/$/, "") } })

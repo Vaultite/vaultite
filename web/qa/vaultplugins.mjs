@@ -6,7 +6,7 @@
 // off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; a heading folds its
 // section like a sidebar panel's, saved in plugins.json's `collapsedCategories`; a search sees through a fold).
 // Also a phone-width look at the Plugins page.
-// WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, Dashboards/Lighthouse.md, plugins.json's `enabled` and
+// WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, plugins.json's `enabled` and
 // `collapsedCategories`, hotkeys.json; removed at the end): throwaway server only.
 //   node web/qa/vaultplugins.mjs <base url> <vault path> [out dir]
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -15,6 +15,7 @@ import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, errs, watch, done } = await qa(import.meta.url)
 const FIXTURE = new URL("../../tools/fixtures/lighthouse/", import.meta.url).pathname
 const DIR = ".vaultite/plugins/lighthouse"
+const PAGE = ".vaultite/pages/Dashboards/Lighthouse.md" // (its page, built in while it's on: core/pages.ts)
 const abs = (p) => `${VAULT}/${p}`
 const read = (p) => readFileSync(abs(p), "utf8")
 const write = (p, t) => { mkdirSync(dirname(abs(p)), { recursive: true }); writeFileSync(abs(p), t) }
@@ -27,10 +28,10 @@ const setBeamKeys = (keys) => { const h = hotkeys(); if (keys) h["lighthouse:bea
 const cleanup = () => {
   const c = plugins(); delete c.collapsedCategories; write(".vaultite/plugins.json", JSON.stringify(c, null, 2) + "\n")
   setBeamKeys(null)
-  for (const p of [DIR, "Keepers", "Dashboards/Lighthouse.md", ".vaultite/generated/Dashboards/Lighthouse.md"]) rmSync(abs(p), { recursive: true, force: true })
+  for (const p of [DIR, "Keepers", PAGE]) rmSync(abs(p), { recursive: true, force: true })
   setEnabled(false)
   const pages = JSON.parse(read(".vaultite/pages.json"))
-  pages.pinned = pages.pinned.filter((p) => p !== "Dashboards/Lighthouse.md")
+  pages.pinned = pages.pinned.filter((p) => p !== PAGE)
   write(".vaultite/pages.json", JSON.stringify(pages, null, 2) + "\n")
 }
 cleanup()
@@ -99,20 +100,20 @@ check("turning it on writes plugins.json's enabled", await until(async () => (pl
 check("the server loads it and builds its bundle", await until(async () => { const p = await listed(); return p?.loaded && p?.bundle }, 8000))
 ;[code] = await api("lighthouse")
 check("its route answers", code === 200, code)
-check("its dashboard was installed", await until(async () => { try { return read("Dashboards/Lighthouse.md").includes("block-lighthouse") } catch { return false } }, 8000))
-check("the sidebar has its page", await until(async () => await page.locator('[data-pin="Dashboards/Lighthouse.md"]').count() > 0, 8000))
+check("its dashboard was installed", await until(async () => { try { return read(PAGE).includes("block-lighthouse") } catch { return false } }, 8000))
+check("the sidebar has its page", await until(async () => await page.locator(`[data-pin="${PAGE}"]`).count() > 0, 8000))
 const offered = () => page.evaluate(() => !!globalThis.__vaultite?.modules?.["@vaultite"]?.offeredCommand("lighthouse:beam"))
 check("its command is in the palette once it's on", await until(offered, 8000))
 await page.reload()
 check("its command is there when the app starts with it on (it loads after the app's)", await until(offered, 8000))
-await page.goto(`${B}#file/${encodeURIComponent("Dashboards/Lighthouse.md")}`)
+await page.goto(`${B}#file/${encodeURIComponent(PAGE)}`)
 await page.evaluate(() => { window.__qaMarker = 1 })
 const beam = page.locator("[data-lighthouse]")
 check("its block draws on its page", await until(async () => /^Beam (on|off), 1 keeper$/.test(await beam.first().innerText()), 8000), await beam.first().innerText().catch(() => ""))
 const spacing = await beam.first().evaluate((el) => getComputedStyle(el).letterSpacing)
 check("its own Tailwind classes work, its md: variant over its plain one (md:tracking-[0.125em] at 15px)", spacing === "1.875px", spacing)
 check("one React: its hooks run inside the app's tree", !errs.some((e) => /Invalid hook call|more than one copy of React/.test(e)), errs)
-const [, text] = await api(`render?path=${encodeURIComponent("Dashboards/Lighthouse.md")}`)
+const [, text] = await api(`render?path=${encodeURIComponent(PAGE)}`)
 check("its block as text for AIs (/api/render)", text.includes("## Lighthouse") && text.includes("[[Bob Lee]]: night shift"), text)
 check("its docs are among the topics", (await api("docs"))[1].some((t) => t.id === "lighthouse"))
 await shot("on")
@@ -141,7 +142,7 @@ check("its edits let run (the sheet's switch)", await until(async () => (await l
 await page.keyboard.press("Escape")
 check("allowed, its shortcut runs its command", await until(async () => { await page.keyboard.press("ControlOrMeta+Shift+KeyY"); return (await toast("The beam is on").count()) > 0 }, 8000))
 setBeamKeys(null)
-await page.goto(`${B}#file/${encodeURIComponent("Dashboards/Lighthouse.md")}`)
+await page.goto(`${B}#file/${encodeURIComponent(PAGE)}`)
 await page.evaluate(() => { window.__qaMarker = 1 })
 check("the frontend edit shows without a reload", await until(async () => /^Light (on|off)/.test(await beam.first().innerText()), 12000), await beam.first().innerText().catch(() => ""))
 write(`${DIR}/label.ts`, read(`${DIR}/label.ts`).replace("`Light ${", "`Lamp ${"))
@@ -175,7 +176,7 @@ await sw.click()
 check("turned off, it's unloaded", await until(async () => !(await listed())?.loaded, 8000))
 ;[code] = await api("lighthouse")
 check("and its route is gone", code === 404, code)
-check("its page leaves the sidebar", await until(async () => await page.locator('[data-pin="Dashboards/Lighthouse.md"]').count() === 0, 8000))
+check("its page leaves the sidebar", await until(async () => await page.locator(`[data-pin="${PAGE}"]`).count() === 0, 8000))
 
 // ---------- phone ----------
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })

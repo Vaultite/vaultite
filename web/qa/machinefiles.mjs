@@ -14,6 +14,7 @@ for (const [name, viewport] of [["desktop", { width: 1280, height: 800 }], ["pho
     const u = new URL(route.request().url()), p = u.searchParams.get("path")
     if (u.pathname.endsWith("/list")) return route.fulfill({ json: { path: p === "/home/alice/work" ? p : "/home/alice", parent: "/home", truncated: false,
       entries: p === "/home/alice/work" ? [{ name: "report.txt", dir: false }] : [{ name: "work", dir: true }, { name: "hello.txt", dir: false }, { name: "binary.bin", dir: false }, { name: "missing.txt", dir: false }] } })
+    if (u.pathname.endsWith("/recent")) return route.fulfill({ status: 400, json: { error: "Unknown request" } }) // (an older file agent)
     if (p.endsWith("missing.txt")) return route.fulfill({ status: 400, json: { error: "No such file" } })
     return route.fulfill({ json: p.endsWith("binary.bin") ? { path: p, base64: "AAEC", size: 3 } : { path: p, text: "<script>untrusted file</script>\nHello from the VM.", size: 62, truncated: false } })
   })
@@ -26,7 +27,7 @@ for (const [name, viewport] of [["desktop", { width: 1280, height: 800 }], ["pho
   check(`${name}: read error visible`, await until(async () => (await page.locator("[role=alert]").innerText()).includes("No such file")))
   await page.getByRole("button", { name: "work", exact: true }).click()
   await page.getByRole("button", { name: "report.txt", exact: true }).click()
-  check(`${name}: folders navigate`, await page.locator('[aria-label="Folder path"]').inputValue() === "/home/alice/work")
+  check(`${name}: folders navigate`, await until(async () => (await page.locator("[data-machine-files] [aria-current=page]").innerText()) === "work"))
   check(`${name}: no horizontal overflow`, await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   await page.screenshot({ path: `${OUT}${name}.png` })
   await ctx.close()
