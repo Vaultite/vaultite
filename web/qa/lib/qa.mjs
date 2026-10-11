@@ -55,6 +55,9 @@ function args(script) {
 export async function qa(script, { chrome = {} } = {}) {
   const argv = args(script)
   const browser = chrome ? await launch(chrome) : null
+  // (a throw ends the run with Chrome closed: left open, it holds the runner's pipe and the run hangs to its timeout)
+  const crash = async (e) => { console.error(e); await Promise.race([browser?.close(), wait(5000)]).catch(() => {}); process.exit(1) }
+  process.on("uncaughtException", crash).on("unhandledRejection", crash)
   const fails = [], errs = []
   let watched = false, errorsChecked = false
   const check = (name, ok, got) => {

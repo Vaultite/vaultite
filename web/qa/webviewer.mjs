@@ -266,7 +266,7 @@ if (process.env.SHOW) {
 await menuClick("Command palette")
 await win.waitForSelector("[role=dialog] input:focus")
 await win.keyboard.type("Split right")
-await win.waitForSelector("[role=option]:has-text('Split right')")
+await win.waitForSelector("[role=option][aria-selected=true]:has-text('Split right')")
 await win.keyboard.press("Enter")
 check("split right: the page follows its pane", await until(async () => (await win.locator("section[data-group]").count()) === 2, 10000) && await until(isAligned, 10000), await aligned())
 await menuClick("Toggle left sidebar")

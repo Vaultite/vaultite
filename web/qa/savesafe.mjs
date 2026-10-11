@@ -22,7 +22,7 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
 // (a loaded machine can take a while to draw the first file)
 const open = async (page, rel) => {
   await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(rel)}`)
-  await page.waitForSelector("[data-pane] .cm-content, [data-pane] h1", { timeout: 90_000 }).catch(() => {}); await wait(500)
+  await page.locator(`[data-pane] article[data-path="${rel}"]`).waitFor({ timeout: 90_000 }).catch(() => {}); await wait(500)
 }
 const typeAtEnd = async (page, text) => {
   await page.locator("[data-pane] .cm-content").first().click()
