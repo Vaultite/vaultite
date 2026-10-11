@@ -9,6 +9,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node
 import path from "node:path"
 import { devices } from "playwright-core"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, OUT = "/tmp/inbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
@@ -29,10 +30,11 @@ const toasts = (p = page) => p.locator("[data-sonner-toast]")
 const toastWith = (text, p = page) => until(async () => (await toasts(p).allInnerTexts()).find((t) => t.includes(text)))
 const count = () => page.locator("aside [data-inbox-button]").getAttribute("data-count").then(Number).catch(() => -1)
 const enc = encodeURIComponent
+const TODAY = await pagePath(B, "Today")
 
 // Without the Inbox panel in a sidebar, so the header has its button (8. puts the panel in).
 writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "files:files"], right: [], collapsed: [] }))
-await page.goto(`${B}#file/${enc("Dashboards/Today.md")}`)
+await page.goto(`${B}#file/${enc(TODAY)}`)
 await page.waitForSelector("aside [data-inbox-button]")
 await wait(800)
 check("the Inbox button is in the sidebar's header, nothing new", (await count()) === 0, await count())
@@ -48,7 +50,7 @@ const term = `qa${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${term}`)
 await until(() => page.locator(".xterm").count())
 await wait(1500)
-await page.goto(`${B}#file/${enc("Dashboards/Today.md")}`)
+await page.goto(`${B}#file/${enc(TODAY)}`)
 await wait(800)
 await api("POST", `inbox/hook?agent=claude&terminal=${term}&state=waiting&prev=working`, { hook_event_name: "Notification", message: "Claude needs your permission to use Bash", session_id: "qa-session" })
 const waitingToast = await toastWith("Claude Code is waiting for you")
@@ -75,7 +77,7 @@ vau("notify", "Wrote the weekly review", "--action-open", "Welcome.md")
 check("vau notify: a toast with Open", !!(await toastWith("Wrote the weekly review")))
 
 // 5. Results: a file written in Inbox/, one through the API (an agent's, like MCP's inbox_add).
-await page.goto(`${B}#file/${enc("Dashboards/Today.md")}`)
+await page.goto(`${B}#file/${enc(TODAY)}`)
 await wait(1000)
 mkdirSync(path.join(VAULT, "Inbox"), { recursive: true })
 const now = new Date().toISOString().slice(0, 19).replace("T", " ")
@@ -211,24 +213,23 @@ await api("PATCH", "config/plugin/inbox", { show_read: null })
 check("show_read off again: only the unread one", !!(await until(async () => (await prow().count()) === 1 && (await fold.count()) === 0)), await prow().count())
 
 // 9. The block on Today.
-await page.goto(`${B}#file/${enc("Dashboards/Today.md")}`)
-await wait(1200)
+await page.goto(`${B}#file/${enc(TODAY)}`)
 const block = page.locator("[data-inbox-results]").first()
-check("the block on Today lists what's new", (await block.count()) === 1, await block.count())
+check("the block on Today lists what's new", await until(async () => (await block.count()) === 1, 8000), await block.count())
 await page.locator("section", { has: page.locator("[data-inbox-results]") }).first().screenshot({ path: `${OUT}5-today-block.png` }).catch(() => {})
-const text = await api("GET", `render?path=${enc("Dashboards/Today.md")}`)
+const text = await api("GET", `render?path=${enc(TODAY)}`)
 check("as text too", text.includes("## Inbox") && text.includes("Plant care apps compared"), text.slice(text.indexOf("## Inbox"), text.indexOf("## Inbox") + 300))
 
 // 10. A phone: the block, and the button at the top of the tab list.
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const ph = watch(await phone.newPage(), { label: "phone" })
-await ph.goto(`${B}#file/${enc("Dashboards/Today.md")}`)
+await ph.goto(`${B}#file/${enc(TODAY)}`)
 await ph.waitForSelector("[data-phone-bar]")
 await wait(1500)
 const pblock = ph.locator("[data-inbox-results]").first()
 await pblock.scrollIntoViewIfNeeded().catch(() => {})
-check("phone: the block", (await pblock.count()) === 1)
+check("phone: the block", await until(async () => (await pblock.count()) === 1, 8000))
 const wide = await ph.evaluate(() => document.documentElement.scrollWidth <= 390)
 check("phone: no sideways scroll", wide)
 await shot(ph, "6-phone-today")

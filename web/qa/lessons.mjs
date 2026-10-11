@@ -6,6 +6,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const file = (rel) => path.join(VAULT, rel)
 const read = (rel) => { try { return fs.readFileSync(file(rel), "utf8") } catch { return "" } }
@@ -87,12 +88,10 @@ const reviews = JSON.parse(read(".vaultite/plugins/lessons/reviews.json") || "{}
 check("reviews.json has both cards", Object.keys(reviews["Cards/Baking"] ?? {}).length === 2)
 check("...and the cards file is unchanged", !read("Cards/Baking.md").includes("due"))
 
-const learning = fs.readdirSync(file("Dashboards")).includes("Learning.md") ? "Dashboards/Learning.md" : null
-if (learning) {
-  await page.goto(`${B}#file/${encodeURIComponent(learning)}`)
-  check("the Learning page's block lists the lesson", await until(async () => await text("Starters").isVisible().catch(() => false), 8000))
-  await shot(page, "5-learning")
-}
+// (the sandbox has Learning on: its page is built in)
+await page.goto(`${B}#file/${encodeURIComponent(await pagePath(B, "Learning"))}`)
+check("the Learning page's block lists the lesson", await until(async () => await text("Starters").isVisible().catch(() => false), 8000))
+await shot(page, "5-learning")
 
 const phone = await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
 fs.writeFileSync(file("Lessons/Starters.md"), read("Lessons/Starters.md").replace(/^step: 2\n/m, ""))

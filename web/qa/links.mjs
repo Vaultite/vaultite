@@ -11,6 +11,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, VAULT, CLAUDE, OUT = "/tmp/links-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 if (path.resolve(CLAUDE) === path.join(process.env.HOME, ".claude")) { console.error("not the real ~/.claude"); process.exit(2) }
 mkdirSync(OUT, { recursive: true })
@@ -29,6 +30,7 @@ const shellOf = async (id) => {
 const endTerminal = (id) => fetch(new URL(`/api/terminals/${encodeURIComponent(id)}`, B), { method: "DELETE" }).catch(() => {})
 
 const DIR = "Qa links"
+const CLAUDE_PAGE = await pagePath(B, "Claude")
 const SID = "0a1b2c3d-1111-4222-8333-444455556666" // tools/fixtures/claude
 const put = (rel, text) => { mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); writeFileSync(path.join(VAULT, rel), text) }
 put(`${DIR}/Beacon.md`, "The beacon: a made-up note others mention.\n")
@@ -106,7 +108,7 @@ try {
   await page.keyboard.press("ControlOrMeta+Backslash")
 
   // The Claude page: projects and models side by side under usage.
-  await open("Dashboards/Claude.md")
+  await open(CLAUDE_PAGE)
   const box = async (t) => (await page.locator("section.glass", { has: page.locator(`h2:text-is("${t}")`) }).first().boundingBox())
   const pb = await until(() => box("Projects"), 8000), mb = await until(() => box("Models"), 8000)
   check("Projects and Models side by side", pb && mb && Math.abs(pb.y - mb.y) < 2 && mb.x > pb.x, [pb, mb])
@@ -148,7 +150,7 @@ try {
     fakeFile = path.join(fake, `${pid}.json`)
     writeFileSync(fakeFile, JSON.stringify({ pid, sessionId: SID, cwd: "/Users/sam/lighthouse", startedAt: Date.now(), procStart: utc, kind: "interactive",
       status: "idle", statusUpdatedAt: Date.now() }))
-    await open("Dashboards/Claude.md")
+    await open(CLAUDE_PAGE)
     const row = await until(() => page.$(`section:has(h2:text-is('Sessions')) [data-session='${SID}']`), 20000)
     check("the running session is listed under Now", !!row)
     check("its row says it goes to its terminal", (await row?.getAttribute("data-tip")) === "Go to its terminal")
@@ -158,7 +160,7 @@ try {
 
   // Phones.
   await page.setViewportSize({ width: 390, height: 844 })
-  for (const [name, url] of [["claude-page", "#file/Dashboards%2FClaude.md"], ["session", `#view/claude-session%2F${SID}`]]) {
+  for (const [name, url] of [["claude-page", `#file/${encodeURIComponent(CLAUDE_PAGE)}`], ["session", `#view/claude-session%2F${SID}`]]) {
     await page.goto(`${B}${url}`)
     await wait(1500)
     const over = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth)

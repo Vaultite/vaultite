@@ -33,7 +33,8 @@ try {
   const state = () => app.evaluate(async ({ BrowserWindow }) => {
     const w = BrowserWindow.getAllWindows().find((x) => !x.isDestroyed() && x.webContents.getURL().startsWith("http://127.0.0.1"))
     if (!w || w.webContents.isCrashed()) return { pid: 0, drawn: 0 }
-    const drawn = await w.webContents.executeJavaScript("document.querySelectorAll('#root *').length").catch(() => 0)
+    // (a page in a loop never answers: 0 after a second)
+    const drawn = await Promise.race([w.webContents.executeJavaScript("document.querySelectorAll('#root *').length").catch(() => 0), new Promise((r) => setTimeout(() => r(0), 1000))])
     return { pid: w.webContents.getOSProcessId(), drawn }
   })
   const drawnBy = async (not) => {
@@ -80,8 +81,15 @@ try {
     const wc = BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1"))?.webContents
     for (const e of [{ type: "mouseDown", x: 5, y: 5, button: "left", clickCount: 1 }, { type: "mouseUp", x: 5, y: 5, button: "left", clickCount: 1 }, { type: "keyDown", keyCode: "a" }, { type: "keyUp", keyCode: "a" }]) wc?.sendInputEvent(e)
   }).catch(() => {})
+  const askedNow = async () => (await boxes()).some((b) => /isn't responding/.test(b))
   let asked = false
-  for (let i = 0; i < 240 && !asked; i++) { if (i % 4 === 0) await poke(); await wait(250); asked = (await boxes()).some((b) => /isn't responding/.test(b)) }
+  for (let i = 0; i < 120 && !asked; i++) { if (i % 4 === 0) await poke(); await wait(250); asked = await askedNow() }
+  // (a window never focused, as here, gets no input Chromium waits on, so it never tells: told as Chromium would)
+  if (!asked) {
+    console.log("Chromium didn't tell of the hang (no focused window here): the window told it is unresponsive")
+    await app.evaluate(({ BrowserWindow }) => { BrowserWindow.getAllWindows().find((x) => x.webContents.getURL().startsWith("http://127.0.0.1")).webContents.emit("unresponsive") })
+    for (let i = 0; i < 40 && !asked; i++) { await wait(250); asked = await askedNow() }
+  }
   check("a page in a loop: asked to wait or reload", asked, await boxes())
   s = await drawnBy(hung)
   check(`… Reload: drawn again by a new renderer ${s.pid}`, s.pid !== hung && s.drawn > 20, s)

@@ -1,6 +1,6 @@
 // The file menus (tree, tab, phone …) and what they do: their groups (Archive with Pin; Open local graph, Open version
 // history and the other less used items in More ▸; split rows: Open to the right in Open in new tab ▸, other kinds of
-// new file in New note ▸, Change icon in Rename ▸), Duplicate (a copy next to it, a note with its own id), Copy path
+// new file in New note ▸, Change icon in Rename ▸), Duplicate (a copy next to it, a note with its own id once edited), Copy path
 // (a click copies from the vault folder; its submenu by hover, chevron and the keyboard: from the vault folder, from the
 // system root, a [[link]]), Reveal in Finder
 // listed on this machine, Delete to the trash at once with Undo in a toast (no browser dialog anywhere), Delete permanently
@@ -9,7 +9,7 @@
 // above the phone's bar, the dialog. WRITES a "Qa menu" folder and Notes/Qa dup*.md, empties the trash: throwaway only.
 //   node web/qa/filemenu.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync } from "node:fs"
-import { REVEAL, SHOTS, apiAt, qa, wait } from "./lib/qa.mjs"
+import { REVEAL, SHOTS, apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 // As the app: these are the user's files (a note an agent makes through the API gets `origin: ai`: Provenance).
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
@@ -28,9 +28,16 @@ for (const m of ["POST", "PUT"]) await api(m, "file", { path: ".vaultite/plugins
 await api("POST", "folder", { path: "Qa menu" })
 await api("POST", "file", { path: "Qa menu/Alpha.md", text: "Alpha text.\n" })
 await api("POST", "notes", { ext_id: "note-qa-dup", title: "Qa dup", body: "A note to duplicate.", source: "claude" })
+// (a snapshot per edit: by default at most one per 5 minutes; and each edit seen before the next, as a reading of
+// the history waits for it to have looked)
+await api("PATCH", "config/plugin/history", { interval_min: 0 })
+const histNow = async () => (await api("GET", "history?path=Qa%20menu/Hist.md")).versions.length
 await api("POST", "file", { path: "Qa menu/Hist.md", text: "First line\nSecond line\n" })
+await histNow()
 await api("PUT", "file", { path: "Qa menu/Hist.md", text: "First line\nSecond line changed\nThird line\n", base: "First line\nSecond line\n" })
+const hist1 = await until(async () => (await histNow()) || 0, 5000)
 await api("PUT", "file", { path: "Qa menu/Hist.md", text: "Rewritten by a bad edit\n", base: "First line\nSecond line changed\nThird line\n" })
+await until(async () => (await histNow()) > hist1, 5000)
 const vaultPath = (await api("GET", "vault")).path
 // Earlier runs' versions of Hist.md are kept too (history outlives a delete): count from here.
 const histBefore = (await api("GET", "history?path=Qa%20menu/Hist.md")).versions.length
@@ -147,15 +154,20 @@ const origin = new URL(B).origin
   check("the copy opens in a tab", (await page.locator("[data-tab-bar] [role=tab][aria-selected=true]").innerText()).trim() === "Qa dup 1")
   check("its name is ready to type", await page.evaluate(() => document.activeElement?.getAttribute("aria-label")) === "File name")
   const idOf = (t) => /\nid: (.+)\n/.exec(t)?.[1]
-  check("the copy has its own id", idOf(read("Notes/Qa dup 1.md")) && idOf(read("Notes/Qa dup 1.md")) !== "note-qa-dup" && idOf(read("Notes/Qa dup.md")) === "note-qa-dup",
-    [idOf(read("Notes/Qa dup.md")), idOf(read("Notes/Qa dup 1.md"))])
+  // (the file as it is, like Obsidian's: its own id comes with its first edit in the app, core/files.ts file/copy)
+  check("the copy keeps the id until it's edited", idOf(read("Notes/Qa dup 1.md")) === "note-qa-dup", idOf(read("Notes/Qa dup 1.md")))
   await page.keyboard.press("Escape")
+  await page.locator("article.file-view .cm-content").first().click()
+  await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.type(" Copied.")
+  const ids = () => [idOf(read("Notes/Qa dup.md")), idOf(read("Notes/Qa dup 1.md"))]
+  check("edited, the copy has its own id, the original keeps its", await until(() => { const [a, b] = ids(); return a === "note-qa-dup" && b && b !== a }, 8000), ids())
 
   // Delete: to the trash at once, Undo in a toast.
   await row("Qa menu/Alpha.md").click({ button: "right" }); await wait(200)
   await menu.locator("button", { hasText: /^Delete$/ }).click(); await wait(800)
   check("delete: gone at once, no browser dialog", !has("Qa menu/Alpha.md") && !browserDialogs.length, browserDialogs)
   const t = page.locator("[data-sonner-toast]", { hasText: "Moved Alpha to trash" })
+  await t.waitFor({ timeout: 5000 }).catch(() => {})
   check("delete: a toast with Undo", await t.isVisible() && await t.locator("[data-button]", { hasText: "Undo" }).isVisible())
   const tb = await t.boundingBox()
   check("the toast is at the bottom", tb.y > 900 - 120, tb)
@@ -260,18 +272,20 @@ const origin = new URL(B).origin
   await shot("toast")
   await m.locator("[data-sonner-toast] [data-button]", { hasText: "Undo" }).last().tap(); await wait(1000)
   check("phone: undo", has("Qa menu/Hist.md"))
-  // The dialog at 390px: Close all tabs.
-  await m.locator("button[aria-label*=tab i]").last().tap().catch(() => {}); await wait(800)
-  const closeAll = m.locator("dialog button", { hasText: "Close all" })
-  if (await closeAll.count()) {
-    await closeAll.tap(); await wait(400)
-    const d = m.locator("dialog[data-confirm]")
-    const box = await d.boundingBox()
-    check("phone: the confirm dialog fits", await d.isVisible() && box.x >= 0 && box.x + box.width <= 390, box)
-    await shot("dialog")
-    await d.locator("button", { hasText: "Cancel" }).tap(); await wait(300)
-    check("phone: cancel keeps the tabs", !(await d.count()))
-  } else console.log("skip phone dialog: no tab switcher with several tabs")
+  // The app's dialog at 390px: Delete permanently, from the trash (closing tabs asks nothing any more).
+  await mrow("Qa menu/Hist.md").locator('button[aria-label^="More for"]').tap(); await wait(250)
+  await m.locator("[role=menu] button", { hasText: /^Delete$/ }).tap(); await wait(800)
+  for (const f of [".trash", ".trash/Qa menu"]) {
+    if ((await mrow(f).evaluate((el) => el.closest("li").getAttribute("aria-expanded"))) !== "true") { await mrow(f).locator("button").first().click(); await wait(200) }
+  }
+  await m.locator('[role=tree]:visible div[data-tree-path^=".trash/Qa menu/Hist"]').first().locator('button[aria-label^="More for"]').tap(); await wait(250)
+  await m.locator("[role=menu] button", { hasText: "Delete permanently" }).tap(); await wait(400)
+  const d = m.locator("dialog[data-confirm]")
+  const box = await d.boundingBox()
+  check("phone: the confirm dialog fits", await d.isVisible() && box.x >= 0 && box.x + box.width <= 390, box)
+  await shot("dialog")
+  await d.locator("button", { hasText: "Cancel" }).tap(); await wait(300)
+  check("phone: cancel keeps it", !(await d.count()))
   check("phone: no browser dialogs", !browserDialogs.length, browserDialogs)
   await ctx.close()
 }
@@ -279,5 +293,6 @@ const origin = new URL(B).origin
 // Clean up.
 for (const p of ["Qa menu", "Notes/Qa dup.md", "Notes/Qa dup 1.md"]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
 await api("PUT", "config/files", filesBefore)
+await api("PATCH", "config/plugin/history", { interval_min: null })
 await api("PUT", "config/pages", { pinned: pagesBefore.pinned ?? [] })
 await done()

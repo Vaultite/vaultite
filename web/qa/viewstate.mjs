@@ -3,12 +3,19 @@
 // project, and stay folded on a file once folded. Switching views (reading, live preview, source; FileView's keepPlace)
 // keeps the same line at the top, on a computer and on a phone, and a dashboard the card at the top. WRITES to the vault (a long note): throwaway server only.
 //   node web/qa/viewstate.mjs <base url> <vault path>
-import { writeFileSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
-import { subjects } from "./subjects.mjs"
+import { readFileSync, writeFileSync } from "node:fs"
+import { qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, VAULT], browser, check, done } = await qa(import.meta.url)
 const LONG = "Notes/Qa long note.md"
 writeFileSync(`${VAULT}/${LONG}`, `---\ntype: note\nkind: note\ntags: [Qa]\n---\n\n${Array.from({ length: 60 }, (_, i) => `## Section ${i}\n\n${"Text to make this note long enough to scroll. ".repeat(8)}`).join("\n\n")}\n`)
+// (a person file starting with its profile block: the sandbox's people have none written)
+const PERSON = "People/Qa person.md"
+writeFileSync(`${VAULT}/${PERSON}`, "---\ntype: person\nrelation: friend\n---\n\n```block-person\n```\n\nMet at a pottery class.\n")
+const DESIGN = await pagePath(B, "Design")
+// (a built-in page is read-only, no cursor: the user's own dashboard, a copy of it, for the cursor)
+const MINE = "Notes/Qa dashboard.md"
+writeFileSync(`${VAULT}/${MINE}`, readFileSync(`${VAULT}/${DESIGN}`, "utf8"))
 const hash = (p) => `#file/${encodeURIComponent(p)}`
 // Where the reader is: the first "Section N" heading under the top of what scrolls (a pane, or the window on a phone),
 // and how far below it. A place comes back by its line (core/viewstate.ts), so that's what's compared: the same
@@ -36,10 +43,14 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
   await page.evaluate((h) => { location.hash = h }, hash("Projects/Lighthouse.md")); await wait(1500)
   check(`another file starts at its top (${await top()})`, await top() < 50)
   check("editing a project: Properties folded too", await props.count() === 1 && await propsOpen() === "false")
-  await page.evaluate((h) => { location.hash = h }, hash(LONG)); await wait(1500)
-  check(`back to the note: where it was left (${said(leftAt)} / ${said(await headingAt(page))})`, left > 2900 && same(await headingAt(page), leftAt))
-  await page.reload(); await wait(2500)
-  check(`reloaded: where it was left (${said(leftAt)} / ${said(await headingAt(page))})`, same(await headingAt(page), leftAt))
+  // (the place lands as the editor measures its lines: waited for)
+  const landed = async (ms) => (await until(async () => { const h = await headingAt(page); return same(h, leftAt) ? h : null }, ms)) ?? await headingAt(page)
+  await page.evaluate((h) => { location.hash = h }, hash(LONG))
+  let at = await landed(6000)
+  check(`back to the note: where it was left (${said(leftAt)} / ${said(at)})`, left > 2900 && same(at, leftAt))
+  await page.reload()
+  at = await landed(8000)
+  check(`reloaded: where it was left (${said(leftAt)} / ${said(at)})`, same(at, leftAt))
   await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 0 }); await wait(300)
   await props.locator("button[aria-expanded]").first().click(); await wait(200)
   await page.evaluate((h) => { location.hash = h }, hash("Projects/Lighthouse.md")); await wait(1200)
@@ -68,31 +79,32 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
     const l = [...box.querySelectorAll(".cm-line")].find((l) => /Section \d+/.test(l.textContent) && l.getBoundingClientRect().top > top)
     return Number(/Section (\d+)/.exec(l.textContent)[1])
   })
-  const was = await heading(n)
+  // (where it is once the editor has measured it: the same twice in a row)
+  let was = await heading(n)
+  await until(async () => { const h = await heading(n); const still = h === was; was = h; return still }, 5000, 300)
   for (const [how, name] of [["ControlOrMeta+e", "reading"], ["ControlOrMeta+e", "live preview"], ["Switch to source mode", "source"], ["Switch to live preview", "live preview again"], ["ControlOrMeta+e", "reading"], ["Switch to source mode", "source from reading"], ["ControlOrMeta+e", "reading from source"]]) {
     if (how.startsWith("ControlOrMeta")) { await page.keyboard.press(how); await wait(900) } else await palette(how)
-    const now = await heading(n)
+    const now = (await until(async () => { const h = await heading(n); return h !== null && Math.abs(h - was) <= 3 ? h : null }, 4000)) ?? await heading(n)
     check(`switched to ${name}: Section ${n} stays where it was (${was} -> ${now})`, now !== null && Math.abs(now - was) <= 3)
   }
   await palette("Switch to live preview")
   // A person file opens with its ```block-person drawn: the cursor goes into the text, never into a block at the top
   // (it would show its Markdown until a click elsewhere), and ⌘E back to editing does the same.
-  const person = (await subjects(B)).people.find((p) => /^---\n[\s\S]*?\n---\n\s*```block-person/.test(p.text))
-  if (person) {
+  {
     const drawn = () => page.evaluate(() => {
       const a = document.querySelector("#main-scroll article")
       return { raw: [...a.querySelectorAll(".cm-line")].some((l) => l.textContent.includes("```block-person")),
         typing: !!document.activeElement?.closest(".cm-content") }
     })
-    await page.evaluate((h) => { location.hash = h }, hash(person.path)); await wait(1800)
+    await page.evaluate((h) => { location.hash = h }, hash(PERSON)); await wait(1800)
     let d = await drawn()
     check(`opening a person file: the person block drawn, the cursor in the text (${JSON.stringify(d)})`, !d.raw && d.typing)
     await page.keyboard.press("ControlOrMeta+e"); await wait(900); await page.keyboard.press("ControlOrMeta+e"); await wait(1200)
     d = await drawn()
     check(`reading and back to editing: the person block still drawn (${JSON.stringify(d)})`, !d.raw && d.typing)
-  } else check("the vault needs a person file starting with a person block", false)
+  }
   // A dashboard (drawn as a grid in reading) keeps its place, both ways.
-  await page.evaluate((h) => { location.hash = h }, hash("Dashboards/Design.md")); await wait(2500)
+  await page.evaluate((h) => { location.hash = h }, hash(DESIGN)); await wait(2500)
   // In reading (the pane's view is the last one used: the person step above leaves it editing).
   const inReading = () => page.evaluate(() => /reading/i.test(document.querySelector("[role=status] button[aria-label^='Current view']")?.getAttribute("aria-label") ?? ""))
   if (!(await inReading())) { await page.keyboard.press("ControlOrMeta+e"); await wait(1500) }
@@ -134,16 +146,18 @@ const said = (a) => (a ? `${a.text} at ${a.y}` : "none")
     const v = document.querySelector("#main-scroll .cm-content")?.cmTile?.view
     return v && v.hasFocus ? v.state.selection.main.head : null
   })
-  for (const file of ["Dashboards/Design.md", LONG]) {
+  for (const file of [MINE, LONG]) {
     await page.evaluate((h) => { location.hash = h }, hash(file)); await wait(2000)
-    if (await inReading()) { await page.keyboard.press("ControlOrMeta+e"); await wait(1500) }
+    if (await inReading()) { await page.keyboard.press("ControlOrMeta+e"); await until(async () => !(await inReading()), 5000) }
+    // (from the top: a place still landing would move the line under the click)
+    await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 0 }); await wait(300)
     const lineEl = page.locator("#main-scroll .cm-line").nth(4)
     await lineEl.click(); await wait(200)
     await page.keyboard.press("End"); await wait(200)
     const at = await cursor()
-    await page.keyboard.press("ControlOrMeta+e"); await wait(1500)
-    await page.keyboard.press("ControlOrMeta+e"); await wait(1500)
-    const back = await cursor()
+    await page.keyboard.press("ControlOrMeta+e"); await until(() => inReading(), 5000); await wait(300)
+    await page.keyboard.press("ControlOrMeta+e")
+    const back = await until(async () => !(await inReading()) && await cursor(), 5000)
     check(`${file}: ⌘E twice keeps the cursor (${at} -> ${back})`, at !== null && back === at)
   }
   // (and the editor's trace says so: the views switched, the editors made, never the text)

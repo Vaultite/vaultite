@@ -38,8 +38,9 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
 {
   const { ctx, page } = await open(1280, 820)
   await go(page, FB)
-  check("a new vault opens on Start here, not the bundles", decodeURIComponent(await page.evaluate(() => location.hash)) !== "#bundles"
-    && JSON.stringify(settings(FVAULT).pages?.pinned) === '["Start here.md"]' && !(settings(FVAULT).plugins?.enabled ?? []).includes("people"), settings(FVAULT))
+  // (no Start here note unless setup asked for one: core/start.ts writes only .vaultite/)
+  check("a new vault opens on Minimal, not the bundles: nothing pinned, no note written", decodeURIComponent(await page.evaluate(() => location.hash)) !== "#bundles"
+    && JSON.stringify(settings(FVAULT).pages?.pinned) === "[]" && !existsSync(`${FVAULT}/Start here.md`) && !(settings(FVAULT).plugins?.enabled ?? []).includes("people"), settings(FVAULT))
   await shot(page, "new-vault-minimal")
   await go(page, FB, "bundles")
   await until(() => page.locator("[data-bundle]").count(), 6000)
@@ -81,12 +82,13 @@ await go(page, B, "bundles")
 await until(() => page.locator("[data-bundle]").count() >= 3, 6000)
 check("an existing vault isn't greeted", (await page.locator("main h1").first().innerText()) === "Bundles")
 await shot(page, "picker")
+const PAGES = ".vaultite/pages/Dashboards/" // (a bundle's pages are built in)
 const want = {
-  "minimal": (s) => !s.pages.pinned.some((p) => p.startsWith("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links") && s.plugins.disabled.includes("workspaces"),
-  "pages": (s) => s.pages.pinned[0] === "Dashboards/Home.md" && existsSync(`${VAULT}/Dashboards/Home.md`) && s.appearance.density === "comfortable",
-  "life-os": (s) => s.pages.pinned[0] === "Dashboards/Today.md" && s.appearance.scheme === "flexoki",
-  "agent-cockpit": (s) => s.pages.pinned[0] === "Dashboards/Agents.md" && s.appearance.scheme === "tokyo-night" && s.sidebars.right.includes("activity:feed"),
-  "self-hosted": (s) => s.pages.pinned[0] === "Dashboards/Server.md" && s.sidebars.left.includes("machines:machines") && json(VAULT, ".vaultite/plugins/history/data.json")?.keep_days === 30,
+  "minimal": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links") && s.plugins.disabled.includes("workspaces"),
+  "pages": (s) => s.pages.pinned[0] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.density === "comfortable",
+  "life-os": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.appearance.scheme === "flexoki",
+  "agent-cockpit": (s) => s.pages.pinned[0] === `${PAGES}Agents.md` && s.appearance.scheme === "tokyo-night" && s.sidebars.right.includes("activity:feed"),
+  "self-hosted": (s) => s.pages.pinned[0] === `${PAGES}Server.md` && s.sidebars.left.includes("machines:machines") && json(VAULT, ".vaultite/plugins/history/data.json")?.keep_days === 30,
 }
 for (const id of Object.keys(want)) {
   await go(page, B, "bundles")

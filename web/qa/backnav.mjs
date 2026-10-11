@@ -6,14 +6,14 @@
 //   node web/qa/backnav.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync } from "node:fs"
 import { BACK_KEY, qa, wait } from "./lib/qa.mjs"
-import { subjects } from "./subjects.mjs"
+import { pagePath, subjects } from "./subjects.mjs"
 const { args: [B, VAULT, OUT = "/tmp/backnav-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const enc = encodeURIComponent
 const v = await subjects(B)
 const withTl = v.need(v.timeline[0], "a person with a timeline")
 const without = v.people.find((p) => !/^#{1,6}\s+timeline\s*$/im.test(p.text))
-const PEOPLE = "Dashboards/People.md"
+const PEOPLE = await pagePath(B, "People")
 const today = new Date(Date.now() - new Date().getTimezoneOffset() * 60000).toISOString().slice(0, 10)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
 

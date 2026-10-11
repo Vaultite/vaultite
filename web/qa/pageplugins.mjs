@@ -8,12 +8,13 @@
 // pages.json, and a note in Qa page plugins/ (removed at the end): throwaway server only.
 //   node web/qa/pageplugins.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
+import { qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 
 const { args: [B, VAULT, OUT = "/tmp/pageplugins-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const hash = (p) => `#file/${encodeURIComponent(p)}`
-const TODAY = "Dashboards/Today.md"
+const TODAY = await pagePath(B, "Today")
 // Notes of its own, not pinned, to open from the tree (whatever notes the vault has).
 const OTHER = "Qa page plugins/A note.md", ANOTHER = "Qa page plugins/Another note.md"
 mkdirSync(`${VAULT}/Qa page plugins`, { recursive: true })
@@ -29,9 +30,11 @@ const PAGE = PINNED.find(isDashboard)
 const PAGE_NAME = PAGE.split("/").pop().replace(/\.md$/, "")
 const pluginsFile = `${VAULT}/.vaultite/plugins.json`
 const pluginsWas = (() => { try { return readFileSync(pluginsFile, "utf8") } catch { return null } })()
-/** Turn plugins off (the file the app follows live), then a fresh page load. */
+/** Turn plugins off (the file the app follows live), then a fresh page load. The vault's own list stays (Today is on
+ *  only by it, and its page built in only while it's on). */
 async function setOff(ids) {
-  writeFileSync(pluginsFile, JSON.stringify({ disabled: ids }) + "\n")
+  const was = JSON.parse(pluginsWas ?? "{}")
+  writeFileSync(pluginsFile, JSON.stringify({ ...was, disabled: [...was.disabled ?? [], ...ids] }) + "\n")
   await wait(1200)
 }
 async function desktop() {
@@ -80,8 +83,8 @@ const editors = (page) => page.locator("article.file-view .cm-editor").count()
 await setOff([])
 {
   const { ctx, page } = await desktop()
-  await page.goto(`${B}${hash(TODAY)}`); await wait(1500)
-  check("on: a dashboard is a grid of cards", (await isGrid(page)) > 0 && !(await editors(page)), await isGrid(page))
+  await page.goto(`${B}${hash(TODAY)}`)
+  check("on: a dashboard is a grid of cards", await until(async () => (await isGrid(page)) > 0 && !(await editors(page)), 8000), await isGrid(page))
   check("on: its header is the page's name", (await page.locator("article.file-view h1").first().innerText()).trim() === "Today")
   await page.screenshot({ path: `${OUT}on-today.png` })
   // A file opened from the dashboard (the tree) opens beside it.
@@ -124,9 +127,9 @@ await setOff([])
 await setOff(["pages"])
 {
   const { ctx, page } = await desktop()
-  await page.goto(`${B}${hash(TODAY)}`); await wait(1500)
+  await page.goto(`${B}${hash(TODAY)}`)
+  check("pinned off: a dashboard is still a page", await until(async () => (await isGrid(page)) > 0, 8000))
   check("pinned off: no pinned pages in the sidebar", !(await page.locator("nav[aria-label=Pages]").count()))
-  check("pinned off: a dashboard is still a page", (await isGrid(page)) > 0)
   check("pinned off: no Pin in the tree's menu", !/(^|\|)Pin(\||$)/.test(await treeMenu(page, OTHER)), await treeMenu(page, OTHER))
   const cmds = await palette(page, "pin current")
   check("pinned off: no Pin in the palette", !/Pin current file/.test(cmds), cmds)
@@ -156,8 +159,8 @@ await setOff(["pages"])
 await setOff(["dashboards"])
 {
   const { ctx, page } = await desktop()
-  await page.goto(`${B}${hash(TODAY)}`); await wait(1800)
-  check("dashboards off: a dashboard is a Markdown file (the editor draws it)", !(await isGrid(page)) && (await editors(page)) > 0, [await isGrid(page), await editors(page)])
+  await page.goto(`${B}${hash(TODAY)}`)
+  check("dashboards off: a dashboard is a Markdown file (the editor draws it)", await until(async () => !(await isGrid(page)) && (await editors(page)) > 0, 8000), [await isGrid(page), await editors(page)])
   check("dashboards off: its blocks are drawn one under another", (await page.locator("article.file-view .cm-editor .cm-island, article.file-view .cm-editor [data-block]").count()) > 0)
   check("dashboards off: a pinned dashboard is still pinned", (await page.locator("nav[aria-label=Pages] a", { hasText: PAGE_NAME }).count()) === 1)
   await page.screenshot({ path: `${OUT}dashboards-off-today.png` })

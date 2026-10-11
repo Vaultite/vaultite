@@ -5,7 +5,7 @@
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { qa } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/vaults-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
 const api = async (p, init) => (await fetch(new URL(`api/${p}`, B), init)).json()
@@ -45,26 +45,30 @@ try {
   // Create a vault (through the API the sheet uses): the server serves it, the app reloads on it.
   const r = await api("vaults/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parent, name: "Second" }) })
   check("create: the server serves the new vault", (await api("vault")).path === path.join(parent, "Second") && r.vaults.some((v) => v.path === first), r)
-  // A new vault starts from Minimal (core/start.ts): Start here pinned, agents pointed at its rules, the plugins' pages
-  // out of its files.
+  // A new vault starts from Minimal (core/start.ts): only .vaultite/ written (the plugins' pages built in there), and
+  // no starter content (Start here, agent pointers): that's setup's choice, not the sheet's.
   const second = path.join(parent, "Second")
   const pages = JSON.parse(fs.readFileSync(path.join(second, ".vaultite/pages.json"), "utf8"))
-  check("create: Minimal, Start here pinned, no dashboards among its files, nothing offered",
-    !(JSON.parse(fs.readFileSync(path.join(second, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people") && JSON.stringify(pages.pinned) === '["Start here.md"]'
-    && fs.existsSync(path.join(second, "Start here.md")) && !fs.existsSync(path.join(second, "Dashboards")) && !fs.existsSync(path.join(second, ".vaultite/bundles/onboarding.json")), pages)
-  check("create: its rules in .vaultite, and a line in CLAUDE.md and AGENTS.md pointing there", fs.existsSync(path.join(second, ".vaultite/AGENTS.md"))
-    && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(second, "CLAUDE.md"), "utf8")) && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(second, "AGENTS.md"), "utf8")))
+  check("create: Minimal, nothing pinned, nothing offered",
+    !(JSON.parse(fs.readFileSync(path.join(second, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people") && JSON.stringify(pages.pinned) === "[]"
+    && !fs.existsSync(path.join(second, ".vaultite/bundles/onboarding.json")), pages)
+  check("create: only .vaultite/ written, its rules in it", JSON.stringify(fs.readdirSync(second)) === '[".vaultite"]' && fs.existsSync(path.join(second, ".vaultite/AGENTS.md")), fs.readdirSync(second))
   await page.goto(B)
   await page.waitForSelector("[role=tree]")
   check("the app shows the new vault", (await page.locator("aside nav[aria-label=App]").textContent()).includes("Second"))
   // The vault menu lists the other vaults on the web too; back to the first from there.
-  await page.locator("aside nav[aria-label=App] button[aria-haspopup=menu]").click()
+  // (the list comes once the app is idle, the menu is made as it opens: reopened until it's there)
   const item = page.getByRole("menuitem", { name: `Open ${path.basename(first)}`, exact: true })
-  await item.waitFor({ timeout: 5000 }).catch(() => {})
+  await until(async () => {
+    if (await page.getByRole("menu").count()) await page.keyboard.press("Escape")
+    await page.locator("aside nav[aria-label=App] button[aria-haspopup=menu]").click()
+    return item.waitFor({ timeout: 1000 }).then(() => true, () => false)
+  }, 10_000)
   check("the vault menu lists the other vault", await item.count() === 1, await page.getByRole("menuitem").allTextContents())
   await page.screenshot({ path: path.join(OUT, "menu.png") })
   await item.click()
-  await page.waitForFunction((n) => document.querySelector("aside nav[aria-label=App]")?.textContent?.includes(n), path.basename(first), { timeout: 15000 })
+  // (the first is a sandbox: the menu calls it Playground, not by its folder)
+  await page.waitForFunction(() => { const t = document.querySelector("aside nav[aria-label=App]")?.textContent; return t && !t.includes("Second") }, null, { timeout: 15000 })
   check("switching back from the sheet", (await api("vault")).path === first)
   check("refused: home itself", (await api("vaults/open", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: os.homedir() }) })).error)
 } finally {
