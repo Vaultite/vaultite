@@ -21,6 +21,11 @@ export function disclosuresOf(m: Record<string, unknown>): Disclosures {
   return out
 }
 
+/** Whether `now` says it does something beyond the vault that `was` didn't (another host, programs...). */
+export function saysMore(was: Disclosures, now: Disclosures) {
+  return (now.network ?? []).some((h) => !(was.network ?? []).includes(h)) || (["shell", "outsideVault", "clipboard"] as const).some((k) => now[k] && !was[k])
+}
+
 /** Its disclosures as sentences after "It ": "talks to api.example.com", "runs programs on this machine". */
 export function disclosed(d: Disclosures | null | undefined): string[] {
   const out: string[] = []

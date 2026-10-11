@@ -114,7 +114,7 @@ try {
   check("browse: an update out", await until(async () => (await harborRow.locator('[data-browse-action="update"]').count()) === 1, 8000), await harborRow.innerText().catch(() => ""))
   await harborRow.locator('[data-browse-action="update"]').click()
   check("update: its files are the new version's", await until(async () => json(".vaultite/plugins-lock.json")?.harbor?.version === "1.1.0" && readFileSync(file(".vaultite/plugins/harbor/plugin.ts"), "utf8").includes('"low"'), 8000))
-  check("update: its new code doesn't run until allowed", await until(async () => !(await listed("harbor"))?.loaded && (await listed("harbor"))?.approval?.state === "changed", 8000) && (await api("harbor"))[0] === 404)
+  check("update: its new code doesn't run until allowed", await until(async () => !(await listed("harbor"))?.loaded && (await listed("harbor"))?.approval?.state === "changed", 8000) && (await api("harbor"))[0] === 404, [(await listed("harbor"))?.approval, await api("harbor")])
   await page.getByRole("radio", { name: "Installed" }).click()
   const waiting = page.locator('[data-plugin-waiting="harbor"]')
   check("update: its row says it changed and waits", await until(async () => (await waiting.innerText()).includes("Changed"), 8000), await waiting.innerText().catch(() => ""))

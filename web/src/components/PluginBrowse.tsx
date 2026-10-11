@@ -6,7 +6,6 @@ import { dateText, fmtAgo } from "@/core/data"
 import { op } from "@/core/http"
 import { openWebLink } from "@/core/links"
 import { notify, notifyError } from "@/core/notify"
-import { openDetail } from "@/core/nav"
 import { pluginIcon } from "@/core/pages"
 import { Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
@@ -195,8 +194,7 @@ function Directory({ query, showInstalled }: { query: string; showInstalled: (id
     try {
       if (e.update) {
         const p = pluginById(e.id)
-        const to = p ? await updatePlugin(p) : null
-        if (to) notify(`${e.name} updated to ${to}`, { action: { label: "What's new", run: () => openDetail(`plugin/${e.id}`) } })
+        if (p) await updatePlugin(p)
       } else {
         await op("plugin.install", { source: e.source })
         notify(`${e.name} is installed, off until you turn it on`, { action: { label: "Show", run: () => showInstalled(e.id) } })

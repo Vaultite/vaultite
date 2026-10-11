@@ -18,7 +18,7 @@ import { showInTree } from "@/components/FileTree"
 import { Where } from "@/components/PluginSettings"
 import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
-import { notify, notifyError } from "@/core/notify"
+import { notifyError } from "@/core/notify"
 import { List, PageHeader, Row, Section, SheetHead, Switch } from "@/components/kit"
 import { capitalize, cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -185,7 +185,7 @@ function Updates({ plugin }: { plugin: Plugin }) {
   const update = async () => {
     setBusy("update")
     const to = await updatePlugin(plugin)
-    if (to) { setFound(null); notify(`${plugin.name} updated to ${to}`) }
+    if (to) setFound(null)
     setBusy(null)
   }
   const back = async () => {

@@ -4,11 +4,13 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { LOCAL, vaultHere } from "./plugins.ts"
+import type { Disclosures } from "./pluginmeta.ts"
 import { writeAtomic } from "./vault.ts"
 
-/** A vault plugin's approved version: its content hash, each file's (to say what changed since), when, its version;
- *  `edits`: later edits run without asking too (a plugin its owner is writing on this machine). */
-export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean }
+/** An approved version: content hash, each file's, when, version; `edits`: later edits run without asking too; `source`,
+ *  `says`: where it came from and what it said it does (an update synced from elsewhere must match both: App.adopt). */
+export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean; source?: string; says?: Disclosures }
+type More = { version?: string; edits?: boolean; source?: string; says?: Disclosures }
 type Store = { plugins: Record<string, Approval>; allowed: Record<string, string>; local: Record<string, Record<string, unknown>> }
 /** What's hashed of a plugin's folder (core/vaultplugins.ts digestOf). */
 export type Digest = { content: string; files: Record<string, string> }
@@ -65,11 +67,12 @@ export class Trust {
   }
 
   /** Approve it as it is now; `edits`: whether later edits run without asking (left as it was when not given). */
-  approve(id: string, d: Digest, version?: string, save = true, edits?: boolean) {
+  approve(id: string, d: Digest, o: More = {}) {
     if (!d.content) throw new Error(`${id} can't be read yet: nothing to approve`)
-    const keep = edits ?? this.approval(id)?.edits
-    this.read().plugins[id] = { hash: d.content, files: d.files, at: new Date().toISOString(), ...(version ? { version } : {}), ...(keep ? { edits: true } : {}) }
-    if (save) this.save()
+    const keep = o.edits ?? this.approval(id)?.edits
+    this.read().plugins[id] = { hash: d.content, files: d.files, at: new Date().toISOString(), ...(o.version ? { version: o.version } : {}), ...(keep ? { edits: true } : {}),
+      ...(o.source ? { source: o.source } : {}), ...(o.says ? { says: o.says } : {}) }
+    this.save()
   }
 
   /** Stop letting its edits run without asking (its code came from elsewhere: an update). */

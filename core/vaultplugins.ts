@@ -288,12 +288,15 @@ export class VaultPlugins {
     return new Set<string>(Array.isArray(e) ? e.filter((x) => typeof x === "string") : [])
   }
 
-  /** Let plugin `id` run on this machine as its files are now (core/trust.ts), remembered as `version` or its manifest's;
-   *  throws when its files can't be read yet. */
+  /** Let plugin `id` run on this machine as its files are now (core/trust.ts), remembered as `version` or its manifest's,
+   *  with where the lock says it came from and what it says it does; throws when its files can't be read yet. */
   allow(id: string, o: { version?: string; edits?: boolean; digest?: Digest } = {}): Digest {
-    const d = o.digest ?? digestOf(this.vault.abs(`${DIR}/${id}`))
-    const v = o.version ?? this.found.get(id)?.manifest.version
-    this.trust.approve(id, d, typeof v === "string" ? v : undefined, true, o.edits)
+    const dir = this.vault.abs(`${DIR}/${id}`)
+    const d = o.digest ?? digestOf(dir)
+    let m: Item = {}
+    try { m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { /* none: it says nothing */ }
+    const v = o.version ?? m.version, src = (this.vault.config("plugins-lock")[id] as Item | undefined)?.source
+    this.trust.approve(id, d, { version: typeof v === "string" ? v : undefined, edits: o.edits, source: typeof src === "string" ? src : undefined, says: disclosuresOf(m) })
     return d
   }
 

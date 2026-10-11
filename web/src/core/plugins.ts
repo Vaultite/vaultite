@@ -169,14 +169,18 @@ export function setAutoUpdate(p: Plugin, on: boolean) {
     updatesOff: [...updatesOff.filter((id) => id !== p.id), ...(own && !on ? [p.id] : [])] })
 }
 
-/** Update an installed plugin now and let it run here (the user asked for it here): the version it went to, or null. */
+/** Update an installed plugin now and let it run here (the user asked for it here), and say so: the version it went to,
+ *  or null. One that says it does more beyond the vault than it did waits for its review, as auto-updates do. */
 export async function updatePlugin(p: Plugin) {
   try {
-    const [row] = await op<{ applied?: boolean; to?: string; error?: string; current?: boolean }[]>("plugin.update", { id: p.id, apply: true })
+    const [row] = await op<{ applied?: boolean; to?: string; error?: string; disclosures?: string[] }[]>("plugin.update", { id: p.id, apply: true })
     if (row?.error) throw new Error(row.error)
     if (!row?.applied) { notify(`${p.name} is up to date`); return null }
-    if (switchedOn(p)) await op("plugin.allow", { id: p.id })
+    const more = (row.disclosures ?? []).filter((d) => d.startsWith("now "))
+    if (switchedOn(p) && !more.length) await op("plugin.allow", { id: p.id })
     void reload()
+    const review = { label: more.length ? "Review" : "What's new", run: () => openDetail(`plugin/${p.id}`) }
+    notify(`${p.name} updated to ${row.to}${more.length && switchedOn(p) ? `. It ${more.join(" and ")}: it waits for you to allow it` : ""}`, { action: review })
     return row.to ?? null
   } catch (e) {
     notifyError(e, `Couldn't update ${p.name}`)

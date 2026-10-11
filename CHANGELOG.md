@@ -29,6 +29,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   names the command a stray word belongs to (`vau errors 3f9a` → `vau errors show 3f9a`).
 - Errors and Activity keep updating after you leave and come back; an edit in a JSON view stays on its field.
 - Cursor's limits reset when their window ends, and Hermes is named in Activity.
+- A plugin update that says it does more beyond the vault waits for you to allow it, also updated by hand; another
+  machine runs an update only from the source it allowed, and only if it says it does no more.
 
 ## 0.4.0 (2026-10-10)
 
