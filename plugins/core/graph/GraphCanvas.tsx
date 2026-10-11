@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
 import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
+import { onLook } from "@vaultite"
 import { nameOf, type Graph, type GraphNode } from "./graph"
 
 type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string }
@@ -35,8 +36,7 @@ let watching = false
 function token(name: string, fallback: string) {
   if (!watching) {
     watching = true
-    new MutationObserver(() => tokens.clear())
-      .observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "data-theme", "style"] })
+    onLook(() => tokens.clear())
   }
   let v = tokens.get(name)
   if (v === undefined) {
@@ -114,9 +114,7 @@ export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, sco
       s.dirty = true
     }
     read()
-    const o = new MutationObserver(read)
-    o.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "data-theme", "style"] })
-    return () => o.disconnect()
+    return onLook(() => { tokens.clear(); read() })
   }, [])
 
   // Size, input and the drawing loop: set up once.

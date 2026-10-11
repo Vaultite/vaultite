@@ -1,6 +1,6 @@
 // Pick one of a list in the palette overlay (`choose` in the plugin API; an agent's `vau choose`, through the server's
 // ask). Mounted once.
-import { isValidElement, useMemo, useState, type ReactNode } from "react"
+import { isValidElement, useEffect, useMemo, useState, type ReactNode } from "react"
 import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
 import { answerUi } from "@/core/live"
@@ -29,6 +29,9 @@ export type Choose<C extends Choice = Choice> = {
   other?: (typed: string) => C | null
   /** A row's label drawn another way (a font in itself); `marks` are the matched letters (see `Marked`). */
   label?: (item: C, marks: number[]) => ReactNode
+  /** The selected item as the selection moves, to show it for now (a colour scheme on the whole app); null once the
+   *  picker closes, after `onPick` or `onDismiss`. */
+  preview?: (item: C | null) => void
 }
 const iconOf = (i: LucideIcon | ReactNode) => {
   if (isValidElement(i) || typeof i !== "object" || i === null) return i as ReactNode
@@ -79,6 +82,7 @@ answerUi("choose", (m, ended) => new Promise((done) => {
 
 function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
   const [q, setQ] = useState("")
+  useEffect(() => () => c.preview?.(null), [c])
   const items = useMemo(() => {
     const query = q.trim()
     if (!query) return c.items.map((it) => ({ ...it, marks: [] as number[] }))
@@ -88,7 +92,7 @@ function Picker({ c, onClose }: { c: Choose; onClose: () => void }) {
   }, [c, q])
   const start = Math.max(0, c.items.findIndex((it) => it.id === c.current))
   return (
-    <Palette label={c.title} placeholder={c.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose} start={start}
+    <Palette label={c.title} placeholder={c.placeholder} query={q} setQuery={setQ} items={items} onClose={onClose} start={start} onSelect={c.preview}
       onPick={(it) => { if (!it) return; show(null); c.onPick(it) }} heading={c.heading}
       empty={c.empty ?? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Nothing matches "{q.trim()}".</p>}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ["Escape", "to dismiss"]]}

@@ -1,6 +1,7 @@
 // How the app's maps look: OpenFreeMap vector tiles (free, no key) recoloured to the scheme with quiet labels. Types
 // only: maps load MapLibre in their own chunk.
 import type { Map as MLMap } from "maplibre-gl"
+import { onLook } from "@/core/appearance"
 
 export type MapTheme = "light" | "dark"
 export const MAP_STYLE: Record<MapTheme, string> = { light: "https://tiles.openfreemap.org/styles/positron", dark: "https://tiles.openfreemap.org/styles/dark" }
@@ -75,13 +76,11 @@ export function restyleMap(map: MLMap, t: MapTheme) {
  *  function that stops following. `onTheme` hears the new theme (to restyle on its "style.load"). */
 export function followMapTheme(map: MLMap, onTheme: (t: MapTheme) => void): () => void {
   let t = mapTheme(), scheme = document.documentElement.dataset.scheme
-  const mo = new MutationObserver(() => {
+  return onLook(() => {
     const s = document.documentElement.dataset.scheme
     if (mapTheme() === t && s === scheme) return
     t = mapTheme(); scheme = s
     onTheme(t)
     map.setStyle(MAP_STYLE[t])
   })
-  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme"] })
-  return () => mo.disconnect()
 }

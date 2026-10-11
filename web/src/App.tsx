@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Keyboard, Layers, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
+import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { newNoteFolder } from "@/core/conventions"
 import { runCommandId, typingIn, useCommands } from "@/core/commands"
@@ -37,7 +37,7 @@ import { notify, notifyError } from "@/core/notify"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
-import { offerBundles, openBundles, previousSetup, restoreSetup } from "@/core/bundles"
+import { offerBundles, openBundles, previousSetup, restoreSetup, startSave } from "@/core/bundles"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
@@ -62,6 +62,8 @@ import { ConfirmDialogs } from "@/components/ConfirmDialog"
 import { canReveal, chooseAction, copyLink, copyPath, copyText, duplicate, remove, revealInFinder } from "@/components/FileActions"
 import { cn, space, whenIdle } from "@/lib/utils"
 import { canGoSide, goSide } from "@/core/keylist"
+import { chooseScheme } from "@/components/SchemeChooser"
+import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
 // The app's own pages, which few visits open: loaded when they are.
 const Plugins = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.Plugins })))
@@ -134,13 +136,14 @@ function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Ta
   if (kind === "vaults") { // Manage vaults, on the web (the desktop app has its own window)
     return { body: <><SheetHead icon={Logo} tint="var(--primary)" kicker="Vaultite" title="Vaults" /><VaultManager backend={webVaults} /></>, title: "Vaults" }
   }
-  if (kind === "schemes") return { body: <Suspense><SchemeGallery /></Suspense>, title: "Colour schemes" } // the command "Change colour scheme"
+  if (kind === "schemes") return { body: <Suspense><SchemeGallery /></Suspense>, title: "Colour schemes" } // Settings' More…
   if (kind === "fonts") return { body: <Suspense><FontsSheet /></Suspense>, title: "Fonts" } // Settings' Fonts row
   if (kind === "plugin-settings" && !id) return { body: <Suspense><PluginSettingsSheet store={store} /></Suspense>, title: "Plugin settings" } // Settings' Plugin settings row
   if (kind === "hotkeys") return { body: <Suspense><HotkeysSheet /></Suspense>, title: "Hotkeys" } // Settings' Hotkeys row, the command "Open hotkeys"
   if (kind === "bundle" && id) return { body: <Suspense><BundlePreview id={decodeURIComponent(id)} /></Suspense>, title: "Bundle" } // a bundle's preview (pages/Bundles.tsx)
   if (kind === "bundles-more") return { body: <Suspense><MoreBundles /></Suspense>, title: "More bundles" } // the Bundles page's More…
   if (kind === "bundle-save") return { body: <Suspense><SaveBundle /></Suspense>, title: "Save current setup" }
+  if (kind === "bundle-save-look") return { body: <Suspense><SaveBundle look /></Suspense>, title: "Save the look" }
   if (kind === "plugin") {
     const p = pluginById(id)
     if (p) return { body: <PluginPreview store={store} plugin={p} />, title: p.name }
@@ -376,14 +379,17 @@ export default function App() {
       run: () => { if (isDesktop()) go(targetOf(p.id)); else location.hash = `#${p.id}` }, icon: p.icon })),
     // Bundles (core/bundles.ts): setups of the app to start from, save and share.
     { id: "bundles:choose", name: "Choose a bundle…", run: openBundles, icon: Package },
-    { id: "bundles:save", name: "Save current setup as a bundle…", run: () => openDetail("bundle-save"), icon: PackagePlus },
+    { id: "bundles:save", name: "Save current setup as a bundle…", run: () => void startSave(), icon: PackagePlus },
+    { id: "bundles:save-look", name: "Save the look as a bundle…", run: () => void startSave(true), icon: PaletteIcon },
     { id: "bundles:restore", name: "Restore previous setup", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
     { id: "theme:light", name: "Use light theme", when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },
     { id: "theme:dark", name: "Use dark theme", when: () => getPrefs().theme !== "dark", run: () => setPrefs({ theme: "dark" }), icon: Moon },
     { id: "theme:system", name: "Use the system's light or dark theme", when: () => getPrefs().theme !== "system", run: () => setPrefs({ theme: "system" }), icon: SunMoon },
     { id: "scheme:gruvbox", name: "Use Gruvbox colours (the default)", when: () => getPrefs().scheme !== "gruvbox", run: () => setPrefs({ scheme: "gruvbox" }), icon: PaletteIcon },
     { id: "scheme:default", name: "Use Classic colours", when: () => getPrefs().scheme !== "default", run: () => setPrefs({ scheme: "default" }), icon: PaletteIcon },
-    { id: "scheme:choose", name: "Change colour scheme", run: () => openDetail("schemes"), icon: PaletteIcon },
+    { id: "scheme:choose", name: "Change colour scheme", run: chooseScheme, icon: PaletteIcon },
+    { id: "newtab:page", name: "Choose a page for new tabs…", run: chooseNewTabPage, icon: LayoutDashboard },
+    { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
     { id: "hotkeys:open", name: "Open hotkeys", run: () => openDetail("hotkeys"), icon: Keyboard },
     { id: "density:toggle", name: "Toggle comfortable density", run: () => setPrefs({ density: getPrefs().density === "comfortable" ? "compact" : "comfortable" }), icon: UnfoldVertical },
     { id: "editor:toggle-line-numbers", name: "Toggle line numbers", run: () => setPrefs({ lineNumbers: !getPrefs().lineNumbers }), icon: ListOrdered },

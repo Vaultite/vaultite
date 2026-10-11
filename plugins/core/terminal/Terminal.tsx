@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, openMenu, pastedFiles, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, pastedFiles, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -200,9 +200,8 @@ function create(id: string): Live {
     return e.type !== "keydown" || !(e.ctrlKey || e.metaKey || e.altKey)
       || (e.ctrlKey && !e.metaKey && /^Key[A-Z]$/.test(e.code)) || !appShortcut(e)
   })
-  // Recolour with the app: the theme is the .dark class, the scheme data-scheme, both on <html>.
-  const mo = new MutationObserver(() => { t.options.theme = theme() })
-  mo.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme"] })
+  // Recolour with the app: its scheme, light or dark, a theme or snippet.
+  const offLook = onLook(() => { t.options.theme = theme() })
 
   let ws: WebSocket | null = null, timer = 0, tries = 0, gone = false, exited = false, refused = false, opened = false
   // Only the tab that made this id starts its session; one put back (a reload, the app reopened) only attaches, so an
@@ -223,7 +222,7 @@ function create(id: string): Live {
 
   const connect = () => {
     exited = false; refused = false; sessionGone = false; away = null; l.ended = false
-    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}${attachOnly ? "&attach=1" : ""}`
+    const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}&dark=${document.documentElement.classList.contains("dark") ? 1 : 0}${attachOnly ? "&attach=1" : ""}`
     const sock = new WebSocket(url)
     sock.binaryType = "arraybuffer"
     ws = sock
@@ -382,7 +381,7 @@ function create(id: string): Live {
       if (gone) return
       gone = true
       clearTimeout(timer); cancelAnimationFrame(wheelFrame)
-      mo.disconnect(); osc.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
+      offLook(); osc.dispose(); onData.dispose(); onBinary.dispose(); onResize.dispose()
       t.textarea?.removeEventListener("focus", onFocus)
       window.removeEventListener("focus", onShown)
       document.removeEventListener("visibilitychange", onShown)

@@ -6,6 +6,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Themes reach everything**: Change colour scheme lists every scheme in the palette and shows the whole app in the
+  one you're on as you move; terminals, the graph, maps, diagrams and HTML pages follow snippets and vault themes too,
+  Claude Code in the app's terminals draws in the scheme's colours, and the browser's bars take its background.
+- **A start page of your own**: a new tab can show a dashboard instead of its sections (Choose a page for new tabs…,
+  or `vau newtab page`), so it's any blocks, arranged by you or your agent.
+- **Looks**: save just the look (colours, fonts, snippets, the status bar, the new tab) as a bundle that applies over
+  any setup; bundles carry the new tab, and a bundle saved in the desktop app shows a picture of the window on its card.
 - Machines can show cloud agents’ folders and files through a read-only file agent, with enrollment codes and revocable access.
 - An agent machine's files read like the app's own: Markdown with its properties, JSON as a tree, transcripts as a conversation, images, sizes and times, breadcrumbs and what changed last; a read survives its connection dropping.
 - **Hatch**: a dashboard for your Hatch agent (like Muse) from its machine: who it is and what's left to tell it, its runs and their conversations, what it learned, its dreams, its feed and its setup; a new dream, the day's facts and a feed story reach the Inbox.

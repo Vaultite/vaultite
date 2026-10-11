@@ -18,7 +18,7 @@ import { FileView } from "@/components/FileView"
 import { Drawn, Guard } from "@/components/Guard"
 import { DragGhost, TabBar, tabMenuOf, useTabInfo, type TabInfo } from "@/components/Tabs"
 import { menuFor } from "@/components/ContextMenu"
-import { NewTab } from "@/components/NewTab"
+import { NewTab, useNewTabPage } from "@/components/NewTab"
 import { useDropHit, useDropTarget } from "@/core/drag"
 import { Resizer } from "@/components/Resizer"
 import { ViewBar } from "@/components/ViewBar"
@@ -246,6 +246,7 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   const padded = (wide: boolean, bar: ReactNode, body: ReactNode) => (
     <main className={cn("mx-auto px-8 pb-6", wide ? "max-w-none" : "max-w-[912px]")}>{bar}{body}</main>
   )
+  const startPage = useNewTabPage(to === "new" ? p.store : null)
   let body: ReactNode = null
   if (!p.store) body = padded(false, null, p.error ? <p className="mt-10 text-muted-foreground">Couldn't reach the server: {p.error}</p> : <VaultLoading />)
   else if (file) body = full ? <div className="absolute inset-0"><FileView store={p.store} path={file} pane /></div> : padded(true, null, <FileView store={p.store} path={file} pane />)
@@ -257,7 +258,7 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
     else if (full) body = <div className="absolute inset-0"><Drawn draw={() => view.def.render(ctx)} /></div>
     else body = padded(false, <ViewBar>{title}</ViewBar>, <Drawn draw={() => view.def.render(ctx)} />)
   } else if (to.startsWith("view:")) body = padded(false, <ViewBar>{to.slice(5)}</ViewBar>, <p className="mt-6 text-[15px] text-muted-foreground">No plugin draws this tab.</p>)
-  else if (to === "new") body = padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
+  else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
   else {
     const page = p.page(to)
     if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!)} />)

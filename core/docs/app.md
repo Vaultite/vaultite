@@ -41,7 +41,9 @@ The app's sections are `core:actions` (the buttons), `core:opened` (files opened
 agents; `pages:tiles`: the pinned pages, on phones), and any sidebar panel is one too by its key (`recent:recent`,
 `files:files`: `vau panels` lists them; drawn as in the sidebar, never in the default page). A section left out is hidden; a button whose command isn't there
 now (its plugin off) isn't drawn. Unset: the default page (every section not hidden until asked, in the app's order;
-the buttons New note, Open a file, the command palette). `vau newtab` (show, hide, move; `button add`, `remove`,
+the buttons New note, Open a file, the command palette). `page`: a file's path (a dashboard) drawn instead of the
+sections, a start page of any blocks, changed like any dashboard (`vau newtab page Dashboards/Start.md`; `""` the
+sections again; one that's gone gives them back). `vau newtab` (show, hide, move, page; `button add`, `remove`,
 `move`, `icon`); right-click a blank tab (or a button: Change icon) to change it there. The same on every device and workspace.
 
 **Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). The plugins' pages are
@@ -82,7 +84,8 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   frontmatter as text in live preview).
 
 **Appearance**, `.vaultite/appearance.json` (or `vau appearance <key> <value>`), one for every device:
-- `theme`: `system` | `light` | `dark`. `scheme`: `gruvbox` (default), `default` (Classic: Apple's colours), `catppuccin`,
+- `theme`: `system` | `light` | `dark` (Claude Code in the app's terminals starts in its ANSI theme of that mode, so it
+  draws in the scheme's colours too). `scheme`: `gruvbox` (default), `default` (Classic: Apple's colours), `catppuccin`,
   `nord`, `dracula` (dark only), `solarized`, `tokyo-night`, `rose-pine`, `everforest`, `kanagawa`, `one`, `ayu`,
   `github`, `flexoki`, `amethyst`, `paper`, or
   `theme:<Name>` for a downloaded theme in `.vaultite/themes/<Name>/` (as downloaded: `manifest.json`, `theme.css`;

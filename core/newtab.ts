@@ -1,5 +1,5 @@
 // A new tab's page (`.vaultite/newtab.json`: `sections` top to bottom, `actions` the buttons, each a command id, `icons`
-// a button's icon other than its command's), one shape for app and vau; each key written on its own. Pure functions, no Node: both sides use them.
+// a button's icon other than its command's, `page` a file drawn instead), one shape for app and vau; each key written on its own. Pure functions, no Node: both sides use them.
 import { defaultOrder, keyList, type SlotInfo } from "./slots.ts"
 
 export type NewTabSetup = {
@@ -9,6 +9,8 @@ export type NewTabSetup = {
   actions: string[] | null
   /** Icons the user gave buttons, by command id (a Lucide name or an emoji); null: unset (each its command's). */
   icons: Record<string, string> | null
+  /** A file a blank tab draws instead of the sections (a dashboard: any blocks), by its vault path; null: unset. */
+  page: string | null
 }
 
 /** A section as the setup needs it: its key, title, default place and whether it's only on phones or computers. */
@@ -39,7 +41,8 @@ const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === 
 export function readNewTab(raw: unknown): NewTabSetup {
   const o = isMap(raw) ? raw : {}
   const icons = isMap(o.icons) ? Object.fromEntries(Object.entries(o.icons).flatMap(([k, v]) => (typeof v === "string" && v.trim() ? [[k, v.trim()]] : []))) : null
-  return { sections: Array.isArray(o.sections) ? keyList(o.sections) : null, actions: Array.isArray(o.actions) ? keyList(o.actions) : null, icons }
+  const page = typeof o.page === "string" && o.page.trim() ? o.page.trim() : null
+  return { sections: Array.isArray(o.sections) ? keyList(o.sections) : null, actions: Array.isArray(o.actions) ? keyList(o.actions) : null, icons, page }
 }
 
 /** `icons` with a button's icon set (an empty name: back to its command's), null once none is left. */

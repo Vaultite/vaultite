@@ -22,6 +22,8 @@ export function setVaultAppearance(next: VaultAppearance | undefined) {
   subs.notify()
 }
 
+export const getVaultAppearance = () => vault
+
 export function useVaultAppearance() {
   return subs.use(() => vault)
 }
@@ -54,6 +56,7 @@ function syncLinks(kind: string, wanted: { key: string; href: string }[]) {
       l.rel = "stylesheet"
       l.dataset.vau = kind
       l.dataset.key = w.key
+      l.addEventListener("load", lookChanged) // its colours are in only now
     }
     if (l.getAttribute("href") !== w.href) l.setAttribute("href", w.href)
     head.appendChild(l) // (re)appended: keeps the order
@@ -73,10 +76,35 @@ export const DEFAULT_FONTS = {
 const system = matchMedia("(prefers-color-scheme: dark)")
 const LOOK = "vaultite.look"
 
+// What follows the look outside CSS (a terminal's palette, a canvas, a frame): told once it's in place, including
+// after a theme's or snippet's stylesheet has loaded, which a watch on <html>'s attributes misses.
+const looks = new Set<() => void>()
+let looking = false
+function lookChanged() {
+  if (looking) return
+  looking = true
+  queueMicrotask(() => { looking = false; for (const fn of [...looks]) fn() })
+}
+/** Calls `fn` whenever the look changes (light or dark, colour scheme, a theme, a snippet, fonts), once it applies:
+ *  read the colour tokens again there. Returns a function that stops. */
+export function onLook(fn: () => void): () => void {
+  looks.add(fn)
+  return () => { looks.delete(fn) }
+}
+
+// A scheme shown for now (the palette's picker, as the selection moves), saved nowhere.
+let previewing: string | null = null
+/** Shows `scheme` on the whole app without saving it; null goes back to the saved one. */
+export function previewScheme(scheme: string | null) {
+  if (previewing === scheme) return
+  previewing = scheme
+  apply()
+}
+
 function apply() {
   const p = getPrefs()
   const root = document.documentElement
-  const scheme = schemeId(str(p.scheme))
+  const scheme = schemeId(previewing ?? str(p.scheme))
   const only = onlyMode(scheme)
   const dark = only ? only === "dark" : p.theme === "dark" || (p.theme === "system" && system.matches)
   root.classList.toggle("dark", dark)
@@ -87,7 +115,7 @@ function apply() {
   // What index.html puts in place before the app's code has loaded (no flash of the other theme): "system" when it
   // follows the system's, which the page checks itself.
   const look = { dark: only || p.theme !== "system" ? dark : "system", scheme: root.dataset.scheme ?? "", density: root.dataset.density ?? "" }
-  try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }
+  if (previewing === null) try { localStorage.setItem(LOOK, JSON.stringify(look)) } catch { /* private mode */ }
   const vars: [string, string][] = [["--font-ui", p.interfaceFont], ["--font-text", p.textFont], ["--font-code", p.monoFont]]
   for (const [k, v] of vars) {
     if (family(v)) root.style.setProperty(k, fontStack(v, k === "--font-code"))
@@ -103,9 +131,20 @@ function apply() {
     syncLinks("theme", themes)
     syncLinks("snippet", snippets)
   }
+  const now = JSON.stringify([look, root.style.cssText, sig])
+  if (now !== applied) { applied = now; lookChanged() }
 }
-let linked = ""
+let linked = "", applied = ""
 
+
+// Light or dark and the scheme on <html>, however they got there (the app's first paint, a test, another script).
+new MutationObserver(lookChanged).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "data-density", "style"] })
+
+// The browser's own bars (Safari's, an installed web app's title bar) in the page's colour, whichever mode the system is in.
+onLook(() => {
+  const bg = getComputedStyle(document.documentElement).getPropertyValue("--background").trim()
+  if (bg) for (const m of document.querySelectorAll<HTMLMetaElement>('meta[name="theme-color"]')) m.content = bg
+})
 
 apply()
 system.addEventListener("change", apply)

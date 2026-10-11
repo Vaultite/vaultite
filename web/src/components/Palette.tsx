@@ -36,13 +36,15 @@ export function Keys({ keys }: { keys: string }) {
   )
 }
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd }: {
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string) => void
   items: T[]
   row: (item: T, selected: boolean) => ReactNode
   /** Enter or a click on `item` (null: Enter with nothing listed). */
   onPick: (item: T | null, how: Pick) => void
+  /** The selected row changed (the keys, the pointer, typing): to show what picking it would do. */
+  onSelect?: (item: T | null) => void
   onClose: () => void
   /** The keys along the bottom: [keys, what they do], e.g. ["Mod+Enter", "to open in new tab"]. */
   hints: [string, string][]
@@ -74,6 +76,9 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => setSel(query ? 0 : start), [query])
   useEffect(() => { list.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" }) }, [sel])
+  const selected = items[sel] ?? null
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => onSelect?.(selected), [selected?.id])
   const end = useRef<HTMLDivElement>(null)
   useNearEnd(end, () => onEnd?.(), items.length, "200px")
   const pick = (i: number, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) =>

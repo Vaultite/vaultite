@@ -2,14 +2,14 @@
 // vault never opened before; a card opens a preview of what applying changes, asking first when it runs code.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import {
-  ArrowRight, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PanelLeft, PanelRight, Pin, Plus,
+  ArrowRight, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, Palette, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, Settings2, ShieldAlert, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { dateText } from "@/core/data"
 import {
-  applyBundle, bundleText, deleteBundle, exportBundle, importBundle, previewOf, refreshBundles, restoreSetup, runsCode, saveBundle,
-  skipOnboarding, useBundles, type BundleInfo,
+  applyBundle, bundleText, deleteBundle, exportBundle, importBundle, previewOf, previewUrl, refreshBundles, restoreSetup, runsCode, saveBundle,
+  skipOnboarding, startSave, takenShot, useBundles, type BundleInfo,
 } from "@/core/bundles"
 import { closeDetail, openDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
@@ -175,8 +175,15 @@ function MiniPage({ b }: { b: BundleInfo }) {
   )
 }
 
-/** A small picture of the app a bundle makes, in its own colours: its sidebars and the page it opens on. */
+/** A small picture of the app a bundle makes: its preview.png, else a sketch in its own colours (its sidebars and the
+ *  page it opens on). */
 function Thumb({ b }: { b: BundleInfo }) {
+  const url = previewUrl(b)
+  if (url) return <img src={url} alt="" draggable={false} className="h-[112px] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
+  return <Sketch b={b} />
+}
+
+function Sketch({ b }: { b: BundleInfo }) {
   const { scheme: mine, theme } = usePrefs()
   const scheme = b.scheme ?? mine
   const dark = (b.theme ?? theme) === "dark" || ((b.theme ?? theme) === "system" && matchMedia("(prefers-color-scheme: dark)").matches)
@@ -300,7 +307,8 @@ export function Bundles({ store }: { store: Store }) {
   useEffect(() => { void refreshBundles() }, [files])
   const app = l?.bundles.filter((b) => b.source === "app" && !b.more) ?? []
   const more = l?.bundles.filter((b) => b.source === "app" && b.more) ?? []
-  const mine = l?.bundles.filter((b) => b.source === "vault") ?? []
+  const mine = l?.bundles.filter((b) => b.source === "vault" && !b.look) ?? []
+  const looks = l?.bundles.filter((b) => b.look) ?? []
   const pick = async (f: File | undefined) => {
     if (!f) return
     try {
@@ -313,7 +321,7 @@ export function Bundles({ store }: { store: Store }) {
       <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
           {welcome && <button type="button" className={secondary} onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with Minimal</button>}
-          <button type="button" className={welcome ? secondary : primary} onClick={() => openDetail("bundle-save")} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</button>
+          <button type="button" className={welcome ? secondary : primary} onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</button>
         </div>
       </PageHeader>
       {prev && (
@@ -335,8 +343,14 @@ export function Bundles({ store }: { store: Store }) {
         <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
         <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-mine>
           {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
-          {!mine.length && <ActionCard icon={Plus} title="Save current setup" onClick={() => openDetail("bundle-save")} />}
+          {!mine.length && <ActionCard icon={Plus} title="Save current setup" onClick={() => void startSave()} />}
           <ActionCard icon={Import} title="Import a bundle" onClick={() => file.current?.click()} data-bundles-import />
+        </div>
+        {/* Bundles that change only the look: applied over any setup, plugins and panels as they are. */}
+        <h2 className="mb-2 text-[17px] font-semibold">Looks</h2>
+        <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-looks>
+          {looks.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
+          <ActionCard icon={Palette} title="Save the look" onClick={() => void startSave(true)} data-bundles-save-look />
         </div>
       </div>
       <input ref={file} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = "" }} />
@@ -454,6 +468,7 @@ export function BundlePreview({ id }: { id: string }) {
         </div>
       )}
       {!!b.problems.length && <p className="mb-4 text-[14px] text-[var(--red)]">{b.problems.join(". ")}</p>}
+      {previewUrl(b) && <img src={previewUrl(b)!} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
       <div className="grid grid-cols-1 gap-3">
         {(plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0) && (
           <Panel title="Plugins" icon={Puzzle}>
@@ -486,7 +501,7 @@ export function BundlePreview({ id }: { id: string }) {
             {!!pins.missing.length && <p className="mt-2 text-[13px] text-muted-foreground">Not here, so not pinned: {pins.missing.map(stem).join(", ")}</p>}
           </Panel>
         )}
-        {plan.appearance.length > 0 && (
+        {(plan.appearance.length > 0 || plan.newtab.length > 0) && (
           <Panel title="Look" icon={Settings2}>
             {(() => {
               const scheme = plan.appearance.find((c) => c.key === "scheme")?.to as string | undefined
@@ -494,6 +509,8 @@ export function BundlePreview({ id }: { id: string }) {
               return scheme ? <Swatches id={scheme} mode={theme === "dark" || theme === "light" ? theme : undefined} className="mb-2 h-12 max-w-[280px]" /> : null
             })()}
             {plan.appearance.map((c) => <Setting key={c.key} label={APPEARANCE[c.key] ?? c.key} from={c.from} to={c.to} />)}
+            {plan.newtab.map((c) => <Setting key={`newtab.${c.key}`} label={NEWTAB[c.key] ?? `New tab: ${c.key}`} from={c.key === "page" && typeof c.from === "string" ? stem(c.from) : c.from}
+              to={c.key === "page" && typeof c.to === "string" ? stem(c.to) : c.to} />)}
           </Panel>
         )}
         {(plan.settings.length > 0 || plan.hotkeys.length > 0 || plan.skipped.length > 0) && (
@@ -519,6 +536,7 @@ export function BundlePreview({ id }: { id: string }) {
   )
 }
 
+const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons" }
 const APPEARANCE: Record<string, string> = {
   theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", lineNumbers: "Line numbers", statusBar: "Status bar", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels",
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
@@ -538,9 +556,12 @@ function Setting({ label, from, to, labels }: { label: string; from: unknown; to
 
 // ---------- saving the current setup ----------
 
-export function SaveBundle() {
+export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
+  const [look, setLook] = useState(lookFirst)
+  const [shot] = useState(takenShot)
+  const [picture, setPicture] = useState(!!shot)
   const [hotkeys, setHotkeys] = useState(false)
   const [code, setCode] = useState(false)
   const [busy, setBusy] = useState(false)
@@ -553,7 +574,7 @@ export function SaveBundle() {
     if (!name.trim()) return
     setBusy(true)
     try {
-      const b = await saveBundle({ name, description, hotkeys, vaultPlugins: code, replace: !!clash })
+      const b = await saveBundle({ name, description, look, ...(look ? {} : { hotkeys, vaultPlugins: code }), ...(picture && shot ? { preview: shot } : {}), replace: !!clash })
       closeDetail()
       notify(`Saved ${b.name}`, { action: { label: "Export", run: () => exportBundle(b) } })
     } catch (e) { notifyError(e, "Couldn't save it") } finally { setBusy(false) }
@@ -561,7 +582,7 @@ export function SaveBundle() {
   const input = "h-10 w-full rounded-[8px] border-[0.5px] border-border bg-card px-3 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-9 md:text-[14px]"
   return (
     <form onSubmit={(e) => { e.preventDefault(); void save() }} data-bundle-save-form>
-      <SheetHead icon={Package} tint="var(--primary)" kicker="Bundles" title="Save current setup"
+      <SheetHead icon={look ? Palette : Package} tint="var(--primary)" kicker="Bundles" title={look ? "Save the look" : "Save current setup"}
         sub="As a bundle in this vault's .vaultite/bundles: apply it again later, or export it to share." />
       <div className="grid grid-cols-1 gap-3">
         <label className="block">
@@ -576,10 +597,23 @@ export function SaveBundle() {
         <Panel className="py-1">
           <div className="hairline flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
             <div className="flex min-h-12 items-center gap-3 py-2">
-              <div className="min-w-0 flex-1"><div className="text-[15px]">Hotkeys</div><div className="text-[13px] text-muted-foreground">Your keyboard shortcuts, from hotkeys.json</div></div>
-              <Switch on={hotkeys} onChange={setHotkeys} label="Include hotkeys" />
+              <div className="min-w-0 flex-1"><div className="text-[15px]">Only the look</div><div className="text-[13px] text-muted-foreground">Applied over any setup: plugins, panels and pins stay as they are</div></div>
+              <Switch on={look} onChange={setLook} label="Only the look" />
             </div>
-            {vaultOn > 0 && (
+            {shot && (
+              <div className="flex min-h-12 items-center gap-3 py-2">
+                <img src={`data:image/png;base64,${shot}`} alt="" className="h-10 w-16 shrink-0 rounded-[5px] border-[0.5px] border-border object-cover object-top-left" />
+                <div className="min-w-0 flex-1"><div className="text-[15px]">Picture</div><div className="text-[13px] text-muted-foreground">The window as it is, for its card</div></div>
+                <Switch on={picture} onChange={setPicture} label="Include the picture" />
+              </div>
+            )}
+            {!look && (
+              <div className="flex min-h-12 items-center gap-3 py-2">
+                <div className="min-w-0 flex-1"><div className="text-[15px]">Hotkeys</div><div className="text-[13px] text-muted-foreground">Your keyboard shortcuts, from hotkeys.json</div></div>
+                <Switch on={hotkeys} onChange={setHotkeys} label="Include hotkeys" />
+              </div>
+            )}
+            {!look && vaultOn > 0 && (
               <div className="flex min-h-12 items-center gap-3 py-2">
                 <div className="min-w-0 flex-1"><div className="text-[15px]">Your vault plugins</div><div className="text-[13px] text-muted-foreground">{vaultOn} on. They run code: whoever applies the bundle is asked first</div></div>
                 <Switch on={code} onChange={setCode} label="Include vault plugins" />
@@ -588,8 +622,10 @@ export function SaveBundle() {
           </div>
         </Panel>
         <p className="text-[13px] leading-[18px] text-muted-foreground">
-          It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
-          pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need and the look. Not your notes.
+          {look
+            ? "It keeps the colours, fonts, CSS snippets, the status bar and what a new tab shows (its page, if it has one). Not your notes."
+            : <>It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
+              pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows. Not your notes.</>}
         </p>
         <div><button type="submit" className={primary} disabled={busy || !name.trim()} data-bundle-save>{clash ? "Replace" : "Save"}</button></div>
       </div>

@@ -20,7 +20,11 @@ export const DEFAULT_BUNDLE = "minimal"
 /** Ids a bundle can't take: they're routes. */
 const RESERVED = new Set(["restore", "import", "onboarding", "previous"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
-export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys"] as const
+export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys", "newtab"] as const
+/** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes. */
+export const PREVIEW = "preview.png"
+/** What a bundle that only changes the look may hold besides its files (themes, snippets, the new tab's page). */
+const SETUP = ["plugins.json", "sidebars.json", "pages.json", "hotkeys.json"]
 /** The app's own appearance when a key isn't set (web/src/core/prefs.ts DEFAULTS): a bundle setting one of these
  *  removes the key instead, so a vault never holds a default. */
 const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", panelDividers: false, fileIcons: true, tabBar: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
@@ -46,6 +50,7 @@ export type Host = {
   allow?: (ids: string[]) => Promise<void>
 }
 
+const isPng = (f: string | Buffer | undefined) => Buffer.isBuffer(f) && f.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
 const isObj = (v: unknown): v is Item => !!v && typeof v === "object" && !Array.isArray(v)
 const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [])
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
@@ -121,7 +126,7 @@ function parts(files: Files) {
   const settings = new Map<string, string>() // plugin id -> its data.json path
   const vaultFiles: string[] = [], hidden: string[] = [] // vault paths, and .vaultite/ ones (themes, snippets, plugin folders)
   for (const f of Object.keys(files)) {
-    if (f === "bundle.json" || CONFIGS.some((c) => f === `${c}.json`)) continue
+    if (f === "bundle.json" || f === PREVIEW || CONFIGS.some((c) => f === `${c}.json`)) continue
     const m = /^plugins\/([^/]+)\/(.+)$/.exec(f)
     if (m) {
       if (code.has(m[1])) hidden.push(`.vaultite/${f}`)
@@ -149,6 +154,11 @@ export type Info = {
   /** Vault plugins it brings: they run code. */
   code: string[]
   hotkeys: boolean
+  /** Its preview.png's version (GET /api/bundles/<id>/preview.png), or null when it has none. */
+  preview: string | null
+  /** It changes only the look (colours, fonts, snippets, the status bar, a new tab's page): plugins, panels, pins and
+   *  settings stay as they are. */
+  look: boolean
   problems: string[]
 }
 export type HomeBlock = { block: string; view: string | null; wide: boolean }
@@ -190,8 +200,15 @@ export function info(b: Bundle, host: Host): Info {
     sort: typeof m.sort === "number" ? m.sort : 1000, more: b.source === "app" && m.more === true,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
     on, pinned, panels, home: homeOf(b, host, pinned), code: parts(b.files).code, hotkeys: b.files["hotkeys.json"] !== undefined,
+    preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, look: !b.error && lookOnly(b.files),
     problems: b.error ? [b.error] : problems(b.files),
   }
+}
+
+/** Only the look: none of the setup's files, no plugin's settings or code. */
+function lookOnly(files: Files) {
+  const p = parts(files)
+  return !SETUP.some((f) => files[f] !== undefined) && !p.code.length && !p.settings.size
 }
 
 /** What's wrong with a bundle's files (the shapes, not whether this app has what it names: the plan says that). */
@@ -211,6 +228,7 @@ export function problems(files: Files): string[] {
   if (pg && pg.pinned !== undefined && !Array.isArray(pg.pinned)) out.push("pages.json: pinned must be a list of vault paths")
   const sb = ok("sidebars.json")
   if (sb && Object.keys(sb).length && !readSidebars(sb)) out.push("sidebars.json needs left or right (a list of panels), or {} for the default")
+  if (files[PREVIEW] !== undefined && !isPng(files[PREVIEW])) out.push(`${PREVIEW} isn't a PNG image`)
   return out
 }
 
@@ -290,6 +308,8 @@ export type Plan = {
   pins: { want: string[]; list: string[]; pin: string[]; unpin: string[]; missing: string[]; workspace: string[] | null } | null
   appearance: Change[]
   hotkeys: Change[]
+  /** A new tab's keys it sets (newtab.json: its sections, buttons, page). */
+  newtab: Change[]
   /** Vault files it adds (and plugin dashboards it brings back), and the ones already there (left as they are). */
   files: { add: string[]; kept: string[] }
   /** Nothing would change. */
@@ -354,19 +374,26 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
     if (pm ? codeInfo.find((c) => c.id === pm[1])!.kept : fs.existsSync(v.abs(h))) continue
     add.push(h)
   }
+  // A page it names (a pin, the new tab's) as this vault has it: the user's file, their copy of a plugin's page, one the
+  // bundle brings, or a plugin's page built in (added when it isn't there); null when there's none.
+  const all = templates(host.plugins()), tpl = new Map(all.map(([, rel, text]) => [rel, text])), mine = copies(v, all)
+  const pageAt = (p: string): string | null => {
+    if (!safePath(p)) return null
+    // (a file of the user's by a page's name isn't that page: its pages are in PAGES_DIR)
+    if (fs.existsSync(v.abs(p)) && !(tpl.has(p) || vaultFiles.includes(p))) return p
+    if (mine.has(p)) return mine.get(p)! // (the user's copy of a plugin's page)
+    if (vaultFiles.includes(p)) return at(p)
+    if (tpl.has(p)) { const built = `${PAGES_DIR}/${p}`; if (!fs.existsSync(v.abs(built)) && !add.includes(built)) add.push(built); return built }
+    return null
+  }
   // pins
   let pins: Plan["pins"] = null
   const pg = json(b, "pages.json")
   if (pg && Array.isArray(pg.pinned)) {
-    const all = templates(host.plugins()), tpl = new Map(all.map(([, rel, text]) => [rel, text])), mine = copies(v, all)
     const want: string[] = [], gone: string[] = []
     for (const p of strs(pg.pinned)) {
-      if (!safePath(p)) { gone.push(p); continue }
-      // (a file of the user's by a page's name isn't that page: its pages are in PAGES_DIR)
-      if (fs.existsSync(v.abs(p)) && !(tpl.has(p) || vaultFiles.includes(p))) want.push(p)
-      else if (mine.has(p)) want.push(mine.get(p)!) // (the user's copy of a plugin's page)
-      else if (vaultFiles.includes(p)) want.push(at(p))
-      else if (tpl.has(p)) { want.push(`${PAGES_DIR}/${p}`); if (!fs.existsSync(v.abs(`${PAGES_DIR}/${p}`))) add.push(`${PAGES_DIR}/${p}`) } // a plugin's page, built in
+      const here = pageAt(p)
+      if (here) want.push(here)
       else gone.push(p)
     }
     const cur = strs(v.config("pages").pinned), brings = brought(host)
@@ -382,10 +409,14 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
       .map(([key, to]) => ({ key, from: cur[key] ?? null, to: Object.hasOwn(defaults, key) && same(to, defaults[key]) ? null : to }))
   }
   const appearance = diff("appearance", LOOK_DEFAULTS), hotkeys = diff("hotkeys")
+  // The new tab's page as this vault has it (a page that isn't here: the sections stay).
+  const nt = json(b, "newtab.json")
+  const newtab = nt ? Object.entries({ ...nt, ...(typeof nt.page === "string" ? { page: pageAt(nt.page) } : {}) })
+    .filter(([k, to]) => !same(v.config("newtab")[k], to)).map(([key, to]) => ({ key, from: v.config("newtab")[key] ?? null, to: to ?? null })) : []
   const pinsChange = !!pins && (pins.list.join("\n") !== strs(v.config("pages").pinned).join("\n") ||
     (!!pins.workspace && pins.workspace.join("\n") !== strs(slot!.pinned).join("\n")))
-  const empty = !on.length && !off.length && !set.length && !panels.changed && !pinsChange && !appearance.length && !hotkeys.length && !add.length
-  return { plugins: { on, off, missing }, code: codeInfo, settings: set, skipped, panels, pins, appearance, hotkeys, files: { add, kept }, empty }
+  const empty = !on.length && !off.length && !set.length && !panels.changed && !pinsChange && !appearance.length && !hotkeys.length && !newtab.length && !add.length
+  return { plugins: { on, off, missing }, code: codeInfo, settings: set, skipped, panels, pins, appearance, hotkeys, newtab, files: { add, kept }, empty }
 }
 
 // ---------- applying, and restoring the setup from before ----------
@@ -515,6 +546,7 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   for (const [id, body] of byPlugin) await patch(`plugins/${id}/data`, body)
   await patch("appearance", Object.fromEntries(p.appearance.map((c) => [c.key, c.to])))
   await patch("hotkeys", Object.fromEntries(p.hotkeys.map((c) => [c.key, c.to])))
+  await patch("newtab", Object.fromEntries(p.newtab.map((c) => [c.key, c.to])))
   // 4. Panels: sidebars.json becomes the bundle's ({} for the default), and the workspace drops its own.
   const slot = await slotOf(host, n)
   if (json(b, "sidebars.json")) {
@@ -614,7 +646,11 @@ function pruneDirs(v: Vault, rel: string) {
 
 // ---------- saving the current setup, export, import ----------
 
-export type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean }
+export type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean
+  /** Only the look: colours, fonts, snippets, the status bar and a new tab's page (no plugins, panels, pins or settings). */
+  look?: boolean
+  /** A screenshot of the app it makes, a PNG as base64: its card's picture. */
+  preview?: string }
 
 /** The current setup as a bundle's files: plugins, non-default settings (never `local` ones), panels and pins, look,
  *  hotkeys and vault plugins if asked, and pinned dashboards no plugin brings. */
@@ -622,8 +658,50 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = {}
   const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
-  put("bundle.json", { name: o.name.trim(), ...(o.description?.trim() ? { description: o.description.trim() } : {}), icon: o.icon || "package", ...(o.tint ? { tint: o.tint } : {}) })
+  put("bundle.json", { name: o.name.trim(), ...(o.description?.trim() ? { description: o.description.trim() } : {}), icon: o.icon || (o.look ? "palette" : "package"), ...(o.tint ? { tint: o.tint } : {}) })
+  if (typeof o.preview === "string" && o.preview) {
+    const png = Buffer.from(o.preview.replace(/^data:image\/png;base64,/, ""), "base64")
+    if (!isPng(png)) throw new HTTPError(400, "the preview isn't a PNG image")
+    files[PREVIEW] = png
+  }
   const conf = v.config("plugins")
+  if (!o.look) await setupOf(host, o, files, put, conf, kinds)
+  const pinned = o.look ? [] : pinnedOf(await slotOf(host, o.workspace ?? null), v)
+  const look = v.config("appearance")
+  if (Object.keys(look).length) put("appearance.json", look)
+  const tab = v.config("newtab")
+  if (Object.keys(tab).length) put("newtab.json", { ...tab, ...(typeof tab.page === "string" && inPagesDir(tab.page) ? { page: tab.page.slice(PAGES_DIR.length + 1) } : {}) })
+  // The dashboards it pins that no plugin brings (and their other tabs), the new tab's page, and the theme and snippets it uses.
+  const tpl = new Set(templates(host.plugins()).map(([, rel]) => rel))
+  const add = (rel: string) => {
+    if (files[rel] !== undefined || tpl.has(rel) || !safePath(rel)) return
+    let text: string
+    try { text = readText(v.abs(rel)) } catch { return }
+    if (rel.endsWith(".base") || (rel.endsWith(".md") && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(text))) {
+      files[rel] = text
+      const tabs = /^tabs:\s*\[(.*)\]\s*$/m.exec(text)?.[1]
+      for (const t of tabs ? tabs.split(",").map((x) => x.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean) : []) add(`${path.dirname(rel) === "." ? "" : path.dirname(rel) + "/"}${t}.md`)
+    }
+  }
+  for (const p of pinned) add(p)
+  if (typeof tab.page === "string" && !inPagesDir(tab.page)) add(tab.page)
+  const scheme = typeof look.scheme === "string" && look.scheme.startsWith("theme:") ? look.scheme.slice(6) : null
+  if (scheme && safePath(scheme)) {
+    try { for (const [rel, data] of Object.entries(readFolder(v.abs(`.vaultite/themes/${scheme}`)))) files[`themes/${scheme}/${rel}`] = data } catch (e) { if (e instanceof HTTPError) throw e }
+  }
+  for (const s of strs(look.snippets)) {
+    try { if (safePath(s)) files[`snippets/${s}.css`] = readText(v.abs(`.vaultite/snippets/${s}.css`)) } catch { /* not there */ }
+  }
+  return files
+}
+
+/** The pages pinned: workspace slot's own list, else the vault's. */
+const pinnedOf = (slot: Item | null, v: Vault) => (slot && Array.isArray(slot.pinned) ? strs(slot.pinned) : strs(v.config("pages").pinned))
+
+/** The setup's part of a bundle (all but the look): plugins and their settings, vault plugins if asked, panels, pins,
+ *  hotkeys if asked. */
+async function setupOf(host: Host, o: SaveOptions, files: Files, put: (rel: string, o: unknown) => void, conf: Item, kinds: ReturnType<typeof known>) {
+  const v = host.vault
   const app = host.plugins().filter((p) => p.tier !== "vault")
   const vaultOn = o.vaultPlugins ? host.vaultPlugins().filter((x) => x.on).map((x) => String(x.id)) : []
   put("plugins.json", {
@@ -647,33 +725,9 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
   }
   const slot = await slotOf(host, o.workspace ?? null)
   put("sidebars.json", readSidebars(slot?.sidebars) ?? readSidebars(v.config("sidebars")) ?? {})
-  const pinned = slot && Array.isArray(slot.pinned) ? strs(slot.pinned) : strs(v.config("pages").pinned)
   // (a built-in page by its own path, Dashboards/Today.md: where it goes is the vault's business)
-  put("pages.json", { pinned: pinned.map((p) => (inPagesDir(p) ? p.slice(PAGES_DIR.length + 1) : p)) })
-  const look = v.config("appearance")
-  if (Object.keys(look).length) put("appearance.json", look)
+  put("pages.json", { pinned: pinnedOf(slot, v).map((p) => (inPagesDir(p) ? p.slice(PAGES_DIR.length + 1) : p)) })
   if (o.hotkeys) { const h = v.config("hotkeys"); if (Object.keys(h).length) put("hotkeys.json", h) }
-  // The dashboards it pins that no plugin brings (and their other tabs), and the theme and snippets it uses.
-  const tpl = new Set(templates(host.plugins()).map(([, rel]) => rel))
-  const add = (rel: string) => {
-    if (files[rel] !== undefined || tpl.has(rel) || !safePath(rel)) return
-    let text: string
-    try { text = readText(v.abs(rel)) } catch { return }
-    if (rel.endsWith(".base") || (rel.endsWith(".md") && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(text))) {
-      files[rel] = text
-      const tabs = /^tabs:\s*\[(.*)\]\s*$/m.exec(text)?.[1]
-      for (const t of tabs ? tabs.split(",").map((x) => x.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean) : []) add(`${path.dirname(rel) === "." ? "" : path.dirname(rel) + "/"}${t}.md`)
-    }
-  }
-  for (const p of pinned) add(p)
-  const scheme = typeof look.scheme === "string" && look.scheme.startsWith("theme:") ? look.scheme.slice(6) : null
-  if (scheme && safePath(scheme)) {
-    try { for (const [rel, data] of Object.entries(readFolder(v.abs(`.vaultite/themes/${scheme}`)))) files[`themes/${scheme}/${rel}`] = data } catch (e) { if (e instanceof HTTPError) throw e }
-  }
-  for (const s of strs(look.snippets)) {
-    try { if (safePath(s)) files[`snippets/${s}.css`] = readText(v.abs(`.vaultite/snippets/${s}.css`)) } catch { /* not there */ }
-  }
-  return files
 }
 
 /** Write a bundle's files as the user's bundle `id` (a new folder; `replace`: the one there goes to the trash first). */
@@ -784,6 +838,11 @@ export async function handle(host: Host, method: string, parts: string[], query:
     return { deleted: id, trashed: v.toTrash(`${VAULT_BUNDLES}/${id}`) }
   }
   if (parts.length === 2 && action === "apply" && method === "POST") return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true)
+  if (parts.length === 2 && action === PREVIEW && method === "GET") {
+    const png = find(v, id).files[PREVIEW]
+    if (!isPng(png)) throw new HTTPError(404, `${id} has no preview`)
+    return new Text(png as Buffer, "image/png", { "Cache-Control": "private, max-age=31536000, immutable" })
+  }
   if (parts.length === 2 && action === "export" && method === "GET") {
     const b = find(v, id)
     return new Text(JSON.stringify(exportOf(b), null, 2) + "\n", "application/json; charset=utf-8", { "Content-Disposition": `attachment; filename="${b.id}.bundle.json"` })

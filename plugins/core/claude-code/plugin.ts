@@ -540,12 +540,13 @@ async function session(id: string) {
 
 /** Claude Code's hooks for a session it runs in (`--settings`, added to the user's own). `report` (Activity's) hears
  *  each edit and command; the rest mark the terminal working, waiting (it asks something) or idle. */
-function hooks(state: AgentStart["state"], report: string | null): string {
+function hooks(state: AgentStart["state"], report: string | null): object | null {
+  if (!state && !report) return null
   const told = report ? [{ matcher: "^(Edit|Write|MultiEdit|NotebookEdit|Bash)$", hooks: [{ type: "command", command: report }] }] : []
-  if (!state) return JSON.stringify({ hooks: { PostToolUse: told } })
+  if (!state) return { hooks: { PostToolUse: told } }
   const set = (s: "working" | "waiting" | "idle") => [{ type: "command", command: state(s) }]
   const asks = "AskUserQuestion|ExitPlanMode"
-  return JSON.stringify({ hooks: {
+  return { hooks: {
     SessionStart: [{ hooks: set("idle") }],
     UserPromptSubmit: [{ hooks: set("working") }],
     PreToolUse: [{ matcher: `^(?!(${asks})$).*`, hooks: set("working") }, { matcher: `^(${asks})$`, hooks: set("waiting") }],
@@ -553,20 +554,24 @@ function hooks(state: AgentStart["state"], report: string | null): string {
     // A turn that was interrupted fires no Stop: a minute idle at its prompt counts too.
     Notification: [{ matcher: "permission_prompt|elicitation_dialog", hooks: set("waiting") }, { matcher: "idle_prompt", hooks: set("idle") }],
     Stop: [{ hooks: set("idle") }],
-  } })
+  } }
 }
 
 /** `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile
  *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
-plugin.provide("agent:claude", async ({ resume, context, state, report, profile, prompt }: AgentStart) => {
+plugin.provide("agent:claude", async ({ resume, context, state, report, profile, prompt, dark }: AgentStart) => {
   const found = resume ? sessionFile(resume, true) : null
   if (resume && !found) return notHere("Claude Code", resume)
   const a = found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
   const env = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? `CLAUDE_CONFIG_DIR=${quote(a.dir)}` : ""
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
+  // Its ANSI themes draw in the terminal's 16 colours, which are the app's colour scheme.
+  const theme = typeof dark === "boolean" ? { theme: dark ? "dark-ansi" : "light-ansi" } : null
+  const told = hooks(state, report ?? null)
+  const settings = told || theme ? { ...told, ...theme } : null
   return {
     command: [env, "claude", resume && `--resume ${quote(resume)}`, context && `--append-system-prompt ${quote(context)}`,
-      (state || report) && `--settings ${quote(hooks(state, report ?? null))}`, prompt && `-- ${quote(prompt)}`].filter(Boolean).join(" "),
+      settings && `--settings ${quote(JSON.stringify(settings))}`, prompt && `-- ${quote(prompt)}`].filter(Boolean).join(" "),
     cwd,
   }
 })

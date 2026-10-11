@@ -266,6 +266,9 @@ export type AgentStart = {
   profile?: string | null
   /** The first prompt, sent as it starts (Dispatch's, a voice note, a reply to a resumed session's report); null for none. */
   prompt?: string | null
+  /** The app's light or dark where it opens (null: unknown). The terminal's 16 colours are the colour scheme's, so an
+   *  agent that can draw in them follows it. */
+  dark?: boolean | null
 }
 
 /** A new terminal's id: `<agent>-<8 letters and digits>`, or the letters alone for a shell. */

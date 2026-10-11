@@ -35,12 +35,13 @@ export function sectionList(app: App): { setup: ReturnType<typeof readNewTab>; s
   return { setup, sections: [...first, ...rest], buttons }
 }
 
-function showList(r: { sections: Section[]; buttons: Button[] }) {
+function showList(r: { setup: ReturnType<typeof readNewTab>; sections: Section[]; buttons: Button[] }) {
   const note = (s: Section) => [s.panel && "a sidebar panel", s.only && `${s.only === "phone" ? "phones" : "computers"} only`, !s.on && "plugin off"].filter(Boolean).join(", ")
   const row = (s: Section) => `${s.key} (${s.title})${note(s) ? `  (${note(s)})` : ""}`
   const shown = r.sections.filter((s) => s.place)
   const hidden = r.sections.filter((s) => !s.place)
   return [
+    ...(r.setup.page ? [`Page: ${r.setup.page} (drawn instead of the sections; vau newtab page "" shows them again)`] : []),
     "Sections, top to bottom:", lines(shown.map((s) => `  ${s.place}. ${row(s)}`), "  (none: an empty page)"),
     `Hidden: ${hidden.map(row).join(", ") || "none"}`,
     "Buttons (core:actions):", lines(r.buttons.map((b) => `  ${b.place}. ${b.id} (${b.name})${b.icon ? `  (icon: ${b.icon})` : ""}${b.known ? "" : "  (not in the app's source)"}`), "  (none)"),
@@ -79,7 +80,9 @@ core:actions is a palette command: its name, icon and shortcut are the command's
 button whose command isn't there now, its plugin off, isn't drawn). "icons": {command id: name} gives a button another
 icon (a Lucide name, lucide.dev/icons, or an emoji; vau newtab button icon, or right-click it in the app). Unset, the page is every section not hidden by
 default, by its place, and the buttons are New note, Open a file and the command palette (vau settings set newtab
-'{"sections": null}' goes back to that). Positions count from 1.
+'{"sections": null}' goes back to that). Positions count from 1. "page": a file's path draws that file instead of the
+sections, a start page made of any blocks: a dashboard (vau docs dashboards) the user or an agent changes like any other;
+one that isn't there (moved, deleted) gives the sections back.
 
   vau newtab
   vau newtab show terminals top
@@ -91,12 +94,14 @@ default, by its place, and the buttons are New note, Open a file and the command
   vau newtab button remove palette:open
   vau newtab button move file:new up
   vau newtab button icon audio-recorder:voice-note mic
-  vau newtab button icon audio-recorder:voice-note ""   (its command's icon again)`
+  vau newtab button icon audio-recorder:voice-note ""   (its command's icon again)
+  vau newtab page Dashboards/Start.md
+  vau newtab page ""   (the sections again)`
 
 export function newTabOps(app: App): Op[] {
   const cmds = () => commandList(pluginList(app).filter((p) => p.tier === "vault"))
-  /** Write one key (`sections`, `actions` or `icons`) and answer with the page after. */
-  const write = (key: "sections" | "actions" | "icons", list: string[] | Record<string, string> | null) => {
+  /** Write one key (`sections`, `actions`, `icons` or `page`) and answer with the page after. */
+  const write = (key: "sections" | "actions" | "icons" | "page", list: string[] | Record<string, string> | string | null) => {
     app.vault.patchConfig("newtab", { [key]: list })
     return sectionList(app)
   }
@@ -156,6 +161,21 @@ export function newTabOps(app: App): Op[] {
       const cmd = namedCommand(cmds(), given.command)
       if (name) shownOnly(buttons.map((b) => b.id), cmd, cmd)
       return write("icons", withIcon(setup.icons, cmd, name))
+    },
+    ...result,
+  },
+  {
+    id: "newtab.page", cli: "newtab page", kind: "write",
+    summary: "Draw a file (a dashboard) on new tabs instead of the sections; empty for the sections again.",
+    help: "Draw a file on a blank tab instead of its sections: a start page made of any blocks. See vau newtab --help.",
+    params: { path: { type: "string", required: true, description: "the file's path in the vault (Dashboards/Start.md); empty for the sections again" } },
+    args: ["path"],
+    run: (given) => {
+      const rel = String(given.path ?? "").trim().replace(/^\/+/, "")
+      if (!rel) return write("page", null)
+      const file = /\.md$/i.test(rel) ? rel : `${rel}.md`
+      if (!app.vault.entries.has(file)) throw new OpError(`no note '${file}' in the vault: give a dashboard's path (vau ls, or make one: vau docs dashboards)`, 404)
+      return write("page", file)
     },
     ...result,
   },

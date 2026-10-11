@@ -1,6 +1,7 @@
 // What Markdown draws after it's HTML (math, mermaid, code copy and footnote buttons), lazily, for the editor and for
 // Markdown drawn outside it alike, so a note reads the same everywhere.
 import { isDark } from "@/lib/utils"
+import { onLook } from "@/core/appearance"
 
 type Katex = typeof import("katex").default
 let katex: Promise<Katex> | null = null
@@ -90,11 +91,11 @@ export function renderMermaid(src: string, el: HTMLElement) {
   if (!watching) {
     watching = true
     // Light or dark, or another colour scheme: drawn again in its colours.
-    new MutationObserver(() => {
+    onLook(() => {
       vars = null
       if (JSON.stringify(mermaidVars()) === mermaidTheme) return
       for (const [d, s] of diagrams) { if (d.isConnected) void drawMermaid(s, d); else diagrams.delete(d) }
-    }).observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "style"] })
+    })
   }
   void drawMermaid(src, el)
 }

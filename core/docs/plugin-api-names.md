@@ -266,6 +266,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `onActivity(fn)`: Hear what the user does (see noteActivity); returns how to stop.
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
 - `onCommandsChanged(fn)`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
+- `onLook(fn)`: Calls `fn` whenever the look changes (light or dark, colour scheme, a theme, a snippet, fonts), once it applies: read the colour tokens again there.
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor): plugins that change rendered Markdown (another app's post-processors).
 - `onTabLayoutChange(fn)`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).

@@ -35,6 +35,8 @@ export { csvRecords, parseCsv } from "../../core/csv.ts"
 export { formatDate, parseDate, type DateOptions } from "../../core/dates.ts"
 export { activeFile, insertOnOwnLine, type ActiveFile } from "@/core/active"
 export { choose, type Choice } from "@/components/Chooser"
+/** The look changing (light or dark, colour scheme, a theme or snippet, fonts), once applied: read colour tokens again. */
+export { onLook } from "@/core/appearance"
 export { pickIcon } from "@/components/IconPicker"
 export { BrandIcon } from "@/core/icons"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).

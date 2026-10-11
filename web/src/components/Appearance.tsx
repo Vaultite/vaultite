@@ -100,7 +100,7 @@ function SchemePicker() {
   )
 }
 
-/** The gallery as a sheet (Settings' More…, the command "Change colour scheme"). */
+/** The gallery as a sheet (Settings' More…; the command "Change colour scheme" is the palette's, SchemeChooser.tsx). */
 export function SchemeGallery() {
   return (
     <>

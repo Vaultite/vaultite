@@ -1,8 +1,11 @@
 // A blank tab's page: newtab.json's sections, reordered by drag and changed from its menu (like `vau newtab`), all drawn at
 // the sidebar's sizes (SidebarRow) and the page a size up as one (`data-size-up`). A button is its command.
 import { useId, useRef, type MouseEvent, type ReactNode, type RefObject } from "react"
-import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, MousePointerClick, Plus, RotateCcw, Smile, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, LayoutDashboard, MousePointerClick, Plus, RotateCcw, Smile, Trash2 } from "lucide-react"
 import type { Store } from "@/core/data"
+import { getStore } from "@/core/data"
+import { folderOf, inPagesDir, stem } from "@/core/files"
+import { fileAt } from "@/core/pages"
 import type { NewTabSection, SidebarPanel } from "@/core/define"
 import { available, commandList, keyHint, keysOf, runCommand, useCommandList, type Command } from "@/core/commands"
 import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
@@ -32,6 +35,12 @@ function allSections(disabled: string[], order: string[]): Section[] {
 }
 
 const fits = (s: Section, phone: boolean) => !s.only || s.only === (phone ? "phone" : "desktop")
+
+/** The file a blank tab draws instead of its sections (newtab.json's `page`), while it's in the vault; else null. */
+export function useNewTabPage(store: Store | null): string | null {
+  const { page } = usePrefs().newTab
+  return page && store && fileAt(store.files.files, page) ? page : null
+}
 const labelOf = (c: Command) => c.label ?? c.name
 
 export function NewTab({ store, phone }: { store: Store; phone?: boolean }) {
@@ -227,6 +236,29 @@ export function AddButton() {
 // ---------- changing the page (newtab.json, a key at a time: prefs.ts) ----------
 
 const setNewTab = (patch: Partial<NewTabSetup>) => setPrefs({ newTab: { ...getPrefs().newTab, ...patch } })
+
+/** Pick the page a blank tab draws instead of its sections: one of the vault's dashboards (any file, with vau newtab page). */
+export function chooseNewTabPage() {
+  const store = getStore()
+  if (!store) return
+  const { page } = getPrefs().newTab
+  const name = (f: { path: string; title: string }) => f.title || stem(f.path)
+  const files = store.files.files.filter((f) => f.type === "dashboard").sort((a, b) => name(a).localeCompare(name(b)))
+  choose({
+    title: "New tab's page", placeholder: "A dashboard for new tabs…", current: page ?? undefined,
+    items: files.map((f) => ({ id: f.path, label: name(f), detail: inPagesDir(f.path) ? "Built in" : folderOf(f.path) || undefined, icon: LayoutDashboard })),
+    empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No dashboards yet.</p>,
+    onPick: (it) => { void setNewTab({ page: it.id }) },
+  })
+}
+
+/** Back to the sections, with Undo. */
+export function showNewTabSections() {
+  const was = getPrefs().newTab.page
+  if (!was) return
+  void setNewTab({ page: null })
+  notify("New tabs show their sections", { action: { label: "Undo", run: () => void setNewTab({ page: was }) } })
+}
 /** The sections shown now, every device's (phone-only ones too), in order. */
 const sectionsNow = () => { const { disabled, order, newTab } = getPrefs(); return shownSections(newTab, allSections(disabled, order)) }
 const moved = (list: string[], key: string, where: "up" | "down") => placeKey(list, key, anchorFor(list, key, where) ?? null)
@@ -269,9 +301,10 @@ function customizeMenu(phone: boolean, hit: { action?: string; section?: string 
     out.push({ label: "Buttons", icon: MousePointerClick, sep: true, run: () => {}, items: buttonItems })
   }
   out.push({ label: "Sections", icon: Layers, sep: !!out.length, run: () => {}, items: sections })
+  out.push({ label: "Show a page instead…", icon: LayoutDashboard, run: () => chooseNewTabPage() })
   if (newTab.sections || newTab.actions || newTab.icons) out.push({ label: "Reset new tab", icon: RotateCcw, sep: true, run: () => {
     const was = getPrefs().newTab
-    void setNewTab({ sections: null, actions: null, icons: null })
+    void setNewTab({ sections: null, actions: null, icons: null, page: null })
     notify("New tab reset", { action: { label: "Undo", run: () => void setNewTab(was) } })
   } })
   return out

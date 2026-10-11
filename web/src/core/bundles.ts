@@ -3,7 +3,9 @@
 import { useEffect } from "react"
 import { getStore, reload } from "@/core/data"
 import { del, get, post, request } from "@/core/http"
-import { go, isDesktop } from "@/core/workspace"
+import { activeTab, go, isDesktop } from "@/core/workspace"
+import { captureWindow } from "@/core/desktop"
+import { openDetail } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { notify, notifyError } from "@/core/notify"
 import { currentWorkspace } from "@/core/scope"
@@ -24,6 +26,10 @@ export type BundleInfo = {
   /** Vault plugins it brings (they run code). */
   code: string[]
   hotkeys: boolean
+  /** Its preview.png's version (the card's picture), or null: the card draws a sketch. */
+  preview: string | null
+  /** It changes only the look (colours, fonts, snippets, the status bar, a new tab's page). */
+  look: boolean
   problems: string[]
 }
 type Change = { key: string; from: unknown; to: unknown }
@@ -36,6 +42,7 @@ export type Plan = {
   pins: { want: string[]; list: string[]; pin: string[]; unpin: string[]; missing: string[]; workspace: string[] | null } | null
   appearance: Change[]
   hotkeys: Change[]
+  newtab: Change[]
   files: { add: string[]; kept: string[] }
   empty: boolean
 }
@@ -99,7 +106,25 @@ export async function skipOnboarding() {
   void refreshBundles()
 }
 
-export type SaveOptions = { name: string; description?: string; icon?: string; hotkeys?: boolean; vaultPlugins?: boolean; replace?: boolean }
+export type SaveOptions = { name: string; description?: string; icon?: string; hotkeys?: boolean; vaultPlugins?: boolean; replace?: boolean
+  /** Only the look (no plugins, panels, pins or settings). */
+  look?: boolean
+  /** The card's picture: a PNG as base64. */
+  preview?: string }
+
+/** A bundle's card picture, when it has one. */
+export const previewUrl = (b: Pick<BundleInfo, "id" | "preview">) => (b.preview ? `api/bundles/${encodeURIComponent(b.id)}/preview.png?v=${b.preview}` : null)
+
+// The window as it was when saving began (the desktop app's), before the sheet covered it: the new bundle's picture.
+let shot: string | null = null
+export const takenShot = () => shot
+/** Start saving the setup (`look`: only the look). A picture of the window comes first, unless what's shown is the
+ *  Bundles page itself. */
+export async function startSave(look = false) {
+  shot = null
+  if (activeTab()?.to !== "bundles") shot = (await captureWindow().catch(() => null))?.png ?? null
+  openDetail(look ? "bundle-save-look" : "bundle-save")
+}
 
 /** Save the current setup as one of the user's bundles (the current workspace's panels and pins when it has its own). */
 export async function saveBundle(o: SaveOptions) {

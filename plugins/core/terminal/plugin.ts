@@ -245,7 +245,7 @@ export function stateCommand(file: string, tell?: ((s: AgentState) => string) | 
 }
 
 /** The shell command an agent's terminal runs, and where (null: a plain shell). */
-async function agentRun(id: string, prompt: string | null = null): Promise<AgentRun | null> {
+async function agentRun(id: string, prompt: string | null = null, dark: boolean | null = null): Promise<AgentRun | null> {
   const a = agentOf(id)
   if (!a) return null
   try { fs.mkdirSync(STATES, { recursive: true }); fs.rmSync(stateFile(id), { force: true }) } catch { /* unmarked */ }
@@ -253,7 +253,7 @@ async function agentRun(id: string, prompt: string | null = null): Promise<Agent
   try {
     const report = plugin.service("activity:report")
     const run = await plugin.service(`agent:${a.name}`)!({ resume: a.resume, context: agentContext(), state: set,
-      report: report ? report(a.name, id) : null, profile: a.profile, prompt } satisfies AgentStart)
+      report: report ? report(a.name, id) : null, profile: a.profile, prompt, dark } satisfies AgentStart)
     if (!run || typeof run.command !== "string" || !run.command) return null
     let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : null
     try { if (cwd && !fs.statSync(cwd).isDirectory()) cwd = null } catch { cwd = null }
@@ -261,6 +261,13 @@ async function agentRun(id: string, prompt: string | null = null): Promise<Agent
   } catch {
     return null
   }
+}
+
+/** Light or dark as appearance.json sets it, for a terminal started with no window to ask (an agent's); null when it
+ *  follows each device's. */
+function savedDark(): boolean | null {
+  const t = (plugin.vault.config("appearance") as { theme?: unknown } | null)?.theme
+  return t === "dark" ? true : t === "light" ? false : null
 }
 
 const clamp = (n: unknown, lo: number, hi: number, dflt: number) => {
@@ -322,13 +329,13 @@ async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | nul
 }
 
 /** Starts a session (in the backend new ones go to), or reattaches to its shell if one runs (`fresh` says which). */
-async function start(id: string, cols: number, rows: number, from = LOCAL, prompt: string | null = null): Promise<{ s: Session; fresh: boolean }> {
+async function start(id: string, cols: number, rows: number, from = LOCAL, prompt: string | null = null, dark: boolean | null = null): Promise<{ s: Session; fresh: boolean }> {
   let b = await backendOf(id)
   const fresh = !b
   if (!b) {
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
-    const run = await agentRun(id, prompt)
+    const run = await agentRun(id, prompt, dark)
     const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows, scrollback: scrollback() }
     if (!(b.spares && (await takeSpare(b, id, from, run)))) {
       try { await b.create(id, spec) } catch (e) {
@@ -553,7 +560,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   }
   const first = !starting.has(id)
   // Through Tailscale Serve (allowed() checked who), or from the iPhone app: the shell may say so.
-  if (first) starting.set(id, start(id, cols, rows, fromReq(req)).finally(() => starting.delete(id)))
+  if (first) starting.set(id, start(id, cols, rows, fromReq(req), null, query.dark === "1" ? true : query.dark === "0" ? false : null).finally(() => starting.delete(id)))
   starting.get(id)!.then(({ s, fresh }) => ws.readyState === ws.OPEN && attach(s, ws, first && fresh), (e) => {
     console.error("terminal:", e)
     if (ws.readyState !== ws.OPEN) return
@@ -748,7 +755,7 @@ plugin.route("POST", "terminals/*", async (req) => {
   const id = localId(req)
   if (await runsHere(id)) return { id, started: false }
   const prompt = typeof req.body?.prompt === "string" && req.body.prompt.trim() ? req.body.prompt : null
-  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt).finally(() => starting.delete(id)))
+  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark()).finally(() => starting.delete(id)))
   await starting.get(id)!
   return { id, started: true, agent: agentOf(id)?.name ?? null }
 }, { lock: false })

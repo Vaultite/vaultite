@@ -19,7 +19,8 @@ import { Badged, PageHeader, usePortalHost } from "@/components/kit"
 import { TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
 import { rowMenu, selectClick, selectedAttr, selecting, startSelecting, useSelectable, useSelected } from "@/core/select"
 import { menuBelow, menuOnCard, type MenuItem } from "@/components/ContextMenu"
-import { NewTab } from "@/components/NewTab"
+import { NewTab, useNewTabPage } from "@/components/NewTab"
+import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
 import { spring, useLingeringSheet } from "@/core/motion"
 import { cn } from "@/lib/utils"
@@ -664,8 +665,9 @@ function SheetBar({ left, group, lit }: { left: ReactNode; group?: string; lit: 
 /** A phone tab that isn't a file or a page: an empty one (what to open), or a plugin's view (a terminal). */
 export function PhoneTab({ store, to }: { store: Store; to: string }) {
   const { disabled } = usePrefs()
-  // A blank tab: the desktop's (components/Tabs.tsx), phone-sized.
-  if (to === "new") return <NewTab store={store} phone />
+  const startPage = useNewTabPage(to === "new" ? store : null)
+  // A blank tab: the desktop's (components/Tabs.tsx), phone-sized; or the page chosen for new tabs.
+  if (to === "new") return startPage ? <FileView store={store} path={startPage} pane /> : <NewTab store={store} phone />
   const view = viewFor(to, disabled)
   const tab = activeTab()
   const title = view ? view.def.title(view.arg) : to.slice(5)

@@ -1,7 +1,7 @@
 // An artifact in a sandboxed iframe, this side answering its bridge (reads, file list, storage, links, height, theme).
 // A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { cn, getStore, isHidden, openFile, readFile, stem, tintNames, touches, useVaultChange } from "@vaultite"
+import { cn, getStore, isHidden, onLook, openFile, readFile, stem, tintNames, touches, useVaultChange } from "@vaultite"
 
 // The app's colours an artifact can use, as --vau-<name> (so they follow the colour scheme), and plugins' tints
 // (--vau-today...).
@@ -50,14 +50,11 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   // The theme is read when the frame loads (no flash); later changes are sent to it.
   useEffect(() => { setUrl(src(path, !page, reloads)); setReady(false); reads.current.clear(); listening.current = false }, [path, page, reloads])
   const sendTheme = useCallback(() => frame.current?.contentWindow?.postMessage(themeMessage(), "*"), [])
-  // The app's light or dark (the .dark class) and its scheme (data-scheme) and fonts (style), on <html>: sent again
-  // when they change, after the app has applied them.
+  // The app's light or dark, scheme, theme, snippets and fonts: sent again when they change, once applied.
   useEffect(() => {
     let t = 0
-    const on = () => { cancelAnimationFrame(t); t = requestAnimationFrame(sendTheme) }
-    const watch = new MutationObserver(on)
-    watch.observe(document.documentElement, { attributes: true, attributeFilter: ["class", "data-scheme", "style"] })
-    return () => { watch.disconnect(); cancelAnimationFrame(t) }
+    const off = onLook(() => { cancelAnimationFrame(t); t = requestAnimationFrame(sendTheme) })
+    return () => { off(); cancelAnimationFrame(t) }
   }, [sendTheme])
 
   // Opened as a page: at least down to the bottom of the window.

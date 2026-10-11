@@ -5988,6 +5988,35 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   fs.chmodSync(path.join(VAULT, ".vaultite/bundles/locked/bundle.json"), 0o644)
   fs.rmSync(path.join(VAULT, ".vaultite/bundles/locked"), { recursive: true })
 
+  // A look: only the look and the new tab (its page a dashboard it brings), with a picture; applied over any setup.
+  write("Dashboards/Lamp room.md", "---\ntype: dashboard\n---\n\n```block-inbox\n```\n")
+  const lookBefore = conf("newtab"), appearanceBefore = conf("appearance")
+  setConf("newtab", { page: "Dashboards/Lamp room.md", actions: ["file:new"] })
+  ;[code, r] = await api("POST", "bundles", { name: "Lamp light", look: true, preview: png.toString("base64") })
+  const inLook = (f: string) => exists(`.vaultite/bundles/lamp-light/${f}`)
+  check("bundles: a look keeps the look, the new tab and its page, not the setup", code === 200 && r.bundle.look && !!r.bundle.preview &&
+    ["appearance.json", "newtab.json", "Dashboards/Lamp room.md", "preview.png"].every(inLook) && !["plugins.json", "pages.json", "sidebars.json", "hotkeys.json"].some(inLook),
+    fs.readdirSync(path.join(VAULT, ".vaultite/bundles/lamp-light"), { recursive: true }))
+  ;[code, r] = await api("GET", "bundles/lamp-light/preview.png")
+  check("bundles: its picture is served as its bytes", code === 200 && Buffer.isBuffer(r) && r.equals(png), [code, typeof r])
+  ;[code] = await api("POST", "bundles", { name: "Not a picture", look: true, preview: Buffer.from("hello").toString("base64") })
+  check("bundles: a picture that isn't a PNG is refused", code === 400, code)
+  setConf("newtab", {})
+  fs.rmSync(path.join(VAULT, "Dashboards/Lamp room.md"))
+  setConf("appearance", { ...appearanceBefore, scheme: "dracula" })
+  ;[code, r] = await api("GET", "bundles/lamp-light")
+  check("bundles: a look's plan: the scheme and the new tab's page, built in as it brings it; plugins and pins untouched",
+    r.plan.appearance.some((c: Any) => c.key === "scheme" && c.to === "nord") && r.plan.newtab.some((c: Any) => c.key === "page" && c.to === ".vaultite/pages/Dashboards/Lamp room.md") &&
+    r.plan.pins === null && !r.plan.plugins.on.length && !r.plan.plugins.off.length && !r.plan.panels.changed, r.plan)
+  ;[code] = await api("POST", "bundles/lamp-light/apply", {})
+  check("bundles: applied, the new tab shows its page", code === 200 && conf("newtab")?.page === ".vaultite/pages/Dashboards/Lamp room.md" && conf("appearance")?.scheme === "nord" &&
+    exists(".vaultite/pages/Dashboards/Lamp room.md"), conf("newtab"))
+  ;[code] = await api("POST", "bundles/restore")
+  check("bundles: restored, the new tab as it was", code === 200 && !conf("newtab")?.page && conf("appearance")?.scheme === "dracula", conf("newtab"))
+  await api("DELETE", "bundles/lamp-light")
+  if (lookBefore) setConf("newtab", lookBefore); else fs.rmSync(path.join(VAULT, ".vaultite/newtab.json"), { force: true })
+  setConf("appearance", appearanceBefore)
+
   // A number the user set higher stays: a bundle never lowers it.
   const hist = conf("plugins/history/data")
   setConf("plugins/history/data", { keep_days: 90 })
