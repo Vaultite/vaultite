@@ -19,9 +19,11 @@ Agent VMs behind a firewall can dial a server's public MCP listener with the rea
 eight-digit code (ten minutes); approve it in the Machines tab, selecting the relay server. No key needs to be copied.
 The machine's entry is `{ "id": "sandbox", "label": "Sandbox", "via": "studio" }`; `via` names a normal Vaultite
 server in the same list. Only that server keeps its key hash, in its private config. List and read through
-`GET /api/machines/<id>/fs/list?path=~` and `…/fs/read?path=<absolute-path>` (owner only). These machines advertise
+`GET /api/machines/<id>/fs/list?path=~`, `…/fs/read?path=<absolute-path>` and `…/fs/recent?path=~` (its files changed last,
+hidden folders left out; an agent from before it says no) (owner only); the server's own code reads them with the service
+`machines:fs`. A read asked while the connection dropped waits for it to come back (a few seconds), once. These machines advertise
 no terminal or coding-agent capability. Read results are text or base64, with size and truncation; only regular files
 are readable, text previews default to 1 MB, and listings stop at 5,000 entries. Nothing runs or writes on the VM
 except the file agent's own setup files. Contents are live, never stored in the vault; offline machines stay listed.
-Use the machine menu to revoke access. Start/stop/status use the same script; a reboot or provider reset requires
+Use the machine menu to revoke access. To update it, download agent.py again over the old one and `stop`, then `start`. Start/stop/status use the same script; a reboot or provider reset requires
 starting it again (Muse's persistent files must be under its home directory).

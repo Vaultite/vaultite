@@ -68,13 +68,15 @@ function blockCtx(vault: Vault, rel: string, fm: Item, body: string, options: It
   }
 }
 
-/** A block drawn by another machine (its `machine:`), or null when it's this one or there's no Machines plugin. */
+/** A block drawn by another machine (its `machine:`), or null when it's this one, an agent machine or there's no Machines
+ *  plugin. */
 async function onMachine(plugins: Plugin[], id: string, name: string, rel: string, o: Item): Promise<string | null> {
   const find = service(plugins, "machines:machine")
   if (typeof find !== "function") return null
-  const m = await find(id) as { label: string; url: string; online: boolean; self: boolean } | null
+  const m = await find(id) as { label: string; url: string; online: boolean; self: boolean; dial?: boolean } | null
   if (!m) return `_(no machine ${id})_`
-  if (m.self) return null
+  // (an agent machine runs no Vaultite: its files are read from here, through its relay)
+  if (m.self || m.dial) return null
   if (!m.online) return `_(${m.label} isn't answering)_`
   const { machine: _, ...rest } = o
   const q = new URLSearchParams({ name, path: rel, options: JSON.stringify(rest) })

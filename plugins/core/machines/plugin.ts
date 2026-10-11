@@ -141,28 +141,45 @@ plugin.provide("machines:ids", () => listed().map((m) => m.id)) // (the first ru
 plugin.route("GET", "machines", () => machines())
 plugin.route("GET", "machines/self", () => self())
 
+const FS: Record<string, string> = { "fs/list": "ls", "fs/read": "read", "fs/recent": "recent" }
+
+/** An agent machine's files, read for this server's own code (the Hatch plugin's blocks): its file agent's answer when
+ *  this server is its relay, else the relay's. `rest`: info, fs/list, fs/read or fs/recent. */
+async function agentFs(id: string, rest: string, query: Record<string, string> = {}): Promise<unknown> {
+  const m = listed().find((x) => x.id === id)
+  if (!m?.via) throw new HTTPError(404, `no agent machine '${id}'`)
+  if (rest !== "info" && !FS[rest]) throw new HTTPError(404, "This machine only lists folders and reads files")
+  const via = listed().find((e) => e.id === m.via && !e.via)
+  if (!via) throw new HTTPError(502, "The relay machine is missing")
+  const own = await ownUrl()
+  if (isOwn(via.url, own) || (await probe(via, own)).self) {
+    if (rest === "info") return dial.summary(m.id)
+    return dial.request(m.id, FS[rest], { path: query.path ?? "~", ...(query.max ? { max: Number(query.max) } : {}) })
+  }
+  const qs = new URLSearchParams(query).toString()
+  let r: Response
+  try { r = await fetch(`${via.url}/api/machines/${encodeURIComponent(m.id)}/${rest}${qs ? `?${qs}` : ""}`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(20000) }) }
+  catch { throw new HTTPError(502, `${via.label} doesn't answer`) }
+  const answer = await r.json().catch(() => ({})) as Item
+  if (!r.ok) throw new HTTPError(r.status, String(answer.error || `${via.label} couldn't read ${m.label}'s files`))
+  return answer
+}
+plugin.provide("machines:fs", agentFs)
+
 plugin.route("GET", "machines/*/**", async (req) => {
   const id = req.arg(0), rest = req.arg(1)
   const m = listed().find((x) => x.id === id)
   if (!m) throw new HTTPError(404, `no machine '${id}' (the machines are in .vaultite/plugins/machines/data.json)`)
   if (m.via) {
-    if (!["info", "fs/list", "fs/read"].includes(rest)) throw new HTTPError(404, "This machine only lists folders and reads files")
+    if (rest !== "info" && !FS[rest]) throw new HTTPError(404, "This machine only lists folders and reads files")
     const why = req.http ? await plugin.refusal(req.http, "Reading an agent machine's files") : ""
     if (why) throw new HTTPError(403, why)
-    const via = listed().find((e) => e.id === m.via && !e.via)
-    if (!via) throw new HTTPError(502, "The relay machine is missing")
-    const own = await ownUrl()
-    if (isOwn(via.url, own) || (await probe(via, own)).self) {
-      if (rest === "info") return dial.summary(m.id)
-      const op = rest === "fs/list" ? "ls" : "read"
-      return dial.request(m.id, op, { path: req.query.path ?? "~" })
-    }
-    m.url = `${via.url}/api/machines/${encodeURIComponent(m.id)}`
+    return agentFs(id, rest, req.query)
   }
   const qs = new URLSearchParams(req.query).toString()
   let r: Response
   try {
-    r = await fetch(`${m.url}${m.via ? "/" : "/api/"}${rest.split("/").map(encodeURIComponent).join("/")}${qs ? `?${qs}` : ""}`,
+    r = await fetch(`${m.url}/api/${rest.split("/").map(encodeURIComponent).join("/")}${qs ? `?${qs}` : ""}`,
       { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(15000) })
   } catch {
     throw new HTTPError(502, `${m.label} doesn't answer`)

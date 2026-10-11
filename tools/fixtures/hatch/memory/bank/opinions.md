@@ -1,0 +1,3 @@
+# opinions.md
+
+Stable preferences.

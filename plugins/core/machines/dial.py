@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Vaultite dial-in: shows this computer's files in a vault's Machines when nothing can reach it (a cloud agent's VM
-behind its provider's firewall). It dials the vault's server and answers two questions, read-only: what's in a folder,
-and what's in a file. It runs nothing and writes nothing but its own files. Python 3.8+, nothing to install.
+behind its provider's firewall). It dials the vault's server and answers three questions, read-only: what's in a
+folder, what's in a file, and which files changed last. It runs nothing and writes nothing but its own files. Python
+3.8+, nothing to install.
 
   python3 agent.py connect <url>     the key on stdin: saves both, starts in the background, says once it's connected
   python3 agent.py start             in the background with what connect saved (nothing when it already runs)
@@ -14,11 +15,14 @@ Its own files are in ~/.vaultite-dial (config.json, readable by you only; log; p
 """
 import base64
 import hashlib
+import heapq
 import fcntl
 import stat
 import json
 import os
 import platform
+import queue
+import select
 import signal
 import socket
 import ssl
@@ -132,8 +136,8 @@ class Socket:
         want = base64.b64encode(hashlib.sha1((nonce + GUID).encode()).digest()).decode()
         if ("sec-websocket-accept: " + want).lower() not in head.decode(errors="replace").lower():
             raise OSError("the server's handshake didn't check out")
-        self.lock = threading.Lock()
-        self.sock.settimeout(90)
+        self.parts, self.size = [], 0
+        self.sock.setblocking(False)
 
     def send(self, obj):
         self.frame(1, json.dumps(obj).encode())
@@ -147,33 +151,46 @@ class Socket:
         else:
             head = bytes([0x80 | op, 0xFF]) + struct.pack(">Q", n)
         mask = os.urandom(4)
-        with self.lock:
+        self.sock.settimeout(20)  # (a whole frame out; reads never wait)
+        try:
             self.sock.sendall(head + mask + (masked(data, mask) if n else b""))
+        finally:
+            self.sock.setblocking(False)
 
-    def read(self, n):
-        while len(self.buf) < n:
-            chunk = self.sock.recv(65536)
+    def pump(self):
+        """Take in what has arrived, without waiting: whether anything had."""
+        got = False
+        while True:
+            try:
+                chunk = self.sock.recv(65536)
+            except (ssl.SSLWantReadError, ssl.SSLWantWriteError, BlockingIOError, InterruptedError):
+                return got
             if not chunk:
                 raise Closed("the connection ended")
             self.buf += chunk
-        out, self.buf = self.buf[:n], self.buf[n:]
-        return out
-
-    def message(self):
-        """The next text message (pings answered on the way)."""
-        parts = []
-        total = 0
-        while True:
-            b0, b1 = self.read(2)
-            op, n = b0 & 0x0F, b1 & 0x7F
-            if n == 126:
-                n = struct.unpack(">H", self.read(2))[0]
-            elif n == 127:
-                n = struct.unpack(">Q", self.read(8))[0]
-            total += n
-            if total > FRAME_CAP or b1 & 0x80:
+            got = True
+            if len(self.buf) > FRAME_CAP + 16:
                 raise Closed("a message too big")
-            data = self.read(n)
+
+    def messages(self):
+        """The text messages complete in what has arrived (pings answered on the way)."""
+        out = []
+        while len(self.buf) >= 2:
+            b0, b1 = self.buf[0], self.buf[1]
+            op, n, at = b0 & 0x0F, b1 & 0x7F, 2
+            if n == 126:
+                if len(self.buf) < 4:
+                    break
+                n, at = struct.unpack(">H", self.buf[2:4])[0], 4
+            elif n == 127:
+                if len(self.buf) < 10:
+                    break
+                n, at = struct.unpack(">Q", self.buf[2:10])[0], 10
+            if self.size + n > FRAME_CAP or b1 & 0x80:
+                raise Closed("a message too big")
+            if len(self.buf) < at + n:
+                break
+            data, self.buf = self.buf[at:at + n], self.buf[at + n:]
             if op == 8:
                 raise Closed("the server closed it: " + data[2:].decode(errors="replace"))
             if op == 9:
@@ -181,9 +198,12 @@ class Socket:
                 continue
             if op == 10:
                 continue
-            parts.append(data)
+            self.parts.append(data)
+            self.size += n
             if b0 & 0x80:
-                return b"".join(parts).decode("utf-8", errors="replace")
+                out.append(b"".join(self.parts).decode("utf-8", errors="replace"))
+                self.parts, self.size = [], 0
+        return out
 
     def close(self):
         try:
@@ -250,20 +270,57 @@ def read(args):
     return out
 
 
-OPS = {"ls": ls, "read": read}
+SKIP = {"node_modules", "__pycache__", "venv", "site-packages"}
 
 
-def answer(ws, msg):
+def recent(args):
+    """The files changed last under a folder, newest first: hidden folders and dependencies left out, a few seconds'
+    walk at most."""
+    root = full(args.get("path"))
+    limit = max(1, min(int(args.get("limit") or 50), 200))
+    best, stack, seen, until, truncated = [], [root], 0, time.time() + 3, False
+    while stack:
+        if seen >= 100000 or time.time() > until:
+            truncated = True
+            break
+        try:
+            it = os.scandir(stack.pop())
+        except OSError:
+            continue
+        with it:
+            for e in it:
+                seen += 1
+                if e.name.startswith(".") or e.name in SKIP:
+                    continue
+                try:
+                    if e.is_dir(follow_symlinks=False):
+                        stack.append(e.path)
+                        continue
+                    if not e.is_file(follow_symlinks=False):
+                        continue
+                    st = e.stat(follow_symlinks=False)
+                except OSError:
+                    continue
+                item = (st.st_mtime, e.path, st.st_size)
+                if len(best) < limit:
+                    heapq.heappush(best, item)
+                elif item > best[0]:
+                    heapq.heapreplace(best, item)
+    files = [{"path": p, "size": size, "mtime": int(m * 1000)} for m, p, size in sorted(best, reverse=True)]
+    return {"path": root, "files": files, "truncated": truncated}
+
+
+OPS = {"ls": ls, "read": read, "recent": recent}
+
+
+def answer(msg):
     rid, op = msg.get("id"), OPS.get(msg.get("op"))
     try:
         if not op:
             raise ValueError("this computer only lists folders and reads files")
-        ws.send({"t": "res", "id": rid, "ok": True, "data": op(msg.get("args") or {})})
+        return {"t": "res", "id": rid, "ok": True, "data": op(msg.get("args") or {})}
     except Exception as e:  # (any failure is the request's answer, never the connection's end)
-        try:
-            ws.send({"t": "res", "id": rid, "ok": False, "error": "%s: %s" % (type(e).__name__, e)})
-        except OSError:
-            pass
+        return {"t": "res", "id": rid, "ok": False, "error": "%s: %s" % (type(e).__name__, e)}
 
 
 def hello():
@@ -293,33 +350,57 @@ def run():
         log("connected to", cfg["url"])
         note("connected")
         wait = 1
-        stop = threading.Event()
+        # Only this thread touches the socket (TLS can't take a read and a write at once from two threads): answers
+        # are worked out on others and queued, and the socket pair wakes this one to send them.
+        outbox, slots = queue.Queue(), threading.BoundedSemaphore(16)
+        wake_r, wake_w = socket.socketpair()
+        wake_r.setblocking(False)
+        wake_w.setblocking(False)
 
-        def beat():
-            while not stop.wait(25):
+        def work(msg):
+            try:
+                outbox.put(answer(msg))
+            finally:
+                slots.release()
                 try:
-                    ws.frame(9, b"")
+                    wake_w.send(b".")
                 except OSError:
-                    return
-        threading.Thread(target=beat, daemon=True).start()
+                    pass
         try:
             ws.send(hello())
-            slots = threading.BoundedSemaphore(16)
-            def limited(connection, msg):
-                try:
-                    answer(connection, msg)
-                finally:
-                    slots.release()
+            heard, beat = time.time(), time.time() + 25
             while True:
-                msg = json.loads(ws.message())
-                if msg.get("t") == "req" and slots.acquire(blocking=False):
-                    threading.Thread(target=limited, args=(ws, msg), daemon=True).start()
+                ready = select.select([ws.sock, wake_r], [], [], max(0.0, min(beat, heard + 90) - time.time()))[0]
+                if wake_r in ready:
+                    try:
+                        wake_r.recv(4096)
+                    except OSError:
+                        pass
+                while not outbox.empty():
+                    ws.send(outbox.get_nowait())
+                if ws.sock in ready and ws.pump():
+                    heard = time.time()
+                    for text in ws.messages():
+                        msg = json.loads(text)
+                        if msg.get("t") != "req":
+                            continue
+                        if slots.acquire(blocking=False):
+                            threading.Thread(target=work, args=(msg,), daemon=True).start()
+                        else:
+                            ws.send({"t": "res", "id": msg.get("id"), "ok": False, "error": "Busy: too many reads at once"})
+                now = time.time()
+                if now - heard > 90:
+                    raise Closed("nothing heard for 90 s")
+                if now >= beat:
+                    ws.frame(9, b"")
+                    beat = now + 25
         except Exception as e:
             log("disconnected:", e)
             note("retrying", reason=str(e))
         finally:
-            stop.set()
             ws.close()
+            wake_r.close()
+            wake_w.close()
         time.sleep(1)
 
 

@@ -28,6 +28,8 @@ export type AgentSource = {
   tint: string
   /** Its name in Terminal ("claude"): Resume in terminal opens terminal/resume-<agent>-<id>. */
   agent: string
+  /** false: its sessions can't be resumed in a terminal (an agent that runs elsewhere). */
+  resume?: boolean
   /** Its view of one session: view:<view>/<session id>. */
   view: string
   /** Said when there are no limits (yet): where they come from. */

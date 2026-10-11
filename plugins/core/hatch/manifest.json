@@ -1,0 +1,66 @@
+{
+  "id": "hatch",
+  "icon": "egg",
+  "category": "agents",
+  "offByDefault": true,
+  "name": "Hatch",
+  "description": "What your Hatch agent (a personal AI on its own computer) keeps in its home folder, read live from an agent machine in Machines or this machine: who it is and what's left to tell it, its runs and their conversations, what it learned about you, its nightly dreams, its feed, its scheduled jobs and connectors. Nothing is saved; a new dream, what it learned and a new feed story reach the Inbox.",
+  "tint": "orange",
+  "enhances": ["machines", "inbox"],
+  "settings": {
+    "inbox": {
+      "type": "boolean",
+      "default": true,
+      "label": "Tell the Inbox what's new",
+      "description": "a new dream, what it learned that day and a new feed story, once each (checked every 30 minutes)"
+    }
+  },
+  "blocks": {
+    "hatch": {
+      "description": "who the agent is: its persona files and what's left to fill in them, how much it has done",
+      "live": "the agent's home folder, on its agent machine",
+      "options": {
+        "machine": { "type": "string", "description": "the agent machine it lives on (its id in Machines); the first with a Hatch agent when left out" }
+      }
+    },
+    "hatch-runs": {
+      "description": "its latest runs (conversations, feed, proactive and self-improvement work), each opening its conversation",
+      "live": "the agent's home folder, on its agent machine",
+      "options": {
+        "recent": { "type": "number", "default": 10, "min": 1, "max": 100, "description": "how many runs to list" },
+        "machine": { "type": "string", "description": "the agent machine it lives on (its id in Machines); the first with a Hatch agent when left out" }
+      }
+    },
+    "hatch-memory": {
+      "description": "what it knows: its long-term memory, the facts it learned in its latest daily notes and its memory bank",
+      "live": "the agent's home folder, on its agent machine",
+      "options": {
+        "notes": { "type": "number", "default": 3, "min": 0, "max": 30, "description": "how many of the latest daily notes to show" },
+        "machine": { "type": "string", "description": "the agent machine it lives on (its id in Machines); the first with a Hatch agent when left out" }
+      }
+    },
+    "hatch-dreams": {
+      "description": "its nightly dreams, newest first, and what it thinks it understands of you",
+      "live": "the agent's home folder, on its agent machine",
+      "options": {
+        "dreams": { "type": "number", "default": 2, "min": 1, "max": 30, "description": "how many dreams to show" },
+        "machine": { "type": "string", "description": "the agent machine it lives on (its id in Machines); the first with a Hatch agent when left out" }
+      }
+    },
+    "hatch-feed": {
+      "description": "the latest stories of the feed it writes for you, with their links",
+      "live": "the agent's home folder, on its agent machine",
+      "options": {
+        "stories": { "type": "number", "default": 6, "min": 1, "max": 50, "description": "how many stories to show" },
+        "machine": { "type": "string", "description": "the agent machine it lives on (its id in Machines); the first with a Hatch agent when left out" }
+      }
+    },
+    "hatch-setup": {
+      "description": "how it's set up: its scheduled jobs, connectors and self-improvement objectives",
+      "live": "the agent's home folder, on its agent machine",
+      "options": {
+        "machine": { "type": "string", "description": "the agent machine it lives on (its id in Machines); the first with a Hatch agent when left out" }
+      }
+    }
+  }
+}

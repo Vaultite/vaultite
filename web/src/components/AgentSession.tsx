@@ -16,7 +16,7 @@ export type Tool = { kind: "tool"; id: string; name: string; summary: string; in
 export type Said = { kind: "user" | "assistant"; text: string; at: string }
 export type Entry = Said | Tool
 export type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
-export type SessionPage = Head & { id: string; project: string; start: number; total: number; entries: Entry[] }
+export type SessionPage = Head & { id: string; project: string; start: number; total: number; entries: Entry[]; speaker?: string }
 
 const PAGE = 150
 const EVERY = 10_000
@@ -69,14 +69,14 @@ function ToolLine({ t }: { t: Tool }) {
   )
 }
 
-function Message({ src, e }: { src: AgentSource; e: Said }) {
+function Message({ src, e, speaker }: { src: AgentSource; e: Said; speaker?: string }) {
   const you = e.kind === "user"
   const Icon = you ? User : src.icon
   return (
     <div className={cn("min-w-0", you && "rounded-[10px] bg-muted px-3 py-2.5")} data-entry={e.kind}>
       <div className="mb-1 flex items-center gap-1.5 text-[12px] font-semibold text-muted-foreground">
         <Icon className="size-3.5 shrink-0" strokeWidth={2.25} style={you ? undefined : { color: src.tint }} />
-        {you ? "You" : src.speaker ?? src.label}
+        {you ? "You" : speaker ?? src.speaker ?? src.label}
         {e.at && <span className="font-normal text-tertiary">{fmtTime(e.at)}</span>}
       </div>
       <Markdown text={e.text} className="min-w-0 break-words" />
@@ -114,7 +114,7 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
           {data.branch && <span>{data.branch}</span>}
         </div>
         {data.cwd && <div className="mt-1 truncate font-mono text-[12px] text-tertiary" data-tip={data.cwd} data-tip-trunc>{home(data.cwd)}</div>}
-        {on("terminal") && (
+        {on("terminal") && src.resume !== false && (
           <button type="button" data-resume onClick={() => openAgent(src.agent, { resume: data.id, machine })}
             data-tip={`Resumes it in ${home(data.cwd) || "the vault"}`}
             className="mt-4 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[7px] bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 active:opacity-80">
@@ -132,7 +132,7 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
         <div className="space-y-4">
           {groups.map(({ at, entries: g }) => (g[0].kind === "tool"
             ? <div key={at} className="-mx-1">{(g as Tool[]).map((t, j) => <ToolLine key={t.id || j} t={t} />)}</div>
-            : <Message key={at} src={src} e={g[0] as Said} />))}
+            : <Message key={at} src={src} e={g[0] as Said} speaker={data.speaker} />))}
         </div>
       )}
     </article>

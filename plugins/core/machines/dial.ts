@@ -36,9 +36,10 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
     return { online: !!h && c?.ws.readyState === WebSocket.OPEN, self: false, dial: true, readOnly: true, host: h?.host, platform: h?.platform,
       home: h?.home, plugins: [], error: h ? undefined : "not connected" }
   }
-  const request = (id: string, op: string, args: Item): Promise<unknown> => {
-    const c = connected.get(id)
-    if (!c?.hello || c.ws.readyState !== WebSocket.OPEN) throw new HTTPError(502, "The machine is offline. Start its file agent to reconnect.")
+  const ready = (id: string) => { const c = connected.get(id); return c?.hello && c.ws.readyState === WebSocket.OPEN ? c : null }
+  const once = (id: string, op: string, args: Item): Promise<unknown> => {
+    const c = ready(id)
+    if (!c) throw new HTTPError(502, "The machine is offline. Start its file agent to reconnect.")
     if (c.waiting.size >= 16) throw new HTTPError(429, "Too many file reads at once")
     return new Promise((resolve, reject) => {
       const rid = ++seq
@@ -48,6 +49,15 @@ export function dialIn(plugin: Plugin, entries: () => DialEntry[], selfId: () =>
         if (e) { clearTimeout(timer); c.waiting.delete(rid); reject(new HTTPError(502, "The connection ended")) }
       })
     })
+  }
+  // A dropped connection (a tunnel's hiccup) comes back within seconds: a read is asked again once it has, never twice.
+  const request = async (id: string, op: string, args: Item): Promise<unknown> => {
+    const was = !!ready(id)
+    try { return await once(id, op, args) } catch (e) {
+      if (!(e instanceof HTTPError) || e.status !== 502 || (!was && !connected.has(id))) throw e
+      for (let waited = 0; waited < 8000 && !ready(id); waited += 250) await new Promise((r) => setTimeout(r, 250))
+      return once(id, op, args)
+    }
   }
   const upgrade = (req: IncomingMessage, socket: Duplex, head: Buffer) => {
     const p = new URL(req.url ?? "/", "http://localhost").pathname

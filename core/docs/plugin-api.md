@@ -148,6 +148,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `machines:self` (machines)
 - `machines:vault` (machines)
 - `machines:ids` (machines)
+- `machines:fs` (machines)
 - `mcp:tool` (mcp): A tool by name for another plugin's route (one that doesn't hold the vault), as `client`, for request `req`: its Markdown answer, or an OpError/ToolError saying why not.
 - `mcp:upload-link` (mcp): A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload without the file), or null when the vault isn't on the internet.
 - `me:file` (me)

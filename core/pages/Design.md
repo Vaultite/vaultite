@@ -519,6 +519,27 @@ file: Projects/
 ```block-hermes-memory
 ```
 
+A Hatch agent (a personal AI on its own VM), read live from its home folder on an agent machine (`machine:`; the first with one when left out): `hatch` is who it is, its counts and what's left to tell it; `hatch-runs` its latest runs, each opening its conversation (`recent: 10`); `hatch-memory` what it learned (`notes: 3`); `hatch-dreams` its nightly dreams (`dreams: 2`); `hatch-feed` its feed's stories (`stories: 6`); `hatch-setup` its jobs, connectors and objectives.
+
+```block-hatch
+wide: true
+```
+
+```block-hatch-runs
+```
+
+```block-hatch-dreams
+```
+
+```block-hatch-memory
+```
+
+```block-hatch-feed
+```
+
+```block-hatch-setup
+```
+
 ## AI import
 
 `memory-review`: in a review list of memories from ChatGPT's or Claude's export (`Chats/ChatGPT/Memories to review.md`), how many are left and ticked, and Add: the ticked ones go into ME.md or the person's file. Here, with no list, it says there's nothing to review (`file:` draws another file's).

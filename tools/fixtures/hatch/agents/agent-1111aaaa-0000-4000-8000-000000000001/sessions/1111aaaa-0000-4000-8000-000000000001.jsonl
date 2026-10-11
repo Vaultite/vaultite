@@ -1,0 +1,7 @@
+{"type":"session_header","version":1,"session_id":"1111aaaa-0000-4000-8000-000000000001","agent_id":"1111aaaa-0000-4000-8000-000000000001","created_at":"2026-10-10T16:00:00.000000+00:00"}
+{"type":"item","seq":1,"source":"runtime.tool_guidance","item":{"type":"message","role":"user","text":"Use read before write."},"created_at":"2026-10-10T16:00:01+00:00"}
+{"type":"item","seq":2,"source":"runtime","item":{"type":"message","role":"user","text":"What's left before the Lighthouse launch? Keep it short."},"created_at":"2026-10-10T16:00:02+00:00"}
+{"type":"item","seq":3,"source":"runtime","item":{"type":"thinking","thinking":"Check the tracker."},"created_at":"2026-10-10T16:00:03+00:00"}
+{"type":"item","seq":4,"source":"runtime","item":{"type":"function_call","call_id":"call_1","name":"read","arguments":"{\"path\":\"~/workspace/launch.md\"}"},"created_at":"2026-10-10T16:00:04+00:00"}
+{"type":"item","seq":5,"source":"runtime","item":{"type":"function_call_output","call_id":"call_1","output":"- Press kit\n- Pricing page"},"created_at":"2026-10-10T16:00:05+00:00"}
+{"type":"item","seq":6,"source":"runtime","item":{"type":"message","role":"assistant","text":"Two things: the press kit and the pricing page."},"created_at":"2026-10-10T16:00:06+00:00"}
