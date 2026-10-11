@@ -412,8 +412,9 @@ export default function App() {
   const rightOpen = hasRight ? rightSidebar : emptyRight
   const showRight = !popout && (hasRight || emptyRight)
   const rside = showRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
-  // What's fixed to the window's right edge (the status bar) keeps clear of it.
+  // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   useEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
+  useEffect(() => { document.documentElement.style.setProperty("--left-sidebar", desktop ? side : "0px") }, [side, desktop])
 
   return (
     <>

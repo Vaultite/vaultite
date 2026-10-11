@@ -10,7 +10,7 @@ export function AmbientButton({ icon: Icon, text, tip, tint, onClick, className 
     <button type="button" onClick={onClick} aria-label={tip} data-tip={tip} data-tip-side="top"
       className={cn("flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1.5 hover:bg-foreground/[0.06] hover:text-foreground", className)}>
       <Icon className="size-3.5" strokeWidth={2.25} style={tint ? { color: tint } : undefined} />
-      {text !== undefined && <span>{text}</span>}
+      {text !== undefined && <span className="max-w-56 min-w-0 truncate">{text}</span>}
     </button>
   )
 }

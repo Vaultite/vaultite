@@ -47,6 +47,8 @@ export type Prefs = {
   lineNumbers: boolean
   /** The plugins' ambient items in the status bar, in order ("today:routines"); null: the ones not hidden. */
   statusBar: string[] | null
+  /** Those of them kept in the bar's tray (its "more" button) whatever room there is. */
+  statusBarMore: string[]
   fileSort: FileSort
   /** Files a folder shows in the tree before a "Show N more" row (its folders always show); 0: all of them. */
   folderLimit: number
@@ -72,11 +74,11 @@ export type Prefs = {
 const KEY = "vaultite.prefs"
 // (the appearance ones are core/bundles.ts' LOOK_DEFAULTS too: keep them the same)
 const DEFAULTS: Prefs = {
-  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", panelDividers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, fileSort: "name", folderLimit: 0, autoReveal: false, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", panelDividers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, statusBarMore: [], fileSort: "name", folderLimit: 0, autoReveal: false, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
-  appearance: ["theme", "scheme", "density", "sidebarScroll", "panelDividers", "interfaceFont", "textFont", "monoFont", "snippets", "fileIcons", "tabBar", "lineNumbers", "statusBar"], plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
+  appearance: ["theme", "scheme", "density", "sidebarScroll", "panelDividers", "interfaceFont", "textFont", "monoFont", "snippets", "fileIcons", "tabBar", "lineNumbers", "statusBar", "statusBarMore"], plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
 /** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */

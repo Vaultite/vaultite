@@ -532,7 +532,7 @@ export function BundlePreview({ id }: { id: string }) {
 
 const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons" }
 const APPEARANCE: Record<string, string> = {
-  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", lineNumbers: "Line numbers", statusBar: "Status bar", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels",
+  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels",
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
 }
 

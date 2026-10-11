@@ -2,7 +2,7 @@
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Columns2, Files, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Columns2, Files, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
@@ -136,6 +136,7 @@ export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
   const i: TabInfo = d.item.paths || d.item.tabs ? { label: d.item.label ?? "", icon: d.item.tabs ? Layers : Files }
     : d.item.folder ? { label: d.item.path!.split("/").pop()!, icon: Folder }
     : d.item.newtab ? { label: d.item.label ?? d.item.newtab.key, icon: d.item.newtab.list === "actions" ? MousePointerClick : LayoutList }
+    : d.item.status ? { label: d.item.label ?? d.item.status, icon: PanelBottom }
     : d.item.panel && !(d.item.to && d.hit?.target === PANES) ? { label: d.item.label ?? d.item.panel, icon: PanelTop }
     : d.item.group ? { label: d.item.label ?? "Pane", icon: AppWindow }
     : d.item.from === "row" && !d.item.to ? { label: d.item.label ?? d.item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: FileText }
