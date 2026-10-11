@@ -18,6 +18,12 @@ export type OpenEditor = {
    *  when there's nothing to undo. */
   undo?: () => boolean
   redo?: () => boolean
+  /** Is from..to text the reader sees (live preview and reading hide a link's address, a view's options)? What Find
+   *  finds. */
+  findable?: (state: EditorState, from: number, to: number) => boolean
+  /** The blocks drawn in place of their Markdown (a table, a callout, a view), with their elements while on screen;
+   *  `text` when drawn from their text, so what's found in them can be lit there. */
+  blocks?: () => { from: number; to: number; text: boolean; el: HTMLElement | null }[]
 }
 
 const open: OpenEditor[] = []

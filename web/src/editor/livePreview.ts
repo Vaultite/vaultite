@@ -970,6 +970,8 @@ const commentMarks = (t: string) => (t.replace(/`+[^`]*`+/g, "").match(/%%/g) ??
 /** A block that could be drawn: its lines (1-based) and its decorations. Whether it is depends on the cursor
  *  (touched) and on blocks drawn before it that hold it (a table in a callout): visible(). */
 type Cand = { from: number; to: number; a: number; b: number; decos: Range<Decoration>[]
+  /** What it is: its Block's key up to the first colon (table, callout, block, embed…), or "comment". */
+  kind: string
   /** A ```block-<name>: its name and options, for its notes and menu while its Markdown shows. */
   fence?: { name: string; text: string }
   /** Drawn wherever the cursor is (a comment's faint lines), and doesn't hide what's inside. */
@@ -993,7 +995,8 @@ function candidates(state: EditorState): Cands {
   const opens = new Map(fences.map((f) => [f.open + 1, f]))
   const add = (a: number, b: number, widget: WidgetType | null, always = false, fence?: Cand["fence"]) => {
     const from = row(a).from, to = row(b).to
-    list.push({ from, to, a, b, always, fence, decos: [widget ? Decoration.replace({ widget, block: true }).range(from, to) : Decoration.replace({ block: true }).range(from, to)] })
+    const kind = widget instanceof Block ? widget.key.split(":")[0] : "comment"
+    list.push({ from, to, a, b, always, fence, kind, decos: [widget ? Decoration.replace({ widget, block: true }).range(from, to) : Decoration.replace({ block: true }).range(from, to)] })
   }
   // A ```block-<name> fence (and ```mermaid, $$ math $$, <details>) to its closing line; nothing inside other code
   // fences, nor from a fence not closed yet (being typed: left as text).
@@ -1091,7 +1094,7 @@ function candidates(state: EditorState): Cands {
     else {
       const decos: Range<Decoration>[] = []
       for (let j = k; j <= end; j++) decos.push(Decoration.line({ class: "cm-comment" }).range(row(j).from))
-      list.push({ from: row(k).from, to: row(end).to, a: k, b: end, decos, always: true })
+      list.push({ from: row(k).from, to: row(end).to, a: k, b: end, decos, always: true, kind: "comment" })
     }
     k = end
   }
@@ -1214,6 +1217,86 @@ export function offBlocks(state: EditorState, pos: number): number | null {
   n = start
   for (let x = holder(n); x; x = holder(n)) n = x.a - 1
   return n >= 1 ? doc.line(n).to : null
+}
+
+// ---------- what find finds (plugins/core/find) ----------
+
+/** Blocks drawn as something other than their text (a view, a diagram, a formula, a file embedded): what their
+ *  Markdown says isn't on screen. */
+const OPAQUE = new Set(["block", "embed", "mermaid", "math"])
+/** Markdown's syntax that live preview and reading hide (a link's address, `**`, a heading's `#`, a picture). */
+const HIDDEN = new Set(["LinkTitle", "LinkMark", "HeaderMark", "EmphasisMark", "CodeMark", "CodeInfo", "QuoteMark", "StrikethroughMark", "TaskMarker", "HorizontalRule", "Image"])
+const CALLOUT_HEAD = /^(\s{0,3}>\s?\[![\w-]+\][+-]?)[ \t]*\S/
+
+/** Is from..to text the reader sees? Outside source mode a find skips a link's address, the Markdown around what it
+ *  marks, what a view or diagram is drawn from and, reading, comments; source mode shows (and finds) it all. */
+export function findable(state: EditorState, from: number, to: number): boolean {
+  const f = state.field(blockField, false)
+  if (!f?.c.cfg.live) return true
+  const read = f.c.read
+  for (const x of f.c.list) if (x.from < to && x.to > from && (OPAQUE.has(x.kind) || (read && x.kind === "comment"))) return false
+  const tree = syntaxTree(state)
+  let hidden = false
+  tree.iterate({
+    from, to,
+    enter: (n) => {
+      if (hidden) return false
+      if (n.to <= from || n.from >= to) return
+      const parent = n.node.parent?.name ?? ""
+      if (HIDDEN.has(n.name) || (n.name === "URL" && (parent === "Link" || parent === "Image"))
+        || (n.name === "ListMark" && n.node.parent?.parent?.name === "BulletList")) hidden = true
+    },
+  })
+  if (hidden) return false
+  // What's found by pattern on its line: [[a target|its alias]], ![[embeds]], $math$, ==marks==, footnotes, a
+  // callout's [!type] before its title; reading, %%comments%% and ^block-ids.
+  const l = state.doc.lineAt(from)
+  if (to > l.to || inCode(tree, from)) return true
+  const t = l.text, a0 = from - l.from, b0 = to - l.from
+  const over = (a: number, b: number) => a < b0 && b > a0
+  const each = (re: RegExp, hit: (m: RegExpExecArray) => boolean) => {
+    re.lastIndex = 0
+    for (let m; (m = re.exec(t));) if (hit(m)) return true
+    return false
+  }
+  if (t.includes("[[") && each(WIKI, (m) => {
+    const a = m.index, b = a + m[0].length, [, bang, target, alias] = m
+    if (bang) return over(a, b)
+    return over(a, alias ? a + 3 + target.length : a + 2) || over(b - 2, b)
+  })) return false
+  if (t.includes("$") && each(MATH, (m) => over(m.index, m.index + m[0].length))) return false
+  if (t.includes("==") && each(HIGHLIGHT, (m) => over(m.index, m.index + 2) || over(m.index + m[0].length - 2, m.index + m[0].length))) return false
+  if (t.includes("[^")) {
+    const d = FN_DEF.exec(t)
+    if (d && over(0, d[0].length)) return false
+    if (each(FN_REF, (m) => over(m.index, m.index + m[0].length))) return false
+  }
+  const callout = CALLOUT_HEAD.exec(t)
+  if (callout && over(0, callout[1].length)) return false
+  if (read) {
+    if (t.includes("%%") && each(COMMENT, (m) => over(m.index, m.index + m[0].length))) return false
+    const id = t.includes("^") ? BLOCK_ID.exec(t) : null
+    if (id && over(id.index, t.length)) return false
+  }
+  return true
+}
+
+/** The blocks drawn now in place of their Markdown, with their elements while on screen. `text`: drawn from their
+ *  text (a table, a callout), so what's found in it can be lit there. */
+export function drawnBlocks(view: EditorView): { from: number; to: number; text: boolean; el: HTMLElement | null }[] {
+  const f = view.state.field(blockField, false)
+  if (!f) return []
+  const els = new Map<number, HTMLElement>()
+  for (const el of view.contentDOM.querySelectorAll<HTMLElement>(".cm-block")) {
+    if (el.parentElement !== view.contentDOM) continue
+    try { els.set(view.posAtDOM(el), el) } catch { /* (being taken down) */ }
+  }
+  const out: { from: number; to: number; text: boolean; el: HTMLElement | null }[] = []
+  f.deco.between(0, view.state.doc.length, (from, to, d) => {
+    const w = d.spec.widget
+    if (d.spec.block && w instanceof Block) out.push({ from, to, text: !OPAQUE.has(w.key.split(":")[0]), el: els.get(from) ?? null })
+  })
+  return out
 }
 
 /** ↑ and ↓ into a block put the cursor in its Markdown, like a click; CodeMirror alone moves over a drawn block in one

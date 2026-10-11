@@ -60,14 +60,14 @@ export function StatusBar() {
       {s && <span aria-hidden className="ml-1 h-3.5 w-px bg-border" />}
     </span>
   )
-  if (!s) return ambient.length ? <div role="status" className={bar} onContextMenu={menuFor(ambientMenu)}>{own}</div> : null
+  if (!s) return ambient.length ? <div role="status" data-status-bar className={bar} onContextMenu={menuFor(ambientMenu)}>{own}</div> : null
   const cur = MODES[s.mode]
   const tip = `Current view: ${VIEWS.find((v) => v.value === s.mode)!.label.toLowerCase()}`
   // Click or right-click: the file's views (three, or reading and source), the current one checked.
   const menu = (e: MouseEvent) => menuAbove(e, s.views.map((v) => ({ label: v.label, checked: v.value === s.mode, run: () => s.setMode(v.value) })))
   const n = (x: number, one: string) => `${numberText(x)} ${one}${x === 1 ? "" : "s"}`
   return (
-    <div role="status" className={bar} onContextMenu={menuFor(ambientMenu)}>
+    <div role="status" data-status-bar className={bar} onContextMenu={menuFor(ambientMenu)}>
       {own}
       {items.filter((x) => !x.item.after).map(({ key, item }) => item_(key, () => item.render(file)))}
       {s.views.length > 1 ? (

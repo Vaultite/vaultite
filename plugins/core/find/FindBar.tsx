@@ -5,19 +5,23 @@ import { createRoot, type Root } from "react-dom/client"
 import { flushSync } from "react-dom"
 import { CaseSensitive, ChevronDown, ChevronRight, ChevronUp, Regex, WholeWord, X } from "lucide-react"
 import { EditorView, keymap, type Panel, type ViewUpdate } from "@codemirror/view"
-import { Prec, StateField, type EditorState, type Extension } from "@codemirror/state"
+import { EditorSelection, Prec, StateEffect, StateField, type EditorState, type Extension, type SelectionRange } from "@codemirror/state"
 import {
   closeSearchPanel, findNext, findPrevious, getSearchQuery, openSearchPanel, replaceAll, replaceNext, search, searchPanelOpen, SearchQuery, setSearchQuery,
 } from "@codemirror/search"
-import { cn, commandKeys, editorOf, keyHint, numberText } from "@vaultite"
+import { cn, commandKeys, editorOf, keyHint, numberText, openAround, textRanges } from "@vaultite"
 
 /** Counting stops here: a find in a huge file stays quick ("1,000+"). */
-const MAX = 1000
+export const MAX = 1000
 
 type Spec = { search: string; replace: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
-/** A query that finds only what's shown: not in the frontmatter a note's editor hides. */
+/** A query that finds only what's shown: not in the frontmatter a note's editor hides, nor (outside source mode) in
+ *  a link's address or what a view is drawn from. */
 const queryIn = (view: EditorView, q: Spec) => new SearchQuery({ search: q.search, replace: q.replace, caseSensitive: q.caseSensitive, regexp: q.regexp,
-  wholeWord: q.wholeWord, test: (_m, state, from) => from >= (editorOf(view)?.start?.(state) ?? 0) })
+  wholeWord: q.wholeWord, test: (_m, state, from, to) => {
+    const ed = editorOf(view)
+    return from >= (ed?.start?.(state) ?? 0) && (ed?.findable?.(state, from, to) ?? true)
+  } })
 
 type Count = { total: number; current: number; more: boolean }
 
@@ -42,13 +46,82 @@ function seek(view: EditorView, q: SearchQuery) {
   let m = q.getCursor(view.state, from).next()
   if (m.done) m = q.getCursor(view.state, 0, from + q.search.length).next()
   if (m.done) return
-  view.dispatch({ selection: { anchor: m.value.from, head: m.value.to }, effects: EditorView.scrollIntoView(m.value.from, { y: "center" }), userEvent: "select.search" })
+  const range = EditorSelection.range(m.value.from, m.value.to)
+  view.dispatch({ selection: range, effects: scrollTo(range, view), userEvent: "select.search" })
 }
 
-const tool = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
-const field = "h-7 w-full min-w-0 rounded-[6px] bg-card px-2 text-[13px] text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-primary/60 max-md:h-9 max-md:text-[16px]"
+// Matches in drawn blocks (a table, a callout, a <details>), where CodeMirror can't mark or scroll: lit with CSS
+// highlights in what's drawn, the current one taken into view.
 
-function Toggle({ on, label, keys, onClick, children }: { on: boolean; label: string; keys?: string; onClick: () => void; children: ReactNode }) {
+/** The query as a pattern for text on screen, as CodeMirror matches it. */
+export function pattern(q: SearchQuery): RegExp | null {
+  if (!q.search || !q.valid) return null
+  let src = q.regexp ? q.search
+    : (q.literal ? q.search : q.search.replace(/\\([nrt\\])/g, (_, c) => (c === "n" ? "\n" : c === "r" ? "\r" : c === "t" ? "\t" : "\\"))).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+  if (q.wholeWord) src = `(?<![\\p{L}\\p{N}_])(?:${src})(?![\\p{L}\\p{N}_])`
+  for (const flags of ["gmu", "gm"]) {
+    try { return new RegExp(src, flags + (q.caseSensitive ? "" : "i")) } catch { /* (valid only without u) */ }
+  }
+  return null
+}
+
+/** What each find open (an editor's bar, a page's) lights, joined into the page's two highlights (index.css colours
+ *  them). */
+export const lit = new Map<object, { all: Range[]; current: Range | null }>()
+export function paintLit() {
+  if (typeof CSS === "undefined" || !("highlights" in CSS)) return
+  const all = [...lit.values()].flatMap((x) => x.all), cur = [...lit.values()].flatMap((x) => (x.current ? [x.current] : []))
+  if (all.length) CSS.highlights.set("vau-find", new Highlight(...all)); else CSS.highlights.delete("vau-find")
+  if (cur.length) { const h = new Highlight(...cur); h.priority = 1; CSS.highlights.set("vau-find-current", h) } else CSS.highlights.delete("vau-find-current")
+}
+
+/** The nearest box around `el` that scrolls, `axis` being x or y. */
+export function scroller(el: Element | null, axis: "x" | "y", stop?: Element): HTMLElement | null {
+  for (; el && el !== stop; el = el.parentElement) {
+    const cs = getComputedStyle(el), o = axis === "x" ? cs.overflowX : cs.overflowY
+    if (/auto|scroll/.test(o) && (axis === "x" ? el.scrollWidth > el.clientWidth : el.scrollHeight > el.clientHeight)) return el as HTMLElement
+  }
+  return null
+}
+
+/** Take a match drawn in a block into view: its <details> opened, a wide table scrolled sideways to it, and the pane
+ *  scrolled to put it in the middle, as CodeMirror does with what it finds in text. */
+function show(view: EditorView, r: Range | Element) {
+  reveal(r, view.contentDOM, scroller(view.scrollDOM, "y"), view.dom.querySelector(".cm-panels-top"))
+}
+
+/** Take what was found into view: its <details> opened, what scrolls sideways inside `within` (a wide table) scrolled
+ *  to it, and `sc` scrolled to put it in the middle of what shows below `bar`. */
+export function reveal(r: Range | Element, within: Element, sc: HTMLElement | null, bar?: Element | null) {
+  const inside = r instanceof Range ? r.startContainer.parentElement : null
+  if (r instanceof Range) openAround(r)
+  for (let el = scroller(inside, "x", within); el; el = scroller(el.parentElement, "x", within)) {
+    const m = r.getBoundingClientRect(), e = el.getBoundingClientRect(), pad = 24
+    if (m.left < e.left + pad) el.scrollLeft -= e.left + pad - m.left
+    else if (m.right > e.right - pad) el.scrollLeft += Math.min(m.right - (e.right - pad), m.left - (e.left + pad))
+  }
+  if (!sc) return
+  const m = r.getBoundingClientRect(), s = sc.getBoundingClientRect()
+  const top = Math.max(s.top, bar?.getBoundingClientRect().bottom ?? s.top)
+  sc.scrollTop += Math.round((m.top + m.bottom) / 2 - (top + s.bottom) / 2)
+}
+
+/** Nothing for CodeMirror to scroll: the find bar takes the match into view itself. */
+const shownByBar = StateEffect.define<null>()
+
+/** How a match is taken into view: by CodeMirror when it's text, by the bar when it's in a drawn block. */
+function scrollTo(range: SelectionRange, view: EditorView): StateEffect<unknown> {
+  const panel = panels.get(view)
+  const block = panel && editorOf(view)?.blocks?.().find((b) => b.from <= range.from && range.from < b.to)
+  if (!panel || !block) return EditorView.scrollIntoView(range, { y: "center" })
+  panel.target = { pos: range.from, tries: 0 }
+  return shownByBar.of(null)
+}
+
+export const tool = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent max-md:size-9"
+export const field = "h-7 w-full min-w-0 rounded-[6px] bg-card px-2 text-[13px] text-foreground outline-none ring-1 ring-border placeholder:text-muted-foreground focus:ring-primary/60 max-md:h-9 max-md:text-[16px]"
+
+export function Toggle({ on, label, keys, onClick, children }: { on: boolean; label: string; keys?: string; onClick: () => void; children: ReactNode }) {
   return (
     <button type="button" aria-label={label} aria-pressed={on} data-tip={keys ? `${label} (${keys})` : label} onClick={onClick} onMouseDown={(e) => e.preventDefault()}
       className={cn(tool, on && "bg-primary/15 text-primary hover:bg-primary/20 hover:text-primary")}>{children}</button>
@@ -142,6 +215,11 @@ class FindPanel implements Panel {
   count: Count = { total: 0, current: 0, more: false }
   counted: { query: SearchQuery; doc: unknown; sel: unknown } | null = null
   timer: ReturnType<typeof setTimeout> | null = null
+  /** A match in a drawn block to take into view once it's drawn. */
+  target: { pos: number; tries: number } | null = null
+  frame = 0
+  /** Blocks draw late (a section's React, a picture's height): light them again when they do. */
+  watcher: MutationObserver
 
   constructor(view: EditorView) {
     this.view = view
@@ -149,9 +227,12 @@ class FindPanel implements Panel {
     this.dom.className = "vau-find"
     this.root = createRoot(this.dom)
     panels.set(view, this)
+    this.watcher = new MutationObserver(() => this.light())
+    this.watcher.observe(view.contentDOM, { childList: true, subtree: true, characterData: true })
   }
-  mount() { this.recount(); this.draw(true) }
+  mount() { this.recount(); this.draw(true); this.light() }
   update(u: ViewUpdate) {
+    this.light()
     const q = getSearchQuery(u.state), was = getSearchQuery(u.startState)
     const ro = u.state.readOnly !== u.startState.readOnly
     if (!q.eq(was) || u.selectionSet || ro) { this.recount(); this.draw(false) }
@@ -163,9 +244,57 @@ class FindPanel implements Panel {
   }
   destroy() {
     if (this.timer) clearTimeout(this.timer)
+    cancelAnimationFrame(this.frame)
+    this.watcher.disconnect()
+    lit.delete(this.view)
+    paintLit()
     panels.delete(this.view)
     const root = this.root
     setTimeout(() => root.unmount(), 0)
+  }
+  /** Light what's found in the drawn blocks on screen (next frame, once however often it's asked), and take the
+   *  current match into view if it was just stepped to. */
+  light() {
+    if (this.frame) return
+    this.frame = requestAnimationFrame(() => {
+      this.frame = 0
+      const { view } = this, state = view.state, q = getSearchQuery(state), re = pattern(q)
+      const blocks = re ? (editorOf(view)?.blocks?.() ?? []) : []
+      const all: Range[] = []
+      let current: Range | null = null
+      const sel = state.selection.main
+      for (const b of blocks) {
+        if (!b.text || !b.el || !re) continue
+        const found = textRanges(b.el.querySelector<HTMLElement>(".cm-block-body") ?? b.el, re, MAX)
+        all.push(...found)
+        if (!this.count.current || sel.from < b.from || sel.from >= b.to || !found.length) continue
+        // The current match is the block's k-th in its Markdown: the k-th drawn (what's found is what's shown).
+        let k = 0
+        const cur = q.getCursor(state, b.from, sel.from)
+        for (let m = cur.next(); !m.done; m = cur.next()) if (m.value.from < sel.from) k++
+        current = found[Math.min(k, found.length - 1)]
+      }
+      lit.set(view, { all, current })
+      paintLit()
+      const t = this.target
+      if (!t) return
+      const block = blocks.find((b) => b.from <= t.pos && t.pos < b.to)
+      if (!block || ++t.tries > 4) { this.target = null; return }
+      if (!block.el) {
+        // Off screen, so not drawn: scrolled to where the editor reckons it is, and the match in it once it's drawn.
+        const sc = scroller(view.scrollDOM, "y")
+        if (sc && t.tries === 1) sc.scrollTop += Math.round(view.documentTop + view.lineBlockAt(block.from).top - sc.getBoundingClientRect().top - sc.clientHeight / 3)
+        return
+      }
+      this.target = null
+      show(view, current ?? block.el)
+      // (the editor may still move it as it learns the heights of what it just drew: once more after)
+      const again = current ?? block.el
+      setTimeout(() => {
+        const there = again instanceof Range ? !again.collapsed && again.startContainer.isConnected : again.isConnected
+        if (there && !this.target) show(view, again)
+      }, 100)
+    })
   }
   recount() {
     const s = this.view.state, q = getSearchQuery(s)
@@ -194,7 +323,7 @@ const installed = StateField.define<boolean>({ create: () => true, update: (v) =
 /** What the plugin adds to every editor: the search, its matches' colours, the bar, and ⌘G / ⇧⌘G in the text. */
 export const findExtension: Extension = [
   installed,
-  search({ top: true, createPanel: (view) => new FindPanel(view), scrollToMatch: (range) => EditorView.scrollIntoView(range, { y: "center" }) }),
+  search({ top: true, createPanel: (view) => new FindPanel(view), scrollToMatch: scrollTo }),
   Prec.high(keymap.of([
     { key: "Mod-g", run: (v) => searchPanelOpen(v.state) && findNext(v), shift: (v) => searchPanelOpen(v.state) && findPrevious(v) },
     { key: "Escape", run: (v) => { if (!searchPanelOpen(v.state)) return false; closeSearchPanel(v); return true } },

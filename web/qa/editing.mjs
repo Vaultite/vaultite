@@ -1,5 +1,5 @@
 // Editing: find and replace in a file (plugins/core/find: ⌘F, ⌥⌘F, the count, Enter, replace all, find
-// only while reading), folding (plugins/core/folding: the chevron on hover, a folded heading hides its section and is
+// only while reading, matches in drawn tables, callouts and <details>, a dashboard's find), folding (plugins/core/folding: the chevron on hover, a folded heading hides its section and is
 // remembered, Fold all / Unfold all, a `#` line in code isn't a heading), page preview (plugins/core/page-preview: a
 // [[link]] previews its note on hover while reading, needs ⌘ while editing, links in it work, it closes when the pointer
 // leaves) and All properties (plugins/core/properties: the panel's counts, rename everywhere with Undo). Screenshots in
@@ -10,7 +10,8 @@ import { SHOTS, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const json = { "Content-Type": "application/json" }
-const NOTE = "Qa editing/Folding and finding.md", OTHER = "Qa editing/Linked note.md"
+const NOTE = "Qa editing/Folding and finding.md", OTHER = "Qa editing/Linked note.md", BLOCKS = "Qa editing/Find in blocks.md",
+  DASH = "Qa editing/Find dashboard.md"
 const write = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: json, body: JSON.stringify({ path, text, base: null }) })
 const read = async (path) => (await (await fetch(`${B}api/file?path=${encodeURIComponent(path)}`)).json()).text
 const props = async () => (await (await fetch(`${B}api/properties`)).json())
@@ -106,6 +107,42 @@ check(`reading view finds (${await count()})`, /1/.test(await count()))
 await page.keyboard.press("Escape"); await wait(200)
 await page.keyboard.press("ControlOrMeta+e"); await wait(800)
 
+// In drawn blocks (a table, a callout, a closed <details>): lit where they're drawn and taken into view; outside source
+// mode, not what isn't shown (the frontmatter, a link's address).
+await write(BLOCKS, `---\ntype: note\nqa_word: zebra\n---\n\nA zebra up top, and a [link](https://zebra.example).\n\n${Array.from({ length: 40 }, (_, i) => `Filler ${i}.`).join("\n\n")}
+\n| Animal | Note |\n| --- | --- |\n${Array.from({ length: 20 }, (_, i) => `| ${i === 14 ? "zebra" : "horse"} | row ${i} |`).join("\n")}\n\n> [!note] A callout\n> With a zebra.\n\n<details><summary>More</summary>\n\nA zebra folded away.\n\n</details>\n\nEnd.\n`)
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(BLOCKS)}`); await wait(2000)
+await palette("Switch to live preview")
+await line("A zebra up top").click(); await page.keyboard.press("Home"); await wait(200)
+await page.keyboard.press("ControlOrMeta+f"); await wait(400)
+await page.keyboard.type("zebra"); await wait(400)
+check(`live preview finds what's shown, not the frontmatter or a link's address (${await count()})`, await count() === "1 of 4")
+const current = () => page.evaluate(() => {
+  const r = [...(CSS.highlights.get("vau-find-current") ?? [])][0], box = r?.getBoundingClientRect()
+  const head = document.querySelector(".cm-panels-top")?.getBoundingClientRect().bottom ?? 0
+  return { in: r?.startContainer.parentElement?.closest(".cm-block")?.className.match(/cm-block-(\w+)/)?.[1] ?? null, seen: !!box && box.top >= head && box.bottom <= innerHeight }
+})
+await page.keyboard.press("Enter"); await wait(500)
+let at = await current()
+check(`Enter goes to the one in the table: lit in its cell, in sight (${JSON.stringify(at)})`, at.in === "table" && at.seen)
+await page.keyboard.press("Enter"); await wait(500)
+at = await current()
+check(`then the callout's (${JSON.stringify(at)})`, at.in === "callout" && at.seen)
+await page.keyboard.press("Enter"); await wait(500)
+at = await current()
+check(`then the closed <details>' one: opened, in sight (${JSON.stringify(at)})`, at.in === "details" && at.seen && await page.locator(".cm-block-details details[open]").count() === 1)
+check("the others in blocks are lit too", await page.evaluate(() => CSS.highlights.get("vau-find")?.size ?? 0) >= 2)
+await page.keyboard.press("Escape"); await wait(300)
+check("closing the bar puts the highlights away", await page.evaluate(() => !CSS.highlights.has("vau-find") && !CSS.highlights.has("vau-find-current")))
+await palette("Switch to source mode")
+await ed.locator(".cm-content").focus(); await page.keyboard.press("ControlOrMeta+ArrowUp"); await wait(200)
+await page.keyboard.press("ControlOrMeta+f"); await wait(400)
+await page.keyboard.type("zebra"); await wait(400)
+check(`source mode finds it all (${await count()})`, await total() === 6)
+await page.keyboard.press("Escape"); await wait(200)
+await palette("Switch to live preview")
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await wait(2000)
+
 // ---------- folding ----------
 const apples = line("Apples")
 await apples.hover(); await wait(300)
@@ -197,6 +234,23 @@ await line("Banana bread").click(); await page.keyboard.press("ControlOrMeta+Alt
 await line("Apples").hover(); await wait(300)
 await shot("find-dark")
 await page.keyboard.press("Escape")
+
+// A page that isn't a text file (a dashboard): ⌘F finds in what it draws.
+await write(DASH, `---\ntype: dashboard\n---\n\nA marmot up top.\n\n${Array.from({ length: 60 }, (_, i) => (i % 15 === 14 ? `Line ${i}, a marmot.` : `Line ${i}.`)).join("\n\n")}\n`)
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(DASH)}`); await wait(2500)
+await page.locator("#main-scroll").click({ position: { x: 400, y: 300 } }); await wait(200)
+await page.keyboard.press("ControlOrMeta+f"); await wait(600)
+check("a dashboard: ⌘F opens the page's find bar", await page.locator("[data-page-find]").count() === 1)
+await page.keyboard.type("marmot"); await wait(500)
+const pageCount = await page.locator("[data-page-find] [data-find-count]").textContent()
+await page.keyboard.press("Enter"); await wait(400)
+const lit = await page.evaluate(() => {
+  const r = [...(CSS.highlights.get("vau-find-current") ?? [])][0]?.getBoundingClientRect()
+  return { all: CSS.highlights.get("vau-find")?.size ?? 0, seen: !!r && r.top > 0 && r.bottom < innerHeight }
+})
+check(`it counts what's drawn and Enter goes to the next, lit and in sight (${pageCount}, ${JSON.stringify(lit)})`, pageCount === "1 of 5" && lit.all === 5 && lit.seen)
+await page.keyboard.press("Escape"); await wait(300)
+check("Escape closes it and puts the highlights away", await page.locator("[data-page-find]").count() === 0 && await page.evaluate(() => !CSS.highlights.has("vau-find")))
 await ctx.close()
 
 // A phone: no previews, the find bar fits.

@@ -110,6 +110,7 @@ export { backlinks, followLink, mentions, openTag, openWebLink, plainText, resol
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
 export { openAt, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, selectedText, type OpenEditor } from "@/core/editors"
+export { openAround, textRanges } from "@/core/findText"
 export { hasTag, headingsOf, tagName, tagsOf, withoutBlocks } from "../../core/sections.ts"
 // Archiving (`archived: true` in any file; core/fileprops.ts, shared with the server): is this item (a person, a book:
 // the vault marks every kind's items) or frontmatter archived? Lists leave those out.

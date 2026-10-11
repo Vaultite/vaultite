@@ -1,7 +1,8 @@
 // The Vim plugin outside the editor (app.tsx): in a note's reading view j/k, gg/G scroll the pane, ]] goes to the next
-// heading, f puts hints on links and typing one opens it, / finds and n goes to the next match, : runs :e <name> and
-// :q, ? opens the keys sheet (and closes it), i edits where you were reading (the cursor in sight), and j still types
-// in a text field. WRITES a "Qa vimapp" folder and plugins.json's `enabled`: throwaway only.
+// heading, f puts hints on links and typing one opens it, / finds (in a drawn table too, above the status bar) and n
+// goes to the next match, : runs :e <name> and :q, ? opens the keys sheet (and closes it), i edits where you were
+// reading (the cursor in sight), and j still types in a text field. WRITES a "Qa vimapp" folder and plugins.json's
+// `enabled`: throwaway only.
 //   node web/qa/vimapp.mjs <base url> [out dir]
 import { apiAt, palette, qa, SHOTS, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
@@ -21,6 +22,9 @@ for (let s = 1; s <= 8; s++) {
   for (let i = 1; i <= 8; i++) lines.push(para(`${s}.${i}`), "")
   if (s === 1) lines.push("See [[Target]] for more.", "")
   if (s === 3 || s === 6 || s === 8) lines.push("A needle in this section.", "")
+  // (found in a drawn table's cell; not in a link's address, which isn't shown)
+  if (s === 2) lines.push("A [link](https://needle.example) out.", "")
+  if (s === 5) lines.push("| Thing | Where |", "| --- | --- |", "| hay | barn |", "| needle | table |", "")
   sections.push(lines.join("\n"))
 }
 for (const p of [LONG, TARGET]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
@@ -108,8 +112,10 @@ await page.locator(".cm-line", { hasText: "Paragraph 1.2" }).first().click(); aw
 
 // / finds; n goes from match to match.
 await page.keyboard.press("/"); await wait(300)
+const bar = await page.locator("[data-vim-find]").boundingBox(), status = await page.locator("[data-status-bar]").boundingBox()
+check("the find bar is above the status bar", !!bar && (!status || bar.y + bar.height <= status.y + 1))
 await page.keyboard.type("needle"); await wait(300)
-check("/ counts the matches, the ones not drawn yet too", await page.getByText("3 matches").count() === 1)
+check("/ counts the matches, the ones not drawn yet and in a table too, not a link's address", await page.getByText("4 matches").count() === 1)
 await page.keyboard.press("Enter"); await wait(400)
 const f1 = await top()
 const lit = await page.evaluate(() => CSS.highlights.get("vim-find-current")?.size ?? 0)
@@ -117,6 +123,11 @@ check(`Enter goes to the first match, highlighted (${f1})`, f1 > 500 && lit === 
 await page.keyboard.press("n"); await wait(400)
 const f2 = await top()
 check(`n goes to the next match (${f2})`, f2 > f1)
+const cell = await page.evaluate(() => {
+  const r = [...(CSS.highlights.get("vim-find-current") ?? [])][0], box = r?.getBoundingClientRect()
+  return { cell: !!r?.startContainer.parentElement?.closest(".cm-block-table td"), seen: !!box && box.top > 0 && box.bottom < innerHeight }
+})
+check(`one in a drawn table is lit in its cell, in sight (${JSON.stringify(cell)})`, cell.cell && cell.seen)
 await page.keyboard.press("Shift+N"); await wait(400)
 check("N goes back", (await top()) < f2)
 await page.screenshot({ path: `${OUT}vimapp-find.png` })

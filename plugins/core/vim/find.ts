@@ -1,7 +1,7 @@
-// Vim's / and n outside the editor: matches in the focused pane highlighted with the CSS Custom Highlight API; a note is
-// searched in its editor's document, so lines not drawn yet count. Smartcase; the highlights stay until Escape.
+// Vim's / and n outside the editor: matches in the focused pane lit with CSS highlights; a note is searched in what its
+// editor shows (not its frontmatter or a link's address), drawn tables included. Smartcase; lit until Escape.
 import type { EditorView } from "@codemirror/view"
-import { onTabLayoutChange } from "@vaultite"
+import { editorOf, onTabLayoutChange, openAround, textRanges } from "@vaultite"
 import { mainEditor, scroller } from "./scroll"
 
 type Match = { y: number } & ({ dom: Range } | { view: EditorView; from: number; to: number })
@@ -13,38 +13,37 @@ let root: HTMLElement | null = null
 
 const supported = () => typeof CSS !== "undefined" && "highlights" in CSS && typeof Highlight !== "undefined"
 
+/** The query as a pattern: smartcase (any capital, and case counts). */
 function needle(q: string) {
-  const exact = /[A-Z]/.test(q)
-  return { exact, q: exact ? q : q.toLowerCase() }
+  return new RegExp(q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), /[A-Z]/.test(q) ? "g" : "gi")
 }
 
-/** The DOM matches of `q` under `el`, outside the note's editor (searched in its text instead). */
-function domMatches(el: HTMLElement, q: string, exact: boolean) {
-  const out: Range[] = []
-  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT, {
-    acceptNode: (n) => {
-      const p = n.parentElement
-      if (!p || p.closest(".cm-editor, script, style, [aria-hidden=true], [data-vim-find]")) return NodeFilter.FILTER_REJECT
-      return NodeFilter.FILTER_ACCEPT
-    },
-  })
-  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
-    const text = exact ? n.nodeValue ?? "" : (n.nodeValue ?? "").toLowerCase()
-    for (let i = text.indexOf(q); i >= 0; i = text.indexOf(q, i + q.length)) {
-      const r = document.createRange()
-      r.setStart(n, i)
-      r.setEnd(n, i + q.length)
-      out.push(r)
-    }
+/** Each drawn block's matches in a paint, found once (its element, and what's lit in it). */
+type Drawn = { from: number; to: number; ranges: Range[]; first?: number }
+let drawn: Map<EditorView, Drawn[]> | null = null
+function drawnIn(view: EditorView): Drawn[] {
+  drawn ??= new Map()
+  let list = drawn.get(view)
+  if (!list) {
+    const re = needle(query)
+    list = (editorOf(view)?.blocks?.() ?? []).filter((b) => b.text && b.el).map((b) => ({ from: b.from, to: b.to, ranges: textRanges(b.el!.querySelector<HTMLElement>(".cm-block-body") ?? b.el!, re) }))
+    drawn.set(view, list)
   }
-  return out
+  return list
 }
 
-/** A note match as a DOM range, if CodeMirror has drawn it. */
-function rangeOf(m: Match) {
+/** A note match as a DOM range, if CodeMirror has drawn it: in a drawn table or callout, the block's k-th match drawn
+ *  for its k-th in the text. */
+function rangeOf(m: Match, i: number) {
   if ("dom" in m) return m.dom
   const { view, from, to } = m
   if (from < view.viewport.from || to > view.viewport.to) return null
+  const block = drawnIn(view).find((b) => b.from <= from && from < b.to)
+  if (block) {
+    // (a block's matches are next to each other in the list: one place down the page)
+    block.first ??= matches.findIndex((x) => "view" in x && x.view === view && x.from >= block.from && x.from < block.to)
+    return block.ranges.length ? block.ranges[Math.min(i - block.first, block.ranges.length - 1)] : null
+  }
   try {
     const a = view.domAtPos(from), b = view.domAtPos(to)
     const r = document.createRange()
@@ -58,7 +57,8 @@ function rangeOf(m: Match) {
 function paint() {
   if (!supported()) return
   const all = new Highlight(), cur = new Highlight()
-  matches.forEach((m, i) => { const r = rangeOf(m); if (r) (i === current ? cur : all).add(r) })
+  drawn = null
+  matches.forEach((m, i) => { const r = rangeOf(m, i); if (r) (i === current ? cur : all).add(r) })
   CSS.highlights.set("vim-find", all)
   CSS.highlights.set("vim-find-current", cur)
 }
@@ -88,15 +88,19 @@ export function search(q: string) {
   clearFind()
   root = scroller()
   if (!root || !q) return 0
-  const { exact, q: n } = needle(q)
+  const re = needle(q)
   const box = root.getBoundingClientRect()
   const found: Match[] = []
-  for (const r of domMatches(root, n, exact)) found.push({ dom: r, y: r.getBoundingClientRect().top - box.top + root.scrollTop })
+  for (const r of textRanges(root, re, 5000, ".cm-editor, [data-vim-find]")) found.push({ dom: r, y: r.getBoundingClientRect().top - box.top + root.scrollTop })
   const view = mainEditor(root)
   if (view) {
-    const text = exact ? view.state.doc.toString() : view.state.doc.toString().toLowerCase()
-    for (let i = text.indexOf(n); i >= 0; i = text.indexOf(n, i + n.length)) {
-      found.push({ view, from: i, to: i + n.length, y: view.lineBlockAt(i).top + view.documentTop - box.top + root.scrollTop })
+    const { state } = view, ed = editorOf(view), start = ed?.start?.(state) ?? 0
+    const text = state.doc.toString()
+    re.lastIndex = start
+    for (let m = re.exec(text); m; m = re.exec(text)) {
+      const from = m.index, to = from + m[0].length
+      if (ed?.findable && !ed.findable(state, from, to)) continue
+      found.push({ view, from, to, y: view.lineBlockAt(from).top + view.documentTop - box.top + root.scrollTop })
     }
   }
   matches = found.sort((a, b) => a.y - b.y)
@@ -116,9 +120,19 @@ export function go(dir: 1 | -1) {
     current = i < 0 ? (dir > 0 ? 0 : matches.length - 1) : i
   } else current = (current + dir + matches.length) % matches.length
   root.scrollTo({ top: Math.max(0, matches[current].y - root.clientHeight / 3), behavior: "auto" })
-  // (A note's editor draws the lines it scrolled to on its next frame.)
+  // (A note's editor draws the lines it scrolled to on its next frame; one in a drawn table is then taken to its row.)
   repaint()
-  requestAnimationFrame(repaint)
+  const m = matches[current], i = current, el = root
+  requestAnimationFrame(() => {
+    drawn = null
+    const r = rangeOf(m, i)
+    if (r && "view" in m) {
+      openAround(r)
+      const at = r.getBoundingClientRect(), box = el.getBoundingClientRect()
+      if (at.top < box.top || at.bottom > box.bottom - el.clientHeight / 4) el.scrollTop += at.top - box.top - el.clientHeight / 3
+    }
+    repaint()
+  })
   return true
 }
 

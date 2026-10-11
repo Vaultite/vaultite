@@ -194,7 +194,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       { role: "pasteAndMatchStyle", label: "Paste as plain text" },
       { role: "delete" }, { role: "selectAll" },
       sep,
-      cmd("find:open", "Find in note", "search", { always: true }),
+      cmd("find:open", "Find", "search", { always: true }),
       cmd("find:replace", "Find and replace", "replace", { always: true }),
       cmd("search:open-tab", "Search the vault", "text-search"),
       sep,

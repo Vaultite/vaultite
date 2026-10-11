@@ -453,6 +453,13 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 [data-anchored], [data-anchored] * { overflow-anchor: none; }
 @media (max-width: 767px) { #main-scroll { --vau-panel-top: calc(env(safe-area-inset-top) + var(--spacing) * 11); } }
 dialog { --vau-panel-top: 0px; }
+/* Bottom panels (Vim's command line) stick at the pane's foot: on a computer, above the status bar drawn over it. */
+@media (min-width: 768px) { [data-pane], [data-kept] { --vau-panel-bottom: calc(var(--spacing) * 7); } }
+dialog { --vau-panel-bottom: 0px; }
+.vau-editor .cm-editor .cm-panels-bottom { padding-bottom: var(--vau-panel-bottom, 0px); }
+/* What a find lights where it can't mark the text (a drawn table, a page: core/findText.ts), as its matches in text. */
+::highlight(vau-find) { background-color: color-mix(in srgb, var(--yellow) 32%, transparent); }
+::highlight(vau-find-current) { background-color: color-mix(in srgb, var(--orange) 50%, transparent); }
 /* Desktop: 16px text, line height 1.5; phones a point bigger (iOS body size). Headings are sized
    relative to it (em), so they follow. */
 @media (min-width: 768px) {

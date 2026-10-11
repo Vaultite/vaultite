@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Find (⌘F, Vim's /) lights and scrolls to matches in tables, callouts and folded details, skips text that isn't shown outside source mode, finds on pages that aren't text files (a dashboard, Today), and Vim's bars sit above the status bar.
 - **Themes reach everything**: Change colour scheme lists every scheme in the palette and shows the whole app in the
   one you're on as you move; terminals, the graph, maps, diagrams and HTML pages follow snippets and vault themes too,
   Claude Code in the app's terminals draws in the scheme's colours, and the browser's bars take its background.

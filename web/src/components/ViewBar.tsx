@@ -29,7 +29,7 @@ function NavButtons() {
 
 export function ViewBar({ children, right, className }: { children?: ReactNode; right?: ReactNode; className?: string }) {
   return (
-    <div className={cn("sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
+    <div data-view-bar className={cn("sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
       <NavButtons />
       <div className="flex min-w-0 flex-1 items-center">{children}</div>
       {right}

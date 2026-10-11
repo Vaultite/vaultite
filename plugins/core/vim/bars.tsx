@@ -7,13 +7,17 @@ import { go, search } from "./find"
 import { setLayer } from "./layer"
 import { focusedRoot } from "./scroll"
 
-/** Where a bar goes: along the bottom of the focused pane (or an open sheet), else of the window. */
+/** Where a bar goes: along the bottom of the focused pane (or an open sheet), else of the window; above the status bar
+ *  where that's drawn over the pane's foot. */
 function useSpot() {
   const [spot, setSpot] = useState<{ left: number; width: number; bottom: number }>({ left: 0, width: innerWidth, bottom: 0 })
   useLayoutEffect(() => {
     const el = focusedRoot()
     const box = (el?.closest("[data-pane-body]") ?? el)?.getBoundingClientRect()
-    if (box) setSpot({ left: box.left, width: box.width, bottom: Math.max(0, innerHeight - box.bottom) })
+    if (!box) return
+    const status = el?.closest("dialog") ? null : document.querySelector("[data-status-bar]")?.getBoundingClientRect()
+    const under = status && status.height && status.left < box.right && status.right > box.left && status.top < box.bottom ? status.top : box.bottom
+    setSpot({ left: box.left, width: box.width, bottom: Math.max(0, innerHeight - under) })
   }, [])
   return spot
 }
