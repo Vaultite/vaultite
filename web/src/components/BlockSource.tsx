@@ -6,7 +6,7 @@ import { openMenu, replaceMenu, type MenuItem } from "@/components/ContextMenu"
 import { canReveal, openHere } from "@/components/FileActions"
 import { editAt } from "@/core/anchors"
 import { get } from "@/core/http"
-import { folderOf, openFile, stem } from "@/core/files"
+import { folderOf, isReadOnly, openFile, stem } from "@/core/files"
 import { openPluginSettings } from "@/core/pluginSettings"
 import { blockFor } from "@/core/plugins"
 import { showLabel } from "@/core/platform"
@@ -67,7 +67,8 @@ export function openBlockMenu(at: { x: number; y: number }, b: BlockRef) {
   let line: number | null = null
   const toSource = () => (edit?.source ? edit.source() : line === null ? openFile(path) : editAt(path, line + 1))
   const tail = (): MenuItem[] => b.showing ? [{ label: "Done", icon: SquareCheck, run: () => edit?.done() }] : [
-    ...(decl?.options && Object.keys(decl.options).length && path
+    // (a read-only file, a plugin's built-in page, has no options to change)
+    ...(decl?.options && Object.keys(decl.options).length && path && !isReadOnly(path)
       ? [{ label: "Options", icon: SlidersHorizontal, run: () => (b.options ? b.options() : toSource()) }] : []),
     ...(path ? [{ label: "Edit source", icon: Code, run: toSource }] : []),
   ]
