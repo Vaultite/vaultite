@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { hasEdits } from "../../../core/textedit.ts"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -7,6 +8,12 @@ export default async ($: VaultTest) => {
   let p: Any
   // Review fixes
   check("strict merge doesn't drop lines the other side added inside a changed stretch", merge3("a\nb\nc\nd", "a\nX\nd", "a\nb\nNEW\nc\nd") === null)
+  // (a big note's draft, reopened after the server filled in `updated`: the merge froze the tab for minutes)
+  const big = "---\nupdated: 1\n---\nTop\n" + "Same line\n".repeat(60_000), theirs = big.replace("updated: 1", "updated: 2") + "End"
+  const t0 = Date.now(), both = merge3(big, big.replace("Top", "Mine"), theirs)
+  check("merging a big note of repeated lines is quick", both === theirs.replace("Top", "Mine") && Date.now() - t0 < 2000, Date.now() - t0)
+  check("a draft saved with a field filled in counts as saved", hasEdits(big, big + "Typed", theirs.replace(/End$/, "Typed")) &&
+    !hasEdits(big, big + "Typed", big) && !hasEdits(big, big.replace("Top", "Mine"), theirs))
   write("People/Round Trip.md", "---\ntype: person\nrelation: friend\n---\n\n## Timeline\n\n- 2026-09-20 · call · Hi\n" +
     "Met at the gym, see photos\n- 2026-09-10 - text - hand written\n")
   let rt: Any

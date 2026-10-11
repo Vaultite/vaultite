@@ -1,7 +1,7 @@
 // Edits the server hasn't confirmed yet, kept on this device (per vault and file) until it has: a window closed or
 // killed mid-save offers them back the next time the file opens (FileView). In IndexedDB, so a note of any size is kept.
 import { getStore } from "@/core/data"
-import { merge3 } from "@/core/merge"
+import { hasEdits } from "@/core/merge"
 
 export type Draft = { text: string; base: string; t: number }
 
@@ -43,6 +43,6 @@ export function dropDraft(path: string) {
 export async function draftOf(path: string, now: string): Promise<Draft | null> {
   const kept = await ask<Draft | undefined>("readonly", (s) => s.get(key(path)))
   if (!kept || typeof kept.text !== "string") return null
-  if (kept.text === now || (kept.base && merge3(kept.base, kept.text, now) === now)) { dropDraft(path); return null }
+  if (kept.text === now || (kept.base && hasEdits(kept.base, kept.text, now))) { dropDraft(path); return null }
   return kept
 }

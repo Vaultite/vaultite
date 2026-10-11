@@ -1,14 +1,16 @@
 // Small edits to files people also write by hand, shared by the server (Vault.save) and the editor (no Node here).
 // Each returns null when it can't edit safely; the caller then writes the whole thing.
 
-// ---------- line diffs (Python's difflib.SequenceMatcher, without junk heuristics) ----------
+// ---------- line diffs (Python's difflib.SequenceMatcher, its autojunk for lines only) ----------
 
 export type Opcode = ["equal" | "replace" | "delete" | "insert", number, number, number, number]
 
 /** Matching blocks of a and b, [i, j, size], ending with [a.length, b.length, 0]. */
-function matchingBlocks<T>(a: T[], b: T[]): [number, number, number][] {
+function matchingBlocks<T>(a: T[], b: T[], autojunk = true): [number, number, number][] {
   const b2j = new Map<T, number[]>()
   b.forEach((x, j) => { const l = b2j.get(x); if (l) l.push(j); else b2j.set(x, [j]) })
+  // (a line in over 1% of a long b only extends a match, as in difflib: one repeated through a big file was quadratic)
+  if (autojunk && b.length >= 200) for (const [x, js] of b2j) if (js.length > 1 + Math.floor(b.length / 100)) b2j.delete(x)
   const longest = (alo: number, ahi: number, blo: number, bhi: number): [number, number, number] => {
     let bi = alo, bj = blo, size = 0
     let j2len = new Map<number, number>()
@@ -27,8 +29,12 @@ function matchingBlocks<T>(a: T[], b: T[]): [number, number, number][] {
     while (bi + size < ahi && bj + size < bhi && a[bi + size] === b[bj + size]) size++
     return [bi, bj, size]
   }
-  const queue: [number, number, number, number][] = [[0, a.length, 0, b.length]]
-  const blocks: [number, number, number][] = []
+  // (the lines alike at both ends first, so an edit at one end matches what difflib finds)
+  let p = 0, q = 0
+  while (p < a.length && p < b.length && a[p] === b[p]) p++
+  while (q < a.length - p && q < b.length - p && a[a.length - 1 - q] === b[b.length - 1 - q]) q++
+  const queue: [number, number, number, number][] = [[p, a.length - q, p, b.length - q]]
+  const blocks: [number, number, number][] = [[0, 0, p], [a.length - q, b.length - q, q]].filter((m) => m[2]) as [number, number, number][]
   while (queue.length) {
     const [alo, ahi, blo, bhi] = queue.pop()!
     const m = longest(alo, ahi, blo, bhi)
@@ -68,7 +74,7 @@ export function opcodes<T>(a: T[], b: T[]): Opcode[] {
 function similar(x: string, y: string) {
   const a = [...x.trim()], b = [...y.trim()]
   if (!a.length && !b.length) return 1
-  const m = matchingBlocks(a, b).reduce((n, blk) => n + blk[2], 0)
+  const m = matchingBlocks(a, b, false).reduce((n, blk) => n + blk[2], 0)
   return (2 * m) / (a.length + b.length)
 }
 
@@ -135,6 +141,13 @@ export function merge3(base: string, mine: string, actual: string, fuzzy = false
   const out = [...a]
   for (const [s, e, lines] of edits.reverse()) out.splice(s, e - s, ...lines)
   return out.join("\n")
+}
+
+/** Whether `actual` has the edits that made `mine` from `base`, with others around them (a field the server filled in). */
+export function hasEdits(base: string, mine: string, actual: string) {
+  if (actual === mine) return true
+  const without = merge3(mine, base, actual)
+  return without !== null && merge3(base, mine, without) === actual
 }
 
 // ---------- frontmatter ----------
