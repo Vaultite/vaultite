@@ -60,7 +60,7 @@ type Server = { base: string, port: number, proc: ReturnType<typeof spawn> }
 async function serve(vault: string, local: string, env: Record<string, string>): Promise<Server> {
   const port = await freePort()
   const proc = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
-    cwd: ROOT, stdio: "ignore", env: { ...process.env, ...env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local },
+    cwd: ROOT, stdio: "ignore", env: { ...process.env, VAULTITE_HOSTS: "home-mac.example.ts.net", ...env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local },
   })
   const base = `http://127.0.0.1:${port}/`
   for (let i = 0; i < 160; i++) { try { if ((await fetch(`${base}api/state`)).ok) return { base, port, proc } } catch { await wait(250) } }

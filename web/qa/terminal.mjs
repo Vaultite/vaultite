@@ -51,7 +51,7 @@ function handshake(headers, sid = `${id}x`) {
       socket.on("close", () => resolve("closed"))
       setTimeout(() => done("timeout"), 3000)
     })
-    req.on("response", (res) => { res.resume(); resolve(res.statusCode) })
+    req.on("response", (res) => { res.resume(); resolve(res.statusCode === 403 ? "refused" : res.statusCode) }) // (refused before the upgrade)
     req.on("error", (e) => resolve(String(e)))
     req.end()
   })
