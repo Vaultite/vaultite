@@ -1,12 +1,12 @@
 // Claude Code: what it does on this machine, in each of its accounts (config folders), read from its own files; nothing is
 // written anywhere. Value = the tokens at API list prices (PRICES), not what was paid.
-import { execFileSync, spawn } from "node:child_process"
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { accountsNamed, type AgentMeter, type AgentStart, ago, busyFirst, cap, codingAgent, dayOf, expandHome, HOME, isoMicro, limitRows,
-  limitWindow, notHere, priceList, processes, projectName, projectOf, quote, readLines, roots, scanDays, stamp, Tally, terminalOf, throttled, Transcript,
-  transcripts, type Usage } from "../../../core/codingagents.ts"
+import { type AgentMeter, type AgentStart, ago, cap, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+  limitWindow, type Live, notHere, priceList, processes, projectName, projectOf, quote, roots, stamp, Tally, terminalOf, Transcript, transcripts,
+  type Usage } from "../../../core/codingagents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, WANTED } from "./transcript.ts"
@@ -30,8 +30,6 @@ const price = priceList<[number, number, number, number, number]>({
 const FAST = 2
 const PLANS: [string, string, number | null][] = [["max_20x", "Max 20x", 200], ["max_5x", "Max 5x", 100], ["max", "Max", null],
   ["pro", "Pro", 20], ["team", "Team", null], ["enterprise", "Enterprise", null]]
-
-const iso = (ts: number | null) => (ts ? isoMicro(ts * 1000) : null)
 
 /** claude-opus-5-5 -> Opus 5.5, claude-haiku-4-5-20251001 -> Haiku 4.5. */
 function modelName(model: string) {
@@ -72,8 +70,6 @@ function accounts(): Account[] {
 // Its accounts' folders: a block's menu opens them in Finder.
 plugin.folders(() => accounts().map((a) => a.dir))
 
-const accountsFor = (id: unknown) => accountsNamed(accounts(), id, "Claude Code account")
-
 /** Where an account keeps its .claude.json: beside ~/.claude for the default folder, inside any other. */
 const accountJson = (a: Account) => (a.dir === path.join(HOME, ".claude") ? path.join(HOME, ".claude.json") : path.join(a.dir, ".claude.json"))
 /** A private account's sessions have this as their folder: one project, the account's. */
@@ -81,48 +77,14 @@ const PRIVATE = "\0private:"
 
 // ---------- the transcripts (<account>/projects/**/*.jsonl), read as they grow; only the fields counted are kept
 
-/** A response: when, which model, where, which session, the token counts, fast mode, the local day. */
+/** A response: when (epoch s), which model, where, which session, the token counts, fast mode, the local day. */
 type Resp = { ts: number; model: string; cwd: string; session: string; n: [number, number, number, number, number]; fast: boolean; day: string }
-type Turn = { ts: number; session: string; cwd: string; ms: number; day: string }
 const N_INPUT = 0, N_WRITE5 = 1, N_WRITE1H = 2, N_READ = 3, N_OUTPUT = 4
 
-class Scan {
-  dir: string
-  files = new Map<string, number>()             // path -> bytes read
-  resp = new Map<string, Resp>()                // response key -> what it cost
-  turns = new Map<string, Turn>()               // line uuid -> how long a turn took
+class Scan extends JsonlScan<Resp> {
   titles = new Map<string, [string, string]>()  // session -> [custom | ai, title]
-  version = 0                                   // bumps when anything above changed
-  pruned = 0
-  reach = scanDays()
-  /** Read what was appended since the last time, at most every 5 s; all again once asked for older days. */
-  refresh = throttled(5000, () => this.run(), () => this.reach < scanDays())
-  constructor(dir: string) { this.dir = dir }
 
-  private async run() {
-    if (this.reach < scanDays()) { this.files.clear(); this.resp.clear(); this.turns.clear(); this.reach = scanDays() }
-    const cutoff = Date.now() / 1000 - this.reach * 86400
-    const dir = path.join(this.dir, "projects")
-    let names: string[] = []
-    try { names = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((n) => n.endsWith(".jsonl")) } catch { /* no Claude Code here */ }
-    for (const n of names) {
-      const p = path.join(dir, n)
-      let st: fs.Stats
-      try { st = fs.statSync(p) } catch { continue }
-      const off = this.files.get(p) ?? 0
-      if (st.mtimeMs / 1000 < cutoff || st.size === off) continue
-      this.files.set(p, await readLines(p, st.size < off ? 0 : off, (l) => this.line(l)))
-      this.version++
-    }
-    if (Date.now() / 1000 - this.pruned > 3600) {
-      for (const [k, r] of this.resp) if (r.ts < cutoff) this.resp.delete(k)
-      for (const [k, t] of this.turns) if (t.ts < cutoff) this.turns.delete(k)
-      this.pruned = Date.now() / 1000
-      this.version++
-    }
-  }
-
-  private line(line: Buffer) {
+  protected line(line: Buffer) {
     // Cheap byte tests first: most lines are tool output nobody needs.
     let kind: string
     if (line.includes('"type":"assistant"') && line.includes('"usage"')) kind = "assistant"
@@ -166,7 +128,7 @@ class Scan {
 const scans = new Map<string, Scan>() // account folder -> its transcripts
 const scanOf = (a: Account) => {
   let s = scans.get(a.dir)
-  if (!s) scans.set(a.dir, (s = new Scan(a.dir)))
+  if (!s) scans.set(a.dir, (s = new Scan(() => [path.join(a.dir, "projects")])))
   return s
 }
 /** A session's title, whichever account it's in (never a private one's). */
@@ -174,8 +136,6 @@ function titleOf(id: string, accts = accounts()) {
   for (const a of accts) if (!a.private) { const t = scans.get(a.dir)?.titles.get(id)?.[1]; if (t) return t }
   return ""
 }
-// The first read of a big history, before anyone asks (not while the server starts: it walks every transcript).
-setTimeout(() => { for (const a of accounts()) void scanOf(a).refresh() }, 2000).unref()
 
 function cost(r: Resp) {
   const p = price(r.model)
@@ -211,14 +171,14 @@ function summarize(days: number, accts: Account[]) {
   const root = rootsOf(new Set([...rows.map((r) => r.cwd), ...turns.map((x) => x.cwd)]))
   for (const r of rows) {
     const proj = root.get(r.cwd)!, a = acctOf.get(r.session)!
-    const s = t.session(r.session, () => ({ root: proj, cwd: a.private ? "" : r.cwd, account: a.id, ...(accts.length > 1 ? { accountLabel: a.label } : {}),
-      ...(a.private ? { private: true } : {}), title: a.private ? "" : scanOf(a).titles.get(r.session)?.[1] ?? "" }))
-    t.count({ ts: r.ts, day: r.day, cost: cost(r), tokens: r.n.reduce((x, y) => x + y, 0), read: r.n[N_READ],
+    const s = t.session(r.session, () => ({ root: proj, cwd: a.private ? "" : r.cwd, account: a.id, ...(a.private ? { private: true } : {}),
+      title: a.private ? "" : scanOf(a).titles.get(r.session)?.[1] ?? "" }))
+    t.count({ ts: r.ts * 1000, day: r.day, cost: cost(r), tokens: r.n.reduce((x, y) => x + y, 0), read: r.n[N_READ],
       prompt: r.n[N_INPUT] + r.n[N_WRITE5] + r.n[N_WRITE1H] + r.n[N_READ], model: modelName(r.model) },
     r.session, t.project(proj, proj.startsWith(PRIVATE) ? "" : proj), s, r.model)
   }
   for (const x of turns) t.work(x.day, root.get(x.cwd)!, x.session, x.ms / 60000)
-  return t.result(iso, modelName)
+  return t.result(modelName)
 }
 
 // ---------- sessions running now (<account>/sessions/<pid>.json)
@@ -258,33 +218,27 @@ function alive(pid: number, start: unknown) {
   return same
 }
 
-async function live(recent: Item[], accts: Account[]) {
-  const byId = new Map(recent.map((s) => [s.id, s]))
-  const out: Item[] = []
-  for (const a of accts) {
+/** Each account's sessions running now (<account>/sessions/<pid>.json), their process still the one that wrote them. */
+function running(accts: Account[]) {
+  return accts.flatMap((a) => {
     const d = path.join(a.dir, "sessions")
-    for (const n of fs.existsSync(d) ? fs.readdirSync(d).sort() : []) {
-      if (!n.endsWith(".json")) continue
-      let s: Item, pid: number
-      try {
-        s = JSON.parse(fs.readFileSync(path.join(d, n), "utf8"))
-        pid = Math.trunc(Number(s.pid))
-        if (!Number.isFinite(pid)) continue
-      } catch {
-        continue
-      }
-      const sid = s.sessionId || "", cwd = s.cwd || ""
-      if (isAsking(cwd) || !alive(pid, s.procStart)) continue
-      const u = byId.get(sid) ?? {}
-      const ms = (k: string) => (typeof s[k] === "number" ? iso(s[k] / 1000) : null)
-      out.push({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "", name: a.private ? "" : s.name || "",
-        project: u.project || (a.private ? a.label : projectOf(cwd, rootsOf)), status: s.status || "", kind: s.kind || "",
-        cwd: a.private ? "" : cwd, started: ms("startedAt"), since: ms("statusUpdatedAt"), model: u.model ?? null, cost: u.cost ?? 0,
-        tokens: u.tokens ?? 0, terminal: await terminalOf(plugin, pid, typeof s.tmux === "string" ? s.tmux : ""), account: a.id,
-        ...(accts.length > 1 ? { accountLabel: a.label } : {}), ...(a.private ? { private: true } : {}) })
-    }
-  }
-  return busyFirst(out)
+    let names: string[] = []
+    try { names = fs.readdirSync(d).filter((n) => n.endsWith(".json")).sort() } catch { return [] }
+    return names.flatMap((n) => {
+      let s: Item
+      try { s = JSON.parse(fs.readFileSync(path.join(d, n), "utf8")) } catch { return [] }
+      const pid = Math.trunc(Number(s.pid)), cwd = String(s.cwd || "")
+      if (!Number.isFinite(pid) || isAsking(cwd) || !alive(pid, s.procStart)) return []
+      return [{ a, s, pid, cwd, sid: typeof s.sessionId === "string" ? s.sessionId : "", tmux: typeof s.tmux === "string" ? s.tmux : "" }]
+    })
+  })
+}
+
+async function live(accts: Account[]): Promise<Live[]> {
+  const ms = (v: unknown) => (typeof v === "number" ? v : null)
+  return running(accts).map(({ a, s, pid, cwd, sid, tmux }) => ({ pid, id: sid, title: a.private ? "" : scanOf(a).titles.get(sid)?.[1] || s.name || "",
+    name: a.private ? "" : s.name || "", status: s.status || "", kind: s.kind || "", cwd: a.private ? "" : cwd, started: ms(s.startedAt),
+    since: ms(s.statusUpdatedAt), tmux, account: a.id, ...(a.private ? { project: a.label, private: true } : {}) }))
 }
 
 // ---------- plan limits: asked of Claude Code itself, else the status line's snapshots, else the Claude app's history;
@@ -293,13 +247,14 @@ async function live(recent: Item[], accts: Account[]) {
 const LABELS: Record<string, string> = { session: "Current session", week: "This week", opus: "This week, Opus", sonnet: "This week, Sonnet" }
 
 const window = (key: string, minutes: number, used: number, resets: number | null, now: number, label = LABELS[key]) =>
-  limitWindow(key, label, minutes, used, resets, now, iso)
-
-/** The claude binary: the server's PATH (launchd's) may not have it. */
-function claudeBin() {
-  const dirs = [...(process.env.PATH ?? "").split(":"), path.join(HOME, ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"]
-  return dirs.filter(Boolean).map((d) => path.join(d, "claude")).find((p) => { try { return fs.statSync(p).isFile() } catch { return false } }) ?? null
-}
+  limitWindow(key, label, minutes, used, resets, now)
+/** The plan's windows Claude Code tells (its /usage and its status line): ours, and their minutes. */
+const KEYS: Record<string, [string, number]> = { five_hour: ["session", 300], seven_day: ["week", 10080],
+  seven_day_opus: ["opus", 10080], seven_day_sonnet: ["sonnet", 10080] }
+const windows = (rl: Item, used: string, resets: (v: unknown) => number | null, now: number) => Object.entries(KEYS).flatMap(([name, [k, m]]) => {
+  const w = rl[name]
+  return w && typeof w === "object" && typeof w[used] === "number" ? [window(k, m, w[used], resets(w.resets_at), now)] : []
+})
 
 /** Where the asking runs: its brief session is told apart from the user's by this folder (live() leaves it out). */
 const ASKING_DIR = path.join(os.tmpdir(), "vaultite-claude-limits")
@@ -309,42 +264,21 @@ const isAsking = (cwd: string) => !!askingReal && cwd === askingReal
 /** Asks Claude Code (stream-json, its SDK's control requests; no prompt, so nothing is sent to a model) what the
  *  account's plan has used: what /usage shows, with the account's own login. Null when it can't say. */
 function askClaude(dir: string): Promise<Item | null> {
-  const bin = claudeBin()
+  const bin = findBin("claude")
   if (!bin) return Promise.resolve(null)
   try { fs.mkdirSync(ASKING_DIR, { recursive: true }); askingReal ||= fs.realpathSync(ASKING_DIR) } catch { return Promise.resolve(null) }
-  return new Promise((resolve) => {
-    const env: NodeJS.ProcessEnv = { ...process.env, PATH: [path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
-    if (dir === path.join(HOME, ".claude")) delete env.CLAUDE_CONFIG_DIR
-    else env.CLAUDE_CONFIG_DIR = dir
-    const child = spawn(bin, ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",
-      "--no-session-persistence", "--strict-mcp-config"], { cwd: ASKING_DIR, stdio: ["pipe", "pipe", "ignore"], env })
-    let buf = "", done = false
-    const finish = (v: Item | null) => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      child.kill()
-      resolve(v)
-    }
-    const timer = setTimeout(() => finish(null), 20000)
-    const send = (m: Item) => { try { child.stdin.write(JSON.stringify(m) + "\n") } catch { finish(null) } }
-    child.on("error", () => finish(null))
-    child.on("exit", () => finish(null))
-    child.stdout.on("data", (chunk: Buffer) => {
-      buf += chunk.toString("utf8")
-      for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
-        const line = buf.slice(0, nl)
-        buf = buf.slice(nl + 1)
-        if (!line.includes('"control_response"')) continue
-        let r: Item
-        try { r = JSON.parse(line).response ?? {} } catch { continue }
-        if (r.subtype !== "success") return finish(null)
-        if (r.request_id === "init") send({ type: "control_request", request_id: "usage", request: { subtype: "get_usage", skipBehaviors: true } })
-        else if (r.request_id === "usage") finish(r.response ?? null)
-      }
-    })
-    send({ type: "control_request", request_id: "init", request: { subtype: "initialize" } })
-  })
+  const env: NodeJS.ProcessEnv = { ...process.env, PATH: [path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
+  if (dir === path.join(HOME, ".claude")) delete env.CLAUDE_CONFIG_DIR
+  else env.CLAUDE_CONFIG_DIR = dir
+  return jsonLines<Item>(bin, ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose", "--no-session-persistence",
+    "--strict-mcp-config"], { env, cwd: ASKING_DIR, ms: 20000, first: { type: "control_request", request_id: "init", request: { subtype: "initialize" } },
+  hear: (m, send, done) => {
+    if (m.type !== "control_response") return
+    const r = m.response ?? {}
+    if (r.subtype !== "success") done(null)
+    else if (r.request_id === "init") send({ type: "control_request", request_id: "usage", request: { subtype: "get_usage", skipBehaviors: true } })
+    else if (r.request_id === "usage") done(r.response ?? null)
+  } })
 }
 
 /** What Claude Code says now, asked at most every two minutes (a failure too, so a missing login isn't asked for every
@@ -357,12 +291,7 @@ async function accountLimits(now: number, dir: string) {
   const { at: observed, got } = await asked(dir)
   const rl = got?.rate_limits_available ? got.rate_limits : null
   if (!rl || typeof rl !== "object") return null
-  const keys: Record<string, [string, number]> = { five_hour: ["session", 300], seven_day: ["week", 10080],
-    seven_day_opus: ["opus", 10080], seven_day_sonnet: ["sonnet", 10080] }
-  const wins = Object.entries(keys).flatMap(([name, [k, m]]) => {
-    const w = rl[name]
-    return w && typeof w === "object" && typeof w.utilization === "number" ? [window(k, m, w.utilization, at(w.resets_at), now)] : []
-  })
+  const wins = windows(rl, "utilization", at, now)
   // A week of one model only ("This week, Fable"), when the plan has one.
   for (const l of Array.isArray(rl.limits) ? rl.limits : []) {
     const name = l?.kind === "weekly_scoped" && typeof l.percent === "number" ? l.scope?.model?.display_name : null
@@ -383,18 +312,13 @@ function statusLineLimits(now: number, a: Account) {
   let projects: string[] = []
   try { projects = fs.readdirSync(path.join(a.dir, "projects")).map((n) => path.join(a.dir, "projects", n)) } catch { return null }
   const mine = (sid: string) => projects.some((p) => fs.existsSync(path.join(p, `${sid}.jsonl`)))
-  const keys: Record<string, [string, number]> = { five_hour: ["session", 300], seven_day: ["week", 10080],
-    seven_day_opus: ["opus", 10080], seven_day_sonnet: ["sonnet", 10080] }
   const byAge = files.flatMap((f) => { try { return [[fs.statSync(f).mtimeMs / 1000, f] as const] } catch { return [] } }).sort((x, y) => y[0] - x[0])
   for (const [observed, f] of byAge) {
     if (now - observed > 7 * 86400) break
     let rl: Item
     try { rl = JSON.parse(fs.readFileSync(f, "utf8")).rate_limits } catch { continue }
     if (!rl || typeof rl !== "object" || !mine(path.basename(f, ".json"))) continue
-    const wins = Object.entries(keys).flatMap(([name, [k, m]]) => {
-      const w = rl[name]
-      return w && typeof w === "object" && typeof w.used_percentage === "number" ? [window(k, m, w.used_percentage, w.resets_at ?? null, now)] : []
-    })
+    const wins = windows(rl, "used_percentage", (v) => (typeof v === "number" ? v : null), now)
     if (wins.length) return { source: "status line", observed, windows: wins }
   }
   return null
@@ -462,12 +386,12 @@ async function plan(a: Account) {
 async function limits(a: Account) {
   const now = Date.now() / 1000
   const live = await accountLimits(now, a.dir)
-  if (live) return { ...live, observed: iso(live.observed) }
+  if (live) return { ...live, observed: isoOf(live.observed * 1000) }
   const found = [statusLineLimits(now, a), appLimits(now, (await plugin.memo(300, login, accountJson(a))).organizationUuid ?? null, scanOf(a))]
     .filter((x) => x !== null)
   if (!found.length) return null
   const best = found.reduce((x, y) => (y.observed > x.observed ? y : x))
-  return { ...best, observed: iso(best.observed) }
+  return { ...best, observed: isoOf(best.observed * 1000) }
 }
 
 // ---------- Remote Control servers (`claude remote-control`) running here
@@ -487,22 +411,20 @@ async function servers(accts: Account[]) {
       if (d) dir = expandHome(d)
     } catch { /* gone */ }
     const a = accts.find((x) => x.dir === dir)
-    rows.push({ pid, name, account: a?.id ?? "", accountLabel: a?.label ?? path.basename(dir), started: iso(started / 1000) })
+    rows.push({ pid, name, account: a?.id ?? "", accountLabel: a?.label ?? path.basename(dir), started: isoOf(started) })
   }
   return sortBy(rows, (r) => [r.started ?? "", r.pid])
 }
 
-/** Limits, live sessions, and `days` of usage, of one account or all of them. */
-async function usage(days: number, account: unknown) {
-  const accts = accountsFor(account)
-  const s = await summary(days, accts)
+/** Each account's plan and limits, the Remote Control servers, of one account or all of them. */
+async function plans(accts: Account[]) {
   const each = await Promise.all(accts.map(async (a) => ({ id: a.id, label: a.label, private: a.private, plan: await plan(a), limits: await limits(a) })))
   const plans = each.map((a) => a.plan).filter((p) => p !== null)
   // All of them: one plan whose price is theirs together (when each is known).
   const both = plans.length === each.length && plans.length > 1
     ? { name: plans.map((p) => p.name).join(" + "), monthly: plans.every((p) => p.monthly) ? plans.reduce((n, p) => n + p.monthly!, 0) : null } : null
   return { plan: each.length === 1 ? each[0].plan : both, limits: each.find((a) => a.limits)?.limits ?? null,
-    accounts: each, servers: await plugin.memo(10, servers, accts), live: await live(s.sessions, accts), ...s }
+    accounts: each, servers: await plugin.memo(10, servers, accts) }
 }
 
 // ---------- one session's transcript (the view tab: view:claude-session/<id>)
@@ -531,9 +453,7 @@ async function session(id: string) {
   const file = sessionFile(id)?.file
   const t = file ? await transcript(file) : null
   if (!t) return null
-  const { head } = t.talk
-  return { ...head, title: titleOf(id) || head.title, model: head.model ? modelName(head.model) : "",
-    project: head.cwd ? projectOf(head.cwd, rootsOf) : "", entries: t.talk.entries }
+  return { ...t.talk.head, title: titleOf(id) || t.talk.head.title, entries: t.talk.entries }
 }
 
 // ---------- Terminal runs it (the service "agent:claude")
@@ -579,21 +499,23 @@ plugin.provide("agent:claude", async ({ resume, context, state, report, profile,
 /** A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes
  *  it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes. */
 plugin.provide("agent-session:claude", (id: string): { transcript: string; last: number; ttl: number; account: string } | null => {
-  const found = sessionFile(id, true)
-  if (!found) return null
-  let last = 0, tail = ""
+  const found = sessionFile(id, true), t = found && tail(found.file)
+  return t ? { transcript: found.file, last: t.st.mtimeMs, ttl: ttlOf(t.text), account: found.account.id } : null
+})
+
+/** A file's last 256 KB and its stat, or null when it can't be read. */
+function tail(file: string) {
   try {
-    const fd = fs.openSync(found.file, "r")
+    const fd = fs.openSync(file, "r")
     try {
-      const st = fs.fstatSync(fd)
-      last = st.mtimeMs
-      const n = Math.min(st.size, 256 << 10), buf = Buffer.alloc(n)
+      const st = fs.fstatSync(fd), n = Math.min(st.size, 256 << 10), buf = Buffer.alloc(n)
       fs.readSync(fd, buf, 0, n, st.size - n)
-      tail = buf.toString("utf8")
+      return { st, text: buf.toString("utf8") }
     } finally { fs.closeSync(fd) }
   } catch { return null }
-  return { transcript: found.file, last, ttl: /"ephemeral_1h_input_tokens":\s*[1-9]/.test(tail) ? 3600 : 300, account: found.account.id }
-})
+}
+/** How long a transcript's prompt cache lasts: an hour when its tail wrote 1 h cache, else five minutes. */
+const ttlOf = (tail: string) => (/"ephemeral_1h_input_tokens":\s*[1-9]/.test(tail) ? 3600 : 300)
 
 /** Its live sessions by terminal, with their ids (the service "agent-meters:claude"); with `meters`, their context and
  *  cache: the last request in each transcript; the window is what the status line said (<account>/usage-snapshots/<id>.json,
@@ -604,31 +526,24 @@ type Read = { tokens: number; last: number; ttl: number }
 const lastRead = new Map<string, { size: number; meter: Read | null }>()
 plugin.provide("agent-meters:claude", async (meters?: boolean): Promise<AgentMeter[]> => {
   const out: AgentMeter[] = []
-  for (const a of accounts()) {
-    const d = path.join(a.dir, "sessions")
-    for (const n of fs.existsSync(d) ? fs.readdirSync(d) : []) {
-      if (!n.endsWith(".json")) continue
-      let s: Item
-      try { s = JSON.parse(fs.readFileSync(path.join(d, n), "utf8")) } catch { continue }
-      const pid = Math.trunc(Number(s.pid)), sid = typeof s.sessionId === "string" ? s.sessionId : ""
-      if (!Number.isFinite(pid) || !sid || !alive(pid, s.procStart)) continue
-      const key = `${pid}@${s.procStart}`
-      let terminal = terminals.get(key)
-      if (!terminal) {
-        terminal = await terminalOf(plugin, pid, typeof s.tmux === "string" ? s.tmux : "") ?? undefined
-        if (!terminal) continue
-        terminals.set(key, terminal)
-      }
-      const found = meters && sessionFile(sid, true), m = found && lastRequest(found.file)
-      if (!m) { out.push({ terminal, session: sid }); continue }
-      let window = 0
-      // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
-      for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
-        try { window = Number(JSON.parse(fs.readFileSync(path.join(dir, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0 } catch { /* none */ }
-        if (window) break
-      }
-      out.push({ terminal, session: sid, ...m, window: window || (m.tokens > 200_000 ? 1_000_000 : 200_000) })
+  for (const { a, s, pid, sid, tmux } of running(accounts())) {
+    if (!sid) continue
+    const key = `${pid}@${s.procStart}`
+    let terminal = terminals.get(key)
+    if (!terminal) {
+      terminal = await terminalOf(plugin, pid, tmux) ?? undefined
+      if (!terminal) continue
+      terminals.set(key, terminal)
     }
+    const found = meters && sessionFile(sid, true), m = found && lastRequest(found.file)
+    if (!m) { out.push({ terminal, session: sid }); continue }
+    let window = 0
+    // A status line may write to ~/.claude whatever account runs it: a session id is the same in either.
+    for (const dir of new Set([a.dir, path.join(HOME, ".claude")])) {
+      try { window = Number(JSON.parse(fs.readFileSync(path.join(dir, "usage-snapshots", `${sid}.json`), "utf8")).context_window?.context_window_size) || 0 } catch { /* none */ }
+      if (window) break
+    }
+    out.push({ terminal, session: sid, ...m, window: window || (m.tokens > 200_000 ? 1_000_000 : 200_000) })
   }
   return out
 })
@@ -639,24 +554,17 @@ function lastRequest(file: string) {
   try { size = fs.statSync(file).size } catch { return null }
   const was = lastRead.get(file)
   if (was?.size === size) return was.meter
-  let tail = ""
-  try {
-    const fd = fs.openSync(file, "r")
-    try {
-      const n = Math.min(size, 256 << 10), buf = Buffer.alloc(n)
-      fs.readSync(fd, buf, 0, n, size - n)
-      tail = buf.toString("utf8")
-    } finally { fs.closeSync(fd) }
-  } catch { return null }
+  const t = tail(file)
+  if (!t) return null
   const int = (v: unknown) => Math.trunc(Number(v) || 0)
   let meter: Read | null = null
-  for (const line of tail.split("\n").reverse()) {
+  for (const line of t.text.split("\n").reverse()) {
     if (!line.includes('"type":"assistant"') || !line.includes('"usage"') || line.includes('"isSidechain":true')) continue
     try {
       const e = JSON.parse(line), u = e.message?.usage ?? {}
       const tokens = int(u.input_tokens) + int(u.cache_read_input_tokens) + int(u.cache_creation_input_tokens)
       if (!tokens) continue
-      meter = { tokens, last: Date.parse(e.timestamp) || 0, ttl: /"ephemeral_1h_input_tokens":\s*[1-9]/.test(tail) ? 3600 : 300 }
+      meter = { tokens, last: Date.parse(e.timestamp) || 0, ttl: ttlOf(t.text) }
       break
     } catch { /* a cut line */ }
   }
@@ -667,7 +575,7 @@ function lastRequest(file: string) {
 // ---------- blocks as text (GET /api/render)
 
 plugin.block("claude-limits", async (ctx) => {
-  const each = await Promise.all(accountsFor(ctx.options.account).map(async (a) => ({ a, lim: await limits(a) })))
+  const each = await Promise.all(agent.accountsFor(ctx.options.account).map(async (a) => ({ a, lim: await limits(a) })))
   return section("Plan limits", ...each.flatMap(({ a, lim }) => {
     const head = each.length > 1 ? `### ${a.label}` : ""
     if (!lim) return [head, "_No limits read yet: they come from Claude Code (signed in), its status line or the Claude app._"]
@@ -675,10 +583,10 @@ plugin.block("claude-limits", async (ctx) => {
   }))
 })
 
-codingAgent(plugin, {
-  id: "claude-code", name: "Claude Code", prefix: "claude", value: "estimated at list prices", sessionId: SESSION_ID, usage, session,
-  // (for "New Claude Code" in one)
-  accounts: () => accounts().map(({ id, label, private: p }) => ({ id, label, private: p })),
+const agent = codingAgent(plugin, {
+  id: "claude-code", name: "Claude Code", prefix: "claude", value: "estimated at list prices", sessionId: SESSION_ID, summary, live, plan: plans,
+  session, modelName, projectOf: (cwd) => projectOf(cwd, rootsOf), accounts: { all: accounts, word: "Claude Code account" },
+  warm: () => Promise.all(accounts().map((a) => scanOf(a).refresh())),
   state: (s) => (s.status === "busy" ? "Working" : cap(String(s.status).toLowerCase()) || "Open"),
   more: (u) => {
     const rc = (u as Usage & { servers: Item[] }).servers

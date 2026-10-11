@@ -1,17 +1,11 @@
 // A Hermes session's conversation, from its rows in Hermes' messages table: what the user said, the model's answers
 // (Markdown) and each tool call with its result. System rows, reasoning and compression summaries are left out.
-import { cut, type Entry, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { type Any, cut, type Entry, jsonOf as json, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
 
 /** A row of the messages table, as stored (content may be JSON after Hermes' "\0json:" marker). */
 export type Row = { role: string; content: string | null; tool_calls: string | null; tool_call_id: string | null
   tool_name: string | null; timestamp: number }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
-const json = (s: unknown): Any => {
-  if (typeof s !== "string") return null
-  try { return JSON.parse(s) } catch { return null }
-}
 const at = (sec: unknown) => (typeof sec === "number" && sec > 0 ? new Date(sec * 1000).toISOString() : "")
 
 /** A message's text: a string, or multimodal parts (text kept, an image or a file named). */

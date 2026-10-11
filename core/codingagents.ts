@@ -1,6 +1,6 @@
 // What the coding agent plugins (Claude Code, Codex, Cursor, Hermes, OpenClaw, OpenCode) share: their routes and blocks
 // (codingAgent), usage tallies, processes, transcripts and databases; Terminal, Dispatch and the Inbox start agents with it.
-import { execFile } from "node:child_process"
+import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -23,9 +23,8 @@ export function vauMcpServer(): { command: string; args: string[]; env: Record<s
 }
 const run = promisify(execFile)
 const pad = (n: number) => String(n).padStart(2, "0")
-/** Epoch ms -> "2026-09-29T17:57:21.325000Z" (no fraction on a whole second), or null. */
-export const isoMicro = (ms: number | null | undefined) =>
-  ms ? new Date(ms).toISOString().replace(/\.(\d{3})Z$/, (_, f) => (f === "000" ? "Z" : `.${f}000Z`)) : null
+/** Epoch ms -> ISO time, or null. */
+export const isoOf = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : null)
 /** How many days back the scans read: 35, and as far as a block or a query has asked for since the server started. */
 let reach = 35
 export const scanDays = () => reach
@@ -38,6 +37,12 @@ function daysOf(v: unknown) {
 }
 
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export type Any = any
+/** A JSON text's value (its bytes too), or null. */
+export function jsonOf(v: unknown): Any {
+  try { return JSON.parse(v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : String(v)) } catch { return null }
+}
 /** A number as stored, else 0. */
 export const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
 /** A path with `~` for the home folder, resolved. */
@@ -106,8 +111,8 @@ export function accountsNamed<A extends { id: string }>(all: A[], id: unknown, w
 
 // ---------- usage
 
-/** A request as a tally counts it: its cost (null: no price for its model), tokens, cache reads, prompt tokens (cached
- *  or not), the model's name and the minutes it worked, when that's known per request. */
+/** A request as a tally counts it: when (epoch ms), its cost (null: no price for its model), tokens, cache reads, prompt
+ *  tokens (cached or not), the model's name and the minutes it worked, when that's known per request. */
 export type Counted = { ts: number; day: string; cost: number | null; tokens: number; read: number; prompt: number; model: string; min?: number }
 const round4 = (v: number) => Number(v.toFixed(4))
 const rounded = (xs: Item[]) => xs.map((x) => Object.fromEntries(Object.entries(x).map(([k, v]) =>
@@ -175,8 +180,9 @@ export class Tally {
     for (const b of [this.days.get(day), this.projects.get(project), this.sessions.get(session)]) if (b) b.active_min += min
   }
 
-  /** The answer: times through `iso`, a session's model its votes' winner through `model`, the 60 latest sessions. */
-  result(iso: (ts: number) => string | null, model = (m: string) => m) {
+  /** The answer: a session's model its votes' winner through `model`, the 60 latest sessions. */
+  result(model = (m: string) => m) {
+    const iso = isoOf
     for (const s of this.sessions.values()) {
       const top = [...(s.votes as Map<string, number>)].reduce<[string, number] | null>((a, b) => (!a || b[1] > a[1] ? b : a), null)?.[0]
       delete s.votes
@@ -206,7 +212,8 @@ export class Tally {
   }
 }
 
-export type Usage = ReturnType<Tally["result"]> & { plan: { name: string; monthly: number | null } | null; live: Item[] }
+type Summary = ReturnType<Tally["result"]>
+export type Usage = Summary & { plan: { name: string; monthly: number | null } | null; limits: Limits | null; live: Item[] } & Item
 
 // ---------- processes
 
@@ -241,7 +248,77 @@ export async function cwds(pids: number[]): Promise<Map<number, string>> {
 export const terminalOf = (plugin: Plugin, pid: number, hint = "") => plugin.ask<string | null>("terminal:of", null, pid, hint)
 
 /** Live sessions, working ones first, then by when they started. */
-export const busyFirst = (live: Item[]) => sortBy(live, (s) => [s.status !== "busy" ? 1 : 0, s.started || ""])
+const busyFirst = (live: Item[]) => sortBy(live, (s) => [s.status !== "busy" ? 1 : 0, s.started || ""])
+
+/** A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the
+ *  next word for those in `valued`, and for those in `maybe` when it isn't an option; `words` the rest. */
+export function argvOf(args: string[], valued: Set<string>, maybe = new Set<string>()) {
+  const opts = new Map<string, string>(), words: string[] = []
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i], eq = a.startsWith("--") ? a.indexOf("=") : -1
+    if (!a.startsWith("-") || a === "-") words.push(a)
+    else if (eq > 0) opts.set(a.slice(0, eq), a.slice(eq + 1))
+    else if (valued.has(a) || (maybe.has(a) && args[i + 1] && !args[i + 1].startsWith("-"))) opts.set(a, args[++i] ?? "")
+    else opts.set(a, "")
+  }
+  return { words, opt: (...names: string[]) => names.map((n) => opts.get(n)).find((v) => v !== undefined) }
+}
+
+/** Each process, newest first, with the session it writes: `pick`ed among those a newer one didn't take (`free`); a
+ *  process whose pick was taken is left out. */
+export function sessionsOf<P extends { started: number }, S>(procs: P[], key: (s: S) => string, pick: (p: P, free: (s: S) => boolean) => S | null | undefined) {
+  const taken = new Set<string>()
+  return sortBy(procs, (p) => p.started, true).flatMap((p) => {
+    const s = pick(p, (x) => !taken.has(key(x))) ?? undefined
+    if (s && taken.has(key(s))) return []
+    if (s) taken.add(key(s))
+    return [[p, s] as const]
+  })
+}
+
+/** A program on this machine: on the server's PATH (launchd's is short), beside the Node running it (npm's), or where
+ *  installers put it; null when it's nowhere. */
+export function findBin(name: string) {
+  let npm = ""
+  try { npm = path.dirname(fs.realpathSync(process.execPath)) } catch { /* none */ }
+  const dirs = [...(process.env.PATH ?? "").split(path.delimiter), npm, path.join(HOME, ".local", "bin"), path.join(HOME, ".npm-global", "bin"),
+    "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"]
+  return dirs.filter(Boolean).map((d) => path.join(d, name)).find((p) => {
+    try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile() } catch { return false }
+  }) ?? null
+}
+
+/** Talks to `bin` in JSON lines over stdio: `first` sent, then `hear` gets each message read (`send` more, `done` with
+ *  the answer). An error is null; a timeout after `ms` or an exit, what `end` says (null). */
+export function jsonLines<T>(bin: string, args: string[], o: { env: NodeJS.ProcessEnv; cwd?: string; ms: number; first: Item
+  hear: (m: Item, send: (m: Item) => void, done: (v: T | null) => void) => void; end?: () => T | null }): Promise<T | null> {
+  return new Promise((resolve) => {
+    const child = spawn(bin, args, { cwd: o.cwd, stdio: ["pipe", "pipe", "ignore"], env: o.env })
+    let buf = "", over = false
+    const done = (v: T | null) => {
+      if (over) return
+      over = true
+      clearTimeout(timer)
+      child.kill()
+      resolve(v)
+    }
+    const timer = setTimeout(() => done(o.end?.() ?? null), o.ms)
+    const send = (m: Item) => { try { child.stdin.write(JSON.stringify(m) + "\n") } catch { done(null) } }
+    child.on("error", () => done(null))
+    child.on("exit", () => done(o.end?.() ?? null))
+    child.stdout.on("data", (chunk: Buffer) => {
+      buf += chunk.toString("utf8")
+      for (let nl = buf.indexOf("\n"); nl >= 0 && !over; nl = buf.indexOf("\n")) {
+        const line = buf.slice(0, nl)
+        buf = buf.slice(nl + 1)
+        let m: Item
+        try { m = JSON.parse(line) } catch { continue }
+        if (m && typeof m === "object") o.hear(m, send, done)
+      }
+    })
+    send(o.first)
+  })
+}
 
 // ---------- Terminal runs them (the service "agent:<name>")
 
@@ -270,8 +347,6 @@ export type AgentStart = {
    *  agent that can draw in them follows it. */
   dark?: boolean | null
 }
-
-/** A new terminal's id: `<agent>-<8 letters and digits>`, or the letters alone for a shell. */
 
 /** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
  *  when no plugin that's on brings that agent (the terminal goes again). */
@@ -400,11 +475,70 @@ export function transcripts<T extends Talk>(make: (file: string) => Transcript<T
   }
 }
 
+/** How long a turn worked, as a JSONL agent's transcripts say. */
+export type Turn = { ts: number; session: string; cwd: string; ms: number; day: string }
+
+/** An agent's JSONL transcripts under `dirs`, read as they grow (at most every 5 s; all again once asked for older
+ *  days): `line` hears each new line with its file's state (`fresh`, again when the file was rewritten). */
+export class JsonlScan<R extends { ts: number }, F extends { offset: number } = { offset: number }> {
+  files = new Map<string, F>()
+  resp = new Map<string, R>()   // a response by its key: what it cost
+  turns = new Map<string, Turn>()
+  version = 0                   // bumps when anything above changed
+  refresh = throttled(5000, () => this.run(), () => this.reach < scanDays())
+  private dirs: () => string[]
+  private pruned = 0
+  private reach = scanDays()
+  constructor(dirs: () => string[]) { this.dirs = dirs }
+
+  protected fresh(_file: string): F { return { offset: 0 } as F }
+  protected line(_line: Buffer, _f: F) { /* the agent's */ }
+
+  protected async run() {
+    if (this.reach < scanDays()) { this.files.clear(); this.resp.clear(); this.turns.clear(); this.reach = scanDays() }
+    const cutoff = Date.now() / 1000 - this.reach * 86400
+    for (const dir of this.dirs()) {
+      let names: string[] = []
+      try { names = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((n) => n.endsWith(".jsonl")) } catch { continue }
+      for (const n of names) {
+        const p = path.join(dir, n)
+        let st: fs.Stats
+        try { st = fs.statSync(p) } catch { continue }
+        const f = this.files.get(p)
+        if (st.mtimeMs / 1000 < cutoff || st.size === f?.offset) continue
+        const state = !f || st.size < f.offset ? this.fresh(p) : f
+        this.files.set(p, state)
+        state.offset = await readLines(p, state.offset, (l) => this.line(l, state))
+        this.version++
+      }
+    }
+    if (Date.now() / 1000 - this.pruned > 3600) {
+      for (const [k, r] of this.resp) if (r.ts < cutoff) this.resp.delete(k)
+      for (const [k, t] of this.turns) if (t.ts < cutoff) this.turns.delete(k)
+      this.pruned = Date.now() / 1000
+      this.version++
+    }
+  }
+}
+
+/** A session's first prompt as its title (`find` it by id), on one line and cut to 80 characters; kept once found. */
+export function firstPrompts(find: (id: string) => string) {
+  const kept = new Map<string, string>()
+  return (id: string) => {
+    if (!kept.has(id)) {
+      const text = find(id).replace(/\s+/g, " ").trim().slice(0, 80)
+      if (!text) return ""
+      kept.set(id, text)
+    }
+    return kept.get(id)!
+  }
+}
+
 // ---------- SQLite databases (Cursor, Hermes, OpenClaw, OpenCode keep theirs in one)
 
 let sqlite: typeof import("node:sqlite") | null | undefined
 /** Node's node:sqlite (22.13 and later), loaded when first needed (never while the plugins load); null without it. */
-export function nodeSqlite() {
+function nodeSqlite() {
   if (sqlite === undefined) {
     try { sqlite = process.getBuiltinModule("node:sqlite") ?? null } catch { sqlite = null }
   }
@@ -418,6 +552,7 @@ export class SqliteFile {
   private db: DatabaseSync | null = null
   private where: () => string | null
   private ino = 0
+  private frozen = "" // opened immutable: the file's size and time then
   private version = -1
   private at = 0
   private reach = 0
@@ -428,22 +563,36 @@ export class SqliteFile {
     if (typeof where === "string") this.file = where
   }
 
-  /** The open database, or null when there's none. */
+  /** The open database, or null when there's none. One in WAL mode whose -wal and -shm are gone opens only immutable
+   *  (only then: immutable misses a live WAL), until the file changes. */
   open(): DatabaseSync | null {
     const file = this.where()
-    let ino = 0
-    try { ino = file ? fs.statSync(file).ino : 0 } catch { /* no file */ }
-    if (this.db && (file !== this.file || ino !== this.ino)) this.close()
-    const sql = this.db || !file || !ino ? null : nodeSqlite()
+    let st: fs.Stats | null = null
+    try { st = file ? fs.statSync(file) : null } catch { /* no file */ }
+    const sig = st ? `${st.size}:${st.mtimeMs}` : ""
+    if (this.db && (file !== this.file || st?.ino !== this.ino || (this.frozen && this.frozen !== sig))) this.close()
+    const sql = this.db || !file || !st ? null : nodeSqlite()
     if (sql) {
+      this.frozen = ""
       try {
         this.db = new sql.DatabaseSync(file!, { readOnly: true, timeout: 2000 })
+        this.db.prepare("SELECT count(*) FROM sqlite_master").get()
+      } catch {
+        this.close()
+        if (!fs.existsSync(`${file}-wal`) && !fs.existsSync(`${file}-shm`)) {
+          try {
+            const u = new URL(`file://${encodeURI(file!)}`)
+            u.searchParams.set("immutable", "1")
+            this.db = new sql.DatabaseSync(u, { readOnly: true })
+            this.frozen = sig
+          } catch { this.db = null }
+        }
+      }
+      if (this.db) {
         this.file = file!
-        this.ino = ino
+        this.ino = st!.ino
         this.version = -1
         this.cols.clear()
-      } catch {
-        this.db = null
       }
     }
     return this.db
@@ -529,12 +678,12 @@ export function ago(s: string | null) {
   return m < 1 ? "just now" : m < 48 * 60 ? `${fmtMin(m)} ago` : `${Math.floor(m / 1440)} days ago`
 }
 
-/** A plan limit's window at `now` (epoch s), `resets` written by `iso`: one that renewed since it was read is unused. */
-export function limitWindow(id: string, label: string, minutes: number, used: number, resets: number | null, now: number,
-  iso: (ts: number | null) => string | null) {
+/** A plan limit's window at `now` (epoch s; `resets` too): one that renewed since it was read is unused. */
+export function limitWindow(id: string, label: string, minutes: number, used: number, resets: number | null, now: number) {
   if (resets && resets <= now) { used = 0; resets = null }
-  return { id, label, minutes, used: Math.round(Number(used) * 10) / 10, resets_at: iso(resets) }
+  return { id, label, minutes, used: Math.round(Number(used) * 10) / 10, resets_at: resets ? isoOf(resets * 1000) : null }
 }
+export type Limits = { source: string; observed: string | null; windows: ReturnType<typeof limitWindow>[] }
 
 /** A plan's limits, one line each: how much is used and when it renews. */
 export const limitRows = (windows: { label: string; used: number; resets_at: string | null }[]) =>
@@ -561,44 +710,78 @@ type Words = {
   more?: (u: Usage) => string[]
 }
 
+/** One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents. */
+export type Account = { id: string; label: string; private?: boolean }
+
+/** A session open now as its process tells (times in epoch ms; `tmux`, its pane): codingAgent adds what the usage
+ *  knows of it (cost, tokens, project, model) and the app's terminal it runs in. */
+export type Live = { pid: number; id: string; status: string; kind: string; cwd: string; started: number | null; since: number | null
+  title?: string; name?: string; project?: string; model?: string | null; terminal?: string | null; tmux?: string; account?: string; private?: boolean }
+
+type Got<T> = T | Promise<T>
+type Read = (Item & { entries: Entry[] }) | null
+
 /** A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of. */
-export type CodingAgent = Words & {
+export type CodingAgent<A extends Account> = Words & {
   /** Its routes: GET /api/<id>?days=&account=, /api/<id>/session/<session> and /api/<id>/accounts. */
   id: string
   /** What its session ids look like: any other is a 404. */
   sessionId: RegExp
-  /** All the blocks show: plan, limits, live sessions and `days` of usage, of `account` (none: all of them). */
-  usage(days: number, account: unknown): Promise<Usage>
-  /** A session's title, folder, times, model, project (and what more it says) and conversation; null when it isn't here. */
-  session(id: string): (Item & { entries: Entry[] }) | null | Promise<(Item & { entries: Entry[] }) | null>
-  /** Its accounts, for "New <name>" in one. */
-  accounts?: () => Item[]
-  /** How the usage's `updated` is written (epoch ms; default isoMicro). */
-  updated?: (ms: number) => string | null
+  /** Its accounts, when it has them (`word`: what one is called in a 404): a block's `account:` picks one. */
+  accounts?: { all: () => A[]; word: string }
+  /** `days` of usage of `accts` (all of them, or the one asked for): a Tally's result. */
+  summary(days: number, accts: A[]): Got<Summary>
+  /** Its sessions open now (after `summary`). */
+  live(accts: A[]): Promise<Live[]>
+  /** Its plan and limits (none: null), and what more its blocks show. */
+  plan?(accts: A[]): Promise<{ plan: Usage["plan"]; limits: Limits | null } & Item>
+  /** A session's title, folder, times, model, branch (and what more it says) and conversation; null when it isn't here. */
+  session(id: string): Got<Read>
+  /** A model id as said ("Opus 5.5"), and a folder's project (default: its name, a worktree its repository's). */
+  modelName?: (model: string) => string
+  projectOf?: (cwd: string) => string
+  /** The first read of a big history, before anyone asks (2 s after loading, when it's on). */
+  warm?: () => unknown
 }
 
-/** A coding agent's routes and blocks. */
-export function codingAgent(plugin: Plugin, a: CodingAgent) {
-  const updated = a.updated ?? isoMicro
-  plugin.route("GET", a.id, async (req) => {
-    const u = await a.usage(daysOf(req.query.days), req.query.account)
-    return { updated: updated(Date.now()), ...u }
-  })
+/** A coding agent's routes and blocks; it answers which accounts an `account` option names. */
+export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>) {
+  const accountsFor = (id: unknown) => (a.accounts ? accountsNamed(a.accounts.all(), id, a.accounts.word) : [])
+  const project = a.projectOf ?? ((cwd: string) => projectOf(cwd))
+  async function usage(days: number, account: unknown): Promise<Usage> {
+    const accts = accountsFor(account)
+    const s = await a.summary(days, accts)
+    const label = (id: unknown) => (accts.length > 1 ? accts.find((x) => x.id === id)?.label : undefined)
+    for (const x of s.sessions) if (label(x.account)) x.accountLabel = label(x.account)
+    const byId = new Map(s.sessions.map((x) => [x.id, x]))
+    const live = await Promise.all((await a.live(accts)).map(async (r) => {
+      const u = byId.get(r.id) ?? {}
+      return { pid: r.pid, id: r.id, title: r.title || u.title || "", name: r.name ?? "", project: u.project || r.project || project(r.cwd),
+        status: r.status, kind: r.kind, cwd: r.cwd, started: isoOf(r.started), since: isoOf(r.since), model: u.model || r.model || null,
+        cost: u.cost ?? 0, tokens: u.tokens ?? 0, terminal: r.terminal !== undefined ? r.terminal : r.pid ? await terminalOf(plugin, r.pid, r.tmux) : null,
+        ...(r.account ? { account: r.account } : {}), ...(label(r.account) ? { accountLabel: label(r.account) } : {}), ...(r.private ? { private: true } : {}) }
+    }))
+    return { ...(await a.plan?.(accts) ?? { plan: null, limits: null }), live: busyFirst(live), ...s }
+  }
+  plugin.route("GET", a.id, async (req) => ({ updated: new Date().toISOString(), ...await usage(daysOf(req.query.days), req.query.account) }))
   plugin.route("GET", `${a.id}/session/*`, async (req) => {
     const id = req.arg(0)
     const s = a.sessionId.test(id) ? await a.session(id) : null
     if (!s) throw new HTTPError(404, `no ${a.name} ${a.noun ?? "session"} '${id}' on this machine`)
     const { entries, ...head } = s
-    return { id, ...head, ...page(entries, req) }
+    return { id, ...head, model: head.model ? (a.modelName ?? String)(head.model) : "", project: head.project ?? (head.cwd ? project(head.cwd) : ""),
+      ...page(entries, req) }
   })
-  if (a.accounts) plugin.route("GET", `${a.id}/accounts`, a.accounts)
+  if (a.accounts) plugin.route("GET", `${a.id}/accounts`, () => a.accounts!.all().map((x) => ({ id: x.id, label: x.label, ...(x.private ? { private: true } : {}) })))
   // Refresh: what it remembers (its limits as the account last said them) is asked again, at most every 10 s.
   let forgot = 0
   plugin.route("POST", `${a.id}/refresh`, () => {
     if (Date.now() - forgot > 10_000) { forgot = Date.now(); plugin.forget() }
     return { ok: true }
   })
-  usageBlocks(plugin, a, a.usage)
+  if (a.warm) setTimeout(() => { if (plugin.loaded && !plugin.isOff()) void a.warm!() }, 2000).unref()
+  usageBlocks(plugin, a, usage)
+  return { accountsFor, accountOf: (id: unknown) => (id ? accountsFor(id)[0] : a.accounts?.all()[0]) }
 }
 
 /** The blocks every agent has: its sessions, usage, projects, models, and one project's (`<prefix>`). */

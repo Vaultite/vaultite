@@ -3,14 +3,12 @@
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentStart, ago, busyFirst, codingAgent, cut, cwds, type Entry, HOME, limitRows, nodeSqlite, notHere, processes, projectName,
-  quote, roots, type Said, scanDays, Tally, terminalOf, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, type Any, codingAgent, cut, cwds, type Entry, HOME, isoOf, jsonOf, limitRows, limitWindow, type Live, notHere, processes, projectName,
+  quote, roots, type Said, scanDays, sessionsOf, SqliteFile, Tally, terminalOf, type Tool, toolSummary } from "../../../core/codingagents.ts"
 import { localDate, Plugin, section } from "../../../core/plugins.ts"
-import { type Item, sortBy } from "../../../core/vault.ts"
+import { sortBy } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
 const GAP = 5 * 60_000 // requests further apart than this aren't one stretch of work
 const LIVE_MIN = 10 // Cursor.app counts as working on a chat touched in the last 10 minutes
 
@@ -21,7 +19,6 @@ const PLANS: Record<string, [string, number | null]> = {
 }
 
 const dayOf = (ms: number) => localDate(new Date(ms))
-const iso = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : null)
 
 /** grok-bot-default -> Grok Bot, claude-4.5-sonnet-thinking -> Claude 4.5 Sonnet thinking, gpt-5 -> GPT-5. */
 function modelName(m: string) {
@@ -42,40 +39,15 @@ function modelName(m: string) {
 const USER_DIR = process.env.CURSOR_USER_DIR || path.join(HOME, "Library", "Application Support", "Cursor", "User")
 const CONFIG_DIR = process.env.CURSOR_CONFIG_DIR || path.join(HOME, ".cursor")
 plugin.folders(() => [CONFIG_DIR, USER_DIR])
-const STATE_DB = path.join(USER_DIR, "globalStorage", "state.vscdb")
+const stateDb = new SqliteFile(path.join(USER_DIR, "globalStorage", "state.vscdb"))
+plugin.onUnload(() => stateDb.close())
 const CHATS = path.join(CONFIG_DIR, "chats")
 
 /** A chat on this machine: from the IDE or the CLI. Times in epoch ms. */
 type Chat = { id: string; source: "ide" | "cli"; title: string; cwd: string; model: string; first: number; last: number
   status: string; dir?: string }
 
-type Db = { prepare(sql: string): { get(...a: unknown[]): Any; all(...a: unknown[]): Any[] }; close(): void }
-
-/** A SQLite file opened read only, or null. A database in WAL mode whose -wal and -shm are gone can't be opened read
- *  only; then it's opened immutable (only then: immutable ignores a live WAL). */
-function openDb(file: string): Db | null {
-  const sqlite = nodeSqlite()
-  if (!sqlite || !fs.existsSync(file)) return null
-  try {
-    const db = new sqlite.DatabaseSync(file, { readOnly: true, timeout: 250 })
-    db.prepare("SELECT 1").get()
-    return db
-  } catch {
-    if (fs.existsSync(`${file}-wal`) || fs.existsSync(`${file}-shm`)) return null
-    try {
-      const u = new URL(`file://${encodeURI(file)}`)
-      u.searchParams.set("immutable", "1")
-      return new sqlite.DatabaseSync(u, { readOnly: true })
-    } catch {
-      return null
-    }
-  }
-}
-
 const text = (v: unknown) => (v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : v == null ? "" : String(v))
-function json(v: unknown): Any {
-  try { return JSON.parse(text(v)) } catch { return null }
-}
 /** Epoch ms from ms, seconds or an ISO string (Cursor has written each). */
 function ms(v: unknown): number {
   if (typeof v === "string" && v && !/^\d+$/.test(v)) { const t = Date.parse(v); return Number.isNaN(t) ? 0 : t }
@@ -113,39 +85,35 @@ function workspaceFolders() {
 let ide: { at: number; sig: string; chats: Chat[] } = { at: 0, sig: "", chats: [] }
 async function ideChats(): Promise<Chat[]> {
   if (Date.now() - ide.at < 10_000) return ide.chats
-  const sig = [STATE_DB, `${STATE_DB}-wal`].map((p) => { const s = stat(p); return s ? `${s.size}:${s.mtimeMs}` : "" }).join("|")
+  const sig = [stateDb.file, `${stateDb.file}-wal`].map((p) => { const s = stat(p); return s ? `${s.size}:${s.mtimeMs}` : "" }).join("|")
   if (sig === ide.sig) { ide.at = Date.now(); return ide.chats }
-  const db = openDb(STATE_DB)
+  const db = stateDb.open()
   if (!db) { ide = { at: Date.now(), sig, chats: [] }; return [] }
-  const chats: Chat[] = []
+  // (older versions: no composerHeaders)
+  const heads = new Map(stateDb.all("SELECT composerId, workspaceId, isSubagent FROM composerHeaders").map((h) => [String(h.composerId), h]))
+  const where = workspaceFolders()
+  let rows: Any[]
   try {
-    const heads = new Map<string, Any>()
-    try {
-      for (const h of db.prepare("SELECT composerId, workspaceId, isSubagent FROM composerHeaders").all()) heads.set(String(h.composerId), h)
-    } catch { /* older versions: no such table */ }
-    const where = workspaceFolders()
     // Only the fields needed: an old composerData holds its whole conversation.
-    const rows = db.prepare(`WITH c AS (SELECT key, CAST(value AS TEXT) AS v FROM cursorDiskKV WHERE key LIKE 'composerData:%')
+    rows = db.prepare(`WITH c AS (SELECT key, CAST(value AS TEXT) AS v FROM cursorDiskKV WHERE key LIKE 'composerData:%')
       SELECT key, json_extract(v, '$.name') AS name, json_extract(v, '$.createdAt') AS created, json_extract(v, '$.lastUpdatedAt') AS updated,
       json_extract(v, '$.status') AS status, json_extract(v, '$.isDraft') AS draft, json_extract(v, '$.modelConfig.modelName') AS model,
       json_array_length(v, '$.fullConversationHeadersOnly') AS n, json_array_length(v, '$.conversation') AS old,
       json_extract(v, '$.workspaceIdentifier') AS ws, json_extract(v, '$.subagentInfo') AS sub FROM c WHERE json_valid(v)`).all()
-    for (const r of rows) {
-      const id = String(r.key).slice("composerData:".length)
-      const head = heads.get(id)
-      if (!(r.n || r.old) || r.draft || r.sub || head?.isSubagent) continue
-      const ws = json(r.ws) ?? {}
-      const cwd = fileUri(ws.uri) || where.get(String(head?.workspaceId ?? ws.id ?? "")) || ""
-      const first = ms(r.created), last = ms(r.updated) || first
-      chats.push({ id, source: "ide", title: String(r.name || ""), cwd, model: String(r.model || ""), first, last, status: String(r.status || "") })
-    }
   } catch {
-    // unreadable right now: what was read last time
-    db.close()
-    ide.at = Date.now()
+    ide.at = Date.now() // unreadable right now: what was read last time
     return ide.chats
   }
-  db.close()
+  const chats: Chat[] = []
+  for (const r of rows) {
+    const id = String(r.key).slice("composerData:".length)
+    const head = heads.get(id)
+    if (!(r.n || r.old) || r.draft || r.sub || head?.isSubagent) continue
+    const ws = jsonOf(r.ws) ?? {}
+    const cwd = fileUri(ws.uri) || where.get(String(head?.workspaceId ?? ws.id ?? "")) || ""
+    const first = ms(r.created), last = ms(r.updated) || first
+    chats.push({ id, source: "ide", title: String(r.name || ""), cwd, model: String(r.model || ""), first, last, status: String(r.status || "") })
+  }
   ide = { at: Date.now(), sig, chats }
   return chats
 }
@@ -153,14 +121,9 @@ async function ideChats(): Promise<Chat[]> {
 // ---------- the CLI
 
 /** store.db's metadata: key "0" is the hex of a JSON (agentId, name, createdAt, lastUsedModel, mode...). */
-function storeMeta(db: Db): Any {
-  try {
-    const v = db.prepare("SELECT value FROM meta WHERE key = '0'").get()?.value
-    const s = text(v)
-    return json(/^[0-9a-f]+$/i.test(s) && s.length % 2 === 0 ? Buffer.from(s, "hex") : s) ?? {}
-  } catch {
-    return {}
-  }
+function storeMeta(db: SqliteFile): Any {
+  const s = text(db.all("SELECT value FROM meta WHERE key = '0'")[0]?.value)
+  return jsonOf(/^[0-9a-f]+$/i.test(s) && s.length % 2 === 0 ? Buffer.from(s, "hex") : s) ?? {}
 }
 
 const cli = new Map<string, [number, Chat | null]>() // chat folder -> [its meta.json and store.db mtimes, the chat]
@@ -173,9 +136,9 @@ async function cliChat(dir: string): Promise<Chat | null> {
   const meta = (m && readJson(path.join(dir, "meta.json"))) || {}
   let chat: Chat | null = null
   if (!meta.isSubagent && meta.hasConversation !== false) {
-    const db = openDb(path.join(dir, "store.db"))
-    const sm = db ? storeMeta(db) : {}
-    db?.close()
+    const db = new SqliteFile(path.join(dir, "store.db"))
+    const sm = storeMeta(db)
+    db.close()
     const name = String(meta.title || sm.name || "")
     chat = { id: path.basename(dir), source: "cli", title: name === "New Agent" ? "" : name, cwd: String(meta.cwd || ""),
       model: String(sm.lastUsedModel || ""), first: ms(meta.createdAtMs ?? sm.createdAt) || s.birthtimeMs,
@@ -213,9 +176,9 @@ function chatsOf(cwd: string) {
 
 // ---------- a chat's conversation, from its files
 
-const isoOf = (t: number) => (t ? new Date(t).toISOString() : "")
+const isoAt = (t: number) => isoOf(t) ?? ""
 const pretty = (v: unknown) => {
-  if (typeof v === "string") { const j = json(v); return j !== null && typeof j === "object" ? JSON.stringify(j, null, 2) : v }
+  if (typeof v === "string") { const j = jsonOf(v); return j !== null && typeof j === "object" ? JSON.stringify(j, null, 2) : v }
   return v == null ? "" : JSON.stringify(v, null, 2)
 }
 type Talk = { title: string; cwd: string; model: string; first: string; last: string; branch: string; entries: Entry[] }
@@ -223,7 +186,7 @@ type Talk = { title: string; cwd: string; model: string; first: string; last: st
 const PICK = ["explanation", "description", "command", "target_file", "targetFile", "file_path", "path", "relativeWorkspacePath",
   "pattern", "query", "search_term", "url", "globPattern", "glob_pattern"]
 /** One line saying what a tool call did: its command, file, pattern or query. */
-const summarize = (input: unknown) => toolSummary(typeof input === "string" ? json(input) ?? {} : input, PICK)
+const summarize = (input: unknown) => toolSummary(typeof input === "string" ? jsonOf(input) ?? {} : input, PICK)
 
 /** What the user typed: the <user_query> of a prompt, without the context blocks Cursor puts around it. */
 function userText(s: string) {
@@ -234,21 +197,19 @@ function userText(s: string) {
 
 /** An IDE chat's conversation: its messages in order (fullConversationHeadersOnly), each a `bubbleId:` row. */
 async function ideTalk(id: string, chat: Chat): Promise<Talk | null> {
-  const db = openDb(STATE_DB)
-  if (!db) return null
+  const data = jsonOf(stateDb.all("SELECT value FROM cursorDiskKV WHERE key = ?", `composerData:${id}`)[0]?.value)
+  if (!data) return null
   try {
-    const data = json(db.prepare("SELECT value FROM cursorDiskKV WHERE key = ?").get(`composerData:${id}`)?.value)
-    if (!data) return null
     const order: string[] = (data.fullConversationHeadersOnly ?? []).map((h: Any) => String(h?.bubbleId ?? "")).filter(Boolean)
-    const rows = db.prepare("SELECT key, value FROM cursorDiskKV WHERE key LIKE ?").all(`bubbleId:${id}:%`)
+    const rows = stateDb.all("SELECT key, value FROM cursorDiskKV WHERE key LIKE ?", `bubbleId:${id}:%`)
     const byId = new Map(rows.map((r) => [String(r.key).split(":").pop()!, r.value]))
     // An old chat keeps its messages inline, in `conversation`.
     const inline: Any[] = Array.isArray(data.conversation) ? data.conversation : []
-    const bubbles: Any[] = order.length ? order.map((b) => json(byId.get(b)) ?? inline.find((x) => x?.bubbleId === b)).filter(Boolean) : inline
+    const bubbles: Any[] = order.length ? order.map((b) => jsonOf(byId.get(b)) ?? inline.find((x) => x?.bubbleId === b)).filter(Boolean) : inline
     const entries: Entry[] = []
     let model = chat.model
     for (const b of bubbles) {
-      const at = isoOf(ms(b.createdAt ?? b.timingInfo?.clientStartTime))
+      const at = isoAt(ms(b.createdAt ?? b.timingInfo?.clientStartTime))
       if (b.type === 1) {
         const t = userText(String(b.text ?? ""))
         if (t) entries.push({ kind: "user", text: cut(t, 20000), at })
@@ -266,25 +227,23 @@ async function ideTalk(id: string, chat: Chat): Promise<Talk | null> {
       const t = String(b.text ?? "").trim()
       if (t) entries.push({ kind: "assistant", text: cut(t, 20000), at })
     }
-    return { title: chat.title, cwd: chat.cwd, model, first: isoOf(chat.first), last: isoOf(chat.last), branch: "", entries }
+    return { title: chat.title, cwd: chat.cwd, model, first: isoAt(chat.first), last: isoAt(chat.last), branch: "", entries }
   } catch {
     return null
-  } finally {
-    db.close()
   }
 }
 
 /** A CLI chat's conversation: the JSON messages among store.db's blobs, in the order they were written. */
 async function cliTalk(chat: Chat): Promise<Talk | null> {
-  const db = openDb(path.join(chat.dir!, "store.db"))
-  if (!db) return null
+  const db = new SqliteFile(path.join(chat.dir!, "store.db"))
+  if (!db.open()) return null
   try {
     const entries: Entry[] = []
     const tools = new Map<string, Tool>()
-    for (const r of db.prepare("SELECT data FROM blobs ORDER BY rowid").all()) {
+    for (const r of db.all("SELECT data FROM blobs ORDER BY rowid")) {
       const buf = r.data instanceof Uint8Array ? Buffer.from(r.data) : Buffer.from(text(r.data))
       if (buf[0] !== 0x7b) continue // not JSON: the binary tree that links them
-      const m = json(buf)
+      const m = jsonOf(buf)
       if (!m || typeof m !== "object" || typeof m.role !== "string") continue
       const parts: Any[] = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : []
       if (m.role === "user") {
@@ -312,7 +271,7 @@ async function cliTalk(chat: Chat): Promise<Talk | null> {
         }
       }
     }
-    return { title: chat.title, cwd: chat.cwd, model: chat.model, first: isoOf(chat.first), last: isoOf(chat.last), branch: "", entries }
+    return { title: chat.title, cwd: chat.cwd, model: chat.model, first: isoAt(chat.first), last: isoAt(chat.last), branch: "", entries }
   } catch {
     return null
   } finally {
@@ -339,20 +298,12 @@ const TIMEOUT = 15_000
 
 /** Values from the IDE's ItemTable, by key. */
 async function stored(keys: string[]): Promise<Record<string, string>> {
-  const db = openDb(STATE_DB)
-  if (!db) return {}
-  try {
-    const out: Record<string, string> = {}
-    for (const k of keys) {
-      const v = db.prepare("SELECT value FROM ItemTable WHERE key = ?").get(k)?.value
-      if (v != null) out[k] = v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : String(v)
-    }
-    return out
-  } catch {
-    return {}
-  } finally {
-    db.close()
+  const out: Record<string, string> = {}
+  for (const k of keys) {
+    const v = stateDb.all("SELECT value FROM ItemTable WHERE key = ?", k)[0]?.value
+    if (v != null) out[k] = text(v)
   }
+  return out
 }
 
 /** The dashboard's cookie from the IDE's session, or null (signed out, expired, unreadable). */
@@ -481,7 +432,7 @@ async function summary(days: number) {
     p.last = Math.max(p.last, c.last)
   }
   // A session's model: the one Cursor metered most for it, else the one the chat has picked.
-  return t.result(iso, modelName)
+  return t.result(modelName)
 }
 
 // ---------- the plan and its allowances
@@ -497,27 +448,25 @@ async function plan() {
 const clampPct = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, 0), 100) * 10) / 10 : 0 }
 const minutesBetween = (a: unknown, b: unknown) => { const m = (Date.parse(String(b)) - Date.parse(String(a))) / 60000; return Number.isFinite(m) && m > 0 ? Math.round(m) : 0 }
 
+/** A time Cursor wrote (ISO or ms) as epoch s, or null. */
+const sec = (v: unknown) => (v ? +new Date(v as string) / 1000 || null : null)
+
 async function limits() {
   const acc = (await account()).summary
   if (!acc) return null
-  const s = acc.summary ?? {}, sand = acc.sand
+  const s = acc.summary ?? {}, sand = acc.sand, now = Date.now() / 1000
+  const cycle = minutesBetween(s.billingCycleStart, s.billingCycleEnd) || 43200
   const windows = []
   const planUse = s.individualUsage?.plan ?? {}
   const pct = planUse.totalPercentUsed ?? (planUse.limit ? (100 * (planUse.used ?? 0)) / planUse.limit : null)
-  if (pct != null && s.billingCycleEnd) {
-    windows.push({ id: "month", label: "Included usage", minutes: minutesBetween(s.billingCycleStart, s.billingCycleEnd) || 43200,
-      used: clampPct(pct), resets_at: new Date(s.billingCycleEnd).toISOString() })
-  }
+  if (pct != null && s.billingCycleEnd) windows.push(limitWindow("month", "Included usage", cycle, clampPct(pct), sec(s.billingCycleEnd), now))
   const od = s.individualUsage?.onDemand
-  if (od?.enabled && od.limit) {
-    windows.push({ id: "on-demand", label: "On-demand", minutes: minutesBetween(s.billingCycleStart, s.billingCycleEnd) || 43200,
-      used: clampPct((100 * (od.used ?? 0)) / od.limit), resets_at: s.billingCycleEnd ? new Date(s.billingCycleEnd).toISOString() : null })
-  }
+  if (od?.enabled && od.limit) windows.push(limitWindow("on-demand", "On-demand", cycle, clampPct((100 * (od.used ?? 0)) / od.limit), sec(s.billingCycleEnd), now))
   if (sand && sand.hasNonZeroIncludedLimit !== false && sand.includedLimitZero !== true && typeof sand.usagePercent === "number") {
-    windows.push({ id: "grok-bot", label: "Grok Bot, this week", minutes: minutesBetween(sand.currentPeriodStart, sand.nextResetTimestampUtc) || 10080,
-      used: clampPct(sand.usagePercent), resets_at: sand.nextResetTimestampUtc ? new Date(sand.nextResetTimestampUtc).toISOString() : null })
+    windows.push(limitWindow("grok-bot", "Grok Bot, this week", minutesBetween(sand.currentPeriodStart, sand.nextResetTimestampUtc) || 10080,
+      clampPct(sand.usagePercent), sec(sand.nextResetTimestampUtc), now))
   }
-  return windows.length ? { source: "Cursor dashboard", observed: new Date(acc.at).toISOString(), windows } : null
+  return windows.length ? { source: "Cursor dashboard", observed: isoOf(acc.at), windows } : null
 }
 
 // ---------- running now
@@ -526,61 +475,38 @@ async function limits() {
 const CLI = /\/cursor-agent\/versions\/[^/]+\/index\.js(\s|$)/
 const APP = /\/Cursor\.app\/Contents\/MacOS\/Cursor$/
 
-async function live(recent: Item[]) {
-  const byId = new Map(recent.map((s) => [s.id, s]))
+async function live(): Promise<Live[]> {
   const local = await chats()
-  const out: Item[] = []
   const procs = await processes()
-  const dirs = await cwds(procs.filter((p) => CLI.test(p.command)).map((p) => p.pid))
-  const taken = new Set<string>()
-  const item = (pid: number, c: Chat | undefined, extra: Item) => {
-    const u = (c && byId.get(c.id)) ?? {}
-    const cwd = c?.cwd || extra.cwd || ""
-    return { pid, id: c?.id ?? "", title: c?.title || u.title || "", name: "", project: u.project || projectOf(cwd),
-      model: u.model || (c?.model ? modelName(c.model) : null), cost: u.cost ?? 0, tokens: u.tokens ?? 0, ...(c?.cwd ? { cwd: c.cwd } : {}), ...extra }
-  }
-  for (const { pid, started, command: cmd } of procs) {
-    if (!CLI.test(cmd) || /^(\S*\/)?(ba|z|fi|da)?sh\s/.test(cmd)) continue // a shell that runs it isn't it
-    const cwd = dirs.get(pid) ?? ""
-    const asked = /--resume[= ]([\w.-]{4,100})/.exec(cmd)?.[1]
-    const dir = cwd ? chatsOf(cwd) : ""
-    // Its chat: the one it resumed, else the newest in its folder written since it started.
-    const c = asked ? local.find((x) => x.id === asked)
-      : sortBy(local.filter((x) => x.source === "cli" && x.dir && path.dirname(x.dir) === dir && x.last >= started - 5000), (x) => x.last, true)[0]
-    const terminal = await terminalOf(plugin, pid)
-    if ((!c && !terminal) || (c && taken.has(c.id))) continue
-    if (c) taken.add(c.id)
-    let since = c?.last ?? started
+  const clis = procs.filter((p) => CLI.test(p.command) && !/^(\S*\/)?(ba|z|fi|da)?sh\s/.test(p.command)) // a shell that runs it isn't it
+  const dirs = await cwds(clis.map((p) => p.pid))
+  const row = (pid: number, c: Chat | undefined) => ({ pid, id: c?.id ?? "", title: c?.title ?? "", model: c?.model ? modelName(c.model) : null })
+  const out: Live[] = []
+  // Its chat: the one it resumed, else the newest in its folder written since it started.
+  const claimed = sessionsOf(clis, (c: Chat) => c.id, (p) => {
+    const asked = /--resume[= ]([\w.-]{4,100})/.exec(p.command)?.[1], dir = dirs.get(p.pid) ? chatsOf(dirs.get(p.pid)!) : ""
+    return asked ? local.find((x) => x.id === asked)
+      : sortBy(local.filter((x) => x.source === "cli" && x.dir && path.dirname(x.dir) === dir && x.last >= p.started - 5000), (x) => x.last, true)[0]
+  })
+  for (const [p, c] of claimed) {
+    const terminal = await terminalOf(plugin, p.pid)
+    if (!c && !terminal) continue
+    let since = c?.last ?? p.started
     try { if (c?.dir) since = fs.statSync(path.join(c.dir, "store.db")).mtimeMs } catch { /* as it is */ }
-    out.push(item(pid, c, { status: Date.now() - since < 20_000 ? "busy" : "idle", kind: "CLI", started: iso(started), since: iso(since), terminal,
-      ...(cwd && !c?.cwd ? { cwd } : {}) }))
+    out.push({ ...row(p.pid, c), status: Date.now() - since < 20_000 ? "busy" : "idle", kind: "CLI", cwd: c?.cwd || dirs.get(p.pid) || "",
+      started: p.started, since, terminal })
   }
   // Cursor.app, with the chat worked on last if that was in the last few minutes.
-  const app = procs.find((p) => APP.test(p.command))
-  if (app) {
-    const c = sortBy(local.filter((x) => x.source === "ide" && !taken.has(x.id) && (x.status === "generating" || Date.now() - x.last < LIVE_MIN * 60000)), (x) => x.last, true)[0]
-    if (c) out.push(item(app.pid, c, { status: c.status === "generating" ? "busy" : "idle", kind: "IDE", started: iso(c.first), since: iso(c.last), terminal: null }))
-  }
-  return busyFirst(out)
-}
-
-/** Limits, live sessions, and `days` of usage. */
-async function usage(days: number) {
-  const s = await summary(days)
-  return { plan: await plan(), limits: await limits(), live: await live(s.sessions), ...s }
+  const app = procs.find((p) => APP.test(p.command)), taken = new Set(claimed.map(([, c]) => c?.id))
+  const c = app && sortBy(local.filter((x) => x.source === "ide" && !taken.has(x.id) && (x.status === "generating" || Date.now() - x.last < LIVE_MIN * 60000)), (x) => x.last, true)[0]
+  if (app && c) out.push({ ...row(app.pid, c), status: c.status === "generating" ? "busy" : "idle", kind: "IDE", cwd: c.cwd, started: c.first, since: c.last, terminal: null })
+  return out
 }
 
 // ---------- one chat's conversation (the view tab: view:cursor-session/<id>)
 
 const SESSION_ID = /^[\w.-]{4,100}$/
 
-/** A chat's title, folder, times, model and conversation. */
-async function session(id: string) {
-  const t = await talk(id)
-  if (!t) return null
-  return { title: t.title, cwd: t.cwd, model: t.model ? modelName(t.model) : "", first: t.first, last: t.last, branch: t.branch,
-    project: t.cwd ? projectOf(t.cwd) : "", entries: t.entries }
-}
 
 // ---------- Terminal runs it (the service "agent:cursor")
 
@@ -602,5 +528,5 @@ plugin.block("cursor-limits", async () => {
 })
 
 codingAgent(plugin, { id: "cursor", name: "Cursor", prefix: "cursor", noun: "chat", count: "conversation", value: "estimated at list prices", estimate: true,
-  state: (s) => `${s.status === "busy" ? "Working" : "Open"}${s.kind === "IDE" ? " in Cursor" : ""}`, sessionId: SESSION_ID, usage, session,
-  updated: (ms) => new Date(ms).toISOString() })
+  state: (s) => `${s.status === "busy" ? "Working" : "Open"}${s.kind === "IDE" ? " in Cursor" : ""}`, sessionId: SESSION_ID, summary, live,
+  plan: async () => ({ plan: await plan(), limits: await limits() }), session: talk, modelName, projectOf })

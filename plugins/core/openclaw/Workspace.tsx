@@ -1,27 +1,17 @@
 // An OpenClaw agent's memory (its workspace's files, GET /api/openclaw/memory) and the scheduled jobs (GET
 // /api/openclaw/cron), read only; `machine:` another machine's, `account:` another agent's.
 import { Brain, CalendarClock } from "lucide-react"
-import { type BlockCtx, Empty, fmtAgo, fmtMin, List, Loading, machinePath, Markdown, Panel, Row, Section, useLive, useMachines } from "@vaultite"
+import { type BlockCtx, Empty, fmtAgo, fmtMin, List, Loading, Markdown, Panel, Row, Section, useAgentRoute } from "@vaultite"
 
 type File = { name: string; text: string; modified: string | null }
 export type Memory = { agent: string; dir: string; files: File[]; notes: (File & { date: string })[] }
 export type Job = { id: string; name: string; description: string; enabled: boolean; agent: string; schedule: string; task: string
   next: string | null; last: string | null; status: string; error: string }
 
-const str = (v: unknown) => (typeof v === "string" ? v : "")
-
-/** Where a block reads from: another machine's API (`machine:`), one agent (`account:`), and how to say the machine. */
-function useWhere(options: Record<string, unknown>) {
-  const machine = str(options.machine), account = str(options.account)
-  const m = useMachines()?.find((x) => x.id === machine)
-  return { machine: m?.self ? "" : machine, account, on: machine && !m?.self ? ` on ${m?.label ?? machine}` : "" }
-}
-
 /** ```block-openclaw-memory: an agent's identity, soul, user and memory files and its latest daily notes. */
 export function MemoryBlock({ options = {} }: Partial<BlockCtx>) {
-  const { machine, account, on } = useWhere(options)
   const notes = typeof options.notes === "number" ? options.notes : 2
-  const { data, error } = useLive<Memory>(machinePath(machine, `openclaw/memory?notes=${notes}${account ? `&account=${encodeURIComponent(account)}` : ""}`))
+  const { data, error, on } = useAgentRoute<Memory>("openclaw/memory", options, { notes })
   const title = `OpenClaw memory${data && data.agent !== "main" ? `, ${data.agent}` : ""}`
   return (
     <Panel title={title} icon={Brain} tint="var(--red)">
@@ -47,8 +37,7 @@ const until = (s: string) => {
 
 /** ```block-openclaw-cron: the scheduled jobs, each with when it runs, its last run and the next. */
 export function CronBlock({ options = {} }: Partial<BlockCtx>) {
-  const { machine, account, on } = useWhere(options)
-  const { data, error } = useLive<Job[]>(machinePath(machine, `openclaw/cron${account ? `?account=${encodeURIComponent(account)}` : ""}`))
+  const { data, error, on } = useAgentRoute<Job[]>("openclaw/cron", options)
   return (
     <Panel title="OpenClaw scheduled jobs" icon={CalendarClock} tint="var(--red)">
       {!data ? <Loading error={error && `Couldn't read OpenClaw${on}.`} /> : !data.length ? <Empty>No scheduled jobs.</Empty> : (

@@ -1,10 +1,9 @@
 // Codex: what OpenAI's Codex (the CLI, the IDE extension and the desktop app share its files) does on this machine, read
 // from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
-import { spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentStart, ago, busyFirst, cap, codingAgent, cwds, dayOf, HOME, limitRows, limitWindow, notHere, priceList, processes,
-  projectOf, quote, readLines, roots, scanDays, stamp, Tally, terminalOf, throttled, Transcript, transcripts } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, cap, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notHere,
+  priceList, processes, projectOf, quote, roots, sessionsOf, stamp, Tally, terminalOf, Transcript, transcripts } from "../../../core/codingagents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
@@ -30,8 +29,6 @@ const PLANS: Record<string, [string, number | null]> = {
   enterprise: ["Enterprise", null], edu: ["Edu", null],
 }
 
-const iso = (ts: number | null) => (ts ? new Date(ts * 1000).toISOString() : null)
-
 /** gpt-6.1-sol -> GPT-6.1 Sol, gpt-5.1-codex-max -> GPT-5.1 Codex Max, o4-mini -> o4 Mini. */
 function modelName(model: string) {
   const m = /^gpt-([\d.]+)(?:-(.*))?$/.exec(model)
@@ -43,9 +40,8 @@ function modelName(model: string) {
 // ---------- the rollouts ($CODEX_HOME/sessions/**/rollout-*.jsonl, archived_sessions/), read as they grow
 // Tokens as ccusage counts them: only when a session's running total changed; forks replay their parent's, counted once.
 
-/** A response: when, which model, where, which session, tokens (uncached input, cached input, output), the local day. */
+/** A response: when (epoch s), which model, where, which session, tokens (uncached input, cached input, output), the local day. */
 type Resp = { ts: number; model: string; cwd: string; session: string; n: [number, number, number]; day: string }
-type Turn = { ts: number; session: string; cwd: string; ms: number; day: string }
 /** What's known of a session from its file. */
 type Meta = { id: string; file: string; cwd: string; model: string; title: string; source: string; first: number; last: number
   /** The last turn event: a turn started (it's working) or ended. */
@@ -57,44 +53,18 @@ const FILE_ID = /rollout-[\dT-]+-([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4
 const USAGE_KEYS = ["input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens", "total_tokens"]
 const int = (v: unknown) => Math.max(Math.trunc(Number(v) || 0), 0)
 
-class Scan {
-  files = new Map<string, FileState>()
-  resp = new Map<string, Resp>()   // time|model|counts -> the response (once across files)
-  turns = new Map<string, Turn>()  // turn id -> how long it took
+class Scan extends JsonlScan<Resp, FileState> {
   names = new Map<string, string>() // session -> the name it was given
   limits: { observed: number; rl: Item } | null = null // the newest rate limits a session saw
-  pruned = 0
-  reach = scanDays()
-  /** Read what was appended since the last time, at most every 5 s; all again once asked for older days. */
-  refresh = throttled(5000, () => this.run(), () => this.reach < scanDays())
 
-  private async run() {
-    if (this.reach < scanDays()) { this.files.clear(); this.resp.clear(); this.turns.clear(); this.reach = scanDays() }
-    const cutoff = Date.now() / 1000 - this.reach * 86400
-    const names: string[] = []
-    for (const dir of ["sessions", "archived_sessions"]) {
-      try {
-        for (const n of fs.readdirSync(path.join(CODEX, dir), { recursive: true }) as string[]) if (n.endsWith(".jsonl")) names.push(path.join(CODEX, dir, n))
-      } catch { /* no Codex here */ }
-    }
-    for (const p of names) {
-      let st: fs.Stats
-      try { st = fs.statSync(p) } catch { continue }
-      const f = this.files.get(p)
-      if (st.mtimeMs / 1000 < cutoff || st.size === f?.offset) continue
-      const id = FILE_ID.exec(path.basename(p))?.[1] ?? path.basename(p, ".jsonl")
-      const fresh = !f || st.size < f.offset
-      const state: FileState = fresh ? { offset: 0, total: null, subagent: false,
-        meta: { id, file: p, cwd: "", model: "", title: "", source: "", first: 0, last: 0, state: "", stateTs: 0 } } : f
-      this.files.set(p, state)
-      state.offset = await readLines(p, state.offset, (l) => this.line(l, state))
-    }
+  protected fresh(p: string): FileState {
+    const id = FILE_ID.exec(path.basename(p))?.[1] ?? path.basename(p, ".jsonl")
+    return { offset: 0, total: null, subagent: false, meta: { id, file: p, cwd: "", model: "", title: "", source: "", first: 0, last: 0, state: "", stateTs: 0 } }
+  }
+
+  protected async run() {
+    await super.run()
     this.readNames()
-    if (Date.now() / 1000 - this.pruned > 3600) {
-      for (const [k, r] of this.resp) if (r.ts < cutoff) this.resp.delete(k)
-      for (const [k, t] of this.turns) if (t.ts < cutoff) this.turns.delete(k)
-      this.pruned = Date.now() / 1000
-    }
   }
 
   private readNames() {
@@ -108,7 +78,7 @@ class Scan {
     } catch { /* none */ }
   }
 
-  private line(line: Buffer, f: FileState) {
+  protected line(line: Buffer, f: FileState) {
     // Cheap byte tests first: most lines are instructions, messages and tool output nobody needs here.
     let kind: string
     if (line.includes('"token_count"')) kind = "tokens"
@@ -189,8 +159,7 @@ class Scan {
   }
 }
 
-const scan = new Scan()
-void scan.refresh() // the first read of a big history, before anyone asks
+const scan = new Scan(() => [path.join(CODEX, "sessions"), path.join(CODEX, "archived_sessions")])
 
 function cost(r: Resp) {
   const p = price(r.model)
@@ -211,22 +180,22 @@ async function summary(days: number) {
   for (const r of rows) {
     const proj = root.get(r.cwd)!
     const s = t.session(r.session, () => ({ root: proj, cwd: r.cwd, title: scan.names.get(r.session) || metas.get(r.session)?.title || "" }))
-    t.count({ ts: r.ts, day: r.day, cost: cost(r), tokens: r.n[0] + r.n[1] + r.n[2], read: r.n[1], prompt: r.n[0] + r.n[1], model: modelName(r.model) },
+    t.count({ ts: r.ts * 1000, day: r.day, cost: cost(r), tokens: r.n[0] + r.n[1] + r.n[2], read: r.n[1], prompt: r.n[0] + r.n[1], model: modelName(r.model) },
       r.session, t.project(proj), s, r.model)
   }
   for (const x of turns) t.work(x.day, root.get(x.cwd)!, x.session, x.ms / 60000)
-  return t.result(iso, modelName)
+  return t.result(modelName)
 }
 
 // ---------- sessions running now
 
 /** Codex processes (the CLI's native binary: the TUI or `codex exec`, not its app-server or the npm wrapper), with
- *  when each started (epoch s) and its folder. */
+ *  when each started and its folder. */
 const codexProcesses = () => plugin.memo(2, async function codexProcesses() {
   const out = (await processes()).flatMap(({ pid, started, command }) => {
     const m = /^(\S+)(.*)$/.exec(command)
     if (!m || path.basename(m[1]) !== "codex" || /\b(app-server|exec-server|mcp-server|daemon|remote-control)\b/.test(m[2])) return []
-    return [{ pid, started: started / 1000, exec: /^\s+(exec|e)\b/.test(m[2]), cwd: "" }]
+    return [{ pid, started, exec: /^\s+(exec|e)\b/.test(m[2]), cwd: "" }]
   })
   const dirs = await cwds(out.map((p) => p.pid))
   for (const p of out) p.cwd = dirs.get(p.pid) ?? ""
@@ -235,72 +204,40 @@ const codexProcesses = () => plugin.memo(2, async function codexProcesses() {
 
 /** Codex sessions open now: each process with the session it's writing (the newest in its folder since it started),
  *  working while a turn runs. A TUI not asked anything yet has none: listed only when in one of the app's terminals. */
-async function live(recent: Item[]) {
-  const byId = new Map(recent.map((s) => [s.id, s]))
+async function live(): Promise<Live[]> {
   const metas = [...scan.sessions().values()]
-  const taken = new Set<string>()
-  const out: Item[] = []
-  for (const p of sortBy(await codexProcesses(), (x) => -x.started)) {
-    const m = sortBy(metas.filter((s) => s.cwd === p.cwd && s.last >= p.started - 5 && !taken.has(s.id)), (s) => -s.last)[0]
+  const out: Live[] = []
+  for (const [p, m] of sessionsOf(await codexProcesses(), (s: Meta) => s.id, (p, free) =>
+    sortBy(metas.filter((s) => s.cwd === p.cwd && s.last * 1000 >= p.started - 5000 && free(s)), (s) => -s.last)[0])) {
     const terminal = await terminalOf(plugin, p.pid)
     if (!m && !terminal) continue
-    if (m) taken.add(m.id)
-    const u = m ? byId.get(m.id) ?? {} : {}
-    const busy = m?.state === "started"
     out.push({ pid: p.pid, id: m?.id ?? "", title: (m && (scan.names.get(m.id) || m.title)) || "", name: m ? scan.names.get(m.id) ?? "" : "",
-      project: u.project || projectOf(p.cwd, rootsOf), status: busy ? "busy" : "idle", kind: p.exec ? "exec" : "interactive",
-      cwd: p.cwd, started: iso(p.started), since: iso(m?.stateTs || p.started), model: m?.model ? modelName(m.model) : null,
-      cost: u.cost ?? 0, tokens: u.tokens ?? 0, terminal })
+      status: m?.state === "started" ? "busy" : "idle", kind: p.exec ? "exec" : "interactive", cwd: p.cwd, started: p.started,
+      since: m?.stateTs ? m.stateTs * 1000 : p.started, model: m?.model ? modelName(m.model) : null, terminal })
   }
-  return busyFirst(out)
+  return out
 }
 
 // ---------- the plan and its limits
 
-/** The codex binary: the server's PATH (launchd's) may not have it, and its npm wrapper needs node on PATH. */
-function codexBin() {
-  const dirs = [...(process.env.PATH ?? "").split(":"), "/opt/homebrew/bin", "/usr/local/bin", path.join(HOME, ".local", "bin")]
-  return dirs.map((d) => path.join(d, "codex")).find((p) => { try { return fs.statSync(p).isFile() } catch { return false } }) ?? null
-}
-
-/** Asks `codex app-server` (JSON-RPC over stdio, one JSON object per line) for the account and its rate limits. */
-function appServer(): Promise<{ account: Item | null; limits: Item | null } | null> {
-  const bin = codexBin()
+/** Asks `codex app-server` (JSON-RPC over stdio, one JSON object per line) for the account and its rate limits; its npm
+ *  wrapper needs node on PATH. */
+function appServer() {
+  const bin = findBin("codex")
   if (!bin) return Promise.resolve(null)
-  return new Promise((resolve) => {
-    const env = { ...process.env, PATH: [path.dirname(process.execPath), path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
-    const child = spawn(bin, ["app-server"], { stdio: ["pipe", "pipe", "ignore"], env })
-    const got: { account: Item | null; limits: Item | null } = { account: null, limits: null }
-    let buf = "", done = false
-    const finish = (v: typeof got | null) => {
-      if (done) return
-      done = true
-      clearTimeout(timer)
-      child.kill()
-      resolve(v)
-    }
-    const timer = setTimeout(() => finish(got.limits ? got : null), 15000)
-    const send = (m: Item) => { try { child.stdin.write(JSON.stringify(m) + "\n") } catch { finish(null) } }
-    child.on("error", () => finish(null))
-    child.on("exit", () => finish(got.limits ? got : null))
-    child.stdout.on("data", (chunk: Buffer) => {
-      buf += chunk.toString("utf8")
-      for (let nl = buf.indexOf("\n"); nl >= 0; nl = buf.indexOf("\n")) {
-        const line = buf.slice(0, nl)
-        buf = buf.slice(nl + 1)
-        let m: Item
-        try { m = JSON.parse(line) } catch { continue }
-        if (m.id === 1) {
-          if (m.error) return finish(null)
-          send({ method: "initialized" })
-          send({ id: 2, method: "account/read", params: {} })
-          send({ id: 3, method: "account/rateLimits/read" })
-        } else if (m.id === 2) got.account = m.result?.account ?? null
-        else if (m.id === 3) { got.limits = m.result ?? null; finish(got) }
-      }
-    })
-    send({ id: 1, method: "initialize", params: { clientInfo: { name: "vaultite", title: "Vaultite", version: "1.0" } } })
-  })
+  const env = { ...process.env, PATH: [path.dirname(process.execPath), path.dirname(bin), process.env.PATH].filter(Boolean).join(":") }
+  const got: { account: Item | null; limits: Item | null } = { account: null, limits: null }
+  return jsonLines<typeof got>(bin, ["app-server"], { env, ms: 15000, end: () => (got.limits ? got : null),
+    first: { id: 1, method: "initialize", params: { clientInfo: { name: "vaultite", title: "Vaultite", version: "1.0" } } },
+    hear: (m, send, done) => {
+      if (m.id === 1) {
+        if (m.error) return done(null)
+        send({ method: "initialized" })
+        send({ id: 2, method: "account/read", params: {} })
+        send({ id: 3, method: "account/rateLimits/read" })
+      } else if (m.id === 2) got.account = m.result?.account ?? null
+      else if (m.id === 3) { got.limits = m.result ?? null; done(got) }
+    } })
 }
 
 /** What ChatGPT says now, asked at most once a minute (a failure too, so a missing login isn't asked for every block).
@@ -315,7 +252,7 @@ function label(minutes: number) {
 }
 
 const window = (id: string, minutes: number, used: number, resets: number | null, now: number) =>
-  limitWindow(id, label(minutes), minutes, used, resets, now, iso)
+  limitWindow(id, label(minutes), minutes, used, resets, now)
 
 async function limits() {
   const now = Date.now() / 1000
@@ -326,7 +263,7 @@ async function limits() {
       const w = snap[k]
       return w && typeof w.usedPercent === "number" ? [window(k, int(w.windowDurationMins), w.usedPercent, w.resetsAt ?? null, now)] : []
     })
-    if (wins.length) return { source: "ChatGPT account", observed: iso(at), windows: wins, plan: String(snap.planType ?? got?.account?.planType ?? "") }
+    if (wins.length) return { source: "ChatGPT account", observed: isoOf(at * 1000), windows: wins, plan: String(snap.planType ?? got?.account?.planType ?? "") }
   }
   // Without the app server: what the newest session was told.
   await scan.refresh()
@@ -336,7 +273,7 @@ async function limits() {
     const w = seen.rl[k]
     return w && typeof w.used_percent === "number" ? [window(k, int(w.window_minutes), w.used_percent, w.resets_at ?? null, now)] : []
   })
-  return wins.length ? { source: "last session", observed: iso(seen.observed), windows: wins, plan: String(seen.rl.plan_type ?? "") } : null
+  return wins.length ? { source: "last session", observed: isoOf(seen.observed * 1000), windows: wins, plan: String(seen.rl.plan_type ?? "") } : null
 }
 
 function planOf(type: string) {
@@ -344,13 +281,9 @@ function planOf(type: string) {
   return hit ? { name: hit[0], monthly: hit[1] || null } : type ? { name: type.charAt(0).toUpperCase() + type.slice(1), monthly: null } : null
 }
 
-/** Limits, live sessions, and `days` of usage. */
-async function usage(days: number) {
-  const s = await summary(days)
+async function plan() {
   const lim = await limits()
-  const plan = planOf(lim?.plan ?? "")
-  return { plan, limits: lim && { source: lim.source, observed: lim.observed, windows: lim.windows },
-    live: await live(s.sessions), ...s }
+  return { plan: planOf(lim?.plan ?? ""), limits: lim && { source: lim.source, observed: lim.observed, windows: lim.windows } }
 }
 
 // ---------- one session's conversation (the view tab: view:codex-session/<id>)
@@ -381,10 +314,7 @@ async function transcript(id: string) {
 /** A session's title, folder, times, model and conversation (the view tab: view:codex-session/<id>). */
 async function session(id: string) {
   const t = await transcript(id)
-  if (!t) return null
-  const { head } = t.talk
-  return { ...head, title: scan.names.get(id) || head.title, model: head.model ? modelName(head.model) : "",
-    project: head.cwd ? projectOf(head.cwd, rootsOf) : "", entries: t.talk.entries }
+  return t && { ...t.talk.head, title: scan.names.get(id) || t.talk.head.title, entries: t.talk.entries }
 }
 
 // ---------- Terminal runs it (the service "agent:codex")
@@ -408,4 +338,4 @@ plugin.block("codex-limits", async () => {
 })
 
 codingAgent(plugin, { id: "codex", name: "Codex", prefix: "codex", value: "estimated at list prices", state: (s) => (s.status === "busy" ? "Working" : "Idle"),
-  sessionId: SESSION_ID, usage, session, updated: (ms) => new Date(ms).toISOString() })
+  sessionId: SESSION_ID, summary, live, plan, session, modelName, projectOf: (cwd) => projectOf(cwd, rootsOf), warm: scan.refresh })

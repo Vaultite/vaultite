@@ -5,7 +5,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { startAgent } from "../../../core/codingagents.ts"
-import { AGENT, agentIn, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
+import { AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 import {
   bullets, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, reply, splitMachine, type Machine,
   type OpCtx, type Request,
@@ -563,10 +563,10 @@ export function fromHook(q: Record<string, string>, j: Item): { kind: "done" | "
   return { kind, body, session, cwd, ...(ask ? { ask } : {}) }
 }
 
-/** A coding agent's name as its plugin calls itself ("Claude Code"), from the plugin that runs it in a terminal. */
+/** A coding agent's name ("Claude Code") by its name in a terminal: one Vaultite knows, else its plugin's name. */
 function agentLabel(name: string) {
   const p = LOADED.find((x) => Object.hasOwn(x.services, `agent:${name}`))
-  return p ? str(p.manifest.name) : name ? name[0].toUpperCase() + name.slice(1) : "An agent"
+  return agentName(name) ?? (p ? str(p.manifest.name) : name ? name[0].toUpperCase() + name.slice(1) : "An agent")
 }
 
 plugin.route("POST", "inbox/hook", async (req) => {

@@ -1,20 +1,10 @@
 // An OpenCode session's conversation, from its rows in OpenCode's database: what the user said, the model's answers
 // (Markdown) and each tool call with its result. Reasoning, step markers, patches and synthetic parts are left out.
-import { cut, type Entry, type Said, toolSummary } from "../../../core/codingagents.ts"
+import { cut, type Entry, jsonOf as parse, type Said, toolSummary } from "../../../core/codingagents.ts"
 
 /** A row of the message table and the part rows that belong to it, in order. */
 export type Row = { id: string; created: number; data: string; parts: string[] }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
-const parse = (s: string): Any => {
-  try {
-    const v = JSON.parse(s)
-    return v && typeof v === "object" && !Array.isArray(v) ? v : null
-  } catch {
-    return null
-  }
-}
 const at = (ms: unknown) => (typeof ms === "number" && ms > 0 ? new Date(ms).toISOString() : "")
 
 const PICK = ["description", "command", "filePath", "path", "pattern", "url", "query", "prompt", "name"]

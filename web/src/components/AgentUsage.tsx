@@ -3,13 +3,15 @@
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import type { LucideIcon } from "lucide-react"
 import { BarChart3, Boxes, ChevronRight, FolderGit2, Gauge, RefreshCw, Terminal } from "lucide-react"
+import { AgentSession } from "@/components/AgentSession"
 import { AmbientButton } from "@/components/Ambient"
 import { Bars, Empty, List, Loading, Panel, Row, Section, Segmented, Stat } from "@/components/kit"
 import { usePluginSettings } from "@/components/PluginSettings"
 import { Button } from "@/components/ui/button"
-import { dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, useLive } from "@/core/data"
+import { canRunAgents, choosePlace, openAgent } from "@/core/agents"
+import { addDays, dateText, fmtAgo, fmtDay, fmtMin, fmtTime, numberText, today, useLive } from "@/core/data"
 import { api } from "@/core/http"
-import type { BlockCtx } from "@/core/define"
+import type { BlockCtx, PluginDef } from "@/core/define"
 import { isViewOpen, openView } from "@/core/files"
 import { namedIcon } from "@/core/pages"
 import { machinePath, onMachine, useMachines } from "@/core/machines"
@@ -71,25 +73,33 @@ export type AgentUsage = {
 const EVERY = 15_000
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 
-/** A block's data, from its options' `machine` and `account`: the same path at the same moment for every block (so they
- *  share one request), again every 15 s while visible. `on` names another machine (" on Studio"); `refresh` has the
- *  plugin ask again what it remembers (the account's limits) and fetches it. */
-function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days = 30) {
+/** A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and
+ *  `account`: `on` names another machine (" on Studio"). */
+export function useAgentRoute<T>(route: string, options: Record<string, unknown>, query: Record<string, string | number> = {}, version?: string) {
   const machine = str(options.machine), account = str(options.account)
-  const machines = useMachines()
-  const on = machine ? ` on ${machines?.find((m) => m.id === machine)?.label ?? machine}` : ""
+  const m = useMachines()?.find((x) => x.id === machine)
+  const there = m?.self ? "" : machine
+  const q = new URLSearchParams(Object.entries({ ...query, ...(account ? { account } : {}) }).map(([k, v]) => [k, String(v)])).toString()
+  const { data, error } = useLive<T>(machinePath(there, q ? `${route}?${q}` : route), version)
+  return { data, error: data ? null : error, on: there ? ` on ${m?.label ?? machine}` : "", machine: there }
+}
+
+/** A block's usage: the same path at the same moment for every block (so they share one request), again every 15 s
+ *  while visible; `refresh` has the plugin ask again what it remembers (the account's limits) and fetches it. */
+function useAgentUsage(src: AgentSource, options: Record<string, unknown>, days = 30) {
   const [tick, setTick] = useState(() => Math.floor(Date.now() / EVERY))
   useEffect(() => {
     const id = setInterval(() => { if (!document.hidden) setTick(Math.floor(Date.now() / EVERY)) }, 1000)
     return () => clearInterval(id)
   }, [])
   const [again, setAgain] = useState(0)
-  const { data, error } = useLive<AgentUsage>(machinePath(machine, `${src.path}?days=${days}${account ? `&account=${encodeURIComponent(account)}` : ""}`), `${tick}.${again}`)
+  const got = useAgentRoute<AgentUsage>(src.path, options, { days }, `${tick}.${again}`)
+  const { data, machine } = got
   useEffect(() => {
     if (data) for (const s of [...data.sessions, ...data.live]) if (s.title) titles.set(`${src.view}/${onMachine(s.id, machine)}`, s.title)
   }, [data, src.view, machine])
   const refresh = () => api("POST", machinePath(machine, `${src.path}/refresh`)).then(() => setAgain((n) => n + 1))
-  return { data, error: data ? null : error, on, machine, refresh }
+  return { ...got, refresh }
 }
 
 /** Sessions' titles seen so far, by "<view>/<id>", for their tabs' labels (sessionTitle). */
@@ -434,3 +444,73 @@ export function AgentProject({ src, ...ctx }: BlockCtx & { src: AgentSource }) {
   )
 }
 
+type Named = { id: string; desktop?: boolean; name: string }
+/** Which of the agent blocks a plugin's block draws (agentPlugin). */
+type AgentBlock = "limits" | "sessions" | "usage" | "projects" | "models" | "project"
+const BLOCKS: Record<AgentBlock, (ctx: BlockCtx & { src: AgentSource }) => ReactNode> = {
+  limits: AgentLimits, sessions: AgentSessions, usage: AgentUsageBlock, projects: AgentProjects, models: AgentModels, project: AgentProject,
+}
+
+/** A coding agent plugin's definition (its index.tsx): its blocks (each an agent block by name, or its own), a session's
+ *  view, its agent in Terminal and the commands opening it (literal: the server reads them), made-up usage for the
+ *  demo. It runs while the plugin loads, so it reads nothing but its arguments until called on. */
+export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
+  blocks: Record<string, AgentBlock | ((ctx: BlockCtx) => ReactNode)>
+  /** Its program's names, its accounts' route (AgentDef). */
+  process: string[]; accounts?: string
+  /** Open it, in a split (desktop: before its name, so the server's list leaves it out), in an account or on a machine. */
+  opens: { open: Named; split: Named; where?: Named }
+  demo: AgentMock; demoMore?: () => Record<string, unknown>
+}): PluginDef {
+  const { blocks, process, accounts, opens: { open, split, where }, demo, demoMore, ...def } = o
+  const when = () => canRunAgents()
+  return {
+    ...def,
+    blocks: Object.fromEntries(Object.entries(blocks).map(([k, b]) => [k, typeof b === "string" ? (ctx: BlockCtx) => {
+      const Block = BLOCKS[b]
+      return <Block src={src} {...ctx} />
+    } : b])),
+    // A session read back (view:<view>/<id>, <id>@<machine> for another machine's): opened by clicking one that isn't
+    // in one of the app's terminals.
+    views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} /> } },
+    // (Terminal runs it: the service "agent:<agent>" in its plugin.ts says how)
+    agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(accounts ? { accounts } : {}) } },
+    commands: [
+      { ...open, when, run: () => openAgent(src.agent), icon: src.icon },
+      ...(where ? [{ ...where, when, run: () => void choosePlace({ agent: src.agent }) }] : []),
+      { ...split, desktop: true, when, run: () => openAgent(src.agent, { split: true }) },
+    ],
+    mockLive: () => ({ [src.path]: mockUsage(demo), ...demoMore?.() }),
+  }
+}
+
+/** Made-up usage for the demo, times in minutes ago: `daily`, ten days' value repeated over 30 days and growing, each
+ *  dollar `per` so many tokens and minutes working, a session per so many dollars; the totals are the projects'. */
+export type AgentMock = {
+  plan?: AgentUsage["plan"]
+  limits?: { source: string; observed: number; windows: [id: string, label: string, minutes: number, used: number, renewsIn: number][] }
+  daily: number[]; per: [tokens: number, minutes: number, dollars: number]; cacheHit: number
+  live: (Omit<LiveSession, "pid" | "name" | "started" | "since"> & { pid?: number; name?: string; at: [started: number, since: number] })[]
+  projects: (Omit<Share, "last"> & { last: number })[]
+  models: Share[]
+  sessions: (Omit<Session, "first" | "last"> & { at: [first: number, last: number] })[]
+}
+
+function mockUsage(m: AgentMock): AgentUsage {
+  const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
+  const sum = (k: "cost" | "tokens") => m.projects.reduce((n, p) => n + p[k], 0)
+  return {
+    updated: ago(0), plan: m.plan ?? null,
+    limits: m.limits ? { source: m.limits.source, observed: ago(m.limits.observed),
+      windows: m.limits.windows.map(([id, label, minutes, used, renews]) => ({ id, label, minutes, used, resets_at: ago(-renews) })) } : null,
+    live: m.live.map(({ at: [started, since], ...s }, i) => ({ pid: i + 1, name: "", ...s, started: ago(started), since: ago(since) })),
+    days: Array.from({ length: 30 }, (_, i) => {
+      const v = m.daily[i % 10] * (1 + i / 30)
+      return { date: addDays(today(), i - 29), cost: v, tokens: Math.round(v * m.per[0]), active_min: v * m.per[1], sessions: Math.ceil(v / m.per[2]) }
+    }),
+    projects: m.projects.map((p) => ({ ...p, last: ago(p.last) })),
+    models: m.models,
+    sessions: m.sessions.map(({ at: [first, last], ...s }) => ({ ...s, first: ago(first), last: ago(last) })),
+    total: { cost: Math.round(sum("cost") * 100) / 100, tokens: sum("tokens"), unpriced: 0, cache_hit: m.cacheHit },
+  }
+}

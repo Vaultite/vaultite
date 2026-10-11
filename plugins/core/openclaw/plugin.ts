@@ -6,11 +6,11 @@ import net from "node:net"
 import path from "node:path"
 import { promisify } from "node:util"
 import zlib from "node:zlib"
-import { accountsNamed, type AgentStart, ago, codingAgent, cut, expandHome, HOME, isoMicro as iso, notHere, num, processes, projectOf, quote,
-  rebuilt, roots, scanDays, SqliteFile, Tally, terminalOf, vauMcpServer } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, type Any, argvOf, codingAgent, cut, expandHome, findBin, firstPrompts, HOME, isoOf, jsonOf, type Live, notHere, num, processes, quote,
+  rebuilt, roots, scanDays, SqliteFile, Tally, vauMcpServer } from "../../../core/codingagents.ts"
 import { bullets, fmtMin, localDate, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
-import { type Any, conversation, injected, textOf } from "./transcript.ts"
+import { conversation, injected, textOf } from "./transcript.ts"
 
 export const plugin = new Plugin(import.meta.url)
 const run = promisify(execFile)
@@ -21,14 +21,8 @@ const STATE = env("OPENCLAW_STATE_DIR") ? expandHome(env("OPENCLAW_STATE_DIR")) 
 // zstd comes with Node 22.15: without it compressed events are skipped.
 const unzstd = typeof zlib.zstdDecompressSync === "function" ? zlib.zstdDecompressSync : null
 const str = (v: unknown) => (typeof v === "string" ? v : "")
-const parse = (s: unknown): Any => {
-  try {
-    const v = typeof s === "string" ? JSON.parse(s) : null
-    return v && typeof v === "object" && !Array.isArray(v) ? v : {}
-  } catch {
-    return {}
-  }
-}
+/** A JSON object stored as text, else {}. */
+const parse = (s: unknown): Any => { const v = typeof s === "string" ? jsonOf(s) : null; return v && typeof v === "object" && !Array.isArray(v) ? v : {} }
 
 // ---------- the databases
 
@@ -61,7 +55,19 @@ class Agent {
   windows = new Map<string, { key: string; name: string }>() // transcript id -> its session key, its own name
   cwds = new Map<string, string>() // transcript id -> the folder its header names
   private replyCache = new Map<string, Any>() // "<session>:<seq>" -> a compressed reply's message
-  private prompts = new Map<string, string>()
+  private firstPrompt = firstPrompts((sid) => {
+    for (const r of this.db.all(`SELECT event_json, event_zstd, event_utf8_bytes FROM transcript_events WHERE session_id = ? AND ${ROLE} = 'user'
+        ORDER BY seq LIMIT 8`, sid)) {
+      const m = eventOf(r).message, text = injected(m) ? "" : textOf(m?.content)
+      if (text.trim()) return text
+    }
+    return ""
+  })
+
+  /** As an account: its id is its name. */
+  get label() {
+    return this.id
+  }
 
   constructor(id: string) {
     this.id = id
@@ -149,19 +155,7 @@ class Agent {
 
   /** A session's name (its label, else its generated title), else its first prompt. */
   titleOf(sid: string) {
-    const named = this.bySession.get(sid)?.title || this.windows.get(sid)?.name
-    if (named) return named
-    if (!this.prompts.has(sid)) {
-      let text = ""
-      for (const r of this.db.all(`SELECT event_json, event_zstd, event_utf8_bytes FROM transcript_events WHERE session_id = ? AND ${ROLE} = 'user'
-          ORDER BY seq LIMIT 8`, sid)) {
-        const m = eventOf(r).message
-        if ((text = injected(m) ? "" : textOf(m?.content).replace(/\s+/g, " ").trim().slice(0, 80))) break
-      }
-      if (!text) return ""
-      this.prompts.set(sid, text)
-    }
-    return this.prompts.get(sid)!
+    return this.bySession.get(sid)?.title || this.windows.get(sid)?.name || this.firstPrompt(sid)
   }
 }
 
@@ -177,22 +171,15 @@ function allAgents(): Agent[] {
   } catch {
     // no OpenClaw here
   }
-  return sortBy(ids, (id) => [id === "main" ? 0 : 1, id]).map((id) => {
-    if (!agentCache.has(id)) agentCache.set(id, new Agent(id))
-    return agentCache.get(id)!
-  })
+  return sortBy(ids, (id) => [id === "main" ? 0 : 1, id]).map(agentNamed)
 }
-
-const agentsFor = (id: unknown) => accountsNamed(allAgents(), id, "OpenClaw agent")
+function agentNamed(id: string) {
+  if (!agentCache.has(id)) agentCache.set(id, new Agent(id))
+  return agentCache.get(id)!
+}
 
 /** The agent whose workspace a block reads: the one named, else main (its workspace may come before any session). */
-function agentOf(id: unknown): Agent {
-  if (id) return agentsFor(id)[0]
-  const first = allAgents()[0]
-  if (first) return first
-  if (!agentCache.has("main")) agentCache.set("main", new Agent("main"))
-  return agentCache.get("main")!
-}
+const agentOf = (id: unknown): Agent => agent.accountOf(id) ?? agentNamed("main")
 
 // ---------- usage
 
@@ -200,7 +187,6 @@ function agentOf(id: unknown): Agent {
 // reply's own time, not the session's. A subagent's replies count in its parent's session.
 async function summary(days: number, agents: Agent[]) {
   const t = new Tally(days)
-  const many = allAgents().length > 1
   const rows: [Agent, Reply][] = []
   for (const a of agents) {
     a.refresh()
@@ -214,11 +200,11 @@ async function summary(days: number, agents: Agent[]) {
   const root = roots(new Set(where.values()))
   for (const [a, r] of rows) {
     const sid = a.top(r.session), cwd = where.get(sid)!, proj = root.get(cwd)!
-    const s = t.session(sid, () => ({ title: a.titleOf(sid), root: proj, cwd, account: a.id, ...(many ? { accountLabel: a.id } : {}) }))
+    const s = t.session(sid, () => ({ title: a.titleOf(sid), root: proj, cwd, account: a.id }))
     t.count({ ts: r.ts, day: r.day, cost: r.cost, tokens: r.tokens, read: r.read, prompt: r.input + r.read + r.write, model: r.model, min: r.ms / 60000 },
       sid, t.project(proj), s, r.model, r.tokens + 1)
   }
-  return t.result(iso)
+  return t.result()
 }
 
 /** What started a session, by its key: a scheduled job, a subagent, else a conversation. */
@@ -242,43 +228,22 @@ async function tuis() {
     const env = tuiEnv(pid)
     // (a bare title, its arguments overwritten: a TUI only when Terminal said which session it's on)
     if (args[i + 1] !== "tui" && !(args.length === i + 1 && env)) continue
-    let key = env ?? "main"
-    for (let j = i + 2; j < args.length; j++) {
-      if (args[j] === "--session") key = args[++j] ?? key
-      else if (args[j].startsWith("--session=")) key = args[j].slice(10)
-    }
-    key = key.replace(/^'|'$/g, "")
+    const key = (argvOf(args.slice(i + 2), new Set(["--session"])).opt("--session") || env || "main").replace(/^'|'$/g, "")
     const full = key.startsWith("agent:") ? key : `agent:main:${key}`
     if (!out.has(full)) out.set(full, pid)
   }
   return out
 }
 
-/** Sessions working now (OpenClaw marks one running while a turn is under way) or open in a TUI, working ones first. */
-async function live(agents: Agent[], recent: Item[]) {
-  const many = allAgents().length > 1
-  const byId = new Map(recent.map((s) => [s.id, s]))
+/** Sessions working now (OpenClaw marks one running while a turn is under way) or open in a TUI. */
+async function live(agents: Agent[]): Promise<Live[]> {
   const open = await tuis()
-  const out: Item[] = []
-  for (const a of agents) {
-    for (const n of a.nodes.values()) {
-      const pid = open.get(n.key) ?? 0
-      if ((n.status !== "running" && !pid) || n.archived || !n.current) continue
-      const u = byId.get(n.current) ?? {}, cwd = a.cwdOf(n.current)
-      out.push({ pid, id: n.current, title: n.title || a.titleOf(n.current), name: n.key, project: u.project || projectOf(cwd),
-        status: n.status === "running" ? "busy" : "idle", kind: kindOf(n.key), started: iso(n.started || n.created), since: iso(n.activity || n.updated),
-        model: u.model || n.model || null, cost: u.cost ?? 0, tokens: u.tokens ?? 0, cwd, terminal: pid ? await terminalOf(plugin, pid) : null,
-        account: a.id, ...(many ? { accountLabel: a.id } : {}) })
-    }
-  }
-  return sortBy(sortBy(out, (s) => s.since || "", true), (s) => (s.status === "busy" ? 0 : 1))
-}
-
-/** Sessions running now and `days` of usage, of one agent or all of them. */
-async function usage(days: number, account: unknown) {
-  const agents = agentsFor(account)
-  const s = await summary(days, agents)
-  return { plan: null, limits: null, live: await live(agents, s.sessions), ...s }
+  return agents.flatMap((a) => [...a.nodes.values()].flatMap((n) => {
+    const pid = open.get(n.key) ?? 0
+    if ((n.status !== "running" && !pid) || n.archived || !n.current) return []
+    return [{ pid, id: n.current, title: n.title || a.titleOf(n.current), name: n.key, status: n.status === "running" ? "busy" : "idle",
+      kind: kindOf(n.key), cwd: a.cwdOf(n.current), started: n.started || n.created, since: n.activity || n.updated, model: n.model || null, account: a.id }]
+  }))
 }
 
 // ---------- one session's conversation (the view tab: view:openclaw-session/<transcript id>)
@@ -311,7 +276,7 @@ function session(id: string) {
   const t = talk(at.agent, id)
   const cwd = at.agent.bySession.get(id)?.cwd || t.cwd
   return { key: at.key, agent: at.agent.id, title: at.agent.bySession.get(id)?.title || at.agent.windows.get(id)?.name || t.prompt, cwd, model: t.model,
-    first: t.first, last: t.last, branch: "", project: cwd ? projectOf(cwd) : "", entries: t.entries }
+    first: t.first, last: t.last, branch: "", entries: t.entries }
 }
 
 // ---------- memory (the workspace's files, which the agent reads and writes) and scheduled jobs
@@ -322,7 +287,7 @@ const notesOf = (v: unknown) => Math.min(Math.max(Math.trunc(Number(v ?? 2)) || 
 function readFile(file: string) {
   try {
     const st = fs.statSync(file)
-    return st.isFile() ? { text: cut(fs.readFileSync(file, "utf8").trim(), 20000), modified: iso(st.mtimeMs) } : null
+    return st.isFile() ? { text: cut(fs.readFileSync(file, "utf8").trim(), 20000), modified: isoOf(st.mtimeMs) } : null
   } catch {
     return null
   }
@@ -365,7 +330,7 @@ function cronJobs(account?: unknown) {
     .map((r) => {
       const job = parse(r.job_json), st = parse(r.state_json)
       return { id: str(r.job_id), name: str(r.name) || str(r.job_id), description: str(r.description), enabled: !!r.enabled, agent: str(r.agent_id) || "main",
-        schedule: scheduleText(job.schedule), task: taskText(job.payload), next: r.enabled ? iso(num(st.nextRunAtMs)) : null, last: iso(num(st.lastRunAtMs)),
+        schedule: scheduleText(job.schedule), task: taskText(job.payload), next: r.enabled ? isoOf(num(st.nextRunAtMs)) : null, last: isoOf(num(st.lastRunAtMs)),
         status: running.has(r.job_id) || st.runningAtMs ? "running" : str(st.lastRunStatus) || str(st.lastStatus), error: str(st.lastError).slice(0, 300) }
     })
     .filter((j) => !account || j.agent === account)
@@ -400,18 +365,6 @@ plugin.provide("agent:openclaw", async ({ resume, profile, prompt }: AgentStart)
 
 // ---------- connecting OpenClaw to the vault
 
-/** The openclaw command: the server's PATH first (launchd's is short), then where its installers put it. */
-function openclawBin() {
-  // `npm i -g` puts it beside the real node binary (a Node unpacked in the home folder, nvm's).
-  let npmBin = ""
-  try { npmBin = path.dirname(fs.realpathSync(process.execPath)) } catch { /* none */ }
-  const dirs = [...(process.env.PATH ?? "").split(path.delimiter).filter(Boolean), npmBin, path.join(HOME, ".local", "bin"), path.join(HOME, ".npm-global", "bin"),
-    "/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].filter(Boolean)
-  return dirs.map((d) => path.join(d, "openclaw")).find((p) => {
-    try { fs.accessSync(p, fs.constants.X_OK); return fs.statSync(p).isFile() } catch { return false }
-  }) ?? null
-}
-
 plugin.op({
   id: "openclaw.connect",
   cli: "openclaw connect",
@@ -426,7 +379,7 @@ so OpenClaw's agents get the vault's tools (the app must be running when they us
   lock: false, // runs OpenClaw's CLI, holds nothing of the vault
   result: { type: "object", description: "name (vaultite), server (the command and args saved), saved (what OpenClaw answered)" },
   run: async () => {
-    const bin = openclawBin()
+    const bin = findBin("openclaw")
     if (!bin) throw new OpError("OpenClaw isn't installed on this machine: no openclaw command on the server's PATH or where its installers put it (openclaw.ai)", 409)
     const server = vauMcpServer()
     // Its npm launcher runs on node: the server's own, when the PATH has none.
@@ -444,10 +397,9 @@ so OpenClaw's agents get the vault's tools (the app must be running when they us
 
 // ---------- blocks as text (GET /api/render)
 
-codingAgent(plugin, { id: "openclaw", name: "OpenClaw", prefix: "openclaw", value: "as OpenClaw recorded it",
-  state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, usage, session,
-  // (to open OpenClaw as one of them)
-  accounts: () => allAgents().map((a) => ({ id: a.id, label: a.id })) })
+const agent = codingAgent(plugin, { id: "openclaw", name: "OpenClaw", prefix: "openclaw", value: "as OpenClaw recorded it",
+  state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, summary, live, session,
+  accounts: { all: allAgents, word: "OpenClaw agent" } })
 
 plugin.block("openclaw-memory", async (ctx) => {
   const m = memory(agentOf(ctx.options.account), notesOf(ctx.options.notes))

@@ -3,6 +3,7 @@
 import { distance } from "./blocks.ts"
 import { actionProblems, type OpAction } from "./actions.ts"
 import type { Readable } from "node:stream"
+import { KNOWN_AGENTS } from "./terminalids.ts"
 import type { Item, Vault } from "./vault.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -306,18 +307,8 @@ export function nearest(s: string, names: string[]): string | null {
 /** Who asked, from the request's X-Vaultite-Client and -Agent (or an MCP client's own name, given as the agent). */
 export function whoOf(client: string | null, agent: string | null): Who {
   const n = (agent ?? "").trim()
-  const known: [RegExp, string, string, string][] = [
-    [/claude[-_ ]?code/i, "claude-code", "Claude Code", "claude"],
-    [/claude/i, "claude-app", "Claude", "claude"],
-    [/codex/i, "codex", "Codex", "codex"],
-    [/chatgpt|openai/i, "chatgpt", "ChatGPT", "chatgpt"],
-    [/cursor/i, "cursor", "Cursor", "cursor"],
-    [/opencode/i, "opencode", "OpenCode", "opencode"],
-    [/openclaw/i, "openclaw", "OpenClaw", "openclaw"],
-    [/hermes/i, "hermes", "Hermes", "hermes"],
-    [/gemini/i, "gemini", "Gemini", "gemini"],
-  ]
-  for (const [re, id, label, source] of known) if (re.test(n)) return { client, agent: id, label, source }
+  const hit = KNOWN_AGENTS.find((a) => a.said.test(n))
+  if (hit) return { client, agent: hit.id, label: hit.name, source: hit.source ?? hit.id }
   const slug = n.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40)
   if (slug) return { client, agent: slug, label: n.slice(0, 60), source: slug }
   if (client === "mcp") return { client, agent: null, label: "An MCP client", source: "mcp" }

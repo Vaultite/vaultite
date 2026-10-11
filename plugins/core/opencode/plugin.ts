@@ -5,10 +5,10 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { type AgentStart, busyFirst, codingAgent, cwds, HOME, isoMicro as iso, notHere, num, processes, projectOf, quote, rebuilt, roots,
-  scanDays, SqliteFile, Tally, terminalOf } from "../../../core/codingagents.ts"
+import { type AgentStart, argvOf, codingAgent, cwds, firstPrompts, HOME, type Live, notHere, num, processes, quote, rebuilt, roots, scanDays,
+  sessionsOf, SqliteFile, Tally } from "../../../core/codingagents.ts"
 import { localDate, Plugin } from "../../../core/plugins.ts"
-import { type Item, sortBy } from "../../../core/vault.ts"
+import type { Item } from "../../../core/vault.ts"
 import { conversation, type Row } from "./transcript.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -104,21 +104,12 @@ const modelName = (names: Map<string, string>, key: string) => names.get(key) ||
 
 /** OpenCode's placeholder titles ("New session - 2026-09-29T...", "Child session - ...") aren't titles. */
 const placeholder = (t: string) => !t || /^(New|Child) session - \d{4}-\d\d-\d\dT/.test(t)
-const prompts = new Map<string, string>()
+const firstPrompt = firstPrompts((id) => String(store.all(`SELECT json_extract(p.data, '$.text') AS text FROM part p JOIN message m ON m.id = p.message_id
+  WHERE p.session_id = ? AND json_extract(m.data, '$.role') = 'user' AND json_extract(p.data, '$.type') = 'text'
+    AND json_extract(p.data, '$.synthetic') IS NOT 1 ORDER BY m.time_created, p.id LIMIT 1`, id)[0]?.text ?? ""))
 
 /** A session's title, or its first prompt when OpenCode hasn't named it. */
-function titleOf(s: { id: string; title: string }) {
-  if (!placeholder(s.title)) return s.title
-  if (!prompts.has(s.id)) {
-    const r = store.all(`SELECT json_extract(p.data, '$.text') AS text FROM part p JOIN message m ON m.id = p.message_id
-      WHERE p.session_id = ? AND json_extract(m.data, '$.role') = 'user' AND json_extract(p.data, '$.type') = 'text'
-        AND json_extract(p.data, '$.synthetic') IS NOT 1 ORDER BY m.time_created, p.id LIMIT 1`, s.id)[0]
-    const text = String(r?.text ?? "").replace(/\s+/g, " ").trim().slice(0, 80)
-    if (!text) return ""
-    prompts.set(s.id, text)
-  }
-  return prompts.get(s.id)!
-}
+const titleOf = (s: { id: string; title: string }) => (placeholder(s.title) ? firstPrompt(s.id) : s.title)
 
 // ---------- usage
 
@@ -145,7 +136,7 @@ async function summary(days: number) {
     t.count({ ts: r.ts, day: r.day, cost: r.cost, tokens: r.tokens, read: r.read, prompt: r.input + r.read + r.write, model: mn, min: r.ms / 60000 },
       sid, t.project(proj), s, mn, r.tokens + 1)
   }
-  return t.result(iso)
+  return t.result()
 }
 
 // ---------- OpenCode running now
@@ -164,64 +155,45 @@ async function sessionProcesses(): Promise<Proc[]> {
   for (const { pid, started, command } of await processes()) {
     const args = command.trim().split(/\s+/)
     if (!["opencode", "opencode.exe"].includes(path.basename(args[0]))) continue // npm's package runs bin/opencode.exe
-    let session = ""
-    const pos: string[] = []
-    for (let i = 1; i < args.length; i++) {
-      const a = args[i]
-      if (a === "-s" || a === "--session") session = args[++i] ?? ""
-      else if (a.startsWith("--session=")) session = a.slice(10)
-      else if (VALUED.has(a)) i++
-      else if (!a.startsWith("-")) pos.push(a)
-    }
-    const sub = pos[0] ?? ""
+    const { words, opt } = argvOf(args.slice(1), VALUED)
+    const sub = words[0] ?? ""
     if (NOT_A_SESSION.has(sub)) continue
     const kind = sub === "run" ? "run" : "interactive"
-    procs.push({ pid, started, kind, session, dir: kind === "interactive" ? sub : "" })
+    procs.push({ pid, started, kind, session: opt("-s", "--session") ?? "", dir: kind === "interactive" ? sub : "" })
   }
   return procs
 }
 
 /** OpenCode open now: each process and its session (the one it resumed, else the newest top-level one of its kind in
  *  its folder since it started), working while its last reply isn't done. A TUI asked nothing yet isn't one. */
-async function live(recent: Item[]) {
+async function live(): Promise<Live[]> {
   const procs = await sessionProcesses()
   if (!procs.length || !store.open()) return []
   const dirs = await cwds(procs.map((p) => p.pid))
   const names = await modelNames()
-  const byId = new Map(recent.map((s) => [s.id, s]))
   const since = Math.min(...procs.map((p) => p.started)) - 5000
   // `opencode run` makes its sessions unable to ask anything (question denied): that tells them from the TUI's.
   const cands = store.all(`SELECT id, title, directory, time_created, time_updated,
       coalesce(permission, '') LIKE '%"permission":"question","pattern":"*","action":"deny"%' AS headless
     FROM session WHERE parent_id IS NULL AND time_updated >= ? ORDER BY time_updated DESC`, since)
-  const taken = new Set<string>()
-  const out: Item[] = []
-  for (const p of sortBy(procs, (x) => x.started, true)) {
+  const out: Live[] = []
+  for (const [p, s] of sessionsOf(procs, (x: Item) => String(x.id), (p, free) => {
     const cwd = p.dir ? path.resolve(dirs.get(p.pid) ?? "/", p.dir) : dirs.get(p.pid) ?? ""
-    let s: Item | undefined
-    if (p.session) s = store.all(`SELECT id, title, directory, time_created, time_updated FROM session WHERE id = ?`, p.session)[0]
-    else s = cands.find((c) => !taken.has(c.id) && c.directory === cwd && num(c.time_updated) >= p.started - 5000 && !!c.headless === (p.kind === "run"))
+    return p.session ? store.all(`SELECT id, title, directory, time_created, time_updated FROM session WHERE id = ?`, p.session)[0]
+      : cands.find((c) => free(c) && c.directory === cwd && num(c.time_updated) >= p.started - 5000 && !!c.headless === (p.kind === "run"))
+  })) {
     if (!s) continue
-    taken.add(s.id)
     const last = store.all(`SELECT time_created AS created, json_extract(data, '$.role') AS role, json_extract(data, '$.time.completed') AS done,
       json_extract(data, '$.providerID') AS provider, json_extract(data, '$.modelID') AS model
       FROM message WHERE session_id = ? ORDER BY time_created DESC, id DESC LIMIT 1`, s.id)[0]
     const busy = !!last && (last.role === "user" || (last.role === "assistant" && !last.done))
     const model = store.all(`SELECT json_extract(data, '$.providerID') AS provider, json_extract(data, '$.modelID') AS model FROM message
       WHERE session_id = ? AND json_extract(data, '$.role') = 'assistant' ORDER BY time_created DESC, id DESC LIMIT 1`, s.id)[0]
-    const u = byId.get(s.id) ?? {}
-    out.push({ pid: p.pid, id: s.id, title: titleOf({ id: s.id, title: s.title ?? "" }), name: "", project: u.project || projectOf(s.directory),
-      status: busy ? "busy" : "idle", kind: p.kind, started: iso(p.started), since: iso(num(last?.done) || num(last?.created) || num(s.time_updated)),
-      model: u.model ?? (model?.model ? modelName(names, `${model.provider}/${model.model}`) : null), cost: u.cost ?? 0, tokens: u.tokens ?? 0,
-      cwd: s.directory, terminal: await terminalOf(plugin, p.pid) })
+    out.push({ pid: p.pid, id: s.id, title: titleOf({ id: s.id, title: s.title ?? "" }), status: busy ? "busy" : "idle", kind: p.kind,
+      cwd: String(s.directory ?? ""), started: p.started, since: num(last?.done) || num(last?.created) || num(s.time_updated),
+      model: model?.model ? modelName(names, `${model.provider}/${model.model}`) : null })
   }
-  return busyFirst(out)
-}
-
-/** Live sessions and `days` of usage. OpenCode has no plan or limits of its own. */
-async function usage(days: number) {
-  const s = await summary(days)
-  return { plan: null, limits: null, live: await live(s.sessions), ...s }
+  return out
 }
 
 // ---------- one session's conversation (the view tab: view:opencode-session/<id>)
@@ -254,8 +226,8 @@ async function session(id: string) {
   if (!s) return null
   const t = talk(s)
   const cwd = String(s.directory ?? "")
-  return { id, title: placeholder(s.title) ? t.prompt : s.title, cwd, model: t.model ? modelName(await modelNames(), t.model) : "",
-    first: t.first, last: t.last, branch: "", project: cwd ? projectOf(cwd) : "", entries: t.entries }
+  return { title: placeholder(s.title) ? t.prompt : s.title, cwd, model: t.model ? modelName(await modelNames(), t.model) : "",
+    first: t.first, last: t.last, branch: "", entries: t.entries }
 }
 
 // ---------- Terminal runs it (the service "agent:opencode")
@@ -313,4 +285,4 @@ plugin.provide("agent:opencode", async ({ resume, context, state, prompt }: Agen
 // ---------- blocks as text (GET /api/render)
 
 codingAgent(plugin, { id: "opencode", name: "OpenCode", prefix: "opencode", value: "as OpenCode recorded it",
-  state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, usage, session })
+  state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, summary, live, session })

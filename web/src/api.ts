@@ -181,8 +181,8 @@ export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
 export { dismissNotice, notify, notifyError, type NotifyOptions } from "@/core/notify"
 export { cn } from "@/lib/utils"
 // A coding agent's usage and sessions (Claude Code, Codex...): the blocks every agent plugin draws, on its own data.
-export { AgentLimits, AgentLimitsChip, AgentModels, AgentProject, AgentProjects, AgentSessions, AgentUsageBlock, money, openSession, sessionTitle, tokens } from "@/components/AgentUsage"
-export type { AgentSource, AgentUsage, Day as AgentDay, LiveSession as AgentLiveSession, Session as AgentSessionSummary, Share as AgentShare, Window as AgentWindow } from "@/components/AgentUsage"
+export { AgentLimits, AgentLimitsChip, AgentModels, agentPlugin, AgentProject, AgentProjects, AgentSessions, AgentUsageBlock, money, openSession, sessionTitle, tokens, useAgentRoute } from "@/components/AgentUsage"
+export type { AgentMock, AgentSource, AgentUsage, Day as AgentDay, LiveSession as AgentLiveSession, Session as AgentSessionSummary, Share as AgentShare, Window as AgentWindow } from "@/components/AgentUsage"
 export { AgentSession, type Entry as AgentEntry, type SessionPage as AgentSessionPage } from "@/components/AgentSession"
 export { setProperty } from "@/core/frontmatter"
 /** A frontmatter key as a chip in a file's header or the status bar, its values each with a label, an icon and a colour

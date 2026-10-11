@@ -3,10 +3,10 @@
 import fs from "node:fs"
 import path from "node:path"
 import { isMap, isScalar, type Node, parseDocument, type Scalar } from "yaml"
-import { accountsNamed, type AgentStart, ago, busyFirst, cap, codingAgent, cwds, expandHome, HOME, isoMicro as iso, notHere, num, processes,
-  projectOf, quote, rebuilt, roots, scanDays, SqliteFile, Tally, terminalOf, vauMcpServer } from "../../../core/codingagents.ts"
-import { bullets, HTTPError, localDate, localTime, OpError, Plugin, section } from "../../../core/plugins.ts"
-import { type Item, sortBy } from "../../../core/vault.ts"
+import { type AgentStart, ago, argvOf, cap, codingAgent, cwds, expandHome, firstPrompts, HOME, type Live, notHere, num, processes, projectOf, quote,
+  rebuilt, roots, scanDays, sessionsOf, SqliteFile, Tally, vauMcpServer } from "../../../core/codingagents.ts"
+import { bullets, localDate, localTime, OpError, Plugin, section } from "../../../core/plugins.ts"
+import type { Item } from "../../../core/vault.ts"
 import { conversation, type Row, textOf } from "./transcript.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -40,16 +40,6 @@ function accounts(): Account[] {
   return out
 }
 
-const listed = (all: Account[]) => all.map((a) => a.id).join(", ")
-
-const accountsFor = (id: unknown) => accountsNamed(accounts(), id, "Hermes profile")
-
-/** The one home `id` names, the main one when it's empty; null when there's no such profile. */
-function accountOf(id: unknown): Account | null {
-  const all = accounts()
-  return typeof id === "string" && id ? all.find((a) => a.id === id) ?? null : all[0]
-}
-
 // ---------- the database
 
 /** Usage counted on a day: a model's share of a session (Hermes keeps it per session and model, not per request). */
@@ -72,7 +62,8 @@ class Store extends SqliteFile {
   turns: Turn[] = []
   sessions = new Map<string, Ses>()
   parents = new Map<string, string>()
-  prompts = new Map<string, string>()
+  firstPrompt = firstPrompts((id) => textOf(textCell(this.all(`SELECT ${CONTENT} FROM messages WHERE session_id = ? AND role = 'user'
+    AND ${this.active()} ORDER BY timestamp, id LIMIT 1`, id)[0]?.content)).replace(/_\(\w+\)_/g, ""))
 
   constructor(dir: string) {
     super(path.join(dir, "state.db"))
@@ -183,17 +174,7 @@ const SOURCES: Record<string, string> = { cli: "Terminal", tui: "Terminal", cron
 const sourceName = (s: string) => SOURCES[s] ?? (s ? cap(s.replace(/_/g, " ")) : "Other")
 
 /** A session's title, or its first prompt when Hermes hasn't named it. */
-function titleOf(st: Store, s: { id: string; title: string } | undefined) {
-  if (!s) return ""
-  if (s.title) return s.title
-  if (!st.prompts.has(s.id)) {
-    const r = st.all(`SELECT ${CONTENT} FROM messages WHERE session_id = ? AND role = 'user' AND ${st.active()} ORDER BY timestamp, id LIMIT 1`, s.id)[0]
-    const text = textOf(textCell(r?.content)).replace(/_\(\w+\)_/g, "").replace(/\s+/g, " ").trim().slice(0, 80)
-    if (!text) return ""
-    st.prompts.set(s.id, text)
-  }
-  return st.prompts.get(s.id)!
-}
+const titleOf = (st: Store, s: { id: string; title: string } | undefined) => (!s ? "" : s.title || st.firstPrompt(s.id))
 
 // ---------- usage
 
@@ -218,7 +199,7 @@ function summary(days: number, accts: Account[]) {
       keys.set(sid, key)
       const proj = dir ? t.project(key) : t.project(key, null, sourceName(s?.source ?? ""))
       const row = t.session(sid, () => ({ title: titleOf(st, s), root: dir ? key : "", project: proj.name, cwd: s?.cwd ?? "", model: s?.model ? modelName(s.model) : "",
-        account: a.id, ...(accts.length > 1 ? { accountLabel: a.label } : {}) }))
+        account: a.id }))
       t.count({ ts: u.ts, day: u.day, cost: u.cost, tokens: u.tokens, read: u.read, prompt: u.prompt, model: u.model }, sid, proj, row)
     }
     for (const w of st.turns) {
@@ -226,13 +207,14 @@ function summary(days: number, accts: Account[]) {
       if (w.day >= t.start && keys.has(sid)) t.work(w.day, keys.get(sid)!, sid, w.min)
     }
   }
-  return t.result(iso)
+  return t.result()
 }
 
 // ---------- Hermes running now
 
-// What takes a value on Hermes' command line (the rest are switches or its subcommand).
-const VALUED = new Set(["-z", "--oneshot", "--usage-file", "-m", "--model", "--provider", "--reasoning", "-t", "--toolsets", "-r",
+// What takes a value on Hermes' command line, and what may (the rest are switches or its subcommand).
+const MAYBE = new Set(["-z", "--oneshot", "-c", "--continue"])
+const VALUED = new Set(["--usage-file", "-m", "--model", "--provider", "--reasoning", "-t", "--toolsets", "-r",
   "--resume", "--in", "-s", "--skills", "-p", "--profile", "-q", "--query", "--query-file", "--image", "--format", "--max-turns", "--run-budget"])
 
 type Proc = { pid: number; started: number; kind: string; resume: string; latest: boolean; profile: string; dir: string }
@@ -245,72 +227,48 @@ async function sessionProcesses(): Promise<Proc[]> {
     const args = command.trim().split(/\s+/)
     const at = /^python[\d.]*w?$/i.test(path.basename(args[0])) ? 1 : 0
     if (path.basename(args[at] ?? "") !== "hermes") continue
-    const p: Proc = { pid, started, kind: "interactive", resume: "", latest: false, profile: "", dir: "" }
-    let sub = ""
-    for (let i = at + 1; i < args.length; i++) {
-      const [a, eq] = args[i].startsWith("--") && args[i].includes("=") ? [args[i].slice(0, args[i].indexOf("=")), args[i].slice(args[i].indexOf("=") + 1)] : [args[i], null]
-      const value = () => eq ?? args[++i] ?? ""
-      if (a === "-r" || a === "--resume") { p.resume = value(); p.latest = p.resume === "latest" }
-      else if (a === "-p" || a === "--profile") p.profile = value().toLowerCase()
-      else if (a === "--in") p.dir = value()
-      else if (a === "-z" || a === "--oneshot") { p.kind = "run"; if (args[i + 1] && !args[i + 1].startsWith("-")) value() }
-      else if (a === "-Q" || a === "--quiet") p.kind = "run"
-      else if (a === "-c" || a === "--continue") { p.latest = true; if (eq === null && args[i + 1] && !args[i + 1].startsWith("-") && args[i + 1] !== "chat") i++ }
-      else if (VALUED.has(a)) { if (eq === null) i++ }
-      else if (!a.startsWith("-") && !sub) sub = a
-    }
-    if (sub && sub !== "chat") continue
-    procs.push(p)
+    const { words, opt } = argvOf(args.slice(at + 1), VALUED, MAYBE)
+    if (words[0] && words[0] !== "chat") continue
+    const resume = opt("-r", "--resume") ?? ""
+    procs.push({ pid, started, kind: opt("-z", "--oneshot", "-Q", "--quiet") !== undefined ? "run" : "interactive", resume,
+      latest: resume === "latest" || opt("-c", "--continue") !== undefined, profile: (opt("-p", "--profile") ?? "").toLowerCase(), dir: opt("--in") ?? "" })
   }
   return procs
 }
 
 /** Hermes open now: each process and its session (the one it resumed, else the newest in its folder since it started),
  *  shown as its top session; working while its last row isn't the model's answer. */
-async function live(recent: Item[], accts: Account[]) {
+async function live(accts: Account[]): Promise<Live[]> {
   const procs = (await sessionProcesses()).filter((p) => accts.some((a) => a.id === (p.profile || "default")))
   if (!procs.length) return []
   const dirs = await cwds(procs.map((p) => p.pid))
-  const byId = new Map(recent.map((s) => [s.id, s]))
   const since = Math.min(...procs.map((p) => p.started)) / 1000 - 5
-  const taken = new Set<string>()
-  const out: Item[] = []
-  for (const p of sortBy(procs, (x) => x.started, true)) {
-    const a = accts.find((x) => x.id === (p.profile || "default"))!
-    const st = storeOf(a)
-    if (!st.open()) continue
-    const cwd = p.dir ? path.resolve(dirs.get(p.pid) ?? "/", p.dir) : dirs.get(p.pid) ?? ""
-    let id = ""
+  const homeOf = (p: Proc) => accts.find((x) => x.id === (p.profile || "default"))!
+  const cwdOf = (p: Proc) => (p.dir ? path.resolve(dirs.get(p.pid) ?? "/", p.dir) : dirs.get(p.pid) ?? "")
+  const out: Live[] = []
+  for (const [p, id] of sessionsOf(procs, (id: string) => id, (p, free) => {
+    const st = storeOf(homeOf(p))
+    if (!st.open()) return null
     if (p.resume && !p.latest) {
       const r = st.all(`SELECT id FROM sessions WHERE id = ?`, p.resume)[0]
-      if (r) id = st.chain(r.id).pop()!
-    } else {
-      const cands = st.all(`SELECT id, cwd, started_at FROM sessions WHERE ended_at IS NULL AND source IN ('cli', 'tui')
-        AND (started_at >= ? OR ? = 1) ORDER BY started_at DESC`, since, p.latest ? 1 : 0)
-      id = cands.find((c) => !taken.has(c.id) && c.cwd === cwd && (p.latest || num(c.started_at) * 1000 >= p.started - 5000))?.id ?? ""
+      return r ? st.chain(r.id).pop() : null
     }
-    if (!id || taken.has(id)) continue
-    taken.add(id)
+    return st.all(`SELECT id, cwd, started_at FROM sessions WHERE ended_at IS NULL AND source IN ('cli', 'tui')
+      AND (started_at >= ? OR ? = 1) ORDER BY started_at DESC`, since, p.latest ? 1 : 0)
+      .find((c) => free(c.id) && c.cwd === cwdOf(p) && (p.latest || num(c.started_at) * 1000 >= p.started - 5000))?.id
+  })) {
+    if (!id) continue
+    const a = homeOf(p), st = storeOf(a)
     const s = st.all(`SELECT id, title, model, cwd, started_at FROM sessions WHERE id = ?`, id)[0]
     const top = st.top(id)
     const last = st.all(`SELECT role, tool_calls, timestamp FROM messages WHERE session_id = ? AND ${st.active()} ORDER BY timestamp DESC, id DESC LIMIT 1`, id)[0]
     const calls = (() => { try { return JSON.parse(String(last?.tool_calls ?? "null")) } catch { return null } })()
     const busy = !!last && (last.role === "user" || last.role === "tool" || (last.role === "assistant" && Array.isArray(calls) && calls.length > 0))
-    const u = byId.get(top) ?? {}
-    const topRow = st.sessions.get(top) ?? { id: top, title: String(s?.title ?? "") }
-    out.push({ pid: p.pid, id: top, title: u.title || titleOf(st, topRow), name: "", project: u.project || projectOf(s?.cwd || cwd),
-      status: busy ? "busy" : "idle", kind: p.kind, started: iso(p.started), since: iso((num(last?.timestamp) || num(s?.started_at)) * 1000),
-      model: u.model || (s?.model ? modelName(String(s.model)) : null), cost: u.cost ?? 0, tokens: u.tokens ?? 0, cwd: s?.cwd || cwd,
-      terminal: await terminalOf(plugin, p.pid), account: a.id, ...(accts.length > 1 ? { accountLabel: a.label } : {}) })
+    out.push({ pid: p.pid, id: top, title: titleOf(st, st.sessions.get(top) ?? { id: top, title: String(s?.title ?? "") }), status: busy ? "busy" : "idle",
+      kind: p.kind, cwd: s?.cwd || cwdOf(p), started: p.started, since: (num(last?.timestamp) || num(s?.started_at)) * 1000,
+      model: s?.model ? modelName(String(s.model)) : null, account: a.id })
   }
-  return busyFirst(out)
-}
-
-/** Live sessions and `days` of usage, of one home or all of them. Hermes has no plan or limits of its own. */
-async function usage(days: number, account: unknown) {
-  const accts = accountsFor(account)
-  const s = summary(days, accts)
-  return { plan: null, limits: null, live: await live(s.sessions, accts), ...s }
+  return out
 }
 
 // ---------- one session's conversation (the view tab: view:hermes-session/<id>)
@@ -348,7 +306,7 @@ function session(id: string) {
   const t = talk(st, id)
   const cwd = String(row.cwd ?? "")
   const dir = String(row.git_repo_root ?? "") || cwd
-  return { id, title: String(row.title ?? "") || t.prompt, cwd, model: row.model ? modelName(String(row.model)) : "", first: t.first, last: t.last,
+  return { title: String(row.title ?? "") || t.prompt, cwd, model: String(row.model ?? ""), first: t.first, last: t.last,
     branch: String(row.git_branch ?? ""), project: dir ? projectOf(dir) : sourceName(String(row.source ?? "")), account: a.id, entries: t.entries }
 }
 
@@ -404,11 +362,8 @@ function jobs(a: Account): Job[] {
   })
 }
 
-const oneHome = (id: unknown) => {
-  const a = accountOf(id)
-  if (!a) throw new HTTPError(404, `no Hermes profile '${id}' here (they are: ${listed(accounts())})`)
-  return a
-}
+/** The one home `id` names, the main one when it's empty; a 404 when there's no such profile. */
+const oneHome = (id: unknown) => agent.accountOf(id)!
 plugin.route("GET", "hermes/memory", (req) => memory(oneHome(req.query.account)))
 plugin.route("GET", "hermes/cron", (req) => ({ account: oneHome(req.query.account).id, jobs: jobs(oneHome(req.query.account)) }))
 
@@ -497,8 +452,7 @@ next session, or after /reload-mcp; it needs Hermes' MCP support (its installer'
   kind: "write",
   params: { account: { type: "string", description: "which Hermes home: a profile's name; the main home (~/.hermes) when left out" } },
   run: (p: Item) => {
-    const a = accountOf(p.account)
-    if (!a) throw new OpError(`no Hermes profile '${p.account}' here (they are: ${listed(accounts())})`, 404)
+    const a = oneHome(p.account)
     if (!fs.statSync(a.dir, { throwIfNoEntry: false })?.isDirectory()) throw new OpError(`Hermes isn't set up on this machine: there's no ${tilde(a.dir)} (install Hermes and run it once)`, 404)
     const file = path.join(a.dir, "config.yaml")
     const text = read(file)
@@ -522,9 +476,9 @@ next session, or after /reload-mcp; it needs Hermes' MCP support (its installer'
 
 // ---------- blocks as text (GET /api/render)
 
-codingAgent(plugin, { id: "hermes", name: "Hermes", prefix: "hermes", value: "as Hermes recorded it",
-  state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, usage, session,
-  accounts: () => accounts().map(({ id, label }) => ({ id, label })) })
+const agent = codingAgent(plugin, { id: "hermes", name: "Hermes", prefix: "hermes", value: "as Hermes recorded it",
+  state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, summary, live, session, modelName,
+  accounts: { all: accounts, word: "Hermes profile" } })
 
 const list = (xs: string[] | null, none: string) => (xs === null ? `_${none}_` : bullets(xs.map((e) => e.replace(/\n+/g, "\n  ")), "Empty."))
 plugin.block("hermes-memory", (ctx) => {

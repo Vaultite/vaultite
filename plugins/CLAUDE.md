@@ -72,12 +72,12 @@
   files on the server's machine, stores nothing, and answers `GET /api/<id>?days=` with an `AgentUsage` and `GET
   /api/<id>/session/<id>` with a page of a conversation; the blocks (`<id>-limits`, `-sessions`, `-usage`, `-projects`,
   `-models`, `<id>` in a project file) are one set of components, `web/src/components/AgentUsage.tsx` and
-  `AgentSession.tsx` (plugin API: `AgentLimits`... on an `AgentSource`), so a plugin's index.tsx only wires them; every
+  `AgentSession.tsx`, which `agentPlugin(SRC, {...})` makes an index.tsx's definition of, so it only names them; every
   block takes `machine:` and `account:`. Claude Code's accounts are its config folders (`~/.claude`, siblings
   `~/.claude-<name>` with sessions; settings name them, `private: true` keeps titles, folders and conversations out,
   `hidden` leaves one out); it lists the Remote Control servers running (`servers`, from `ps`). Their backends share
-  `core/codingagents.ts` (`codingAgent` makes their routes and blocks; the usage tally, processes, transcripts, SQLite
-  files): each plugin.ts keeps only how it reads its tool. Gotchas: Claude Code's value is at API list prices (`PRICES`: add new models there), so is Codex's
+  `core/codingagents.ts` (`codingAgent` makes their routes and blocks of a plugin's summary, live sessions, plan and
+  sessions, its accounts too; the usage tally, JSONL scans, processes, SQLite files): each plugin.ts keeps only how it reads its tool. Gotchas: Claude Code's value is at API list prices (`PRICES`: add new models there), so is Codex's
   (LiteLLM's table); Codex's tokens count only when a session's total changed, once across forked files, and it gets
   nothing on its command line (any `-c` makes it skip its shared background server; hooks given that way need trust),
   so its terminals don't pulse; OpenCode's cost is what it recorded (0 for free models) and Terminal passes it

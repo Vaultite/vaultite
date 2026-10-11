@@ -8,6 +8,7 @@ import { monitorEventLoopDelay } from "node:perf_hooks"
 import {
   bullets, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, section, type Proc, type RequestEnd, type RequestStart,
 } from "../../../core/plugins.ts"
+import { agentName, KNOWN_AGENTS } from "../../../core/terminalids.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
 import { buildRecap, type Sources } from "./build.ts"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, renderRecap } from "./recap.ts"
@@ -122,16 +123,8 @@ plugin.onUnload(() => { if (events) flush() })
 // ---------- who's calling
 
 type Caller = { agent: string | null; name: string; terminal?: string; session?: string }
-const AGENTS: [RegExp, string, string][] = [
-  [/(^|\/)claude(\s|$)|@anthropic-ai\/claude-code|claude-code/, "claude-code", "Claude Code"],
-  [/(^|\/)codex(\s|$)|@openai\/codex/, "codex", "Codex"],
-  [/(^|\/)opencode(\s|$)/, "opencode", "OpenCode"],
-  [/(^|\/)openclaw(\s|$)/, "openclaw", "OpenClaw"],
-  [/(^|\/)cursor-agent(\s|$)|Cursor\.app/, "cursor", "Cursor"],
-  [/(^|\/)gemini(\s|$)|@google\/gemini-cli/, "gemini", "Gemini CLI"],
-  [/Claude\.app\/Contents\/MacOS\/Claude/, "claude-app", "Claude app"],
-]
-const AGENT_NAMES: Record<string, string> = { ...Object.fromEntries(AGENTS.map(([, id, name]) => [id, name])), claude: "Claude Code", chatgpt: "ChatGPT", mcp: "An MCP client", "ai-import": "AI import" }
+const OTHERS: Record<string, string> = { mcp: "An MCP client", "ai-import": "AI import" }
+const nameOf = (agent: string) => agentName(agent) ?? OTHERS[agent] ?? agent
 
 const run = (cmd: string, args: string[]) => new Promise<string>((resolve) =>
   execFile(cmd, args, { timeout: 3000, maxBuffer: 4 << 20 }, (_e, out) => resolve(String(out ?? ""))))
@@ -187,8 +180,8 @@ async function name(pid: number, table: Table): Promise<Caller | null> {
   const first = table.get(pid)?.args ?? ""
   const prog = path.basename(first.split(/\s+/)[0] || "")
   for (const p of chain) {
-    const hit = AGENTS.find(([re]) => re.test(table.get(p)!.args))
-    if (hit) return { agent: hit[1], name: hit[2], ...(await terminalOf(chain)) }
+    const hit = KNOWN_AGENTS.find((a) => a.runs?.test(table.get(p)!.args))
+    if (hit) return { agent: hit.id, name: hit.name, ...(await terminalOf(chain)) }
   }
   if (/(^|\/)vau(\s|$)|core\/cli\.ts/.test(first)) return { agent: null, name: "vau CLI", ...(await terminalOf(chain)) }
   return prog ? { agent: null, name: prog, ...(await terminalOf(chain)) } : null
@@ -207,14 +200,14 @@ function whoFrom(s: RequestStart): { actor: Actor; lookup: boolean } {
   const c = s.client ?? ""
   if (c.startsWith("app")) return { actor: { kind: "you", name: "You", device: c.split("/")[1] || "web" }, lookup: false }
   // MCP's tools (plugins/core/mcp): the server calling itself, or `vau mcp`, for the client the session named.
-  if (c === "mcp") return { actor: { kind: "agent", name: s.agent ? AGENT_NAMES[s.agent] ?? s.agent : "An MCP client" }, lookup: false }
+  if (c === "mcp") return { actor: { kind: "agent", name: s.agent ? nameOf(s.agent) : "An MCP client" }, lookup: false }
   if (c === "cli") {
-    if (s.agent) return { actor: { kind: "agent", name: AGENT_NAMES[s.agent] ?? s.agent }, lookup: loopback(s.remote) }
+    if (s.agent) return { actor: { kind: "agent", name: nameOf(s.agent) }, lookup: loopback(s.remote) }
     return { actor: { kind: "cli", name: "vau CLI" }, lookup: loopback(s.remote) }
   }
   // The app's own requests that don't go through its fetch helper (a file's bytes, an upload): a browser.
   if (/^Mozilla\//.test(s.ua) && !s.agent) return { actor: { kind: "you", name: "You", device: /iPhone|Android/.test(s.ua) ? "phone" : "web" }, lookup: false }
-  if (s.agent) return { actor: { kind: "agent", name: AGENT_NAMES[s.agent] ?? s.agent }, lookup: loopback(s.remote) }
+  if (s.agent) return { actor: { kind: "agent", name: nameOf(s.agent) }, lookup: loopback(s.remote) }
   const ua = /^([A-Za-z-]+)/.exec(s.ua)?.[1]?.toLowerCase()
   return { actor: { kind: "script", name: s.forwarded ? "Another device" : ua || "A script" }, lookup: loopback(s.remote) && !s.forwarded }
 }
@@ -222,7 +215,7 @@ function whoFrom(s: RequestStart): { actor: Actor; lookup: boolean } {
 function withCaller(a: Actor, c: Caller | null): Actor {
   if (!c) return a
   const term = { ...(c.terminal ? { terminal: c.terminal } : {}), ...(c.session ? { session: c.session } : {}) }
-  if (c.agent) return { kind: "agent", name: AGENT_NAMES[c.agent] ?? c.name, ...term }
+  if (c.agent) return { kind: "agent", name: agentName(c.agent) ?? c.name, ...term }
   if (a.kind === "cli") return { ...a, ...term }
   if (a.kind === "script") return { ...a, name: c.name, ...term }
   return { ...a, ...term }
@@ -478,7 +471,7 @@ plugin.route("POST", "activity/hook", async (req) => {
   const input = (b.tool_input ?? {}) as Record<string, unknown>
   const terminal = str(req.query.terminal)
   const term = terminal ? await terminalInfo(terminal) : {}
-  const actor: Actor = { kind: "agent", name: AGENT_NAMES[agent] ?? agent, ...term }
+  const actor: Actor = { kind: "agent", name: nameOf(agent), ...term }
   const t = Date.now()
   if (/^(Edit|Write|MultiEdit|NotebookEdit)$/.test(tool)) {
     const file = str(input.file_path) || str(input.notebook_path)

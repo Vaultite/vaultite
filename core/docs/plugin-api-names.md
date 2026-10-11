@@ -20,8 +20,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AgentLimits({ src, options, fm })`: Its plan's allowances; with several accounts, each one's under its name (`account:` for one).
 - `AgentLimitsChip({ src, open })`: Its plan's limits in the status bar (AmbientItem): each account's tightest window, a click to `open`.
 - `AgentLiveSession`
+- `AgentMock`: Made-up usage for the demo, times in minutes ago: `daily`, ten days' value repeated over 30 days and growing, each dollar `per` so many tokens and minutes working, a session per so many dollars;…
 - `AgentModels(ctx)`
 - `agentOfTerminal(id, list?)`: The agent a terminal runs, by its id ("codex-<id>", "claude_<account>-<id>", "resume-<name>-<session>", "@<machine>" suffixes), or null for a plain shell (core/terminalids.ts).
+- `agentPlugin(src, o)`: A coding agent plugin's definition (its index.tsx): its blocks (each an agent block by name, or its own), a session's view, its agent in Terminal and the commands opening it (literal: the server…
 - `AgentProject({ src, … })`: In a project file: that project's last 30 days and its sessions (`project: Name` for another).
 - `AgentProjects(ctx)`
 - `AgentSession({ src, id })`
@@ -449,6 +451,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `treeShownItems()`: What the tree shows beyond the user's notes, for its panel's, its tab's and its empty space's menus: hidden files, and archived ones when there are archive folders (the heading's buttons have the…
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
+- `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.
 - `useCommandList()`

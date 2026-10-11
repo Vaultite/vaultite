@@ -1,9 +1,6 @@
 // An OpenClaw session's conversation, from its transcript events (a `session` header, then entries linked by parentId):
 // what the user said, the answers and each tool call with its result; thinking and bookkeeping entries are left out.
-import { cut, type Entry, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Any = any
+import { type Any, cut, type Entry, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
 
 const at = (v: unknown) => {
   const ms = typeof v === "number" ? v : typeof v === "string" ? Date.parse(v) : NaN

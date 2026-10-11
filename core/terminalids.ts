@@ -31,3 +31,20 @@ export function newTerminalId(agent?: string | null) {
 
 /** The id of a terminal resuming agent `name`'s session `session`. */
 export const resumeTerminalId = (name: string, session: string) => `resume-${name}-${session}`
+
+/** The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its
+ *  writes say they came from (default its id), how it calls itself (an MCP client's name) and its process's command. */
+export const KNOWN_AGENTS: { id: string; name: string; terminal?: string; source?: string; said: RegExp; runs?: RegExp }[] = [
+  { id: "claude-code", name: "Claude Code", terminal: "claude", source: "claude", said: /claude[-_ ]?code/i, runs: /(^|\/)claude(\s|$)|@anthropic-ai\/claude-code|claude-code/ },
+  { id: "claude-app", name: "Claude", source: "claude", said: /claude/i, runs: /Claude\.app\/Contents\/MacOS\/Claude/ },
+  { id: "codex", name: "Codex", said: /codex/i, runs: /(^|\/)codex(\s|$)|@openai\/codex/ },
+  { id: "chatgpt", name: "ChatGPT", said: /chatgpt|openai/i },
+  { id: "cursor", name: "Cursor", said: /cursor/i, runs: /(^|\/)cursor-agent(\s|$)|Cursor\.app/ },
+  { id: "opencode", name: "OpenCode", said: /opencode/i, runs: /(^|\/)opencode(\s|$)/ },
+  { id: "openclaw", name: "OpenClaw", said: /openclaw/i, runs: /(^|\/)openclaw(\s|$)/ },
+  { id: "hermes", name: "Hermes", said: /hermes/i, runs: /(^|\/)hermes(\s|$)/ },
+  { id: "gemini", name: "Gemini", said: /gemini/i, runs: /(^|\/)gemini(\s|$)|@google\/gemini-cli/ },
+]
+
+/** An agent's name by its id or its name in a terminal ("claude"), or null. */
+export const agentName = (id: string) => KNOWN_AGENTS.find((a) => a.id === id || a.terminal === id)?.name ?? null
