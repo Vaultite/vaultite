@@ -216,7 +216,7 @@ export function titleOf(prompt: string) {
   const task = lines.map((l) => /^#+\s*Task:\s*(.+)$/.exec(l)?.[1]).find(Boolean)
   const pick = task ?? lines.find((l) => !/^#+\s*(Step instructions|This run|Context|Materials?)\s*$/i.test(l))?.replace(/^#+\s*/, "") ?? ""
   const one = pick.replace(/\s+/g, " ").replace(/[*_`]/g, "")
-  const sentence = /^(.{20,}?[.!?])(\s|$)/.exec(one)?.[1] ?? one
+  const sentence = (/^(.{20,}?[.!?])(\s|$)/.exec(one)?.[1] ?? one).replace(/^./, (c) => c.toUpperCase())
   return sentence.length > 90 ? `${sentence.slice(0, 89)}…` : sentence
 }
 
