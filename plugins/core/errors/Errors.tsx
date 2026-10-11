@@ -1,42 +1,13 @@
 // The errors the app and server hit, one row per kind; opening one shows its stacks and each time it happened. Polls
 // every 10 s while the page shows.
-import { useEffect, useState } from "react"
+import { useState } from "react"
 import { AlertTriangle } from "lucide-react"
-import { cn, confirmDialog, copyText, dateText, del, Empty, get, List, Loading, notify, notifyError, Panel, Segmented, useLive } from "@vaultite"
+import { cn, confirmDialog, copyText, del, Empty, fmtAgo, fmtStamp, List, Loading, notify, notifyError, Panel, plural, Segmented, useLive } from "@vaultite"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList } from "./model"
 
 export const TINT = "var(--errors, var(--red))"
 type Filter = "all" | "app" | "server"
 
-/** A route of this plugin, asked again every `every` ms while the page is visible. In a preview useLive's made-up
- *  answer (mockLive) and nothing is fetched. */
-function usePoll<T>(path: string | null, every = 10_000) {
-  const first = useLive<T>(path ?? "errors")
-  const [preview] = useState(() => !first.loading)
-  const [polled, setPolled] = useState<{ path: string; data: T } | null>(null)
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    if (preview || !path) return
-    let on = true
-    const load = () => { if (!document.hidden) get<T>(path).then((d) => { if (on) setPolled({ path, data: d }) }, () => { /* the next one may answer */ }) }
-    load()
-    const id = setInterval(load, every)
-    const back = () => { if (!document.hidden) load() }
-    document.addEventListener("visibilitychange", back)
-    return () => { on = false; clearInterval(id); document.removeEventListener("visibilitychange", back) }
-  }, [path, every, preview, tick])
-  const data = polled?.path === path ? polled.data : path === "errors" || preview ? first.data : undefined
-  return { data, error: data ? null : first.error, preview, reload: () => setTick((n) => n + 1) }
-}
-
-const stamp = (t: number) => dateText(new Date(t), { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })
-function ago(t: number) {
-  const s = Math.round((Date.now() - t) / 1000)
-  if (s < 60) return "just now"
-  if (s < 3600) return `${Math.round(s / 60)} min ago`
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`
-  return dateText(new Date(t), { month: "short", day: "numeric" })
-}
 const KIND: Record<string, string> = {
   stopped: "stopped the app", boot: "before the app started", boundary: "a block or view failed", uncaught: "uncaught",
   rejection: "unhandled rejection", stale: "an older build (reloaded)", error: "logged", fatal: "ended the server",
@@ -47,7 +18,7 @@ const whereOf = (g: ErrorGroup) => (g.source === "app" ? `App${g.devices.length 
 function report(g: ErrorGroup, events: ErrorEvent[]) {
   const e = events[0] ?? g.latest
   return [
-    `${g.message}`, `${whereOf(g)}, ${KIND[g.kind] ?? g.kind}; ${g.count} time${g.count === 1 ? "" : "s"}, last ${stamp(g.last)} (error ${g.id})`,
+    `${g.message}`, `${whereOf(g)}, ${KIND[g.kind] ?? g.kind}; ${plural(g.count, "time")}, last ${fmtStamp(g.last, true)} (error ${g.id})`,
     e.where ? `Request: ${e.where}` : "", e.url ? `At: ${e.url}` : "", e.build ? `Build: ${e.build}` : "",
     e.trail?.length ? `Before it: ${e.trail.join(" → ")}` : "",
     e.stack ? `\n${e.stack}` : "", e.component ? `\nComponents:${e.component}` : "",
@@ -58,7 +29,7 @@ const pre = "max-h-72 overflow-auto rounded-[6px] border border-border px-3 py-2
 const linkBtn = "rounded-[6px] px-2 py-1 text-[13px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"
 
 function Detail({ g, onForgot }: { g: ErrorGroup; onForgot: () => void }) {
-  const { data } = usePoll<ErrorDetail>(`errors/${g.id}`, 30_000)
+  const { data } = useLive<ErrorDetail>(`errors/${g.id}`, undefined, undefined, 30_000)
   const events = data?.events ?? [g.latest]
   const e = events[0]
   return (
@@ -69,7 +40,7 @@ function Detail({ g, onForgot }: { g: ErrorGroup; onForgot: () => void }) {
         <div className="text-[13px] font-semibold text-muted-foreground">{g.count > events.length ? `The latest ${events.length} of ${g.count} times` : g.count === 1 ? "When" : "Each time"}</div>
         {events.map((x, i) => (
           <div key={i} className="text-[13px] leading-[18px]">
-            <span className="tabular-nums">{stamp(x.t)}</span>
+            <span className="tabular-nums">{fmtStamp(x.t, true)}</span>
             {(x.n ?? 1) > 1 && <span className="text-muted-foreground"> · ×{x.n}</span>}
             {x.device && <span className="text-muted-foreground"> · {x.device}</span>}
             {x.where && <span className="font-mono text-[12px] text-muted-foreground"> · {x.where}</span>}
@@ -99,7 +70,7 @@ function GroupRow({ g, open, onToggle, onForgot }: { g: ErrorGroup; open: boolea
             {whereOf(g)} · {KIND[g.kind] ?? g.kind}{g.count > 1 ? ` · ×${g.count}` : ""}
           </span>
         </span>
-        <span className="shrink-0 pt-[1px] text-[13px] text-muted-foreground tabular-nums" data-tip={stamp(g.last)}>{ago(g.last)}</span>
+        <span className="shrink-0 pt-[1px] text-[13px] text-muted-foreground tabular-nums" data-tip={fmtStamp(g.last, true)}>{fmtAgo(g.last)}</span>
       </button>
       {open && <Detail g={g} onForgot={onForgot} />}
     </div>
@@ -111,7 +82,9 @@ export function ErrorsList({ options = {} }: { options?: Record<string, unknown>
   const [filter, setFilter] = useState<Filter>("all")
   const source = fixed ?? (filter === "all" ? null : filter)
   const limit = Math.min(Math.max(typeof options.limit === "number" ? Math.round(options.limit) : 20, 1), 200)
-  const { data, error, reload } = usePoll<ErrorList>(`errors?limit=${limit}${source ? `&source=${source}` : ""}`)
+  const [asked, setAsked] = useState(0)
+  const reload = () => setAsked((n) => n + 1)
+  const { data, error } = useLive<ErrorList>(`errors?limit=${limit}${source ? `&source=${source}` : ""}`, asked, undefined, 10_000)
   const [open, setOpen] = useState<string | null>(null)
   const title = typeof options.title === "string" && options.title ? options.title : "Errors"
   const clearAll = async () => {

@@ -1,11 +1,11 @@
 // Preferences: most live in the vault's .vaultite/*.json so every device (and any AI) shares them; only sidebar state
 // and plugins' device values are per device. A localStorage copy lets the theme apply before the first request.
-import { useSyncExternalStore } from "react"
 import { patch, put } from "@/core/http"
 import { readSidebars, type Sidebars } from "../../../core/sidebars.ts"
 import { readNewTab, type NewTabSetup } from "../../../core/newtab.ts"
 import type { UpdatePolicy } from "../../../core/updates.ts"
 import { DEFAULT_SCHEME } from "@/themes/schemes"
+import { signal } from "@/core/signal"
 
 export type Theme = "system" | "light" | "dark"
 /** Colour scheme: recolours every page (tokens in index.css, overrides in themes/<name>.css; the list is
@@ -107,12 +107,12 @@ function load(): Prefs {
 }
 
 let prefs = load()
-const subs = new Set<() => void>()
+const changed = signal()
 
 function commit(next: Prefs) {
   prefs = next
   try { localStorage.setItem(KEY, JSON.stringify(prefs)) } catch { /* private mode */ }
-  subs.forEach((f) => f())
+  changed.notify()
 }
 
 const pick = (file: File, keys: readonly string[] = FILES[file]) => Object.fromEntries(FILES[file].filter((k) => keys.includes(k)).map((k) => [k, prefs[k]]))
@@ -160,12 +160,7 @@ export function devicePref<T>(key: string, fallback: T) {
   }
 }
 
-export function usePrefs() {
-  return useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, getPrefs)
-}
+export const usePrefs = () => changed.use(getPrefs)
 
 /** Run fn whenever prefs change (core/appearance.ts applies them to the page). */
-export function onPrefs(fn: () => void) {
-  subs.add(fn)
-  return () => { subs.delete(fn) }
-}
+export const onPrefs = changed.subscribe

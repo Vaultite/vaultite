@@ -1,8 +1,9 @@
 // Focus around overlays (menus, palette, flyouts): closing one gives the keyboard back where it was, or to the new
 // tab's editor when it changed what's on screen. Never steals it from something that took it meanwhile.
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState, type RefObject } from "react"
 import { keyboardTakes, pageTakenSince, webPages } from "@/core/desktop"
-import { activeTab, getWorkspace, isDesktop, onWorkspaceChange } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
+import { activeTab, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 
 // When Tab was last pressed: the keyboard moving on by itself, not a click or code.
 let tabbedAt = -1e9
@@ -95,3 +96,28 @@ onWorkspaceChange(() => {
   seen = now
   requestAnimationFrame(() => { if (idle(document.activeElement) && last?.closest("[data-pane]")) focusPaneSoon() })
 })
+
+/** An open popover (a flyout, a switcher) closes on Escape (not while a menu is open, nor when `escape(e)` says no), a
+ *  press outside `inside` (a selector) and `anchor`, and (`hash`) the address changing; closed, the keyboard goes back. */
+export function useDismiss(open: boolean, close: () => void, { inside, anchor, hash, escape }: {
+  inside: string; anchor?: RefObject<Element | null>; hash?: boolean; escape?: (e: KeyboardEvent) => boolean
+}) {
+  const latest = useRef({ close, escape })
+  latest.current = { close, escape }
+  useEffect(() => {
+    if (!open) return
+    const release = holdFocus()
+    const shut = () => latest.current.close()
+    const key = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !document.querySelector("[role=menu]") && (latest.current.escape?.(e) ?? true)) { e.stopPropagation(); shut() }
+    }
+    const down = (e: PointerEvent) => {
+      const t = e.target as Element | null
+      if (!t?.closest(inside) && !anchor?.current?.contains(t)) shut()
+    }
+    addEventListener("keydown", key, true)
+    addEventListener("pointerdown", down, true)
+    if (hash) addEventListener("hashchange", shut)
+    return () => { removeEventListener("keydown", key, true); removeEventListener("pointerdown", down, true); removeEventListener("hashchange", shut); release() }
+  }, [open, inside, anchor, hash])
+}

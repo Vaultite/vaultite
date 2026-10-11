@@ -1,10 +1,10 @@
 // While recording: a small bar floating over the app (bottom centre on computers, under the header on phones, clear of
 // the toasts), with the time, the level, pause and stop (and send: a voice note). Drawn by `background` into <body>.
-import { useEffect, useState, useSyncExternalStore } from "react"
+import { useEffect, useState } from "react"
 import { createPortal } from "react-dom"
 import { Loader2, Pause, Play, Square } from "lucide-react"
 import { cn } from "@vaultite"
-import { elapsed, getStatus, level, pause, resume, stop, subscribe } from "./recorder"
+import { elapsed, level, pause, resume, stop, useStatus } from "./recorder"
 
 const clock = (s: number) => {
   const t = Math.floor(s), h = Math.floor(t / 3600), m = Math.floor((t % 3600) / 60), sec = t % 60
@@ -37,7 +37,7 @@ function Meter({ on }: { on: boolean }) {
 const btn = "grid size-11 shrink-0 cursor-pointer place-items-center rounded-full md:size-8"
 
 export function Indicator() {
-  const s = useSyncExternalStore(subscribe, getStatus)
+  const s = useStatus()
   const [, tick] = useState(0)
   const live = s.state === "recording"
   useEffect(() => {

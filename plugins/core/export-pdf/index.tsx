@@ -1,14 +1,13 @@
 // Export to PDF and Print: the note as it reads, on white in light colours, alone in #vau-print while
 // printing. The desktop app saves with printToPDF; a browser uses its print dialog.
-import { useEffect, useRef, useSyncExternalStore } from "react"
+import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { FileDown, Printer } from "lucide-react"
-import { activeFile, currentFile, definePlugin, dismissNotice, getStore, notify, notifyError, NoteBody, Panel, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
+import { activeFile, cell, currentFile, definePlugin, dismissNotice, getStore, NoteBody, notify, notifyError, Panel, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
 
 type Job = { path: string; text: string; how: "pdf" | "print"; ready: () => void }
-let job: Job | null = null
-const subs = new Set<() => void>()
-const setJob = (j: Job | null) => { job = j; subs.forEach((f) => f()) }
+const job = cell<Job | null>(null)
+const setJob = job.set
 
 const isNote = (p: string) => /\.md$/i.test(p) && !p.startsWith(".")
 const here = () => { const f = currentFile() || activeFile()?.path || ""; return isNote(f) ? f : "" }
@@ -71,14 +70,14 @@ function PrintRoot({ j }: { j: Job }) {
 }
 
 function Background() {
-  const j = useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => job)
+  const j = job.use()
   return j ? <PrintRoot key={j.path + j.how} j={j} /> : null
 }
 
 /** Print the note (or save it as a PDF in the desktop app). */
 export async function printNote(path: string, how: "pdf" | "print") {
   if (!path) { notify("Open a note to print it."); return }
-  if (job) return
+  if (job.get()) return
   let text: string
   try {
     const f = activeFile()
@@ -98,7 +97,7 @@ export async function printNote(path: string, how: "pdf" | "print") {
     addEventListener("afterprint", done, { once: true })
     window.print()
     // (a browser whose print() doesn't wait and never says afterprint: put things back after a while)
-    setTimeout(() => { if (job?.path === path) done() }, 60_000)
+    setTimeout(() => { if (job.get()?.path === path) done() }, 60_000)
   } catch (e) {
     done()
     notifyError(e, "Couldn't print")

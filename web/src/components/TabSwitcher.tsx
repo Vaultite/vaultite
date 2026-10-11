@@ -5,14 +5,14 @@ import { createPortal, flushSync } from "react-dom"
 import { CheckSquare, ChevronDown, ChevronLeft, Ellipsis, Group as GroupIcon, Plus, Search, Ungroup, X } from "lucide-react"
 import { onAway } from "@/core/away"
 import type { Store } from "@/core/data"
-import { activeTab, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, replaceTabTarget, tabCount, useWorkspace } from "@/core/workspace"
+import { activeTab, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, tabCount, useWorkspace } from "@/core/workspace"
 import { canGroup, groupTabs, joinGroup, leaveGroup, placeTab, ungroup } from "@/core/splits"
 import { isSplit, layout, leaves, tabPath, type Group, type Tab, type Workspace } from "@/core/layout"
 import { edgeScroller, fingerHolding, rehit, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { workspaces, useWorkspaceVersion } from "@/core/scope"
 import type { WorkspaceInfo } from "@/core/define"
 import { newPhoneTab, pickTab } from "@/core/phoneTabs"
-import { headerItems, names, viewFor } from "@/core/plugins"
+import { headerItems, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { haptic } from "@/core/haptics"
 import { Badged, PageHeader, usePortalHost } from "@/components/kit"
@@ -25,6 +25,7 @@ import { TabPreview } from "@/components/TabPreview"
 import { spring, useLingeringSheet } from "@/core/motion"
 import { cn } from "@/lib/utils"
 import { Drawn, Guard } from "@/components/Guard"
+import { viewBody } from "@/components/Workspace"
 
 const EASE = "cubic-bezier(.2,.8,.2,1)"
 /** What cards making room for a lifted one move with: barely past their place and back, like a native grid's. */
@@ -669,23 +670,14 @@ export function PhoneTab({ store, to }: { store: Store; to: string }) {
   // A blank tab: the desktop's (components/Tabs.tsx), phone-sized; or the page chosen for new tabs.
   if (to === "new") return startPage ? <FileView store={store} path={startPage} pane /> : <NewTab store={store} phone />
   const view = viewFor(to, disabled)
-  const tab = activeTab()
-  const title = view ? view.def.title(view.arg) : to.slice(5)
-  let body: ReactNode
-  if (!view) body = <p className="text-[15px] text-muted-foreground">No plugin draws this tab.</p>
-  else if (!view.on) body = <p className="text-[15px] text-muted-foreground">{names([view.plugin.id])} is off. Turn it on in Plugins to open this tab.</p>
-  else {
-    const name = to.slice(5).split("/")[0]
-    const drawn = view.def.render({ store, arg: view.arg, focused: true, close: () => closeTab(tab.id, true), setArg: (arg) => replaceTabTarget(tab.id, `view:${name}${arg ? `/${arg}` : ""}`) })
-    // A view that fills its pane (a terminal) gets the screen between the header and the tab bar, with no title of its
-    // own: the header above names it already.
-    if (view.def.full) return <div className="phone-fill relative -mx-4 min-h-[240px] overflow-hidden">{drawn}</div>
-    body = drawn
-  }
+  const v = viewBody(store, activeTab(), to, view, true)
+  // A view that fills its pane (a terminal) gets the screen between the header and the tab bar, with no title of its
+  // own: the header above names it already.
+  if (v.drawn && view?.def.full) return <div className="phone-fill relative -mx-4 min-h-[240px] overflow-hidden">{v.drawn}</div>
   return (
     <>
-      <PageHeader title={title} />
-      {body}
+      <PageHeader title={v.title} />
+      {v.drawn ?? <p className="text-[15px] text-muted-foreground">{v.note}</p>}
     </>
   )
 }

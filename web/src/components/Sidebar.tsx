@@ -6,11 +6,12 @@ import { EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, S
 import type { SidebarCtx, SidebarPanel } from "@/core/define"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
-import { closeTab, isDesktop } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
+import { closeTab } from "@/core/workspace"
 import { dockAtEnd, dockPanel, drawerPanels, hidePanel, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
-import { holdFocus } from "@/core/focus"
+import { useDismiss } from "@/core/focus"
 import { coarse } from "@/core/haptics"
 import { checklist, menuFor, type CheckItem, type MenuItem } from "@/components/ContextMenu"
 import { FileTree } from "@/components/FileTree"
@@ -216,23 +217,8 @@ function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: S
     addEventListener("resize", place)
     return () => { ro.disconnect(); removeEventListener("resize", place) }
   }, [open])
-  useEffect(() => {
-    if (!open) return
-    // Closed, the keyboard goes back where it was (or to the file picked in it: core/focus.ts).
-    const release = holdFocus()
-    const close = () => setOpen(false)
-    // (Escape during a drag out of it cancels the drag: core/drag.ts.)
-    const key = (e: KeyboardEvent) => { if (e.key === "Escape" && !getDrag() && !document.querySelector("[role=menu]")) { e.stopPropagation(); close() } }
-    const down = (e: PointerEvent) => {
-      const t = e.target as Element | null
-      if (t?.closest(OWNED) || icon.current?.contains(t)) return
-      close()
-    }
-    addEventListener("keydown", key, true)
-    addEventListener("pointerdown", down, true)
-    addEventListener("hashchange", close)
-    return () => { removeEventListener("keydown", key, true); removeEventListener("pointerdown", down, true); removeEventListener("hashchange", close); release() }
-  }, [open, setOpen])
+  // (Escape during a drag out of it cancels the drag: core/drag.ts.)
+  useDismiss(open, () => setOpen(false), { inside: OWNED, anchor: icon, hash: true, escape: () => !getDrag() })
   const Icon = panel.flyout!.icon
   const side = useContext(SidebarSide)
   // Something dragged out of it onto the panes: the flyout steps aside for the rest of the drag so the panes take the

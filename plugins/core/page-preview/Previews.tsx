@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { SquareArrowOutUpRight } from "lucide-react"
-import { modKey, NotePreview, noteFor, openAt, stem, useLive, type Store } from "@vaultite"
+import { modKey, noteFor, NotePreview, openAt, pluginSettings, stem, type Store } from "@vaultite"
 
 type Settings = { trigger?: "auto" | "hover" | "mod"; delay?: number }
 type Pop = { id: number; target: string; from: string; path: string; anchor: Element; rect: DOMRect }
@@ -24,9 +24,11 @@ function targetOf(store: Store, el: Element): { target: string; from: string; pa
 /** How deep in the stack a link is: 0 on the page, n inside the n-th popover. */
 const levelOf = (el: Element) => Number(el.closest<HTMLElement>("[data-preview-level]")?.dataset.previewLevel ?? -1) + 1
 
+const previewSettings = pluginSettings<Settings>("page-preview")
+
 export function Previews({ store }: { store: Store }) {
   const [desktop] = useState(() => matchMedia("(hover: hover) and (pointer: fine)").matches)
-  const { data } = useLive<Settings>(desktop ? "config/plugin/page-preview" : null)
+  const data = previewSettings.use()
   const [pops, setPops] = useState<Pop[]>([])
   const live = useRef({ store, settings: data, pops })
   live.current = { store, settings: data, pops }

@@ -1,13 +1,11 @@
 // The settings sheet: the vault's plugins of another app, each run as it is (the original) or with what stands in for it
 // here, picked in a click (other-apps.use); "Run them here" runs them all (other-apps.run-all).
 import { useEffect, useState } from "react"
-import { Group, notify, notifyError, op, Segmented, SettingRow, Switch } from "@vaultite"
+import { Button, Group, notify, notifyError, op, plural, Segmented, SettingRow, Switch } from "@vaultite"
 
 type Row = { id: string; name: string; here: { id: string; name: string; on: boolean }[]; directory: { id: string; name: string; source: string; installed: boolean }[]
   original: "on" | "waiting" | "off" | null }
 type Used = { id: string; using: string; off: string[] }
-
-const button = "h-8 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium transition-opacity disabled:cursor-default disabled:opacity-50 max-md:h-9 max-md:text-[15px]"
 
 /** What does its job now: "original", a stand-in's id, or "" (nothing). */
 const usedBy = (r: Row) => (r.original === "on" || r.original === "waiting" ? "original" : r.here.find((h) => h.on)?.id ?? "")
@@ -44,10 +42,10 @@ export function OtherPlugins() {
           This vault has {rows.length} plugin{rows.length === 1 ? "" : "s"} from another app. Run each as it is, or use Vaultite's own where there is one: agents can read what those draw.
         </p>
         {idle > 0 && (
-          <button type="button" disabled={!!busy} data-obsidian-run-all onClick={() => void act("all", async () => {
+          <Button look="primary" className="px-3" disabled={!!busy} data-obsidian-run-all onClick={() => void act("all", async () => {
             const r = await op<{ running: string[]; allowed: boolean }>("other-apps.run-all")
-            notify(`Running ${r.running.length} plugin${r.running.length === 1 ? "" : "s"} from another app${r.allowed ? "" : ": each waits for this machine's owner to allow it"}`)
-          }, "run them")} className={`${button} bg-primary text-primary-foreground hover:opacity-90`}>{busy === "all" ? "Starting…" : "Run them here"}</button>
+            notify(`Running ${plural(r.running.length, "plugin")} from another app${r.allowed ? "" : ": each waits for this machine's owner to allow it"}`)
+          }, "run them")}>{busy === "all" ? "Starting…" : "Run them here"}</Button>
         )}
       </div>
       <Group>
@@ -57,7 +55,7 @@ export function OtherPlugins() {
           return (
             <SettingRow key={r.id} label={r.name} sub={status(r)} data-obsidian-plugin={r.id}>
               {r.original === "waiting" && (
-                <button type="button" disabled={busy === r.id} onClick={() => void use(r, "original")} className={`${button} bg-foreground/[0.06] hover:bg-foreground/[0.1]`}>Allow</button>
+                <Button className="px-3" disabled={busy === r.id} onClick={() => void use(r, "original")}>Allow</Button>
               )}
               {alt ? (
                 <Segmented value={now} label={`What runs ${r.name}`} className="w-[190px] shrink-0 max-md:w-[170px]"

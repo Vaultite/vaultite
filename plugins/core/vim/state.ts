@@ -1,7 +1,7 @@
 // The Vim plugin's state in the app: its settings (/api/config/plugin/vim), whether this device takes Vim's keys, the
 // editor's mode, and a reading view switched to editing with `i`.
 import { useSyncExternalStore } from "react"
-import { devicePref, patch } from "@vaultite"
+import { devicePref, pluginSettings } from "@vaultite"
 
 /** Its settings file and vimrc are here. */
 export const SETTINGS_DIR = ".vaultite/plugins/vim"
@@ -21,23 +21,12 @@ const subs = new Set<() => void>()
 const emit = () => subs.forEach((f) => f())
 const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f) } }
 /** Run fn whenever any of this changes (the settings, this device's choice, the editor's mode). */
-export const onState = subscribe
+export const onState = (f: () => void) => { const off = settings.onChange(f), un = subscribe(f); return () => { off(); un() } }
 
-let settings: Settings = {}
-export const getSettings = () => settings
-export function setSettings(s: Settings) {
-  if (JSON.stringify(s) === JSON.stringify(settings)) return
-  settings = s
-  emit()
-}
-export const useSettings = () => useSyncExternalStore(subscribe, getSettings)
+/** Its settings (data.json), live. */
+export const settings = pluginSettings<Settings>("vim")
 /** Change some settings (null: back to the default), here at once and in the vault. */
-export function changeSettings(p: Partial<Record<keyof Settings, boolean | null>>) {
-  const next: Settings = { ...settings }
-  for (const [k, v] of Object.entries(p)) { if (v === null) delete next[k as keyof Settings]; else next[k as keyof Settings] = v }
-  setSettings(next)
-  return patch("config/plugin/vim", p).catch(() => {})
-}
+export const changeSettings = (p: Partial<Record<keyof Settings, boolean | null>>) => settings.set(p).catch(() => {})
 
 /** This device: Vim's keys when it has a mouse or trackpad (auto), always (an iPad with a keyboard), or never. */
 export type DeviceKeys = "auto" | "on" | "off"
@@ -49,9 +38,9 @@ const pointer = () => typeof matchMedia === "function" && matchMedia("(any-point
 export const deviceOn = () => { const d = device.get(); return d === "on" || (d === "auto" && pointer()) }
 export const useDeviceOn = () => useSyncExternalStore(subscribe, deviceOn)
 /** Vim's keys outside the editor, on this device. */
-export const appKeys = () => deviceOn() && settings.app !== false
+export const appKeys = () => deviceOn() && settings.get().app !== false
 /** Space as the leader. */
-export const leaderOn = () => deviceOn() && settings.leader !== false
+export const leaderOn = () => deviceOn() && settings.get().leader !== false
 
 /** The mode of the editor that has the keyboard ("normal", "insert", "visual", "visual line", "replace"), or null when
  *  no Vim editor has it. */

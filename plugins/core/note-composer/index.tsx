@@ -1,13 +1,12 @@
 import { Merge, Scissors } from "lucide-react"
-import {
-  choose, createFile, currentEditor, currentFile, definePlugin, deleteFile, folderOf, freeName, get, getStore, isHidden, linkTo, notify,
-  notifyError, openFile, put, readFile, restoreFile, splitFm, stem, type Choice,
-} from "@vaultite"
+import { choose, createFile, currentEditor, currentFile, definePlugin, deleteFile, folderOf, freeName, getStore, isHidden, linkTo, notify, notifyError, openFile, pluginSettings, put, readFile, restoreFile, splitFm, stem, type Choice } from "@vaultite"
 
 // Note composer: extract the selection into another note (leaving a link), or merge this note into
 // another (this one to the trash; Undo puts both back).
 
 /** The notes that can take text: Markdown, not hidden, not this one. */
+const settings = pluginSettings<{ afterExtract?: string }>("note-composer")
+
 function notes(except: string) {
   const s = getStore()
   return (s?.files.files ?? []).filter((f) => f.path.endsWith(".md") && f.path !== except && !isHidden(f.path))
@@ -51,8 +50,8 @@ function extract() {
           to = it.id
           await append(to, text)
         }
-        let after = "link"
-        try { after = (await get<{ afterExtract?: string }>("config/plugin/note-composer")).afterExtract ?? after } catch { /* the default */ }
+        await settings.ready()
+        const after = settings.get().afterExtract ?? "link"
         const insert = after === "none" ? "" : `${after === "embed" ? "!" : ""}${linkTo(to, sel.path)}`
         // Where the selection is now (typing meanwhile moved it).
         const doc = sel.view.state.doc

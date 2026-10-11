@@ -3,9 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { setLayer } from "./layer"
+import { isMac } from "@vaultite"
 
 const KEYS = "sadfjklewcmpgh"
-const MAC = /Mac|iPhone|iPad/.test(navigator.platform)
 
 /** What can be clicked: the obvious elements, and links CodeMirror draws (opened on mousedown, livePreview.ts). */
 const CLICKABLE = [
@@ -68,7 +68,7 @@ function labels(n: number) {
 
 /** Click it as the pointer would: links in a note open on mousedown, the rest on click; ⌘ for a new tab. */
 function activate(el: HTMLElement, newTab: boolean) {
-  const mods = { bubbles: true, cancelable: true, view: window, button: 0, metaKey: newTab && MAC, ctrlKey: newTab && !MAC }
+  const mods = { bubbles: true, cancelable: true, view: window, button: 0, metaKey: newTab && isMac, ctrlKey: newTab && !isMac }
   if (el.matches("input:not([type=checkbox]):not([type=radio]):not([type=button]):not([type=submit]), textarea, select, [contenteditable=true]")) {
     el.focus()
     return

@@ -1,4 +1,4 @@
-import { createFile, definePlugin, freeName, get, getStore, newNoteFolder, openNew } from "@vaultite"
+import { createFile, definePlugin, freeName, getStore, newNoteFolder, openNew, pluginSettings } from "@vaultite"
 
 // Unique note creator (a Zettelkasten prefixer): a note named by when it was made, 202610031542 by
 // default, in the folder its settings say (else where new notes go). A name that's taken (two in a minute) gets a number.
@@ -10,11 +10,13 @@ function uniqueName(d: Date, fmt: string) {
   return fmt.replace(/\[([^\]]*)\]|YYYY|MM|DD|HH|mm|ss/g, (m, lit) => lit ?? t[m]).replace(/[/\\:]/g, "-")
 }
 
+const settings = pluginSettings<{ folder?: string; format?: string }>("unique-note")
+
 async function create() {
   const s = getStore()
   if (!s) return
-  let o: { folder?: string; format?: string } = {}
-  try { o = await get("config/plugin/unique-note") } catch { /* the defaults */ }
+  await settings.ready()
+  const o = settings.get()
   const folder = (o.folder ?? "").trim().replace(/^\/+|\/+$/g, "") || newNoteFolder(s)
   const name = freeName(s.files, folder, uniqueName(new Date(), (o.format ?? "").trim() || "YYYYMMDDHHmm"))
   const f = await createFile(folder, name)

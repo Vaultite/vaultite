@@ -1,10 +1,10 @@
 // The Activity panel: the last few things done, live; a row opens its file or an agent's terminal. Who and what to
 // show are kept per workspace.
 import { ListFilter, SquareArrowOutUpRight, Users } from "lucide-react"
-import { cn, menuBelow, openFile, openView, SidebarHeading, useScopedState, useTick, type SidebarCtx } from "@vaultite"
+import { cn, fmtAgo, fmtStamp, menuBelow, openFile, openView, SidebarHeading, useScopedState, useTick, type SidebarCtx } from "@vaultite"
 import { ACTION_KINDS, type ActionKind, type ActivityEvent, type ActorKind } from "./model"
 import { EventText, KINDS, useExists, useFeed } from "./Feed"
-import { agoShort, kindLabel, openTerminal, stamp, useLook, whoOf } from "./shared"
+import { kindLabel, openTerminal, useLook, whoOf } from "./shared"
 
 function Line({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
   const look = useLook()(e.actor)
@@ -12,7 +12,7 @@ function Line({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
   const file = (e.paths ?? []).find((p) => exists.has(p))
   const term = e.actor.kind === "agent" ? e.actor.terminal : undefined
   const go = term ? () => void openTerminal(term) : file ? () => openFile(file) : undefined
-  const tip = `${e.text}${(e.count ?? 1) > 1 ? ` (×${e.count})` : ""}\n${whoOf(e.actor)} · ${stamp(e.last ?? e.t)}`
+  const tip = `${e.text}${(e.count ?? 1) > 1 ? ` (×${e.count})` : ""}\n${whoOf(e.actor)} · ${fmtStamp(e.last ?? e.t, true)}`
   return (
     <a href="#" data-event={e.id} data-tip={tip} data-tip-side="right" aria-label={e.text}
       onClick={(ev) => { ev.preventDefault(); go?.() }}
@@ -20,7 +20,7 @@ function Line({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
       <Icon className="size-4 shrink-0" strokeWidth={2} style={{ color: look.tint }} />
       <span className="min-w-0 flex-1 truncate"><EventText e={e} exists={exists} plain /></span>
       {(e.count ?? 1) > 1 && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">×{e.count}</span>}
-      <span className="w-7 shrink-0 text-right text-[11px] text-tertiary tabular-nums">{agoShort(e.last ?? e.t)}</span>
+      <span className="w-7 shrink-0 text-right text-[11px] text-tertiary tabular-nums">{fmtAgo(e.last ?? e.t, { short: true })}</span>
     </a>
   )
 }

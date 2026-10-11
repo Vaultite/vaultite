@@ -1,5 +1,5 @@
-// What the tabs share: apps' names and windows' titles (for the tabs' titles), news of a window going, the settings.
-import { getTabLayout, viewsChanged, type AppInfo, type TabLayout } from "@vaultite"
+// What the tabs share: apps' names and windows' titles (for the tabs' titles), news of a window going.
+import { capitalize, getTabLayout, viewsChanged, type AppInfo, type TabLayout } from "@vaultite"
 
 /** A tab's arg: the app, and the window it holds once it has one (`com.brave.Browser:1234`). */
 export function parse(arg: string) {
@@ -14,7 +14,7 @@ export function nameOf(bundle: string) {
   if (known) return known
   const parts = bundle.split(".").filter((p) => !/^(com|org|net|io|app|client|desktop|mac|macos|osx)$/i.test(p))
   const word = parts[parts.length - 1] ?? bundle
-  return word.charAt(0).toUpperCase() + word.slice(1)
+  return capitalize(word)
 }
 export function learnNames(apps: AppInfo[]) {
   let changed = false
@@ -52,9 +52,3 @@ export const onHere = new Map<number, Set<(here: boolean) => void>>()
 export function moved(wid: number, here: boolean) {
   for (const f of onHere.get(wid) ?? []) f(here)
 }
-
-export const SETTINGS_DIR = ".vaultite/plugins/app-windows"
-export type Settings = { newWindows?: boolean }
-let settings: Settings = {}
-export const getSettings = () => settings
-export const setSettings = (s: Settings) => { settings = s }

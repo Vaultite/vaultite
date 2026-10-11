@@ -238,6 +238,17 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
   )
 }
 
+/** A plugin's view in tab `tab` (`to`: view:<name>/<arg>): its title and what it draws, or the note saying why it can't
+ *  (no plugin draws it, or its plugin is off). The desktop's panes and the phone's tabs. */
+export function viewBody(store: Store, tab: Tab, to: string, view: ReturnType<typeof viewFor>, focused: boolean) {
+  if (!view) return { title: to.slice(5), drawn: null, note: "No plugin draws this tab." }
+  const title = view.def.title(view.arg)
+  if (!view.on) return { title, drawn: null, note: `${names([view.plugin.id])} is off. Turn it on in Plugins to open this tab.` }
+  const name = to.slice(5).split("/")[0]
+  const ctx = { store, arg: view.arg, focused, close: () => closeTab(tab.id, true), setArg: (arg: string) => replaceTabTarget(tab.id, `view:${name}${arg ? `/${arg}` : ""}`) }
+  return { title, drawn: <Drawn draw={() => view.def.render(ctx)} />, note: null }
+}
+
 /** What a tab shows. Hidden, it's drawn once as hidden and then left as it is until it's shown again: kept tabs cost
  *  nothing while the vault changes (what subscribes for itself, an open file's text, still follows). */
 const TabContent = memo(function TabContent({ tab, to, view, file, full, focused, ...p }: Props & {
@@ -250,15 +261,11 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   let body: ReactNode = null
   if (!p.store) body = padded(false, null, p.error ? <p className="mt-10 text-muted-foreground">Couldn't reach the server: {p.error}</p> : <VaultLoading />)
   else if (file) body = full ? <div className="absolute inset-0"><FileView store={p.store} path={file} pane /></div> : padded(true, null, <FileView store={p.store} path={file} pane />)
-  else if (view && tab) {
-    const title = view.def.title(view.arg)
-    const name = to.slice(5).split("/")[0]
-    const ctx = { store: p.store, arg: view.arg, focused, close: () => closeTab(tab.id, true), setArg: (arg: string) => replaceTabTarget(tab.id, `view:${name}${arg ? `/${arg}` : ""}`) }
-    if (!view.on) body = padded(false, <ViewBar>{title}</ViewBar>, <p className="mt-6 text-[15px] text-muted-foreground">{names([view.plugin.id])} is off. Turn it on in Plugins to open this tab.</p>)
-    else if (full) body = <div className="absolute inset-0"><Drawn draw={() => view.def.render(ctx)} /></div>
-    else body = padded(false, <ViewBar>{title}</ViewBar>, <Drawn draw={() => view.def.render(ctx)} />)
-  } else if (to.startsWith("view:")) body = padded(false, <ViewBar>{to.slice(5)}</ViewBar>, <p className="mt-6 text-[15px] text-muted-foreground">No plugin draws this tab.</p>)
-  else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
+  else if (tab && to.startsWith("view:")) {
+    const v = viewBody(p.store, tab, to, view, focused)
+    body = v.drawn && full ? <div className="absolute inset-0">{v.drawn}</div>
+      : padded(false, <ViewBar>{v.title}</ViewBar>, v.drawn ?? <p className="mt-6 text-[15px] text-muted-foreground">{v.note}</p>)
+  } else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
   else {
     const page = p.page(to)
     if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!)} />)

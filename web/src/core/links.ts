@@ -222,7 +222,7 @@ export function shortestLink(s: Store, path: string, from?: string): string {
 
 /** What a link to nothing may have meant: a name that starts with it ("Alice" for Alice Park), the file of that name in
  *  another folder. */
-export const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
+const didYouMean = (s: Store, target: string, from?: string) => linkIndexOf(s).suggest(target, from)
 
 /** Files that link to something (a note, a person), each with the line the link sits on. */
 export function mentions(s: Store, is: (t: Target) => boolean, except?: string) {

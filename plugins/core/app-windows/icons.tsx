@@ -1,25 +1,23 @@
 // Apps' own icons (the helper draws them from the Mac's), for their tabs and the picker; the generic one until one comes.
-import { forwardRef, useSyncExternalStore } from "react"
+import { forwardRef } from "react"
 import { AppWindow, type LucideIcon, type LucideProps } from "lucide-react"
-import { appWindows } from "@vaultite"
+import { appWindows, cell } from "@vaultite"
 
-const icons = new Map<string, string>()
-const subs = new Set<() => void>()
+const icons = cell(new Map<string, string>())
+const setIcons = (f: (m: Map<string, string>) => void) => icons.update((m) => { const next = new Map(m); f(next); return next })
 let wanted: Set<string> | null = null
 /** Asked for together: a list's worth in one call. */
 function want(bundle: string) {
   // (an id the Mac app refuses, PrusaSlicer's "com.prusa3d.slic3r/", would fail the whole list: it keeps the generic one)
-  if (icons.has(bundle) || !appWindows?.icons || !/^[\w.-]+$/.test(bundle)) return
+  if (icons.get().has(bundle) || !appWindows?.icons || !/^[\w.-]+$/.test(bundle)) return
   if (!wanted) {
     wanted = new Set()
     queueMicrotask(() => {
       const bundles = [...wanted!]
       wanted = null
-      for (const b of bundles) icons.set(b, "")
-      void appWindows!.icons!(bundles).then((r) => {
-        for (const b of bundles) icons.set(b, r.icons?.[b] ?? "")
-        subs.forEach((f) => f())
-      }, () => { for (const b of bundles) icons.delete(b) })
+      setIcons((m) => { for (const b of bundles) m.set(b, "") })
+      void appWindows!.icons!(bundles).then((r) => setIcons((m) => { for (const b of bundles) m.set(b, r.icons?.[b] ?? "") }),
+        () => setIcons((m) => { for (const b of bundles) m.delete(b) }))
     })
   }
   wanted.add(bundle)
@@ -27,7 +25,7 @@ function want(bundle: string) {
 
 function useIcon(bundle: string) {
   want(bundle)
-  return useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => icons.get(bundle) || "")
+  return icons.use((m) => m.get(bundle) || "")
 }
 
 export function AppIcon({ bundle, className }: { bundle: string; className?: string }) {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useSyncExternalStore } from "react"
 import { BookOpen, Code2, Pencil, type LucideIcon } from "lucide-react"
 import type { FileHead } from "@/core/define"
-import { isDesktop } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
 import { usePane } from "@/core/pane"
 import { signal } from "@/core/signal"
 

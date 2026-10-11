@@ -2,10 +2,10 @@
 // window a tab, kept right behind the vault window; Holes leaves the tab see-through and lets clicks through.
 import { lazy, Suspense, useEffect } from "react"
 import { AppWindow, X } from "lucide-react"
-import { appWindows, choose, closeView, definePlugin, get, isViewOpen, notifyError, openView, Panel, useVaultChange } from "@vaultite"
+import { appWindows, choose, closeView, definePlugin, isViewOpen, notifyError, openView, Panel, pluginSettings } from "@vaultite"
 import { Holes, throughEnded } from "./Holes"
 import { AppIcon, appIcon } from "./icons"
-import { appTabs, gone, learnNames, moved, nameOf, parse, setSettings, setWindowTitle, getSettings, SETTINGS_DIR, tabTitle, type Settings } from "./state"
+import { appTabs, gone, learnNames, moved, nameOf, parse, setWindowTitle, tabTitle } from "./state"
 
 const AppTab = lazy(() => import("./AppTab"))
 
@@ -31,10 +31,10 @@ async function pickApp() {
   } catch (e) { notifyError(e, "Couldn't list the apps") }
 }
 
+const settings = pluginSettings<{ newWindows?: boolean }>("app-windows")
+
 function Background() {
-  const read = () => { get<Settings>("config/plugin/app-windows").then((s) => setSettings(s && typeof s === "object" ? s : {}), () => {}) }
-  useEffect(read, [])
-  useVaultChange(read, (p) => p.startsWith(`${SETTINGS_DIR}/`))
+  useEffect(() => void settings.ready(), [])
   useEffect(() => appWindows?.on((m) => {
     if (m.type === "gone") gone(m.wid)
     else if (m.type === "here") moved(m.wid, m.here)
@@ -43,7 +43,7 @@ function Background() {
     // (its app came in front with it, a link opened in it say: its tab shown, as the app is)
     else if (m.type === "front") { const arg = appTabs().find((a) => parse(a).wid === m.wid); if (arg) openApp(arg) }
     // (a new window of an app in a tab: Brave's ⌘N, a link opened in a new window)
-    else if (m.type === "window" && getSettings().newWindows !== false) { setWindowTitle(m.wid, m.title); openApp(`${m.bundle}:${m.wid}`) }
+    else if (m.type === "window" && settings.get().newWindows !== false) { setWindowTitle(m.wid, m.title); openApp(`${m.bundle}:${m.wid}`) }
   }), [])
   // (the tabs' titles: the apps' own names)
   useEffect(() => { void appWindows?.list().then((r) => learnNames([...r.installed, ...r.running]), () => {}) }, [])

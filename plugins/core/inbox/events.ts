@@ -1,23 +1,20 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
-import { agentsOn, canRunAgents, del, detailPath, getTabLayout, isDesktop, isViewOpen, notifyError, onMachine, openDetail, openFile, openView, post, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, cell, del, detailPath, getTabLayout, isDesktop, isViewOpen, notifyError, onMachine, openDetail, openFile, openView, post, type Agent, type TabLayout } from "@vaultite"
 import type { InboxEvent } from "./types"
 
 export type Events = { events: InboxEvent[]; unread: number; ready: boolean }
 /** The sheet of a permission the server waits on (Inbox.tsx's GateSheet): inbox-gate/<event id>. */
 export const GATE_DETAIL = "inbox-gate"
-let state: Events = { events: [], unread: 0, ready: false }
-const subs = new Set<() => void>()
+const state = cell<Events>({ events: [], unread: 0, ready: false })
 const fresh = new Set<(e: InboxEvent) => void>()
 
-export const getEvents = () => state
-export function subscribeEvents(fn: () => void) { subs.add(fn); return () => { subs.delete(fn) } }
+export const { get: getEvents, subscribe: subscribeEvents, use: useEvents } = state
 /** Hear each new event (or one updated with news: the same thing again), but not the ones there when the app loads. */
 export function onFresh(fn: (e: InboxEvent) => void) { fresh.add(fn); return () => { fresh.delete(fn) } }
 
 function set(events: InboxEvent[]) {
-  state = { events, unread: events.filter((e) => !e.read).length, ready: true }
-  subs.forEach((f) => f())
+  state.set({ events, unread: events.filter((e) => !e.read).length, ready: true })
 }
 
 // ---------- the socket
@@ -71,41 +68,41 @@ export function follow() {
 /** Mark events read (no ids: every one). */
 export function markRead(ids?: string[]) {
   const want = ids ? new Set(ids) : null
-  if (!state.events.some((e) => !e.read && (!want || want.has(e.id)))) return
-  const before = state.events
-  set(state.events.map((e) => (!e.read && (!want || want.has(e.id)) ? { ...e, read: true, kept: undefined } : e)))
+  if (!getEvents().events.some((e) => !e.read && (!want || want.has(e.id)))) return
+  const before = getEvents().events
+  set(getEvents().events.map((e) => (!e.read && (!want || want.has(e.id)) ? { ...e, read: true, kept: undefined } : e)))
   void post("inbox/events/read", ids ? { ids } : {}).catch(undo(before, "Couldn't mark it read"))
 }
 
 /** Mark events unread by hand: they stay so while the Inbox is seen, until opened or marked read. */
 export function markUnread(ids: string[]) {
   const want = new Set(ids)
-  const before = state.events
-  set(state.events.map((e) => (want.has(e.id) ? { ...e, read: false, kept: true } : e)))
+  const before = getEvents().events
+  set(getEvents().events.map((e) => (want.has(e.id) ? { ...e, read: false, kept: true } : e)))
   void post("inbox/events/unread", { ids }).catch(undo(before, "Couldn't mark it unread"))
 }
 
 /** Seeing the Inbox reads what's new, but not what the user marked unread. */
 export function markSeen() {
-  const ids = state.events.filter((e) => !e.read && !e.kept).map((e) => e.id)
+  const ids = getEvents().events.filter((e) => !e.read && !e.kept).map((e) => e.id)
   if (ids.length) markRead(ids)
 }
 
 /** Answer a permission the server waits on (a gate): the server runs what was asked, or refuses it. */
 export async function answerGate(e: InboxEvent, answer: "approve" | "deny") {
-  set(state.events.map((x) => (x.id === e.id ? { ...x, answer, read: true, kept: undefined } : x)))
+  set(getEvents().events.map((x) => (x.id === e.id ? { ...x, answer, read: true, kept: undefined } : x)))
   try {
     await post(`inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
   } catch (err) {
-    set(state.events.map((x) => (x.id === e.id ? e : x)))
+    set(getEvents().events.map((x) => (x.id === e.id ? e : x)))
     throw err
   }
 }
 
 /** Forget one event, or all of them. */
 export function forget(id?: string) {
-  const before = state.events
-  set(id ? state.events.filter((e) => e.id !== id) : [])
+  const before = getEvents().events
+  set(id ? getEvents().events.filter((e) => e.id !== id) : [])
   const p = del(id ? `inbox/events/${encodeURIComponent(id)}` : "inbox/events")
   p.catch(undo(before, "Couldn't dismiss it"))
   return p

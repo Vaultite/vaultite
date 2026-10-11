@@ -1,8 +1,8 @@
 // view:connections: the four AI apps as cards, each a sheet with its steps (signing in to Vaultite Cloud first when needed,
 // cloud.ts) and the code field; what's connected (public.ts); the account and addresses last. Polls, faster while connecting.
-import { useEffect, useState, type ReactNode } from "react"
+import { useState, type ReactNode } from "react"
 import { Bot, Check, ChevronRight, Copy, ExternalLink, Plug, type LucideIcon } from "lucide-react"
-import { confirmDialog, copyText, del, detailPath, fmtAgo, get, Group, iconNamed, Loading, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead, Switch } from "@vaultite"
+import { Button, confirmDialog, copyText, del, detailPath, fmtAgo, Group, iconNamed, Loading, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead, Switch, useLive } from "@vaultite"
 
 type Connection = { id: string; name: string; created: string; used: string | null }
 type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; connectUrl: string; message?: string }
@@ -11,18 +11,12 @@ type State = { url: string | null; cloud: Cloud; connect?: { ownerTools: boolean
   finishing?: string[] }
 
 function useConnections() {
-  const [data, setData] = useState<State | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [tick, setTick] = useState(0)
-  const fast = data?.cloud.state === "connecting" || !!data?.finishing?.length
-  useEffect(() => {
-    let on = true
-    const load = () => { if (!document.hidden) get<State>("mcp/connections").then((d) => { if (on) { setData(d); setError(null) } }, (e) => on && setError(String(e?.message ?? e))) }
-    load()
-    const id = setInterval(load, fast ? 1500 : 5000)
-    return () => { on = false; clearInterval(id) }
-  }, [tick, fast])
-  return { data, error, reload: () => setTick((n) => n + 1) }
+  const [asked, setAsked] = useState(0)
+  const [fast, setFast] = useState(false)
+  const live = useLive<State>("mcp/connections", asked, undefined, fast ? 1500 : 5000)
+  const connecting = live.data?.cloud.state === "connecting" || !!live.data?.finishing?.length
+  if (connecting !== fast) setFast(connecting)
+  return { ...live, reload: () => setAsked((n) => n + 1) }
 }
 
 /** The code field; in an app's sheet (`as`), the connection takes that app's name, whatever it signs in as. */
@@ -53,7 +47,6 @@ function Connect({ waiting, onDone, as }: { waiting: number; onDone: () => void;
 }
 
 const field = "h-9 min-w-0 flex-1 rounded-[8px] border-[0.5px] border-border bg-card px-3 font-mono text-[16px] tracking-wider outline-none placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40"
-const button = "h-9 shrink-0 cursor-pointer rounded-[8px] px-4 text-[15px] font-medium disabled:cursor-default disabled:opacity-50"
 const CLOUD_STATE: Record<Cloud["state"], string> = {
   off: "Signed out", connecting: "Connecting…", connected: "Connected", reconnecting: "Reconnecting…",
   offline: "Offline, trying again", replaced: "In use on another machine",
@@ -81,15 +74,15 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
           <form className="flex gap-2" onSubmit={(e) => { e.preventDefault(); if (code.trim() && !busy) void redeem() }}>
             <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code from cloud.vaultite.com" aria-label="Code from Vaultite Cloud"
               autoCapitalize="characters" autoComplete="off" spellCheck={false} autoFocus className={field} data-cloud-code />
-            <button type="submit" disabled={!code.trim() || busy} className={`${button} bg-primary text-primary-foreground`} data-cloud-redeem>Connect</button>
+            <Button look="primary" className="h-9 px-4 md:h-9 md:text-[15px]" type="submit" disabled={!code.trim() || busy} data-cloud-redeem>Connect</Button>
           </form>
           <div className="flex gap-2 pt-1">
-            <button type="button" onClick={openConnect} className={`${button} px-2 text-primary hover:bg-foreground/[0.05]`}>Open the page again</button>
-            <button type="button" onClick={() => { setEntering(false); setCode("") }} className={`${button} px-2 text-muted-foreground hover:bg-foreground/[0.05]`}>Cancel</button>
+            <Button look="quiet" className="h-9 px-2 text-primary md:h-9 md:text-[15px]" onClick={openConnect}>Open the page again</Button>
+            <Button look="quiet" className="h-9 px-2 md:h-9 md:text-[15px]" onClick={() => { setEntering(false); setCode("") }}>Cancel</Button>
           </div>
         </>
       ) : (
-        <button type="button" onClick={() => { openConnect(); setEntering(true) }} className={`${button} bg-primary text-primary-foreground`} data-cloud-sign-in>Sign in</button>
+        <Button look="primary" className="h-9 px-4 md:h-9 md:text-[15px]" onClick={() => { openConnect(); setEntering(true) }} data-cloud-sign-in>Sign in</Button>
       )}
     </>
   )

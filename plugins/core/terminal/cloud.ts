@@ -28,8 +28,3 @@ export const cloudListed = (list: CloudSession[]) => {
   return { listed: sorted.slice(0, n), older: sorted.slice(n) }
 }
 
-/** "now", "5 min", "3 h", "2 d". */
-export function ago(t: number) {
-  const mins = Math.max(0, Math.round((Date.now() - t) / 60000))
-  return mins < 1 ? "now" : mins < 60 ? `${mins} min` : mins < 60 * 24 ? `${Math.round(mins / 60)} h` : `${Math.round(mins / 1440)} d`
-}

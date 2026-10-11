@@ -22,7 +22,7 @@ export function Avatar({ name, relation, size = 30 }: { name: string; relation: 
   const c = colorOf(relation)
   return (
     <span aria-hidden className="grid shrink-0 place-items-center rounded-full font-semibold text-white num"
-      style={{ width: size, height: size, fontSize: size * 0.4, background: `linear-gradient(180deg, color-mix(in srgb, ${c} 70%, #fff), ${c})` }}>
+      style={{ width: size, height: size, fontSize: size * 0.4, background: `linear-gradient(180deg, color-mix(in srgb, ${c} 70%, white), ${c})` }}>
       {initials(name)}
     </span>
   )

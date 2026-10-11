@@ -2,7 +2,7 @@
 // same here (`conventions`: new notes, links, the editor; attachments and more through the server's
 // setting-defaults). Only keys .obsidian/ sets change anything.
 import { useEffect } from "react"
-import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, type Store } from "@vaultite"
+import { definePlugin, dismissNotice, folderOf, notify, op, openPluginSettings, plural, type Store } from "@vaultite"
 import { OtherPlugins } from "./Plugins"
 import { obsidianLink } from "./uri"
 import "./types"
@@ -15,7 +15,7 @@ function Offer({ store }: { store: Store }) {
   useEffect(() => {
     if (!n) return
     void op("other-apps.offered").catch(() => {})
-    notify(`This vault has ${n} plugin${n === 1 ? "" : "s"} from another app: run them here?`, { id: "other-apps:offer", duration: 30_000,
+    notify(`This vault has ${plural(n, "plugin")} from another app: run them here?`, { id: "other-apps:offer", duration: 30_000,
       action: { label: "Review", run: () => openPluginSettings("other-apps") } })
   }, [n])
   // (taken up elsewhere: what runs them came on)

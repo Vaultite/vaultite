@@ -7,7 +7,7 @@ import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { categoryOf } from "../../../core/categories.ts"
 import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
-import { cn } from "@/lib/utils"
+import { capitalize, cn } from "@/lib/utils"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
 import type { PluginHost } from "@/core/define"
@@ -107,7 +107,7 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
           {p.meta!.approval!.state === "new" ? "Waiting for you to allow it on this machine" : "Changed: waiting for you to allow it again"}</div>}
         {original && !problem && !waiting && (
           <div className="text-[13px] leading-[18px] text-muted-foreground max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]" data-plugin-pair={own.id}>
-            {theirs ? kind[0].toUpperCase() + kind.slice(1) : mine}{" · "}
+            {theirs ? capitalize(kind) : mine}{" · "}
             <button type="button" onClick={(e) => { e.stopPropagation(); setSwitch(theirs ? own : original, true, true) }} data-plugin-swap={own.id}
               className="pointer-events-auto cursor-pointer underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">
               use {theirs ? mine : kind} instead</button>

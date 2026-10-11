@@ -4,10 +4,11 @@
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
 import { Cloud, Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
-  chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, isViewOpen, menuBelow, menuFor, notify, notifyError, onMachine, openAgent, openTerminal, openView, PanelFold,
-  SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount, useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
+  capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, fmtAgo, HeadingButton, isViewOpen, menuBelow, menuFor, notify,
+  notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount,
+  useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
 } from "@vaultite"
-import { ago, cloudListed, getCloud, subscribeCloud } from "./cloud"
+import { cloudListed, getCloud, subscribeCloud } from "./cloud"
 import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
@@ -22,7 +23,6 @@ function useCloud() {
 }
 type Cloudy = ReturnType<typeof cloudListed>
 
-const button = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
 /** One session's row (its icon in its colour, with its name and what the row can't say as the tooltip). `page`: in the
  *  Terminals tab (view:terminals), with what it's doing and since when spelled out. */
@@ -36,7 +36,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   // What the row shows only as colours and rings, or not at all: its state, account, machine, workspace, meters.
   const tip = [labelOf(s, a) + (a ? stateTip(s) : ""),
     [account && `${account} account`, s.machineLabel && `on ${s.machineLabel}`, where && `in ${where}`, !s.clients && "detached"].filter(Boolean).join(", "),
-    a && s.meter && cap(meterText(s))].filter(Boolean).join("\n")
+    a && s.meter && capitalize(meterText(s))].filter(Boolean).join("\n")
   return (
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
@@ -53,8 +53,8 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{where}</span>}
       {/* (last, so every row's ring lines up at its edge) */}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
-      <button type="button" className={`${button} hidden group-hover/row:grid`} aria-label="End session" data-tip="End session"
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); void endForGood(s.id) }} data-no-drag><X className="size-3.5" strokeWidth={2.25} /></button>
+      <HeadingButton icon={X} label="End session" className="hidden group-hover/row:grid" data-no-drag
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); void endForGood(s.id) }} />
     </SidebarRow>
     </div>
   )
@@ -72,7 +72,6 @@ function menuOf(s: Session, a: Agent | null): MenuItem[] {
   ]
 }
 
-const cap = (t: string) => t.charAt(0).toUpperCase() + t.slice(1)
 /** A machine's name short enough for the icon's tag: "M1" as is, "Mini PC" → "MP", "studio" → "ST". */
 const short = (l: string) => {
   const w = l.trim().split(/\s+/)
@@ -169,7 +168,7 @@ function CloudRow({ c, open, tab, page }: { c: CloudSession; open: boolean; tab:
       tint={c.state === "waiting" ? "var(--yellow)" : c.state === "running" ? a?.tint : undefined} badge={c.state === "waiting"}
       label={c.title} open={open} active={tab === to} tip={`${c.title} (${state}), in the cloud`} data-cloud={c.id} data-state={c.state}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
-      <span className="mr-1 shrink-0 truncate text-[11px] text-tertiary">{page ? `${cap(state)} · ${ago(c.updated)}` : ago(c.updated)}</span>
+      <span className="mr-1 shrink-0 truncate text-[11px] text-tertiary">{page ? `${capitalize(state)} · ${fmtAgo(c.updated, { short: true })}` : fmtAgo(c.updated, { short: true })}</span>
     </SidebarRow>
   )
 }
@@ -237,11 +236,9 @@ export function Sessions({ open, tab }: SidebarCtx) {
         <SidebarHeading title="Terminals" open={open}>
           {/* The first agent (Claude Code, when it's on) a click away; + for a terminal or any agent. */}
           {agents.slice(0, 1).map((a) => (
-            <button key={a.name} type="button" className={button} aria-label={`New ${a.label}`} data-tip={`New ${a.label}`} data-agent={a.name}
-              onClick={() => openAgent(a.name)}><a.icon className="size-3.5" strokeWidth={2} /></button>
+            <HeadingButton icon={a.icon} label={`New ${a.label}`} strokeWidth={2} key={a.name} data-agent={a.name} onClick={() => openAgent(a.name)} />
           ))}
-          <button type="button" className={button} aria-label="New terminal or agent" data-tip="New terminal or agent"
-            onClick={(e) => newMenu(e, agents)}><Plus className="size-3.5" strokeWidth={2.25} /></button>
+          <HeadingButton icon={Plus} label="New terminal or agent" onClick={(e) => newMenu(e, agents)} />
         </SidebarHeading>
       </PanelFold.Provider>
       {!folded && (
@@ -285,5 +282,5 @@ export function about(s: Session, a: Agent | null, short?: boolean, account?: st
   const mins = Math.max(0, Math.round((Date.now() - s.started) / 60000))
   const n = mins < 60 ? `${mins} min` : mins < 60 * 24 ? `${Math.round(mins / 60)} h` : `${Math.round(mins / 1440)} d`
   const age = short ? (mins < 1 ? "<1 min" : n) : mins < 1 ? "started just now" : `started ${n} ago`
-  return [account, s.machineLabel && `on ${s.machineLabel}`, st && st[0].toUpperCase() + st.slice(1), a && s.meter && meterText(s), age, !s.clients && "detached"].filter(Boolean).join(" · ")
+  return [account, s.machineLabel && `on ${s.machineLabel}`, st && capitalize(st), a && s.meter && meterText(s), age, !s.clients && "detached"].filter(Boolean).join(" · ")
 }

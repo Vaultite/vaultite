@@ -1,10 +1,6 @@
-import { useEffect, useState, useSyncExternalStore, type KeyboardEvent } from "react"
+import { useEffect, useState, type KeyboardEvent } from "react"
 import { ArrowDown, ArrowUp, Plus, Send, SquareTerminal, X } from "lucide-react"
-import {
-  agentsOn, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, get, getDefaultPlace, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify,
-  notifyError, op, openView, otherMachines, patch, pickIcon, places, Section, setDefaultPlace, settleFile, Switch, useAgents, useCommands, useDefaultPlace, useMachines, useStore, type Agent,
-  type DefaultPlace, type FileHead, type Machine, type MenuItem, type Place, type Store,
-} from "@vaultite"
+import { agentsOn, cell, cn, confirmDialog, currentEditor, currentFile, currentWorkspace, definePlugin, getDefaultPlace, getStore, Group, isHidden, keyCaps, keysOf, menuFor, namedIcon, notify, notifyError, op, openView, otherMachines, patch, pickIcon, places, Section, setDefaultPlace, settleFile, Switch, useAgents, useCommands, useDefaultPlace, useLive, useMachines, useStore, type Agent, type DefaultPlace, type FileHead, type Machine, type MenuItem, type Place, type Store } from "@vaultite"
 import type { Action } from "./types"
 
 // Dispatch: each action is a button in a note's header (after Provenance's label), a command and a file menu item; the
@@ -24,15 +20,14 @@ function elsewhere(list: Machine[] | null) {
 }
 // As the background last saw them, for the menus made on the spot: the other machines, and each agent's accounts on
 // every machine (places).
-let others: Machine[] = [], self = "", selfId = "", seen = false, known: Place[] = []
-const subs = new Set<() => void>()
-const useKnown = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => known)
+let others: Machine[] = [], self = "", selfId = "", seen = false
+const known = cell<Place[]>([])
 
 /** Where an action can run: this machine and the others online, in each of its agent's accounts (one each, without). */
 function placesOf(a: Action, there = others): Place[] {
   if (!a.agent) return []
   const name = a.agent.split("_")[0]
-  return known.filter((p) => p.agent?.name === name && (!p.machine || there.some((m) => m.id === p.machine)))
+  return known.get().filter((p) => p.agent?.name === name && (!p.machine || there.some((m) => m.id === p.machine)))
 }
 /** The account an action runs in by itself: its own (`claude_personal`), else the agent's default. */
 const ownAccount = (a: Action) => a.agent?.split("_")[1] ?? "default"
@@ -62,22 +57,10 @@ function whereLabel(a: Action, w = whereOf(a), there = others) {
 }
 
 /** The sessions dispatched from here that still run (dispatch/running), each by its action and note: its button wears a
- *  dot. Asked while a button shows, every 5 s (none while the page is hidden), and after each dispatch. */
+ *  dot. Asked while a button shows, every 5 s, and after each dispatch (`dispatched`). */
 type Run = { action: string; path: string; id: string }
-let runs: Run[] = []
-const runSubs = new Set<() => void>()
-let runTimer = 0
-async function loadRuns() {
-  try {
-    const next = await get<Run[]>("dispatch/running")
-    if (JSON.stringify(next) !== JSON.stringify(runs)) { runs = next; runSubs.forEach((f) => f()) }
-  } catch { /* asked again */ }
-}
-const useRuns = () => useSyncExternalStore((f) => {
-  runSubs.add(f)
-  if (runSubs.size === 1) { void loadRuns(); runTimer = window.setInterval(() => { if (!document.hidden) void loadRuns() }, 5000) }
-  return () => { runSubs.delete(f); if (!runSubs.size) clearInterval(runTimer) }
-}, () => runs)
+const dispatched = cell(0)
+const useRuns = () => useLive<Run[]>("dispatch/running", dispatched.use(), undefined, 5000).data ?? []
 
 /** Save what's typed, start the action on the server (or on machine `m` through it), then open its terminal here (this
  *  device's window, focused) when it should (`open`, else the action's: an agent that reports runs in the background,
@@ -104,7 +87,7 @@ async function dispatch(a: Action, path: string, m?: Machine, account?: string, 
     if (r.running) { show(); notify(`${a.label} is still on this note: opened its session`, { action: { label: "Dispatch again", run: () => void dispatch(a, path, m, account, open, true) } }) }
     else if (open ?? a.open ?? !r.handed) show()
     else notify(`Dispatched to ${a.label}${m ? ` on ${m.label}` : ""}: its report comes to your inbox`, { action: { label: "Open session", run: show } })
-    void loadRuns()
+    dispatched.update((n) => n + 1)
   } catch (e) {
     notifyError(e, `Couldn't dispatch to ${a.label}${m ? ` on ${m.label}` : ""}`)
   } finally {
@@ -158,7 +141,7 @@ function Buttons({ file }: { file: FileHead & { place: "bar" | "line" } }) {
   const machines = useMachines()
   const all = useDefaultPlace()
   const live = useRuns()
-  useKnown()
+  known.use()
   if (!dispatchable(file.path)) return null
   const there = elsewhere(machines)
   const bar = file.place === "bar"
@@ -199,10 +182,10 @@ function Commands() {
   // Each agent's accounts, here and on the machines online, for the menus and commands.
   useEffect(() => {
     let on = true
-    places().then((ps) => { if (on) { known = ps; subs.forEach((f) => f()) } }, () => {})
+    places().then((ps) => { if (on) known.set(ps) }, () => {})
     return () => { on = false }
   }, [where, agents.map((x) => x.name).join()])
-  const ps = useKnown()
+  const ps = known.use()
   useCommands(() => [
     ...list.filter((a) => a.id !== "claude").map((a) => ({ id: `dispatch:${a.id}`, name: `Dispatch to ${a.label}`, when: onNote, run: () => runOn(a.id), icon: iconOf(a) })),
     // In each other place: dispatch:<id>[:<account>][@<machine>] (not its own here: that one's dispatch:<id>, with its keys).

@@ -3,9 +3,9 @@
 import { useEffect, useId, useRef } from "react"
 import { FileText, Hash, Heading, Pin, PinOff, Plus, Search } from "lucide-react"
 import {
-  checklist, cn, currentWorkspace, getStore, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openItem, openInSplit, openView, panelMenu, PIN_SEARCH,
-  rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit, useDropTarget, useEnabled, useSelectable, useSelectedKeys, useWorkspaceVersion,
-  type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
+  checklist, cn, currentWorkspace, getStore, HeadingButton, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
+  openItem, openView, panelMenu, PIN_SEARCH, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
+  useDropTarget, useEnabled, useSelectable, useSelectedKeys, useWorkspaceVersion, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
 import { currentPins, isPinned, pin, pinMany, pinManyNoted, pinnable, pinNoted, shownEntries, type PinEntry } from "./types"
@@ -59,10 +59,7 @@ export function PinCurrent({ file }: { file: string }) {
   useWorkspaceVersion()
   if (!file || !pinnable(file) || isPinned(file)) return null
   return (
-    <button type="button" aria-label="Pin current file" data-tip="Pin current file" onClick={() => pinNoted(file, true)}
-      className="grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
-      <Plus className="size-3.5" strokeWidth={2.25} />
-    </button>
+    <HeadingButton icon={Plus} label="Pin current file" onClick={() => pinNoted(file, true)} />
   )
 }
 

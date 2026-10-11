@@ -1,7 +1,7 @@
 // What Vim draws in the app's own places: its mode and pending keys in the status bar, and its settings panel.
 import { ChevronRight } from "lucide-react"
-import { Group, openDetail, Segmented, SettingRow, Switch } from "@vaultite"
-import { changeSettings, deviceKeys, setDeviceKeys, useDeviceOn, useEditorKeys, useEditorMode, useSettings, VIMRC, type DeviceKeys } from "./state"
+import { capitalize, Group, openDetail, Segmented, SettingRow, Switch } from "@vaultite"
+import { changeSettings, deviceKeys, setDeviceKeys, settings, useDeviceOn, useEditorKeys, useEditorMode, VIMRC, type DeviceKeys } from "./state"
 import { openVimrc } from "./vimrc"
 
 const MODES: Record<string, { label: string; color: string }> = {
@@ -18,7 +18,7 @@ export function ModeChip() {
   const mode = useEditorMode()
   const keys = useEditorKeys()
   if (!mode) return null
-  const m = MODES[mode] ?? { label: mode[0].toUpperCase() + mode.slice(1), color: "var(--muted-foreground)" }
+  const m = MODES[mode] ?? { label: capitalize(mode), color: "var(--muted-foreground)" }
   return (
     <span className="flex items-center gap-1.5" data-vim-mode={mode}>
       <span className="rounded-[4px] px-1.5 py-px text-[11px] font-semibold"
@@ -36,7 +36,7 @@ const DEVICE: { value: DeviceKeys; label: string }[] = [
 
 /** Vim's settings sheet. */
 export function VimSettings() {
-  const s = useSettings()
+  const s = settings.use()
   const on = useDeviceOn()
   return (
     <Group>

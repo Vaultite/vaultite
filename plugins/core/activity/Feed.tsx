@@ -2,9 +2,9 @@
 // the Activity tab (view:activity) and, one line each, the sidebar's Activity panel (Panel.tsx).
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Activity as ActivityIcon, ChevronRight } from "lucide-react"
-import { cn, Empty, fmtDay, get, Loading, openFile, pageOf, Panel, Section, useTick, type Store } from "@vaultite"
+import { cn, Empty, fmtAgo, fmtDay, fmtStamp, get, Loading, openFile, pageOf, Panel, Section, useLive, usePreview, useTick, type Store } from "@vaultite"
 import { ACTION_KINDS, type ActionKind, type ActivityEvent, type ActivityList, type ActorKind } from "./model"
-import { ago, clock, kindLabel, localDay, ms, openTerminal, stamp, usePoll, useLook, whoOf } from "./shared"
+import { clock, kindLabel, localDay, ms, openTerminal, useLook, whoOf } from "./shared"
 
 export const TINT = "var(--activity)"
 export const KINDS: ActorKind[] = ["you", "agent", "cli", "script", "disk"]
@@ -95,7 +95,7 @@ function EventRow({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
           {slow && <span className="shrink-0 tabular-nums" data-tip="How long the server took">· {ms(e.ms)}</span>}
         </div>
       </div>
-      <span className="shrink-0 pt-px text-[13px] leading-[20px] text-muted-foreground tabular-nums" data-tip={stamp(e.last ?? e.t)}>{ago(e.last ?? e.t)}</span>
+      <span className="shrink-0 pt-px text-[13px] leading-[20px] text-muted-foreground tabular-nums" data-tip={fmtStamp(e.last ?? e.t, true)}>{fmtAgo(e.last ?? e.t)}</span>
       {term && <ChevronRight className="-ml-1.5 mt-0.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
     </>
   )
@@ -125,7 +125,8 @@ export type FeedOpts = { limit?: number; actor?: ActorKind | ""; action?: Action
 /** The events for a query, live, and older ones on "Load more". */
 export function useFeed({ limit = 30, actor = "", action = "", path = "" }: FeedOpts) {
   const q = `limit=${limit}${actor ? `&actor=${actor}` : ""}${action ? `&action=${action}` : ""}${path ? `&path=${encodeURIComponent(path)}` : ""}`
-  const { data, error, preview } = usePoll<ActivityList>(`activity?${q}`)
+  const preview = usePreview()
+  const { data, error } = useLive<ActivityList>(`activity?${q}`, undefined, undefined, 4000)
   const [older, setOlder] = useState<{ q: string; events: ActivityEvent[]; done: boolean }>({ q, events: [], done: false })
   const [busy, setBusy] = useState(false)
   useEffect(() => { setOlder({ q, events: [], done: false }) }, [q])

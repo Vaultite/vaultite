@@ -1,28 +1,26 @@
 // Sites' icons for their tabs and the Web pages panel (the desktop app fetches and keeps them, electron/web.ts); the
 // globe until one comes, and again if one can't be drawn.
-import { forwardRef, useSyncExternalStore } from "react"
+import { forwardRef } from "react"
 import { Globe, type LucideIcon, type LucideProps } from "lucide-react"
-import { webPages } from "@vaultite"
+import { cell, webPages } from "@vaultite"
 import { hostOf } from "./address"
 
 /** By host: a data URL, "" for none (yet, or one that couldn't be drawn). */
-const icons = new Map<string, string>()
-const subs = new Set<() => void>()
-const changed = () => subs.forEach((f) => f())
+const icons = cell(new Map<string, string>())
+const setIcons = (f: (m: Map<string, string>) => void) => icons.update((m) => { const next = new Map(m); f(next); return next })
 let wanted: Set<string> | null = null
 /** Asked for together: a tab bar's worth in one call. */
 function want(host: string) {
-  if (!host || icons.has(host) || !webPages?.icons) return
+  if (!host || icons.get().has(host) || !webPages?.icons) return
   if (!wanted) {
     wanted = new Set()
     queueMicrotask(() => {
       const hosts = [...wanted!]
       wanted = null
-      for (const h of hosts) icons.set(h, "")
-      void webPages!.icons!(hosts).then((r) => {
-        for (const h of hosts) { const v = r?.[h]; if (typeof v === "string" && v.startsWith("data:image/") && !icons.get(h)) icons.set(h, v) }
-        changed()
-      }, () => { for (const h of hosts) icons.delete(h) })
+      setIcons((m) => { for (const h of hosts) m.set(h, "") })
+      void webPages!.icons!(hosts).then((r) => setIcons((m) => {
+        for (const h of hosts) { const v = r?.[h]; if (typeof v === "string" && v.startsWith("data:image/") && !m.get(h)) m.set(h, v) }
+      }), () => setIcons((m) => { for (const h of hosts) m.delete(h) }))
     })
   }
   wanted.add(host)
@@ -30,21 +28,20 @@ function want(host: string) {
 
 /** A page told its site's icon (the plugin's events). */
 export function iconCame(host: string, icon: string) {
-  if (!host || typeof icon !== "string" || !icon.startsWith("data:image/") || icons.get(host) === icon) return
-  icons.set(host, icon)
-  changed()
+  if (!host || typeof icon !== "string" || !icon.startsWith("data:image/") || icons.get().get(host) === icon) return
+  setIcons((m) => { m.set(host, icon) })
 }
 
 function useIcon(host: string) {
   want(host)
-  return useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => icons.get(host) || "")
+  return icons.use((m) => m.get(host) || "")
 }
 
 export function SiteIcon({ host, className }: { host: string; className?: string }) {
   const src = useIcon(host)
   return src
     ? <img src={src} alt="" draggable={false} className={`${className ?? ""} object-contain`}
-        onError={() => { if (icons.get(host) === src) { icons.set(host, ""); changed() } }} />
+        onError={() => { if (icons.get().get(host) === src) setIcons((m) => { m.set(host, "") }) }} />
     : <Globe className={className} strokeWidth={1.75} />
 }
 

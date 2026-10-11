@@ -6,7 +6,7 @@
   for a different kind of work? Then it's the workspace's: `useScopedState(key, fallback, "workspace")`. The core never
   imports Workspaces; it asks the plugin with `workspace` in its definition through scope.ts. A new tab is blank.
 - **App plugins load with the app** (eager imports): a plugin never uses the plugin API while its module loads (`npm
-  run check`; only `definePlugin` and `devicePref` may run at top level). Loading each plugin on its own was tried:
+  run check`; only `definePlugin`, `devicePref`, `cell` and `pluginSettings` may run at top level). Loading each plugin on its own was tried:
   phone cold start 1.0 s -> 2.0 s, so no.
 
 ## UI conventions

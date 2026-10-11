@@ -3,14 +3,14 @@
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
 import { type Store, useStore } from "@/core/data"
-import { get, patch, put } from "@/core/http"
+import { patch, put } from "@/core/http"
 import type { Plugin } from "@/core/define"
 import { folderList, openFile, readFile } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { afterSheets } from "@/core/nav"
 import { notifyError } from "@/core/notify"
 import { isEnabled, names, setSwitch, tintOfPlugin } from "@/core/plugins"
-import { revealRow, settingsFile, takeGoingTo } from "@/core/pluginSettings"
+import { pluginSettings, revealRow, settingsFile, takeGoingTo } from "@/core/pluginSettings"
 import { grantsOf, setGrant } from "@/core/grants"
 import { usePrefs } from "@/core/prefs"
 import { capitalize, cn } from "@/lib/utils"
@@ -23,30 +23,14 @@ import { valueProblem, type SettingDecl, type SettingDecls } from "../../../core
 const panelFailed = () => <p className="text-[15px] text-muted-foreground">Its settings couldn't be drawn. Its settings file is below.</p>
 
 type Data = Record<string, unknown>
-const isMap = (v: unknown): v is Data => !!v && typeof v === "object" && !Array.isArray(v)
 const types = (d: SettingDecl) => (Array.isArray(d.type) ? d.type : [d.type])
 /** A description is a lowercase fragment (for AIs, like a block option's); under a label it starts a sentence. */
-
-/** The plugin's settings file as an object, followed live: null while it loads, {} when there's none. */
-function useSettingsFile(id: string): [Data | null, (d: Data) => void] {
-  const [data, setData] = useState<Data | null>(null)
-  const read = () => { get<Data>(`config/plugin/${id}`).then((d) => setData(isMap(d) ? d : {}), () => setData({})) }
-  useEffect(read, [id])
-  useVaultChange(read, [settingsFile(id)])
-  return [data, setData]
-}
 
 /** A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes
  *  those keys (null removes one), shown at once and put back if the write fails. */
 export function usePluginSettings(id: string): [Data | null, (changes: Data) => Promise<void>] {
-  const [data, setData] = useSettingsFile(id)
-  const set = async (changes: Data) => {
-    const was = data ?? {}, local = { ...was }
-    for (const [k, v] of Object.entries(changes)) if (v === null || v === undefined) delete local[k]; else local[k] = v
-    setData(local)
-    try { await patch(`config/plugin/${id}`, Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null]))) } catch (e) { setData(was); throw e }
-  }
-  return [data, set]
+  const s = pluginSettings(id)
+  return [s.use(true), s.set]
 }
 
 export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin }) {
@@ -104,7 +88,7 @@ export function Where({ path, lead, icon: Icon = FileJson, open }: { path: strin
 // ---------- the form of declared settings
 
 function SettingsForm({ id, decls, titled }: { id: string; decls: SettingDecls; titled: boolean }) {
-  const [data, setData] = useSettingsFile(id)
+  const [data, save] = usePluginSettings(id)
   // (another app's settings make some defaults: .obsidian/templates.json's folder)
   const seeds = useStore().store?.settingDefaults?.[`plugins/${id}/data`]
   const declOf = (k: string): SettingDecl => (seeds && Object.hasOwn(seeds, k) ? { ...decls[k], default: seeds[k] as SettingDecl["default"] } : decls[k])
@@ -113,11 +97,7 @@ function SettingsForm({ id, decls, titled }: { id: string; decls: SettingDecls; 
     const d = declOf(k)
     // The default again: the key goes (null), so the vault keeps only what was chosen.
     const next = v === undefined || v === null || v === "" || JSON.stringify(v) === JSON.stringify(d.default) ? null : v
-    const was = data
-    const local = { ...data }
-    if (next === null) delete local[k]; else local[k] = next
-    setData(local)
-    patch(`config/plugin/${id}`, { [k]: next }).catch((e) => { setData(was); notifyError(e, "Couldn't save it") })
+    save({ [k]: next }).catch((e) => notifyError(e, "Couldn't save it"))
   }
   const form = (
     <Group>

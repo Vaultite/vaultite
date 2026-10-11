@@ -2,11 +2,12 @@
 // the tab. Names (fuzzy, plain words only), then every matching line in files; its options are the plugin's settings.
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
 import { CaseSensitive, ChevronRight, Ellipsis, FileText, Search as SearchIcon, X } from "lucide-react"
-import { useLive, type Store } from "@/core/data"
-import { get, patch } from "@/core/http"
+import { type Store } from "@/core/data"
+import { get } from "@/core/http"
 import { startDrag } from "@/core/drag"
 import { folderOf, openFile, openView, stem } from "@/core/files"
-import { isDesktop, useFocusedFile } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
+import { useFocusedFile } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
 import { editAt } from "@/core/anchors"
 import { kindOf } from "@/core/filekinds"
@@ -19,6 +20,7 @@ import { fileIcon } from "@/components/FileTree"
 import { usePane } from "@/core/pane"
 import { cn } from "@/lib/utils"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
+import { pluginSettings } from "@/core/pluginSettings"
 
 type Match = { line: number; text: string; ctx?: true }
 type Result = { path: string; title: string; context: string; mtime: number; matches?: Match[]; count?: number }
@@ -59,21 +61,13 @@ const OPERATORS: [string, string][] = [
 ]
 
 /** The options (changed here at once, saved in the vault). */
-function useSettings(): [Settings, (patch: { [K in keyof Settings]?: Settings[K] | null }) => void] {
-  const { data } = useLive<Settings>("config/plugin/search")
-  const [mine, setMine] = useState<Settings>({})
-  const s = { ...data, ...mine }
-  return [s, (changes) => {
-    setMine((m) => ({ ...m, ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? undefined])) }))
-    patch("config/plugin/search", changes).catch(() => {})
-  }]
-}
+const searchSettings = pluginSettings<Settings>("search")
 
 export function SearchPage({ store, query, setQuery }: { store: Store; query: string
   /** The query changed (the tab keeps it in its arg). */
   setQuery: (q: string) => void }) {
   const { disabled, fileIcons } = usePrefs()
-  const [settings, save] = useSettings()
+  const settings = searchSettings.use(), save = (p: { [K in keyof Settings]?: Settings[K] | null }) => void searchSettings.set(p).catch(() => {})
   const [q, setQ] = useState(query)
   const [folder, setFolder] = useState("")
   // The tab's arg follows what's typed, a moment after (no history entry per letter).

@@ -11,7 +11,7 @@ import type { AgentDef, EditorCtx, FileFormat, FileIcon, FileMark, FileRow, Host
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
-import { isDesktop } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
 import { canonical, keyCaps, keysOf, setMissingCommand } from "@/core/commands"
 import { setFenceLookup, setFormatLookup, type Drawn } from "@/core/formats"
 import { reload } from "@/core/data"

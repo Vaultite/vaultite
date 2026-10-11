@@ -30,6 +30,8 @@ export const setFileOpener = (fn: (path: string) => void) => { fileOpener = fn }
 if ("scrollRestoration" in history) history.scrollRestoration = "manual"
 
 const notify = () => dispatchEvent(new HashChangeEvent("hashchange"))
+/** Change the address in place (no history entry, the entry's `state` given) and tell the app. */
+export function replaceHash(to: string, state: unknown = null) { history.replaceState(state, "", to.startsWith("#") ? to : `#${to}`); notify() }
 
 export function openDetail(path: string) {
   const file = redirect?.(path)
@@ -52,13 +54,13 @@ let closing = false
 addEventListener("popstate", () => {
   if (!closing) return
   closing = false
-  if (route().detail) { history.replaceState(null, "", `#${route().tab}`); notify() }
+  if (route().detail) replaceHash(route().tab)
 })
 
 export function closeDetail() {
   const { depth, tab } = route()
   if (depth) { closing = true; history.go(-depth); setTimeout(() => { closing = false }, 1500) }
-  else { history.replaceState(null, "", `#${tab}`); notify() }
+  else replaceHash(tab)
 }
 
 /** Run `fn` once the open sheets have closed (their history entries popped), so what it shows isn't under a sheet. */
@@ -89,8 +91,7 @@ function sheetFile() {
 
 /** Swap the open detail without adding a history entry (picking another note in the desktop reader pane). */
 export function replaceDetail(path: string) {
-  history.replaceState(history.state, "", `#${route().tab}/${path}`)
-  notify()
+  replaceHash(`${route().tab}/${path}`, history.state)
 }
 
 // ---------- whether Back has somewhere to go (the phone's Back button) ----------

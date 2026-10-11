@@ -1,16 +1,15 @@
 import { useEffect, useRef } from "react"
 import { Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
 import {
-  closeTab, cn, definePlugin, del, dragTab, fmtAgo, isPopout, menuFor, newTab, notifyError, openFile, openView, panelMenu, panesOf, put, rowMenu, selectClick,
-  selectedAttr, selectTab, SidebarHeading, SidebarRow, TABS, tabsMenu, useDrag, useSelectable, useSelected, useTabLabels, useTabLayout, tabMenuOf,
-  type SidebarCtx, type Store, type Tab, type TabGroup, type TabInfo,
+  closeTab, cn, definePlugin, del, dragTab, fmtAgo, HeadingButton, isPopout, menuFor, newTab, notifyError, openFile, openView, panelMenu, panesOf, put,
+  rowMenu, selectClick, selectedAttr, selectTab, SidebarHeading, SidebarRow, tabMenuOf, TABS, tabsMenu, useDrag, useSelectable, useSelected,
+  useTabLabels, useTabLayout, type SidebarCtx, type Store, type Tab, type TabGroup, type TabInfo,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
 
 // The open tabs as a list in the sidebar, pane by pane, so the tab bar can be off (`tabBar`); under them the other
 // devices' tabs (plugin.ts), to open here.
 
-const button = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
 function Row({ t, g, i, only, panel }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean; panel?: string }) {
   const d = useDrag()
@@ -25,8 +24,8 @@ function Row({ t, g, i, only, panel }: { t: Tab; g: TabGroup; i: TabInfo; only: 
         {t.pinned ? (
           <span className="grid size-5 shrink-0 place-items-center text-muted-foreground" aria-label="Pinned"><Pin className="size-3.5" strokeWidth={2} /></span>
         ) : !only && (
-          <button type="button" className={`${button} hidden group-hover/row:grid`} aria-label={`Close ${i.label}`} data-tip="Close tab" data-no-drag
-            onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeTab(t.id) }}><X className="size-3.5" strokeWidth={2.25} /></button>
+          <HeadingButton icon={X} label={`Close ${i.label}`} tip="Close tab" className="hidden group-hover/row:grid" data-no-drag
+            onClick={(e) => { e.preventDefault(); e.stopPropagation(); closeTab(t.id) }} />
         )}
       </SidebarRow>
     </div>
@@ -129,7 +128,7 @@ function TabsPanel({ store, open, panel }: SidebarCtx) {
   return (
     <div className="flex shrink-0 flex-col" data-tabs-panel>
       <SidebarHeading title="Tabs" open={open}>
-        <button type="button" className={button} aria-label="New tab" data-tip="New tab" onClick={() => newTab()}><Plus className="size-3.5" strokeWidth={2.25} /></button>
+        <HeadingButton icon={Plus} label="New tab" onClick={() => newTab()} />
       </SidebarHeading>
       <TabRows store={store} panel={panel} />
       <OtherDevices store={store} />

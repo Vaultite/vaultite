@@ -17,3 +17,20 @@ export function signal() {
     use: <T = number>(read?: () => T): T => useSyncExternalStore(subscribe, (read ?? current) as () => T),
   }
 }
+
+export type Cell<T> = ReturnType<typeof cell<T>>
+/** One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React
+ *  (`use(pick)`: a part of it, drawn again only when that part changes). */
+export function cell<T>(initial: T) {
+  let value = initial
+  const s = signal()
+  const set = (v: T) => { if (Object.is(v, value)) return; value = v; s.notify() }
+  return {
+    get: () => value,
+    set,
+    update: (f: (v: T) => T) => set(f(value)),
+    /** Call `fn` on each change; returns how to stop. */
+    subscribe: s.subscribe,
+    use: <R = T>(pick?: (v: T) => R): R => s.use(() => (pick ? pick(value) : value) as R),
+  }
+}

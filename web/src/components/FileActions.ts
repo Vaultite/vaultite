@@ -217,7 +217,7 @@ export const topmost = (paths: string[]) => paths.filter((p) => !paths.some((q) 
 const many = (n: number, one: string, more = `${one}s`) => `${n} ${n === 1 ? one : more}`
 
 /** Move several to the trash, then one toast with Undo for all of them. */
-export async function trashMany(paths: string[]) {
+async function trashMany(paths: string[]) {
   const back: string[] = []
   for (const p of topmost(paths)) {
     try { const t = await deleteFile(p, { quiet: true }); if (t) back.push(t) } catch (e) { notifyError(e) }

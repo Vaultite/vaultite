@@ -18,7 +18,7 @@ import { TimelineSection } from "@/components/Timeline"
 import { Editor } from "@/editor/lazy"
 import type { EditorApi } from "@/editor/Editor"
 import type { PreviewConfig } from "@/editor/livePreview"
-import { cn } from "@/lib/utils"
+import { capitalize, cn } from "@/lib/utils"
 
 type Shared = {
   /** Focus it with the cursor at the end once it's drawn. */
@@ -97,7 +97,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
     asset: (name) => assetUrl(store, name, from),
     ...imageActions(store),
     sections,
-    renderSection: (name, t, el) => island((x) => <TimelineSection text={x} title={name[0].toUpperCase() + name.slice(1)} kinds={timelineKinds(disabled)} />, t, el),
+    renderSection: (name, t, el) => island((x) => <TimelineSection text={x} title={capitalize(name)} kinds={timelineKinds(disabled)} />, t, el),
     renderBlock: (name, t, el, edit) => island((x) => <BlockView name={name} text={x} ctx={ctx()} disabled={disabled} edit={edit} />, t, el),
     renderEmbed: (target, height, el, edit) => drawEmbed(store, target, height, el, from, edit),
     renderMarkdown: (md) => renderMarkdown(md, { resolves: resolve, asset: (name) => assetUrl(store, name, from) }),

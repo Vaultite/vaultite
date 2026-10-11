@@ -1,6 +1,6 @@
 // Sending an export from the app: pick the file, send it (a small one whole, a big one 8 MB at a time, so no request runs
 // for minutes and a phone shows how far it got), then follow the import job, all in one toast that updates itself.
-import { notify, openFile, post } from "@vaultite"
+import { notify, openFile, plural, post } from "@vaultite"
 import type { Job } from "./chat"
 
 const CHUNK = 8 << 20
@@ -71,7 +71,7 @@ export function summary(j: Job) {
   if (j.updated) parts.push(`${j.updated} updated`)
   if (j.unchanged) parts.push(`${j.unchanged} already here`)
   if (j.skipped) parts.push(`${j.skipped} short one${j.skipped === 1 ? "" : "s"} skipped`)
-  const extra = [j.projects ? `${j.projects} project${j.projects === 1 ? "" : "s"}` : "", j.images ? `${j.images} image${j.images === 1 ? "" : "s"}` : "",
+  const extra = [j.projects ? `${plural(j.projects, "project")}` : "", j.images ? `${plural(j.images, "image")}` : "",
     j.files ? `${j.files} long attachment${j.files === 1 ? "" : "s"} as files` : "", j.memories ? `${j.memories} memor${j.memories === 1 ? "y" : "ies"} to review` : ""].filter(Boolean)
   return `${name(j)}: ${j.chats} chats (${parts.join(", ")})${extra.length ? `, ${extra.join(", ")}` : ""}.`
 }

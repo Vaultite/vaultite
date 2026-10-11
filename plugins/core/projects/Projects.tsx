@@ -1,7 +1,7 @@
 // Projects: a card per project file, drawn from the file's own blocks (what it is, then any live numbers it asks for),
 // so a card changes when its file does.
 import { ArrowUpRight } from "lucide-react"
-import { cn, Empty, FileBlocks, isArchived, openFile, Panel, type BlockCtx } from "@vaultite"
+import { capitalize, cn, Empty, FileBlocks, isArchived, openFile, Panel, type BlockCtx } from "@vaultite"
 import { GitHubIcon } from "./GitHubIcon"
 import type { Project } from "./types"
 
@@ -52,7 +52,7 @@ function StatusPill({ status }: { status: string }) {
   return (
     <span className="flex items-center gap-1.5 rounded-full bg-muted px-2.5 py-0.5 text-[12px] font-medium">
       <span className="size-1.5 rounded-full" style={{ background: STATUS[status] ?? "var(--gray)" }} />
-      {status[0].toUpperCase() + status.slice(1)}
+      {capitalize(status)}
     </span>
   )
 }

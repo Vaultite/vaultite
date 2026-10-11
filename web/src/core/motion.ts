@@ -1,8 +1,8 @@
 // Phones: tabs and Back move like a browser's (a page shrinks into its card, Back slides away). Back with the View
 // Transitions API and index.css's `html[data-motion]` rules: without it (iOS < 18) or with Reduce motion, instant.
-import { useSyncExternalStore } from "react"
 import { flushSync } from "react-dom"
 import { relockScroll } from "@/core/pagelock"
+import { cell } from "@/core/signal"
 
 type Kind = "back" | "forward"
 
@@ -90,14 +90,9 @@ function finish() {
 }
 
 // The tab list's sheet kept on screen after the address has left it, while a page grows out of it (App reads it).
-let lingering: string | null = null
-const lingerers = new Set<() => void>()
-function linger(path: string | null) {
-  lingering = path
-  for (const f of lingerers) f()
-}
-export const useLingeringSheet = () =>
-  useSyncExternalStore((f) => { lingerers.add(f); return () => { lingerers.delete(f) } }, () => lingering)
+const lingering = cell<string | null>(null)
+const linger = lingering.set
+export const useLingeringSheet = lingering.use
 
 /** Where the page shows (what a card's picture is of): between the header and the bar. Its layout sizes, so a page a
  *  finger has shrunk still says where it is unshrunk. */

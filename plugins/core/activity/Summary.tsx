@@ -1,11 +1,11 @@
 // ```block-activity-summary: the last 24 hours (`days: 1`, per hour) or days (per day): how much was done, by you, by
 // coding agents and by everything else; who did it; the files touched most.
 import { BarChart3, ChevronRight } from "lucide-react"
-import { cn, Empty, fmtDay, Loading, openFile, Panel, Section, useTick, type Store } from "@vaultite"
+import { cn, Empty, fmtAgo, fmtDay, fmtStamp, Loading, openFile, Panel, Section, useLive, useTick, type Store } from "@vaultite"
 import type { ActivitySummary, ActorCount } from "./model"
 import { Columns } from "./Columns"
 import { shortName, TINT, useExists } from "./Feed"
-import { ago, clock, count, localDay, openTerminal, stamp, usePoll, useLook } from "./shared"
+import { clock, count, localDay, openTerminal, useLook } from "./shared"
 
 const SERIES = [
   { key: "you", label: "You", color: "var(--blue)" },
@@ -25,7 +25,7 @@ function ActorRow({ a }: { a: ActorCount }) {
       <Icon className="size-[17px] shrink-0" strokeWidth={2} style={{ color: look.tint }} />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[15px] leading-[20px]">{a.name}</div>
-        <div className="truncate text-[13px] text-muted-foreground" data-tip={stamp(a.last)}>{[a.session, ago(a.last)].filter(Boolean).join(" · ")}</div>
+        <div className="truncate text-[13px] text-muted-foreground" data-tip={fmtStamp(a.last, true)}>{[a.session, fmtAgo(a.last)].filter(Boolean).join(" · ")}</div>
       </div>
       <span className="shrink-0 text-[14px] text-muted-foreground tabular-nums">{count(a.n)}</span>
       {term && <ChevronRight className="-ml-1.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
@@ -45,7 +45,7 @@ function FileRow({ f, exists }: { f: ActivitySummary["files"][number]; exists: b
         <div className={cn("truncate text-[15px] leading-[20px]", exists ? "text-primary" : "text-muted-foreground")}>{shortName(f.path)}</div>
         <div className="truncate text-[13px] text-muted-foreground">{[folder, f.actors.join(", ")].filter(Boolean).join(" · ")}</div>
       </div>
-      <span className="shrink-0 text-[14px] text-muted-foreground tabular-nums" data-tip={`Last ${ago(f.last)}`}>{count(f.n)}</span>
+      <span className="shrink-0 text-[14px] text-muted-foreground tabular-nums" data-tip={`Last ${fmtAgo(f.last)}`}>{count(f.n)}</span>
     </>
   )
   const cls = "flex min-h-11 w-full items-center gap-3 py-2"
@@ -57,7 +57,7 @@ function FileRow({ f, exists }: { f: ActivitySummary["files"][number]; exists: b
 
 export function SummaryBlock({ store, options }: { store: Store; options: Record<string, unknown> }) {
   const days = Math.min(Math.max(typeof options.days === "number" ? Math.round(options.days) : 1, 1), 31)
-  const { data, error } = usePoll<ActivitySummary>(`activity/summary?days=${days}`, 15_000)
+  const { data, error } = useLive<ActivitySummary>(`activity/summary?days=${days}`, undefined, undefined, 15_000)
   const exists = useExists(store)
   useTick(60_000)
   const hourly = data?.bucket === "hour"

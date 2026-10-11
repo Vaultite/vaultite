@@ -1,12 +1,12 @@
 // Vim: Vim's keys in the whole app (the editor, reading views, lists, the canvas), Space as the leader and Ctrl+W for
 // panes, as commands the palette lists and hotkeys.json rebinds. Off until turned on, like any vault plugin.
 import { useEffect } from "react"
-import { addKeys, definePlugin, get, useVaultChange, type PluginCommand, type Store } from "@vaultite"
+import { addKeys, definePlugin, useVaultChange, type PluginCommand, type Store } from "@vaultite"
 import { vimExtension } from "./editor"
 import * as app from "./app"
 import * as lists from "./lists"
 import { setExStore } from "./ex"
-import { appKeys, leaderOn, setSettings, SETTINGS_DIR, useDeviceOn, useSettings, type Settings } from "./state"
+import { appKeys, leaderOn, settings, useDeviceOn, VIMRC } from "./state"
 import { reloadVimrc } from "./vimrc"
 import { ModeChip, VimSettings } from "./ui"
 
@@ -100,18 +100,16 @@ const merge = (...maps: Record<string, string[]>[]) => {
 
 /** The plugin's work in the app: its settings into state.ts, its keys onto the app's commands, the overlays. */
 function Background({ store }: { store: Store }) {
-  // Its settings (.vaultite/plugins/vim/data.json), again whenever its folder changes (Settings, an AI, the CLI).
-  const read = () => { get<Settings>("config/plugin/vim").then(setSettings, () => {}) }
-  useEffect(read, [])
-  useVaultChange(() => { read(); void reloadVimrc() }, (p) => p.startsWith(`${SETTINGS_DIR}/`))
+  // Its vimrc, again whenever it changes (Settings, an AI, the CLI).
+  useVaultChange(() => void reloadVimrc(), [VIMRC])
   useEffect(() => setExStore(store), [store])
-  const settings = useSettings()
+  const vim = settings.use()
   const device = useDeviceOn()
   useEffect(() => {
     const keys = merge(leaderOn() ? LEADER : {}, appKeys() ? VIMIUM : {}, appKeys() ? lists.listKeys : {})
     addKeys("vim", Object.keys(keys).length ? keys : null)
     return () => addKeys("vim", null)
-  }, [settings, device])
+  }, [vim, device])
   return <app.AppLayer />
 }
 

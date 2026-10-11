@@ -6,12 +6,13 @@ import { dateText } from "@/core/data"
 import { get } from "@/core/http"
 import { formatSize, kindIcon, kindName, type FileKind } from "@/core/filekinds"
 import { openFile } from "@/core/files"
-import { isDesktop } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
 import { useVaultChange } from "@/core/live"
 import { playerFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { canOpenHere, openHere } from "@/components/FileActions"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
+import { Button, buttonClass } from "@/components/Button"
 
 export type FileInfo = { path: string; kind: FileKind; size: number; mtime: number; ctime: number; pages?: number | null }
 
@@ -57,9 +58,7 @@ export function useFill(on: boolean) {
   return [ref, h] as const
 }
 
-const button = "inline-flex h-9 cursor-pointer items-center gap-1.5 rounded-[8px] px-3.5 text-[15px] font-medium md:h-8 md:text-[13px]"
-const primary = cn(button, "bg-primary text-primary-foreground hover:opacity-90")
-const secondary = cn(button, "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.1]")
+const primary = buttonClass({ look: "primary" }), secondary = buttonClass()
 
 /** Any file: what it is, its size and date, and what can be done with it. */
 export function FileCard({ path, info, note, children }: { path: string; info: FileInfo | null; note?: ReactNode; children?: ReactNode }) {
@@ -72,15 +71,15 @@ export function FileCard({ path, info, note, children }: { path: string; info: F
       <Icon className="size-14 text-muted-foreground" strokeWidth={1.25} />
       <p className="mt-3 text-[17px] font-semibold break-all">{name}</p>
       <p className="mt-1 text-[15px] text-muted-foreground md:text-[13px]">
-        {[kindName(path), info && formatSize(info.size), info?.pages ? `${info.pages} page${info.pages === 1 ? "" : "s"}` : null, modified && `modified ${modified}`].filter(Boolean).join(" · ")}
+        {[kindName(path), info && formatSize(info.size), info?.pages ? `${plural(info.pages, "page")}` : null, modified && `modified ${modified}`].filter(Boolean).join(" · ")}
       </p>
       {note && <p className="mt-2 text-[15px] text-muted-foreground md:text-[13px]">{note}</p>}
       <div className="mt-5 flex flex-wrap justify-center gap-2">
         {children}
         {here && (
-          <button type="button" className={children ? secondary : primary} onClick={() => openHere(path)}>
+          <Button look={children ? "secondary" : "primary"} onClick={() => openHere(path)}>
             <SquareArrowOutUpRight className="size-4" strokeWidth={2} />Open in default app
-          </button>
+          </Button>
         )}
         <a href={rawUrl(path, { download: true })} download={name} className={here || children ? secondary : primary}>
           <Download className="size-4" strokeWidth={2} />Download

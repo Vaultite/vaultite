@@ -274,6 +274,27 @@ export function Switch({ on, onChange, label, disabled }: { on: boolean; onChang
   )
 }
 
+/** Rows under a heading that folds them (a panel's sections). `keep`: its open state kept on this device, by that name. */
+export function Foldable({ title, count, big, keep, dflt = true, children, ...rest }: {
+  title: ReactNode; count?: number | null; big?: boolean; keep?: string; dflt?: boolean; children: ReactNode
+} & Record<`data-${string}`, unknown>) {
+  const key = keep && `vaultite.${keep}`
+  const [open, set] = useState(() => { try { const v = key ? localStorage.getItem(key) : null; return v === null ? dflt : v === "1" } catch { return dflt } })
+  const setOpen = (v: boolean) => { set(v); try { if (key) localStorage.setItem(key, v ? "1" : "0") } catch { /* private mode */ } }
+  return (
+    <div {...rest}>
+      <button type="button" data-keyrow onClick={() => setOpen(!open)} aria-expanded={open}
+        className={cn("flex w-full cursor-pointer items-center gap-1 rounded-[5px] pr-1 pl-1.5 text-left font-medium text-muted-foreground hover:bg-foreground/[0.04]",
+          big ? "h-8 text-[14px]" : "h-7 text-[12px]")}>
+        <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
+        <span className="flex-1 truncate">{title}</span>
+        {count != null && <span className="text-tertiary tabular-nums" data-count>{count}</span>}
+      </button>
+      {open && <div className="flex flex-col gap-px pb-1">{children}</div>}
+    </div>
+  )
+}
+
 /** A setting's way back to its default: a small circular arrow before its control. While the setting is
  *  its default (`on` false) it keeps its place but can't be seen or reached, so the control beside it never moves. */
 export function ResetButton({ on, onClick, label }: { on: boolean; onClick: () => void; label: string }) {

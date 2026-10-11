@@ -1,8 +1,8 @@
 // Recording: one at a time for the whole app, saved as an attachment of its note and embedded, then transcribed when
 // the server can. Indicator.tsx draws what's recording.
 import {
-  activeFile, appDevice, askMicrophone, attachmentFolder, choose, createFile, currentFile, dismissNotice, folderOf, get, getStore, insertOnOwnLine,
-  newNoteFolder, notify, notifyError, openFile, pasteAttachments, phoneVoiceNote, post, put, readFile, reload, stem,
+  activeFile, appDevice, askMicrophone, attachmentFolder, cell, choose, createFile, currentFile, dismissNotice, folderOf, get, getStore,
+  insertOnOwnLine, newNoteFolder, notify, notifyError, openFile, pasteAttachments, phoneVoiceNote, post, put, readFile, reload, stem,
 } from "@vaultite"
 
 export type Status =
@@ -13,12 +13,10 @@ export type Status =
       voice?: boolean }
   | { state: "saving" }
 
-let status: Status = { state: "idle" }
-const subs = new Set<() => void>()
-const set = (s: Status) => { status = s; subs.forEach((f) => f()) }
-export const getStatus = () => status
-export const subscribe = (f: () => void) => { subs.add(f); return () => { subs.delete(f) } }
-export const recording = () => status.state === "recording" || status.state === "paused"
+const status = cell<Status>({ state: "idle" })
+const set = status.set
+export const { get: getStatus, use: useStatus } = status
+export const recording = () => getStatus().state === "recording" || getStatus().state === "paused"
 
 let rec: MediaRecorder | null = null
 let stream: MediaStream | null = null
@@ -39,14 +37,14 @@ export const recordingName = (d: Date) =>
   `Recording ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}.${p2(d.getSeconds())}`
 
 /** Seconds recorded so far (pauses left out). */
-export function elapsed(s = status) {
+export function elapsed(s = getStatus()) {
   if (s.state !== "recording" && s.state !== "paused") return 0
   return s.before + (s.state === "recording" ? (Date.now() - s.since) / 1000 : 0)
 }
 
 /** Start recording, for `note` (the file being edited, when left out), or (`voice`) a voice note for the inbox. */
 export async function start(note?: string | null, voice = false) {
-  if (status.state !== "idle") return
+  if (getStatus().state !== "idle") return
   if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
     notify(location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1"
       ? "This browser can't record audio." : "Recording needs the app opened over https.", { kind: "error" })
@@ -79,14 +77,16 @@ export async function start(note?: string | null, voice = false) {
 }
 
 export function pause() {
-  if (status.state !== "recording" || !rec) return
+  const s = getStatus()
+  if (s.state !== "recording" || !rec) return
   rec.pause()
-  set({ ...status, state: "paused", before: elapsed() })
+  set({ ...s, state: "paused", before: elapsed() })
 }
 export function resume() {
-  if (status.state !== "paused" || !rec) return
+  const s = getStatus()
+  if (s.state !== "paused" || !rec) return
   rec.resume()
-  set({ ...status, state: "recording", since: Date.now() })
+  set({ ...s, state: "recording", since: Date.now() })
 }
 
 /** Stop and save (MediaRecorder's last data arrives, then `finish`). */

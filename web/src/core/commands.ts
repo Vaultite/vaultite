@@ -1,9 +1,9 @@
 // Commands, listed in the palette with their keys; a command's `keys` also bind it, so shortcut and entry can't drift.
 // Sequences ("Space F F") go first in capture; unmodified steps never start one while typing (`typingIn`).
-import { useEffect, useSyncExternalStore, type ComponentType } from "react"
+import { useEffect, type ComponentType } from "react"
 import { patch } from "@/core/http"
 import { noteActivity } from "@/core/activity"
-import { isMac as MAC } from "@/core/platform"
+import { isDesktop, isMac as MAC } from "@/core/platform"
 import { notifyError } from "@/core/notify"
 import { signal } from "@/core/signal"
 
@@ -29,10 +29,10 @@ const reg = new Map<string, Command>()
 /** Every command registered since the page loaded, still there or not (Settings > Hotkeys lists them all: a file's
  *  commands come and go with its tab). */
 const known = new Map<string, { id: string; name: string; keys?: string[] }>()
-const subs = new Set<() => void>()
+const commandsChanged = signal()
 let list: Command[] = []
 let knownList: { id: string; name: string; keys?: string[] }[] = []
-const changed = () => { list = [...reg.values()]; knownList = [...known.values()]; byKeys = null; subs.forEach((f) => f()) }
+const changed = () => { list = [...reg.values()]; knownList = [...known.values()]; byKeys = null; commandsChanged.notify() }
 
 /** Add commands (the same id replaces the older one); returns how to take them away again. */
 export function registerCommands(cs: Command[]) {
@@ -82,15 +82,15 @@ export function offeredCommand(id: string): Command | null {
 }
 
 /** Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop. */
-export const onCommandsChanged = (fn: () => void) => { subs.add(fn); return () => { subs.delete(fn) } }
+export const onCommandsChanged = commandsChanged.subscribe
 /** Every command registered now, available or not (`available` says which can run). */
 export const commandList = () => list
 
-export const useCommandList = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => list)
+export const useCommandList = () => commandsChanged.use(() => list)
 /** Every command seen since the page loaded (for Settings > Hotkeys). */
-export const useKnownCommands = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => knownList)
+export const useKnownCommands = () => commandsChanged.use(() => knownList)
 export const available = (cs: Command[]) => cs.filter((c) => {
-  if (c.desktop && !matchMedia("(min-width: 768px)").matches) return false
+  if (c.desktop && !isDesktop()) return false
   try { return !c.when || c.when() } catch { return false }
 })
 

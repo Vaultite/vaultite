@@ -1,5 +1,5 @@
 import { Archive, ArchiveRestore, FolderArchive } from "lucide-react"
-import { confirmDialog, currentFile, definePlugin, getStore, inArchive, isHidden, notify, notifyError, op, reload } from "@vaultite"
+import { confirmDialog, currentFile, definePlugin, getStore, inArchive, isHidden, notify, notifyError, op, plural, reload } from "@vaultite"
 
 // Archive and Unarchive in a file's menu and the palette (the moving is plugin.ts'), and the one-time tidy.
 
@@ -29,7 +29,7 @@ async function setManyArchived(paths: string[], on: boolean) {
     try { moved.push((await op<Moved>(on ? "archive.add" : "archive.restore", { path })).path) } catch (e) { notifyError(e, on ? "Couldn't archive" : "Couldn't unarchive") }
   }
   await reload()
-  if (moved.length) notify(`${on ? "Archived" : "Unarchived"} ${moved.length} file${moved.length === 1 ? "" : "s"}`, { action: { label: "Undo", run: () => void setManyArchived(moved, !on) } })
+  if (moved.length) notify(`${on ? "Archived" : "Unarchived"} ${plural(moved.length, "file")}`, { action: { label: "Undo", run: () => void setManyArchived(moved, !on) } })
 }
 
 /** Move the files marked archived by hand (or from before this plugin) into their folders' .archive, after asking. */

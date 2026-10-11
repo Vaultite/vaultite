@@ -4,6 +4,7 @@ import { pad, type Store } from "@/core/data"
 import type { SlashItem } from "@/core/define"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
+import { capitalize } from "@/lib/utils"
 
 export type { SlashItem }
 
@@ -33,7 +34,7 @@ const CORE: SlashItem[] = [
 ]
 
 /** "people-due" -> "People due". */
-const human = (name: string) => { const s = name.replace(/[-_]+/g, " "); return s.charAt(0).toUpperCase() + s.slice(1) }
+const human = (name: string) => capitalize(name.replace(/[-_]+/g, " "))
 
 /** Everything the slash menu offers now, in order. */
 export function slashItems(store: Store): SlashItem[] {

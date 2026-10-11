@@ -2,7 +2,7 @@
 // can do what the routes allow and nothing more.
 import { startAgent } from "../../../core/codingagents.ts"
 import { AGENT, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
-import { OpError, type OpCtx, type Plugin } from "../../../core/plugins.ts"
+import { fmtAgo, OpError, type OpCtx, type Plugin } from "../../../core/plugins.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -66,10 +66,6 @@ function localId(raw: string) {
   return x
 }
 
-const ago = (t: number) => {
-  const m = Math.round((Date.now() - t) / 60000)
-  return m < 60 ? `${m}m` : m < 48 * 60 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`
-}
 const where = (tabs: TabAt[] | undefined) => (tabs?.length ? `tab in workspace ${[...new Set(tabs.map((t) => t.workspace))].join(", ")}` : "no tab")
 const SPLIT = { type: "string", enum: ["right", "down"], description: "in a pane beside (right) or below (down) the current one, not a new tab" } as const
 const ID = { type: "string", required: true, description: "the terminal's id (vau terminal lists them)" } as const
@@ -98,7 +94,7 @@ shell's (a new shell when shown). The others: vau terminal open|resume|screen|se
       return { sessions: ss.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone }
     },
     text: (r) => {
-      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state})` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}  ${ago(s.started)} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
+      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state})` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}  ${fmtAgo(s.started, { short: true })} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
       const gone = (r.gone as { id: string; tabs: TabAt[]; agent: boolean }[]).map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
       return (rows.length ? rows.join("\n") : "(no terminal sessions on this machine)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "")
     },

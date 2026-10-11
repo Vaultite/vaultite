@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react"
 import { EyeOff, Globe, KeyRound, LogOut, Plus } from "lucide-react"
 import {
-  confirmDialog, menuFor, notifyError, panelMenu, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages,
-  type MenuItem, type SidebarCtx, type WebPageInfo, type WebSite,
+  confirmDialog, HeadingButton, menuFor, notifyError, panelMenu, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
+  type SidebarCtx, type WebPageInfo, type WebSite,
 } from "@vaultite"
 import { siteIcon } from "./icons"
 import { hostOf } from "./address"
-import { profile, useSettings } from "./state"
+import { profile, settings } from "./state"
 
 /** Open an address in a web tab (a new one, or the tab already showing it). */
 type Open = (url: string) => void
@@ -17,7 +17,7 @@ function useWebPages() {
   const [pages, setPages] = useState<WebPageInfo[] | null>(null)
   const [sites, setSites] = useState<WebSite[] | null>(null)
   const ws = useWorkspaceVersion()
-  const { logins } = useSettings()
+  const { logins } = settings.use()
   const prof = profile()
   useEffect(() => {
     const web = webPages
@@ -90,10 +90,7 @@ export function WebPagesPanel({ open, panel, openPage, ask }: Pick<SidebarCtx, "
     <div className="flex shrink-0 flex-col" data-web-pages-panel>
       <SidebarHeading title="Web pages" open={open}>
         {webPages?.list && (
-          <button type="button" aria-label="Open web page" data-tip="Open web page" onClick={ask}
-            className="grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
-            <Plus className="size-3.5" strokeWidth={2.25} />
-          </button>
+          <HeadingButton icon={Plus} label="Open web page" onClick={ask} />
         )}
       </SidebarHeading>
       {!webPages?.list ? <Unavailable /> : (

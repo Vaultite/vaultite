@@ -21,6 +21,8 @@ import { confirmDialog } from "@/components/ConfirmDialog"
 import { notify, notifyError } from "@/core/notify"
 import { List, PageHeader, Row, Section, SheetHead, Switch } from "@/components/kit"
 import { capitalize, cn } from "@/lib/utils"
+import { Button } from "@/components/Button"
+import { isDesktop } from "@/core/platform"
 
 const noPreview = () => <p className="p-6 text-center text-[15px] text-muted-foreground">No preview for this one yet.</p>
 
@@ -52,7 +54,7 @@ const mockLive = () => Object.assign({}, ...PLUGINS.map((p) => p.mockLive?.() ??
 function Frame({ children }: { children: ReactNode }) {
   const box = useRef<HTMLDivElement>(null)
   const [w, setW] = useState(0)
-  const inner = matchMedia("(min-width: 768px)").matches ? 960 : 390
+  const inner = isDesktop() ? 960 : 390
   useLayoutEffect(() => {
     if (!box.current) return
     const ro = new ResizeObserver(([e]) => setW(e.contentRect.width))
@@ -82,8 +84,6 @@ function Kept({ plugin, files }: { plugin: Plugin; files: string[] }) {
   return <div className="mt-5"><Where path={file} lead="Settings kept in" open={() => openFile(file)} /></div>
 }
 
-const sentence = (s: string) => s[0].toUpperCase() + s.slice(1)
-const button = "h-9 cursor-pointer rounded-[8px] px-3.5 text-[15px] font-medium transition-colors md:h-8 md:text-[13px]"
 
 /** Updated on its own on another machine: checked against its source before it runs here, nothing to do. */
 function Updating({ plugin }: { plugin: Plugin }) {
@@ -127,9 +127,9 @@ function Approval({ plugin }: { plugin: Plugin }) {
       )}
       {says.length > 0 && <p className="mt-1.5 text-[14px] leading-[19px] text-[var(--orange)] md:text-[13px] md:leading-[18px]" data-plugin-discloses>{host ? "A look at its code found it can" : "It says it"} {says.join("; ")}.</p>}
       <div className="mt-2.5 flex gap-2">
-        <button type="button" onClick={() => void allowPlugin(plugin)} data-plugin-allow={plugin.id}
-          className={cn(button, "bg-primary text-primary-foreground hover:opacity-90")}>Allow</button>
-        <button type="button" onClick={() => setSwitch(plugin, false)} className={cn(button, "bg-foreground/[0.06] hover:bg-foreground/[0.1]")}>{host ? "Not now" : "Turn off"}</button>
+        <Button look="primary" onClick={() => void allowPlugin(plugin)} data-plugin-allow={plugin.id}
+          >Allow</Button>
+        <Button onClick={() => setSwitch(plugin, false)}>{host ? "Not now" : "Turn off"}</Button>
       </div>
     </div>
   )
@@ -146,7 +146,7 @@ function About({ plugin }: { plugin: Plugin }) {
     <>
       {says.length > 0 && (
         <Section title="What it says it does" className="mb-5">
-          <List>{says.map((x) => <Row key={x} title={sentence(x)} />)}</List>
+          <List>{says.map((x) => <Row key={x} title={capitalize(x)} />)}</List>
         </Section>
       )}
       <Section title="About" className="mb-5">
@@ -205,8 +205,8 @@ function Updates({ plugin }: { plugin: Plugin }) {
           {updatable(src.source) && (
             <Row title={found === "current" ? "Up to date" : found ? `${found.to} is out` : "Check for updates"} data-plugin-update-check
               right={found && found !== "current"
-                ? <button type="button" disabled={!!busy} onClick={() => void update()} className={cn(button, "bg-primary text-primary-foreground hover:opacity-90 disabled:opacity-50")}>{busy === "update" ? "Updating…" : "Update"}</button>
-                : <button type="button" disabled={!!busy} onClick={() => void check()} className={cn(button, "bg-foreground/[0.06] hover:bg-foreground/[0.1] disabled:opacity-50")}>{busy === "check" ? "Checking…" : "Check"}</button>} />
+                ? <Button look="primary" disabled={!!busy} onClick={() => void update()}>{busy === "update" ? "Updating…" : "Update"}</Button>
+                : <Button disabled={!!busy} onClick={() => void check()}>{busy === "check" ? "Checking…" : "Check"}</Button>} />
           )}
         </List>
         {history.length > 0 && (
@@ -325,8 +325,8 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
       )}
       <Kept plugin={plugin} files={store.pluginSettings ?? []} />
       {plugin.tier === "hosted" && hostOf(plugin)?.uninstall && (
-        <button type="button" data-plugin-uninstall={plugin.id} className={cn(button, "mt-5 bg-foreground/[0.06] text-[var(--red)] hover:bg-foreground/[0.1]")}
-          onClick={async () => { if (await confirmDialog({ title: `Uninstall ${plugin.name}?`, body: "Its files are removed from this vault. Its settings stay, in case you install it again.", confirm: "Uninstall", danger: true })) await hostOf(plugin)?.uninstall?.(plugin.id) }}>Uninstall</button>
+        <Button className="mt-5 text-[var(--red)]" data-plugin-uninstall={plugin.id}
+          onClick={async () => { if (await confirmDialog({ title: `Uninstall ${plugin.name}?`, body: "Its files are removed from this vault. Its settings stay, in case you install it again.", confirm: "Uninstall", danger: true })) await hostOf(plugin)?.uninstall?.(plugin.id) }}>Uninstall</Button>
       )}
     </>
   )

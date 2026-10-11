@@ -85,3 +85,13 @@ export function parseDate(text: string, fmt: string, opts: DateOptions = {}): Da
     : new Date(y, p.m ?? (p.q ? (p.q - 1) * 3 : 0), p.d ?? 1, (p.h ?? 0) + (p.pm ?? 0), p.min ?? 0, p.s ?? 0)
   return opts.loose || formatDate(d, fmt, w) === text ? d : null
 }
+
+/** How long ago `t` was (ms, or an ISO date; SQLite's "2026-10-01 12:00:00" is UTC): "just now", "5 min ago", "3 h ago",
+ *  "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo". */
+export function fmtAgo(t: number | string, { short = false } = {}) {
+  const ms = typeof t === "number" ? t : Date.parse(/^\d{4}-\d\d-\d\d \d/.test(t) ? `${t.replace(" ", "T")}Z` : t)
+  const s = Math.max(0, (Date.now() - ms) / 1000)
+  if (s < 60) return short ? "now" : "just now"
+  const [n, unit] = s < 3600 ? [s / 60, "min"] : s < 86400 ? [s / 3600, "h"] : s < 45 * 86400 ? [s / 86400, "d"] : [s / (30.4 * 86400), "mo"]
+  return short ? `${Math.round(n)}${unit === "min" ? "m" : unit}` : `${Math.round(n)} ${unit} ago`
+}

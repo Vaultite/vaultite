@@ -30,6 +30,8 @@ import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, t
 
 /** What kind of file a name is (core/filetypes.ts), for plugins that treat text files differently, and the type it is served with. */
 export { contentType, isTextKind, kindOf } from "./filetypes.ts"
+/** How long ago a time was, as the app says it ("5 min ago"; core/dates.ts). */
+export { fmtAgo } from "./dates.ts"
 /** The app's version and the plugin API's (core/version.ts). */
 export { API_VERSION, APP_VERSION } from "./version.ts"
 /** [[Links]]: the targets in a file, and a resolver like the app's (core/links.ts). */

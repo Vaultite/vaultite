@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { monitorEventLoopDelay } from "node:perf_hooks"
 import {
-  bullets, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, section, type Proc, type RequestEnd, type RequestStart,
+  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, section, type Proc, type RequestEnd, type RequestStart,
 } from "../../../core/plugins.ts"
 import { agentName, KNOWN_AGENTS } from "../../../core/terminalids.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
@@ -768,10 +768,6 @@ what each app window last reported (load, /api/state, long tasks).
 
 // ---------- blocks as text (GET /api/render)
 
-const ago = (t: number) => {
-  const s = Math.round((Date.now() - t) / 1000)
-  return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < DAY / 1000 ? `${Math.round(s / 3600)} h ago` : localDate(t)
-}
 const who = (a: Actor) => `${a.name}${a.device && a.kind === "you" ? ` (${a.device})` : ""}${a.session ? ` in "${a.session}"` : ""}`
 /** An event as one line, its vault files as [[links]]. */
 function line(e: ActivityEvent) {
@@ -794,7 +790,7 @@ plugin.block("activity-summary", (ctx) => {
   const s = summary(Math.max(1, Number(ctx.options.days) || 1))
   const span = s.bucket === "hour" ? "the last 24 hours" : `the last ${s.buckets.length} days`
   return section(`Activity in ${span}`, `${s.total} things done.`,
-    `### Who\n\n${bullets(s.actors.map((a) => `${a.name}: ${a.n}, last ${ago(a.last)}`))}`,
+    `### Who\n\n${bullets(s.actors.map((a) => `${a.name}: ${a.n}, last ${fmtAgo(a.last)}`))}`,
     `### Files\n\n${bullets(s.files.map((f) => `${/\.md$/.test(f.path) ? `[[${strip(f.path)}]]` : f.path}: ${f.n} (${f.actors.join(", ")})`))}`)
 })
 
@@ -821,7 +817,7 @@ plugin.block("perf-routes", () => {
 plugin.block("perf-app", () => {
   const p = perf(60)
   return section("The app", bullets(p.clients.map((c) => [
-    `${c.device} (reported ${ago(c.t)})`,
+    `${c.device} (reported ${fmtAgo(c.t)})`,
     c.load !== undefined ? `loaded in ${c.load} ms` : "", c.state !== undefined ? `state ${c.state} ms` : "",
     c.longTasks ? `${c.longTasks} long tasks (${c.longMs} ms)` : "", c.shifts ? `${c.shifts} layout shifts (${c.shift})` : "",
     c.heap !== undefined ? `heap ${c.heap} MB` : "",

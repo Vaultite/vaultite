@@ -3,7 +3,7 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { ChevronDown } from "lucide-react"
-import { cn, commandKeys, getStore, holdFocus, menuFor, useDrag, onTabLayoutChange, sidebarsChanged, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
+import { cn, commandKeys, getStore, menuFor, onTabLayoutChange, sidebarsChanged, useDismiss, useDrag, useDropHit, useDropTarget, type DragItem, type SidebarCtx, type Store } from "@vaultite"
 import {
   emit, getRenaming, label, leaving, lit as litNow, named, patch, saveTabs, saveTabsSoon, savePending, sendTo, setRenaming, slotMenu, slots, SLOTS,
   switchTo, sync, useVersion, type Sent,
@@ -67,24 +67,11 @@ function Switcher({ lit, over, rail }: { lit: number; over: number | null; rail:
     const r = btn.current.getBoundingClientRect(), w = box.current?.offsetWidth ?? 208
     setAt(rail ? { left: r.right + 8, top: r.top - 4 } : { left: Math.max(8, Math.min(r.left, innerWidth - 8 - w)), top: r.bottom + 4 })
   }, [open, rail])
+  // (Escape in the name's field only ends the rename.)
+  useDismiss(open, shut, { inside: "[data-workspace-list], [role=menu], [aria-label='Close menu']", anchor: btn, escape: (e) => !(e.target as Element | null)?.closest?.("input") })
+  // The keyboard: on the current workspace's row (not while a drag opened it), and back where it was on closing.
   useEffect(() => {
-    if (!open) return
-    // The keyboard: on the current workspace's row (not while a drag opened it), and back where it was on closing.
-    const release = holdFocus()
-    if (!sprung.current && !getRenaming()) box.current?.querySelector<HTMLElement>("[aria-pressed=true]")?.focus({ preventScroll: true })
-    const close = shut
-    // (Escape in the name's field only ends the rename.)
-    const key = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !document.querySelector("[role=menu]") && !(e.target as Element | null)?.closest?.("input")) { e.stopPropagation(); close() }
-    }
-    const down = (e: PointerEvent) => {
-      const t = e.target as Element | null
-      if (t?.closest("[data-workspace-list], [role=menu], [aria-label='Close menu']") || btn.current?.contains(t)) return
-      close()
-    }
-    addEventListener("keydown", key, true)
-    addEventListener("pointerdown", down, true)
-    return () => { removeEventListener("keydown", key, true); removeEventListener("pointerdown", down, true); release() }
+    if (open && !sprung.current && !getRenaming()) box.current?.querySelector<HTMLElement>("[aria-pressed=true]")?.focus({ preventScroll: true })
   }, [open])
   // Up and down between the rows, like a menu (Home, End: the first and last); Enter or Space picks one.
   const arrows = (e: React.KeyboardEvent) => {

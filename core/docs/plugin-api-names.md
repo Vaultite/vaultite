@@ -69,9 +69,14 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
 - `BrowseSource`: A source of plugins to install on the Plugins page's Browse (a host's: another app's plugins).
+- `Button({ look, size, className, type, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
+- `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
+- `capitalize(s)`
 - `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
+- `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
+- `Cell`
 - `changedFiles(store, n, skip?)`: The vault's recently changed files, newest first, at most `n`, without those in `skip`.
 - `CheckItem`: One thing a checklist turns on or off.
 - `checklist(id, { on, off, set })`: Which things are on, as menu rows (the panels a sidebar shows, the pinned pages, a new tab's sections and buttons): the ones on, ticked, in their order, then More ▸ with the rest (`off`, groups…
@@ -155,15 +160,17 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `filesSettingsSearch`: What the sheet has, for the Settings page's search (the plugin's `settingsSearch`).
 - `FileView`: How a plugin shows its files: the icon in the tree and tabs, and the line above the title.
 - `FilterField({ value, onChange, placeholder, className })`: A field that filters a list (plugins, hotkeys, a table's rows): one look everywhere.
-- `fmtAgo(isoStr)`
+- `fmtAgo`
 - `fmtDay(s)`
 - `fmtLongDay(d)`
 - `fmtMin(m)`
+- `fmtStamp(t, seconds?)`: A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM).
 - `fmtTime(isoStr)`
 - `FocusedFile`: The file in the focused pane or, while that shows something else (a view, like the links tab), the file focused last, and the pane it's in: what a view that follows the other panes shows (a linked…
 - `focusGroup(gid)`: Clicking in a group's pane gives it the focus (the address shows its tab; commands act on it).
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
+- `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown: a file (at its heading or ^block), a detail, a #tag's files, a command link, a web or other app's link; a [[link]] to nothing yet makes that note where new…
@@ -183,6 +190,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `hasTag(tags, want)`: Whether a file's tags have this one, or one nested under it (`project` matches `project/lighthouse`).
 - `HeaderItem`: Drawn at the right end of the sidebar's header (Workspaces' numbers); with the sidebar folded, at the top of the 28px icon rail with `open: false`; on phones at the top of the tab list with…
 - `Heading`
+- `HeadingButton({ icon, label, tip, strokeWidth, className, … })`: An icon button in a panel's heading or a row: its label is its tooltip unless `tip` says otherwise.
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
 - `headOf(files, path)`
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
@@ -198,7 +206,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `inPagesDir`
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
-- `isDesktop()`
+- `isDesktop()`: A computer's width (the desktop's panes), not a phone's.
 - `isDoc(path)`: Notes, JSON and pages plugins draw (artifacts, tables): the files that can be pages (pinned).
 - `isHidden`: In a dot folder, or a dot file: shown only with hidden files on.
 - `isLinux`: A Linux computer (not Android).
@@ -268,11 +276,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's, a page's tabs): a page whose plugin (its `plugin:`, the one that brought it) is off.
 - `onActivity(fn)`: Hear what the user does (see noteActivity); returns how to stop.
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
-- `onCommandsChanged(fn)`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
+- `onCommandsChanged`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
 - `onLook(fn)`: Calls `fn` whenever the look changes (light or dark, colour scheme, a theme, a snippet, fonts), once it applies: read the colour tokens again there.
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
 - `onMarkdownDrawn(fn)`: Call fn with each element Markdown was just drawn into as HTML (embeds, previews, callouts and tables in the editor): plugins that change rendered Markdown (another app's post-processors).
-- `onTabLayoutChange(fn)`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
+- `onTabLayoutChange`: Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged).
 - `onTrace(fn)`: Hear every traced event from now on; returns how to stop.
 - `onVaultChange(fn)`
 - `op(id, params?)`: Run an operation of the API (core/ops.ts: `POST /api/ops/<id>`): its result.
@@ -332,7 +340,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginDef`
 - `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, then the rest a group each, in the plugins' order.
 - `PluginHost`: What hosts plugins (hostPlugins): its group's name on the Plugins page and the answers to its plugins' buttons.
+- `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file changes.
 - `PluginState`
+- `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).
 - `post(path, body)`
 - `PROP_TYPES`
 - `PropertyChip(p)`: The chip.
@@ -348,6 +358,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
 - `reload()`
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
+- `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
 - `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then titles, aliases and plugins' names), or null.
 - `restoreFile(path)`: Put something from the trash back where it was.
@@ -462,6 +473,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useCommands(make, deps)`: Register commands while a component is mounted (again whenever `deps` change).
 - `useDefaultPlace()`
 - `useDesktop()`: isDesktop that follows the window: a phone's width and a computer's swap as it's resized.
+- `useDismiss(open, close, { inside, anchor, hash, escape })`: An open popover (a flyout, a switcher) closes on Escape (not while a menu is open, nor when `escape(e)` says no), a press outside `inside` (a selector) and `anchor`, and (`hash`) the address…
 - `useDrag()`
 - `useDropHit(id)`: What a drop on this target would do right now, while something is dragged over it.
 - `useDropTarget(id, at, drop, opts?)`: Take drops while mounted.
@@ -470,7 +482,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useFocusedFile()`
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
 - `useHeldHeight(key)`: holdHeight for a React element: put the ref on it.
-- `useLive(path, version?, files?)`: Live data from a plugin's own route: loaded once per mount (the last answer shown meanwhile), and again when its plugin's cache or settings change, after a disconnect, when `version` changes, and…
+- `useLive(path, version?, files?, every?)`: Live data from a plugin's own route: loaded once per mount (the last answer shown meanwhile), and again when its plugin's cache or settings change, after a disconnect, when `version` changes, and…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.
@@ -479,6 +491,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePane()`
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
+- `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
 - `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
 - `useScopedState(key, fallback, scope?)`: The same as a hook: [value, set], redrawn when it changes (here, another device on the workspace, a switch).
 - `useSelectable(list, def)`: Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row `data-select-key`; their order on screen is the order a ⇧-click takes.
@@ -537,6 +550,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
 - `enabled(vault, plugins)`: Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
+- `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or an ISO date; SQLite's "2026-10-01 12:00:00" is UTC): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
 - `fromInternet(req)`

@@ -1,6 +1,6 @@
 // Report a bug: the recorded minutes as a note (what the user says went wrong, a screenshot, the timeline as text), in
 // the folder its settings name. The screenshot and the events are taken first, before the question covers the window.
-import { APP_VERSION, appDevice, captureWindow, choose, createFile, currentFile, get, getStore, notify, notifyError, offeredCommand, openFile, pasteAttachments, runCommandById } from "@vaultite"
+import { APP_VERSION, appDevice, captureWindow, choose, createFile, currentFile, getStore, notify, notifyError, offeredCommand, openFile, pasteAttachments, pluginSettings, runCommandById } from "@vaultite"
 import { recorded, type Ev } from "./record"
 
 const MAX_LINES = 4000
@@ -39,8 +39,9 @@ export async function reportBug() {
   if (said === null) return
   try {
     const store = getStore()
-    const settings = await get<{ folder?: string }>("config/plugin/recorder").catch(() => ({} as { folder?: string }))
-    const folder = (settings.folder ?? "Bug reports").replace(/^\/+|\/+$/g, "")
+    const settings = pluginSettings<{ folder?: string }>("recorder")
+    await settings.ready()
+    const folder = (settings.get().folder ?? "Bug reports").replace(/^\/+|\/+$/g, "")
     const d = new Date(), name = `Bug ${d.getFullYear()}-${p2(d.getMonth() + 1)}-${p2(d.getDate())} ${p2(d.getHours())}.${p2(d.getMinutes())}`
     const where = `${folder ? `${folder}/` : ""}${name}.md`
     const picture = shot && store ? await pasteAttachments(store, where, [new File([Uint8Array.from(atob(shot.png), (c) => c.charCodeAt(0))], `${name}.png`, { type: "image/png" })]) : ""

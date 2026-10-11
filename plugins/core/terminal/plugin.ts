@@ -8,10 +8,12 @@ import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentStart, type AgentState, quote } from "../../../core/codingagents.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine, type Request,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine,
+  type Request,
 } from "../../../core/plugins.ts"
 import {
-  limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, type AgentRun, type Backend, type Link, type Listed as Shell,
+  limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, type AgentRun, type Backend,
+  type Link, type Listed as Shell,
 } from "./backend.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"

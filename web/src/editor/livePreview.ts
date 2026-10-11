@@ -13,6 +13,7 @@ import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, scan, TAG } from "../../../core/sections.ts"
 import { frontmatter } from "./frontmatter"
 import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick } from "@/core/richmd"
+import { capitalize } from "@/lib/utils"
 
 export type PreviewConfig = {
   /** false: plain Markdown (source mode). */
@@ -544,7 +545,7 @@ class Foot extends WidgetType {
     const p = document.createElement("span")
     p.className = "cm-block-notes"
     const say = this.notes.join("; ") || this.about
-    p.textContent = say ? say.charAt(0).toUpperCase() + say.slice(1) : ""
+    p.textContent = capitalize(say)
     if (this.notes.length) p.classList.add("is-wrong")
     const done = document.createElement("button")
     done.type = "button"

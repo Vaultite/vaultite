@@ -22,6 +22,7 @@ import { CORE_SECTIONS, shownActions, shownSections, withIcon, withPanels, type 
 import { anchorFor, placeKey } from "../../../core/slots.ts"
 import { cn } from "@/lib/utils"
 import { Catch, Drawn, Guard } from "@/components/Guard"
+import { HeadingButton } from "@/components/Button"
 
 type Section = SectionInfo & { heading?: string | false; render?: NewTabSection["render"]; sidebar?: SidebarPanel }
 
@@ -226,10 +227,7 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
 /** The buttons' heading's +. */
 export function AddButton() {
   return (
-    <button type="button" aria-label="Add a button" data-tip="Add a button" onClick={() => addButton()}
-      className="grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
-      <Plus className="size-3.5" strokeWidth={2.25} />
-    </button>
+    <HeadingButton icon={Plus} label="Add a button" onClick={() => addButton()} />
   )
 }
 

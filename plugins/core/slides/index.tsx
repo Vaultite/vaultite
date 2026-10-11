@@ -1,13 +1,11 @@
 // Slides: "Start presentation" shows the note being read or edited as slides (split at
 // `---` lines), one at a time over the whole app (Presentation.tsx). Also in a note's menu.
-import { useSyncExternalStore } from "react"
 import { Presentation as PresentationIcon } from "lucide-react"
-import { activeFile, currentFile, definePlugin, notify, Panel } from "@vaultite"
+import { activeFile, cell, currentFile, definePlugin, notify, Panel } from "@vaultite"
 import { Presentation } from "./Presentation"
 
-let shown: string | null = null
-const subs = new Set<() => void>()
-const show = (path: string | null) => { shown = path; subs.forEach((f) => f()) }
+const shown = cell<string | null>(null)
+const show = shown.set
 const isNote = (p: string) => /\.md$/i.test(p) && !p.startsWith(".")
 /** The note in the focused tab (being read or edited). */
 const here = () => { const f = currentFile() || activeFile()?.path || ""; return isNote(f) ? f : "" }
@@ -18,7 +16,7 @@ export function present(path = here()) {
 }
 
 function Shown() {
-  const path = useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => shown)
+  const path = shown.use()
   return path ? <Presentation key={path} path={path} onClose={() => show(null)} /> : null
 }
 

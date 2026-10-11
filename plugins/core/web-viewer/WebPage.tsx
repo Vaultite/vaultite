@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, type FormEvent, type ReactNode } from "rea
 import { ArrowLeft, ArrowRight, ArrowUpRight, Globe, RotateCw, Scissors, X, type LucideIcon } from "lucide-react"
 import { cn, notify, notifyError, openInSplit, post, typingIn, useEnabled, usePane, webPageActions, webPages, type WebPageState, type WebPages } from "@vaultite"
 import { addressOf, hostOf } from "./address"
-import { getSettings, profile, setFocusedPage, setTitle, settingsRead, shown } from "./state"
+import { profile, setFocusedPage, settings, settingsRead, setTitle, shown } from "./state"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -61,7 +61,7 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
   // The page: the one this address had in these logins (a tab switched back to) or a new one; let go of when the tab goes.
   useEffect(() => {
     let gone = false, mine = 0
-    settingsRead.then(() => web.open(arg, null, profile())).then((r) => {
+    settingsRead().then(() => web.open(arg, null, profile())).then((r) => {
       if (gone) { void web.release(r.id); return }
       mine = r.id
       setId(r.id)
@@ -198,7 +198,7 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
 
   const submit = (e: FormEvent) => {
     e.preventDefault()
-    const to = addressOf(typed ?? "", getSettings().search)
+    const to = addressOf(typed ?? "", settings.get().search)
     if (!to || !id) return
     setTyped(null)
     address.current?.blur()

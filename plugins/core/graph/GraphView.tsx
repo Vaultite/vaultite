@@ -2,9 +2,7 @@
 // GraphCanvas (its own chunk).
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, Filter, Maximize, Search, SquareArrowOutUpRight, Waypoints, X } from "lucide-react"
-import {
-  cn, isViewOpen, menuBelow, openFile, openView, patch, SidebarHeading, useFocusedFile, useLive, useVaultChange, type MenuItem, type SidebarCtx,
-} from "@vaultite"
+import { cn, HeadingButton, isViewOpen, menuBelow, openFile, openView, pluginSettings, SidebarHeading, useFocusedFile, useLive, useVaultChange, type MenuItem, type SidebarCtx } from "@vaultite"
 import { filterGraph, localGraph, nameOf, type Graph, type GraphNode } from "./graph"
 
 const GraphCanvas = lazy(() => import("./GraphCanvas"))
@@ -30,12 +28,7 @@ export function useGraph(path?: string, depth = 1, archived = false) {
 }
 
 /** The graph view's settings (.vaultite/plugins/graph/data.json): changed here at once, saved in the vault. */
-function useSettings(): [Settings, (patch: Settings) => void] {
-  const { data } = useLive<Settings>("config/plugin/graph")
-  const [mine, setMine] = useState<Settings>({})
-  const s = { ...data, ...mine }
-  return [s, (changes) => { setMine((m) => ({ ...m, ...changes })); patch("config/plugin/graph", changes).catch(() => {}) }]
-}
+const graphSettings = pluginSettings<Settings>("graph")
 
 const groupOf = (by: "folder" | "type", n: GraphNode) => (by === "type" ? n.type ?? "" : n.folder)
 const groupLabel = (by: "folder" | "type", g: string) => g || (by === "type" ? "No type" : "Top level")
@@ -55,7 +48,7 @@ const tool = "grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8p
 
 /** The whole vault (arg ""), or a file's local graph (arg: its path), filling the pane. */
 export function GraphView({ arg }: { arg: string }) {
-  const [settings, save] = useSettings()
+  const settings = graphSettings.use(), save = (p: Settings) => void graphSettings.set(p).catch(() => {})
   const by = settings.colorBy ?? "folder"
   const depth = settings.depth ?? 1
   // (A file's own graph asks for archived files too: that file may be one.)
@@ -148,7 +141,7 @@ export function GraphView({ arg }: { arg: string }) {
 export function LocalGraph({ path, depth: asked, height = 260, compact = true, empty }: { path: string
   /** Else the settings' Local graph depth. */
   depth?: number; height?: number | string; compact?: boolean; empty?: ReactNode }) {
-  const [settings] = useSettings()
+  const settings = graphSettings.use()
   const depth = asked ?? settings.depth ?? 1
   const by = settings.colorBy ?? "folder"
   const { data, error } = useGraph(path, depth, !!settings.archived)
@@ -176,7 +169,6 @@ export function FollowingGraph() {
   return <GraphView key={path} arg={path} />
 }
 
-const button = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
 /** The sidebar's Local graph panel: the focused file's neighbours, in a square as wide as the sidebar. In the rail it's
  *  an icon that opens it beside the rail (`flyout`, a fixed height it fills); as a tab it's FollowingGraph. */
@@ -186,10 +178,8 @@ export function LocalGraphPanel({ open: isOpen, file: focused, bounded }: Sideba
   return (
     <div className={cn("flex flex-1 flex-col", bounded && "min-h-0")} data-local-graph-panel>
       <SidebarHeading title="Local graph" open={isOpen}>
-        <button type="button" className={button} aria-label="Open local graph in a tab" data-tip="Open in a tab"
-          onClick={() => openView("local-graph", { newTab: !isViewOpen("local-graph") })}><SquareArrowOutUpRight className="size-3.5" strokeWidth={2.25} /></button>
-        <button type="button" className={button} aria-label="Open graph view" data-tip="Graph view"
-          onClick={() => openView("graph", { newTab: !isViewOpen("graph") })}><Waypoints className="size-3.5" strokeWidth={2.25} /></button>
+        <HeadingButton icon={SquareArrowOutUpRight} label="Open local graph in a tab" tip="Open in a tab" onClick={() => openView("local-graph", { newTab: !isViewOpen("local-graph") })} />
+        <HeadingButton icon={Waypoints} label="Open graph view" tip="Graph view" onClick={() => openView("graph", { newTab: !isViewOpen("graph") })} />
       </SidebarHeading>
       {/* A graph has no height of its own: a square in the sidebar, the box's height in a flyout. */}
       {file ? <div className={cn("overflow-hidden rounded-[8px]", bounded ? "min-h-0 flex-1" : "aspect-square")}><LocalGraph path={file} height="100%" /></div>

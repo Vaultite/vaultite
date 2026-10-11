@@ -1,13 +1,10 @@
 // The tabs on screen: groups of tabs, in a tree of splits (core/layout.ts, core/splits.ts), each tab
 // with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
-import { useSyncExternalStore } from "react"
 import { backDetail, route } from "@/core/nav"
+import { isDesktop } from "@/core/platform"
 import { HISTORY, blankGroup, clean, dropBlank, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, nextActive, okGroup, shownTab, tidy, vaultPath, type Group, type Layout, type Tab, type Workspace } from "@/core/layout"
+import { signal } from "@/core/signal"
 
-const DESKTOP = "(min-width: 768px)"
-export const isDesktop = () => matchMedia(DESKTOP).matches
-/** isDesktop that follows the window: a phone's width and a computer's swap as it's resized. */
-export const useDesktop = () => useSyncExternalStore((f) => { const m = matchMedia(DESKTOP); m.addEventListener("change", f); return () => m.removeEventListener("change", f) }, isDesktop)
 const notify = () => dispatchEvent(new HashChangeEvent("hashchange"))
 const enc = encodeURIComponent
 /** This window is a pop-out (`?popout=<id>`: a tab moved or opened out of the main window, popOut):
@@ -64,7 +61,7 @@ function noteFile() {
 }
 let state = load()
 noteFile()
-const subs = new Set<() => void>()
+const changed = signal()
 /** The next workspace, tidied (an emptied group closes; with none left, a blank tab). A focused group that closed
  *  hands the focus to its neighbour. */
 export function set(next: Workspace) {
@@ -79,12 +76,12 @@ export function set(next: Workspace) {
   state = { root, focus }
   try { tabStore().setItem(KEY, JSON.stringify(state)) } catch { /* private mode */ }
   noteFile()
-  subs.forEach((f) => f())
+  changed.notify()
 }
 export const getWorkspace = () => state
-export const useWorkspace = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => state)
+export const useWorkspace = () => changed.use(() => state)
 /** Run fn whenever the tabs or splits change (a tab opened, moved, navigated; a divider dragged). */
-export const onWorkspaceChange = (fn: () => void) => { subs.add(fn); return () => { subs.delete(fn) } }
+export const onWorkspaceChange = changed.subscribe
 /** Put a whole other layout in place (Workspaces switching). Nothing is "closed" (a terminal's tab reattaches when it
  *  comes back). `merge`: the same workspace changed on another device, so what's on screen here stays where it can. */
 export function replaceWorkspace(next: unknown, opts: { merge?: boolean } = {}) {
@@ -123,7 +120,7 @@ export function fillFirstTab(to: string) {
   showActive()
 }
 
-export const useFocusedFile = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => lastFile)
+export const useFocusedFile = () => changed.use(() => lastFile)
 export const groups = () => leaves(state.root)
 /** A group's tabs (the focused group's by default). */
 export function useTabs(group?: string): Group {

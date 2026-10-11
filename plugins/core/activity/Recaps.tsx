@@ -2,13 +2,12 @@
 // (Recaps/<date>.md, drawn from its own text), and ```block-recap-stats (a grid of days and counts by kind).
 import { useMemo, useState, type ComponentType } from "react"
 import {
-  Bookmark, Bot, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, CircleDot, CircleX, Dot, FilePlus, FolderInput, ListPlus,
-  Pencil, Puzzle, RotateCcw, Trash2,
+  Bookmark, Bot, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, CircleDot, CircleX, Dot, FilePlus, FolderInput, ListPlus, Pencil, Puzzle,
+  RotateCcw, Trash2,
 } from "lucide-react"
-import { addDays, cn, dow, Empty, fmtDay, fmtLongDay, Loading, Markdown, openFile, Panel, Segmented, today, type FileCtx, type Store } from "@vaultite"
+import { addDays, cn, dow, Empty, fmtDay, fmtLongDay, Loading, Markdown, openFile, Panel, plural, Segmented, today, useLive, type FileCtx, type Store } from "@vaultite"
 import { Chips } from "./Feed"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, type RecapKind, verbOf } from "./recap"
-import { usePoll } from "./shared"
 
 export const RECAP_TINT = "var(--activity)"
 
@@ -89,7 +88,7 @@ export function Timeline({ days, store, group }: { days: { date: string; entries
           {days.length > 1 && (
             <div className="mb-2.5 text-[14px]">
               <span className="font-semibold">{fmtLongDay(d.date)}</span>
-              <span className="text-muted-foreground"> · {d.date === today() ? "Today" : `${d.entries.length} thing${d.entries.length === 1 ? "" : "s"}`}</span>
+              <span className="text-muted-foreground"> · {d.date === today() ? "Today" : `${plural(d.entries.length, "thing")}`}</span>
             </div>
           )}
           {d.entries.map((e, i) => <EntryRow key={`${e.time}-${i}`} e={e} store={store} last={i === d.entries.length - 1} />)}
@@ -122,7 +121,7 @@ export function RecapBlock({ store, path, options }: { store: Store; path: strin
   const [end, setEnd] = useState(base)
   const [group, setGroup] = useState<RecapGroup | "">("")
   const days = SPAN_DAYS[span]
-  const { data, error } = usePoll<RecapAnswer>(`activity/recap?date=${end}&days=${days}`, 30_000)
+  const { data, error } = useLive<RecapAnswer>(`activity/recap?date=${end}&days=${days}`, undefined, undefined, 30_000)
   const groups = useGroups(data?.days ?? [])
   const from = addDays(end, -(days - 1))
   const label = days === 1 ? fmtDay(end) : `${fmtDay(from)} – ${fmtDay(end)}`
@@ -167,7 +166,7 @@ type Counts = { from: string; to: string; days: Record<string, Partial<Record<Re
 
 export function RecapStats({ store, options }: { store: Store; options: Record<string, unknown> }) {
   const weeks = Math.min(Math.max(typeof options.weeks === "number" ? Math.round(options.weeks) : 10, 1), 53)
-  const { data, error } = usePoll<Counts>(`activity/recap/counts?weeks=${weeks}`, 60_000)
+  const { data, error } = useLive<Counts>(`activity/recap/counts?weeks=${weeks}`, undefined, undefined, 60_000)
   const recaps = useMemo(() => new Map((store.files?.files ?? []).filter((f) => f.kind === "recaps").map((f) => [dateOfFile(f.path), f.path])), [store.files])
   if (!data) return <Panel title="Your days" icon={CalendarDays} tint={RECAP_TINT}><Loading error={error && "Couldn't read the recaps."} /></Panel>
   const sum = (d: string) => Object.values(data.days[d] ?? {}).reduce((n, x) => n + (x ?? 0), 0)
@@ -187,7 +186,7 @@ export function RecapStats({ store, options }: { store: Store; options: Record<s
               const level = n ? 0.25 + 0.75 * Math.min(1, n / max) : 0
               return (
                 <button key={d} type="button" disabled={!p} data-day={d}
-                  data-tip={future ? undefined : `${fmtLongDay(d)}: ${n ? `${n} thing${n === 1 ? "" : "s"}` : "nothing recorded"}`}
+                  data-tip={future ? undefined : `${fmtLongDay(d)}: ${n ? `${plural(n, "thing")}` : "nothing recorded"}`}
                   onClick={(e) => p && openFile(p, { newTab: e.metaKey || e.ctrlKey })}
                   className={cn("size-[15px] rounded-[3px]", p ? "cursor-pointer" : "cursor-default", future && "opacity-0")}
                   style={{ background: n ? `color-mix(in oklab, ${RECAP_TINT} ${Math.round(level * 100)}%, transparent)` : "color-mix(in oklab, var(--foreground) 7%, transparent)" }} />

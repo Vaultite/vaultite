@@ -54,6 +54,11 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
   fs.cpSync(path.join(ROOT, "tools/fixtures/claude"), claude, { recursive: true })
   const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", vault], { encoding: "utf8" })
   if (made.status !== 0) return { ok: false, ms: 0, out: made.stderr || made.stdout }
+  // (plugins' writes on their own answered "not now": no "wants to write" dialog over the page, nothing written)
+  fs.writeFileSync(path.join(vault, ".vaultite/grants.json"), JSON.stringify(Object.fromEntries(fs.readdirSync(path.join(ROOT, "plugins/core")).flatMap((id) => {
+    const writes = JSON.parse(fs.readFileSync(path.join(ROOT, "plugins/core", id, "manifest.json"), "utf8")).writes ?? []
+    return writes.length ? [[id, Object.fromEntries(writes.map((w: { folder?: string; file?: string }) => [w.folder ?? w.file, "not now"]))]] : []
+  }))))
   const servers: Server[] = []
   const t = Date.now()
   try {

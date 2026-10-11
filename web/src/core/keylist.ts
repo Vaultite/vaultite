@@ -4,9 +4,9 @@ import { ArrowDown, ArrowDownToLine, ArrowUp, ArrowUpToLine, CornerDownLeft, Fol
 import { registerCommands, typingIn } from "@/core/commands"
 import { leaves } from "@/core/layout"
 import { byTab, focusPane } from "@/core/focus"
-import { isMac } from "@/core/platform"
+import { isMac, isDesktop } from "@/core/platform"
 import { getPrefs, setPrefs } from "@/core/prefs"
-import { focusGroup, getWorkspace, isDesktop } from "@/core/workspace"
+import { focusGroup, getWorkspace } from "@/core/workspace"
 import { focusSide, hasNeighbour } from "@/core/splits"
 import { sidebars } from "@/core/plugins"
 import { asKeys, getSelection } from "@/core/select"
@@ -163,7 +163,7 @@ const tabbable = (root: Element) => [...root.querySelectorAll<HTMLElement>(FOCUS
   .filter((el) => el.tabIndex >= 0 && el.getClientRects().length > 0 && !el.closest("[inert], [data-kept]"))
 
 /** Move the keyboard past the rows of its list (`back`: before them). False when it isn't on a row of one. */
-export function tabPastList(back: boolean) {
+function tabPastList(back: boolean) {
   const row = currentRow()
   const run = row && runOf(row)
   const rows = run ? rowsIn(run) : []
@@ -198,7 +198,7 @@ if (typeof window !== "undefined") {
 const focused = () => { const a = document.activeElement; return a instanceof HTMLElement && a !== document.body ? a : null }
 
 /** Open the menu of what has the keyboard (its right-click), beside it; in an editor, at the cursor. */
-export function openFocusedMenu() {
+function openFocusedMenu() {
   const el = focused()
   if (!el) return false
   const sel = window.getSelection()
@@ -222,7 +222,7 @@ function areaOfFocus(): Area {
   return sidebarOfFocus() ?? document.activeElement?.closest<HTMLElement>("[data-pane]")?.dataset.pane ?? getWorkspace().focus
 }
 /** Move the keyboard to the next area (`by` -1: the one before): the left sidebar, each pane, the right sidebar. */
-export function nextArea(by: 1 | -1) {
+function nextArea(by: 1 | -1) {
   const all = areas()
   if (!all.length) return
   const i = all.indexOf(areaOfFocus())

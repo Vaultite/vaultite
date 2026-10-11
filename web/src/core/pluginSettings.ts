@@ -6,9 +6,58 @@ import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import type { Command } from "@/core/commands"
+import { get as fetchJson, patch } from "@/core/http"
+import { onVaultChange, touches } from "@/core/live"
+import { cell } from "@/core/signal"
 
 /** Where a plugin's settings are kept. */
 export const settingsFile = (id: string) => `.vaultite/plugins/${id}/data.json`
+type Data = Record<string, unknown>
+const EMPTY = {}
+const isMap = (v: unknown): v is Data => !!v && typeof v === "object" && !Array.isArray(v)
+// (a var: plugins call pluginSettings as their modules load, maybe before this module has run)
+// eslint-disable-next-line no-var
+var kept: Map<string, ReturnType<typeof keep>> | undefined
+function keep(id: string) {
+  const value = cell<Data | null>(null)
+  let reading: Promise<void> | null = null
+  const read = () => fetchJson<Data>(`config/plugin/${id}`).then((d) => value.set(isMap(d) ? d : {}), () => { if (!value.get()) value.set({}) })
+  const start = () => {
+    if (reading) return
+    reading = read()
+    onVaultChange((paths) => { if (touches(paths, settingsFile(id))) void read() })
+  }
+  /** Write those keys (null removes one): shown at once, put back if the write fails. */
+  const set = async (changes: Data) => {
+    start()
+    const was = value.get() ?? {}, next = { ...was }
+    for (const [k, v] of Object.entries(changes)) if (v === null || v === undefined) delete next[k]; else next[k] = v
+    value.set(next)
+    try { await patch(`config/plugin/${id}`, Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? null]))) } catch (e) { value.set(was); throw e }
+  }
+  return { value, start, set, ready: () => { start(); return reading! } }
+}
+
+/** A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file
+ *  changes. `get`/`use` answer {} until read (`use(true)`: null); `set` writes keys; `onChange` hears every change. */
+export function pluginSettings<T extends object = Data>(id: string) {
+  kept ??= new Map()
+  let k = kept.get(id)
+  if (!k) { k = keep(id); kept.set(id, k) }
+  const { value, start, set, ready } = k
+  function use(): T
+  function use(loading: true): T | null
+  function use(loading?: boolean) { start(); const v = value.use(); return (v ?? (loading ? null : EMPTY)) as T | null }
+  return {
+    get: (): T => { start(); return (value.get() ?? EMPTY) as T },
+    use,
+    set: set as (changes: { [K in keyof T]?: T[K] | null }) => Promise<void>,
+    onChange: value.subscribe,
+    /** Settled once the file was first read. */
+    ready,
+  }
+}
+
 /** A plugin's settings sheet's name: "Vim settings", but "Style settings" as it is. */
 export const settingsTitle = (name: string) => (/\bsettings$/i.test(name) ? name : `${name} settings`)
 

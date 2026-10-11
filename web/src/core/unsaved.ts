@@ -7,7 +7,7 @@ export function trackUnsaved(dirty: () => boolean) {
   editors.add(dirty)
   return () => { editors.delete(dirty) }
 }
-export const hasUnsavedEdits = () => [...editors].some((f) => { try { return f() } catch { return true } })
+const hasUnsavedEdits = () => [...editors].some((f) => { try { return f() } catch { return true } })
 
 // (0: none yet, so a page that failed as it started may reload at once)
 let lastKey = 0, lastInput = 0

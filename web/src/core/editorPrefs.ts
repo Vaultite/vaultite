@@ -22,13 +22,13 @@ export type EditorSettings = {
   propertiesInDocument: PropertiesShown
 }
 
-export const EDITOR_DEFAULTS: EditorSettings = {
+const EDITOR_DEFAULTS: EditorSettings = {
   spellcheck: true, useTab: true, tabSize: 4, autoPairBrackets: true, autoPairMarkdown: true, readableLineLength: true,
   propertiesInDocument: "visible",
 }
 
 /** A value of the right shape for `key`, or undefined (a hand-edited file's `"tabSize": "big"` is ignored). */
-export function editorValue<K extends keyof EditorSettings>(key: K, v: unknown): EditorSettings[K] | undefined {
+function editorValue<K extends keyof EditorSettings>(key: K, v: unknown): EditorSettings[K] | undefined {
   const d = EDITOR_DEFAULTS[key]
   if (key === "propertiesInDocument") return (v === "visible" || v === "hidden" || v === "source" ? v : undefined) as EditorSettings[K] | undefined
   if (key === "tabSize") return (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 8 ? v : undefined) as EditorSettings[K] | undefined
@@ -45,7 +45,7 @@ function read(own: Record<string, unknown>, other: Partial<EditorSettings>): Edi
 
 let last: { own: unknown; other: unknown; value: EditorSettings } | null = null
 /** The settings now (the same object until they change). */
-export function editorSettings(s: Store | null = getStore()): EditorSettings {
+function editorSettings(s: Store | null = getStore()): EditorSettings {
   const own = getPrefs().editor, other = vaultEditor(s)
   if (last && last.own === own && JSON.stringify(last.other) === JSON.stringify(other)) return last.value
   last = { own, other, value: read(own, other) }

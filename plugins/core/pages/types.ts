@@ -1,7 +1,7 @@
 // Pinned's store keys and its changes, one per pin, unpin or move, applied by the server to the list as it is then and
 // shown at once. With Workspaces, the current workspace's list (the vault's until its first change).
 import { Pin, PinOff, type LucideIcon } from "lucide-react"
-import { currentWorkspace, fileAt, getStore, isHidden, mutate, notify, offPlugin, pinInWorkspace, pinKind, post, stem, workspacePins, type Store } from "@vaultite"
+import { currentWorkspace, fileAt, getStore, isHidden, mutate, notify, offPlugin, pinInWorkspace, pinKind, plural, post, stem, workspacePins, type Store } from "@vaultite"
 
 /** A file of the vault, as the store lists it. */
 export type VaultFile = Store["files"]["files"][number]
@@ -94,7 +94,7 @@ export async function pinManyNoted(keys: string[], on: boolean) {
   const todo = keys.filter((k) => isPinned(k) !== on)
   if (!todo.length) return
   const places = await pinMany(todo, on)
-  const n = `${todo.length} page${todo.length === 1 ? "" : "s"}`
+  const n = `${plural(todo.length, "page")}`
   notify(`${on ? "Pinned" : "Unpinned"} ${n}`, { action: { label: "Undo", run: async () => {
     for (const k of todo) await pin(k, !on, on ? undefined : places.get(k))
   } } })

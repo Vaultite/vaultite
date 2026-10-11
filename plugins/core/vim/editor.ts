@@ -6,7 +6,7 @@ import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirro
 import { beginKeys, followLink, getStore, runCommandById, type EditorCtx } from "@vaultite"
 import { EX } from "./ex"
 import { applyVimrc, editorOpen } from "./vimrc"
-import { deviceOn, getSettings, leaderOn, onState, peekPath, setEditorMode, setPeek } from "./state"
+import { deviceOn, leaderOn, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
 
 type VimModule = typeof import("@replit/codemirror-vim")
 export type Vim = VimModule["Vim"]
@@ -200,7 +200,7 @@ function installClipboard(Vim: Vim) {
   rc.pushText = (name, op, text, linewise, blockwise) => {
     push(name, op, text, linewise, blockwise)
     // Like clipboard=unnamed: what goes to the unnamed register goes to the system's too (not "_ or a named one).
-    if (getSettings().clipboard === false || (name && name !== '"')) return
+    if (settings.get().clipboard === false || (name && name !== '"')) return
     const t = linewise && !text.endsWith("\n") ? `${text}\n` : text
     wrote = t
     navigator.clipboard?.writeText(t).catch(() => {})
@@ -212,7 +212,7 @@ function installClipboard(Vim: Vim) {
     rc.unnamedRegister.setText(text, text.endsWith("\n"))
   }
   const pull = async () => {
-    if (getSettings().clipboard === false || !navigator.clipboard?.readText) return
+    if (settings.get().clipboard === false || !navigator.clipboard?.readText) return
     try {
       // Without asking: the desktop app reads freely; a browser only once the page was allowed.
       if (!("vaultite" in window)) {

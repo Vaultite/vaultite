@@ -1,10 +1,11 @@
 // What a file is and how it looks in the tree, the tabs and search: the server's core/filetypes.ts (by extension), plus
 // an icon for each sort of file.
 import {
-  File, FileArchive, FileAudio, FileCode, FileCog, FileImage, FileKey, FileSpreadsheet, FileTerminal, FileText, FileType, FileVideo,
-  NotebookText, type LucideIcon,
+  File, FileArchive, FileAudio, FileCode, FileCog, FileImage, FileKey, FileSpreadsheet, FileTerminal, FileText, FileType, FileVideo, NotebookText,
+  type LucideIcon,
 } from "lucide-react"
 import { extOf, kindOf, type FileKind } from "../../../core/filetypes.ts"
+import { plural } from "@/lib/utils"
 
 export { extOf, kindOf, type FileKind } from "../../../core/filetypes.ts"
 
@@ -57,7 +58,7 @@ export function kindName(path: string) {
 
 /** "24 KB" */
 export function formatSize(n: number) {
-  if (n < 1000) return `${n} byte${n === 1 ? "" : "s"}`
+  if (n < 1000) return `${plural(n, "byte")}`
   const units = ["KB", "MB", "GB", "TB"]
   let v = n / 1000, i = 0
   while (v >= 1000 && i < units.length - 1) { v /= 1000; i++ }

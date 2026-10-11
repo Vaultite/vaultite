@@ -2,10 +2,11 @@
 // redraw React: the view lives in a ref written straight to the stage, and only cards near the screen are drawn.
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as RDragEvent, type KeyboardEvent, type MouseEvent, type PointerEvent as RPointerEvent } from "react"
 import {
-  AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight, ArrowRight, ArrowUpRight,
-  ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight, Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
+  AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight,
+  ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
+  Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, patch, saveAttachments, useDropTarget, useLive, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -21,6 +22,7 @@ const DOTS = "radial-gradient(circle, color-mix(in srgb, var(--muted-foreground)
 const SNAP_PX = 6
 
 type Settings = { snapToGrid?: boolean; snapToObjects?: boolean }
+const canvasSettings = pluginSettings<Settings>("canvas")
 type Rect = { x0: number; y0: number; x1: number; y1: number }
 
 type Drag =
@@ -69,11 +71,9 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const lastPointer = useRef<Pt | null>(null)
 
   // Snapping: the plugin's settings (.vaultite/plugins/canvas/data.json), changed here at once.
-  const { data: saved } = useLive<Settings>(embed ? null : "config/plugin/canvas")
-  const [mine, setMine] = useState<Settings>({})
-  const settings = { ...saved, ...mine }
+  const settings = canvasSettings.use()
   const snapToGrid = settings.snapToGrid !== false, snapToObjects = settings.snapToObjects !== false
-  const setSetting = (changes: Settings) => { setMine((m) => ({ ...m, ...changes })); patch("config/plugin/canvas", changes).catch(() => {}) }
+  const setSetting = (patch: Settings) => void canvasSettings.set(patch).catch(() => {})
 
   // A change made elsewhere (on disk, another device): drawn as it is.
   useEffect(() => {

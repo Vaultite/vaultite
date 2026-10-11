@@ -1,20 +1,20 @@
 // The Inbox drawn (header button, panel, tab, block): only what needs the user, results to review and agents' unread
 // events; read ones are on the page, folded under Read (with the setting show_read, the last day's stay, greyed).
-import { useEffect, useState, useSyncExternalStore, type MouseEvent, type ReactNode } from "react"
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import {
-  Bell, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen, Maximize2,
-  ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, ShieldAlert, Trash2, X,
+  Bell, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
+  Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  askMove, askMoveMany, Badged, cn, currentFile, Empty, getStore, fmtAgo, haptic, isArchived, isViewOpen, menuBelow, menuFor, notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put,
-  rowMenu, selectClick, selectedAttr, setProperty, SheetHead, SidebarHeading, startSelecting, SwipeRow, useAgents, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick,
-  type MenuItem, type SidebarCtx, type Store, type SwipeAction,
+  askMove, askMoveMany, Badged, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, menuBelow, menuFor,
+  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
+  SidebarHeading, startSelecting, SwipeRow, useAgents, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
+  type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { useSettings } from "./settings"
-import { agentOf, answerGate, forget, getEvents, markRead, markSeen, markUnread, openEvent, subscribeEvents, targetOf } from "./events"
+import { agentOf, answerGate, forget, getEvents, markRead, markSeen, markUnread, openEvent, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
+import { settings } from "./settings"
 
-export const useEvents = () => useSyncExternalStore(subscribeEvents, getEvents)
 
 /** The results waiting for review: status new, newest first (the store's order). */
 export const toReview = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => r.status === "new" && !isArchived(r))
@@ -30,10 +30,6 @@ export function useCount(store: Store) {
 
 export const openInbox = () => openView("inbox", { newTab: !isViewOpen("view:inbox") })
 
-const ago = (t: number) => {
-  const m = Math.max(0, Math.round((Date.now() - t) / 60000))
-  return m < 1 ? "now" : m < 60 ? `${m}m` : m < 48 * 60 ? `${Math.round(m / 60)}h` : `${Math.round(m / 1440)}d`
-}
 
 const DAY = 86_400_000
 
@@ -50,7 +46,7 @@ export function fold(events: InboxEvent[], max: number, keep?: ReadonlySet<strin
 /** "Show N earlier" / "Show less", per list (not saved), with show_read; without it the read ones are left out: `rest`. */
 function useFold(events: InboxEvent[], max: number, keep?: ReadonlySet<string>) {
   const [all, setAll] = useState(false)
-  const read = useSettings().show_read === true
+  const read = settings.use().show_read === true
   const { shown, earlier } = fold(events, max, keep, read)
   const kept = new Set(shown)
   return { shown: all ? events : shown, earlier: read ? earlier : 0, rest: read ? [] : events.filter((e) => !kept.has(e)), all, toggle: () => setAll(!all) }
@@ -262,7 +258,6 @@ function GateButtons({ e, className, size }: { e: InboxEvent; className: string;
   </>
 }
 export const gateTitle = (id: string) => getEvents().events.find((e) => e.id === id)?.title ?? "Asks for your yes"
-const gateButton = "h-9 cursor-pointer rounded-[8px] px-3.5 text-[15px] font-medium transition-colors md:h-8 md:text-[13px]"
 
 /** A permission the server waits on, in a sheet: what it asks to run, whole, in a box that scrolls, and the answer. */
 export function GateSheet({ id }: { id: string }) {
@@ -275,8 +270,8 @@ export function GateSheet({ id }: { id: string }) {
       {e.body && <pre data-gate-body className="max-h-[60vh] overflow-auto rounded-[10px] bg-muted p-3 font-mono text-[12px] leading-[17px] break-words whitespace-pre-wrap">{e.body}</pre>}
       {!e.answer && (
         <div className="mt-3 flex gap-2">
-          <button type="button" data-gate="approve" onClick={() => void answer(e, "approve")} className={cn(gateButton, "bg-primary text-primary-foreground hover:opacity-90")}>Approve</button>
-          <button type="button" data-gate="deny" onClick={() => void answer(e, "deny")} className={cn(gateButton, "bg-foreground/[0.06] hover:bg-foreground/[0.1]")}>Deny</button>
+          <Button look="primary" data-gate="approve" onClick={() => void answer(e, "approve")}>Approve</Button>
+          <Button data-gate="deny" onClick={() => void answer(e, "deny")}>Deny</Button>
         </div>
       )}
     </div>
@@ -306,25 +301,22 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
   return (
     <div className="flex shrink-0 flex-col" data-inbox-panel>
       <SidebarHeading title="Inbox" open={open}>
-        {unread > 0 && <button type="button" className={small} aria-label="Mark all read" data-tip="Mark all read" onClick={() => markRead()}>
-          <CheckCheck className="size-3.5" strokeWidth={2.25} /></button>}
-        <button type="button" className={small} aria-label="Open inbox" data-tip="Open inbox" onClick={openInbox}>
-          <Maximize2 className="size-3.5" strokeWidth={2.25} /></button>
+        {unread > 0 && <HeadingButton icon={CheckCheck} label="Mark all read" onClick={() => markRead()} />}
+        <HeadingButton icon={Maximize2} label="Open inbox" onClick={openInbox} />
       </SidebarHeading>
       <div className="flex flex-col gap-px pb-1" data-select-list={SELECT}>
         {results.map((r) => (
-          <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!).replace(/ ago$/, "") : undefined}
+          <PanelRow key={r.id} data-result={r.id} select={resultKey(r)} swipe={() => resultSwipe(r)} label={r.title} active={file === pathOf(r)} time={r.updated || r.created ? fmtAgo((r.updated || r.created)!, { short: true }) : undefined}
             icon={<Badged on><FileText className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /></Badged>} onClick={() => openFile(pathOf(r))} onContextMenu={menuFor(rowMenu(SELECT, resultKey(r), resultItemsMenu(r)))}>
-            <button type="button" className={small} aria-label="Done" data-tip="Done" onClick={stop(() => { haptic("medium"); void markDone(r) })}><Check className="size-3.5" strokeWidth={2.25} /></button>
-            <button type="button" className={small} aria-label="More" data-tip="More" onClick={(e) => { e.preventDefault(); e.stopPropagation(); moreMenu(e, r) }}>
-              <MoreHorizontal className="size-3.5" strokeWidth={2.25} /></button>
+            <HeadingButton icon={Check} label="Done" onClick={stop(() => { haptic("medium"); void markDone(r) })} />
+            <HeadingButton icon={MoreHorizontal} label="More" onClick={(e) => { e.preventDefault(); e.stopPropagation(); moreMenu(e, r) }} />
           </PanelRow>
         ))}
         {latest.map((e) => (
-          <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.body ? `${e.title}: ${e.body}` : e.title} time={ago(e.t)}
+          <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.body ? `${e.title}: ${e.body}` : e.title} time={fmtAgo(e.t, { short: true })}
             dim={e.read} icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
             <GateButtons e={e} className={small} size="size-3.5" />
-            <button type="button" className={small} aria-label="Dismiss" data-tip="Dismiss" onClick={stop(() => { haptic("medium"); void forget(e.id) })}><X className="size-3.5" strokeWidth={2.25} /></button>
+            <HeadingButton icon={X} label="Dismiss" onClick={stop(() => { haptic("medium"); void forget(e.id) })} />
           </PanelRow>
         ))}
         {!results.length && !latest.length && <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">Nothing new</p>}
@@ -385,7 +377,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
           {(e.body || e.machineLabel) && <span data-tip={whole ? undefined : e.body} data-tip-trunc
             className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}>{[e.body, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
-        <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{ago(e.t)}</span>
+        <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>
       </button>
       <GateButtons e={e} className={iconButton} size="size-4" />
       <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Dismiss" data-tip="Dismiss" onClick={() => { haptic("medium"); void forget(e.id) }}>

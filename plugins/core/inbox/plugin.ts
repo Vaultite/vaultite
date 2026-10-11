@@ -7,8 +7,8 @@ import { type RawData, WebSocket } from "ws"
 import { startAgent } from "../../../core/codingagents.ts"
 import { AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 import {
-  bullets, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, reply, splitMachine, type Machine,
-  type OpCtx, type Request,
+  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, reply, splitMachine,
+  type Machine, type OpCtx, type Request,
 } from "../../../core/plugins.ts"
 import { isArchived, type Item, Kind, localStamp, nowUtc, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import * as push from "./push.ts"
@@ -1222,10 +1222,6 @@ plugin.provide("inbox:answer", (id: string, ms = 0): Promise<"approve" | "deny" 
 
 // ---------- the block as text (GET /api/render)
 
-function ago(t: number) {
-  const m = Math.max(0, Math.round((Date.now() - t) / 60000))
-  return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 48 * 60 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`
-}
 const utcMs = (s: unknown) => { const t = Date.parse(`${str(s).replace(" ", "T")}Z`); return Number.isNaN(t) ? 0 : t }
 
 plugin.block("inbox", (ctx) => {
@@ -1236,10 +1232,10 @@ plugin.block("inbox", (ctx) => {
   ctx.source(nr > 0 ? results : [])
   const parts: string[] = []
   if (nr > 0 && results.length) {
-    parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && ago(utcMs(latest(r)))].filter(Boolean).join(" · ")))}`)
+    parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(utcMs(latest(r)))].filter(Boolean).join(" · ")))}`)
   }
   if (ne > 0 && es.length) {
-    parts.push(`Events:\n${bullets(es.map((e) => [ago(e.t), `${e.title}${e.body ? `: ${e.body}` : ""}`, !e.read && "unread"].filter(Boolean).join(" · ")))}`)
+    parts.push(`Events:\n${bullets(es.map((e) => [fmtAgo(e.t), `${e.title}${e.body ? `: ${e.body}` : ""}`, !e.read && "unread"].filter(Boolean).join(" · ")))}`)
   }
   return [`## ${str(o.title) || "Inbox"}`, parts.length ? parts.join("\n\n") : "_Nothing new._"].join("\n\n")
 })

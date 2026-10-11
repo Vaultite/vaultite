@@ -5,8 +5,8 @@ import { getPrefs } from "@/core/prefs"
 // The plugin API: everything a plugin may import ("@vaultite"). Plugins use this, their own folder, and the plugins
 // they `require`; never the core's internals (web/src/core, components), so the core can change underneath them.
 export {
-  addDays, dateText, dow, fmtAgo, fmtDay, fmtLongDay, fmtMin, fmtTime, getStore, iso, mutate, numberText, optimistic, parse, plain,
-  range, reload, today, useLive, useStore, useTick, weekStart,
+  addDays, dateText, dow, fmtAgo, fmtDay, fmtLongDay, fmtMin, fmtStamp, fmtTime, getStore, iso, mutate, numberText, optimistic, parse, plain,
+  range, reload, today, useLive, usePreview, useStore, useTick, weekStart,
 } from "@/core/data"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
 export type { Store } from "@/core/data"
@@ -27,7 +27,7 @@ export { AddToTimeline } from "@/components/Timeline"
 export { closeView, createFile, createNamed, folderOf, freeName, homeOf, inPagesDir, isDoc, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, splitFm, stem } from "@/core/files"
 /** A folder of the vault, picked in the palette (one typed that isn't there is made). */
 export { chooseFolder } from "@/components/FolderPicker"
-export { currentFile, isDesktop, useFocusedFile, type FocusedFile } from "@/core/workspace"
+export { currentFile, useFocusedFile, type FocusedFile } from "@/core/workspace"
 export { openInSplit } from "@/core/splits"
 /** CSV, the vault's tables, parsed the same way everywhere (core/csv.ts, shared with the server). */
 export { csvRecords, parseCsv } from "../../core/csv.ts"
@@ -98,12 +98,14 @@ export type { Sidebars } from "@/core/plugins"
 // Views' tab titles and icons that follow live data (a terminal's session name): tell the tabs it changed.
 export { viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
+// A value module state keeps, that hooks and subscribers follow (safe while a module loads).
+export { cell, type Cell } from "@/core/signal"
 export { setTextSize, stepTextSize, textSize, useTextSize, useTextSizeWheel, type TextSizeKind } from "@/core/textsize"
 export { addKeys, appShortcut, beginKeys, cancelKeys, commandKeys, keyCaps, keyHint, modifiedSteps, runShortcut, typingIn, useCommandKeys, useCommands, usePendingKeys } from "@/core/commands"
 export { isLinux, isMac, modKey, revealLabel, showLabel } from "@/core/platform"
 export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, openMenu, type CheckItem, type MenuItem } from "@/components/ContextMenu"
 export { onVaultChange, touches, useVaultChange } from "@/core/live"
-export { backDetail, openDetail, replaceDetail, scrollPage } from "@/core/nav"
+export { backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
 export { backlinks, followLink, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Target } from "@/core/links"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
 export { openAt, useOutline, type Heading } from "@/core/anchors"
@@ -128,7 +130,8 @@ export { FileEmbed } from "@/components/FileEmbed"
 export { rawUrl } from "@/components/FileViewers"
 export { kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
-export { Badged, Bars, Editable, Empty, FilterField, Group, KV, List, Loading, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch } from "@/components/kit"
+export { Button, buttonClass, HeadingButton } from "@/components/Button"
+export { Badged, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch } from "@/components/kit"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
 export { useSheetGuard } from "@/components/DetailSheet"
 export { WeeksGrid } from "@/components/WeeksGrid"
@@ -159,18 +162,18 @@ export { ActionButtons, AddButton } from "@/components/NewTab"
 export { Files as FilesPage } from "@/pages/Files"
 export { FilesSettings, filesSettingsSearch } from "@/components/FilesSettings"
 // A plugin's settings sheet (components/PluginSettings.tsx), and one setting drawn as its form row.
-export { hasSettings, openPluginSettings, settingsFile } from "@/core/pluginSettings"
+export { hasSettings, openPluginSettings, pluginSettings, settingsFile } from "@/core/pluginSettings"
 export { Field as SettingField, usePluginSettings } from "@/components/PluginSettings"
 export type { SettingDecl, SettingDecls } from "../../core/blocks.ts"
 export { SearchPage } from "@/pages/Search"
 // Which pane a view is drawn in (its group's id; "" outside the desktop's panes).
 export { usePane } from "@/core/pane"
-export { focusPane, holdFocus, keyboardBusy, useHeldFocus } from "@/core/focus"
+export { focusPane, holdFocus, keyboardBusy, useDismiss, useHeldFocus } from "@/core/focus"
 // Make a pane the focused one (the address, the status bar and commands follow it) without moving the keyboard: a view
 // whose keyboard lives outside the page (the web viewer's page) was clicked.
 export { focusGroup, isPopout } from "@/core/workspace"
 export { offeredCommand, onCommandsChanged, runCommandById, runCommandNamed } from "@/core/commands"
-export { useDesktop } from "@/core/workspace"
+export { isDesktop, useDesktop } from "@/core/platform"
 // Every command and its keys in effect (Vim's list of its keys).
 export { commandList, keysOf, useCommandList } from "@/core/commands"
 export { currentRow, focusSidebar, foldInList, inKeyList, leaveList, moveInList, openInList } from "@/core/keylist"
@@ -180,7 +183,7 @@ export { onActivity, type ActivityNote } from "@/core/activity"
 export { onTrace, trace, type TraceEvent } from "@/core/trace"
 export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
 export { dismissNotice, notify, notifyError, type NotifyOptions } from "@/core/notify"
-export { cn } from "@/lib/utils"
+export { capitalize, cn, plural } from "@/lib/utils"
 // A coding agent's usage and sessions (Claude Code, Codex...): the blocks every agent plugin draws, on its own data.
 export { AgentLimits, AgentLimitsChip, AgentModels, agentPlugin, AgentProject, AgentProjects, AgentSessions, AgentUsageBlock, money, openSession, sessionTitle, tokens, useAgentRoute } from "@/components/AgentUsage"
 export type { AgentMock, AgentSource, AgentUsage, Day as AgentDay, LiveSession as AgentLiveSession, Session as AgentSessionSummary, Share as AgentShare, Window as AgentWindow } from "@/components/AgentUsage"

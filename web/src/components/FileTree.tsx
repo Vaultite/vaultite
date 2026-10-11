@@ -2,16 +2,15 @@
 // the sort decides order, so no "between" places), files dropped in from the computer copied in. Phones swipe rows.
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent } from "react"
 import {
-  Archive,
-  ArrowUpNarrowWide, Bot, ChevronRight, ChevronsDownUp, ChevronsUpDown, Ellipsis, FileBraces, FileInput, FilePlus, FileText, Folder,
+  Archive, ArrowUpNarrowWide, Bot, ChevronRight, ChevronsDownUp, ChevronsUpDown, Ellipsis, FileBraces, FileInput, FilePlus, FileText, Folder,
   FolderInput, FolderOpen, FolderPlus, GalleryVertical, RotateCcw, SquareArrowOutUpRight, SquarePen, Trash2, type LucideIcon,
 } from "lucide-react"
 import { getStore, reload, type Store } from "@/core/data"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { desktop, dropInto, hasFiles } from "@/core/desktop"
-import { isMac } from "@/core/platform"
+import { isMac, isDesktop } from "@/core/platform"
 import { cleanName, createFile, createFolder, folderList, folderOf, freeName, inArchive, inTrash, isDoc, isHidden, isJson, isProtected, joinPath, moveFile, nameable, openFile, openingSoon, openNew, openView, restoreFile, shownName, stem, type VaultFile } from "@/core/files"
-import { currentFile, getWorkspace, isDesktop, onWorkspaceChange } from "@/core/workspace"
+import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { leaves, type Workspace } from "@/core/layout"
 import { useNearEnd } from "@/core/near"
 import { openInSplit } from "@/core/splits"
@@ -28,7 +27,7 @@ import { commandItems, menuBelow, menuFor, type MenuItem } from "@/components/Co
 import { copyPathItem, duplicateItem, filesMenu, grouped, moreItem, openItem, pluginFileGroups, remove, renameItem, revealItem, topmost } from "@/components/FileActions"
 import { pickFolder } from "@/components/FolderPicker"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
-import { cn, scrollingBox, space } from "@/lib/utils"
+import { capitalize, cn, scrollingBox, space } from "@/lib/utils"
 import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
 import { SidebarHeading } from "@/components/SidebarHeading"
 import { signal } from "@/core/signal"
@@ -58,7 +57,6 @@ let showingAll = new Set<string>()
 /** The last file revealed (revealInTree): shown in its folder past the limit, so it can be scrolled to. */
 let revealedPath = ""
 const moreSubs = signal()
-const subscribeMore = moreSubs.subscribe
 function setShowingAll(p: string | null, all = false) {
   if (p === null ? !showingAll.size : showingAll.has(p) === all) return
   const n = new Set(p === null ? [] : showingAll)
@@ -66,9 +64,9 @@ function setShowingAll(p: string | null, all = false) {
   showingAll = n
   moreSubs.notify()
 }
-const useShowsAll = (p: string) => useSyncExternalStore(subscribeMore, () => showingAll.has(p))
+const useShowsAll = (p: string) => moreSubs.use(() => showingAll.has(p))
 /** The revealed file when it's this folder's own, else "" (only that folder is drawn again). */
-const useRevealedIn = (p: string) => useSyncExternalStore(subscribeMore, () => (revealedPath && folderOf(revealedPath) === p ? revealedPath : ""))
+const useRevealedIn = (p: string) => moreSubs.use(() => (revealedPath && folderOf(revealedPath) === p ? revealedPath : ""))
 /** A folder's rows: its folders, its first `limit` files and the ones in `keep` (open, revealed, being renamed);
  *  `hidden`: how many files that leaves out, `long`: whether it has more than the limit shows. */
 function capped(children: Node[], limit: number, all: boolean, keep: (string | undefined)[]) {
@@ -378,11 +376,6 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const [fromComputer, setFromComputer] = useState<string | null>(null)
   const dropOn = hit ?? fromComputer
 
-  const newNote = async (folder: string) => {
-    const f = await createFile(folder, freeName(store.files, folder, "Untitled"))
-    if (folder) revealInTree(`${folder}/x`)
-    openNew(f.path)
-  }
   // A plugin's kind of file (New canvas): made in the folder, opened with its name ready to type, like a note.
   const newOf = async (nf: NewFile, folder: string) => {
     const p = await nf.make(folder)
@@ -417,7 +410,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   })
 
   /** "New canvas" -> "Canvas", in the New ▸ submenu. */
-  const kindName = (label: string) => { const t = label.replace(/^New /, ""); return t.charAt(0).toUpperCase() + t.slice(1) }
+  const kindName = (label: string) => capitalize(label.replace(/^New /, ""))
   const items = (n: Node): MenuItem[] => {
     const here = n.folder ? n.path : folderOf(n.path)
     const file = !n.folder
@@ -761,14 +754,14 @@ function Kids({ n, depth, rows, active, renaming, dropOn, dragging, draggingMany
   )
 }
 
-/** The New note / New folder actions, for places outside the tree (the files tab's header on phones). */
-export function useFileActions(store: Store) {
-  return {
-    newNote: async (folder = newNoteFolder(store, currentFile())) => {
-      const f = await createFile(folder, freeName(store.files, folder, "Untitled"))
-      revealInTree(f.path)
-      openNew(f.path)
-    },
-  }
+/** A new note, its name ready to type, in `folder` (by default where new notes go: on a computer, beside the focused
+ *  tab's file), shown in the tree. */
+export async function newNote(folder?: string) {
+  const s = getStore()
+  if (!s) return
+  folder ??= newNoteFolder(s, isDesktop() ? currentFile() : "")
+  const f = await createFile(folder, freeName(s.files, folder, "Untitled"))
+  revealInTree(f.path)
+  openNew(f.path)
 }
 

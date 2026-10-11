@@ -1,20 +1,19 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
-import { newNoteFolder } from "@/core/conventions"
 import { runCommandId, typingIn, useCommands } from "@/core/commands"
-import { isMac } from "@/core/platform"
+import { isDesktop, isMac, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor } from "@/core/editors"
 import { desktop as desktopApp, otherVaults } from "@/core/desktop"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
-import { createFile, freeName, isProtected, inVault, isReadOnly, openNew, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canReopenTab, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, isDesktop, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
+import { activeTab, askRename, canReopenTab, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "@/core/layout"
-import { backDetail, closeDetail, openDetail, route, setDetailRedirect, takeScroll } from "@/core/nav"
+import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedirect, takeScroll } from "@/core/nav"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
@@ -24,7 +23,7 @@ import { textSizeCommands } from "@/core/textsize"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
-import { revealInTree } from "@/components/FileTree"
+import { newNote, revealInTree } from "@/components/FileTree"
 import { panelMenu, RAIL, SidebarPanels, SidebarToggle } from "@/components/Sidebar"
 import { FileView } from "@/components/FileView"
 import { StatusBar } from "@/components/StatusBar"
@@ -96,19 +95,14 @@ const OTHER_PAGES: Page[] = [
 const SIDEBAR = { min: 200, max: 480, default: 240 }
 const railPx = () => (parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--spacing")) || 0.25) * 16 * RAIL
 const sidebarPx = (w: number) => Math.round(Math.min(SIDEBAR.max, Math.max(SIDEBAR.min, w || SIDEBAR.default)))
-/** The sidebar's edge dragged to x: narrower than halfway between the rail and its narrowest, it's the rail, and it
- *  keeps the width it had when the drag began, so it reopens as it was. */
 let dragFrom = SIDEBAR.default
-function dragSidebar(x: number) {
-  const open = x > (railPx() + SIDEBAR.min) / 2
-  if (!open) { if (getPrefs().sidebar) setPrefs({ sidebar: false, sidebarWidth: dragFrom }); return }
-  setPrefs({ sidebar: true, sidebarWidth: sidebarPx(x) })
-}
-/** The right sidebar's edge, the same way from the right. */
-function dragRightSidebar(x: number) {
-  const w = innerWidth - x
-  if (w <= (railPx() + SIDEBAR.min) / 2) { if (getPrefs().rightSidebar) setPrefs({ rightSidebar: false, rightSidebarWidth: dragFrom }); return }
-  setPrefs({ rightSidebar: true, rightSidebarWidth: sidebarPx(w) })
+/** A sidebar's edge dragged to x (the right one's from the right): narrower than halfway between the rail and its
+ *  narrowest, it's the rail, and it keeps the width it had when the drag began, so it reopens as it was. */
+function dragSidebar(right: boolean, x: number) {
+  const w = right ? innerWidth - x : x
+  const [on, width] = right ? ["rightSidebar", "rightSidebarWidth"] as const : ["sidebar", "sidebarWidth"] as const
+  if (w <= (railPx() + SIDEBAR.min) / 2) { if (getPrefs()[on]) setPrefs({ [on]: false, [width]: dragFrom }); return }
+  setPrefs({ [on]: true, [width]: sidebarPx(w) })
 }
 /** The vault menu (the vault's name at the sidebar's bottom): the other vaults, Manage vaults. */
 const manageVaults = () => (desktopApp ? desktopApp.manageVaults() : openDetail("vaults"))
@@ -125,6 +119,18 @@ function sheet_(...a: Parameters<typeof detail_>): ReturnType<typeof detail_> {
   try { return detail_(...a) } catch (e) { return { body: <Drawn draw={() => { throw e }} />, title: "" } }
 }
 
+/** The core's own sheets, from their lazy chunks: by the path's kind ("bundle/": one with an id), its title and body. */
+const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.ReactNode]> = {
+  schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Change colour scheme"
+  fonts: ["Fonts", () => <FontsSheet />], // Settings' Fonts row
+  "plugin-settings": ["Plugin settings", (store) => <PluginSettingsSheet store={store} />], // Settings' Plugin settings row
+  hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
+  "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
+  "bundles-more": ["More bundles", () => <MoreBundles />], // the Bundles page's More…
+  "bundle-save": ["Save current setup", () => <SaveBundle />],
+  "bundle-save-look": ["Save the look", () => <SaveBundle look />],
+}
+
 /** The detail sheet for a path: a plugin's (person/…, log/…), or the core's plugin sheet (plugin/<id>). */
 function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab) => TabInfo): { body: React.ReactNode; title: string } {
   const [kind, id] = path.split("/")
@@ -136,14 +142,8 @@ function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Ta
   if (kind === "vaults") { // Manage vaults, on the web (the desktop app has its own window)
     return { body: <><SheetHead icon={Logo} tint="var(--primary)" kicker="Vaultite" title="Vaults" /><VaultManager backend={webVaults} /></>, title: "Vaults" }
   }
-  if (kind === "schemes") return { body: <Suspense><SchemeGallery /></Suspense>, title: "Colour schemes" } // Settings' More…
-  if (kind === "fonts") return { body: <Suspense><FontsSheet /></Suspense>, title: "Fonts" } // Settings' Fonts row
-  if (kind === "plugin-settings" && !id) return { body: <Suspense><PluginSettingsSheet store={store} /></Suspense>, title: "Plugin settings" } // Settings' Plugin settings row
-  if (kind === "hotkeys") return { body: <Suspense><HotkeysSheet /></Suspense>, title: "Hotkeys" } // Settings' Hotkeys row, the command "Open hotkeys"
-  if (kind === "bundle" && id) return { body: <Suspense><BundlePreview id={decodeURIComponent(id)} /></Suspense>, title: "Bundle" } // a bundle's preview (pages/Bundles.tsx)
-  if (kind === "bundles-more") return { body: <Suspense><MoreBundles /></Suspense>, title: "More bundles" } // the Bundles page's More…
-  if (kind === "bundle-save") return { body: <Suspense><SaveBundle /></Suspense>, title: "Save current setup" }
-  if (kind === "bundle-save-look") return { body: <Suspense><SaveBundle look /></Suspense>, title: "Save the look" }
+  const own = CORE_SHEETS[id ? `${kind}/` : kind]
+  if (own) return { body: <Suspense>{own[1](store, decodeURIComponent(id ?? ""))}</Suspense>, title: own[0] }
   if (kind === "plugin") {
     const p = pluginById(id)
     if (p) return { body: <PluginPreview store={store} plugin={p} />, title: p.name }
@@ -187,17 +187,6 @@ function useRoute() {
     return () => removeEventListener("scroll", on)
   }, [])
   return r
-}
-
-/** md and up: the sidebar (with the file tree) and tabs. */
-function useDesktop() {
-  const [d, setD] = useState(isDesktop)
-  useEffect(() => {
-    const m = matchMedia("(min-width: 768px)"), on = () => setD(m.matches)
-    m.addEventListener("change", on)
-    return () => m.removeEventListener("change", on)
-  }, [])
-  return d
 }
 
 // The vault's own plugins load with each state, before it's drawn.
@@ -257,8 +246,7 @@ export default function App() {
     if (isFileTab || isViewTab || isNewTab || pages.some((p) => p.id === tab)) return
     const to = !tab || (!desktop && !detail) ? (home ? hashOf(home) : desktop ? null : "new") : null
     if (!to) return
-    history.replaceState(history.state, "", `#${to}${detail ? `/${detail}` : ""}`)
-    dispatchEvent(new HashChangeEvent("hashchange"))
+    replaceHash(`${to}${detail ? `/${detail}` : ""}`, history.state)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, tab])
   useWorkspace() // re-render when tabs change
@@ -267,13 +255,13 @@ export default function App() {
   const known = isFileTab || isViewTab || isNewTab || pages.some((p) => p.id === tab)
   useEffect(() => {
     if (known) followHash(tab)
-    else if (desktop && !detail && store) { history.replaceState(null, "", `#${hashOf(activeTab().to)}`); dispatchEvent(new HashChangeEvent("hashchange")) }
+    else if (desktop && !detail && store) replaceHash(hashOf(activeTab().to))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, desktop, known, !!store])
   useEffect(() => takeLinks({ command: runCommandId, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true } }), [])
   // First load with no address: show the tab that was open last time.
   useEffect(() => {
-    if (!location.hash) { history.replaceState(null, "", `#${hashOf(activeTab().to)}`); dispatchEvent(new HashChangeEvent("hashchange")) }
+    if (!location.hash) replaceHash(hashOf(activeTab().to))
   }, [])
   const filePath = isFileTab ? targetOf(tab).slice(5) : ""
   const active = pages.find((t) => t.id === tab) ?? null
@@ -298,13 +286,6 @@ export default function App() {
   // The vault's name at the bottom of the sidebar: a menu of vault-wide things (VAULT_MENU).
   const vaultName = store ? (store.vault.sandbox ? "Playground" : store.vault.path.split("/").filter(Boolean).pop() ?? "Vault") : "Vault"
   const vaultMenu = (e: React.MouseEvent) => menuBelow(e, VAULT_MENU())
-  const newNote = async () => {
-    const s = getStore()
-    if (!s) return
-    const folder = newNoteFolder(s, tabFile())
-    const f = await createFile(folder, freeName(s.files, folder, "Untitled"))
-    openNew(f.path)
-  }
   // The app's commands (⌘P lists them; their keys work everywhere). File commands act on the active tab's file (in the
   // vault: not one from outside it, "file:/…").
   // The file the user means: the editor's (a sheet's over the page too), else the focused tab's.
@@ -327,7 +308,7 @@ export default function App() {
     { id: "palette:open", name: "Open command palette", keys: ["Mod+P"], run: () => setPalette((p) => (p === "commands" ? null : "commands")), icon: CommandIcon },
     { id: "icon:search", name: "Search icons", run: () => pickIcon({ title: "Search icons", onPick: (n) => copyText(n).then(() => notify(`Copied ${n}: use it as an icon:`, { id: "copied" }), notifyError) }), icon: Smile },
     // ⌘N, ⌘T, ⌘W are the browser's: the desktop app has them (its menu), the web gets another key or none.
-    { id: "file:new", name: "Create new note", keys: desktopApp ? ["Mod+N"] : ["Mod+Alt+N"], run: () => newNote(), label: "New note", icon: FilePlus },
+    { id: "file:new", name: "Create new note", keys: desktopApp ? ["Mod+N"] : ["Mod+Alt+N"], run: () => void newNote(), label: "New note", icon: FilePlus },
     // On a phone the sidebars are drawers (components/PhoneDrawer.tsx).
     { id: "sidebar:toggle", name: "Toggle left sidebar", keys: ["Mod+\\"],
       run: () => (isDesktop() ? setPrefs({ sidebar: !getPrefs().sidebar }) : openDrawer(drawerOut() === "left" ? null : "left")), icon: PanelLeft },
@@ -482,7 +463,7 @@ export default function App() {
       </aside>
       {/* Its edge (the splits' Resizer): dragged past half its narrowest it folds to the rail, keeping its width, and
           out again it opens, in one drag. */}
-      <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={dragSidebar} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
+      <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={(x) => dragSidebar(false, x)} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
         className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />
       <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })} />
       </>}
@@ -501,7 +482,7 @@ export default function App() {
         </aside>
       )}
       {showRight && rightOpen && (
-        <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth) }} onDrag={dragRightSidebar}
+        <Resizer label="Resize the right sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().rightSidebarWidth) }} onDrag={(x) => dragSidebar(true, x)}
           onReset={() => setPrefs({ rightSidebar: true, rightSidebarWidth: 280 })}
           className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} - 4px)` }} />
       )}
@@ -561,7 +542,7 @@ export default function App() {
       {/* Phones: the bar at the bottom (Back, search, a new tab, the tab list, the menu) and the sidebars as drawers. */}
       {!desktop && (
         <PhoneBar system={SYSTEM_PAGES} active={active} listOpen={detail === "tabs"}
-          onSearch={() => setSearching(true)} onCommands={() => setPalette("commands")} onNewNote={newNote} />
+          onSearch={() => setSearching(true)} onCommands={() => setPalette("commands")} onNewNote={() => void newNote()} />
       )}
       {/* Phones: a page pulled down from its top: New note, Commands, Close tab. */}
       {!desktop && store && <PullActions run={(w) => (w === "new" ? void newNote() : w === "commands" ? setPalette("commands") : closeTab(activeTab().id))} />}

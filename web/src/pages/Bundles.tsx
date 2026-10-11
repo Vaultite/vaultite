@@ -6,7 +6,7 @@ import {
   Puzzle, Settings2, ShieldAlert, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
-import { dateText } from "@/core/data"
+import { fmtAgo } from "@/core/data"
 import {
   applyBundle, bundleText, deleteBundle, exportBundle, importBundle, previewOf, previewUrl, refreshBundles, restoreSetup, runsCode, saveBundle,
   skipOnboarding, startSave, takenShot, useBundles, type BundleInfo,
@@ -23,17 +23,11 @@ import { useSheetGuard } from "@/components/DetailSheet"
 import { PageHeader, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/Button"
 
 const stem = (p: string) => p.split("/").pop()!.replace(/\.(md|base|canvas|html|csv)$/, "")
 const iconOfBundle = (b: Pick<BundleInfo, "icon">) => namedIcon(b.icon) ?? Package
 const tintOfBundle = (b: Pick<BundleInfo, "tint">) => tintOf(b.tint) ?? "var(--primary)"
-const button = "inline-flex h-9 shrink-0 cursor-pointer items-center justify-center gap-1.5 rounded-[8px] px-3.5 text-[15px] font-medium transition-colors disabled:cursor-default disabled:opacity-50 md:h-8 md:text-[13px]"
-const primary = cn(button, "bg-primary text-primary-foreground hover:bg-primary/85")
-const secondary = cn(button, "bg-foreground/[0.06] text-foreground hover:bg-foreground/[0.1]")
-const ago = (iso: string) => {
-  const s = (Date.now() - Date.parse(iso)) / 1000
-  return s < 90 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < 86400 ? `${Math.round(s / 3600)} h ago` : dateText(new Date(iso), { day: "numeric", month: "short" })
-}
 
 // ---------- a bundle's card picture ----------
 // Drawn from what the bundle sets (its panels, its first pinned page's blocks), a sketch rather than every detail.
@@ -320,17 +314,17 @@ export function Bundles({ store }: { store: Store }) {
     <>
       <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          {welcome && <button type="button" className={secondary} onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with Minimal</button>}
-          <button type="button" className={welcome ? secondary : primary} onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</button>
+          {welcome && <Button onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with Minimal</Button>}
+          <Button look={welcome ? "secondary" : "primary"} onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
         </div>
       </PageHeader>
       {prev && (
         <div className="glass mb-5 flex items-center gap-3 rounded-[12px] px-4 py-3" data-bundles-previous>
           <History className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />
           <div className="min-w-0 flex-1">
-            <div className="text-[14px] font-medium">Applied {prev.name} {ago(prev.at)}</div>
+            <div className="text-[14px] font-medium">Applied {prev.name} {fmtAgo(prev.at)}</div>
           </div>
-          <button type="button" className={secondary} onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))}>Restore previous setup</button>
+          <Button onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))}>Restore previous setup</Button>
         </div>
       )}
       <div className="@container" data-keylist>
@@ -452,11 +446,11 @@ export function BundlePreview({ id }: { id: string }) {
     <div data-bundle-preview={b.id}>
       <SheetHead icon={Icon} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : "Your bundle"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <button type="button" className={primary} disabled={busy || plan.empty || !!b.problems.length} onClick={apply} data-bundle-apply>
+        <Button look="primary" disabled={busy || plan.empty || !!b.problems.length} onClick={apply} data-bundle-apply>
           {plan.empty ? "This is your setup already" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
-        </button>
-        {b.source === "vault" && <button type="button" className={secondary} onClick={() => exportBundle(b).catch((e) => notifyError(e, "Couldn't export it"))}><Download className="size-4" strokeWidth={2} />Export</button>}
-        {b.source === "vault" && <button type="button" className={secondary} onClick={() => { closeDetail(); void removeBundle(b) }}><Trash2 className="size-4" strokeWidth={2} />Delete</button>}
+        </Button>
+        {b.source === "vault" && <Button onClick={() => exportBundle(b).catch((e) => notifyError(e, "Couldn't export it"))}><Download className="size-4" strokeWidth={2} />Export</Button>}
+        {b.source === "vault" && <Button onClick={() => { closeDetail(); void removeBundle(b) }}><Trash2 className="size-4" strokeWidth={2} />Delete</Button>}
       </div>
       {code && (
         <div className="mb-4 flex gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--red)_10%,transparent)] p-3.5" data-bundle-code>
@@ -627,7 +621,7 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
             : <>It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
               pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows. Not your notes.</>}
         </p>
-        <div><button type="submit" className={primary} disabled={busy || !name.trim()} data-bundle-save>{clash ? "Replace" : "Save"}</button></div>
+        <div><Button look="primary" type="submit" disabled={busy || !name.trim()} data-bundle-save>{clash ? "Replace" : "Save"}</Button></div>
       </div>
     </form>
   )

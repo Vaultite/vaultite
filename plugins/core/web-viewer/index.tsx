@@ -3,14 +3,11 @@
 // Inbox events.
 import { lazy, Suspense, useEffect } from "react"
 import { ExternalLink, Globe, PencilLine, Scissors, Search } from "lucide-react"
-import {
-  choose, definePlugin, focusGroup, get, getStore, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut,
-  saveAttachments, showLabel, systemNotify, selectedText, useCommandList, useVaultChange, webPageActions, webPages, type WebEvent,
-} from "@vaultite"
+import { choose, definePlugin, focusGroup, getStore, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type WebEvent } from "@vaultite"
 import { addressOf, hostOf, searchUrl } from "./address"
 import { iconCame, siteIcon } from "./icons"
 import { WebPagesPanel, WebPagesView } from "./Pages"
-import { focusedPage, getSettings, linksInViewer, profile, setSettings, SETTINGS_DIR, shown, titleOf, type Settings } from "./state"
+import { focusedPage, linksInViewer, profile, settings, shown, titleOf } from "./state"
 
 const WebPage = lazy(() => import("./WebPage"))
 
@@ -22,7 +19,7 @@ function askAddress() {
   choose({
     title: "Open web page", placeholder: "An address, or words to search for", items: [],
     empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">Type an address (example.com) or what to search for.</p>,
-    other: (typed) => { const to = addressOf(typed, getSettings().search); return to ? { id: to, label: `Open ${to}` } : null },
+    other: (typed) => { const to = addressOf(typed, settings.get().search); return to ? { id: to, label: `Open ${to}` } : null },
     onPick: (it) => openPage(it.id),
   })
 }
@@ -44,7 +41,7 @@ async function saveImage(m: Extract<WebEvent, { type: "image" }>) {
 
 /** A page's notification, or news of a session in it, told the user (see the head of this file). */
 function pageNotified(m: Extract<WebEvent, { type: "notify" | "session" }>) {
-  if (getSettings().notifications === false) return
+  if (settings.get().notifications === false) return
   // Looking at it: the page (a session's: showing that session) is the focused pane's, in a window that's in front.
   const page = focusedPage()
   const looking = document.visibilityState === "visible" && document.hasFocus() && !!page
@@ -98,9 +95,7 @@ function FloatLayer() {
 
 /** The plugin's work in the app: its settings, the app's shortcuts told to the desktop app, and its events. */
 function Background() {
-  const read = () => { get<Settings>("config/plugin/web-viewer").then((s) => setSettings(s && typeof s === "object" ? s : {}), () => {}) }
-  useEffect(read, [])
-  useVaultChange(read, (p) => p.startsWith(`${SETTINGS_DIR}/`))
+  useEffect(() => void settings.ready(), [])
   // (Claude Code on the web's sessions: their news comes as `session` events from now on)
   useEffect(() => { void webPages?.cloud?.().catch(() => {}) }, [])
   const commands = useCommandList()
@@ -166,7 +161,7 @@ export default definePlugin({
     { id: "web:clip", name: "Clip current web page", when: () => !!focusedPage(), run: () => focusedPage()?.clip(), icon: Scissors },
     { id: "web:browser", name: "Open current web page in the browser", when: () => !!focusedPage(), run: () => { const p = focusedPage(); if (p) void webPages?.external(p.url()) }, icon: ExternalLink },
     { id: "web:address", name: "Edit current web page's address", when: () => !!focusedPage(), run: () => focusedPage()?.focusAddress(), icon: PencilLine },
-    { id: "web:search-selection", name: "Search the web for selected text", desktop: true, when: () => !!webPages && !!selectedText().trim(), run: () => openWebLink(searchUrl(selectedText().replace(/\s+/g, " "), getSettings().search)), icon: Search },
+    { id: "web:search-selection", name: "Search the web for selected text", desktop: true, when: () => !!webPages && !!selectedText().trim(), run: () => openWebLink(searchUrl(selectedText().replace(/\s+/g, " "), settings.get().search)), icon: Search },
     { id: "web:pages-tab", name: "Open web pages in a tab", desktop: true, when: () => !!webPages, run: () => openView("web-pages", { newTab: !isViewOpen("view:web-pages") }) },
   ],
   background: Background,

@@ -1,12 +1,11 @@
 // A lesson drawn one step at a time: each step's question opens the next, right or wrong (the why matters more than
 // the score). Where the user is: the file's `step`.
-import { detailPath, Markdown, openDetail, scrollPage, setProperty, type PageCtx } from "@vaultite"
+import { Button, cn, detailPath, Markdown, openDetail, scrollPage, setProperty, type PageCtx } from "@vaultite"
 import { Check, RotateCcw, X } from "lucide-react"
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { parseLesson, shuffled, type Question, type Step } from "./format.ts"
 
-const btn = "cursor-pointer rounded-[8px] px-4 py-2 text-[15px]"
-const primary = `${btn} bg-primary text-primary-foreground hover:opacity-90`
+const big = "h-auto px-4 py-2 font-normal md:h-auto md:text-[15px]"
 
 function Choice({ q, answered, onAnswer }: { q: Extract<Question, { kind: "choice" }>; answered: boolean; onAnswer: () => void }) {
   const opts = useMemo(() => shuffled(q.options, q.text), [q])
@@ -41,7 +40,7 @@ function Recall({ q, answered, onAnswer }: { q: Extract<Question, { kind: "recal
   if (!answered) return (
     <>
       <p className="mt-2 text-[14px] text-muted-foreground">Answer in your head first, then check.</p>
-      <button type="button" className={`mt-3 ${primary}`} onClick={onAnswer}>Show answer</button>
+      <Button look="primary" className={cn(big, "mt-3")} onClick={onAnswer}>Show answer</Button>
     </>
   )
   return <div className="mt-3 border-l-2 border-[var(--green)] pl-3"><Markdown text={q.answer} full /></div>
@@ -119,7 +118,7 @@ function StepView({ s, path, past, onNext }: { s: Step; path: string; past: bool
     <>
       <h2 className="mb-2 text-[20px] font-semibold">{s.title}</h2>
       {s.first ? <>{ask}{answered && <div className="mt-4">{body}</div>}</> : <>{body}{ask}</>}
-      {onNext && ready && <button type="button" className={`mt-4 ${primary}`} onClick={onNext}>Continue</button>}
+      {onNext && ready && <Button look="primary" className={cn(big, "mt-4")} onClick={onNext}>Continue</Button>}
     </>
   )
 }
@@ -166,7 +165,7 @@ export function LessonPage({ path, body, fm }: PageCtx) {
           <div className="flex items-center gap-2 font-semibold"><Check className="size-5 text-[var(--green)]" /> Done: all {steps.length} steps</div>
           {recalls > 0 && <p className="mt-2 text-muted-foreground">Its {recalls === 1 ? "recall question is" : `${recalls} recall questions are`} now in your cards, to come back before you forget.</p>}
           <div className="mt-3 flex gap-4">
-            {recalls > 0 && <button type="button" className={primary} onClick={() => openDetail(detailPath("review"))}>Review cards</button>}
+            {recalls > 0 && <Button look="primary" className={big} onClick={() => openDetail(detailPath("review"))}>Review cards</Button>}
             <button type="button" onClick={() => go(0)} className="flex cursor-pointer items-center gap-1 text-muted-foreground hover:text-foreground">
               <RotateCcw className="size-4" /> Start over
             </button>

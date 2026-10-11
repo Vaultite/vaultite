@@ -74,7 +74,7 @@ function slices(people: P[]) {
   const n = new Map<string, number>()
   for (const p of people) n.set(colorOf(p.relation), (n.get(colorOf(p.relation)) ?? 0) + 1)
   let parts = [...n].sort((a, b) => b[1] - a[1])
-  if (parts.length > 4) parts = [...parts.slice(0, 3), ["#8e8e93", parts.slice(3).reduce((s, [, c]) => s + c, 0)]]
+  if (parts.length > 4) parts = [...parts.slice(0, 3), ["var(--muted-foreground)", parts.slice(3).reduce((s, [, c]) => s + c, 0)]]
   let at = 0
   const stops = parts.map(([c, k]) => {
     const from = (at / people.length) * 360

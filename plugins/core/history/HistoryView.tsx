@@ -2,22 +2,13 @@
 // copies it.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Copy, History, RotateCcw } from "lucide-react"
-import { cn, copyText, dateText, diffLines, get, openFile, post, put, readFile, notify, notifyError, useVaultChange } from "@vaultite"
+import { capitalize, cn, copyText, diffLines, fmtAgo, fmtStamp, get, notify, notifyError, openFile, plural, post, put, readFile, useVaultChange } from "@vaultite"
 
 /** One kept here (`size`), or another plugin's (`source`: Git's commits, with their `id`, `title` and `by`). */
 type Version = { t: number; size?: number; source?: string; label?: string; id?: string; title?: string; by?: string }
 type Other = { source: string; label: string; versions: { id: string; t: number; title?: string; by?: string }[] }
 const keyOf = (v: Version) => (v.source ? `${v.source}:${v.id}` : String(v.t))
 
-const when = (t: number) => {
-  const d = (Date.now() - t) / 1000
-  if (d < 60) return "Just now"
-  if (d < 3600) return `${Math.round(d / 60)} min ago`
-  if (d < 86400) return `${Math.round(d / 3600)} h ago`
-  const days = Math.round(d / 86400)
-  return days === 1 ? "Yesterday" : `${days} days ago`
-}
-const stamp = (t: number) => dateText(new Date(t), { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })
 const kb = (n: number) => (n < 1024 ? `${n} B` : `${(n / 1024).toFixed(n < 10240 ? 1 : 0)} KB`)
 
 type Line = { kind: "same" | "add" | "del"; text: string }
@@ -114,7 +105,7 @@ export function HistoryView({ path }: { path: string }) {
     try {
       if (before === null) await post("file", { path, text })  // it was deleted: it comes back
       else await put("file", { path, text, base: before })
-      notify(`Restored the version from ${stamp(v.t)}`, {
+      notify(`Restored the version from ${fmtStamp(v.t)}`, {
         action: before === null ? undefined : {
           label: "Undo",
           run: () => { put("file", { path, text: before, base: text }).then(load, (e) => notifyError(e)) },
@@ -146,9 +137,9 @@ export function HistoryView({ path }: { path: string }) {
                 <button type="button" role="option" aria-selected={keyOf(x) === sel} onClick={() => setSel(keyOf(x))} data-source={x.source}
                   className={cn("flex w-full cursor-pointer flex-col rounded-[8px] px-3 py-2 text-left md:rounded-[6px] md:py-1.5",
                     keyOf(x) === sel ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]")}>
-                  <span className="text-[15px] font-medium md:text-[13px]">{when(x.t)}</span>
+                  <span className="text-[15px] font-medium md:text-[13px]">{capitalize(fmtAgo(x.t))}</span>
                   <span className="truncate text-[13px] text-muted-foreground md:text-[12px]">
-                    {x.source ? `${x.label}: ${x.title || "(no message)"}${x.by ? ` · ${x.by}` : ""}` : `${stamp(x.t)} · ${kb(x.size ?? 0)}`}
+                    {x.source ? `${x.label}: ${x.title || "(no message)"}${x.by ? ` · ${x.by}` : ""}` : `${fmtStamp(x.t)} · ${kb(x.size ?? 0)}`}
                   </span>
                 </button>
               </li>
@@ -157,8 +148,8 @@ export function HistoryView({ path }: { path: string }) {
           <section className="min-w-0 flex-1" aria-label="Version">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <div className="w-full min-w-0 text-[13px] text-muted-foreground @md:w-auto @md:flex-1">
-                {v && <span className="font-medium text-foreground">{stamp(v.t)}{v.source ? ` · ${v.label}` : ""}</span>}
-                {lines && <span> · {changes ? `${changes} line${changes === 1 ? "" : "s"} differ from the file now` : "the same as the file now"}</span>}
+                {v && <span className="font-medium text-foreground">{fmtStamp(v.t)}{v.source ? ` · ${v.label}` : ""}</span>}
+                {lines && <span> · {changes ? `${plural(changes, "line")} differ from the file now` : "the same as the file now"}</span>}
               </div>
               <button type="button" disabled={text === null} onClick={() => text !== null && copyText(text).then(() => notify("Copied the version", { id: "copied" }), (e) => notifyError(e))}
                 className="flex h-8 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3 text-[15px] font-medium hover:bg-foreground/[0.1] disabled:opacity-40 md:h-7 md:rounded-[6px] md:text-[13px]">

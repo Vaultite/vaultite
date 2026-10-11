@@ -2,7 +2,7 @@
 import { folderOf } from "@/core/files"
 import { activeTab, newTab, selectTab } from "@/core/workspace"
 import { zoomIn, zoomNew, zoomOut } from "@/core/motion"
-import { afterSheets, closeDetail, route } from "@/core/nav"
+import { afterSheets, closeDetail, replaceHash, route } from "@/core/nav"
 import { isPage } from "@/core/pages"
 import { shootTab } from "@/core/tabShots"
 
@@ -13,8 +13,7 @@ export async function openSwitcher(from?: { page: DOMRect; reset: () => void }) 
   // From a finger dragging the bar up: taken as the drag began, and the page shrinks on from where the finger left it.
   if (!from) await shootTab()
   zoomOut(() => {
-    history.replaceState({ sheet: 0 }, "", `#${route().tab}/tabs`)
-    dispatchEvent(new HashChangeEvent("hashchange"))
+    replaceHash(`${route().tab}/tabs`, { sheet: 0 })
   }, () => activeTab().id, from?.page, from?.reset)
 }
 

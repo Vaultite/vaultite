@@ -1,10 +1,10 @@
 // Workspaces' state: the slots (the store's, with this app's own changes on top), the current one, saving the tabs
 // into it and following the file (see index.tsx). No components here: they're in Numbers.tsx.
-import { useSyncExternalStore } from "react"
 import { Copy, LayoutPanelLeft, Pencil, Plus, Settings2, Trash2 } from "lucide-react"
 import {
-  del, devicePref, getStore, getTabLayout, isViewOpen, notify, openFile, openPluginSettings, openView, notifyError, post, put, readSidebars, sameSidebars, savedSidebars, setDefaultSidebars,
-  setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem, type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
+  cell, del, devicePref, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, post, put, readSidebars,
+  replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
+  type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
 import { blankLayout, isBlank } from "./blank"
 
@@ -54,10 +54,9 @@ export const current = () => (slots() ? picked() || used()[0] || 1 : 0)
 /** The number lit in the header. */
 export const lit = () => current() || 1
 
-const subs = new Set<() => void>()
-let version = 0
-export const emit = () => { version++; subs.forEach((f) => f()); workspaceChanged() }
-export const useVersion = () => useSyncExternalStore((f) => { subs.add(f); return () => { subs.delete(f) } }, () => version)
+const version = cell(0)
+export const emit = () => { version.update((n) => n + 1); workspaceChanged() }
+export const useVersion = () => version.use()
 
 /** The last write on its way (a move waits for it, so the server has this device's tabs first). */
 let writing: Promise<unknown> = Promise.resolve()
@@ -249,7 +248,7 @@ function arrive() {
   const m = /^#(file|view)\/([^/]+)/.exec(at)
   if (m) { try { const to = decodeURIComponent(m[2]); if (m[1] === "file") openFile(to, { newTab: !JSON.stringify(getTabLayout().root).includes(JSON.stringify(`file:${to}`)) }); else openView(to, { newTab: !isViewOpen(to) }) } catch { /* a bad address */ } }
   // Any other place (a sheet, like #new/plugin/graph): the address again, for the app to follow as it would have.
-  else if (at.length > 1 && location.hash !== at) { history.replaceState(null, "", at); dispatchEvent(new HashChangeEvent("hashchange")) }
+  else if (at.length > 1 && location.hash !== at) replaceHash(at)
 }
 
 export function sync() {

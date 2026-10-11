@@ -12,7 +12,7 @@ import { EmbedView } from "@/components/NoteEmbed"
 import { cn } from "@/lib/utils"
 
 /** What Markdown from `from` needs of the vault: its links resolved as written there, its images' addresses. */
-export function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
+function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
   if (!s) return {}
   const resolve = resolver(s)
   return {

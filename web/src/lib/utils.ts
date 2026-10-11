@@ -1,6 +1,8 @@
 export { cn } from "cn"
 
 export const capitalize = (s: string | undefined) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : "")
+/** A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s). */
+export const plural = (n: number, word: string, many = `${word}s`) => `${n} ${n === 1 ? word : many}`
 export const isDark = () => document.documentElement.classList.contains("dark")
 
 /** A length in Tailwind's spacing unit, so it follows density like `h-6.5`: `space(6.5)` is 26px in compact. Text,

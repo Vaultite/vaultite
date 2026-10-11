@@ -1,9 +1,9 @@
 // One file's links, backlinks and outgoing links in one: linked and unlinked mentions ("Link" makes
 // one a [[link]]) and outgoing links. A sidebar panel, or a tab following the other panes' file.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { ChevronRight, FileQuestion, FileText, SquareArrowOutUpRight } from "lucide-react"
+import { FileQuestion, FileText, SquareArrowOutUpRight } from "lucide-react"
 import {
-  backlinks, cn, openDetail, openFile, openView, post, resolver, SidebarHeading, snippet, startDrag, stem, useFocusedFile,
+  backlinks, cn, Foldable, HeadingButton, openDetail, openFile, openView, post, resolver, SidebarHeading, snippet, startDrag, stem, useFocusedFile,
   useLive, useNearEnd, useVaultChange, type SidebarCtx, type Store,
 } from "@vaultite"
 
@@ -42,28 +42,6 @@ function useLinks(store: Store, path: string) {
   const unlinked = path && isMd(path) ? data ?? null : { total: 0, files: 0, mentions: [] }
   const more = () => { if (data && data.mentions.length < data.total && data.mentions.length >= limit) setLimit(limit + PAGE) }
   return { linked, outgoing, unlinked, more, refresh: () => setV(Date.now()) }
-}
-
-/** A group's open or closed state, per device (like the sidebar's own). */
-function useOpen(key: string, dflt: boolean): [boolean, (v: boolean) => void] {
-  const k = `vaultite.links.${key}`
-  const [open, set] = useState(() => { try { const v = localStorage.getItem(k); return v === null ? dflt : v === "1" } catch { return dflt } })
-  return [open, (v) => { set(v); try { localStorage.setItem(k, v ? "1" : "0") } catch { /* private mode */ } }]
-}
-
-function Group({ id, title, count, dflt = true, children }: { id: string; title: string; count: number | null; dflt?: boolean; children: ReactNode }) {
-  const [open, setOpen] = useOpen(id, dflt)
-  return (
-    <div data-links-group={id}>
-      <button type="button" data-keyrow onClick={() => setOpen(!open)} aria-expanded={open}
-        className="flex h-7 w-full cursor-pointer items-center gap-1 rounded-[5px] pr-1 pl-1.5 text-left text-[12px] font-medium text-muted-foreground hover:bg-foreground/[0.04]">
-        <ChevronRight className={cn("size-3.5 shrink-0 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
-        <span className="flex-1 truncate">{title}</span>
-        {count !== null && <span className="text-tertiary tabular-nums" data-count>{count}</span>}
-      </button>
-      {open && <div className="flex flex-col gap-px pb-1">{children}</div>}
-    </div>
-  )
 }
 
 function Item({ icon: Icon, title, context, faint, onOpen, action, tip, path }: {
@@ -120,12 +98,12 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
   }
   return (
     <div className="flex flex-col" data-links-for={path}>
-      <Group id="linked" title="Linked mentions" count={linked.length}>
+      <Foldable data-links-group="linked" keep="links.linked" title="Linked mentions" count={linked.length}>
         {linked.length ? linked.map(({ file, title, context }) => (
           <Item key={file.path} icon={FileText} title={title} context={context} onOpen={() => open(file.path)} path={file.path} />
         )) : empty("Nothing links here yet.")}
-      </Group>
-      <Group id="unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
+      </Foldable>
+      <Foldable data-links-group="unlinked" keep="links.unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
         {!unlinked ? empty("Looking…") : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
           const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
           return (
@@ -142,8 +120,8 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
         {unlinked.mentions.length < unlinked.total && (
           <More key={unlinked.mentions.length} onNear={more}>{unlinked.total - unlinked.mentions.length} more…</More>
         )}</> : empty(isMd(path) ? "Its name isn't written anywhere else." : "Only notes have mentions.")}
-      </Group>
-      <Group id="outgoing" title="Outgoing links" count={outgoing.length}>
+      </Foldable>
+      <Foldable data-links-group="outgoing" keep="links.outgoing" title="Outgoing links" count={outgoing.length}>
         {outgoing.length ? outgoing.map((o) => {
           const to = o.file, detail = o.detail
           return (
@@ -152,12 +130,11 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
               onOpen={to ? () => open(to) : detail ? () => openDetail(detail) : undefined} path={to || undefined} />
           )
         }) : empty("It doesn't link anywhere.")}
-      </Group>
+      </Foldable>
     </div>
   )
 }
 
-const button = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
 /** The sidebar's Links panel, for the focused tab's file, as tall as its links (the sidebar scrolls). In the icon rail
  *  it's the flyout's (index.tsx: `flyout`), which scrolls it. */
@@ -169,8 +146,7 @@ export function LinksPanel({ store, open, file: focused }: SidebarCtx) {
   return (
     <div className="flex shrink-0 flex-col" data-links-panel>
       <SidebarHeading title="Links" open={open}>
-        <button type="button" className={button} aria-label="Open links in a tab" data-tip="Open in a tab"
-          onClick={() => openView("links", { newTab: true })}><SquareArrowOutUpRight className="size-3.5" strokeWidth={2.25} /></button>
+        <HeadingButton icon={SquareArrowOutUpRight} label="Open links in a tab" tip="Open in a tab" onClick={() => openView("links", { newTab: true })} />
       </SidebarHeading>
       {file ? (
         <LinksList store={store} path={file} />

@@ -1,7 +1,7 @@
 // Errors: a small error tracker of the app's and server's errors, grouped by kind, kept on this machine (a crash loop would
 // churn iCloud) and never sent anywhere. The first time a kind happens, the user is told.
 import crypto from "node:crypto"
-import { bullets, HTTPError, localDate, localTime, OpError, Plugin, section, type ServerError } from "../../../core/plugins.ts"
+import { bullets, fmtAgo, HTTPError, OpError, Plugin, section, type ServerError } from "../../../core/plugins.ts"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList, Source } from "./model.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -196,13 +196,9 @@ plugin.route("DELETE", "errors/*", (req) => forget(req.arg(0)))
 
 // ---------- operations (core/ops.ts): `vau errors`, `vau errors show <id>`, `vau errors clear`
 
-const ago = (t: number) => {
-  const s = Math.round((Date.now() - t) / 1000)
-  return s < 60 ? "just now" : s < 3600 ? `${Math.round(s / 60)} min ago` : s < DAY / 1000 ? `${Math.round(s / 3600)} h ago` : `${localDate(t)} ${localTime(t)}`
-}
 const sourceLabel = (g: ErrorGroup) => (g.source === "app" ? `app${g.devices.length ? ` (${g.devices.join(", ")})` : ""}` : "server")
 const groupLine = (g: ErrorGroup) =>
-  `${g.id}  ${ago(g.last)}  ${sourceLabel(g)}, ${g.kind}${g.count > 1 ? `, ×${g.count}` : ""}: ${g.message}`
+  `${g.id}  ${fmtAgo(g.last)}  ${sourceLabel(g)}, ${g.kind}${g.count > 1 ? `, ×${g.count}` : ""}: ${g.message}`
 
 plugin.op({
   id: "errors.list",
@@ -256,7 +252,7 @@ plugin.op({
     const g = d.group, e = g.latest
     return [
       `${g.message}`, "",
-      `${sourceLabel(g)}, ${g.kind}: ${g.count} time${g.count === 1 ? "" : "s"}${g.fatal ? ` (${g.fatal} fatal)` : ""}, first ${ago(g.first)}, last ${ago(g.last)}`,
+      `${sourceLabel(g)}, ${g.kind}: ${g.count} time${g.count === 1 ? "" : "s"}${g.fatal ? ` (${g.fatal} fatal)` : ""}, first ${fmtAgo(g.first)}, last ${fmtAgo(g.last)}`,
       e.stack ? `\nStack:\n${e.stack}` : "", e.component ? `\nComponents:${e.component}` : "",
       `\nTimes (newest first):`, ...d.events.map(eventText),
     ].filter(Boolean).join("\n")
@@ -290,5 +286,5 @@ plugin.block("errors", (ctx) => {
   const title = typeof o.title === "string" && o.title ? o.title : "Errors"
   if (!r.groups.length) return section(title, "_No errors recorded._")
   return section(title, `${r.total} kinds, ${r.events} times.`, bullets(r.groups.map((g) =>
-    `${ago(g.last)} · ${sourceLabel(g)}, ${g.kind}${g.count > 1 ? ` (×${g.count})` : ""} · ${g.message} · \`${g.id}\``)))
+    `${fmtAgo(g.last)} · ${sourceLabel(g)}, ${g.kind}${g.count > 1 ? ` (×${g.count})` : ""} · ${g.message} · \`${g.id}\``)))
 })

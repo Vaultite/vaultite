@@ -2,7 +2,8 @@
 // even on a page (which otherwise opens files beside it).
 import { memo } from "react"
 import type { Store } from "@/core/data"
-import { goHere, hashOf, isDesktop } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
+import { goHere, hashOf } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
 import { offPlugin } from "@/core/pages"
 import { detailPath } from "@/core/define"

@@ -50,7 +50,18 @@ const BUILD = (() => {
   } catch { return undefined }
 })()
 
-const textOf = (e: unknown) => (e instanceof Error ? `${e.name && e.name !== "Error" ? `${e.name}: ` : ""}${e.message}` : typeof e === "string" ? e : (() => { try { return JSON.stringify(e) ?? String(e) } catch { return String(e) } })())
+function textOf(e: unknown): string {
+  if (e instanceof Error) return `${e.name && e.name !== "Error" ? `${e.name}: ` : ""}${e.message}`
+  if (typeof e !== "object" || e === null) return String(e)
+  // (not an Error: an Event, a DOMException-like object; JSON would say "{}")
+  const o = e as { name?: unknown; message?: unknown; type?: unknown; target?: unknown }
+  const str = (v: unknown) => (typeof v === "string" ? v : "")
+  const kind = str(o.name) || (e.constructor?.name !== "Object" ? str(e.constructor?.name) : "")
+  const el = o.target instanceof Element ? o.target as HTMLScriptElement : null
+  const said = [str(o.message), str(o.type) && `${o.type} event`, el && `<${el.tagName.toLowerCase()}${el.src ? ` ${el.src}` : ""}>`].filter(Boolean)
+  if (kind || said.length) return `${kind || "Object"}${said.length ? `: ${said.join(", ")}` : ""}`
+  try { const json = JSON.stringify(e); return json === "{}" ? "An empty object (not an Error)" : json } catch { return String(e) }
+}
 
 let minute = 0, inMinute = 0
 /** An error the app had. `extra`: React's component stack, `fatal`. Never throws. */

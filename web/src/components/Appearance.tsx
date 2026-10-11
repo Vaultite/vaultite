@@ -49,7 +49,7 @@ const modeTip = (only?: string) => only ? `${only === "dark" ? "Dark" : "Light"}
 
 /** Every colour scheme: the app's, then the vault's Obsidian themes (an unreadable one a dashed tile saying why), and a
  *  button to their folder on this machine. */
-export function SchemeGrid() {
+function SchemeGrid() {
   const { scheme } = usePrefs()
   const { themes } = useVaultAppearance()
   const pick = (id: string) => setPrefs({ scheme: id })

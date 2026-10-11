@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from "react"
 import { CircleAlert, FlaskConical, FolderOpen, FolderPlus, LoaderCircle, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/Button"
 
 type Vau = { path: string | null; onPath: boolean; system: boolean; other: string | null }
 type Chosen = { path?: string; made?: boolean; added?: boolean } | null
@@ -99,7 +100,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2 px-1">
                 <h2 className="flex-1 text-[12px] font-semibold text-muted-foreground">{!!info.obsidian.length && "Vaults on this machine"}</h2>
-                <Btn onClick={() => void pick(setFolder)} data-pick>Choose a folder…</Btn>
+                <Button size="small" look="outline" onClick={() => void pick(setFolder)} data-pick>Choose a folder…</Button>
               </div>
               <div role="radiogroup" aria-label="Folders" className="flex flex-col gap-1.5">
                 {info.obsidian.map((o) => (
@@ -112,12 +113,12 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
         </div>
         {error && <p role="alert" className="flex items-start gap-1.5 pb-2 text-[13px] text-destructive"><CircleAlert className="mt-px size-4 shrink-0" />{error}</p>}
         <footer className="flex shrink-0 flex-col items-stretch gap-2 pt-2 pb-6">
-          <Btn primary big type="submit" disabled={busy || !ready} autoFocus data-next>
+          <Button size="small" look="primary" className="h-9 px-5 text-[14px]" type="submit" disabled={busy || !ready} autoFocus data-next>
             {busy ? <LoaderCircle className="mx-auto size-4 animate-spin" /> : kind === "new" ? "Create vault" : "Open vault"}
-          </Btn>
-          <Btn big disabled={busy} onClick={() => void run(() => setup.sandbox())} data-look>
+          </Button>
+          <Button size="small" look="outline" className="h-9 px-5 text-[14px]" disabled={busy} onClick={() => void run(() => setup.sandbox())} data-look>
             <span className="flex items-center justify-center gap-1.5"><FlaskConical className="size-4" strokeWidth={2} />Try the playground first</span>
-          </Btn>
+          </Button>
         </footer>
       </form>
     </div>
@@ -127,17 +128,6 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
 // ---------- pieces ----------
 const field = "h-7 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none select-text focus:ring-2 focus:ring-primary/40"
 
-function Btn({ primary, big, children, type = "button", ...p }: { primary?: boolean; big?: boolean; children: ReactNode; type?: "button" | "submit"; onClick?: () => void
-  disabled?: boolean; autoFocus?: boolean } & Record<`data-${string}`, unknown>) {
-  return (
-    <button type={type} {...p}
-      className={cn("shrink-0 cursor-pointer rounded-[6px] font-medium transition-colors disabled:cursor-default disabled:opacity-50 focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none",
-        big ? "h-9 px-5 text-[14px]" : "h-7 px-3 text-[13px]",
-        primary ? "bg-primary text-primary-foreground hover:bg-primary/85" : "border-[0.5px] border-border bg-background hover:bg-foreground/[0.05]")}>
-      {children}
-    </button>
-  )
-}
 
 function Chip({ on, children, onClick, ...p }: { on: boolean; children: ReactNode; onClick: () => void } & Record<`data-${string}`, unknown>) {
   return (

@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react"
 import { FileClock, FilePen, History } from "lucide-react"
-import {
-  changedFiles, cn, definePlugin, get, menuFor, openFile, openItem, openingSoon, openInSplit, openView, panelMenu, RecentList,
-  SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, useVaultChange, type RecentKind, type SidebarCtx, type Store,
-} from "@vaultite"
+import { changedFiles, cn, definePlugin, menuFor, openFile, openingSoon, openInSplit, openItem, openView, panelMenu, pluginSettings, RecentList, SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, type RecentKind, type SidebarCtx, type Store } from "@vaultite"
 
 // Recent files: opened lately in this workspace, or changed lately (a toggle kept
 // per workspace). The lists are the app's (components/RecentFiles.tsx).
@@ -20,12 +17,10 @@ function useList(store: Store, kind: RecentKind, n: number) {
 
 /** How many files a list shows at first (the plugin's `limit` setting, 50 as Obsidian's Recent Files plugin). */
 const LIMIT = 50
+const settings = pluginSettings<{ limit?: unknown }>("recent")
 function useLimit() {
-  const [n, setN] = useState(LIMIT)
-  const read = () => { get<{ limit?: unknown }>("config/plugin/recent").then((s) => { const v = Math.floor(Number(s?.limit)); setN(v >= 1 ? v : LIMIT) }, () => {}) }
-  useEffect(read, [])
-  useVaultChange(read, (p) => p.startsWith(".vaultite/plugins/recent/"))
-  return n
+  const v = Math.floor(Number(settings.use().limit))
+  return v >= 1 ? v : LIMIT
 }
 
 /** A list's first `limit` files, then `limit` more at each Show more (one more asked for, to know there are more). */

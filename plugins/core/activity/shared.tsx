@@ -1,38 +1,10 @@
-// What the Activity plugin's blocks, panel and view share: polling its routes, how each kind of actor looks, times and
+// What the Activity plugin's blocks, panel and view share: how each kind of actor looks, times and
 // durations in words, and going to an agent's terminal.
-import { useEffect, useState, type ComponentType } from "react"
+import { type ComponentType } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Bot, Code, HardDrive, Terminal, User } from "lucide-react"
-import { dateText, get, isViewOpen, notify, numberText, openView, useAgents, useLive } from "@vaultite"
+import { dateText, isViewOpen, notify, numberText, openView, useAgents } from "@vaultite"
 import type { Actor, ActorKind } from "./model"
-
-/** A route of this plugin, polled every `every` ms while the page is visible (mockLive in previews, so nothing is
- *  fetched there). The same answer redraws nothing. */
-export function usePoll<T>(path: string, every = 4000) {
-  const first = useLive<T>(path)
-  // In a preview useLive answers at once (no loading); in the app its first answer is on its way.
-  const [preview] = useState(() => !first.loading)
-  const [polled, setPolled] = useState<{ path: string; json: string; data: T } | null>(null)
-  useEffect(() => {
-    if (preview) return
-    let on = true, busy = false
-    const load = () => {
-      if (busy || document.hidden) return
-      busy = true
-      get<T>(path).then((d) => {
-        if (!on) return
-        const json = JSON.stringify(d)
-        setPolled((p) => (p && p.path === path && p.json === json ? p : { path, json, data: d }))
-      }, () => { /* the next one may answer */ }).finally(() => { busy = false })
-    }
-    const id = setInterval(load, every)
-    const back = () => { if (!document.hidden) load() }
-    document.addEventListener("visibilitychange", back)
-    return () => { on = false; clearInterval(id); document.removeEventListener("visibilitychange", back) }
-  }, [path, every, preview])
-  const data = polled?.path === path ? polled.data : first.data
-  return { data, error: data ? null : first.error, preview }
-}
 
 type Look = { icon: LucideIcon | ComponentType<{ className?: string; strokeWidth?: number }>; tint: string }
 const KINDS: Record<ActorKind, Look & { label: string }> = {
@@ -68,23 +40,6 @@ export function whoOf(a: Actor) {
 const pad = (n: number) => String(n).padStart(2, "0")
 export const localDay = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 export const clock = (t: number) => dateText(new Date(t), { hour: "numeric", minute: "2-digit" })
-export const stamp = (t: number) => dateText(new Date(t), { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "2-digit", second: "2-digit" })
-/** "just now", "5 min ago", "3 h ago", "2 d ago". */
-export function ago(t: number) {
-  const s = (Date.now() - t) / 1000
-  if (s < 45) return "just now"
-  if (s < 3600) return `${Math.max(1, Math.round(s / 60))} min ago`
-  if (s < 86400) return `${Math.round(s / 3600)} h ago`
-  return `${Math.round(s / 86400)} d ago`
-}
-/** The same, short, for a one-line row: "now", "5m", "3h", "2d". */
-export function agoShort(t: number) {
-  const s = (Date.now() - t) / 1000
-  if (s < 45) return "now"
-  if (s < 3600) return `${Math.max(1, Math.round(s / 60))}m`
-  if (s < 86400) return `${Math.round(s / 3600)}h`
-  return `${Math.round(s / 86400)}d`
-}
 export const ms = (v: number | undefined) => (v === undefined ? "–" : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`)
 export const mb = (v: number) => (v < 1024 ? `${Math.round(v)} MB` : `${(v / 1024).toFixed(1)} GB`)
 export function uptime(s: number) {

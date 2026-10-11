@@ -10,6 +10,7 @@ import { haptic } from "@/core/haptics"
 import { usePageLock } from "@/core/pagelock"
 import { cn } from "@/lib/utils"
 import { signal } from "@/core/signal"
+import { isDesktop } from "@/core/platform"
 
 export type MenuItem = {
   label: string; icon?: LucideIcon; run: () => void; danger?: boolean; disabled?: boolean
@@ -272,7 +273,7 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   const [sub, setSub] = useState<{ label: string; rect: DOMRect; focus: boolean } | null>(null)
   const subAt = sub ? items.findIndex((it) => it.label === sub.label) : -1
   const timer = useRef(0)
-  const [drill] = useState(() => !beside && !matchMedia("(min-width: 768px)").matches)
+  const [drill] = useState(() => !beside && !isDesktop())
   // Phones: the submenus opened in place, outermost first.
   const [trail, setTrail] = useState<number[]>([])
   const shown = trail.reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)

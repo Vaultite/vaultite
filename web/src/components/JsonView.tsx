@@ -3,7 +3,7 @@
 import { useMemo, useState, type KeyboardEvent, type ReactNode } from "react"
 import { ChevronRight, ExternalLink } from "lucide-react"
 import { parseJson, setJson, type JNode } from "@/core/json"
-import { cn } from "@/lib/utils"
+import { cn, plural } from "@/lib/utils"
 import { dateText } from "@/core/data"
 import { modKey } from "@/core/platform"
 
@@ -34,8 +34,8 @@ type JObject = Extract<JNode, { kind: "object" }>
 type JArray = Extract<JNode, { kind: "array" }>
 const isBranch = (n: JNode) => n.kind === "object" || n.kind === "array"
 const count = (n: JNode) =>
-  n.kind === "object" ? `${n.entries.length} field${n.entries.length === 1 ? "" : "s"}`
-  : n.kind === "array" ? `${n.items.length} item${n.items.length === 1 ? "" : "s"}` : ""
+  n.kind === "object" ? `${plural(n.entries.length, "field")}`
+  : n.kind === "array" ? `${plural(n.items.length, "item")}` : ""
 
 function Faint({ children }: { children: ReactNode }) {
   return <span className="text-tertiary italic">{children}</span>
@@ -45,10 +45,10 @@ function Faint({ children }: { children: ReactNode }) {
 function Fields({ node, depth, edit }: { node: JObject; depth: number; edit: Edit }) {
   return (
     <div className="hairline">
-      {node.entries.map(({ key, value }, i) =>
-        isBranch(value) ? <Branch key={i} label={key} node={value} depth={depth} edit={edit} />
+      {node.entries.map(({ key, value }) =>
+        isBranch(value) ? <Branch key={key} label={key} node={value} depth={depth} edit={edit} />
           : (
-            <div key={i} className="grid min-h-9 grid-cols-[minmax(0,min(11rem,40%))_minmax(0,1fr)] items-baseline gap-4 py-2">
+            <div key={key} className="grid min-h-9 grid-cols-[minmax(0,min(11rem,40%))_minmax(0,1fr)] items-baseline gap-4 py-2">
               <span className="truncate text-muted-foreground" data-tip={key} data-tip-trunc>{key}</span>
               <Value node={value} edit={edit} />
             </div>

@@ -4,8 +4,8 @@ import {
   BookOpen, Flag, Handshake, Mail, MapPin, MessageCircle, MessageSquare, Phone, StickyNote, Users, type LucideIcon,
 } from "lucide-react"
 import {
-  AddToTimeline, addDays, cn, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf, today, WeeksGrid,
-  type BlockCtx, type FileCtx, type Store, type TimelineEntry, type TimelineKind,
+  addDays, AddToTimeline, capitalize, cn, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
+  today, WeeksGrid, type BlockCtx, type FileCtx, type Store, type TimelineEntry, type TimelineKind,
 } from "@vaultite"
 import type { Interaction, Person } from "./types"
 
@@ -22,8 +22,7 @@ const KINDS: Record<string, { label: string; icon: LucideIcon }> = {
   email: { label: "Email", icon: Mail },
   note: { label: "Note", icon: StickyNote },
 }
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
-const kindOf = (k: string) => KINDS[k] ?? { label: cap(k), icon: MessageCircle }
+const kindOf = (k: string) => KINDS[k] ?? { label: capitalize(k), icon: MessageCircle }
 /** For `## Timeline` sections (drawn by the core): contact kinds tinted, notes grey. */
 export const TIMELINE_KINDS: Record<string, TimelineKind> = Object.fromEntries(
   Object.entries(KINDS).map(([k, v]) => [k, k === "note" ? v : { ...v, tint: TINT }]))
@@ -132,9 +131,9 @@ export function PeopleGroup({ store, options }: BlockCtx) {
       <List>
         {members.map((p) => {
           const st = status(store, p)
-          if (!close) return <Row key={p.id} title={p.name} meta={p.context || cap(p.relation)} onOpen={open(p)} wrap right={ago(st.since)} />
-          const meta = p.context || [p.relation !== "friend" && p.relation !== "family" && cap(p.relation), p.usual && cap(p.usual),
-            p.every_days && often(p.every_days)].filter(Boolean).map(String).map((x, i) => (i ? x : cap(x))).join(" · ")
+          if (!close) return <Row key={p.id} title={p.name} meta={p.context || capitalize(p.relation)} onOpen={open(p)} wrap right={ago(st.since)} />
+          const meta = p.context || [p.relation !== "friend" && p.relation !== "family" && capitalize(p.relation), p.usual && capitalize(p.usual),
+            p.every_days && often(p.every_days)].filter(Boolean).map(String).map((x, i) => (i ? x : capitalize(x))).join(" · ")
           return (
             <Row key={p.id} title={p.name} onOpen={open(p)} meta={meta} wrap
               right={<div className="flex items-center gap-3"><Dots s={store} p={p} />
@@ -157,7 +156,7 @@ const str = (v: unknown) => (v === null || v === undefined ? "" : String(v))
 const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : str(v).split(",")).map((t) => t.trim()).filter(Boolean)
 
 /** A person file's kind line: their relation. */
-export const personKicker = ({ fm }: FileCtx) => cap(str(fm.relation) || "person")
+export const personKicker = ({ fm }: FileCtx) => capitalize(str(fm.relation) || "person")
 
 /** ```block-person: how you know them, where they are, what's next and how often you're in touch, read from the file as
  *  it is in the editor so it follows every edit; its fields change in place where the file can be. */
@@ -174,7 +173,7 @@ export function PersonBlock({ fm, body, path, setProperty }: BlockCtx) {
   const edit = (key: string) => setProperty && ((v: string | undefined) => setProperty(key, v))
   const byDate = new Map<string, TimelineEntry[]>()
   for (const i of touch) byDate.set(i.date, [...(byDate.get(i.date) ?? []), i])
-  const keep = [every && cap(often(every)), usual && `usually ${usual}`].filter(Boolean).join(", ")
+  const keep = [every && capitalize(often(every)), usual && `usually ${usual}`].filter(Boolean).join(", ")
   return (
     <div className="space-y-4">
       {(context || location || !!tags.length || setProperty) && (

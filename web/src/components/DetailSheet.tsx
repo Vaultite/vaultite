@@ -7,7 +7,7 @@ import { onAway } from "@/core/away"
 import { whereNow } from "@/core/files"
 import { holdFocus } from "@/core/focus"
 import { lockPage } from "@/core/pagelock"
-import { isDesktop } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
 import { cn } from "@/lib/utils"
 
 /** The open sheet's content that would be lost, as lines ("Name: My setup"), from each form's guard. */

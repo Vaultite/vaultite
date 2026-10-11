@@ -11,10 +11,11 @@ import { openDetail } from "@/core/nav"
 import { pluginIcon } from "@/core/pages"
 import { Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
-import { cn } from "@/lib/utils"
+import { capitalize, cn } from "@/lib/utils"
 import { disclosed, type Disclosures } from "../../../core/pluginmeta.ts"
 import type { BrowseEntry, BrowseSource } from "@/core/define"
 import { hostsNow, pluginById, updatePlugin, usePluginsVersion } from "@/core/plugins"
+import { Button } from "@/components/Button"
 
 type Sort = "stars" | "new" | "updated"
 type Entry = {
@@ -26,7 +27,6 @@ type Entry = {
 type Found = { url: string; available: boolean; error?: string; plugins: Entry[] }
 
 const SORTS: { value: Sort; label: string }[] = [{ value: "stars", label: "Stars" }, { value: "new", label: "New" }, { value: "updated", label: "Updated" }]
-const sentence = (s: string) => s[0].toUpperCase() + s.slice(1)
 
 function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) => void }) {
   const updated = e.released ?? e.pushed
@@ -54,7 +54,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
         </div>
         {says.length > 0 && (
           <div className="mt-0.5 text-[13px] leading-[18px] text-[var(--orange)] md:text-[12px] md:leading-[16px]" data-browse-discloses>
-            {says.map(sentence).join(". ")}.
+            {says.map(capitalize).join(". ")}.
           </div>
         )}
         {e.blocked && <div className="mt-0.5 text-[13px] text-[var(--red)] md:text-[12px]">Blocked by the directory: a known problem with this version.</div>}
@@ -72,8 +72,6 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
 
 const TONES = { green: "text-[var(--green)]", orange: "text-[var(--orange)]", red: "text-[var(--red)]" }
 
-const quiet = "mt-0.5 h-8 shrink-0 cursor-pointer rounded-[8px] bg-foreground/[0.06] px-3 text-[13px] font-medium hover:bg-foreground/[0.1] max-md:h-9 max-md:text-[15px]"
-const primary = "mt-0.5 h-8 shrink-0 cursor-pointer rounded-[8px] bg-primary px-3 text-[13px] font-medium text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-default disabled:opacity-50 max-md:h-9 max-md:text-[15px]"
 
 /** A host's entry. One a plugin here does the job of offers that first (installing the original too would only draw the
  *  same twice), the original under its … menu. */
@@ -96,12 +94,12 @@ function HostRow({ e, busy, install, use, show }: { e: BrowseEntry; busy: boolea
           {e.installed && <span className="text-foreground/80" data-browse-installed>Installed</span>}
         </div>
       </div>
-      {e.installed ? e.plugin && <button type="button" onClick={() => show(e.plugin!)} className={quiet}>Show</button>
-        : alt?.on ? <button type="button" onClick={() => show(alt.id)} className={quiet} data-browse-action="show-stand-in">Show</button>
+      {e.installed ? e.plugin && <Button className="mt-0.5 px-3" onClick={() => show(e.plugin!)}>Show</Button>
+        : alt?.on ? <Button className="mt-0.5 px-3" onClick={() => show(alt.id)} data-browse-action="show-stand-in">Show</Button>
         : alt ? (
-          <button type="button" disabled={busy} onClick={() => use(e)} data-browse-action="use-stand-in" className={primary}>{busy ? "Turning on…" : "Use Vaultite's"}</button>
+          <Button look="primary" className="mt-0.5 px-3" disabled={busy} onClick={() => use(e)} data-browse-action="use-stand-in">{busy ? "Turning on…" : "Use Vaultite's"}</Button>
         ) : (
-          <button type="button" disabled={busy} onClick={() => install(e)} data-browse-action="install" className={primary}>{busy ? "Installing…" : "Install"}</button>
+          <Button look="primary" className="mt-0.5 px-3" disabled={busy} onClick={() => install(e)} data-browse-action="install">{busy ? "Installing…" : "Install"}</Button>
         )}
       {alt && (
         <button type="button" disabled={busy} aria-label={`${e.name}: more`} data-tip="More" data-browse-more onClick={(ev) => menuBelow(ev, [

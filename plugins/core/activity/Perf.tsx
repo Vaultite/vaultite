@@ -2,14 +2,14 @@
 // 15 s.
 import { useState } from "react"
 import { MonitorSmartphone, Route, Server } from "lucide-react"
-import { Empty, Loading, Panel, Section, Stat, useTick } from "@vaultite"
+import { Empty, fmtAgo, fmtStamp, Loading, Panel, Section, Stat, useLive, useTick } from "@vaultite"
 import type { ClientPerf, Minute, Perf, RouteStat } from "./model"
 import { Columns } from "./Columns"
 import { TINT } from "./Feed"
-import { ago, clock, count, mb, ms, stamp, uptime, usePoll } from "./shared"
+import { clock, count, mb, ms, uptime } from "./shared"
 
 const minutesOf = (o: Record<string, unknown>) => Math.min(Math.max(typeof o.minutes === "number" ? Math.round(o.minutes) : 1440, 10), 1440 * 7)
-const usePerf = (minutes: number) => usePoll<Perf>(`activity/perf?minutes=${minutes}`, 15_000)
+const usePerf = (minutes: number) => useLive<Perf>(`activity/perf?minutes=${minutes}`, undefined, undefined, 15_000)
 const span = (m: number) => (m % 1440 === 0 ? (m === 1440 ? "Last 24 h" : `Last ${m / 1440} days`) : m % 60 === 0 ? `Last ${m / 60} h` : `Last ${m} min`)
 const Waiting = ({ error }: { error: string | null }) => <Loading error={error && "Couldn't read the timings."} />
 
@@ -125,7 +125,7 @@ export function PerfRoutes({ options }: { options: Record<string, unknown> }) {
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-mono text-[13px] leading-[20px]">{r.method} /api/{r.route}</div>
                   <div className="truncate text-[13px] text-muted-foreground">
-                    <span data-tip={stamp(r.t)}>{ago(r.t)}</span> · {r.who}{r.status >= 400 ? ` · ${r.status}` : ""}
+                    <span data-tip={fmtStamp(r.t, true)}>{fmtAgo(r.t)}</span> · {r.who}{r.status >= 400 ? ` · ${r.status}` : ""}
                   </div>
                 </div>
                 <span className="shrink-0 text-[14px] text-muted-foreground tabular-nums">{ms(r.ms)}</span>
@@ -152,7 +152,7 @@ function Small({ label, value }: { label: string; value: string }) {
 function Client({ c }: { c: ClientPerf }) {
   const api = [...(c.api ?? [])].sort((a, b) => b.max - a.max).slice(0, 5)
   return (
-    <Section title={<span>{DEVICES[c.device] ?? c.device} · <span className="font-normal" data-tip={stamp(c.t)}>reported {ago(c.t)}</span></span>}>
+    <Section title={<span>{DEVICES[c.device] ?? c.device} · <span className="font-normal" data-tip={fmtStamp(c.t, true)}>reported {fmtAgo(c.t)}</span></span>}>
       <div className="grid grid-cols-3 gap-3 py-2">
         <Small label="Load" value={ms(c.load)} />
         <Small label="First byte" value={ms(c.ttfb)} />

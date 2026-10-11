@@ -1,7 +1,7 @@
 // A cards file as a page (its cards and when each comes back), the review sheet (cards due, mixed across files), and
 // the `lessons` block.
 import {
-  detailPath, Empty, haptic, Loading, Markdown, notifyError, op, openDetail, openFile, Panel, Row, SheetHead, useCommands, useLive,
+  Button, cn, detailPath, Empty, haptic, Loading, Markdown, notifyError, op, openDetail, openFile, Panel, Row, SheetHead, useCommands, useLive,
   type BlockCtx, type PageCtx, type Store,
 } from "@vaultite"
 import { BookOpenCheck, Check, Layers } from "lucide-react"
@@ -11,8 +11,7 @@ import { next, nextDue, queue, RATINGS, span, type Due, type Memory, type Rating
 import type { State } from "./types.ts"
 
 const STATE = "lessons/state"
-const btn = "cursor-pointer rounded-[8px] px-4 py-2 text-[15px]"
-const primary = `${btn} bg-primary text-primary-foreground hover:opacity-90`
+const big = "h-auto px-4 py-2 font-normal md:h-auto md:text-[15px]"
 
 /** Every cards file, and each finished lesson's recall questions (the server's `sources`, plugin.ts). */
 function sourcesOf(s: Store): Source[] {
@@ -39,7 +38,7 @@ export function DeckPage({ path, body, store }: PageCtx) {
         <div className="flex-1 text-[15px] text-muted-foreground">
           {cards.length} cards{fresh ? `, ${fresh} new` : ""}{data && !due ? (nextDue([{ id, title: "", cards }], data.reviews, now) ? `, next review ${day(nextDue([{ id, title: "", cards }], data.reviews, now)!)}` : "") : ""}
         </div>
-        {due > 0 && <button type="button" className={primary} onClick={() => openDetail(detailPath("review", id))}>Review {due}</button>}
+        {due > 0 && <Button look="primary" className={big} onClick={() => openDetail(detailPath("review", id))}>Review {due}</Button>}
       </div>
       <div className="flex flex-col gap-3">
         {cards.map((c) => {
@@ -113,7 +112,7 @@ function Session({ data, sources, only }: { data: State; sources: Source[]; only
         {shown && c.answer && <Markdown text={c.answer} full className="mt-4 border-t border-border pt-4" />}
       </div>
       {shown ? <Rate m={mem[c.source]?.[c.key]} retention={data.retention} onRate={rate} />
-        : <button type="button" className={`mt-6 w-full ${primary}`} onClick={() => setShown(true)}>Show answer</button>}
+        : <Button look="primary" className={cn(big, "mt-6 w-full")} onClick={() => setShown(true)}>Show answer</Button>}
     </div>
   )
 }

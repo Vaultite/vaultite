@@ -15,7 +15,8 @@ import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
 import { cleanName, folderOf, gone, inPagesDir, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
-import { isDesktop, takeRename } from "@/core/workspace"
+import { isDesktop } from "@/core/platform"
+import { takeRename } from "@/core/workspace"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
 import { FileCard, ImageView, PdfView, PlayerView, rawUrl, useFileInfo } from "@/components/FileViewers"
 import { assetUrl, imageActions } from "@/components/editing"
@@ -49,7 +50,7 @@ import { useEditAt } from "@/core/anchors"
 import { useAutosave, type SaveStatus } from "@/core/autosave"
 import { trace } from "@/core/trace"
 import { addRestore, afterPlaced, cancelRestores, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
-import { cn } from "@/lib/utils"
+import { capitalize, cn, plural } from "@/lib/utils"
 import { haptic } from "@/core/haptics"
 import type { EditorApi } from "@/editor/Editor"
 import { Editor } from "@/editor/lazy"
@@ -234,6 +235,26 @@ function NoteTop({ head }: { head: FileHead }) {
   return <>{items.map(({ key, item }) => <Guard key={key} what="This part" reset={head.path}><Drawn draw={() => item.render(head)} /></Guard>)}</>
 }
 
+/** Where a file is, above its title: "Notes / Ideas", "Vault". */
+const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/").join(" / ") : "Vault")
+
+/** The line above a file's title: what it is (a plugin's kicker, else its folder) and, where there's no path bar, what
+ *  plugins put at its end. In a sheet its header floats over it (Close, the view toggle): the line stops short of them. */
+function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, aside, head, pane, toggle }: {
+  icon: LucideIcon; tint?: string; text: ReactNode; aside?: ReactNode; head: FileHead; pane: boolean; toggle?: ReactNode }) {
+  return (
+    <div className={cn("mb-1 flex min-h-8 items-center gap-2", !pane && (toggle ? "pr-[75px]" : "pr-[31px]"))}>
+      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
+        <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
+        <span className="truncate">{text}</span>
+      </span>
+      {aside != null && <span className="shrink-0 text-[13px] text-muted-foreground">{aside}</span>}
+      {(!pane || !isDesktop()) && <FileBar head={head} place="line" />}
+      {toggle}
+    </div>
+  )
+}
+
 /** The view button (⌘E): reading <-> editing, showing what a tap does. Small in the desktop path bar, 44pt on phones
  *  in the sheet's or the phone's header. */
 const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, phone }: { mode: Mode; setMode: (m: Mode) => void; edit: Mode; phone?: "sheet" | "header" }) {
@@ -288,6 +309,9 @@ function TextFile({ store, path, pane }: { store: Store; path: string; pane: boo
   return <Loaded key={path} store={store} initial={file} pane={pane} onGone={() => setFile("missing")} />
 }
 
+/** "Move current file to another folder", for a file that can move. */
+const moveCommand = (path: string) => (isReadOnly(path) || isOutside(path) ? [] : [{ id: "file:move", name: "Move current file to another folder", run: () => askMove(path), icon: FolderInput }])
+
 /** A file that isn't text: a viewer, a plugin's `binary` format, else a card; with the bar and status bar on desktop,
  *  its name in the sheet. */
 function MediaFile({ store, path, pane, kind, note }: { store: Store; path: string; pane: boolean; kind: FileKind; note?: string }) {
@@ -298,15 +322,14 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
   const [extra, setExtra] = useState<string | null>(null)
   const { focused } = usePane()
   const live = pane && focused
-  const facts = useMemo(() => [extra, info?.pages ? `${info.pages} page${info.pages === 1 ? "" : "s"}` : null, info ? formatSize(info.size) : null]
+  const facts = useMemo(() => [extra, info?.pages ? plural(info.pages, "page") : null, info ? formatSize(info.size) : null]
     .filter((x): x is string => !!x), [extra, info])
   const noop = useCallback(() => {}, [])
   // What plugins' items in its header and the status bar get: no frontmatter to change (Provenance keeps its own).
   const head = useMemo<FileHead>(() => ({ path, fm: {}, type: null }), [path])
   usePublish(live, () => ({ path, mode: "read", setMode: noop, body: "", views: [], info: facts, head }), [path, facts, noop, head])
-  useCommands(() => (live && !isReadOnly(path) && !isOutside(path) ? [{ id: "file:move", name: "Move current file to another folder", run: () => askMove(path), icon: FolderInput }] : []), [live, path])
+  useCommands(() => (live ? moveCommand(path) : []), [live, path])
   if (missing) return <Missing path={path} pane={pane} />
-  const folder = folderOf(path)
   const settle = async () => {}
   const duration = (secs: number) => {
     if (!Number.isFinite(secs)) return
@@ -323,13 +346,7 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
       {pane && isDesktop() && <PathBar path={path} settle={settle} locked={isReadOnly(path) || isProtected(path) || isOutside(path)} head={head} />}
       {(!pane || !isDesktop()) && (
         <>
-          <div className={cn("mb-1 flex min-h-8 items-center gap-2", !pane && "pr-[31px]")}>
-            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[15px] font-semibold text-muted-foreground">
-              <Folder className="size-[18px] shrink-0" strokeWidth={2.25} />
-              <span className="truncate">{folder ? folder.split("/").join(" / ") : "Vault"}</span>
-            </span>
-            <FileBar head={head} place="line" />
-          </div>
+          <TitleLine icon={Folder} text={folderLine(path)} head={head} pane={pane} />
           <Title path={path} editable={false} sheet focus={false} settle={settle} />
         </>
       )}
@@ -349,10 +366,11 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
  *  (its `layout`), redrawn from a new address when the file changes (`v`). */
 function BinaryFormat({ store, format, path, v, pane }: { store: Store; format: FileFormat; path: string; v: number; pane: boolean }) {
   const ctx = { store, path, text: "", url: rawUrl(path, { v }), editable: false, place: pane ? "page" as const : "sheet" as const, onChange: () => {} }
-  const layout = format.layout ?? "box"
-  if (layout === "box" || layout === "pane") return <FormatBox place={pane ? "page" : "sheet"}>{format.render(ctx)}</FormatBox>
-  return <FormatGuard>{format.render(ctx)}</FormatGuard>
+  return framed(format.layout, pane, format.render(ctx))
 }
+/** What a format draws, in a box as tall as what's left of the pane (`box`, `pane`) or inline. */
+const framed = (layout: FileFormat["layout"], pane: boolean, node: ReactNode) =>
+  !layout || layout === "box" || layout === "pane" ? <FormatBox place={pane ? "page" : "sheet"}>{node}</FormatBox> : <FormatGuard>{node}</FormatGuard>
 
 /** A file that's gone (deleted or moved while open, or a stale link): laid out like the file was, so the tab doesn't
  *  jump; on desktop under the path bar (back and forward still work there), not renameable. */
@@ -569,22 +587,17 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   useLayoutEffect(() => {
     const art = article.current
     if (!pane || !grid || !art?.querySelector("[data-line]")) return
-    return offerPlace(`file:${path}`, () => {
-      const r = takeRestore(`file:${path}`)
-      if (!r) return
-      let drop = () => {}
-      const stop = keepPlace({ box: r.box, y: 0, ratio: 0, line: r.line, into: r.into }, null, 0, art, () => { drop(); r.show() }, r.show)
-      drop = addRestore(stop)
-    })
+    return offerPlace(`file:${path}`, () => resume(null))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pane, grid, path])
   // (a file drawn while its place is being found, the app reloaded on a phone: not seen before it's there)
   useLayoutEffect(() => { if (pane) hideUntilPlaced(`file:${path}`, article.current) }, [pane, path])
-  const resume = (api: EditorApi) => {
+  /** Back where its tab was left (core/viewstate.ts): by its editor's lines, or (none) a dashboard's cards. */
+  const resume = (api: EditorApi | null) => {
     const r = pane ? takeRestore(`file:${path}`) : null
     if (!r) return
     let drop = () => {}
-    const stop = keepPlace({ box: r.box, y: 0, ratio: 0, line: r.line, into: r.into, text: true }, api, fmLines(cur.current), article.current,
+    const stop = keepPlace({ box: r.box, y: 0, ratio: 0, line: r.line, into: r.into, text: !!api }, api, api ? fmLines(cur.current) : 0, article.current,
       () => { drop(); r.show() }, r.show)
     drop = addRestore(stop)
   }
@@ -726,7 +739,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     asset: (name) => assetUrl(store, name, path),
     ...imageActions(store),
     sections,
-    renderSection: (name, text, el) => island((t) => <TimelineSection text={t} title={name[0].toUpperCase() + name.slice(1)} kinds={timelineKinds(disabled)} path={ro || !isMd(path) ? undefined : path} />, text, el),
+    renderSection: (name, text, el) => island((t) => <TimelineSection text={t} title={capitalize(name)} kinds={timelineKinds(disabled)} path={ro || !isMd(path) ? undefined : path} />, text, el),
     renderBlock: (name, text, el, edit) => island((t) => <BlockView name={name} text={t} ctx={ctxRef.current} disabled={disabled} editing={editingRef.current} edit={edit} />, text, el),
     blockMenu: (name, text, at, edit) => openBlockMenu(at, { name, text, path, edit, showing: true }),
     blockNotes: (name, text) => {
@@ -749,7 +762,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   useCommands(() => (live ? [
     ...(views.length > 1 ? [{ id: "view:toggle", name: "Toggle reading view", keys: ["Mod+E"], run: () => setMode(shown === "read" ? edit : "read"), icon: BookOpen }] : []),
     ...views.filter((v) => v.value !== shown).map((v) => ({ id: `view:${v.value}`, name: `Switch to ${v.label.toLowerCase()}`, run: () => setMode(v.value), icon: MODES[v.value].icon })),
-    ...(isReadOnly(path) || isOutside(path) ? [] : [{ id: "file:move", name: "Move current file to another folder", run: () => askMove(path), icon: FolderInput }]),
+    ...moveCommand(path),
     ...(isReadOnly(path) || isOutside(path) || !isMd(path) ? [] : [{ id: "file:icon", name: "Change icon of current file", run: () => changeIcon(path, (n) => setProperty("icon", n)), icon: Smile }]),
   ] : []), [live, shown, setMode, path, edit, views, setProperty])
 
@@ -788,8 +801,6 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const fileHead = useMemo<FileHead>(() => ({ path, fm: props, type, setProperty: changeable ? setProperty : undefined }), [path, props, type, changeable, setProperty])
   usePublish(live, () => ({ path, mode: shown, setMode, body, fm, head: fileHead, views, says }), [path, shown, setMode, body, fm, fileHead, views, says])
 
-  const folder = folderOf(path)
-  const Icon = view?.icon ?? Folder
   // Source mode is the file as it is: no kicker, no Properties (the frontmatter is in the text), blocks as their text.
   const source = shown === "source"
   const kicker = source ? null : view?.kicker?.(ctx)
@@ -804,7 +815,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // On desktop the bar shows where the file is, so the line above the title is only for a plugin's kicker.
   // Phones have no path bar, so a file in a tab says where it is too, like in the sheet.
   const phoneTab = pane && !isDesktop()
-  const line = pane && !phoneTab ? kicker : kicker ?? (folder ? folder.split("/").join(" / ") : "Vault")
+  const line = pane && !phoneTab ? kicker : kicker ?? folderLine(path)
   // A file a plugin draws as a page, being read: the plugin's header in place of the title (in a sheet, under it), then
   // the page (a dashboard's grid).
   const board = dash && shown === "read"
@@ -818,9 +829,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const pageCtx: PageCtx = { ...ctx, title: stem(head?.path ?? path), place: pane ? "page" : "sheet", disabled }
   // A drawn file that takes its whole pane in a tab (`layout: "pane"`: a canvas): the bar, then the drawing edge to edge.
   const fills = pane && layout === "pane"
-  const pathBar = (className?: string) => pane && isDesktop() && (views.length > 1
-    ? <PathBar path={path} mode={shown} setMode={setMode} edit={edit} settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />
-    : <PathBar path={path} settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />)
+  const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit}
+    settle={settle} locked={isReadOnly(path) || isProtected(path) || outside} head={fileHead} className={className} />
   const phoneToggle = phoneTab && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="header" />
   // A note in a tab has its own text size (core/textsize.ts: ⌘+scroll over it, the commands, Settings > Appearance):
   // everything under the path bar is zoomed, and its column widens with it, so the lines keep their length.
@@ -840,39 +850,21 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [props, resolve, path])
   const notices = <>
     {inTrash(path) && <InTrash path={path} note=" Restore it to edit it." />}
-    {isReadOnly(path) && !inTrash(path) && !inPagesDir(path) && <Banner tone="info"><span className="flex-1">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</span></Banner>}
-    {status.kind === "conflict" && (
-      <Banner tone="warn">
-        <span className="flex-1">This file changed somewhere else, in the same lines you edited.</span>
-        <button type="button" className="cursor-pointer font-semibold text-primary"
-          onClick={saver.takeTheirs}>Use theirs</button>
-        <button type="button" className="cursor-pointer font-semibold text-primary"
-          onClick={saver.keepMine}>Keep mine</button>
-      </Banner>
-    )}
+    {isReadOnly(path) && !inTrash(path) && !inPagesDir(path) && <Banner tone="info">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</Banner>}
+    {status.kind === "conflict" && <Banner tone="warn" actions={[["Use theirs", saver.takeTheirs], ["Keep mine", saver.keepMine]]}>
+      This file changed somewhere else, in the same lines you edited.</Banner>}
     {clashes.map(({ alias, other }) => (
-      <Banner key={alias} tone="warn">
-        <span className="flex-1">[[{alias}]] goes to {stem(other)}, which also goes by {alias}, not to this file.</span>
-        <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => openFile(other)}>Open it</button>
-        {changeable && <button type="button" className="cursor-pointer font-semibold text-primary"
-          onClick={() => { const rest = aliasesOf(props).filter((a) => a !== alias); setProperty("aliases", rest.length ? rest : undefined) }}>Remove the alias</button>}
+      <Banner key={alias} tone="warn" actions={[["Open it", () => openFile(other)],
+        changeable && ["Remove the alias", () => { const rest = aliasesOf(props).filter((a) => a !== alias); setProperty("aliases", rest.length ? rest : undefined) }]]}>
+        [[{alias}]] goes to {stem(other)}, which also goes by {alias}, not to this file.
       </Banner>
     ))}
-    {leftover && (
-      <Banner tone="warn">
-        <span className="flex-1">Edits from {fmtAgo(new Date(leftover.t).toISOString())} weren't saved before the app closed.</span>
-        <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => restoreUnsaved(leftover)}>Restore them</button>
-        <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => discardUnsaved(leftover)}>Discard</button>
-      </Banner>
-    )}
-    {strict && badJson && <Banner tone="warn"><span className="flex-1">Invalid JSON (saved as it is): {badJson}</span></Banner>}
-    {status.kind === "error" && <Banner tone="warn"><span className="flex-1">Couldn't save: {status.message}</span>
-      <button type="button" className="cursor-pointer font-semibold text-primary" onClick={() => save(true)}>Try again</button></Banner>}
-    {!!problems.length && (
-      <Banner tone="info">
-        <span className="flex-1">{problems.length === 1 ? problems[0] : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`}</span>
-      </Banner>
-    )}
+    {leftover && <Banner tone="warn" actions={[["Restore them", () => restoreUnsaved(leftover)], ["Discard", () => discardUnsaved(leftover)]]}>
+      Edits from {fmtAgo(leftover.t)} weren't saved before the app closed.</Banner>}
+    {strict && badJson && <Banner tone="warn">Invalid JSON (saved as it is): {badJson}</Banner>}
+    {status.kind === "error" && <Banner tone="warn" actions={[["Try again", () => save(true)]]}>Couldn't save: {status.message}</Banner>}
+    {!!problems.length && <Banner tone="info">
+      {problems.length === 1 ? problems[0] : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`}</Banner>}
   </>
   // A file from outside the vault: right-click it (around its text, on an image) to copy it in.
   const outsideMenu = outside ? (e: MouseEvent) => {
@@ -898,17 +890,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
         {page && board && pageView?.header?.(pageCtx)}
         {!page && (line || !pane) && !(code && pane && !phoneTab) && (
-          // In a sheet its header floats over this line (DetailSheet: Close, and the view toggle left of it): the line
-          // stops short of them, so what plugins put at its end (Provenance's label) is never under a button.
-          <div className={cn("mb-1 flex min-h-8 items-center gap-2", !pane && (!ro && views.length > 1 ? "pr-[75px]" : "pr-[31px]"))}>
-            <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[15px] font-semibold" style={{ color: view?.tint ?? "var(--muted-foreground)" }}>
-              <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
-              <span className="truncate">{line}</span>
-            </span>
-            {aside != null && <span className="shrink-0 text-[13px] text-muted-foreground">{aside}</span>}
-            {(!pane || phoneTab) && <FileBar head={fileHead} place="line" />}
-            {!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="sheet" />}
-          </div>
+          <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={line} aside={aside} head={fileHead} pane={pane}
+            toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="sheet" />} />
         )}
         {!page && !(code && pane && !phoneTab) && <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}
           mode={shown} onEnter={toText} />}
@@ -919,25 +902,19 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
           {showProps && <Properties path={path} block={fm} readOnly={ro || shown === "read"} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
           {isMd(path) && !source && !board && !drawing && <NoteTop head={fileHead} />}
           {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<div className="min-h-40" />}>
-            {drawing ? (
-              layout === "box" || layout === "pane" ? <FormatBox place={pane ? "page" : "sheet"}>{drawing}</FormatBox> : <FormatGuard>{drawing}</FormatGuard>
-            ) : notebook && !source ? (
+            {drawing ? framed(layout, pane, drawing) : notebook && !source ? (
               <Notebook text={body} />
             ) : json && !source ? (
               <JsonView text={body} editable={shown === "live" && !ro}
                 onChange={(text) => { cur.current = { fm: "", body: text }; setBody(text); changed() }} />
-            ) : source ? (
-              <Editor key={`${path}:source`} doc={full()} keep={path} editable={!ro} source numbered code={strict ? "json" : format?.code}
-                language={code ? path : format?.source ? `source.${format.source}` : undefined} config={config} {...wiring} label={stem(path)}
-                docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}
-                onReady={(api) => { editor.current = { api, source: true }; ready(api, true); if (kept?.write) toText() }}
-                onChange={(text) => typed(text, null)} />
             ) : (
-              <Editor key={`${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} frontmatter={!fmText} editable={shown === "live" && !ro} config={config} {...wiring} label={stem(path)}
+              <Editor key={source ? `${path}:source` : `${path}:text${fmText ? ":fm" : ""}`} doc={full()} keep={path} config={config} {...wiring} label={stem(path)}
                 docPath={isMd(path) ? path : undefined} onPasteFiles={outside ? undefined : paste}
-                placeholderText={shown === "read" ? "" : "Start writing"} numbered={shown !== "read"}
-                onReady={(api) => { editor.current = { api, source: false }; ready(api, false); if (kept?.write) toText() }}
-                onChange={(text, start) => typed(text, fmText ? null : start)} onUndoFrontmatter={() => revealProps(article.current)} />
+                {...(source ? { editable: !ro, source: true, numbered: true, code: strict ? "json" : format?.code, language: code ? path : format?.source ? `source.${format.source}` : undefined }
+                  : { frontmatter: !fmText, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
+                    onUndoFrontmatter: () => revealProps(article.current) })}
+                onReady={(api) => { editor.current = { api, source }; ready(api, source); if (kept?.write) toText() }}
+                onChange={(text, start) => typed(text, source || fmText ? null : start)} />
             )}
           </Suspense>}
         </div>
@@ -975,20 +952,22 @@ function PaneScroll({ children }: { children: ReactNode }) {
 
 function InTrash({ path, note = "" }: { path: string; note?: string }) {
   return (
-    <Banner tone="info" icon={Trash2}>
-      <span className="flex-1">In the trash.{note}</span>
-      <button type="button" className="cursor-pointer font-semibold text-primary"
-        onClick={async () => { try { await restoreFile(path) } catch (e) { notifyError(e, "Couldn't restore") } }}>Restore</button>
+    <Banner tone="info" icon={Trash2} actions={[["Restore", () => restoreFile(path).catch((e) => notifyError(e, "Couldn't restore"))]]}>
+      In the trash.{note}
     </Banner>
   )
 }
 
-function Banner({ tone, icon: Icon = AlertTriangle, children }: { tone: "warn" | "info"; icon?: LucideIcon; children: ReactNode }) {
+/** A note over the file, and what can be done about it (`actions`: [label, run], a falsy one left out). */
+function Banner({ tone, icon: Icon = AlertTriangle, actions = [], children }: {
+  tone: "warn" | "info"; icon?: LucideIcon; actions?: (readonly [string, () => unknown] | false)[]; children: ReactNode
+}) {
   return (
     <div role={tone === "warn" ? "alert" : "status"} className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 rounded-[10px] px-3 py-2.5 text-[15px]"
       style={{ background: `color-mix(in srgb, ${tone === "warn" ? "var(--orange)" : "var(--muted-foreground)"} 14%, transparent)` }}>
       <Icon className="size-4 shrink-0" strokeWidth={2.25} style={{ color: tone === "warn" ? "var(--orange)" : "var(--muted-foreground)" }} />
-      {children}
+      <span className="flex-1">{children}</span>
+      {actions.map((a) => a && <button key={a[0]} type="button" className="cursor-pointer font-semibold text-primary" onClick={() => void a[1]()}>{a[0]}</button>)}
     </div>
   )
 }

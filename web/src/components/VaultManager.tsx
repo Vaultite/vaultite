@@ -6,6 +6,7 @@ import { menuBelow } from "@/components/ContextMenu"
 import { api } from "@/core/http"
 import { revealLabel } from "@/core/platform"
 import { cn } from "@/lib/utils"
+import { Button } from "@/components/Button"
 
 export type KnownVault = { path: string; name: string; open?: boolean
   /** The playground (desktop; the sandbox in code): made up, made afresh each time it opens. */
@@ -122,9 +123,9 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
             className="h-7 w-44 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:ring-1 focus:ring-primary/60" />
         </Setting>
         <Setting title="Location" sub={parent ? short(parent, home) : "Where the vault's folder goes."}>
-          <Btn onClick={pickParent}>Browse</Btn>
+          <Button size="small" look="outline" onClick={pickParent}>Browse</Button>
         </Setting>
-        <div><Btn primary disabled={!name.trim() || !parent || busy} onClick={() => run(async () => { await backend.create(parent, name.trim()); setStep("home"); setName("") })}>Create</Btn></div>
+        <div><Button size="small" look="primary" disabled={!name.trim() || !parent || busy} onClick={() => run(async () => { await backend.create(parent, name.trim()); setStep("home"); setName("") })}>Create</Button></div>
       </div>
     )
   } else if (step === "connect" && backend.connect) {
@@ -137,7 +138,7 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
         <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="studio.tailnet.ts.net:8447" aria-label="Server address" autoFocus
           spellCheck={false} autoCapitalize="none" data-server
           className="h-7 rounded-[6px] border-[0.5px] border-border bg-background px-2 text-[13px] outline-none focus:ring-1 focus:ring-primary/60" />
-        <div><Btn primary submit disabled={!address.trim() || busy}>Connect</Btn></div>
+        <div><Button size="small" look="primary" type="submit" disabled={!address.trim() || busy}>Connect</Button></div>
       </form>
     )
   } else {
@@ -150,19 +151,19 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
           </div>
         )}
         <Setting icon={FolderPlus} title="Create new vault" sub="A new folder for your notes and dashboards.">
-          <Btn primary onClick={() => setStep("create")}>Create</Btn>
+          <Button size="small" look="primary" onClick={() => setStep("create")}>Create</Button>
         </Setting>
         <Setting icon={Folder} title="Open folder as vault" sub="A folder of Markdown files you already have.">
-          <Btn onClick={openFolder} disabled={busy}>Open</Btn>
+          <Button size="small" look="outline" onClick={openFolder} disabled={busy}>Open</Button>
         </Setting>
         {backend.connect && (
           <Setting icon={Server} title="Connect to a server" sub="A Vaultite server on your network, like a Mac at home or a Linux server.">
-            <Btn onClick={() => setStep("connect")} disabled={busy}>Connect</Btn>
+            <Button size="small" look="outline" onClick={() => setStep("connect")} disabled={busy}>Connect</Button>
           </Setting>
         )}
         {backend.playground && (
           <Setting icon={FlaskConical} title="Try the playground" sub="A made-up vault to try Vaultite in, fresh each time it opens.">
-            <Btn onClick={() => void run(backend.playground!)} disabled={busy} data-playground>Open</Btn>
+            <Button size="small" look="outline" onClick={() => void run(backend.playground!)} disabled={busy} data-playground>Open</Button>
           </Setting>
         )}
       </div>
@@ -194,15 +195,6 @@ function Setting({ icon: Icon, title, sub, children }: { icon?: typeof Vault; ti
   )
 }
 
-function Btn({ primary, submit, children, ...p }: { primary?: boolean; submit?: boolean; children: ReactNode; onClick?: () => void; disabled?: boolean }) {
-  return (
-    <button type={submit ? "submit" : "button"} {...p}
-      className={cn("h-7 shrink-0 cursor-pointer rounded-[6px] px-3 text-[13px] font-medium transition-colors disabled:cursor-default disabled:opacity-50",
-        primary ? "bg-primary text-primary-foreground hover:bg-primary/85" : "border-[0.5px] border-border bg-background hover:bg-foreground/[0.05]")}>
-      {children}
-    </button>
-  )
-}
 
 const BackButton = ({ onClick }: { onClick: () => void }) => (
   <button type="button" onClick={onClick} className="flex h-7 w-fit cursor-pointer items-center gap-0.5 rounded-[6px] pr-2 text-[13px] text-primary hover:bg-foreground/[0.05]">
@@ -223,7 +215,7 @@ function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: 
       <BackButton onClick={onCancel} />
       <div className="flex items-center gap-2">
         <span className="min-w-0 flex-1 truncate text-[13px] font-medium" data-tip={at?.path} data-tip-trunc>{at ? short(at.path, at.home) : "…"}</span>
-        <Btn primary disabled={!at} onClick={() => at && onPick(at.path)}>{label}</Btn>
+        <Button size="small" look="primary" disabled={!at} onClick={() => at && onPick(at.path)}>{label}</Button>
       </div>
       <ul aria-label="Folders" className="max-h-[50dvh] overflow-y-auto rounded-[8px] border-[0.5px] border-border">
         {at?.parent && (

@@ -2,14 +2,13 @@
 // about what the user is looking at; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef } from "react"
 import { Check, CheckCheck, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
-import { AmbientButton, definePlugin, fmtDay, fmtTime, get, getStore, iso, onTabLayoutChange, notify, openFile, Panel, systemNotify, useStore, useVaultChange, type Store } from "@vaultite"
+import { AmbientButton, definePlugin, fmtDay, fmtTime, getStore, iso, onTabLayoutChange, notify, openFile, Panel, systemNotify, useStore, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, subscribeEvents, targetOf } from "./events"
 import { ReplyBlock } from "./Reply"
 import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
-import { setSettings, useSettings, type Settings } from "./settings"
+import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
-const SETTINGS = ".vaultite/plugins/inbox/data.json"
 
 /** The user is looking at what an agent's news is about (finished, waiting): its terminal or session is the focused
  *  tab, in a window that's in front. (Not a message meant to be seen, `vau notify`'s: info, error.) */
@@ -42,14 +41,9 @@ function cameAt(r: InboxItem) {
 }
 
 function Background({ store }: { store: Store }) {
-  const settings = useSettings()
-  const ref = useRef(settings)
-  useEffect(() => { ref.current = settings }, [settings])
-  const load = () => { get<Settings>("config/plugin/inbox").then(setSettings, () => {}) }
-  useEffect(load, [])
-  useVaultChange(load, (p) => p === SETTINGS)
+  useEffect(() => void settings.ready(), [])
   useEffect(() => follow(), [])
-  useEffect(() => onFresh((e) => announce(e, ref.current)), [])
+  useEffect(() => onFresh((e) => announce(e, settings.get())), [])
   // A result that just arrived (an agent's inbox_add, a clip, a file written there): said once, like an event. Not the
   // ones there when the app loads, nor one coming back (Undo).
   const known = useRef<Set<string> | null>(null)
@@ -61,8 +55,8 @@ function Background({ store }: { store: Store }) {
       if (seen.has(r.id)) continue
       seen.add(r.id)
       if (first || Date.now() - latestAt(r) > 10 * 60_000) continue
-      if (ref.current.toasts !== false) notify(`In your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
-      if (ref.current.notifications !== false && !document.hasFocus()) {
+      if (settings.get().toasts !== false) notify(`In your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
+      if (settings.get().notifications !== false && !document.hasFocus()) {
         systemNotify("In your inbox", r.title)?.then((clicked) => { if (clicked) openFile(`${r.id}.md`) })
       }
     }

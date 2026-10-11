@@ -2,7 +2,7 @@
 // its sheet, where it's renamed (right-click: Rename).
 import { useMemo, useState } from "react"
 import { ChevronRight, FileText, Hash, Pencil } from "lucide-react"
-import { cn, Empty, hasTag, List, notify, notifyError, op, openDetail, openFile, openMenu, Row, SheetHead, SidebarHeading, snippet, detailPath, type SidebarCtx, type Store } from "@vaultite"
+import { cn, detailPath, Empty, hasTag, List, notify, notifyError, op, openDetail, openFile, openMenu, plural, Row, SheetHead, SidebarHeading, snippet, type SidebarCtx, type Store } from "@vaultite"
 
 export const TINT = "var(--primary)"
 
@@ -121,7 +121,7 @@ function Rename({ tag, done }: { tag: string; done: () => void }) {
     setBusy(true)
     try {
       const r = await op<{ changed: string[]; skipped: unknown[] }>("tag.rename", { from: tag, to: name })
-      notify(`Renamed #${tag} to #${name} in ${r.changed.length} file${r.changed.length === 1 ? "" : "s"}` + (r.skipped.length ? `; ${r.skipped.length} left alone` : ""))
+      notify(`Renamed #${tag} to #${name} in ${plural(r.changed.length, "file")}` + (r.skipped.length ? `; ${r.skipped.length} left alone` : ""))
       openDetail(detailPath("tag", name))
     } catch (e) { notifyError(e, `Couldn't rename #${tag}`) } finally { setBusy(false); done() }
   }
@@ -145,7 +145,7 @@ export function TagDetail({ store, tag }: { store: Store; tag: string }) {
   const under = [...new Set(store.files.files.flatMap((f) => (f.tags ?? []).filter((t) => t.toLowerCase().startsWith(`${low}/`))))].sort()
   return (
     <>
-      <SheetHead icon={Hash} tint={TINT} kicker="Tag" title={`#${tag}`} sub={`${files.length} file${files.length === 1 ? "" : "s"}`} />
+      <SheetHead icon={Hash} tint={TINT} kicker="Tag" title={`#${tag}`} sub={`${plural(files.length, "file")}`} />
       {editing ? <Rename key={tag} tag={tag} done={() => setEditing(false)} /> : files.length > 0 && (
         <button type="button" onClick={() => setEditing(true)} data-tag-rename-open
           className="mb-3 inline-flex cursor-pointer items-center gap-1.5 text-[14px] text-muted-foreground hover:text-foreground md:text-[13px]">

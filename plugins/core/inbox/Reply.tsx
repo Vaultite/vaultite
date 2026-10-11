@@ -2,10 +2,11 @@
 // (inbox.reply), so a report is answered where it's read.
 import { useEffect, useState, type KeyboardEvent } from "react"
 import { MessageSquareReply, SquareTerminal } from "lucide-react"
-import { cn, fetchMachines, get, keyHint, notify, notifyError, onMachine, op, openAgent, openView, Panel, parseTerminal, type BlockCtx } from "@vaultite"
+import { Button, fetchMachines, get, keyHint, notify, notifyError, onMachine, op, openAgent, openView, Panel, parseTerminal, type BlockCtx } from "@vaultite"
 
 const field = "w-full resize-y rounded-[7px] border-[0.5px] border-border bg-background px-2.5 py-1.5 text-[17px] leading-[22px] outline-none focus:border-primary md:text-[14px] md:leading-[20px]"
-const button = "inline-flex h-11 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-3 text-[15px] font-medium disabled:cursor-default disabled:opacity-50 md:h-7 md:px-2.5 md:text-[13px]"
+// (a phone's 44px target)
+const reply = "h-11 rounded-[6px] px-3 md:h-7 md:px-2.5"
 
 /** Its terminal if it still runs, else its session resumed in a new one: on the machine it ran on (a session is kept
  *  there, so a resume anywhere else finds none). */
@@ -102,14 +103,14 @@ export function ReplyBlock({ store, path, body }: BlockCtx) {
         onChange={(e) => setText(e.target.value)} onKeyDown={onKey} className={field} data-reply />
       <div className="mt-2 flex flex-wrap items-center justify-end gap-2">
         <PlanLine plan={plan} how={how} setHow={setHow} />
-        <button type="button" onClick={() => void openSession(terminal, session, agent, r.machine ?? "").catch((e) => notifyError(e, "Couldn't open it"))}
-          className={cn(button, "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground")}>
+        <Button look="quiet" className={reply} onClick={() => void openSession(terminal, session, agent, r.machine ?? "").catch((e) => notifyError(e, "Couldn't open it"))}
+          >
           <SquareTerminal className="size-4" /> Open session
-        </button>
-        <button type="button" disabled={!text.trim() || !!sent} onClick={() => void send()} data-tip={`Send (${keyHint("Mod+Enter")})`}
-          className={cn(button, "bg-primary text-primary-foreground hover:opacity-90")}>
+        </Button>
+        <Button look="primary" className={reply} disabled={!text.trim() || !!sent} onClick={() => void send()} data-tip={`Send (${keyHint("Mod+Enter")})`}
+          >
           Send
-        </button>
+        </Button>
       </div>
     </Panel>
   )

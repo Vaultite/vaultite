@@ -102,13 +102,15 @@ export function useTick(ms = 30_000, on = true) {
 
 /** Made-up live data for plugin previews: inside <PreviewLive>, useLive returns these instead of fetching. */
 export const PreviewLive = createContext<Record<string, unknown> | null>(null)
+/** Drawn in a plugin's preview (made-up data, nothing fetched or written). */
+export const usePreview = () => useContext(PreviewLive) !== null
 
 // Cards asking for the same live data at once share one request. Always no-cache at the same address, so over the
 // network an unchanged answer is a 304 with no body.
 const inflight = new Map<string, { at: number; p: Promise<unknown> }>()
-function fetchLive<T>(path: string, key = path): Promise<T> {
+function fetchLive<T>(path: string, key = path, fresh = 10_000): Promise<T> {
   const hit = inflight.get(key)
-  if (hit && Date.now() - hit.at < 10_000) return hit.p as Promise<T>
+  if (hit && Date.now() - hit.at < fresh) return hit.p as Promise<T>
   const p = send<T>("GET", path, undefined, "no-cache")
   inflight.set(key, { at: Date.now(), p })
   p.catch(() => inflight.delete(key))
@@ -159,8 +161,9 @@ function remember(path: string, data: unknown, json: string) {
 
 /** Live data from a plugin's own route: loaded once per mount (the last answer shown meanwhile), and again when its
  *  plugin's cache or settings change, after a disconnect, when `version` changes, and with `files` when the vault's
- *  files change (true: any note; or which, by path: a query over the vault follows them). */
-export function useLive<T>(path: string | null, version?: string | number, files?: boolean | ((path: string) => boolean)) {
+ *  files change (true: any note; or which, by path: a query over the vault follows them). `every` ms: asked again while
+ *  the page shows, and on coming back to it. */
+export function useLive<T>(path: string | null, version?: string | number, files?: boolean | ((path: string) => boolean), every?: number) {
   const follow = useRef(files)
   follow.current = files
   const mock = useContext(PreviewLive)
@@ -173,7 +176,7 @@ export function useLive<T>(path: string | null, version?: string | number, files
   useEffect(() => {
     if (!path || !ask || mock) return
     let on = true
-    const load = () => fetchLive<T>(path, ask).then((d) => {
+    const load = (fresh?: number) => fetchLive<T>(path, ask, fresh).then((d) => {
       if (!on) return
       const json = JSON.stringify(d)
       remember(path, d, json)
@@ -186,8 +189,13 @@ export function useLive<T>(path: string | null, version?: string | number, files
       if (liveData(paths, path)) return load()
       if (f && (paths === null || paths.some((p) => !p.split("/").some((s) => s.startsWith(".")) && (f === true || f(p))))) { inflight.delete(ask); load() }
     })
-    return () => { on = false; off() }
-  }, [path, ask, mock])
+    if (!every) return () => { on = false; off() }
+    // (cards polling the same address share a request made in the last half period)
+    const poll = () => { if (!document.hidden) void load(every / 2) }
+    const id = setInterval(poll, every)
+    document.addEventListener("visibilitychange", poll)
+    return () => { on = false; off(); clearInterval(id); document.removeEventListener("visibilitychange", poll) }
+  }, [path, ask, mock, every])
   if (mock) {
     const key = path && Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
     return { data: (key ? mock[key] : null) as T | null, error: null, loading: false }
@@ -344,15 +352,11 @@ export function fmtDay(s: string) {
   return dateText(parse(s), diff > 300 ? DAY_YEAR : DAY)
 }
 export const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${Math.round(m || 0)}m`)
-export function fmtAgo(isoStr: string) {
-  const d = (Date.now() - new Date(isoStr.replace(" ", "T") + (isoStr.includes("T") ? "" : "Z")).getTime()) / 1000
-  if (d < 90) return "just now"
-  if (d < 3600) return `${Math.round(d / 60)} min ago`
-  if (d < 86400) return `${Math.round(d / 3600)} h ago`
-  const days = Math.round(d / 86400)
-  return days < 45 ? `${days} d ago` : dateText(new Date(isoStr), { month: "short", year: "numeric" })
-}
+export { fmtAgo } from "../../../core/dates.ts"
 export const fmtTime = (isoStr: string) => dateText(new Date(isoStr), TIME)
+const STAMP = { weekday: "short", month: "short", day: "numeric", ...TIME } as const
+/** A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM). */
+export const fmtStamp = (t: number, seconds = false) => dateText(new Date(t), seconds ? { ...STAMP, second: "2-digit" } : STAMP)
 export const fmtLongDay = (d: string) => dateText(parse(d), { weekday: "long", day: "numeric", month: "long" })
 
 /** Imported titles (Hevy etc.) carry emojis; the app shows plain text. */
