@@ -23,6 +23,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - An agent machine's files read like the app's own: Markdown with its properties, JSON as a tree, transcripts as a conversation, images, sizes and times, breadcrumbs and what changed last; a read survives its connection dropping.
 - **Hatch**: a dashboard for your Hatch agent (like Muse) from its machine: who it is and what's left to tell it, its runs and their conversations, what it learned, its dreams, its feed and its setup; a new dream, the day's facts and a feed story reach the Inbox.
 
+- **Who may reach your terminal and MCP is this Mac's**: those settings stay on the machine, never in the vault, and
+  only its owner changes them; a plugin whose required plugin is off is off too.
+- Activity keeps the calls an agent, the CLI or a script got wrong, and why (`vau activity --action failed`); `vau`
+  names the command a stray word belongs to (`vau errors 3f9a` → `vau errors show 3f9a`).
+- Errors and Activity keep updating after you leave and come back; an edit in a JSON view stays on its field.
+- Cursor's limits reset when their window ends, and Hermes is named in Activity.
+
 ## 0.4.0 (2026-10-10)
 
 Every AI app connects, from a new vault's first minute.

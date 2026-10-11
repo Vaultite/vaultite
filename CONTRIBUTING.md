@@ -1,8 +1,8 @@
 # Contributing
 
 Thanks for helping. Vaultite is small on purpose: a core that indexes files and loads plugins, and everything else as
-plugins. Read [CLAUDE.md](CLAUDE.md) before a change: it explains how the app is built and the rules that keep it simple
-(it's written for AI agents, and works for people too).
+plugins. Read [CLAUDE.md](CLAUDE.md) and the `CLAUDE.md` of each folder you touch before a change: they hold the rules
+that keep it simple (written for AI agents, and they work for people too).
 
 ## Setup
 
@@ -46,8 +46,7 @@ All four must pass:
 
 ```sh
 npm run build       # types (tsc -b, backend and frontend) and the web app
-npm run check       # plugin rules (imports, settings; every block declared, with a text side, in core/pages/Design.md;
-                    # no plugin API used while a plugin's module loads; skills/ short and naming real vau commands)
+npm run check       # the plugin rules, blocks, ops, bundles and skills (tools/check_plugins.ts)
 npm test            # browser-free web modules, then the backend on a throwaway vault
 npm run smoke       # the build starts: Chrome, desktop and phone, no page error, and opening a vault of your own
                     # changes none of its files (web/qa/boot.mjs, its own servers)
@@ -68,18 +67,3 @@ them only against a throwaway server; each script's header says what it covers a
 ones (`desktop.mjs`, `webviewer.mjs`, `weblogins.mjs`, `media-desktop.mjs`) run the Electron app quietly
 (`VAULTITE_QUIET`: its windows transparent, click-through and never focused, so nothing pops up over your work); `SHOW=1`
 shows the window, and takes the screenshots that need it.
-
-## Guidelines
-
-- All data is files in the vault; no database, no hidden state. Writes are small edits that keep the rest of a file.
-- A new feature is a plugin (`plugins/core/`, or a vault plugin of its own); a new block needs both sides, the React render
-  and the text for `/api/render`, its declaration in the manifest's `blocks` (what it shows, its options:
-  `core/blocks.ts`), and an entry in `core/pages/Design.md`.
-- No real names, places or accounts in code, docs, tests or examples: use made-up ones (Alice Park, Bob Lee, Lighthouse).
-- UI text: sentence case, no emojis, the app's colour tokens instead of hex colours.
-- Backend code is erasable TypeScript run directly by Node: no enums, no parameter properties, `import type` for types,
-  imports name the `.ts` file.
-- Changing the plugin API in a way that breaks existing plugins: bump `API_VERSION` in `core/version.ts` and note it in
-  CHANGELOG.md.
-- CHANGELOG.md: one line per user-facing change, as it ends up (edit an Unreleased line rather than add another).
-- Keep the version in `core/version.ts` equal to package.json's (a test checks).
