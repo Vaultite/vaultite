@@ -526,25 +526,25 @@ file: Projects/
 ```block-hermes-memory
 ```
 
-A Hatch agent (a personal AI on its own VM), read live from its home folder on an agent machine (`machine:`; the first with one when left out): `hatch` is who it is, its counts and what's left to tell it; `hatch-runs` its latest runs, each opening its conversation (`recent: 10`); `hatch-memory` what it learned (`notes: 3`); `hatch-dreams` its nightly dreams (`dreams: 2`); `hatch-feed` its feed's stories (`stories: 6`); `hatch-setup` its jobs, connectors and objectives.
+A Muse agent (a personal AI on its own VM), read live from its home folder on an agent machine (`machine:`; the first with one when left out): `muse` is who it is, its counts and what's left to tell it; `muse-runs` its latest runs, each opening its conversation (`recent: 10`); `muse-memory` what it learned (`notes: 3`); `muse-dreams` its nightly dreams (`dreams: 2`); `muse-feed` its feed's stories (`stories: 6`); `muse-setup` its jobs, connectors and objectives.
 
-```block-hatch
+```block-muse
 wide: true
 ```
 
-```block-hatch-runs
+```block-muse-runs
 ```
 
-```block-hatch-dreams
+```block-muse-dreams
 ```
 
-```block-hatch-memory
+```block-muse-memory
 ```
 
-```block-hatch-feed
+```block-muse-feed
 ```
 
-```block-hatch-setup
+```block-muse-setup
 ```
 
 ## AI import

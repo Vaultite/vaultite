@@ -22,7 +22,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **On the iPhone**: audio and video download to play offline, and e-books turn pages on a tap and use the screen's width.
 - Machines can show cloud agents’ folders and files through a read-only file agent, with enrollment codes and revocable access.
 - An agent machine's files read like the app's own: Markdown with its properties, JSON as a tree, transcripts as a conversation, images, sizes and times, breadcrumbs and what changed last; a read survives its connection dropping.
-- **Hatch**: a dashboard for your Hatch agent (like Muse) from its machine: who it is and what's left to tell it, its runs and their conversations, what it learned, its dreams, its feed and its setup; a new dream, the day's facts and a feed story reach the Inbox.
+- **Muse**: a dashboard for your Muse agent from its machine: who it is and what's left to tell it, its runs and their conversations, what it learned, its dreams, its feed and its setup; a new dream, the day's facts and a feed story reach the Inbox.
 
 - **Who may reach your terminal and MCP is this Mac's**: those settings stay on the machine, never in the vault, and
   only its owner changes them; a plugin whose required plugin is off is off too.

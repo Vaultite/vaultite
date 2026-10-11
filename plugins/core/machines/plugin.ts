@@ -143,7 +143,7 @@ plugin.route("GET", "machines/self", () => self())
 
 const FS: Record<string, string> = { "fs/list": "ls", "fs/read": "read", "fs/recent": "recent" }
 
-/** An agent machine's files, read for this server's own code (the Hatch plugin's blocks): its file agent's answer when
+/** An agent machine's files, read for this server's own code (the Muse plugin's blocks): its file agent's answer when
  *  this server is its relay, else the relay's. `rest`: info, fs/list, fs/read or fs/recent. */
 async function agentFs(id: string, rest: string, query: Record<string, string> = {}): Promise<unknown> {
   const m = listed().find((x) => x.id === id)

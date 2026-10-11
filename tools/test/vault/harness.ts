@@ -66,10 +66,10 @@ export async function vaultHarness(from?: string) {
   // come from the sessions. Cursor's account is the fake API above.
   const CLAUDE_DIR = path.join(tmp, "claude"), CODEX_DIR = path.join(tmp, "codex"), CURSOR_DIR = path.join(tmp, "cursor")
   const OPENCODE_DIR = path.join(tmp, "opencode"), OPENCLAW_DIR = path.join(tmp, "openclaw"), HERMES_DIR = path.join(tmp, "hermes")
-  const HATCH_DIR = path.join(tmp, "hatch") // (an agent named Wren, made up)
+  const MUSE_DIR = path.join(tmp, "muse") // (an agent named Wren, made up)
   fs.cpSync(path.join(TOOLS, "fixtures", "claude"), CLAUDE_DIR, { recursive: true })
   fs.cpSync(path.join(TOOLS, "fixtures", "codex"), CODEX_DIR, { recursive: true })
-  fs.cpSync(path.join(TOOLS, "fixtures", "hatch"), HATCH_DIR, { recursive: true })
+  fs.cpSync(path.join(TOOLS, "fixtures", "muse"), MUSE_DIR, { recursive: true })
   await cursorFixture(CURSOR_DIR)
   await opencodeFixture(OPENCODE_DIR)
   await openclawFixture(OPENCLAW_DIR)
@@ -79,7 +79,7 @@ export async function vaultHarness(from?: string) {
     CLAUDE_CONFIG_DIR: CLAUDE_DIR, CODEX_HOME: CODEX_DIR, CURSOR_USER_DIR: path.join(CURSOR_DIR, "User"), CURSOR_CONFIG_DIR: path.join(CURSOR_DIR, "config"),
     CURSOR_API_URL: `http://127.0.0.1:${(cursor.server.address() as { port: number }).port}`,
     OPENCODE_DATA_DIR: OPENCODE_DIR, OPENCODE_CACHE_DIR: path.join(TOOLS, "fixtures", "opencode"),
-    OPENCLAW_STATE_DIR: OPENCLAW_DIR, OPENCLAW_WORKSPACE_DIR: path.join(OPENCLAW_DIR, "workspace"), HERMES_HOME: HERMES_DIR, HATCH_HOME: HATCH_DIR,
+    OPENCLAW_STATE_DIR: OPENCLAW_DIR, OPENCLAW_WORKSPACE_DIR: path.join(OPENCLAW_DIR, "workspace"), HERMES_HOME: HERMES_DIR, MUSE_HOME: MUSE_DIR,
   })
   // Imported after the environment is set: plugins read it when they load.
   const { open } = await import("../../../core/app.ts")
@@ -140,7 +140,7 @@ export async function vaultHarness(from?: string) {
   return {
     tmp, VAULT, TOOLS, app, vault, ON, open, merge3, Text, publicOf, check, sleep, run, api, sentBy, read, exists, write,
     WS_DIR, readWs, writeWs, clearWs, fixtureNow, cursorSeen: cursor.seen, cursorApi: cursor.server,
-    CLAUDE_DIR, CODEX_DIR, CURSOR_DIR, OPENCODE_DIR, OPENCLAW_DIR, HERMES_DIR, HATCH_DIR,
+    CLAUDE_DIR, CODEX_DIR, CURSOR_DIR, OPENCODE_DIR, OPENCLAW_DIR, HERMES_DIR, MUSE_DIR,
     /** What an area leaves for the ones after it (tools/test/vault/index.ts says which need which). */
     vars: {} as Record<string, Any>,
     close: () => { cursor.server.close(); fs.rmSync(tmp, { recursive: true, force: true }) },

@@ -64,5 +64,5 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "start", deps: ["pages"] },
   { name: "resilience", deps: ["pages"] },
   { name: "treewatch", deps: ["pages"] },
-  { name: "hatch", deps: ["pages"] },
+  { name: "muse", deps: ["pages"] },
 ]

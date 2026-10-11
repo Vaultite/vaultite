@@ -1,10 +1,11 @@
-// A Hatch agent's blocks, live from GET /api/hatch...: on an agent machine (`machine:`) this server reads it through
+// A Muse agent's blocks, live from GET /api/muse...: on an agent machine (`machine:`) this server reads it through
 // Machines; on another Vaultite server, that server reads its own. Files open in Machines' file view when it can.
 import { type ReactNode, useState } from "react"
-import { Brain, CalendarClock, ChevronRight, Egg, FolderOpen, MessagesSquare, Moon, Newspaper } from "lucide-react"
+import { Brain, CalendarClock, ChevronRight, FolderOpen, MessagesSquare, Moon, Newspaper } from "lucide-react"
 import { type BlockCtx, Empty, fmtAgo, List, Loading, machinePath, Markdown, openView, Panel, Row, Section, Segmented, Stat, useLive, useMachines, useTick } from "@vaultite"
+import { MuseIcon } from "./marks"
 
-const TINT = "var(--orange)"
+const TINT = "var(--blue)"
 type Persona = { name: string; text: string; modified: string; unfilled: string[] }
 export type Overview = { machine: string; label: string; home: string; name: string; files: Persona[]
   connectors: { name: string; status: string }[]; jobs: { id: string; enabled: boolean; archived: boolean; mode: string; schedule: string; task: string; by: string }[]
@@ -20,7 +21,7 @@ const str = (v: unknown) => (typeof v === "string" ? v : "")
 
 /** A block's data: this server's route (with `machine` for an agent machine), or another Vaultite server's; asked again
  *  every five minutes while shown. */
-function useHatch<T>(route: string, options: Record<string, unknown>, params: Record<string, unknown> = {}) {
+function useMuse<T>(route: string, options: Record<string, unknown>, params: Record<string, unknown> = {}) {
   const machine = str(options.machine)
   const machines = useMachines()
   const m = machine ? machines?.find((x) => x.id === machine) : null
@@ -35,7 +36,7 @@ function useHatch<T>(route: string, options: Record<string, unknown>, params: Re
 
 /** Why a block has nothing to show, in words. */
 const why = (error: string | null, what: string) =>
-  !error ? null : /404/.test(error) ? "No Hatch agent found. Connect its machine in Machines, or set the block's machine." : /502/.test(error)
+  !error ? null : /404/.test(error) ? "No Muse agent found. Connect its machine in Machines, or set the block's machine." : /502/.test(error)
     ? "Its machine isn't connected right now." : /403/.test(error) ? `Only this machine's owner can read ${what}.` : `Couldn't read ${what}.`
 
 /** Open a file of an agent machine in Machines' file view (`<id>|<folder>|<file>`). */
@@ -58,17 +59,17 @@ function Fold({ title, meta, children, open: initial = false }: { title: ReactNo
 
 const when = (s: string) => (s && !Number.isNaN(Date.parse(s)) ? fmtAgo(s) : "")
 
-/** ```block-hatch: who it is, how much it has done, and what's left to tell it. */
-export function HatchBlock({ options = {} }: Partial<BlockCtx>) {
-  const { data, error, files } = useHatch<Overview>("hatch", options)
+/** ```block-muse: who it is, how much it has done, and what's left to tell it. */
+export function MuseBlock({ options = {} }: Partial<BlockCtx>) {
+  const { data, error, files } = useMuse<Overview>("muse", options)
   const todo = data?.files.filter((f) => f.unfilled.length) ?? []
   return (
-    <Panel title={data?.name ?? "Hatch"} icon={Egg} tint={TINT}
+    <Panel title={data?.name ?? "Muse"} icon={MuseIcon} tint={TINT}
       action={files && <button type="button" onClick={() => openView(`machine-files/${files}`, { newTab: true })} data-tip="Browse its files"
         className="flex size-8 cursor-pointer items-center justify-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"><FolderOpen className="size-4" /></button>}>
       {!data ? <Loading error={why(error, "this agent")} /> : (
-        <div className="space-y-4" data-hatch={data.machine || "here"}>
-          <p className="text-[13px] text-muted-foreground">Hatch agent{data.label ? ` on ${data.label}` : ""} · <span className="font-mono">{data.home}</span></p>
+        <div className="space-y-4" data-muse={data.machine || "here"}>
+          <p className="text-[13px] text-muted-foreground">Muse agent{data.label ? ` on ${data.label}` : ""} · <span className="font-mono">{data.home}</span></p>
           <div className="grid grid-cols-2 gap-4 @md:grid-cols-4">
             <Stat label="Runs" value={data.counts.runs} />
             <Stat label="Dreams" value={data.counts.dreams} />
@@ -99,10 +100,10 @@ export function HatchBlock({ options = {} }: Partial<BlockCtx>) {
 const KIND_TINT: Record<string, string> = { Conversation: "var(--blue)", Feed: "var(--teal)", Proactive: "var(--green)", "Self-improvement": "var(--purple)",
   Scheduled: "var(--orange)", Onboarding: "var(--pink)" }
 
-/** ```block-hatch-runs: its latest runs, each opening its conversation. */
-export function HatchRuns({ options = {} }: Partial<BlockCtx>) {
+/** ```block-muse-runs: its latest runs, each opening its conversation. */
+export function MuseRuns({ options = {} }: Partial<BlockCtx>) {
   const recent = typeof options.recent === "number" ? options.recent : 10
-  const { data, error } = useHatch<{ total: number; runs: Run[] }>("hatch/runs", options, { limit: recent })
+  const { data, error } = useMuse<{ total: number; runs: Run[] }>("muse/runs", options, { limit: recent })
   const [kind, setKind] = useState("all")
   const kinds = [...new Set(data?.runs.map((r) => r.kind) ?? [])]
   const shown = data?.runs.filter((r) => kind === "all" || r.kind === kind) ?? []
@@ -114,7 +115,7 @@ export function HatchRuns({ options = {} }: Partial<BlockCtx>) {
           {kinds.length > 1 && <Segmented label="Kind of run" value={kinds.includes(kind) ? kind : "all"} onChange={setKind} className="overflow-x-auto"
             options={[{ value: "all", label: "All" }, ...kinds.map((k) => ({ value: k, label: k }))]} />}
           <List>{shown.map((r) => (
-            <Row key={r.id} data-run={r.id} title={r.title} onOpen={() => openView(`hatch-session/${machine ? `${machine}:` : ""}${r.id}`)}
+            <Row key={r.id} data-run={r.id} title={r.title} onOpen={() => openView(`muse-session/${machine ? `${machine}:` : ""}${r.id}`)}
               lead={<span className="size-2 shrink-0 rounded-full" style={{ background: KIND_TINT[r.kind] ?? "var(--gray)" }} data-tip={r.kind} />}
               meta={[r.kind, when(r.last || r.first), r.tools ? `${r.tools} tool call${r.tools === 1 ? "" : "s"}` : "", r.tokens ? `${Math.round(r.tokens / 1000)}k tokens` : ""].filter(Boolean).join(" · ")} />
           ))}</List>
@@ -127,10 +128,10 @@ export function HatchRuns({ options = {} }: Partial<BlockCtx>) {
 
 const SURE: Record<string, string> = { high: "var(--green)", medium: "var(--orange)", low: "var(--gray)" }
 
-/** ```block-hatch-memory: what it knows, what it learned lately, and its memory bank. */
-export function HatchMemory({ options = {} }: Partial<BlockCtx>) {
+/** ```block-muse-memory: what it knows, what it learned lately, and its memory bank. */
+export function MuseMemory({ options = {} }: Partial<BlockCtx>) {
   const notes = typeof options.notes === "number" ? options.notes : 3
-  const { data, error } = useHatch<Memory>("hatch/memory", options, { notes })
+  const { data, error } = useMuse<Memory>("muse/memory", options, { notes })
   return (
     <Panel title="What it knows" icon={Brain} tint={TINT}>
       {!data ? <Loading error={why(error, "its memory")} /> : (
@@ -170,10 +171,10 @@ export function HatchMemory({ options = {} }: Partial<BlockCtx>) {
   )
 }
 
-/** ```block-hatch-dreams: its latest dream, the ones before folded, and what it understands of you. */
-export function HatchDreams({ options = {} }: Partial<BlockCtx>) {
+/** ```block-muse-dreams: its latest dream, the ones before folded, and what it understands of you. */
+export function MuseDreams({ options = {} }: Partial<BlockCtx>) {
   const n = typeof options.dreams === "number" ? options.dreams : 2
-  const { data, error, files } = useHatch<Dreams>("hatch/dreams", options, { dreams: n })
+  const { data, error, files } = useMuse<Dreams>("muse/dreams", options, { dreams: n })
   const [first, ...rest] = data?.dreams ?? []
   return (
     <Panel title="Dreams" icon={Moon} tint={TINT}>
@@ -205,10 +206,10 @@ export function HatchDreams({ options = {} }: Partial<BlockCtx>) {
 
 const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./, "") } catch { return u } }
 
-/** ```block-hatch-feed: the stories of the feed it writes for you. */
-export function HatchFeed({ options = {} }: Partial<BlockCtx>) {
+/** ```block-muse-feed: the stories of the feed it writes for you. */
+export function MuseFeed({ options = {} }: Partial<BlockCtx>) {
   const n = typeof options.stories === "number" ? options.stories : 6
-  const { data, error } = useHatch<Feed>("hatch/feed", options, { stories: n })
+  const { data, error } = useMuse<Feed>("muse/feed", options, { stories: n })
   return (
     <Panel title="Feed" icon={Newspaper} tint={TINT}>
       {!data ? <Loading error={why(error, "its feed")} /> : !data.stories.length ? <Empty>Nothing in its feed yet.</Empty> : (
@@ -234,9 +235,9 @@ export function HatchFeed({ options = {} }: Partial<BlockCtx>) {
   )
 }
 
-/** ```block-hatch-setup: its scheduled jobs, connectors and self-improvement objectives. */
-export function HatchSetup({ options = {} }: Partial<BlockCtx>) {
-  const { data, error } = useHatch<Overview>("hatch", options)
+/** ```block-muse-setup: its scheduled jobs, connectors and self-improvement objectives. */
+export function MuseSetup({ options = {} }: Partial<BlockCtx>) {
+  const { data, error } = useMuse<Overview>("muse", options)
   const on = data?.connectors.filter((c) => c.status === "connected") ?? []
   const off = data?.connectors.filter((c) => c.status !== "connected") ?? []
   return (

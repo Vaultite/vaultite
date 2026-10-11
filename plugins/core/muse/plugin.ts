@@ -1,9 +1,9 @@
-// Hatch: what a Hatch agent (a personal AI on its own VM) keeps in its home, read live through a machine's file agent
-// or here (HATCH_HOME): who it is, runs, learnings, dreams, feed, jobs. Never written to; what's new reaches the Inbox.
+// Muse: what a Muse agent (a personal AI on its own VM) keeps in its home, read live through a machine's file agent
+// or here (MUSE_HOME): who it is, runs, learnings, dreams, feed, jobs. Never written to; what's new reaches the Inbox.
 import os from "node:os"
 import { ago } from "../../../core/codingagents.ts"
 import { bullets as list, HTTPError, Plugin, type Request, section } from "../../../core/plugins.ts"
-import { bullets, connectors, conversation, cronJob, dailyNote, dreamText, feedFile, frontmatter, type Home, isHatch, localHome, nameOf, pool,
+import { bullets, connectors, conversation, cronJob, dailyNote, dreamText, feedFile, frontmatter, type Home, isMuse, localHome, nameOf, pool,
   remoteHome, runOf, type Run, slotOf, unfilled } from "./home.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -33,7 +33,7 @@ async function remote(m: Machine): Promise<Home> {
   return remoteHome(m.id, root, ask)
 }
 
-/** Which home a block or route reads: `machine`'s, else HATCH_HOME or this machine's home folder when it's Hatch's, else
+/** Which home a block or route reads: `machine`'s, else MUSE_HOME or this machine's home folder when it's Muse's, else
  *  the first agent machine with one. */
 async function homeOf(machine: unknown): Promise<{ home: Home; label: string }> {
   const id = str(machine).trim()
@@ -42,24 +42,24 @@ async function homeOf(machine: unknown): Promise<{ home: Home; label: string }> 
     if (!m) throw new HTTPError(404, `No agent machine '${id}' in Machines`)
     return { home: await remote(m), label: m.label }
   }
-  const env = process.env.HATCH_HOME?.trim()
+  const env = process.env.MUSE_HOME?.trim()
   if (env) return { home: localHome(env), label: "" }
   const here = localHome(os.homedir())
-  if (isHatch(await here.list(""))) return { home: here, label: "" }
-  const found = await plugin.memo(600, async function hatchMachine() {
+  if (isMuse(await here.list(""))) return { home: here, label: "" }
+  const found = await plugin.memo(600, async function museMachine() {
     for (const m of (await machines()).filter((x) => x.online)) {
-      try { const h = await remote(m); if (isHatch(await h.list(""))) return m.id } catch { /* not this one */ }
+      try { const h = await remote(m); if (isMuse(await h.list(""))) return m.id } catch { /* not this one */ }
     }
     return ""
   })
-  if (!found) throw new HTTPError(404, "No Hatch agent here or on an agent machine")
+  if (!found) throw new HTTPError(404, "No Muse agent here or on an agent machine")
   return homeOf(found)
 }
 
 // ---------- what's in it (each remembered a minute: an agent machine answers over the internet)
 
 async function identity(h: Home) {
-  return nameOf((await h.read("IDENTITY.md"))?.text) || "Hatch"
+  return nameOf((await h.read("IDENTITY.md"))?.text) || "Muse"
 }
 
 /** Who it is and how it's set up: its persona files (and what's left to fill in them), connectors, jobs, objectives. */
@@ -87,7 +87,7 @@ async function overview(h: Home, label: string) {
   const [agents, dreamed, noted] = await Promise.all(["agents", "dreams", "memory"].map((d) => h.list(d)))
   const counts = { runs: (agents ?? []).filter((e) => e.dir && e.name.startsWith("agent-")).length,
     dreams: (dreamed ?? []).filter((e) => DAY.test(e.name)).length, notes: (noted ?? []).filter((e) => DAY.test(e.name)).length }
-  return { machine: h.machine, label, home: h.root, name: nameOf(files.find((f) => f.name === "IDENTITY.md")?.text) || "Hatch", files,
+  return { machine: h.machine, label, home: h.root, name: nameOf(files.find((f) => f.name === "IDENTITY.md")?.text) || "Muse", files,
     connectors: skills ? connectors(skills.text) : [], jobs, objectives, counts }
 }
 
@@ -189,14 +189,14 @@ const getFeed = (machine: unknown, n: number) => memo(300, "feed", (h) => feed(h
 
 // ---------- routes: only this machine's owner (an agent's memory is about them)
 
-const owner = (req: Request) => plugin.ownerOnly(req, "Reading a Hatch agent's files")
-plugin.route("GET", "hatch", async (req) => { await owner(req); return getOverview(req.query.machine) }, { lock: false })
-plugin.route("GET", "hatch/runs", async (req) => { await owner(req); return getRuns(req.query.machine, num(req.query.limit, 10, 100)) }, { lock: false })
-plugin.route("GET", "hatch/memory", async (req) => { await owner(req); return getMemory(req.query.machine, num(req.query.notes, 3, 30)) }, { lock: false })
-plugin.route("GET", "hatch/dreams", async (req) => { await owner(req); return getDreams(req.query.machine, num(req.query.dreams, 2, 30)) }, { lock: false })
-plugin.route("GET", "hatch/feed", async (req) => { await owner(req); return getFeed(req.query.machine, num(req.query.stories, 6, 50)) }, { lock: false })
+const owner = (req: Request) => plugin.ownerOnly(req, "Reading a Muse agent's files")
+plugin.route("GET", "muse", async (req) => { await owner(req); return getOverview(req.query.machine) }, { lock: false })
+plugin.route("GET", "muse/runs", async (req) => { await owner(req); return getRuns(req.query.machine, num(req.query.limit, 10, 100)) }, { lock: false })
+plugin.route("GET", "muse/memory", async (req) => { await owner(req); return getMemory(req.query.machine, num(req.query.notes, 3, 30)) }, { lock: false })
+plugin.route("GET", "muse/dreams", async (req) => { await owner(req); return getDreams(req.query.machine, num(req.query.dreams, 2, 30)) }, { lock: false })
+plugin.route("GET", "muse/feed", async (req) => { await owner(req); return getFeed(req.query.machine, num(req.query.stories, 6, 50)) }, { lock: false })
 /** A run read back: `<machine>:<run id>` (or the run id, this machine's). */
-plugin.route("GET", "hatch/session/*", async (req) => {
+plugin.route("GET", "muse/session/*", async (req) => {
   await owner(req)
   const full = req.arg(0), at = full.lastIndexOf(":")
   const { home } = await homeOf(at < 0 ? "" : full.slice(0, at))
@@ -208,38 +208,38 @@ plugin.route("GET", "hatch/session/*", async (req) => {
 const named = async (machine: unknown) => { const { home } = await homeOf(machine); return plugin.memo(600, identity, home) }
 const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`
 
-plugin.block("hatch", async (ctx) => {
+plugin.block("muse", async (ctx) => {
   const o = await getOverview(ctx.options.machine)
   const todo = o.files.filter((f) => f.unfilled.length).map((f) => `${f.name}: ${f.unfilled.join(", ")}`)
-  return section(o.name, `Hatch agent${o.label ? ` on ${o.label}` : ""} (${o.home}).`,
+  return section(o.name, `Muse agent${o.label ? ` on ${o.label}` : ""} (${o.home}).`,
     list(o.files.map((f) => `${f.name}, changed ${ago(f.modified)}`)), todo.length ? `Left to fill in:\n\n${list(todo)}` : "")
 })
 
-plugin.block("hatch-runs", async (ctx) => {
+plugin.block("muse-runs", async (ctx) => {
   const [name, r] = await Promise.all([named(ctx.options.machine), getRuns(ctx.options.machine, num(ctx.options.recent, 10, 100))])
   return section(`${name}'s runs`, list(r.runs.map((x) => `${x.kind}: ${x.title} (${ago(x.last || x.first)}, ${plural(x.tools, "tool call")}${x.model ? `, ${x.model}` : ""})`), "No runs yet."),
     `${plural(r.total, "run")} in all.`)
 })
 
-plugin.block("hatch-memory", async (ctx) => {
+plugin.block("muse-memory", async (ctx) => {
   const [name, m] = await Promise.all([named(ctx.options.machine), getMemory(ctx.options.machine, num(ctx.options.notes, 3, 30))])
   return section(`What ${name} knows`, m.facts.length ? `### MEMORY.md\n\n${list(m.facts)}` : "_MEMORY.md has nothing yet._",
     ...m.days.map((d) => `### ${d.date}\n\n${list([...d.facts.map((f) => `${f.text} (${f.kind}, ${f.confidence})`), ...d.notes], "Nothing noted.")}`))
 })
 
-plugin.block("hatch-dreams", async (ctx) => {
+plugin.block("muse-dreams", async (ctx) => {
   const [name, d] = await Promise.all([named(ctx.options.machine), getDreams(ctx.options.machine, num(ctx.options.dreams, 2, 30))])
   return section(`${name}'s dreams`, ...d.dreams.map((x) => `### ${x.date}\n\n${x.text}`), d.dreams.length ? "" : "_No dreams yet._",
     d.synthesis ? `### What it understands of you\n\n${d.synthesis.text}` : "")
 })
 
-plugin.block("hatch-feed", async (ctx) => {
+plugin.block("muse-feed", async (ctx) => {
   const [name, f] = await Promise.all([named(ctx.options.machine), getFeed(ctx.options.machine, num(ctx.options.stories, 6, 50))])
   return section(`${name}'s feed`, ...f.stories.map((s) => `### ${s.title}\n\n${s.date}, ${s.part}, ${s.beat}. ${s.text}\n\n${list(s.links.map((l) => l.url))}`),
     f.stories.length ? "" : "_Nothing in its feed yet._")
 })
 
-plugin.block("hatch-setup", async (ctx) => {
+plugin.block("muse-setup", async (ctx) => {
   const o = await getOverview(ctx.options.machine)
   const on = o.connectors.filter((c) => c.status === "connected").map((c) => c.name)
   return section(`How ${o.name} is set up`,
@@ -258,7 +258,7 @@ async function news() {
   let changed = false
   for (const m of (await machines()).filter((x) => x.online)) {
     let home: Home
-    try { home = await remote(m); if (!isHatch(await home.list(""))) continue } catch { continue }
+    try { home = await remote(m); if (!isMuse(await home.list(""))) continue } catch { continue }
     const name = await identity(home), was = seen[m.id], now = { ...was }
     const [d, mem, f] = await Promise.all([dreams(home, 1), memory(home, 1), feed(home, 1)])
     const dream = d.dreams[0], day = mem.days[0], story = f.stories[0]
@@ -280,7 +280,7 @@ async function news() {
   if (changed) plugin.writeCache({ seen })
 }
 const event = (machine: string, key: string, title: string, body: string, link: string) =>
-  plugin.ask("inbox:event", null, { source: "hatch", kind: "info", title, body: body.slice(0, 4000), link, key: `${machine}-${key}`.slice(0, 60) })
+  plugin.ask("inbox:event", null, { source: "muse", kind: "info", title, body: body.slice(0, 4000), link, key: `${machine}-${key}`.slice(0, 60) })
 
 plugin.every("news", { every: "30m" }, news)
 plugin.exports.news = news

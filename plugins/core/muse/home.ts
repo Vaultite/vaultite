@@ -1,4 +1,4 @@
-// A Hatch agent's home folder (its persona files, memory, dreams, runs, scheduled jobs and feed), read on this machine
+// A Muse agent's home folder (its persona files, memory, dreams, runs, scheduled jobs and feed), read on this machine
 // or, far more often, on an agent machine through Machines' file agent; and what its files say, parsed leniently.
 import fs from "node:fs"
 import path from "node:path"
@@ -68,8 +68,8 @@ export function remoteHome(machine: string, root: string, ask: (rest: string, q:
   }
 }
 
-/** Whether a folder's entries are a Hatch home's. */
-export const isHatch = (entries: FileEntry[] | null) => {
+/** Whether a folder's entries are a Muse home's. */
+export const isMuse = (entries: FileEntry[] | null) => {
   const has = (n: string, dir = false) => !!entries?.some((e) => e.name === n && e.dir === dir)
   return has("SOUL.md") && has("HEARTBEAT.md") && has("workspace", true) && has("agents", true)
 }
@@ -86,7 +86,7 @@ export async function pool<T, R>(items: T[], n: number, fn: (t: T) => Promise<R>
 
 // ---------- what its files say
 
-/** A file's frontmatter (flat keys and one level of nesting, as Hatch writes them) and the rest. */
+/** A file's frontmatter (flat keys and one level of nesting, as Muse writes them) and the rest. */
 export function frontmatter(text: string): { fm: Record<string, Any>; body: string } {
   const m = /^---\r?\n([\s\S]*?)\r?\n---\r?\n?/.exec(text)
   if (!m) return { fm: {}, body: text }

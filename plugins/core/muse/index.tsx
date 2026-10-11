@@ -1,10 +1,10 @@
-import { Egg } from "lucide-react"
 import { AgentSession, definePlugin, type AgentSource } from "@vaultite"
-import { type Dreams, type Feed, HatchBlock, HatchDreams, HatchFeed, HatchMemory, HatchRuns, HatchSetup, type Memory, type Overview, type Run } from "./Blocks"
+import { type Dreams, type Feed, MuseBlock, MuseDreams, MuseFeed, MuseMemory, MuseRuns, MuseSetup, type Memory, type Overview, type Run } from "./Blocks"
+import { MuseIcon } from "./marks"
 
-// A run read back is the app's session view (AgentSession.tsx) on GET /api/hatch/session/<machine>:<run>; it runs on
+// A run read back is the app's session view (AgentSession.tsx) on GET /api/muse/session/<machine>:<run>; it runs on
 // its own machine, so there's no resuming it in a terminal here.
-const SRC: AgentSource = { path: "hatch", label: "Hatch", icon: Egg, tint: "var(--orange)", agent: "hatch", view: "hatch-session", resume: false }
+const SRC: AgentSource = { path: "muse", label: "Muse", icon: MuseIcon, tint: "var(--blue)", agent: "muse", view: "muse-session", resume: false }
 
 const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
 const overview = (): Overview => ({
@@ -26,19 +26,19 @@ const dreams = (): Dreams => ({ total: 6, synthesis: { text: "Alice tests before
 const feed = (): Feed => ({ slots: 3, stories: [{ title: "A new open model for code", text: "It runs on a laptop.", links: [{ url: "https://example.com/model", note: "" }], beat: "web", date: "2026-10-10", part: "midday", path: "" }] })
 
 export default definePlugin({
-  // `icon: hatch` in a file (its dashboard).
-  icons: { hatch: Egg },
-  // Its page is the Hatch dashboard (pages/Hatch.md).
+  // `icon: muse` in a file (its dashboard).
+  icons: { muse: MuseIcon },
+  // Its page is the Muse dashboard (pages/Muse.md).
   blocks: {
-    hatch: (ctx) => <HatchBlock {...ctx} />,
-    "hatch-runs": (ctx) => <HatchRuns {...ctx} />,
-    "hatch-memory": (ctx) => <HatchMemory {...ctx} />,
-    "hatch-dreams": (ctx) => <HatchDreams {...ctx} />,
-    "hatch-feed": (ctx) => <HatchFeed {...ctx} />,
-    "hatch-setup": (ctx) => <HatchSetup {...ctx} />,
+    muse: (ctx) => <MuseBlock {...ctx} />,
+    "muse-runs": (ctx) => <MuseRuns {...ctx} />,
+    "muse-memory": (ctx) => <MuseMemory {...ctx} />,
+    "muse-dreams": (ctx) => <MuseDreams {...ctx} />,
+    "muse-feed": (ctx) => <MuseFeed {...ctx} />,
+    "muse-setup": (ctx) => <MuseSetup {...ctx} />,
   },
   views: {
-    "hatch-session": { icon: Egg, title: () => "Hatch run", render: ({ arg }) => <AgentSession key={arg} src={SRC} id={arg} /> },
+    "muse-session": { icon: MuseIcon, title: () => "Muse run", render: ({ arg }) => <AgentSession key={arg} src={SRC} id={arg} /> },
   },
-  mockLive: () => ({ hatch: overview(), "hatch/runs": runs(), "hatch/memory": memory(), "hatch/dreams": dreams(), "hatch/feed": feed() }),
+  mockLive: () => ({ muse: overview(), "muse/runs": runs(), "muse/memory": memory(), "muse/dreams": dreams(), "muse/feed": feed() }),
 })

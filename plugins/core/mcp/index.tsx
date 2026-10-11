@@ -3,7 +3,7 @@
 import { Copy, Plug } from "lucide-react"
 import { copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
 import { ConnectSection, ConnectionsView, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
-import { GrokBotIcon, MuseIcon } from "./marks"
+import { GrokBotIcon } from "./marks"
 
 function Preview() {
   return (
@@ -40,7 +40,7 @@ function Connect() {
 export default definePlugin({
   preview: () => <Preview />,
   settingsPanel: () => <Connect />,
-  icons: { "grok-bot": GrokBotIcon, muse: MuseIcon },
+  icons: { "grok-bot": GrokBotIcon },
   details: { [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> } },
   setup: { label: "Connections", sub: "Claude, ChatGPT, Muse and Grok Bot in your vault", run: () => openView("connections", { newTab: true }) },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },
