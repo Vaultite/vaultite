@@ -146,6 +146,8 @@ export class PublicMcp {
       socket.on("error", () => socket.destroy())
       void (async () => {
         if (await this.plugin.ask("machines:upgrade", false, req, socket, head)) return
+        // Machines not loaded yet (a server starting): a file agent waits and dials again.
+        if (new URL(req.url ?? "/", "http://localhost").pathname.startsWith("/machines/dial/")) return socket.end("HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
         const signed = this.signedOwner(req)
         if (signed !== true) return socket.end(`HTTP/1.1 ${signed ? 401 : 404} ${signed ? "Unauthorized" : "Not Found"}\r\nContent-Length: 0\r\nConnection: close\r\n\r\n`)
         upgradeApp(req, socket, head, this.connectOptions())

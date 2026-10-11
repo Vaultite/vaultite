@@ -129,7 +129,8 @@ class Socket:
         head, self.buf = head.split(b"\r\n\r\n", 1)
         status = head.split(b"\r\n", 1)[0].decode(errors="replace")
         code = (status.split(" ") + ["", ""])[1]
-        if code in ("401", "403", "404"):
+        # A revoked key; a 404 can be a server still starting (or its machine list unreadable for a moment): tried again.
+        if code in ("401", "403"):
             raise Refused(status)
         if code != "101":
             raise OSError("the server answered " + status)

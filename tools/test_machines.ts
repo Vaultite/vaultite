@@ -130,6 +130,16 @@ try {
   reconnect.terminate()
   // (a read while it's reconnecting waits for it rather than failing)
   assert.equal((await api("GET", "machines/sandbox/fs/read?path=hello.txt")).status, 200)
+  // A 404 (a server starting, its machine list unreadable for a moment) isn't a revoked key: it keeps dialing.
+  const listed = machinePlugin.readSettings()!
+  const bump = new WebSocket(cfg.url, { headers: { Authorization: `Bearer ${cfg.key}` } })
+  await new Promise<void>((r) => bump.once("open", () => r()))
+  machinePlugin.saveSettings({ ...listed, machines: listed.machines.filter((m: { id: string }) => m.id !== "sandbox") })
+  bump.terminate()
+  await until(async () => /retrying: .*404/.test(await command(["status"])))
+  assert.match(await command(["status"]), /^running/)
+  machinePlugin.saveSettings(listed)
+  await until(async () => !!(await api("GET", "machines/sandbox/info")).body.online)
   assert.ok(keys.sandbox)
   assert.equal((await api("POST", "ops/machines.revoke", { id: "sandbox" })).status, 200)
   await until(async () => !(await api("GET", "machines/sandbox/info")).body.online)
