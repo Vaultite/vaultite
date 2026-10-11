@@ -416,7 +416,7 @@ file: Projects/
 
 ## Cursor
 
-`cursor-limits`: the plan's included usage (and Grok Bot's week). `cursor-sessions`: open and recent chats (`recent: 5`). `cursor-usage`, `cursor-projects` and `cursor-models` (`days: 30`). `cursor`: one project's usage (a file block; `project: <folder>`).
+`cursor-limits`: the plan's included usage. `cursor-sessions`: open and recent chats (`recent: 5`). `cursor-usage`, `cursor-projects` and `cursor-models` (`days: 30`). `cursor`: one project's usage (a file block; `project: <folder>`).
 
 ```block-cursor-limits
 ```
@@ -439,6 +439,25 @@ days: 7
 
 ```block-cursor
 file: Projects/
+```
+
+## Grok Bot
+
+Cursor's cloud agent, from Cursor's dashboard: `grok-bot-limits` (its week), `grok-bot-sessions` (its latest conversations, `recent: 5`), `grok-bot-usage` and `grok-bot-models` (`days: 30`). It runs in the cloud, so nothing is open here and it has no project blocks.
+
+```block-grok-bot-limits
+```
+
+```block-grok-bot-sessions
+recent: 3
+```
+
+```block-grok-bot-usage
+days: 7
+```
+
+```block-grok-bot-models
+days: 7
 ```
 
 ## OpenCode

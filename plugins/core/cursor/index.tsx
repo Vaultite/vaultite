@@ -19,7 +19,7 @@ export default definePlugin(agentPlugin(SRC, {
   opens: { open: { id: "terminal:cursor", name: "Open Cursor agent" }, split: { id: "terminal:cursor-split", desktop: true, name: "Open Cursor agent in right split" } },
   demo: {
     plan: { name: "Pro", monthly: 20 },
-    limits: { source: "Cursor dashboard", observed: 3, windows: [["month", "Included usage", 43200, 46, 60 * 24 * 12], ["grok-bot", "Grok Bot, this week", 10080, 12, 60 * 70]] },
+    limits: { source: "Cursor dashboard", observed: 3, windows: [["month", "Included usage", 43200, 46, 60 * 24 * 12]] },
     daily: [0, 0.8, 2, 3.6, 1.2, 0, 4.4, 5.6, 2.4, 3.2], per: [2.2e6, 9, 2], cacheHit: 0.88,
     live: [
       { id: "a", title: "Search results page", project: "demo-app", status: "busy", kind: "CLI", at: [25, 0], model: "Claude 4.5 Sonnet", cost: 1.64, tokens: 3.1e6 },
@@ -28,9 +28,8 @@ export default definePlugin(agentPlugin(SRC, {
     projects: [
       { name: "demo-app", root: "/demo-app", cost: 38.2, tokens: 8.4e7, sessions: 22, active_min: 640, last: 0 },
       { name: "api", root: "/api", cost: 17.5, tokens: 3.9e7, sessions: 9, active_min: 260, last: 6 },
-      { name: "Grok Bot", cost: 6.1, tokens: 1.2e7, sessions: 5, active_min: 40, last: 60 * 20 },
     ],
-    models: [{ name: "Claude 4.5 Sonnet", cost: 41.9, tokens: 7.7e7 }, { name: "Auto", cost: 13.8, tokens: 4.6e7 }, { name: "Grok Bot", cost: 6.1, tokens: 1.2e7 }],
+    models: [{ name: "Claude 4.5 Sonnet", cost: 41.9, tokens: 7.7e7 }, { name: "Auto", cost: 13.8, tokens: 4.6e7 }],
     sessions: [
       { id: "c", title: "Pagination for the orders list", project: "demo-app", root: "/demo-app", at: [300, 240], cost: 2.1, tokens: 4.4e6, active_min: 31, model: "Claude 4.5 Sonnet" },
       { id: "d", title: "Retry failed webhooks", project: "api", root: "/api", at: [1500, 1420], cost: 3.4, tokens: 7e6, active_min: 44, model: "Auto" },

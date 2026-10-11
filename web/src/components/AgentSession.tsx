@@ -114,7 +114,7 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
           {data.branch && <span>{data.branch}</span>}
         </div>
         {data.cwd && <div className="mt-1 truncate font-mono text-[12px] text-tertiary" data-tip={data.cwd} data-tip-trunc>{home(data.cwd)}</div>}
-        {on("terminal") && src.resume !== false && (
+        {on("terminal") && src.resume !== false && !src.cloud && (
           <button type="button" data-resume onClick={() => openAgent(src.agent, { resume: data.id, machine })}
             data-tip={`Resumes it in ${home(data.cwd) || "the vault"}`}
             className="mt-4 inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-[7px] bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 active:opacity-80">
@@ -128,7 +128,7 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
           <History className="size-4" strokeWidth={2} />Show earlier ({numberText(data.start)} more)
         </button>
       )}
-      {!data.entries.length ? <Empty>Nothing was said in this session.</Empty> : (
+      {!data.entries.length ? <Empty>{src.cloud ?? "Nothing was said in this session."}</Empty> : (
         <div className="space-y-4">
           {groups.map(({ at, entries: g }) => (g[0].kind === "tool"
             ? <div key={at} className="-mx-1">{(g as Tool[]).map((t, j) => <ToolLine key={t.id || j} t={t} />)}</div>

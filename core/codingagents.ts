@@ -1,5 +1,5 @@
-// What the coding agent plugins (Claude Code, Codex, Cursor, Hermes, OpenClaw, OpenCode) share: their routes and blocks
-// (codingAgent), usage tallies, processes, transcripts and databases; Terminal, Dispatch and the Inbox start agents with it.
+// What the coding agent plugins (Claude Code, Codex, Cursor, Grok Bot, Hermes, OpenClaw, OpenCode) share: their routes
+// and blocks (codingAgent), usage tallies, processes, transcripts and databases; Terminal, Dispatch and the Inbox start agents.
 import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -707,6 +707,8 @@ type Words = {
   state: (s: Item) => string
   /** More of the sessions block (Remote Control servers). */
   more?: (u: Usage) => string[]
+  /** It runs in the cloud (Grok Bot): no session is open here, none is in a folder, so no project blocks. */
+  cloud?: boolean
 }
 
 /** One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents. */
@@ -741,6 +743,8 @@ export type CodingAgent<A extends Account> = Words & {
   projectOf?: (cwd: string) => string
   /** The first read of a big history, before anyone asks (2 s after loading, when it's on). */
   warm?: () => unknown
+  /** What it remembers outside its plugin (an account read with another plugin's), asked again on Refresh too. */
+  forget?: () => void
 }
 
 /** A coding agent's routes and blocks; it answers which accounts an `account` option names. */
@@ -775,7 +779,7 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
   // Refresh: what it remembers (its limits as the account last said them) is asked again, at most every 10 s.
   let forgot = 0
   plugin.route("POST", `${a.id}/refresh`, () => {
-    if (Date.now() - forgot > 10_000) { forgot = Date.now(); plugin.forget() }
+    if (Date.now() - forgot > 10_000) { forgot = Date.now(); plugin.forget(); a.forget?.() }
     return { ok: true }
   })
   if (a.warm) setTimeout(() => { if (plugin.loaded && !plugin.isOff()) void a.warm!() }, 2000).unref()
@@ -794,7 +798,7 @@ function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: un
     const open = new Set(data.live.map((s) => s.id))
     const recent = bullets(data.sessions.filter((s) => !open.has(s.id)).map((s) => `${sessionLine(s)} (${ago(s.last)})`)
       .slice(0, Math.trunc(Number(ctx.options.recent || 5))), `No ${noun}s yet.`)
-    return section(`${w.name} sessions`, "### Now", now, "### Recent", recent, `_Costs ${w.value}._`, ...(w.more?.(data) ?? []))
+    return section(`${w.name} sessions`, ...(w.cloud ? [recent] : ["### Now", now, "### Recent", recent]), `_Costs ${w.value}._`, ...(w.more?.(data) ?? []))
   })
   plugin.block(usageBlock, async (ctx) => {
     const days = daysOf(ctx.options.days)
@@ -808,17 +812,18 @@ function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: un
       (d.active_min >= 1 ? working(d.active_min) : ""))
     return section(`${w.name} usage`, head, bullets(rows, "Nothing this week."))
   })
+  plugin.block(models, async (ctx) => {
+    const days = daysOf(ctx.options.days)
+    const data = await usage(days, ctx.options.account)
+    return section(`${w.name} by model, last ${days} days`, bullets(data.models.map((m) => `${m.name}: ${money(m.cost)}, ${tokens(m.tokens)} tokens`), "None yet."), `_Costs ${w.value}._`)
+  })
+  if (w.cloud) return
   plugin.block(projects, async (ctx) => {
     const days = daysOf(ctx.options.days)
     const data = await usage(days, ctx.options.account)
     const rows = data.projects.map((p) => `${p.name}: ${money(p.cost)}, ${tokens(p.tokens)} tokens, ${plural(p.sessions, count)}` +
       (p.active_min >= 1 ? working(p.active_min) : ""))
     return section(`${w.name} by project, last ${days} days`, bullets(rows, `No ${noun}s yet.`), `_Costs ${w.value}._`)
-  })
-  plugin.block(models, async (ctx) => {
-    const days = daysOf(ctx.options.days)
-    const data = await usage(days, ctx.options.account)
-    return section(`${w.name} by model, last ${days} days`, bullets(data.models.map((m) => `${m.name}: ${money(m.cost)}, ${tokens(m.tokens)} tokens`), "None yet."), `_Costs ${w.value}._`)
   })
   plugin.block(project, async (ctx) => {
     // The names a project file answers to: the block's `project`, else its name, its path's folder, its repo.

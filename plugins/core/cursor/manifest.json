@@ -12,7 +12,7 @@
   },
   "blocks": {
     "cursor-limits": {
-      "description": "the plan's included usage this billing month, and Grok Bot's week: how much is used and when each renews",
+      "description": "the plan's included usage this billing month: how much is used and when it renews",
       "live": "Cursor's own files on this machine and its dashboard",
       "options": {
         "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }

@@ -1,0 +1,46 @@
+{
+  "id": "grok-bot",
+  "icon": "grok-bot",
+  "category": "ai-apps",
+  "offByDefault": true,
+  "name": "Grok Bot",
+  "description": "What Grok Bot, Cursor's always-on cloud agent, did: its week's allowance and when it renews, its value estimated at list prices by day and model, and its latest conversations. Read from Cursor's dashboard with Cursor.app's sign-in on this machine, once you allow it; nothing saved.",
+  "tint": "teal",
+  "runsOnServer": true,
+  "settings": {
+    "account": { "type": "boolean", "label": "Read Grok Bot's usage from your Cursor account", "description": "with Cursor.app's sign-in on this machine, Grok Bot's week and what each of its requests was worth are read from cursor.com every few minutes (one read with the Cursor plugin's); the sign-in goes only to Cursor and nothing is kept. Off until you allow it" }
+  },
+  "blocks": {
+    "grok-bot-limits": {
+      "description": "Grok Bot's allowance this week: how much is used and when it renews",
+      "live": "Cursor's dashboard, with Cursor.app's sign-in on this machine",
+      "options": {
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "grok-bot-sessions": {
+      "description": "its latest conversations",
+      "live": "Cursor's dashboard, with Cursor.app's sign-in on this machine",
+      "options": {
+        "recent": { "type": "number", "default": 5, "description": "how many recent conversations to list" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "grok-bot-usage": {
+      "description": "its value estimated at list prices, as Cursor meters it, and tokens per day, today and over the last days",
+      "live": "Cursor's dashboard, with Cursor.app's sign-in on this machine",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 3650, "description": "how many days back it covers" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    },
+    "grok-bot-models": {
+      "description": "its usage by model over the last days",
+      "live": "Cursor's dashboard, with Cursor.app's sign-in on this machine",
+      "options": {
+        "days": { "type": "number", "default": 30, "min": 1, "max": 3650, "description": "how many days back it covers" },
+        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
+      }
+    }
+  }
+}

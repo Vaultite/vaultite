@@ -1,10 +1,12 @@
 // Cursor: what Cursor (the IDE and its CLI, `agent`) does on this machine: chats from its own files, usage from Cursor's
-// dashboard with the IDE's sign-in; nothing is written anywhere.
+// dashboard with the IDE's sign-in (core/cursoraccount.ts; Grok Bot's requests are its own plugin's). Nothing is written.
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentStart, ago, type Any, codingAgent, cut, cwds, type Entry, HOME, isoOf, jsonOf, limitRows, limitWindow, type Live, notHere, processes, projectName,
   quote, roots, type Said, scanDays, sessionsOf, SqliteFile, Tally, terminalOf, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { clampPct, CURSOR_USER_DIR as USER_DIR, cursorAccount, type CursorAccount, cursorModelName as modelName, cursorState as stateDb, forgetCursorAccount, isGrokBot,
+  minutesBetween, NO_ACCOUNT, secOf as sec, stored, text } from "../../../core/cursoraccount.ts"
 import { localDate, Plugin, section } from "../../../core/plugins.ts"
 import { sortBy } from "../../../core/vault.ts"
 
@@ -20,34 +22,17 @@ const PLANS: Record<string, [string, number | null]> = {
 
 const dayOf = (ms: number) => localDate(new Date(ms))
 
-/** grok-bot-default -> Grok Bot, claude-4.5-sonnet-thinking -> Claude 4.5 Sonnet thinking, gpt-5 -> GPT-5. */
-function modelName(m: string) {
-  if (!m || m === "default" || m === "auto") return "Auto"
-  const words = m.replace(/-default$/, "").split("-")
-  const out: string[] = []
-  for (const w of words) {
-    const prev = out[out.length - 1]
-    if (/^\d/.test(w) && prev && /^gpt|^o\d/i.test(prev)) out[out.length - 1] = `${prev}-${w}` // gpt-5, not GPT 5
-    else out.push(w)
-  }
-  return out.map((w, i) => (/^gpt/i.test(w) ? w.toUpperCase() : i === 0 || /^(bot|sonnet|opus|haiku|flash|pro|mini|nano|codex)$/.test(w) ? w.charAt(0).toUpperCase() + w.slice(1) : w))
-    .join(" ")
-}
-
 // ---------- the chats on this machine: the IDE's in its state.vscdb (CURSOR_USER_DIR), the CLI's in ~/.cursor/chats
 
-const USER_DIR = process.env.CURSOR_USER_DIR || path.join(HOME, "Library", "Application Support", "Cursor", "User")
 const CONFIG_DIR = process.env.CURSOR_CONFIG_DIR || path.join(HOME, ".cursor")
 plugin.folders(() => [CONFIG_DIR, USER_DIR])
-const stateDb = new SqliteFile(path.join(USER_DIR, "globalStorage", "state.vscdb"))
-plugin.onUnload(() => stateDb.close())
+plugin.onUnload(() => stateDb.close()) // (opened again when asked)
 const CHATS = path.join(CONFIG_DIR, "chats")
 
 /** A chat on this machine: from the IDE or the CLI. Times in epoch ms. */
 type Chat = { id: string; source: "ide" | "cli"; title: string; cwd: string; model: string; first: number; last: number
   status: string; dir?: string }
 
-const text = (v: unknown) => (v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : v == null ? "" : String(v))
 /** Epoch ms from ms, seconds or an ISO string (Cursor has written each). */
 function ms(v: unknown): number {
   if (typeof v === "string" && v && !/^\d+$/.test(v)) { const t = Date.parse(v); return Number.isNaN(t) ? 0 : t }
@@ -289,106 +274,15 @@ async function talk(id: string): Promise<Talk | null> {
   return t
 }
 
-// ---------- Cursor's account: its dashboard API with the IDE's sign-in, once allowed (`account`) ----------
-// The JWT is read per fetch, sent only to Cursor, never logged or kept, not once expired. CURSOR_API_URL: the tests'.
+// ---------- Cursor's account, once allowed (`account`): read with Grok Bot's plugin, kept 5 minutes
 
-const API = (process.env.CURSOR_API_URL || "https://cursor.com").replace(/\/+$/, "")
-const TIMEOUT = 15_000
-
-/** Values from the IDE's ItemTable, by key. */
-async function stored(keys: string[]): Promise<Record<string, string>> {
-  const out: Record<string, string> = {}
-  for (const k of keys) {
-    const v = stateDb.all("SELECT value FROM ItemTable WHERE key = ?", k)[0]?.value
-    if (v != null) out[k] = text(v)
-  }
-  return out
-}
-
-/** The dashboard's cookie from the IDE's session, or null (signed out, expired, unreadable). */
-async function cookie(): Promise<string | null> {
-  const token = (await stored(["cursorAuth/accessToken"]))["cursorAuth/accessToken"]?.trim()
-  if (!token) return null
-  try {
-    const p = JSON.parse(Buffer.from(token.split(".")[1] ?? "", "base64url").toString("utf8"))
-    const user = String(p.sub ?? "").split("|").pop() ?? ""
-    if (!/^[\w.-]+$/.test(user) || (typeof p.exp === "number" && p.exp * 1000 < Date.now() + 60_000)) return null
-    return `WorkosCursorSessionToken=${user}%3A%3A${token}`
-  } catch {
-    return null
-  }
-}
-
-async function call(route: string, c: string, body?: unknown): Promise<Any> {
-  const headers: Record<string, string> = { Accept: "application/json", Cookie: c }
-  // Cursor's dashboard POSTs check the Origin (CSRF).
-  if (body !== undefined) Object.assign(headers, { "Content-Type": "application/json", Origin: new URL(API).origin })
-  const res = await fetch(API + route, { method: body === undefined ? "GET" : "POST", headers, body: body === undefined ? undefined : JSON.stringify(body),
-    signal: AbortSignal.timeout(TIMEOUT) })
-  if (!res.ok) throw new Error(`Cursor answered ${res.status} for ${route}`)
-  return res.json()
-}
-
-type Summary = { summary: Any; sand: Any | null; at: number }
-
-/** The plan and its allowances now, or null when there's no session to ask with. */
-async function fetchSummary(): Promise<Summary | null> {
-  const c = await cookie()
-  if (!c) return null
-  const summary = await call("/api/usage-summary", c)
-  const sand = await call("/api/dashboard/get-sand-usage-status", c, {}).catch(() => null) // not every plan has Grok Bot
-  return { summary, sand, at: Date.now() }
-}
-
-/** One request Cursor metered: when (ms), which model, tokens, value at API rates (USD), which conversation. */
-type Metered = { ts: number; model: string; conversation: string; input: number; output: number; read: number; write: number
-  value: number | null }
-
-const num = (v: unknown) => { const n = Number(v); return Number.isFinite(n) && n > 0 ? n : 0 }
-
-/** The usage events since `since` (ms), oldest first, or null when there's no session to ask with. */
-async function fetchEvents(since: number): Promise<Metered[] | null> {
-  const c = await cookie()
-  if (!c) return null
-  const out: Metered[] = []
-  const size = 500
-  for (let page = 1; page <= 40; page++) {
-    const r = await call("/api/dashboard/get-filtered-usage-events", c, { page, pageSize: size, startDate: String(Math.floor(since)), endDate: String(Date.now()) })
-    const rows: Any[] = Array.isArray(r?.usageEventsDisplay) ? r.usageEventsDisplay : []
-    for (const e of rows) {
-      const ts = num(e.timestamp)
-      if (!ts) continue
-      const t = e.tokenUsage ?? {}
-      const cents = t.totalCents == null ? null : Number(t.totalCents)
-      const tok = num(t.inputTokens) + num(t.outputTokens) + num(t.cacheReadTokens) + num(t.cacheWriteTokens)
-      // No tokens and no price: a request Cursor didn't meter by tokens (worth what it charged, often nothing).
-      const value = cents != null && Number.isFinite(cents) && cents >= 0 ? cents / 100 : !tok ? num(e.chargedCents) / 100 : null
-      out.push({ ts, model: String(e.model || "unknown"), conversation: String(e.conversationId ?? "").replace(/^null$/, ""),
-        input: num(t.inputTokens), output: num(t.outputTokens), read: num(t.cacheReadTokens), write: num(t.cacheWriteTokens), value })
-    }
-    if (rows.length < size) break
-  }
-  // Pages can repeat a row at their edges: the same request twice is one.
-  const seen = new Set<string>()
-  return out.filter((e) => {
-    const k = `${e.ts}:${e.model}:${e.conversation}:${e.input}:${e.output}:${e.read}:${e.value}`
-    return seen.has(k) ? false : (seen.add(k), true)
-  }).sort((a, b) => a.ts - b.ts)
-}
-
-// ---------- Cursor's account, kept 5 minutes (the last answer stays when a fetch fails)
-
-type Account = { summary: Summary | null; events: Metered[] | null }
-let lastGood: Account = { summary: null, events: null }
-async function cursorAccount(days: number): Promise<Account> {
-  const since = Date.now() - days * 86400_000
-  const [s, e] = await Promise.all([fetchSummary().catch(() => undefined), fetchEvents(since).catch(() => undefined)])
-  lastGood = { summary: s === undefined ? lastGood.summary : s, events: e === undefined ? lastGood.events : e }
-  return lastGood
-}
 /** Whether the user allowed reading their account (unset: not asked yet). */
 const allowed = () => plugin.settings().account === true
-const account = (): Promise<Account> => (allowed() ? plugin.memo(300, cursorAccount, scanDays()) : Promise.resolve({ summary: null, events: null }))
+async function readAccount(days: number): Promise<CursorAccount> {
+  const a = await cursorAccount(days)
+  return { summary: a.summary, events: a.events && a.events.filter((e) => !isGrokBot(e.model)) }
+}
+const account = (): Promise<CursorAccount> => (allowed() ? plugin.memo(300, readAccount, scanDays()) : Promise.resolve(NO_ACCOUNT))
 
 // ---------- usage
 
@@ -397,8 +291,7 @@ const WORKTREES = path.join(CONFIG_DIR, "worktrees") + "/"
 const rootsOf = (cwds: Iterable<string>) => roots(cwds, (c) => (c.startsWith(WORKTREES) ? WORKTREES + c.slice(WORKTREES.length).split("/")[0] : c))
 const nameOf = (root: string) => (root === "" ? "No folder" : projectName(root))
 const projectOf = (cwd: string) => nameOf(cwd ? rootsOf([cwd]).get(cwd)! : "")
-/** Where a conversation that isn't on this machine goes. */
-const elsewhere = (model: string) => (model.startsWith("grok-bot") ? "Grok Bot" : "Not on this machine")
+const ELSEWHERE = "Not on this machine" // a conversation that isn't
 
 /** Value = the tokens at API rates as Cursor prices them, not what the plan costs. Conversations not on this machine count
  *  as a project of their own, not sessions; time working is the gaps under 5 min between a conversation's requests. */
@@ -419,7 +312,7 @@ async function summary(days: number) {
     const chat = byChat.get(e.conversation)
     t.count({ ts: e.ts, day: dayOf(e.ts), cost: e.value, tokens: e.input + e.output + e.read + e.write, read: e.read, prompt: e.input + e.read + e.write,
       model: modelName(e.model), min: gap < GAP ? gap / 60000 : 0 }, conv,
-    chat ? t.project(rootOf(chat)) : t.project(`\0${elsewhere(e.model)}`, null, elsewhere(e.model)), chat && session(chat), e.model)
+    chat ? t.project(rootOf(chat)) : t.project(`\0${ELSEWHERE}`, null, ELSEWHERE), chat && session(chat), e.model)
   }
   // Chats with no metered request in the period (signed out, or nothing metered) still count, on the day they were used.
   for (const c of local) {
@@ -444,16 +337,10 @@ async function plan() {
   return { name, monthly }
 }
 
-const clampPct = (v: unknown) => { const n = Number(v); return Number.isFinite(n) ? Math.round(Math.min(Math.max(n, 0), 100) * 10) / 10 : 0 }
-const minutesBetween = (a: unknown, b: unknown) => { const m = (Date.parse(String(b)) - Date.parse(String(a))) / 60000; return Number.isFinite(m) && m > 0 ? Math.round(m) : 0 }
-
-/** A time Cursor wrote (ISO or ms) as epoch s, or null. */
-const sec = (v: unknown) => (v ? +new Date(v as string) / 1000 || null : null)
-
 async function limits() {
   const acc = (await account()).summary
   if (!acc) return null
-  const s = acc.summary ?? {}, sand = acc.sand, now = Date.now() / 1000
+  const s = acc.summary ?? {}, now = Date.now() / 1000
   const cycle = minutesBetween(s.billingCycleStart, s.billingCycleEnd) || 43200
   const windows = []
   const planUse = s.individualUsage?.plan ?? {}
@@ -461,10 +348,6 @@ async function limits() {
   if (pct != null && s.billingCycleEnd) windows.push(limitWindow("month", "Included usage", cycle, clampPct(pct), sec(s.billingCycleEnd), now))
   const od = s.individualUsage?.onDemand
   if (od?.enabled && od.limit) windows.push(limitWindow("on-demand", "On-demand", cycle, clampPct((100 * (od.used ?? 0)) / od.limit), sec(s.billingCycleEnd), now))
-  if (sand && sand.hasNonZeroIncludedLimit !== false && sand.includedLimitZero !== true && typeof sand.usagePercent === "number") {
-    windows.push(limitWindow("grok-bot", "Grok Bot, this week", minutesBetween(sand.currentPeriodStart, sand.nextResetTimestampUtc) || 10080,
-      clampPct(sand.usagePercent), sec(sand.nextResetTimestampUtc), now))
-  }
   return windows.length ? { source: "Cursor dashboard", observed: isoOf(acc.at), windows } : null
 }
 
@@ -528,4 +411,4 @@ plugin.block("cursor-limits", async () => {
 
 codingAgent(plugin, { id: "cursor", name: "Cursor", prefix: "cursor", noun: "chat", count: "conversation", value: "estimated at list prices", estimate: true,
   state: (s) => `${s.status === "busy" ? "Working" : "Open"}${s.kind === "IDE" ? " in Cursor" : ""}`, sessionId: SESSION_ID, summary, live,
-  plan: async () => ({ plan: await plan(), limits: await limits() }), session: talk, modelName, projectOf })
+  plan: async () => ({ plan: await plan(), limits: await limits() }), session: talk, modelName, projectOf, forget: forgetCursorAccount })

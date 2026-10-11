@@ -40,6 +40,9 @@ export type AgentSource = {
   costNote?: string
   /** A plugin setting that must be yes before its limits are read from the user's account: asked in the limits block. */
   consent?: { setting: string; ask: string; detail: string }
+  /** It runs in the cloud (Grok Bot): none of its sessions is open here or resumes; what a session's view says instead
+   *  of a conversation. */
+  cloud?: string
 }
 
 export type Window = { id: string; label: string; minutes: number; used: number; resets_at: string | null }
@@ -292,14 +295,16 @@ export function AgentSessions({ src, options, fm }: BlockCtx & { src: AgentSourc
   const recent = data?.sessions.filter((s) => !open.has(s.id)).slice(0, n) ?? []
   return (
     <Panel title={`Sessions${on}`} icon={iconFor(src, fm, Terminal)} tint={src.tint}
-      action={data && <span className="text-[13px] text-muted-foreground">{data.live.length} open</span>}>
+      action={data && !src.cloud && <span className="text-[13px] text-muted-foreground">{data.live.length} open</span>}>
       {!data ? <Waiting src={src} error={error} on={on} /> : (
         <>
-          <Section title="Now">
-            {data.live.length ? <List>{data.live.map((s) => <LiveRow key={s.pid || s.id} src={src} s={s} machine={machine} />)}</List> : <Empty>No session is open.</Empty>}
-          </Section>
+          {!src.cloud && (
+            <Section title="Now">
+              {data.live.length ? <List>{data.live.map((s) => <LiveRow key={s.pid || s.id} src={src} s={s} machine={machine} />)}</List> : <Empty>No session is open.</Empty>}
+            </Section>
+          )}
           {n > 0 && (
-            <Section title="Recent" className="mt-4">
+            <Section title="Recent" className={src.cloud ? undefined : "mt-4"}>
               {recent.length ? <List>{recent.map((s) => <SessionRow key={s.id} src={src} s={s} machine={machine} />)}</List> : <Empty>Nothing yet.</Empty>}
             </Section>
           )}
@@ -455,13 +460,13 @@ const BLOCKS: Record<AgentBlock, (ctx: BlockCtx & { src: AgentSource }) => React
  *  (literal: the server reads them), demo usage. It runs at load, so it reads only its arguments until called. */
 export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
   blocks: Record<string, AgentBlock | ((ctx: BlockCtx) => ReactNode)>
-  /** Its program's names, its accounts' route (AgentDef). */
-  process: string[]; accounts?: string
+  /** Its program's names, its accounts' route (AgentDef); none: Terminal doesn't run it (a cloud agent). */
+  process?: string[]; accounts?: string
   /** Open it, in a split (desktop: before its name, so the server's list leaves it out), in an account or on a machine. */
-  opens: { open: Named; split: Named; where?: Named }
+  opens?: { open: Named; split: Named; where?: Named }
   demo: AgentMock; demoMore?: () => Record<string, unknown>
 }): PluginDef {
-  const { blocks, process, accounts, opens: { open, split, where }, demo, demoMore, ...def } = o
+  const { blocks, process, accounts, opens, demo, demoMore, ...def } = o
   const when = () => canRunAgents()
   return {
     ...def,
@@ -473,12 +478,14 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
     // in one of the app's terminals.
     views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} /> } },
     // (Terminal runs it: the service "agent:<agent>" in its plugin.ts says how)
-    agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(accounts ? { accounts } : {}) } },
-    commands: [
-      { ...open, when, run: () => openAgent(src.agent), icon: src.icon },
-      ...(where ? [{ ...where, when, run: () => void choosePlace({ agent: src.agent }) }] : []),
-      { ...split, desktop: true, when, run: () => openAgent(src.agent, { split: true }) },
-    ],
+    ...(process && opens ? {
+      agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(accounts ? { accounts } : {}) } },
+      commands: [
+        { ...opens.open, when, run: () => openAgent(src.agent), icon: src.icon },
+        ...(opens.where ? [{ ...opens.where, when, run: () => void choosePlace({ agent: src.agent }) }] : []),
+        { ...opens.split, desktop: true, when, run: () => openAgent(src.agent, { split: true }) },
+      ],
+    } : {}),
     mockLive: () => ({ [src.path]: mockUsage(demo), ...demoMore?.() }),
   }
 }

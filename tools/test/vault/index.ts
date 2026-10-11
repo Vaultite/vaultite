@@ -32,6 +32,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "machines", deps: ["pages"] },
   { name: "codex", deps: ["pages"] },
   { name: "cursor", deps: ["pages"] },
+  { name: "grok-bot", deps: ["pages","cursor"] },
   { name: "opencode", deps: ["pages"] },
   { name: "openclaw", deps: ["pages"] },
   { name: "hermes", deps: ["pages"] },

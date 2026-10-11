@@ -12,8 +12,9 @@ export const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)[
 export const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
 /** A file that runs in Node: a backend's, or a test (test.ts, *.test.ts: never bundled into the app). */
 export const nodeSide = (file: string) => BACKEND.has(path.basename(file)) || /(^|\.)test\.ts$/.test(path.basename(file))
-// codingagents.ts, terminalids.ts: what the coding agent plugins share; not part of the vault plugins' API (VAULT_CORE).
-export const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "codingagents.ts", "terminalids.ts"])
+// codingagents.ts, terminalids.ts, cursoraccount.ts: what the coding agent plugins share; not part of the vault plugins'
+// API (VAULT_CORE).
+export const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "codingagents.ts", "terminalids.ts", "cursoraccount.ts"])
 /** What a vault plugin's backend imports the core as: "@vaultite/core/plugins.ts" (".ts" optional). */
 export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline)(?:\.ts)?$/
 /** What a vault plugin's frontend gets from the app itself, never bundled: one React, one store. */
@@ -218,7 +219,7 @@ export function importProblems(file: string, src: string, where: string, rules: 
       const inCore = path.dirname(target) === path.join(rules.root, "core")
       const core = path.basename(target)
       if (!inCore || !(CORE_FOR_PLUGINS.has(core) || (core === "cli.ts" && path.basename(file) === "cli.ts"))) {
-        say(spec, "a plugin's backend talks to the core only through core/plugins.ts, core/vault.ts, core/client.ts, core/timeline.ts, core/codingagents.ts and core/terminalids.ts")
+        say(spec, "a plugin's backend talks to the core only through core/plugins.ts, core/vault.ts, core/client.ts, core/timeline.ts, core/codingagents.ts, core/terminalids.ts and core/cursoraccount.ts")
       }
       continue
     }
