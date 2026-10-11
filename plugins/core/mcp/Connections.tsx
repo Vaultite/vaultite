@@ -203,12 +203,13 @@ function Guide({ id, address }: { id: AppId; address: string }) {
         <li key={i} className="flex min-h-9 items-center gap-3 text-[15px] leading-[20px]">
           <span className="grid size-5.5 shrink-0 place-items-center rounded-full bg-foreground/[0.08] text-[12px] font-semibold">{i + 1}</span>
           <span className="min-w-0 flex-1">{s.text}</span>
+          {/* (Copy last, so a step's copy buttons line up whether or not it has Open too) */}
+          {s.open && <a href={s.open} target="_blank" rel="noreferrer" className={small} data-guide-open>Open<ExternalLink className="size-3.5" /></a>}
           {s.copy && (
             <button type="button" onClick={() => void copy(i, s.copy!.value)} className={small} data-guide-copy>
               {copied === i ? <Check className="size-3.5" strokeWidth={2.5} /> : <Copy className="size-3.5" />}{copied === i ? "Copied" : s.copy.label}
             </button>
           )}
-          {s.open && <a href={s.open} target="_blank" rel="noreferrer" className={small} data-guide-open>Open<ExternalLink className="size-3.5" /></a>}
         </li>
       ))}
     </ol>

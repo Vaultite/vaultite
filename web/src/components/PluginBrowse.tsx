@@ -63,7 +63,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
       </div>
       {button && (
         <button type="button" disabled={busy} onClick={() => act(e)} data-browse-action={button.toLowerCase()}
-          className={cn("mt-0.5 h-8 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium transition-colors disabled:cursor-default disabled:opacity-50 max-md:h-9 max-md:text-[15px]",
+          className={cn("mt-0.5 h-8 min-w-20 shrink-0 cursor-pointer rounded-[8px] px-3 text-[13px] font-medium transition-colors disabled:cursor-default disabled:opacity-50 max-md:h-9 max-md:text-[15px]",
             button === "Install" ? "bg-primary text-primary-foreground hover:opacity-90" : "bg-foreground/[0.06] hover:bg-foreground/[0.1]")}>
           {busy ? (button === "Install" ? "Installing…" : "Updating…") : button}
         </button>
@@ -130,7 +130,7 @@ const TONES = { green: "text-[var(--green)]", orange: "text-[var(--orange)]", re
 
 /** A host's entry. One a plugin here does the job of offers that first (installing the original too would only draw the
  *  same twice), the original under its … menu. */
-function HostRow({ e, busy, install, use, show }: { e: BrowseEntry; busy: boolean; install: (e: BrowseEntry) => void; use: (e: BrowseEntry) => void; show: (id: string) => void }) {
+function HostRow({ e, busy, install, use, show, more }: { e: BrowseEntry; busy: boolean; install: (e: BrowseEntry) => void; use: (e: BrowseEntry) => void; show: (id: string) => void; more: boolean }) {
   const alt = !e.installed ? e.standIn : undefined
   return (
     <div className="flex items-start gap-3 py-2.5" data-browse-row={e.id}>
@@ -149,20 +149,20 @@ function HostRow({ e, busy, install, use, show }: { e: BrowseEntry; busy: boolea
           {e.installed && <span className="text-foreground/80" data-browse-installed>Installed</span>}
         </div>
       </div>
-      {e.installed ? e.plugin && <Button className="mt-0.5 px-3" onClick={() => show(e.plugin!)}>Show</Button>
-        : alt?.on ? <Button className="mt-0.5 px-3" onClick={() => show(alt.id)} data-browse-action="show-stand-in">Show</Button>
+      {e.installed ? e.plugin && <Button className="mt-0.5 min-w-20 px-3" onClick={() => show(e.plugin!)}>Show</Button>
+        : alt?.on ? <Button className="mt-0.5 min-w-20 px-3" onClick={() => show(alt.id)} data-browse-action="show-stand-in">Show</Button>
         : alt ? (
-          <Button look="primary" className="mt-0.5 px-3" disabled={busy} onClick={() => use(e)} data-browse-action="use-stand-in">{busy ? "Turning on…" : "Use Vaultite's"}</Button>
+          <Button look="primary" className="mt-0.5 min-w-20 px-3" disabled={busy} onClick={() => use(e)} data-browse-action="use-stand-in">{busy ? "Turning on…" : "Use Vaultite's"}</Button>
         ) : (
-          <Button look="primary" className="mt-0.5 px-3" disabled={busy} onClick={() => install(e)} data-browse-action="install">{busy ? "Installing…" : "Install"}</Button>
+          <Button look="primary" className="mt-0.5 min-w-20 px-3" disabled={busy} onClick={() => install(e)} data-browse-action="install">{busy ? "Installing…" : "Install"}</Button>
         )}
-      {alt && (
+      {alt ? (
         <button type="button" disabled={busy} aria-label={`${e.name}: more`} data-tip="More" data-browse-more onClick={(ev) => menuBelow(ev, [
           { label: "Install the original anyway", icon: Download, run: () => install(e) },
         ])} className="mt-0.5 -ml-1.5 grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50 max-md:size-9">
           <MoreHorizontal className="size-4" strokeWidth={2.25} />
         </button>
-      )}
+      ) : more && <span aria-hidden className="-ml-1.5 size-8 shrink-0 max-md:size-9" />}
     </div>
   )
 }
@@ -189,6 +189,8 @@ function HostBrowse({ src, query, showInstalled }: { src: BrowseSource; query: s
     try { await s.use(); notify(`Vaultite's ${s.name} is on`, { action: { label: "Show", run: () => showInstalled(s.id) } }); setN((x) => x + 1) }
     catch (err) { notifyError(err, `Couldn't turn on ${s.name}`) } finally { setBusy(null) }
   }
+  // (any row with a … menu keeps its slot in every row, so the buttons line up)
+  const more = !!found?.entries.some((e) => !e.installed && e.standIn)
   return (
     <>
       {src.sorts && src.sorts.length > 1 && <Segmented value={sort} options={src.sorts} onChange={setSort} label="Sort plugins" className="mb-3 w-full max-w-[300px]" />}
@@ -200,7 +202,7 @@ function HostBrowse({ src, query, showInstalled }: { src: BrowseSource; query: s
         <>
           <Panel className="py-0.5">
             <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-              {found.entries.map((e) => <HostRow key={e.id} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} />)}
+              {found.entries.map((e) => <HostRow key={e.id} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} more={more} />)}
             </div>
           </Panel>
           {(src.note || (found.total ?? 0) > found.entries.length) && (

@@ -1,7 +1,7 @@
 // The settings sheet: the vault's plugins of another app, each run as it is (the original) or with what stands in for it
 // here, picked in a click (other-apps.use); "Run them here" runs them all (other-apps.run-all).
 import { useEffect, useState } from "react"
-import { Button, Group, notify, notifyError, op, plural, Segmented, SettingRow, Switch } from "@vaultite"
+import { Button, cn, Group, notify, notifyError, op, plural, Segmented, SettingRow, Switch } from "@vaultite"
 
 type Row = { id: string; name: string; here: { id: string; name: string; on: boolean }[]; directory: { id: string; name: string; source: string; installed: boolean }[]
   original: "on" | "waiting" | "off" | null }
@@ -35,6 +35,8 @@ export function OtherPlugins() {
     if (u.off.length) notify(`${r.name}: turned off ${u.off.join(" and ")}, so only one draws it`)
   }, `change ${r.name}`)
   const idle = rows.filter((r) => !usedBy(r)).length
+  // (a switch takes the toggle's width when any row has a toggle, so the controls line up)
+  const wide = rows.some((r) => r.here[0] ?? r.directory[0])
   return (
     <div data-obsidian-plugins>
       <div className="mb-2 flex items-center gap-3 px-1">
@@ -53,17 +55,19 @@ export function OtherPlugins() {
           const alt = r.here[0] ?? r.directory[0]
           const now = usedBy(r)
           return (
-            <SettingRow key={r.id} label={r.name} sub={status(r)} data-obsidian-plugin={r.id}>
-              {r.original === "waiting" && (
-                <Button className="px-3" disabled={busy === r.id} onClick={() => void use(r, "original")}>Allow</Button>
-              )}
-              {alt ? (
-                <Segmented value={now} label={`What runs ${r.name}`} className="w-[190px] shrink-0 max-md:w-[170px]"
-                  options={[{ value: alt.id, label: "Vaultite's" }, { value: "original", label: "Original" }]}
-                  onChange={(v) => { if (v !== now && busy !== r.id) void use(r, v) }} />
-              ) : (
-                <Switch on={!!now} disabled={busy === r.id} label={`Run ${r.name}`} onChange={(on) => void use(r, on ? "original" : "none")} />
-              )}
+            <SettingRow key={r.id} label={r.name} data-obsidian-plugin={r.id} sub={r.original === "waiting" ? <>
+              {status(r)} <button type="button" disabled={busy === r.id} onClick={() => void use(r, "original")} data-obsidian-allow
+                className="cursor-pointer font-medium text-primary hover:underline disabled:cursor-default disabled:opacity-50">Allow it</button>
+            </> : status(r)}>
+              <div className={cn("flex shrink-0 justify-end", wide && "w-[190px] max-md:w-[170px]")}>
+                {alt ? (
+                  <Segmented value={now} label={`What runs ${r.name}`} className="w-full"
+                    options={[{ value: alt.id, label: "Vaultite's" }, { value: "original", label: "Original" }]}
+                    onChange={(v) => { if (v !== now && busy !== r.id) void use(r, v) }} />
+                ) : (
+                  <Switch on={!!now} disabled={busy === r.id} label={`Run ${r.name}`} onChange={(on) => void use(r, on ? "original" : "none")} />
+                )}
+              </div>
             </SettingRow>
           )
         })}

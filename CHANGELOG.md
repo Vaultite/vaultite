@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Buttons line up down a list: Get plugins (one width, the … menu's place kept in every row), plugins from another app
+  (Allow moves under the name), Inbox requests (Approve and Deny where the time and Dismiss are) and Connections' steps.
 - The status bar stops short of the left sidebar: what doesn't fit goes in a tray behind its more button, long items
   (what's playing) are cut short, and its items drag to a new place or into the tray to stay there.
 - **Plugins, one list**: plugins are listed by category with a line on what each does, picked from a rail (chips on a

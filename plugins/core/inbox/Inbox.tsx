@@ -364,6 +364,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const key = eventKey(e), picked = useSelected(SELECT, key)
   // (one that leads nowhere opens in place, its whole body, and stays where it is while the page shows it)
   const [whole, setWhole] = useState(false)
+  const asks = !!e.gate && !e.answer
   return (
     <SwipeRow actions={() => eventSwipe(e)} className={pageSwipe}>
     <div data-event={e.id} data-kind={e.kind} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}
@@ -377,11 +378,14 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
           {(e.body || e.machineLabel) && <span data-tip={whole ? undefined : e.body} data-tip-trunc
             className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}>{[e.body, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
-        <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>
+        {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>}
       </button>
+      {/* (a request's Approve takes its time's place and Deny its Dismiss's, so the rows stay in line) */}
       <GateButtons e={e} className={iconButton} size="size-4" />
-      <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Dismiss" data-tip="Dismiss" onClick={() => { haptic("medium"); void forget(e.id) }}>
-        <X className="size-4" strokeWidth={2.25} /></button>
+      {!asks && (
+        <button type="button" className={cn(iconButton, "md:invisible md:group-hover/ev:visible")} aria-label="Dismiss" data-tip="Dismiss" onClick={() => { haptic("medium"); void forget(e.id) }}>
+          <X className="size-4" strokeWidth={2.25} /></button>
+      )}
     </div>
     </SwipeRow>
   )
