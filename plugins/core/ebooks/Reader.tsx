@@ -147,6 +147,14 @@ function Pages({ url, path }: { url: string; path: string }) {
       v.addEventListener("load", (e) => {
         const doc = (e as CustomEvent<{ doc: Document }>).detail.doc
         doc.addEventListener("keydown", keys)
+        // A finger's tap on a page's outer thirds turns it, as book apps do (a swipe turns it too: foliate-js).
+        if (matchMedia("(pointer: coarse)").matches) doc.addEventListener("click", (ev) => {
+          if ((ev.target as Element | null)?.closest?.("a") || doc.getSelection()?.toString()) return
+          const frame = (doc.defaultView?.frameElement as HTMLElement | null)?.getBoundingClientRect(), r = box.current?.getBoundingClientRect()
+          if (!frame || !r?.width) return
+          const at = (frame.left + ev.clientX - r.left) / r.width
+          if (at < 1 / 3) void view.current?.goLeft(); else if (at > 2 / 3) void view.current?.goRight()
+        })
       })
       await v.open(book)
       v.renderer.setAttribute("flow", "paginated")
@@ -182,9 +190,9 @@ function Pages({ url, path }: { url: string; path: string }) {
       <div className="relative min-h-0 flex-1">
         {state === "loading" && <div className="absolute inset-0"><Loading /></div>}
         {state !== "loading" && state !== "ok" && <p className="p-4 text-[15px] text-muted-foreground">This book couldn't be opened: {state}.</p>}
-        <div ref={box} className={cn("absolute inset-y-0 right-11 left-11", state !== "ok" && "invisible")} />
-        <button type="button" aria-label="Previous page" onClick={() => void view.current?.goLeft()} className={cn(side, "left-1")}><ChevronLeft className="size-5" /></button>
-        <button type="button" aria-label="Next page" onClick={() => void view.current?.goRight()} className={cn(side, "right-1")}><ChevronRight className="size-5" /></button>
+        <div ref={box} className={cn("absolute inset-y-0 right-11 left-11 max-md:inset-x-1", state !== "ok" && "invisible")} />
+        <button type="button" aria-label="Previous page" onClick={() => void view.current?.goLeft()} className={cn(side, "left-1 max-md:hidden")}><ChevronLeft className="size-5" /></button>
+        <button type="button" aria-label="Next page" onClick={() => void view.current?.goRight()} className={cn(side, "right-1 max-md:hidden")}><ChevronRight className="size-5" /></button>
       </div>
       <div className="h-[3px] shrink-0 bg-foreground/[0.06]"><div className="h-full bg-primary" style={{ width: `${where.fraction * 100}%` }} /></div>
     </div>

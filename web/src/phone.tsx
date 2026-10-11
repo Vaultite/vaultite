@@ -1,11 +1,11 @@
 // The iPhone app's first screen, served from its own files: which Vaultite server to open. It opens the last one after
 // checking it answers, else stays here saying why rather than a blank page (?pick: Switch server…).
-import { StrictMode, useEffect, useState } from "react"
+import { StrictMode, useEffect, useRef, useState } from "react"
 import { createRoot } from "react-dom/client"
-import { Ellipsis, LoaderCircle, Server as ServerIcon } from "lucide-react"
+import { AudioLines, ChevronLeft, Clapperboard, Ellipsis, LoaderCircle, Server as ServerIcon } from "lucide-react"
 import "./index.css"
 import { ContextMenus, menuBelow } from "@/components/ContextMenu"
-import { phoneApp, type Server } from "@/core/phoneapp"
+import { phoneApp, type PhoneDownload, type Server } from "@/core/phoneapp"
 import { cn } from "@/lib/utils"
 
 // Light or dark like the system (the vaults' own settings are theirs).
@@ -28,12 +28,81 @@ function serverUrl(typed: string): string | null {
 /** A server's name: its machine's (the host's first part: "studio" of studio.tailnet.ts.net). */
 const nameOf = (url: string) => new URL(url).hostname.split(".")[0]
 
+const VIDEO = /\.(mp4|m4v|mov|webm|ogv)$/i
+const placeKey = (path: string) => `vaultite.offline.${path}`
+
+/** Files kept on this iPhone (the player's Download), playable here without a server. */
+function Kept({ items, play, remove }: { items: PhoneDownload[]; play: (d: PhoneDownload) => void; remove: (d: PhoneDownload) => void }) {
+  return (
+    <section aria-label="On this iPhone" className="flex flex-col">
+      <h2 className="px-4 pb-1.5 text-[13px] text-muted-foreground">On this iPhone</h2>
+      <div className="overflow-hidden rounded-[10px] bg-card">
+        {items.map((d, i) => {
+          const Icon = VIDEO.test(d.path) ? Clapperboard : AudioLines
+          const sub = d.done ? `${Math.round(d.size / 1e6)} MB` : d.error ? d.error : d.size ? `Downloading, ${Math.floor((d.got / d.size) * 100)}%` : "Downloading…"
+          return (
+            <div key={d.path} className={cn("flex items-center", i > 0 && "border-t-[0.5px] border-border")}>
+              <button type="button" disabled={!d.done} onClick={() => play(d)}
+                className="flex min-h-11 min-w-0 flex-1 cursor-pointer items-center gap-3 py-2 pl-4 text-left active:bg-foreground/[0.06] disabled:cursor-default">
+                <Icon className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />
+                <span className="flex min-w-0 flex-1 flex-col">
+                  <span className="truncate text-[17px]">{d.title}</span>
+                  <span className={cn("truncate text-[13px]", d.error ? "text-destructive" : "text-muted-foreground")}>{sub}</span>
+                </span>
+              </button>
+              <button type="button" aria-label={`More for ${d.title}`} onClick={(e) => menuBelow(e, [{ label: "Remove from this iPhone", danger: true, run: () => remove(d) }])}
+                className="grid size-11 shrink-0 cursor-pointer place-items-center text-muted-foreground active:bg-foreground/[0.06]">
+                <Ellipsis className="size-5" strokeWidth={2} />
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
+/** A kept file playing, from where it stopped here; the place goes to the server when it's next opened. */
+function Playing({ d, close }: { d: PhoneDownload; close: () => void }) {
+  const ref = useRef<HTMLVideoElement & HTMLAudioElement>(null)
+  useEffect(() => {
+    const el = ref.current!
+    let last = 0
+    const keep = () => {
+      if (!Number.isFinite(el.duration)) return
+      last = Date.now()
+      localStorage.setItem(placeKey(d.path), String(el.currentTime))
+      void phoneApp!.setPlace({ path: d.path, t: el.currentTime, d: el.duration, at: Date.now() }).catch(() => {})
+    }
+    const meta = () => { const t = Number(localStorage.getItem(placeKey(d.path)) || 0); if (t > 5 && t < el.duration - 10) el.currentTime = t }
+    const tick = () => { if (Date.now() - last > 15_000) keep() }
+    el.addEventListener("loadedmetadata", meta)
+    el.addEventListener("pause", keep)
+    el.addEventListener("timeupdate", tick)
+    return () => { keep(); el.removeEventListener("loadedmetadata", meta); el.removeEventListener("pause", keep); el.removeEventListener("timeupdate", tick) }
+  }, [d.path])
+  const src = `${location.origin}/_capacitor_file_${d.file}`
+  return (
+    <section aria-label={d.title} className="flex flex-col gap-3">
+      <button type="button" onClick={close} className="flex h-11 cursor-pointer items-center gap-1 self-start text-[17px] text-primary"><ChevronLeft className="size-5" strokeWidth={2.5} />Back</button>
+      <h2 className="px-1 text-[20px] font-semibold">{d.title}</h2>
+      {VIDEO.test(d.path)
+        ? <video ref={ref} src={src} controls playsInline autoPlay className="w-full rounded-[10px] bg-black" />
+        : <audio ref={ref} src={src} controls autoPlay className="w-full" />}
+    </section>
+  )
+}
+
 function Phone() {
   const [servers, setServers] = useState<Server[] | null>(null)
   /** The server being opened, and why the last one didn't. */
   const [opening, setOpening] = useState<string | null>(null)
   const [error, setError] = useState<{ url: string; text: string } | null>(null)
   const [typed, setTyped] = useState("")
+  const [kept, setKept] = useState<PhoneDownload[]>([])
+  const [playing, setPlaying] = useState<PhoneDownload | null>(null)
+  const loadKept = () => { void phoneApp?.downloads().then((r) => setKept(r.items ?? []), () => {}) }
+  useEffect(loadKept, [])
 
   const open = async (url: string) => {
     setOpening(url); setError(null)
@@ -70,8 +139,10 @@ function Phone() {
   }
 
   if (!phoneApp) return <p className="p-6 text-[17px] text-muted-foreground">This page is the iPhone app's.</p>
+  const shell = "mx-auto flex min-h-dvh max-w-[480px] flex-col gap-6 px-4 pt-[max(env(safe-area-inset-top),16px)] pb-[max(env(safe-area-inset-bottom),16px)]"
+  if (playing) return <main className={shell}><Playing d={playing} close={() => setPlaying(null)} /></main>
   return (
-    <main className="mx-auto flex min-h-dvh max-w-[480px] flex-col gap-6 px-4 pt-[max(env(safe-area-inset-top),16px)] pb-[max(env(safe-area-inset-bottom),16px)]">
+    <main className={shell}>
       <div className="flex flex-col items-center gap-2 pt-10 pb-2">
         <img src="icon.svg" alt="" className="size-16" />
         <h1 className="text-[22px] font-semibold">Vaultite</h1>
@@ -103,6 +174,8 @@ function Phone() {
           </div>
         </section>
       )}
+
+      {!!kept.length && <Kept items={kept} play={setPlaying} remove={(d) => { void phoneApp!.removeDownload({ path: d.path }).then(loadKept) }} />}
 
       {servers && (
         <section aria-label="Add a server" className="flex flex-col">

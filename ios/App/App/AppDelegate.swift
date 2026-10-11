@@ -6,7 +6,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         Push.shared.start(application)
         WatchLink.shared.start()
+        Downloads.playback()
+        _ = Downloads.shared
         return true
+    }
+
+    /// A download finished while the app was closed (Downloads.swift).
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        Downloads.shared.finished = completionHandler
     }
 
     func application(_ application: UIApplication,

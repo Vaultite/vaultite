@@ -20,7 +20,7 @@ export { definePlugin, detailPath } from "@/core/define"
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
 export { pinKind, SEARCH as PIN_SEARCH } from "../../core/pins.ts"
-export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PluginCommand, PluginDef, PluginHost, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TimelineKind, ViewCtx, ViewDef, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
+export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TimelineKind, ViewCtx, ViewDef, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
@@ -126,6 +126,7 @@ export { FileEditor, NoteEditor, type FileEditorProps, type NoteEditorProps } fr
 export { FileEmbed } from "@/components/FileEmbed"
 // The address of a file's bytes (an image's src, a binary format's file; an iPhone photo as JPEG where needed).
 export { rawUrl } from "@/components/FileViewers"
+export { kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
 export { Badged, Bars, Editable, Empty, FilterField, Group, KV, List, Loading, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch } from "@/components/kit"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
@@ -192,7 +193,7 @@ export { ChipValuesEditor, chipLabel, chipMenu, chipValues, CHIP_TINTS, Property
 // recorder). In a browser savePdf answers undefined (print instead) and askMicrophone true.
 export { askMicrophone, captureWindow, savePdf } from "@/core/desktop"
 // The iPhone app's voice note, as its widgets open it (Audio recorder's "Record a voice note"); false in a browser.
-export { phoneVoiceNote } from "@/core/phoneapp"
+export { phoneFiles, phoneVoiceNote, type PhoneDownload } from "@/core/phoneapp"
 /** Is this plugin on now (and what it requires)? For a `when` that needs another plugin's API (Inbox's ops). */
 export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.

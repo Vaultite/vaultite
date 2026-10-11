@@ -500,6 +500,9 @@ export function keyGroupNames(disabled: string[], order: string[]) {
 export const backgrounds = (disabled: string[], order: string[]) =>
   active(disabled, order).filter((p) => p.background).map((p) => ({ key: p.id, Run: p.background! }))
 
+/** The player of the first plugin that's on with one (see `player` in PluginDef), or null for the browser's. */
+export const playerFor = (disabled: string[]) => PLUGINS.find((p) => p.player && isEnabled(p.id, disabled))?.player ?? null
+
 /** Where a device's first tab goes (see `home` in PluginDef): the first plugin that's on and answers, or null. */
 export function homeTab(store: Store, disabled: string[], order: string[]) {
   for (const p of active(disabled, order)) {

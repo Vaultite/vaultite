@@ -215,8 +215,8 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
   const wasShown = useRef(shown)
   useLayoutEffect(() => {
     if (shown && !wasShown.current && box.current && !full) box.current.scrollTop = scrollOf(place.current)
-    // (hidden, what plays in it stops, as it did when a tab left was drawn no more)
-    if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio, video") ?? []) (m as HTMLMediaElement).pause()
+    // (hidden, what plays in it stops, as it did when a tab left was drawn no more; a player that carries on says so)
+    if (!shown && wasShown.current) for (const m of box.current?.querySelectorAll("audio:not([data-keeps-playing]), video:not([data-keeps-playing])") ?? []) (m as HTMLMediaElement).pause()
     wasShown.current = shown
   }, [shown, full])
   const pane = useMemo(() => ({ group, focused, hidden: !shown, tab: tab?.id }), [group, focused, shown, tab?.id])

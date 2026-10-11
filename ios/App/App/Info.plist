@@ -20,20 +20,6 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(MARKETING_VERSION)</string>
-	<key>CFBundleVersion</key>
-	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>ITSAppUsesNonExemptEncryption</key>
-	<false/>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
-	<key>VaultiteAppGroup</key>
-	<string>$(VAULTITE_APP_GROUP)</string>
-	<key>NSSpeechRecognitionUsageDescription</key>
-	<string>Vaultite turns your voice notes into text, on this iPhone.</string>
-	<key>NSCameraUsageDescription</key>
-	<string>Vaultite takes the photos you add to your notes.</string>
-	<key>NSMicrophoneUsageDescription</key>
-	<string>Vaultite records your voice notes for your inbox.</string>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -45,6 +31,18 @@
 			</array>
 		</dict>
 	</array>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>Vaultite takes the photos you add to your notes.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Vaultite records your voice notes for your inbox.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>Vaultite turns your voice notes into text, on this iPhone.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -62,6 +60,10 @@
 			</array>
 		</dict>
 	</dict>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>audio</string>
+	</array>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIRequiredDeviceCapabilities</key>
@@ -83,5 +85,7 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<true/>
+	<key>VaultiteAppGroup</key>
+	<string>$(VAULTITE_APP_GROUP)</string>
 </dict>
 </plist>

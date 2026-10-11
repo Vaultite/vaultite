@@ -215,6 +215,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `keyHint(keys)`: Keys as text: ⌘⇧F on a Mac, Ctrl+Shift+F elsewhere (caps run together would read "CtrlO"); a sequence's steps apart ("g g").
 - `keysOf(c)`: A command's keys in effect: the vault's hotkeys.json if it names the command, else its own defaults and the keys plugins add to it (`addKeys`).
 - `kindFolder(folder, disabled?)`: Whether a plain Markdown file in `folder` would be a kind's (People/, Logs/Gym/): such a folder holds only that kind, so another sort of note goes where new notes go instead.
+- `kindIcon(path)`: The icon for a file that isn't a note (notes take their plugin's).
 - `KV({ label, children })`: A label and its value, in a Group.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
@@ -314,6 +315,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pasteAttachments(s, from, files)`: Save pasted files as attachments of `from` (saveAttachments) and answer what to type for them: `![[name]]` (or `![](path)` with Markdown links), one per line.
 - `pastedFiles(d)`: The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as text and a picture of them.
 - `patch(path, body)`
+- `PhoneDownload`: A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile.
+- `phoneFiles`: The phone's kept files, for a player (null outside the iPhone app).
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji.
 - `PIN_SEARCH`: A search pinned: "search:<query>".
@@ -323,6 +326,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
 - `plainText(md)`: Markdown to plain text, for previews and search snippets: no marks, code fences, rules or table pipes.
+- `PlayerProps`: What a `player` gets: the file, how it's shown ("page": its own tab, "embed": in a note, "fill": its parent's box), an embed's height, and what to tell the core: its length, or that it can't be…
 - `pluginById(id)`
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").
 - `PluginDef`

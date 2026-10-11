@@ -8,6 +8,8 @@ import { formatSize, kindIcon, kindName, type FileKind } from "@/core/filekinds"
 import { openFile } from "@/core/files"
 import { isDesktop } from "@/core/workspace"
 import { useVaultChange } from "@/core/live"
+import { playerFor } from "@/core/plugins"
+import { usePrefs } from "@/core/prefs"
 import { canOpenHere, openHere } from "@/components/FileActions"
 import { cn } from "@/lib/utils"
 
@@ -136,11 +138,14 @@ function useSoundOnly(path: string) {
   return [sound, check] as const
 }
 
-/** Audio or video, in the browser's player. One it can't play: a card. */
+/** Audio or video, in a plugin's player or the browser's. One it can't play: a card. */
 export function PlayerView({ path, info, v, video, onDuration }: { path: string; info: FileInfo | null; v: number; video: boolean; onDuration: (s: number) => void }) {
   const [failed, setFailed] = useState(false)
   const [sound, check] = useSoundOnly(path)
+  const Player = playerFor(usePrefs().disabled)
+  useEffect(() => setFailed(false), [path, v])
   if (failed) return <FileCard path={path} info={info} note="This browser can't play this file." />
+  if (Player) return <Player path={path} video={video} place="page" v={v} onDuration={onDuration} onFail={() => setFailed(true)} />
   const common = { src: rawUrl(path, { v }), controls: true, preload: "metadata", onError: () => setFailed(true),
     onLoadedMetadata: (e: SyntheticEvent<HTMLMediaElement>) => { onDuration(e.currentTarget.duration); check(e) } }
   if (video && !sound) return <video {...common} playsInline className="mx-auto max-h-[75vh] w-full rounded-[10px] bg-foreground/[0.04]" />
@@ -172,6 +177,12 @@ export function MediaEmbed({ path, height, fill }: { path: string; height?: numb
   const [sound, check] = useSoundOnly(path)
   const pdf = /\.pdf$/i.test(path), video = !sound && /\.(mp4|m4v|mov|webm|ogv)$/i.test(path)
   const Icon = kindIcon(path)
+  const Player = playerFor(usePrefs().disabled)
+  if (Player && !pdf) {
+    const player = <Player path={path} video={video} place={fill ? "fill" : "embed"} height={height} />
+    return fill ? <div className="flex size-full items-center justify-center overflow-hidden" data-media-embed={path}>{player}</div>
+      : <div className="glass overflow-hidden rounded-[12px]" data-hold-menu data-media-embed={path}><EmbedHead path={path} icon={Icon} name={path.split("/").pop()!} />{player}</div>
+  }
   if (fill) {
     return (
       <div className="flex size-full items-center justify-center overflow-hidden" data-media-embed={path}>

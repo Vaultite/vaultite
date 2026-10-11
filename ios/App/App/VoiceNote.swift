@@ -76,6 +76,7 @@ final class VoiceNote: NSObject, ObservableObject {
         recorder = nil
         file = nil
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        Downloads.playback() // (back to playing, for the page's audio and video)
     }
 }
 

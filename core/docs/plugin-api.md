@@ -128,6 +128,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `settingsPanel`: Its settings sheet, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Plugins never add to the Settings page, but for `setup`.
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).
 - `newFiles`: Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile).
+- `player`: Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player: the first plugin that's on wins.
 - `background`: Runs while it's on, drawn nowhere, in every open window and device: listen and draw there (Workspaces keeps tabs in step), never write on a timer. What must happen once is the server's: plugin.every. Return null.
 
 ### Services the app's plugins offer

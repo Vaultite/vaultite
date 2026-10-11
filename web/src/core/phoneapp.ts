@@ -21,7 +21,17 @@ export type ShellPlugin = {
   /** What a widget or a shortcut asked for, taken once: a command (vaultite://command/<id>) or a file to open
    *  (vaultite://open/<path>). Rejects in an older app. */
   pending: () => Promise<{ command?: string; open?: string }>
+  /** Keep a vault file on this iPhone (App/Downloads.swift), fetched in the background from `url`. The rest reject in
+   *  an app built before it had them. */
+  download: (o: { url: string; path: string; title: string }) => Promise<void>
+  downloads: () => Promise<{ items: PhoneDownload[] }>
+  removeDownload: (o: { path: string }) => Promise<void>
+  /** Where playback of a kept file stopped on the first screen, kept until the server's page takes it (once). */
+  setPlace: (o: { path: string; t: number; d: number; at: number }) => Promise<void>
+  takePlaces: () => Promise<{ places: { path: string; t: number; d?: number; at: number }[] }>
 }
+/** A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile. */
+export type PhoneDownload = { path: string; title: string; server: string; size: number; got: number; done: boolean; file?: string; error?: string }
 
 /** What the shell's native side puts on every page it loads (its native-bridge.js): no @capacitor/core in the app. */
 type CapacitorGlobal = {
@@ -32,7 +42,8 @@ type CapacitorGlobal = {
 const cap = (globalThis as { Capacitor?: CapacitorGlobal }).Capacitor
 const call = (method: string) => (options?: object) => cap!.nativePromise("Shell", method, options ?? {}) as Promise<never>
 export const phoneApp: ShellPlugin | null = cap?.isNativePlatform?.() && cap.isPluginAvailable?.("Shell")
-  ? { servers: call("servers"), setServers: call("setServers"), probe: call("probe"), open: call("open"), launcher: call("launcher"), snapshot: call("snapshot"), haptic: call("haptic"), pending: call("pending") }
+  ? { servers: call("servers"), setServers: call("setServers"), probe: call("probe"), open: call("open"), launcher: call("launcher"), snapshot: call("snapshot"), haptic: call("haptic"), pending: call("pending"),
+    download: call("download"), downloads: call("downloads"), removeDownload: call("removeDownload"), setPlace: call("setPlace"), takePlaces: call("takePlaces") }
   : null
 /** Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an
  *  address it doesn't serve to the system, which gives it back to the app. False in a browser. */
@@ -59,3 +70,8 @@ export function takeLinks(run: { command: (id: string) => boolean; open: (path: 
   addEventListener("vaultite:link", take)
   return () => removeEventListener("vaultite:link", take)
 }
+
+/** The phone's kept files, for a player (null outside the iPhone app). */
+export const phoneFiles = phoneApp
+  ? { download: phoneApp.download, list: phoneApp.downloads, remove: phoneApp.removeDownload, takePlaces: phoneApp.takePlaces }
+  : null

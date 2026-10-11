@@ -22,6 +22,11 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "snapshot", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "haptic", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "pending", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "download", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "downloads", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "removeDownload", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setPlace", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "takePlaces", returnType: CAPPluginReturnPromise),
     ]
 
     /// What a widget or a shortcut asked for (AppViewController): `command` or `open`, until the page takes it.
@@ -127,6 +132,42 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
             self.waiting = nil
             call.resolve(p ?? [:])
         }
+    }
+
+    /// Keep a file on this iPhone (Downloads.swift): `url` its bytes on a server in the list, `path` its vault path.
+    @objc func download(_ call: CAPPluginCall) {
+        guard let address = call.getString("url"), let url = URL(string: address), Servers.knows(url),
+              let path = call.getString("path") else { return call.reject("not a file on a server in the list") }
+        let server = url.scheme.map { "\($0)://\(url.host ?? "")\(url.port.map { ":\($0)" } ?? "")" } ?? ""
+        Downloads.shared.start(url: url, path: path, title: call.getString("title") ?? (path as NSString).lastPathComponent, server: server)
+        call.resolve()
+    }
+
+    /// What's kept and what's on its way: `file` is where it is on the phone, `got` and `size` how far it is.
+    @objc func downloads(_ call: CAPPluginCall) {
+        let items: [[String: Any]] = Downloads.shared.list().map { it in
+            var o: [String: Any] = ["path": it.path, "title": it.title, "server": it.server, "size": it.size, "got": it.got, "done": it.done]
+            if let f = it.file { o["file"] = f }
+            if let e = it.error { o["error"] = e }
+            return o
+        }
+        call.resolve(["items": items])
+    }
+
+    @objc func removeDownload(_ call: CAPPluginCall) {
+        guard let path = call.getString("path") else { return call.reject("no path") }
+        Downloads.shared.remove(path: path)
+        call.resolve()
+    }
+
+    /// Where playback stopped on the first screen (offline), until the server's page takes it.
+    @objc func setPlace(_ call: CAPPluginCall) {
+        Downloads.shared.setPlace(call.options as? [String: Any] ?? [:])
+        call.resolve()
+    }
+
+    @objc func takePlaces(_ call: CAPPluginCall) {
+        call.resolve(["places": Downloads.shared.takePlaces()])
     }
 
     override public func shouldOverrideLoad(_ navigationAction: WKNavigationAction) -> NSNumber? {

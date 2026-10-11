@@ -456,6 +456,11 @@ export type PluginCommand = { id: string; name: string; keys?: string[]; when?: 
  *  go to it. */
 export type SettingsSearchEntry = { label: string; description?: string; key?: string }
 
+/** What a `player` gets: the file, how it's shown ("page": its own tab, "embed": in a note, "fill": its parent's box),
+ *  an embed's height, and what to tell the core: its length, or that it can't be played (the core shows a card). */
+export type PlayerProps = { path: string; video: boolean; place: "page" | "embed" | "fill"; height?: number; v?: number
+  onDuration?: (s: number) => void; onFail?: () => void }
+
 export type PluginDef = {
   /** Icons it adds by name: a file's `icon:` can name them (a dashboard's `icon: claude`), and other plugins draw them
    *  with iconNamed("claude") (the plugin API) without importing it. */
@@ -564,6 +569,9 @@ export type PluginDef = {
   settingsSearch?: SettingsSearchEntry[]
   /** Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile). */
   newFiles?: NewFile[]
+  /** Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player:
+   *  the first plugin that's on wins. */
+  player?: ComponentType<PlayerProps>
   /** Runs while it's on, drawn nowhere, in every open window and device: listen and draw there (Workspaces keeps tabs in
    *  step), never write on a timer. What must happen once is the server's: plugin.every. Return null. */
   background?: (ctx: { store: Store }) => ReactNode

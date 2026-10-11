@@ -35,6 +35,10 @@ class AppViewController: CAPBridgeViewController {
         NotificationCenter.default.addObserver(forName: UIApplication.willResignActiveNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.webView?.evaluateJavaScript("dispatchEvent(new Event('vaultite:away'))") }
         }
+        // And back: a video the player turned to sound while away shows again (plugins/core/player).
+        NotificationCenter.default.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.webView?.evaluateJavaScript("dispatchEvent(new Event('vaultite:back'))") }
+        }
     }
 
     override func viewDidAppear(_ animated: Bool) {

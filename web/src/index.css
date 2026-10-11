@@ -232,9 +232,9 @@
 }
 /* Phones: the bar docked at the bottom (components/PhoneBar.tsx): a 3rem row over the home indicator's safe area. What
    sits above it (the page's end, a toast, the bar's menu) keeps clear of it with this. */
-:root { --phone-bar: calc(max(env(safe-area-inset-bottom), 0.25rem) + 3rem); }
-.pb-safe { padding-bottom: calc(var(--phone-bar) + 1.5rem); }
-@media (min-width: 768px) { .pb-safe { padding-bottom: 3rem; } }
+:root { --phone-bar: calc(max(env(safe-area-inset-bottom), 0.25rem) + 3rem); --mini-player: 0px; }
+.pb-safe { padding-bottom: calc(var(--phone-bar) + var(--mini-player) + 1.5rem); }
+@media (min-width: 768px) { .pb-safe { padding-bottom: calc(3rem + var(--mini-player)); } }
 /* Phones: the screen between the header (3.5rem) and the bar, for what fills it (a canvas, a terminal). */
 .phone-fill { height: calc(100dvh - env(safe-area-inset-top) - 3.5rem - var(--phone-bar)); }
 

@@ -346,6 +346,13 @@ events: 3
 ```block-reply
 ```
 
+## Player
+
+`queue`: what the inbox holds to watch (a video embedded), listen to (audio: a podcast's episode) and read (a page from the web), and books being read, with how far you got; play starts it in the mini player, swiped or held: played, Done. `show: watch` (or listen, read) shows one shelf.
+
+```block-queue
+```
+
 ## Claude Code and this machine
 
 `claude-limits`: plan limits (each account's, with several). `claude-sessions`: open and recent sessions (`recent: 5`; click one for its terminal or its conversation), and the Remote Control servers running. `claude-usage`, `claude-projects` and `claude-models` (`days: 30`). `claude`: one project's usage (a file block; `project: <folder>`). Every agent block takes `account: <id>` (one of Claude Code's accounts) and `machine: <id>` (another machine's).

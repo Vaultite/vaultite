@@ -13,6 +13,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   or `vau newtab page`), so it's any blocks, arranged by you or your agent.
 - **Looks**: save just the look (colours, fonts, snippets, the status bar, the new tab) as a bundle that applies over
   any setup; bundles carry the new tab, and a bundle saved in the desktop app shows a picture of the window on its card.
+- **Watch and listen anywhere in the app**: audio and video keep playing as you move around, in a mini player, on the
+  lock screen and with the iPhone locked, and pick up where you stopped on any device; skips, speed, captions and
+  picture in picture; a time in a note plays from there, and a transcript follows along.
+- **Queue**: one page for what the inbox holds to watch, listen to and read, with how far you got.
+- **Podcasts**: follow a show by name or feed; each new episode lands in the inbox with its artwork and transcript.
+- **On the iPhone**: audio and video download to play offline, and e-books turn pages on a tap and use the screen's width.
 - Machines can show cloud agents’ folders and files through a read-only file agent, with enrollment codes and revocable access.
 - An agent machine's files read like the app's own: Markdown with its properties, JSON as a tree, transcripts as a conversation, images, sizes and times, breadcrumbs and what changed last; a read survives its connection dropping.
 - **Hatch**: a dashboard for your Hatch agent (like Muse) from its machine: who it is and what's left to tell it, its runs and their conversations, what it learned, its dreams, its feed and its setup; a new dream, the day's facts and a feed story reach the Inbox.

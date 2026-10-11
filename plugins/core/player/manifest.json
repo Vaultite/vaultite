@@ -1,0 +1,30 @@
+{
+  "id": "player",
+  "icon": "circle-play",
+  "category": "formats",
+  "essential": true,
+  "name": "Player",
+  "description": "Audio and video keep playing as you go elsewhere in the app, in a mini player and on the lock screen, and pick up where you stopped on any device; with skips, speed, captions and picture in picture. Times in a note play from there, and the queue lists what the inbox holds to watch, listen to and read.",
+  "enhances": [
+    "inbox",
+    "books"
+  ],
+  "blocks": {
+    "queue": {
+      "description": "what the inbox holds to watch, listen to and read, with how far you got",
+      "options": {
+        "show": {
+          "type": "enum",
+          "values": [
+            "all",
+            "watch",
+            "listen",
+            "read"
+          ],
+          "default": "all",
+          "description": "one shelf only, or all with a switch between them"
+        }
+      }
+    }
+  }
+}
