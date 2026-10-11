@@ -62,7 +62,6 @@ try {
   await page.goto(`${B}#file/${encodeURIComponent(file)}`)
   await page.waitForSelector(`${L} [data-panel]`); await wait(800)
   check("the default: Search, Pinned, Terminals, Files", (await shown()).join() === DEFAULT.left.join(), await shown())
-  check("...no tab strips", !(await page.$("[data-group-tabs], [data-panel-tab]")))
   check("no right sidebar, only its toggle", !(await page.$(R)) && !!(await page.$("[data-sidebar-toggle=right]")))
   const density = await page.evaluate(() => document.documentElement.dataset.density ?? "compact")
   const unit = density === "comfortable" ? 4.5 : 4

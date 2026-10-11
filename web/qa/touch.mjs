@@ -3,13 +3,12 @@
 // drawer, the bar's menu, a person from the People page and [[links]] in a note opening in tabs (a link in a sheet
 // closes the sheet first). Prints ok / FAIL per check and exits 1 on any failure. It TICKS A ROUTINE (writes a daily
 // note), so run it against a throwaway server on a copy of the vault:
-//   cp -R <vault> /tmp/v && VAULTITE_VAULT=/tmp/v PORT=8799 npm start, then QA_BASE=http://127.0.0.1:8799/ node web/qa/touch.mjs
+//   node web/qa/touch.mjs <base url>   (a server on a copy: cp -R <vault> /tmp/v; VAULTITE_VAULT=/tmp/v PORT=<port> npm start)
 // Its subjects come from the vault (subjects.mjs): two routines you tick by hand, the latest workout log,
 // the first person with a timeline, and a note that links to another note and to a person.
 import { SHOTS, qa } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
-const { browser, check, done } = await qa(import.meta.url)
-const B = process.env.QA_BASE ?? "http://127.0.0.1:8799/"
+const { args: [B], browser, check, done } = await qa(import.meta.url)
 let v = await subjects(B)
 const today = `#${await pageHash(B, "Today")}`, health = `#${await pageHash(B, "Health")}`, people = `#${await pageHash(B, "People")}`
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })

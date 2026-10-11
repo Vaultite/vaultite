@@ -204,7 +204,7 @@ try {
   const sp = await until(() => page.$("dialog[open] [data-workspace-settings]"), 6000)
   check("Workspaces' settings: This workspace", !!sp && (await page.locator("[data-workspace-settings]").innerText()).includes("This workspace: Writing"),
     sp && await page.locator("[data-workspace-settings]").innerText())
-  check("...no home page row", !(await page.$("[data-workspace-home]")) && !(await page.getByText("Home page").count()))
+  check("...no home page row", !(await page.getByText("Home page").count()))
   check("...its pinned pages are its own", !!(await until(async () => (await page.locator("[data-workspace-pins]").innerText()).includes("Its own"), 6000)))
   await page.screenshot({ path: `${OUT}4-settings.png` })
   await page.locator("[data-workspace-pins] button", { hasText: "Use for new workspaces" }).click()

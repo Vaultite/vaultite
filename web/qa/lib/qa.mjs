@@ -78,7 +78,9 @@ export async function qa(script, { chrome = {} } = {}) {
     console.log(fails.length ? `\n${fails.length} failed` : "\nall passed")
     process.exit(fails.length ? 1 : 0)
   }
-  return { args: argv, browser, check, fails, errs, watch, noErrors, done }
+  /** Ends it as skipped (tools/qa.ts lists it so), when what it covers isn't here. */
+  const skip = async (why) => { await browser?.close(); console.log(`skipped: ${why}`); process.exit(0) }
+  return { args: argv, browser, check, fails, errs, watch, noErrors, done, skip }
 }
 
 /** The app's API on `base`: JSON in, JSON (or text) out. */

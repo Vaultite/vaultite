@@ -94,7 +94,7 @@ try {
   check("phone: no sideways scroll at 390", await P.evaluate(() => document.documentElement.scrollWidth <= innerWidth))
   await P.screenshot({ path: `${OUT}phone-390.png` })
 
-  check("phone bar: one row, no name bar", bar.height <= 56 && !(await P.locator("[data-tab-name]").count()), bar)
+  check("phone bar: one row", bar.height <= 56, bar)
   const order = await P.$$eval("[data-phone-bar] > div > *", (els) => els.filter((e) => e.getBoundingClientRect().width > 0).map((e) => e.hasAttribute("data-tabs-button") ? "tabs" : e.getAttribute("data-bar") ?? "?"))
   check("phone bar: Back, Forward, new tab, the tab count, the menu", order.join() === "back,forward,new,tabs,menu", order)
   const head = await P.locator("[data-phone-header]").boundingBox()
@@ -167,7 +167,7 @@ try {
   await P.keyboard.press("Escape"); await wait(500)
   // A dashboard: drawn while reading, its Markdown while editing.
   await P.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, PINNED[0]); await wait(1200)
-  check("dashboard: a pencil on the drawn page", (await toggle.getAttribute("aria-label")) === "Edit" && (await P.locator("article [data-dashboard], article .cm-editor").count()) >= 0 && !(await P.locator("article .cm-content").count()), await toggle.count())
+  check("dashboard: a pencil on the drawn page", (await toggle.getAttribute("aria-label")) === "Edit" && (await P.locator("article [data-block]").count()) > 0 && !(await P.locator("article .cm-content").count()), await toggle.count())
   await P.screenshot({ path: `${OUT}today-read.png` })
   await toggle.click(); await wait(800)
   check("dashboard: editing shows its Markdown in the editor, a book to read", (await toggle.getAttribute("aria-label")) === "Read" && (await P.locator("article .cm-content[contenteditable=true]").count()) > 0, await toggle.count())

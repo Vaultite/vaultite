@@ -56,8 +56,10 @@ npm run smoke       # the build starts: Chrome, desktop and phone, no page error
 The web demo (the app and its server in the browser, on the sample vault: `web/demo/CLAUDE.md`): `npm run build:demo`
 builds it into `web/dist-demo/`, static files for any host and path; `node web/qa/demo.mjs` checks it.
 
-`npm run qa` runs every UI script in `web/qa/` (each on a fresh sandbox and server of its own; `--repeat 3` finds
-flaky ones, `npm run qa -- sheets links` runs some).
+`npm run verify` runs what this branch's changes need (build, check, the vault test's areas and the QA scripts that
+name the changed files, the web test and smoke when web/ changed) and times each. `npm run qa` runs every UI script in
+`web/qa/` (each on a fresh sandbox and server of its own; `--repeat 3` finds flaky ones, `npm run qa -- sheets links`
+runs some, `--lint` finds selectors nothing draws).
 
 UI changes: the scripts in `web/qa/` drive the app in Chrome (playwright-core, on Playwright's own Chromium, not
 the installed Google Chrome) at

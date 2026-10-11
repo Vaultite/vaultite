@@ -9,7 +9,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, freePort, qa, wait } from "./lib/qa.mjs"
+import { ROOT, apiAt, freePort, qa, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, done } = await qa(import.meta.url, { chrome: false })
 
@@ -118,8 +118,7 @@ try {
   const term = await rpc("tools/call", { name: "call", arguments: { id: "terminal.list" } })
   check("an owner-only op through call is refused", term.body?.result?.isError === true, term.body)
   // Forged headers (what a tunnel passes on): Tailscale Serve's login, one the terminal lets in, and the app's own.
-  fs.mkdirSync(path.join(VAULT, ".vaultite/plugins/terminal"), { recursive: true })
-  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/terminal/data.json"), JSON.stringify({ allowUsers: ["alice@example.com"] }))
+  await apiAt(`${BASE}/`)("PATCH", "config/plugin/terminal", { allowUsers: ["alice@example.com"] }) // (this machine's, set by its owner)
   const forgedHeaders = { "Tailscale-User-Login": "alice@example.com", "Tailscale-User-Name": "Alice Park", "X-Vaultite-Client": "app" }
   for (const id of ["terminal.list", "terminal"]) {
     const r = await rpc("tools/call", { name: "call", arguments: { id } }, undefined, forgedHeaders)

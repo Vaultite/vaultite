@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process"
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import WebSocket from "ws"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/agentui-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("/api/vault", B))).json()).path
@@ -167,8 +167,7 @@ check("VAULTITE_CLIENT=web", has("VAULTITE_CLIENT", "web"), env)
 check("no VAULTITE_REMOTE locally", !env.includes("VAULTITE_REMOTE"), env)
 check("the app's bin/ on PATH", /^HAS-BIN\r?$/m.test(env), env)
 // Through Tailscale Serve (a login in allowUsers): VAULTITE_REMOTE=tailscale.
-mkdirSync(path.join(VAULT, ".vaultite/plugins/terminal"), { recursive: true })
-writeFileSync(path.join(VAULT, ".vaultite/plugins/terminal/data.json"), JSON.stringify({ allowUsers: ["qa-friend@example.com"] }))
+await apiAt(B)("PATCH", "config/plugin/terminal", { allowUsers: ["qa-friend@example.com"] }) // (this machine's, set by its owner)
 const ts = "home-mac.example.ts.net:8447"
 const remote = await shell("env | grep VAULTITE_REMOTE", { Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "qa-friend@example.com" })
 check("VAULTITE_REMOTE=tailscale through Serve", /VAULTITE_REMOTE=tailscale/.test(remote), remote)

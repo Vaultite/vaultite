@@ -32,7 +32,7 @@ const palette = async (q) => {
 
 try {
   await page.goto(`${B}#file/${encodeURIComponent("Welcome.md")}`)
-  await until(() => page.$(".cm-editor, [data-file-view], main"), 15000)
+  await until(() => page.$(".cm-editor, main"), 15000)
   await wait(1500)
 
   // Pages aren't found by their folder.

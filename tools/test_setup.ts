@@ -6,15 +6,12 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import { check, summary } from "./test/lib.ts"
+const t0 = Date.now()
 
 const S = await import("../electron/setup.ts")
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-setup-test-"))
-const fails: string[] = []
-function check(name: string, ok: unknown, got?: unknown) {
-  console.log((ok ? "ok   " : "FAIL ") + name + (ok ? "" : `  -> ${JSON.stringify(got)?.slice(0, 400)}`))
-  if (!ok) fails.push(name)
-}
 const home = path.join(tmp, "home")
 const put = (rel: string, text: string) => { const p = path.join(home, rel); fs.mkdirSync(path.dirname(p), { recursive: true }); fs.writeFileSync(p, text); return p }
 // Node as "the app's executable": the shim runs bin/vau with it, as the app runs it with Electron.
@@ -73,5 +70,4 @@ check("service: the node on PATH when it's this one (outlives a Homebrew upgrade
   SV.stableNode(realNode, "/nowhere") === realNode)
 
 fs.rmSync(tmp, { recursive: true, force: true })
-console.log(fails.length ? `\n${fails.length} failed` : "\nall passed")
-process.exit(fails.length ? 1 : 0)
+process.exit(summary("setup", t0))

@@ -12,7 +12,7 @@ import http from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { WebSocketServer } from "ws"
-import { ROOT, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
+import { ROOT, apiAt, freePort, launch, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT], check, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-mcpcloud-"))
@@ -340,8 +340,7 @@ try {
   const owner = await rpc("tools/call", { name: "call", arguments: { id: "mcp.cloud-sign-out" } })
   check("an app can't sign the Mac out", owner.result?.isError === true, owner)
   // Forged headers through the relay: Tailscale Serve's login (one the terminal lets in), the app's own.
-  fs.mkdirSync(path.join(VAULT, ".vaultite/plugins/terminal"), { recursive: true })
-  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/terminal/data.json"), JSON.stringify({ allowUsers: ["alice@example.com"] }))
+  await apiAt(`${BASE}/`)("PATCH", "config/plugin/terminal", { allowUsers: ["alice@example.com"] }) // (this machine's, set by its owner)
   for (const id of ["terminal.list", "terminal", "mcp.cloud-status"]) {
     const r = JSON.parse((await through("POST", "/mcp", { headers: [["content-type", "application/json"], ["authorization", `Bearer ${tok.access_token}`], ["tailscale-user-login", "alice@example.com"], ["x-vaultite-client", "app"]],
       body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name: "call", arguments: { id } } }) })).text || "{}")

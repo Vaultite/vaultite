@@ -2,10 +2,9 @@
 // tab, tabs, menu), the left drawer (a swipe from the edge, real touches through CDP; the button; a file opened from it
 // closes it and opens in a tab), Back, and the bar's menu. Reads only (opens tabs on this device), but run it against a
 // throwaway server anyway:
-//   QA_BASE=http://127.0.0.1:8799/ node web/qa/phonenav.mjs [shots dir]
+//   node web/qa/phonenav.mjs <base url> [shots dir]
 import { SHOTS, fingers, qa } from "./lib/qa.mjs"
-const { args: [dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)
-const B = process.env.QA_BASE ?? "http://127.0.0.1:8799/"
+const { args: [B, dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)
 const out = {}
 for (const scheme of ["light", "dark"]) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: scheme })

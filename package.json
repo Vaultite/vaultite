@@ -20,6 +20,8 @@
     "check": "node tools/check_plugins.ts",
     "smoke": "node web/qa/boot.mjs",
     "qa": "node tools/qa.ts",
+    "verify": "node tools/verify.ts",
+    "evals": "node tools/evals/run.ts",
     "lint": "oxlint",
     "preview": "vite preview",
     "app": "node electron/start.ts",

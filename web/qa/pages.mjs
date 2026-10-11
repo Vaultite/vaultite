@@ -3,13 +3,13 @@
 // lists them (the sidebar's panel) and a new tab shows them as tiles, Pinned's settings list them, and /api/render reads a
 // dashboard as text. Screenshots in /tmp/vaultite-pages/.
 // WRITES .vaultite/pages.json (and puts it back): throwaway server only.
-//   node web/qa/pages.mjs [base url]
+//   node web/qa/pages.mjs <base url>
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
 import { qa } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"
-const { args: [B = "http://127.0.0.1:8799/"], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 const OUT = "/tmp/vaultite-pages/"
 mkdirSync(OUT, { recursive: true })
 const pinnedBefore = (await (await fetch(`${B}api/config/pages`)).json()).pinned

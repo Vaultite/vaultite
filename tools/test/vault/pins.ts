@@ -1,0 +1,85 @@
+import fs from "node:fs"
+import path from "node:path"
+import type { VaultTest } from "./harness.ts"
+
+export default async ($: VaultTest) => {
+  const { VAULT, api, app, check, vault } = $
+  // Pins follow moves made through the API (an AI moving files), not only the app's: files, whole folders, and deletes.
+  // "files" is an old app's phone Files page: a pin that isn't a file, kept in place.
+  const pins = () => JSON.stringify(vault.config("pages").pinned ?? [])
+  const list = (...xs: string[]) => JSON.stringify(xs)
+  vault.setConfig("pages", { pinned: ["Dashboards/Today.md", "files", "Dashboards/People.md", "Notes/Linker.md"] })
+  const movesHeard: string[] = []
+  const unhear = vault.onMove((from, to) => movesHeard.push(`${from} -> ${to}`))
+  await api("POST", "file/move", { from: "Notes/Linker.md", to: "Linker.md" })
+  unhear()
+  check("a move through the API is told (the live socket's `moved`: open tabs follow it)", movesHeard.join() === "Notes/Linker.md -> Linker.md", movesHeard)
+  check("a moved file keeps its pin, in place", pins() === list("Dashboards/Today.md", "files", "Dashboards/People.md", "Linker.md"), pins())
+  await api("POST", "file/move", { from: "Dashboards", to: "People/Dashboards" })
+  check("a moved folder's pins follow", pins() === list("People/Dashboards/Today.md", "files", "People/Dashboards/People.md", "Linker.md"), pins())
+  await api("POST", "file/move", { from: "People/Dashboards", to: "Dashboards" })
+  check("and back to the top level", JSON.stringify(JSON.parse(pins()).slice(0, 3)) === list("Dashboards/Today.md", "files", "Dashboards/People.md"), pins())
+  let [code] = await api("POST", "file/move", { from: "Dashboards", to: "Dashboards/Inner/Dashboards" })
+  check("a folder can't move into itself", code === 400 && fs.statSync(path.join(VAULT, "Dashboards")).isDirectory()
+    && JSON.parse(pins())[0] === "Dashboards/Today.md", code)
+  await api("DELETE", "file?path=Linker.md")
+  check("a trashed file loses its pin", !JSON.parse(pins()).includes("Linker.md"), pins())
+  await api("POST", "folder", { path: "Boards" })
+  await api("POST", "file/move", { from: "Dashboards/People.md", to: "Boards/People.md" })
+  await api("DELETE", "file?path=Boards")
+  check("a trashed folder loses its pins", pins() === list("Dashboards/Today.md", "files"), pins())
+  vault.setConfig("pages", { pinned: ["People/Block Person.md"] })
+  await api("DELETE", "people/Block Person")
+  check("an item deleted through its collection loses its pin", pins() === list(), pins())
+
+  // Pins change one at a time (POST /api/pins), on the list as it is; install never pins an unpinned dashboard again.
+  vault.setConfig("pages", { pinned: ["files", "Dashboards/Today.md", "Dashboards/Claude.md"] })
+  await api("POST", "pins", { path: "Dashboards/Claude.md", pinned: false })
+  check("unpin", pins() === list("files", "Dashboards/Today.md"), pins())
+  app.installPages()
+  check("install doesn't pin it again", pins() === list("files", "Dashboards/Today.md"), pins())
+  fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
+  fs.writeFileSync(path.join(VAULT, "Notes/A.md"), "A note to pin.\n")
+  await api("POST", "pins", { path: "Notes/A.md", pinned: true, before: "Dashboards/Today.md" })
+  check("pin before another", pins() === list("files", "Notes/A.md", "Dashboards/Today.md"), pins())
+  await api("POST", "pins", { path: "files", pinned: true, before: null })
+  check("move to the end", pins() === list("Notes/A.md", "Dashboards/Today.md", "files"), pins())
+  await api("POST", "pins", { path: "Dashboards/Today.md", pinned: true })
+  check("pinning a pinned one keeps its place", pins() === list("Notes/A.md", "Dashboards/Today.md", "files"), pins())
+  const [missing] = await api("POST", "pins", { path: "Notes/Nowhere.md", pinned: true })
+  check("a file that isn't there isn't pinned", missing === 404 && pins() === list("Notes/A.md", "Dashboards/Today.md", "files"), [missing, pins()])
+  // Bookmarks: a heading in a note, a search; a heading of a note that isn't there isn't pinned.
+  await api("POST", "pins", { path: "Notes/A.md#Plan", pinned: true })
+  await api("POST", "pins", { path: "search:tag:#book", pinned: true })
+  const [noHeading] = await api("POST", "pins", { path: "Notes/Nowhere.md#Plan", pinned: true })
+  const [noSearch] = await api("POST", "pins", { path: "search: ", pinned: true })
+  check("a heading and a search are pinned; a missing note's heading and an empty search aren't", noHeading === 404 && noSearch === 404 &&
+    pins() === list("Notes/A.md", "Dashboards/Today.md", "files", "Notes/A.md#Plan", "search:tag:#book"), [noHeading, noSearch, pins()])
+  await api("POST", "pins", { path: "Notes/A.md#Plan", pinned: false })
+  await api("POST", "pins", { path: "search:tag:#book", pinned: false })
+  await api("POST", "pins", { path: "files", pinned: false })
+  const [filesPin] = await api("POST", "pins", { path: "files", pinned: true })
+  check("the old Files page can be unpinned, not pinned again", filesPin === 404 && pins() === list("Notes/A.md", "Dashboards/Today.md"), [filesPin, pins()])
+  const pagesJson = path.join(VAULT, ".vaultite/pages.json")
+  fs.writeFileSync(pagesJson, "{not json")
+  app.installPages()
+  check("an unreadable pages.json isn't replaced by every dashboard", fs.readFileSync(pagesJson, "utf8") === "{not json")
+  fs.rmSync(pagesJson)
+  app.installPages()
+  check("a missing one gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
+  // Pinning is the Pinned plugin's (plugins/core/pages): off, installing pins nothing and writes no pages.json; a
+  // pages.json that's in iCloud only isn't replaced by the default list either.
+  const pluginsWas = vault.config("plugins")
+  fs.rmSync(pagesJson)
+  fs.writeFileSync(path.join(VAULT, ".vaultite/.pages.json.icloud"), "")
+  app.installPages()
+  check("a pages.json in iCloud only isn't replaced", !fs.existsSync(pagesJson))
+  fs.rmSync(path.join(VAULT, ".vaultite/.pages.json.icloud"))
+  vault.setConfig("plugins", { ...pluginsWas, disabled: ["pages"] })
+  app.installPages()
+  check("with Pinned off, installing pins nothing", !fs.existsSync(pagesJson))
+  vault.setConfig("plugins", pluginsWas)
+  app.installPages()
+  check("on again, a vault with no pins gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
+  Object.assign($.vars, { pluginsWas })
+}

@@ -6,9 +6,9 @@
 //   node web/qa/terminal.mjs <base url> [out dir]
 import http from "node:http"
 import { execFileSync } from "node:child_process"
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs"
+import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { qa, terminalText, wait } from "./lib/qa.mjs"
+import { apiAt, qa, terminalText, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -238,10 +238,8 @@ for (const dark of [false, true]) {
 await browser.close()
 
 const host = new URL(B).host, ts = "home-mac.example.ts.net:8447"
-const settings = path.join(vaultPath, ".vaultite/plugins/terminal/data.json")
-const before = (() => { try { return readFileSync(settings, "utf8") } catch { return null } })()
-mkdirSync(path.dirname(settings), { recursive: true })
-writeFileSync(settings, JSON.stringify({ allowUsers: ["qa-friend@example.com"] }))
+const before = (await apiAt(B)("GET", "config/plugin/terminal")).allowUsers ?? null // (this machine's, set by its owner)
+await apiAt(B)("PATCH", "config/plugin/terminal", { allowUsers: ["qa-friend@example.com"] })
 check("local handshake accepted", (await handshake({ Host: host, Origin: `http://${host}` })) === "attached")
 check("X-Forwarded-For refused", (await handshake({ Host: host, "X-Forwarded-For": "100.64.0.1" })) === "refused")
 check("an unknown tailnet login refused", (await handshake({ Host: ts, Origin: `https://${ts}`, "Tailscale-User-Login": "someone@example.com" })) === "refused")
@@ -254,6 +252,6 @@ else console.log("skip this machine's owner (no Tailscale)")
 check("the owner from another site refused", (await handshake({ Host: ts, Origin: "https://evil.example", "Tailscale-User-Login": owner || "qa-friend@example.com" })) === "refused")
 check("another site refused", (await handshake({ Host: host, Origin: "http://evil.example" })) === "refused")
 check("a rebinding Host refused", (await handshake({ Host: "evil.example:80", Origin: "http://evil.example:80" })) === "refused")
-if (before === null) writeFileSync(settings, "{}\n"); else writeFileSync(settings, before)
+await apiAt(B)("PATCH", "config/plugin/terminal", { allowUsers: before })
 
 await done()

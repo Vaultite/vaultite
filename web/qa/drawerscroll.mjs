@@ -1,10 +1,9 @@
 // The phone's left drawer opens at its top: with Files' auto-reveal on, it used to jump down to the open file each time
 // (a pinned page opened from the top, then the drawer again). Turn auto-reveal on in the throwaway server's vault
 // (.vaultite/files.json: {"autoReveal": true}); reads only:
-//   QA_BASE=http://127.0.0.1:8799/ node web/qa/drawerscroll.mjs [shots dir]
+//   node web/qa/drawerscroll.mjs <base url> [shots dir]
 import { SHOTS, qa } from "./lib/qa.mjs"
-const { args: [dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)
-const B = process.env.QA_BASE ?? "http://127.0.0.1:8799/"
+const { args: [B, dir = SHOTS], browser, errs, watch } = await qa(import.meta.url)
 const ctx = await browser.newContext({ viewport: { width: 375, height: 560 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const page = watch(await ctx.newPage())
 const top = () => page.evaluate(() => { const b = document.querySelector("[data-phone-drawer] [data-sidebar-body]"); return b ? { top: Math.round(b.scrollTop), room: b.scrollHeight - b.clientHeight } : null })

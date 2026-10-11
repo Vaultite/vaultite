@@ -9,7 +9,9 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
-const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, VAULT], browser, check, watch, done, skip } = await qa(import.meta.url)
+const compat = (await apiAt(B)("GET", "plugins")).find?.((p) => p.id === "plugin-compat")
+if (!compat?.on || compat.problems?.length) await skip("needs the plugin-compat vault plugin on (the Tasks plugin's query)")
 const file = (rel) => path.join(VAULT, rel)
 const read = (rel) => { try { return fs.readFileSync(file(rel), "utf8") } catch { return "" } }
 const onDisk = (rel, text) => { fs.mkdirSync(path.dirname(file(rel)), { recursive: true }); fs.writeFileSync(file(rel), text) }

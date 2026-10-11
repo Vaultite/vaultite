@@ -6,6 +6,8 @@ import { registerHooks } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { check, summary } from "./test/lib.ts"
+const t0 = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
 const WEB = path.join(ROOT, "web", "src")
@@ -53,11 +55,6 @@ const merge: { merge3(base: string, mine: string, actual: string): string | null
   textChanges(a: string, b: string): { from: number; to: number; insert: string }[] } =
   await web("core/merge.ts")
 
-const fails: string[] = []
-function check(name: string, ok: unknown, got?: unknown) {
-  console.log((ok ? "ok   " : "FAIL ") + name + (ok ? "" : `  -> ${JSON.stringify(got)?.slice(0, 400)}`))
-  if (!ok) fails.push(name)
-}
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
 
 // ---------- reading: the same values as the server ----------
@@ -916,5 +913,4 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 }
 
 fs.rmSync(tmp, { recursive: true, force: true })
-console.log(fails.length ? `\n${fails.length} failed` : "\nall passed")
-process.exit(fails.length ? 1 : 0)
+process.exit(summary("web", t0))

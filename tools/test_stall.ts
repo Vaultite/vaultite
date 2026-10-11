@@ -5,15 +5,12 @@ import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
+import { check, results, summary } from "./test/lib.ts"
+const began = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-stall-test-"))
 const VAULT = path.join(tmp, "vault")
-const fails: string[] = []
-function check(name: string, ok: unknown, got?: unknown) {
-  console.log((ok ? "ok   " : "FAIL ") + name + (ok ? "" : `  -> ${JSON.stringify(got)?.slice(0, 400)}`))
-  if (!ok) fails.push(name)
-}
 const put = (rel: string, text: string) => { fs.mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); fs.writeFileSync(path.join(VAULT, rel), text) }
 const fifo = (rel: string) => { fs.mkdirSync(path.dirname(path.join(VAULT, rel)), { recursive: true }); execFileSync("mkfifo", [path.join(VAULT, rel)]) }
 put(".vaultite/plugins.json", "{}\n") // (a vault the app has opened before: no setup)
@@ -87,7 +84,6 @@ try {
 } finally {
   server.kill("SIGKILL")
 }
-if (fails.length) console.log(log.slice(-3000))
+if (results.some((r) => r.status === "FAIL")) console.log(log.slice(-3000))
 fs.rmSync(tmp, { recursive: true, force: true })
-console.log(fails.length ? `\n${fails.length} failed` : "\nall passed")
-process.exit(fails.length ? 1 : 0)
+process.exit(summary("stall", began))

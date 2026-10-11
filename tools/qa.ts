@@ -1,10 +1,12 @@
 // Every UI QA script (web/qa/*.mjs), each on a fresh sandbox and server; exit 1 on any failure.
-// node tools/qa.ts [script...] [--repeat 3] [--jobs 3]     (npm run qa; after npm run build)
+// node tools/qa.ts [script...] [--repeat 3] [--jobs 3]     (npm run qa; after npm run build); each run kept
+// (tools/test/lib.ts record); --lint: the [data-x] and #id selectors QA scripts use that no source draws.
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
+import { record } from "./test/lib.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
@@ -13,6 +15,31 @@ const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subject
 const TIMEOUT = 8 * 60_000
 
 const argv = process.argv.slice(2)
+if (argv.includes("--lint")) process.exit(lint())
+
+/** Selectors no source draws: [data-x] anywhere in a script, #id as a selector call's argument. One the script makes
+ *  itself counts as drawn, and data-fence (plugin-compat's, a vault plugin of its own). */
+function lint() {
+  const walk = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory() ? (e.name === "node_modules" ? [] : walk(path.join(d, e.name))) : [path.join(d, e.name)])
+  // (and the toasts' library, which draws its own)
+  const src = ["web/src", "web/index.html", "plugins", "core", "electron", "tools/fixtures", "node_modules/sonner/dist/index.mjs"].flatMap((d) => fs.statSync(path.join(ROOT, d)).isDirectory() ? walk(path.join(ROOT, d)) : [path.join(ROOT, d)])
+    .filter((f) => /\.(tsx?|css|html|mjs|cjs|js)$/.test(f)).map((f) => fs.readFileSync(f, "utf8")).join("\n")
+  const camel = (s: string) => s.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase())
+  const drawn = (attr: string, own: string) => [src, own].some((t) => new RegExp(`data-${attr}(?![\\w-])`).test(t.replaceAll(`[data-${attr}`, ""))) ||
+    new RegExp(`dataset\\.${camel(attr)}\\b`).test(src)
+  const bad: string[] = []
+  for (const f of fs.readdirSync(QA).filter((f) => f.endsWith(".mjs"))) {
+    const text = fs.readFileSync(path.join(QA, f), "utf8")
+    for (const a of new Set([...text.matchAll(/\[data-([a-z0-9-]+)/g)].map((m) => m[1]))) if (!drawn(a, text) && a !== "fence") bad.push(`${f}: [data-${a}]`)
+    const calls = text.matchAll(/(?:locator|\$|\$\$|\$eval|\$\$eval|waitForSelector|querySelector(?:All)?|isVisible|click|tap|hover|fill)\(\s*(["'`])([^"'`]+)\1/g)
+    for (const [, , sel] of calls) for (const [, id] of sel.matchAll(/(?:^|[\s>,(])#([a-z][\w-]*)/g)) {
+      if (![src, text].some((t) => new RegExp(`["'\`]${id}["'\`]|id=\\\\?["']?${id}\\b`).test(t))) bad.push(`${f}: #${id}`)
+    }
+  }
+  for (const b of bad) console.log(`FAIL ${b}: not in web/src, plugins, core or electron`)
+  console.log(bad.length ? `\n${bad.length} selectors match nothing` : "QA selectors: all found")
+  return bad.length ? 1 : 0
+}
 const opt = (name: string, d: number) => { const i = argv.indexOf(`--${name}`); return i < 0 ? d : Number(argv.splice(i, 2)[1]) }
 const repeat = opt("repeat", 1), jobs = opt("jobs", 3)
 const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
@@ -95,7 +122,8 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
     const timer = setTimeout(() => { text += `\n(timed out after ${TIMEOUT / 60_000} min)`; child.kill() }, TIMEOUT)
     const code = await new Promise<number | null>((r) => child.on("close", r))
     clearTimeout(timer)
-    return { ok: code === 0, ms: Date.now() - t, out: text }
+    const skipped = code === 0 ? /^skipped: (.*)$/m.exec(text)?.[1] : undefined
+    return { ok: code === 0, ms: Date.now() - t, out: text, skipped }
   } catch (e) {
     return { ok: false, ms: Date.now() - t, out: String(e) }
   } finally {
@@ -109,7 +137,7 @@ const queue = Array.from({ length: repeat }, () => names).flat()
 const running = new Set<string>()
 const next = () => { const i = queue.findIndex((n) => !running.has(n)); return i < 0 ? null : queue.splice(i, 1)[0] }
 const fails: string[] = []
-const runs = new Map<string, boolean[]>()
+const runs = new Map<string, boolean[]>(), times = new Map<string, number>(), t0 = Date.now()
 await Promise.all(Array.from({ length: jobs }, async () => {
   while (queue.length) {
     const name = next()
@@ -119,10 +147,12 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     running.delete(name)
     if (r.skipped) { console.log(`skip ${name} (${r.skipped})`); continue }
     runs.set(name, [...runs.get(name) ?? [], r.ok])
+    times.set(name, r.ms)
     console.log(`${r.ok ? "ok  " : "FAIL"} ${name} (${(r.ms / 1000).toFixed(0)} s)`)
     if (!r.ok) fails.push(`--- ${name}\n${r.out.trim().split("\n").filter((l) => !l.startsWith("ok")).slice(-25).join("\n")}`)
   }
 }))
+record("qa", [...runs].map(([name, rs]) => ({ name, ms: times.get(name) ?? 0, ok: rs.every(Boolean), fails: rs.every(Boolean) ? [] : [name] })), Date.now() - t0)
 const flaky = [...runs].filter(([, rs]) => rs.includes(true) && rs.includes(false)).map(([n]) => n)
 if (fails.length) console.log(`\n${fails.join("\n\n")}`)
 console.log(`\n${[...runs.values()].flat().filter(Boolean).length}/${[...runs.values()].flat().length} runs passed` +

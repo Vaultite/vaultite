@@ -71,7 +71,7 @@ check("vau commands: the window's, with which can run now", r.status === 0 && cm
 r = vau(["commands", "palette", "--count"])
 check("vau commands <word> --count", r.status === 0 && Number(r.stdout) >= 1 && Number(r.stdout) < cmds.commands.length, r)
 r = vau(["command", "palette:open"])
-const open = await page.waitForFunction(() => !!document.querySelector("[role=dialog], [cmdk-root], [data-palette]"), null, { timeout: 3000 }).then(() => true, () => false)
+const open = await page.waitForFunction(() => !!document.querySelector("[role=dialog], [cmdk-root]"), null, { timeout: 3000 }).then(() => true, () => false)
 check("vau command: runs it in the window", r.status === 0 && open, r)
 
 // Not the owner: through another proxy, or someone else on the tailnet.

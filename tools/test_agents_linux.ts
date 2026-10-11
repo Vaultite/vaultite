@@ -12,19 +12,18 @@ import os from "node:os"
 import path from "node:path"
 import { WebSocket } from "ws"
 import { parse as parseYaml } from "yaml"
+import { type Any, check, hermesFixture as hermesFixtureHome, openclawFixture, sleep, skip, section, summary, waitFor } from "./test/lib.ts"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
 const REPO = path.resolve(import.meta.dirname, "..")
 const PORT = Number(process.env.VAULTITE_TEST_PORT || 8911)
 const BASE = `http://127.0.0.1:${PORT}`
+const t0 = Date.now()
 const LIVE = process.env.VAULTITE_AGENT_LIVE === "1"
 const MODEL = process.env.VAULTITE_AGENT_MODEL || "openai/gpt-6-luna"
 const REAL_HOME = os.homedir()
 const LINUX = process.platform === "linux"
 const rand = (n = 8) => Array.from({ length: n }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")
 const MARK = rand(12) // in the server's environment, so every process it starts can be found (and none left behind)
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
 // No spaces in the root (fake agents' command lines are split on spaces, as real ones in ~/.local/bin never need);
 // the vault and a project folder have spaces and accents, as a user's may.
@@ -36,31 +35,6 @@ const BIN = path.join(TMP, "bin")
 const PROJECT = path.join(TMP, "Projets é", "lighthouse x")
 const FAKE_LOG = path.join(TMP, "fake.log")
 for (const d of [LOCAL, HOME, BIN, PROJECT]) fs.mkdirSync(d, { recursive: true })
-
-// ---------- results
-
-type Status = "ok" | "FAIL" | "skip"
-const results: { name: string; status: Status; note: string }[] = []
-function check(name: string, ok: unknown, got?: unknown) {
-  const note = ok ? "" : JSON.stringify(got)?.slice(0, 600) ?? ""
-  console.log(`${ok ? "ok  " : "FAIL"} ${name}${ok ? "" : `  -> ${note}`}`)
-  results.push({ name, status: ok ? "ok" : "FAIL", note })
-  return !!ok
-}
-function skip(name: string, why: string) {
-  console.log(`skip ${name}: ${why}`)
-  results.push({ name, status: "skip", note: why })
-}
-function section(title: string) { console.log(`\n== ${title}`) }
-
-async function waitFor<T>(fn: () => Promise<T> | T, ms = 15000, step = 500): Promise<T | null> {
-  const end = Date.now() + ms
-  for (;;) {
-    try { const v = await fn(); if (v) return v } catch { /* not yet */ }
-    if (Date.now() > end) return null
-    await sleep(step)
-  }
-}
 
 // ---------- the server
 
@@ -232,48 +206,11 @@ async function mcpSession(server: { command: string; args: string[]; env: Record
 
 // ---------- agents' state: made-up fixtures (tools/fixtures), or the real ones copied (live)
 
-const FIX = path.join(REPO, "tools", "fixtures")
-
-/** OpenClaw's fixture state, each <name>.sql made into its database with times moved so the newest reply is an hour ago
- *  (big events zstd-compressed, as OpenClaw stores them): tools/test_vault.ts does the same. */
-async function openclawFixture(dir: string) {
-  fs.cpSync(path.join(FIX, "openclaw"), dir, { recursive: true })
-  const { DatabaseSync } = await import("node:sqlite")
-  const { zstdCompressSync } = await import("node:zlib")
-  const files = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith(".sql"))
-  const times = files.filter((f) => f.startsWith("agents")).flatMap((f) => [...fs.readFileSync(path.join(dir, f), "utf8").matchAll(/\b1[78]\d{11}\b/g)].map((m) => Number(m[0])))
-  const shift = Date.now() - 3600000 - Math.max(...times)
-  for (const f of files) {
-    const db = new DatabaseSync(path.join(dir, f.slice(0, -4)))
-    db.exec(fs.readFileSync(path.join(dir, f), "utf8").replace(/\b1[78]\d{11}\b/g, (t) => String(Number(t) + shift))
-      .replace(/\b20\d\d-\d\d-\d\dT\d\d:\d\d:\d\d\.\d{3}Z/g, (t) => new Date(Date.parse(t) + shift).toISOString()))
-    const big = f.startsWith("agents") ? db.prepare("SELECT session_id, seq, event_json FROM transcript_events WHERE length(event_json) >= 512 AND event_json NOT LIKE '{\"type\":\"session\"%'").all() : []
-    for (const r of big as { session_id: string; seq: number; event_json: string }[]) {
-      const ev = JSON.parse(r.event_json), nb = Buffer.byteLength(r.event_json)
-      const nav = { version: 1, report: { kind: "canonical", hasParentId: true, entry: { id: ev.id, parentId: ev.parentId, timestamp: ev.timestamp, type: ev.type } },
-        navigation: {}, reset: {}, model: { type: ev.type, id: ev.id, message: { role: ev.message?.role } }, modelBytes: nb, modelWithoutCheckpointBytes: nb, withoutCustomDataBytes: nb }
-      db.prepare("UPDATE transcript_events SET event_json = NULL, event_zstd = ?, event_utf8_bytes = ?, navigation_json = ? WHERE session_id = ? AND seq = ?")
-        .run(zstdCompressSync(Buffer.from(r.event_json)), nb, JSON.stringify(nav), r.session_id, r.seq)
-    }
-    db.close()
-    fs.rmSync(path.join(dir, f))
-  }
-}
-
-/** Hermes' fixture home (and its profile), times in seconds moved so the newest is an hour ago; plus a session that ran
+/** Hermes' fixture home (and its profile), plus a session that ran
  *  in a folder with spaces and accents, to resume there. */
 async function hermesFixture(dir: string) {
-  fs.cpSync(path.join(FIX, "hermes"), dir, { recursive: true })
+  await hermesFixtureHome(dir)
   const { DatabaseSync } = await import("node:sqlite")
-  const sqls = (fs.readdirSync(dir, { recursive: true }) as string[]).filter((f) => f.endsWith(".sql"))
-  const TIME = /\b1[78]\d{8}(\.\d+)?\b/g
-  const shift = Date.now() / 1000 - 3600 - Math.max(...sqls.flatMap((f) => [...fs.readFileSync(path.join(dir, f), "utf8").matchAll(TIME)].map((m) => Number(m[0]))))
-  for (const f of sqls) {
-    const db = new DatabaseSync(path.join(dir, f.replace(/\.sql$/, ".db")))
-    db.exec(fs.readFileSync(path.join(dir, f), "utf8").replace(TIME, (t) => String(Number(t) + shift)))
-    db.close()
-    fs.rmSync(path.join(dir, f))
-  }
   const db = new DatabaseSync(path.join(dir, "state.db"))
   const t = Date.now() / 1000 - 1800
   db.prepare("INSERT INTO sessions (id, source, model, cwd, started_at, ended_at, title) VALUES (?, 'cli', 'openai/gpt-6-luna', ?, ?, ?, 'Résumé test')")
@@ -783,7 +720,4 @@ try {
   check("the run finished", false, String((e as Error).stack ?? e))
 }
 await cleanup()
-const fails = results.filter((r) => r.status === "FAIL")
-console.log(`\n${results.filter((r) => r.status === "ok").length} passed, ${fails.length} failed, ${results.filter((r) => r.status === "skip").length} skipped`)
-for (const f of fails) console.log(`  FAIL ${f.name}`)
-process.exit(fails.length ? 1 : 0)
+process.exit(summary("agents", t0))

@@ -2,12 +2,11 @@
 // search palette, the command palette from the bar's menu (one overlay handing to the next), and the left drawer, each
 // with a vertical swipe on it. While one is up the page doesn't move, and once it's gone the page is where it was.
 // WRITES a note (Notes/Qa page lock.md) to the vault: run it against a throwaway server:
-//   QA_BASE=http://127.0.0.1:8799/ node web/qa/pagelock.mjs <vault path>
+//   node web/qa/pagelock.mjs <base url> <vault path>
 // Desktop Chrome has no iOS keyboard: the scroll iOS does to show a focused field isn't reproduced, only the lock.
 import { writeFileSync, mkdirSync } from "node:fs"
 import { fingers, qa } from "./lib/qa.mjs"
-const B = process.env.QA_BASE ?? "http://127.0.0.1:8799/"
-const { args: [VAULT], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const NOTE = "Notes/Qa page lock.md"
 mkdirSync(`${VAULT}/Notes`, { recursive: true })
 writeFileSync(`${VAULT}/${NOTE}`, `# Qa page lock\n\n${Array.from({ length: 200 }, (_, i) => `Line ${i + 1} of a long note.\n`).join("\n")}`)

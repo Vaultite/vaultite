@@ -4,14 +4,11 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { check, summary } from "./test/lib.ts"
+const t0 = Date.now()
 
 const S = await import("../core/sandbox.ts")
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-sandbox-test-"))
-const fails: string[] = []
-function check(name: string, ok: unknown, got?: unknown) {
-  console.log((ok ? "ok   " : "FAIL ") + name + (ok ? "" : `  -> ${JSON.stringify(got)?.slice(0, 400)}`))
-  if (!ok) fails.push(name)
-}
 /** Every file under dir: path -> hash. */
 function tree(dir: string) {
   const out: Record<string, string> = {}
@@ -127,5 +124,4 @@ const [, logs] = await api("GET", `query?q=${encodeURIComponent(JSON.stringify({
 check("sandbox: a calendar month has logs", logs.total > 10, logs.total)
 
 fs.rmSync(tmp, { recursive: true, force: true })
-console.log(`\n${fails.length ? `${fails.length} failed` : "all passed"}`)
-process.exit(fails.length ? 1 : 0)
+process.exit(summary("sandbox", t0))
