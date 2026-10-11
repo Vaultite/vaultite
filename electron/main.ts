@@ -395,6 +395,8 @@ function guard(win: BrowserWindow, origin: string) {
     revive(page, undefined, crashedFor(child, nameOf(w.vault.path)))
     hangs(child, nameOf(w.vault.path))
     guard(child, origin)
+    webWindow(child)
+    if (appsOn(w.vault.path)) appsWindow(child)
   })
   // A right-click the page left to the system (the editor's): what the spell checker says of the word under it, for
   // the page's own menu (plugins/core/editing/menu.ts). There's no menu of Electron's.
@@ -918,10 +920,12 @@ handle("apps:reopen", (w) => {
   w.win.once("closed", () => void gone.then(() => openVault(p)).catch((e) => console.error(e)))
   w.win.close()
 })
+// (the window asking, a pop-out's own: its pages and apps' windows go over its tabs, not its vault window's)
 for (const [name, fn] of Object.entries({ ...webHandlers, ...appHandlers })) {
-  handle(name, (w, ...args: never[]) => {
-    if (!w) throw new Error("no vault here")
-    return fn(w.win, ...args)
+  ipcMain.handle(name, (e, ...args) => {
+    const w = who(e), win = BrowserWindow.fromWebContents(e.sender)
+    if (!w || !win) throw new Error("no vault here")
+    return fn(win, ...args)
   })
 }
 
