@@ -87,10 +87,12 @@ await page.evaluate(() => document.activeElement.blur()); await wait(200)
 check("unfocused: everything drawn", await lineText("then") === DRAWN && await lineText("Heading one") === "Heading one")
 await page.screenshot({ path: "/tmp/editorsettings-reveal.png" })
 
-// ---------- Properties: open while editing and shown while reading ----------
+// ---------- Properties: folded until opened, then open for that file while reading too ----------
 const props = page.locator(".file-view section[aria-label='Properties']")
-check("properties open by default", await props.count() === 1 && await props.locator("button[aria-expanded=true]").count() === 1)
-await page.keyboard.press("ControlOrMeta+e"); await wait(600)
+check("properties folded by default", await props.count() === 1 && await props.locator("button[aria-expanded=false]").count() === 1)
+await props.locator("button[aria-expanded]").click()
+check("…open on a click", await until(async () => await props.locator("button[aria-expanded=true]").count() === 1))
+await page.keyboard.press("ControlOrMeta+e"); await until(async () => !(await page.locator(".file-view .cm-content[contenteditable=true]").count()))
 check("reading view shows the properties, read-only", await props.count() === 1 && await props.locator("input, textarea").count() === 0 && (await props.textContent()).includes("draft"))
 await page.keyboard.press("ControlOrMeta+e"); await wait(600)
 

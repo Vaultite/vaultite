@@ -71,6 +71,8 @@ await api("PUT", "config/pages", { pinned: PINNED, pinNew: false })
 try {
   clearWorkspaces(VAULT)
   for (const n of ["One", "Two", "Three", "Four"]) await api("POST", "file", { path: `Qa tabs/${n}.md`, text: `${n} text.\n` })
+  // (a dashboard of the user's: built-in pages, like the pinned ones, are read-only, with no toggle)
+  await api("POST", "file", { path: "Qa tabs/Board.md", text: "---\ntype: dashboard\n---\n\n```block-week-goals\n```\n" })
 
   // ---------- desktop makes workspace 1 with One and Two ----------
   await D.goto(`${B}${hash("One")}`)
@@ -166,7 +168,7 @@ try {
   await P.screenshot({ path: `${OUT}sheet.png` })
   await P.keyboard.press("Escape"); await wait(500)
   // A dashboard: drawn while reading, its Markdown while editing.
-  await P.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, PINNED[0]); await wait(1200)
+  await P.evaluate((h) => { location.hash = h }, hash("Board")); await toggle.waitFor({ timeout: 10000 }).catch(() => {})
   check("dashboard: a pencil on the drawn page", (await toggle.getAttribute("aria-label")) === "Edit" && (await P.locator("article [data-block]").count()) > 0 && !(await P.locator("article .cm-content").count()), await toggle.count())
   await P.screenshot({ path: `${OUT}today-read.png` })
   await toggle.click(); await wait(800)
@@ -176,7 +178,7 @@ try {
   check("dashboard: reading again, drawn", (await toggle.getAttribute("aria-label")) === "Edit" && !(await P.locator("article .cm-content").count()))
   await P.evaluate((h) => { location.hash = h }, hash("Three"))
   // (saved, and the desktop has it, before the desktop changes the same workspace)
-  check("desktop: sees the phone's tab back on Three", !!(await until(async () => (await dTabs()).some((t) => t.includes("Three")) && !(await dTabs()).some((t) => t.includes("Today")), 6000)), await dTabs())
+  check("desktop: sees the phone's tab back on Three", !!(await until(async () => (await dTabs()).some((t) => t.includes("Three")) && !(await dTabs()).some((t) => t.includes("Board")), 6000)), await dTabs())
 
   // ---------- desktop opens and closes: the phone follows, keeping the tab on screen ----------
   await D.click("[data-tab-bar] button[aria-label='New tab']"); await wait(200)

@@ -1,10 +1,10 @@
-// The keyboard into the text, with Vim on (FileView's useTextFocus, the one mode for every file): ⌘E from reading puts
+// The keyboard into the text, with Vim on (FileView's useTextFocus): ⌘E from reading puts
 // the cursor in the text on the first line in sight, in normal mode (j moves it, types nothing); ⌘E back to reading
-// gives j back to the page; ⌘O opens a note with the cursor in it, where it was left in that file; a split's other pane
-// follows ⌘E; a file opened from outside (POST /api/ui, `vau open`) doesn't take the keys from a field being typed in.
+// gives j back to the page; ⌘O opens a note with the cursor in it, where it was left in that file; ⌘E switches only
+// the pane in front; a file opened from outside (POST /api/ui, `vau open`) doesn't take the keys from a field being typed in.
 // WRITES a "Qa vimfocus" folder and plugins.json's `enabled`: throwaway only.
 //   node web/qa/vimfocus.mjs <base url> [out dir]
-import { apiAt, palette, qa, SHOTS, wait } from "./lib/qa.mjs"
+import { apiAt, palette, qa, SHOTS, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const LONG = "Qa vimfocus/Long.md", TARGET = "Qa vimfocus/Target.md", OTHER = "Qa vimfocus/Other.md"
 const json = { "Content-Type": "application/json" }
@@ -57,8 +57,9 @@ for (let i = 0; i < 8; i++) await page.keyboard.press("j")
 await wait(300)
 const t0 = await top()
 check(`j scrolls the reading view (${t0})`, t0 > 200)
-await page.keyboard.press("Meta+e"); await wait(1200)
-let k = await keys()
+await page.keyboard.press("Meta+e")
+// (the cursor is drawn on the editor's next measure: slow on a busy machine)
+let k = await until(async () => { const v = await keys(); return v.inText && v.y !== null ? v : null }, 8000) ?? await keys()
 check(`⌘E to editing puts the keys in the text (${JSON.stringify(k)})`, k.inText && k.file === LONG)
 check("the cursor is on a line in sight", k.inSight)
 check(`the page stayed where it was read (${t0} -> ${await top()})`, Math.abs((await top()) - t0) < 80)
@@ -95,7 +96,7 @@ k = await keys()
 check("⌘O back to Long: the cursor in it", k.inText && k.file === LONG)
 check(`the cursor is where it was left (${leftOn} / ${k.line})`, k.line === leftOn)
 
-// One mode for every file: a split's other pane follows ⌘E.
+// ⌘E switches only the pane in front: a split's other pane keeps its own view.
 await palette(page, "Split right"); await wait(800)
 const panes = () => page.evaluate(() => [...document.querySelectorAll("[data-pane]")].map((p) => {
   const c = p.querySelector(".cm-content")
@@ -105,7 +106,7 @@ let ps = await panes()
 check(`two panes, both editing (${ps})`, ps.length >= 2 && ps.every((x) => x === "true"))
 await page.keyboard.press("Meta+e"); await wait(1200)
 ps = await panes()
-check(`⌘E in one pane: both read (${ps})`, ps.length >= 2 && ps.every((x) => x === "false"))
+check(`⌘E in one pane: it reads, the other still edits (${ps})`, ps.length === 2 && ps.filter((x) => x === "false").length === 1 && ps.includes("true"))
 await page.keyboard.press("Meta+e"); await wait(1200)
 ps = await panes()
 check(`⌘E again: both edit (${ps})`, ps.every((x) => x === "true"))

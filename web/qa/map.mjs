@@ -1,9 +1,9 @@
 // People → Map at phone and desktop size, light and dark: screenshots, sideways overflow, page errors, and a
-// horizontal swipe on the map that must pan the map, not scroll the page. Prints a report; reads only.
+// horizontal swipe on the map that must pan the map, not scroll the page; reads only.
 //   node web/qa/map.mjs <base url> [out dir]
 import { SHOTS, WEBGL, qa } from "./lib/qa.mjs"
-const { args: [B, OUT = SHOTS], browser } = await qa(import.meta.url, { chrome: { args: WEBGL } })
-const MAP = `${B}#file/${encodeURIComponent("Dashboards/People map.md")}` // People's Map tab
+const { args: [B, OUT = SHOTS], browser, check, done } = await qa(import.meta.url, { chrome: { args: WEBGL } })
+const MAP = `${B}#file/${encodeURIComponent(".vaultite/pages/Dashboards/People map.md")}` // People's Map tab
 const report = []
 for (const [w, h, tag, mobile] of [[390, 844, "390", true], [320, 640, "320", true], [1440, 900, "desktop", false]]) {
   for (const scheme of ["light", "dark"]) {
@@ -14,7 +14,7 @@ for (const [w, h, tag, mobile] of [[390, 844, "390", true], [320, 640, "320", tr
     page.on("pageerror", (e) => errs.push(String(e)))
     page.on("console", (m) => m.type() === "error" && errs.push(m.text()))
     await page.goto(MAP)
-    await page.waitForSelector(".pm-pin", { timeout: 15000 }).catch(() => errs.push("no pins"))
+    await page.waitForSelector(".pm-pin", { timeout: 45000 }).catch(() => errs.push("no pins")) // (WebGL in software: slow under load)
     await page.waitForTimeout(3500)
     const name = `${OUT}map-${tag}-${scheme}`
     await page.screenshot({ path: `${name}.png` })
@@ -38,7 +38,10 @@ for (const [w, h, tag, mobile] of [[390, 844, "390", true], [320, 640, "320", tr
     await ctx.close()
   }
 }
-console.log(JSON.stringify(report, null, 1))
+for (const r of report) {
+  check(`${r.name}: pins drawn, nothing sideways, no errors`, r.pins > 0 && r.sw === Number(r.name.split("-")[0] === "desktop" ? 1440 : r.name.split("-")[0]) && !r.over.length && !r.errs.length, r)
+  if (r.swipe) check(`${r.name}: a sideways swipe pans the map, not the page`, r.swipe.scrollX === 0 && r.swipe.pinMovedPx > 50, r.swipe)
+}
 
 // Taps (390px): "Show" on a place, a group that shares a spot opens a list, a person opens their profile.
 {
@@ -46,7 +49,7 @@ console.log(JSON.stringify(report, null, 1))
   const page = await ctx.newPage()
   const errs = []; page.on("pageerror", (e) => errs.push(String(e)))
   const out = {}
-  await page.goto(MAP); await page.waitForSelector(".pm-pin", { timeout: 15000 }); await page.waitForTimeout(2000)
+  await page.goto(MAP); await page.waitForSelector(".pm-pin", { timeout: 45000 }); await page.waitForTimeout(2000)
   // The first place (By place) whose view shows a group of people who share a spot (under 1.5 km apart, without you:
   // tapping it lists them); else the first place. Only pins inside the map's box count (markers off to the side stay in the page).
   const places = page.locator('button[aria-label^="Show "][aria-label$=" on the map"]')
@@ -90,7 +93,9 @@ console.log(JSON.stringify(report, null, 1))
   const one = page.locator(".pm-pin[data-qa=one]")
   if (await one.count()) { await one.first().tap(); await page.waitForTimeout(700); out.sheetAfterPin = await page.evaluate(() => location.hash); await page.goBack() }
   out.errs = errs
-  console.log("taps", JSON.stringify(out, null, 1))
+  check("tapping a person's pin opens their file", /^#file\/People/.test(out.sheetAfterPin ?? ""), out)
+  if (out.popupRows) check("a shared spot's pin lists its people, nothing over the popup, a row opens one", out.popupRows.length > 1 && !out.pinsOverPopup.length && /^#file\//.test(out.sheetAfterPopup.hash), out)
+  check("taps: no page errors", !errs.length, errs)
   await ctx.close()
 }
 // Offline: tiles blocked -> the page shows "Map unavailable" and the list, no errors.
@@ -100,8 +105,9 @@ console.log(JSON.stringify(report, null, 1))
   const page = await ctx.newPage()
   const errs = []; page.on("pageerror", (e) => errs.push(String(e)))
   await page.goto(MAP); await page.waitForTimeout(4000)
-  console.log("offline", JSON.stringify({ unavailable: await page.locator("text=Map unavailable").count(), places: await page.locator("text=By place").count(), sw: await page.evaluate(() => document.documentElement.scrollWidth), errs }))
+  const off = { unavailable: await page.locator("text=Map unavailable").count(), places: await page.locator("text=By place").count(), sw: await page.evaluate(() => document.documentElement.scrollWidth), errs }
+  check("offline: Map unavailable, the list still there, no errors", off.unavailable === 1 && off.places > 0 && off.sw === 390 && !errs.length, off)
   await page.screenshot({ path: `${OUT}map-390-offline.png` })
   await ctx.close()
 }
-await browser.close()
+await done()

@@ -8,7 +8,7 @@
 import { readFileSync } from "node:fs"
 import { SHOTS, qa, wait } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
-const { args: [B, VAULT, OUT = SHOTS], browser } = await qa(import.meta.url)
+const { args: [B, VAULT, OUT = SHOTS], browser, check, done } = await qa(import.meta.url)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
 const esc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
 let v = await subjects(B)
@@ -80,7 +80,7 @@ const out = { errs: [] }
   out.typedSaved = after.includes(`${person.plain} Loves hiking.`)
   out.onlyThatChanged = after === before.replace(person.plain, `${person.plain} Loves hiking.`)
   // properties open/close
-  await page.locator("button", { hasText: /^Properties/ }).first().click(); await wait(300)
+  await page.locator("section[aria-label=Properties]:visible > button").first().click(); await wait(300)
   await shot("person-properties")
   // a note with links
   await page.keyboard.press("ControlOrMeta+o"); await wait(300)
@@ -128,7 +128,7 @@ const out = { errs: [] }
   const k3 = read(other.path)
   out.bothKept = k3.includes("Met at a conference.") && k3.includes("- 2026-09-29 · meet · 20 min")
   // a property: want_to changes on its own line only
-  await page.locator("button", { hasText: /^Properties/ }).first().click(); await wait(300)
+  await page.locator("section[aria-label=Properties]:visible > button").first().click(); await wait(300)
   const before = read(other.path)
   const want = page.locator("[role=row]", { has: page.locator("input[value=want_to]") }).locator("[role=cell] input").first()
   await want.fill("Ask about the camp"); await want.press("Enter"); await wait(2000)
@@ -146,6 +146,7 @@ const out = { errs: [] }
   const notes = await (await fetch(`${B}api/notes`)).json()
   await page.goto(`${B}#new/file/${encodeURIComponent(`${notes[0].id}.md`)}`); await wait(1800)
   out.sheetLinkHash = await page.evaluate(() => location.hash)
+  out.sheetLinkWant = `#file/${encodeURIComponent(`${notes[0].id}.md`)}`
   out.sheetLinkSheet = await page.evaluate(() => !!document.querySelector("dialog")?.open)
   // close the active tab
   await page.locator("aside [role=tree] button", { hasText: new RegExp(`^${esc(topFile)}$`) }).first().click({ button: "middle" }); await wait(1200)
@@ -218,5 +219,27 @@ const out = { errs: [] }
   out.phoneLinkBackOk = (await here()).hash === atNote.hash
   await ctx.close()
 }
-await browser.close()
-console.log(JSON.stringify(out, null, 1))
+const hash = (p) => `#file/${encodeURIComponent(p)}`, name = (p) => p.split("/").pop().replace(/\.md$/, "")
+check("no page errors", !out.errs.length, out.errs.slice(0, 5))
+check("desktop: the sidebar has the file tree", out.tree >= 1)
+check("the person opens from the tree, in a tab", out.personHash === hash(person.path) && out.tabs.includes(person.name), [out.personHash, out.tabs])
+check("…with its profile header and its timeline drawn", out.header >= 1 && out.timelineWidget >= 1, out)
+check("clicking into the timeline shows its raw lines", out.rawAfterClick >= 1)
+check("typing is saved, and only that changed", out.typedSaved && out.onlyThatChanged)
+check("the switcher opens a note in a tab, its links drawn", out.noteHash === hash(`${withLinks}.md`) && out.tabs2.includes(name(withLinks)) && out.wikilinks > 0, [out.noteHash, out.tabs2, out.wikilinks])
+check("New note: an untitled note, its name focused", out.newHash.startsWith("#file/Untitled") && out.titleFocused === "File name", [out.newHash, out.titleFocused])
+check("…named by typing", out.renamedHash === hash("QA test note.md"), out.renamedHash)
+check("[[ suggests the person", out.autocomplete.some((t) => t.includes(person.name)), out.autocomplete)
+check("…and the link and text are saved", out.newNoteText.startsWith(`Hello [[${person.name}`) && out.newNoteText.endsWith("and **bold**."), out.newNoteText)
+check("a line written elsewhere shows in the open timeline", out.externalShown >= 1)
+check("an edit elsewhere while typing: both kept", out.bothKept)
+check("a property edit changes its line only, the header follows", out.propertyLine && out.headerFollows >= 1)
+check("renaming from the title: the tab follows", out.renameHash === hash(`${rename} (maybe).md`) && out.renameTabs.includes(`${name(rename)} (maybe)`), [out.renameHash, out.renameTabs])
+check("a phone's sheet address opens the file's tab", out.sheetLinkHash === out.sheetLinkWant && !out.sheetLinkSheet, out.sheetLinkHash)
+check("a tab closes", out.closedTab)
+check("the same line changed on disk and here: a banner, the disk's kept until Keep mine", out.conflictBanner >= 1 && out.diskKept && out.keepMine)
+check("source mode shows the frontmatter", out.sourceShowsFm >= 1)
+check("phone: a file from the tree opens in a tab, Back returns", out.phoneTreeOk && out.phoneTreeBackOk, out.phoneTree)
+check("phone: a person from People opens in a tab", out.phonePeopleOk, out.phonePeople)
+check("phone: a [[link]] opens in the same tab, Back returns", out.phoneLinkOk && out.phoneLinkBackOk, out.phoneLink)
+await done()

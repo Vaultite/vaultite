@@ -185,19 +185,21 @@ await page.keyboard.type("Next step")
 await page.keyboard.press("Escape")
 check("an arrow let go in empty space makes a connected card there", await until((d) => { const n = d.nodes.find((x) => x.text === "Next step"); return !!n && d.edges.some((e) => e.fromNode === "a" && e.toNode === n.id) }))
 
-// Colour from the selection's bar, Delete, undo.
-await node(added.id).click()
+// Colour from the selection's bar, Delete, undo. (The card clicked by its corner: its middle is the [[Targ]] link the
+// editor closed, which would open that note.)
+const corner = { position: { x: 6, y: 6 } }
+await node(added.id).click(corner)
 await page.click("[data-canvas-toolbar=selection] [data-canvas-tool=Colour]"); await wait(300)
 await page.getByText("Red", { exact: true }).click()
 check("a colour from the bar above the card (Red = preset 1)", await until((d) => d.nodes.find((n) => n.id === added.id)?.color === "1"))
-await node(added.id).click()
+await node(added.id).click(corner)
 await page.keyboard.press("Backspace")
 check("Delete removes the card and its arrows", await until((d) => !d.nodes.some((n) => n.id === added.id) && !d.edges.some((e) => e.id === edgeId)))
 await page.keyboard.press("ControlOrMeta+z")
 check("⌘Z brings it back", await until((d) => d.nodes.some((n) => n.id === added.id) && d.edges.some((e) => e.id === edgeId)))
 
 // Right click > Convert to file.
-await node(added.id).click({ button: "right" }); await wait(300)
+await node(added.id).click({ button: "right", ...corner }); await wait(300)
 await page.getByText("Convert to file", { exact: true }).click()
 check("Convert to file makes a note of a text card (where new notes go)", await until((d) => { const n = d.nodes.find((x) => x.id === added.id); return n?.type === "file" && /Hello from QA/.test(n.file) && !("text" in n) }))
 const made = read().nodes.find((x) => x.id === added.id).file
@@ -215,6 +217,9 @@ check("after Escape the card is selected, with its bar", await page.locator("[da
 
 // A file dragged from the file tree.
 const row = page.locator(`[data-tree-path="${TARGET}"]`).first()
+// (its folder opened first: the tree doesn't open folders to reveal the open file)
+if (!(await row.isVisible())) await page.locator('aside [role=tree] [data-tree-path="Qa canvas"] > button').first().click().catch(() => {})
+await row.waitFor({ timeout: 3000 }).catch(() => {})
 if (await row.count() && await row.isVisible()) {
   const n0 = read().nodes.length
   await row.scrollIntoViewIfNeeded()

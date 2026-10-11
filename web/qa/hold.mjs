@@ -16,7 +16,14 @@ try {
   const { touch } = await fingers(page)
   /** A finger on the element's middle for `ms`, moved `dy` px on the way, then lifted. */
   const hold = async (sel, ms = 700, dy = 0) => {
-    const b = await page.locator(sel).first().boundingBox()
+    // (a box still for half a second, its point on it: the new tab's sections fill in after it opens, moving rows down)
+    let b, still = 0
+    for (let i = 0; i < 60 && still < 5; i++) {
+      const n = await page.locator(sel).first().boundingBox()
+      const on = n && await page.locator(sel).first().evaluate((el, [x, y]) => el.contains(document.elementFromPoint(x, y)), [n.x + Math.min(n.width / 2, 60), n.y + n.height / 2])
+      still = on && b && n.x === b.x && n.y === b.y && n.height === b.height ? still + 1 : 0
+      b = n; await wait(100)
+    }
     const x = b.x + Math.min(b.width / 2, 60), y = b.y + b.height / 2
     await touch("touchStart", x, y)
     if (dy) { await wait(100); await touch("touchMove", x, y + dy) }
@@ -56,9 +63,9 @@ try {
 
   // A note's text: nothing takes the hold (the system's selection would).
   await page.click("[data-newtab-section='core:changed'] a")
-  await until(() => page.locator("main p, main li").count())
-  const text = await page.locator("main p").count() ? "main p" : "main li"
-  await hold(text)
+  const text = page.locator("main .cm-content .cm-line").filter({ hasText: /\w{4}/ })
+  await text.first().waitFor({ timeout: 10000 })
+  await hold("main .cm-content .cm-line >> text=/\\w{4}/")
   check("held on a note's text: no menu", await menus() === 0, await menus())
 
   // The tab list: a card held is picked up to move it, not a menu.

@@ -26,11 +26,17 @@ await put(PHONE, "A note read on a phone.\n")
 const open = async (opts) => watch(await (await browser.newContext({ deviceScaleFactor: 1, ...opts })).newPage())
 /** The picker `act` opens, given `files`; what it asked for. */
 async function choose(page, act, files) {
-  const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 5000 }), act()])
+  const [chooser] = await Promise.all([page.waitForEvent("filechooser", { timeout: 15000 }), act()])
   const accept = await chooser.element().getAttribute("accept")
   const multiple = chooser.isMultiple()
   await chooser.setFiles(files)
   return { accept, multiple }
+}
+/** Runs a palette command once it's listed (under load the palette can open after a fixed wait's typing). */
+const addPhoto = async (page) => {
+  await page.keyboard.press("ControlOrMeta+p"); await page.locator("[role=option]").first().waitFor()
+  await page.keyboard.type("Add photo"); await page.locator("[role=option]", { hasText: "Add photo" }).first().waitFor()
+  await page.keyboard.press("Enter")
 }
 const inputsLeft = (page) => page.locator("input[type=file]").count()
 const editLine = (page, text) => page.locator(".vau-editor .cm-line", { hasText: text }).first()
@@ -42,7 +48,7 @@ await palette(page, "Switch to live preview", 0); await wait(400)
 if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
 
 await editLine(page, "Before.").click(); await page.keyboard.press("End"); await wait(150)
-const asked = await choose(page, () => palette(page, "Add photo", 0), [img("qa-photo-one.png")])
+const asked = await choose(page, () => addPhoto(page), [img("qa-photo-one.png")])
 check("Add photo (palette): an image picker, several at once", asked.accept === "image/*" && asked.multiple, asked)
 check("embedded at the cursor, on a line of its own", await until(async () => (await read(DESK)).startsWith("Before.\n![[qa-photo-one.png]]\n\nAfter."), 6000), await read(DESK))
 check("saved in Attachments/", (await others()).includes("Attachments/qa-photo-one.png"))
@@ -67,7 +73,7 @@ await choose(page, () => page.keyboard.press("Enter"), [img("qa-photo-a.png"), i
 check("/photo: two photos, one embed per line", await until(async () => (await read(DESK)).includes("Slash here:\n![[qa-photo-a.png]]\n![[qa-photo-b.png]]"), 6000), await read(DESK))
 
 const before = await read(DESK)
-await choose(page, () => palette(page, "Add photo", 0), [])
+await choose(page, () => addPhoto(page), [])
 await wait(800)
 check("cancelled: the note is unchanged", await read(DESK) === before)
 check("  and the input is gone", await until(async () => (await inputsLeft(page)) === 0, 6000))

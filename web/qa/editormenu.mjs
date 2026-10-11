@@ -34,8 +34,8 @@ try {
   const items = () => page.locator("[role=menu]").first().locator(":scope > [role=menuitem]").allTextContents()
   const open = async (n, opts = {}) => { await line(n).click({ button: "right", ...opts }); await wait(200) }
   /** Right-click line n, then a submenu's item. */
-  const pick = async (n, path) => {
-    await open(n)
+  const pick = async (n, path, at) => {
+    await open(n, at ? { position: at } : {})
     for (const [i, name] of path.entries()) {
       const it = page.locator("[role=menu]").nth(i).getByRole("menuitem", { name, exact: false }).first()
       await it.click(); await wait(150)
@@ -67,7 +67,8 @@ try {
     await reset()
   }
   writeFileSync(NOTE, "**alpha** ==beta== `x`\n" + START.split("\n").slice(1).join("\n")); await wait(900)
-  await select(1); await pick(1, ["Format", "Clear formatting"])
+  // (right-clicked on its text: the line's middle is past it, outside a selection that stops at the hidden last `)
+  await select(1); await pick(1, ["Format", "Clear formatting"], { x: 30, y: 10 })
   check("Format ▸ Clear formatting", await saved((t) => t.startsWith("alpha beta x\n")), lines()[0])
   await reset()
 

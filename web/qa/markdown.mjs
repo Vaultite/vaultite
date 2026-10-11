@@ -100,8 +100,9 @@ await ed.locator(".cm-block-mermaid").click(); await wait(400)
 check("live: clicking the diagram shows its source, the callout is drawn again", await ed.locator(".cm-line", { hasText: "```mermaid" }).count() === 1 && await ed.locator(".callout").count() === 2)
 await ed.locator(".cm-line", { hasText: "Last line." }).click(); await wait(400)
 check("live: leaving it draws it again", await ed.locator(".cm-block-mermaid svg").count() === 1)
-await ed.locator(".cm-line", { hasText: "money" }).click(); await wait(300)
-check("live: math on the cursor's line shows its TeX", await ed.locator(".cm-line", { hasText: "$E = mc^2$" }).count() === 1)
+// (its drawn part: KaTeX's hidden MathML is a 1px box at the top, which a click would land above the line)
+await ed.locator(".cm-line", { hasText: "money" }).locator(".katex-html").click(); await wait(300)
+check("live: math under the cursor shows its TeX", await ed.locator(".cm-line", { hasText: "$E = mc^2$" }).count() === 1)
 await page.screenshot({ path: `${OUT}markdown-live.png`, fullPage: true })
 
 // Source: only highlighting.
@@ -119,7 +120,7 @@ await page.screenshot({ path: `${OUT}markdown-dark.png`, fullPage: true })
 await page.evaluate(() => document.documentElement.classList.remove("dark")); await wait(500)
 
 // The Design page, read as a dashboard (core/markdown.ts + hydrate).
-await page.goto(`${B}#file/${encodeURIComponent("Dashboards/Design.md")}`); await wait(3000)
+await page.goto(`${B}#file/${encodeURIComponent(".vaultite/pages/Dashboards/Design.md")}`); await wait(3000)
 const dash = page.locator(".dash-prose")
 check("Design: code block with its label", await dash.locator(".md-code .md-code-lang", { hasText: "ts" }).count() === 1)
 check("Design: callouts", await dash.locator('.callout[data-callout="tip"]').count() === 1 && await dash.locator("details.callout").count() === 1)

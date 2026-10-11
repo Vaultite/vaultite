@@ -7,7 +7,7 @@
 // 390px. WRITES a "Qa media" folder and recordings in Attachments/: throwaway only.
 //   node web/qa/media.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
-import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url, {
   chrome: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"] },
 })
@@ -101,7 +101,9 @@ await page.close()
 for (const scheme of ["light", "dark"]) {
   const pp = await open({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, colorScheme: scheme })
   await pp.goto(`${B}#file/${enc(MEMO)}`); await wait(1500)
-  await palette(pp, "Start recording audio", 600); await wait(2000)
+  await palette(pp, "Start recording audio", 600)
+  // (its full bar once it records: "Starting…" is a smaller one, and getUserMedia is slow under load)
+  await until(async () => await bar(pp).getAttribute("data-recorder").catch(() => null) === "recording", 15000); await wait(300)
   const box = await bar(pp).boundingBox()
   check(`phone (${scheme}): the bar fits, 44px buttons`, box && box.x >= 8 && box.x + box.width <= 382 && box.height >= 44, box)
   await pp.screenshot({ path: `${OUT}media-recording-phone-${scheme}.png` })
