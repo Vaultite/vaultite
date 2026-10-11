@@ -395,7 +395,7 @@ def main():
         key = base64.urlsafe_b64encode(os.urandom(32)).decode().rstrip("=")
         h = base64.urlsafe_b64encode(hashlib.sha256(key.encode()).digest()).decode().rstrip("=")
         body = json.dumps({"id": ident, "label": sys.argv[4] if len(sys.argv) > 4 else ident, "hash": h, "hello": hello()}).encode()
-        req = Request(base + "/machines/enroll", data=body, headers={"Content-Type": "application/json"})
+        req = Request(base + "/machines/enroll", data=body, headers={"Content-Type": "application/json", "User-Agent": "vaultite-dial/%s" % VERSION})
         with urlopen(req, timeout=20) as r:
             enrolled = json.load(r)
         fd = os.open(CONFIG + ".tmp", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
