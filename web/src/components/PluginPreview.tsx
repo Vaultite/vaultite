@@ -9,6 +9,7 @@ import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, plugin
   updatePlugin, usePluginsVersion, type Plugin } from "@/core/plugins"
 import { op } from "@/core/http"
 import { updatable } from "../../../core/updates.ts"
+import { categoryOf } from "../../../core/categories.ts"
 import { openWebLink } from "@/core/links"
 import { disclosed } from "../../../core/pluginmeta.ts"
 import { usePrefs } from "@/core/prefs"
@@ -31,7 +32,7 @@ function preview(p: Plugin, s: Store, disabled: string[]): ReactNode {
   const pages = templatesOf(typeof p.preview === "string" ? p.preview : p.id)
   if (!pages.length) return null
   // Shown even while it's off (that's what the switch above would bring).
-  const on = disabled.filter((id) => id !== p.id && !(p.requires ?? []).includes(id))
+  const on = [...disabled.filter((id) => id !== p.id && !(p.requires ?? []).includes(id)), ...[p.id, ...(p.requires ?? [])].map((id) => `!${id}`)]
   // Drawn as the page it would be (Dashboards' grid, even while that's off).
   const view = pageViewOf("dashboard")
   if (!view) return null
@@ -239,9 +240,8 @@ function Updates({ plugin }: { plugin: Plugin }) {
   )
 }
 
-// (the "core" tier's plugins are the app's built-in ones: "core" alone is the app itself; those not `essential` are
-// Vaultite plugins, first-party extras)
-const kickerOf = (p: Plugin) => (p.tier === "vault" ? "Vault plugin" : p.essential ? "Built-in plugin" : "Vaultite plugin")
+// (what it is, not where it came from: its Author row says who made a vault plugin)
+const kickerOf = (p: Plugin) => categoryOf(p.category).label
 
 export function PluginPreview({ store, plugin: given }: { store: Store; plugin: Plugin }) {
   usePluginsVersion()

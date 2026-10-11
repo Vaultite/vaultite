@@ -1,7 +1,7 @@
 {
   "id": "muse",
   "icon": "muse",
-  "category": "agents",
+  "category": "ai-apps",
   "offByDefault": true,
   "name": "Muse",
   "description": "What your Muse agent (a personal AI on its own computer) keeps in its home folder, read live from an agent machine in Machines or this machine: who it is and what's left to tell it, its runs and their conversations, what it learned about you, its nightly dreams, its feed, its scheduled jobs and connectors. Nothing is saved; a new dream, what it learned and a new feed story reach the Inbox.",

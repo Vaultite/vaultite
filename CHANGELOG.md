@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Plugins, one list**: plugins are listed by category with a line on what each does, picked from a rail (chips on a
+  phone) and filtered to All, On or Off instead of folded; where one comes from is only a byline. AI apps (Claude Code,
+  Codex, Cursor, Muse...) and AI tools are two categories. Get plugins starts with bundles, and says what a plugin can
+  do in grey labels. A plugin that's off by default shows its preview while off.
 - **Grok Bot plugin**: Grok Bot's week, usage and conversations in its own plugin (AI apps), out of Cursor's; both share one read of your Cursor account.
 - Toasts stay small: at most 3 lines (4 on phones) with their buttons in reach, and an inbox toast shows the title and the first line, the rest in the Inbox.
 - Quitting the app (or stopping its server) stops what vault plugins run first: an agent's turn in Agents ends with it.

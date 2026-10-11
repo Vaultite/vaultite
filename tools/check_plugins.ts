@@ -71,7 +71,7 @@ for (const [name, [tier, d]] of found) {
   let m: Record<string, unknown> = {}
   try { m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8")) } catch { continue } // (said above)
   problems.push(...blockProblems(d, m, label), ...iconProblems(m, `${label}/manifest.json`))
-  // The app's own are `essential` (Built-in on the Plugins page); the rest are Vaultite plugins, off until turned on.
+  // The app's own are `essential` (on from the start); the other built-ins are off until turned on.
   if (m.essential !== undefined && m.essential !== true) problems.push(`${label}/manifest.json: essential is only true`)
   if (m.essential !== true && m.offByDefault !== true) problems.push(`${label}/manifest.json: a built-in that isn't essential (a Vaultite plugin) is offByDefault`)
   Object.assign(decls, declsOf(m))

@@ -68,7 +68,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BlockView(props)`: ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`: nothing).
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
-- `BrowseSource`: A source of plugins to install on the Plugins page's Browse (a host's: another app's plugins).
+- `BrowseSource`: A source of plugins to install on the Plugins page's Get plugins (a host's: another app's plugins).
 - `Button({ look, size, className, type, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
@@ -196,7 +196,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes.
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
-- `HostedPlugin`: A plugin another runs (one written for another app): listed in its host's group on the Plugins page, drawn like any, while its host answers its switch, approval and removal (PluginHost).
+- `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math and mermaid diagrams.
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
@@ -340,7 +340,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").
 - `PluginDef`
 - `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, then the rest a group each, in the plugins' order.
-- `PluginHost`: What hosts plugins (hostPlugins): its group's name on the Plugins page and the answers to its plugins' buttons.
+- `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on the Plugins page and the answers to its plugins' buttons.
 - `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file changes.
 - `PluginState`
 - `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).

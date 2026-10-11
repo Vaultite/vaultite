@@ -10,11 +10,11 @@ import { cn } from "@/lib/utils"
 export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void } | null>(null)
 
 /** A panel's heading: label left, hover buttons right (touch: swiped to); click folds the panel, drag moves it (`data-panel-handle`).
- *  Nothing in the rail. The Plugins page's sections use it too (`sticky` false). */
-export function SidebarHeading({ title, open, children, sticky = true, className }: {
+ *  Nothing in the rail. */
+export function SidebarHeading({ title, open, children, className }: {
   title: string; open: boolean
   children?: React.ReactNode
-  sticky?: boolean; className?: string
+  className?: string
 }) {
   const fold = useContext(PanelFold)
   if (!open) return null
@@ -34,7 +34,7 @@ export function SidebarHeading({ title, open, children, sticky = true, className
   }
   // In the open sidebar (one scroller), it stays at the top while its panel scrolls under it (the tree's buttons stay in
   // reach), and the next panel's pushes it away.
-  const box = cn("group/head mt-2 shrink-0", f && sticky && "sticky top-0 z-[2] bg-sidebar", className)
+  const box = cn("group/head mt-2 shrink-0", f && "sticky top-0 z-[2] bg-sidebar", className)
   // A finger has no hover: the buttons are behind it, a swipe away (as a row's actions are).
   if (coarse && children) {
     return (

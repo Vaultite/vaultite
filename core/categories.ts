@@ -6,7 +6,7 @@ export const CATEGORIES = [
   { id: "life", label: "Life" },
   { id: "health", label: "Health and fitness" },
   { id: "ai-apps", label: "AI apps" },
-  { id: "agents", label: "AI agents" },
+  { id: "agents", label: "AI tools" },
   { id: "developer", label: "Developer" },
   { id: "formats", label: "Formats" },
   { id: "system", label: "System" },

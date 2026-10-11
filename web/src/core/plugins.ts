@@ -123,12 +123,13 @@ export function turnPluginsBackOn() {
   location.reload()
 }
 
-/** On: not switched off (opt-in: switched on, and nothing wrong with it), and everything it requires is on too. */
+/** On: not switched off (opt-in: switched on, and nothing wrong with it), and everything it requires is on too.
+ *  `!<id>` in `disabled` draws an opt-in one as on (its preview while it's off). */
 export function isEnabled(id: string, disabled: string[], seen: string[] = []): boolean {
   const p = pluginById(id)
   if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted"))) return false
   const own = p.tier === "hosted" ? hostedOwn(p, disabled, seen)
-    : optIn(p) ? getPrefs().enabled.includes(id) && !p.problems?.length && !p.meta?.approval : !disabled.includes(id)
+    : optIn(p) ? (getPrefs().enabled.includes(id) || disabled.includes(`!${id}`)) && !p.problems?.length && !p.meta?.approval : !disabled.includes(id)
   return own && (p.requires ?? []).every((r) => isEnabled(r, disabled, [...seen, id]))
 }
 

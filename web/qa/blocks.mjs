@@ -85,12 +85,12 @@ if (await pick.count()) await pick.first().click(); else await page.keyboard.pre
 await wait(300); await page.keyboard.type("workouts"); await wait(1500)
 check("a block from the slash menu comes with its required options, the cursor at the first", /```block-area\narea: workouts\n```/.test(read(NOTE)))
 
-// The Plugins page: Built-in, not Core.
+// The Plugins page: listed by category, not by where a plugin came from.
 await page.goto(`${B}#plugins`); await wait(1500)
-const heads = await page.locator("[data-plugin-group] h2").allInnerTexts()
-check(`the app's own tier is Built-in (${heads.join(", ")})`, heads[0] === "Built-in plugins" && !heads.some((h) => /core|community/i.test(h)))
+const heads = await page.locator("[data-plugin-category] h2").allInnerTexts()
+check(`sections are categories (${heads.join(", ")})`, heads[0] === "Navigation" && !heads.some((h) => /built-in|core|vault|community/i.test(h)))
 await page.screenshot({ path: `${OUT}blocks-plugins.png` })
-await page.locator('[data-plugin-group=core] [data-plugin-row]').first().click(); await wait(800)
-check("a built-in plugin's sheet says Built-in plugin", (await page.getByText("Built-in plugin", { exact: true }).count()) > 0)
+await page.locator('[data-plugin-category=navigation] [data-plugin-row]').first().click(); await wait(800)
+check("a plugin's sheet says its category", (await page.locator("dialog[open]").getByText("Navigation", { exact: true }).count()) > 0)
 
 await done()

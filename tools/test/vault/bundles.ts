@@ -10,7 +10,7 @@ export default async ($: VaultTest) => {
     app.installPages()
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
     const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
-    setConf("plugins", { disabled: ["recent"], enabled: ON, collapsedCategories: ["core:navigation"], order: ["people"] })
+    setConf("plugins", { disabled: ["recent"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
     setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
     setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/Today.md"] })
     setConf("plugins/page-preview/data", { delay: 300 })
@@ -34,7 +34,7 @@ export default async ($: VaultTest) => {
     ;[code, r] = await api("POST", "bundles/pages/apply", { workspace: 1 })
     check("bundles: apply", code === 200 && r.applied === "Pages and databases", r)
     const pj = conf("plugins"), look = conf("appearance")
-    check("bundles: plugins.json keeps its other keys", pj.collapsedCategories?.[0] === "core:navigation" && pj.order?.[0] === "people" && !pj.enabled.includes("today") && pj.enabled.includes("books"), pj)
+    check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.order?.[0] === "people" && !pj.enabled.includes("today") && pj.enabled.includes("books"), pj)
     check("bundles: appearance keeps the keys the bundle doesn't set; one it sets to the default is removed", look.textFont === "Georgia" && !("theme" in look) && look.scheme === "paper" &&
       look.density === "comfortable", look)
     check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))

@@ -72,11 +72,11 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `enhances`: Uses these when they're on (optional).
 - `runsOnServer`: Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it.
 - `tint`: Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages, files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else.
-- `category`: Its section on the Plugins page and in Settings ("life", "agents": core/categories.ts); none or unknown: Other.
+- `category`: Its category on the Plugins page and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools: core/categories.ts); none or unknown: Other.
 - `blocks`: Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs.
 - `settings`: Its settings (.vaultite/plugins/<id>/data.json), typed like a block's options plus a label each (core/blocks.ts SettingDecl): its settings sheet draws them as a form, and its docs list them (`vau docs <id>`).
 - `offByDefault`: Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim), and every built-in that isn't `essential` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff).
-- `essential`: One of the app's own (built-in only): the Plugins page lists it under Built-in. The other built-ins are Vaultite plugins, first-party extras listed apart and off until turned on (`offByDefault`, or by a bundle).
+- `essential`: One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`, or by a bundle). Either way the Plugins page lists it by its category.
 - `replaces`: Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in plugins standing in for the same one are alternatives: turning one on turns the other off.
 
 ### The app: `definePlugin({...})` in `index.tsx`

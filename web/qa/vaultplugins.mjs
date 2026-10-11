@@ -3,11 +3,10 @@
 // draws (its Tailwind classes too); an edit to its files on disk unloads it until it's allowed again (its row says so,
 // its sheet names the file changed, its shortcut says why it does nothing; Allow loads it, no reload); with its edits
 // let run, editing shows at once; a file breaking the rules unloads it with the reason on the Plugins page; turned
-// off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; a heading folds its
-// section like a sidebar panel's, saved in plugins.json's `collapsedCategories`; a search sees through a fold).
-// Also a phone-width look at the Plugins page.
-// WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, plugins.json's `enabled` and
-// `collapsedCategories`, hotkeys.json; removed at the end): throwaway server only.
+// off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; the rail shows one
+// category; Off shows what's off; a search looks in every category). Also a phone-width look at the Plugins page.
+// WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, plugins.json's `enabled`, hotkeys.json; removed at the
+// end): throwaway server only.
 //   node web/qa/vaultplugins.mjs <base url> <vault path> [out dir]
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
@@ -26,7 +25,6 @@ const setEnabled = (on) => { const c = plugins(); c.enabled = (c.enabled ?? []).
 const hotkeys = () => { try { return JSON.parse(read(".vaultite/hotkeys.json")) } catch { return {} } }
 const setBeamKeys = (keys) => { const h = hotkeys(); if (keys) h["lighthouse:beam"] = keys; else delete h["lighthouse:beam"]; write(".vaultite/hotkeys.json", JSON.stringify(h, null, 2) + "\n") }
 const cleanup = () => {
-  const c = plugins(); delete c.collapsedCategories; write(".vaultite/plugins.json", JSON.stringify(c, null, 2) + "\n")
   setBeamKeys(null)
   for (const p of [DIR, "Keepers", PAGE]) rmSync(abs(p), { recursive: true, force: true })
   setEnabled(false)
@@ -59,11 +57,11 @@ mkdirSync(OUT, { recursive: true })
 await page.goto(`${B}#plugins`); await wait(1500)
 await page.evaluate(() => { window.__qaMarker = 1 })
 const marker = () => page.evaluate(() => window.__qaMarker === 1)
-const group = page.locator("[data-plugin-group=vault]")
-const row = group.locator('[data-plugin-row="lighthouse"]').locator("..")
+const row = page.locator('[data-plugin-row="lighthouse"]').locator("..")
 const sw = page.getByRole("switch", { name: "Lighthouse plugin" })
-check("the Plugins page has a Vault plugins group with Lighthouse", await until(async () => (await row.innerText()).includes("Lighthouse"), 8000), await group.innerText().catch(() => ""))
-check("the group shows its folder", (await group.innerText()).includes(".vaultite/plugins"), await group.innerText())
+check("the Plugins page lists Lighthouse", await until(async () => (await row.innerText()).includes("Lighthouse"), 8000), await row.innerText().catch(() => ""))
+check("its row says what it does, under its name", (await row.locator("[data-plugin-blurb]").count()) === 1, await row.innerText())
+check("the page shows where your own plugins live", (await page.locator("main").innerText()).includes(".vaultite/plugins"))
 check("a new vault plugin is off", await sw.getAttribute("aria-checked") === "false")
 let [code] = await api("lighthouse")
 check("nothing of it runs while it's off (no route)", code === 404, code)
@@ -72,27 +70,25 @@ check("and no bundle", code === 404, code)
 await shot("off")
 
 // ---------- category sections ----------
-const ORDER = ["navigation", "writing", "life", "health", "agents", "developer", "formats", "system", "other"]
-const sections = async (tier) => (await page.locator(`[data-plugin-group=${tier}] [data-plugin-category]`).evaluateAll((els) => els.map((e) => e.dataset.pluginCategory.split(":")[1])))
-for (const tier of ["core"]) {
-  const got = await sections(tier)
-  check(`${tier}: sections in the categories' order`, got.length > 1 && got.every((c, i) => ORDER.includes(c) && (!i || ORDER.indexOf(c) > ORDER.indexOf(got[i - 1]))), got)
-}
-check("a vault plugin sits in its manifest's category", (await page.locator('[data-plugin-category="vault:life"] [data-plugin-row="lighthouse"]').count()) === 1)
-const agents = page.locator('[data-plugin-category="core:agents"]')
-const head = agents.locator("[data-panel-handle]")
-check("an open section's heading shows no chevron", (await head.locator('[data-fold="open"]').evaluate((el) => getComputedStyle(el).opacity)) === "0")
-await head.click()
-check("a click folds it: its rows go", await until(async () => (await agents.locator("[data-plugin-row]").count()) === 0, 8000))
-check("folded: a chevron after the name", await head.locator('[data-fold="collapsed"]').isVisible())
-check("saved in plugins.json's collapsedCategories", await until(async () => (plugins().collapsedCategories ?? []).includes("core:agents"), 8000), plugins().collapsedCategories)
-await shot("folded")
+const ORDER = ["navigation", "writing", "life", "health", "ai-apps", "agents", "developer", "formats", "system", "other"]
+const sections = () => page.locator("[data-plugin-category]").evaluateAll((els) => els.map((e) => e.dataset.pluginCategory))
+const got = await sections()
+check("sections in the categories' order", got.length > 1 && got.every((c, i) => ORDER.includes(c) && (!i || ORDER.indexOf(c) > ORDER.indexOf(got[i - 1]))), got)
+check("a vault plugin sits in its manifest's category", (await page.locator('[data-plugin-category="life"] [data-plugin-row="lighthouse"]').count()) === 1)
+check("nothing folds: no fold chevrons", (await page.locator("main [data-fold]").count()) === 0)
+await page.locator('[data-plugins-rail] [data-plugins-cat="ai-apps"]').click()
+check("the rail shows one category", await until(async () => (await sections()).join() === "ai-apps" && (await page.locator('[data-plugin-row="codex"]').count()) === 1
+  && (await page.locator('[data-plugin-row="files"]').count()) === 0, 8000), await sections())
+await shot("category")
 await page.getByPlaceholder("Search plugins").fill("codex")
-check("a search shows matches in a folded section", await until(async () => (await agents.locator('[data-plugin-row="codex"]').count()) === 1, 8000))
+check("a search inside a category finds its match", await until(async () => (await page.locator('[data-plugin-row="codex"]').count()) === 1, 8000))
+check("…and offers Get plugins for it", (await page.locator("[data-plugins-search-more]").count()) === 1)
 await page.getByPlaceholder("Search plugins").fill("")
-check("…and it's folded again after", await until(async () => (await agents.locator("[data-plugin-row]").count()) === 0, 8000))
-await head.click()
-check("a click opens it again", await until(async () => (await agents.locator("[data-plugin-row]").count()) > 1 && !(plugins().collapsedCategories ?? []).includes("core:agents"), 8000))
+await page.locator('[data-plugins-rail] [data-plugins-cat="all"]').click()
+await page.getByRole("radio", { name: /^Off \d+$/ }).click()
+check("Off shows what's off, Lighthouse among them", await until(async () => (await page.locator('[data-plugin-row="lighthouse"]').count()) === 1
+  && (await page.locator('[data-plugin-row="files"]').count()) === 0, 8000))
+await page.getByRole("radio", { name: /^All \d+$/ }).click()
 
 // ---------- turned on ----------
 await sw.click()
@@ -182,8 +178,10 @@ check("its page leaves the sidebar", await until(async () => await page.locator(
 const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const pp = watch(await phone.newPage())
 await pp.goto(`${B}#plugins`); await wait(1500)
-const vrow = pp.locator('[data-plugin-group=vault] [data-plugin-row="lighthouse"]')
-check("phone: the vault group is there", await until(async () => await vrow.count() === 1, 8000))
+const vrow = pp.locator('[data-plugin-row="lighthouse"]')
+check("phone: Lighthouse is listed", await until(async () => await vrow.count() === 1, 8000))
+check("phone: categories as chips, no rail", await pp.locator("[data-plugins-chips]").isVisible() && !(await pp.locator("[data-plugins-rail]").isVisible()))
+check("phone: its byline says who made it", (await pp.locator('[data-plugin-by="lighthouse"]').innerText()) === "by Alice Park")
 const overflow = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 check("phone: nothing overflows", overflow <= 0, overflow)
 // Tapped as a thumb does: brought clear of the bottom bar first (scrolling only far enough to show it leaves the last

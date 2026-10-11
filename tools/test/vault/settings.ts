@@ -7,11 +7,11 @@ export default async ($: VaultTest) => {
   // Settings and Me
   await api("PUT", "config/plugins", { disabled: ["random-note"], order: [] })
   check("settings saved in .vaultite", JSON.parse(read(".vaultite/plugins.json")).disabled[0] === "random-note")
-  // PATCH changes only the keys sent (the Plugins page's folded sections), null removes one; the rest stay as on disk
-  await api("PATCH", "config/plugins", { collapsedCategories: ["core:navigation"], order: null })
+  // PATCH changes only the keys sent (which plugins don't update on their own), null removes one; the rest stay as on disk
+  await api("PATCH", "config/plugins", { updatesOff: ["lighthouse"], order: null })
   {
     const conf = JSON.parse(read(".vaultite/plugins.json"))
-    check("PATCH writes one key and keeps the others", conf.collapsedCategories?.[0] === "core:navigation" && conf.disabled[0] === "random-note" && !("order" in conf), conf)
+    check("PATCH writes one key and keeps the others", conf.updatesOff?.[0] === "lighthouse" && conf.disabled[0] === "random-note" && !("order" in conf), conf)
   }
   await api("PATCH", "config/hotkeys", { "terminal:open": ["Mod+Shift+T"] })
   await api("PATCH", "config/hotkeys", { "file:new": [] })

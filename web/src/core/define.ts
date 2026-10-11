@@ -27,7 +27,8 @@ export type Manifest = {
   /** Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages,
    *  files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else. */
   tint?: string
-  /** Its section on the Plugins page and in Settings ("life", "agents": core/categories.ts); none or unknown: Other. */
+  /** Its category on the Plugins page and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools:
+   *  core/categories.ts); none or unknown: Other. */
   category?: string
   /** Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core
    *  checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs. */
@@ -38,8 +39,8 @@ export type Manifest = {
   /** Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim),
    *  and every built-in that isn't `essential` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff). */
   offByDefault?: boolean
-  /** One of the app's own (built-in only): the Plugins page lists it under Built-in. The other built-ins are Vaultite
-   *  plugins, first-party extras listed apart and off until turned on (`offByDefault`, or by a bundle). */
+  /** One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`,
+   *  or by a bundle). Either way the Plugins page lists it by its category. */
   essential?: boolean
   /** Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in
    *  plugins standing in for the same one are alternatives: turning one on turns the other off. */
@@ -603,7 +604,7 @@ export type Plugin = Omit<Manifest, "blocks" | "settings" | "icon"> & PluginDef 
 
 export const definePlugin = (def: PluginDef) => def
 
-/** A plugin another runs (one written for another app): listed in its host's group on the Plugins page, drawn like
+/** A plugin another runs (one written for another app): listed by category with its host as byline, drawn like
  *  any, while its host answers its switch, approval and removal (PluginHost). */
 export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideIcon; description?: string; category?: string; tint?: string
   version?: string; author?: string
@@ -619,20 +620,20 @@ export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideI
   problems?: string[]
   /** What it can do beyond the vault, as a vault plugin's manifest says it (shown before it's allowed). */
   disclosures?: Disclosures }
-/** What hosts plugins (hostPlugins): its group's name on the Plugins page and the answers to its plugins' buttons. */
+/** What hosts plugins (hostPlugins): its plugins' byline on the Plugins page and the answers to its plugins' buttons. */
 export type PluginHost = { title: string
   /** A plugin of it, lower case: in its sheet's kicker and in sentences ("plugin from another app"). */
   kind: string
-  /** A line under its group's title. */
+  /** What its plugins are, a line: the tooltip of their byline on the Plugins page. */
   intro?: string
   setOn: (id: string, on: boolean) => unknown
   allow?: (id: string) => unknown
   uninstall?: (id: string) => unknown
-  /** Where to find more of its plugins: a source on the Plugins page's Browse. */
+  /** Where to find more of its plugins: a source on the Plugins page's Get plugins. */
   browse?: BrowseSource
   /** What its plugins can do once allowed, said before one first runs ("It runs with the app's full access…"). */
   trust?: string }
-/** A source of plugins to install on the Plugins page's Browse (a host's: another app's plugins). */
+/** A source of plugins to install on the Plugins page's Get plugins (a host's: another app's plugins). */
 export type BrowseSource = { title: string
   /** Its sort orders (the first is the default). */
   sorts?: { value: string; label: string }[]

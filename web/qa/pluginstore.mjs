@@ -1,4 +1,4 @@
-// The plugin directory and this machine's yes, in the app. Plugins > Browse: an index that can't be read is a quiet line;
+// The plugin directory and this machine's yes, in the app. Plugins > Get plugins: an index that can't be read is a quiet line;
 // a made-up index (a file: the server's VAULTITE_PLUGIN_INDEX) lists by stars, New and Updated, searched, each with its
 // version and what it says it does; Install fetches its made-up git repository (VAULTITE_GITHUB=file://<repos>) into
 // .vaultite/plugins/, off; its switch turns it on and allows it. A newer tag shows Update; updated, it waits on the
@@ -58,7 +58,7 @@ try {
   const rows = () => browse.locator("[data-browse-row]").evaluateAll((els) => els.map((e) => e.dataset.browseRow))
   await page.goto(`${B}/#plugins`)
   await until(() => page.locator("main").count(), 8000)
-  await page.getByRole("radio", { name: "Browse" }).click()
+  await page.locator("[data-plugins-get]").click()
 
   // ---------- an index that can't be read: a quiet line
   check("browse: an index that can't be read is a quiet line", await until(async () => (await browse.locator("[data-browse-empty]").innerText()).includes("can't be reached"), 8000),
@@ -80,9 +80,9 @@ try {
   check("browse: New puts the newest first", await until(async () => (await rows())[0] === "skiff", 8000), await rows())
   await page.getByRole("radio", { name: "Updated" }).click()
   check("browse: Updated, the last released first", await until(async () => (await rows()).join() === "skiff,harbor,beacon", 8000), await rows())
-  await page.getByPlaceholder("Search the directory").fill("moorings")
+  await page.getByPlaceholder("Search for plugins").fill("moorings")
   check("browse: searched", await until(async () => (await rows()).join() === "skiff", 8000), await rows())
-  await page.getByPlaceholder("Search the directory").fill("")
+  await page.getByPlaceholder("Search for plugins").fill("")
   await page.getByRole("radio", { name: "Stars" }).click()
 
   // ---------- install: off until turned on, which allows it here
@@ -91,7 +91,7 @@ try {
     !(plugins().enabled ?? []).includes("harbor") && !(await listed("harbor"))?.loaded, json(".vaultite/plugins-lock.json"))
   check("install: the row says it's installed", await until(async () => (await harborRow.innerText()).includes("Installed"), 8000), await harborRow.innerText())
   check("install: nothing of it runs yet", (await api("harbor"))[0] === 404)
-  await page.getByRole("radio", { name: "Installed" }).click()
+  await page.locator("[data-plugins-back]").click()
   const sw = page.getByRole("switch", { name: "Harbor plugin" })
   await until(() => sw.count(), 8000)
   await sw.click()
@@ -109,13 +109,13 @@ try {
   // ---------- update: a newer tag; updated, it waits for this machine's yes again
   release("1.1.0", "low", { network: ["tides.example.com"], shell: true })
   writeIndex("1.1.0")
-  await page.getByRole("radio", { name: "Browse" }).click()
+  await page.locator("[data-plugins-get]").click()
   await browse.locator("[data-browse-refresh]").click()
   check("browse: an update out", await until(async () => (await harborRow.locator('[data-browse-action="update"]').count()) === 1, 8000), await harborRow.innerText().catch(() => ""))
   await harborRow.locator('[data-browse-action="update"]').click()
   check("update: its files are the new version's", await until(async () => json(".vaultite/plugins-lock.json")?.harbor?.version === "1.1.0" && readFileSync(file(".vaultite/plugins/harbor/plugin.ts"), "utf8").includes('"low"'), 8000))
   check("update: its new code doesn't run until allowed", await until(async () => !(await listed("harbor"))?.loaded && (await listed("harbor"))?.approval?.state === "changed", 8000) && (await api("harbor"))[0] === 404, [(await listed("harbor"))?.approval, await api("harbor")])
-  await page.getByRole("radio", { name: "Installed" }).click()
+  await page.locator("[data-plugins-back]").click()
   const waiting = page.locator('[data-plugin-waiting="harbor"]')
   check("update: its row says it changed and waits", await until(async () => (await waiting.innerText()).includes("Changed"), 8000), await waiting.innerText().catch(() => ""))
   await page.locator('[data-plugin-review="harbor"]').click()
@@ -147,11 +147,11 @@ try {
   const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
   const pp = watch(await phone.newPage(), { label: "phone" })
   await pp.goto(`${B}/#plugins`)
-  await until(() => pp.getByRole("radio", { name: "Browse" }).count(), 8000)
-  await pp.getByRole("radio", { name: "Browse" }).tap()
+  await until(() => pp.locator("[data-plugins-get]").count(), 8000)
+  await pp.locator("[data-plugins-get]").tap()
   await until(() => pp.locator("[data-browse-row]").count(), 8000)
   const over = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
-  check("phone: Browse fits the screen", over <= 0, over)
+  check("phone: Get plugins fits the screen", over <= 0, over)
   await pp.screenshot({ path: `${OUT}pluginstore-phone.png` })
 } finally {
   await browser.close()

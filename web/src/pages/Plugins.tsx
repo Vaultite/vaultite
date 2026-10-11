@@ -1,55 +1,39 @@
-// Plugins, in groups (built-in: the app's essential ones; Vaultite plugins: its other built-ins, off until turned on;
-// the vault's own: off until allowed on this machine since they run code), a folding section per category. Tap one for its sheet with a live preview; Browse is the directory (PluginBrowse.tsx).
+// Plugins: one list by category, filtered rather than folded, each row saying what it does; where one comes from is
+// only a byline (trust is asked on turning it on). Tap one for its sheet; Get plugins is PluginBrowse.tsx.
 import { useEffect, useState } from "react"
-import { ChevronRight, ChevronsDownUp, ChevronsUpDown, Package, Settings2 } from "lucide-react"
-import { allowPlugin, byCategory, hostOf, hostsNow, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
+import { ChevronLeft, ChevronRight, Plus, Search, Settings2 } from "lucide-react"
+import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
-import { categoryOf } from "../../../core/categories.ts"
-import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 import { capitalize, cn } from "@/lib/utils"
-import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
+import { usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
-import type { PluginHost } from "@/core/define"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
-import { openBundles } from "@/core/bundles"
 import { FilterField, PageHeader, Panel, Segmented, Switch } from "@/components/kit"
 import { PluginBrowse } from "@/components/PluginBrowse"
-import { PanelFold, SidebarHeading } from "@/components/SidebarHeading"
 
 /** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
-/** The group a plugin is listed in: its tier, the app's own split into its essential ones ("core") and the rest
- *  ("vaultite"). */
-const groupOf = (p: Plugin) => (p.tier === "core" && !p.essential ? "vaultite" : p.tier)
+/** What a plugin does, in one line: its description up to the first full stop or colon. */
+const blurb = (d: string | undefined) => (d ?? "").split(/(?<=[\w)])[.:;] /)[0].replace(/\.$/, "")
 
-/** A section's key in `collapsedCategories`: "<group>:<category>". */
-const sectionKey = (tier: string, category: string) => `${tier}:${category}`
-
-function toggleSection(key: string, fold?: boolean) {
-  const c = getPrefs().collapsedCategories ?? []
-  const folded = c.includes(key)
-  if (fold === folded) return
-  setPrefs({ collapsedCategories: folded ? c.filter((k) => k !== key) : [...c, key] })
+/** Who made it, when it isn't Vaultite: a vault plugin's author, or the app whose plugin it is (Obsidian). */
+function bylineOf(p: Plugin): { text: string; tip?: string } | null {
+  if (p.tier === "hosted") { const h = hostOf(p); return h ? { text: h.title, tip: h.intro } : null }
+  if (p.tier === "vault" && p.meta?.author !== "Vaultite") return { text: p.meta?.author ? `by ${p.meta.author}` : "yours" }
+  return null
 }
 
-/** Fold or open every section of a tier at once (`keys`: its sections' keys), in one write. */
-function foldTier(keys: string[], fold: boolean) {
-  const c = getPrefs().collapsedCategories ?? []
-  setPrefs({ collapsedCategories: fold ? [...new Set([...c, ...keys])] : c.filter((k) => !keys.includes(k)) })
-}
-
-/** Scroll a plugin's row into view (if needed), then pulse it once. The page clears its search and shows the plugins
- *  that are off first, and its section is unfolded, so the row is there (Plugins sets `beforeReveal`). */
+/** Scroll a plugin's row into view (if needed), then pulse it once. The page clears its search and filters first, so
+ *  the row is there (Plugins sets `beforeReveal`). */
 let beforeReveal = () => {}
 function reveal(id: string) {
   beforeReveal()
   // (an original with a stand-in here shares its row)
   const found = pluginById(id), p = found && (standInOf(found) ?? found)
-  if (p) toggleSection(sectionKey(groupOf(p), categoryOf(p.category).id), false)
   requestAnimationFrame(() => requestAnimationFrame(() => pulse(p?.id ?? id)))
 }
 function pulse(id: string) {
@@ -77,8 +61,10 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
   }
   const mine = own.tier === "core" || own.meta?.author === "Vaultite" ? "Vaultite's" : own.name
   const kind = original ? `the ${hostOf(original)?.kind ?? "original"}` : ""
+  const by = bylineOf(p)
+  const line = "text-[13px] leading-[18px] max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]"
   return (
-    <div className="group/prow relative isolate flex min-h-13 items-center gap-3 py-1.5 md:h-11 md:py-0">
+    <div className="group/prow relative isolate flex min-h-15 items-center gap-3 py-2 md:min-h-12 md:py-1.5">
       <button type="button" onClick={() => openDetail(`plugin/${p.id}`)} aria-label={`${p.name}: details and preview`} data-plugin-row={own.id}
         className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
       {/* Off (by its switch, or because something it needs is off): greyed out. */}
@@ -89,6 +75,7 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
       <div className={cn("pointer-events-none min-w-0 flex-1 transition-opacity", !live && "opacity-55")}>
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">
           {p.name}
+          {by && <span className="pointer-events-auto ml-1.5 text-[13px] font-normal text-muted-foreground md:text-[12px]" data-plugin-by={own.id} data-tip={by.tip}>{by.text}</span>}
           {/* Something it needs is off: that's underlined, dashed (no extra line, so nothing shifts). */}
           {p.requires && (
             <span className="font-normal text-muted-foreground">
@@ -101,18 +88,18 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
           )}
         </div>
         {/* A vault plugin that can't run says why (the sheet has the rest). */}
-        {problem && <div className="text-[13px] leading-[18px] text-[var(--red)] max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]">{problem.split("\n")[0].replace(`${p.folder}/`, "")}</div>}
-        {/* On in the vault, but this machine hasn't allowed it (as it is now): the sheet shows what changed and Allow. */}
-        {waiting && <div className="text-[13px] leading-[18px] text-[var(--orange)] max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]" data-plugin-waiting={p.id}>
-          {p.meta!.approval!.state === "new" ? "Waiting for you to allow it on this machine" : "Changed: waiting for you to allow it again"}</div>}
-        {original && !problem && !waiting && (
-          <div className="text-[13px] leading-[18px] text-muted-foreground max-md:line-clamp-2 md:truncate md:text-[12px] md:leading-[16px]" data-plugin-pair={own.id}>
-            {theirs ? capitalize(kind) : mine}{" · "}
-            <button type="button" onClick={(e) => { e.stopPropagation(); setSwitch(theirs ? own : original, true, true) }} data-plugin-swap={own.id}
-              className="pointer-events-auto cursor-pointer underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">
-              use {theirs ? mine : kind} instead</button>
-          </div>
-        )}
+        {problem ? <div className={cn(line, "text-[var(--red)]")}>{problem.split("\n")[0].replace(`${p.folder}/`, "")}</div>
+          // On in the vault, but this machine hasn't allowed it (as it is now): the sheet shows what changed and Allow.
+          : waiting ? <div className={cn(line, "text-muted-foreground")} data-plugin-waiting={p.id}>
+            {p.meta!.approval!.state === "new" ? "Waiting for you to allow it on this machine" : "Changed: waiting for you to allow it again"}</div>
+          : original ? (
+            <div className={cn(line, "text-muted-foreground")} data-plugin-pair={own.id}>
+              {theirs ? capitalize(kind) : mine}{" · "}
+              <button type="button" onClick={(e) => { e.stopPropagation(); setSwitch(theirs ? own : original, true, true) }} data-plugin-swap={own.id}
+                className="pointer-events-auto cursor-pointer underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">
+                use {theirs ? mine : kind} instead</button>
+            </div>
+          ) : p.description && <div className={cn(line, "text-muted-foreground")} data-plugin-blurb>{blurb(p.description)}</div>}
       </div>
       {waiting && (
         <button type="button" onClick={() => openDetail(`plugin/${p.id}`)} data-plugin-review={p.id}
@@ -132,8 +119,6 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
 
 const FOLDER = ".vaultite/plugins"
 
-const link = "cursor-pointer text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current"
-
 /** Vault plugins on in the vault that this machine hasn't allowed yet (another machine's, a synced vault's): all at once,
  *  after a dialog saying what each does beyond the vault. */
 function Waiting({ list }: { list: Plugin[] }) {
@@ -147,8 +132,8 @@ function Waiting({ list }: { list: Plugin[] }) {
     setBusy(false)
   }
   return (
-    <div className="mb-5 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5" data-plugins-waiting>
-      <span className="min-w-0 flex-1 text-[15px] leading-[20px] text-[var(--orange)] md:text-[13px] md:leading-[18px]">
+    <div className="mb-4 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5" data-plugins-waiting>
+      <span className="min-w-0 flex-1 text-[15px] leading-[20px] md:text-[13px] md:leading-[18px]">
         {list.length} plugins wait for you to allow them on this machine: {list.map((p) => p.name).join(", ")}
       </span>
       <button type="button" disabled={busy} onClick={() => void allowAll()} data-plugins-allow-all
@@ -159,183 +144,142 @@ function Waiting({ list }: { list: Plugin[] }) {
   )
 }
 
-const POLICY_HINT: Record<UpdatePolicy, string> = {
-  vaultite: "Vaultite's own update by themselves; others wait for you to update them.",
-  all: "Every installed plugin updates by itself, on each machine that allowed it.",
-  off: "None: update each from its page, or from Browse.",
-}
-
-/** Which installed plugins update on their own (plugins.json `updates`): Vaultite's, all of them, or none. */
-function AutoUpdates() {
-  const policy = policyOf(usePrefs())
-  return (
-    <div className="mb-3 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5 max-md:flex-col max-md:items-stretch" data-plugins-updates>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[15px] md:text-[13px] md:font-medium">Update on their own</span>
-        <span className="block text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">{POLICY_HINT[policy]}</span>
-      </span>
-      <Segmented value={policy} onChange={(v) => void setPrefs({ updates: v })} label="Which plugins update on their own" className="w-full shrink-0 md:w-[230px]"
-        options={[{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]} />
-    </div>
-  )
-}
-
-/** One tier's plugins: its heading on the page's left edge, then a section per category. */
-function Group({ tier, title, list, intro, below, searching, files, originals }: { tier: string; title: string; list: Plugin[]; intro?: React.ReactNode; below?: React.ReactNode; searching: boolean; files: string[]; originals: Map<string, Plugin> }) {
-  const collapsed = usePrefs().collapsedCategories ?? []
-  const sections = byCategory(list)
-  const keys = sections.map((s) => sectionKey(tier, s.id))
-  const anyOpen = keys.some((k) => !collapsed.includes(k))
-  const all = anyOpen ? { label: "Collapse all", icon: ChevronsDownUp } : { label: "Expand all", icon: ChevronsUpDown }
-  return (
-    <section className="mb-7" data-plugin-group={tier}>
-      <div className="mb-1 flex items-center gap-2">
-        <h2 className="text-[17px] font-semibold">{title}</h2>
-        {/* The file tree's button, for this tier's sections (a search shows every match, folded or not: none then). */}
-        {!searching && keys.length > 1 && (
-          <button type="button" onClick={() => foldTier(keys, anyOpen)} data-tip={all.label} aria-label={`${all.label} ${title.toLowerCase()}`} data-plugin-fold-all={tier}
-            className="ml-auto grid size-6 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground max-md:size-8">
-            <all.icon className="size-[15px]" strokeWidth={2} />
-          </button>
-        )}
-      </div>
-      {intro && <p className="mb-2 text-[13px] leading-[18px] text-muted-foreground">{intro}</p>}
-      {below}
-      {sections.map((s) => (
-        <Category key={s.id} id={sectionKey(tier, s.id)} label={s.label} list={s.plugins} searching={searching} files={files} originals={originals}
-          foldAll={(fold) => foldTier(keys, fold)} />
-      ))}
-    </section>
-  )
-}
-
-/** A category's plugins: a heading that folds it (the sidebar panels' heading: a chevron after the name while folded),
- *  then a card of rows, one column. A search shows its matches even while it's folded. */
-function Category({ id, label, list, searching, files, originals, foldAll }: {
-  id: string; label: string; list: Plugin[]; searching: boolean; files: string[]; originals: Map<string, Plugin>; foldAll: (fold: boolean) => void
-}) {
+/** A card of rows, hairlines between them. */
+function Rows({ list, files, originals }: { list: Plugin[]; files: string[]; originals: Map<string, Plugin> }) {
   const prefs = usePrefs(), { disabled } = prefs
-  const folded = !searching && (prefs.collapsedCategories ?? []).includes(id)
   return (
-    <div className={folded ? undefined : "mb-3"} data-plugin-category={id} data-collapsed={folded || undefined}>
-      <PanelFold.Provider value={searching ? null : { collapsed: folded, toggle: (e) => (e?.altKey ? foldAll(!folded) : toggleSection(id)) }}>
-        <SidebarHeading title={label} open sticky={false} className={cn("mt-0 max-md:h-11", !searching && "cursor-pointer")} />
-      </PanelFold.Provider>
-      {!folded && (
-        <Panel className="py-1">
-          {/* Hairlines between rows. */}
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-            {list.map((p) => (
-              <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} />
-            ))}
-          </div>
-        </Panel>
-      )}
-    </div>
+    <Panel className="py-1">
+      <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+        {list.map((p) => (
+          <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} />
+        ))}
+      </div>
+    </Panel>
   )
 }
 
-/** A host's plugins (an Obsidian plugin under plugin-compat): its title, then one card of rows. */
-function HostGroup({ host, info, list, paired, files, browse }: { host: string; info: PluginHost; list: Plugin[]; paired: Plugin[]; files: string[]; browse: () => void }) {
-  const prefs = usePrefs()
-  const sorted = [...list].sort((a, b) => a.name.localeCompare(b.name))
-  const on = list.filter((p) => switchedOn(p, prefs)).length
-  return (
-    <section className="mb-7" data-plugin-group={`hosted:${host}`}>
-      <h2 className="mb-1 flex items-baseline gap-2 text-[17px] font-semibold">
-        {info.title}
-        {list.length > 0 && <span className="text-[13px] font-normal text-muted-foreground tabular-nums">{on} of {list.length} on</span>}
-      </h2>
-      {info.intro && <p className="mb-2 text-[13px] leading-[18px] text-muted-foreground">{info.intro}</p>}
-      <Panel className="py-1">
-        {sorted.length ? (
-          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-            {sorted.map((p) => <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={[]} files={files} />)}
-          </div>
-        ) : (
-          <p className="py-2 text-[14px] text-muted-foreground md:text-[13px]" data-plugin-group-empty>
-            {paired.length ? `${names(paired.map((p) => p.id))} ${paired.length === 1 ? "shares its row" : "share their rows"} with Vaultite's own, above.` : "None yet."}{info.browse && <> <button type="button" onClick={browse} className="cursor-pointer text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground">Find one in Browse</button></>}
-          </p>
-        )}
-      </Panel>
-    </section>
-  )
-}
-
-const TIERS = [
-  { tier: "core", title: "Built-in plugins" },
-  { tier: "vaultite", title: "Vaultite plugins" },
-  { tier: "vault", title: "Vault plugins" },
-] as const
+type Show = "all" | "on" | "off"
 
 export function Plugins({ store }: { store: Store }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
   const [query, setQuery] = useState("")
-  const [showOff, setShowOff] = useState(true)
-  const [tab, setTab] = useState<"installed" | "browse">("installed")
-  const [source, setSource] = useState("") // Browse's source: "" the plugin directory, else a host's
+  const [show, setShow] = useState<Show>("all")
+  const [cat, setCat] = useState("all")
+  const [tab, setTab] = useState<"installed" | "get">("installed")
+  const [source, setSource] = useState("") // Get plugins' source: "" the plugin directory, else a host's
   useEffect(() => {
-    beforeReveal = () => { setQuery(""); setShowOff(true); setTab("installed") }
+    beforeReveal = () => { setQuery(""); setShow("all"); setCat("all"); setTab("installed") }
     return () => { beforeReveal = () => {} }
   }, [])
   const q = query.trim().toLowerCase()
-  // Hosted originals installed beside their stand-in here, by the stand-in's id: drawn in its row, not their host's.
+  // Hosted originals installed beside their stand-in here, by the stand-in's id: drawn in its row, not on their own.
   const originals = new Map<string, Plugin>()
   for (const p of all) { const s = standInOf(p); if (s && !originals.has(s.id)) originals.set(s.id, p) }
   const paired = new Set([...originals.values()].map((p) => p.id))
   // On: its own switch, and everything it needs on (a blocked one counts as off); a stand-in's row, either of the two.
   const isOn = (p: Plugin): boolean => switchedOn(p, prefs) && (p.requires ?? []).every((r) => isEnabled(r, prefs.disabled)) || (originals.has(p.id) && isOn(originals.get(p.id)!))
   const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}`.toLowerCase()
-  const shown = all
-    .filter((p) => !paired.has(p.id) && (showOff || isOn(p)) && (!q || text(p).includes(q) || (originals.has(p.id) && text(originals.get(p.id)!).includes(q))))
-    .sort((a, b) => byName.compare(a.name, b.name))
-  const filtering = !!q || !showOff
-  // Only drawn with plugins in it, or when there are none at all (and nothing's filtered).
-  const vaultIntro = (
-    <>Your own plugins, in <button type="button" onClick={() => showInTree(FOLDER)} data-tip="Show the folder in the file tree" className={link}>{FOLDER}</button></>
-  )
-  const vaultiteIntro = "Vaultite's own extras, built in and off until you turn them on (a bundle like Life OS turns on several)."
+  const listed = all.filter((p) => !paired.has(p.id)).sort((a, b) => byName.compare(a.name, b.name))
+  const onCount = listed.filter(isOn).length
+  const byShow = listed.filter((p) => show === "all" || (show === "on") === isOn(p))
+  const sections = byCategory(byShow).filter((s) => s.plugins.length)
+  // A category the filter emptied isn't left selected with nothing in it.
+  const current = cat === "all" || sections.some((s) => s.id === cat) ? cat : "all"
+  const shown = byShow.filter((p) => (current === "all" || sections.find((s) => s.id === current)!.plugins.includes(p))
+    && (!q || text(p).includes(q) || (originals.has(p.id) && text(originals.get(p.id)!).includes(q))))
+  const waiting = all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")
+  const cats = [{ id: "all", label: "All plugins", n: byShow.length }, ...sections.map((s) => ({ id: s.id, label: s.label, n: s.plugins.length }))]
+  const getMore = () => { setTab("get") }
+
+  if (tab === "get") {
+    return (
+      <>
+        <button type="button" onClick={() => { setTab("installed"); setQuery("") }} data-plugins-back
+          className="-ml-1.5 mb-1 inline-flex h-8 cursor-pointer items-center gap-0.5 rounded-[8px] pr-2 text-[15px] text-primary active:opacity-50 md:text-[13px]">
+          <ChevronLeft className="size-4.5" strokeWidth={2.25} />Plugins
+        </button>
+        <PageHeader title="Get plugins" />
+        <FilterField value={query} onChange={setQuery} placeholder="Search for plugins" className="mb-5" />
+        <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={(id) => { setTab("installed"); reveal(id) }} />
+      </>
+    )
+  }
+
   return (
-    <>
+    <div className="@container">
       <PageHeader title="Plugins" className="items-center">
-        <button type="button" onClick={openBundles} data-plugins-bundles
+        <button type="button" onClick={getMore} data-plugins-get
           className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3.5 text-[15px] font-medium transition-colors hover:bg-foreground/[0.1] md:h-8 md:text-[13px]">
-          <Package className="size-4" strokeWidth={2} />Bundles
+          <Plus className="size-4" strokeWidth={2.25} />Get plugins
         </button>
       </PageHeader>
-      <Segmented value={tab} onChange={setTab} label="Plugins" className="mb-4 w-full max-w-[300px]"
-        options={[{ value: "installed", label: "Installed" }, { value: "browse", label: "Browse" }]} />
-      <div className="mb-5 flex items-center gap-4">
-        <FilterField value={query} onChange={setQuery} placeholder={tab === "browse" ? "Search the directory" : "Search plugins"} />
-        {tab === "installed" && (
-          <label className="flex shrink-0 cursor-pointer items-center gap-2 text-[13px] text-muted-foreground">
-            Show disabled
-            <Switch on={showOff} onChange={setShowOff} label="Show disabled plugins" />
-          </label>
-        )}
+      <div className="flex gap-8">
+        {/* Wide: the categories as a rail beside the list, like System Settings. */}
+        <nav aria-label="Categories" className="sticky top-0 hidden w-44 shrink-0 flex-col gap-px self-start @3xl:flex" data-plugins-rail>
+          {cats.map((c, i) => (
+            <div key={c.id}>
+              {i === 1 && <div className="px-2.5 pt-4 pb-1 text-[12px] font-semibold text-muted-foreground">Categories</div>}
+              <button type="button" onClick={() => setCat(c.id)} aria-pressed={current === c.id} data-plugins-cat={c.id}
+                className={cn("flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.05]",
+                  current === c.id && "bg-foreground/[0.08] font-medium")}>
+                <span className="truncate">{c.label}</span>
+                <span className="text-[12px] text-muted-foreground tabular-nums">{c.n}</span>
+              </button>
+            </div>
+          ))}
+        </nav>
+        <div className="min-w-0 flex-1">
+          <div className="mb-3 flex flex-wrap items-center gap-3">
+            <FilterField value={query} onChange={setQuery} placeholder="Search plugins" className="min-w-[180px]" />
+            <Segmented value={show} onChange={setShow} label="Show" className="shrink-0"
+              options={[{ value: "all", label: `All ${listed.length}` }, { value: "on", label: `On ${onCount}` }, { value: "off", label: `Off ${listed.length - onCount}` }]} />
+          </div>
+          {/* Narrow: the same categories as a row of chips. */}
+          <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1 @3xl:hidden" role="group" aria-label="Categories" data-plugins-chips>
+            {cats.map((c) => (
+              <button key={c.id} type="button" onClick={() => setCat(c.id)} aria-pressed={current === c.id} data-plugins-cat={c.id}
+                className={cn("h-9 shrink-0 cursor-pointer rounded-full px-3.5 text-[15px] whitespace-nowrap md:h-7.5 md:px-3 md:text-[13px]",
+                  current === c.id ? "bg-foreground text-background" : "bg-muted")}>
+                {c.id === "all" ? "All" : c.label}
+              </button>
+            ))}
+          </div>
+          <Waiting list={waiting} />
+          {!shown.length ? (
+            <p className="py-4 text-[15px] text-muted-foreground md:text-[13px]" data-plugins-empty>
+              {q ? `No plugin matches "${query.trim()}".` : show === "off" ? "Every plugin is on." : "No plugins here."}
+            </p>
+          ) : current === "all" && !q ? (
+            // Everything: a section per category, headings only (nothing folds; the rail picks one).
+            byCategory(shown).filter((s) => s.plugins.length).map((s) => (
+              <section key={s.id} className="mb-5" data-plugin-category={s.id}>
+                <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">{s.label}</h2>
+                <Rows list={s.plugins} files={files} originals={originals} />
+              </section>
+            ))
+          ) : (
+            <section data-plugin-category={current}><Rows list={shown} files={files} originals={originals} /></section>
+          )}
+          {/* A search also looks where more plugins are. */}
+          {q && (
+            <button type="button" onClick={getMore} data-plugins-search-more
+              className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-2 py-2 text-left hover:bg-foreground/[0.04]">
+              <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-muted-foreground md:size-8 md:rounded-[8px]"><Search className="size-[18px]" strokeWidth={2} /></span>
+              <span className="min-w-0 flex-1">
+                <span className="block truncate text-[15px] font-medium md:text-[14px]">Search Get plugins for "{query.trim()}"</span>
+                <span className="block text-[13px] text-muted-foreground md:text-[12px]">Plugins you don't have yet</span>
+              </span>
+              <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
+            </button>
+          )}
+          <p className="mt-4 px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
+            Your own plugins live in <button type="button" onClick={() => showInTree(FOLDER)} data-tip="Show the folder in the file tree"
+              className="cursor-pointer text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">{FOLDER}</button>.
+          </p>
+        </div>
       </div>
-      {tab === "installed" && <Waiting list={all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")} />}
-      {tab === "browse" ? <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={(id) => { setTab("installed"); reveal(id) }} /> : TIERS.map(({ tier, title }) => {
-        const list = shown.filter((p) => groupOf(p) === tier)
-        const total = all.filter((p) => groupOf(p) === tier).length
-        // Filtering: a tier with nothing left leaves (the vault one too, unless it has none at all and nothing's filtered).
-        if (!list.length && (tier !== "vault" || filtering || total)) return null
-        return <Group key={tier} tier={tier} title={title} list={list} searching={!!q} intro={tier === "vault" ? vaultIntro : tier === "vaultite" ? vaultiteIntro : undefined}
-          files={files} originals={originals} below={tier === "vault" && !filtering && all.some((p) => p.meta?.source) ? <AutoUpdates /> : null} />
-      })}
-      {/* Plugins other plugins run (Obsidian's), a group per host, without categories. */}
-      {tab === "installed" && hostsNow().map(([h, info]) => {
-        const list = shown.filter((p) => p.tier === "hosted" && p.host === h)
-        return (list.length || !filtering) && <HostGroup key={h} host={h} info={info} list={list} paired={all.filter((p) => paired.has(p.id) && p.host === h)} files={files}
-          browse={() => { setSource(h); setTab("browse") }} />
-      })}
-      {tab === "installed" && !shown.length && filtering && (
-        <p className="text-[15px] text-muted-foreground">
-          {q ? `No plugins match "${query.trim()}".` : "Every plugin is off."}
-        </p>
-      )}
-    </>
+    </div>
   )
 }

@@ -1,12 +1,16 @@
-// The Plugins page's Browse tab: the plugin directory (repos with the topic vaultite-plugin: core/pluginindex.ts), each
-// with its disclosures and Install; and the sources hosts offer (Obsidian's community plugins: PluginHost.browse).
+// The Plugins page's Get plugins: bundles first, then the plugin directory (repos with the topic vaultite-plugin:
+// core/pluginindex.ts), each with what it says it does and Install, or a host's source (Obsidian's: PluginHost.browse).
 import { useEffect, useState } from "react"
-import { Download, MoreHorizontal, Puzzle, RefreshCw, Star } from "lucide-react"
+import { ChevronRight, Download, MoreHorizontal, Package, Puzzle, RefreshCw, Star } from "lucide-react"
 import { dateText, fmtAgo } from "@/core/data"
 import { op } from "@/core/http"
 import { openWebLink } from "@/core/links"
 import { notify, notifyError } from "@/core/notify"
-import { pluginIcon } from "@/core/pages"
+import { namedIcon, pluginIcon, tintOf } from "@/core/pages"
+import { openBundles, useBundles } from "@/core/bundles"
+import { openDetail } from "@/core/nav"
+import { setPrefs, usePrefs } from "@/core/prefs"
+import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 import { Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { capitalize, cn } from "@/lib/utils"
@@ -51,8 +55,8 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
           {e.installed !== null && <span className="text-foreground/80" data-browse-installed>{e.update ? `${e.installed} installed` : "Installed"}</span>}
         </div>
         {says.length > 0 && (
-          <div className="mt-0.5 text-[13px] leading-[18px] text-[var(--orange)] md:text-[12px] md:leading-[16px]" data-browse-discloses>
-            {says.map(capitalize).join(". ")}.
+          <div className="mt-1 flex flex-wrap gap-1" data-browse-discloses>
+            {says.map((s) => <span key={s} className="rounded-[5px] bg-muted px-1.5 py-px text-[12px] leading-[17px] text-muted-foreground md:text-[11px] md:leading-[16px]">{capitalize(s)}</span>)}
           </div>
         )}
         {e.blocked && <div className="mt-0.5 text-[13px] text-[var(--red)] md:text-[12px]">Blocked by the directory: a known problem with this version.</div>}
@@ -64,6 +68,59 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
           {busy ? (button === "Install" ? "Installing…" : "Updating…") : button}
         </button>
       )}
+    </div>
+  )
+}
+
+/** The app's bundles: a set of plugins (and a look) in one step, the quickest way to get several. */
+function Bundles() {
+  const list = useBundles()?.bundles.filter((b) => b.source === "app" && !b.more).sort((a, b) => a.sort - b.sort).slice(0, 3)
+  if (!list?.length) return null
+  return (
+    <div className="mb-6" data-browse-bundles>
+      <div className="mb-1.5 flex items-baseline justify-between px-1">
+        <h2 className="text-[13px] font-semibold text-muted-foreground md:text-[12px]">Start with a bundle</h2>
+        <button type="button" onClick={openBundles} data-browse-all-bundles className="cursor-pointer text-[15px] text-primary hover:underline md:text-[13px]">All bundles</button>
+      </div>
+      <div className="grid gap-2 @xl:grid-cols-3">
+        {list.map((b) => {
+          const Icon = namedIcon(b.icon) ?? Package
+          return (
+            <button key={b.id} type="button" onClick={() => openDetail(`bundle/${b.id}`)} data-browse-bundle={b.id}
+              className="flex cursor-pointer items-start gap-3 rounded-[10px] bg-muted px-3 py-2.5 text-left transition-colors hover:bg-foreground/[0.08]">
+              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[8px] bg-card" style={{ color: tintOf(b.tint) ?? "var(--primary)" }}>
+                <Icon className="size-[18px]" strokeWidth={2} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-medium md:text-[14px]">{b.name}</span>
+                <span className="line-clamp-2 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">{b.description}</span>
+              </span>
+              <ChevronRight className="mt-2 size-4 shrink-0 text-tertiary @xl:hidden" strokeWidth={2.5} />
+            </button>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
+const POLICY_HINT: Record<UpdatePolicy, string> = {
+  vaultite: "Vaultite's own update by themselves; others wait for you to update them.",
+  all: "Every installed plugin updates by itself, on each machine that allowed it.",
+  off: "None: update each from its page, or from here.",
+}
+
+/** Which installed plugins update on their own (plugins.json `updates`): Vaultite's, all of them, or none. */
+function AutoUpdates() {
+  const policy = policyOf(usePrefs())
+  return (
+    <div className="mt-6 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5 max-md:flex-col max-md:items-stretch" data-plugins-updates>
+      <span className="min-w-0 flex-1">
+        <span className="block text-[15px] md:text-[13px] md:font-medium">Update on their own</span>
+        <span className="block text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">{POLICY_HINT[policy]}</span>
+      </span>
+      <Segmented value={policy} onChange={(v) => void setPrefs({ updates: v })} label="Which plugins update on their own" className="w-full shrink-0 md:w-[230px]"
+        options={[{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]} />
     </div>
   )
 }
@@ -164,12 +221,14 @@ export function PluginBrowse({ query, source, setSource, showInstalled }: { quer
   const sources = hostsNow().filter(([, h]) => h.browse)
   const src = sources.find(([h]) => h === source)?.[1].browse
   return (
-    <section data-plugin-browse>
+    <section className="@container" data-plugin-browse>
+      <Bundles />
       {sources.length > 0 && (
         <Segmented value={src ? source : ""} onChange={setSource} label="Where from" className="mb-3 w-full max-w-[300px]"
-          options={[{ value: "", label: "Vaultite" }, ...sources.map(([h, info]) => ({ value: h, label: info.browse!.title }))]} />
+          options={[{ value: "", label: "Vaultite directory" }, ...sources.map(([h, info]) => ({ value: h, label: info.browse!.title }))]} />
       )}
       {src ? <HostBrowse key={source} src={src} query={query} showInstalled={showInstalled} /> : <Directory query={query} showInstalled={showInstalled} />}
+      <AutoUpdates />
     </section>
   )
 }

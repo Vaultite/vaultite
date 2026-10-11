@@ -1,7 +1,7 @@
 {
   "id": "cursor",
   "icon": "cursor",
-  "category": "agents",
+  "category": "ai-apps",
   "essential": true,
   "name": "Cursor",
   "description": "What Cursor and its CLI do on this machine: the plan's included usage and when it renews, chats open now, usage and its value estimated at list prices, by day, project and model. Chats read from Cursor's own files; the plan's usage from Cursor's dashboard, once you allow it; nothing saved.",

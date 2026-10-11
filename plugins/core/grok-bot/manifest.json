@@ -4,7 +4,7 @@
   "category": "ai-apps",
   "offByDefault": true,
   "name": "Grok Bot",
-  "description": "What Grok Bot, Cursor's always-on cloud agent, did: its week's allowance and when it renews, its value estimated at list prices by day and model, and its latest conversations. Read from Cursor's dashboard with Cursor.app's sign-in on this machine, once you allow it; nothing saved.",
+  "description": "Grok Bot, Cursor's always-on cloud agent: its week's allowance and when it renews, its value estimated at list prices by day and model, and its latest conversations. Read from Cursor's dashboard with Cursor.app's sign-in on this machine, once you allow it; nothing saved.",
   "tint": "teal",
   "runsOnServer": true,
   "settings": {

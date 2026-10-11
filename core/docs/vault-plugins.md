@@ -168,7 +168,7 @@ here, nor one that says it does more beyond the vault than it did. Each update i
 with what's new (its commits' subjects since, upkeep left out): `vau plugin history`; `vau plugin rollback <id>` goes
 back to the version before and skips the newer one from then on. Writing one in its own folder: `vau plugin install <folder>`, turn
 it on, then after each edit `vau plugin update <id> --apply` (it keeps running); a `.vaultiteignore` (like .gitignore)
-leaves its tests and QA out of installs. The Plugins page's Browse (`vau plugin search`) lists the plugin
+leaves its tests and QA out of installs. The Plugins page's Get plugins (`vau plugin search`) lists the plugin
 directory: every GitHub repository with the topic `vaultite-plugin` and a version tag, read daily into one index
 (plugins.json's `index`: an https address, or `owner/name/path.json` in a GitHub repository, read with git so a private
 one works), which can also block a version with a known problem (it then doesn't load). To publish one:
