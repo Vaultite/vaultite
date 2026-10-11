@@ -12,6 +12,11 @@ if (typeof window !== "undefined") {
     const to = e.relatedTarget
     if (to instanceof Element ? !to.closest("[data-sonner-toaster]") : byTab(e)) e.stopPropagation()
   }, true)
+  // Only a Tab in is kept to undo: a clicked toast's button goes with it, and sonner gave the keyboard back at its next
+  // draw, out of a palette opened since.
+  addEventListener("focusin", (e) => {
+    if (e.target instanceof Element && e.target.closest("[data-sonner-toaster]") && !byTab(e)) e.stopPropagation()
+  }, true)
 }
 
 export function Toaster({ desktop }: { desktop: boolean }) {
