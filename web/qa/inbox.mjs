@@ -76,6 +76,21 @@ if (focused) {
 vau("notify", "Wrote the weekly review", "--action-open", "Welcome.md")
 check("vau notify: a toast with Open", !!(await toastWith("Wrote the weekly review")))
 
+// 4b. A long one stays small: an event toasts its title and the body's first line, any toast 3 lines at most, its button in reach.
+const facts = Array.from({ length: 10 }, (_, i) => `- Fact ${i + 1}: ${"a long sentence about the vault and its machines ".repeat(4)}`).join("\n")
+await api("POST", "inbox/events", { source: "lighthouse", kind: "info", title: "Lighthouse learned 10 things", body: facts })
+const longToast = await toastWith("Lighthouse learned 10 things")
+check("a long event toasts its title and first line only", !!longToast && longToast.includes("Fact 1") && !longToast.includes("Fact 2"), longToast)
+vau("notify", "Imported ".repeat(200), "--action-open", "Welcome.md")
+await toastWith("Imported Imported")
+await wait(800) // its slide in
+const box = await toasts().filter({ hasText: "Imported Imported" }).first().evaluate((t) => {
+  const title = t.querySelector("[data-title]"), b = t.querySelector("[data-button]")?.getBoundingClientRect()
+  return { lines: Math.round(title.getBoundingClientRect().height / parseFloat(getComputedStyle(title).lineHeight)), button: !!b && b.width > 0 && b.right <= innerWidth && b.bottom <= innerHeight }
+})
+check("a long toast shows 3 lines at most, its button in reach", box.lines <= 3 && box.button, box)
+await shot(page, "1b-long-toasts")
+
 // 5. Results: a file written in Inbox/, one through the API (an agent's, like MCP's inbox_add).
 await page.goto(`${B}#file/${enc(TODAY)}`)
 await wait(1000)

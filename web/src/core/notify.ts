@@ -14,6 +14,9 @@ export type NotifyOptions = {
 }
 
 const message = (e: unknown) => String((e as Error)?.message ?? e)
+/** Past this a toast's text is cut: the CSS shows 3 lines (4 on phones), and a whole log in the DOM helps no one. */
+const MAX = 400
+const short = (text: string) => text.length > MAX ? `${text.slice(0, MAX - 1).trimEnd()}…` : text
 
 /** Show a toast. Returns its id (dismissNotice closes it early). */
 export function notify(text: string, opts: NotifyOptions = {}) {
@@ -28,7 +31,7 @@ export function notify(text: string, opts: NotifyOptions = {}) {
       },
     },
   }
-  return kind === "error" ? toast.error(text, data) : toast(text, data)
+  return kind === "error" ? toast.error(short(text), data) : toast(short(text), data)
 }
 
 /** Close a toast before its time. */

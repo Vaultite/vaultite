@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Toasts stay small: at most 3 lines (4 on phones) with their buttons in reach, and an inbox toast shows the title and the first line, the rest in the Inbox.
 - Quitting the app (or stopping its server) stops what vault plugins run first: an agent's turn in Agents ends with it.
 - Find (⌘F, Vim's /) lights and scrolls to matches in tables, callouts and folded details, skips text that isn't shown outside source mode, finds on pages that aren't text files (a dashboard, Today), and Vim's bars sit above the status bar.
 - **Themes reach everything**: Change colour scheme lists every scheme in the palette and shows the whole app in the

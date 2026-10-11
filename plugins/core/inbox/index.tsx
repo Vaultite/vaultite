@@ -15,11 +15,18 @@ import type { InboxEvent, InboxItem } from "./types"
 const watching = (e: InboxEvent) => (e.kind === "done" || e.kind === "waiting") && document.visibilityState === "visible" && document.hasFocus() &&
   targetOf(e) === focusedTarget()
 
+/** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a day's learnings, a log). */
+function toastText(e: InboxEvent) {
+  const first = e.gate ? "" : e.body?.split("\n").map((l) => l.replace(/^[-*>#\s]+/, "").trim()).find(Boolean) ?? ""
+  if (!first) return e.title
+  return first.length > 140 ? `${e.title}: ${first.slice(0, 139).trimEnd()}…` : `${e.title}: ${first}`
+}
+
 function announce(e: InboxEvent, s: Settings) {
   if (getEvents().events.find((x) => x.id === e.id)?.read) return
   const to = targetOf(e)
   if (s.toasts !== false) {
-    notify(e.body && !e.gate ? `${e.title}: ${e.body}` : e.title, {
+    notify(toastText(e), {
       id: `inbox-${e.id}`, kind: e.kind === "error" ? "error" : undefined,
       action: to ? { label: "Open", run: () => openEvent(e) } : undefined,
     })
