@@ -13,6 +13,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.socket(pattern, fn, opts)`: A WebSocket at /api/<pattern>. `opts.accept` runs before the upgrade and refuses it by throwing an HTTPError. Sockets of a plugin that's off are refused.
 - `plugin.block(name, fn)`: fn(ctx) -> Markdown: what ```block-<name> shows as text, for AIs (GET /api/render). Every block the app draws has one (npm run check); ctx.options has the manifest's declared defaults filled in.
 - `plugin.onUnload(fn)`: fn() runs when the plugin is unloaded: a vault plugin turned off, or changed (it's loaded again). Stop timers and close what it opened here.
+- `plugin.unload()`: Unload it: off the vault, and its onUnload functions run.
 - `plugin.onSync(fn)`: fn(vault) runs after every sync of the vault (before each request, and when files change on disk: core/live.ts), to follow the files themselves (File history keeps their earlier versions). Keep it cheap: it runs often.
 - `plugin.onMove(fn)`: fn(from, to) when the API moves, restores or trashes a file (to: null; `trashed`: where it went), so what the plugin keeps follows; even while it's off. Moves on disk (Finder, iCloud) aren't heard.
 - `plugin.onCreate(fn)`: fn(path, fm, writer) before the API writes a new Markdown file: the keys it returns are added (the file's own win). `writer` is who asked (null for no request). Only while on; files written on disk aren't heard.
@@ -34,11 +35,15 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.seeded(file)`: This plugin's settings with the defaults another app's settings give them under its own (Vault.configWithDefaults): what applies; never saved back (settings() is what's written).
 - `plugin.readSettings(file)`: The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty.
 - `plugin.saveSettings(data, file)`: Write the settings (null removes the file).
+- `plugin.patchSettings(changes, { nullRemoves)`: Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's value is checked against its manifest declaration (400).
+- `plugin.localKeys(file)`: The keys its manifest marks `local`: this machine's (core/trust.ts), never read from or written to the vault.
+- `plugin.dayLog(kind)`: A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly.
 - `plugin.localDir(make)`: Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make` is false, with vault.txt naming the vault.
 - `plugin.cachePath()`: .vaultite/cache/<id>.json in the vault (the vault's folder when run on its own, like the GitHub refresh).
 - `plugin.secrets()`: This machine's data/config.json (private URLs, keys). Never copy these into the vault.
 - `plugin.saveSecrets(data)`: Sets this plugin's own key in data/config.json (`secrets()[plugin.id]`; null removes it), the rest as it is. The file is readable by this machine's user only.
 - `plugin.refusal(req, what)`: Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the plugin's `allowUsers` and `allowRemote` settings.
+- `plugin.ownerOnly(req, what?)`: Throw 403 unless this request is this machine's owner's (refusal); one made in-process (no `http`) is.
 - `plugin.allows(what)`: Whether this machine's owner said yes to `what` (a command a vault setting names: a synced or shared vault mustn't choose what runs here). Kept on this machine, never in the vault (core/trust.ts).
 - `plugin.allow(what)`: Remember this machine's owner said yes to `what` (only after asking them: plugin.refusal).
 - `plugin.memo(ttl, fn, ...args)`: fn(...args), remembered in memory for ttl seconds (live data: fetched again when it's stale). A failure isn't.
@@ -46,7 +51,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.editLine(rel, n, was, now)`: A small edit of one line of a vault file: line `n` (from 0, the whole file's, frontmatter too) from `was` to `now` (a list: several lines in its place; null: removed). 409 when that line isn't `was` any more (edited meanwhile).
 - `plugin.peer(id)`: Another loaded plugin (one this plugin requires), to use what it offers: logs.exports.areaSummary(...), or its settings: plugin.peer("templates")?.settings().
 - `plugin.propertyTypes()`: The vault's property types (propertyTypes, below).
-- `plugin.isOff()`: Whether this plugin is switched off in plugins.json (Vault.switchedOff: `disabled`, or `offByDefault` and not turned on): its routes still answer, so one that mustn't checks.
+- `plugin.isOff()`: Whether this plugin is off (Vault.switchedOff, what it requires too): its routes still answer, so one that mustn't checks.
 - `plugin.service(name)`: The service `name` of a plugin that's on (plugin.provide), or null: what this plugin asks of others without naming them (Terminal runs a coding agent through "agent:<name>", whoever brings it).
 - `plugin.ask(name, fallback, ...args)`: The service `name`'s answer (`args` passed), or `fallback` when no plugin that's on provides it or it fails.
 - `plugin.docs()`: Its docs (core/docs.ts): its AGENTS.md, then settings, blocks and operations generated from the manifest and ops, so what AIs read is what the app checks. null when it has none.

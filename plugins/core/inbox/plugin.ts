@@ -379,8 +379,7 @@ const isOne = (e: InboxEvent, ids: string[]) => ids.includes(splitMachine(e.id)[
 /** Only this machine's owner (core/owner.ts) writes events: they're toasts and notifications on their screen. */
 async function owner(req: Request) {
   if (plugin.isOff()) throw new HTTPError(404, "the Inbox plugin is off (Settings > Plugins)")
-  const why = req.http ? await plugin.refusal(req.http, "the inbox") : ""
-  if (why) throw new HTTPError(403, why)
+  await plugin.ownerOnly(req, "the inbox")
 }
 
 plugin.route("GET", "inbox/events", async (req) => {

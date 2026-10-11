@@ -9,21 +9,6 @@ export const plugin = new Plugin(import.meta.url)
 plugin.provide("text:canvas", (text: string) => canvasMarkdown(text))
 plugin.provide("links:canvas", (text: string) => canvasLinks(text))
 
-const SETTINGS = new Set(["snapToGrid", "snapToObjects"])
-plugin.route("GET", "canvas/settings", () => plugin.settings())
-plugin.route("PUT", "canvas/settings", (req) => {
-  const cur = plugin.readSettings() ?? {}
-  const next = { ...cur }
-  for (const [k, v] of Object.entries((req.body ?? {}) as Record<string, unknown>)) {
-    if (!SETTINGS.has(k)) throw new HTTPError(400, `no setting '${k}'`)
-    if (v === null) delete next[k]
-    else if (typeof v !== "boolean") throw new HTTPError(400, `'${k}' is true or false`)
-    else next[k] = v
-  }
-  if (JSON.stringify(next) !== JSON.stringify(cur)) plugin.saveSettings(next)
-  return next
-})
-
 const TIMEOUT = 5000
 const MAX_HTML = 1024 * 1024 // YouTube's og: tags come after 700 KB of scripts
 

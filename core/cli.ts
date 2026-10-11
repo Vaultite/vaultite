@@ -101,8 +101,6 @@ export function servers(env: Record<string, string | undefined> = process.env, c
 /** stdin's text; `implicit`: read unasked (a body piped in), so "" rather than an error from a terminal. */
 export type Stdin = (implicit?: boolean) => Promise<string>
 export type CtxOptions = { url?: string; api?: Api; env?: Record<string, string | undefined>; stdin?: Stdin
-  /** No longer used: the vault is the server's (every command is one of its operations). */
-  vault?: string
   /** Who's calling, when it isn't the CLI as such (X-Vaultite-Client: "mcp" for `vau mcp`'s tools) and the agent it
    *  calls for (X-Vaultite-Agent: "claude-code"), when its variables can't say (an MCP client names itself). */
   client?: string; agent?: string }
@@ -644,8 +642,11 @@ export async function execute(argv: string[], opts: CtxOptions = {}): Promise<{ 
     const out = await runOp(op, rest, c, { json: !!a.flags.json, count: !!a.flags.count, paths: !!a.flags.paths })
     return { code: 0, out, err: "", ...(op.exact && !a.flags.json ? { exact: true } : {}) }
   } catch (e) {
-    if (e instanceof CliError) return { code: 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}` }
-    throw e
+    if (!(e instanceof CliError)) throw e
+    // (`vau errors 3f9a`: the command under it that takes the word, `vau errors show 3f9a`)
+    const under = e.message.startsWith("too many arguments") ? (ops ?? []).filter((x) => x.cli?.startsWith(`${op.cli ?? op.id} `) && x.args.length) : []
+    const hint = under.length ? ` Did you mean ${under.slice(0, 3).map((x) => `vau ${x.cli} ${rest.find((w) => !w.startsWith("-")) ?? ""}`.trim()).join(" or ")}?` : ""
+    return { code: 1, out: "", err: `vau ${op.cli ?? op.id}: ${e.message}${hint}` }
   }
 }
 

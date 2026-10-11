@@ -18,7 +18,7 @@ export type Actor = {
 
 /** What was done; `ui` is an agent driving the app, `run` a shell command an agent ran, `request` anything else. */
 export type Action = "edit" | "create" | "delete" | "move" | "save" | "settings" | "pin" | "ui" | "read" | "search" | "run"
-  | "open" | "command" | "drop" | "change" | "request"
+  | "open" | "command" | "drop" | "change" | "request" | "failed"
 
 /** What was done, in a few kinds to filter by (the panel's and the feed's What, `?action=` and `vau activity --action`):
  *  each a list of actions. */
@@ -28,6 +28,7 @@ export const ACTION_KINDS = [
   { id: "commands", label: "Commands", actions: ["command", "run", "ui", "drop"] },
   { id: "settings", label: "Settings", actions: ["settings", "pin"] },
   { id: "other", label: "Other requests", actions: ["request"] },
+  { id: "failed", label: "Failed", actions: ["failed"] },
 ] as const satisfies readonly { id: string; label: string; actions: readonly Action[] }[]
 export type ActionKind = typeof ACTION_KINDS[number]["id"]
 

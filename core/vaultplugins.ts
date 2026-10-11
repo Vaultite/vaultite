@@ -397,13 +397,7 @@ export class VaultPlugins {
 
   private unload(vp: VaultPlugin) {
     const p = vp.plugin!
-    for (const fn of p.cleanups) {
-      try {
-        fn()
-      } catch (e) {
-        console.error(`vault plugin ${vp.id}: onUnload:`, e)
-      }
-    }
+    p.unload()
     for (const k of p.kinds) this.vault.unregister(k)
     p.forget()
     vp.plugin = null

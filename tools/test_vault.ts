@@ -883,6 +883,10 @@ check("...and isn't deleted (unpin it, or turn its plugin off)", rc >= 400 && ex
   await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "health") })
   app.installPages()
   check("its plugin off, its page goes", !exists(BI("Health")))
+  const peopleOff = { ...conf, disabled: [...(conf.disabled ?? []), "people"] }
+  await api("PUT", "config/plugins", peopleOff)
+  check("a plugin whose requirement is off is off too: no hooks, ops or services", vault.switchedOff().has("people-map") && app.plugins.find((p) => p.id === "people-map")!.isOff())
+  await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "health") })
   await api("POST", "pins", { path: BI("Health"), pinned: false }).catch(() => {})
   await api("PUT", "config/plugins", conf)
   const back = app.installPages()
@@ -903,17 +907,6 @@ for (const n of fs.readdirSync(path.join(VAULT, ".vaultite/pages/Dashboards")).f
   await api("POST", "ops/dashboard.copy", { path: `.vaultite/pages/Dashboards/${n}`, folder: "Dashboards" })
 }
 write("Dashboards/Today.md", read("Dashboards/Today.md").replace("icon: sun", "icon: star"))
-// A vault from before: the copies the user never changed can go once (asked once); the built-in ones come back.
-let [, cps] = await api("POST", "ops/dashboard.copies", {})
-check("copies: the unchanged ones are listed, not the one the user changed", !cps.offered && cps.copies.some((c: Any) => c.path === "Dashboards/Health.md") &&
-  !cps.copies.some((c: Any) => c.path === "Dashboards/Today.md"), cps)
-const learnPinned = pinsNow().indexOf("Dashboards/Learning.md")
-;[cc] = await api("POST", "ops/dashboard.uncopy", { paths: ["Dashboards/Learning.md"] })
-check("uncopy: to the trash, the built-in back where its pin was", cc === 200 && !exists("Dashboards/Learning.md") && exists(BI("Learning")) &&
-  learnPinned >= 0 && pinsNow()[learnPinned] === BI("Learning"), pinsNow())
-;[cc] = await api("POST", "ops/dashboard.uncopy", { keep: true })
-;[, cps] = await api("POST", "ops/dashboard.copies", {})
-check("keep: the rest stay, and it isn't offered again", cc === 200 && cps.offered && exists("Dashboards/People.md"), cps)
 // Folders are the user's: a copy moved into another folder is still the user's page (its name, type and plugin);
 // a path written before the move still renders.
 {
@@ -1850,7 +1843,7 @@ const cliApi = async (method: string, route: string, body?: unknown) => {
   return { status, body: b }
 }
 let stdinText = ""
-const vau = (...argv: string[]) => execute(argv, { api: cliApi, vault: VAULT, env: {}, stdin: async () => stdinText })
+const vau = (...argv: string[]) => execute(argv, { api: cliApi, env: {}, stdin: async () => stdinText })
 const conf = (name: string) => JSON.parse(read(`.vaultite/${name}.json`))
 let cr = await vau("--help")
 check("vau: --help lists every command", cr.code === 0 && ["context", "render", "panels", "appearance", "hotkey", "open", "plugin"].every((n) => cr.out.includes(`  ${n} `)), cr.out)
@@ -1858,6 +1851,8 @@ check("vau: plugins' ops and commands are listed, after the core's (where am I f
   && cr.out.indexOf("  context ") < cr.out.indexOf("  render ") && cr.out.indexOf("  render ") < cr.out.indexOf("  pin "), cr.out)
 cr = await vau("panels", "--help")
 check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)
+cr = await vau("errors", "3f9a")
+check("vau: a word too many names the command under it that takes one", cr.code === 1 && cr.err.includes("Did you mean vau errors show 3f9a") && cr.err.includes("vau errors clear 3f9a"), cr.err)
 cr = await vau("nope")
 check("vau: an unknown command says so", cr.code === 2 && cr.err.includes("no command 'nope'"), cr)
 fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["random-note"], enabled: ON, order: ["people"], custom: 1 }, null, 2) + "\n")
@@ -2919,7 +2914,7 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
   // From the command line (the real routes: a session that isn't there is said, nothing starts): its words as the op's.
   tr = await vau("terminal", "send", "nosuch1", "npm", "test")
   check("vau terminal send: the id, then the rest of the words as the text", tr.code === 1 && tr.err.includes("no terminal session 'nosuch1'"), tr)
-  tr = await execute(["terminal", "end"], { api: cliApi, vault: VAULT, env: { VAULTITE_TERMINAL: "nosuch2" }, stdin: async () => "" })
+  tr = await execute(["terminal", "end"], { api: cliApi, env: { VAULTITE_TERMINAL: "nosuch2" }, stdin: async () => "" })
   check("vau terminal end: without an id, the terminal it runs in (VAULTITE_TERMINAL)", tr.code === 1 && tr.err.includes("no terminal session 'nosuch2'"), tr)
   tr = await vau("terminal", "screen", "claude-far@m1")
   check("vau terminal screen: another machine's id, from the command line", tr.code === 1 && tr.err.includes("another machine's"), tr)
@@ -3717,9 +3712,9 @@ check("graph: follows a file changed on disk", gedge("Graph test/Far.md", "Graph
 write("Graph test/With graph.md", "Links to [[Hub]].\n\n```block-graph\ndepth: 2\n```\n")
 let [, gtext] = await api("GET", "render?path=Graph test/With graph.md")
 check("graph: the block as text lists neighbours as links", gtext.includes("- [[Hub]] (links to it)") && gtext.includes("**Two links away") && gtext.includes("[[Spoke one]]") && !gtext.includes("```block-graph"), gtext)
-let [, gset] = await api("PUT", "graph/settings", { colorBy: "type", hidden: ["folder:Logs"] })
+let [, gset] = await api("PATCH", "config/plugin/graph", { colorBy: "type", hidden: ["folder:Logs"] })
 check("graph: settings saved in its data.json", gset.colorBy === "type" && JSON.parse(read(".vaultite/plugins/graph/data.json")).hidden[0] === "folder:Logs", gset)
-check("graph: unknown settings refused", (await api("PUT", "graph/settings", { nope: 1 }))[0] === 400)
+check("plugin settings: a declared one's value is checked against its manifest", (await api("PATCH", "config/plugin/graph", { colorBy: "size" }))[0] === 400)
 
 // ---------- One type per file, and archiving (core/fileprops.ts) ----------
 write("People/No Type.md", "---\nrelation: friend\n---\n\nNo type line.\n")
@@ -3798,10 +3793,10 @@ check("links: archived files lose ties, and keep what's theirs alone", lra("Kai"
 check("archived: left out of the graph", !gnode("People/Kai Old.md") && !gnode("Arch/Old note.md") && !!gnode("People/Kai New.md"))
 ;[, localG] = await api("GET", "graph?path=Arch/Old note.md&depth=1")
 check("archived: its own local graph keeps it", lp(localG).includes("Arch/Old note.md"), lp(localG))
-await api("PUT", "graph/settings", { archived: true })
+await api("PATCH", "config/plugin/graph", { archived: true })
 ;[, graph] = await api("GET", "graph")
 check("archived: a graph setting brings them back", !!gnode("People/Kai Old.md"))
-await api("PUT", "graph/settings", { archived: null })
+await api("PATCH", "config/plugin/graph", { archived: null })
 let [, aq] = await api("POST", "query", { from: "Arch/" })
 check("archived: left out of database views", JSON.stringify(qpaths(aq)) === JSON.stringify(["Arch/Links.md", "Arch/New note.md"]), qpaths(aq))
 ;[, aq] = await api("POST", "query", { from: "Arch/", archived: true })
@@ -4378,7 +4373,7 @@ async function actHeard(method: string, p: string, body: unknown, client: string
     ua: client ? "" : "curl/8.7.1", remote: "203.0.113.9", port: 1, forwarded: false })
   const t = performance.now()
   const r = await api(method, p, body)
-  end({ status: r[0], ms: performance.now() - t, body })
+  end({ status: r[0], ms: performance.now() - t, body, ...(r[0] >= 400 ? { error: r[1]?.error } : {}) })
   return r
 }
 const actEvents = async (q = "") => (await api("GET", `activity?limit=50${q}`))[1].events as Any[]
@@ -4439,8 +4434,9 @@ await actHeard("POST", "ops/nope.thing", { path: "Act/a.md" }, "cli")
 ev = await actEvents()
 check("activity: an op is worded, as who asked", ev.some((e: Any) => e.actor.name === "Claude Code" && e.text === "Saved the note Act op note" && e.route === "ops/note.create" && e.action === "save") &&
   ev.some((e: Any) => e.actor.name === "Codex" && e.text === "Added to Alice Park's timeline (call)"), ev.slice(0, 4))
-check("activity: a read op is a read; one it doesn't know, by its id", ev.some((e: Any) => e.action === "read" && e.text === "Read property.list" && e.actor.name === "curl") &&
-  ev.some((e: Any) => e.text === "Ran nope.thing (Act/a.md)" && e.status === 404), ev.slice(0, 4))
+check("activity: a read op is a read", ev.some((e: Any) => e.action === "read" && e.text === "Read property.list" && e.actor.name === "curl"), ev.slice(0, 4))
+check("activity: a call the CLI got wrong is kept with why (vau activity --action failed)", (await actEvents("&action=failed")).some((e: Any) =>
+  e.text.startsWith("nope.thing failed: no operation 'nope.thing'") && e.status === 404), await actEvents("&action=failed"))
 const [, pf2] = await api("GET", "activity/perf")
 check("activity: ops are timed one by one", act.routeOf("ops/note.create") === "ops/note.create" && pf2.routes.some((r: Any) => r.route === "POST ops/note.create"), pf2.routes.map((r: Any) => r.route))
 const [, blk] = await api("GET", "render?path=Act/a.md")
@@ -5880,7 +5876,7 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
   setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/Today.md"] })
   setConf("plugins/page-preview/data", { delay: 300 })
-  setConf("plugins/terminal/data", { allowRemote: true })
+  await api("PATCH", "config/plugin/terminal", { allowRemote: true })
   for (const f of ["sidebars", "hotkeys"]) { try { fs.unlinkSync(path.join(VAULT, `.vaultite/${f}.json`)) } catch { /* none */ } }
   const desk = { name: "Desk", sidebars: { left: ["files:files"], right: [], collapsed: [] }, pinned: ["People/Alice Park.md", "Dashboards/Today.md"] }
   writeWs({ workspaces: [desk] })
@@ -5935,7 +5931,7 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
   check("bundles: code needs allowCode", code === 409 && !exists(".vaultite/plugins/hello/manifest.json"), [code, r])
   ;[code] = await api("POST", "bundles/coder/apply", { allowCode: true })
   check("bundles: with allowCode, the vault plugin is copied in and turned on", code === 200 && exists(".vaultite/plugins/hello/manifest.json") && conf("plugins").enabled.includes("hello") &&
-    conf("plugins/terminal/data").allowRemote === true, conf("plugins"))
+    (await api("GET", "config/plugin/terminal"))[1].allowRemote === true, conf("plugins"))
   const hello = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "hello")
   check("bundles: a vault plugin it brought with allowCode is allowed on this machine", hello?.loaded && !hello.approval, hello)
   ;[code] = await api("POST", "bundles/restore")
@@ -6390,14 +6386,23 @@ plugin.every("gone", null)
 {
   const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "100.64.0.9" } } as Any
   const refused = async (id: string, params: Any) => app.runOp(id, params, { http: stranger }).then(() => "ran", (e) => (e.status === 403 ? "refused" : `error ${e.status}: ${e.message}`))
-  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/terminal/data.json"), "{}\n") // (a test above let anyone in)
+  await api("PATCH", "config/plugin/terminal", { allowRemote: null }) // (a test above let anyone in)
+  // Who may reach a plugin is this machine's (core/trust.ts): never read from the vault, changed only by its owner.
+  write(".vaultite/plugins/terminal/data.json", JSON.stringify({ allowRemote: true, allowUsers: ["x@example.com"] }))
+  await vault.synced()
+  check("local settings: one in the vault's file is ignored", !("allowRemote" in (await api("GET", "config/plugin/terminal"))[1]))
+  {
+    const stranger = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any
+    const r = await app.run("PATCH", ["config", "plugin", "terminal"], {}, { allowRemote: true }, stranger)
+    check("local settings: someone else on the tailnet can't change them", r.status === 403 && !(await api("GET", "config/plugin/terminal"))[1].allowRemote, r)
+  }
+  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins/terminal/data.json"), "{}\n")
   const t = await refused("terminal.list", {})
   check("ops: an owner-only op is refused to someone else on the tailnet", t === "refused", t)
   check("ops: an op whose route only the owner may use is refused the same (the request goes with ctx.api)", await refused("inbox.clear", {}) === "refused")
   check("ops: in-process (no request) nothing is refused", (await app.runOp("ops.list", {})).result !== undefined)
   // MCP lets a login the owner allowed (allowUsers) in, and its tools run for that request: the owner's ops stay refused.
-  write(".vaultite/plugins/mcp/data.json", JSON.stringify({ allowUsers: ["stranger@example.com"] }) + "\n")
-  await vault.synced()
+  await api("PATCH", "config/plugin/mcp", { allowUsers: ["stranger@example.com"] })
   const viaMcp = async (name: string, args: Any) => {
     const served = { headers: { host: "vault.example.ts.net", "tailscale-user-login": "stranger@example.com" }, socket: { remoteAddress: "127.0.0.1" } } as Any // (through Tailscale Serve)
     const r = await app.run("POST", ["mcp"], {}, { jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }, served)
@@ -6409,7 +6414,7 @@ plugin.every("gone", null)
   check("mcp: an owner-only op through MCP is refused to that login (the MCP request goes with the op)", term.isError === true && /owner|only/i.test(term.content[0].text), term)
   const inbox = await viaMcp("call", { id: "inbox.clear" })
   check("mcp: and an op whose route only the owner may use", inbox.isError === true, inbox)
-  fs.rmSync(path.join(VAULT, ".vaultite/plugins/mcp/data.json"))
+  await api("PATCH", "config/plugin/mcp", { allowUsers: null })
 }
 
 // Token count: each Markdown file against its limit, and what a CLAUDE.md loads with its @imports (token-count/plugin.ts).

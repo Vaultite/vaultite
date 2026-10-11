@@ -32,6 +32,14 @@ export function logFailure(where: string, e: unknown) {
   else console.error(where, e)
 }
 
+/** Run plugin `id`'s hook on its own: what it throws, now or later (a promise), is logged as `<id>: <what>:`. */
+export function runHook(id: string, what: string, fn: () => unknown) {
+  try {
+    const out = onItsOwn(id, fn)
+    if (out instanceof Promise) out.catch((e) => logFailure(`${id}: ${what}:`, e))
+  } catch (e) { logFailure(`${id}: ${what}:`, e) }
+}
+
 /** A vault's side of the gate (Vault sets it up): may `plugin` write `rel`, and what to do when it may not. */
 export type Gate = { may: (plugin: string, rel: string) => boolean; refused: (plugin: string, rel: string) => void }
 const gates = new Map<string, Gate>()

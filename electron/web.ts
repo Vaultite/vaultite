@@ -2,6 +2,7 @@
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, session, shell, type Session, systemPreferences,
   WebContentsView, type WebContents } from "electron"
+import { writeAtomic } from "./setup.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -652,8 +653,7 @@ let iconsSaving: ReturnType<typeof setTimeout> | null = null
 function saveIcons() {
   iconsSaving ??= setTimeout(() => {
     iconsSaving = null
-    const tmp = `${iconsFile()}.${process.pid}.tmp`
-    try { fs.writeFileSync(tmp, JSON.stringify({ icons: Object.fromEntries(loadIcons()) })); fs.renameSync(tmp, iconsFile()) } catch { fs.rm(tmp, { force: true }, () => {}) }
+    try { writeAtomic(iconsFile(), JSON.stringify({ icons: Object.fromEntries(loadIcons()) })) } catch { /* kept in memory */ }
   }, 2000)
 }
 

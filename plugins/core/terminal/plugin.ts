@@ -717,8 +717,7 @@ plugin.onUnload(() => { if (poll) clearInterval(poll); if (listTimer) clearTimeo
 terminalOps(plugin) // vau terminal ...: terminal.list, open, resume, screen, send, end, tidy (ops.ts), through these routes
 
 async function owner(req: Request) {
-  const why = req.http ? await plugin.refusal(req.http, "the terminal") : ""
-  if (why) throw new HTTPError(403, why)
+  await plugin.ownerOnly(req, "the terminal")
 }
 /** The id a route names, this machine's: another machine's (id@machine) is answered there. */
 function localId(req: Request) {

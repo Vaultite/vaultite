@@ -158,16 +158,3 @@ files are left out unless asked for. depth 2 to 5 adds what's that many links aw
     ...(r.further.length ? ["", "Further out:", ...r.further.map((x: { path: string; dist: number }) => `- ${x.path} (${x.dist} links away)`)] : [])].join("\n"),
 })
 
-const SETTINGS = new Set(["colorBy", "orphans", "hidden", "depth", "archived"])
-
-plugin.route("GET", "graph/settings", () => plugin.settings())
-plugin.route("PUT", "graph/settings", (req) => {
-  const cur = plugin.readSettings() ?? {}
-  const next = { ...cur }
-  for (const [k, v] of Object.entries(req.body ?? {})) {
-    if (!SETTINGS.has(k)) throw new HTTPError(400, `no setting '${k}'`)
-    if (v === null) delete next[k]; else next[k] = v
-  }
-  if (JSON.stringify(next) !== JSON.stringify(cur)) plugin.saveSettings(next)
-  return next
-})

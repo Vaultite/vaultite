@@ -10,11 +10,11 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
-import { type BlockDecls, blocksDoc, declsOf, settingsDoc, settingsOf } from "./blocks.ts"
+import { type BlockDecls, blocksDoc, declsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
 import { entryOf, type Op, type OpCtx, type OpEntry, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
-import { ownerLogin, refusal } from "./owner.ts"
+import { ownerRefusal } from "./owner.ts"
 export { CONNECT_HEADER, fromInternet } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"
 import { pinFile, pinKind, withPinFile } from "./pins.ts"
@@ -22,7 +22,7 @@ import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
 import { type PropTypes, readTypes } from "./proptypes.ts"
 import { trustOf } from "./trust.ts"
-import { onItsOwn } from "./writegate.ts"
+import { onItsOwn, runHook } from "./writegate.ts"
 /** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
  *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
 export { WriteRefused } from "./writegate.ts"
@@ -240,7 +240,8 @@ export type Socket = { pattern: string[]; fn: SocketHandler; accept?: SocketAcce
 export type RequestStart = { t: number; method: string; route: string; query: Record<string, string>; client: string | null
   agent: string | null; command: string | null; ua: string; remote: string; port: number; forwarded: boolean }
 /** How it ended: its status, how long it took (ms), and the body it was sent (JSON, parsed; undefined for none). */
-export type RequestEnd = { status: number; ms: number; body: unknown }
+/** How a request ended: `error`, what a failed one (4xx, 5xx) answered. */
+export type RequestEnd = { status: number; ms: number; body: unknown; error?: string }
 export type RequestHook = (start: RequestStart) => ((end: RequestEnd) => void) | void
 export type { ServerError }
 /** `lock: false`: not held while it runs. `stream: true`: the route reads `req.http` itself (uploads of any size),
@@ -293,10 +294,11 @@ export class Plugin {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   services: Record<string, (...args: any[]) => any> = {}
   /** What to undo when it's unloaded (a vault plugin turned off or changed): plugin.onUnload(() => clearInterval(t)). */
-  cleanups: (() => void)[] = []
+  private cleanups: (() => void)[] = []
   private _vault: Vault | null = null
   /** Its hooks into the vault (onSync, onMove...): each adds itself to a vault and answers what removes it. */
   private attachers: ((v: Vault) => () => void)[] = []
+  private detachers: (() => void)[] = [] // what removes them from the vault they're in
   /** plugin.onRequest's and plugin.onChange's functions (the core calls them only while the plugin is on). */
   requestFns: RequestHook[] = []
   changeFns: ((paths: string[] | null) => void)[] = []
@@ -327,14 +329,15 @@ export class Plugin {
   }
 
   set vault(v: Vault) {
+    for (const detach of this.detachers.splice(0)) detach()
     this._vault = v
-    for (const attach of this.attachers) this.cleanups.push(attach(v))
+    for (const attach of this.attachers) this.detachers.push(attach(v))
   }
 
   /** A hook into the vault: added now when it's loaded, else once it is. */
   private attach<F>(fn: F, attach: (v: Vault) => () => void) {
     this.attachers.push(attach)
-    if (this._vault) this.cleanups.push(attach(this._vault))
+    if (this._vault) this.detachers.push(attach(this._vault))
     return fn
   }
 
@@ -397,16 +400,23 @@ export class Plugin {
     return fn
   }
 
+  /** Unload it: off the vault, and its onUnload functions run. */
+  unload() {
+    for (const fn of [...this.detachers.splice(0), ...this.cleanups.splice(0)]) {
+      try { fn() } catch (e) { console.error(`${this.id}: onUnload:`, e) }
+    }
+  }
+
   /** fn(vault) runs after every sync of the vault (before each request, and when files change on disk: core/live.ts),
    *  to follow the files themselves (File history keeps their earlier versions). Keep it cheap: it runs often. */
   onSync(fn: (vault: Vault) => void) {
-    return this.attach(fn, (v) => v.afterSync((vault) => onItsOwn(this.id, () => fn(vault))))
+    return this.attach(fn, (v) => v.afterSync((vault) => runHook(this.id, "onSync", () => fn(vault))))
   }
 
   /** fn(from, to) when the API moves, restores or trashes a file (to: null; `trashed`: where it went), so what the
    *  plugin keeps follows; even while it's off. Moves on disk (Finder, iCloud) aren't heard. */
   onMove(fn: MoveHook) {
-    return this.attach(fn, (v) => v.onMove(fn))
+    return this.attach(fn, (v) => v.onMove((...a) => runHook(this.id, "onMove", () => fn(...a))))
   }
 
   /** fn(path, fm, writer) before the API writes a new Markdown file: the keys it returns are added (the file's own win).
@@ -528,30 +538,97 @@ export class Plugin {
   /** This plugin's settings, .vaultite/plugins/<id>/data.json (another's: plugin.peer(id)?.settings()). `file`: another
    *  file of its own, for parts written often, so devices changing different parts never write the same file. */
   settings(fallback?: Item, file = "data"): Item {
-    return this.vault.config(this.settingsName(file), fallback)
+    return this.withLocal(this.vault.config(this.settingsName(file), fallback), file)
   }
 
   /** This plugin's settings with the defaults another app's settings give them under its own (Vault.configWithDefaults):
    *  what applies; never saved back (settings() is what's written). */
   seeded(file = "data"): Item {
-    return this.vault.configWithDefaults(this.settingsName(file))
+    return this.withLocal(this.vault.configWithDefaults(this.settingsName(file)), file)
   }
 
   /** The settings as they are on disk now, for a read-modify-write: null when there's none; throws ConfigError (from
    *  core/vault.ts) when the file is there but can't be read or doesn't parse, which settings() would take for empty. */
   readSettings(file = "data"): Item | null {
-    return this.vault.readConfig(this.settingsName(file))
+    const cur = this.vault.readConfig(this.settingsName(file))
+    return cur === null && !Object.keys(this.localPart(file)).length ? null : this.withLocal(cur ?? {}, file)
   }
 
   /** Write the settings (null removes the file). */
   saveSettings(data: Item | null, file = "data") {
+    const keys = this.localKeys(file)
+    if (keys.length) {
+      const trust = trustOf(this.vault.path)
+      trust.patchLocal(this.id, Object.fromEntries(keys.map((k) => [k, data?.[k] ?? null])))
+      if (data) data = Object.fromEntries(Object.entries(data).filter(([k]) => !keys.includes(k)))
+    }
     if (data === null) this.vault.removeConfig(this.settingsName(file))
     else this.vault.setConfig(this.settingsName(file), data)
+  }
+
+  /** Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's
+   *  value is checked against its manifest declaration (400). */
+  patchSettings(changes: Item, { nullRemoves = true } = {}): Item {
+    const decls = settingsOf(this.manifest)
+    for (const [k, v] of Object.entries(changes)) {
+      const why = decls[k] ? valueProblem(decls[k], v) : ""
+      if (why) throw new HTTPError(400, `${this.id}'s ${k} ${why}`)
+    }
+    const keys = this.localKeys("data"), mine = Object.entries(changes).filter(([k]) => !keys.includes(k))
+    const local = Object.entries(changes).filter(([k]) => keys.includes(k))
+    if (local.length) trustOf(this.vault.path).patchLocal(this.id, Object.fromEntries(local))
+    return this.withLocal(this.vault.patchConfig(this.settingsName("data"), Object.fromEntries(mine), { nullRemoves }), "data")
+  }
+
+  /** The keys its manifest marks `local`: this machine's (core/trust.ts), never read from or written to the vault. */
+  localKeys(file = "data"): string[] {
+    if (file !== "data") return []
+    if (!this.locals) { const decls = settingsOf(this.manifest); this.locals = Object.keys(decls).filter((k) => decls[k].local) }
+    return this.locals
+  }
+  private locals: string[] | null = null
+
+  private localPart(file: string) {
+    return this.localKeys(file).length ? trustOf(this.vault.path).local(this.id) : {}
+  }
+
+  private withLocal(set: Item, file: string): Item {
+    const keys = this.localKeys(file)
+    if (!keys.length) return set
+    return { ...Object.fromEntries(Object.entries(set).filter(([k]) => !keys.includes(k))), ...this.localPart(file) }
   }
 
   private settingsName(file: string) {
     if (!/^[\w-]+$/.test(file)) throw new Error(`a settings file is a name of letters, digits, - and _, not '${file}'`)
     return `plugins/${this.id}/${file}`
+  }
+
+  /** A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the
+   *  server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly. */
+  dayLog<T>(kind: string) {
+    const file = (date: string) => path.join(this.localDir(), `${kind}-${date}.jsonl`), re = new RegExp(`^${kind}-(\\d{4}-\\d\\d-\\d\\d)\\.jsonl$`)
+    const lines = (rows: T[]) => rows.map((r) => JSON.stringify(r)).join("\n") + "\n"
+    let pruned = 0
+    const log = {
+      append: (t: number, rows: T[]) => {
+        if (rows.length) try { fs.appendFileSync(file(localDate(t)), lines(rows)) } catch { /* its folder gone: nothing to keep */ }
+      },
+      read: (date: string): T[] => {
+        let text: string
+        try { text = fs.readFileSync(file(date), "utf8") } catch { return [] }
+        return text.split("\n").flatMap((l) => { try { return l ? [JSON.parse(l)] : [] } catch { return [] } }) // (a torn line)
+      },
+      /** The days it has, oldest first. */
+      days: (): string[] => { try { return fs.readdirSync(this.localDir()).flatMap((f) => re.exec(f)?.[1] ?? []).sort() } catch { return [] } },
+      rewrite: (date: string, rows: T[]) => { try { if (rows.length) fs.writeFileSync(file(date), lines(rows)); else fs.rmSync(file(date), { force: true }) } catch { /* gone */ } },
+      prune: (keep: number) => {
+        if (Date.now() - pruned < 3600_000) return
+        pruned = Date.now()
+        const oldest = localDate(Date.now() - keep * 86400_000)
+        for (const d of log.days()) if (d < oldest) log.rewrite(d, [])
+      },
+    }
+    return log
   }
 
   /** Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make`
@@ -603,12 +680,16 @@ export class Plugin {
 
   /** Why this request may not have what only this machine's owner may (a shell, the screen), or "" (core/owner.ts). Reads the
    *  plugin's `allowUsers` and `allowRemote` settings. */
-  async refusal(req: IncomingMessage, what = this.manifest.name as string): Promise<string> {
+  refusal(req: IncomingMessage, what = this.manifest.name as string): Promise<string> {
     const set = this.settings({})
-    const allowRemote = set.allowRemote === true
-    const needsOwner = typeof req.headers["tailscale-user-login"] === "string" && !allowRemote
-    return refusal(req, { allowRemote, allowUsers: Array.isArray(set.allowUsers) ? set.allowUsers : [],
-      owner: needsOwner ? await ownerLogin() : "" }, what)
+    return ownerRefusal(req, { allowRemote: set.allowRemote === true, allowUsers: Array.isArray(set.allowUsers) ? set.allowUsers : [] }, what)
+  }
+
+
+  /** Throw 403 unless this request is this machine's owner's (refusal); one made in-process (no `http`) is. */
+  async ownerOnly(req: Request, what?: string) {
+    const why = req.http ? await this.refusal(req.http, what) : ""
+    if (why) throw new HTTPError(403, why)
   }
 
   /** Whether this machine's owner said yes to `what` (a command a vault setting names: a synced or shared vault mustn't
@@ -663,8 +744,7 @@ export class Plugin {
     return propertyTypes(this.vault, LOADED)
   }
 
-  /** Whether this plugin is switched off in plugins.json (Vault.switchedOff: `disabled`, or `offByDefault` and not
-   *  turned on): its routes still answer, so one that mustn't checks. */
+  /** Whether this plugin is off (Vault.switchedOff, what it requires too): its routes still answer, so one that mustn't checks. */
   isOff() {
     return this.vault.switchedOff().has(this.id)
   }
@@ -768,20 +848,15 @@ export async function load(vault: Vault): Promise<Plugin[]> {
       plugins.push(p)
     } catch (e) { console.error(`plugin ${path.basename(d)} couldn't load:`, e) }
   }
-  vault.optIn = new Set(plugins.filter((p) => p.manifest.offByDefault === true).map((p) => p.id))
+  vault.pluginList = plugins
   LOADED.splice(0, LOADED.length, ...plugins)
   return plugins
 }
 
-/** Ids of the plugins that are on (not switched off, `offByDefault` ones turned on, and everything they require on). */
+/** Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require). */
 export function enabled(vault: Vault, plugins: Plugin[]) {
   const off = vault.switchedOff()
-  const by = new Map(plugins.map((p) => [p.id, p]))
-  const on = (pid: string, seen: string[] = []): boolean => {
-    const p = by.get(pid)
-    return !!p && !off.has(pid) && !seen.includes(pid) && ((p.manifest.requires ?? []) as string[]).every((r) => on(r, [...seen, pid]))
-  }
-  return new Set(plugins.filter((p) => on(p.id)).map((p) => p.id))
+  return new Set(plugins.filter((p) => !off.has(p.id)).map((p) => p.id))
 }
 
 /** What each plugin that's on tells agents up front, its manifest's `forAgents` (a `{key}` in it is that setting's

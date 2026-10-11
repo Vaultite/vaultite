@@ -59,7 +59,7 @@ export default definePlugin({
       )
     },
   },
-  mockLive: () => ({ graph: MOCK, "graph/settings": {} }),
+  mockLive: () => ({ graph: MOCK, "config/plugin/graph": {} }),
   preview: () => (
     <div className="relative h-[240px] overflow-hidden rounded-[12px] border-[0.5px] border-border">
       <LocalGraph path="Notes/Lighthouse ideas.md" height={240} />

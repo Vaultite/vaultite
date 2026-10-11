@@ -20,7 +20,8 @@ const MARK = "# vau, the Vaultite command, written by Set up Vaultite"
 const exists = (p: string) => fs.existsSync(p)
 const quote = (s: string) => `'${s.replace(/'/g, `'\\''`)}'`
 
-function writeAtomic(p: string, text: string, mode?: number) {
+/** A file replaced whole or not at all, its folder made: what vau reads while the app writes it is never half a file. */
+export function writeAtomic(p: string, text: string, mode?: number) {
   fs.mkdirSync(path.dirname(p), { recursive: true })
   const tmp = `${p}.vaultite-${process.pid}.tmp`
   fs.writeFileSync(tmp, text, mode ? { mode } : undefined)

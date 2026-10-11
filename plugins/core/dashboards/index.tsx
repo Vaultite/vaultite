@@ -2,7 +2,6 @@ import { Copy, LayoutDashboard } from "lucide-react"
 import { dateText, definePlugin, inPagesDir, PageHeader, type PageCtx } from "@vaultite"
 import { Dashboard } from "./Dashboard"
 import { BuiltInBar, copyToVault } from "./BuiltIn"
-import { CopiesOffer } from "./Copies"
 
 // Dashboards: a `type: dashboard` file is a page of blocks while read; editing it edits the file. Off, it's a
 // Markdown file with its blocks one under another.
@@ -25,8 +24,6 @@ export default definePlugin({
   },
   // A plugin's built-in page becomes the user's file (BuiltIn.tsx).
   fileMenu: (path) => (inPagesDir(path) ? [{ label: "Copy to my vault", icon: Copy, section: "change", run: () => copyToVault(path) }] : []),
-  // Once: offer to remove copies of plugins' pages the user never changed (Copies.tsx).
-  background: () => <CopiesOffer />,
   // What a dashboard looks like: Today's, with made-up data.
   preview: "today",
 })

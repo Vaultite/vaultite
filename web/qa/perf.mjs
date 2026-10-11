@@ -384,11 +384,11 @@ async function interactions(B, page, cdp, net, phone, subjects) {
     // reloads at most once a second, so a moment longer)
     (n) => window.__perf.changes > n, seen, 500, 1100)
   // A plugin's settings changed behind its back (another device, an AI): the Graph plugin's colouring, then back.
-  const setting = await api(B, "GET", "graph/settings")
+  const setting = await api(B, "GET", "config/plugin/graph")
   out.liveSetting = await step(page, cdp, net,
-    () => api(B, "PUT", "graph/settings", { colorBy: setting.colorBy === "type" ? "folder" : "type" }),
+    () => api(B, "PATCH", "config/plugin/graph", { colorBy: setting.colorBy === "type" ? "folder" : "type" }),
     (n) => window.__perf.changes > n, await page.evaluate(() => window.__perf.changes), 500, 1100)
-  await api(B, "PUT", "graph/settings", { colorBy: setting.colorBy ?? null })
+  await api(B, "PATCH", "config/plugin/graph", { colorBy: setting.colorBy ?? null })
   // A note's text changed behind the app's back (an AI's edit), a line added to a person's timeline (POST
   // /api/interactions), and the workspace this page is on renamed (Workspaces' file, which every tab change writes).
   const changed = async (act) => {

@@ -1,7 +1,6 @@
 // Plugins' pages are built in: each template (a plugin's pages/*.md, the core's Design) is kept in PAGES_DIR while its
 // plugin is on, the template as it is now (they update with the plugin), read-only. Copy to my vault makes one the
 // user's (`copyPage`): from then on their file wins and the built-in one goes. Nothing is written outside .vaultite/.
-import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { enabled, HTTPError, type Plugin, ROOT, service } from "./plugins.ts"
@@ -33,11 +32,6 @@ const readList = (p: string): string[] => {
   try { const v = JSON.parse(readText(p)); return Array.isArray(v) ? v.filter((x) => typeof x === "string") : [] } catch { return [] }
 }
 
-/** The templates a vault from before pages were built in had copied in (its versions.json). */
-const oldVersions = (vault: Vault) => {
-  try { const v = JSON.parse(readText(vault.abs(".vaultite/generated/versions.json"))); return v && typeof v === "object" ? Object.keys(v) : [] } catch { return [] }
-}
-
 /** Where a template's built-in page is. */
 export const builtIn = (rel: string) => `${PAGES_DIR}/${rel}`
 
@@ -49,7 +43,6 @@ function read(p: string) {
   }
 }
 
-const hash = (text: string) => crypto.createHash("sha256").update(text).digest("hex").slice(0, 16)
 const fmOf = (text: string): Record<string, unknown> => {
   try { const m = FM.exec(text); const fm = m && load(m[1]); return fm && typeof fm === "object" && !Array.isArray(fm) ? fm as Record<string, unknown> : {} } catch { return {} }
 }
@@ -101,9 +94,8 @@ export function install(vault: Vault, plugins: Plugin[], opts: { pin?: boolean }
   const on = enabled(vault, plugins)
   const all = templates(plugins), list = all.filter(([id]) => id === "core" || on.has(id))
   const mine = copies(vault, list), wanted = new Set<string>()
-  // (the pages it has made before: one back with its plugin isn't new, so it isn't pinned again; a vault from before
-  // pages were built in had the ones its versions.json names, a page the user deleted among them)
-  const had = new Set(fs.existsSync(vault.abs(HAD)) ? readList(vault.abs(HAD)) : oldVersions(vault))
+  // (the pages it has made before: one back with its plugin isn't new, so it isn't pinned again)
+  const had = new Set(readList(vault.abs(HAD)))
   for (const [, rel, text] of list) {
     if (mine.has(rel)) continue
     const at = builtIn(rel)
@@ -151,41 +143,6 @@ export function copyPage(vault: Vault, page: string, folder?: string | null) {
   fs.rmSync(vault.abs(page), { force: true })
   moveIn(vault, page, to)
   return to
-}
-
-/** The pages copied into the vault before pages were built in that the user never changed: their text is a version of
- *  its template the vault had (the copy the app last installed in .vaultite/generated/, the hashes in versions.json),
- *  or the template now. */
-export function unedited(vault: Vault, plugins: Plugin[]): { path: string; template: string; plugin: string }[] {
-  const on = enabled(vault, plugins)
-  const list = templates(plugins).filter(([id]) => id === "core" || on.has(id))
-  let seen: Record<string, unknown> = {}
-  try { seen = JSON.parse(readText(vault.abs(".vaultite/generated/versions.json"))) } catch { /* none */ }
-  const out: { path: string; template: string; plugin: string }[] = []
-  for (const [rel, at] of copies(vault, list)) {
-    const [plugin, , text] = list.find(([, r]) => r === rel)!
-    const mine = read(vault.abs(at))
-    if (mine === null) continue
-    const known = new Set([hash(text), ...(Array.isArray(seen[rel]) ? seen[rel] as string[] : [])])
-    const kept = read(vault.abs(`.vaultite/generated/${rel}`))
-    if (kept !== null) known.add(hash(kept))
-    if (known.has(hash(mine))) out.push({ path: at, template: rel, plugin })
-  }
-  return out
-}
-
-/** Remove copies the user never edited (`paths`, else all of them): each to the trash, its pins and links moving to the
- *  built-in page that comes back in its place. Returns the copies removed. */
-export function uncopy(vault: Vault, plugins: Plugin[], paths?: string[]) {
-  const list = unedited(vault, plugins).filter((u) => !paths || paths.includes(u.path))
-  const tpl = new Map(templates(plugins).map(([, rel, text]) => [rel, text]))
-  for (const u of list) {
-    const at = builtIn(u.template)
-    writeAtomic(vault.abs(at), tpl.get(u.template)!)
-    vault.toTrash(u.path)
-    moveIn(vault, u.path, at)
-  }
-  return list
 }
 
 /** What "pages:installed" is told: the pages just made, and every page in its plugin's order (pageSort), with whether

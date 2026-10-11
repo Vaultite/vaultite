@@ -3,7 +3,8 @@
 import fs from "node:fs"
 import { type Op, OpError } from "./ops.ts"
 import { writeAtomic } from "./vault.ts"
-import { onItsOwn, WriteRefused } from "./writegate.ts"
+import { errorContext } from "./serverlog.ts"
+import { logFailure, onItsOwn } from "./writegate.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Item = Record<string, any>
@@ -115,12 +116,10 @@ export class Scheduler {
     const t0 = performance.now()
     let error: string | undefined
     try {
-      await onItsOwn(plugin, () => job.run())
+      await errorContext.run(`job ${key}`, () => onItsOwn(plugin, () => job.run()))
     } catch (e) {
       error = String((e as Error)?.message ?? e).slice(0, 500)
-      // (a write the user hasn't allowed yet isn't the server's error: the app asks them)
-      if (e instanceof WriteRefused) console.warn(`schedule ${key}: ${error}`)
-      else console.error(`schedule ${key}: ${error}`)
+      logFailure(`schedule ${key}:`, e) // (a write the user hasn't allowed yet is a warning: the app asks them)
     } finally {
       this.running.delete(key)
     }

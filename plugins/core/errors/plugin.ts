@@ -1,49 +1,23 @@
 // Errors: a small error tracker of the app's and server's errors, grouped by kind, kept on this machine (a crash loop would
 // churn iCloud) and never sent anywhere. The first time a kind happens, the user is told.
 import crypto from "node:crypto"
-import fs from "node:fs"
-import path from "node:path"
 import { bullets, HTTPError, localDate, localTime, OpError, Plugin, section, type ServerError } from "../../../core/plugins.ts"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList, Source } from "./model.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
-const MINUTE = 60_000, HOUR = 3_600_000, DAY = 86_400_000
+const MINUTE = 60_000, DAY = 86_400_000
 const BURST = 10_000 // the same error again within this long is counted on the next line written, not a line of its own
 const RECENT = 30 // times kept in memory per kind (the rest are in the files)
 
 // ---------- where it's kept
 
-/** This vault's folder here: <LOCAL>/errors/<vault key>/. */
-const dir = () => plugin.localDir()
-
-const FILE = /^errors-(\d{4}-\d\d-\d\d)\.jsonl$/
+const log = plugin.dayLog<ErrorEvent>("errors")
+const append = (e: ErrorEvent) => log.append(e.t, [e])
 
 function settings() {
   const s = plugin.loaded ? plugin.settings() : {}
   return { keep: Math.max(1, Number(s.keep_days) || 30), notify: s.notify !== false }
-}
-
-/** Written at once (synchronously): an error that ends the server has to be on disk before it does. */
-function append(e: ErrorEvent) {
-  try { fs.appendFileSync(path.join(dir(), `errors-${localDate(e.t)}.jsonl`), JSON.stringify(e) + "\n") } catch { /* its folder gone: nothing to keep */ }
-}
-
-function readFile(f: string): ErrorEvent[] {
-  let text: string
-  try { text = fs.readFileSync(path.join(dir(), f), "utf8") } catch { return [] }
-  const out: ErrorEvent[] = []
-  for (const line of text.split("\n")) { if (line) try { const e = JSON.parse(line); if (e && e.id && e.t) out.push(e) } catch { /* a torn line */ } }
-  return out
-}
-
-/** Files older than keep_days go (at most once an hour). */
-let pruned = 0
-function prune() {
-  if (Date.now() - pruned < HOUR) return
-  pruned = Date.now()
-  const oldest = localDate(Date.now() - settings().keep * DAY)
-  try { for (const f of fs.readdirSync(dir())) { const m = FILE.exec(f); if (m && m[1] < oldest) fs.rmSync(path.join(dir(), f)) } } catch { /* gone */ }
 }
 
 // ---------- kinds
@@ -88,9 +62,7 @@ function loaded() {
   if (groups) return groups
   groups = new Map()
   recent.clear()
-  let files: string[] = []
-  try { files = fs.readdirSync(dir()).filter((f) => FILE.test(f)).sort() } catch { /* none yet */ }
-  const rows = files.flatMap(readFile).sort((a, b) => a.t - b.t)
+  const rows = log.days().flatMap(log.read).filter((e) => e?.id && e.t).sort((a, b) => a.t - b.t)
   for (const e of rows) add(e, false)
   return groups
 }
@@ -105,7 +77,7 @@ const toldOf = new Set<string>()
 function record(e: Omit<ErrorEvent, "id">) {
   const event: ErrorEvent = { id: kindOf(e.source, e.message, e.stack), ...e }
   loaded()
-  prune()
+  log.prune(settings().keep)
   const h = held.get(event.id)
   if (h && event.t - h.at < BURST && !event.fatal) {
     h.n++
@@ -202,20 +174,15 @@ function detail(id: string): ErrorDetail {
 
 /** Forget one kind (its lines in every file) or everything. */
 function forget(id?: string) {
-  const d = dir()
-  let files: string[] = []
-  try { files = fs.readdirSync(d).filter((f) => FILE.test(f)) } catch { /* none */ }
   if (!id) {
-    for (const f of files) try { fs.rmSync(path.join(d, f)) } catch { /* gone */ }
+    for (const d of log.days()) log.rewrite(d, [])
     groups = new Map(); recent.clear(); held.clear()
     return { ok: true, forgot: "all" }
   }
   const g = detail(id).group
-  for (const f of files) {
-    const rows = readFile(f)
-    const kept = rows.filter((e) => e.id !== g.id)
-    if (kept.length === rows.length) continue
-    try { if (kept.length) fs.writeFileSync(path.join(d, f), kept.map((e) => JSON.stringify(e)).join("\n") + "\n"); else fs.rmSync(path.join(d, f)) } catch { /* gone */ }
+  for (const d of log.days()) {
+    const rows = log.read(d), kept = rows.filter((e) => e.id !== g.id)
+    if (kept.length !== rows.length) log.rewrite(d, kept)
   }
   groups!.delete(g.id); recent.delete(g.id); held.delete(g.id)
   return { ok: true, forgot: g.id }

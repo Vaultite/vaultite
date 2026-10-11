@@ -26,7 +26,7 @@ const levelOf = (el: Element) => Number(el.closest<HTMLElement>("[data-preview-l
 
 export function Previews({ store }: { store: Store }) {
   const [desktop] = useState(() => matchMedia("(hover: hover) and (pointer: fine)").matches)
-  const { data } = useLive<Settings>(desktop ? "page-preview/settings" : null)
+  const { data } = useLive<Settings>(desktop ? "config/plugin/page-preview" : null)
   const [pops, setPops] = useState<Pop[]>([])
   const live = useRef({ store, settings: data, pops })
   live.current = { store, settings: data, pops }

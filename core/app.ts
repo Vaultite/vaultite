@@ -8,7 +8,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
-import { ownerLogin, refusal as ownerRefusal } from "./owner.ts"
+import { ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
 import * as F from "./files.ts"
 import * as O from "./outside.ts"
@@ -31,7 +31,7 @@ import { hookOps } from "./hooks.ts"
 import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
 import { digestOf, VaultPlugins } from "./vaultplugins.ts"
 import * as G from "./grants.ts"
-import { byUser, logFailure, onItsOwn, WriteRefused } from "./writegate.ts"
+import { byUser, onItsOwn, runHook, WriteRefused } from "./writegate.ts"
 import { type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
 import { autoUpdates } from "./updates.ts"
 import { PluginIndex } from "./pluginindex.ts"
@@ -74,12 +74,11 @@ export class App {
     this.scheduler = new Scheduler({
       file: path.join(LOCAL, "schedules", `${vaultHere(vaultPath).key}.json`),
       jobs: () => {
-        const on = enabled(this.vault, this.plugins)
         // The core's own: .trash emptied of what's been there 30 days (one machine does it, so iCloud sees each delete once).
         return [{ plugin: "core", job: { name: "trash", every: "1d", run: () => F.emptyTrash(this.vault) } },
           // Installed plugins that update on their own (core/updates.ts): one machine fetches them, the others follow (adopt).
           { plugin: "core", job: { name: "plugin-updates", every: "1h", run: () => Object.keys(readLock(this.vault)).length ? this.runOp("plugin.update", { auto: true }) : null } },
-          ...this.plugins.filter((p) => on.has(p.id)).flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job })))]
+          ...this.on().flatMap((p): Listed[] => p.jobs.map((job) => ({ plugin: p.id, job })))]
       },
       here: (machine) => this.runsHere(machine),
       before: () => this.syncPlugins(),
@@ -130,6 +129,7 @@ export class App {
     if (changed) {
       this.plugins = [...this.app, ...this.vaultPlugins.loaded()]
       LOADED.splice(0, LOADED.length, ...this.plugins)
+      this.vault.pluginList = this.plugins
     }
     setMarks(this.plugins.map((p) => p.manifest))
     // Only the pages of plugins that are on are installed (core/pages.ts): one turned on brings its pages now.
@@ -300,7 +300,7 @@ export class App {
       vaultPlugins: () => this.vaultPlugins.list(),
       call: async (method, route, body) => {
         const { parts, query } = routeOf(route)
-        const res = await this.run(method, parts, query, body ?? {})
+        const res = await this.run(method, parts, query, body ?? {}, http)
         if (res.status >= 400) throw new HTTPError(res.status, String((res.body as Item)?.error ?? res.status))
         return res.body
       },
@@ -314,7 +314,7 @@ export class App {
     }
   }
 
-  /** The plugins that are on (not switched off in plugins.json: Vault.switchedOff). */
+  /** The plugins that are on (Vault.switchedOff). */
   private on() {
     const off = this.vault.switchedOff()
     return off.size ? this.plugins.filter((p) => !off.has(p.id)) : this.plugins
@@ -344,14 +344,13 @@ export class App {
 
   /** Files changed on disk (core/live.ts, after reading them): plugins that follow them (plugin.onChange) hear which. */
   changed(paths: string[] | null) {
-    for (const p of this.on()) for (const fn of p.changeFns) { try { onItsOwn(p.id, () => fn(paths)) } catch (e) { logFailure(`${p.id}: onChange:`, e) } }
+    for (const p of this.on()) for (const fn of p.changeFns) runHook(p.id, "onChange", () => fn(paths))
   }
 
   /** GET /<prefix>/<rest> outside /api/, when a plugin that's on serves that prefix (plugin.serve: HTML's /v/ and
    *  /cdn/), else null. `rest` decoded, `raw` as sent with its query string. Never throws: errors are answers too. */
   async serve(prefix: string, rest: string, raw: string, query: Record<string, string>): Promise<Reply | null> {
-    const on = enabled(this.vault, this.plugins)
-    const fn = matchServed(this.plugins.filter((p) => on.has(p.id)), prefix)
+    const fn = matchServed(this.on(), prefix)
     if (!fn) return null
     const req = new Request("GET", [prefix, ...rest.split("/")], query, {})
     req.wild = [rest]
@@ -452,15 +451,18 @@ export class App {
       }
       return this.vault.config(parts[1])
     }
-    // A plugin's settings, .vaultite/plugins/<id>/data.json, for one with no backend of its own (Vim): PUT and PATCH
-    // change only the keys sent, PATCH's null removes one.
+    // A plugin's settings, .vaultite/plugins/<id>/data.json: PUT and PATCH change only the keys sent, PATCH's null removes
+    // one. Its `local` keys are this machine's (core/trust.ts), and only its owner changes them.
     if (parts.length === 3 && parts[0] === "config" && parts[1] === "plugin" && /^[a-z0-9][a-z0-9-]*$/.test(parts[2])) {
-      const name = `plugins/${parts[2]}/data`
+      const p = this.plugins.find((x) => x.id === parts[2]), name = `plugins/${parts[2]}/data`
       if (method === "PUT" || method === "PATCH") {
         if (!body || typeof body !== "object" || Array.isArray(body)) throw new HTTPError(400, "send an object of the keys to change")
-        this.vault.patchConfig(name, body as Item, { nullRemoves: method === "PATCH" })
+        const local = p?.localKeys().filter((k) => Object.hasOwn(body, k)) ?? []
+        const why = local.length && http ? await this.ownerWhy(http, `changing ${local.join(", ")}`) : ""
+        if (why) throw new HTTPError(403, why)
+        return p ? p.patchSettings(body as Item, { nullRemoves: method === "PATCH" }) : this.vault.patchConfig(name, body as Item, { nullRemoves: method === "PATCH" })
       }
-      return this.vault.config(name)
+      return p ? p.settings() : this.vault.config(name)
     }
     // Ids have slashes ("People/Alice Park"): an unencoded one arrives as several parts.
     if (parts.length && this.vault.has(parts[0])) return await this.crud(method, this.vault.kind(parts[0]), parts.slice(1).join("/") || null, body)
@@ -472,9 +474,8 @@ export class App {
   /** Every op that's available: the core's, then each plugin's that's on, with the plugin it's of (null: the core's). */
   ops(): { op: Op; plugin: string | null }[] {
     this.core ??= [...coreOps(this), ...eventOps(), ...hookOps(() => this.vaultPlugins.hooks), ...scheduleOps(() => this.scheduler)]
-    const on = enabled(this.vault, this.plugins)
     return [...this.core.map((op) => ({ op, plugin: null })),
-      ...this.plugins.filter((p) => on.has(p.id)).flatMap((p) => p.ops.map((op) => ({ op, plugin: p.id as string | null })))]
+      ...this.on().flatMap((p) => p.ops.map((op) => ({ op, plugin: p.id as string | null })))]
   }
 
   /** An op by its id, or by its CLI name (`note`). */
@@ -552,7 +553,7 @@ export class App {
 
   /** Why this request isn't this machine's owner for `what` (core/owner.ts), or "". */
   async ownerWhy(http: IncomingMessage, what: string) {
-    return ownerRefusal(http, { allowRemote: false, allowUsers: [], owner: typeof http.headers["tailscale-user-login"] === "string" ? await ownerLogin() : "" }, what)
+    return ownerRefusal(http, {}, what)
   }
 
   /** dispatch() as an answer (errors as replies), for an op's in-process API calls. */
@@ -632,7 +633,7 @@ export class App {
       return { entry: entryOf(op, plugin), params: out.params, result: out.result, text }
     } catch (e) {
       if (write) this.done(op, plugin, who, given, e, t0)
-      end?.({ status: e instanceof OpError || e instanceof HTTPError || e instanceof ConfigError ? e.status : 500, ms: performance.now() - t0, body: given })
+      end?.({ status: e instanceof OpError || e instanceof HTTPError || e instanceof ConfigError ? e.status : 500, ms: performance.now() - t0, body: given, error: String((e as Error)?.message ?? e) })
       throw e
     }
   }
@@ -674,7 +675,7 @@ export class App {
       end?.({ status: 500, ms: performance.now() - t0, body })
       throw e
     }
-    end?.({ status: res.status, ms: performance.now() - t0, body })
+    end?.({ status: res.status, ms: performance.now() - t0, body, ...(res.status >= 400 ? { error: String((res.body as Item)?.error ?? "") } : {}) })
     return publicOf(bodyOrThrow(res))
   }
 
@@ -698,7 +699,7 @@ export class App {
     for (const p of this.on()) {
       for (const [filter, fn] of p.eventFns) {
         const seen = matching(ev, filter)
-        if (seen) try { onItsOwn(p.id, () => fn(seen)) } catch (e) { logFailure(`${p.id}: onEvent:`, e) }
+        if (seen) runHook(p.id, "onEvent", () => fn(seen))
       }
     }
     this.vaultPlugins.heard(ev)

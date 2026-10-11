@@ -93,12 +93,13 @@ export function normalizeKeys(s: string) {
 /** The app's own settings files, .vaultite/<name>.json: what the app's state holds and its routes and ops may change
  *  (a plugin's data.json is plugin/<id>). */
 export const SETTINGS = ["appearance", "editor", "plugins", "sidebars", "newtab", "files", "folders", "pages", "hotkeys"]
-function settingsName(name: string) {
+/** The route of a settings file: config/<name>, or config/plugin/<id> (whose route keeps its `local` keys this machine's). */
+function settingsRoute(name: string) {
   const n = name.trim().replace(/^\.vaultite\//, "").replace(/\.json$/, "")
   const plugin = /^plugins?\/([a-z0-9][a-z0-9-]*)(\/data)?$/.exec(n)
-  if (plugin) return `plugins/${plugin[1]}/data`
+  if (plugin) return `config/plugin/${plugin[1]}`
   if (!SETTINGS.includes(n)) throw new OpError(`no settings '${name}': ${SETTINGS.join(", ")}, or plugin/<id> (a plugin's data.json)`, 404)
-  return n
+  return `config/${n}`
 }
 
 export function settingsOps(app: App): Op[] {
@@ -115,7 +116,7 @@ export function settingsOps(app: App): Op[] {
     kind: "read",
     params: { name: { type: "string", required: true, description: "appearance, editor, plugins, sidebars, newtab, files, folders, pages, hotkeys, or plugin/<id>" } },
     args: ["name"],
-    run: ({ name }) => app.vault.config(settingsName(name)),
+    run: ({ name }, ctx) => ctx.api("GET", settingsRoute(name)),
     text: jsonBlock,
   }, {
     id: "settings.set",
@@ -133,7 +134,7 @@ checked here: vau appearance and vau hotkey check theirs.
       values: { type: "object", required: true, description: "the keys to change and their new values (null removes one)" },
     },
     args: ["name", "values"],
-    run: ({ name, values }) => app.vault.patchConfig(settingsName(name), values),
+    run: ({ name, values }, ctx) => ctx.api("PATCH", settingsRoute(name), values),
     text: jsonBlock,
   }, {
     id: "appearance.get",

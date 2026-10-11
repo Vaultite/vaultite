@@ -3,7 +3,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent } from "react"
 import { CaseSensitive, ChevronRight, Ellipsis, FileText, Search as SearchIcon, X } from "lucide-react"
 import { useLive, type Store } from "@/core/data"
-import { get, put } from "@/core/http"
+import { get, patch } from "@/core/http"
 import { startDrag } from "@/core/drag"
 import { folderOf, openFile, openView, stem } from "@/core/files"
 import { isDesktop, useFocusedFile } from "@/core/workspace"
@@ -60,12 +60,12 @@ const OPERATORS: [string, string][] = [
 
 /** The options (changed here at once, saved in the vault). */
 function useSettings(): [Settings, (patch: { [K in keyof Settings]?: Settings[K] | null }) => void] {
-  const { data } = useLive<Settings>("search/settings")
+  const { data } = useLive<Settings>("config/plugin/search")
   const [mine, setMine] = useState<Settings>({})
   const s = { ...data, ...mine }
-  return [s, (patch) => {
-    setMine((m) => ({ ...m, ...Object.fromEntries(Object.entries(patch).map(([k, v]) => [k, v ?? undefined])) }))
-    put("search/settings", patch).catch(() => {})
+  return [s, (changes) => {
+    setMine((m) => ({ ...m, ...Object.fromEntries(Object.entries(changes).map(([k, v]) => [k, v ?? undefined])) }))
+    patch("config/plugin/search", changes).catch(() => {})
   }]
 }
 

@@ -118,8 +118,7 @@ function save(now = false) {
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = null
   const write = () => {
-    fs.mkdirSync(path.dirname(LIST()), { recursive: true })
-    fs.writeFileSync(LIST(), JSON.stringify({ vaults: known, ...(remotes.length ? { servers: remotes } : {}), ...(zoom === 1 ? {} : { zoom }), ...(debugPort ? { debugPort } : {}),
+    Setup.writeAtomic(LIST(), JSON.stringify({ vaults: known, ...(remotes.length ? { servers: remotes } : {}), ...(zoom === 1 ? {} : { zoom }), ...(debugPort ? { debugPort } : {}),
       ...(updates === "notify" ? {} : { updates }) }, null, 2) + "\n")
   }
   if (now) write()

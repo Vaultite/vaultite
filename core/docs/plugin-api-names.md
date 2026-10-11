@@ -528,7 +528,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `daysBetween(a, b)`: Days from a to b (YYYY-MM-DD).
 - `diffLines(a, b)`: How to turn a into b, as textedit's opcodes (equal runs and changed runs), for any number of lines.
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
-- `enabled(vault, plugins)`: Ids of the plugins that are on (not switched off, `offByDefault` ones turned on, and everything they require on).
+- `enabled(vault, plugins)`: Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
@@ -579,7 +579,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `reply(status, body)`
 - `Reply`: An answer with a status other than 200: `return reply(201, item)`.
 - `Request`
-- `RequestEnd`: How it ended: its status, how long it took (ms), and the body it was sent (JSON, parsed; undefined for none).
+- `RequestEnd`: How a request ended: `error`, what a failed one (4xx, 5xx) answered.
 - `RequestHook`
 - `RequestStart`: An API request as it starts: `route` is the path under /api/; `client`, `agent`, `command` its X-Vaultite-* headers; `remote`/`port` the caller's address (a loopback caller can be looked up).
 - `ROOT`
@@ -685,3 +685,4 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `writeAtomic(p, text, { mode }?)`: A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only).
 - `writeNew(p, data)`: A new file, whole or not at all (a full disk or a crash mid-write leaves no cut-off file to be refused as "already exists"); false if one came at `p` meanwhile.
 - `Writer`: Who asked for the write being made: the API request's X-Vaultite-Client ("app/desktop", "cli", "mcp"; null for anyone who doesn't say: curl, a script) and X-Vaultite-Agent (the CLI's coding agent).
+- `writeText(p, text)`: Text written as writeAtomic does, keeping the Windows line endings (\r\n) a file there has: text is read as \n.

@@ -3,7 +3,7 @@
 // its dreams, its feed and its scheduled jobs. Nothing is written to the vault; what's new reaches the Inbox.
 import os from "node:os"
 import { ago } from "../../../core/codingagents.ts"
-import { bullets as list, HTTPError, Plugin, section } from "../../../core/plugins.ts"
+import { bullets as list, HTTPError, Plugin, type Request, section } from "../../../core/plugins.ts"
 import { bullets, connectors, conversation, cronJob, dailyNote, dreamText, feedFile, frontmatter, type Home, isHatch, localHome, nameOf, pool,
   remoteHome, runOf, type Run, slotOf, unfilled } from "./home.ts"
 
@@ -190,10 +190,7 @@ const getFeed = (machine: unknown, n: number) => memo(300, "feed", (h) => feed(h
 
 // ---------- routes: only this machine's owner (an agent's memory is about them)
 
-async function owner(req: { http?: import("node:http").IncomingMessage }) {
-  const why = req.http ? await plugin.refusal(req.http, "Reading a Hatch agent's files") : ""
-  if (why) throw new HTTPError(403, why)
-}
+const owner = (req: Request) => plugin.ownerOnly(req, "Reading a Hatch agent's files")
 plugin.route("GET", "hatch", async (req) => { await owner(req); return getOverview(req.query.machine) }, { lock: false })
 plugin.route("GET", "hatch/runs", async (req) => { await owner(req); return getRuns(req.query.machine, num(req.query.limit, 10, 100)) }, { lock: false })
 plugin.route("GET", "hatch/memory", async (req) => { await owner(req); return getMemory(req.query.machine, num(req.query.notes, 3, 30)) }, { lock: false })

@@ -16,7 +16,7 @@ import { blocksIn } from "./sections.ts"
 import { tabNames } from "./tabs.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard } from "./writegate.ts"
-import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew } from "./vault.ts"
+import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -269,19 +269,6 @@ function writable(vault: Vault, rel: string) {
   try {
     const st = fs.statSync(vault.abs(rel))
     return st.isFile() && textOf(fs.readFileSync(vault.abs(rel))) !== null
-  } catch {
-    return false
-  }
-}
-
-/** A file written with Windows line endings (\r\n) keeps them: the editor works in \n. */
-function crlf(abs: string) {
-  try {
-    const fd = fs.openSync(abs, "r")
-    const buf = Buffer.alloc(8192)
-    const n = fs.readSync(fd, buf, 0, buf.length, 0)
-    fs.closeSync(fd)
-    return buf.subarray(0, n).includes("\r\n")
   } catch {
     return false
   }
@@ -757,7 +744,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       }
       if (cur === null) text = newText(vault, rel, text)
       const before = vault.entries.get(rel) ?? null
-      if (cur !== text) writeAtomic(vault.abs(rel), cur !== null && crlf(vault.abs(rel)) ? text.replace(/\n/g, "\r\n") : text)
+      if (cur !== text) writeText(vault.abs(rel), text)
       await vault.sync()
       // An edit in the app: plugins may fill things in (a note's id and dates), and the editor gets the result.
       if (cur !== text) await vault.fillIn(rel, before)
@@ -774,7 +761,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
     const e = newEntry(body)
     const abs = vault.abs(rel), cur = readText(abs)
     const text = addEntry(cur, e) ?? `${cur.replace(/\n*$/, "")}${cur.trim() ? "\n\n" : ""}## Timeline\n\n${entryLine(e)}\n`
-    writeAtomic(abs, crlf(abs) ? text.replace(/\n/g, "\r\n") : text)
+    writeText(abs, text)
     await vault.sync()
     return reply(201, read(vault, rel))
   }

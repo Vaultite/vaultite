@@ -125,7 +125,7 @@ function refused(method: string, route: string, body: unknown) {
   if (route !== "config/plugins" || (method !== "PUT" && method !== "PATCH") || !body || typeof body !== "object") return ""
   const b = body as { disabled?: unknown; enabled?: unknown }
   // (an offByDefault one is on when in `enabled`, another when out of `disabled`)
-  const on = MACHINE.find((id) => app.vault.optIn.has(id) ? Array.isArray(b.enabled) && b.enabled.includes(id) : Array.isArray(b.disabled) && !b.disabled.includes(id))
+  const on = MACHINE.find((id) => app.plugins.find((p) => p.id === id)?.manifest.offByDefault === true ? Array.isArray(b.enabled) && b.enabled.includes(id) : Array.isArray(b.disabled) && !b.disabled.includes(id))
   const name = on && app.plugins.find((p) => p.id === on)?.manifest.name
   return on ? `${name ?? on} needs the Vaultite app: download it to use it` : ""
 }

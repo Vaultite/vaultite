@@ -172,8 +172,7 @@ plugin.route("GET", "machines/*/**", async (req) => {
   if (!m) throw new HTTPError(404, `no machine '${id}' (the machines are in .vaultite/plugins/machines/data.json)`)
   if (m.via) {
     if (rest !== "info" && !FS[rest]) throw new HTTPError(404, "This machine only lists folders and reads files")
-    const why = req.http ? await plugin.refusal(req.http, "Reading an agent machine's files") : ""
-    if (why) throw new HTTPError(403, why)
+    await plugin.ownerOnly(req, "Reading an agent machine's files")
     return agentFs(id, rest, req.query)
   }
   const qs = new URLSearchParams(req.query).toString()
@@ -230,8 +229,7 @@ plugin.block("machines", async () => {
 
 
 plugin.route("GET", "machines/enrollment", async (req) => {
-  const why = req.http ? await plugin.refusal(req.http, "Enrolling agent machines") : ""
-  if (why) throw new HTTPError(403, why)
+  await plugin.ownerOnly(req, "Enrolling agent machines")
   return { pending: dial.pending() }
 }, { lock: false })
 
@@ -268,8 +266,7 @@ async function relayWrite(via: DialEntry, route: string, body: Item) {
   return answer
 }
 plugin.route("POST", "machines/*/approve", async (req) => {
-  const why = req.http ? await plugin.refusal(req.http, "Enrolling agent machines") : ""
-  if (why) throw new HTTPError(403, why)
+  await plugin.ownerOnly(req, "Enrolling agent machines")
   const via = listed().find((e) => e.id === req.arg(0) && !e.via)
   if (!via) throw new HTTPError(404, "No such relay server")
   const own = await ownUrl()

@@ -15,8 +15,7 @@ const sessions = new Map<string, Client | null>()
 
 async function allowed(req: Request) {
   if (plugin.isOff()) throw new HTTPError(404, "the MCP plugin is off (Settings > Plugins)")
-  const why = req.http ? await plugin.refusal(req.http, "Vaultite's MCP server") : ""
-  if (why) throw new HTTPError(403, why)
+  await plugin.ownerOnly(req, "Vaultite's MCP server")
 }
 
 /** A tool's context: ops in-process, as the client, for the request it came in (its owner checks apply: an op's
@@ -122,8 +121,7 @@ plugin.route("GET", "mcp/connections", async (req) => {
 /** Connect's owner tools on or off: only from this Mac (or the owner's tailnet), never over the relay itself. */
 plugin.route("POST", "mcp/connect", async (req) => {
   await allowed(req)
-  const why = req.http ? await plugin.refusal(req.http, "Changing what answers over Vaultite Connect") : ""
-  if (why) throw new HTTPError(403, why)
+  await plugin.ownerOnly(req, "Changing what answers over Vaultite Connect")
   const on = (req.body as { ownerTools?: unknown })?.ownerTools === true
   const all = structuredClone((plugin.secrets().mcp ?? {}) as Record<string, unknown>)
   const c = { ...(all.connect as object | undefined) } as Record<string, unknown>

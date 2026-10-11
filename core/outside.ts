@@ -5,7 +5,7 @@ import path from "node:path"
 import { kindOf, tooBig } from "./filetypes.ts"
 import { HTTPError, reply } from "./plugins.ts"
 import { merge3 } from "./textedit.ts"
-import { readText, writeAtomic } from "./vault.ts"
+import { readText, writeText } from "./vault.ts"
 
 const allowed = new Set<string>()
 
@@ -81,6 +81,6 @@ export function handle(method: string, p: string, body: { text?: unknown; base?:
     if (merged === null) return reply(409, { error: "the file changed on disk in the same place", ...read(p) })
     text = merged
   }
-  if (cur !== text) writeAtomic(p, text)
+  if (cur !== text) writeText(p, text)
   return read(p)
 }

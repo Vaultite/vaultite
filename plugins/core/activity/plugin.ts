@@ -24,40 +24,14 @@ const BOOT = Date.now()
 
 // ---------- where it's kept
 
-/** This vault's folder here: <LOCAL>/activity/<vault key>/. */
-const dir = () => plugin.localDir()
-
+const logs = { events: plugin.dayLog<unknown>("events"), perf: plugin.dayLog<unknown>("perf") }
+const append = (kind: keyof typeof logs, t: number, rows: unknown[]) => logs[kind].append(t, rows)
+const readDay = (kind: keyof typeof logs, date: string) => logs[kind].read(date)
+const prune = () => { for (const l of Object.values(logs)) l.prune(settings().keep) }
 
 function settings() {
   const s = plugin.loaded ? plugin.settings() : {}
   return { keep: Math.max(1, Number(s.keep_days) || 14), reads: s.reads === true }
-}
-
-function append(kind: "events" | "perf", t: number, rows: unknown[]) {
-  if (!rows.length) return
-  try { fs.appendFileSync(path.join(dir(), `${kind}-${localDate(t)}.jsonl`), rows.map((r) => JSON.stringify(r)).join("\n") + "\n") } catch (e) { if ((e as { code?: string }).code !== "ENOENT") console.error(e) } // its folder gone: nothing to keep
-}
-
-function readDay(kind: "events" | "perf", date: string): unknown[] {
-  let text: string
-  try { text = fs.readFileSync(path.join(dir(), `${kind}-${date}.jsonl`), "utf8") } catch { return [] }
-  const out: unknown[] = []
-  for (const line of text.split("\n")) { if (line) try { out.push(JSON.parse(line)) } catch { /* a torn line */ } }
-  return out
-}
-
-/** Files older than keep_days go (at most once an hour). */
-let pruned = 0
-function prune() {
-  if (Date.now() - pruned < HOUR) return
-  pruned = Date.now()
-  const oldest = localDate(Date.now() - settings().keep * DAY)
-  try {
-    for (const f of fs.readdirSync(dir())) {
-      const m = /^(?:events|perf)-(\d{4}-\d\d-\d\d)\.jsonl$/.exec(f)
-      if (m && m[1] < oldest) fs.rmSync(path.join(dir(), f))
-    }
-  } catch { /* gone */ }
 }
 
 // ---------- events
@@ -267,6 +241,11 @@ function dayFile(date: string) {
   return d ? `${d.id}.md` : `${plugin.vault.has("days") ? plugin.vault.home("days") ?? "Daily" : "Daily"}/${date}.md`
 }
 
+function failed(method: string, route: string, end: RequestEnd): Did {
+  const what = route.startsWith("ops/") ? route.slice(4) : `${method} /api/${route}`
+  return { action: "failed", text: `${what} failed: ${(end.error || `status ${end.status}`).slice(0, 200)}`, paths: [] }
+}
+
 function describe(method: string, route: string, query: Record<string, string>, body: unknown, byApp: boolean): Did {
   const parts = route.split("/")
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>
@@ -411,7 +390,9 @@ plugin.onRequest((s) => {
   return (end: RequestEnd) => {
     const late = timing(s, end, actor)
     if (w) w.t1 = Date.now() + 50
-    const did = describe(s.method, route, s.query, end.body, byApp || actor.kind === "you")
+    // (a call an agent, the CLI or a script got wrong is kept even unrecorded otherwise: what they fail at)
+    const did = end.status >= 400 && !byApp && !route.startsWith("activity") ? failed(s.method, route, end)
+      : describe(s.method, route, s.query, end.body, byApp || actor.kind === "you")
     if (!did) return
     const finish = (who: Actor) => {
       if (late) late.who = who.name
@@ -556,7 +537,7 @@ plugin.route("POST", "activity/perf", (req) => {
 plugin.route("DELETE", "activity", () => {
   events = []
   open.clear()
-  try { for (const f of fs.readdirSync(dir())) if (f.endsWith(".jsonl")) fs.rmSync(path.join(dir(), f)) } catch { /* gone */ }
+  for (const l of Object.values(logs)) for (const d of l.days()) l.rewrite(d, [])
   return { ok: true }
 })
 
@@ -739,7 +720,8 @@ autosaves) are one line with a count. Kept on the server's machine for keep_days
   vau activity                       the last 30 things done
   vau activity --actor agent         only coding agents (Claude Code, Codex...)
   vau activity --action changes      only changes (edits, new files, moves, deletes, saves, on disk)
-  vau activity --path Notes/Idea.md  everything done to one file`,
+  vau activity --path Notes/Idea.md  everything done to one file
+  vau activity --action failed       calls an agent, the CLI or a script got wrong, and why`,
   kind: "read",
   params: {
     limit: { type: "integer", minimum: 1, maximum: 500, default: 30, description: "at most this many events" },
@@ -971,11 +953,11 @@ async function writeRecap(date: string) {
 
 /** The days this machine already wrote (or found nothing for), so a recap you deleted isn't made again. */
 function written(): Set<string> {
-  try { return new Set(JSON.parse(fs.readFileSync(path.join(dir(), "recaps.json"), "utf8")).days ?? []) } catch { return new Set() }
+  try { return new Set(JSON.parse(fs.readFileSync(path.join(plugin.localDir(), "recaps.json"), "utf8")).days ?? []) } catch { return new Set() }
 }
 function markWritten(dates: string[]) {
   const all = [...new Set([...written(), ...dates])].sort().slice(-400)
-  try { fs.writeFileSync(path.join(dir(), "recaps.json"), JSON.stringify({ days: all })) } catch { /* its folder gone */ }
+  try { fs.writeFileSync(path.join(plugin.localDir(), "recaps.json"), JSON.stringify({ days: all })) } catch { /* its folder gone */ }
 }
 
 /** Today's recap when something changed, yesterday's too just after midnight; the first time, the days before that

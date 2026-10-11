@@ -9,7 +9,7 @@ import { writeAtomic } from "./vault.ts"
 /** A vault plugin's approved version: its content hash, each file's (to say what changed since), when, its version;
  *  `edits`: later edits run without asking too (a plugin its owner is writing on this machine). */
 export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean }
-type Store = { plugins: Record<string, Approval>; allowed: Record<string, string> }
+type Store = { plugins: Record<string, Approval>; allowed: Record<string, string>; local: Record<string, Record<string, unknown>> }
 /** What's hashed of a plugin's folder (core/vaultplugins.ts digestOf). */
 export type Digest = { content: string; files: Record<string, string> }
 
@@ -39,7 +39,8 @@ export class Trust {
     let o: unknown = null
     try { o = JSON.parse(fs.readFileSync(this.file, "utf8")) } catch { /* none, or unreadable: nothing approved */ }
     const d = isObj(o) ? o : {}
-    this.data = { plugins: isObj(d.plugins) ? d.plugins as Store["plugins"] : {}, allowed: isObj(d.allowed) ? d.allowed as Store["allowed"] : {} }
+    this.data = { plugins: isObj(d.plugins) ? d.plugins as Store["plugins"] : {}, allowed: isObj(d.allowed) ? d.allowed as Store["allowed"] : {},
+      local: isObj(d.local) ? d.local as Store["local"] : {} }
     this.stamp = mtime
     return this.data
   }
@@ -100,6 +101,20 @@ export class Trust {
 
   allow(plugin: string, what: string) {
     this.read().allowed[sha(`${plugin}\0${what}`)] = new Date().toISOString()
+    this.save()
+  }
+
+  /** A plugin's settings its manifest marks `local` (who may reach it): this machine's, so a synced vault can't set them. */
+  local(plugin: string): Record<string, unknown> {
+    return this.read().local[plugin] ?? {}
+  }
+
+  /** Change some of them (null removes one). */
+  patchLocal(plugin: string, changes: Record<string, unknown>) {
+    const next = { ...this.local(plugin) }
+    for (const [k, v] of Object.entries(changes)) { if (v === null) delete next[k]; else if (v !== undefined) next[k] = v }
+    if (JSON.stringify(next) === JSON.stringify(this.local(plugin))) return
+    if (Object.keys(next).length) this.read().local[plugin] = next; else delete this.read().local[plugin]
     this.save()
   }
 }

@@ -13,7 +13,7 @@ import path from "node:path"
 import { pathToFileURL } from "node:url"
 import { promisify } from "node:util"
 import zlib from "node:zlib"
-import { tailnetNames } from "./core/owner.ts"
+import { fromThisMachine, hostName, originHost, overNetwork, tailnetNames } from "./core/owner.ts"
 import type { App } from "./core/app.ts"
 import type { Live as LiveType } from "./core/live.ts"
 import type { Vault } from "./core/vault.ts"
@@ -157,6 +157,7 @@ const json = (res: http.ServerResponse, obj: unknown, status = 200) =>
 
 /** Each API request's body once read (bodyOf), for plugins watching requests (plugin.onRequest). */
 const bodies = new WeakMap<http.IncomingMessage, unknown>()
+const failures = new WeakMap<http.IncomingMessage, string>() // what a failed request answered, for request watchers
 
 /** The request's body: JSON, {} when there's none, undefined when it isn't JSON. A file's bytes don't come as JSON:
  *  uploads stream (App.streams), so a body too big for one string is told where to send them. */
@@ -252,16 +253,6 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
   fs.createReadStream(abs, { start, end }).on("error", () => res.destroy()).pipe(res)
 }
 
-const LOOPBACK = new Set(["127.0.0.1", "::1", "::ffff:127.0.0.1"])
-
-/** Asked from another machine, or through a proxy (Tailscale Serve connects from loopback too, but says so in its
- *  headers). */
-function overNetwork(req: http.IncomingMessage) {
-  const h = req.headers
-  return !LOOPBACK.has(req.socket.remoteAddress ?? "") ||
-    ["x-forwarded-for", "x-forwarded-host", "forwarded", "x-real-ip"].some((k) => k in h) || Object.keys(h).some((k) => k.startsWith("tailscale-"))
-}
-
 // Other names this server is reached by (a reverse proxy's own domain), besides its addresses, localhost and its own names.
 const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
 
@@ -270,32 +261,15 @@ const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.t
 async function foreign(req: http.IncomingMessage) {
   const h = req.headers
   const hosts = [h.host, h["x-forwarded-host"]].map((x) => String(x ?? "").toLowerCase())
-  if (h.origin !== undefined) {
-    let from = ""
-    try { from = new URL(String(h.origin)).host.toLowerCase() } catch { /* "null": a sandboxed frame, a file */ }
-    if (!from || !hosts.includes(from)) return "the page asking isn't this app"
-  }
+  if (h.origin !== undefined && !hosts.includes(originHost(req) || "-")) return "the page asking isn't this app"
   for (const host of hosts.filter(Boolean)) {
-    const name = host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "")
+    const name = hostName(host)
     if (net.isIP(name) || name === "localhost" || name.endsWith(".localhost")) continue
     const me = os.hostname().toLowerCase().replace(/\.local$/, "")
     if (name === me || name === `${me}.local` || EXTRA_HOSTS.includes(name) || (await tailnetNames()).includes(name)) continue
     return `this app doesn't answer for ${name}`
   }
   return ""
-}
-
-/** Asked from this machine itself: a loopback address, not through a proxy, for a local host name, from this app's own
- *  page. */
-function fromThisMachine(req: http.IncomingMessage) {
-  const h = req.headers
-  if (overNetwork(req)) return false
-  const host = String(h.host ?? "").toLowerCase()
-  const name = host.replace(/:\d+$/, "").replace(/^\[|\]$/g, "")
-  if (!(name === "localhost" || LOOPBACK.has(name) || name === os.hostname().toLowerCase())) return false
-  let from = ""
-  try { from = new URL(String(h.origin ?? "")).host.toLowerCase() } catch { /* no Origin */ }
-  return from === host
 }
 
 /** POST /api/file/open {path, reveal}: open a file in this machine's default app, or show it in its folder (Finder, or
@@ -394,6 +368,7 @@ async function api(req: http.IncomingMessage, res: http.ServerResponse, url: URL
   const out = method === "GET" || app.unlocked(method, parts)
     ? await vault.synced().then(() => app.run(method, parts, query, body, req))
     : await app.hold(() => app.run(method, parts, query, body, req))
+  if (out.status >= 400) failures.set(req, String((out.body as { error?: unknown } | null)?.error ?? ""))
   if (out.body instanceof Text) return send(res, out.status, out.body.text, out.body.type, out.body.headers)
   send(res, out.status, jsonOf(out.body), "application/json")
 }
@@ -437,7 +412,7 @@ function webBuild() {
  *  icons) is asked again each time (a 304 when unchanged). Over the network they're sent compressed. */
 async function file(req: http.IncomingMessage, res: http.ServerResponse, url: URL) {
   let p = path.normalize(path.join(DIST, decode(url.pathname)))
-  if (!p.startsWith(DIST)) return send(res, 403, "Forbidden", "text/plain")
+  if (p !== DIST && !p.startsWith(DIST + path.sep)) return send(res, 403, "Forbidden", "text/plain")
   let st: fs.Stats
   try {
     if (fs.statSync(p).isDirectory()) p = path.join(p, "index.html")
@@ -467,6 +442,7 @@ async function file(req: http.IncomingMessage, res: http.ServerResponse, url: UR
   }
 }
 
+let requests = 0
 const server = http.createServer(async (req, res) => {
   // "//x" would parse as a host (and "//" throw): read the request line as a path only
   const url = new URL((req.url ?? "/").replace(/^\/+/, "/"), "http://localhost")
@@ -480,12 +456,14 @@ const server = http.createServer(async (req, res) => {
       const why = await foreign(req)
       if (why) return json(res, { error: why }, 403)
       await ready // Activity's hook is the app's: it's there once the vault is read
-      const t = performance.now(), end = started(req, url)
-      try { await errorContext.run(`${req.method} ${url.pathname}`, () => api(req, res, url)) } finally { end({ status: res.statusCode, ms: performance.now() - t, body: bodies.get(req) }) }
-      process.stderr.write(`"${req.method} ${req.url} HTTP/${req.httpVersion}" ${res.statusCode} -\n`)
+      const t = performance.now(), end = started(req, url), id = (++requests).toString(36)
+      // (the id ties this line to the errors the request logged: errorContext)
+      try { await errorContext.run(`#${id} ${req.method} ${url.pathname}`, () => api(req, res, url)) } finally { end({ status: res.statusCode, ms: performance.now() - t, body: bodies.get(req), error: failures.get(req) }) }
+      process.stderr.write(`#${id} "${req.method} ${req.url} HTTP/${req.httpVersion}" ${res.statusCode} ${Math.round(performance.now() - t)}ms\n`)
     } else if (!(await served(req, res, url))) await file(req, res, url)
   } catch (e) {
-    if (!(e instanceof HTTPError)) console.error(e)
+    // (a client gone mid-request, its body cut off: ECONNRESET "aborted", not the server's error)
+    if (!(e instanceof HTTPError) && (e as NodeJS.ErrnoException).code !== "ECONNRESET") console.error(e)
     if (!res.headersSent) json(res, { error: String((e as Error).message ?? e) }, e instanceof HTTPError ? e.status : 500)
     else res.end()
   }
@@ -534,7 +512,7 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
       ws.on("error", (e) => { process.stderr.write(`WS ${url.pathname}: ${(e as Error).message}\n`); ws.terminate() })
       process.stderr.write(`"WS ${url.pathname} HTTP/${req.httpVersion}" 101 -\n`)
       // (a handler that throws, or whose promise fails, ends its socket, not the server)
-      Promise.resolve().then(() => sock.fn(ws, req, params)).catch((e) => { console.error(`WS ${url.pathname}:`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
+      errorContext.run(`WS ${url.pathname}`, () => Promise.resolve().then(() => sock.fn(ws, req, params))).catch((e) => { console.error(`WS ${url.pathname}:`, e); try { ws.close(1011, "error") } catch { ws.terminate() } })
     })
   } catch (e) {
     if (e instanceof HTTPError) return refuse(socket, e.status, e.message)

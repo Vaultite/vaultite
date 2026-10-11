@@ -169,7 +169,7 @@ try {
 } catch (e) { failed = true; console.error(e) } finally {
   await command(["stop"]).catch(() => {})
   pub.stop()
-  for (const p of app.plugins) for (const fn of p.cleanups) fn()
+  for (const p of app.plugins) p.unload()
   fs.rmSync(tmp, { recursive: true, force: true })
   process.exit(failed ? 1 : 0)
 }

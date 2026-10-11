@@ -48,8 +48,7 @@ sections again; one that's gone gives them back). `vau newtab` (show, hide, move
 
 **Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). The plugins' pages are
 built in, in `.vaultite/pages/`: drawn, pinned and linked as usual, left out of the file tree, read-only, and they
-update with their plugin. `vau dashboard copy <page>` makes one the user's file (to change it); `copiesOffered`: the
-user answered the offer to remove unchanged copies a vault had from before (`vau dashboard copies`).
+update with their plugin. `vau dashboard copy <page>` makes one the user's file (to change it).
 
 **Writes on its own**, `.vaultite/grants.json`: where each plugin may write outside `.vaultite/` when it acts on its own
 (timers, schedules, hooks), as its manifest's `writes` declares: `{"activity": {"Recaps": "allowed"}}` ("not now":

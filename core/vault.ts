@@ -208,6 +208,16 @@ export function writeNew(p: string, data: string | Buffer): boolean {
   }
 }
 
+/** Text written as writeAtomic does, keeping the Windows line endings (\r\n) a file there has: text is read as \n. */
+export function writeText(p: string, text: string) {
+  let crlf = false
+  try {
+    const fd = fs.openSync(p, "r"), buf = Buffer.alloc(8192)
+    try { crlf = buf.subarray(0, fs.readSync(fd, buf, 0, buf.length, 0)).includes("\r\n") } finally { fs.closeSync(fd) }
+  } catch { /* a new file */ }
+  writeAtomic(p, crlf ? text.replace(/\r?\n/g, "\r\n") : text)
+}
+
 /** A file replaced whole or not at all; `mode` is the new file's (0o600: this machine's user only). */
 export function writeAtomic(p: string, text: string | Buffer, { mode }: { mode?: number } = {}) {
   guard(p)
@@ -612,8 +622,9 @@ export class Vault {
    *  applies to a key a file doesn't set, never written (the plugins' `setting-defaults`: core/app.ts). */
   defaults: () => Record<string, Item> = () => ({})
   private seeds: { version: number; all: Record<string, Item> } | null = null // defaults(), until the settings change
-  /** The app's plugins that are off until turned on (manifest `offByDefault`), set as they load (core/plugins.ts). */
-  optIn = new Set<string>()
+  /** The plugins loaded, set as they load (core/plugins.ts, App.syncPlugins): what switchedOff() reads their manifests for. */
+  pluginList: { id: string; manifest: Item }[] = []
+  private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   /** Files a sync went on without, still being read (iCloud downloading them): as last read, or not indexed yet. */
   downloading: string[] = []
   private arrivals = new Set<(rel: string) => void>()
@@ -761,19 +772,30 @@ export class Vault {
         return t.startsWith("/") ? `/${out}` : old.relative ? relativePath(dirOf(rel), out) : out
       })
       if (neu === text) continue
-      const abs = this.abs(rel)
-      writeAtomic(abs, fs.readFileSync(abs, "utf8").includes("\r\n") ? neu.replace(/\n/g, "\r\n") : neu)
+      writeText(this.abs(rel), neu)
       changed.push(rel)
     }
     return changed
   }
 
-  /** The plugins switched off in plugins.json: the app's in `disabled`, and its `offByDefault` ones not in `enabled`
-   *  (a vault plugin that isn't on isn't loaded). What they require being off isn't counted (enabled() does). */
+  /** The plugins that are off: in plugins.json's `disabled`, `offByDefault` ones not in `enabled`, and those whose
+   *  `requires` are off or missing. */
   switchedOff(): Set<string> {
-    const { disabled, enabled } = this.config("plugins")
+    const { disabled, enabled } = this.config("plugins"), conf = this.settings.get("plugins")
+    const memo = this.off
+    if (memo && memo.conf === conf && memo.list === this.pluginList) return memo.off
     const on = new Set<string>(Array.isArray(enabled) ? enabled : [])
-    return new Set([...(Array.isArray(disabled) ? disabled as string[] : []), ...[...this.optIn].filter((id) => !on.has(id))])
+    const off = new Set<string>(Array.isArray(disabled) ? disabled : [])
+    for (const p of this.pluginList) if (p.manifest.offByDefault === true && !on.has(p.id)) off.add(p.id)
+    const known = new Set(this.pluginList.map((p) => p.id))
+    for (let grew = true; grew;) {
+      grew = false
+      for (const p of this.pluginList) {
+        if (!off.has(p.id) && ((p.manifest.requires ?? []) as string[]).some((r) => off.has(r) || !known.has(r))) { off.add(p.id); grew = true }
+      }
+    }
+    this.off = { conf, list: this.pluginList, off }
+    return off
   }
 
   /** The hooks of `hooks` whose plugin is on. */

@@ -5,7 +5,7 @@ import {
   AlignCenterHorizontal, AlignCenterVertical, AlignEndHorizontal, AlignEndVertical, AlignStartHorizontal, AlignStartVertical, ArrowLeftRight, ArrowRight, ArrowUpRight,
   ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight, Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, put, saveAttachments, useDropTarget, useLive, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, patch, saveAttachments, useDropTarget, useLive, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -69,11 +69,11 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const lastPointer = useRef<Pt | null>(null)
 
   // Snapping: the plugin's settings (.vaultite/plugins/canvas/data.json), changed here at once.
-  const { data: saved } = useLive<Settings>(embed ? null : "canvas/settings")
+  const { data: saved } = useLive<Settings>(embed ? null : "config/plugin/canvas")
   const [mine, setMine] = useState<Settings>({})
   const settings = { ...saved, ...mine }
   const snapToGrid = settings.snapToGrid !== false, snapToObjects = settings.snapToObjects !== false
-  const setSetting = (patch: Settings) => { setMine((m) => ({ ...m, ...patch })); put("canvas/settings", patch).catch(() => {}) }
+  const setSetting = (changes: Settings) => { setMine((m) => ({ ...m, ...changes })); patch("config/plugin/canvas", changes).catch(() => {}) }
 
   // A change made elsewhere (on disk, another device): drawn as it is.
   useEffect(() => {

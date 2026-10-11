@@ -3,7 +3,7 @@
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, Filter, Maximize, Search, SquareArrowOutUpRight, Waypoints, X } from "lucide-react"
 import {
-  cn, isViewOpen, menuBelow, openFile, openView, put, SidebarHeading, useFocusedFile, useLive, useVaultChange, type MenuItem, type SidebarCtx,
+  cn, isViewOpen, menuBelow, openFile, openView, patch, SidebarHeading, useFocusedFile, useLive, useVaultChange, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { filterGraph, localGraph, nameOf, type Graph, type GraphNode } from "./graph"
 
@@ -31,10 +31,10 @@ export function useGraph(path?: string, depth = 1, archived = false) {
 
 /** The graph view's settings (.vaultite/plugins/graph/data.json): changed here at once, saved in the vault. */
 function useSettings(): [Settings, (patch: Settings) => void] {
-  const { data } = useLive<Settings>("graph/settings")
+  const { data } = useLive<Settings>("config/plugin/graph")
   const [mine, setMine] = useState<Settings>({})
   const s = { ...data, ...mine }
-  return [s, (patch) => { setMine((m) => ({ ...m, ...patch })); put("graph/settings", patch).catch(() => {}) }]
+  return [s, (changes) => { setMine((m) => ({ ...m, ...changes })); patch("config/plugin/graph", changes).catch(() => {}) }]
 }
 
 const groupOf = (by: "folder" | "type", n: GraphNode) => (by === "type" ? n.type ?? "" : n.folder)

@@ -30,7 +30,7 @@ const board = {
   custom: { keep: true },
 }
 await req("DELETE", `file?path=${encodeURIComponent("Qa canvas")}`)
-await req("PUT", "canvas/settings", { snapToGrid: true, snapToObjects: true })
+await req("PATCH", "config/plugin/canvas", { snapToGrid: true, snapToObjects: true })
 await req("POST", "file", { path: TARGET, text: "# Target\n\nThe note a card shows.\n" })
 await req("POST", "file", { path: BOARD, text: JSON.stringify(board, null, "\t") + "\n" })
 await req("POST", "file", { path: NOTE, text: `A board:\n\n![[Board.canvas|300]]\n` })
