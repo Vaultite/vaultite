@@ -912,5 +912,21 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     importsOf("@AGENTS.md\nSee @.vaultite/AGENTS.md.\nMail a@b.com, `@x.md`\n```\n@y.md\n```\n@~/z.md"))
 }
 
+// ---------- Clear formatting (plugins/core/editing/edit.ts) ----------
+{
+  const { EditorState, EditorSelection } = await import("@codemirror/state")
+  const { clearFormatting } = await import("../plugins/core/editing/edit.ts")
+  const clear = (doc: string, from: number, to: number) => {
+    const view = { state: EditorState.create({ doc, selection: EditorSelection.range(from, to) }), dispatch(tr: import("@codemirror/state").TransactionSpec) { this.state = this.state.update(tr).state } }
+    clearFormatting(view as never)
+    return view.state.doc.toString()
+  }
+  const line = "**alpha** ==beta== `x`"
+  check("clear formatting: a whole line's marks", clear(line, 0, line.length) === "alpha beta x", clear(line, 0, line.length))
+  check("clear formatting: a selection stopping at hidden marks (live preview's Home and End) takes them in",
+    clear(line, 2, line.length - 1) === "alpha beta x", clear(line, 2, line.length - 1))
+  check("clear formatting: a word in its marks; a lone * stays", clear("a **b** c", 4, 5) === "a b c" && clear("2*3 x", 2, 3) === "2*3 x", [clear("a **b** c", 4, 5), clear("2*3 x", 2, 3)])
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("web", t0))

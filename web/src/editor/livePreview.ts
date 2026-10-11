@@ -663,6 +663,9 @@ function inline(view: EditorView): DecorationSet {
             // The inside of a [[wikilink]] parses as a link ("[Alice Park]"): the wikilink pass below draws it, in its own
             // colour, like everywhere else a [[link]] shows (callouts, sheets, dashboards).
             if (!url && state.sliceDoc(n.from - 1, n.from) === "[" && state.sliceDoc(n.to, n.to + 1) === "]") return false
+            // A callout's [!type] parses as a link too: it's its marker, shown as typed with its line.
+            const p = n.parent
+            if (!url && p?.name === "Paragraph" && p.from === n.from && p.parent?.name === "Blockquote" && CALLOUT.test(state.sliceDoc(n.from, state.doc.lineAt(n.from).to))) return false
             const href = url ? state.sliceDoc(url.from, url.to) : ""
             if (!live || touched(state, n.from, n.to) || marks.length < 2) {
               if (href) out.push(mark("cm-link-raw").range(n.from, n.to))

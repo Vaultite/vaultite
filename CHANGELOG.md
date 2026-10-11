@@ -31,6 +31,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Cursor's limits reset when their window ends, and Hermes is named in Activity.
 - A plugin update that says it does more beyond the vault waits for you to allow it, also updated by hand; another
   machine runs an update only from the source it allowed, and only if it says it does no more.
+- Live preview: a callout you're editing shows its `[!type]` as typed, not as a link with its brackets hidden.
+- Clear formatting takes out the marks at a selection's edges that live preview hides (a line picked with Home and Shift+End).
 
 ## 0.4.0 (2026-10-10)
 

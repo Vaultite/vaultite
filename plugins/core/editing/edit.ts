@@ -52,6 +52,7 @@ export const toggleMark = (m: string) => (view: EditorView) => {
 
 // Inline marks, longest first (so ** is taken before *).
 const MARKS = ["**", "__", "==", "~~", "%%", "*", "_", "`", "$"]
+const MARK_CHAR = /[*_=~%`$]/
 const STRIP = [/(\*\*|__|==|~~|%%)(?=\S)(.*?\S)\1/g, /(?<![\w*])([*_])(?=\S)(.*?\S)\1(?![\w*])/g, /(`)([^`\n]+)`/g, /(\$)(?=\S)([^$\n]*?\S)\$/g]
 
 /** Clear formatting: the marks in what's selected (with nothing selected, the word at the cursor), and those around
@@ -61,6 +62,12 @@ export const clearFormatting = (view: EditorView) => {
   view.dispatch(state.changeByRange((r) => {
     let { from, to } = r
     if (r.empty) { const w = state.wordAt(r.head); if (w) ({ from, to } = w) }
+    // (an edge at marks live preview hides, where its Home, End or a drag stops: they're taken in too)
+    else {
+      const a = state.doc.lineAt(from).from, b = state.doc.lineAt(to).to
+      while (from > a && MARK_CHAR.test(state.sliceDoc(from - 1, from))) from--
+      while (to < b && MARK_CHAR.test(state.sliceDoc(to, to + 1))) to++
+    }
     for (let grew = true; grew;) {
       grew = false
       for (const m of MARKS) {
