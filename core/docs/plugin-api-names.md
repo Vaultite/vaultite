@@ -57,6 +57,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `backDetail()`: One sheet back (the Back button in a stacked sheet).
 - `backlinks(s, path)`: Backlinks to a file: the files that link to it.
 - `Badged({ on, tag, children })`: An icon with a status dot on its corner while `on` (an agent waiting for you), the same wherever the icon is.
+- `Bar({ w, className })`: A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width).
 - `BarKey`
 - `Bars({ data, color, height, format, goal })`: Single-series bar chart with a hover/tap readout.
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
@@ -194,7 +195,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
 - `headOf(files, path)`
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
-- `holdHeight(el, key, anyWidth?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes.
+- `holdHeight(el, key, anyWidth?, shrinks?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes (`shrinks`: see Held).
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
@@ -229,7 +230,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
 - `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.
 - `List({ children })`
-- `Loading({ error, className })`: A block's data on its way: "Loading…", or what went wrong getting it (`error`: the line to say, "Couldn't ask Tailscale.").
+- `Loading({ error, className })`: A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").
+- `LoadingRows({ count, meta, lead, right, className })`: A list on its way: `count` skeleton rows built from the real `Row` (`meta`: with a meta line, or how many have one), taking the list's room at once; `useKeptCount` gives as many rows as last time.
 - `lookUp`: The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them.
 - `Machine`: A machine as GET /api/machines says: `self` is the one serving this app; `plugins`, the ones that are on there; `vault`, its vault's id (the same as this one's: it has this vault).
 - `machinePath(machine, path)`: An API path on a machine ("" or none: this one): "claude-code?days=7" -> "machines/studio/claude-code?days=7".
@@ -483,7 +485,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useFileIcon(store)`: A file's icon as the file tree draws it (its own, a dashboard's or a person's, in its colour), by path.
 - `useFocusedFile()`
 - `useHeldFocus()`: holdFocus for a component that is the overlay: held from its first render (before an autoFocus field inside it takes the focus) until it unmounts.
-- `useHeldHeight(key)`: holdHeight for a React element: put the ref on it.
+- `useHeldHeight(key, shrinks?)`: holdHeight for a React element: put the ref on it.
+- `useKeptCount(key, now, first?, most?)`: How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time, and while loading, what it had last time, at most `most` (`first`: never seen).
 - `useLive(path, version?, files?, every?)`: Live data from a plugin's route per mount (the last answer meanwhile), again when its cache or settings change, on a reconnect, `version`, vault files (`files`: any, or by path) and every `every`…
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…

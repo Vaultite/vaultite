@@ -2,7 +2,7 @@
 // copies it.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { Copy, History, RotateCcw } from "lucide-react"
-import { capitalize, cn, copyText, diffLines, fmtAgo, fmtStamp, get, notify, notifyError, openFile, plural, post, put, readFile, useVaultChange } from "@vaultite"
+import { Bar, capitalize, cn, copyText, diffLines, fmtAgo, fmtStamp, get, Loading, notify, notifyError, openFile, plural, post, put, readFile, useKeptCount, useVaultChange } from "@vaultite"
 
 /** One kept here (`size`), or another plugin's (`source`: Git's commits, with their `id`, `title` and `by`). */
 type Version = { t: number; size?: number; source?: string; label?: string; id?: string; title?: string; by?: string }
@@ -62,6 +62,25 @@ function Rows({ lines }: { lines: Line[] }) {
   )
 }
 
+const option = "flex w-full flex-col rounded-[8px] px-3 py-2 text-left md:rounded-[6px] md:py-1.5"
+const when = "text-[15px] font-medium md:text-[13px]"
+const what = "truncate text-[13px] text-muted-foreground md:text-[12px]"
+const list = "flex max-h-[34vh] shrink-0 flex-col gap-px overflow-y-auto overscroll-contain @2xl:max-h-[calc(100dvh-12rem)] @2xl:w-[210px]"
+
+/** Versions on their way: the list's options with bars for their two lines. */
+function Skeleton({ count }: { count: number }) {
+  return (
+    <ul aria-busy className={cn("loading-in", list)}>
+      {Array.from({ length: count }, (_, i) => (
+        <li key={i} className={option}>
+          <span className={when}><Bar w={i % 2 ? "45%" : "55%"} /></span>
+          <span className={what}><Bar w={i % 2 ? "70%" : "80%"} /></span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 export function HistoryView({ path }: { path: string }) {
   const [versions, setVersions] = useState<Version[] | null>(null)
   const [sel, setSel] = useState<string | null>(null)
@@ -98,6 +117,7 @@ export function HistoryView({ path }: { path: string }) {
     return () => { live = false }
   }, [text, now])
   const changes = lines ? lines.filter((l) => l.kind !== "same").length : 0
+  const kept = useKeptCount(`history:${path}`, versions?.length)
 
   const restore = async () => {
     if (text === null || !v) return
@@ -116,7 +136,6 @@ export function HistoryView({ path }: { path: string }) {
   }
 
   const labels = [...new Set((versions ?? []).flatMap((x) => (x.label ? [x.label] : [])))]
-  if (versions === null) return <p className="mt-6 text-[15px] text-muted-foreground">Loading…</p>
   const name = path.split("/").pop()!.replace(/\.md$/i, "")
   return (
     <div className="@container mt-3" data-history>
@@ -125,26 +144,25 @@ export function HistoryView({ path }: { path: string }) {
         kept on this machine every few minutes while it changes (for a week, by default)
         {labels.length ? <>, and its versions in {labels.join(" and ")}.</> : "."}
       </p>
-      {!versions.length ? (
+      {versions === null && !kept ? <Loading /> : versions !== null && !versions.length ? (
         <div className="flex items-center gap-2.5 rounded-[10px] bg-foreground/[0.04] px-4 py-3 text-[15px] text-muted-foreground md:text-[13px]">
           <History className="size-4 shrink-0" strokeWidth={2} />No earlier versions yet. They're kept from the first change on.
         </div>
       ) : (
         <div className="flex flex-col gap-4 @2xl:flex-row">
-          <ul role="listbox" aria-label="Versions" className="flex max-h-[34vh] shrink-0 flex-col gap-px overflow-y-auto overscroll-contain @2xl:max-h-[calc(100dvh-12rem)] @2xl:w-[210px]">
+          {versions === null ? <Skeleton count={kept} /> : <ul role="listbox" aria-label="Versions" className={list}>
             {versions.map((x) => (
               <li key={keyOf(x)}>
                 <button type="button" role="option" aria-selected={keyOf(x) === sel} onClick={() => setSel(keyOf(x))} data-source={x.source}
-                  className={cn("flex w-full cursor-pointer flex-col rounded-[8px] px-3 py-2 text-left md:rounded-[6px] md:py-1.5",
-                    keyOf(x) === sel ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]")}>
-                  <span className="text-[15px] font-medium md:text-[13px]">{capitalize(fmtAgo(x.t))}</span>
-                  <span className="truncate text-[13px] text-muted-foreground md:text-[12px]">
+                  className={cn(option, "cursor-pointer", keyOf(x) === sel ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]")}>
+                  <span className={when}>{capitalize(fmtAgo(x.t))}</span>
+                  <span className={what}>
                     {x.source ? `${x.label}: ${x.title || "(no message)"}${x.by ? ` · ${x.by}` : ""}` : `${fmtStamp(x.t)} · ${kb(x.size ?? 0)}`}
                   </span>
                 </button>
               </li>
             ))}
-          </ul>
+          </ul>}
           <section className="min-w-0 flex-1" aria-label="Version">
             <div className="mb-2 flex flex-wrap items-center gap-2">
               <div className="w-full min-w-0 text-[13px] text-muted-foreground @md:w-auto @md:flex-1">
@@ -161,7 +179,7 @@ export function HistoryView({ path }: { path: string }) {
               </button>
             </div>
             <div className="overflow-x-auto rounded-[10px] border-[0.5px] border-border bg-card py-2 font-mono text-[12.5px] leading-[19px] md:rounded-[8px]">
-              {lines === null ? <p className="px-3 font-sans text-[13px] text-muted-foreground">Loading…</p> : <Rows lines={lines} />}
+              {lines === null ? <Loading className="px-3 font-sans text-[13px] leading-[19px]" /> : <Rows lines={lines} />}
             </div>
             <p className="mt-2 text-[12px] text-muted-foreground">
               <span className="text-[var(--green)]">+</span> in this version, <span className="text-[var(--red)]">−</span> in the file now. Restore makes the file this version (it can be undone).

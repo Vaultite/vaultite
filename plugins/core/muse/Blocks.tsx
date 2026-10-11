@@ -2,7 +2,7 @@
 // Machines; on another Vaultite server, that server reads its own. Files open in Machines' file view when it can.
 import { type ReactNode, useState } from "react"
 import { Brain, CalendarClock, ChevronRight, FolderOpen, MessagesSquare, Moon, Newspaper } from "lucide-react"
-import { type BlockCtx, Empty, fmtAgo, List, Loading, machinePath, Markdown, openView, Panel, Row, Section, Segmented, Stat, useLive, useMachines, useTick } from "@vaultite"
+import { Bar, type BlockCtx, Empty, fmtAgo, List, Loading, LoadingRows, machinePath, Markdown, openView, Panel, Row, Section, Segmented, Stat, useKeptCount, useLive, useMachines, useTick } from "@vaultite"
 import { MuseIcon } from "./marks"
 
 const TINT = "var(--blue)"
@@ -57,17 +57,44 @@ function Fold({ title, meta, children, open: initial = false }: { title: ReactNo
   )
 }
 
+/** Folds on their way: Fold's row with a bar for its title. */
+function FoldSkeleton({ count }: { count: number }) {
+  return (
+    <div className="loading-in hairline" aria-busy>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex min-h-11 items-center gap-1.5 text-[15px]">
+          <span className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1"><Bar w={i % 2 ? "35%" : "45%"} /></span>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+const dot = <span className="size-2 shrink-0" />
+/** As many skeleton rows as last time, or the Loading line when there were none. */
+const rows = (n: number, lead?: boolean, meta = true) => (n ? <LoadingRows count={n} lead={lead && dot} meta={meta} /> : <Loading />)
+
 const when = (s: string) => (s && !Number.isNaN(Date.parse(s)) ? fmtAgo(s) : "")
 
 /** ```block-muse: who it is, how much it has done, and what's left to tell it. */
 export function MuseBlock({ options = {} }: Partial<BlockCtx>) {
   const { data, error, files } = useMuse<Overview>("muse", options)
   const todo = data?.files.filter((f) => f.unfilled.length) ?? []
+  const persona = useKeptCount(`muse:${str(options.machine)}:files`, data?.files.length)
   return (
     <Panel title={data?.name ?? "Muse"} icon={MuseIcon} tint={TINT}
       action={files && <button type="button" onClick={() => openView(`machine-files/${files}`, { newTab: true })} data-tip="Browse its files"
         className="flex size-8 cursor-pointer items-center justify-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground"><FolderOpen className="size-4" /></button>}>
-      {!data ? <Loading error={why(error, "this agent")} /> : (
+      {error ? <Loading error={why(error, "this agent")} /> : !data ? (
+        <div className="loading-in space-y-4" aria-busy>
+          <p className="text-[13px]"><Bar w="45%" /></p>
+          <div className="grid grid-cols-2 gap-4 @md:grid-cols-4">
+            {["Runs", "Dreams", "Daily notes", "Connectors"].map((l) => <Stat key={l} label={l} value={<Bar w="1.4em" />} />)}
+          </div>
+          <Section title="Who it is">{persona ? <FoldSkeleton count={persona} /> : <Loading />}</Section>
+        </div>
+      ) : (
         <div className="space-y-4" data-muse={data.machine || "here"}>
           <p className="text-[13px] text-muted-foreground">Muse agent{data.label ? ` on ${data.label}` : ""} · <span className="font-mono">{data.home}</span></p>
           <div className="grid grid-cols-2 gap-4 @md:grid-cols-4">
@@ -108,9 +135,10 @@ export function MuseRuns({ options = {} }: Partial<BlockCtx>) {
   const kinds = [...new Set(data?.runs.map((r) => r.kind) ?? [])]
   const shown = data?.runs.filter((r) => kind === "all" || r.kind === kind) ?? []
   const machine = str(options.machine)
+  const kept = useKeptCount(`muse:${machine}:runs`, data?.runs.length)
   return (
     <Panel title="Runs" icon={MessagesSquare} tint={TINT}>
-      {!data ? <Loading error={why(error, "its runs")} /> : !data.runs.length ? <Empty>No runs yet.</Empty> : (
+      {!data ? (error ? <Loading error={why(error, "its runs")} /> : rows(kept, true)) : !data.runs.length ? <Empty>No runs yet.</Empty> : (
         <div className="space-y-2">
           {kinds.length > 1 && <Segmented label="Kind of run" value={kinds.includes(kind) ? kind : "all"} onChange={setKind} className="overflow-x-auto"
             options={[{ value: "all", label: "All" }, ...kinds.map((k) => ({ value: k, label: k }))]} />}
@@ -132,9 +160,10 @@ const SURE: Record<string, string> = { high: "var(--green)", medium: "var(--oran
 export function MuseMemory({ options = {} }: Partial<BlockCtx>) {
   const notes = typeof options.notes === "number" ? options.notes : 3
   const { data, error } = useMuse<Memory>("muse/memory", options, { notes })
+  const facts = useKeptCount(`muse:${str(options.machine)}:facts`, data?.facts.length)
   return (
     <Panel title="What it knows" icon={Brain} tint={TINT}>
-      {!data ? <Loading error={why(error, "its memory")} /> : (
+      {error ? <Loading error={why(error, "its memory")} /> : !data ? <Section title="Long-term memory">{rows(facts, false, false)}</Section> : (
         <div className="space-y-4">
           <Section title={<>Long-term memory{data.modified && <span className="font-normal"> · {when(data.modified)}</span>}</>}>
             {data.facts.length ? <List>{data.facts.map((f, i) => <Row key={i} wrap title={<span className="whitespace-pre-wrap">{f}</span>} />)}</List> : <Empty>Nothing yet.</Empty>}
@@ -210,9 +239,20 @@ const host = (u: string) => { try { return new URL(u).hostname.replace(/^www\./,
 export function MuseFeed({ options = {} }: Partial<BlockCtx>) {
   const n = typeof options.stories === "number" ? options.stories : 6
   const { data, error } = useMuse<Feed>("muse/feed", options, { stories: n })
+  const stories = useKeptCount(`muse:${str(options.machine)}:feed`, data?.stories.length, 3, 6)
   return (
     <Panel title="Feed" icon={Newspaper} tint={TINT}>
-      {!data ? <Loading error={why(error, "its feed")} /> : !data.stories.length ? <Empty>Nothing in its feed yet.</Empty> : (
+      {!data ? (error || !stories ? <Loading error={why(error, "its feed")} /> : (
+        <div className="loading-in space-y-5" aria-busy>
+          {Array.from({ length: stories }, (_, i) => (
+            <div key={i}>
+              <div className="text-[12px]"><Bar w="10em" /></div>
+              <div className="mt-0.5 text-[17px] leading-[22px]"><Bar w={i % 2 ? "55%" : "70%"} /></div>
+              <div className="mt-1 text-[15px] leading-[21px]"><Bar w="90%" /><br /><Bar w="60%" /></div>
+            </div>
+          ))}
+        </div>
+      )) : !data.stories.length ? <Empty>Nothing in its feed yet.</Empty> : (
         <div className="space-y-5">
           {data.stories.map((s, i) => (
             <article key={i} data-story={s.date} className="min-w-0">
@@ -240,9 +280,19 @@ export function MuseSetup({ options = {} }: Partial<BlockCtx>) {
   const { data, error } = useMuse<Overview>("muse", options)
   const on = data?.connectors.filter((c) => c.status === "connected") ?? []
   const off = data?.connectors.filter((c) => c.status !== "connected") ?? []
+  const jobs = useKeptCount(`muse:${str(options.machine)}:jobs`, data?.jobs.length)
   return (
     <Panel title="Setup" icon={CalendarClock} tint={TINT}>
-      {!data ? <Loading error={why(error, "how it's set up")} /> : (
+      {error ? <Loading error={why(error, "how it's set up")} /> : !data ? (
+        <div className="space-y-4">
+          <Section title="Scheduled jobs">{rows(jobs, true)}</Section>
+          <Section title="Connectors">
+            <div className="loading-in flex flex-wrap gap-1.5 py-1" aria-busy>
+              {["6em", "8em", "5em"].map((w) => <span key={w} className="skeleton h-7 rounded-full" style={{ width: w }} />)}
+            </div>
+          </Section>
+        </div>
+      ) : (
         <div className="space-y-4">
           <Section title="Scheduled jobs">
             {!data.jobs.length ? <Empty>No scheduled jobs.</Empty> : <List>{data.jobs.map((j) => (

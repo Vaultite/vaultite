@@ -5,6 +5,7 @@ import { Check } from "lucide-react"
 import { anyIcon, isEmoji, loadIconTags } from "@/core/icons"
 import { isMac } from "@/core/platform"
 import { fuzzy } from "@/core/search"
+import { Bar } from "@/components/kit"
 import { Marked, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
@@ -21,6 +22,20 @@ export function IconPicker() {
 
 type Row = { id: string; marks: number[]; about?: string }
 const LIMIT = 120
+
+/** The icons on their way: the palette's rows with a bar for each name, enough to fill it as the whole list will. */
+function Skeleton() {
+  return (
+    <div className="loading-in" aria-busy>
+      {Array.from({ length: 16 }, (_, i) => (
+        <div key={i} className="flex items-center gap-3 px-3 py-2">
+          <span className="grid size-6 shrink-0 place-items-center"><span className="skeleton size-[18px]" /></span>
+          <span className="min-w-0 flex-1 text-[15px] leading-[21px]"><Bar w={`${[22, 16, 28, 19, 25][i % 5]}%`} /></span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
   const [q, setQ] = useState("")
@@ -55,7 +70,7 @@ function Picker({ a, onClose }: { a: IconAsk; onClose: () => void }) {
   return (
     <Palette label={a.title} placeholder="Search icons, or type an emoji…" query={q} setQuery={setQ} items={rows} onClose={onClose}
       onPick={(r) => { if (!r) return; onClose(); a.onPick(r.id) }}
-      empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">{tags ? `No icon matches "${q.trim()}".` : "Loading icons…"}</p>}
+      empty={tags ? <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No icon matches "{q.trim()}".</p> : <Skeleton />}
       hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to pick"], ...(isMac ? [["Ctrl+Mod+Space", "for an emoji"] as [string, string]] : []), ["Escape", "to dismiss"]]}
       row={(r) => {
         const Icon = anyIcon(r.id)

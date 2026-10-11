@@ -1,7 +1,7 @@
 // A cards file as a page (its cards and when each comes back), the review sheet (cards due, mixed across files), and
 // the `lessons` block.
 import {
-  Button, cn, detailPath, Empty, haptic, Loading, Markdown, notifyError, op, openDetail, openFile, Panel, Row, SheetHead, useCommands, useLive,
+  Bar, Button, cn, detailPath, Empty, haptic, Markdown, notifyError, op, openDetail, openFile, Panel, Row, SheetHead, useCommands, useLive,
   type BlockCtx, type PageCtx, type Store,
 } from "@vaultite"
 import { BookOpenCheck, Check, Layers } from "lucide-react"
@@ -117,13 +117,24 @@ function Session({ data, sources, only }: { data: State; sources: Source[]; only
   )
 }
 
+/** A card on its way: Session's card with a bar for its question, and room for its button. */
+function SessionSkeleton() {
+  return (
+    <div className="loading-in" aria-busy>
+      <div className="mb-4 flex justify-between text-[13px]"><span><Bar w="8em" /></span><span><Bar w="3em" /></span></div>
+      <div className="rounded-[12px] border border-border bg-card p-5"><div className="text-[17px] font-semibold"><Bar w="75%" /></div></div>
+      <Button look="primary" className={cn(big, "invisible mt-6 w-full")} tabIndex={-1} aria-hidden>Show answer</Button>
+    </div>
+  )
+}
+
 export function Review({ store, source }: { store: Store; source?: string }) {
   const { data } = useLive<State>(STATE)
   const sources = useMemo(() => sourcesOf(store), [store])
   return (
     <>
       <SheetHead icon={Layers} tint="var(--lessons)" kicker="Review" title={source ? (sources.find((s) => s.id === source)?.title ?? "Cards") : "Your cards"} />
-      {data ? <Session data={data} sources={sources} only={source} /> : <Loading />}
+      {data ? <Session data={data} sources={sources} only={source} /> : <SessionSkeleton />}
     </>
   )
 }

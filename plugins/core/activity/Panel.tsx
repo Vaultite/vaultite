@@ -1,10 +1,13 @@
 // The Activity panel: the last few things done, live; a row opens its file or an agent's terminal. Who and what to
 // show are kept per workspace.
 import { ListFilter, SquareArrowOutUpRight, Users } from "lucide-react"
-import { cn, fmtAgo, fmtStamp, menuBelow, openFile, openView, SidebarHeading, useScopedState, useTick, type SidebarCtx } from "@vaultite"
+import { Bar, cn, fmtAgo, fmtStamp, menuBelow, openFile, openView, SidebarHeading, useKeptCount, useScopedState, useTick, type SidebarCtx } from "@vaultite"
 import { ACTION_KINDS, type ActionKind, type ActivityEvent, type ActorKind } from "./model"
 import { EventText, KINDS, useExists, useFeed } from "./Feed"
 import { kindLabel, openTerminal, useLook, whoOf } from "./shared"
+
+const line = "flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap"
+const note = "h-7 pl-1.5 text-[13px] leading-7 text-tertiary"
 
 function Line({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
   const look = useLook()(e.actor)
@@ -16,12 +19,28 @@ function Line({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
   return (
     <a href="#" data-event={e.id} data-tip={tip} data-tip-side="right" aria-label={e.text}
       onClick={(ev) => { ev.preventDefault(); go?.() }}
-      className={cn("group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap", go ? "hover:bg-foreground/[0.04]" : "cursor-default")}>
+      className={cn("group/row", line, go ? "hover:bg-foreground/[0.04]" : "cursor-default")}>
       <Icon className="size-4 shrink-0" strokeWidth={2} style={{ color: look.tint }} />
       <span className="min-w-0 flex-1 truncate"><EventText e={e} exists={exists} plain /></span>
       {(e.count ?? 1) > 1 && <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">×{e.count}</span>}
       <span className="w-7 shrink-0 text-right text-[11px] text-tertiary tabular-nums">{fmtAgo(e.last ?? e.t, { short: true })}</span>
     </a>
+  )
+}
+
+const widths = ["70%", "52%", "78%", "60%", "66%"]
+/** Lines on their way: Line's shape with bars for its text. */
+function Skeleton({ count }: { count: number }) {
+  return (
+    <div className="loading-in flex flex-col gap-px" aria-busy>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className={line}>
+          <span className="size-4 shrink-0" />
+          <span className="min-w-0 flex-1"><Bar w={widths[i % widths.length]} /></span>
+          <span className="w-7 shrink-0 text-right text-[11px]"><Bar w="1.6em" /></span>
+        </div>
+      ))}
+    </div>
   )
 }
 
@@ -33,8 +52,9 @@ export function ActivityPanel({ store, open }: SidebarCtx) {
   const [filter, setFilter] = useScopedState<Filter>("activity:filter", ALL)
   const actor = KINDS.includes(filter.actor as ActorKind) ? filter.actor! : ""
   const action = ACTION_KINDS.some((k) => k.id === filter.action) ? filter.action! : ""
-  const { data, error, events } = useFeed({ limit: 10, actor, action })
+  const { q, data, error, events } = useFeed({ limit: 10, actor, action })
   const exists = useExists(store)
+  const rows = useKeptCount(`activity?${q}`, data?.events.length, 3, 10)
   useTick()
   if (!open) return null
   const set = (patch: Filter) => {
@@ -66,9 +86,11 @@ export function ActivityPanel({ store, open }: SidebarCtx) {
       </SidebarHeading>
       <div className="flex flex-col gap-px">
         {!data ? (
-          <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">{error ? "Couldn't read the activity" : "Loading…"}</p>
+          error ? <p className={note}>Couldn't read the activity</p>
+            : rows ? <Skeleton count={rows} />
+            : <p className={cn("loading-in", note)} aria-busy><span className="shimmer">Loading…</span></p>
         ) : !events.length ? (
-          <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">{actor || action ? "Nothing like that yet" : "Nothing yet"}</p>
+          <p className={note}>{actor || action ? "Nothing like that yet" : "Nothing yet"}</p>
         ) : events.map((e) => <Line key={e.id} e={e} exists={exists} />)}
       </div>
     </div>

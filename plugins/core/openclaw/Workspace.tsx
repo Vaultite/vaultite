@@ -1,7 +1,7 @@
 // An OpenClaw agent's memory (its workspace's files, GET /api/openclaw/memory) and the scheduled jobs (GET
 // /api/openclaw/cron), read only; `machine:` another machine's, `account:` another agent's.
 import { Brain, CalendarClock } from "lucide-react"
-import { type BlockCtx, Empty, fmtAgo, fmtMin, List, Loading, Markdown, Panel, Row, Section, useAgentRoute } from "@vaultite"
+import { type BlockCtx, Empty, fmtAgo, fmtMin, List, Loading, LoadingRows, Markdown, Panel, Row, Section, useAgentRoute, useKeptCount } from "@vaultite"
 
 type File = { name: string; text: string; modified: string | null }
 export type Memory = { agent: string; dir: string; files: File[]; notes: (File & { date: string })[] }
@@ -37,10 +37,12 @@ const until = (s: string) => {
 
 /** ```block-openclaw-cron: the scheduled jobs, each with when it runs, its last run and the next. */
 export function CronBlock({ options = {} }: Partial<BlockCtx>) {
-  const { data, error, on } = useAgentRoute<Job[]>("openclaw/cron", options)
+  const { data, error, on, machine } = useAgentRoute<Job[]>("openclaw/cron", options)
+  const rows = useKeptCount(`openclaw:cron:${machine}:${String(options.account ?? "")}`, data?.length)
   return (
     <Panel title="OpenClaw scheduled jobs" icon={CalendarClock} tint="var(--red)">
-      {!data ? <Loading error={error && `Couldn't read OpenClaw${on}.`} /> : !data.length ? <Empty>No scheduled jobs.</Empty> : (
+      {!data ? (error || !rows ? <Loading error={error && `Couldn't read OpenClaw${on}.`} /> : <LoadingRows count={rows} lead={<span className="size-2 shrink-0" />} />)
+        : !data.length ? <Empty>No scheduled jobs.</Empty> : (
         <List>
           {data.map((j) => (
             <Row key={j.id} data-job={j.id}

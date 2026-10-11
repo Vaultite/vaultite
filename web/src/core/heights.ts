@@ -64,6 +64,8 @@ const busy = (el: HTMLElement) => !!el.querySelector("[aria-busy=true]")
 
 // Held elements are checked together, a few times a second, while any is held.
 type Held = { el: HTMLElement; key: string; held: number; since: number; release: (why: string, natural?: number) => void
+  /** Let go once nothing inside is loading, even if it's shorter (a page: it's all in once nothing's busy). */
+  shrinks: boolean
   /** Something inside changed since it was last measured. */
   changed: boolean }
 const holding = new Set<Held>()
@@ -83,7 +85,7 @@ function tick() {
   // anything is drawn: one layout for all of them.
   for (const h of shown) h.el.style.height = ""
   const natural = shown.map((h) => h.el.getBoundingClientRect().height)
-  shown.forEach((h, i) => { if (natural[i] >= h.held - 1 && !busy(h.el)) h.release("ready", natural[i]); else h.el.style.height = `${h.held}px` })
+  shown.forEach((h, i) => { if ((h.shrinks || natural[i] >= h.held - 1) && !busy(h.el)) h.release("ready", natural[i]); else h.el.style.height = `${h.held}px` })
   if (!holding.size && ticking) { clearInterval(ticking); ticking = null }
 }
 
@@ -100,8 +102,8 @@ function batched(read: () => number, write: (n: number) => void) {
 }
 
 /** Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then
- *  remember its height as it changes. Returns a stop. */
-export function holdHeight(el: HTMLElement, key: string, anyWidth = false): () => void {
+ *  remember its height as it changes (`shrinks`: see Held). Returns a stop. */
+export function holdHeight(el: HTMLElement, key: string, anyWidth = false, shrinks = false): () => void {
   let stopped = false
   let note: ReturnType<typeof setTimeout> | null = null
   let h: Held | null = null
@@ -123,7 +125,7 @@ export function holdHeight(el: HTMLElement, key: string, anyWidth = false): () =
     const changes = new MutationObserver((rs) => { if (h && rs.some((r) => r.target !== el)) h.changed = true })
     changes.observe(el, { childList: true, subtree: true, characterData: true, attributes: true })
     h = {
-      el, key, held, since: now, changed: true,
+      el, key, held, since: now, changed: true, shrinks,
       // (its new size comes to the ResizeObserver, which remembers it)
       release: (why, natural) => {
         if (!h) return
@@ -158,8 +160,40 @@ export function holdHeight(el: HTMLElement, key: string, anyWidth = false): () =
 }
 
 /** holdHeight for a React element: put the ref on it. `key` null: nothing held or kept. */
-export function useHeldHeight<T extends HTMLElement>(key: string | null) {
+export function useHeldHeight<T extends HTMLElement>(key: string | null, shrinks = false) {
   const ref = useRef<T>(null)
-  useLayoutEffect(() => (key && ref.current ? holdHeight(ref.current, key) : undefined), [key])
+  useLayoutEffect(() => (key && ref.current ? holdHeight(ref.current, key, false, shrinks) : undefined), [key, shrinks])
   return ref
+}
+
+// How many rows each list had, so its skeleton draws as many (an empty list: none) and doesn't jump when it comes.
+const COUNTS = "vaultite.counts"
+let counts: Map<string, number> | null = null
+function allCounts() {
+  if (counts) return counts
+  counts = new Map()
+  try {
+    const kept = JSON.parse(localStorage.getItem(COUNTS) ?? "null") as [string, number][] | null
+    if (Array.isArray(kept)) counts = new Map(kept)
+  } catch { /* private mode, or not JSON */ }
+  return counts
+}
+let savingCounts: ReturnType<typeof setTimeout> | null = null
+
+/** How many rows to draw while list `key` loads: `now` (how many it has; undefined while loading) is kept for next time,
+ *  and while loading, what it had last time, at most `most` (`first`: never seen). */
+export function useKeptCount(key: string | null, now: number | undefined, first = 3, most = 12): number {
+  useLayoutEffect(() => {
+    if (key === null || now === undefined || allCounts().get(key) === now) return
+    const m = allCounts()
+    m.delete(key)
+    m.set(key, now)
+    while (m.size > MAX) m.delete(m.keys().next().value!)
+    savingCounts ??= setTimeout(() => {
+      savingCounts = null
+      try { localStorage.setItem(COUNTS, JSON.stringify([...allCounts()])) } catch { /* private mode, or full */ }
+    }, 1000)
+  }, [key, now])
+  if (now !== undefined) return now
+  return Math.min(key === null ? first : allCounts().get(key) ?? first, most)
 }

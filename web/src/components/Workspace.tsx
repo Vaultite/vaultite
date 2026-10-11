@@ -5,6 +5,7 @@ import { X } from "lucide-react"
 import type { Store } from "@/core/data"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import type { ViewDef } from "@/core/define"
+import { useHeldHeight } from "@/core/heights"
 import { closeTab, focusGroup, replaceTabTarget, selectTab, setCloseGuard, setOpenElsewhere, setPageTest, setTabCloser, setTabKeeper, useWorkspace } from "@/core/workspace"
 import { dropAt, dropOn, PANES, type Drop } from "@/core/drop"
 import { evenOut, resize } from "@/core/splits"
@@ -249,6 +250,13 @@ export function viewBody(store: Store, tab: Tab, to: string, view: ReturnType<ty
   return { title, drawn: <Drawn draw={() => view.def.render(ctx)} />, note: null }
 }
 
+/** A view tab's page, held at the height it had last time until nothing in it is loading: what can't draw its room
+ *  while its data comes (a part whose size isn't known) doesn't push the page when it does. */
+export function HeldView({ to, view, children }: { to: string; view: ReturnType<typeof viewFor>; children: ReactNode }) {
+  const ref = useHeldHeight<HTMLDivElement>(`view:${view?.def.argState ? to.split("/")[0] : to}`, true)
+  return <div ref={ref}>{children}</div>
+}
+
 /** What a tab shows. Hidden, it's drawn once as hidden and then left as it is until it's shown again: kept tabs cost
  *  nothing while the vault changes (what subscribes for itself, an open file's text, still follows). */
 const TabContent = memo(function TabContent({ tab, to, view, file, full, focused, ...p }: Props & {
@@ -264,7 +272,7 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   else if (tab && to.startsWith("view:")) {
     const v = viewBody(p.store, tab, to, view, focused)
     body = v.drawn && full ? <div className="absolute inset-0">{v.drawn}</div>
-      : padded(false, <ViewBar>{v.title}</ViewBar>, v.drawn ?? <p className="mt-6 text-[15px] text-muted-foreground">{v.note}</p>)
+      : padded(false, <ViewBar>{v.title}</ViewBar>, v.drawn ? <HeldView to={to} view={view}>{v.drawn}</HeldView> : <p className="mt-6 text-[15px] text-muted-foreground">{v.note}</p>)
   } else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
   else {
     const page = p.page(to)

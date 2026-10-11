@@ -132,7 +132,7 @@ export { rawUrl } from "@/components/FileViewers"
 export { kindIcon } from "@/core/filekinds"
 export { AmbientButton } from "@/components/Ambient"
 export { Button, buttonClass, HeadingButton } from "@/components/Button"
-export { Badged, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch } from "@/components/kit"
+export { Badged, Bar, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch } from "@/components/kit"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
 export { useSheetGuard } from "@/components/DetailSheet"
 export { WeeksGrid } from "@/components/WeeksGrid"
@@ -147,7 +147,7 @@ export { BlockView, blockOptions, FileBlocks, segments, type Segment } from "@/c
 export { EmbedView } from "@/components/NoteEmbed"
 // Remembered heights: a card drawn again starts at the size it had (core/heights.ts), so a page doesn't jump as its
 // data comes in.
-export { blockHeightKey, holdHeight, textKey, useHeldHeight } from "@/core/heights"
+export { blockHeightKey, holdHeight, textKey, useHeldHeight, useKeptCount } from "@/core/heights"
 // Something heavy (a map) made only once it comes near the screen; a long list's rows drawn as they come near it, or
 // more asked for as its end does.
 export { useNearEnd, useNearScreen, useRowsNear } from "@/core/near"

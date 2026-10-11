@@ -2,7 +2,7 @@
 // so every page is cleaned first (`safe`: no scripts, frames, handlers or javascript: links; a blocking CSP).
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, List } from "lucide-react"
-import { cn, Loading, menuBelow, openWebLink } from "@vaultite"
+import { Bar, cn, Loading, menuBelow, openWebLink } from "@vaultite"
 
 type TocItem = { label: string; href: string; subitems?: TocItem[] }
 type Book = { metadata?: { title?: unknown; author?: unknown }; toc?: TocItem[]; dir?: string
@@ -215,7 +215,15 @@ function Card({ url, path }: { url: string; path: string }) {
     return () => { on = false; if (cover) URL.revokeObjectURL(cover) }
   }, [url, path])
   if (error) return <p className="p-3 text-[15px] text-muted-foreground">This book couldn't be opened: {error}.</p>
-  if (!info) return <div className="h-24"><Loading /></div>
+  if (!info) return (
+    <div className="loading-in flex items-center gap-4 p-3" aria-busy>
+      <div className="skeleton h-28 w-20 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <p className="text-[17px] leading-6"><Bar w="55%" /></p>
+        <p className="mt-0.5 text-[15px]"><Bar w="30%" /></p>
+      </div>
+    </div>
+  )
   return (
     <div className="flex items-center gap-4 p-3">
       {info.cover

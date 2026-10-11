@@ -5,7 +5,7 @@ import {
   Bookmark, Bot, CalendarDays, ChevronLeft, ChevronRight, CircleCheck, CircleDot, CircleX, Dot, FilePlus, FolderInput, ListPlus, Pencil, Puzzle,
   RotateCcw, Trash2,
 } from "lucide-react"
-import { addDays, cn, dow, Empty, fmtDay, fmtLongDay, Loading, Markdown, openFile, Panel, plural, Segmented, today, useLive, type FileCtx, type Store } from "@vaultite"
+import { addDays, Bar, cn, dow, Empty, fmtDay, fmtLongDay, Loading, Markdown, openFile, Panel, plural, Segmented, today, useKeptCount, useLive, type FileCtx, type Store } from "@vaultite"
 import { Chips } from "./Feed"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, type RecapKind, verbOf } from "./recap"
 
@@ -77,6 +77,28 @@ function EntryRow({ e, store, last }: { e: RecapEntry; store: Store; last: boole
   )
 }
 
+const widths = ["58%", "44%", "67%", "51%", "62%"]
+/** Entries on their way: EntryRow's shape (time, ring, label and line) with bars for the text. */
+function Skeleton({ count }: { count: number }) {
+  return (
+    <div className="loading-in" aria-busy>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex gap-3">
+          <span className="w-11 shrink-0 pt-[3px] text-[13px]"><Bar w="2.6em" /></span>
+          <div className="relative flex shrink-0 flex-col items-center">
+            <span className="z-[1] size-7 rounded-full border-[1.5px] border-border bg-background" />
+            {i < count - 1 && <span className="absolute inset-y-0 top-7 w-px bg-border" />}
+          </div>
+          <div className="min-w-0 flex-1 pb-5">
+            <div className="text-[12px] leading-[16px]"><Bar w="5em" /></div>
+            <div className="text-[15px] leading-[21px]"><Bar w={widths[i % widths.length]} /></div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** Days of entries, newest day first and, in each, the latest first. `group` filters by kind. */
 export function Timeline({ days, store, group }: { days: { date: string; entries: RecapEntry[] }[]; store: Store; group: RecapGroup | "" }) {
   const shown = days.map((d) => ({ ...d, entries: d.entries.filter((e) => !group || groupOf(e.kind) === group).slice().reverse() }))
@@ -123,6 +145,7 @@ export function RecapBlock({ store, path, options }: { store: Store; path: strin
   const days = SPAN_DAYS[span]
   const { data, error } = useLive<RecapAnswer>(`activity/recap?date=${end}&days=${days}`, undefined, undefined, 30_000)
   const groups = useGroups(data?.days ?? [])
+  const rows = useKeptCount(`activity:recap:${span}`, data?.days.reduce((n, d) => n + d.entries.length, 0))
   const from = addDays(end, -(days - 1))
   const label = days === 1 ? fmtDay(end) : `${fmtDay(from)} – ${fmtDay(end)}`
   const step = (k: number) => { const next = addDays(end, k * days); setEnd(next > today() ? today() : next) }
@@ -141,7 +164,7 @@ export function RecapBlock({ store, path, options }: { store: Store; path: strin
       <Segmented label="Span" value={span} onChange={setSpan} className="mb-3 w-full max-w-[280px]"
         options={[{ value: "day", label: "Day" }, { value: "week", label: "Week" }, { value: "month", label: "Month" }]} />
       {groups.length > 1 && <Chips name="Kind" opts={groups} value={group} onChange={setGroup} />}
-      {!data ? <Loading error={error && "Couldn't read the recap."} /> : <Timeline days={data.days} store={store} group={group} />}
+      {!data ? (error || !rows ? <Loading error={error && "Couldn't read the recap."} /> : <Skeleton count={rows} />) : <Timeline days={data.days} store={store} group={group} />}
     </Panel>
   )
 }
@@ -162,13 +185,40 @@ export function RecapPage({ store, body, path }: FileCtx) {
   )
 }
 
+const blank = "color-mix(in oklab, var(--foreground) 7%, transparent)"
+
+/** The stats on its way: the grid's squares, blank, and as many kinds' bars as last time. */
+function StatsSkeleton({ weeks, kinds }: { weeks: number; kinds: number }) {
+  return (
+    <div className="loading-in" aria-busy>
+      <div className="flex gap-[3px] overflow-x-auto pb-1">
+        {Array.from({ length: weeks }, (_, w) => (
+          <div key={w} className="flex flex-col gap-[3px]">
+            {Array.from({ length: 7 }, (_, i) => <span key={i} className="size-[15px] rounded-[3px]" style={{ background: blank }} />)}
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 flex flex-col gap-2.5">
+        {!kinds ? <Loading /> : Array.from({ length: kinds }, (_, i) => (
+          <div key={i}>
+            <div className="text-[14px]"><Bar w="5em" /></div>
+            <div className="mt-1 h-[5px] rounded-full bg-foreground/[0.07]" />
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
 type Counts = { from: string; to: string; days: Record<string, Partial<Record<RecapGroup, number>>> }
 
 export function RecapStats({ store, options }: { store: Store; options: Record<string, unknown> }) {
   const weeks = Math.min(Math.max(typeof options.weeks === "number" ? Math.round(options.weeks) : 10, 1), 53)
   const { data, error } = useLive<Counts>(`activity/recap/counts?weeks=${weeks}`, undefined, undefined, 60_000)
   const recaps = useMemo(() => new Map((store.files?.files ?? []).filter((f) => f.kind === "recaps").map((f) => [dateOfFile(f.path), f.path])), [store.files])
-  if (!data) return <Panel title="Your days" icon={CalendarDays} tint={RECAP_TINT}><Loading error={error && "Couldn't read the recaps."} /></Panel>
+  const kinds = useKeptCount(`activity:recap-stats:${weeks}`, data ? RECAP_GROUPS.filter((g) => Object.values(data.days).some((d) => d[g.id])).length : undefined, 3, 6)
+  const title = `Your days · last ${weeks} weeks`
+  if (!data) return <Panel title={title} icon={CalendarDays} tint={RECAP_TINT}>{error ? <Loading error="Couldn't read the recaps." /> : <StatsSkeleton weeks={weeks} kinds={kinds} />}</Panel>
   const sum = (d: string) => Object.values(data.days[d] ?? {}).reduce((n, x) => n + (x ?? 0), 0)
   // Whole weeks, Monday first, ending with this one.
   const start = addDays(data.to, -(dow(data.to) + (weeks - 1) * 7))
@@ -177,7 +227,7 @@ export function RecapStats({ store, options }: { store: Store; options: Record<s
   const totals = RECAP_GROUPS.map((g) => ({ ...g, n: Object.values(data.days).reduce((n, d) => n + (d[g.id] ?? 0), 0) }))
   const top = Math.max(1, ...totals.map((t) => t.n))
   return (
-    <Panel title={`Your days · last ${weeks} weeks`} icon={CalendarDays} tint={RECAP_TINT}>
+    <Panel title={title} icon={CalendarDays} tint={RECAP_TINT}>
       <div className="flex gap-[3px] overflow-x-auto pb-1" data-recap-grid>
         {cols.map((col, w) => (
           <div key={w} className="flex flex-col gap-[3px]">
@@ -189,7 +239,7 @@ export function RecapStats({ store, options }: { store: Store; options: Record<s
                   data-tip={future ? undefined : `${fmtLongDay(d)}: ${n ? `${plural(n, "thing")}` : "nothing recorded"}`}
                   onClick={(e) => p && openFile(p, { newTab: e.metaKey || e.ctrlKey })}
                   className={cn("size-[15px] rounded-[3px]", p ? "cursor-pointer" : "cursor-default", future && "opacity-0")}
-                  style={{ background: n ? `color-mix(in oklab, ${RECAP_TINT} ${Math.round(level * 100)}%, transparent)` : "color-mix(in oklab, var(--foreground) 7%, transparent)" }} />
+                  style={{ background: n ? `color-mix(in oklab, ${RECAP_TINT} ${Math.round(level * 100)}%, transparent)` : blank }} />
               )
             })}
           </div>

@@ -1,7 +1,7 @@
 // ```block-activity-summary: the last 24 hours (`days: 1`, per hour) or days (per day): how much was done, by you, by
 // coding agents and by everything else; who did it; the files touched most.
 import { BarChart3, ChevronRight } from "lucide-react"
-import { cn, Empty, fmtAgo, fmtDay, fmtStamp, Loading, openFile, Panel, Section, useLive, useTick, type Store } from "@vaultite"
+import { Bar, cn, Empty, fmtAgo, fmtDay, fmtStamp, Loading, LoadingRows, openFile, Panel, Section, useKeptCount, useLive, useTick, type Store } from "@vaultite"
 import type { ActivitySummary, ActorCount } from "./model"
 import { Columns } from "./Columns"
 import { shortName, TINT, useExists } from "./Feed"
@@ -55,17 +55,36 @@ function FileRow({ f, exists }: { f: ActivitySummary["files"][number]; exists: b
   ) : <div className={cls} data-tip={`${f.path} (not in the vault now)`}>{body}</div>
 }
 
+/** The summary on its way: the chart's room, then as many rows of each list as last time. */
+function Skeleton({ who, files }: { who: number; files: number }) {
+  const rows = (n: number, lead?: boolean) => n ? <LoadingRows count={n} lead={lead && <span className="size-[17px] shrink-0" />} right /> : <Loading />
+  return (
+    <div className="loading-in" aria-busy>
+      <div className="mb-2 h-5 text-[13px] leading-5"><Bar w="40%" /></div>
+      <div className="skeleton" style={{ height: 96 }} />
+      <div className="mt-1.5 flex justify-between text-[11px]"><Bar w="3em" /><Bar w="3em" /></div>
+      <div className="mt-2 text-[13px]"><Bar w="12em" /></div>
+      <div className="mt-5 grid grid-cols-1 gap-x-8 gap-y-4 @2xl:grid-cols-2">
+        <Section title="Who">{rows(who, true)}</Section>
+        <Section title="Files touched most">{rows(files)}</Section>
+      </div>
+    </div>
+  )
+}
+
 export function SummaryBlock({ store, options }: { store: Store; options: Record<string, unknown> }) {
   const days = Math.min(Math.max(typeof options.days === "number" ? Math.round(options.days) : 1, 1), 31)
   const { data, error } = useLive<ActivitySummary>(`activity/summary?days=${days}`, undefined, undefined, 15_000)
   const exists = useExists(store)
+  const who = useKeptCount(`activity:summary:${days}:who`, data ? Math.min(data.actors.length, 8) : undefined, 3, 8)
+  const files = useKeptCount(`activity:summary:${days}:files`, data ? Math.min(data.files.length, 8) : undefined, 3, 8)
   useTick(60_000)
   const hourly = data?.bucket === "hour"
   const title = typeof options.title === "string" ? options.title : days === 1 ? "Last 24 hours" : `Last ${days} days`
   return (
     <Panel title={title} icon={BarChart3} tint={TINT}
       action={data && <span className="text-[13px] text-muted-foreground tabular-nums">{count(data.total)} done</span>}>
-      {!data ? <Loading error={error && "Couldn't read the activity."} /> : (
+      {error && !data ? <Loading error="Couldn't read the activity." /> : !data ? <Skeleton who={who} files={files} /> : (
         <div data-activity-summary>
           <Columns series={SERIES} legend="totals" format={count}
             cols={data.buckets.map((b) => ({

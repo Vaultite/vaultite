@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowUp, Eye, EyeOff, File, Folder, PenLine, RefreshCw, Server } from "lucide-react"
-import { get, post, machinePath, notify, notifyError, op, Panel, Loading, Empty, FilterField, Segmented, useMachines, type ViewCtx } from "@vaultite"
+import { get, post, machinePath, notify, notifyError, op, Panel, Loading, Empty, Bar, FilterField, Segmented, useKeptCount, useMachines, type ViewCtx } from "@vaultite"
 import { FilePreview, ago, fmtSize } from "./Preview"
 
 type Entry = { name: string; dir: boolean; link: boolean; size: number | null; mtime?: number | null }
@@ -9,6 +9,7 @@ type Recent = { path: string; files: { path: string; size: number; mtime: number
 const control = "inline-flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-lg border border-border px-3 text-[13px] hover:bg-accent disabled:opacity-50 md:min-h-8 md:min-w-8 md:px-2"
 const field = "min-h-11 min-w-0 flex-1 rounded-lg border border-border bg-card px-3 text-[16px] outline-none focus:ring-2 focus:ring-primary/40 md:min-h-8 md:text-[13px]"
 const muted = "shrink-0 text-[12px] tabular-nums text-muted-foreground"
+const row = "flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-[14px] md:min-h-7"
 const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "base" })
 const parentOf = (p: string) => p.slice(0, p.lastIndexOf("/")) || "/"
 const join = (dir: string, name: string) => `${dir.replace(/\/$/, "")}/${name}`
@@ -67,6 +68,7 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
     for (const part of p.slice(base.length).split("/").filter(Boolean)) { at = `${at}/${part}`; list.push({ label: part, to: at }) }
     return list
   }, [data?.path, folder, machine?.home])
+  const rows = useKeptCount(`machine-files:${id}|${folder}`, data ? entries.length : undefined)
   const recentFiles = recent?.files.filter((f) => hidden || !f.path.slice((here?.length ?? 0) + 1).split("/").some((s) => s.startsWith("."))).slice(0, 25)
   return <div className="@container space-y-3 pb-8" data-machine-files={id}>
     <header><h1 className="text-[24px]">{machine?.label || id}</h1><p className="text-[13px] text-muted-foreground">Read-only files{machine?.via ? ` · Via ${machine.via}` : ""}{online === false ? " · Offline" : ""}</p></header>
@@ -91,11 +93,17 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
           <Segmented label="Sort" value={sort} onChange={setSort} options={[{ value: "name", label: "Name" }, { value: "recent", label: "Recent" }]} />
           <button type="button" className={control} aria-pressed={hidden} onClick={() => setHidden(!hidden)} aria-label={hidden ? "Hide hidden files" : "Show hidden files"} data-tip={hidden ? "Hide hidden files" : "Show hidden files"}>{hidden ? <EyeOff size={16} /> : <Eye size={16} />}</button>
         </div>
-        {busy && !data && <Loading />}
+        {busy && !data && (rows ? (
+          <div className="loading-in" aria-busy>
+            {Array.from({ length: rows }, (_, i) => <div key={i} className={row}>
+              <span className="skeleton size-4 shrink-0" /><span className="min-w-0 flex-1"><Bar w={`${[45, 30, 55, 38][i % 4]}%`} /></span>
+            </div>)}
+          </div>
+        ) : <Loading />)}
         <div aria-label="Files" data-keylist className="min-w-0">
           {data && !entries.length && <Empty>{filter ? "Nothing here matches." : data.entries.length ? "Only hidden files here." : "This folder is empty."}</Empty>}
           {data && entries.map((e) => { const p = join(data.path, e.name); return <button type="button" key={e.name} data-keyrow
-            onClick={() => e.dir ? go(p) : open(p)} className={`flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-[14px] hover:bg-accent md:min-h-7 ${selected === p ? "bg-accent" : ""}`}>
+            onClick={() => e.dir ? go(p) : open(p)} className={`${row} hover:bg-accent ${selected === p ? "bg-accent" : ""}`}>
             {e.dir ? <Folder size={16} className="shrink-0 text-muted-foreground" /> : <File size={16} className="shrink-0 text-muted-foreground" />}
             <span className="min-w-0 flex-1 break-all">{e.name}{e.link ? " ↗" : ""}</span>
             {!e.dir && e.size != null && <span className={muted}>{fmtSize(e.size)}</span>}
@@ -109,7 +117,7 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
           : recentFiles?.length ? <section aria-label="Recently changed" className="space-y-1">
             <h2 className="pb-1 text-[15px] font-medium">Recently changed</h2>
             <div data-keylist>{recentFiles.map((f) => { const dir = parentOf(f.path), rel = here && dir.startsWith(here) ? dir.slice(here.length).replace(/^\//, "") : dir
-              return <button type="button" key={f.path} data-keyrow onClick={() => open(f.path)} className="flex min-h-11 w-full items-center gap-2 rounded-lg px-2 text-left text-[14px] hover:bg-accent md:min-h-7">
+              return <button type="button" key={f.path} data-keyrow onClick={() => open(f.path)} className={`${row} hover:bg-accent`}>
                 <File size={16} className="shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 break-all">{f.path.slice(f.path.lastIndexOf("/") + 1)}{rel && <span className="ml-2 font-mono text-[12px] text-muted-foreground">{rel}</span>}</span>
                 <span className={muted}>{ago(f.mtime)}</span>

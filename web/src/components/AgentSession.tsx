@@ -2,7 +2,7 @@
 // terminal when Terminal is on. `@<machine>` ids are another machine's.
 import { useEffect, useState } from "react"
 import { ChevronRight, CircleAlert, History, SquareTerminal, User } from "lucide-react"
-import { Empty } from "@/components/kit"
+import { Bar, Empty } from "@/components/kit"
 import { Markdown } from "@/components/Markdown"
 import type { AgentSource } from "@/components/AgentUsage"
 import { openAgent } from "@/core/agents"
@@ -84,6 +84,12 @@ function Message({ src, e, speaker }: { src: AgentSource; e: Said; speaker?: str
   )
 }
 
+const Kicker = ({ src }: { src: AgentSource }) => (
+  <div className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: src.tint }}>
+    <src.icon className="size-4" />{src.label} session
+  </div>
+)
+
 export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
   const [want, setWant] = useState(PAGE)
   const { data, error } = useSession(src, id, want)
@@ -91,7 +97,19 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
   const machine = splitMachine(id)[1]
   if (!data) {
     const gone = machine ? "This session isn't on that machine any more, or it's private." : "This session isn't on this machine any more, or it's private."
-    return <div className="pt-4">{error ? <Empty>{/404/.test(error) ? gone : /502/.test(error) ? "That machine isn't answering." : "Couldn't read this session."}</Empty> : <p className="text-[15px] text-muted-foreground">Loading…</p>}</div>
+    if (error) return <div className="pt-4"><Empty>{/404/.test(error) ? gone : /502/.test(error) ? "That machine isn't answering." : "Couldn't read this session."}</Empty></div>
+    // (its header, the title and details as bars; how much was said can't be known)
+    return (
+      <article className="pb-10" aria-busy>
+        <header className="mb-6 pt-2">
+          <Kicker src={src} />
+          <div className="loading-in">
+            <h1 className="text-[28px] leading-[34px] font-bold max-md:hidden"><Bar w="55%" /></h1>
+            <div className="mt-2 text-[13px] text-muted-foreground"><Bar w="40%" /></div>
+          </div>
+        </header>
+      </article>
+    )
   }
   // Tool calls in a row are drawn together, tight; messages get room around them.
   const groups: { at: number; entries: Entry[] }[] = []
@@ -103,9 +121,7 @@ export function AgentSession({ src, id }: { src: AgentSource; id: string }) {
   return (
     <article className="pb-10" data-agent-session={data.id} data-claude-session={src.agent === "claude" ? data.id : undefined}>
       <header className="mb-6 pt-2">
-        <div className="mb-1 flex items-center gap-1.5 text-[13px] font-semibold" style={{ color: src.tint }}>
-          <src.icon className="size-4" />{src.label} session
-        </div>
+        <Kicker src={src} />
         <h1 className="text-[28px] leading-[34px] font-bold text-balance break-words max-md:hidden">{data.title || "Untitled session"}</h1>
         <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[13px] text-muted-foreground">
           {data.project && <span>{data.project}</span>}

@@ -96,10 +96,32 @@ export function Empty({ children }: { children: ReactNode }) {
   return <p className="text-[15px] leading-[20px] text-muted-foreground">{children}</p>
 }
 
-/** A block's data on its way: "Loading…", or what went wrong getting it (`error`: the line to say, "Couldn't ask
- *  Tailscale."). One look for every block: the core draws the same while a block's code loads (components/Blocks.tsx). */
+/** A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").
+ *  The core draws the same while a block's code loads; a list draws `LoadingRows` (or its own rows with `Bar`s) instead. */
 export function Loading({ error, className }: { error?: ReactNode; className?: string }) {
-  return <p className={cn("text-[15px] leading-[20px] text-muted-foreground", className)} aria-busy={!error || undefined}>{error || "Loading…"}</p>
+  if (error) return <p className={cn("text-[15px] leading-[20px] text-muted-foreground", className)}>{error}</p>
+  return <p className={cn("loading-in text-[15px] leading-[20px] text-muted-foreground", className)} aria-busy><span className="shimmer">Loading…</span></p>
+}
+
+/** A line of text still to come, inside the element that will hold it, so it takes that line's height (`w`: its width). */
+export function Bar({ w = "60%", className }: { w?: string; className?: string }) {
+  return <span className={cn("skeleton inline-block h-[0.7em] max-w-full align-[-0.05em]", className)} style={{ width: w }} />
+}
+
+const widths = ["62%", "48%", "71%", "55%", "66%", "43%"]
+/** A list on its way: `count` skeleton rows built from the real `Row` (`meta`: with a meta line, or how many have one),
+ *  taking the list's room at once; `useKeptCount` gives as many rows as last time. */
+export function LoadingRows({ count, meta = true, lead, right, className }: {
+  count: number; meta?: boolean | number; lead?: ReactNode; right?: boolean; className?: string
+}) {
+  return (
+    <div className={cn("loading-in hairline", className)} aria-busy>
+      {Array.from({ length: count }, (_, i) => (
+        <Row key={i} lead={lead} title={<Bar w={widths[i % widths.length]} />} meta={(meta === true || i < Number(meta)) && <Bar w={i % 2 ? "30%" : "38%"} />}
+          right={right && <Bar w="2.5em" />} />
+      ))}
+    </div>
+  )
 }
 
 /** Progress ring for "x of goal this week". */

@@ -2,8 +2,8 @@
 // the file as small edits keeping unknown keys (baseedit.ts), so Obsidian still reads it.
 import { useMemo, useState } from "react"
 import { CalendarDays, Columns3, Ellipsis, LayoutGrid, List, Map as MapIcon, Table2, type LucideIcon } from "lucide-react"
-import { cn, Loading, menuBelow, notify, notifyError, Panel, resolver, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
-import { countText, ResultBody, TINT, useMonth, useQueryResult } from "./QueryView"
+import { cn, menuBelow, notify, notifyError, Panel, resolver, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
+import { countText, ResultBody, ResultSkeleton, TINT, useMonth, useQueryResult } from "./QueryView"
 import { parse as parseYaml } from "yaml"
 import { addView, firstView, freeViewName, removeView, setViewType } from "./baseedit"
 import { pickView, viewNames, type BaseConfig } from "./bases"
@@ -50,7 +50,7 @@ export function BaseView({ store, text, path, host, view, place, onChange }: Pro
     if (place !== "fence") return `query?base=${encodeURIComponent(path)}${at}`
     return `query?q=${encodeURIComponent(JSON.stringify({ base: text, ...(show ? { show } : {}), ...(calendar ? { month } : {}) }))}&self=${encodeURIComponent(path)}${at}`
   }, [place, path, host, text, show, month, calendar])
-  const { res, error, groups, sort, setSort, save } = useQueryResult(url)
+  const { res, error, groups, sort, setSort, save, rows } = useQueryResult(url)
   const resolve = resolver(store)
   const views = local ?? res?.views ?? []
   const current = at ?? res?.current ?? 0
@@ -98,7 +98,7 @@ export function BaseView({ store, text, path, host, view, place, onChange }: Pro
     </div>
   )
   const body = error ? <p className="text-[15px] text-muted-foreground" data-base-error>Base: {error.replace(/^Error: /, "")}</p>
-    : !res ? <Loading />
+    : !res ? <ResultSkeleton view={views[current]?.type.toLowerCase() ?? "table"} rows={rows} />
     : <ResultBody res={res} groups={groups} resolve={resolve} sort={sort} setSort={setSort} save={save} month={month} setMonth={setMonth} fill={fill} />
 
   // A fence in a note: a card like a database view's, titled by its view.

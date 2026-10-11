@@ -397,6 +397,26 @@ aside[data-collapsed] [data-rail-section]:has(> :not([data-header-item]:empty)) 
 }
 .reveal-flash { animation: reveal-flash 1.1s ease-out; }
 
+/* Something on its way (kit's Loading, Bar): its room is taken at once, but it's drawn only after a moment, so a fast
+   load just appears. A skeleton bar stands for a line of text, with a light passing over it. */
+@keyframes loading-in { from { opacity: 0; } }
+.loading-in { animation: loading-in 150ms ease-out 200ms both; }
+@keyframes skeleton { from { background-position: 100% 0; } to { background-position: 0 0; } }
+/* (a component layer: a utility on it wins, rounded-full) */
+@layer components {
+  .skeleton {
+    border-radius: 4px;
+    background-color: color-mix(in srgb, var(--foreground) 7%, transparent);
+    background-image: linear-gradient(90deg, transparent 40%, color-mix(in srgb, var(--foreground) 6%, transparent) 50%, transparent 60%);
+    background-size: 300% 100%;
+    background-repeat: no-repeat;
+    animation: skeleton 1.6s linear infinite;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .skeleton { animation: none; background-image: none; }
+  }
+}
+
 /* Rows selected together (core/select.ts): the accent, over a row's own hover and open-file shades. */
 [data-selected] { background-color: color-mix(in srgb, var(--primary) 16%, transparent) !important; }
 

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Loading shimmers instead of a plain "Loading…" line, only once it takes more than a moment, and lists (Inbox,
+  History, Activity, Connections, machines...) draw skeleton rows, as many as last time, so the page doesn't jump when
+  they come.
 - Buttons line up down a list: Get plugins (one width, the … menu's place kept in every row), plugins from another app
   (Allow moves under the name), Inbox requests (Approve and Deny where the time and Dismiss are) and Connections' steps.
 - The status bar stops short of the left sidebar: what doesn't fit goes in a tray behind its more button, long items

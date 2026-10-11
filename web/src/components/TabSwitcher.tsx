@@ -25,7 +25,7 @@ import { TabPreview } from "@/components/TabPreview"
 import { spring, useLingeringSheet } from "@/core/motion"
 import { cn } from "@/lib/utils"
 import { Drawn, Guard } from "@/components/Guard"
-import { viewBody } from "@/components/Workspace"
+import { HeldView, viewBody } from "@/components/Workspace"
 
 const EASE = "cubic-bezier(.2,.8,.2,1)"
 /** What cards making room for a lifted one move with: barely past their place and back, like a native grid's. */
@@ -676,7 +676,7 @@ export function PhoneTab({ store, to }: { store: Store; to: string }) {
   return (
     <>
       <PageHeader title={v.title} />
-      {v.drawn ?? <p className="text-[15px] text-muted-foreground">{v.note}</p>}
+      {v.drawn ? <HeldView to={to} view={view}>{v.drawn}</HeldView> : <p className="text-[15px] text-muted-foreground">{v.note}</p>}
     </>
   )
 }

@@ -20,7 +20,7 @@ import { usePrefs } from "@/core/prefs"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { useSheetGuard } from "@/components/DetailSheet"
-import { PageHeader, Panel, SheetHead, Switch } from "@/components/kit"
+import { Bar as Line, PageHeader, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -425,7 +425,7 @@ export function BundlePreview({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   useEffect(() => { previewOf(id).then((x) => setP(x as Preview), (e) => setError(String(e?.message ?? e))) }, [id])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
-  if (!p) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Loading…" />
+  if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
   const Icon = iconOfBundle(b)
   const code = runsCode(plan)

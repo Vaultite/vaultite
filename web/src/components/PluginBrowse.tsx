@@ -9,9 +9,10 @@ import { notify, notifyError } from "@/core/notify"
 import { namedIcon, pluginIcon, tintOf } from "@/core/pages"
 import { openBundles, useBundles } from "@/core/bundles"
 import { openDetail } from "@/core/nav"
+import { useKeptCount } from "@/core/heights"
 import { setPrefs, usePrefs } from "@/core/prefs"
 import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
-import { Loading, Panel, Segmented } from "@/components/kit"
+import { Bar, Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { capitalize, cn } from "@/lib/utils"
 import { disclosed, type Disclosures } from "../../../core/pluginmeta.ts"
@@ -69,6 +70,27 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
         </button>
       )}
     </div>
+  )
+}
+
+/** The list on its way: EntryRow's and HostRow's shape (`tile`: EntryRow's icon), a line of each as a bar. */
+function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
+  return (
+    <Panel className="loading-in py-0.5">
+      <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border" aria-busy>
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className="flex items-start gap-3 py-2.5">
+            {tile && <span className="mt-0.5 size-9 shrink-0 rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" />}
+            <div className="min-w-0 flex-1">
+              <div className="text-[15px] leading-[20px] md:text-[14px]"><Bar w={i % 2 ? "30%" : "38%"} /></div>
+              <p className="text-[14px] leading-[19px] md:text-[13px] md:leading-[18px]"><Bar w="92%" /><br /><Bar w={i % 2 ? "48%" : "60%"} /></p>
+              <div className="mt-0.5 text-[13px] md:text-[12px]"><Bar w="28%" /></div>
+            </div>
+            <span className="mt-0.5 h-9 w-20 shrink-0 rounded-[8px] bg-muted md:h-8" />
+          </div>
+        ))}
+      </div>
+    </Panel>
   )
 }
 
@@ -191,10 +213,11 @@ function HostBrowse({ src, query, showInstalled }: { src: BrowseSource; query: s
   }
   // (any row with a … menu keeps its slot in every row, so the buttons line up)
   const more = !!found?.entries.some((e) => !e.installed && e.standIn)
+  const rows = useKeptCount(`plugins:browse:${src.title}`, found ? found.entries.length : undefined)
   return (
     <>
       {src.sorts && src.sorts.length > 1 && <Segmented value={sort} options={src.sorts} onChange={setSort} label="Sort plugins" className="mb-3 w-full max-w-[300px]" />}
-      {!found ? <Loading /> : !found.available ? (
+      {!found ? (rows ? <RowSkeletons count={rows} /> : <Loading />) : !found.available ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{src.title}'s plugin list can't be reached right now.</p>
       ) : !found.entries.length ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{query.trim() ? `No plugins match "${query.trim()}".` : "Nothing here yet."}</p>
@@ -249,6 +272,7 @@ function Directory({ query, showInstalled }: { query: string; showInstalled: (id
     }, query ? 200 : 0)
     return () => { live = false; clearTimeout(t) }
   }, [query, sort, n, fresh])
+  const rows = useKeptCount("plugins:directory", found ? found.plugins.length : undefined)
 
   const act = async (e: Entry) => {
     setBusy(e.id)
@@ -277,7 +301,7 @@ function Directory({ query, showInstalled }: { query: string; showInstalled: (id
           <RefreshCw className={cn("size-4", fresh && "animate-spin")} strokeWidth={2} />
         </button>
       </div>
-      {!found ? <Loading /> : !found.available ? (
+      {!found ? (rows ? <RowSkeletons count={rows} tile /> : <Loading />) : !found.available ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>The plugin directory can't be reached right now.</p>
       ) : !found.plugins.length ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{query.trim() ? `No plugins match "${query.trim()}".` : "No plugins in the directory yet."}</p>

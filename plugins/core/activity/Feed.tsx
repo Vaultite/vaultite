@@ -2,7 +2,7 @@
 // the Activity tab (view:activity) and, one line each, the sidebar's Activity panel (Panel.tsx).
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Activity as ActivityIcon, ChevronRight } from "lucide-react"
-import { cn, Empty, fmtAgo, fmtDay, fmtStamp, get, Loading, openFile, pageOf, Panel, Section, useLive, usePreview, useTick, type Store } from "@vaultite"
+import { Bar, cn, Empty, fmtAgo, fmtDay, fmtStamp, get, Loading, openFile, pageOf, Panel, Section, useKeptCount, useLive, usePreview, useTick, type Store } from "@vaultite"
 import { ACTION_KINDS, type ActionKind, type ActivityEvent, type ActivityList, type ActorKind } from "./model"
 import { clock, kindLabel, localDay, ms, openTerminal, useLook, whoOf } from "./shared"
 
@@ -75,6 +75,8 @@ const WHAT = ACTION_KINDS.map((k) => ({ v: k.id as ActionKind, label: k.label })
 const rowButton = "relative isolate cursor-pointer text-left before:absolute before:inset-y-0 before:-inset-x-2 before:-z-10 before:rounded-[8px] " +
   "before:transition-colors hover:before:bg-foreground/[0.04] active:before:bg-foreground/[0.07]"
 
+const rowCls = "flex min-h-11 w-full items-start gap-2.5 py-2"
+
 /** One event: who (icon), what (links to its files), when; an agent's row goes to its terminal. */
 function EventRow({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
   const look = useLook()(e.actor)
@@ -99,11 +101,33 @@ function EventRow({ e, exists }: { e: ActivityEvent; exists: Set<string> }) {
       {term && <ChevronRight className="-ml-1.5 mt-0.5 size-4 shrink-0 text-tertiary" strokeWidth={2.5} />}
     </>
   )
-  const cls = "flex min-h-11 w-full items-start gap-2.5 py-2"
   return term ? (
-    <div role="button" tabIndex={0} className={cn(cls, rowButton)} data-event={e.id} data-tip="Go to its terminal" data-tip-side="left"
+    <div role="button" tabIndex={0} className={cn(rowCls, rowButton)} data-event={e.id} data-tip="Go to its terminal" data-tip-side="left"
       onClick={() => void openTerminal(e.actor.terminal!)} onKeyDown={(k) => { if (k.key === "Enter") void openTerminal(e.actor.terminal!) }}>{body}</div>
-  ) : <div className={cls} data-event={e.id}>{body}</div>
+  ) : <div className={rowCls} data-event={e.id}>{body}</div>
+}
+
+const widths = ["64%", "47%", "72%", "55%", "68%", "41%"]
+/** A day of `count` events on its way, drawn as EventRows with bars for their lines. */
+function Skeleton({ count }: { count: number }) {
+  return (
+    <div className="loading-in" aria-busy>
+      <Section title={<Bar w="5em" />}>
+        <div className="hairline">
+          {Array.from({ length: count }, (_, i) => (
+            <div key={i} className={rowCls}>
+              <span className="size-5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <div className="text-[15px] leading-[20px]"><Bar w={widths[i % widths.length]} /></div>
+                <div className="text-[13px] leading-[18px]"><Bar w={i % 2 ? "30%" : "38%"} /></div>
+              </div>
+              <span className="shrink-0 pt-px text-[13px] leading-[20px]"><Bar w="2.5em" /></span>
+            </div>
+          ))}
+        </div>
+      </Section>
+    </div>
+  )
 }
 
 /** Events by local day, newest first. */
@@ -142,7 +166,7 @@ export function useFeed({ limit = 30, actor = "", action = "", path = "" }: Feed
       setOlder((o) => (o.q !== q ? o : { q, events: [...o.events, ...r.events], done: r.events.length === 0 }))
     }, () => { /* try again */ }).finally(() => setBusy(false))
   }
-  return { data, error, events, more, loadMore, busy }
+  return { q, data, error, events, more, loadMore, busy }
 }
 
 /** The feed itself: chips, then the days. */
@@ -151,15 +175,16 @@ export function FeedList({ store, opts, chips = true, empty }: { store: Store; o
   useEffect(() => setActor(opts.actor ?? ""), [opts.actor])
   const [action, setAction] = useState<ActionKind | "">(opts.action ?? "")
   useEffect(() => setAction(opts.action ?? ""), [opts.action])
-  const { data, error, events, more, loadMore, busy } = useFeed({ ...opts, actor, action })
+  const { q, data, error, events, more, loadMore, busy } = useFeed({ ...opts, actor, action })
   const exists = useExists(store)
+  const rows = useKeptCount(`activity?${q}`, data?.events.length)
   useTick()
   return (
     <div data-activity-feed>
       {chips && <Chips name="Who" opts={WHO} value={actor} onChange={setActor} />}
       {chips && <Chips name="What" opts={WHAT} value={action} onChange={setAction} />}
       {!data ? (
-        <Loading error={error && "Couldn't read the activity."} />
+        error || !rows ? <Loading error={error && "Couldn't read the activity."} /> : <Skeleton count={rows} />
       ) : !events.length ? (
         <Empty>{actor || action ? "Nothing like that yet." : empty ?? "Nothing yet."}</Empty>
       ) : (
@@ -172,7 +197,7 @@ export function FeedList({ store, opts, chips = true, empty }: { store: Store; o
           {more && (
             <button type="button" onClick={loadMore} disabled={busy} data-load-more
               className="min-h-11 cursor-pointer text-[15px] text-primary hover:underline disabled:cursor-default disabled:opacity-60">
-              {busy ? "Loading…" : "Load more"}
+              {busy ? <span className="shimmer">Loading…</span> : "Load more"}
             </button>
           )}
         </div>

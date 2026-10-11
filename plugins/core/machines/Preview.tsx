@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Wrench } from "lucide-react"
-import { get, machinePath, fmtAgo, dateText, Markdown, Loading, Empty } from "@vaultite"
+import { get, machinePath, fmtAgo, dateText, Markdown, Loading, Empty, Bar } from "@vaultite"
 
 type Contents = { path: string; text?: string; base64?: string; truncated: boolean; size: number; mtime?: number | null }
 type Obj = Record<string, unknown>
@@ -43,7 +43,8 @@ export function FilePreview({ id, path, tick }: { id: string; path: string; tick
     <div className="flex items-start gap-2">
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-medium break-all">{name}</p>
-        {file && <p className="text-[13px] text-muted-foreground">{fmtSize(file.size)}{file.mtime ? ` · ${ago(file.mtime)}` : ""}</p>}
+        {file ? <p className="text-[13px] text-muted-foreground">{fmtSize(file.size)}{file.mtime ? ` · ${ago(file.mtime)}` : ""}</p>
+          : !error && <p className="loading-in text-[13px]" aria-busy><Bar w="7em" /></p>}
         <p className="font-mono text-[12px] break-all text-muted-foreground">{path}</p>
       </div>
       {rich && <button type="button" className={`${small} border border-border`} aria-pressed={raw} onClick={() => setRaw(!raw)}>{raw ? "Formatted" : "Raw"}</button>}

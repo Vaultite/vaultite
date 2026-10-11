@@ -5,7 +5,7 @@ import type { LucideIcon } from "lucide-react"
 import { BarChart3, Boxes, ChevronRight, FolderGit2, Gauge, RefreshCw, Terminal } from "lucide-react"
 import { AgentSession } from "@/components/AgentSession"
 import { AmbientButton } from "@/components/Ambient"
-import { Bars, Empty, List, Loading, Panel, Row, Section, Segmented, Stat } from "@/components/kit"
+import { Bar, Bars, Empty, List, Loading, LoadingRows, Panel, Row, Section, Segmented, Stat } from "@/components/kit"
 import { usePluginSettings } from "@/components/PluginSettings"
 import { Button } from "@/components/ui/button"
 import { canRunAgents, choosePlace, openAgent } from "@/core/agents"
@@ -16,6 +16,7 @@ import { isViewOpen, openView } from "@/core/files"
 import { namedIcon } from "@/core/pages"
 import { machinePath, onMachine, useMachines } from "@/core/machines"
 import { notify } from "@/core/notify"
+import { useKeptCount } from "@/core/heights"
 import { useEnabled } from "@/core/plugins"
 import { cn } from "@/lib/utils"
 
@@ -132,10 +133,9 @@ export const tokens = (n: number) =>
 const minsSince = (s: string | null) => (s ? Math.max((Date.now() - new Date(s).getTime()) / 60000, 0) : 0)
 const status = (s: string) => (s === "busy" ? "Working" : s ? s[0].toUpperCase() + s.slice(1) : "Open")
 
-/** Until its data comes: "Loading…", in about the room the data will take (`className`: a min height), so the page
- *  under it doesn't jump when it arrives. */
-function Waiting({ src, error, className, on = "" }: { src: AgentSource; error: string | null; className?: string; on?: string }) {
-  return <Loading className={error ? undefined : className} error={error && `Couldn't read ${src.label}${on || " on this machine"}.`} />
+/** Until its data comes where its shape isn't known: "Loading…", or why it didn't. */
+function Waiting({ src, error, on = "" }: { src: AgentSource; error: string | null; on?: string }) {
+  return <Loading error={error && `Couldn't read ${src.label}${on || " on this machine"}.`} />
 }
 
 /** When a window renews: "in 2h 10m, 21:00" (a weekday when it's further than today). */
@@ -144,6 +144,17 @@ function renews(at: string) {
   const left = (d.getTime() - Date.now()) / 60000
   const clock = left < 20 * 60 ? fmtTime(at) : `${dateText(d, { weekday: "short" })} ${fmtTime(at)}`
   return `Renews in ${left < 48 * 60 ? fmtMin(Math.max(Math.round(left), 1)) : `${Math.round(left / 1440)} days`}, ${clock}`
+}
+
+/** A meter while the limits come: its lines as bars, its track empty (each bar in a span, which takes the line's height). */
+function MeterSkeleton() {
+  return (
+    <div>
+      <div className="flex items-baseline justify-between gap-3 text-[15px]"><span><Bar w="8em" /></span><span><Bar w="2.5em" /></span></div>
+      <div className="mt-1.5 h-2 rounded-full bg-muted" />
+      <div className="mt-1 text-[13px] text-muted-foreground"><Bar w="14em" /></div>
+    </div>
+  )
 }
 
 function Meter({ w, tint }: { w: Window; tint: string }) {
@@ -232,6 +243,8 @@ export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource 
   const each = data?.accounts && data.accounts.length > 1 ? data.accounts : null
   // (another machine's account is that machine's to allow)
   const ask = !on && src.consent && settings && settings[src.consent.setting] === undefined ? src.consent : null
+  const meters = useKeptCount(`agent:${src.path}:limits${on}`,
+    data ? (each ? each.reduce((n, a) => n + (a.limits?.windows.length ?? 0), 0) : data.limits?.windows.length ?? 0) : undefined, 2, 6)
   return (
     <Panel title={`Plan limits${on}`} icon={iconFor(src, fm, Gauge)} tint={src.tint}
       action={
@@ -245,7 +258,12 @@ export function AgentLimits({ src, options, fm }: BlockCtx & { src: AgentSource 
           )}
         </div>
       }>
-      {ask ? <Consent src={src} consent={ask} /> : !data ? <Waiting src={src} error={error} on={on} className={src.noLimits ? undefined : "min-h-[150px]"} /> : each ? (
+      {ask ? <Consent src={src} consent={ask} /> : !data ? (error || !meters ? <Waiting src={src} error={error} on={on} /> : (
+        <div className="loading-in space-y-4" aria-busy>
+          {Array.from({ length: meters }, (_, i) => <MeterSkeleton key={i} />)}
+          <p className="text-[13px] text-muted-foreground"><Bar w="12em" /></p>
+        </div>
+      )) : each ? (
         <div className="space-y-5">
           {each.map((a) => (
             <Section key={a.id} title={a.plan ? `${a.label} · ${a.plan.name}` : a.label}><Limits src={src} lim={a.limits} /></Section>
@@ -293,10 +311,21 @@ export function AgentSessions({ src, options, fm }: BlockCtx & { src: AgentSourc
   const n = typeof options.recent === "number" ? options.recent : 5
   const open = new Set(data?.live.map((s) => s.id))
   const recent = data?.sessions.filter((s) => !open.has(s.id)).slice(0, n) ?? []
+  const liveRows = useKeptCount(`agent:${src.path}:live${on}`, data?.live.length, 1, 6)
+  const recentRows = useKeptCount(`agent:${src.path}:recent${on}`, data ? recent.length : undefined, n, n)
   return (
     <Panel title={`Sessions${on}`} icon={iconFor(src, fm, Terminal)} tint={src.tint}
       action={data && !src.cloud && <span className="text-[13px] text-muted-foreground">{data.live.length} open</span>}>
-      {!data ? <Waiting src={src} error={error} on={on} /> : (
+      {!data ? (error ? <Waiting src={src} error={error} on={on} /> : (
+        <>
+          {!src.cloud && (
+            <Section title="Now">
+              {liveRows ? <LoadingRows count={liveRows} right lead={<span className="size-2 shrink-0 rounded-full bg-muted" />} /> : <Loading />}
+            </Section>
+          )}
+          {n > 0 && <Section title="Recent" className={src.cloud ? undefined : "mt-4"}>{recentRows ? <LoadingRows count={recentRows} right /> : <Loading />}</Section>}
+        </>
+      )) : (
         <>
           {!src.cloud && (
             <Section title="Now">
@@ -339,7 +368,20 @@ export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSou
   const plan = data?.plan?.monthly ? data.plan : null
   return (
     <Panel title={`Usage${on}`} icon={iconFor(src, fm, BarChart3)} tint={src.tint}>
-      {!data || !today ? <Waiting src={src} error={error} on={on} /> : (
+      {!data || !today ? (error ? <Waiting src={src} error={error} on={on} /> : (
+        <div className="loading-in" aria-busy>
+          <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+            {["Today", "Working today", `Last ${days} days`, "Cache hits"].map((l) => <Stat key={l} label={l} value={<Bar w="2.5em" />} hint={<Bar w="5em" />} />)}
+          </div>
+          {/* (where Bars' value line and its 96px of bars go) */}
+          <div className="skeleton mt-7 h-[96px]" />
+          <div className="flex justify-between text-[11px] text-muted-foreground"><span><Bar w="4em" /></span><span>Today</span></div>
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-[13px] text-muted-foreground">{costNote(src)}.</p>
+            <Segmented label="Show" value={by} onChange={setBy} options={[{ value: "cost", label: "Value" }, { value: "tokens", label: "Tokens" }]} />
+          </div>
+        </div>
+      )) : (
         <>
           <div className="mb-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
             <Stat label="Today" value={money(today.cost)} hint={`${tokens(today.tokens)} tokens`} />
@@ -369,7 +411,7 @@ export function AgentUsageBlock({ src, options, fm }: BlockCtx & { src: AgentSou
   )
 }
 
-function ShareRow({ name, meta, value, share, tint }: { name: ReactNode; meta?: string; value: string; share: number; tint: string }) {
+function ShareRow({ name, meta, value, share, tint }: { name: ReactNode; meta?: ReactNode; value: ReactNode; share: number; tint: string }) {
   return (
     <div className="py-2">
       <div className="flex items-baseline gap-3">
@@ -394,10 +436,17 @@ function Shares({ src, options, fm, by }: BlockCtx & { src: AgentSource; by: "pr
   const list = by === "projects" ? data?.projects.slice(0, 10) : data?.models
   const meta = (x: Share) => by === "models" ? `${tokens(x.tokens)} tokens`
     : [`${x.sessions} session${x.sessions === 1 ? "" : "s"}`, (x.active_min ?? 0) >= 1 && fmtMin(Math.round(x.active_min!)), x.last && fmtAgo(x.last)].filter(Boolean).join(" · ")
+  const rows = useKeptCount(`agent:${src.path}:${by}${on}`, list?.length, 3, 10)
   return (
     <Panel title={`${by === "projects" ? "Projects" : "Models"}${on}`} icon={iconFor(src, fm, by === "projects" ? FolderGit2 : Boxes)} tint={src.tint}
       action={<span className="text-[13px] text-muted-foreground">Last {days} days</span>}>
-      {!data || !list ? <Waiting src={src} error={error} on={on} /> : !list.length ? <Empty>No sessions in the last {days} days.</Empty> : (
+      {!data || !list ? (error || !rows ? <Waiting src={src} error={error} on={on} /> : (
+        <div className="loading-in hairline" aria-busy>
+          {Array.from({ length: rows }, (_, i) => (
+            <ShareRow key={i} tint="transparent" name={<Bar w={i % 2 ? "45%" : "60%"} />} value={<Bar w="3em" />} meta={<Bar w="35%" />} share={0} />
+          ))}
+        </div>
+      )) : !list.length ? <Empty>No sessions in the last {days} days.</Empty> : (
         <List>
           {list.map((x) => (
             <ShareRow key={x.root || x.name} tint={src.tint} name={x.name} value={money(x.cost)} meta={meta(x)} share={share(x) / top(data[by])} />

@@ -2,7 +2,7 @@
 // every 10 s while the page shows.
 import { useState } from "react"
 import { AlertTriangle } from "lucide-react"
-import { cn, confirmDialog, copyText, del, Empty, fmtAgo, fmtStamp, List, Loading, notify, notifyError, Panel, plural, Segmented, useLive } from "@vaultite"
+import { Bar, cn, confirmDialog, copyText, del, Empty, fmtAgo, fmtStamp, List, Loading, notify, notifyError, Panel, plural, Segmented, useKeptCount, useLive } from "@vaultite"
 import type { ErrorDetail, ErrorEvent, ErrorGroup, ErrorList } from "./model"
 
 export const TINT = "var(--errors, var(--red))"
@@ -57,20 +57,47 @@ function Detail({ g, onForgot }: { g: ErrorGroup; onForgot: () => void }) {
   )
 }
 
+const row = "flex w-full min-w-0 items-start gap-2 rounded-[6px] py-2 text-left"
+const message = "block text-[15px] leading-[20px]"
+const line = "block truncate text-[13px] leading-[18px] text-muted-foreground"
+const ago = "shrink-0 pt-[1px] text-[13px] text-muted-foreground tabular-nums"
+
+const widths = ["66%", "50%", "74%", "58%", "45%"]
+/** Errors on their way: GroupRow's shape with bars for its lines. */
+function Skeleton({ count }: { count: number }) {
+  return (
+    <div className="loading-in" aria-busy>
+      <p className="mb-1 text-[13px]"><Bar w="14em" /></p>
+      <List>
+        {Array.from({ length: count }, (_, i) => (
+          <div key={i} className={row}>
+            <span className="mt-[3px] size-4 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className={message}><Bar w={widths[i % widths.length]} /></span>
+              <span className={line}><Bar w={i % 2 ? "30%" : "38%"} /></span>
+            </span>
+            <span className={ago}><Bar w="2.5em" /></span>
+          </div>
+        ))}
+      </List>
+    </div>
+  )
+}
+
 function GroupRow({ g, open, onToggle, onForgot }: { g: ErrorGroup; open: boolean; onToggle: () => void; onForgot: () => void }) {
   const bad = g.fatal > 0 || g.kind === "stopped" || g.kind === "boot"
   return (
     <div data-error={g.id}>
       <button type="button" onClick={onToggle} aria-expanded={open}
-        className="flex w-full min-w-0 items-start gap-2 rounded-[6px] py-2 text-left hover:bg-foreground/[0.03]">
+        className={cn(row, "hover:bg-foreground/[0.03]")}>
         <AlertTriangle className={cn("mt-[3px] size-4 shrink-0", bad ? "text-[var(--red)]" : g.kind === "stale" ? "text-tertiary" : "text-[var(--orange)]")} strokeWidth={2} />
         <span className="min-w-0 flex-1">
-          <span className={cn("block text-[15px] leading-[20px]", !open && "truncate")}>{g.message}</span>
-          <span className="block truncate text-[13px] leading-[18px] text-muted-foreground">
+          <span className={cn(message, !open && "truncate")}>{g.message}</span>
+          <span className={line}>
             {whereOf(g)} · {KIND[g.kind] ?? g.kind}{g.count > 1 ? ` · ×${g.count}` : ""}
           </span>
         </span>
-        <span className="shrink-0 pt-[1px] text-[13px] text-muted-foreground tabular-nums" data-tip={fmtStamp(g.last, true)}>{fmtAgo(g.last)}</span>
+        <span className={ago} data-tip={fmtStamp(g.last, true)}>{fmtAgo(g.last)}</span>
       </button>
       {open && <Detail g={g} onForgot={onForgot} />}
     </div>
@@ -86,6 +113,7 @@ export function ErrorsList({ options = {} }: { options?: Record<string, unknown>
   const reload = () => setAsked((n) => n + 1)
   const { data, error } = useLive<ErrorList>(`errors?limit=${limit}${source ? `&source=${source}` : ""}`, asked, undefined, 10_000)
   const [open, setOpen] = useState<string | null>(null)
+  const rows = useKeptCount(`errors:${limit}:${source ?? "all"}`, data?.groups.length)
   const title = typeof options.title === "string" && options.title ? options.title : "Errors"
   const clearAll = async () => {
     if (!(await confirmDialog({ title: "Forget every error?", body: "The errors kept on this machine are deleted. New ones are still recorded.", confirm: "Forget all", danger: true }))) return
@@ -100,7 +128,7 @@ export function ErrorsList({ options = {} }: { options?: Record<string, unknown>
   )
   return (
     <Panel title={title} icon={AlertTriangle} tint={TINT} action={action}>
-      {!data ? <Loading error={error && "Couldn't read the errors."} /> : !data.groups.length ? (
+      {!data ? (error || !rows ? <Loading error={error && "Couldn't read the errors."} /> : <Skeleton count={rows} />) : !data.groups.length ? (
         <Empty>No errors{source ? ` in the ${source}` : ""}. When the app or the server hits one, it's here.</Empty>
       ) : (
         <>

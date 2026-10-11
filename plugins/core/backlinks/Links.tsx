@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { FileQuestion, FileText, SquareArrowOutUpRight } from "lucide-react"
 import {
-  backlinks, cn, Foldable, HeadingButton, openDetail, openFile, openView, post, resolver, SidebarHeading, snippet, startDrag, stem, useFocusedFile,
-  useLive, useNearEnd, useVaultChange, type SidebarCtx, type Store,
+  backlinks, Bar, cn, Foldable, HeadingButton, openDetail, openFile, openView, post, resolver, SidebarHeading, snippet, startDrag, stem, useFocusedFile,
+  useKeptCount, useLive, useNearEnd, useVaultChange, type SidebarCtx, type Store,
 } from "@vaultite"
 
 type Mention = { path: string; line: string; nth: number; col: number; len: number; text: string }
@@ -84,10 +84,27 @@ function More({ onNear, children }: { onNear: () => void; children: ReactNode })
 
 const empty = (text: string) => <p className="py-1 pl-6 text-[12px] text-tertiary">{text}</p>
 
+/** The mentions on their way: Item's shape, its name and line as bars, as many as last time (none: a line, as tall as
+ *  the empty one). */
+function Looking({ count }: { count: number }) {
+  if (!count) return <p className="loading-in py-1 pl-6 text-[12px] text-tertiary" aria-busy><span className="shimmer">Looking…</span></p>
+  return (
+    <div className="loading-in" aria-busy>
+      {Array.from({ length: count }, (_, i) => (
+        <div key={i} className="flex min-w-0 flex-col py-1 pr-1 pl-1.5">
+          <div className="flex h-5 min-w-0 items-center gap-2 text-[13px]"><span className="skeleton size-4 shrink-0" /><span className="min-w-0 flex-1"><Bar w={i % 2 ? "35%" : "50%"} /></span></div>
+          <div className="pl-6 text-[12px] leading-[16px]"><Bar w="85%" /></div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /** The three groups for `path`. `pane`: open files in that pane (the tab view opens them beside itself). */
 export function LinksList({ store, path, pane }: { store: Store; path: string; pane?: string }) {
   const { linked, outgoing, unlinked, more, refresh } = useLinks(store, path)
   const [busy, setBusy] = useState("")
+  const looking = useKeptCount(`links:unlinked:${path}`, unlinked ? unlinked.mentions.length : undefined, 0, 6)
   const open = (p: string, e?: { metaKey: boolean; ctrlKey: boolean }) => openFile(p, { newTab: !!(e?.metaKey || e?.ctrlKey), pane })
   const link = async (m: Mention) => {
     const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
@@ -104,7 +121,7 @@ export function LinksList({ store, path, pane }: { store: Store; path: string; p
         )) : empty("Nothing links here yet.")}
       </Foldable>
       <Foldable data-links-group="unlinked" keep="links.unlinked" title="Unlinked mentions" count={unlinked ? unlinked.total : null}>
-        {!unlinked ? empty("Looking…") : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
+        {!unlinked ? <Looking count={looking} /> : unlinked.mentions.length ? <>{unlinked.mentions.map((m) => {
           const key = `${m.path}:${m.line}:${m.nth}:${m.col}`
           return (
             <Item key={key} icon={FileText} title={stem(m.path)} context={around(m)} onOpen={() => open(m.path)} path={m.path}

@@ -1,9 +1,9 @@
 import type { MouseEvent } from "react"
 import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
-  canRunAgents, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, panelMenu, places,
+  canRunAgents, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, panelMenu, places,
   SidebarHeading, SidebarRow,
-  useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
+  useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
 import { MachineFiles, EnrollMachine } from "./Files"
 
@@ -72,9 +72,10 @@ const NONE = "No machines yet. Each server on your tailnet adds itself (with Tai
 
 function MachinesBlock() {
   const list = useMachines()
+  const rows = useKeptCount("machines", list?.length)
   return (
     <Panel title="Machines" icon={Server} tint="var(--machines)">
-      {!list ? <Loading /> : !list.length ? <Empty>{NONE}</Empty> : (
+      {!list ? (rows ? <LoadingRows count={rows} lead={<span className="size-2 shrink-0 rounded-full bg-muted" />} /> : <Loading />) : !list.length ? <Empty>{NONE}</Empty> : (
         <List>{list.map((m) => <MachineRow key={m.id} m={m} />)}</List>
       )}
     </Panel>

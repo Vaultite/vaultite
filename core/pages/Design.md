@@ -26,7 +26,7 @@ The primitives that arrange a page, and the options every block takes.
 
 Right-click any block (hold a finger on it on a phone) for where its data comes from: the files it shows (a click opens one), its plugin's settings and cache, and what's live; then Options (a form) and Edit source. In the editor a block stays drawn when clicked: hover for its bar, whose </> shows its Markdown.
 
-Every block shows the same states, drawn by the app: "Loading…" while its data comes, a line in its place if it can't be drawn (the rest of the page stays), and, outside a dashboard, a line saying its plugin is off (a dashboard leaves it out).
+Every block shows the same states, drawn by the app: "Loading…" while its data comes (shimmering, after a moment so a fast load just appears; a list draws skeleton rows instead, as many as it had last time, so nothing jumps when the data comes), a line in its place if it can't be drawn (the rest of the page stays), and, outside a dashboard, a line saying its plugin is off (a dashboard leaves it out).
 
 Toasts are the one thing the app draws outside pages: a short line at the bottom of the window that goes away by itself, with one button at most ("Moved to Notes · Undo"; an error has a red icon). A plugin shows one with `notify(text)`, an agent with `vau notify "text"`.
 

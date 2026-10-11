@@ -6,9 +6,9 @@ import {
   Maximize2, ListChecks, MessageCircleQuestion, MoreHorizontal, RotateCcw, ShieldAlert, Trash2, X,
 } from "lucide-react"
 import {
-  askMove, askMoveMany, Badged, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, menuBelow, menuFor,
+  askMove, askMoveMany, Badged, Bar, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
   notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
-  SidebarHeading, startSelecting, SwipeRow, useAgents, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
+  SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
 import { agentOf, answerGate, forget, getEvents, markRead, markSeen, markUnread, openEvent, targetOf, useEvents } from "./events"
@@ -407,6 +407,17 @@ function Folded({ label, n, attr, children }: { label: string; n: number; attr: 
   )
 }
 
+/** A Folded whose count is still to come. */
+function FoldedLoading({ label }: { label: string }) {
+  return (
+    <section className="loading-in" aria-busy>
+      <div className="mb-1 flex items-center gap-1 text-[13px] font-semibold text-muted-foreground">
+        <ChevronRight className="size-3.5" strokeWidth={2.5} />{label} <Bar w="1.2em" />
+      </div>
+    </section>
+  )
+}
+
 /** The results dealt with: done (or archived). */
 function Settled({ store }: { store: Store }) {
   const list = settled(store)
@@ -424,11 +435,19 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   useTick()
   useInboxSelect(store)
   const more = <FoldButton earlier={earlier} all={all} toggle={toggle} className="mt-1 h-8 text-[13px]" />
+  // (while the events come, as many skeleton rows as there were last time; none: the Loading line, as tall as "Nothing new.")
+  const loading = !!ne && !ready
+  const read = useKeptCount(dealt && ne ? "inbox:page:read" : null, loading ? undefined : rest.length, 0)
   const past = dealt && <>
-    <Folded label="Read" n={rest.length} attr="data-inbox-read">{rest.map((e) => <EventRow key={e.id} e={e} touched={touched} />)}</Folded>
+    {loading && read > 0 ? <FoldedLoading label="Read" />
+      : <Folded label="Read" n={rest.length} attr="data-inbox-read">{rest.map((e) => <EventRow key={e.id} e={e} touched={touched} />)}</Folded>}
     <Settled store={store} />
   </>
-  if (!results.length && !latest.length) return <><Empty>{ready || !ne ? "Nothing new." : "Loading…"}</Empty>{more}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
+  const kept = ne ? `inbox:${dealt ? "page" : "block"}:events` : null
+  const rows = useKeptCount(kept, loading ? undefined : latest.length)
+  // (a row with a body is taller: as many of those as last time too)
+  const bodies = useKeptCount(kept && `${kept}:bodies`, loading ? undefined : latest.filter((e) => e.body || e.machineLabel).length, 0)
+  if (!results.length && !latest.length && !(loading && rows)) return <>{loading ? <Loading /> : <Empty>Nothing new.</Empty>}{more}{dealt && <div className="mt-4 flex flex-col gap-4" data-select-list={SELECT}>{past}</div>}</>
   return (
     <div className="flex flex-col gap-4" data-select-list={SELECT}>
       {results.length > 0 && (
@@ -437,9 +456,10 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
           <div className="hairline">{results.map((r) => <ResultRow key={r.id} r={r} />)}</div>
         </section>
       )}
-      {(latest.length > 0 || earlier > 0) && (
+      {(latest.length > 0 || earlier > 0 || (loading && rows > 0)) && (
         <section data-inbox-events>
           <h3 className="mb-1 text-[13px] font-semibold text-muted-foreground">From your agents</h3>
+          {loading && rows > 0 && <LoadingRows count={rows} meta={bodies} lead={<span className="size-[18px] shrink-0" />} />}
           {latest.length > 0 && <div className="hairline">{latest.map((e) => <EventRow key={e.id} e={e} fresh={fresh?.has(e.id)} touched={touched} />)}</div>}
           {more}
         </section>

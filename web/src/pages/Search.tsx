@@ -272,7 +272,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
         <section aria-label="In files">
           <h2 className="mb-1 flex items-baseline gap-2 text-[12px] font-semibold text-muted-foreground">
             {plain ? "In files" : "Files"}
-            <span className="font-normal">{failed || (!results || (busy && !results.length) ? "Searching…" : !results.length ? "Nothing found"
+            <span className="font-normal">{failed || (!results || (busy && !results.length) ? <span className="shimmer" aria-busy>Searching…</span> : !results.length ? "Nothing found"
               : lines ? `${counted(total, "line")} in ${counted(found!.files, "file")}` : counted(found!.files, "file"))}</span>
           </h2>
           <div className="flex flex-col gap-1">

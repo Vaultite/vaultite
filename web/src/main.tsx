@@ -2,6 +2,7 @@ import "./core/dev" // keeps the console's messages from here on, and answers th
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import "./index.css"
+import "./core/shifts" // traces layout shifts the user didn't cause
 import "./core/appearance" // applies the theme, scheme, density and fonts before the first paint
 import App from "./App.tsx"
 import { startStore } from "./core/data"

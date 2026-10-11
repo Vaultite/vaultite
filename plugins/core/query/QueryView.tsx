@@ -3,8 +3,8 @@
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Table2 } from "lucide-react"
 import {
-  addDays, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, Panel, parse, PinMap, range, resolver, setProperty, startDrag,
-  today, typedValue, useDrag, useDropHit, useDropTarget, useLive, useRowsNear, useVaultChange, weekStart, type BlockCtx, type MapPin, type MenuItem,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, Panel, parse, PinMap, range, resolver, setProperty, startDrag,
+  textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type BlockCtx, type MapPin, type MenuItem,
 } from "@vaultite"
 import { compare } from "./expr"
 import { byKeys, comparer, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
@@ -122,7 +122,43 @@ export function useQueryResult(url: string) {
       setEdits((e) => { const { [`${r.path}\0${key}`]: _, ...rest } = e; return rest })
     }
   }, [])
-  return { res, error: error && !data ? error : res ? null : error, loading: !res && !error, groups, sort, setSort, save }
+  const rows = useKeptCount(`query:${textKey(url)}`, res ? res.groups.reduce((n, g) => n + g.rows.length, 0) : undefined)
+  return { res, error: error && !data ? error : res ? null : error, loading: !res && !error, groups, sort, setSort, save, rows }
+}
+
+const widths = ["42%", "30%", "55%", "36%", "48%"]
+/** A result on its way, where its view's shape is known (a table, a list): its rows as bars, as many as last time
+ *  (`rows`); else, or none last time, the Loading line (as tall as "Nothing matches."). */
+export function ResultSkeleton({ view, rows }: { view: string; rows: number }) {
+  if (!rows || (view !== "table" && view !== "list")) return <Loading />
+  const each = Array.from({ length: rows }, (_, i) => i)
+  if (view === "list") return (
+    <div className="loading-in hairline" aria-busy>
+      {each.map((i) => (
+        <div key={i} className="flex min-h-11 min-w-0 flex-col justify-center py-2">
+          <span className="text-[15px] leading-[20px]"><Bar w={widths[i % widths.length]} /></span>
+          <span className="text-[13px]"><Bar w="30%" /></span>
+        </div>
+      ))}
+    </div>
+  )
+  // (Table's rows and heading, three columns standing in for the ones to come)
+  return (
+    <table className="loading-in w-full border-collapse text-[14px]" aria-busy>
+      <thead>
+        <tr className="border-b-[0.5px] border-border">
+          {[0, 1, 2].map((c) => <th key={c} className="py-1.5 pr-4 text-left last:pr-0"><span className="text-[13px]"><Bar w="4em" /></span></th>)}
+        </tr>
+      </thead>
+      <tbody>
+        {each.map((i) => (
+          <tr key={i} className="border-b-[0.5px] border-border last:border-0">
+            {[0, 1, 2].map((c) => <td key={c} className="h-9 py-1 pr-4 align-middle last:pr-0"><Bar w={c ? "50%" : widths[i % widths.length]} /></td>)}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  )
 }
 
 /** "12 files", "50 of 120 files", "12 files · 3 archived hidden". */
@@ -170,7 +206,7 @@ export function QueryBlock({ store, path, host, options }: BlockCtx) {
     return JSON.stringify(o.view === "calendar" ? { ...o, month } : o)
   }, [options, month])
   // (`this`: the note embedding this one, else this one: the block's text side alike)
-  const { res, error, groups, sort, setSort, save } = useQueryResult(`query?q=${encodeURIComponent(q)}&self=${encodeURIComponent(path)}${host ? `&this=${encodeURIComponent(host)}` : ""}`)
+  const { res, error, groups, sort, setSort, save, rows } = useQueryResult(`query?q=${encodeURIComponent(q)}&self=${encodeURIComponent(path)}${host ? `&this=${encodeURIComponent(host)}` : ""}`)
   // (Its views get the link resolver, not the store: the same one while the files and names didn't change.)
   const resolve = resolver(store)
   const title = typeof options.title === "string" && options.title ? options.title : "Query"
@@ -178,7 +214,7 @@ export function QueryBlock({ store, path, host, options }: BlockCtx) {
     <Panel title={title} icon={Table2} tint={TINT} className="min-w-0"
       action={res && <span className="text-[13px] text-muted-foreground tabular-nums">{countText(res)}</span>}>
       {error ? <p className="text-[15px] text-muted-foreground">Query: {error.replace(/^Error: /, "")}</p>
-        : !res ? <Loading />
+        : !res ? <ResultSkeleton view={typeof options.view === "string" ? options.view : "table"} rows={rows} />
         : <ResultBody res={res} groups={groups} resolve={resolve} sort={sort} setSort={setSort} save={save} month={month} setMonth={setMonth} />}
     </Panel>
   )

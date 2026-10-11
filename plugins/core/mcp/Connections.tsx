@@ -2,7 +2,7 @@
 // cloud.ts) and the code field; what's connected (public.ts); the account and addresses last. Polls, faster while connecting.
 import { useState, type ReactNode } from "react"
 import { Bot, Check, ChevronRight, Copy, ExternalLink, Plug, type LucideIcon } from "lucide-react"
-import { Button, confirmDialog, copyText, del, detailPath, fmtAgo, Group, iconNamed, Loading, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead, Switch, useLive } from "@vaultite"
+import { Bar, Button, confirmDialog, copyText, del, detailPath, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead, Switch, useKeptCount, useLive } from "@vaultite"
 
 type Connection = { id: string; name: string; created: string; used: string | null }
 type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; connectUrl: string; message?: string }
@@ -256,21 +256,21 @@ export function SetupSheet({ id }: { id: AppId }) {
   )
 }
 
-/** The four apps as cards: each says whether it's connected and opens its steps. */
-export function AppCards({ connections, size = "md" }: { connections: Connection[]; size?: "sm" | "md" }) {
+/** The four apps as cards: each says whether it's connected and opens its steps (`connections` null: still to come). */
+export function AppCards({ connections, size = "md" }: { connections: Connection[] | null; size?: "sm" | "md" }) {
   return (
     <div className="grid grid-cols-2 gap-2" data-app-cards>
       {APPS.map((id) => {
-        const g = GUIDES[id], Icon = appIcon(id), on = !!connectionOf(id, connections)
+        const g = GUIDES[id], Icon = appIcon(id), on = !!connections && !!connectionOf(id, connections)
         return (
           <button key={id} type="button" onClick={() => openDetail(detailPath(SETUP_DETAIL, id))} data-guide-for={id} data-app-connected={on || undefined}
             className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-[10px] border-[0.5px] border-border px-2.5 text-left md:gap-2.5 md:px-3 hover:bg-foreground/[0.04] ${size === "sm" ? "h-10" : "h-14"}`}>
             <Icon className="size-5 shrink-0" style={g.tint ? { color: g.tint } : undefined} />
             <span className="min-w-0 flex-1">
               <span className="block truncate text-[15px] font-medium" data-app-name>{g.name}</span>
-              {size === "md" && <span className={`block truncate text-[13px] ${on ? "text-[var(--green)]" : "text-muted-foreground"}`}>{on ? "Connected" : "Set up"}</span>}
+              {size === "md" && <span className={`block truncate text-[13px] ${on ? "text-[var(--green)]" : "text-muted-foreground"}`}>{!connections ? <Bar w="4.5em" /> : on ? "Connected" : "Set up"}</span>}
             </span>
-            {on ? <Check className="size-4 shrink-0 text-[var(--green)]" strokeWidth={2.5} /> : <ChevronRight className="size-4 shrink-0 text-tertiary max-md:hidden" strokeWidth={2.5} />}
+            {!connections ? null : on ? <Check className="size-4 shrink-0 text-[var(--green)]" strokeWidth={2.5} /> : <ChevronRight className="size-4 shrink-0 text-tertiary max-md:hidden" strokeWidth={2.5} />}
           </button>
         )
       })}
@@ -291,9 +291,26 @@ export function ConnectSection() {
   )
 }
 
+const INTRO = "Tell them what happened and it lands in your vault, from the web, their desktop apps and your phone."
+
 export function ConnectionsView() {
   const { data, error, reload } = useConnections()
-  if (!data) return <div className="mx-auto w-full max-w-[640px] p-4"><Loading error={error} /></div>
+  const rows = useKeptCount("mcp:connections", data ? data.connections.length + (data.finishing?.length ?? 0) : undefined)
+  if (error && !data) return <div className="mx-auto w-full max-w-[640px] p-4"><Loading error={error} /></div>
+  // (what doesn't depend on the data drawn as it'll be, the connections as skeleton rows; the cloud's part can't be known)
+  if (!data) return (
+    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 p-4" aria-busy>
+      <Panel title="Connections" icon={Plug}>
+        <div className="flex flex-col gap-4">
+          <Section title="AI apps">
+            <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
+            <AppCards connections={null} />
+          </Section>
+          {rows > 0 && <Section title="Connected"><div className="rounded-[10px] bg-foreground/[0.04] px-3"><LoadingRows count={rows} right /></div></Section>}
+        </div>
+      </Panel>
+    </div>
+  )
   const finishing = data.finishing ?? []
   const disconnect = async (c: Connection) => {
     if (!(await confirmDialog({ title: `Disconnect ${c.name}?`, body: "It can't read or write your vault until you connect it again.", confirm: "Disconnect", danger: true }))) return
@@ -304,7 +321,7 @@ export function ConnectionsView() {
       <Panel title="Connections" icon={Plug}>
         <div className="flex flex-col gap-4">
           <Section title="AI apps">
-            <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">Tell them what happened and it lands in your vault, from the web, their desktop apps and your phone.</p>
+            <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
             <AppCards connections={data.connections} />
             {(data.url || data.cloud.url) && <Connect waiting={data.waiting} onDone={reload} />}
           </Section>

@@ -15,8 +15,8 @@ export function TerminalsView() {
   return (
     <div data-terminals-view>
       <div className="mb-4 flex flex-wrap items-center gap-2">
-        <p className="mr-auto text-[13px] text-muted-foreground max-md:text-[15px]">
-          {!list ? "Connecting…" : list.length ? `${list.length} running on the server. Click one to open its tab.` : "Shells and coding agents the server runs show here."}
+        <p className="mr-auto text-[13px] text-muted-foreground max-md:text-[15px]" aria-busy={!list || undefined}>
+          {!list ? <span className="shimmer">Connecting…</span> : list.length ? `${list.length} running on the server. Click one to open its tab.` : "Shells and coding agents the server runs show here."}
         </p>
         {agents.map((a) => (
           <button key={a.name} type="button" className={button} data-agent={a.name} onClick={() => openAgent(a.name)}>
