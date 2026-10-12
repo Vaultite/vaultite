@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Allowing Activity to write its recaps writes the ones it was refused on its next run, not after another change.
 - **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, AI apps, then every plugin with
   options, each shown beside the list (a sheet on a phone); Plugin settings and the Setup rows are gone.
 - Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, what it

@@ -951,11 +951,13 @@ export async function recapsDue() {
   const now = Date.now(), today = localDate(now)
   const done = written()
   const late = now - bounds(today)[0] < GRACE
-  const days = recapsDirty ? [today, ...(late ? [dayBefore(today)] : [])] : []
+  const dirty = recapsDirty
+  const days = dirty ? [today, ...(late ? [dayBefore(today)] : [])] : []
   recapsDirty = false
   // The days before, once: as far back as File history keeps versions (a week by default).
   for (let i = late ? 2 : 1; i <= 7; i++) { const d = dayBefore(today, i); if (!done.has(d) && !recapOf(d)) days.push(d) }
-  for (const d of days) { built.delete(d); await writeRecap(d) }
+  // (a write refused, Activity not allowed yet: still due, so allowing it writes them at once, not after the next change)
+  try { for (const d of days) { built.delete(d); await writeRecap(d) } } catch (e) { if (dirty) recapsDirty = true; throw e }
   markWritten(days.filter((d) => d !== today))
 }
 plugin.every("recaps", { every: "5m" }, recapsDue)
