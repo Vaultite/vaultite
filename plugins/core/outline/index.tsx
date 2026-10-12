@@ -1,5 +1,5 @@
 import { ListTree } from "lucide-react"
-import { cn, definePlugin, openView, SidebarHeading, stem, useFocusedFile, useOutline, type SidebarCtx } from "@vaultite"
+import { Bar, cn, definePlugin, openView, SidebarHeading, stem, useFocusedFile, useKeptCount, useOutline, type SidebarCtx } from "@vaultite"
 
 // Outline: the focused file's headings, following scrolling and typing (the editor's text, not the
 // saved file: core/anchors.ts). A hidden sidebar panel and a tab.
@@ -9,8 +9,18 @@ const plain = (t: string) => t.replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, "$2").re
 
 function OutlineList({ path }: { path: string }) {
   const md = /\.md$/i.test(path)
-  const { headings, current, go } = useOutline(md ? path : "")
+  const { headings, loading, current, go } = useOutline(md ? path : "")
   const top = headings.length ? Math.min(...headings.map((h) => h.level)) : 1
+  // While its text comes, as many rows as it had last time (the empty line's one: never seen), so the panels below it
+  // don't move when it does.
+  const rows = useKeptCount(md ? `outline:${path}` : null, loading ? undefined : Math.max(1, headings.length), 1, 40)
+  if (loading) {
+    return (
+      <div className="loading-in" aria-busy>
+        {Array.from({ length: rows }, (_, i) => <div key={i} className="flex h-7 items-center pr-1 pl-1.5 text-[13px]"><Bar w={i % 3 ? "45%" : "65%"} /></div>)}
+      </div>
+    )
+  }
   if (!headings.length) {
     return <p className="h-7 pl-1.5 text-[13px] leading-7 text-tertiary">{md ? "No headings in this file." : "Open a note to see its headings."}</p>
   }

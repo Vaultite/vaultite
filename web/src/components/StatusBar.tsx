@@ -102,6 +102,40 @@ function useOverflow(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElem
   return over
 }
 
+const KEPT_WIDTH = "vaultite.statusbar"
+/** The bar at least as wide as last load's while its items come in (each, arriving, pushed the rest left), until another
+ *  file opens: like Steady, it doesn't narrow under the file it opened with. */
+function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string) {
+  const first = useRef<string | null>(null)
+  if (first.current === null && path) first.current = path
+  const held = first.current === null || first.current === path
+  const kept = useRef<number | null>(null)
+  if (kept.current === null) try { kept.current = Number(localStorage.getItem(KEPT_WIDTH)) || 0 } catch { kept.current = 0 }
+  // (before the paint: held from the bar's first frame)
+  useLayoutEffect(() => {
+    if (bar.current) bar.current.style.minWidth = held && kept.current ? `${kept.current}px` : ""
+  })
+  useEffect(() => {
+    const el = bar.current
+    if (!el) return
+    let saving: ReturnType<typeof setTimeout> | undefined
+    const save = () => {
+      clearTimeout(saving)
+      saving = setTimeout(() => {
+        const min = el.style.minWidth
+        el.style.minWidth = ""
+        const w = Math.round(el.getBoundingClientRect().width)
+        el.style.minWidth = min
+        try { if (w) localStorage.setItem(KEPT_WIDTH, String(w)) } catch { /* full */ }
+      }, 2000)
+    }
+    const ro = new ResizeObserver(save)
+    for (const c of [el, ...el.children]) ro.observe(c)
+    save()
+    return () => { clearTimeout(saving); ro.disconnect() }
+  }, [bar, path])
+}
+
 export function StatusBar() {
   const s = statusSubs.use(() => status_)
   const { disabled, order, enabled, statusBar, statusBarMore } = usePrefs()
@@ -127,6 +161,7 @@ export function StatusBar() {
   const barRef = useRef<HTMLDivElement>(null), fitRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
   const inBar = ambient.filter((x) => !statusBarMore.includes(x.key))
   const over = useOverflow(barRef, fitRef, inBar.map((x) => x.key))
+  useKeptWidth(barRef, path)
   const inTray = ambient.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
   const [tray, setTray] = useState(false)
   const d = useDrag(), dragged = d?.item.status
@@ -176,7 +211,8 @@ export function StatusBar() {
       {trayBox}
     </div>
   )
-  if (!s) return own ? wrap(null) : null
+  // (the file's part all at once: its view button drawn a frame before the items late brings moved when they came)
+  if (!s || !late) return own ? wrap(null) : null
   const cur = MODES[s.mode]
   const tip = `Current view: ${VIEWS.find((v) => v.value === s.mode)!.label.toLowerCase()}`
   // Click or right-click: the file's views (three, or reading and source), the current one checked.

@@ -7,11 +7,13 @@ import "./core/appearance" // applies the theme, scheme, density and fonts befor
 import App from "./App.tsx"
 import { startStore } from "./core/data"
 import { startDesktop } from "./core/desktop"
-import { prefetchShown } from "./core/files"
+import { prefetchShown, watchOpeningSoon } from "./core/files"
 import { noteAppError, recoverFromStaleBuild, startAppErrors } from "./core/errors"
 
+document.body.dataset.arriving = "" // no transitions until the vault's state has drawn (App.tsx)
 startStore() // the vault's state and its live changes, on their way while React draws the first frame
 prefetchShown() // and the files on screen
+watchOpeningSoon() // and a note's text on its way while the pointer rests on its link
 startDesktop() // the desktop app's menu and files (nothing in a browser)
 
 // Started: from here an error is the app's, not index.html's boot screen. One nothing below caught unmounts the app,

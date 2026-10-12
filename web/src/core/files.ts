@@ -1,6 +1,6 @@
 // The vault as files: the tree, opening files and changing them. Tabs (core/workspace.ts), splits and drops are
 // re-exported here, the one module the rest of the app opens and moves files and tabs with.
-import { reload, type Store } from "@/core/data"
+import { getStore, reload, type Store } from "@/core/data"
 import { del, get, post } from "@/core/http"
 import { isEmbeddable, pageExt } from "@/core/formats"
 import { afterSheets, closeDetailOf, retargetDetail, route, setFileOpener } from "@/core/nav"
@@ -235,6 +235,34 @@ export function openingSoon(path: string | null, now = false) {
   clearTimeout(intent)
   if (path && now) prefetchFile(path)
   else if (path) intent = window.setTimeout(() => prefetchFile(path), 80)
+}
+
+/** The note a row or link names: `data-preview` its path, `data-wiki` a link's target (from the file it's in). */
+function namedNote(el: HTMLElement): string | null {
+  const store = getStore()
+  if (el.dataset.preview) return /\.md$/i.test(el.dataset.preview) ? el.dataset.preview : null
+  const name = (el.dataset.wiki ?? "").split("#")[0].trim()
+  const from = el.closest<HTMLElement>("[data-preview-path]")?.dataset.previewPath ?? el.closest<HTMLElement>(".file-view[data-path]")?.dataset.path ?? ""
+  const hit = name && store ? resolver(store)(name, from || undefined)?.file : null
+  return hit && hit !== from ? hit : null
+}
+
+/** Every row and link that names a note (search results, the Links panel, links in notes) is openingSoon's too, as the
+ *  tree's and Pinned's rows are by hand: one listener for them all (once, at start: main.tsx). */
+export function watchOpeningSoon() {
+  const NAMED = "[data-preview], [data-wiki]"
+  let over: Element | null = null
+  document.addEventListener("pointerover", (e) => {
+    const el = (e.target as Element).closest?.<HTMLElement>(NAMED) ?? null
+    if (el === over) return
+    over = el
+    openingSoon(el && namedNote(el))
+  }, { capture: true, passive: true })
+  document.addEventListener("pointerdown", (e) => {
+    const el = (e.target as Element).closest?.<HTMLElement>(NAMED)
+    const path = el && namedNote(el)
+    if (path) openingSoon(path, true)
+  }, { capture: true, passive: true })
 }
 
 /** Start reading the files on screen (the address's and its sheet's; on desktop each pane's), so they're drawn as soon

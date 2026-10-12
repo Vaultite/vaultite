@@ -3,8 +3,11 @@
 // as last time). Each visit says
 // how far its page grew or shrank once drawn ("moved": every change of its height, added up, px; 0: what was drawn while
 // loading took the room the data did), its layout shifts (CLS) and how much was drawn busy (aria-busy) meanwhile.
+// Then the shell (the sidebars and the status bar) around a note, its right sidebar holding Links, Outline and Tags: the
+// vault's state held back till after the first paint, nothing in it may move by itself on a load after the first (the
+// app's own shift trace, core/shifts.ts). A shift there scores a few thousandths, under any CLS limit: so none at all.
 //   node web/qa/loading.mjs <base url> [--delay 600] [--views inbox,activity,connections] [--verbose]
-// Read-only, but it opens tabs, which a workspace keeps: a throwaway server.
+// WRITES sidebars.json (put back) and opens tabs, which a workspace keeps: a throwaway server.
 import { qa, wait } from "./lib/qa.mjs"
 const { args, browser, check, done } = await qa(import.meta.url)
 
@@ -59,7 +62,33 @@ for (const view of VIEWS) {
     rows.push({ view, visit, moved, heights: heights.join(" → "), cls: Math.round(cls * 1e4) / 1e4, busy, shifted: [...new Set(after.flatMap((s) => s.moved))].slice(0, 4) })
   }
 }
+// The shell: what the first load can't know (a note's headings) it learns for the next, so only those count.
+const SHELL = ["left sidebar", "right sidebar", "status bar"]
+const NOTE = "Notes/How this vault works.md"
+const api = (p, init) => fetch(new URL(`/api/${p}`, B), init).then((r) => r.json())
+const json = (method, body) => ({ method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const before = await api("config/sidebars")
+const sidebars = { left: before.left, right: ["backlinks:links", "outline:outline", "tags:tags"], collapsed: ["tags:tags"], heights: {} }
+const putSidebars = async (s) => {
+  await api("config/sidebars", json("PUT", s))
+  if ((await api("workspaces")).workspaces?.[0]) await api("workspaces/1", json("PUT", { sidebars: s }))
+}
+await putSidebars(sidebars)
+const shell = []
+for (const visit of ["first", "again", "kept"]) {
+  if (visit === "again") await page.evaluate(() => localStorage.removeItem("vaultite.live"))
+  await page.goto("about:blank")
+  await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
+  await wait(DELAY * 4 + 3000)
+  const { shifts, right } = await page.evaluate(() => ({ shifts: window.__vauTrace?.shift ?? [], right: document.querySelectorAll("aside[data-side=right] [data-panel]").length }))
+  const moved = shifts.filter((s) => s.regions.some((r) => SHELL.includes(r)))
+  shell.push({ visit, right, shifts: moved.length, score: Math.round(moved.reduce((n, s) => n + s.value, 0) * 1e4) / 1e4, moved: [...new Set(moved.flatMap((s) => s.moved))].slice(0, 4) })
+}
+await putSidebars({ right: [], collapsed: [], heights: {}, ...before })
 console.table(rows.map(({ shifted, heights, ...r }) => ({ ...r, ...(VERBOSE ? { heights, shifted: shifted.join(" ") } : {}) })))
 // (the first visit can't know a list's length; the second must)
 for (const r of rows) check(`${r.view} (${r.visit} visit) keeps still while it loads`, r.cls <= MOST && (r.visit === "first" || r.moved <= MOVED), r)
+console.table(shell.map(({ moved, ...r }) => ({ ...r, ...(VERBOSE ? { moved: moved.join(" ") } : {}) })))
+check("the right sidebar has its three panels", shell.every((r) => r.right === 3), shell)
+for (const r of shell.filter((x) => x.visit !== "first")) check(`the sidebars and the status bar (${r.visit} visit) don't move while a note loads`, r.shifts === 0, r)
 await done()

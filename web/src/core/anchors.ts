@@ -128,16 +128,17 @@ export function useEditAt(path: string, dom: () => HTMLElement | null, take: Lin
 export function useOutline(path: string) {
   subs.use(() => version)
   const v = path ? viewOf(path) : null
-  const [file, setFile] = useState("")
+  const [file, setFile] = useState({ path: "", text: "" })
   const [seen, setSeen] = useState(0)
   useVaultChange(() => setSeen(Date.now()), path ? [path] : [])
+  const md = !!path && /\.md$/i.test(path)
   useEffect(() => {
-    if (!path || v || !/\.md$/i.test(path)) { setFile(""); return }
+    if (!md || v) { setFile({ path, text: "" }); return }
     let live = true
-    readFile(path).then((r) => { if (live) setFile(r.text) }, () => { if (live) setFile("") })
+    readFile(path).then((r) => { if (live) setFile({ path, text: r.text }) }, () => { if (live) setFile({ path, text: "" }) })
     return () => { live = false }
   }, [path, !!v, seen])
-  const text = v ? v.text() : file
+  const text = v ? v.text() : file.path === path ? file.text : ""
   const headings = useMemo(() => headingsOf(text), [text])
   const [current, setCurrent] = useState(-1)
   useEffect(() => {
@@ -155,6 +156,8 @@ export function useOutline(path: string) {
   }, [v, headings])
   return {
     headings,
+    /** Its text is on its way (neither its editor nor the file is here yet): a list drawn now would grow. */
+    loading: md && !v && file.path !== path,
     current,
     go: (h: Heading) => (v ? v.scrollTo(h.line) : openAt(path, h.text.replace(/#/g, " "))),
   }

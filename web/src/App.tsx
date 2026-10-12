@@ -413,8 +413,21 @@ export default function App() {
   const showRight = !popout && (hasRight || emptyRight)
   const rside = showRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
-  useEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
-  useEffect(() => { document.documentElement.style.setProperty("--left-sidebar", desktop ? side : "0px") }, [side, desktop])
+  // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
+  useLayoutEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
+  useLayoutEffect(() => { document.documentElement.style.setProperty("--left-sidebar", desktop ? side : "0px") }, [side, desktop])
+  // Which sidebars are there, for index.css (not body:has(aside...): that made every DOM change recalc 4x the styles).
+  useLayoutEffect(() => {
+    const root = document.documentElement.dataset
+    if (showRight) root.rightSidebar = ""; else delete root.rightSidebar
+    if (!popout && !sidebar) root.leftRail = ""; else delete root.leftRail
+  }, [showRight, popout, sidebar])
+  // The shell takes its places without sliding to them while the vault's state comes in (main.tsx sets it).
+  useEffect(() => {
+    if (!store) return
+    const t = setTimeout(() => { delete document.body.dataset.arriving }, 500)
+    return () => clearTimeout(t)
+  }, [!!store])
 
   return (
     <>

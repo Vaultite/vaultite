@@ -16,7 +16,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   status bar and "Claude changed this · Review" in a changed file's header lead there.
 - Loading shimmers instead of a plain "Loading…" line, only once it takes more than a moment, and lists (Inbox,
   History, Activity, Connections, machines...) draw skeleton rows, as many as last time, so the page doesn't jump when
-  they come.
+  they come. The sidebars and the status bar hold still while the app loads: Outline keeps its rows' room, the status
+  bar its width, and nothing slides into place.
+- Notes open sooner and typing is lighter: a note starts loading when the pointer rests on its link, search result or
+  Links row, and each keystroke recalculates a quarter of the styles it did.
 - Buttons line up down a list: Get plugins (one width, the … menu's place kept in every row), plugins from another app
   (Allow moves under the name), Inbox requests (Approve and Deny where the time and Dismiss are) and Connections' steps.
 - The status bar stops short of the left sidebar: what doesn't fit goes in a tray behind its more button, long items

@@ -205,6 +205,8 @@
   body[data-resizing], body[data-resizing] * { cursor: col-resize !important; user-select: none; }
   body[data-resizing="row"], body[data-resizing="row"] * { cursor: row-resize !important; }
   body[data-resizing] * { transition: none !important; }
+  /* Loading (main.tsx, App.tsx): what the vault's state moves goes there at once, not with the transitions clicks get. */
+  body[data-arriving] * { transition: none !important; }
   :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
   /* A row of a keyboard list with the keyboard (core/keylist.ts): highlighted like a hovered row, ringed inside. */
   [data-keyrow]:focus-visible { outline: 1.5px solid color-mix(in srgb, var(--primary) 70%, transparent); outline-offset: -1.5px; border-radius: 5px; background-color: color-mix(in srgb, var(--foreground) 6%, transparent); }
@@ -772,9 +774,9 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
   :is(.cm-editor, .vau-tooltips) .cm-tooltip-autocomplete .cm-completionDetail { font-size: 14px; }
 }
 
-/* With no right sidebar on screen, its toggle (fixed in the window's top-right corner) sits at the end of the top-right
-   pane's tab bar: the bar keeps clear of it. */
-body:not(:has(aside[data-side=right])) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--spacing) * 10); }
+/* With no right sidebar on screen (data-right-sidebar, App.tsx), its toggle (fixed in the window's top-right corner)
+   sits at the end of the top-right pane's tab bar: the bar keeps clear of it. */
+:root:not([data-right-sidebar]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--spacing) * 10); }
 /* The desktop app (Electron: the preload sets data-electron on <html>; a browser never matches these). On a Mac
    (data-platform=darwin) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
    empty space of the top tab bars drag the window, the sidebar toggle moves right of the lights, and with the sidebar
@@ -800,7 +802,7 @@ html[data-electron] :is(body > :not(#root), .fixed.inset-0, [role=menu], [role=d
    Sidebar.tsx): in compact 112px, and with the rail (11 units) the first tab 12px after the toggle. */
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-titlebar] { padding-left: calc(88px + var(--spacing) * 6); }
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-sidebar-toggle=""] { left: 88px; }
-html[data-electron][data-platform=darwin]:not([data-fullscreen]) body:has(aside[data-side=left][data-collapsed]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
+html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
 /* A pop-out window (no sidebars): its top-left tab bar makes room for the lights. */
 html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
 /* In step with the panes sliding (Workspace: transition-[left] duration-200 ease-out), so the first tab never passes

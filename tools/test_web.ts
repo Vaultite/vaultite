@@ -925,5 +925,15 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("clear formatting: a word in its marks; a lone * stays", clear("a **b** c", 4, 5) === "a b c" && clear("2*3 x", 2, 3) === "2*3 x", [clear("a **b** c", 4, 5), clear("2*3 x", 2, 3)])
 }
 
+{
+  // A :has() on the whole page (:root, html, body) is checked again on every DOM change anywhere: typing in a note
+  // recalculated 4x the styles with two of them. Which sidebar is there is an attribute App.tsx sets instead.
+  const css = (d: string): string[] => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => e.isDirectory()
+    ? (e.name === "node_modules" ? [] : css(path.join(d, e.name))) : e.name.endsWith(".css") ? [path.join(d, e.name)] : [])
+  const pagewide = [WEB, path.join(ROOT, "plugins")].flatMap(css).flatMap((f) =>
+    [...fs.readFileSync(f, "utf8").matchAll(/(?:^|[\s,{}(])(?::root|html|body)(?:\[[^\]]*\]|:not\((?!:has)[^)]*\))*:(?:not\(:)?has\(/gm)].map((m) => `${path.relative(ROOT, f)}: ${m[0].trim()}`))
+  check("styles: no :has() on the whole page (:root, html, body)", !pagewide.length, pagewide)
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("web", t0))

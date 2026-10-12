@@ -21,7 +21,14 @@ function elsewhere(list: Machine[] | null) {
 // As the background last saw them, for the menus made on the spot: the other machines, and each agent's accounts on
 // every machine (places).
 let others: Machine[] = [], self = "", selfId = "", seen = false
-const known = cell<Place[]>([])
+// (as this device last saw them: a button's label ("Personal · M1") drawn at once, not a second later, moving the rest)
+const KEPT = "vaultite.dispatch.places"
+const kept = (): Place[] => { try { const v = JSON.parse(localStorage.getItem(KEPT) ?? "[]"); return Array.isArray(v) ? v : [] } catch { return [] } }
+const known = cell<Place[]>(kept())
+const learn = (ps: Place[]) => {
+  known.set(ps)
+  try { localStorage.setItem(KEPT, JSON.stringify(ps)) } catch { /* private mode, or full */ }
+}
 
 /** Where an action can run: this machine and the others online, in each of its agent's accounts (one each, without). */
 function placesOf(a: Action, there = others): Place[] {
@@ -181,7 +188,7 @@ function Commands() {
   // Each agent's accounts, here and on the machines online, for the menus and commands.
   useEffect(() => {
     let on = true
-    places().then((ps) => { if (on) known.set(ps) }, () => {})
+    places().then((ps) => { if (on) learn(ps) }, () => {})
     return () => { on = false }
   }, [where, agents.map((x) => x.name).join()])
   const ps = known.use()
