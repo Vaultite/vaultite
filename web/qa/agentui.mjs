@@ -104,10 +104,9 @@ try {
   // Settings > Hotkeys.
   rmSync(path.join(VAULT, ".vaultite/hotkeys.json"), { force: true })
   await page.goto(`${B}#settings`)
-  await page.waitForSelector("[data-hotkeys-open]")
-  check("Settings has one Hotkeys row, not the list", !(await page.$("[data-hotkeys]")))
-  await page.click("[data-hotkeys-open]")
-  await page.waitForSelector("dialog [data-hotkeys]")
+  await page.waitForSelector('[data-settings-nav="hotkeys"]')
+  await page.click('[data-settings-nav="hotkeys"]')
+  await page.waitForSelector("[data-hotkeys]")
   const n = (await page.$$("[data-hotkey]")).length
   check("commands listed", n > 20, n)
   // Every word must match: "left sidebar" lists toggling and focusing it, "toggle left sidebar" only the first.

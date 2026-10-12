@@ -200,7 +200,7 @@ export function AppearancePanel() {
   const prefs = usePrefs()
   const only = onlyMode(prefs.scheme)
   return (
-    <Panel title="Appearance">
+    <Panel>
       <div className="hairline">
         {/* A scheme with one mode says so beside the label, on its line: it changes what the row says, never the layout. */}
         <SettingRow stack data-settings-row="theme" label={<>Theme{only && <span className="ml-2 align-top text-[13px] leading-[20px] text-muted-foreground">{nameOf(prefs.scheme)} is {only} only</span>}</>}>

@@ -22,7 +22,7 @@ const indentOf = (e: EditorSettings): Indent => (e.useTab ? "tab" : (String(e.ta
 export function EditorPanel({ store }: { store: Store }) {
   const e = useEditorSettings(store)
   return (
-    <Panel title="Editor">
+    <Panel>
       <div className="hairline">
         <FlagRow k="readableLineLength" label="Readable line length" sub="Lines stop at a comfortable width" row="readable-line-length" value={e.readableLineLength} />
         <SettingRow stack label="Properties in document" data-settings-row="properties-in-document">

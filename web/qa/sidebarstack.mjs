@@ -178,6 +178,7 @@ try {
   check("the sidebar's menu has no scroll setting", !(await menuItems()).some((t) => /scroll/i.test(t)), await menuItems())
   await page.keyboard.press("Escape")
   await page.evaluate(() => { location.hash = "settings" }); await wait(800)
+  await page.click('[data-settings-nav="appearance"]'); await wait(300)
   await page.click('[aria-label="Scroll sidebar panels separately"]'); await wait(600)
   check("Settings' switch: sidebarScroll is sidebar", (await api("config/appearance")).sidebarScroll === "sidebar", await api("config/appearance"))
   check("...and no dividers then", !(await page.$(`${L} [role=separator]`)))

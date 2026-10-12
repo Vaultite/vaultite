@@ -30,6 +30,8 @@ async function open(w, dark, hash) {
   const page = watch(await ctx.newPage())
   await page.goto(`${B}#${hash}`)
   await page.waitForTimeout(1500)
+  // Settings' Appearance: beside the list, or its sheet on a phone.
+  if (hash === "settings") { await page.locator('[data-settings-nav="appearance"]').click(); await page.waitForTimeout(600) }
   return page
 }
 const shot = (page, name) => page.screenshot({ path: `${OUT}${name}.png` })
@@ -43,7 +45,7 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
   await shot(page, `settings-${w}-${dark ? "dark" : "light"}`)
   if (w === 1440 && !dark) {
     check("no font size setting", !(await page.getByText("Font size", { exact: true }).count()) && !(await page.locator('input[type="range"]').count()))
-    const appearance = page.locator("section", { has: page.getByRole("heading", { name: "Appearance" }) }).last()
+    const appearance = page.locator('[data-settings-section="appearance"]')
     check("CSS snippets are inside Appearance", (await appearance.locator('section[aria-label="CSS snippets"]').count()) === 1)
     check("no CSS snippets panel of its own", !(await page.getByRole("heading", { name: "CSS snippets" }).count()))
     const text = await appearance.innerText()

@@ -6,6 +6,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, AI apps, then every plugin with
+  options, each shown beside the list (a sheet on a phone); Plugin settings and the Setup rows are gone.
+- Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, what it
+  waits on, read only or read and write (enforced by the server), its name and Disconnect. A sign-in waiting for its
+  code leads the page, and "Another app" sets up any MCP client.
+- **Review AI changes**: what AI apps and coding agents changed that you haven't looked at, file by file like a pull
+  request (who, when, +/−, the diff against the text before), with Keep and Revert (both undoable); a count in the
+  status bar and "Claude changed this · Review" in a changed file's header lead there.
 - Loading shimmers instead of a plain "Loading…" line, only once it takes more than a moment, and lists (Inbox,
   History, Activity, Connections, machines...) draw skeleton rows, as many as last time, so the page doesn't jump when
   they come.

@@ -6,7 +6,8 @@ file marked `origin: human`, or an unlabeled one, only when the user asks; mark 
 new notes through the API get it by themselves; the user's, made in the app or the CLI by hand, get `human` only with
 `label_user` on) and never set `human`, `reviewed` or `mixed` yourself. Leave the
 key alone when you edit a file: the user relabels.
-Database views filter on it like any key (`where: origin = ai`, `where: not has origin`).
+Database views filter on it like any key (`where: origin = ai`, `where: not has origin`). Keeping an AI's change in
+Review (`review.keep`, the user's) labels a file that was `ai` `reviewed`.
 
 Files that aren't Markdown (images, videos, SVG, audio, PDFs, any attachment) have the same label, kept in
 `.vaultite/plugins/provenance/files.json` (`{"<vault path>": "<value>"}`), never in the file: relabelling never

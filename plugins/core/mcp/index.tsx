@@ -1,8 +1,8 @@
 // MCP's frontend: its Plugins page entry, settings sheet (how to connect) and view:connections (apps connected from the
 // internet).
-import { Copy, Plug } from "lucide-react"
+import { Bot, Copy, Globe, Plug } from "lucide-react"
 import { copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
-import { ConnectSection, ConnectionsView, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
+import { AiApps, CONNECTION_DETAIL, ConnectionSheet, ConnectionsView, ConnectSection, connectionTitle, RemoteAccess, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
 import { GrokBotIcon } from "./marks"
 
 function Preview() {
@@ -41,8 +41,14 @@ export default definePlugin({
   preview: () => <Preview />,
   settingsPanel: () => <Connect />,
   icons: { "grok-bot": GrokBotIcon },
-  details: { [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> } },
-  setup: { label: "Connections", sub: "Claude, ChatGPT, Muse and Grok Bot in your vault", run: () => openView("connections", { newTab: true }) },
+  details: {
+    [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> },
+    [CONNECTION_DETAIL]: { title: (_s, [id]) => connectionTitle(id), render: (_s, [id]) => <ConnectionSheet id={id} /> },
+  },
+  settingsPages: {
+    apps: { label: "AI apps", icon: Bot, render: () => <AiApps /> },
+    remote: { label: "Remote access", icon: Globe, sub: "Your vault from your phone, any browser and AI apps on the web", render: () => <RemoteAccess /> },
+  },
   newTab: { connect: { title: "Connect your AI", sort: 5, heading: false, render: () => <ConnectSection /> } },
   views: { connections: { icon: Plug, title: () => "Connections", render: () => <ConnectionsView /> } },
   commands: [{ id: "mcp:connections", name: "Open connections", run: () => openView("connections", { newTab: true }) }],

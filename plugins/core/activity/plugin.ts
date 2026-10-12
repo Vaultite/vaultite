@@ -91,6 +91,7 @@ function record(e: Omit<ActivityEvent, "id">): ActivityEvent {
 
 /** An event is new or changed: written within FLUSH. */
 function changed(e: ActivityEvent) {
+  keptChange(e)
   dirty.add(e)
   scheduleFlush()
 }
@@ -200,7 +201,8 @@ function whoFrom(s: RequestStart): { actor: Actor; lookup: boolean } {
   const c = s.client ?? ""
   if (c.startsWith("app")) return { actor: { kind: "you", name: "You", device: c.split("/")[1] || "web" }, lookup: false }
   // MCP's tools (plugins/core/mcp): the server calling itself, or `vau mcp`, for the client the session named.
-  if (c === "mcp") return { actor: { kind: "agent", name: s.agent ? nameOf(s.agent) : "An MCP client" }, lookup: false }
+  // (an app on the internet by its connection's name: "Grok Bot", not its slug)
+  if (c === "mcp") return { actor: { kind: "agent", name: s.label || (s.agent ? nameOf(s.agent) : "An MCP client") }, lookup: false }
   if (c === "cli") {
     if (s.agent) return { actor: { kind: "agent", name: nameOf(s.agent) }, lookup: loopback(s.remote) }
     return { actor: { kind: "cli", name: "vau CLI" }, lookup: loopback(s.remote) }
@@ -498,6 +500,7 @@ plugin.route("POST", "activity/perf", (req) => {
 
 plugin.route("DELETE", "activity", () => {
   events = []
+  changesKept = null
   open.clear()
   for (const l of Object.values(logs)) for (const d of l.days()) l.rewrite(d, [])
   return { ok: true }
@@ -516,6 +519,29 @@ function between(since: number): ActivityEvent[] {
   }
   return [...older.sort((a, b) => a.t - b.t), ...list]
 }
+
+/** What another plugin reads of who changed which files (Provenance's review): the events since `since` (ms) that changed
+ *  files, oldest first. Read from the files once, then kept up as events come (changed). */
+const CHANGES = new Set<string>([...ACTION_KINDS.find((k) => k.id === "changes")!.actions, "request"])
+const isChange = (e: ActivityEvent) => !!e.paths?.length && CHANGES.has(e.action)
+let changesKept: { list: ActivityEvent[]; has: Set<ActivityEvent> } | null = null
+function keptChange(e: ActivityEvent) {
+  if (!changesKept || changesKept.has.has(e) || !isChange(e)) return
+  changesKept.has.add(e)
+  changesKept.list.push(e)
+}
+plugin.provide("activity:changes", (since: number) => {
+  if (!changesKept) {
+    const list = between(Date.now() - settings().keep * DAY).filter(isChange)
+    changesKept = { list, has: new Set(list) }
+  }
+  const from = Date.now() - settings().keep * DAY
+  if (changesKept.list[0] && changesKept.list[0].t < from) {
+    changesKept.list = changesKept.list.filter((e) => e.t >= from)
+    changesKept.has = new Set(changesKept.list)
+  }
+  return changesKept.list.filter((e) => e.t >= since).sort((a, b) => a.t - b.t)
+})
 
 function query(q: Record<string, string>): ActivityList {
   const limit = Math.min(500, Math.max(1, Number(q.limit) || 50))

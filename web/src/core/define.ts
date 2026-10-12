@@ -558,11 +558,10 @@ export type PluginDef = {
   home?: (store: Store) => string | null
   /** Sections it adds to a blank tab's page, by name ("<plugin id>:<name>", arranged in newtab.json). */
   newTab?: Record<string, NewTabSection>
-  /** A row in Settings' Setup panel, for a plugin that's part of setting the app up (Connections). Nothing else of a
-   *  plugin is on the Settings page. */
-  setup?: { label: string; sub: string; run: () => void }
-  /** Its settings sheet, for what a form from its manifest's `settings`
-   *  can't say: `SettingRow`s in `Group`s, no `Panel`s. Plugins never add to the Settings page, but for `setup`. */
+  /** Its pages in Settings' list, by name, beside the app's own (Connections' AI apps): for setting the app up, not a
+   *  plugin's options (those are its settings). */
+  settingsPages?: Record<string, { label: string; icon: LucideIcon; sub?: string; render: (ctx: { store: Store }) => ReactNode }>
+  /** Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. */
   settingsPanel?: (ctx: { store: Store }) => ReactNode
   /** What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves). */
   settingsSearch?: SettingsSearchEntry[]

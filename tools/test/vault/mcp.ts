@@ -160,6 +160,27 @@ export default async ($: VaultTest) => {
     check("upload links: on the address the app reached (an app with the Cloud's can't reach the owner's tunnel), else the owner's",
       pubMcp.uploadLink({}, viaCloud)!.url.startsWith("https://alice.vaultite.app/upload/") && pubMcp.uploadLink({}, viaNothing)!.url.startsWith("https://own.example/upload/"))
     {
+      // Read-only access (public.ts): only tools that read are listed, and an op that writes is refused, through call too.
+      const { accessRefusal } = await import("../../../plugins/core/mcp/public.ts")
+      const ro = new PublicMcp({ host: { catalog: () => app.catalog(), call: (id: string, p: Any, w: Any) => app.callOp(id, p, w) }, vault, service: () => null } as Any, PublicMcp.cloudOnly())
+      const g: Any = { name: "Lighthouse bot", client: "c", created: "2026-10-01T00:00:00Z", refresh: "x", access: "read" }
+      const kinds = new Map(app.catalog().filter((e) => e.mcp).map((e) => [e.mcp, e.kind]))
+      const roTools = ro.toolsFor(g).map((x) => x.name), rwTools = ro.toolsFor({ ...g, access: undefined }).map((x) => x.name)
+      check("public mcp read-only: only reading tools (and ops, call) are listed; a write grant gets the writing ones",
+        roTools.includes("list") && roTools.includes("ops") && roTools.includes("call") && roTools.every((n) => !kinds.has(n) || kinds.get(n) === "read")
+        && !roTools.includes("write_note") && rwTools.includes("write_note"), roTools)
+      const who = { client: "mcp", agent: "lighthouse-bot", label: "Lighthouse bot", source: "lighthouse-bot" }
+      const callTool = ro.toolsFor(g).find((x) => x.name === "call")!
+      const ctx = { client: who, op: ro.opFor(["g1", g], who as Any, "call") }
+      const refused = await callTool.run({ id: "note.create", params: { title: "Sneaky" } }, ctx).then(() => "", (e: Error) => e.message)
+      const listId = app.catalog().find((e) => e.mcp === "list")!.id
+      const listed = await callTool.run({ id: listId, params: { folder: "People" } }, ctx).catch((e: Error) => e.message)
+      check("public mcp read-only: call refuses an op that writes, saying how the user changes it, and runs one that reads",
+        refused === "Lighthouse bot has read-only access to this vault: the user can change it in Connections." && !exists("Notes/Sneaky.md") && listed.includes("People/Sam Park.md"), [refused, listed])
+      check("public mcp read-only: an unknown op is unknown, a write grant isn't refused", accessRefusal("A", "read", null, "nope.x").startsWith("No operation")
+        && accessRefusal("A", undefined, app.catalog().find((e) => e.id === "note.create")!, "note.create") === "")
+    }
+    {
       // Connect (plugins/core/mcp/connect.ts): Vaultite Cloud's signed header for the handle's owner.
       const { MCP_PATHS, ownerOnly, verifyConnect } = await import("../../../plugins/core/mcp/connect.ts")
       const { refusal: ownerRefusal } = await import("../../../core/owner.ts")

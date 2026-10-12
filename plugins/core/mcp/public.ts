@@ -9,6 +9,7 @@ import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who }
 import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
 import type { Item } from "../../../core/vault.ts"
+import { agentName } from "../../../core/terminalids.ts"
 import { blockedHost } from "../../../core/web.ts"
 import { byUser } from "../../../core/writegate.ts"
 import { toolsOf } from "./catalog.ts"
@@ -30,6 +31,13 @@ const GATED: Record<string, string> = {
   "dispatch.run": "start a coding agent on your machine with a file",
 }
 const APP_FILES = /^\/*\.vaultite(\/|$)/
+
+/** Why a read-only app can't run this op, or "" when it may: it runs only ops that read. */
+export function accessRefusal(app: string, access: Access | undefined, entry: OpEntry | null, name: string): string {
+  if (access !== "read" || entry?.kind === "read") return ""
+  if (!entry) return `No operation '${name}'. Call ops for the list.`
+  return `${app} has read-only access to this vault: the user can change it in Connections.`
+}
 
 /** Why an internet app needs the owner's yes for this op with these params, or "" if not. `code`: a path is a vault
  *  plugin's code, which runs only once allowed as it is (writing it needs no yes: allowing it does). */
@@ -57,9 +65,10 @@ const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_T
 const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789" // no vowels (no words), no 0/O, 1/I/L
 
 type Settings = { url: string; port: number; redirectHosts: string[]; tools: string[] | null; approvalWait: number }
-/** A connected app: what it's called, when, and its refresh token's hash (the one before it too, for a while: an app
- *  that retries a refresh it already made isn't signed out). */
-type Grant = { name: string; client: string; created: string; used?: string; refresh: string; prev?: string; prevUntil?: number }
+/** A connected app: what it's called, when, what it may do (absent: write), and its refresh token's hash (the one before it
+ *  too, for a while: an app that retries a refresh it already made isn't signed out). */
+type Grant = { name: string; client: string; created: string; used?: string; access?: Access; refresh: string; prev?: string; prevUntil?: number }
+export type Access = "read" | "write"
 type Stored = { public?: Partial<Settings>; key?: string; grants?: Record<string, Grant> }
 type App = { name: string; redirects: string[] }
 type SignIn = { id: string; code: string; app: App; clientId: string; redirect: string; state: string | null; challenge: string; started: number; from: string; base: string; done?: string }
@@ -206,9 +215,24 @@ export class PublicMcp {
     return this.stored().grants ?? {}
   }
 
-  /** The connections, for the owner's view. */
+  /** The connections, for the owner's view; `actor`: the name Activity gives what it does (its whoOf, as Activity names it). */
   list() {
-    return Object.entries(this.grants()).map(([id, g]) => ({ id, name: g.name, created: g.created, used: g.used ?? null }))
+    return Object.entries(this.grants()).map(([id, g]) => {
+      const who = whoOf("mcp", g.name)
+      return { id, name: g.name, created: g.created, used: g.used ?? null, access: g.access ?? "write", actor: (who.agent && agentName(who.agent)) ?? who.agent ?? "An MCP client" }
+    })
+  }
+
+  /** Rename a connection or change what it may do; false when there's no such connection. */
+  update(id: string, change: { name?: string; access?: Access }) {
+    if (!this.grants()[id]) return false
+    this.save((s) => {
+      const g = s.grants![id]
+      if (change.name) g.name = change.name.slice(0, 80)
+      if (change.access === "read") g.access = "read"
+      else if (change.access === "write") delete g.access
+    })
+    return true
   }
 
   disconnect(id: string) {
@@ -236,8 +260,13 @@ export class PublicMcp {
   }
 
   waiting() {
+    return this.asking().length
+  }
+
+  /** The apps whose sign-in page waits for its code, by the name each signed in with. */
+  asking() {
     this.prune()
-    return [...this.signIns.values()].filter((s) => !s.done).length
+    return [...this.signIns.values()].filter((s) => !s.done).map((s) => s.app.name)
   }
 
   /** The apps whose code the owner typed that haven't finished signing in (their authorization code not yet traded for
@@ -541,26 +570,17 @@ export class PublicMcp {
     // a proxy, whatever the tunnel sends: an op or route only this machine's owner may use refuses it (core/owner.ts).
     req.headers["x-forwarded-for"] = this.from(req) || "public"
     const session: Session = { client: this.sessions.get(sid) ?? null }
-    const allow = this.settings.tools && new Set(this.settings.tools)
-    const app = grant[1].name
     const out = await handleBody(body, session, {
       version: APP_VERSION,
-      instructions: () => instructionsOf(agentLines(this.plugin.vault).map((l) => l.text), this.plugin.host.catalog(), [WAITS]),
+      instructions: () => instructionsOf(agentLines(this.plugin.vault).map((l) => l.text), this.plugin.host.catalog(), grant[1].access === "read" ? [READ_ONLY] : [WAITS]),
       identity: { icons: [{ src: `${base}/icon.png`, mimeType: "image/png", sizes: ["256x256"] }, { src: `${base}/icon.svg`, mimeType: "image/svg+xml", sizes: ["any"] }] },
       ctx: (client, tool) => {
         // Named as it signed in (Connections' name), not as its MCP client calls itself ("An MCP client", a skill's name).
         const who: Who = whoOf("mcp", grant[1].name)
         this.bases.set(who, base)
-        return { client, op: async (name, params) => {
-          const entry = this.entryOf(name)
-          if (entry?.owner && !GATED[entry.id]) throw new ToolError(`${entry.id} is only for this machine's owner, on that machine: not an app on the internet.`)
-          const id = entry?.id ?? name
-          await this.approved(grant[0], app, id, params)
-          // An owner's op they just said yes to runs as theirs: the request's owner checks would refuse it.
-          return (await this.plugin.host.call(id, params, who, { report: `mcp ${tool}`, http: entry?.owner ? undefined : req })).text
-        } }
+        return { client, op: this.opFor(grant, who, tool, req) }
       },
-      tools: () => toolsOf(this.plugin.host.catalog().filter((e) => !e.owner || GATED[e.id])).filter((t) => !allow || allow.has(t.name)),
+      tools: () => this.toolsFor(grant[1]),
     })
     const headers: Record<string, string> = {}
     if (initializes(body)) {
@@ -571,6 +591,28 @@ export class PublicMcp {
     }
     if (out === null) { res.writeHead(202, headers); return res.end() }
     this.json(res, 200, out, headers)
+  }
+
+  /** The tools an app gets: not what only the owner may run (unless it waits for their yes), only reads when read-only. */
+  toolsFor(g: Grant) {
+    const allow = this.settings.tools && new Set(this.settings.tools)
+    const entries = this.plugin.host.catalog().filter((e) => (!e.owner || GATED[e.id]) && (g.access !== "read" || e.kind === "read"))
+    return toolsOf(entries).filter((t) => !allow || allow.has(t.name))
+  }
+
+  /** How an app's tool runs an op (its own, or `call`'s): refused when it's the owner's or past the app's access, after
+   *  the owner's yes when it's gated. */
+  opFor([grantId, g]: [string, Grant], who: Who, tool: string, req?: IncomingMessage) {
+    return async (name: string, params: Record<string, unknown>) => {
+      const entry = this.entryOf(name)
+      if (entry?.owner && !GATED[entry.id]) throw new ToolError(`${entry.id} is only for this machine's owner, on that machine: not an app on the internet.`)
+      const refused = accessRefusal(g.name, g.access, entry, name)
+      if (refused) throw new ToolError(refused)
+      const id = entry?.id ?? name
+      await this.approved(grantId, g.name, id, params)
+      // An owner's op they just said yes to runs as theirs: the request's owner checks would refuse it.
+      return (await this.plugin.host.call(id, params, who, { report: `mcp ${tool}`, http: entry?.owner ? undefined : req })).text
+    }
   }
 
   /** Returns when an app may run this operation: at once, or once the owner said
@@ -709,5 +751,6 @@ main{max-width:420px;margin:12vh auto;padding:0 16px}.brand{display:flex;align-i
 h1{font-size:22px;line-height:1.3;margin:0 0 8px}p{margin:0 0 16px}.muted{color:var(--muted)}.small{font-size:14px}
 .code{font:600 34px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.12em;padding:18px 0;margin:8px 0 20px;text-align:center;border:1px solid var(--line);border-radius:10px}`
 
-/** What the public server's instructions add: what waits for the user's yes here. */
+/** What the public server's instructions add: what waits for the user's yes here, or that the app only reads. */
+const READ_ONLY = "You have read-only access to this vault: the tools only read. The user can give you write access in Vaultite's Connections."
 const WAITS = `What can run code on the user's machine (turning a plugin on or allowing it, writing under .vaultite/ except a vault plugin's code, bundles, settings, palette commands, dispatch.run: a coding agent given a note to work on) waits for their yes on their phone: if a tool says it's waiting, tell them, and call it again with the same arguments once they approve.`

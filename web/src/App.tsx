@@ -70,7 +70,7 @@ const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m
 const SchemeGallery = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.SchemeGallery })))
 const HotkeysSheet = lazy(() => import("@/pages/Hotkeys").then((m) => ({ default: m.HotkeysSheet })))
 const FontsSheet = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.FontsSheet })))
-const PluginSettingsSheet = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.PluginSettingsSheet })))
+const SettingsSection = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.SettingsSection })))
 const BundlesPage = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.Bundles })))
 const BundlePreview = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.BundlePreview })))
 const SaveBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.SaveBundle })))
@@ -123,7 +123,7 @@ function sheet_(...a: Parameters<typeof detail_>): ReturnType<typeof detail_> {
 const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.ReactNode]> = {
   schemes: ["Colour schemes", () => <SchemeGallery />], // Settings' More…, the command "Change colour scheme"
   fonts: ["Fonts", () => <FontsSheet />], // Settings' Fonts row
-  "plugin-settings": ["Plugin settings", (store) => <PluginSettingsSheet store={store} />], // Settings' Plugin settings row
+  "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />], // a Settings section, where the pane is narrow
   hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
   "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
   "bundles-more": ["More bundles", () => <MoreBundles />], // the Bundles page's More…

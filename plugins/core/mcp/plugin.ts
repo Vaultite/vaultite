@@ -112,10 +112,12 @@ plugin.provide("mcp:upload-link", (pending: Record<string, unknown>, who: Who) =
 cloud.start()
 plugin.onUnload(() => { pub?.stop(); cloud.stop() })
 
-/** The apps connected from the internet, how many sign-ins wait for their code, those finishing, and Vaultite Cloud. */
+/** The apps connected from the internet, the sign-ins waiting for their code (how many, and their apps), those finishing,
+ *  and Vaultite Cloud. */
 plugin.route("GET", "mcp/connections", async (req) => {
   await allowed(req)
-  return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connect: { ownerTools: ownerTools() }, connections: pub?.list() ?? [], waiting: pub?.waiting() ?? 0, finishing: pub?.finishing() ?? [] }
+  return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connect: { ownerTools: ownerTools() }, connections: pub?.list() ?? [],
+    waiting: pub?.waiting() ?? 0, asking: pub?.asking() ?? [], finishing: pub?.finishing() ?? [] }
 }, { lock: false })
 
 /** Connect's owner tools on or off: only from this Mac (or the owner's tailnet), never over the relay itself. */
@@ -139,6 +141,17 @@ plugin.route("POST", "mcp/connections", async (req) => {
   const name = pub.approve(String(b.code ?? ""), typeof b.as === "string" && b.as.trim() ? b.as.trim() : undefined)
   if (!name) throw new HTTPError(404, "No sign-in waits with that code: check it, or start again from the app (a code lasts 10 minutes)")
   return { ok: true, name }
+}, { lock: false })
+
+/** Rename a connection (Activity names it so after) or set its access: `read` or `write`. The owner's only (allowed). */
+plugin.route("PATCH", "mcp/connections/*", async (req) => {
+  await allowed(req)
+  const b = (req.body ?? {}) as { name?: unknown; access?: unknown }
+  const name = typeof b.name === "string" ? b.name.trim() : undefined
+  if (b.name !== undefined && !name) throw new HTTPError(400, "name: what to call the app")
+  if (b.access !== undefined && b.access !== "read" && b.access !== "write") throw new HTTPError(400, "access: read or write")
+  if (!pub?.update(req.arg(0), { name, access: b.access as "read" | "write" | undefined })) throw new HTTPError(404, "no such connection")
+  return { ok: true }
 }, { lock: false })
 
 plugin.route("DELETE", "mcp/connections/*", async (req) => {

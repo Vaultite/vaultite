@@ -605,7 +605,7 @@ export class App {
   /** A call from inside the server told to the plugins watching requests (Activity), as if it had come over HTTP. */
   private reported(method: string, route: string, query: Record<string, string>, who: Who, command: string | undefined) {
     if (!command) return null
-    return this.requestStarted({ t: Date.now(), method, route, query, client: who.client, agent: who.agent, command, ua: "", remote: "", port: 0, forwarded: false })
+    return this.requestStarted({ t: Date.now(), method, route, query, client: who.client, agent: who.agent, label: who.label, command, ua: "", remote: "", port: 0, forwarded: false })
   }
 
   /** Run an op as every surface does: a read after a sync, unheld; a write holding the vault (unless `lock: false`),

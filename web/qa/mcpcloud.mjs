@@ -250,9 +250,9 @@ try {
   const popups = []
   page.on("popup", (p) => { popups.push(p.url()); void p.close() })
   await page.goto(`${BASE}/#view/connections`)
-  await page.waitForSelector("[data-app-cards]", { timeout: 20_000 }).catch(() => {})
-  check("Connections leads with the four apps, none connected", (await page.$$eval("[data-app-cards] [data-guide-for]", (els) => els.map((e) => e.dataset.guideFor))).join() === "claude,chatgpt,muse,grok-bot"
-    && !(await page.$("[data-app-connected]")))
+  await page.waitForSelector("[data-app-list]", { timeout: 20_000 }).catch(() => {})
+  check("Connections lists the four apps and another app, none connected", (await page.$$eval("[data-app-list] [data-guide-for]", (els) => els.map((e) => e.dataset.guideFor))).join() === "claude,chatgpt,muse,grok-bot,other"
+    && !(await page.$("[data-app-connected]")) && !(await page.$("[data-waiting]")))
   await page.click("[data-guide-for=muse]")
   await page.waitForSelector("[data-setup=muse] [data-cloud-sign-in]", { timeout: 5000 }).catch(() => {})
   check("with no address, an app's sheet starts with Vaultite Cloud's sign-in", await page.isVisible("[data-setup=muse] [data-cloud-sign-in]") && !(await page.isVisible("[data-setup=muse] [data-guide]")))
@@ -274,7 +274,8 @@ try {
   await page.click("[data-guide-for=claude]")
   await page.waitForSelector("[data-setup=claude] [data-connect-code]", { timeout: 5000 }).catch(() => {})
   check("Set up Claude opens a sheet with its steps (open, copy the name and the address) and the code field", await page.isVisible("[data-setup=claude] [data-guide=claude] [data-guide-open]")
-    && (await page.locator("[data-setup=claude] [data-guide-copy]").count()) === 2 && await page.isVisible("[data-setup=claude] [data-connect-code]"))
+    && (await page.locator("[data-setup=claude] [data-guide-copy]").count()) === 2 && await page.isVisible("[data-setup=claude] [data-connect-code]"),
+    [await page.isVisible("[data-setup=claude] [data-guide=claude] [data-guide-open]"), await page.locator("[data-setup=claude] [data-guide-copy]").count(), await page.locator("[data-setup]").count()])
   await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections-claude.png") })
   await page.keyboard.press("Escape")
   await page.waitForSelector("[data-setup]", { state: "detached", timeout: 5000 }).catch(() => {})
@@ -295,9 +296,8 @@ try {
   await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections.png") })
   await page.setViewportSize({ width: 390, height: 844 })
   // (laid out again for the new width first: until then a label measures 0 wide)
-  check("on a phone the buttons name just the app, whole", !!(await until(async () => (await page.innerText("[data-guide-for=grok-bot] [data-app-name]")).trim() === "Grok Bot"
-    && await page.$$eval("[data-guide-for] .truncate", (els) => els.every((e) => e.clientWidth > 0 && e.scrollWidth <= e.clientWidth)), 5000)),
-    [await page.innerText("[data-guide-for=grok-bot]").catch(() => ""), await page.$$eval("[data-guide-for] .truncate", (els) => els.filter((e) => e.scrollWidth > e.clientWidth).map((e) => `${e.textContent} ${e.scrollWidth}>${e.clientWidth}`))])
+  check("on a phone each app's row names it whole, nothing wider than the screen", !!(await until(async () => (await page.innerText("[data-guide-for=grok-bot]")).startsWith("Grok Bot")
+    && await page.$eval("[data-connections]", (el) => el.scrollWidth <= el.clientWidth), 5000)), await page.innerText("[data-guide-for=grok-bot]").catch(() => ""))
   await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections-phone.png") })
   await page.setViewportSize({ width: 1200, height: 800 })
   const connected = await until(async () => { const s = (await opCall("mcp.cloud-status")).body; return s?.state === "connected" && s }, 8000)
@@ -327,8 +327,13 @@ try {
   const sid = /const id = "([^"]+)"/.exec(signInPage)?.[1]
   check("the sign-in page comes through the relay", !!code && !!sid, signInPage.slice(0, 200))
   check("it carries Vaultite's logo", signInPage.includes('<img src="/icon.svg"') && (await through("GET", "/icon.svg")).status === 200)
-  const let_ = await fetch(`${BASE}/api/mcp/connections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code }) })
-  check("the owner types its code in Connections", let_.status === 200, let_.status)
+  await page.waitForSelector("[data-waiting]", { timeout: 10_000 }).catch(() => {})
+  check("Connections leads with the sign-in waiting for its code, naming the app", /Lighthouse AI is waiting for its code/.test(await page.textContent("[data-waiting]").catch(() => "") ?? ""))
+  await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections-waiting.png") })
+  await page.fill("[data-waiting] [data-connect-code]", code ?? "")
+  await page.keyboard.press("Enter")
+  await page.waitForSelector("[data-waiting]", { state: "detached", timeout: 10_000 }).catch(() => {})
+  check("the owner types its code there, and the row goes", !(await page.$("[data-waiting]")) && !!(await until(async () => (await (await fetch(`${BASE}/api/mcp/connections`)).json()).finishing?.includes("Lighthouse AI"), 3000)))
   const st = JSON.parse((await through("GET", `/authorize/status?id=${encodeURIComponent(sid ?? "")}`)).text || "{}")
   const back = new URL(st.to ?? "https://x.invalid/")
   check("it goes back to the app with the Cloud's address as issuer", back.searchParams.get("iss") === "https://alice.vaultite.app" && back.searchParams.get("state") === "s1", st)
@@ -339,6 +344,24 @@ try {
   check("MCP through the relay, its logo at the Cloud's address", init.result?.serverInfo?.icons?.[0]?.src === "https://alice.vaultite.app/icon.png", init)
   const found = await rpc("tools/call", { name: "search", arguments: { query: "Alice" } })
   check("a tool runs through the relay", found.result?.isError === false, found)
+  // Its page: open from its row, made read only (the server then lists and runs only reads), renamed.
+  await page.waitForSelector("[data-connection] >> text=Lighthouse AI", { timeout: 10_000 }).catch(() => {})
+  await page.click("[data-connection] >> text=Lighthouse AI")
+  await page.waitForSelector("[data-connection-sheet]", { timeout: 5000 }).catch(() => {})
+  check("a connected app opens its page, with its access", await page.isVisible("[data-connection-sheet] [role=radiogroup]"))
+  await page.click("[data-connection-sheet] [role=radio] >> text=Read only")
+  const ro = await until(async () => (await (await fetch(`${BASE}/api/mcp/connections`)).json()).connections?.find((c) => c.name === "Lighthouse AI")?.access === "read", 5000)
+  const roTools = (await rpc("tools/list", {})).result?.tools?.map((t) => t.name) ?? []
+  const roWrite = await rpc("tools/call", { name: "call", arguments: { id: "note.create", params: { title: "Read only check" } } })
+  check("Read only: only reading tools, and a write refused saying so", !!ro && roTools.includes("search") && !roTools.includes("write_note")
+    && roWrite.result?.isError === true && /read-only access/.test(roWrite.result?.content?.[0]?.text) && !fs.existsSync(path.join(VAULT, "Notes/Read only check.md")), [roTools, roWrite])
+  await page.screenshot({ path: path.join(os.tmpdir(), "vaultite-qa-connections-app.png") })
+  await page.click("[data-connection-sheet] [role=radio] >> text=Read and write")
+  await page.fill("[data-connection-name]", "Lighthouse Desk")
+  await page.keyboard.press("Enter")
+  check("Rename: the connection takes the new name", !!(await until(async () => (await (await fetch(`${BASE}/api/mcp/connections`)).json()).connections?.some((c) => c.name === "Lighthouse Desk" && c.access === "write"), 5000)))
+  await page.keyboard.press("Escape")
+  await page.waitForSelector("[data-connection-sheet]", { state: "detached", timeout: 5000 }).catch(() => {})
   const owner = await rpc("tools/call", { name: "call", arguments: { id: "mcp.cloud-sign-out" } })
   check("an app can't sign the Mac out", owner.result?.isError === true, owner)
   // Forged headers through the relay: Tailscale Serve's login (one the terminal lets in), the app's own.

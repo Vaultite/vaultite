@@ -238,7 +238,9 @@ export type Socket = { pattern: string[]; fn: SocketHandler; accept?: SocketAcce
 /** An API request as it starts: `route` is the path under /api/; `client`, `agent`, `command` its X-Vaultite-* headers;
  *  `remote`/`port` the caller's address (a loopback caller can be looked up). */
 export type RequestStart = { t: number; method: string; route: string; query: Record<string, string>; client: string | null
-  agent: string | null; command: string | null; ua: string; remote: string; port: number; forwarded: boolean }
+  agent: string | null; command: string | null; ua: string; remote: string; port: number; forwarded: boolean
+  /** How the caller is named to the user, for a call from inside the server (an MCP app: its connection's name). */
+  label?: string }
 /** How it ended: its status, how long it took (ms), and the body it was sent (JSON, parsed; undefined for none). */
 /** How a request ended: `error`, what a failed one (4xx, 5xx) answered. */
 export type RequestEnd = { status: number; ms: number; body: unknown; error?: string }

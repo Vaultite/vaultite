@@ -1,22 +1,36 @@
-// view:connections: the four AI apps as cards, each a sheet with its steps (signing in to Vaultite Cloud first when needed,
-// cloud.ts) and the code field; what's connected (public.ts); the account and addresses last. Polls, faster while connecting.
-import { useState, type ReactNode } from "react"
-import { Bot, Check, ChevronRight, Copy, ExternalLink, Plug, type LucideIcon } from "lucide-react"
-import { Bar, Button, confirmDialog, copyText, del, detailPath, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openWebLink, Panel, post, Row, Section, SettingRow, SheetHead, Switch, useKeptCount, useLive } from "@vaultite"
+// Connections (public.ts, cloud.ts): AiApps lists the apps, each opening its setup steps or, once connected, its page
+// (access, activity, rename, disconnect); RemoteAccess is Vaultite Cloud and the addresses. Polls, faster while connecting.
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
+import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
+import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, post, Row, Section, Segmented, SettingRow, SheetHead, Switch, useEnabled, useKeptCount, useLive } from "@vaultite"
 
-type Connection = { id: string; name: string; created: string; used: string | null }
+type Access = "read" | "write"
+/** `actor`: the name Activity gives what it does. */
+type Connection = { id: string; name: string; created: string; used: string | null; access: Access; actor: string }
 type Cloud = { state: "off" | "connecting" | "connected" | "reconnecting" | "offline" | "replaced"; handle: string | null; url: string | null; app?: string | null; connectUrl: string; message?: string }
 type State = { url: string | null; cloud: Cloud; connect?: { ownerTools: boolean }; connections: Connection[]; waiting: number
+  /** The apps whose sign-in page waits for its code. */
+  asking?: string[]
   /** Apps let in by their code that haven't finished signing in: a row each, till they're connections. */
   finishing?: string[] }
 
+/** The last answer, for a sheet's title (details' titles are drawn from what's at hand). */
+let lastState: State | null = null
+
+// One version for every list and sheet: after a change each asks anew, and a sheet opened later never gets an older answer.
+let asked = 0
+const askers = new Set<() => void>()
+const askAgain = () => { asked++; askers.forEach((f) => f()) }
+const onAsk = (f: () => void) => { askers.add(f); return () => { askers.delete(f) } }
+
 function useConnections() {
-  const [asked, setAsked] = useState(0)
+  const version = useSyncExternalStore(onAsk, () => asked)
   const [fast, setFast] = useState(false)
-  const live = useLive<State>("mcp/connections", asked, undefined, fast ? 1500 : 5000)
-  const connecting = live.data?.cloud.state === "connecting" || !!live.data?.finishing?.length
+  const live = useLive<State>("mcp/connections", version, undefined, fast ? 1500 : 5000)
+  if (live.data) lastState = live.data
+  const connecting = live.data?.cloud.state === "connecting" || !!live.data?.finishing?.length || !!live.data?.waiting
   if (connecting !== fast) setFast(connecting)
-  return { ...live, reload: () => setAsked((n) => n + 1) }
+  return { ...live, reload: askAgain }
 }
 
 /** The code field; in an app's sheet (`as`), the connection takes that app's name, whatever it signs in as. */
@@ -35,7 +49,7 @@ function Connect({ waiting, onDone, as }: { waiting: number; onDone: () => void;
   }
   return (
     <form className="flex gap-2 py-2" onSubmit={(e) => { e.preventDefault(); void send() }}>
-      <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Code from Vaultite's sign-in page" aria-label="Code from the sign-in page"
+      <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase())} placeholder="Sign-in code" aria-label="Code from the sign-in page"
         autoCapitalize="characters" autoComplete="off" spellCheck={false} data-connect-code className={field} />
       <button type="submit" disabled={!code.trim() || busy}
         className="h-9 shrink-0 cursor-pointer rounded-[8px] bg-primary px-4 text-[15px] font-medium text-primary-foreground disabled:cursor-default disabled:opacity-50">
@@ -142,7 +156,7 @@ function AppAddress({ app, ownerTools, onDone }: { app: string; ownerTools: bool
 
 const copyAddress = (url: string) => copyText(url).then(() => notify("Copied the address", { id: "copied" }), (e) => notifyError(e))
 
-export type AppId = "claude" | "chatgpt" | "grok-bot" | "muse"
+export type AppId = "claude" | "chatgpt" | "grok-bot" | "muse" | "other"
 /** One thing to do in the app, with what it needs: a text to copy or a page to open. */
 type Step = { text: ReactNode; copy?: { label: string; value: string }; open?: string }
 const NAME = "Vaultite"
@@ -191,6 +205,14 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
       { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
     ],
   },
+  other: {
+    name: "Another app", icon: "plug", match: /^$/, sub: "Any app that takes a remote MCP server: streamable HTTP, with OAuth sign-in.",
+    steps: (address) => [
+      { text: <>In the app, add a remote MCP server (a custom connector) and name it <B>{NAME}</B></>, copy: { label: "Copy name", value: NAME } },
+      { text: <>Paste this address as its server URL</>, copy: { label: "Copy address", value: address } },
+      { text: <>When it signs in, Vaultite's sign-in page shows a code. Type it below.</> },
+    ],
+  },
 }
 
 function Guide({ id, address }: { id: AppId; address: string }) {
@@ -218,11 +240,14 @@ function Guide({ id, address }: { id: AppId; address: string }) {
 
 /** The sheet's detail path (`details` in index.tsx): connect-app/<app>. */
 export const SETUP_DETAIL = "connect-app"
-export const APPS = Object.keys(GUIDES) as AppId[]
-export const setupTitle = (id: string) => (id in GUIDES ? `Set up ${GUIDES[id as AppId].name}` : "Set up an app")
-export const appIcon = (id: AppId): LucideIcon => iconNamed(GUIDES[id].icon) ?? Bot
+/** The apps Connections names, in order ("other" is the generic setup). */
+export const APPS: AppId[] = ["claude", "chatgpt", "muse", "grok-bot"]
+export const setupTitle = (id: string) => (id in GUIDES && id !== "other" ? `Set up ${GUIDES[id as AppId].name}` : "Set up another app")
+export const appIcon = (id: AppId): LucideIcon => (id === "other" ? Plug : iconNamed(GUIDES[id].icon) ?? Bot)
 /** The connection an app made, by the name it signed in with. */
 const connectionOf = (id: AppId, cs: Connection[]) => cs.find((c) => GUIDES[id].match.test(c.name))
+/** The known app a connection is, by its name, or null. */
+const appOf = (c: Connection) => APPS.find((id) => GUIDES[id].match.test(c.name)) ?? null
 
 /** An app's steps in a sheet: Vaultite Cloud's sign-in first when there's no address yet, then the steps and the code field. */
 export function SetupSheet({ id }: { id: AppId }) {
@@ -230,17 +255,17 @@ export function SetupSheet({ id }: { id: AppId }) {
   const g = GUIDES[id]
   if (!g) return null
   const address = data ? data.cloud.url ?? data.url : null
-  const done = data && connectionOf(id, data.connections)
+  const done = data && id !== "other" && connectionOf(id, data.connections)
   return (
     <div data-setup={id}>
       <SheetHead icon={appIcon(id)} tint={g.tint ?? "var(--foreground)"} kicker="Connections" title={setupTitle(id)} sub={g.sub} />
       {!data ? <Loading error={error} /> : (
         <div className="flex flex-col gap-4">
-          {done && <Group><Row title={`${g.name} is connected`} meta={`Connected ${fmtAgo(done.created)}${done.used ? `, used ${fmtAgo(done.used)}` : ""}`} data-setup-connected /></Group>}
+          {done && <Group><Row title={`${g.name} is connected`} meta={`Connected ${fmtAgo(done.created)}${done.used ? `, used ${fmtAgo(done.used)}` : ""}`} onOpen={() => openDetail(detailPath(CONNECTION_DETAIL, done.id))} data-setup-connected /></Group>}
           {address ? (
             <>
               <Section title="Steps"><Guide id={id} address={address} /></Section>
-              <Section title="Code"><Connect waiting={data.waiting} onDone={reload} as={g.name} /></Section>
+              <Section title="Code"><Connect waiting={data.waiting} onDone={reload} as={id === "other" ? undefined : g.name} /></Section>
               {!!data.finishing?.length && (
                 <Group>{data.finishing.map((name, i) => <Row key={i} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />)}</Group>
               )}
@@ -256,21 +281,17 @@ export function SetupSheet({ id }: { id: AppId }) {
   )
 }
 
-/** The four apps as cards: each says whether it's connected and opens its steps (`connections` null: still to come). */
-export function AppCards({ connections, size = "md" }: { connections: Connection[] | null; size?: "sm" | "md" }) {
+/** A blank tab's four apps, small cards: each opens its steps. */
+function AppCards() {
   return (
     <div className="grid grid-cols-2 gap-2" data-app-cards>
       {APPS.map((id) => {
-        const g = GUIDES[id], Icon = appIcon(id), on = !!connections && !!connectionOf(id, connections)
+        const g = GUIDES[id], Icon = appIcon(id)
         return (
-          <button key={id} type="button" onClick={() => openDetail(detailPath(SETUP_DETAIL, id))} data-guide-for={id} data-app-connected={on || undefined}
-            className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-[10px] border-[0.5px] border-border px-2.5 text-left md:gap-2.5 md:px-3 hover:bg-foreground/[0.04] ${size === "sm" ? "h-10" : "h-14"}`}>
+          <button key={id} type="button" onClick={() => openDetail(detailPath(SETUP_DETAIL, id))} data-guide-for={id}
+            className="flex h-10 min-w-0 cursor-pointer items-center gap-2 rounded-[10px] border-[0.5px] border-border px-2.5 text-left hover:bg-foreground/[0.04] md:gap-2.5 md:px-3">
             <Icon className="size-5 shrink-0" style={g.tint ? { color: g.tint } : undefined} />
-            <span className="min-w-0 flex-1">
-              <span className="block truncate text-[15px] font-medium" data-app-name>{g.name}</span>
-              {size === "md" && <span className={`block truncate text-[13px] ${on ? "text-[var(--green)]" : "text-muted-foreground"}`}>{!connections ? <Bar w="4.5em" /> : on ? "Connected" : "Set up"}</span>}
-            </span>
-            {!connections ? null : on ? <Check className="size-4 shrink-0 text-[var(--green)]" strokeWidth={2.5} /> : <ChevronRight className="size-4 shrink-0 text-tertiary max-md:hidden" strokeWidth={2.5} />}
+            <span className="min-w-0 flex-1 truncate text-[15px] font-medium" data-app-name>{g.name}</span>
           </button>
         )
       })}
@@ -286,62 +307,211 @@ export function ConnectSection() {
   return (
     <div className="flex flex-col gap-1.5 pb-2" data-newtab-connect>
       <div className="pl-1.5 text-[12px] font-semibold text-muted-foreground">Connect your AI</div>
-      <AppCards connections={[]} size="sm" />
+      <AppCards />
     </div>
   )
 }
 
+
 const INTRO = "Tell them what happened and it lands in your vault, from the web, their desktop apps and your phone."
 
-export function ConnectionsView() {
-  const { data, error, reload } = useConnections()
-  const rows = useKeptCount("mcp:connections", data ? data.connections.length + (data.finishing?.length ?? 0) : undefined)
-  if (error && !data) return <div className="mx-auto w-full max-w-[640px] p-4"><Loading error={error} /></div>
-  // (what doesn't depend on the data drawn as it'll be, the connections as skeleton rows; the cloud's part can't be known)
-  if (!data) return (
-    <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 p-4" aria-busy>
-      <Panel title="Connections" icon={Plug}>
-        <div className="flex flex-col gap-4">
-          <Section title="AI apps">
-            <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
-            <AppCards connections={null} />
-          </Section>
-          {rows > 0 && <Section title="Connected"><div className="rounded-[10px] bg-foreground/[0.04] px-3"><LoadingRows count={rows} right /></div></Section>}
-        </div>
-      </Panel>
+/** An app's mark in a list row, on a tile. */
+function AppMark({ icon: Icon, tint }: { icon: LucideIcon; tint?: string }) {
+  return (
+    <span className="grid size-8 shrink-0 place-items-center rounded-[8px] bg-foreground/[0.06]">
+      <Icon className="size-[18px]" style={tint ? { color: tint } : undefined} />
+    </span>
+  )
+}
+
+const usedText = (c: Connection) => [c.used ? `used ${fmtAgo(c.used)}` : null, c.access === "read" ? "read only" : null].filter(Boolean).join(" · ")
+
+/** A sign-in waiting for its code (the toast "wants to connect" opens Connections on it): what it's for and the field. */
+function Waiting({ data, onDone }: { data: State; onDone: () => void }) {
+  const names = [...new Set(data.asking ?? [])]
+  return (
+    <div className="rounded-[10px] border-[0.5px] border-primary/40 bg-primary/[0.06] px-3 pt-2.5 pb-1" data-waiting>
+      <div className="flex items-center gap-2 text-[15px] font-semibold">
+        <KeyRound className="size-4 shrink-0 text-primary" strokeWidth={2.25} />
+        {names.length === 1 ? `${names[0]} is waiting for its code` : "An app is waiting for its code"}
+      </div>
+      <p className="pt-0.5 text-[13px] leading-[18px] text-muted-foreground">Type the code its sign-in page shows. Didn't start a sign-in? Leave it: nothing connects without the code.</p>
+      <Connect waiting={data.waiting} onDone={onDone} />
     </div>
   )
-  const finishing = data.finishing ?? []
-  const disconnect = async (c: Connection) => {
-    if (!(await confirmDialog({ title: `Disconnect ${c.name}?`, body: "It can't read or write your vault until you connect it again.", confirm: "Disconnect", danger: true }))) return
-    try { await del(`mcp/connections/${encodeURIComponent(c.id)}`); reload() } catch (e) { notifyError(e) }
-  }
+}
+
+/** Everything about AI apps: a sign-in waiting for its code, then a row per app (connected: its page; else its steps),
+ *  any other app connected, and the generic setup. */
+export function AiApps() {
+  const { data, error, reload } = useConnections()
+  const rows = useKeptCount("mcp:connections", data ? APPS.length + 1 + Math.max(0, data.connections.length - 1) : undefined)
+  if (error && !data) return <Loading error={error} />
+  const intro = <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
+  if (!data) return <div aria-busy>{intro}<div className="rounded-[10px] bg-foreground/[0.04] px-3"><LoadingRows count={rows || APPS.length + 1} lead={<span className="skeleton size-8 shrink-0 rounded-[8px]" />} /></div></div>
+  // Each known app takes the first connection with its name; the rest are listed by theirs.
+  const taken = new Set<string>()
+  const known = APPS.map((id) => {
+    const c = data.connections.find((x) => !taken.has(x.id) && GUIDES[id].match.test(x.name))
+    if (c) taken.add(c.id)
+    return { id, c }
+  })
+  const others = data.connections.filter((c) => !taken.has(c.id))
+  const open = (c: Connection) => openDetail(detailPath(CONNECTION_DETAIL, c.id))
+  const connectedMeta = (c: Connection) => <><span className="text-[var(--green)]">Connected</span>{usedText(c) && ` · ${usedText(c)}`}</>
+  return (
+    <div className="flex flex-col gap-3" data-ai-apps>
+      {data.waiting > 0 && (data.url || data.cloud.url) && <Waiting data={data} onDone={reload} />}
+      {intro}
+      <Group>
+        <div data-app-list>
+          {known.map(({ id, c }) => (
+            <Row key={id} lead={<AppMark icon={appIcon(id)} tint={GUIDES[id].tint} />} title={GUIDES[id].name} meta={c ? connectedMeta(c) : "Set up"}
+              onOpen={() => (c ? open(c) : openDetail(detailPath(SETUP_DETAIL, id)))} data-guide-for={c ? undefined : id} data-app-row={id} data-connection={c?.id} data-app-connected={c ? true : undefined} />
+          ))}
+          {others.map((c) => {
+            const app = appOf(c)
+            return <Row key={c.id} lead={<AppMark icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint : undefined} />} title={c.name} meta={connectedMeta(c)} onOpen={() => open(c)} data-connection={c.id} data-app-connected />
+          })}
+          {(data.finishing ?? []).map((name, i) => (
+            <Row key={`finishing-${i}`} lead={<AppMark icon={Bot} />} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />
+          ))}
+          <Row lead={<AppMark icon={Plus} />} title="Another app" meta="Any app that takes a remote MCP server" onOpen={() => openDetail(detailPath(SETUP_DETAIL, "other"))} data-guide-for="other" />
+        </div>
+      </Group>
+    </div>
+  )
+}
+
+/** Vaultite Cloud and the addresses this machine is reached at: the whole app from anywhere, MCP's for apps. */
+export function RemoteAccess() {
+  const { data, error, reload } = useConnections()
+  if (!data) return <Loading error={error} />
+  return (
+    <div className="flex flex-col gap-4" data-remote-access>
+      {data.cloud.app && data.cloud.state === "connected" && <AppAddress app={data.cloud.app} ownerTools={!!data.connect?.ownerTools} onDone={reload} />}
+      <CloudSection data={data} onDone={reload} />
+    </div>
+  )
+}
+
+/** view:connections: the apps, then remote access, each its own card. */
+export function ConnectionsView() {
   return (
     <div className="mx-auto flex w-full max-w-[640px] flex-col gap-4 p-4" data-connections>
-      <Panel title="Connections" icon={Plug}>
-        <div className="flex flex-col gap-4">
-          <Section title="AI apps">
-            <p className="pb-3 text-[15px] leading-[20px] text-muted-foreground">{INTRO}</p>
-            <AppCards connections={data.connections} />
-            {(data.url || data.cloud.url) && <Connect waiting={data.waiting} onDone={reload} />}
-          </Section>
-          {(data.connections.length > 0 || finishing.length > 0) && (
-            <Section title="Connected">
-              <Group>
-                {data.connections.map((c) => (
-                  <Row key={c.id} title={c.name} meta={`Connected ${fmtAgo(c.created)}${c.used ? `, used ${fmtAgo(c.used)}` : ""}`}
-                    right={<button type="button" onClick={() => void disconnect(c)} className="cursor-pointer rounded-[6px] px-2 py-1 text-[14px] text-destructive hover:bg-foreground/[0.05]">Disconnect</button>} />
-                ))}
-                {finishing.map((name, i) => (
-                  <Row key={`finishing-${i}`} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />
-                ))}
-              </Group>
-            </Section>
-          )}
-          {data.cloud.app && data.cloud.state === "connected" && <AppAddress app={data.cloud.app} ownerTools={!!data.connect?.ownerTools} onDone={reload} />}
-          <CloudSection data={data} onDone={reload} />
-        </div>
-      </Panel>
+      <Panel title="AI apps" icon={Plug}><AiApps /></Panel>
+      <Panel title="Remote access" icon={Globe}><RemoteAccess /></Panel>
+    </div>
+  )
+}
+
+// ---------- a connected app's page
+
+/** The sheet's detail path (`details` in index.tsx): connection/<grant id>. */
+export const CONNECTION_DETAIL = "connection"
+export const connectionTitle = (id: string) => lastState?.connections.find((c) => c.id === id)?.name ?? "Connected app"
+
+type Event = { id: string; t: number; last?: number; action: string; text: string; paths?: string[] }
+type Gate = { id: string; title: string; gate?: boolean; answer?: string }
+
+/** How many changes of the app's wait for review (the review queue's op), or null without one. */
+function useReviewCount(by: string) {
+  const [n, setN] = useState<number | null>(null)
+  useEffect(() => {
+    let on = true
+    op<{ files: unknown[] }>("review.list", { by }).then((r) => { if (on) setN(Array.isArray(r?.files) ? r.files.length : null) }, () => { if (on) setN(null) })
+    return () => { on = false }
+  }, [by])
+  return n
+}
+
+function NameField({ c, onDone }: { c: Connection; onDone: () => void }) {
+  const [typed, setTyped] = useState<string | null>(null)
+  const save = async () => {
+    const name = typed?.trim()
+    setTyped(null)
+    if (!name || name === c.name) return
+    try { await patch(`mcp/connections/${encodeURIComponent(c.id)}`, { name }); onDone() } catch (e) { notifyError(e) }
+  }
+  return (
+    <input aria-label="Name" value={typed ?? c.name} onChange={(e) => setTyped(e.target.value)} maxLength={80} spellCheck={false} data-connection-name
+      onBlur={() => void save()} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur() } else if (e.key === "Escape") { setTyped(null); e.currentTarget.blur() } }}
+      className="h-8 w-full min-w-0 rounded-[7px] border-[0.5px] border-border bg-background px-2 text-[16px] outline-none focus:border-primary sm:w-52 md:h-7 md:text-[14px]" />
+  )
+}
+
+/** A connected app's page: who it is, what it may do, what it did lately and waits on, its name, and disconnecting it. */
+export function ConnectionSheet({ id }: { id: string }) {
+  const { data, error, reload } = useConnections()
+  const c = data?.connections.find((x) => x.id === id)
+  if (!data) return <Loading error={error} />
+  if (!c) return (
+    <div data-connection-sheet>
+      <SheetHead icon={Plug} tint="var(--foreground)" kicker="Connections" title="Not connected" />
+      <Empty>This app isn't connected anymore.</Empty>
+    </div>
+  )
+  return <ConnectionPage key={c.id} c={c} onDone={reload} />
+}
+
+function ConnectionPage({ c, onDone }: { c: Connection; onDone: () => void }) {
+  const app = appOf(c)
+  // (what was chosen shows at once; a change that fails goes back)
+  const [chosen, setChosen] = useState<Access | null>(null)
+  const access = chosen ?? c.access
+  const on = useEnabled()
+  const activity = useLive<{ events: Event[] }>(on("activity") ? `activity?name=${encodeURIComponent(c.actor)}&limit=12` : null, undefined, undefined, 15_000)
+  const inbox = useLive<{ events: Gate[] }>(on("inbox") ? "inbox/events?local=1&limit=200" : null, undefined, undefined, 10_000)
+  const gates = (inbox.data?.events ?? []).filter((e) => e.gate && !e.answer && e.title.startsWith(`${c.name} asks to `))
+  const review = useReviewCount(c.name)
+  const change = async (v: Access) => {
+    setChosen(v)
+    try { await patch(`mcp/connections/${encodeURIComponent(c.id)}`, { access: v }); onDone() } catch (e) { setChosen(null); notifyError(e) }
+  }
+  const disconnect = async () => {
+    if (!(await confirmDialog({ title: `Disconnect ${c.name}?`, body: "It can't read or write your vault until you connect it again.", confirm: "Disconnect", danger: true }))) return
+    try { await del(`mcp/connections/${encodeURIComponent(c.id)}`); notify(`Disconnected ${c.name}`); onDone(); backDetail() } catch (e) { notifyError(e) }
+  }
+  const events = activity.data?.events ?? []
+  return (
+    <div className="flex flex-col gap-5" data-connection-sheet={c.id}>
+      <SheetHead icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint ?? "var(--foreground)" : "var(--foreground)"} kicker="Connections" title={c.name}
+        sub={`Connected ${fmtAgo(c.created)}${c.used ? ` · last used ${fmtAgo(c.used)}` : ""}`} />
+      <Section title="Access">
+        <Segmented label="Access" value={access} onChange={(v) => void change(v)} className="w-full sm:w-fit"
+          options={[{ value: "write", label: "Read and write" }, { value: "read", label: "Read only" }]} />
+        <p className="pt-1.5 text-[13px] leading-[18px] text-muted-foreground" data-access-sub>
+          {access === "read" ? "It can search and read your vault; anything it tries to change is refused." : "It can read and change your vault. What could run code on this machine still waits for your yes."}
+        </p>
+      </Section>
+      {(gates.length > 0 || !!review) && (
+        <Section title="Waiting for you">
+          <Group>
+            {gates.map((e) => <Row key={e.id} title={`Asks to ${e.title.slice(`${c.name} asks to `.length)}`} meta="Approve or deny" onOpen={() => openDetail(detailPath("inbox-gate", e.id))} data-connection-gate />)}
+            {!!review && <Row title={`Review ${review} ${review === 1 ? "change" : "changes"}`} meta={`What ${c.name} changed, to keep or undo`} onOpen={() => openView(`review/${encodeURIComponent(c.name)}`)} data-connection-review />}
+          </Group>
+        </Section>
+      )}
+      {on("activity") && !activity.error && (
+        <Section title="Recent activity">
+          {!activity.data ? <div className="rounded-[10px] bg-foreground/[0.04] px-3"><LoadingRows count={3} /></div>
+            : !events.length ? <Empty>Nothing yet: what it reads and changes shows here.</Empty>
+            : <Group>{events.map((e) => {
+              const file = e.paths?.find((p) => !p.startsWith(".vaultite/"))
+              return <Row key={e.id} title={e.text} meta={fmtAgo(e.last ?? e.t)} onOpen={file ? () => openFile(file) : undefined} data-connection-event />
+            })}</Group>}
+        </Section>
+      )}
+      <Group>
+        <SettingRow stack label="Name" sub="What Connections and Activity call it">
+          <NameField c={c} onDone={onDone} />
+        </SettingRow>
+      </Group>
+      <Group>
+        <button type="button" onClick={() => void disconnect()} className="flex min-h-11 w-full cursor-pointer items-center text-left text-[15px] text-destructive" data-connection-disconnect>
+          Disconnect {c.name}
+        </button>
+      </Group>
     </div>
   )
 }

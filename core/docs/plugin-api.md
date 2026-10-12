@@ -124,8 +124,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `fileRows`: Rows of the file tree it draws into itself, by path (see FileRow); call `fileRowsChanged()` when they change. Keep a row's object the same while it says the same: only rows whose object changed are drawn again.
 - `home`: Where a device's first tab goes and where a phone with nowhere to be goes: a tab target, or null. The first plugin that's on and answers wins; with none, a new tab.
 - `newTab`: Sections it adds to a blank tab's page, by name ("<plugin id>:<name>", arranged in newtab.json).
-- `setup`: A row in Settings' Setup panel, for a plugin that's part of setting the app up (Connections). Nothing else of a plugin is on the Settings page.
-- `settingsPanel`: Its settings sheet, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Plugins never add to the Settings page, but for `setup`.
+- `settingsPages`: Its pages in Settings' list, by name, beside the app's own (Connections' AI apps): for setting the app up, not a plugin's options (those are its settings).
+- `settingsPanel`: Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s.
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).
 - `newFiles`: Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile).
 - `player`: Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player: the first plugin that's on wins.
@@ -135,6 +135,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 `plugin.ask("<name>", ...args)` (`plugin.provide` to offer one): by name, never by plugin.
 
 - `activity:report` (activity): The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart `report`): it sends the hook's JSON (on stdin) here, with the agent's name and its terminal. Never fails the hook.
+- `activity:changes` (activity)
 - `agent:<…>` (claude, codex, cursor, hermes, openclaw, opencode): claude-code; codex; cursor; hermes; openclaw; opencode
 - `agent-meters:claude` (claude-code)
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
@@ -143,7 +144,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
 - `geocode` (people): A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place.
 - `geocode:known` (people): A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet).
-- `history:<…>` (versions, text, changed): history
+- `history:<…>` (versions, text, keep, changed): history
 - `inbox:<…>` (folder, hook, handed, event, drop, ask, answer): inbox
 - `links:canvas` (canvas)
 - `log-areas` (health, learning, logs)

@@ -53,6 +53,8 @@ export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selecti
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 export { opcodes } from "@/core/merge"
 export { diffLines } from "@/core/diff"
+/** Two texts' line diff, drawn as the app draws one (File history, the review of AI changes). */
+export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // The one drag primitive: plugins' drop targets (Workspaces' switcher rows take a dragged tab) and things they drag (a
 // database view's cards).
 export { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"

@@ -107,8 +107,7 @@ check("a new tab shows the pinned pages as tiles", tiles.length === drawer.lengt
 await m.screenshot({ path: `${OUT}phone-new-tab.png`, fullPage: true })
 await m.goto(`${B}#settings`); await m.waitForTimeout(1500)
 check("Settings doesn't list the pages (Pinned's settings do)", !(await m.locator("[data-page-row]").count()))
-await m.locator("[data-plugin-settings-open]").tap(); await m.waitForTimeout(600)
-await m.locator("dialog[open] [data-plugin-settings=pages]").tap(); await m.waitForTimeout(800)
+await m.locator('[data-settings-nav="plugin:pages"]').tap(); await m.waitForTimeout(800)
 check("Pinned's settings: the pages, saying how many are pinned", (await m.locator("dialog[open] [data-page-row]").count()) >= drawer.length &&
   (await m.locator("dialog[open] [data-pages-count]").innerText()).includes(`${drawer.length} pinned`), await m.locator("dialog[open] [data-pages-count]").innerText().catch(() => ""))
 await m.screenshot({ path: `${OUT}phone-settings.png`, fullPage: true })

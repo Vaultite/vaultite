@@ -160,6 +160,7 @@ for (const dark of [false, true]) {
     check("typing in AGENTS.md saves", readFileSync(`${VAULT}/AGENTS.md`, "utf8").includes("QA edit."))
     // File icons off.
     await page.goto(`${B}#settings`); await wait(800)
+    await page.locator('[data-settings-nav="appearance"]').click(); await wait(300)
     await page.locator("[aria-label='File icons']").click(); await wait(400)
     check("File icons off: none in the tree", await tree.locator("[data-tree-path='AGENTS.md'] svg.lucide-bot").count() === 0)
     check("...nor in the tabs", await page.locator("[data-tab-bar] [role=tab] svg").count() === 0)

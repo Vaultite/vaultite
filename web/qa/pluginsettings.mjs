@@ -67,24 +67,22 @@ try {
   {
     const { ctx, page } = await open(1440, 900)
     await go(page, "settings")
-    await until(() => page.locator("[data-plugin-settings-open]").count(), 4000)
+    await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
-    check("Settings: Appearance, Hotkeys, Plugins, Vault", ["Appearance", "Hotkeys", "Plugins", "Plugin settings", "Vault"].every((t) => text.includes(t)), text.slice(0, 300))
+    check("Settings: its sections, then Plugins", ["General", "Appearance", "Editor", "Hotkeys", "Plugins", "Manage plugins"].every((t) => text.includes(t)), text.slice(0, 300))
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
       !(await page.locator("main [data-workspace-settings], main [data-pinned-settings]").count()), text)
     await shot(page, "1-settings-desktop")
     const tall = await page.evaluate(() => document.querySelector("main").scrollHeight)
-    await page.locator("[data-plugin-settings-open]").click(); await wait(500)
-    check("Plugin settings opens a sheet of the plugins that have some", await page.locator("dialog[open] [data-plugin-settings=page-preview]").count() === 1 &&
-      await page.locator("dialog[open] [data-plugin-settings=outline]").count() === 0)
-    check("...the page doesn't move", tall === await page.evaluate(() => document.querySelector("main").scrollHeight))
-    await page.locator("dialog[open] [data-plugin-settings=page-preview]").click()
-    check("...a row opens that plugin's sheet", !!(await until(() => sheet(page, "page-preview").count(), 4000)))
-    await closeSheet(page)
+    check("the list has the plugins that have settings", await page.locator('[data-settings-nav="plugin:page-preview"]').count() === 1 &&
+      await page.locator('[data-settings-nav="plugin:outline"]').count() === 0)
+    await page.locator('[data-settings-nav="plugin:page-preview"]').click()
+    check("...one shows its settings beside the list", !!(await until(() => page.locator('[data-settings-section="plugin:page-preview"] [data-plugin-settings-sheet="page-preview"]').count(), 4000)))
+    await page.locator('[data-settings-nav="general"]').click()
     await page.locator("[data-settings-plugins]").click()
     check("Plugins opens the Plugins page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)))
     await go(page, "settings")
-    await until(() => page.locator("[data-plugin-settings-open]").count(), 4000)
+    await until(() => page.locator("[data-settings-list]").count(), 4000)
 
     // Search: the app's rows (going to one clears the search and flashes it) and every plugin's settings, its manifest's
     // and its panel's (settingsSearch), even one that's off; one opens its sheet at the setting.
@@ -92,12 +90,11 @@ try {
     const result = (id) => page.locator(`[data-settings-result="${id}"]`)
     await find.fill("hidden")
     check("search: Show hidden files, in File explorer's panel", !!(await until(() => result("plugin:files:showHidden").count(), 4000)) &&
-      (await result("plugin:files:showHidden").innerText()).includes("File explorer") && !(await page.locator("[data-plugin-settings-open]").count()))
+      (await result("plugin:files:showHidden").innerText()).includes("File explorer") && !(await page.locator("[data-settings-list]").count()))
     await shot(page, "1b-settings-search")
     await result("plugin:files:showHidden").click()
-    check("...opens its sheet, the setting flashed", !!(await until(() => sheet(page, "files").locator('[data-setting="showHidden"].reveal-flash').count(), 4000)))
-    await closeSheet(page)
-    check("...the search is kept behind the sheet", (await find.inputValue()) === "hidden")
+    check("...shows its settings beside the list, the setting flashed", !!(await until(() => page.locator('[data-settings-section="plugin:files"] [data-setting="showHidden"].reveal-flash').count(), 4000)))
+    check("...the search cleared", (await find.inputValue()) === "")
     await find.fill("delay")
     check("search: a manifest's setting (Page preview's)", !!(await until(() => result("plugin:page-preview:delay").count(), 4000)))
     await find.fill("only on")
@@ -256,7 +253,7 @@ try {
   {
     const { ctx, page } = await open(390, 844, true)
     await page.goto(`${B}#settings`)
-    await until(() => page.locator("[data-plugin-settings-open]").count(), 4000)
+    await until(() => page.locator("[data-settings-list]").count(), 4000)
     await wait(500)
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
     const wide = () => page.evaluate(() => { const d = document.querySelector("dialog[open]"); if (!d) return null

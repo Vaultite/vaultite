@@ -122,7 +122,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `DetailDef`
 - `detailPath(kind, ...args)`: A detail path with its parts encoded (ids have slashes: "People/Alice Park").
 - `devicePref(key, fallback)`: A value a plugin keeps for this device only (the current workspace), in this device's prefs (localStorage), never in the vault.
+- `DiffLine`: Kept, only in the second text (add), only in the first (del), or `n` unchanged lines folded away (gap).
 - `diffLines(a, b)`: How to turn a into b (textedit's opcodes), never a wrong diff at any size.
+- `DiffRows({ lines })`: The diff's lines, only those in sight drawn (a file of a million lines scrolls like a short one), wherever it scrolls.
 - `dismissNotice(id)`: Close a toast before its time.
 - `dockAtEnd(key, side)`: Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's toggle, Move to the other sidebar, ticking it in the Panels menu), so where it…
 - `dockIcon()`: The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it.
@@ -453,6 +455,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Target`
 - `TerminalAgent`
 - `terminalId()`: A new terminal session id: 8 letters and digits.
+- `textDiff(before, after, context?)`: `before` against `after`, line by line; with `context`, unchanged runs further than that from a change are folded.
 - `textKey(text)`: A short, stable name for some text (a block's options), for keys.
 - `textRanges(el, re, max?, skip?)`: What `re` (global) finds in the text drawn in `el`, as ranges in order, at most `max`; `skip`: elements whose text isn't searched.
 - `textSize(kind)`: A kind's size now, in percent (100: as the app draws it).

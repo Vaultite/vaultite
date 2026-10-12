@@ -1,0 +1,16 @@
+{
+  "id": "review",
+  "icon": "git-compare-arrows",
+  "category": "agents",
+  "essential": true,
+  "name": "Review",
+  "description": "What AI apps and coding agents changed in your vault that you haven't looked at yet, file by file, like a pull request: who changed it and when, the diff against the text before, and Keep or Revert. A count in the status bar and a line in a changed file's header lead there. From Activity (who changed what) and File history (the text before).",
+  "tint": "purple",
+  "requires": [
+    "activity"
+  ],
+  "enhances": [
+    "history",
+    "provenance"
+  ]
+}

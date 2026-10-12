@@ -1,12 +1,11 @@
-// Hotkeys: a sheet with every command and its keys, saved in hotkeys.json one command at a time
+// Hotkeys: every command and its keys (Settings' Hotkeys, and a sheet), saved in hotkeys.json one command at a time
 // ([] = no keys).
 import { useEffect, useMemo, useState } from "react"
 import { Keyboard, Plus, RotateCcw, X } from "lucide-react"
 import { isCustom, keyCaps, keyHint, keysOf, sameKeys, setHotkeys, shortcutOf, useCommandList, useKnownCommands } from "@/core/commands"
 import { desktop } from "@/core/desktop"
 import { isMac } from "@/core/platform"
-import { openDetail } from "@/core/nav"
-import { FilterField, Panel, SettingRow, SheetHead } from "@/components/kit"
+import { FilterField, SheetHead } from "@/components/kit"
 import { cn } from "@/lib/utils"
 
 // Shortcuts a browser keeps for itself (a page never sees them); the desktop app has them.
@@ -24,20 +23,6 @@ function Caps({ keys, onRemove }: { keys: string; onRemove: () => void }) {
         <X className="size-3" strokeWidth={2.5} />
       </button>
     </span>
-  )
-}
-
-/** Settings' Hotkeys: one row saying how many commands have keys of their own; it opens the sheet. Shown at every
- *  width: a narrow window, an iPad or a phone may have a keyboard. */
-export function Hotkeys() {
-  const known = useKnownCommands()
-  useCommandList() // redraw when hotkeys.json changes
-  const changed = known.filter((c) => isCustom(c.id)).length
-  return (
-    <Panel title="Hotkeys">
-      <SettingRow label="Keyboard shortcuts" sub={`Every command's keys (${known.length}), saved in .vaultite/hotkeys.json`}
-        value={changed ? `${changed} changed` : "Default"} onClick={() => openDetail("hotkeys")} data-hotkeys-open />
-    </Panel>
   )
 }
 

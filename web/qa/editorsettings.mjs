@@ -97,7 +97,7 @@ check("reading view shows the properties, read-only", await props.count() === 1 
 await page.keyboard.press("ControlOrMeta+e"); await wait(600)
 
 // ---------- Settings > Editor ----------
-const settings = async () => { await page.goto("about:blank"); await page.goto(`${B}#settings`); await page.locator("[data-settings-row=spellcheck]").waitFor({ timeout: 15000 }); await wait(300) }
+const settings = async () => { await page.goto("about:blank"); await page.goto(`${B}#settings`); await page.locator('[data-settings-nav="editor"]').click(); await page.locator("[data-settings-row=spellcheck]").waitFor({ timeout: 15000 }); await wait(300) }
 await settings()
 check("Settings has an Editor panel", await page.getByText("Editor", { exact: true }).count() >= 1)
 check("nothing written before a change", editorJson() === null, editorJson())

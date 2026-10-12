@@ -11,7 +11,7 @@ the `forAgents` line of each plugin that's on, and how to use the tools.
 - On the internet, for apps that connect from their own servers (claude.ai and the Claude apps, ChatGPT, Grok Bot, Muse): `<url>/mcp` on a
   listener of its own that a tunnel makes public, set in this machine's `data/config.json` (`mcp.public`: `url`, `port`).
   Sign-in has no accounts: the app's sign-in page shows a code, typed in view:connections, where connections are also
-  ended. The same tools, `ops` and `call` too, without what only this machine's owner may run (terminals, the screen).
+  renamed, ended or made read only (it then gets only the tools that read; `call` refuses the rest). The same tools, `ops` and `call` too, without what only this machine's owner may run (terminals, the screen).
   What can run code on this machine or change what does (turning a plugin on or allowing it, writing under
   `.vaultite/`, bundles, settings, palette commands, clipping a local address) waits for the owner's yes: Approve and
   Deny in the Inbox and on the phone. Writing a vault plugin's code doesn't (`plugin.new` too): it runs only once the

@@ -298,6 +298,22 @@ plugin.provide("history:text", async (rel: string, t: number) => {
   }
   return null
 })
+/** Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's
+ *  review compares with it). Sync, so it runs before the write. */
+plugin.provide("history:keep", (rel: string) => {
+  const vault = plugin.vault
+  if (isOff(vault) || !(vault.entries.has(rel) || (vault.others.has(rel) && isTextKind(kindOf(rel))))) return false
+  try {
+    const st = fs.statSync(vault.abs(rel), { bigint: true })
+    const file = path.join(dirOf(state(vault), rel), `${Number(st.mtimeNs / 1000000n)}.snap`)
+    if (fs.existsSync(file)) return true
+    fs.mkdirSync(path.dirname(file), { recursive: true })
+    fs.copyFileSync(vault.abs(rel), file)
+    const now = new Date()
+    fs.utimesSync(file, now, now) // (pruned by when it was kept)
+    return true
+  } catch { return false }
+})
 /** The files followed whose text was last written at or after `since` (ms). */
 plugin.provide("history:changed", async (since: number) => {
   await following
