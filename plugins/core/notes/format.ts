@@ -1,6 +1,6 @@
-// Notes helpers shared by the list and the reader: kinds, statuses, previews, dates.
+// Notes helpers shared by the list and the reader: kinds, previews, dates.
 import { BookOpen, FileText, Lightbulb, type LucideIcon } from "lucide-react"
-import { dateText, hasTag, iso, plainText, today } from "@vaultite"
+import { dateText, iso, plainText, today } from "@vaultite"
 import type { Note } from "./types"
 
 export const TINT = "var(--notes)"
@@ -13,18 +13,8 @@ export const KINDS: Record<string, { label: string; plural: string; icon: Lucide
 }
 export const kindOf = (k?: string | null) => KINDS[k ?? ""] ?? KINDS.note
 
-/** A journal entry: tagged `journal` (frontmatter or inline #journal, any case). */
-export const isJournal = (tags: string[]) => hasTag(tags, "journal")
 /** How a note shows (its label and icon): Journal for a journal entry, else its kind. */
 export const lookOf = (kind: unknown, journal: boolean) => (journal ? KINDS.journal : kindOf(String(kind ?? "") || "note"))
-
-/** Where an idea stands. */
-export const STATUS: Record<string, { label: string; color: string }> = {
-  seed: { label: "Seed", color: "var(--muted-foreground)" },
-  exploring: { label: "Exploring", color: "var(--notes)" },
-  parked: { label: "Parked", color: "var(--orange)" },
-  done: { label: "Done", color: "var(--green)" },
-}
 
 export const tagList = (n: Note) => (n.tags || "").split(",").map((t) => t.trim()).filter(Boolean)
 

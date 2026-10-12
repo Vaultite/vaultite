@@ -43,15 +43,21 @@ export function Badged({ on, tag, children }: { on?: boolean; tag?: string; chil
 
 export const Logo = ({ className }: { className?: string; strokeWidth?: number }) => <img src="icon.svg" alt="" className={className} />
 
+/** No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new). */
 export function SheetHead({ icon: Icon, tint, kicker, title, sub, children }: {
-  icon: LucideIcon | typeof Logo; tint: string; kicker: ReactNode; title: ReactNode; sub?: ReactNode; children?: ReactNode
+  icon: LucideIcon | typeof Logo; tint: string; kicker?: ReactNode; title: ReactNode; sub?: ReactNode; children?: ReactNode
 }) {
   return (
     <div className="mb-5">
-      <div className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
-        <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />{kicker}
-      </div>
-      <h2 id="sheet-title" className="text-[24px] leading-[30px] font-bold text-balance break-words">{title}</h2>
+      {kicker !== undefined && (
+        <div className="mb-1 flex items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
+          <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />{kicker}
+        </div>
+      )}
+      <h2 id="sheet-title" className={cn("text-[24px] leading-[30px] font-bold text-balance break-words", kicker === undefined && "flex items-center gap-2")}>
+        {kicker === undefined && <span className="shrink-0" style={{ color: tint }}><Icon className="size-[22px]" strokeWidth={2.25} /></span>}
+        {kicker === undefined ? <span className="min-w-0">{title}</span> : title}
+      </h2>
       {sub && <p className="mt-0.5 text-[15px] leading-[20px] text-muted-foreground">{sub}</p>}
       {children}
     </div>

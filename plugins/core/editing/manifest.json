@@ -2,7 +2,7 @@
   "id": "editing",
   "icon": "pen-line",
   "category": "writing",
-  "essential": true,
+  "alwaysOn": true,
   "name": "Editing commands",
   "description": "Editing commands and keys in every note: bold, italics, highlight, strikethrough, code, math and comment, ⌘K for a link, ⌘L for a task, ⌘D to delete a line, headings, lists, quotes, and callouts, tables, footnotes, code and math blocks, and Add photo (on a phone, from its photos or camera). On a phone, a row of them over the keyboard. Right-click in a note for them, the clipboard and searching what's selected.",
   "settings": {

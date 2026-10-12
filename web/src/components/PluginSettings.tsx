@@ -47,7 +47,7 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
   }, [plugin.id])
   return (
     <div data-plugin-settings-sheet={plugin.id}>
-      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker="Settings" title={plugin.name} />
+      <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} title={plugin.name} />
       {!on && (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">
           <span className="flex-1 text-[15px] text-muted-foreground">{blocked.length ? `Off: it needs ${names(blocked)}` : "Off"}</span>

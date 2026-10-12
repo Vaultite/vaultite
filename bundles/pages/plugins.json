@@ -1,7 +1,6 @@
 {
   "disabled": [
     "activity",
-    "terminal",
     "claude-code",
     "codex",
     "cursor",
@@ -12,17 +11,9 @@
   "enabled": [
     "audio-recorder",
     "books",
-    "documents",
-    "ebooks",
     "lessons",
-    "note-composer",
     "notes",
-    "presentations",
     "projects",
-    "random-note",
-    "slides",
-    "spreadsheets",
-    "unique-note",
     "web-viewer"
   ]
 }

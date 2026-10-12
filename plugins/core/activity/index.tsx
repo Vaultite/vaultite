@@ -30,7 +30,6 @@ export default definePlugin({
   // A day's recap (Recaps/<date>.md) read as its timeline; editing it is its Markdown.
   files: {
     types: ["recap"], folders: ["Recaps"], icon: CalendarDays, tint: RECAP_TINT,
-    kicker: ({ path }) => { const d = path.split("/").pop()!.replace(/\.md$/, ""); return /^\d{4}-\d\d-\d\d$/.test(d) ? `Recap · ${fmtLongDay(d)}` : "Recap" },
     page: {
       header: ({ path, title, place }) => {
         const d = path.split("/").pop()!.replace(/\.md$/, "")

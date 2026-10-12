@@ -4,7 +4,7 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, vault, write } = $
-  const { conf, same } = $.vars
+  const { same } = $.vars
   // MCP (plugins/core/mcp): tools generated from the operations (catalog.ts), run in-process like the plugin runs them, the
   // protocol, and the routes; and the Web clipper (POST /api/clip).
   {
@@ -36,9 +36,9 @@ export default async ($: VaultTest) => {
       const ins = String(r.result.instructions)
       check("mcp: the instructions are the plugins' lines that are on, an op's id said as its tool", ins.includes("- `ME.md` is the user") && ins.includes("`remember`") && !ins.includes("people.remember") &&
         ins.includes("`.vaultite/AGENTS.md` is the vault's rules") && !ins.includes("People/") && ins.length < 1400, ins)
-      await api("PUT", "config/plugins", { ...vault.config("plugins"), disabled: ["me", "agent-files"] })
+      await api("PUT", "config/plugins", { ...vault.config("plugins"), disabled: ["inbox"] })
       const off = String((await rpc("initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } })).result.instructions)
-      check("mcp: a plugin turned off takes its line out", !off.includes("ME.md") && !off.includes(".vaultite/AGENTS.md") && off.includes("`remember`"), off)
+      check("mcp: a plugin turned off takes its line out", ins.includes("inbox_add") && !off.includes("inbox_add") && off.includes("ME.md"), off)
       await api("PUT", "config/plugins", { ...vault.config("plugins"), disabled: [] })
     }
     check("mcp: the session knows its client", session.client?.agent === "claude-code" && session.client.source === "claude" && session.client.client === "mcp", session)
@@ -275,10 +275,5 @@ plants, so the thirsty ones stand out at a glance. It reads, never writes, and i
     ;[ms] = await api("GET", "mcp")
     check("mcp route: no event stream (GET is a 405)", ms === 405)
     check("mcp route: the vault isn't held for it, nor for clips", app.unlocked("POST", ["mcp"]) && app.unlocked("POST", ["clip"]) && !app.unlocked("POST", ["notes"]))
-    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: [...(conf("plugins").disabled ?? []), "mcp", "clipper"] }, null, 2) + "\n")
-    ;[ms] = await api("POST", "mcp", { jsonrpc: "2.0", id: 9, method: "ping" })
-    ;[cs] = await api("POST", "clip", { url: "https://example.com/x", html: page })
-    check("mcp and clip: off, they're 404s", ms === 404 && cs === 404, [ms, cs])
-    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: (conf("plugins").disabled ?? []).filter((x: string) => x !== "mcp" && x !== "clipper") }, null, 2) + "\n")
   }
 }

@@ -2,7 +2,7 @@
 // about what the user is looking at; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef } from "react"
 import { Check, CheckCheck, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
-import { AmbientButton, definePlugin, fmtDay, fmtTime, getStore, iso, onTabLayoutChange, notify, openFile, Panel, systemNotify, useStore, type Store } from "@vaultite"
+import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, systemNotify, useStore, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, subscribeEvents, targetOf } from "./events"
 import { ReplyBlock } from "./Reply"
 import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
@@ -38,13 +38,6 @@ function announce(e: InboxEvent, s: Settings) {
 const latestAt = (r: InboxItem) => {
   const at = r.updated || r.created
   return at ? Date.parse(`${at.replace(" ", "T")}${/Z|[+-]\d\d:?\d\d$/.test(at) ? "" : "Z"}`) : 0
-}
-/** When a result last had news, local: "Today, 14:32", "Oct 6, 23:46". */
-function cameAt(r: InboxItem) {
-  const t = latestAt(r)
-  if (!t) return null
-  const d = new Date(t)
-  return <span data-tip={d.toLocaleString()}>{fmtDay(iso(d))}, {fmtTime(d.toISOString())}</span>
 }
 
 function Background({ store }: { store: Store }) {
@@ -124,9 +117,7 @@ export default definePlugin({
   views: { inbox: { icon: InboxIcon, title: () => "Inbox", render: ({ store, focused }) => <InboxPage store={store} focused={focused} /> } },
   details: { [GATE_DETAIL]: { title: (_s, [id]) => gateTitle(id), render: (_s, [id]) => <GateSheet id={id} /> } },
   blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} /> },
-  files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)",
-    kicker: ({ store, path }) => { const r = store.inbox?.find((x) => `${x.id}.md` === path); return r ? [r.status === "done" ? "Done" : "To review", r.from && `from ${r.from}`].filter(Boolean).join(" · ") : "Inbox" },
-    aside: ({ store, path }) => { const r = store.inbox?.find((x) => `${x.id}.md` === path); return r ? cameAt(r) : null } },
+  files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)" },
   fileMenu: (path) => {
     const r = resultAt(path)
     if (!r) return []

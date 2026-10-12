@@ -129,14 +129,16 @@ export function isEnabled(id: string, disabled: string[], seen: string[] = []): 
   const p = pluginById(id)
   if (!p || seen.includes(id) || (safeMode && (p.tier === "vault" || p.tier === "hosted"))) return false
   const own = p.tier === "hosted" ? hostedOwn(p, disabled, seen)
+    : p.alwaysOn ? true
     : optIn(p) ? (getPrefs().enabled.includes(id) || disabled.includes(`!${id}`)) && !p.problems?.length && !p.meta?.approval : !disabled.includes(id)
   return own && (p.requires ?? []).every((r) => isEnabled(r, disabled, [...seen, id]))
 }
 
-/** Its own switch (not what it requires): the app's plugins are on unless in `disabled`, opt-in ones (the vault's,
- *  `offByDefault`) are off unless in `enabled`. */
+/** Its own switch (not what it requires): the app's plugins are on unless in `disabled` (`alwaysOn` ones always), opt-in
+ *  ones (the vault's, `offByDefault`) are off unless in `enabled`. */
 export function switchedOn(p: Plugin, prefs = getPrefs()) {
   if (p.tier === "hosted") return !!hostedOn.get(p.id)
+  if (p.alwaysOn) return true
   return optIn(p) ? prefs.enabled.includes(p.id) : !prefs.disabled.includes(p.id)
 }
 
@@ -226,6 +228,7 @@ export function standingIn(app: string, id: string) {
 
 /** `quiet`: no word of the stand-ins it turned off (a swap the user asked for by name). */
 export function setSwitch(p: Plugin, on: boolean, quiet = false) {
+  if (p.alwaysOn) return
   if (on) {
     const others = alternativesOf(p)
     for (const q of others) setSwitch(q, false)

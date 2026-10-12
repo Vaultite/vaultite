@@ -59,18 +59,6 @@ export default async ($: VaultTest) => {
     page = await app.serve("v", path.join(dir, "secret.txt"), "", {})
     check("nothing next to an outside page is served", page?.status === 404, page?.status)
   }
-  const plugOn = vault.config("plugins")
-  await api("PUT", "config/plugins", { ...plugOn, disabled: [...(plugOn.disabled ?? []), "html", "tables"] })
-  ;[, s] = await api("GET", "files")
-  check("HTML and Tables off: pages are plain files", ["Finance/Spend.html", "Finance/Tx.csv"].every((p) => s.others.some((f: Any) => f.path === p) && !s.files.some((f: Any) => f.path === p)), s.others.map((f: Any) => f.path))
-  check("HTML off: an artifact isn't served", (await app.serve("v", "Finance/Spend.html", "Finance/Spend.html", {})) === null)
-  ;[, out] = await api("GET", "render?path=Finance/Board.md")
-  check("HTML and Tables off: embeds stay as written", out.includes("![[Spend.html]]") && out.includes("![[Tx.csv]]") && !out.includes("Reads:"), out)
-  ;[code] = await api("GET", "render?path=Finance/Tx.csv")
-  check("Tables off: a table has no text view", code === 404, code)
-  await api("PUT", "config/plugins", plugOn)
-  ;[, s] = await api("GET", "files")
-  check("back on: pages again", s.files.some((f: Any) => f.path === "Finance/Spend.html" && f.title === "Spend") && s.files.some((f: Any) => f.path === "Finance/Tx.csv"))
 
   // Files dropped in from a browser: a free name like Finder's, bytes never over an existing file.
   let up: Any

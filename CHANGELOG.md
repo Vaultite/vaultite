@@ -6,9 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Files no longer show their kind (Idea, Log, Book, Friend) above the title: on desktop the title starts the page.
 - Allowing Activity to write its recaps writes the ones it was refused on its next run, not after another change.
-- **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, AI apps, then every plugin with
-  options, each shown beside the list (a sheet on a phone); Plugin settings and the Setup rows are gone.
+- **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own
+  features with options, each shown beside the list (a sheet on a phone), no "Settings" line over its title; Plugin
+  settings, the Setup rows and the Manage plugins and Bundles rows are gone (a plugin's gear on Plugins opens its own).
+- **Fewer plugins to manage**: 42 of the app's parts (files, search, the graph, canvas, terminal, clipper, slides,
+  spreadsheets, documents and more) are always on and no longer listed; Plugins has a Bundles button beside Get
+  plugins, a search there also lists the directory's plugins you don't have, and Vaultite's own carry a verified mark
+  in place of stars.
 - Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, what it
   waits on, read only or read and write (enforced by the server), its name and Disconnect. A sign-in waiting for its
   code leads the page, and "Another app" sets up any MCP client.

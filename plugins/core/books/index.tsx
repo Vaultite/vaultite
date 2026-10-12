@@ -15,7 +15,6 @@ export default definePlugin({
   },
   files: {
     types: ["book"], folders: ["Books"], icon: BookOpen, tint: "var(--orange)",
-    kicker: ({ store, path }) => { const b = store.books.find((x) => `${x.id}.md` === path); return b?.author ? `Book · ${b.author}` : "Book" },
   },
   blocks: {
     // ```block-book: the book file's fields. ```block-books: what you're reading and want to read (on Learning).

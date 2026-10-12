@@ -238,18 +238,17 @@ function NoteTop({ head }: { head: FileHead }) {
 /** Where a file is, above its title: "Notes / Ideas", "Vault". */
 const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/").join(" / ") : "Vault")
 
-/** The line above a file's title: what it is (a plugin's kicker, else its folder) and, where there's no path bar, what
- *  plugins put at its end. In a sheet its header floats over it (Close, the view toggle): the line stops short of them. */
-function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, aside, head, pane, toggle }: {
-  icon: LucideIcon; tint?: string; text: ReactNode; aside?: ReactNode; head: FileHead; pane: boolean; toggle?: ReactNode }) {
+/** The line above a file's title where there's no path bar (sheets, phones): its folder, and what plugins put at its
+ *  end. In a sheet its header floats over it (Close, the view toggle): the line stops short of them. */
+function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, pane, toggle }: {
+  icon: LucideIcon; tint?: string; text: ReactNode; head: FileHead; pane: boolean; toggle?: ReactNode }) {
   return (
     <div className={cn("mb-1 flex min-h-8 items-center gap-2", !pane && (toggle ? "pr-[75px]" : "pr-[31px]"))}>
       <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
         <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
         <span className="truncate">{text}</span>
       </span>
-      {aside != null && <span className="shrink-0 text-[13px] text-muted-foreground">{aside}</span>}
-      {(!pane || !isDesktop()) && <FileBar head={head} place="line" />}
+      <FileBar head={head} place="line" />
       {toggle}
     </div>
   )
@@ -801,10 +800,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const fileHead = useMemo<FileHead>(() => ({ path, fm: props, type, setProperty: changeable ? setProperty : undefined }), [path, props, type, changeable, setProperty])
   usePublish(live, () => ({ path, mode: shown, setMode, body, fm, head: fileHead, views, says }), [path, shown, setMode, body, fm, fileHead, views, says])
 
-  // Source mode is the file as it is: no kicker, no Properties (the frontmatter is in the text), blocks as their text.
+  // Source mode is the file as it is: no Properties (the frontmatter is in the text), blocks as their text.
   const source = shown === "source"
-  const kicker = source ? null : view?.kicker?.(ctx)
-  const aside = kicker == null ? null : view?.aside?.(ctx)
   // Properties above the text, as the editor's setting says (Obsidian's "Properties in document"): visible (read-only
   // while reading), hidden, or the frontmatter as text while editing (`fmText`). The same in a tab, a sheet or a phone.
   const fmText = propsIn === "source" && shown === "live"
@@ -812,10 +809,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Drawn JSON isn't an editor: merges from disk only update the text it's drawn from.
   useEffect(() => { if ((json || notebook || format) && !source) editor.current = null }, [json, notebook, format, source])
 
-  // On desktop the bar shows where the file is, so the line above the title is only for a plugin's kicker.
-  // Phones have no path bar, so a file in a tab says where it is too, like in the sheet.
+  // On desktop the bar shows where the file is, so nothing is above the title; phones have no path bar, so a file in a
+  // tab says where it is, like in the sheet.
   const phoneTab = pane && !isDesktop()
-  const line = pane && !phoneTab ? kicker : kicker ?? folderLine(path)
   // A file a plugin draws as a page, being read: the plugin's header in place of the title (in a sheet, under it), then
   // the page (a dashboard's grid).
   const board = dash && shown === "read"
@@ -889,8 +885,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
       {phoneToggle}
       <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
         {page && board && pageView?.header?.(pageCtx)}
-        {!page && (line || !pane) && !(code && pane && !phoneTab) && (
-          <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={line} aside={aside} head={fileHead} pane={pane}
+        {!page && (!pane || phoneTab) && (
+          <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={folderLine(path)} head={fileHead} pane={pane}
             toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="sheet" />} />
         )}
         {!page && !(code && pane && !phoneTab) && <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}

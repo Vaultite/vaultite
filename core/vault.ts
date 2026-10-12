@@ -681,15 +681,18 @@ export class Vault {
     return changed
   }
 
-  /** The plugins that are off: in plugins.json's `disabled`, `offByDefault` ones not in `enabled`, and those whose
-   *  `requires` are off or missing. */
+  /** The plugins that are off: in plugins.json's `disabled` (never an `alwaysOn` one), `offByDefault` ones not in
+   *  `enabled`, and those whose `requires` are off or missing. */
   switchedOff(): Set<string> {
     const { disabled, enabled } = this.config("plugins"), conf = this.settings.get("plugins")
     const memo = this.off
     if (memo && memo.conf === conf && memo.list === this.pluginList) return memo.off
     const on = new Set<string>(Array.isArray(enabled) ? enabled : [])
     const off = new Set<string>(Array.isArray(disabled) ? disabled : [])
-    for (const p of this.pluginList) if (p.manifest.offByDefault === true && !on.has(p.id)) off.add(p.id)
+    for (const p of this.pluginList) {
+      if (p.manifest.alwaysOn === true) off.delete(p.id)
+      else if (p.manifest.offByDefault === true && !on.has(p.id)) off.add(p.id)
+    }
     const known = new Set(this.pluginList.map((p) => p.id))
     for (let grew = true; grew;) {
       grew = false

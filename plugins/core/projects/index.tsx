@@ -12,7 +12,6 @@ export default definePlugin({
   }),
   files: {
     types: ["project"], folders: ["Projects"], icon: FolderGit2, tint: "var(--projects)",
-    kicker: () => "Project",
   },
   // ```block-project: a project file's status, tagline and links. ```block-projects: a card per project (the Projects
   // dashboard, pages/Projects.md).

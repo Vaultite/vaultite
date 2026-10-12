@@ -1,5 +1,5 @@
 import { ListChecks, ScrollText } from "lucide-react"
-import { definePlugin, fmtLongDay, fmtMin, numberText, plain, plainText, Stat, today, weekStart, type BlockCtx } from "@vaultite"
+import { definePlugin, fmtMin, numberText, plain, plainText, Stat, today, weekStart, type BlockCtx } from "@vaultite"
 import { human, LogFields } from "./LogFields"
 import { AreaPanel, WeekGoals } from "./sections"
 import { between, fieldText, logsOf, type Log } from "./types"
@@ -61,13 +61,9 @@ export default definePlugin({
       file: (s, [id]) => (s.logs.some((x) => x.id === id) ? `${id}.md` : null),
     },
   },
-  // A log file: its area and day above the title; ```block-log draws its fields.
+  // A log file: ```block-log draws its fields.
   files: {
     types: ["log"], folders: ["Logs"], icon: ScrollText, tint: "var(--muted-foreground)",
-    kicker: ({ store, path }) => {
-      const l = store.logs.find((x) => `${x.id}.md` === path)
-      return l ? `${store.areas.find((a) => a.slug === l.area)?.name ?? "Log"} · ${fmtLongDay(l.date)}` : "Log"
-    },
   },
   search: (s) => {
     const area = new Map(s.areas.map((a) => [a.slug, a.name]))

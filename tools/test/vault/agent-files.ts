@@ -3,7 +3,7 @@ import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, check, exists, read, vault } = $
+  const { VAULT, api, check, exists, read } = $
   // Agent files: the vault's AGENTS.md and CLAUDE.md are the user's; the app only adds or takes out its pointer line.
   {
     const AG = "Before writing in this vault, read `.vaultite/AGENTS.md`: how the Vaultite app reads these files."
@@ -51,39 +51,21 @@ export default async ($: VaultTest) => {
     await api("GET", "state")
     check("the rules: the app's part is rewritten, the user's own rules stay", rc === 200 && read(".vaultite/AGENTS.md").includes("## Rules") &&
       read(".vaultite/AGENTS.md").endsWith("## Your own rules\n<!-- The app rewrites everything above this heading; what you write under it stays. -->\n\nProjects live in Work/.\n"), read(".vaultite/AGENTS.md").slice(-300))
-    const turnRules = (on: boolean) => api("PUT", "config/plugins", { ...vault.config("plugins"), disabled: on ? [] : ["agent-files"] })
     await setRoot(true)
-    await turnRules(false)
-    await api("GET", "state")
-    check("the rules: off, the app's part and the pointer go, the user's own rules stay", read(".vaultite/AGENTS.md") === "## Your own rules\n\nProjects live in Work/.\n" &&
-      read("CLAUDE.md") === "@AGENTS.md\n", [read(".vaultite/AGENTS.md"), read("CLAUDE.md")])
-    await turnRules(true)
-    await api("GET", "state")
-    check("the rules: on again, back whole, the user's rules kept", read(".vaultite/AGENTS.md").includes("## Rules") && read(".vaultite/AGENTS.md").endsWith("\n\nProjects live in Work/.\n") &&
-      read("CLAUDE.md") === "@AGENTS.md\n\n@.vaultite/AGENTS.md\n", read(".vaultite/AGENTS.md").slice(-200))
-    const own = read(".vaultite/AGENTS.md")
-    fs.writeFileSync(path.join(VAULT, ".vaultite/AGENTS.md"), own.replace(/\n\nProjects live in Work\/\.\n$/, "\n"))
-    await turnRules(false)
-    await api("GET", "state")
-    check("the rules: off with no rules of the user's, there's no file", !exists(".vaultite/AGENTS.md"))
-    await turnRules(true)
+    check("the rules: the pointer joins the vault's CLAUDE.md", read("CLAUDE.md") === "@AGENTS.md\n\n@.vaultite/AGENTS.md\n", read("CLAUDE.md"))
     await setRoot(false)
     fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n")
-    await api("GET", "state")
-    check("the rules: on, written again", exists(".vaultite/AGENTS.md"))
     // Rules that can't be read aren't taken for no file (the rewrite would drop the user's own); tried again after a wait.
     const file = path.join(VAULT, ".vaultite/AGENTS.md"), mine = read(".vaultite/AGENTS.md") + "\nKeep this.\n"
     fs.writeFileSync(file, mine)
     fs.chmodSync(file, 0o000)
-    await turnRules(false)
-    await api("GET", "state")
+    await setRoot(true)
     fs.chmodSync(file, 0o644)
     check("the rules: unreadable, left as they are", read(".vaultite/AGENTS.md") === mine)
     await new Promise((r) => setTimeout(r, 2_100))
     await api("GET", "state")
-    check("the rules: tried again after the wait", read(".vaultite/AGENTS.md") === "## Your own rules\n\nKeep this.\n", read(".vaultite/AGENTS.md"))
-    await turnRules(true)
-    await api("GET", "state")
+    check("the rules: tried again after the wait, the user's rules kept", read(".vaultite/AGENTS.md").includes("## Rules") && read(".vaultite/AGENTS.md").endsWith("Keep this.\n"), read(".vaultite/AGENTS.md").slice(-200))
+    await setRoot(false)
     // A write that fails leaves no temporary copy behind.
     const { writeAtomic } = await import("../../../core/vault.ts")
     fs.mkdirSync(path.join(VAULT, "Taken/x"), { recursive: true })

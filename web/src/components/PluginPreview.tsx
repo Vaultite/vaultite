@@ -258,7 +258,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
     <>
       <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
         title={plugin.name} sub={plugin.description} />
-      {waiting ? <Approval plugin={plugin} /> : (
+      {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">
           <span className="flex-1 text-[15px]">{on && !blocked.length ? "On" : "Off"}</span>
           <Switch on={on && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />

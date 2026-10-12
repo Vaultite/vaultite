@@ -37,11 +37,8 @@ export default async ($: VaultTest) => {
   check("vau panels expand", !sb().collapsed.includes("pages:pages"), sb())
   cr = await vau("panels", "hide", "nothing")
   check("vau panels: an unknown panel lists the real ones", cr.code === 1 && cr.err.includes("terminal:sessions"), cr)
-  // A plugin turned on: its panels (not the ones it hides) join the left sidebar.
-  await vau("panels", "hide", "search")
-  await vau("plugin", "off", "search")
-  await vau("plugin", "on", "search")
-  check("vau plugin on: its panel joins the left sidebar", left()[left().length - 1] === "search:search", left())
+  cr = await vau("plugin", "off", "search")
+  check("vau plugin off: one of the app's own (alwaysOn) says it's always on", cr.code === 1 && cr.err.includes("always on") && !conf("plugins").disabled?.includes("search"), cr)
   fs.rmSync(path.join(VAULT, ".vaultite/sidebars.json"), { force: true })
   // A new tab's page: .vaultite/newtab.json (core/newtab.ts), its sections and its buttons (palette commands), a key each.
   {
@@ -78,11 +75,6 @@ export default async ($: VaultTest) => {
     check("vau newtab button add: an unknown command says so", cr.code === 1 && cr.err.includes("no command"), cr)
     cr = await vau("newtab")
     check("vau newtab: as text", cr.code === 0 && /Sections, top to bottom:\n  1\. core:actions/.test(cr.out) && /Buttons \(core:actions\):\n  1\. file:new/.test(cr.out), cr.out)
-    // A plugin turned on: its sections (not the ones it hides) join the page, where newtab.json lists them.
-    await vau("newtab", "hide", "pinned pages")
-    await vau("plugin", "off", "pages")
-    await vau("plugin", "on", "pages")
-    check("vau plugin on: its section joins a saved page", nt().sections[nt().sections.length - 1] === "pages:tiles", nt())
     cr = await vau("settings", "newtab")
     check("vau settings newtab", cr.code === 0 && cr.out.includes("terminal:claude"), cr.out)
     fs.rmSync(path.join(VAULT, ".vaultite/newtab.json"), { force: true })

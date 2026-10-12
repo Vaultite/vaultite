@@ -257,7 +257,7 @@ function pluginTargets(b: Bundle, host: Host): Map<string, boolean> | null {
   const enabled = Array.isArray(pj.enabled) ? new Set(strs(pj.enabled)) : null
   const out = new Map<string, boolean>()
   for (const p of host.plugins()) {
-    if (p.tier === "vault") continue
+    if (p.tier === "vault" || p.manifest.alwaysOn) continue
     if (p.manifest.offByDefault) { if (enabled) out.set(p.id, enabled.has(p.id)) } else if (disabled) out.set(p.id, !disabled.has(p.id))
   }
   for (const id of parts(b.files).code) out.set(id, !!enabled?.has(id))
@@ -706,7 +706,7 @@ async function setupOf(host: Host, o: SaveOptions, files: Files, put: (rel: stri
   const app = host.plugins().filter((p) => p.tier !== "vault")
   const vaultOn = o.vaultPlugins ? host.vaultPlugins().filter((x) => x.on).map((x) => String(x.id)) : []
   put("plugins.json", {
-    disabled: strs(conf.disabled).filter((id) => app.some((p) => p.id === id && !p.manifest.offByDefault)),
+    disabled: strs(conf.disabled).filter((id) => app.some((p) => p.id === id && !p.manifest.offByDefault && !p.manifest.alwaysOn)),
     enabled: strs(conf.enabled).filter((id) => app.some((p) => p.id === id && p.manifest.offByDefault) || vaultOn.includes(id)),
   })
   for (const id of vaultOn) {

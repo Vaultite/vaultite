@@ -1,17 +1,15 @@
-// The Plugins page's Get plugins: bundles first, then the plugin directory (repos with the topic vaultite-plugin:
-// core/pluginindex.ts), each with what it says it does and Install, or a host's source (Obsidian's: PluginHost.browse).
+// The Plugins page's Get plugins: the plugin directory (repos with the topic vaultite-plugin: core/pluginindex.ts), each
+// with Vaultite's mark or what it says it does, and Install; or a host's source (Obsidian's: PluginHost.browse).
 import { useEffect, useState } from "react"
-import { ChevronRight, Download, MoreHorizontal, Package, Puzzle, RefreshCw, Star } from "lucide-react"
+import { Download, MoreHorizontal, Puzzle, RefreshCw } from "lucide-react"
 import { dateText, fmtAgo } from "@/core/data"
 import { op } from "@/core/http"
 import { openWebLink } from "@/core/links"
 import { notify, notifyError } from "@/core/notify"
-import { namedIcon, pluginIcon, tintOf } from "@/core/pages"
-import { openBundles, useBundles } from "@/core/bundles"
-import { openDetail } from "@/core/nav"
+import { pluginIcon } from "@/core/pages"
 import { useKeptCount } from "@/core/heights"
 import { setPrefs, usePrefs } from "@/core/prefs"
-import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
+import { official, policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 import { Bar, Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { capitalize, cn } from "@/lib/utils"
@@ -19,6 +17,7 @@ import { disclosed, type Disclosures } from "../../../core/pluginmeta.ts"
 import type { BrowseEntry, BrowseSource } from "@/core/define"
 import { hostsNow, pluginById, updatePlugin, usePluginsVersion } from "@/core/plugins"
 import { Button } from "@/components/Button"
+import { Certified } from "@/components/Certified"
 
 type Sort = "stars" | "new" | "updated"
 type Entry = {
@@ -29,11 +28,13 @@ type Entry = {
 }
 type Found = { url: string; available: boolean; error?: string; plugins: Entry[] }
 
-const SORTS: { value: Sort; label: string }[] = [{ value: "stars", label: "Stars" }, { value: "new", label: "New" }, { value: "updated", label: "Updated" }]
+const SORTS: { value: Sort; label: string }[] = [{ value: "stars", label: "Top" }, { value: "new", label: "New" }, { value: "updated", label: "Updated" }]
 
 function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) => void }) {
   const updated = e.released ?? e.pushed
-  const says = disclosed(e.disclosures)
+  // (Vaultite's mark, from its GitHub organisation, says enough; another's says what it does beyond the vault)
+  const ours = official(e.source)
+  const says = ours ? [] : disclosed(e.disclosures)
   const button = e.blocked ? null : e.update ? "Update" : e.installed !== null ? null : "Install"
   const Icon = pluginIcon(e.icon) ?? Puzzle
   return (
@@ -46,11 +47,10 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
         <div className="flex items-baseline gap-2">
           <button type="button" onClick={() => openWebLink(`https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`)} data-tip={`github.com/${e.source}`}
             className="min-w-0 cursor-pointer truncate text-left text-[15px] leading-[20px] font-medium hover:underline md:text-[14px]">{e.name}</button>
-          <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>
+          {ours ? <Certified className="self-center" /> : <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>}
         </div>
         {e.description && <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-3 md:line-clamp-2 md:text-[13px] md:leading-[18px]">{e.description}</p>}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground tabular-nums md:text-[12px]">
-          <span className="inline-flex items-center gap-1" data-tip={`${e.stars} stars on GitHub`}><Star className="size-3" strokeWidth={2.25} />{e.stars}</span>
           <span>{e.version}</span>
           {updated && <span data-tip={dateText(new Date(updated), { day: "numeric", month: "long", year: "numeric" })}>updated {fmtAgo(updated)}</span>}
           {e.installed !== null && <span className="text-foreground/80" data-browse-installed>{e.update ? `${e.installed} installed` : "Installed"}</span>}
@@ -91,38 +91,6 @@ function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
         ))}
       </div>
     </Panel>
-  )
-}
-
-/** The app's bundles: a set of plugins (and a look) in one step, the quickest way to get several. */
-function Bundles() {
-  const list = useBundles()?.bundles.filter((b) => b.source === "app" && !b.more).sort((a, b) => a.sort - b.sort).slice(0, 3)
-  if (!list?.length) return null
-  return (
-    <div className="mb-6" data-browse-bundles>
-      <div className="mb-1.5 flex items-baseline justify-between px-1">
-        <h2 className="text-[13px] font-semibold text-muted-foreground md:text-[12px]">Start with a bundle</h2>
-        <button type="button" onClick={openBundles} data-browse-all-bundles className="cursor-pointer text-[15px] text-primary hover:underline md:text-[13px]">All bundles</button>
-      </div>
-      <div className="grid gap-2 @xl:grid-cols-3">
-        {list.map((b) => {
-          const Icon = namedIcon(b.icon) ?? Package
-          return (
-            <button key={b.id} type="button" onClick={() => openDetail(`bundle/${b.id}`)} data-browse-bundle={b.id}
-              className="flex cursor-pointer items-start gap-3 rounded-[10px] bg-muted px-3 py-2.5 text-left transition-colors hover:bg-foreground/[0.08]">
-              <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-[8px] bg-card" style={{ color: tintOf(b.tint) ?? "var(--primary)" }}>
-                <Icon className="size-[18px]" strokeWidth={2} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[15px] font-medium md:text-[14px]">{b.name}</span>
-                <span className="line-clamp-2 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">{b.description}</span>
-              </span>
-              <ChevronRight className="mt-2 size-4 shrink-0 text-tertiary @xl:hidden" strokeWidth={2.5} />
-            </button>
-          )
-        })}
-      </div>
-    </div>
   )
 }
 
@@ -247,7 +215,6 @@ export function PluginBrowse({ query, source, setSource, showInstalled }: { quer
   const src = sources.find(([h]) => h === source)?.[1].browse
   return (
     <section className="@container" data-plugin-browse>
-      <Bundles />
       {sources.length > 0 && (
         <Segmented value={src ? source : ""} onChange={setSource} label="Where from" className="mb-3 w-full max-w-[300px]"
           options={[{ value: "", label: "Vaultite directory" }, ...sources.map(([h, info]) => ({ value: h, label: info.browse!.title }))]} />
@@ -258,7 +225,13 @@ export function PluginBrowse({ query, source, setSource, showInstalled }: { quer
   )
 }
 
-function Directory({ query, showInstalled }: { query: string; showInstalled: (id: string) => void }) {
+/** The directory's plugins matching a search on the Plugins page that aren't installed: nothing when there are none. */
+export function DirectoryMatches({ query, showInstalled }: { query: string; showInstalled: (id: string) => void }) {
+  return <Directory query={query} showInstalled={showInstalled} compact />
+}
+
+/** `compact`: only those not installed, without the sort and the note (DirectoryMatches). */
+function Directory({ query, showInstalled, compact }: { query: string; showInstalled: (id: string) => void; compact?: boolean }) {
   const [sort, setSort] = useState<Sort>("stars")
   const [found, setFound] = useState<Found | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
@@ -272,7 +245,7 @@ function Directory({ query, showInstalled }: { query: string; showInstalled: (id
     }, query ? 200 : 0)
     return () => { live = false; clearTimeout(t) }
   }, [query, sort, n, fresh])
-  const rows = useKeptCount("plugins:directory", found ? found.plugins.length : undefined)
+  const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? found.plugins.length : undefined)
 
   const act = async (e: Entry) => {
     setBusy(e.id)
@@ -290,6 +263,21 @@ function Directory({ query, showInstalled }: { query: string; showInstalled: (id
     } finally {
       setBusy(null)
     }
+  }
+
+  if (compact) {
+    const notHere = found?.plugins.filter((e) => e.installed === null) ?? []
+    if (!notHere.length) return null
+    return (
+      <section className="mt-5" data-plugins-not-installed>
+        <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">Not installed</h2>
+        <Panel className="py-0.5">
+          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+            {notHere.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
+          </div>
+        </Panel>
+      </section>
+    )
   }
 
   return (

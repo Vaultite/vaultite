@@ -16,6 +16,8 @@ import { type Any, strings } from "./common.ts"
 export type PluginInfo = PluginDir & { name: string; description: string; requires: string[]
   /** Off until turned on (`enabled`), like a vault plugin: the vault's, and the app's with `offByDefault`. */
   optIn: boolean
+  /** Part of the app (`alwaysOn`): no switch. */
+  alwaysOn?: boolean
   /** A vault plugin that's on but waits for this machine's owner to allow it (core/trust.ts). */
   waiting?: boolean
   /** A vault plugin whose edits run without asking on this machine (core/trust.ts). */
@@ -27,7 +29,8 @@ export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
     description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits }))
   return [...app.app.map((p): PluginInfo => ({ id: p.id, tier: p.tier, dir: p.dir, name: String(p.manifest.name ?? p.id),
-    description: String(p.manifest.description ?? ""), requires: strings(p.manifest.requires), optIn: p.manifest.offByDefault === true })), ...own]
+    description: String(p.manifest.description ?? ""), requires: strings(p.manifest.requires), optIn: p.manifest.offByDefault === true,
+    ...(p.manifest.alwaysOn === true ? { alwaysOn: true } : {}) })), ...own]
 }
 
 /** Which plugins are on: the app's unless in `disabled`, the vault's (and the app's `offByDefault` ones) only when in
@@ -35,7 +38,7 @@ export function pluginList(app: App): PluginInfo[] {
 export function onOff(list: PluginInfo[], conf: Any) {
   const disabled = strings(conf.disabled), enabled = strings(conf.enabled)
   const by = new Map(list.map((p) => [p.id, p]))
-  const own = (p: PluginInfo) => (p.optIn ? enabled.includes(p.id) : !disabled.includes(p.id))
+  const own = (p: PluginInfo) => (p.alwaysOn || (p.optIn ? enabled.includes(p.id) : !disabled.includes(p.id)))
   const on = (id: string, seen: string[] = []): boolean => {
     const p = by.get(id)
     return !!p && !seen.includes(id) && own(p) && p.requires.every((r) => on(r, [...seen, id]))
@@ -83,6 +86,10 @@ export function pluginOps(app: App): Op[] {
   const turn = async (q: string, want: boolean, ctx?: OpCtx) => {
     const ps = pluginList(app)
     const p = findPlugin(ps, q)
+    if (p.alwaysOn) {
+      if (!want) throw new OpError(`${p.name} is part of the app: it's always on`)
+      return { id: p.id, name: p.name, on: true, switched: true, blockedBy: [], waiting: false }
+    }
     // Turned on by this machine's owner, a vault plugin is allowed to run here as it is now (core/trust.ts); by anyone else,
     // it's on in the vault and waits for them.
     let allowed = false
@@ -115,7 +122,7 @@ export function pluginOps(app: App): Op[] {
     summary: "List plugins, on or off (the app's built-in ones and the vault's own).",
     help: `Every plugin: the app's (built-in, whose tier is "core") and the vault's own
 (.vaultite/plugins/<id>/), on or off. A plugin is off when switched off or when one it requires is. Vault plugins are
-off until turned on (they run code). vau plugins check: what's wrong with the vault's own.
+off until turned on (they run code). Those marked "app" are part of the app: always on. vau plugins check: what's wrong with the vault's own.
 
   vau plugins
   vau plugins check`,
@@ -124,10 +131,10 @@ off until turned on (they run code). vau plugins check: what's wrong with the va
       const ps = pluginList(app)
       const { own, on } = onOff(ps, app.vault.config("plugins"))
       return ps.map((p) => ({ id: p.id, name: p.name, tier: p.tier, on: on(p.id) && !p.waiting, switchedOn: own(p), requires: p.requires, description: p.description,
-        ...(p.waiting ? { waiting: true } : {}), ...(p.edits ? { edits: true } : {}) }))
+        ...(p.alwaysOn ? { alwaysOn: true } : {}), ...(p.waiting ? { waiting: true } : {}), ...(p.edits ? { edits: true } : {}) }))
     },
     // (the "core" tier is the app's built-in plugins: "core" alone is the app itself)
-    text: (rows: Any[]) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +
+    text: (rows: Any[]) => rows.map((p) => `${p.on ? "on " : "off"}  ${p.id.padEnd(14)} ${(p.alwaysOn ? "app" : p.tier === "core" ? "built-in" : p.tier).padEnd(9)} ${p.name}` +
       (p.waiting ? `  (waits to be allowed on this machine: vau plugin allow ${p.id})` : p.switchedOn && !p.on ? `  (needs ${p.requires.join(", ")})` : "")).join("\n"),
   }, {
     id: "plugin.check",

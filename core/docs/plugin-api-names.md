@@ -161,7 +161,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `FilesPanel({ store, open, phone, file, bounded })`: The vault's files, the file explorer.
 - `FilesSettings()`
 - `filesSettingsSearch`: What the sheet has, for the Settings page's search (the plugin's `settingsSearch`).
-- `FileView`: How a plugin shows its files: the icon in the tree and tabs, and the line above the title.
+- `FileView`: How a plugin shows its files: the icon in the tree and tabs.
 - `FilterField({ value, onChange, placeholder, className })`: A field that filters a list (plugins, hotkeys, a table's rows): one look everywhere.
 - `fmtAgo`
 - `fmtDay(s)`
@@ -410,7 +410,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
-- `SheetHead({ icon, tint, kicker, title, sub, children })`
+- `SheetHead({ icon, tint, kicker, title, sub, children })`: No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new).
 - `showLabel`: The same for a toast's action, on something just saved.
 - `SidebarCtx`
 - `SidebarHeading`

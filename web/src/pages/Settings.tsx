@@ -1,7 +1,7 @@
-// Settings: a list of sections beside the one shown (a sheet each where the pane is narrow), saved in the vault
-// (prefs.ts). Plugins add pages (`settingsPages`) and their options (their settings, listed under Plugins).
+// Settings: sections beside the one shown (a sheet each where narrow), saved in the vault (prefs.ts). Plugins add pages
+// (`settingsPages`); `alwaysOn` ones' options are under Features, the others' a gear away on Plugins.
 import { useMemo, useRef, useState, useEffect, type ReactNode } from "react"
-import { Keyboard, Package, Palette, PenLine, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react"
+import { Keyboard, Palette, PenLine, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -21,6 +21,7 @@ import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
 import { Catch } from "@/components/Guard"
 import { openBundles } from "@/core/bundles"
+import { Plugins } from "@/pages/Plugins"
 import { notifyError } from "@/core/notify"
 import { API_VERSION, APP_VERSION } from "../../../core/version.ts"
 
@@ -69,20 +70,22 @@ function General({ store }: { store: Store }) {
 
 /** A section: the app's own (general, appearance…), a plugin's page (`<plugin>:<page>`) or its options (`plugin:<id>`). */
 type Sec = { id: string; label: string; icon: LucideIcon; tint?: string; render: (store: Store) => ReactNode }
-const headed = (label: string, Icon: LucideIcon, body: ReactNode) => <><SheetHead icon={Icon} tint="var(--primary)" kicker="Settings" title={label} />{body}</>
+const headed = (label: string, Icon: LucideIcon, body: ReactNode) => <><SheetHead icon={Icon} tint="var(--primary)" title={label} />{body}</>
 const CORE: Sec[] = [
   { id: "general", label: "General", icon: SlidersHorizontal, render: (store) => headed("General", SlidersHorizontal, <General store={store} />) },
   { id: "appearance", label: "Appearance", icon: Palette, render: () => headed("Appearance", Palette, <AppearancePanel />) },
   { id: "editor", label: "Editor", icon: PenLine, render: (store) => headed("Editor", PenLine, <EditorPanel store={store} />) },
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, render: () => <HotkeysSheet /> },
 ]
+/** Plugins, beside the list (where it's narrow, its own page): a plugin's gear shows its settings here. */
+const PLUGINS_SEC: Sec = { id: "plugins", label: "Plugins", icon: Puzzle, render: (store) => <Plugins store={store} openSettings={(id) => shown.set(`plugin:${id}`)} /> }
 
 /** The pages plugins that are on add (Connections' AI apps), in plugin order. */
 function pluginPages(disabled: string[]): Sec[] {
   return PLUGINS.filter((p) => p.settingsPages && isEnabled(p.id, disabled)).flatMap((p) =>
     Object.entries(p.settingsPages!).map(([k, d]) => ({ id: `${p.id}:${k}`, label: d.label, icon: d.icon, tint: tintOfPlugin(p.id),
       render: (store: Store) => <>
-        <SheetHead icon={d.icon} tint={tintOfPlugin(p.id)} kicker="Settings" title={d.label} sub={d.sub} />
+        <SheetHead icon={d.icon} tint={tintOfPlugin(p.id)} title={d.label} sub={d.sub} />
         {d.render({ store })}
       </> })))
 }
@@ -94,6 +97,7 @@ const pluginSec = (id: string): Sec | null => {
 
 function sectionOf(id: string, disabled: string[]): Sec | null {
   if (id.startsWith("plugin:")) return pluginSec(id.slice(7))
+  if (id === PLUGINS_SEC.id) return PLUGINS_SEC
   return CORE.find((s) => s.id === id) ?? pluginPages(disabled).find((s) => s.id === id) ?? null
 }
 
@@ -104,27 +108,28 @@ const shown = cell("general")
 export function SettingsSection({ store, id }: { store: Store; id: string }) {
   const { disabled } = usePrefs()
   const s = sectionOf(id, disabled)
-  if (!s) return <SheetHead icon={SlidersHorizontal} tint="var(--muted-foreground)" kicker="Settings" title="Not found" />
+  if (!s) return <SheetHead icon={SlidersHorizontal} tint="var(--muted-foreground)" title="Not found" />
   return <Catch fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{s.render(store)}</Catch>
 }
 
-/** The list: the app's sections, plugins' pages, then Plugins (the page, Bundles, and every plugin with options). */
+/** The list: the app's sections and Plugins, plugins' pages, then the options of the app's own plugins (Features). A
+ *  plugin's settings opened from Plugins keep Plugins lit. */
 function Nav({ store, active, pick }: { store: Store; active: string | null; pick: (id: string) => void }) {
   const { disabled } = usePrefs()
   const pages = pluginPages(disabled)
-  const options = withSettings(store, disabled).sort((a, b) => byName.compare(a.name, b.name))
+  const options = withSettings(store, disabled).filter((p) => p.alwaysOn).sort((a, b) => byName.compare(a.name, b.name))
+  const lit = active?.startsWith("plugin:") && !pluginById(active.slice(7))?.alwaysOn ? PLUGINS_SEC.id : active
   const row = (s: Sec) => (
-    <SidebarRow key={s.id} icon={s.icon} tint={s.tint} label={s.label} open active={active === s.id} onClick={() => pick(s.id)} data-settings-nav={s.id} />
+    <SidebarRow key={s.id} icon={s.icon} tint={s.tint} label={s.label} open active={lit === s.id} onClick={() => pick(s.id)} data-settings-nav={s.id} />
   )
   const heading = (t: string) => <div className="px-1.5 pt-4 pb-1 text-[12px] font-semibold text-muted-foreground">{t}</div>
   return (
     <nav aria-label="Settings" className="flex flex-col gap-px" data-settings-list>
       {CORE.map(row)}
+      {row(PLUGINS_SEC)}
       {pages.length > 0 && <div className="pt-3" />}
       {pages.map(row)}
-      {heading("Plugins")}
-      <SidebarRow icon={Puzzle} label="Manage plugins" open onClick={openPlugins} data-settings-plugins />
-      <SidebarRow icon={Package} label="Bundles" open onClick={openBundles} data-settings-bundles />
+      {options.length > 0 && heading("Features")}
       {options.map((p) => row(pluginSec(p.id)!))}
     </nav>
   )
@@ -144,7 +149,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
   const app: Found[] = [
     ...pluginPages(disabled).map((s) => ({ id: `page-${s.id}`, label: s.label, where: "Settings", words: "", run: () => show(s.id) })),
     { id: "bundles", label: "Bundles", sub: "A whole setup of the app at once", where: "Plugins", words: "setup", run: openBundles },
-    { id: "plugins", label: "Plugins", sub: "Turn plugins on and off, add your own", where: "Plugins", words: "extensions", run: openPlugins },
+    { id: "plugins", label: "Plugins", sub: "Turn plugins on and off, get more", where: "Plugins", words: "extensions install", run: () => show(PLUGINS_SEC.id) },
     { ...row("theme", "Theme", "Appearance", '[data-settings-row="theme"]', "System, light or dark"), words: "dark mode light mode" },
     { ...row("scheme", "Colour scheme", "Appearance", '[data-settings-row="scheme"]'), words: "color colors colours obsidian themes" },
     { ...row("density", "Density", "Appearance", '[data-settings-row="density"]', "Compact or comfortable"), words: "spacing" },
@@ -232,6 +237,8 @@ export function Settings({ store }: { store: Store }) {
       shown.set(id)
       if (selector) revealRow(selector)
       else wrap.current?.closest<HTMLElement>("[data-pane]")?.scrollTo({ top: 0 })
+    } else if (id === PLUGINS_SEC.id) {
+      openPlugins()
     } else if (id.startsWith("plugin:")) {
       const key = selector?.match(/data-setting="(.*)"\]$/)?.[1]
       openPluginSettings(id.slice(7), key ? key.replace(/\\(.)/g, "$1") : undefined)

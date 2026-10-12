@@ -57,6 +57,7 @@ const problems: string[] = []
 const warnings: string[] = []
 const decls: BlockDecls = {} // every app plugin's blocks
 const vaultManifests = new Map<string, Record<string, unknown>>()
+const alwaysOn = new Set<string>() // app plugins with no switch: bundles leave them out
 for (const [name, [tier, d]] of found) {
   if (tier === "vault") {
     const r = checkVaultPlugin(d, { ids, label: `.vaultite/plugins/${name}` })
@@ -71,9 +72,11 @@ for (const [name, [tier, d]] of found) {
   let m: Record<string, unknown> = {}
   try { m = JSON.parse(fs.readFileSync(path.join(d, "manifest.json"), "utf8")) } catch { continue } // (said above)
   problems.push(...blockProblems(d, m, label), ...iconProblems(m, `${label}/manifest.json`))
-  // The app's own are `essential` (on from the start); the other built-ins are off until turned on.
-  if (m.essential !== undefined && m.essential !== true) problems.push(`${label}/manifest.json: essential is only true`)
-  if (m.essential !== true && m.offByDefault !== true) problems.push(`${label}/manifest.json: a built-in that isn't essential (a Vaultite plugin) is offByDefault`)
+  // Part of the app (`alwaysOn`: no switch), `essential` (on from the start) or off until turned on: one of the three.
+  for (const k of ["essential", "alwaysOn"]) if (m[k] !== undefined && m[k] !== true) problems.push(`${label}/manifest.json: ${k} is only true`)
+  if (m.alwaysOn === true && (m.essential !== undefined || m.offByDefault !== undefined)) problems.push(`${label}/manifest.json: an alwaysOn plugin is neither essential nor offByDefault`)
+  if (m.alwaysOn !== true && m.essential !== true && m.offByDefault !== true) problems.push(`${label}/manifest.json: a built-in that isn't alwaysOn or essential (a Vaultite plugin) is offByDefault`)
+  if (m.alwaysOn === true) alwaysOn.add(name)
   Object.assign(decls, declsOf(m))
 }
 
@@ -190,7 +193,10 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   problems.push(...bundleProblems(files).map((x) => `${at}: ${x}`))
   const json = (f: string) => { try { return JSON.parse(files[f] ?? "null") } catch { return null } }
   const pj = json("plugins.json")
-  for (const k of ["disabled", "enabled"]) for (const p of pj?.[k] ?? []) if (!ids.has(p)) problems.push(`${at}/plugins.json: '${p}' isn't a plugin of the app`)
+  for (const k of ["disabled", "enabled"]) for (const p of pj?.[k] ?? []) {
+    if (!ids.has(p)) problems.push(`${at}/plugins.json: '${p}' isn't a plugin of the app`)
+    else if (alwaysOn.has(p)) problems.push(`${at}/plugins.json: '${p}' is always on: leave it out`)
+  }
   const sb = json("sidebars.json")
   for (const k of [...sb?.left ?? [], ...sb?.right ?? []]) if (!panels.has(k)) problems.push(`${at}/sidebars.json: '${k}' isn't a sidebar panel of the app`)
   for (const p of json("pages.json")?.pinned ?? []) if (!pages.has(p) && files[p] === undefined) problems.push(`${at}/pages.json: '${p}' is neither a plugin's page nor a file of the bundle`)

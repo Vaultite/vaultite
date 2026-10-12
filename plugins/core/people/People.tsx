@@ -5,7 +5,7 @@ import {
 } from "lucide-react"
 import {
   addDays, AddToTimeline, capitalize, cn, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
-  today, WeeksGrid, type BlockCtx, type FileCtx, type Store, type TimelineEntry, type TimelineKind,
+  today, WeeksGrid, type BlockCtx, type Store, type TimelineEntry, type TimelineKind,
 } from "@vaultite"
 import type { Interaction, Person } from "./types"
 
@@ -154,9 +154,6 @@ function ContactValue({ v }: { v: string }) {
 
 const str = (v: unknown) => (v === null || v === undefined ? "" : String(v))
 const list = (v: unknown) => (Array.isArray(v) ? v.map(String) : str(v).split(",")).map((t) => t.trim()).filter(Boolean)
-
-/** A person file's kind line: their relation. */
-export const personKicker = ({ fm }: FileCtx) => capitalize(str(fm.relation) || "person")
 
 /** ```block-person: how you know them, where they are, what's next and how often you're in touch, read from the file as
  *  it is in the editor so it follows every edit; its fields change in place where the file can be. */

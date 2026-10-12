@@ -291,6 +291,7 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   if (m.offByDefault !== undefined && (vault || m.offByDefault !== true)) {
     out.push(`${label}/manifest.json: offByDefault is for the app's plugins, and only true`)
   }
+  if (vault && m.alwaysOn !== undefined) out.push(`${label}/manifest.json: alwaysOn is for the app's plugins`)
   // A vault plugin imports the app's plugins it requires; the others' files aren't the app's to bundle.
   const requires = (Array.isArray(m.requires) ? m.requires as string[] : [])
     .filter((r) => ids.has(r) && (!vault || ids.get(r) !== "vault")).map((r) => `@plugins/${ids.get(r)}/${r}`)

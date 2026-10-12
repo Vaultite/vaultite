@@ -37,11 +37,14 @@ export type Manifest = {
    *  SettingDecl): its settings sheet draws them as a form, and its docs list them (`vau docs <id>`). */
   settings?: SettingDecls
   /** Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim),
-   *  and every built-in that isn't `essential` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff). */
+   *  and every built-in that isn't `essential` or `alwaysOn` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff). */
   offByDefault?: boolean
   /** One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`,
    *  or by a bundle). Either way the Plugins page lists it by its category. */
   essential?: boolean
+  /** Part of the app itself (built-in only): always on, no switch, not on the Plugins page; its settings are in
+   *  Settings. Neither `essential` nor `offByDefault`. */
+  alwaysOn?: boolean
   /** Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in
    *  plugins standing in for the same one are alternatives: turning one on turns the other off. */
   replaces?: Record<string, string[]>
@@ -60,17 +63,13 @@ export type FileCtx = { store: Store; path: string; fm: Record<string, unknown>;
   setProperty?: (key: string, value: unknown) => void
   /** Drawn inside an embed (`![[Note]]`): the note embedding it, the nearest one (a query's `this`). */
   host?: string }
-/** How a plugin shows its files: the icon in the tree and tabs, and the line above the title. Everything else it
- *  draws in a file is a block the file asks for (see `blocks`), so what you see is in the file. */
+/** How a plugin shows its files: the icon in the tree and tabs. Everything else it draws in a file is a block the
+ *  file asks for (see `blocks`), so what you see is in the file. */
 export type FileView = {
   /** Which files: by their type ("person": its kind's, or its frontmatter's). `folders`: its usual folders' names
    *  ("People"), only so a plain note isn't made in one (kindFolder): a file there without a type isn't its. */
   types?: string[]; folders?: string[]
   icon?: LucideIcon; tint?: string
-  /** The line above the title ("Friend", "Idea"). */
-  kicker?: (ctx: FileCtx) => ReactNode
-  /** At that line's end, quieter: what matters less than the kicker (when an inbox result came). */
-  aside?: (ctx: FileCtx) => ReactNode
   /** It draws these files as pages (see PageView): Dashboards' `type: dashboard`. */
   page?: PageView
 }

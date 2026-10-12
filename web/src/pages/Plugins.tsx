@@ -1,10 +1,11 @@
-// Plugins: one list by category, filtered rather than folded, each row saying what it does; where one comes from is
-// only a byline (trust is asked on turning it on). Tap one for its sheet; Get plugins is PluginBrowse.tsx.
+// Plugins: one list by category (never the app's `alwaysOn` parts), Vaultite's marked, others with a byline (trust is
+// asked on turning one on). Tap one for its sheet; Get plugins is PluginBrowse.tsx, Bundles pages/Bundles.tsx.
 import { useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Plus, Search, Settings2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Package, Plus, Search, Settings2 } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
+import { official } from "../../../core/updates.ts"
 import { capitalize, cn } from "@/lib/utils"
 import { usePrefs } from "@/core/prefs"
 import type { Store } from "@/core/data"
@@ -12,7 +13,9 @@ import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSet
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
 import { FilterField, PageHeader, Panel, Segmented, Switch } from "@/components/kit"
-import { PluginBrowse } from "@/components/PluginBrowse"
+import { DirectoryMatches, PluginBrowse } from "@/components/PluginBrowse"
+import { Certified } from "@/components/Certified"
+import { Bundles } from "@/pages/Bundles"
 
 /** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
@@ -20,10 +23,13 @@ const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 /** What a plugin does, in one line: its description up to the first full stop or colon. */
 const blurb = (d: string | undefined) => (d ?? "").split(/(?<=[\w)])[.:;] /)[0].replace(/\.$/, "")
 
+/** Vaultite made it: built in, or installed from Vaultite's GitHub organisation (never what a manifest says). */
+const certified = (p: Plugin) => p.tier === "core" || (p.tier === "vault" && !!p.meta?.source && official(p.meta.source.source))
+
 /** Who made it, when it isn't Vaultite: a vault plugin's author, or the app whose plugin it is (Obsidian). */
 function bylineOf(p: Plugin): { text: string; tip?: string } | null {
   if (p.tier === "hosted") { const h = hostOf(p); return h ? { text: h.title, tip: h.intro } : null }
-  if (p.tier === "vault" && p.meta?.author !== "Vaultite") return { text: p.meta?.author ? `by ${p.meta.author}` : "yours" }
+  if (p.tier === "vault" && !certified(p)) return { text: p.meta?.author ? `by ${p.meta.author}` : "yours" }
   return null
 }
 
@@ -46,9 +52,10 @@ function pulse(id: string) {
   setTimeout(flash, 350)
 }
 
+
 /** `original`: the other app's plugin it stands in for, installed too (Obsidian's Excalidraw): one row for both, its
- *  switch and sheet the one that runs, and a line to swap them. */
-function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: { p: Plugin; on: boolean; blocked: string[]; files: string[]; original?: Plugin }) {
+ *  switch and sheet the one that runs, and a line to swap them. `openSettings`: where its gear goes (else a sheet). */
+function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original, openSettings }: { p: Plugin; on: boolean; blocked: string[]; files: string[]; original?: Plugin; openSettings?: (id: string) => void }) {
   const theirs = !!original && !ownOn && switchedOn(original)
   const p = theirs ? original : own, on = ownOn || theirs, blocked = theirs ? [] : ownBlocked
   // Its own switch is kept: turn People back on and People map comes back as you left it.
@@ -75,6 +82,7 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
       <div className={cn("pointer-events-none min-w-0 flex-1 transition-opacity", !live && "opacity-55")}>
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">
           {p.name}
+          {certified(p) && <Certified className="pointer-events-auto ml-1" />}
           {by && <span className="pointer-events-auto ml-1.5 text-[13px] font-normal text-muted-foreground md:text-[12px]" data-plugin-by={own.id} data-tip={by.tip}>{by.text}</span>}
           {/* Something it needs is off: that's underlined, dashed (no extra line, so nothing shifts). */}
           {p.requires && (
@@ -106,7 +114,7 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original }: 
           className="h-8 shrink-0 cursor-pointer rounded-[8px] bg-foreground/[0.06] px-3 text-[13px] font-medium hover:bg-foreground/[0.1] max-md:h-9 max-md:text-[15px]">Review</button>
       )}
       {live && hasSettings(p, files) && (
-        <button type="button" onClick={() => openPluginSettings(p.id)} aria-label={settingsTitle(p.name)} data-tip="Settings" data-plugin-gear={p.id}
+        <button type="button" onClick={() => (openSettings ?? openPluginSettings)(p.id)} aria-label={settingsTitle(p.name)} data-tip="Settings" data-plugin-gear={p.id}
           className="-mr-1 grid size-9 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground active:opacity-60 md:size-7 md:rounded-[6px]">
           <Settings2 className="size-[18px] md:size-4" strokeWidth={2} />
         </button>
@@ -145,13 +153,13 @@ function Waiting({ list }: { list: Plugin[] }) {
 }
 
 /** A card of rows, hairlines between them. */
-function Rows({ list, files, originals }: { list: Plugin[]; files: string[]; originals: Map<string, Plugin> }) {
+function Rows({ list, files, originals, openSettings }: { list: Plugin[]; files: string[]; originals: Map<string, Plugin>; openSettings?: (id: string) => void }) {
   const prefs = usePrefs(), { disabled } = prefs
   return (
     <Panel className="py-1">
       <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
         {list.map((p) => (
-          <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} />
+          <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} openSettings={openSettings} />
         ))}
       </div>
     </Panel>
@@ -160,14 +168,15 @@ function Rows({ list, files, originals }: { list: Plugin[]; files: string[]; ori
 
 type Show = "all" | "on" | "off"
 
-export function Plugins({ store }: { store: Store }) {
+/** `openSettings`: where a plugin's gear goes (Settings shows them beside its list), else a sheet. */
+export function Plugins({ store, openSettings }: { store: Store; openSettings?: (id: string) => void }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
   const [query, setQuery] = useState("")
   const [show, setShow] = useState<Show>("all")
   const [cat, setCat] = useState("all")
-  const [tab, setTab] = useState<"installed" | "get">("installed")
+  const [tab, setTab] = useState<"installed" | "get" | "bundles">("installed")
   const [source, setSource] = useState("") // Get plugins' source: "" the plugin directory, else a host's
   useEffect(() => {
     beforeReveal = () => { setQuery(""); setShow("all"); setCat("all"); setTab("installed") }
@@ -181,7 +190,7 @@ export function Plugins({ store }: { store: Store }) {
   // On: its own switch, and everything it needs on (a blocked one counts as off); a stand-in's row, either of the two.
   const isOn = (p: Plugin): boolean => switchedOn(p, prefs) && (p.requires ?? []).every((r) => isEnabled(r, prefs.disabled)) || (originals.has(p.id) && isOn(originals.get(p.id)!))
   const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}`.toLowerCase()
-  const listed = all.filter((p) => !paired.has(p.id)).sort((a, b) => byName.compare(a.name, b.name))
+  const listed = all.filter((p) => !paired.has(p.id) && !p.alwaysOn).sort((a, b) => byName.compare(a.name, b.name))
   const onCount = listed.filter(isOn).length
   const byShow = listed.filter((p) => show === "all" || (show === "on") === isOn(p))
   const sections = byCategory(byShow).filter((s) => s.plugins.length)
@@ -193,13 +202,17 @@ export function Plugins({ store }: { store: Store }) {
   const cats = [{ id: "all", label: "All plugins", n: byShow.length }, ...sections.map((s) => ({ id: s.id, label: s.label, n: s.plugins.length }))]
   const getMore = () => { setTab("get") }
 
+  const back = (
+    <button type="button" onClick={() => { setTab("installed"); setQuery("") }} data-plugins-back
+      className="-ml-1.5 mb-1 inline-flex h-8 cursor-pointer items-center gap-0.5 rounded-[8px] pr-2 text-[15px] text-primary active:opacity-50 md:text-[13px]">
+      <ChevronLeft className="size-4.5" strokeWidth={2.25} />Plugins
+    </button>
+  )
+  if (tab === "bundles") return <>{back}<Bundles store={store} /></>
   if (tab === "get") {
     return (
       <>
-        <button type="button" onClick={() => { setTab("installed"); setQuery("") }} data-plugins-back
-          className="-ml-1.5 mb-1 inline-flex h-8 cursor-pointer items-center gap-0.5 rounded-[8px] pr-2 text-[15px] text-primary active:opacity-50 md:text-[13px]">
-          <ChevronLeft className="size-4.5" strokeWidth={2.25} />Plugins
-        </button>
+        {back}
         <PageHeader title="Get plugins" />
         <FilterField value={query} onChange={setQuery} placeholder="Search for plugins" className="mb-5" />
         <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={(id) => { setTab("installed"); reveal(id) }} />
@@ -210,10 +223,16 @@ export function Plugins({ store }: { store: Store }) {
   return (
     <div className="@container">
       <PageHeader title="Plugins" className="items-center">
-        <button type="button" onClick={getMore} data-plugins-get
-          className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3.5 text-[15px] font-medium transition-colors hover:bg-foreground/[0.1] md:h-8 md:text-[13px]">
-          <Plus className="size-4" strokeWidth={2.25} />Get plugins
-        </button>
+        <div className="flex shrink-0 gap-2">
+          <button type="button" onClick={() => setTab("bundles")} data-plugins-bundles
+            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3.5 text-[15px] font-medium transition-colors hover:bg-foreground/[0.1] md:h-8 md:text-[13px]">
+            <Package className="size-4" strokeWidth={2.25} />Bundles
+          </button>
+          <button type="button" onClick={getMore} data-plugins-get
+            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3.5 text-[15px] font-medium transition-colors hover:bg-foreground/[0.1] md:h-8 md:text-[13px]">
+            <Plus className="size-4" strokeWidth={2.25} />Get plugins
+          </button>
+        </div>
       </PageHeader>
       <div className="flex gap-8">
         {/* Wide: the categories as a rail beside the list, like System Settings. */}
@@ -249,27 +268,28 @@ export function Plugins({ store }: { store: Store }) {
           <Waiting list={waiting} />
           {!shown.length ? (
             <p className="py-4 text-[15px] text-muted-foreground md:text-[13px]" data-plugins-empty>
-              {q ? `No plugin matches "${query.trim()}".` : show === "off" ? "Every plugin is on." : "No plugins here."}
+              {q ? `No installed plugin matches "${query.trim()}".` : show === "off" ? "Every plugin is on." : "No plugins here."}
             </p>
           ) : current === "all" && !q ? (
             // Everything: a section per category, headings only (nothing folds; the rail picks one).
             byCategory(shown).filter((s) => s.plugins.length).map((s) => (
               <section key={s.id} className="mb-5" data-plugin-category={s.id}>
                 <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">{s.label}</h2>
-                <Rows list={s.plugins} files={files} originals={originals} />
+                <Rows list={s.plugins} files={files} originals={originals} openSettings={openSettings} />
               </section>
             ))
           ) : (
-            <section data-plugin-category={current}><Rows list={shown} files={files} originals={originals} /></section>
+            <section data-plugin-category={current}><Rows list={shown} files={files} originals={originals} openSettings={openSettings} /></section>
           )}
-          {/* A search also looks where more plugins are. */}
+          {/* A search also looks where more plugins are: the directory's that aren't here, then Get plugins' other sources. */}
+          {q && <DirectoryMatches query={query} showInstalled={reveal} />}
           {q && (
             <button type="button" onClick={getMore} data-plugins-search-more
               className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-2 py-2 text-left hover:bg-foreground/[0.04]">
               <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-muted-foreground md:size-8 md:rounded-[8px]"><Search className="size-[18px]" strokeWidth={2} /></span>
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-medium md:text-[14px]">Search Get plugins for "{query.trim()}"</span>
-                <span className="block text-[13px] text-muted-foreground md:text-[12px]">Plugins you don't have yet</span>
+                <span className="block truncate text-[15px] font-medium md:text-[14px]">Search everywhere for "{query.trim()}"</span>
+                <span className="block text-[13px] text-muted-foreground md:text-[12px]">Get plugins, with every source</span>
               </span>
               <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
             </button>

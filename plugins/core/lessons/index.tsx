@@ -16,7 +16,6 @@ export default definePlugin({
   mockLive: () => ({ "lessons/state": { reviews: {}, retention: 0.9, newPerDay: 20 } }),
   files: {
     types: ["lesson", "cards"], folders: ["Lessons", "Cards"], icon: BookOpenCheck, tint: "var(--lessons)",
-    kicker: ({ fm }) => (fm.type === "cards" ? "Cards" : "Lesson"),
     page: { header: (ctx) => <Header {...ctx} />, render: (ctx) => (ctx.fm.type === "cards" ? <DeckPage {...ctx} /> : <LessonPage {...ctx} />) },
   },
   details: {

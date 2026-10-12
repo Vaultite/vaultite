@@ -4,7 +4,6 @@ import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, clearWs, vault, write } = $
-  const { pluginsWas } = $.vars
   // iCloud holds a settings file while it uploads (EDEADLK): it reads as it last did, never {}, a save right after this
   // server's own write goes through, and one changed elsewhere meanwhile is refused.
   {
@@ -30,13 +29,9 @@ export default async ($: VaultTest) => {
     } finally { fs.readFileSync = readWas }
     clearWs()
   }
-  // A dashboard's subtitle under its title (/api/render) is Dashboards' (the service "page-head"): off, it's a plain file.
+  // A dashboard's subtitle under its title (/api/render) is Dashboards' (the service "page-head").
   write("Dashboards/Sub.md", "---\ntype: dashboard\nsubtitle: A line under it\n---\n\nText.\n")
-  let [, sub] = await api("GET", "render?path=Dashboards/Sub.md")
+  const [, sub] = await api("GET", "render?path=Dashboards/Sub.md")
   check("render: a dashboard's subtitle under its title", sub.includes("# Sub\n\nA line under it\n\nText."), sub)
-  vault.setConfig("plugins", { ...pluginsWas, disabled: ["dashboards"] })
-  ;[, sub] = await api("GET", "render?path=Dashboards/Sub.md")
-  check("render: with Dashboards off, no subtitle", sub.includes("# Sub\n\nText."), sub)
-  vault.setConfig("plugins", pluginsWas)
   fs.rmSync(path.join(VAULT, "Dashboards/Sub.md"))
 }

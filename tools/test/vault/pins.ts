@@ -67,19 +67,14 @@ export default async ($: VaultTest) => {
   fs.rmSync(pagesJson)
   app.installPages()
   check("a missing one gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
-  // Pinning is the Pinned plugin's (plugins/core/pages): off, installing pins nothing and writes no pages.json; a
-  // pages.json that's in iCloud only isn't replaced by the default list either.
+  // A pages.json that's in iCloud only isn't replaced by the default list.
   const pluginsWas = vault.config("plugins")
   fs.rmSync(pagesJson)
   fs.writeFileSync(path.join(VAULT, ".vaultite/.pages.json.icloud"), "")
   app.installPages()
   check("a pages.json in iCloud only isn't replaced", !fs.existsSync(pagesJson))
   fs.rmSync(path.join(VAULT, ".vaultite/.pages.json.icloud"))
-  vault.setConfig("plugins", { ...pluginsWas, disabled: ["pages"] })
   app.installPages()
-  check("with Pinned off, installing pins nothing", !fs.existsSync(pagesJson))
-  vault.setConfig("plugins", pluginsWas)
-  app.installPages()
-  check("on again, a vault with no pins gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
+  check("a vault with no pins gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
   Object.assign($.vars, { pluginsWas })
 }

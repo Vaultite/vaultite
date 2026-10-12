@@ -1,6 +1,8 @@
 // The Plugins page as one library (pages/Plugins.tsx): sections by category, the AI apps together whatever their
-// defaults (Claude Code, Codex, Muse), each row a line on what it does; the rail picks a category, a search looks in
-// all of them; a plugin's sheet names its category. Screenshots, light and dark, wide and narrow. Reads only.
+// defaults (Claude Code, Codex, Muse), each row a line on what it does, Vaultite's marked as theirs; the app's own
+// (`alwaysOn`) parts aren't rows; the rail picks a category, a search looks in all of them and in the directory; a
+// plugin's sheet names its category; Bundles and Get plugins open inside the page. Screenshots, light and dark, wide and
+// narrow. Reads only.
 //   node web/qa/pluginlibrary.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -19,8 +21,11 @@ for (const colorScheme of ["light", "dark"]) {
   if (colorScheme === "light") {
     const apps = await rows(page, "ai-apps"), tools = await rows(page, "agents")
     check("AI apps: the outside agents, on by default or not", ["claude-code", "codex", "cursor", "muse"].every((id) => apps.includes(id)), apps)
-    check("AI tools: what the app gives agents", ["mcp", "dispatch", "inbox"].every((id) => tools.includes(id)) && !tools.includes("codex"), tools)
-    check("every row says what it does", (await page.locator("[data-plugin-blurb]").count()) > 40)
+    check("AI tools: what the app gives agents", ["dispatch", "inbox"].every((id) => tools.includes(id)) && !tools.includes("codex"), tools)
+    const all = await page.locator("[data-plugin-row]").evaluateAll((els) => els.map((e) => e.dataset.pluginRow))
+    check("the app's own parts aren't rows (Graph, Page preview, MCP)", !["graph", "page-preview", "mcp", "files", "search"].some((id) => all.includes(id)), all)
+    check("every row says what it does", (await page.locator("[data-plugin-blurb]").count()) >= all.length - 2, [await page.locator("[data-plugin-blurb]").count(), all.length])
+    check("Vaultite's plugins are marked as theirs", (await page.locator('[data-plugin-row="dispatch"]').locator("..").locator("[data-certified]").count()) === 1)
     check("the rail is there, the chips aren't", await page.locator("[data-plugins-rail]").isVisible() && !(await page.locator("[data-plugins-chips]").isVisible()))
     await page.locator('[data-plugins-rail] [data-plugins-cat="ai-apps"]').click()
     check("a category shows only its plugins", await until(async () => (await page.locator("[data-plugin-row]").count()) === apps.length, 4000))
@@ -28,14 +33,28 @@ for (const colorScheme of ["light", "dark"]) {
     await page.locator('[data-plugins-rail] [data-plugins-cat="all"]').click()
     await page.getByPlaceholder("Search plugins").fill("muse")
     check("a search finds a plugin by its description too", await until(async () => (await page.locator('[data-plugin-row="muse"]').count()) === 1, 4000))
+    check("...and offers to search everywhere", await page.locator("[data-plugins-search-more]").count() === 1)
+    await page.getByPlaceholder("Search plugins").fill("kanban")
+    check("a search shows the directory's plugins that aren't installed", await until(async () =>
+      (await page.locator('[data-plugins-not-installed] [data-browse-row="kanban"]').count()) === 1, 8000))
+    await page.screenshot({ path: `${OUT}plugins-search-directory.png` })
+    await page.locator("[data-plugins-search-more]").click()
+    check("...Search everywhere opens Get plugins", await until(() => page.locator("[data-plugin-browse]").count(), 4000))
+    await page.locator("[data-plugins-back]").click()
+    await until(() => page.locator("[data-plugin-row]").count(), 4000)
     await page.getByPlaceholder("Search plugins").fill("")
     await page.locator('[data-plugin-row="muse"]').click()
     await until(() => page.locator("dialog[open]").count(), 4000)
     check("its sheet names its category", (await page.locator("dialog[open]").getByText("AI apps", { exact: true }).count()) > 0)
     check("an opt-in plugin's preview draws its blocks while it's off", await until(async () => (await page.locator('dialog[open] [data-block="muse-runs"]').count()) === 1, 4000))
     await page.keyboard.press("Escape"); await wait(500)
+    await page.locator("[data-plugins-bundles]").click()
+    check("Bundles opens inside the page", await until(() => page.locator("[data-bundles-save]").count(), 6000) && await page.locator("[data-plugins-back]").count() === 1)
+    await page.screenshot({ path: `${OUT}plugins-bundles.png` })
+    await page.locator("[data-plugins-back]").click()
+    check("...back to the list", await until(() => page.locator("[data-plugin-row]").count(), 4000))
     await page.locator("[data-plugins-get]").click()
-    check("Get plugins opens with bundles first", await until(() => page.locator("[data-browse-bundles]").count(), 6000))
+    check("Get plugins opens, without bundles", await until(() => page.locator("[data-plugin-browse]").count(), 6000) && !(await page.locator("[data-browse-bundles]").count()))
     await page.screenshot({ path: `${OUT}plugins-get.png` })
     await page.locator("[data-plugins-back]").click()
     check("back to the list", await until(() => page.locator("[data-plugin-row]").count(), 4000))

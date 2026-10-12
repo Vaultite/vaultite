@@ -1,6 +1,6 @@
 import { User } from "lucide-react"
 import { definePlugin, detailPath, plainText } from "@vaultite"
-import { PeopleDue, PeopleGroup, PeopleWants, PersonBlock, personKicker, TIMELINE_KINDS } from "./People"
+import { PeopleDue, PeopleGroup, PeopleWants, PersonBlock, TIMELINE_KINDS } from "./People"
 import { mockPeople } from "./mock"
 
 export default definePlugin({
@@ -16,7 +16,6 @@ export default definePlugin({
   // How a person's file looks: their profile on top, the Timeline section drawn as a timeline.
   files: {
     types: ["person"], folders: ["People"], icon: User, tint: "var(--people)",
-    kicker: personKicker,
   },
   // ```block-person: the profile, on top of a person's file. The People dashboard (pages/People.md): who's due, who you
   // want to reach, and groups by relation.

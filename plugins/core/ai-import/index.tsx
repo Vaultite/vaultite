@@ -60,9 +60,7 @@ function Preview() {
 const isReview = (path: string) => /(^|\/)Memories to review\.md$/.test(path)
 
 export default definePlugin({
-  files: { types: ["chat", "chat-project", "memory-review"], icon: MessagesSquare, tint: TINT,
-    kicker: ({ fm }) => (fm.type === "chat-project" ? "Claude project" : fm.type === "memory-review" ? "Memories to review"
-      : `${fm.source === "claude" ? "Claude" : fm.source === "chatgpt" ? "ChatGPT" : "AI"} chat`) },
+  files: { types: ["chat", "chat-project", "memory-review"], icon: MessagesSquare, tint: TINT },
   commands: [
     { id: "ai-import:import", name: "Import from ChatGPT or Claude…", run: pickExport },
     { id: "ai-import:apply", name: "Add ticked memories", when: () => isReview(activeFile()?.path ?? ""), run: () => { const p = activeFile()?.path; if (p) void applyReview(p) } },

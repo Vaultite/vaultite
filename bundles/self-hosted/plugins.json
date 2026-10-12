@@ -1,20 +1,11 @@
 {
   "disabled": [
-    "clipper",
     "cursor"
   ],
   "enabled": [
-    "documents",
-    "ebooks",
     "lessons",
     "machines",
-    "note-composer",
     "notes",
-    "presentations",
-    "random-note",
-    "slides",
-    "spreadsheets",
-    "unique-note",
     "web-viewer"
   ]
 }

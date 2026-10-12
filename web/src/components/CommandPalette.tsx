@@ -57,7 +57,7 @@ function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   if (!verb && q.length < 2) return []
   const say = off ? TURN_OFF : TURN_ON
   return all.flatMap((p) => {
-    if (isEnabled(p.id, disabled) !== off) return []
+    if (p.alwaysOn || isEnabled(p.id, disabled) !== off) return []
     // Only where the name has it as typed (a fuzzy hit across a long name would offer every plugin).
     const m = q ? fuzzy(q, p.name) : { score: 0, marks: [] }
     if (!m || (q && m.score < 100)) return []

@@ -10,7 +10,7 @@ export default async ($: VaultTest) => {
     app.installPages()
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
     const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
-    setConf("plugins", { disabled: ["recent"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
+    setConf("plugins", { disabled: ["activity"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
     setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
     setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/Today.md"] })
     setConf("plugins/page-preview/data", { delay: 300 })
@@ -79,12 +79,12 @@ export default async ($: VaultTest) => {
     ;[code, r] = await api("POST", "bundles", { name: "My desk", workspace: 1 })
     const saved = (f: string) => { try { return JSON.parse(read(`.vaultite/bundles/my-desk/${f}`)) } catch { return null } }
     check("bundles: save writes the user's bundle", code === 200 && r.bundle.id === "my-desk" && saved("bundle.json")?.name === "My desk", r)
-    check("bundles: saved: plugins, the workspace's pins, settings that differ from their defaults, never local ones", saved("plugins.json")?.disabled?.includes("recent") &&
+    check("bundles: saved: plugins, the workspace's pins, settings that differ from their defaults, never local ones", saved("plugins.json")?.disabled?.includes("activity") &&
       saved("pages.json")?.pinned?.join() === deskBefore.pinned.join() && saved("plugins/page-preview/data.json")?.delay === 300 && saved("plugins/terminal/data.json") === null &&
       saved("appearance.json")?.scheme === "nord" && saved("hotkeys.json") === null, fs.readdirSync(path.join(VAULT, ".vaultite/bundles/my-desk"), { recursive: true }))
     ;[code, r] = await api("GET", "bundles/my-desk/export")
     const exported = JSON.parse(r)
-    check("bundles: export is one JSON file", code === 200 && exported.vaultite === "bundle" && exported.files["plugins.json"].disabled.includes("recent"), exported)
+    check("bundles: export is one JSON file", code === 200 && exported.vaultite === "bundle" && exported.files["plugins.json"].disabled.includes("activity"), exported)
     ;[code, r] = await api("POST", "bundles/import", exported)
     check("bundles: import adds it under a free id", code === 200 && r.bundle.id === "my-desk-2" && exists(".vaultite/bundles/my-desk-2/pages.json"), r)
     ;[code, r] = await api("POST", "bundles/import", { vaultite: "bundle", files: { "../x.json": "{}" } })

@@ -4,7 +4,6 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, tmp } = $
-  const { conf } = $.vars
   // Binary formats (Spreadsheets, Documents, Presentations, E-books): their text for /api/render and search, from made-up
   // files (tools/fixtures/formats/make.ts); and files from outside the vault, only once the desktop app allowed them.
   {
@@ -54,11 +53,6 @@ export default async ($: VaultTest) => {
     check("search: finds a Word document's table", hits.some((h: Any) => h.path === "Shelf/Lease.docx"), hits)
     ;[, hits] = await api("GET", "search?q=beacon")
     check("search: finds a slide's text", hits.some((h: Any) => h.path === "Shelf/Pitch.pptx"), hits)
-    // Off, a plugin's files aren't read.
-    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: [...(conf("plugins").disabled ?? []), "documents"] }, null, 2) + "\n")
-    ;[, hits] = await api("GET", "search?q=Deposit")
-    check("search: a plugin off reads nothing", !hits.some((h: Any) => h.path === "Shelf/Lease.docx"), hits)
-    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: (conf("plugins").disabled ?? []).filter((x: string) => x !== "documents") }, null, 2) + "\n")
 
     // Outside the vault: nothing until allowed; then its info (and, in server.ts, its bytes).
     const out = path.join(tmp, "elsewhere", "Plan.pdf")

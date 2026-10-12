@@ -1,9 +1,9 @@
-// Notes: what a note is (kind, status, id and dates filled by the server) and its kind and status above the title.
+// Notes: what a note is (kind, status, id and dates filled by the server).
 // Notes themselves are core: every Markdown file is one.
 import { NotebookText } from "lucide-react"
 import { definePlugin, detailPath, plainText } from "@vaultite"
 import { lookOf } from "./format"
-import { NoteKicker, NotePreview } from "./NoteHeader"
+import { NotePreview } from "./NotePreview"
 import { mockNotes } from "./mock"
 
 export default definePlugin({
@@ -18,7 +18,6 @@ export default definePlugin({
   },
   files: {
     types: ["note"], folders: ["Notes"], icon: NotebookText, tint: "var(--notes)",
-    kicker: (ctx) => <NoteKicker {...ctx} />,
   },
   search: (s) => s.notes.map((n) => {
     const body = plainText(n.body).replace(/\s+/g, " ").trim()
