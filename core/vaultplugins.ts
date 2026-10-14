@@ -22,6 +22,9 @@ const CACHE = path.join(LOCAL, "cache", "plugins")
 const CSS = path.join(ROOT, "web", "src", "index.css") // the app's Tailwind setup: a plugin's classes compile against it
 // Part of every plugin's version: a new way of building (bump it), or a new app stylesheet, builds bundles again.
 const BUILD = "4:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8)
+// What its code bundles against: the app's packages. A new stylesheet alone only redoes its styles (an update that
+// bundled Excalidraw again took seconds off the app's start).
+const CODE = "5:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
 
 export type VaultPlugin = {
   id: string; dir: string; manifest: Item
@@ -184,16 +187,21 @@ async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
   })
   try {
     const out = await build.generate({ format: "esm", minify: true, entryFileNames: "bundle.js", chunkFileNames: "[name]-[hash].js" })
-    const used = new Set(out.output.flatMap((o) => (o.type === "chunk" ? o.moduleIds : [])))
-    const css = sheets.join("\n") + await styles(dir, used)
     const chunks: Record<string, string> = {}
     let entry = ""
     for (const o of out.output) if (o.type === "chunk") { if (o.isEntry) entry = o.code; else chunks[o.fileName] = o.code }
-    return { code: `globalThis.__vaultite.style(${JSON.stringify(vp.id)}, ${JSON.stringify(css)});\n` +
-      `await globalThis.__vaultite.preload(${JSON.stringify([...preload])});\n${entry}`, chunks }
+    return { entry, chunks, sheets, preload: [...preload], used: out.output.flatMap((o) => (o.type === "chunk" ? o.moduleIds : [])) }
   } finally {
     await build.close()
   }
+}
+type Code = Awaited<ReturnType<typeof bundle>>
+
+/** The bundle as the app loads it: its code with its styles (its Tailwind classes, compiled against the app's). */
+async function withStyles(vp: VaultPlugin, c: Code) {
+  const css = c.sheets.join("\n") + await styles(fs.realpathSync(vp.dir), new Set(c.used))
+  return { code: `globalThis.__vaultite.style(${JSON.stringify(vp.id)}, ${JSON.stringify(css)});\n` +
+    `await globalThis.__vaultite.preload(${JSON.stringify(c.preload)});\n${c.entry}`, chunks: c.chunks }
 }
 
 // --- the folder
@@ -407,14 +415,21 @@ export class VaultPlugins {
 
   private async build(vp: VaultPlugin) {
     const file = path.join(CACHE, `${vp.id}-${vp.hash}.json`)
+    // (its code alone, kept apart: an app update that changes only the stylesheet doesn't bundle it again)
+    const codeHash = crypto.createHash("sha256").update(CODE).update(vp.digest.content).digest("hex").slice(0, 12)
+    const codeFile = path.join(CACHE, `${vp.id}-code-${codeHash}.json`)
     try {
       let built: { code: string; chunks: Record<string, string> }
       try {
         built = JSON.parse(readText(file))
       } catch {
-        built = await bundle(vp, this.tiers)
+        let code: Code
+        try { code = JSON.parse(readText(codeFile)) } catch { code = await bundle(vp, this.tiers) }
+        built = await withStyles(vp, code)
         fs.mkdirSync(CACHE, { recursive: true })
-        for (const old of fs.readdirSync(CACHE)) if (old.startsWith(`${vp.id}-`) && /\.js(on)?$/.test(old)) fs.rmSync(path.join(CACHE, old), { force: true })
+        const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-)?[0-9a-f]{12}\\.json$`) // (not claude-chat's for claude)
+        for (const old of fs.readdirSync(CACHE)) if (mine.test(old)) fs.rmSync(path.join(CACHE, old), { force: true })
+        writeAtomic(codeFile, JSON.stringify(code))
         writeAtomic(file, JSON.stringify(built))
       }
       vp.bundle = { hash: vp.hash, ...built }

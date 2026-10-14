@@ -17,6 +17,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - `vau perf` shows what you waited for, part by part: the app opening, a terminal opening, an agent getting ready.
   The machines list and Claude Code's limits answer at once from their last look, and the app's own update builds
   at a low priority.
+- The first start after an update no longer bundles every vault plugin again (seconds, with Excalidraw's): only
+  their styles follow the app's.
 - Files no longer show their kind (Idea, Log, Book, Friend) above the title: on desktop the title starts the page.
 - Allowing Activity to write its recaps writes the ones it was refused on its next run, not after another change.
 - **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own
