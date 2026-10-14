@@ -47,6 +47,7 @@ export function mockLive(): Record<string, unknown> {
   const perf: Perf = {
     now, uptime: 3 * 86400 + 5 * 3600, node: "v24.1.0", pid: 4242, rss: 184, heap: 72,
     lag: { p50: 10.2, p99: 14.8, max: 41 }, requests: 18_422, errors: 7, syncs: 9_310,
+    timings: [{ name: "terminal.open", n: 12, p50: 96, p95: 180, last: { t: now - 60_000, ms: 92, parts: { tab: 30, view: 4, xterm: 18, socket: 8, attached: 14, "first output": 18 }, tags: { agent: "shell", how: "asked" } } }],
     routes: [
       { route: "state", n: 412, errors: 0, avg: 38, p50: 31, p95: 84, max: 240 },
       { route: "file", n: 1280, errors: 2, avg: 9, p50: 6, p95: 22, max: 130 },

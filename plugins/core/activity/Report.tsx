@@ -1,7 +1,7 @@
 // The app's side of Activity in every window's background: what the user opens, runs and drops (batched every 3 s)
 // and how fast this window is (every minute). Nothing here may throw into the app: every callback is guarded.
 import { useEffect } from "react"
-import { appDevice as DEVICE, getTabLayout, onActivity, onTabLayoutChange, type TabLayout } from "@vaultite"
+import { appDevice as DEVICE, getTabLayout, onActivity, onTabLayoutChange, onTrace, takeSpans, type TabLayout } from "@vaultite"
 
 type Note = { action: string; text: string; paths?: string[]; t: number }
 
@@ -145,6 +145,13 @@ function start(): () => void {
     calls.clear(); longTasks = 0; longMs = 0; shift = 0; shifts = 0
     void send("activity/perf", body)
   }
+  // A span (a terminal opened, the app loaded) goes a moment after it ends: `vau perf` has it while it's news.
+  let spanTimer = 0
+  stops.push(onTrace(safe((topic: string) => {
+    if (topic !== "span" || spanTimer) return
+    spanTimer = window.setTimeout(safe(() => { spanTimer = 0; void send("activity/perf", { device: DEVICE, spans: takeSpans() }) }), 1000)
+  })), () => clearTimeout(spanTimer))
+
   // Once after load (when the load's timings are in), then every minute.
   const once = window.setTimeout(safe(report), document.readyState === "complete" ? 2000 : 5000)
   const perf = setInterval(safe(report), PERF_EVERY)

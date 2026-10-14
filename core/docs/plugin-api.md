@@ -47,6 +47,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.allows(what)`: Whether this machine's owner said yes to `what` (a command a vault setting names: a synced or shared vault mustn't choose what runs here). Kept on this machine, never in the vault (core/trust.ts).
 - `plugin.allow(what)`: Remember this machine's owner said yes to `what` (only after asking them: plugin.refusal).
 - `plugin.memo(ttl, fn, ...args)`: fn(...args), remembered in memory for ttl seconds (live data: fetched again when it's stale). A failure isn't.
+- `plugin.memoStale(ttl, fn, ...args)`: Like memo, but once stale it answers what it had while fn runs again: a slow fn (asking machines that may be offline) never holds a caller after its first answer.
 - `plugin.forget()`: Forget everything memo() remembers.
 - `plugin.editLine(rel, n, was, now)`: A small edit of one line of a vault file: line `n` (from 0, the whole file's, frontmatter too) from `was` to `now` (a list: several lines in its place; null: removed). 409 when that line isn't `was` any more (edited meanwhile).
 - `plugin.peer(id)`: Another loaded plugin (one this plugin requires), to use what it offers: logs.exports.areaSummary(...), or its settings: plugin.peer("templates")?.settings().

@@ -6,13 +6,14 @@ import os from "node:os"
 import path from "node:path"
 import { monitorEventLoopDelay } from "node:perf_hooks"
 import {
-  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, section, type Proc, type RequestEnd, type RequestStart,
+  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, recordSpan, section, spans, type Proc, type RequestEnd,
+  type RequestStart, type Span,
 } from "../../../core/plugins.ts"
 import { agentName, KNOWN_AGENTS } from "../../../core/terminalids.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
 import { buildRecap, type Sources } from "./build.ts"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, renderRecap } from "./recap.ts"
-import { ACTION_KINDS, actionsOf, type Action, type Actor, type ActivityEvent, type ActivityList, type ActivitySummary, type ClientPerf, type Minute, type Perf, type RouteStat, type SlowRequest } from "./model.ts"
+import { ACTION_KINDS, actionsOf, type Action, type Actor, type ActivityEvent, type ActivityList, type ActivitySummary, type ClientPerf, type Minute, type Perf, type RouteStat, type SlowRequest, type Timing } from "./model.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -485,8 +486,13 @@ plugin.route("POST", "activity", (req) => {
 })
 
 plugin.route("POST", "activity/perf", (req) => {
-  const b = (req.body ?? {}) as ClientPerf
+  const b = (req.body ?? {}) as ClientPerf & { spans?: unknown }
   const device = str(b.device) || "web"
+  for (const s of Array.isArray(b.spans) ? b.spans.slice(0, 100) as Span[] : []) {
+    const ok = s && typeof s.name === "string" && typeof s.t === "number" && typeof s.ms === "number" && s.parts && typeof s.parts === "object"
+    if (ok) recordSpan({ name: s.name.slice(0, 40), t: s.t, ms: s.ms, parts: s.parts, tags: { ...(s.tags ?? {}), device } })
+  }
+  if (b.longTasks === undefined) return { ok: true } // spans only
   const was = clients.get(device)
   const num = (v: unknown) => (typeof v === "number" && isFinite(v) && v >= 0 ? Math.round(v * 10) / 10 : undefined)
   const api = Array.isArray(b.api) ? b.api.slice(0, 50).filter((r) => r && typeof r.route === "string").map((r) => ({ route: r.route.slice(0, 80), n: num(r.n) ?? 0, p50: num(r.p50) ?? 0, max: num(r.max) ?? 0 })) : undefined
@@ -684,11 +690,17 @@ function perf(window: number): Perf {
     return { route, n: a.n, errors: a.errors, avg: r1(a.total / a.n), p50: r1(pct(s, 0.5)), p95: r1(pct(s, 0.95)), max: r1(a.max) }
   }).sort((a, b) => b.avg * b.n - a.avg * a.n)
   const since = Date.now() - window * MINUTE
+  const byName = new Map<string, Span[]>()
+  for (const s of spans()) byName.set(s.name, [...(byName.get(s.name) ?? []), s])
+  const timings: Timing[] = [...byName].map(([name, list]) => {
+    const ms = list.map((s) => s.ms).sort((a, b) => a - b)
+    return { name, n: list.length, p50: r1(pct(ms, 0.5)), p95: r1(pct(ms, 0.95)), last: list[list.length - 1] }
+  })
   return {
     now: Date.now(), uptime: Math.round(process.uptime()), node: process.version, pid: process.pid,
     rss: mb(mem.rss), heap: mb(mem.heapUsed),
     lag: { p50: r1(lag.percentile(50) / 1e6), p99: r1(lag.percentile(99) / 1e6), max: r1(lag.max / 1e6) },
-    requests: reqs, errors: errs, syncs, routes: rs, slow: [...slow].reverse(),
+    requests: reqs, errors: errs, syncs, routes: rs, slow: [...slow].reverse(), timings,
     minutes: loadMinutes().filter((m) => m.t >= since),
     clients: [...clients.values()].sort((a, b) => b.t - a.t),
   }
@@ -755,6 +767,14 @@ what each app window last reported (load, /api/state, long tasks).
       `${"route".padEnd(34)} ${pad("n", 6)} ${pad("avg", 7)} ${pad("p50", 7)} ${pad("p95", 7)} ${pad("max", 7)}`,
       ...p.routes.map((r) => `${r.route.slice(0, 34).padEnd(34)} ${pad(r.n, 6)} ${pad(r.avg, 7)} ${pad(r.p50, 7)} ${pad(r.p95, 7)} ${pad(r.max, 7)}`),
     ]
+    if (p.timings.length) {
+      out.push("", `${"timings (ms)".padEnd(18)} ${pad("n", 4)} ${pad("p50", 7)} ${pad("p95", 7)} ${pad("last", 7)}  the last one's parts`)
+      for (const s of p.timings) {
+        const parts = Object.entries(s.last.parts).map(([k, v]) => `${k} ${Math.round(v)}`).join(", ")
+        const tags = Object.entries(s.last.tags ?? {}).map(([k, v]) => `${k}: ${v}`).join(", ")
+        out.push(`${s.name.padEnd(18)} ${pad(s.n, 4)} ${pad(Math.round(s.p50), 7)} ${pad(Math.round(s.p95), 7)} ${pad(Math.round(s.last.ms), 7)}  ${parts}${tags ? ` (${tags})` : ""}`)
+      }
+    }
     if (p.slow.length) out.push("", "Slow requests:", ...p.slow.slice(0, 8).map((s) => `  ${localTime(s.t)}  ${s.method} /api/${s.route}  ${s.ms} ms  (${s.who})`))
     if (p.clients.length) out.push("", "The app:", ...p.clients.map((x) => `  ${x.device}: load ${x.load ?? "?"} ms, state ${x.state ?? "?"} ms, ${x.longTasks ?? 0} long tasks, ${x.shifts ?? 0} layout shifts (${x.shift ?? 0})`))
     return out.join("\n")

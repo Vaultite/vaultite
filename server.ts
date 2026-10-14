@@ -24,6 +24,9 @@ module.enableCompileCache?.()
 // Vault files are read on libuv's threads (core/vault.ts, readSoon): one iCloud holds keeps its thread, so have many.
 process.env.UV_THREADPOOL_SIZE ??= "128"
 startServerLog() // the log's lines dated, its errors heard (plugin.onServerError: the Errors plugin)
+const { askedAt, span } = await import("./core/spans.ts")
+const starting = span("server.start", {}, askedAt - performance.timeOrigin)
+starting.mark("spawn")
 const { WebSocketServer } = await import("ws")
 const { decodePart: decode, jsonOf, open, queryOf } = await import("./core/app.ts")
 const { Live } = await import("./core/live.ts")
@@ -36,6 +39,7 @@ const { tooBig } = await import("./core/filetypes.ts")
 const { contentType, enabled, HTTPError, LOADED, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
 const { fetchFromICloud, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
+starting.mark("imports")
 
 const DIST = path.join(ROOT, "web", "dist") // built web app (npm run build)
 const ASSETS = path.join(DIST, "assets") // Vite names every file here by its content's hash
@@ -48,13 +52,14 @@ const DESKTOP = process.env.VAULTITE_DESKTOP === "1"
 const VAULT_AT = DESKTOP ? VAULT_PATH : vaults.current(VAULT_PATH)
 await vaultThere(VAULT_AT)
 let app: App, vault: Vault, live: LiveType
-const ready = open(VAULT_AT).then((a) => {
+const ready = open(VAULT_AT, { timing: starting }).then((a) => {
   app = a
   vault = a.vault
   live = watch(new Live(vault).start())
   a.scheduler.start()
   for (const p of vault.problemList()) console.log(`vault: ${p.file}: ${p.problem}`)
   console.log(`vaultite: vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
+  starting.end()
   module.flushCompileCache?.() // written now: a server usually ends by a signal, which doesn't write it
 }, (e) => {
   console.error(e)
@@ -528,5 +533,6 @@ server.on("upgrade", async (req: http.IncomingMessage, socket: Duplex, head: Buf
 })
 
 server.listen(PORT, HOST, () => {
+  starting.mark("listen")
   console.log(`vaultite on http://${HOST}:${PORT}  vault=${VAULT_AT}`)
 })

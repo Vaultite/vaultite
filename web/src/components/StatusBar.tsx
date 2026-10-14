@@ -88,8 +88,10 @@ function useOverflow(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElem
     }
     if (next.join() !== over.join()) setOver(next)
   }
-  useLayoutEffect(() => layout.current())
   const joined = keys.join()
+  // (only when its items change, before the paint; their sizes changing is the observer's: measuring on every render
+  // forced the whole app's layout each time, seconds of it while the app loads)
+  useLayoutEffect(() => layout.current(), [joined])
   useEffect(() => {
     const b = bar.current, f = fit.current
     if (!b || !f) return

@@ -8,7 +8,7 @@ import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, type AgentStart, type AgentState, quote } from "../../../core/codingagents.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 import {
-  agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, splitMachine, type Machine,
+  agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request,
 } from "../../../core/plugins.ts"
 import {
@@ -59,6 +59,7 @@ type Session = {
   kept?: boolean // ended by us, its tabs kept (end's `keep`)
   out: Tail // its last `scrollback` lines of output (a backend without pictures)
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
+  opened?: string // how its start went, for its first tab's span: "spare 12ms", "new 95ms"
 }
 const sessions = new Map<string, Session>()
 
@@ -237,6 +238,17 @@ function stateOf(id: string) {
   try { return fs.readFileSync(stateFile(id), "utf8").trim() || undefined } catch { return undefined }
 }
 
+/** Times agent terminal `id` from its start to its agent's first hook (its state file written: it's ready), a minute
+ *  at most: the span "agent.ready". */
+function agentReady(id: string, agent: string) {
+  const timing = span("agent.ready", { agent }), until = Date.now() + 60_000
+  const look = () => {
+    if (fs.existsSync(stateFile(id))) return void timing.end()
+    if (Date.now() < until) setTimeout(look, 50).unref?.()
+  }
+  look()
+}
+
 /** The shell command a hook runs to mark a terminal's state (its state `file`), and `tell` (Inbox) when the change is
  *  news: finished, asks something, was answered ($prev, the hook's JSON on stdin). */
 export function stateCommand(file: string, tell?: ((s: AgentState) => string) | null) {
@@ -332,14 +344,19 @@ async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | nul
 
 /** Starts a session (in the backend new ones go to), or reattaches to its shell if one runs (`fresh` says which). */
 async function start(id: string, cols: number, rows: number, from = LOCAL, prompt: string | null = null, dark: boolean | null = null): Promise<{ s: Session; fresh: boolean }> {
+  const agent = agentOf(id), timing = span("terminal.start", { agent: agent?.name ?? "shell", how: "running" })
   let b = await backendOf(id)
+  timing.mark("find")
   const fresh = !b
   if (!b) {
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
     const run = await agentRun(id, prompt, dark)
+    if (agent) timing.mark("agent")
     const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows, scrollback: scrollback() }
+    timing.tags.how = "spare"
     if (!(b.spares && (await takeSpare(b, id, from, run)))) {
+      timing.tags.how = "new"
       try { await b.create(id, spec) } catch (e) {
         if (b !== keeper) throw e
         console.error("terminal: the keeper couldn't start a shell, so this server holds it:", e)
@@ -351,10 +368,14 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
       }
     }
     if (b.spares) refill(from)
+    timing.mark("shell")
+    if (agent && run) agentReady(id, agent.name)
   }
   const backend = b
   const link = await backend.attach(id, cols, rows)
-  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: new Tail(scrollback()), pending: new Set(), ended: false }
+  timing.mark("attach")
+  const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: new Tail(scrollback()), pending: new Set(), ended: false,
+    opened: `${timing.tags.how} ${Math.round(timing.end())}ms` }
   link.onData((data) => {
     if (!link.snapshot) s.out.push(data)
     const bytes = Buffer.from(data, "utf8")
@@ -421,7 +442,7 @@ function resize(s: Session, cols: number, rows: number) {
 function attach(s: Session, ws: WebSocket, fresh: boolean) {
   s.clients.add(ws)
   listChanged()
-  ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws, scrollback: scrollback() }))
+  ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws, scrollback: scrollback(), ...(fresh ? { started: s.opened } : {}) }))
   ws.send(JSON.stringify({ t: "size", cols: s.link.cols, rows: s.link.rows }))
   if (s.link.snapshot) {
     // The screen and its history as they are now, then what it prints from there on.

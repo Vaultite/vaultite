@@ -50,6 +50,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AppWindows`: Other Mac apps' windows in the desktop app's tabs (see electron/apps.ts): kept right behind the window, under a part of the page left see-through.
 - `ARCHIVE_DIR`: The hidden folder archived files move into, inside their own folder (the Archive plugin).
 - `archiveTwin(rel)`: The same path archived or not: People/Kai.md <-> People/.archive/Kai.md.
+- `askedAt(id)`: When the user asked for terminal `id`, if this page made it (for its opening's span).
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).
 - `askMove(path, opts?)`: "Move file to…": pick a folder (fuzzy, "/" the top level), then move it there.
 - `askMoveMany(paths, opts?)`: "Move to…" for several: one folder for them all (one none of them is, nor is inside).
@@ -424,6 +425,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SlashItem`: An entry in the editor's slash menu: `text` replaces the "/query" ("$|" marks the cursor), or `run` does something else with the function that types text there.
 - `snippet(md)`: Markdown as one line of plain text: a preview in a row, a card or a search result.
 - `SortableList({ ids, onMove, className, lift, children })`
+- `span(name, tags?, t0?)`: A span from `t0` (a performance.now(), default now): `mark` ends a part, `end` sends it all.
+- `Span`
 - `spelling`: The spell checker sees a right-click only once the page leaves it to the system (not prevented): `at` answers what it said of the word under it (null: nothing came), `learn` adds a word to its…
 - `splitFm(text)`: Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body.
 - `splitMachine(id)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
@@ -452,9 +455,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `tagsOf(fm, body)`: A file's tags: its frontmatter `tags` (or `tag`), then its inline #tags, each once.
 - `takeAppErrors()`: The errors waiting to be sent, oldest first; they're the caller's now (the queue is emptied).
 - `takeSchemeLink(url, mod?)`: A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did.
+- `takeSpans()`: The spans ended since the last call.
 - `Target`
 - `TerminalAgent`
-- `terminalId()`: A new terminal session id: 8 letters and digits.
+- `terminalId(asked?)`: A new terminal session id: 8 letters and digits.
 - `textDiff(before, after, context?)`: `before` against `after`, line by line; with `context`, unchanged runs further than that from a change are folded.
 - `textKey(text)`: A short, stable name for some text (a block's options), for keys.
 - `textRanges(el, re, max?, skip?)`: What `re` (global) finds in the text drawn in `el`, as ranges in order, at most `max`; `skip`: elements whose text isn't searched.
@@ -604,6 +608,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `quoted(v, n?)`: Text in quotes on one line, cut at `n` characters: a description's way to cite what a call was given.
 - `readSidebars(raw)`: sidebars.json as it's saved (or a workspace's copy), checked; null when it has neither sidebar (unset: the default).
 - `readTypes(file)`: A types file's `types` ({"due": "date"}), read leniently: unknown types and odd keys are left out.
+- `recordSpan(s)`: Keep a finished span (the app's arrive through POST activity/perf).
 - `relocatedPin(vault, entry)`: A pin as it is now: its file where it was moved outside the app (Vault.relocated); a search as it is.
 - `repinList(list, src, dst)`: `list` after a file or folder moved from `src` to `dst` (null: to the trash): its pins follow it (its headings' too), each once.
 - `reply(status, body)`
@@ -626,6 +631,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SocketHandler`: Runs once the socket is open.
 - `SocketParams`: A socket's request: the wildcard segments of its pattern (URL-decoded) and the query string.
 - `source(...things)`: The files a block shows, named by the block (ctx.source; outside one, `source` from core/plugins.ts): items (by their id) or vault paths, lists of them too.
+- `span(name, tags?, t0?)`: A span starting now (or at `t0`, a performance.now()): `mark` ends a part, `end` records it all.
+- `spans()`
 - `splitMachine(full)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
 - `Text`: A route's answer sent as it is (text/markdown, or another type; bytes too: a font), not as JSON.
 - `TextBlock`

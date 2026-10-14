@@ -110,7 +110,7 @@ async function probe(m: DialEntry, own: string): Promise<Machine> {
 }
 
 async function machines(): Promise<Machine[]> {
-  return plugin.memo(20, async function machines(key: string) {
+  return plugin.memoStale(20, async function machines(key: string) {
     void key
     vaultId() // (made before another machine is asked, so it's there to compare)
     const own = await ownUrl()

@@ -12,6 +12,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Checkboxes are rounded squares; bullets sit in a wider column, so nested lists step in as they do when read.
 - A dashboard of only text reads in a note's centred column, editing it or not, and a line break in its text is a
   break, as in the editor; its headings are the editor's sizes and colours, and an embedded note is as wide as the text.
+- `vau perf` shows what you waited for, part by part: the app opening, a terminal opening, an agent getting ready.
+  The machines list and Claude Code's limits answer at once from their last look, and the app's own update builds
+  at a low priority.
 - Files no longer show their kind (Idea, Log, Book, Friend) above the title: on desktop the title starts the page.
 - Allowing Activity to write its recaps writes the ones it was refused on its next run, not after another change.
 - **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own

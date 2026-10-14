@@ -12,14 +12,17 @@ import { getPrefs } from "@/core/prefs"
 import { currentWorkspace, scopedState, useScopedState } from "@/core/scope"
 import { agentIn, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 
-/** The ids made on this page: their tabs start their session (an agent); any other tab only attaches (mintedHere). */
-const minted = new Set<string>()
-/** A new terminal session id: 8 letters and digits. */
-export function terminalId() {
+/** The ids made on this page, with when they were asked for: their tabs start their session (an agent); any other tab
+ *  only attaches (mintedHere). */
+const minted = new Map<string, number>()
+/** A new terminal session id: 8 letters and digits. `asked`: when the user asked for it (performance.now()). */
+export function terminalId(asked = performance.now()) {
   const id = newTerminalId()
-  minted.add(id)
+  minted.set(id, asked)
   return id
 }
+/** When the user asked for terminal `id`, if this page made it (for its opening's span). */
+export const askedAt = (id: string) => minted.get(id.replace(/@.*$/, "").split("-").pop() ?? "")
 /** Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it:
  *  a tab put back (a reload, the app reopened, another device) only attaches, and never starts an agent by itself. */
 export const mintedHere = (id: string) => minted.has(id.replace(/@.*$/, "").split("-").pop() ?? "")
@@ -72,17 +75,17 @@ export async function openAgent(name: string, opts: { resume?: string; split?: b
     const to = `terminal/${onMachine(resumeTerminalId(name, opts.resume), opts.machine)}`
     return openView(to, { newTab: opts.newTab ?? !isViewOpen(to), split: opts.split })
   }
-  const { machine, profile, instead } = await resolvePlace(name, opts)
+  const asked = performance.now(), { machine, profile, instead } = await resolvePlace(name, opts)
   if (instead) notify(`${instead}: opened on this machine`)
-  const id = `${agentIn(name, profile)}-${terminalId()}`
+  const id = `${agentIn(name, profile)}-${terminalId(asked)}`
   return openView(`terminal/${onMachine(id, machine)}`, { newTab: !opts.split, split: opts.split })
 }
 
 /** Open a plain terminal: on `machine` ("": this one), else the workspace's default. */
 export async function openTerminal(opts: { machine?: string | null; split?: boolean } = {}) {
-  const { machine, instead } = await resolvePlace(null, opts)
+  const asked = performance.now(), { machine, instead } = await resolvePlace(null, opts)
   if (instead) notify(`${instead}: opened on this machine`)
-  return openView(`terminal/${onMachine(terminalId(), machine)}`, { newTab: !opts.split, split: opts.split })
+  return openView(`terminal/${onMachine(terminalId(asked), machine)}`, { newTab: !opts.split, split: opts.split })
 }
 
 // ---------- an agent's accounts ----------

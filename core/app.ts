@@ -98,8 +98,9 @@ export class App {
   }
 
   /** Load the plugins (they register the kinds: the core owns none). */
-  async init() {
+  async init(timing?: { mark(part: string): void }) {
     this.app = await loadPlugins(this.vault)
+    timing?.mark("plugins")
     this.plugins = this.app
     // Templates' notes are patterns, not people or logs, whatever their `type` (Vault.kindFor).
     this.vault.plain = () => { const f = service(this.plugins, "templates:folder")?.(); return typeof f === "string" && f ? [f] : [] }
@@ -116,6 +117,7 @@ export class App {
       [readLock(this.vault)[vp.id]?.repo, typeof vp.manifest.repo === "string" ? vp.manifest.repo : null])
     this.wire()
     await this.syncPlugins(false)
+    timing?.mark("vault plugins")
     this.pagesOf = this.onKey()
     // (asked only of a vault with plugins installed from the directory: one day old, the blocklist is fetched again)
     if (Object.keys(readLock(this.vault)).length) this.index.refreshIfStale()
@@ -785,18 +787,20 @@ export function jsonOf(body: unknown): string | Buffer {
 
 /** Open a vault: load the plugins, install dashboards, read every file. The event loop turns between steps, so a
  *  starting server answers its web app's files meanwhile. */
-export async function open(vaultPath: string, { start = true } = {}) {
+export async function open(vaultPath: string, { start = true, timing }: { start?: boolean; timing?: { mark(part: string): void } } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
   // A vault the app has never opened (no .vaultite/ yet): it starts from Minimal (core/start.ts); until then, no
   // plugin's pages are installed (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
-  const app = await new App(vaultPath).init()
+  const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
     await turn()
     app.installPages()
+    timing?.mark("pages")
     await turn()
     await app.vault.sync()
+    timing?.mark("vault read")
     if (fresh) await setUpNew(app.host()).catch((e) => console.error("setting up the new vault:", e))
   }
   return app

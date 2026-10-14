@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, pastedFiles, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, pastedFiles, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -172,6 +172,9 @@ function release(l: Live) {
 }
 
 function create(id: string): Live {
+  // How long it took to show its shell, from when it was asked for (else from now: a tab put back), part by part.
+  const asked = askedAt(id), opening = span("terminal.open", { agent: agentOfTerminal(id)?.name ?? "shell", how: asked === undefined ? "shown" : "asked" }, asked)
+  if (asked !== undefined) opening.mark("tab")
   const t = new XTerm({
     fontFamily: "'SF Mono', ui-monospace, Menlo, 'DejaVu Sans Mono', 'Noto Sans Mono', 'Liberation Mono', 'Ubuntu Mono', monospace", fontSize: fontSize(textSize("terminal")), lineHeight: 1.15,
     cursorBlink: true, scrollback: 10000, allowProposedApi: false, theme: theme(),
@@ -226,13 +229,14 @@ function create(id: string): Live {
     const sock = new WebSocket(url)
     sock.binaryType = "arraybuffer"
     ws = sock
+    sock.onopen = () => opening.mark("socket")
     sock.onmessage = (e) => {
       if (typeof e.data !== "string") {
-        if (!replayNext) return t.write(new Uint8Array(e.data as ArrayBuffer))
+        if (!replayNext) return t.write(new Uint8Array(e.data as ArrayBuffer), () => { opening.mark("first output"); opening.end() })
         replayNext = false; replaying = true
-        return t.write(new Uint8Array(e.data as ArrayBuffer), () => { replaying = false })
+        return t.write(new Uint8Array(e.data as ArrayBuffer), () => { replaying = false; opening.mark("first output"); opening.end() })
       }
-      let msg: { t?: string; fresh?: boolean; tmux?: boolean; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean
+      let msg: { t?: string; fresh?: boolean; tmux?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean
         scrollback?: number }
       try { msg = JSON.parse(e.data) } catch { return }
       if (msg.t === "size") {
@@ -241,6 +245,8 @@ function create(id: string): Live {
         // A pasted or dropped file, now on the server's machine: its path, as if pasted (Claude Code attaches images).
         t.paste(`${msg.path} `)
       } else if (msg.t === "attached") {
+        opening.mark("attached")
+        if (msg.started) opening.tags.server = msg.started
         tries = 0
         attachOnly = true // reconnecting (the server restarted) never starts it again
         // (as many lines as its shell keeps, the setting on the machine it runs on: the replay is all of them)
@@ -362,6 +368,7 @@ function create(id: string): Live {
     open: () => {
       if (opened) return
       opened = true
+      opening.mark("view")
       t.open(box)
       // WebGL: the DOM renderer measures each new glyph in the page (a whole-app layout each time), holding a first screen
       // back 150-500 ms. Without WebGL, or when its context is lost, it falls back to the DOM renderer.
@@ -372,6 +379,7 @@ function create(id: string): Live {
       } catch { /* no WebGL here: the DOM renderer */ }
       t.textarea?.addEventListener("focus", onFocus)
       l.refit()
+      opening.mark("xterm")
       connect()
     },
     refit: () => { try { fit.fit() } catch { /* not laid out */ } },

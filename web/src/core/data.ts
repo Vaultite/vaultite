@@ -5,6 +5,7 @@ import { editCount, edited, onVaultChange, settled, startLive, type Paths } from
 import { get, send } from "@/core/http"
 import { getPrefs, hydratePrefs } from "@/core/prefs"
 import { notifyError } from "@/core/notify"
+import { span } from "@/core/spans"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
 import { hydrateHotkeys } from "@/core/commands"
 import type { FileTree } from "@/core/files"
@@ -243,6 +244,8 @@ function stateOf(a: Answer): State | null {
 // and one that a write overtook is thrown away and run again, so an optimistic change never flickers back.
 let busy: Promise<void> | null = null
 let again = false
+// The page's first load, from its navigation to the vault's state drawn (core/spans.ts makes the app's launch of it).
+let loading: ReturnType<typeof span> | null = span("app.load", {}, 0)
 function load(): Promise<void> {
   if (busy) { again = true; return busy }
   const run = async () => {
@@ -252,6 +255,7 @@ function load(): Promise<void> {
       const gen = editCount()
       try {
         const answer = await get<Answer>(`state?since=${encodeURIComponent(server?.v ?? "0")}`)
+        loading?.mark("state")
         if (editCount() !== gen) { again = true; continue }
         const all = stateOf(answer)
         if (!all) { server = null; again = true; continue }
@@ -264,9 +268,11 @@ function load(): Promise<void> {
         setVaultAppearance(all.appearance)
         hydrateHotkeys(all.config.hotkeys)
         await beforeState?.(all)
+        loading?.mark("vault plugins")
         const { config: _config, vaultPlugins: _plugins, appearance: _appearance, ...store } = all
         server = { v: answer.v, state: all, store }
         publish({ store, error: null })
+        if (loading) { const l = loading; loading = null; requestAnimationFrame(() => { l.mark("draw"); l.end() }) }
       } catch (e) {
         publish({ error: String(e) })
       }
@@ -300,6 +306,7 @@ let started = false
 export function startStore() {
   if (started) return
   started = true
+  loading?.mark("scripts")
   load()
   startLive()
   onVaultChange((paths) => { if (!onlyCaches(paths) || getPrefs().showHidden) loadSoon() })

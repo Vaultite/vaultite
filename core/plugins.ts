@@ -32,6 +32,7 @@ import { type ArchiveHook, type CreateHook, type FileCreateHook, isHiddenPath, t
 export { contentType, isTextKind, kindOf } from "./filetypes.ts"
 /** How long ago a time was, as the app says it ("5 min ago"; core/dates.ts). */
 export { fmtAgo } from "./dates.ts"
+export { record as recordSpan, span, spans, type Span } from "./spans.ts"
 /** The app's version and the plugin API's (core/version.ts). */
 export { API_VERSION, APP_VERSION } from "./version.ts"
 /** [[Links]]: the targets in a file, and a resolver like the app's (core/links.ts). */
@@ -714,6 +715,19 @@ export class Plugin {
     this.memos.set(key, [Date.now() / 1000, val])
     val.catch(() => { if (this.memos.get(key)?.[1] === val) this.memos.delete(key) })
     return val
+  }
+
+  /** Like memo, but once stale it answers what it had while fn runs again: a slow fn (asking machines that may be
+   *  offline) never holds a caller after its first answer. */
+  memoStale<A extends unknown[], T>(ttl: number, fn: (...args: A) => Awaitable<T>, ...args: A): Promise<T> {
+    const key = fn.name + "\0" + JSON.stringify(args), hit = this.memos.get(key)
+    if (!hit) return this.memo(ttl, fn, ...args)
+    if (Date.now() / 1000 - hit[0] >= ttl) {
+      hit[0] = Date.now() / 1000 // (one refresh at a time)
+      void Promise.resolve().then(() => fn(...args)).then((v) => { if (this.memos.get(key) === hit) this.memos.set(key, [Date.now() / 1000, Promise.resolve(v)]) }, () => {})
+    }
+    noteSource("live", this.id)
+    return hit[1] as Promise<T>
   }
 
   /** Forget everything memo() remembers. */

@@ -79,7 +79,7 @@ export { fileAt, headOf, iconOf, isPage, namedIcon, offPlugin, pageOf, tintOf } 
 // Attachments (a pasted image, a recording): the folder they go in for a note, and saving files there as embeds.
 export { attachmentFolder, pasteAttachments } from "@/core/conventions"
 export {
-  accountsOf, canRunAgents, chooseDefaultPlace, choosePlace, getDefaultPlace, defaultPlaceOf, mintedHere, openAgent, openPlace, openTerminal, places, resolvePlace, setDefaultPlace, terminalId, useDefaultPlace,
+  accountsOf, askedAt, canRunAgents, chooseDefaultPlace, choosePlace, getDefaultPlace, defaultPlaceOf, mintedHere, openAgent, openPlace, openTerminal, places, resolvePlace, setDefaultPlace, terminalId, useDefaultPlace,
   useTerminalAccount, type AgentAccount, type DefaultPlace, type Place,
 } from "@/core/agents"
 // Your other machines (Machines plugin): their terminals are <id>@<machine>, their API is machines/<machine>/<path>.
@@ -184,6 +184,7 @@ export { currentRow, focusSidebar, foldInList, inKeyList, leaveList, moveInList,
 export { onActivity, type ActivityNote } from "@/core/activity"
 /** What the app did, by topic (editor changes, scroll restores, commands, console warnings): add to it, or hear it all. */
 export { onTrace, trace, type TraceEvent } from "@/core/trace"
+export { span, takeSpans, type Span } from "@/core/spans"
 export { onAppError, takeAppErrors, type AppError } from "@/core/errors"
 export { dismissNotice, notify, notifyError, type NotifyOptions } from "@/core/notify"
 export { capitalize, cn, plural } from "@/lib/utils"

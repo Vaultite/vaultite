@@ -95,6 +95,8 @@ export type ClientPerf = {
   /** JS heap in use (MB; Chromium only). */
   heap?: number
 }
+export type Timing = { name: string; n: number; p50: number; p95: number; last: { t: number; ms: number; parts: Record<string, number>; tags?: Record<string, string> } }
+
 export type Perf = {
   now: number; uptime: number; node: string; pid: number
   rss: number; heap: number
@@ -106,6 +108,8 @@ export type Perf = {
   syncs: number
   routes: RouteStat[]
   slow: SlowRequest[]
+  /** What the user waited for (core/spans.ts: the app opening, a terminal, an agent), by name: the last one's parts. */
+  timings: Timing[]
   /** One per minute, oldest first (the last `minutes`, default 24 h). */
   minutes: Minute[]
   clients: ClientPerf[]

@@ -203,6 +203,8 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     env: {
       ...process.env, ELECTRON_RUN_AS_NODE: "1", VAULTITE_DESKTOP: "1", VAULTITE_VAULT: v.path, VAULTITE_LOCAL: LOCAL,
       HOST: "127.0.0.1", PORT: String(port),
+      // (for its startup's span, core/spans.ts)
+      VAULTITE_LAUNCHED_AT: String(Math.round(Date.now() - process.uptime() * 1000)), VAULTITE_FORKED_AT: String(Date.now()),
     },
   })
   child.stderr!.pipe(log)
@@ -991,9 +993,11 @@ function checkForUpdate(byHand: boolean) {
   fs.writeSync(log, `\n${new Date().toISOString()} checking (running ${BUILD!.commit.slice(0, 7)})\n`)
   let out = ""
   if (byHand) setStatus("Checking for updates…")
-  const child = checking = spawn(SHELL, ["-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), BUILD!.repo, BUILD!.commit,
-    BRANCH, DEV ? "app:build:dev" : "app:build"],
-    { stdio: ["ignore", "pipe", "pipe"], detached: true })
+  // On the timer it builds at a low priority: its minutes of compiling never compete with what the user is doing.
+  const low = byHand ? [] : process.platform === "darwin" ? ["/usr/sbin/taskpolicy", "-c", "utility"] : ["nice", "-n", "10"]
+  const [cmd, ...args] = [...low, SHELL, "-l", path.join(ROOT, "electron", "update.sh"), "build", SOURCE(), BUILD!.repo, BUILD!.commit,
+    BRANCH, DEV ? "app:build:dev" : "app:build"]
+  const child = checking = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], detached: true })
   buildMenu()
   const take = (b: Buffer) => {
     fs.writeSync(log, b)

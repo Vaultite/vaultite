@@ -283,7 +283,7 @@ function askClaude(dir: string): Promise<Item | null> {
 
 /** What Claude Code says now, asked at most every two minutes (a failure too, so a missing login isn't asked for every
  *  block). memo() tells its functions apart by name: this has one. */
-const asked = (dir: string) => plugin.memo(120, async function claudeUsage(d: string) { return { at: Date.now() / 1000, got: await askClaude(d) } }, dir)
+const asked = (dir: string) => plugin.memoStale(120, async function claudeUsage(d: string) { return { at: Date.now() / 1000, got: await askClaude(d) } }, dir)
 
 const at = (v: unknown) => { const t = typeof v === "string" ? Date.parse(v) / 1000 : NaN; return Number.isFinite(t) ? t : null }
 
@@ -424,7 +424,7 @@ async function plans(accts: Account[]) {
   const both = plans.length === each.length && plans.length > 1
     ? { name: plans.map((p) => p.name).join(" + "), monthly: plans.every((p) => p.monthly) ? plans.reduce((n, p) => n + p.monthly!, 0) : null } : null
   return { plan: each.length === 1 ? each[0].plan : both, limits: each.find((a) => a.limits)?.limits ?? null,
-    accounts: each, servers: await plugin.memo(10, servers, accts) }
+    accounts: each, servers: await plugin.memoStale(10, servers, accts) }
 }
 
 // ---------- one session's transcript (the view tab: view:claude-session/<id>)
