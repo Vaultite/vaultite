@@ -1301,6 +1301,44 @@ app.on("open-file", (e, p) => {
   else early.push(p)
 })
 
+// vaultite:// from another app (Shortcuts, Raycast, a link): the iPhone app's addresses (ios/App/Shared/Links.swift),
+// `command/<id>` (a palette command) and `open/<path>` (a vault file), in the focused vault's window.
+const earlyLinks: string[] = []
+app.on("open-url", (e, url) => {
+  e.preventDefault()
+  if (started) void appLink(url).catch(() => {})
+  else earlyLinks.push(url)
+})
+async function appLink(url: string) {
+  let u: URL
+  try { u = new URL(url) } catch { return }
+  if (u.protocol !== "vaultite:") return
+  let rest = ""
+  try { rest = decodeURIComponent(u.pathname.replace(/^\/+/, "")) } catch { return }
+  const what = u.hostname.toLowerCase()
+  if (what === "command" ? !/^[\w:.-]+$/.test(rest) : what !== "open" || !rest || rest.split("/").some((x) => x === ".." || x.startsWith("."))) return
+  let w: Win | null = focusedVault()
+  if (!w) {
+    const last = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0]
+    if (!last) return showManager()
+    w = await openVault(last.path).catch(() => null)
+  }
+  if (!w) return
+  if (what === "open") {
+    // (a note named without its .md, as a [[link]] names it)
+    if (!path.extname(rest) && fs.existsSync(path.join(w.vault.path, `${rest}.md`))) rest += ".md"
+    if (!fs.existsSync(path.join(w.vault.path, rest))) return
+    send(w, rest)
+  } else {
+    const to = w
+    // (a window still loading takes it once its page listens; the page tries until the command is there)
+    const go = (n = 0) => { if (to.win.isDestroyed()) return; if (to.ready) to.win.webContents.send("vaultite", { type: "link", id: rest }); else if (n < 150) setTimeout(() => go(n + 1), 200) }
+    go()
+  }
+  if (w.win.isMinimized()) w.win.restore()
+  w.win.focus()
+}
+
 if (!app.requestSingleInstanceLock()) app.quit()
 else {
   // The vaults open last time start their servers now, before Electron is ready: a server takes longer to start than
@@ -1351,6 +1389,7 @@ app.whenReady().then(async () => {
   else if (firstRun() && !asked()) showSetup()
   else if (!wins.size && !remoteWins.size && !early.length) showManager()
   if (early.length) await openFiles(early.splice(0), null)
+  for (const u of earlyLinks.splice(0)) await appLink(u).catch(() => {})
   behind = false
   launched = true
   if (!MAC && !BrowserWindow.getAllWindows().length) showManager() // (every window the launch opened failed)

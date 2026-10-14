@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Quick Look for Markdown**: the space bar in Finder shows a note drawn as it reads (properties, headings, lists
+  and checkboxes, callouts, code, tables), light or dark, even with the app closed.
+- On a Mac, Vaultite can be the default app for Markdown files, which then get the system's document icon made from
+  Vaultite's; `vaultite://command/<id>` and `vaultite://open/<path>` from Shortcuts, Raycast or a link in another app
+  run a command or open a file in the focused vault, as on the iPhone.
 - Checkboxes tick in callouts, `<details>`, embedded notes and dashboards' text, reading or editing, as they do in a
   note's lines; with Vim, the cursor at the start of a list line shows its Markdown instead of drawing over its box.
 - **Tables edited cell by cell**: click a cell to edit its text in place; Tab, Enter and the arrows move between

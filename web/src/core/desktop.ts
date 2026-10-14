@@ -351,6 +351,8 @@ export function startDesktop() {
   })
   desktop.on((m) => {
     if (m.type === "command" && m.id) runCommandId(m.id)
+    // A vaultite://command/<id> from another app: tried until the app has that command (just opened, still starting).
+    else if (m.type === "link" && m.id) { const id = m.id; let n = 0; const go = () => { if (!runCommandId(id) && ++n < 40) setTimeout(go, 150) }; go() }
     else if (m.type === "open" && m.path) open(m.path)
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spelled({ word: m.word ?? "", suggestions: m.suggestions ?? [] })

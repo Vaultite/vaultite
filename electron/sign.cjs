@@ -9,6 +9,8 @@
 // id; an app signed ad hoc is a new app to macOS on every build, and its shells lose the vault until they're granted
 // again. With no identity (or one that can't sign: a keychain locked over ssh) it signs ad hoc, and says so.
 //
+// The Quick Look extension (quicklook.cjs) is built into the app first, and signed in its own sandbox.
+//
 // A release (VAULTITE_RELEASE, npm run release) needs a Developer ID: every binary is signed with the hardened runtime
 // (electron/entitlements.plist) and a timestamp, then notarized with the `vaultite-notary` notarytool profile if there is one
 // and stapled (the dmg too: electron/dmg.cjs).
@@ -22,6 +24,7 @@ const NOTARY = "vaultite-notary"
 // That profile, in VAULTITE_NOTARY_KEYCHAIN when it isn't in the login keychain (CI's: .github/workflows/release.yml).
 const PROFILE = ["--keychain-profile", NOTARY, ...(process.env.VAULTITE_NOTARY_KEYCHAIN ? ["--keychain", process.env.VAULTITE_NOTARY_KEYCHAIN] : [])]
 const ENTITLEMENTS = path.join(__dirname, "entitlements.plist")
+const QL_ENTITLEMENTS = path.join(__dirname, "quicklook", "entitlements.plist")
 
 /** The identity to sign with, or null for ad hoc. */
 function identity() {
@@ -44,7 +47,7 @@ function macho(file) {
   return m === 0xfeedfacf || m === 0xcffaedfe || m === 0xfeedface || m === 0xcefaedfe || (m === 0xcafebabe && b.readUInt32BE(4) < 45)
 }
 
-/** The bundle's Mach-O files, then its nested bundles (.app, .framework), deepest first: codesign signs inside out. */
+/** The bundle's Mach-O files, then its nested bundles (.app, .appex, .framework), deepest first: codesign signs inside out. */
 function contents(app) {
   const files = [], bundles = []
   const walk = (dir) => {
@@ -52,7 +55,7 @@ function contents(app) {
       const p = path.join(dir, e.name)
       if (e.isDirectory()) {
         walk(p)
-        if (/\.(app|framework)$/.test(e.name)) bundles.push(p)
+        if (/\.(app|appex|framework)$/.test(e.name)) bundles.push(p)
       } else if (e.isFile() && macho(p)) files.push(p)
     }
   }
@@ -62,10 +65,10 @@ function contents(app) {
 }
 
 function release(app, id) {
-  const args = ["--force", "--timestamp", "--options", "runtime", "--entitlements", ENTITLEMENTS, "--sign", id]
+  const args = ["--force", "--timestamp", "--options", "runtime", "--sign", id]
   const all = [...contents(app), app]
   console.log(`sign.cjs: signing ${all.length} binaries and bundles with the hardened runtime`)
-  for (const p of all) execFileSync("codesign", [...args, p], { stdio: "pipe" })
+  for (const p of all) execFileSync("codesign", [...args, "--entitlements", p.endsWith(".appex") ? QL_ENTITLEMENTS : ENTITLEMENTS, p], { stdio: "pipe" })
   execFileSync("codesign", ["--verify", "--deep", "--strict", app], { stdio: "inherit" })
   notarize(app)
 }
@@ -90,6 +93,7 @@ function notarize(file) {
 exports.default = async function sign(context) {
   if (context.electronPlatformName !== "darwin") return
   await require("./natives.cjs").default(context)
+  const appex = require("./quicklook.cjs").default(context)
   const app = path.join(context.appOutDir, `${context.packager.appInfo.productFilename}.app`)
   const id = identity()
   if (RELEASE) {
@@ -100,12 +104,22 @@ exports.default = async function sign(context) {
     try {
       // No timestamp: it asks Apple's server, and an app that's never notarized doesn't need one.
       execFileSync("codesign", ["--force", "--deep", "--timestamp=none", "--sign", id, app], { stdio: "inherit" })
+      sealed(app, appex, ["--force", "--timestamp=none", "--sign", id])
       return
     } catch {
       console.warn(`sign.cjs: couldn't sign with ${id} (a locked keychain?): signing ad hoc, so macOS will ask for its permissions again`)
     }
   } else console.warn("sign.cjs: no code signing identity in the keychain: signing ad hoc, so macOS will ask for its permissions again after each build")
   execFileSync("codesign", ["--force", "--deep", "--sign", "-", app], { stdio: "inherit" })
+  sealed(app, appex, ["--force", "--sign", "-"])
+}
+
+/** --deep signed the extension as the app (no sandbox, which macOS won't load): signed again as itself, then the app
+ *  over it. */
+function sealed(app, appex, args) {
+  if (!appex) return
+  require("./quicklook.cjs").sign(appex, args)
+  execFileSync("codesign", [...args, app], { stdio: "inherit" })
 }
 
 exports.identity = identity

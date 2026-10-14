@@ -180,7 +180,15 @@
         "NSCameraUsageDescription": "Web pages in Vaultite use the camera when you allow them.",
         "NSLocationUsageDescription": "Web pages in Vaultite know your location when you allow them.",
         "NSLocationWhenInUseUsageDescription": "Web pages in Vaultite know your location when you allow them.",
-        "NSAppleEventsUsageDescription": "Scripts in Vaultite's terminals want to control another app."
+        "NSAppleEventsUsageDescription": "Scripts in Vaultite's terminals want to control another app.",
+        "UTImportedTypeDeclarations": [
+          {
+            "UTTypeIdentifier": "net.daringfireball.markdown",
+            "UTTypeDescription": "Markdown",
+            "UTTypeConformsTo": ["public.plain-text"],
+            "UTTypeTagSpecification": { "public.filename-extension": ["md", "markdown"], "public.mime-type": ["text/markdown"] }
+          }
+        ]
       }
     },
     "dmg": {
@@ -212,6 +220,12 @@
       "artifactName": "vaultite_${version}_${arch}.deb",
       "packageCategory": "editors"
     },
+    "protocols": [
+      {
+        "name": "Vaultite",
+        "schemes": ["vaultite"]
+      }
+    ],
     "fileAssociations": [
       {
         "ext": [
@@ -220,7 +234,7 @@
         ],
         "name": "Markdown",
         "role": "Editor",
-        "rank": "Alternate",
+        "rank": "Default",
         "mimeType": "text/markdown"
       },
       {
