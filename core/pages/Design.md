@@ -52,6 +52,7 @@ Text is **bold**, *italic*, ~~struck~~, `code`, a [link](https://example.com), o
 | --- | --- |
 | Rows | Line up |
 | In columns | Too |
+| Edited | A cell at a time: click one, Tab and Enter move on, right-click for rows, columns and alignment |
 
 ```
 A code block keeps its spacing.

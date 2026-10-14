@@ -1,6 +1,6 @@
 import { Copy, LayoutDashboard } from "lucide-react"
 import { dateText, definePlugin, inPagesDir, PageHeader, type PageCtx } from "@vaultite"
-import { Dashboard } from "./Dashboard"
+import { Dashboard, onlyText } from "./Dashboard"
 import { BuiltInBar, copyToVault } from "./BuiltIn"
 
 // Dashboards: a `type: dashboard` file is a page of blocks while read; editing it edits the file. Off, it's a
@@ -20,7 +20,8 @@ function Header({ title, fm, place, path }: PageCtx) {
 export default definePlugin({
   files: {
     types: ["dashboard"], icon: LayoutDashboard,
-    page: { header: (ctx) => <Header {...ctx} />, render: (ctx) => <Dashboard ctx={ctx} className={ctx.place === "sheet" ? "mt-4" : undefined} /> },
+    page: { header: (ctx) => <Header {...ctx} />, render: (ctx) => <Dashboard ctx={ctx} className={ctx.place === "sheet" ? "mt-4" : undefined} />,
+      narrow: (ctx) => onlyText(ctx.body) },
   },
   // A plugin's built-in page becomes the user's file (BuiltIn.tsx).
   fileMenu: (path) => (inPagesDir(path) ? [{ label: "Copy to my vault", icon: Copy, section: "change", run: () => copyToVault(path) }] : []),

@@ -364,6 +364,27 @@ check("markdown: a link with no extension, a relative file and any app's scheme 
   links.includes('data-wiki="Note">a</a>') && links.includes('data-wiki="files/a.pdf">b</a>') && links.includes('data-url="obsidian://open?vault=x">c</a>') &&
   links.includes('data-url="zotero://select/items/1">d</a>') && links.includes('data-url="tel:+15551234">e</a>') && links.includes('data-url="file:///Users/x/a.pdf">f</a>') &&
   !links.includes("javascript") && links.includes('href="https://example.com" target="_blank"'), links)
+const broken = md.renderMarkdown("Vaultite\nOlimpicos\n\nNext")
+check("markdown: a line break is a break, as the editor shows it", broken.includes("Vaultite<br>Olimpicos") && broken.includes("<p>Next</p>"), broken)
+
+// Tables edited cell by cell (editor/tables.ts) rewrite only what changed, in the table's own style.
+const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/tableText.ts")
+{
+  const src = "|a|b|\n|---|:-:|\n| 1 | x \\| y |\n|2|"
+  const t = tt.parseTable(src)!
+  check("tables: cells split at unescaped pipes, short rows filled", t.rows[1].cells.join(",") === "1,x \\| y" && t.rows[2].cells.join(",") === "2," && t.align.join() === ",center")
+  check("tables: unchanged, written as it was", tt.writeTable(t) === src, tt.writeTable(t))
+  t.rows[2].cells[1] = tt.escape("a|b")
+  const out = tt.writeTable(t).split("\n")
+  check("tables: only the changed row is rewritten, its pipe escaped", out[0] === "|a|b|" && out[2] === "| 1 | x \\| y |" && out[3] === "| 2 | a\\|b |", out.join("\n"))
+  t.align.push(""); t.rows.forEach((r) => r.cells.push(""))
+  check("tables: a new column gets its own separator", tt.writeTable(t).split("\n")[1] === "|---|:-:|---|", tt.writeTable(t))
+  check("tables: a row wider than its header isn't edited cell by cell", tt.parseTable("|a|\n|-|\n|1|2|") === null)
+  const padded = tt.parseTable("  | Name  | Qty |\n  | ----- | --- |\n  | Apple | 3   |")!
+  padded.rows[1].cells[0] = "Pineapple"
+  check("tables: a padded table stays lined up, indented as it was", tt.writeTable(padded) === "  | Name      | Qty |\n  | --------- | --- |\n  | Pineapple | 3   |", tt.writeTable(padded))
+  check("tables: a line break in a cell is <br>", tt.escape("a\nb") === "a<br>b" && tt.unescape("x\\|y") === "x|y")
+}
 const imgs = md.renderMarkdown("Before ![[photo.png|300]] and ![alt|200](../Img/photo.png) and ![[Idea]] after\n", vopts)
 check("markdown: vault images show (with widths), and an embed mid-line is drawn in its place",
   imgs.includes('<img src="/api/raw?path=Img/photo.png" alt="photo.png" width="300"') && imgs.includes('alt="alt" width="200"') &&

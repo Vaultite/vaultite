@@ -272,9 +272,10 @@
 .note-prose li::marker { color: var(--muted-foreground); }
 .note-prose ol > li::marker { font-variant-numeric: tabular-nums; }
 .note-prose li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.35em; }
-/* Checklists: round like Notes, filled with the Notes tint when done; the same in a note, a sheet and a dashboard. */
+/* Checklists: rounded squares, filled with the Notes tint when done; the same in a note, a sheet, a dashboard and the
+   editor (.cm-task). */
 :is(.note-prose, .dash-prose) input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin: 0 0.5em 0 0;
-  vertical-align: -4px; border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
+  vertical-align: -4px; border-radius: 5px; border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
 :is(.note-prose, .dash-prose) input[type="checkbox"]:checked { border-color: var(--notes); background: var(--notes) center / 12px no-repeat
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 .note-prose a { color: var(--primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
@@ -307,9 +308,14 @@
 .note-prose blockquote { border-left: 3px solid color-mix(in srgb, var(--notes) 55%, transparent); padding-left: 14px;
   color: color-mix(in srgb, var(--foreground) 80%, transparent); }
 .note-prose hr { border: 0; border-top: 0.5px solid var(--border); margin: 24px 0; }
-.note-prose table { display: block; max-width: 100%; overflow-x: auto; overscroll-behavior-x: contain; border-collapse: collapse; font-size: 15px; line-height: 20px; }
-.note-prose :where(th, td) { text-align: left; padding: 7px 14px 7px 0; border-bottom: 0.5px solid var(--border); vertical-align: top; }
-.note-prose th { font-weight: 600; }
+/* Tables: a grid of ruled cells with a tinted header row, the same in a note, a sheet, a dashboard and the editor. As
+   wide as their text up to the column, then they scroll sideways. */
+:is(.note-prose, .dash-prose, .vau-editor :is(.cm-block-table, .cm-block-callout, .cm-block-details, .cm-block-html)) table { display: block; width: max-content; max-width: 100%; overflow-x: auto;
+  overscroll-behavior-x: contain; border-collapse: collapse; font-size: 0.9375em; line-height: 1.45; }
+:is(.note-prose, .dash-prose, .vau-editor :is(.cm-block-table, .cm-block-callout, .cm-block-details, .cm-block-html)) :where(th, td) { text-align: left; vertical-align: top; padding: 5px 11px;
+  border: 1px solid var(--border); min-width: 3em; }
+:is(.note-prose, .dash-prose, .vau-editor :is(.cm-block-table, .cm-block-callout, .cm-block-details, .cm-block-html)) th { font-weight: 600; color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 4.5%, transparent); }
 .note-prose img { max-width: 100%; border-radius: 10px; }
 /* an https frame from raw HTML (a video): fits the column */
 :is(.note-prose, .vau-editor) iframe { max-width: 100%; border: 0; border-radius: 10px; }
@@ -556,10 +562,11 @@ dialog { --vau-panel-bottom: 0px; }
 .nb-code .tok-propertyName { color: var(--teal); }
 .nb-code :is(.tok-punctuation, .tok-operator) { color: var(--muted-foreground); }
 .nb-code .tok-meta { color: var(--pink); }
-.vau-editor .cm-bullet { color: var(--muted-foreground); }
+/* A bullet in its own column (livePreview BULLET), the dot centred in it. */
+.vau-editor .cm-bullet { display: inline-block; width: 0.95em; text-align: center; text-indent: 0; color: var(--muted-foreground); }
 .vau-editor .cm-listmark { color: var(--muted-foreground); }
 .vau-editor .cm-task { appearance: none; -webkit-appearance: none; width: 18px; height: 18px; margin: 0 0.4em 0 0; vertical-align: -3px; cursor: pointer;
-  border-radius: 50%; border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
+  border-radius: 4.5px; border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
 .vau-editor .cm-task:checked { border-color: var(--notes); background: var(--notes) center / 11px no-repeat
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 .vau-editor .cm-task:disabled { cursor: default; }
@@ -596,6 +603,8 @@ dialog { --vau-panel-bottom: 0px; }
    tags as an empty line (a callout's or a table's trailing blank line). */
 .vau-editor .cm-block { position: relative; padding: 10px 0 6px; cursor: text; white-space: normal; }
 .vau-editor :is(.cm-block-block, .cm-block-embed) { cursor: default; }
+/* A table sits close to its lines, as a paragraph does: its ruled edge is its border. */
+.vau-editor .cm-block-table { padding: 4px 0; }
 /* A drawn block's bar, top right on hover: its name, options, menu and </> (phones: a held finger opens its menu). */
 .cm-block-bar { position: absolute; top: 4px; right: 0; z-index: 2; display: flex; align-items: center; gap: 2px; padding: 2px;
   border: 0.5px solid var(--border); border-radius: 7px; background: var(--background); font-family: var(--font-sans);
@@ -622,9 +631,10 @@ dialog { --vau-panel-bottom: 0px; }
 /* A block that draws nothing still has a place to right-click. */
 .vau-editor .cm-block [data-block]:empty::before { content: "Nothing to show yet."; display: block; font-size: 15px; line-height: 20px;
   color: var(--muted-foreground); }
-.vau-editor :is(.cm-block-table, .cm-block-callout, .cm-block-details) table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 15px; line-height: 20px; }
-.vau-editor :is(.cm-block-table, .cm-block-callout, .cm-block-details) :where(th, td) { text-align: left; padding: 7px 14px 7px 0; border-bottom: 0.5px solid var(--border); vertical-align: top; }
-.vau-editor :is(.cm-block-table, .cm-block-callout, .cm-block-details) th { font-weight: 600; }
+/* A table's cell being edited (editor/tables.ts): its Markdown in a field the cell's size, ringed. */
+.vau-editor .cm-block-table :is(th, td).is-editing { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 60%, transparent); }
+.vau-editor .cm-cell-input { display: block; width: 100%; min-width: 2em; margin: 0; padding: 0; border: 0; outline: 0; resize: none; overflow: hidden;
+  background: transparent; color: inherit; font: inherit; line-height: inherit; text-align: inherit; caret-color: var(--primary); }
 .vau-editor .cm-block .wikilink { color: var(--notes); font-weight: 500; cursor: pointer; }
 .vau-editor .cm-block .wikilink.missing { color: var(--muted-foreground); font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; }
 .vau-editor .cm-editor[contenteditable="false"] .cm-block, .vau-editor .cm-content[contenteditable="false"] .cm-block { cursor: default; }
@@ -650,10 +660,18 @@ dialog { --vau-panel-bottom: 0px; }
 .note-embed-body > * + * { margin-top: 10px; }
 .note-embed-missing { font-size: 15px; color: var(--muted-foreground); }
 /* Markdown between a dashboard's blocks (a heading over a group of cards, a line of text) */
+/* Its type is the editor's (sizes, heading colours), so reading and editing a dashboard show the same text. */
 .dash-prose { font-size: 17px; line-height: 25px; }
-.dash-prose > * + * { margin-top: 8px; }
-.dash-prose :is(h1, h2) { font-size: 22px; line-height: 28px; font-weight: 700; margin-top: 12px; }
-.dash-prose :is(h3, h4, h5, h6) { font-size: 17px; font-weight: 600; margin-top: 8px; }
+@media (min-width: 768px) { .dash-prose { font-size: 16px; line-height: 24px; } }
+.dash-prose > * + * { margin-top: 10px; }
+.dash-prose > :is(h1, h2, h3, h4, h5, h6):not(:first-child) { margin-top: 22px; }
+.dash-prose h1 { font-size: 1.625em; line-height: 1.31; font-weight: 700; color: var(--h1); }
+.dash-prose h2 { font-size: 1.3125em; line-height: 1.333; font-weight: 700; color: var(--h2); }
+.dash-prose h3 { font-size: 1.125em; line-height: 1.39; font-weight: 600; color: var(--h3); }
+.dash-prose :is(h4, h5, h6) { font-size: 1em; line-height: 1.44; font-weight: 600; }
+.dash-prose h4 { color: var(--h4); }
+.dash-prose h5 { color: var(--h5); }
+.dash-prose h6 { color: var(--h6); }
 .dash-prose :is(ul, ol) { padding-left: 1.3em; }
 .dash-prose ul { list-style: disc; }
 .dash-prose ol { list-style: decimal; }
@@ -667,9 +685,6 @@ dialog { --vau-panel-bottom: 0px; }
 .dash-prose hr { border: 0; border-top: 0.5px solid var(--border); margin: 16px 0; }
 .dash-prose del { color: var(--muted-foreground); }
 .dash-prose li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em; }
-.dash-prose table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; font-size: 15px; line-height: 21px; }
-.dash-prose :is(th, td) { padding: 6px 12px 6px 0; border-bottom: 0.5px solid var(--border); text-align: left; vertical-align: top; }
-.dash-prose th { font-weight: 600; color: var(--muted-foreground); }
 /* A column aligned by its separator row (`:-:`, `--:`: marked's align attribute), over the left of the rules above. */
 :is(.note-prose, .dash-prose, .vau-editor .cm-block) :is(th, td)[align="center"] { text-align: center; }
 :is(.note-prose, .dash-prose, .vau-editor .cm-block) :is(th, td)[align="right"] { text-align: right; }
@@ -729,7 +744,7 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 .vau-editor :is(.cm-block-callout, .cm-block-details) :where(p, ul, ol, pre, blockquote, table) { margin: 0 0 10px; }
 .vau-editor :is(.cm-block-callout, .cm-block-details) :where(ul) { list-style: disc; padding-left: 1.35em; }
 .vau-editor :is(.cm-block-callout, .cm-block-details) :where(ol) { list-style: decimal; padding-left: 1.35em; }
-.vau-editor :is(.cm-block-callout, .cm-block-details) code { font-family: var(--font-code); font-size: 0.85em; background: var(--muted); border-radius: 5px; padding: 0.1em 0.3em; }
+.vau-editor :is(.cm-block-callout, .cm-block-details, .cm-block-table) code { font-family: var(--font-code); font-size: 0.85em; background: var(--muted); border-radius: 5px; padding: 0.1em 0.3em; }
 .vau-editor :is(.cm-block-callout, .cm-block-details) pre code { background: none; padding: 0; font-size: 0.875em; }
 .vau-editor :is(.cm-block-callout, .cm-block-details) a:not(.wikilink) { color: var(--primary); text-decoration: underline; text-underline-offset: 3px; }
 /* <details><summary> toggles */

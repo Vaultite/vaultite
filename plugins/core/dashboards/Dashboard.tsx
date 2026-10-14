@@ -5,6 +5,12 @@ import { blockFor, blockOptions, BlockView, cn, EmbedView, Markdown, blockHeight
 
 type Cell = ({ md: string } | { embed: string; height?: number } | { wide: boolean; blocks: { name: string; text: string; nth: number }[] }) & { line: number }
 
+/** An embed of a note or a part of it (`![[Note#Heading]]`), not of another kind of file. */
+const isNote = (target: string) => { const name = target.split(/[#|]/)[0]; return !/\.[a-z0-9]+$/i.test(name) || /\.md$/i.test(name) }
+
+/** A dashboard of only Markdown (no blocks): read at a note's width. */
+export const onlyText = (body: string) => layout(body).every((c) => "md" in c)
+
 function layout(body: string): Cell[] {
   const cells: Cell[] = []
   // (which of the file's blocks of its name each is: its options are written there)
@@ -51,11 +57,12 @@ export function Dashboard({ ctx, className }: { ctx: PageCtx; className?: string
     // Two columns when its pane is wide enough (a container query: a dashboard in a narrow split gets one).
     <div className={cn("@container", className)}><div ref={grid} className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
       {cells.map((c, i) => "embed" in c ? (
-        <Card key={i} at={keys[i]} line={c.line} className="min-w-0 @2xl:col-span-2"><EmbedView target={c.embed} height={c.height} store={ctx.store} from={ctx.path} seen={[ctx.path]} /></Card>
+        // (a note, or a part of one, is text: as long as the text around it; a page, a table or a PDF takes the row)
+        <Card key={i} at={keys[i]} line={c.line} className={cn("min-w-0 @2xl:col-span-2", isNote(c.embed) && "max-w-(--line-width)")}><EmbedView target={c.embed} height={c.height} store={ctx.store} from={ctx.path} seen={[ctx.path]} /></Card>
       ) : "md" in c ? (
         // Markdown between blocks: a row of its own, its math and diagrams
         // drawn once it's on the page; its lines as long as a note's (FileView), however wide the cards around it.
-        <Card key={i} at={keys[i]} line={c.line} end={c.line + c.md.split("\n").length - 1} className="min-w-0 @2xl:col-span-2"><Markdown text={c.md} store={ctx.store} from={ctx.path} plain className="dash-prose max-w-[700px]" /></Card>
+        <Card key={i} at={keys[i]} line={c.line} end={c.line + c.md.split("\n").length - 1} className="min-w-0 @2xl:col-span-2"><Markdown text={c.md} store={ctx.store} from={ctx.path} plain className="dash-prose max-w-(--line-width)" /></Card>
       ) : (
         <Card key={i} at={keys[i]} line={c.line} className={cn("grid min-w-0 grid-cols-1 gap-4", c.blocks.length > 1 && "content-start", c.wide && "@2xl:col-span-2")}>
           {c.blocks.map((b, j) => <BlockView key={j} name={b.name} text={b.text} ctx={ctx} disabled={disabled} quiet nth={b.nth} />)}

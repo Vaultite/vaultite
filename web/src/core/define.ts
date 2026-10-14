@@ -80,6 +80,9 @@ export type PageView = {
   header?: (ctx: PageCtx) => ReactNode
   /** The rest of the page. */
   render: (ctx: PageCtx) => ReactNode
+  /** True when the page is only text (a dashboard without blocks): it reads at a note's width, centred like one,
+   *  instead of a page of cards'. */
+  narrow?: (ctx: PageCtx) => boolean
 }
 /** What a page view gets: the file as it is in the editor, the page's name (a tab carries its head's), where it's
  *  drawn, and which plugins are off. */

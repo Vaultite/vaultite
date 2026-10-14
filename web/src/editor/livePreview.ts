@@ -13,6 +13,7 @@ import { BLOCK_ID, blockName, scan, TAG } from "../../../core/sections.ts"
 import { frontmatter } from "./frontmatter"
 import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
+import { drawTable as drawCells, enterTable } from "./tables"
 
 export type PreviewConfig = {
   /** false: plain Markdown (source mode). */
@@ -123,6 +124,8 @@ const reading = (state: EditorState) => !state.facet(EditorView.editable)
 
 // ---------- widgets ----------
 
+/** A bullet's column, in em (.cm-bullet): wide enough that a nested item's step shows, as in reading. */
+const BULLET = 0.95
 class Bullet extends WidgetType {
   eq() { return true }
   toDOM() { const s = document.createElement("span"); s.className = "cm-bullet"; s.textContent = "•"; return s }
@@ -426,8 +429,9 @@ class Block extends WidgetType {
     const body = document.createElement("div")
     body.className = "cm-block-body"
     const bar = blockBar(view, el, this.own)
-    // (a view's only: text shows its Markdown when clicked, and the bar would cover what it draws there, a timeline's Add)
-    el.append(body, ...(this.view ? [bar.el] : []))
+    // (a view's and a table's only: other text shows its Markdown when clicked, and the bar would cover what it draws
+    // there, a timeline's Add; a table's cells are edited in place, so its </> is how its Markdown shows)
+    el.append(body, ...(this.view || this.key === "table" ? [bar.el] : []))
     // At the height it had last time while it comes in (a block's data, a picture), so the text below stays put.
     holds.set(el, holdHeight(el, this.held, true))
     drawn.set(el, this.draw(body, this.text, view, bar.edit))
@@ -620,7 +624,7 @@ function inline(view: EditorView): DecorationSet {
   const markerWidth = (lm: SyntaxNode, task: SyntaxNode | null | undefined, bullet: boolean) => {
     const end = (task ?? lm).to
     const space = state.sliceDoc(end, end + 1) === " " ? " " : ""
-    return task ? 18 + 0.4 * m.size + m.width(space) : bullet ? m.width(`•${space}`) : m.width(state.sliceDoc(lm.from, end) + space)
+    return task ? 18 + 0.4 * m.size + m.width(space) : bullet ? BULLET * m.size + m.width(space) : m.width(state.sliceDoc(lm.from, end) + space)
   }
 
   // (nothing in a hidden frontmatter: editor/frontmatter.ts)
@@ -787,7 +791,7 @@ function inline(view: EditorView): DecorationSet {
                 const pm = child(p, "ListMark")[0]
                 if (!pm) continue
                 const pt = p.getChild("Task")?.getChild("TaskMarker")
-                guides.push(lead + (pt ? 9 : p.parent?.name === "BulletList" ? m.width("•") / 2 : m.width(state.sliceDoc(pm.from, pm.to)) / 2))
+                guides.push(lead + (pt ? 9 : p.parent?.name === "BulletList" ? BULLET * m.size / 2 : m.width(state.sliceDoc(pm.from, pm.to)) / 2))
                 lead += markerWidth(pm, pt, p.parent?.name === "BulletList")
               }
               if (guides.length) style = `;background-image:${guides.map(() => "linear-gradient(var(--border),var(--border))").join(",")}` +
@@ -1177,7 +1181,13 @@ function drawHtml(el: HTMLElement, text: string, view: EditorView, rich = true):
   return { update: paint, destroy: () => {} }
 }
 const drawRich = (el: HTMLElement, text: string, view: EditorView) => drawHtml(el, text, view)
-const drawTable = (el: HTMLElement, text: string, view: EditorView) => drawHtml(el, text, view, false)
+/** A table, edited cell by cell where it can be (./tables.ts), else as Markdown drawn. */
+const drawTable = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => drawCells(el, text, view, {
+  render: (md) => view.state.facet(previewConfig).renderMarkdown(md),
+  canEdit: () => view.state.facet(previewConfig).writable && view.state.facet(EditorView.editable),
+  line: edit.line,
+  source: () => edit.source?.(),
+})
 function drawMermaid(el: HTMLElement, src: string): Drawn {
   renderMermaid(src, el)
   return { update: (s) => renderMermaid(s, el), destroy: () => dropMermaid(el) }
@@ -1313,6 +1323,9 @@ const intoBlock = (forward: boolean) => (view: EditorView) => {
     if (forward ? from > line.to && from <= moved.head && at < 0 : to < line.from && to >= moved.head) at = forward ? from : to
   })
   if (at < 0) return false
+  // (a table: into its first or last row's cell, as Obsidian does)
+  const table = drawnBlocks(view).find((b) => (forward ? b.from : b.to) === at)?.el?.querySelector<HTMLElement>(":scope > .cm-block-body")
+  if (table && enterTable(table, forward ? "top" : "bottom")) return true
   view.dispatch({ selection: EditorSelection.cursor(at), scrollIntoView: true, userEvent: "select" })
   return true
 }

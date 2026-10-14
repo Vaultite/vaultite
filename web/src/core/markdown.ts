@@ -224,7 +224,8 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
   }
   const html = (text: string) => sanitizeHtml(text, { link: linkAttrs, image: imageSrc })
 
-  const m = new Marked({ gfm: true })
+  // (a line break is a break, as the editor shows it and Obsidian draws it: a dashboard's lines stay lines)
+  const m = new Marked({ gfm: true, breaks: true })
   m.use({
     extensions: [wikilink, footnoteDef, footnoteRef, mathBlock, mathInline, highlight, tag, commentInline, commentBlock, blockId],
     hooks: {

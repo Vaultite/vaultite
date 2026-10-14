@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Tables edited cell by cell**: click a cell to edit its text in place; Tab, Enter and the arrows move between
+  cells (adding a row at the end), right-click adds or deletes rows and columns and aligns a column, and </> shows the
+  Markdown. Tables are drawn as a ruled grid with a header row, the same in notes, dashboards and sheets.
+- Checkboxes are rounded squares; bullets sit in a wider column, so nested lists step in as they do when read.
+- A dashboard of only text reads in a note's centred column, editing it or not, and a line break in its text is a
+  break, as in the editor; its headings are the editor's sizes and colours, and an embedded note is as wide as the text.
 - Files no longer show their kind (Idea, Log, Book, Friend) above the title: on desktop the title starts the page.
 - Allowing Activity to write its recaps writes the ones it was refused on its next run, not after another change.
 - **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own

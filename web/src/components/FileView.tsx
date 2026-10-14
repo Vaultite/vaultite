@@ -823,6 +823,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // A page's other tabs (People map) carry the page's name (People).
   const head = headOf(store.files.files, path)
   const pageCtx: PageCtx = { ...ctx, title: stem(head?.path ?? path), place: pane ? "page" : "sheet", disabled }
+  // (a page of only text reads as a note does, in the same column whether it's read or edited)
+  const narrow = board && !!pageView?.narrow?.(pageCtx)
   // A drawn file that takes its whole pane in a tab (`layout: "pane"`: a canvas): the bar, then the drawing edge to edge.
   const fills = pane && layout === "pane"
   const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit}
@@ -878,7 +880,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }
 
   const fileArticle = (
-    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && (board || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
+    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && ((board && !narrow) || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       onContextMenu={outsideMenu} data-file-drop={droppable ? "" : undefined} onDragOver={droppable ? (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault() } : undefined} onDrop={droppable ? onDrop : undefined}
       style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
       {pathBar()}
