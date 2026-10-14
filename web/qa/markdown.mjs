@@ -161,6 +161,20 @@ const fmOnly = await (await fetch(`${B}api/file?path=${encodeURIComponent("Qa ma
 // with the typing after it.
 check(`typing after a closing --- keeps the frontmatter (${JSON.stringify(fmOnly.text)})`,
   /^---\ntype: note\n(?:[^\n]*\n)*?---\nTyped\.$/.test(fmOnly.text) && fmOnly.text.split("\n").filter((l) => l === "---").length === 2)
+// Checkboxes drawn as HTML (a callout, <details>, an embedded note) tick in their file while reading, as a line's do.
+const TICKS = "Qa markdown/Ticks.md", TICKED = "Qa markdown/Ticked.md"
+const text = async (p) => (await (await fetch(`${B}api/file?path=${encodeURIComponent(p)}`)).json()).text
+await put(TICKED, "- [ ] embedded one\n- [ ] embedded two\n")
+await put(TICKS, "> [!todo] Callout\n> - [ ] first\n> - [ ] second\n\n![[Ticked]]\n\n<details open><summary>More</summary>\n\n- [ ] inside\n\n</details>\n\n```\n- [ ] in code\n```\n")
+await page.goto(`${B}#file/${encodeURIComponent(TICKS)}`); await wait(2500)
+if (await ed.locator(".cm-content").first().getAttribute("contenteditable") === "true") { await page.keyboard.press("ControlOrMeta+E"); await wait(800) }
+await ed.locator(".cm-block-callout input[type=checkbox]").nth(1).click(); await wait(800)
+await ed.locator(".cm-block-details input[type=checkbox]").first().click(); await wait(800)
+await ed.locator(".cm-block-embed input[type=checkbox]").nth(1).click(); await wait(1500)
+const ticks = await text(TICKS)
+check(`reading: a callout's and a <details>' boxes tick in the file, code's untouched (${JSON.stringify(ticks)})`,
+  ticks.includes("> - [ ] first\n> - [x] second") && ticks.includes("- [x] inside") && ticks.includes("- [ ] in code"))
+check("reading: an embedded note's box ticks in its own file", (await text(TICKED)).includes("- [ ] embedded one\n- [x] embedded two"))
 // The trash is a hidden folder: it opens only with Show hidden files on (File explorer's settings).
 const api = apiAt(B)
 const hiddenBefore = (await api("GET", "config/files")).showHidden ?? null

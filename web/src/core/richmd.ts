@@ -2,6 +2,7 @@
 // Markdown drawn outside it alike, so a note reads the same everywhere.
 import { isDark } from "@/lib/utils"
 import { onLook } from "@/core/appearance"
+import { haptic } from "@/core/haptics"
 
 type Katex = typeof import("katex").default
 let katex: Promise<Katex> | null = null
@@ -192,4 +193,42 @@ function flash(el: HTMLElement) {
   void el.offsetWidth
   el.classList.add("is-flash")
   setTimeout(() => el.classList.remove("is-flash"), 1200)
+}
+
+// A task's line, as core/markdown.ts draws it a box: in a list, a quote or a callout (`> - [ ] `). Group 1: its mark.
+const TASK = /^(?:[ \t]*>[ \t]?)*[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[([ xX])\](?=[ \t]|$)/
+const FENCE = /^(?:[ \t]*>[ \t]?)*[ \t]{0,3}(`{3,}|~{3,})/
+
+/** Where each task's mark (the space or x between its brackets) is in Markdown `text`, in the order its boxes are drawn
+ *  (none in code). */
+export function taskMarks(text: string): number[] {
+  const out: number[] = []
+  let fence = "", at = 0
+  for (const line of text.split("\n")) {
+    const f = FENCE.exec(line)?.[1]
+    if (f && (!fence || (f[0] === fence[0] && f.length >= fence.length))) fence = fence ? "" : f
+    else if (!fence) { const m = TASK.exec(line); if (m) out.push(at + m[0].length - 2) }
+    at += line.length + 1
+  }
+  return out
+}
+
+/** Makes the boxes Markdown drew in `root` tick (not those of a note embedded in it): `toggle` with which one (the nth
+ *  of `taskMarks`) and its new state, or null to leave them as they are (they can't be changed). */
+export function wireTasks(root: HTMLElement, toggle: ((nth: number, on: boolean) => void) | null) {
+  const boxes = [...root.querySelectorAll<HTMLInputElement>("input[type=checkbox]")].filter((b) => {
+    const embed = b.closest("[data-md-embed], [data-embed]")
+    return !embed || embed === root || !root.contains(embed)
+  })
+  boxes.forEach((b, i) => {
+    b.disabled = !toggle
+    b.setAttribute("aria-label", b.checked ? "Done" : "Not done")
+    if (toggle) b.onclick = (e) => { e.stopPropagation(); haptic(); toggle(i, b.checked) }
+  })
+}
+
+/** `text` with its nth task ticked (or not), or null when it has no such task. */
+export function tickTask(text: string, nth: number, on: boolean): string | null {
+  const at = taskMarks(text)[nth]
+  return at === undefined ? null : text.slice(0, at) + (on ? "x" : " ") + text.slice(at + 1)
 }

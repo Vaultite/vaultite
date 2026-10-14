@@ -5,7 +5,10 @@ import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
 import { followLink, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
-import { hydrate, markdownDrawn, richClick } from "@/core/richmd"
+import { hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
+import { isReadOnly, readFile } from "@/core/files"
+import { put } from "@/core/http"
+import { notifyError } from "@/core/notify"
 import { assetPath } from "@/components/EmbedMenu"
 import { rawUrl } from "@/components/FileViewers"
 import { EmbedView } from "@/components/NoteEmbed"
@@ -21,9 +24,20 @@ function vaultOpts(s: Store | null, from?: string): MarkdownOpts {
   }
 }
 
-/** `inline`: one line in running text; else a document at a sheet's sizes unless `full`. `from`: its file (for
- *  `[[#Heading]]`, closest names); `plain`: no note look; `seen`: notes embedding it, never embedded again. */
-export function Markdown({ text, store, inline, full, className, from, plain, seen }: { text: string; store?: Store; inline?: boolean; full?: boolean; className?: string; from?: string; plain?: boolean; seen?: string[] }) {
+/** Ticks the nth task of `text`, a part of the file `path` as written there (read again: it may have changed since). */
+async function tickIn(path: string, text: string, nth: number, on: boolean) {
+  try {
+    const f = await readFile(path)
+    const at = f.text.indexOf(text)
+    const next = at < 0 ? null : tickTask(text, nth, on)
+    if (next === null) throw new Error("it changed since it was drawn")
+    await put("file", { path, text: f.text.slice(0, at) + next + f.text.slice(at + text.length), base: f.text })
+  } catch (e) { notifyError(e, "Couldn't tick it") }
+}
+
+/** `inline`: one line in running text; else a document at a sheet's sizes unless `full`. `from`: its file (for `[[#Heading]]`,
+ *  closest names); `plain`: no note look; `seen`: notes embedding it; `tasks`: its boxes tick in `from`, where `text` is. */
+export function Markdown({ text, store, inline, full, className, from, plain, seen, tasks }: { text: string; store?: Store; inline?: boolean; full?: boolean; className?: string; from?: string; plain?: boolean; seen?: string[]; tasks?: boolean }) {
   const s = store ?? getStore()
   const html = useMemo(() => {
     const opts = vaultOpts(s, from)
@@ -33,7 +47,9 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
   const seenKey = (seen ?? (from ? [from] : [])).join("\n")
   useEffect(() => {
     if (!ref.current) return
-    hydrate(ref.current); markdownDrawn(ref.current)
+    hydrate(ref.current)
+    wireTasks(ref.current, tasks && from && !isReadOnly(from) ? (nth, on) => void tickIn(from, text, nth, on) : null)
+    markdownDrawn(ref.current)
     // Its links have no address (a click follows them): Tab reaches them, and Enter presses them (core/keylist.ts).
     for (const a of ref.current.querySelectorAll<HTMLElement>("a[data-wiki], a[data-tag], a[data-url]")) { a.tabIndex = 0; a.setAttribute("role", "link") }
     // `![[x]]` anywhere in the text: what it names, drawn in its place as on a line of its own (its own root).
@@ -44,7 +60,7 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
       return root
     })
     return () => { if (roots.length) setTimeout(() => { for (const r of roots) r.unmount() }, 0) }
-  }, [html, s, from, seenKey])
+  }, [html, s, from, seenKey, tasks, text])
   const follow = (e: MouseEvent) => {
     if (e.button === 0 && ref.current && richClick(e, ref.current)) return
     const a = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag], [data-url]")

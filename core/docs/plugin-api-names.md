@@ -244,7 +244,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `MapPin`
 - `mapTheme()`: Light or dark, as the app is now (main.tsx toggles .dark on <html>).
 - `MapTheme`
-- `Markdown({ text, store, inline, full, className, from, plain, seen })`: `inline`: one line in running text; else a document at a sheet's sizes unless `full`.
+- `Markdown({ text, store, inline, full, className, from, plain, seen, tasks })`: `inline`: one line in running text; else a document at a sheet's sizes unless `full`.
 - `markdownDrawn(el)`
 - `markdownHtml(text, { inline, from }?)`: Markdown as the app draws it, as HTML, for a plugin drawing its own elements: wikilinks resolved against the vault (`data-wiki`, `missing`), images, tags, callouts, math and mermaid waiting for…
 - `markNew(path)`

@@ -100,7 +100,7 @@ export function NoteEmbed({ store, target, from, seen = [], fill }: { store: Sto
         <p className="note-embed-missing">No {anchor.startsWith("^") ? "block" : "heading"} {anchor} in {stem(path)}.</p>
       ) : (
         <div className="note-embed-body">
-          {segments(part, anchor ? undefined : kindBlocksOf(store, path)).map((s, i) => "md" in s ? <Markdown key={i} store={store} text={s.md} from={path} seen={inner} />
+          {segments(part, anchor ? undefined : kindBlocksOf(store, path)).map((s, i) => "md" in s ? <Markdown key={i} store={store} text={s.md} from={path} seen={inner} tasks />
             : "embed" in s ? <EmbedView key={i} store={store} target={s.embed} height={s.height} from={path} seen={inner} />
             : <BlockView key={i} name={s.block} text={s.text} ctx={ctx} disabled={disabled} quiet />)}
         </div>

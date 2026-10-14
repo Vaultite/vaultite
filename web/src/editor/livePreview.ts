@@ -11,7 +11,7 @@ import { isMac } from "@/core/platform"
 import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, scan, TAG } from "../../../core/sections.ts"
 import { frontmatter } from "./frontmatter"
-import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick } from "@/core/richmd"
+import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
 
@@ -98,10 +98,10 @@ const editing = (state: EditorState) => state.field(focused) && state.facet(Edit
 function touched(state: EditorState, from: number, to: number) {
   return editing(state) && state.selection.ranges.some((r) => r.to >= from && r.from <= to)
 }
-/** A line's leading marker (a list item's bullet or checkbox, a footnote's label): shown only with the cursor inside it
- *  or a selection over it, so it stays drawn while its line is typed. */
+/** A line's leading marker (a bullet or checkbox, a footnote's label): shown with the cursor in front of it (Vim's block
+ *  cursor there drew its first character over the box) or inside it, or a selection over it; drawn while its line is typed. */
 function touchedInside(state: EditorState, from: number, to: number) {
-  return editing(state) && state.selection.ranges.some((r) => (r.empty ? r.head > from && r.head < to : r.to > from && r.from < to))
+  return editing(state) && state.selection.ranges.some((r) => (r.empty ? r.head >= from && r.head < to : r.to > from && r.from < to))
 }
 /** Is any part of from..to on a line the cursor (or selection) is on? Headings, quotes and blocks show their Markdown
  *  for the whole line. */
@@ -1163,10 +1163,19 @@ function mapped(c: Cands, tr: Transaction): Cands | null {
 }
 
 /** Markdown drawn as HTML (a callout, <details>, a table) by the config as it is then; drawn again only when that changes
- *  what it shows, so a toggle opened stays open. */
-function drawHtml(el: HTMLElement, text: string, view: EditorView, rich = true): Drawn {
-  let last = ""
+ *  what it shows, so a toggle opened stays open. Its checkboxes tick in the file, reading too, as the editor's own do. */
+function drawHtml(el: HTMLElement, text: string, view: EditorView, rich = true, edit?: BlockEdit): Drawn {
+  let last = "", now = text
+  const tick = (nth: number, on: boolean) => {
+    const at = edit?.line()
+    if (at == null || !view.state.facet(previewConfig).writable) return
+    const from = view.state.doc.line(at + 1).from
+    if (view.state.sliceDoc(from, from + now.length) !== now) return
+    const mark = taskMarks(now)[nth]
+    if (mark !== undefined) view.dispatch({ changes: { from: from + mark, to: from + mark + 1, insert: on ? "x" : " " }, userEvent: "input.toggle" })
+  }
   const paint = (t: string) => {
+    now = t
     const html = view.state.facet(previewConfig).renderMarkdown(t)
     if (html === last) return
     const open = [...el.querySelectorAll("details")].map((d) => d.open)
@@ -1174,13 +1183,14 @@ function drawHtml(el: HTMLElement, text: string, view: EditorView, rich = true):
     last = html
     el.querySelectorAll("details").forEach((d, i) => { if (i < open.length) d.open = open[i] })
     if (rich) hydrate(el)
+    wireTasks(el, edit && view.state.facet(previewConfig).writable ? tick : null)
     markdownDrawn(el)
   }
   paint(text)
   if (rich) el.addEventListener("click", (e) => richClick(e, el))
   return { update: paint, destroy: () => {} }
 }
-const drawRich = (el: HTMLElement, text: string, view: EditorView) => drawHtml(el, text, view)
+const drawRich = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => drawHtml(el, text, view, true, edit)
 /** A table, edited cell by cell where it can be (./tables.ts), else as Markdown drawn. */
 const drawTable = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => drawCells(el, text, view, {
   render: (md) => view.state.facet(previewConfig).renderMarkdown(md),

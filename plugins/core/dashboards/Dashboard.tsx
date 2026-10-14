@@ -62,7 +62,7 @@ export function Dashboard({ ctx, className }: { ctx: PageCtx; className?: string
       ) : "md" in c ? (
         // Markdown between blocks: a row of its own, its math and diagrams
         // drawn once it's on the page; its lines as long as a note's (FileView), however wide the cards around it.
-        <Card key={i} at={keys[i]} line={c.line} end={c.line + c.md.split("\n").length - 1} className="min-w-0 @2xl:col-span-2"><Markdown text={c.md} store={ctx.store} from={ctx.path} plain className="dash-prose max-w-(--line-width)" /></Card>
+        <Card key={i} at={keys[i]} line={c.line} end={c.line + c.md.split("\n").length - 1} className="min-w-0 @2xl:col-span-2"><Markdown text={c.md} store={ctx.store} from={ctx.path} plain tasks className="dash-prose max-w-(--line-width)" /></Card>
       ) : (
         <Card key={i} at={keys[i]} line={c.line} className={cn("grid min-w-0 grid-cols-1 gap-4", c.blocks.length > 1 && "content-start", c.wide && "@2xl:col-span-2")}>
           {c.blocks.map((b, j) => <BlockView key={j} name={b.name} text={b.text} ctx={ctx} disabled={disabled} quiet nth={b.nth} />)}

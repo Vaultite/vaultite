@@ -271,12 +271,13 @@
 .note-prose li > p { margin: 0; }
 .note-prose li::marker { color: var(--muted-foreground); }
 .note-prose ol > li::marker { font-variant-numeric: tabular-nums; }
-.note-prose li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.35em; }
+:is(.note-prose, .vau-editor .cm-block) li:has(> input[type="checkbox"]) { list-style: none; margin-left: -1.35em; }
 /* Checklists: rounded squares, filled with the Notes tint when done; the same in a note, a sheet, a dashboard and the
    editor (.cm-task). */
-:is(.note-prose, .dash-prose) input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin: 0 0.5em 0 0;
-  vertical-align: -4px; border-radius: 5px; border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 70%, transparent); }
-:is(.note-prose, .dash-prose) input[type="checkbox"]:checked { border-color: var(--notes); background: var(--notes) center / 12px no-repeat
+:is(.note-prose, .dash-prose, .vau-editor .cm-block) input[type="checkbox"] { appearance: none; -webkit-appearance: none; width: 20px; height: 20px; margin: 0 0.5em 0 0;
+  vertical-align: -4px; border-radius: 5px; border: 1.5px solid color-mix(in srgb, var(--muted-foreground) 70%, transparent); cursor: pointer; }
+:is(.note-prose, .dash-prose, .vau-editor .cm-block) input[type="checkbox"]:disabled { cursor: default; }
+:is(.note-prose, .dash-prose, .vau-editor .cm-block) input[type="checkbox"]:checked { border-color: var(--notes); background: var(--notes) center / 12px no-repeat
   url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 6.2l2.3 2.3 4.7-5' fill='none' stroke='white' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"); }
 .note-prose a { color: var(--primary); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
   text-decoration-color: color-mix(in srgb, currentColor 35%, transparent); }

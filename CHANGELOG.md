@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Checkboxes tick in callouts, `<details>`, embedded notes and dashboards' text, reading or editing, as they do in a
+  note's lines; with Vim, the cursor at the start of a list line shows its Markdown instead of drawing over its box.
 - **Tables edited cell by cell**: click a cell to edit its text in place; Tab, Enter and the arrows move between
   cells (adding a row at the end), right-click adds or deletes rows and columns and aligns a column, and </> shows the
   Markdown. Tables are drawn as a ruled grid with a header row, the same in notes, dashboards and sheets.
