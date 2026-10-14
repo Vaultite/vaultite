@@ -17,25 +17,12 @@ function longDate(d = new Date()) {
 plugin.provide("page-head", ({ type, fm }: { path: string; type: string | null; fm: Record<string, unknown> }) =>
   type === "dashboard" && typeof fm.subtitle === "string" && fm.subtitle ? fm.subtitle.replaceAll("{date}", longDate()) : null)
 
-/** Where new pages go: the folder most dashboards are in (the user may keep them in Personal/Dashboards), else
- *  Dashboards (core/fileprops.ts homeFolder's rule: among folders named Dashboards first). */
-function pagesFolder(files: { path: string; type?: unknown }[]) {
-  const count = new Map<string, number>()
-  for (const f of files) if (f.type === "dashboard") { const d = f.path.slice(0, Math.max(0, f.path.lastIndexOf("/"))); count.set(d, (count.get(d) ?? 0) + 1) }
-  const pick = (ok: (d: string) => boolean) => {
-    let best: string | null = null, n = 0
-    for (const [d, c] of [...count].sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))) if (ok(d) && c > n) { best = d; n = c }
-    return best
-  }
-  return pick((d) => d.split("/").pop() === "Dashboards") ?? pick(() => true) ?? "Dashboards"
-}
-
 plugin.op({
   id: "dashboard.create",
   cli: "dashboard new",
   summary: "Make a new page (a dashboard file of blocks) and pin it.",
-  help: `Writes <Name>.md (type: dashboard) where the other pages are (Dashboards/ by default) and pins it to the sidebar
-(with Pinned on; with Workspaces on, in the workspace the user's window is on). blocks puts those blocks in it
+  help: `Writes <Name>.md (type: dashboard) where the user's own pages are (the folder Dashboards' settings show; not the
+built-in .vaultite/pages; Dashboards/ by default) and pins it to the sidebar (with Pinned on; with Workspaces on, in the workspace the user's window is on). blocks puts those blocks in it
 (names from vau blocks); add more by editing the file: each block is a fence, \`\`\`block-<name> with its options inside as
 YAML. icon: a lucide name (sun, heart, wallet, chart-line...; icon.list has them); tint: a colour token (blue, green,
 orange, purple, today, people...); subtitle: "{date}" is today's date.
@@ -56,7 +43,7 @@ orange, purple, today, people...); subtitle: "{date}" is today's date.
     const name = String(raw).trim()
     if (!name) throw new OpError("name is missing: the page's name")
     if (/[:/\\?*"<>|#^[\]]/.test(name)) throw new OpError("a page's name can't have : / \\ ? * \" < > | # ^ [ ]")
-    const dir = pagesFolder((await ctx.api("GET", "files")).files ?? [])
+    const dir = plugin.vault.pagesHome() // (never the built-in pages' folder: read-only)
     const rel = `${dir ? `${dir}/` : ""}${name}.md`
     const fm = ["type: dashboard"]
     for (const [k, v] of [["icon", icon], ["tint", tint], ["subtitle", subtitle]] as const) {

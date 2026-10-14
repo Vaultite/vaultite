@@ -51,12 +51,12 @@ export function effectiveType(kindType: string | null | undefined, fm: Record<st
   return hit ? hit[1] : null
 }
 
-/** Where new files of a kind go: the folder most of them are in, preferring ones named like the kind's default, so a
- *  few clipped notes elsewhere don't draw new notes away. Ties go to the first by name; null when there are none. */
+/** Where new files of a kind go: the folder most are in (not an archive or the built-in pages'), preferring ones named
+ *  like the kind's default so a few clipped notes don't draw new ones away. Ties: first by name; null when none. */
 export function homeFolder(paths: Iterable<string>, name?: string | null, nested = false): string | null {
   const count = new Map<string, number>()
   for (const p of paths) {
-    if (inArchive(p)) continue // (new files never go into an archive)
+    if (inArchive(p) || inPagesDir(p)) continue // (new files never go into an archive or the built-in pages)
     const d = p.slice(0, Math.max(0, p.lastIndexOf("/")))
     count.set(d, (count.get(d) ?? 0) + 1)
   }

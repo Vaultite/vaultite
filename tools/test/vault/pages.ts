@@ -37,6 +37,18 @@ export default async ($: VaultTest) => {
     const back = app.installPages()
     check("on again, it's back, not pinned again as new", exists(BI("Health")) && !back.includes(BI("Health")), back)
   }
+  // A new page goes where the user's own are, never the built-in folder (read-only), else Dashboards/.
+  {
+    let [nc, np] = await api("POST", "ops/dashboard.create", { name: "Mine", noPin: true })
+    check("dashboard new: none of the user's yet, Dashboards/, not the built-in folder", nc === 200 && np.path === "Dashboards/Mine.md", [nc, np])
+    for (const n of ["A", "B"]) write(`Personal/Dashboards/${n}.md`, "---\ntype: dashboard\n---\n")
+    await vault.sync()
+    ;[nc, np] = await api("POST", "ops/dashboard.create", { name: "Mine too", noPin: true })
+    check("dashboard new: where most of the user's own pages are", nc === 200 && np.path === "Personal/Dashboards/Mine too.md", [nc, np])
+    fs.rmSync(path.join(VAULT, "Personal"), { recursive: true })
+    fs.rmSync(path.join(VAULT, "Dashboards/Mine.md"))
+    await vault.sync()
+  }
   // Copy to my vault: its pins and links follow the copy; the built-in one goes and stays gone while the copy's there.
   write("Notes/To today.md", "Open [[.vaultite/pages/Dashboards/Today|Today]].\n")
   let [cc, copied] = await api("POST", "ops/dashboard.copy", { path: "Today", folder: "Dashboards" })

@@ -852,6 +852,13 @@ export class Vault {
     return homeFolder(paths, k.folder, k.recursive)
   }
 
+  /** Where pages the user makes or copies go: the folder set (folders.json `dashboards`), else the one most of their
+   *  dashboards are in (never the built-in pages'), else Dashboards/. */
+  pagesHome(): string {
+    const mine = [...this.entries.values()].filter((e) => e.fm.type === "dashboard").map((e) => e.rel)
+    return this.folderSet("dashboards") ?? homeFolder(mine, "Dashboards") ?? "Dashboards"
+  }
+
   /** Every Markdown file with its kind (hidden folders and CACHES left out, not .archive or PAGES_DIR), and the other
    *  files and folders, for the file tree (not PAGES_DIR's). */
   private scan() {

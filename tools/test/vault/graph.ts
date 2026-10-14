@@ -111,7 +111,9 @@ export default async ($: VaultTest) => {
     const { homeFolder } = await import("../../../core/fileprops.ts")
     check("folders: homeFolder prefers folders named like the kind's", homeFolder(["Clippings/a.md", "Clippings/b.md", "Personal/Notes/c.md"], "Notes") === "Personal/Notes" &&
       homeFolder(["Personal/Logs/Gym/a.md", "Personal/Logs/Gym/b.md", "Logs/Sleep/c.md"], "Logs", true) === "Personal/Logs/Gym" &&
-      homeFolder(["Friends/a.md", "Friends/b.md", "c.md"], "People") === "Friends" && homeFolder([], "People") === null)
+      homeFolder(["Friends/a.md", "Friends/b.md", "c.md"], "People") === "Friends" && homeFolder([], "People") === null &&
+      homeFolder([".vaultite/pages/Dashboards/a.md", ".vaultite/pages/Dashboards/b.md", "Personal/Dashboards/c.md"], "Dashboards") === "Personal/Dashboards" &&
+      homeFolder([".vaultite/pages/Dashboards/a.md"], "Dashboards") === null)
     for (const d of ["Personal", "Archive"]) fs.rmSync(path.join(VAULT, d), { recursive: true })
     fs.rmSync(path.join(VAULT, "Templates/A person.md"))
   }

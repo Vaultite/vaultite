@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { enabled, HTTPError, type Plugin, ROOT, service } from "./plugins.ts"
-import { homeFolder, inPagesDir, PAGES_DIR } from "./fileprops.ts"
+import { inPagesDir, PAGES_DIR } from "./fileprops.ts"
 import { tabHead, tabNames } from "./tabs.ts"
 import { readText, statFrom, type Vault, writeAtomic, writeNew } from "./vault.ts"
 import { FM } from "./frontmatter.ts"
@@ -114,10 +114,8 @@ export function install(vault: Vault, plugins: Plugin[], opts: { pin?: boolean }
   return made
 }
 
-/** Where pages the user makes or copies go unless a folder is set: the folder set (folders.json `dashboards`), else the
- *  one most of their dashboards are in, else Dashboards/. */
-export const pagesHome = (vault: Vault) => vault.folderSet("dashboards") ??
-  homeFolder([...vault.entries.values()].filter((e) => e.fm.type === "dashboard" && !inPagesDir(e.rel)).map((e) => e.rel), FOLDER) ?? FOLDER
+/** Where pages the user makes or copies go (Vault.pagesHome). */
+export const pagesHome = (vault: Vault) => vault.pagesHome()
 
 /** A page now at `to` instead of `from`, in the index at once (installing next sees it), its pins and links following. */
 function moveIn(vault: Vault, from: string, to: string) {
