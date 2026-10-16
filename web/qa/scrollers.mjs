@@ -2,7 +2,8 @@
 // element that scrolls must be a stacking context, or what's positioned inside it is drawn by iOS WebKit above its
 // scroll indicator (the sidebar's sticky headings chopped it). Fails (exit 1) on a scroller with a positioned
 // descendant that isn't one; lists `fixed` elements inside a scroller (stacked within it now: check they still sit
-// on top). Reads only (opens tabs on this device), but run it against a throwaway server:
+// on top). Also fails on what a pane that doesn't scroll (a full page) cuts off with nothing inside to scroll it: a
+// page's scroller grown to its content's height instead of the pane's (Plugins lost its scroll so). Reads only (opens tabs on this device), but run it against a throwaway server:
 //   node web/qa/scrollers.mjs <base>   (or QA_BASE)
 import { chromium } from "playwright-core"
 import { pageHash } from "./subjects.mjs"
@@ -11,7 +12,7 @@ if (!B) { console.error("usage: node web/qa/scrollers.mjs <base url of a throwaw
 const today = await pageHash(B, "Today")
 const routes = ["", today, await pageHash(B, "People"), await pageHash(B, "Health"), await pageHash(B, "Learning"), "view/files", "plugins", "settings", "bundles"]
 const browser = await chromium.launch({ executablePath: (await import("./lib/qa.mjs")).CHROME })
-const bad = new Map(), fixed = new Map(), errs = []
+const bad = new Map(), fixed = new Map(), clipped = new Map(), errs = []
 
 /** In the page: scrollers that aren't stacking contexts but hold something positioned, and fixed elements in a scroller. */
 const audit = () => {
@@ -25,7 +26,19 @@ const audit = () => {
     s.position === "fixed" || s.position === "sticky" || s.transform !== "none" || s.filter !== "none" || s.backdropFilter !== "none" ||
     s.perspective !== "none" || s.clipPath !== "none" || s.maskImage !== "none" || Number(s.opacity) < 1 || s.mixBlendMode !== "normal" ||
     /paint|layout|strict|content/.test(s.contain) || /size/.test(s.containerType) || /transform|opacity|filter/.test(s.willChange)
-  const out = { bad: [], fixed: [] }
+  const out = { bad: [], fixed: [], clipped: [] }
+  // A pane that doesn't scroll: the outermost of what reaches past its bottom with no scroller between them.
+  for (const pane of document.querySelectorAll("[data-pane]")) {
+    if (scrolls(getComputedStyle(pane))) continue
+    const bottom = pane.getBoundingClientRect().bottom + 1
+    const free = (e) => { for (let p = e.parentElement; p && p !== pane; p = p.parentElement) if (getComputedStyle(p).overflow !== "visible") return false; return true }
+    for (const e of pane.querySelectorAll("*")) {
+      const s = getComputedStyle(e)
+      if (s.display === "none" || s.position === "fixed" || e.getBoundingClientRect().bottom <= bottom) continue
+      if (e.parentElement !== pane && e.parentElement.getBoundingClientRect().bottom > bottom) continue
+      if (free(e)) out.clipped.push(`${name(e)} in ${name(pane)}`)
+    }
+  }
   for (const e of document.querySelectorAll("body *")) {
     const s = getComputedStyle(e)
     if (s.display === "none") continue
@@ -44,6 +57,7 @@ const audit = () => {
 const take = (where, r) => {
   for (const b of r.bad) bad.set(b, bad.get(b) ?? where)
   for (const f of r.fixed) fixed.set(f, fixed.get(f) ?? where)
+  for (const c of r.clipped) clipped.set(c, clipped.get(c) ?? where)
 }
 
 for (const phone of [true, false]) {
@@ -67,5 +81,5 @@ for (const phone of [true, false]) {
   await ctx.close()
 }
 await browser.close()
-console.log(JSON.stringify({ notStacking: Object.fromEntries(bad), fixedInScroller: Object.fromEntries(fixed), errors: errs.slice(0, 5) }, null, 1))
-process.exit(bad.size ? 1 : 0)
+console.log(JSON.stringify({ notStacking: Object.fromEntries(bad), clippedInPane: Object.fromEntries(clipped), fixedInScroller: Object.fromEntries(fixed), errors: errs.slice(0, 5) }, null, 1))
+process.exit(bad.size || clipped.size ? 1 : 0)

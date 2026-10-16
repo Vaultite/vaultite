@@ -65,8 +65,8 @@ export function Scroller({ page, className, children, ...rest }: { page?: string
   return <div ref={el} onScroll={keep} className={cn("overflow-y-auto overscroll-contain", className)} {...rest}>{children}</div>
 }
 
-/** A page in a pane scrolls itself (a phone's, the window does), at the reading width. */
-export function PageScroller({ children, ...rest }: { children: ReactNode } & Attrs) {
+/** The narrow layout in a pane scrolls itself (a phone's, the window does), at the reading width. */
+function PageScroller({ children, ...rest }: { children: ReactNode } & Attrs) {
   const { group } = usePane()
   if (!group) return <div {...rest}>{children}</div>
   return (

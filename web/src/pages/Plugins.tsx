@@ -13,7 +13,6 @@ import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSet
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
 import { FilterField, PageHeader, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
-import { PageScroller } from "@/components/RailLayout"
 import { Button } from "@/components/Button"
 import { openBundles } from "@/core/bundles"
 import { DirectoryMatches, PluginBrowse } from "@/components/PluginBrowse"
@@ -198,8 +197,8 @@ function Chips({ items, active, pick }: { items: { id: string; label: string; co
 
 type Tab = "installed" | "get"
 
-/** `section`: drawn as Settings' section (Settings scrolls it), else a page of its own. `bundles`: what the Bundles
- *  button opens (in Settings, its section). */
+/** `section`: drawn as Settings' section, else a page of its own (each scrolled by what holds it). `bundles`: what the
+ *  Bundles button opens (in Settings, its section). */
 export function Plugins({ store, section, bundles = openBundles }: { store: Store; section?: boolean; bundles?: () => void }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
@@ -271,8 +270,8 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
     </>
   }
 
-  const body = (
-    <>
+  return (
+    <div data-plugins>
       <PageHeader title="Plugins" section={section}>
         <Button onClick={bundles} data-plugins-bundles><Package className="size-4" strokeWidth={2.25} />Bundles</Button>
       </PageHeader>
@@ -285,9 +284,8 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
         </form>
       </div>
       {list}
-    </>
+    </div>
   )
-  return <div data-plugins>{section ? body : <PageScroller>{body}</PageScroller>}</div>
 }
 
 /** A group's sheet (`plugin-group/<id>`, from its row): each of its plugins with its own switch and gear. */

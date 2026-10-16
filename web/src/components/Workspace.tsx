@@ -281,7 +281,8 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
     if (page?.render && full) body = (
       <main className="absolute inset-0 flex flex-col">
         <div className="shrink-0 px-8"><ViewBar>{page.label}</ViewBar></div>
-        <div className="relative min-h-0 flex-1"><Drawn draw={() => page.render!(p.store!)} /></div>
+        {/* (a grid stretches the page's root to the box, so what it scrolls is the box's height, not its own) */}
+        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"><Drawn draw={() => page.render!(p.store!)} /></div>
       </main>
     )
     else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!)} />)

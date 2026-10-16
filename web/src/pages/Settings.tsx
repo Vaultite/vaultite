@@ -307,7 +307,7 @@ export function Settings({ store }: { store: Store }) {
   const setup = <SetupCard store={store} active={wide && sec.id === BUNDLES_SEC.id} pick={() => show(BUNDLES_SEC.id)} />
   const list = (active: string | null) => <>{setup}<RailMenu label="Settings" items={items} active={active} pick={(id) => show(id)} data-settings-list="" /></>
   return (
-    <div className="h-full" data-settings>
+    <div data-settings>
       <RailLayout rail={rail} page={sec.id} title="Settings"
         side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : list(litOf(sec.id))}
         search={{ value: query, onChange: typed, placeholder: "Search settings", attrs: { "data-settings-search": "" },

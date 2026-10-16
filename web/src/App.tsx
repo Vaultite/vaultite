@@ -83,12 +83,13 @@ const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ defau
 // The core app's own pages (Plugins, Settings), beside the vault's name at the sidebar's bottom. Every
 // other page is a file.
 type Page = { id: string; label: string; icon: LucideIcon; tint: string
-  /** It lays out and scrolls itself in a pane (Workspace's PageTab). */
+  /** It lays out and scrolls itself in a pane, its root stretched to the pane's box (Workspace's TabContent); else the
+   *  pane scrolls it. */
   full?: boolean
   /** It draws itself. */
   render: (store: Store) => React.ReactNode }
 const SYSTEM_PAGES: Page[] = [
-  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--primary)", full: true, render: (store) => <Suspense><Plugins store={store} /></Suspense> },
+  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--primary)", render: (store) => <Suspense><Plugins store={store} /></Suspense> },
   { id: "settings", label: "Settings", icon: SettingsIcon, tint: "var(--muted-foreground)", full: true, render: (store) => <Suspense><Settings store={store} /></Suspense> },
 ]
 /** The app's pages without a button of their own: Bundles (pages/Bundles.tsx), reached from the command "Choose a
