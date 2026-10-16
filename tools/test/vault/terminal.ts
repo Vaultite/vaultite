@@ -131,6 +131,28 @@ export default async ($: VaultTest) => {
     fs.rmSync(home, { recursive: true, force: true })
   }
 
+  // The keeper lets go of a shell's pty once it ends (node-pty 1.1 kept both ends open on macOS: a keeper running for
+  // days took the machine's ptys, and new terminals and tmux failed).
+  {
+    const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { execFileSync } = await import("node:child_process")
+    const { waitFor } = await import("../lib.ts")
+    const keeper = ptydBackend(`test-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/ptyd.ts") })
+    const ptys = (pid: number) => process.platform === "linux"
+      ? fs.readdirSync(`/proc/${pid}/fd`).filter((f) => { try { return /^\/dev\/(ptmx|pts\/)/.test(fs.readlinkSync(`/proc/${pid}/fd/${f}`)) } catch { return false } }).length
+      : execFileSync("lsof", ["-p", String(pid)]).toString().split("\n").filter((l) => /\/dev\/(ptmx|ttys)|\(revoked\)/.test(l)).length
+    const spec = { shell: "/bin/sh", run: null, cwd: tmp, env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 80, rows: 24, scrollback: 100 }
+    const ids = ["leak1", "leak2", "leak3", "leak4", "leak5"]
+    for (const id of ids) await keeper.create(id, spec)
+    const pid = Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8"))
+    const open = ptys(pid)
+    for (const id of ids) await keeper.kill(id)
+    const ended = await waitFor(async () => (await keeper.list()).length === 0, 10_000, 100)
+    const left = ptys(pid)
+    try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
+    check("terminal: the keeper lets go of a shell's pty once it ends", open >= ids.length && ended && left === 0, { open, ended, left })
+  }
+
   // Routes: * is one segment, a last ** the rest.
   {
     const { match, Plugin: P } = await import("../../../core/plugins.ts")

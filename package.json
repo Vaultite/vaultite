@@ -83,7 +83,7 @@
     "maplibre-gl": "^6.11.2",
     "marked": "^18.0.14",
     "mermaid": "^11.17.2",
-    "node-pty": "^1.1.0",
+    "node-pty": "1.2.0-beta.15",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "rolldown": "^1.2.11",
