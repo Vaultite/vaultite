@@ -2,7 +2,7 @@
   "id": "buttons",
   "icon": "mouse-pointer-click",
   "category": "navigation",
-  "alwaysOn": true,
+  "essential": true,
   "name": "Buttons",
   "description": "The new tab's buttons as a sidebar panel: commands a click away, in a phone's drawer too."
 }

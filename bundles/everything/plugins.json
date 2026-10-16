@@ -12,11 +12,14 @@
     "lessons",
     "logs",
     "machines",
+    "note-composer",
     "notes",
     "people",
     "people-map",
     "projects",
+    "random-note",
     "today",
+    "unique-note",
     "web-viewer"
   ]
 }

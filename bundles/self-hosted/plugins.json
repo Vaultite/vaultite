@@ -1,5 +1,6 @@
 {
   "disabled": [
+    "clipper",
     "cursor"
   ],
   "enabled": [

@@ -36,8 +36,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own
   features with options, each shown beside the list (a sheet on a phone), no "Settings" line over its title; Plugin
   settings, the Setup rows and the Manage plugins and Bundles rows are gone (a plugin's gear on Plugins opens its own).
-- **Fewer plugins to manage**: 42 of the app's parts (files, search, the graph, canvas, terminal, clipper, slides,
-  spreadsheets, documents and more) are always on and no longer listed; Plugins has a Bundles button beside Get
+- **Fewer plugins to manage**: 33 of the app's parts (files, search, canvas, terminal, spreadsheets, documents and
+  more) are always on and no longer listed; the graph, slides, buttons, page preview, the clipper and Export to PDF
+  are plugins you can turn off, and random note, unique note and note composer are off until turned on; Plugins has a Bundles button beside Get
   plugins, a search there also lists the directory's plugins you don't have, and Vaultite's own carry a verified mark
   in place of stars.
 - Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, what it
