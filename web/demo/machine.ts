@@ -3,20 +3,27 @@
 export const MACHINE = ["terminal", "claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "dispatch", "mcp", "machines",
   "activity", "agent-meters", "ai-import", "audio-recorder", "app-windows", "dock-icon", "clipper", "calendar"]
 
+/** Of those, the ones the demo still draws, with the made-up data of their own preview (a plugin's `mockLive`, answered in
+ *  the page: boot.ts): what agents did, their sessions and limits, other machines. Their backends are still left out, so
+ *  nothing runs; a bundle turns them on or off as it says. */
+export const SHOWN = ["claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "machines", "activity"]
+/** What needs a machine and isn't drawn with made-up data: off in the demo. */
+export const OFF = MACHINE.filter((id) => !SHOWN.includes(id))
+
 export type PluginsJson = { disabled?: string[]; enabled?: string[]; install?: Record<string, { name?: string }> }
 export const isObj = (x: unknown): x is Record<string, unknown> => !!x && typeof x === "object" && !Array.isArray(x)
 
-/** What needs a machine stays off: in the sandbox's setup, and in every bundle the visitor applies. */
+/** What needs a machine stays off (but what's SHOWN): in the sandbox's setup, and in every bundle the visitor applies. */
 export function machineOff(cfg: PluginsJson) {
-  cfg.disabled = [...new Set([...(cfg.disabled ?? []), ...MACHINE])]
-  cfg.enabled = (cfg.enabled ?? []).filter((id) => !MACHINE.includes(id))
+  cfg.disabled = [...new Set([...(cfg.disabled ?? []), ...OFF])]
+  cfg.enabled = (cfg.enabled ?? []).filter((id) => !OFF.includes(id))
   return cfg
 }
 
 /** Its sidebars without the panels of what needs a machine (an empty Terminals panel looks broken). */
 export function panelsOff(cfg: Record<string, unknown>) {
   for (const side of ["left", "right", "collapsed"]) {
-    if (Array.isArray(cfg[side])) cfg[side] = (cfg[side] as unknown[]).filter((k) => typeof k !== "string" || !MACHINE.includes(k.split(":")[0]))
+    if (Array.isArray(cfg[side])) cfg[side] = (cfg[side] as unknown[]).filter((k) => typeof k !== "string" || !OFF.includes(k.split(":")[0]))
   }
   return cfg
 }

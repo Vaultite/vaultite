@@ -68,9 +68,9 @@ export default async ($: VaultTest) => {
 
     const fit = fitForDemo(got.files)
     const pj = JSON.parse(fit.files["plugins.json"] as string)
-    check("demo import: plugins it brings or installs are left out (they run code), and what needs a machine stays off",
+    check("demo import: plugins it brings or installs are left out (they run code), what needs a machine stays off, what the demo draws made up stays",
       fit.code.join() === "Word count,Kanban" && !Object.keys(fit.files).some((f) => f.startsWith("plugins/word-count/")) && !pj.install &&
-      !pj.enabled.includes("kanban") && !pj.enabled.includes("claude-code") && pj.disabled.includes("terminal") && pj.disabled.includes("claude-code") &&
+      !pj.enabled.includes("kanban") && pj.disabled.includes("terminal") && !pj.disabled.includes("claude-code") &&
       !!fit.plugins.enabled?.includes("claude-code"), fit)
     const [code, r] = await api("POST", "bundles/import", { ...got, files: fit.files })
     check("demo import: what it made imports as a bundle from that repository, not applied", code === 200 && r.bundle.name === "Writing desk" && r.bundle.from === "alice/desk" &&

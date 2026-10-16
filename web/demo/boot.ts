@@ -1,5 +1,8 @@
 // The web demo's start (npm run build:demo), main.tsx's first import: the server runs in a worker (worker.ts), reached
 // through a service worker (sw.ts) for what the page fetches and a port for the live socket; then the app starts.
+import { SHOWN } from "./machine.ts"
+import { NEEDS_APP } from "./node/stub.ts"
+
 const server = new Worker(new URL("./worker.ts", import.meta.url), { type: "module" })
 const ready = new Promise<void>((ok, no) => {
   server.onmessage = (e) => { if (e.data.type === "ready") ok(); else if (e.data.type === "failed") no(new Error(e.data.error)) }
@@ -47,16 +50,41 @@ class DemoSocket extends EventTarget {
 }
 globalThis.WebSocket = DemoSocket as unknown as typeof WebSocket
 
+/** What needs a machine but is drawn here (machine.ts SHOWN: agents' sessions and limits, Activity, Machines): its reads
+ *  are answered in the page with its preview's made-up data (a plugin's `mockLive`, as Plugins > a plugin shows it); its
+ *  writes need the app. Nothing reaches the server: their backends aren't in the demo. */
+const shownRoute = new RegExp(`^api/(${SHOWN.join("|")})(?=[/?]|$)`)
+let made: Promise<Record<string, unknown>> | null = null
+const realFetch = globalThis.fetch.bind(globalThis)
+globalThis.fetch = async (input, init) => {
+  const at = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+  const url = new URL(at, location.href), rel = url.pathname.slice(new URL(".", location.href).pathname.length) + url.search
+  if (url.origin !== location.origin || !shownRoute.test(rel)) return realFetch(input, init)
+  const answer = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } })
+  if ((init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase() !== "GET") return answer({ error: NEEDS_APP }, 501)
+  made ??= import("@/core/plugins").then(({ PLUGINS }) => Object.assign({}, ...PLUGINS.filter((p) => SHOWN.includes(p.id)).map((p) => p.mockLive?.() ?? {})))
+  const mock = await made, path = rel.slice(4)
+  // (as a preview finds them: the route, or the route with a query)
+  const key = Object.keys(mock).find((k) => path === k || path.startsWith(`${k}?`))
+  return key ? answer(mock[key]) : answer({ error: NEEDS_APP }, 501)
+}
+
 /** What says it's a demo: edits stay here, Reset, and where the app is. On phones, above their bottom bar, on two lines
- *  when narrow. */
+ *  when narrow. It can be dragged out of the way (anywhere but its buttons), kept in the window, where it was for the
+ *  tab's session. */
 function badge() {
   const style = document.createElement("style")
   style.textContent = `
     #vau-demo { position: fixed; z-index: 40; left: 50%; bottom: max(10px, env(safe-area-inset-bottom)); transform: translateX(-50%); display: flex;
       gap: 10px; align-items: center; padding: 4px 6px 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--card);
-      color: var(--muted-foreground); font: 12px/1.5 var(--font-sans, system-ui); box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); white-space: nowrap }
+      color: var(--muted-foreground); font: 12px/1.5 var(--font-sans, system-ui); box-shadow: 0 2px 8px rgb(0 0 0 / 0.12); white-space: nowrap;
+      cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none }
+    #vau-demo.moved { left: var(--x); top: var(--y); bottom: auto; transform: none }
+    #vau-demo.dragging { cursor: grabbing; box-shadow: 0 6px 18px rgb(0 0 0 / 0.18) }
+    #vau-demo .grip { display: inline-block; width: 6px; height: 10px; margin-right: 8px; vertical-align: -1px; opacity: 0.45;
+      background: radial-gradient(circle, currentColor 1px, transparent 1.3px) 0 0 / 3px 3.4px }
     #vau-demo button { font: inherit; color: var(--foreground); padding: 2px 10px; border-radius: 999px; background: var(--muted); cursor: pointer }
-    @media (max-width: 767px) { #vau-demo { bottom: calc(max(env(safe-area-inset-bottom), 0.25rem) + 58px) } }
+    @media (max-width: 767px) { #vau-demo:not(.moved) { bottom: calc(max(env(safe-area-inset-bottom), 0.25rem) + 58px) } }
     @media (max-width: 479px) { #vau-demo { flex-wrap: wrap; justify-content: center; row-gap: 4px; width: max-content; max-width: calc(100vw - 24px);
       padding: 6px 8px; border-radius: 16px } #vau-demo > span { flex-basis: 100%; text-align: center } }`
   const bar = document.createElement("div")
@@ -69,10 +97,67 @@ function badge() {
     return b
   }
   const say = document.createElement("span")
-  say.textContent = "Demo: your edits stay in this browser"
+  const grip = document.createElement("i")
+  grip.className = "grip"
+  grip.setAttribute("aria-hidden", "true")
+  say.append(grip, "Demo: your edits stay in this browser")
+  bar.title = "Drag to move"
   bar.append(say, button("Reset", reset), button("Get the app", () => window.open("https://vaultite.com/download", "_blank", "noopener")))
   document.head.append(style)
   document.body.append(bar)
+  draggable(bar)
+}
+
+/** Drag `bar` by any part but its buttons (mouse, pen or touch): a move of a few pixels is still a click; it stays in the
+ *  window as it's dragged and as the window resizes, and comes back where it was for this tab (sessionStorage). */
+function draggable(bar: HTMLElement) {
+  const KEY = "vaultite.demo.badge", EDGE = 4, SLOP = 5
+  const place = (x: number, y: number) => {
+    const r = bar.getBoundingClientRect()
+    x = Math.round(Math.min(Math.max(EDGE, x), Math.max(EDGE, innerWidth - r.width - EDGE)))
+    y = Math.round(Math.min(Math.max(EDGE, y), Math.max(EDGE, innerHeight - r.height - EDGE)))
+    bar.style.setProperty("--x", `${x}px`)
+    bar.style.setProperty("--y", `${y}px`)
+    bar.classList.add("moved")
+    return { x, y }
+  }
+  try {
+    const was = JSON.parse(sessionStorage.getItem(KEY) ?? "null") as { x?: unknown; y?: unknown } | null
+    if (typeof was?.x === "number" && typeof was.y === "number") place(was.x, was.y)
+  } catch { /* storage off: where it starts */ }
+  let start: { id: number; px: number; py: number; x: number; y: number } | null = null, dragging = false
+  bar.addEventListener("pointerdown", (e) => {
+    if (e.button !== 0 || (e.target as Element).closest("button")) return
+    const r = bar.getBoundingClientRect()
+    start = { id: e.pointerId, px: e.clientX, py: e.clientY, x: r.left, y: r.top }
+    dragging = false
+  })
+  // (on the window: a quick move leaves the bar before it counts as a drag and takes the pointer)
+  addEventListener("pointermove", (e) => {
+    if (!start || e.pointerId !== start.id) return
+    const dx = e.clientX - start.px, dy = e.clientY - start.py
+    if (!dragging) {
+      if (Math.hypot(dx, dy) < SLOP) return
+      dragging = true
+      try { bar.setPointerCapture(e.pointerId) } catch { /* the window still hears it */ }
+      bar.classList.add("dragging")
+    }
+    e.preventDefault()
+    place(start.x + dx, start.y + dy)
+  })
+  const end = (e: PointerEvent) => {
+    if (!start || e.pointerId !== start.id) return
+    if (dragging) {
+      const r = bar.getBoundingClientRect()
+      try { sessionStorage.setItem(KEY, JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) })) } catch { /* not kept */ }
+    }
+    start = null
+    dragging = false
+    bar.classList.remove("dragging")
+  }
+  addEventListener("pointerup", end)
+  addEventListener("pointercancel", end)
+  addEventListener("resize", () => { if (bar.classList.contains("moved")) { const r = bar.getBoundingClientRect(); place(r.left, r.top) } })
 }
 
 async function reset() {
@@ -135,19 +220,21 @@ async function bundles() {
 
 /** What the demo leaves out of a bundle, said plainly rather than looking broken: plugins needing a machine (terminals,
  *  agents) and those it installs from elsewhere (they run code: the app asks first). */
-function leftOut(info: { needsApp: string[]; notInDemo: string[] }) {
+function leftOut(info: { needsApp: string[]; notInDemo: string[]; madeUp?: string[] }) {
   const few = (names: string[]) => (names.length > 3 ? `${names.slice(0, 2).join(", ")} and ${names.length - 2} more` : names.join(", "))
   const parts = [info.needsApp.length && `${few(info.needsApp)} need${info.needsApp.length === 1 ? "s" : ""} the Vaultite app`,
     info.notInDemo.length && `${few(info.notInDemo)} run${info.notInDemo.length === 1 ? "s" : ""} code from elsewhere`].filter(Boolean)
-  if (parts.length) void toast(`Off in the demo: ${parts.join("; ")}. The rest is here to try`)
+  // (a bundle about agents is mostly here, drawn with made-up data: a quiet note, not a list of what's missing)
+  if (info.madeUp?.length) void toast(`Agents' sessions and activity are made up here.${parts.length ? ` ${parts.join("; ")}.` : ""}`, false, true)
+  else if (parts.length) void toast(`Off in the demo: ${parts.join("; ")}. The rest is here to try`)
 }
 
-/** A toast, once the app is there to show it (it starts after the demo's server). */
-async function toast(text: string, error = false) {
+/** A toast, once the app is there to show it (it starts after the demo's server). `quiet`: shorter, no button. */
+async function toast(text: string, error = false, quiet = false) {
   for (let i = 0; i < 100 && !document.querySelector("[data-pane], [data-sonner-toaster], section[aria-label^='Notifications']"); i++) await new Promise((ok) => setTimeout(ok, 100))
   const { notify } = await import("@/core/notify")
-  notify(text, { kind: error ? "error" : undefined, duration: 10_000,
-    action: error ? undefined : { label: "Get the app", run: () => { window.open("https://vaultite.com/download", "_blank", "noopener") } } })
+  notify(text, { kind: error ? "error" : undefined, duration: quiet ? 5_000 : 10_000,
+    action: error || quiet ? undefined : { label: "Get the app", run: () => { window.open("https://vaultite.com/download", "_blank", "noopener") } } })
 }
 
 await navigator.serviceWorker.register("sw.js", { scope: "./" })

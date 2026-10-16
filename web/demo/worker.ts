@@ -4,7 +4,7 @@ import "./node/prelude.ts"
 import "./mount.ts"
 import fs, { changes } from "./node/fs.ts"
 import { NEEDS_APP } from "./node/stub.ts"
-import { fitForDemo, isObj, MACHINE, machineOff, panelsOff, type PluginsJson } from "./machine.ts"
+import { fitForDemo, isObj, machineOff, OFF, panelsOff, SHOWN, type PluginsJson } from "./machine.ts"
 import { fromGitHub } from "./github.ts"
 import { jsonOf, open, type App } from "../../core/app.ts"
 import { Live } from "../../core/live.ts"
@@ -130,7 +130,7 @@ function refused(method: string, route: string, body: unknown) {
   if (route !== "config/plugins" || (method !== "PUT" && method !== "PATCH") || !body || typeof body !== "object") return ""
   const b = body as { disabled?: unknown; enabled?: unknown }
   // (an offByDefault one is on when in `enabled`, another when out of `disabled`)
-  const on = MACHINE.find((id) => app.plugins.find((p) => p.id === id)?.manifest.offByDefault === true ? Array.isArray(b.enabled) && b.enabled.includes(id) : Array.isArray(b.disabled) && !b.disabled.includes(id))
+  const on = OFF.find((id) => app.plugins.find((p) => p.id === id)?.manifest.offByDefault === true ? Array.isArray(b.enabled) && b.enabled.includes(id) : Array.isArray(b.disabled) && !b.disabled.includes(id))
   const name = on && app.plugins.find((p) => p.id === on)?.manifest.name
   return on ? `${name ?? on} needs the Vaultite app: download it to use it` : ""
 }
@@ -187,14 +187,14 @@ async function demoImport(body: Record<string, unknown>) {
   let from = ""
   try { const m = fit.files["bundle.json"]; from = String((typeof m === "string" ? JSON.parse(m) : m as Record<string, unknown>)?.from ?? "") } catch { /* the import says */ }
   let took = { plugins: fit.plugins, code: fit.code }
-  if (from && (fit.code.length || !MACHINE.every((id) => fit.plugins.disabled?.includes(id)))) tookFrom.set(from, took)
+  if (from && (fit.code.length || !OFF.every((id) => fit.plugins.disabled?.includes(id)))) tookFrom.set(from, took)
   else if (from && tookFrom.has(from)) took = tookFrom.get(from)!
   const { from: _, ...rest } = body
   return { body: wrapped ? { ...rest, file: { ...file, files: fit.files } } : { ...file, files: fit.files }, took }
 }
 
 /** GET /api/demo/bundle/<id>: a bundle as the page around the demo shows it: what it is, the plugins it turns on by
- *  name, and those left out here (needing the app, or code from elsewhere). */
+ *  name, those left out here (needing the app, or code from elsewhere) and those drawn with made-up data (SHOWN). */
 async function demoRoute(parts: string[], req: IncomingMessage) {
   if (parts[0] !== "bundle" || parts.length !== 2) throw new HTTPError(404, "no such demo route")
   const out = await app.run("GET", ["bundles", parts[1]], {}, {}, req)
@@ -202,15 +202,15 @@ async function demoRoute(parts: string[], req: IncomingMessage) {
   const b = (out.body as { bundle: Record<string, unknown> }).bundle
   const name = (id: string) => String(app.plugins.find((p) => p.id === id)?.manifest.name ?? id)
   const was = leftOut.get(parts[1])
-  const wanted = was ? MACHINE.filter((id) => {
+  const wants = (id: string) => {
     const p = app.plugins.find((x) => x.id === id)
-    if (!p) return false
+    if (!p || !was) return false
     return p.manifest.offByDefault ? !!was.plugins.enabled?.includes(id) : !!was.plugins.disabled && !was.plugins.disabled.includes(id)
-  }) : []
+  }
   return {
     id: b.id, name: b.name, description: b.description, author: b.author, icon: b.icon, tint: b.tint, from: b.from, theme: b.theme, scheme: b.scheme,
     on: ((b.on as string[] | null) ?? []).map(name), pinned: ((b.pinned as string[] | null) ?? []).map((p) => p.split("/").pop()!.replace(/\.md$/, "")),
-    needsApp: wanted.map(name), notInDemo: was?.code ?? [], problems: b.problems,
+    needsApp: OFF.filter(wants).map(name), madeUp: SHOWN.filter(wants).map(name), notInDemo: was?.code ?? [], problems: b.problems,
   }
 }
 

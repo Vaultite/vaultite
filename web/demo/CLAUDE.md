@@ -9,6 +9,8 @@ The web demo (`npm run build:demo`): the whole app in a browser, no server, on t
   alias in `vite.demo.config.ts`, or the demo build breaks.
 - Browsers can't follow an AsyncLocalStorage across awaits, so the worker answers one request at a time.
 - What needs a machine (terminals, agents, MCP) is `machine.ts`: off in the demo, in every bundle it applies too (their
-  panels left out), and the page says so rather than leaving it to look broken.
+  panels left out), and the page says so rather than leaving it to look broken. But what's `SHOWN` there (agents'
+  sessions and limits, Activity, Machines) is drawn with its preview's made-up data (`mockLive`, answered in the page by
+  `boot.ts`), so the Agents bundle has something to look at; still nothing of theirs runs.
 - A bundle from a repository (`?bundle=gh:owner/name`, a bundle's link on vaultite.com/b/...) is fetched by the browser
   from GitHub's API (`github.ts`), not git: about 3 requests of the 60 an hour GitHub allows an address without a token.
