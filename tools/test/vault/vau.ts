@@ -5,7 +5,7 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, app, check, read, sleep, tmp, TOOLS } = $
-  const { uiLive, vau, conf } = $.vars
+  const { uiLive, vau } = $.vars
   // vau open: no window, then two: only the one used last acts.
   let cr = await vau("open", "Dashboards/Today.md")
   check("vau open: no window open says so", cr.code === 1 && cr.err.includes("no app window is open"), cr)
@@ -36,26 +36,17 @@ export default async ($: VaultTest) => {
   check("vau command: to the window now in use", uiOf(w2).length === 1 && uiOf(w2)[0].id === "sidebar:toggle" && uiOf(w1).length === 3, [w1.got, w2.got])
   cr = await vau("open", "x.md", "--split", "left")
   check("vau open: a bad split is refused", cr.code === 1, cr)
-  // vau notify, with the Inbox on: an event in the inbox (every window toasts it), kept with or without a window.
+  // vau notify: an event in the inbox (every window toasts it), kept with or without a window.
   cr = await vau("notify", "Wrote", "the review", "--action-open", "Today")
   let [, inboxNow] = await api("GET", "inbox/events")
   check("vau notify: an inbox event, its link a vault path", cr.code === 0 && inboxNow.events[0]?.title === "Wrote the review" && inboxNow.events[0].kind === "info" &&
     inboxNow.events[0].link === "Dashboards/Today.md" && inboxNow.events[0].source === "vau" && !uiOf(w2).some((m: Any) => m.action === "notify"), [cr, inboxNow.events[0]])
-  await api("DELETE", "inbox/events")
-  // With the Inbox off: a toast in the window used last, its button opening a vault path.
-  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: [...(conf("plugins").disabled ?? []), "inbox"] }, null, 2) + "\n")
-  cr = await vau("notify", "Imported", "12 meals", "--action-label", "See it", "--action-open", "Today")
-  let toastMsg = uiOf(w2).at(-1)
-  check("vau notify: to the window in use, with its button", cr.code === 0 && uiOf(w1).length === 3 && toastMsg.action === "notify" &&
-    toastMsg.text === "Imported 12 meals" && toastMsg.kind === null && toastMsg.button?.label === "See it" && toastMsg.button?.open === "Dashboards/Today.md", [cr, toastMsg])
   cr = await vau("notify", "It broke", "--error")
-  toastMsg = uiOf(w2).at(-1)
-  check("vau notify --error: an error toast, no button", cr.code === 0 && toastMsg.kind === "error" && toastMsg.button === null, toastMsg)
-  cr = await vau("notify", "x", "--action-label", "Open")
-  check("vau notify: a label without --action-open is refused", cr.code === 1 && cr.err.includes("--action-open"), cr)
+  ;[, inboxNow] = await api("GET", "inbox/events")
+  check("vau notify --error: an error event, no link", cr.code === 0 && inboxNow.events[0]?.title === "It broke" && inboxNow.events[0].kind === "error" && !inboxNow.events[0].link, inboxNow.events[0])
+  await api("DELETE", "inbox/events")
   cr = await vau("notify")
   check("vau notify: the text is required", cr.code === 1 && cr.err.includes("text is missing"), cr)
-  fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: (conf("plugins").disabled ?? []).filter((x: string) => x !== "inbox") }, null, 2) + "\n")
   const n = uiOf(w2).length
   check("/api/ui notify: empty text, a bad kind or button are refused, nothing sent",
     uiLive.handle("POST", { action: "notify", text: "  " })[1] === 400 && uiLive.handle("POST", { action: "notify", text: "x", kind: "warn" })[1] === 400 &&

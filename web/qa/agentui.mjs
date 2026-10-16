@@ -56,7 +56,7 @@ async function dragTo(key, x, y, shot) {
 try {
   // Workspaces off (a workspace keeps sidebars of its own), and the default panels (Links, hidden until shown, isn't).
   const hadOrder = Array.isArray(conf("plugins").order)
-  setConf("plugins", { disabled: ["backlinks", "workspaces"] })
+  setConf("plugins", { disabled: ["backlinks"] })
   setConf("sidebars", sidebarsOf(DEFAULT))
   await page.goto(B)
   await page.waitForSelector("aside [data-panel='terminal:sessions']")

@@ -1,9 +1,9 @@
 // The web demo (npm run build:demo): the app with its server in the browser. Serves web/dist-demo under /demo/ (or uses
-// <base url>) and checks, in Chrome and WebKit, it starts, opens a note, Today and search, keeps an edit across a reload,
+// <demo url>, a demo served elsewhere: not "base url", which tools/qa.ts fills with an app server's) and checks, in Chrome and WebKit, it starts, opens a note, Today and search, keeps an edit across a reload,
 // refuses a plugin that needs a machine, opens on a bundle (?bundle=), that the sample's files were edited across the
 // weeks before (also once a reload brings them back from IndexedDB), and that Reset brings the sample back.
 // WRITES: only the browser profile it makes.
-//   node web/qa/demo.mjs [<base url>]
+//   node web/qa/demo.mjs [<demo url>]
 import fs from "node:fs"
 import http from "node:http"
 import path from "node:path"
@@ -77,10 +77,10 @@ async function visit(name, browser) {
   is("a plugin that needs a machine isn't turned on", refused.status === 403 && /needs the Vaultite app/.test(refused.json?.error), refused)
 
   await page.goto("about:blank")
-  await page.goto(`${base}?bundle=everything`)
+  await page.goto(`${base}?bundle=agent-cockpit`)
   await drawn()
   const bundles = (await api("GET", "bundles")).json, plugins = (await api("GET", "config/plugins")).json
-  is("?bundle= starts on that bundle, what needs a machine still off", bundles?.previous?.bundle === "everything" && !plugins?.enabled?.includes("machines"),
+  is("?bundle= starts on that bundle, what needs a machine still off", bundles?.previous?.bundle === "agent-cockpit" && !plugins?.enabled?.includes("machines"),
     { previous: bundles?.previous, enabled: plugins?.enabled })
 
   const MARK = "Edited in the demo"

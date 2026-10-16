@@ -113,7 +113,7 @@ check("sandbox: only its two pages are pinned (the pages plugins bring aren't)",
 check("sandbox: a plugin that's off has no page, the design system has one", !fs.existsSync(path.join(C, BUILT, "Codex.md")) && fs.existsSync(path.join(C, BUILT, "Today.md")) &&
   fs.existsSync(path.join(C, BUILT, "Design.md")))
 const pconf = JSON.parse(fs.readFileSync(path.join(C, ".vaultite/plugins.json"), "utf8"))
-await api("PUT", "config/plugins", { ...pconf, disabled: pconf.disabled.filter((x: string) => x !== "codex") })
+await api("PUT", "config/plugins", { ...pconf, disabled: (pconf.disabled ?? []).filter((x: string) => x !== "codex"), enabled: [...(pconf.enabled ?? []), "codex"] })
 check("sandbox: turned on, it writes its page (not pinned here: pinNew)", fs.existsSync(path.join(C, BUILT, "Codex.md")) &&
   JSON.parse(fs.readFileSync(path.join(C, ".vaultite/pages.json"), "utf8")).pinned.length === 2)
 const [, gym] = await api("GET", `query?q=${encodeURIComponent(JSON.stringify({ type: "log", where: "area = workouts" }))}`)

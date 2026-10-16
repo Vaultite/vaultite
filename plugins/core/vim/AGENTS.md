@@ -1,7 +1,8 @@
 ## Vim
 Vim's keys in the whole app, off until turned on: `vau plugin on vim` (it's listed in `enabled` in
-`.vaultite/plugins.json`), `vau plugin off vim`. Every device with a mouse or trackpad gets it;
-phones type as usual, and each device can turn it on or off for itself (Vim's settings, On this device).
+`.vaultite/plugins.json`), `vau plugin off vim`; in the app, Settings, Editor, Vim keys. Every device with a mouse or
+trackpad gets it; phones type as usual, and each device can turn it on or off for itself (Vim's settings, On this
+device).
 - In the editor: Vim's modes, motions, registers, macros and `/` search, plus `]]` / `[[` (headings), `gl` / `gL`
   (links), `gf` (follow a link; `gF` new tab, `K` to the right, `gx` browser), folds (`za`, `zc`, `zo`, `zM`, `zR`)
   and `:` commands that drive the app: `:e <name>`, `:tabe <name>`, `:sp`, `:vs`, `:q`, `:only`, `:bn`, `:bp`, `:new`,

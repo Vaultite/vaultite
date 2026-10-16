@@ -14,6 +14,8 @@ mkdirSync(OUT, { recursive: true })
 const settings = path.join(VAULT, ".vaultite/plugins.json")
 const original = existsSync(settings) ? readFileSync(settings, "utf8") : "{}\n"
 const setPlugins = (o) => writeFileSync(settings, JSON.stringify({ ...JSON.parse(original), ...o }, null, 2) + "\n")
+/** plugins.json's `enabled` with Workspaces on or off (off by default). */
+const withWorkspaces = (on) => ({ enabled: [...(JSON.parse(original).enabled ?? []).filter((x) => x !== "workspaces"), ...(on ? ["workspaces"] : [])] })
 const data = () => workspaces(VAULT)
 const sidebarsFile = path.join(VAULT, ".vaultite/sidebars.json")
 const sidebarsBefore = existsSync(sidebarsFile) ? readFileSync(sidebarsFile, "utf8") : null
@@ -59,7 +61,7 @@ let sid = null
 try {
   clearWorkspaces(VAULT)
   // (Links, the backlinks panel, stays off here, like sidebar.mjs: its panel would join every list.)
-  setPlugins({ disabled: ["backlinks"] })
+  setPlugins({ disabled: ["backlinks"], ...withWorkspaces(true) })
   writeFileSync(sidebarsFile, DEFAULT + "\n")
   await page.goto(`${B}#file/${encodeURIComponent("Notes/Alpha.md")}`)
   await page.waitForSelector("aside [data-panel]")
@@ -402,7 +404,7 @@ try {
   await wait(1500)
   const kept = JSON.stringify(data())
   const tabsOn = await tabs()
-  setPlugins({ disabled: ["workspaces", "backlinks"] })
+  setPlugins({ disabled: ["backlinks"], ...withWorkspaces(false) })
   check("off: no switcher", !!(await until(async () => !(await page.$(SWITCHER)), 6000)))
   check("off: sidebars.json's panels", !!(await until(async () => (await panels()).length === 4, 6000)), await panels())
   const pinsOff = await page.$$eval("aside [data-pin]", (els) => els.map((e) => e.getAttribute("data-pin")))
@@ -414,7 +416,7 @@ try {
   await page.screenshot({ path: `${OUT}8-off.png`, clip: { x: 0, y: 0, width: 260, height: 90 } })
   await wait(1500)
   check("off: its files untouched", JSON.stringify(data()) === kept)
-  setPlugins({ disabled: ["backlinks"] })
+  setPlugins({ disabled: ["backlinks"], ...withWorkspaces(true) })
   check("on again: 2's panels", !!(await until(async () => JSON.stringify(await panels()) === JSON.stringify(["terminal:sessions"]), 6000)), await panels())
   check("on again: 2's tabs", !!(await until(async () => JSON.stringify(await tabs()) === JSON.stringify(tabsOn), 6000)), [await tabs(), tabsOn])
   noErrors()

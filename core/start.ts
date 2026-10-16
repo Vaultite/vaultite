@@ -1,4 +1,4 @@
-// A new vault starts from Minimal (bundles/minimal), so there's no setup to pick first. Only .vaultite/ is written;
+// A new vault starts from Standard (bundles/standard), so there's no setup to pick first. Only .vaultite/ is written;
 // starter content (a Start here note, pointers for agents) only when the user chose it in setup (vault.starter).
 import fs from "node:fs"
 import * as B from "./bundles.ts"
@@ -20,10 +20,10 @@ Open a terminal (⌘P, or Ctrl+P off a Mac, then Open terminal) and run \`claude
 - Delete this note when you're done with it.
 `
 
-/** Set up a vault opened for the first time: Minimal's setup, all of it in .vaultite/ (its plugins' pages come with
+/** Set up a vault opened for the first time: Standard's setup, all of it in .vaultite/ (its plugins' pages come with
  *  the starter content, or a setup picked). */
 export async function setUpNew(host: B.Host) {
-  // (a list of pins first: the pages of the plugins Minimal turns on aren't all pinned, as a vault without one would be)
+  // (a list of pins first: the pages of the plugins Standard turns on aren't all pinned, as a vault without one would be)
   await host.call("PATCH", "config/pages", { pinned: [] })
   await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false, pages: false })
 }

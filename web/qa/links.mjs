@@ -45,11 +45,11 @@ const group = (id) => `aside [data-links-panel] [data-links-group='${id}']`
 const count = async (id) => Number(await page.$eval(`${group(id)} [data-count]`, (e) => e.textContent))
 const palette = async (name) => { await page.keyboard.press("ControlOrMeta+P"); await page.keyboard.type(name); await wait(200); await page.keyboard.press("Enter") }
 let term = ""
-const disabledBefore = (await api("config/plugins")).disabled ?? []
+const { disabled: disabledBefore = [], enabled: enabledBefore = [] } = await api("config/plugins")
 try {
   // Every plugin on but Workspaces (whose workspaces would keep sidebars of their own), and Links shown (hidden until
   // shown): the default panels, then Links.
-  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: ["workspaces"] }) })
+  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: [], enabled: enabledBefore.filter((x) => x !== "workspaces") }) })
   await api("config/sidebars", { method: "PUT", body: JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files", "backlinks:links"], right: [], collapsed: [] }) })
   await open(`${DIR}/Beacon.md`)
   await page.waitForSelector("aside [data-links-panel]")
@@ -173,7 +173,7 @@ try {
   await endTerminal(`resume-claude-${SID}`)
   rmSync(path.join(VAULT, DIR), { recursive: true, force: true })
   await api("config/sidebars", { method: "PUT", body: JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] }) })
-  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: disabledBefore }) })
+  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: disabledBefore, enabled: enabledBefore }) })
   await browser.close()
 }
 await done()

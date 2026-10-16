@@ -1,18 +1,19 @@
-// Bundles: setups to start from, save and share (format: core/bundles.ts). The app's own page, opened by itself on a
-// vault never opened before; a card opens a preview of what applying changes, asking first when it runs code.
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
+// Bundles: setups to start from, save and share (format: core/bundles.ts); a card, or a bundle pasted or dropped on the
+// page, opens a preview of what applying it changes, asking first when it runs code.
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import {
-  ArrowRight, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, Palette, PanelLeft, PanelRight, Pin, Plus,
+  ArrowRight, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { fmtAgo } from "@/core/data"
 import {
-  agentPrompt, applyBundle, bundleText, deleteBundle, exportBundle, importBundle, importText, previewOf, previewUrl, refreshBundles, restoreSetup, runsCode,
-  saveBundle, shareOf, skipOnboarding, startSave, takenShot, useBundles, type BundleInfo, type ShareItem,
+  addIncoming, agentPrompt, applyBundle, bundleText, deleteBundle, exportBundle, givenImport, importText, incomingOf, isBundleText, openImport, previewOf,
+  previewUrl, refreshBundles, restoreSetup, runsCode, saveBundle, shareOf, skipOnboarding, startSave, takenShot, useBundles, type BundleInfo, type Incoming,
+  type Plan, type ShareItem,
 } from "@/core/bundles"
 import { copyText } from "@/core/richmd"
-import { closeDetail, openDetail } from "@/core/nav"
+import { closeDetail, openDetail, replaceDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
 import { PLUGINS, pluginById, switchedOn, tintOfPlugin, usePlugins } from "@/core/plugins"
@@ -25,6 +26,7 @@ import { Bar as Line, PageHeader, Panel, SheetHead, Switch } from "@/components/
 import { Swatches } from "@/components/Appearance"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
+import { BundleLink } from "./BundleLink"
 
 const stem = (p: string) => p.split("/").pop()!.replace(/\.(md|base|canvas|html|csv)$/, "")
 const iconOfBundle = (b: Pick<BundleInfo, "icon">) => namedIcon(b.icon) ?? Package
@@ -204,12 +206,12 @@ function Sketch({ b }: { b: BundleInfo }) {
 
 /** A bundle: its picture and name, nothing to read (what it changes is in its preview); only a warning when it runs
  *  code or can't be read. */
-function BundleCard({ b, applied }: { b: BundleInfo; applied?: boolean }) {
+function BundleCard({ b, applied, picked }: { b: BundleInfo; applied?: boolean; picked?: boolean }) {
   const Icon = iconOfBundle(b)
   return (
     <div className="group/card relative flex min-w-0 flex-col">
       <button type="button" onClick={() => openDetail(`bundle/${b.id}`)} data-bundle={b.id} data-keyrow aria-label={`${b.name}: preview`}
-        className="glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none">
+        className={cn("glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none", picked && "ring-2 ring-primary")}>
         <Thumb b={b} />
         <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
           <div className="flex items-center gap-2">
@@ -217,7 +219,8 @@ function BundleCard({ b, applied }: { b: BundleInfo; applied?: boolean }) {
               <Icon className="size-4" strokeWidth={2.25} />
             </span>
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{b.name}</span>
-            {applied && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-tip="The last bundle applied">Applied</span>}
+            {applied && !picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-tip="The last bundle applied">Applied</span>}
+            {picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-picked>Picked</span>}
           </div>
           {(!!b.code.length || !!b.problems.length) && (
             <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-[12px]">
@@ -255,47 +258,45 @@ async function removeBundle(b: BundleInfo) {
   } catch (e) { notifyError(e, "Couldn't delete it") }
 }
 
-/** A dashed card that does something (save, import). */
-function ActionCard({ icon: Icon, title, onClick, ...rest }: { icon: LucideIcon; title: string; onClick: () => void } & Record<`data-${string}`, unknown>) {
-  return (
-    <button type="button" onClick={onClick} data-keyrow {...rest}
-      className="flex min-h-[96px] min-w-0 cursor-pointer flex-col items-start justify-end gap-1 rounded-[12px] border-[1.5px] border-dashed border-border p-3.5 text-left transition-colors hover:border-primary/50 hover:bg-foreground/[0.02]">
-      <Icon className="mb-auto size-5 text-muted-foreground" strokeWidth={2} />
-      <span className="text-[15px] font-semibold">{title}</span>
-    </button>
-  )
-}
-
-/** The built-in grid's last card: the other bundles' icons, and More…, which opens them in a sheet. */
-function MoreCard({ more }: { more: BundleInfo[] }) {
-  return (
-    <button type="button" onClick={() => openDetail("bundles-more")} data-bundles-more data-keyrow aria-label="More bundles"
-      className="glass flex min-h-[96px] min-w-0 cursor-pointer flex-col justify-between gap-3 rounded-[12px] p-3.5 text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none">
-      <span aria-hidden className="flex gap-1.5">
-        {more.map((b) => {
-          const Icon = iconOfBundle(b)
-          return <span key={b.id} className="grid size-7 place-items-center rounded-[7px] bg-muted" style={{ color: tintOfBundle(b) }}><Icon className="size-4" strokeWidth={2.25} /></span>
-        })}
-      </span>
-      <span className="text-[15px] font-semibold">More…</span>
-    </button>
-  )
-}
-
-/** The app's other bundles (bundle.json's `more`), as a sheet: the built-in grid's More…. */
-export function MoreBundles() {
-  const l = useBundles()
-  const more = l?.bundles.filter((b) => b.source === "app" && b.more) ?? []
-  return (
-    <>
-      <SheetHead icon={Package} tint="var(--primary)" kicker="Bundles" title="More bundles" />
-      <div className="@container" data-keylist>
-        <div className="grid grid-cols-1 gap-3 @lg:grid-cols-2" data-bundles-app-more>
-          {more.map((b) => <BundleCard key={b.id} b={b} />)}
-        </div>
-      </div>
-    </>
-  )
+/** Pasting a bundle (its JSON, a repository's name) or dropping its file anywhere on the page opens its import, when
+ *  nothing else takes it (a field, a sheet). Whether a file is being dragged over it. */
+function useImportGestures(root: RefObject<HTMLDivElement | null>) {
+  const [over, setOver] = useState(false)
+  useEffect(() => {
+    const el = root.current
+    if (!el) return
+    const editable = (t: EventTarget | null) => t instanceof HTMLElement && !!t.closest("input, textarea, select, [contenteditable]:not([contenteditable=false])")
+    const paste = (e: ClipboardEvent) => {
+      // (a page kept hidden in its pane has no offsetParent; two showing it take one paste once)
+      if (e.defaultPrevented || !el.offsetParent || document.querySelector("dialog[open]") || editable(e.target)) return
+      const file = [...e.clipboardData?.files ?? []].find((f) => /json/.test(f.type) || f.name.endsWith(".json"))
+      const text = e.clipboardData?.getData("text/plain") ?? ""
+      if (!file && !isBundleText(text)) return
+      e.preventDefault()
+      openImport(file ?? text)
+    }
+    const files = (e: DragEvent) => !!e.dataTransfer?.types.includes("Files")
+    const enter = (e: DragEvent) => { if (!files(e)) return; e.preventDefault(); e.dataTransfer!.dropEffect = "copy"; setOver(true) }
+    const leave = (e: DragEvent) => { if (!el.contains(e.relatedTarget as Node | null)) setOver(false) }
+    const drop = (e: DragEvent) => {
+      if (!files(e)) return
+      e.preventDefault()
+      setOver(false)
+      const f = e.dataTransfer!.files[0]
+      if (f) openImport(f)
+    }
+    document.addEventListener("paste", paste)
+    el.addEventListener("dragover", enter)
+    el.addEventListener("dragleave", leave)
+    el.addEventListener("drop", drop)
+    return () => {
+      document.removeEventListener("paste", paste)
+      el.removeEventListener("dragover", enter)
+      el.removeEventListener("dragleave", leave)
+      el.removeEventListener("drop", drop)
+    }
+  }, [root])
+  return over
 }
 
 export function Bundles({ store }: { store: Store }) {
@@ -305,16 +306,21 @@ export function Bundles({ store }: { store: Store }) {
   // The list follows the vault (a bundle saved or imported by an AI, from another device).
   const files = store.files
   useEffect(() => { void refreshBundles() }, [files])
-  const app = l?.bundles.filter((b) => b.source === "app" && !b.more) ?? []
-  const more = l?.bundles.filter((b) => b.source === "app" && b.more) ?? []
-  const mine = l?.bundles.filter((b) => b.source === "vault" && !b.look) ?? []
-  const looks = l?.bundles.filter((b) => b.look) ?? []
+  const app = l?.bundles.filter((b) => b.source === "app") ?? []
+  const mine = l?.bundles.filter((b) => b.source === "vault") ?? []
+  const start = app.find((b) => b.id === l?.default)
+  const root = useRef<HTMLDivElement>(null)
+  const over = useImportGestures(root)
   return (
-    <>
+    <div ref={root} className="relative min-h-full" data-file-drop data-bundles-page>
       <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          {welcome && <Button onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with Minimal</Button>}
-          <Button look={welcome ? "secondary" : "primary"} onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
+          {welcome
+            ? <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>
+            : <>
+              <Button onClick={() => openDetail("bundle-import")} data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import</Button>
+              <Button look="primary" onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
+            </>}
         </div>
       </PageHeader>
       {prev && (
@@ -327,32 +333,39 @@ export function Bundles({ store }: { store: Store }) {
         </div>
       )}
       <div className="@container" data-keylist>
-        <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>
-        {/* The applied one stays in sight even when it's one of More's. */}
+        {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
         <div className="mb-7 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-app>
-          {[...app, ...more.filter((b) => prev?.bundle === b.id)].map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
-          {!!more.length && <MoreCard more={more} />}
+          {app.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} picked={welcome && b.id === start?.id} />)}
         </div>
-        <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
-        <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-mine>
-          {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
-          {!mine.length && <ActionCard icon={Plus} title="Save current setup" onClick={() => void startSave()} />}
-          <ActionCard icon={Import} title="Import a bundle" onClick={() => openDetail("bundle-import")} data-bundles-import />
-        </div>
-        {/* Bundles that change only the look: applied over any setup, plugins and panels as they are. */}
-        <h2 className="mb-2 text-[17px] font-semibold">Looks</h2>
-        <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-looks>
-          {looks.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
-          <ActionCard icon={Palette} title="Save the look" onClick={() => void startSave(true)} data-bundles-save-look />
-        </div>
+        {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
+        {welcome && (
+          <p className="mb-6 text-[14px] text-muted-foreground" data-bundles-welcome-import>
+            Have a bundle? <button type="button" onClick={() => openDetail("bundle-import")} className="cursor-pointer font-medium text-primary hover:underline">Import it</button>
+          </p>
+        )}
+        {(!welcome || mine.length > 0) && <>
+          <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
+          {mine.length
+            ? <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-mine>
+              {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
+            </div>
+            : <p className="mb-6 text-[14px] leading-[20px] text-muted-foreground" data-bundles-mine>
+              Setups you save or import show here. To import one someone shared, paste it or drop its file on this page.
+            </p>}
+        </>}
       </div>
-    </>
+      {over && (
+        <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-[12px] border-2 border-dashed border-primary/60 bg-background/85 text-[15px] font-medium" data-bundles-drop>
+          Drop to import the bundle
+        </div>
+      )}
+    </div>
   )
 }
 
 // ---------- a bundle's preview: what applying it changes here ----------
 
-type Preview = Awaited<ReturnType<typeof previewOf>> & { pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> }
+type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> }
 
 const showValue = (v: unknown) => (v === null || v === undefined ? "default" : typeof v === "boolean" ? (v ? "on" : "off") : Array.isArray(v) ? v.join(", ") || "none" : String(v))
 
@@ -416,6 +429,13 @@ function PageRow({ path, look, state }: { path: string; look?: { icon: string | 
   )
 }
 
+/** Applying runs code from it: ask first. */
+const askToRun = (b: BundleInfo, plan: Plan) => confirmDialog({
+  title: `Run code from ${b.name}?`,
+  body: `It brings vault plugins (${plan.code.map((c) => c.source && !c.kept ? `${c.name}, from ${c.source}` : c.name).join("; ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
+  confirm: "Apply and run them", danger: true,
+})
+
 /** What applying a bundle changes here, then Apply. */
 export function BundlePreview({ id }: { id: string }) {
   const [p, setP] = useState<Preview | null>(null)
@@ -426,25 +446,18 @@ export function BundlePreview({ id }: { id: string }) {
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
-  const Icon = iconOfBundle(b)
   const code = runsCode(plan)
   const apply = async () => {
-    if (code && !(await confirmDialog({
-      title: `Run code from ${b.name}?`,
-      body: `It brings vault plugins (${plan.code.map((c) => c.source && !c.kept ? `${c.name}, from ${c.source}` : c.name).join("; ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
-      confirm: "Apply and run them", danger: true,
-    }))) return
+    if (code && !(await askToRun(b, plan))) return
     setBusy(true)
     try {
       closeDetail()
       await applyBundle(b, plan, code, offAdded)
     } catch (e) { notifyError(e, `Couldn't apply ${b.name}`) } finally { setBusy(false) }
   }
-  const pins = plan.pins
-  const added = plan.plugins.added ?? []
   return (
     <div data-bundle-preview={b.id}>
-      <SheetHead icon={Icon} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${b.from}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
+      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${b.from}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <Button look="primary" disabled={busy || (plan.empty && !offAdded) || !!b.problems.length} onClick={apply} data-bundle-apply>
           {plan.empty && !offAdded ? "This is your setup already" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
@@ -452,7 +465,71 @@ export function BundlePreview({ id }: { id: string }) {
         {b.source === "vault" && <Button onClick={() => openDetail(`bundle-share/${b.id}`)} data-bundle-share><Share className="size-4" strokeWidth={2} />Share</Button>}
         {b.source === "vault" && <Button onClick={() => { closeDetail(); void removeBundle(b) }}><Trash2 className="size-4" strokeWidth={2} />Delete</Button>}
       </div>
-      {!b.look && <p className="-mt-2 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-reach>Applies to every window and device on this vault; agents lose the tools of plugins it turns off.</p>}
+      <Changes p={p} offAdded={offAdded} setOffAdded={setOffAdded} />
+    </div>
+  )
+}
+
+/** A bundle given to the app (openImport), before it's added: what applying it would change, then Apply (added, then
+ *  applied) or Add (to the user's bundles). Reloaded, what it was given is gone: the Import sheet instead. */
+export function IncomingBundle({ id }: { id: string }) {
+  const [source] = useState(() => givenImport(id))
+  const [inc, setInc] = useState<Incoming | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [offAdded, setOffAdded] = useState(false)
+  const l = useBundles()
+  useEffect(() => { if (source) incomingOf(source).then(setInc, (e) => setError(String(e?.message ?? e))) }, [source])
+  if (!source) return <ImportBundle />
+  const repo = typeof source === "string" && !source.trim().startsWith("{") && !source.includes("\n") ? source.trim() : null
+  if (error) return (
+    <div data-bundle-incoming-error>
+      <SheetHead icon={Import} tint="var(--muted-foreground)" kicker="Import" title="Can't import this bundle" sub={error} />
+      <Button onClick={() => replaceDetail("bundle-import")}>Import another…</Button>
+    </div>
+  )
+  if (!inc) return <div aria-busy><SheetHead icon={Import} tint="var(--muted-foreground)" kicker={repo ? `Getting it from ${repo}` : "Import"} title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
+  const { bundle: b, plan } = inc
+  const code = runsCode(plan)
+  const replaces = l?.bundles.find((x) => x.id === inc.replaces) ?? null
+  const add = async (then: (added: BundleInfo) => Promise<void>) => {
+    setBusy(true)
+    try {
+      const added = await addIncoming(inc)
+      closeDetail()
+      await then(added)
+    } catch (e) { notifyError(e, `Couldn't import ${b.name}`) } finally { setBusy(false) }
+  }
+  const apply = async () => {
+    if (code && !(await askToRun(b, plan))) return
+    await add((added) => applyBundle(added, plan, code, offAdded))
+  }
+  const keep = () => add(async (added) => { notify(`Added ${added.name} to your bundles`, { action: { label: "Preview", run: () => openDetail(`bundle/${added.id}`) } }) })
+  return (
+    <div data-bundle-incoming={b.id}>
+      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.from ? `From ${b.from}` : "Import"} title={b.name} sub={b.description || undefined} />
+      <div className="mb-5 flex flex-wrap items-center gap-2">
+        <Button look="primary" disabled={busy || !!b.problems.length} onClick={() => void apply()} data-bundle-incoming-apply>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></Button>
+        <Button disabled={busy || !!b.problems.length} onClick={() => void keep()} data-bundle-incoming-add><Plus className="size-4" strokeWidth={2.25} />{replaces ? `Update ${replaces.name}` : "Add to your bundles"}</Button>
+      </div>
+      <p className="-mt-2 mb-5 text-[13px] leading-[18px] text-muted-foreground">
+        {replaces ? `It replaces your ${replaces.name}, from the same repository. ` : ""}Either way it's kept in your bundles, to apply again or share.
+      </p>
+      {plan.empty && <p className="mb-4 text-[14px] text-muted-foreground">Applying it changes nothing here: it's your setup already.</p>}
+      <Changes p={inc} offAdded={offAdded} setOffAdded={setOffAdded} />
+    </div>
+  )
+}
+
+/** A preview's body: what applying the bundle changes here (plugins, panels, pins, the look, settings, files). */
+function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; setOffAdded: (v: boolean) => void }) {
+  const { bundle: b, plan } = p
+  const code = runsCode(plan)
+  const pins = plan.pins
+  const added = plan.plugins.added ?? []
+  return (
+    <>
+      {b.on !== null && <p className="-mt-2 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-reach>Applies to every window and device on this vault; agents lose the tools of plugins it turns off.</p>}
       {code && (
         <div className="mb-4 flex gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--red)_10%,transparent)] p-3.5" data-bundle-code>
           <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[var(--red)]" strokeWidth={2} />
@@ -536,7 +613,7 @@ export function BundlePreview({ id }: { id: string }) {
           </Panel>
         )}
       </div>
-    </div>
+    </>
   )
 }
 
@@ -560,10 +637,9 @@ function Setting({ label, from, to, labels }: { label: string; from: unknown; to
 
 // ---------- saving the current setup ----------
 
-export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
+export function SaveBundle() {
   const [name, setName] = useState("")
   const [description, setDescription] = useState("")
-  const [look, setLook] = useState(lookFirst)
   const [shot] = useState(takenShot)
   const [picture, setPicture] = useState(!!shot)
   const [hotkeys, setHotkeys] = useState(false)
@@ -580,7 +656,7 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
     if (!name.trim()) return
     setBusy(true)
     try {
-      const b = await saveBundle({ name, description, look, ...(look ? {} : { hotkeys, vaultPlugins: code }), ...(picture && shot ? { preview: shot } : {}), replace: !!clash })
+      const b = await saveBundle({ name, description, hotkeys, vaultPlugins: code, ...(picture && shot ? { preview: shot } : {}), replace: !!clash })
       closeDetail()
       notify(`Saved ${b.name}`, { action: { label: "Share", run: () => openDetail(`bundle-share/${b.id}`) } })
     } catch (e) { notifyError(e, "Couldn't save it") } finally { setBusy(false) }
@@ -588,7 +664,7 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
   const input = "h-10 w-full rounded-[8px] border-[0.5px] border-border bg-card px-3 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-9 md:text-[14px]"
   return (
     <form onSubmit={(e) => { e.preventDefault(); void save() }} data-bundle-save-form>
-      <SheetHead icon={look ? Palette : Package} tint="var(--primary)" kicker="Bundles" title={look ? "Save the look" : "Save current setup"}
+      <SheetHead icon={Package} tint="var(--primary)" kicker="Bundles" title="Save current setup"
         sub="As a bundle in this vault's .vaultite/bundles: apply it again later, or export it to share." />
       <div className="grid grid-cols-1 gap-3">
         <label className="block">
@@ -602,10 +678,6 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
         </label>
         <Panel className="py-1">
           <div className="hairline flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-            <div className="flex min-h-12 items-center gap-3 py-2">
-              <div className="min-w-0 flex-1"><div className="text-[15px]">Only the look</div><div className="text-[13px] text-muted-foreground">Applied over any setup: plugins, panels and pins stay as they are</div></div>
-              <Switch on={look} onChange={setLook} label="Only the look" />
-            </div>
             {shot && (
               <div className="flex min-h-12 items-center gap-3 py-2">
                 <img src={`data:image/png;base64,${shot}`} alt="" className="h-10 w-16 shrink-0 rounded-[5px] border-[0.5px] border-border object-cover object-top-left" />
@@ -613,13 +685,11 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
                 <Switch on={picture} onChange={setPicture} label="Include the picture" />
               </div>
             )}
-            {!look && (
-              <div className="flex min-h-12 items-center gap-3 py-2">
-                <div className="min-w-0 flex-1"><div className="text-[15px]">Hotkeys</div><div className="text-[13px] text-muted-foreground">Your keyboard shortcuts, from hotkeys.json</div></div>
-                <Switch on={hotkeys} onChange={setHotkeys} label="Include hotkeys" />
-              </div>
-            )}
-            {!look && vaultOn > 0 && (
+            <div className="flex min-h-12 items-center gap-3 py-2">
+              <div className="min-w-0 flex-1"><div className="text-[15px]">Hotkeys</div><div className="text-[13px] text-muted-foreground">Your keyboard shortcuts, from hotkeys.json</div></div>
+              <Switch on={hotkeys} onChange={setHotkeys} label="Include hotkeys" />
+            </div>
+            {vaultOn > 0 && (
               <div className="flex min-h-12 items-center gap-3 py-2">
                 <div className="min-w-0 flex-1"><div className="text-[15px]">Plugins made in this vault</div><div className="text-[13px] text-muted-foreground">{vaultOn} on, as their code. Whoever applies the bundle is asked first</div></div>
                 <Switch on={code} onChange={setCode} label="Include vault plugins" />
@@ -628,10 +698,8 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
           </div>
         </Panel>
         <p className="text-[13px] leading-[18px] text-muted-foreground">
-          {look
-            ? "It keeps the colours, fonts, CSS snippets, the status bar and what a new tab shows (its page, if it has one). Not your notes."
-            : <>It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
-              pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows{installed ? `, and the ${installed === 1 ? "plugin" : `${installed} plugins`} you installed, by where they come from` : ""}. Not your notes.</>}
+          It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
+          pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows{installed ? `, and the ${installed === 1 ? "plugin" : `${installed} plugins`} you installed, by where they come from` : ""}. Not your notes.
         </p>
         <div><Button look="primary" type="submit" disabled={busy || !name.trim()} data-bundle-save>{clash ? "Replace" : "Save"}</Button></div>
       </div>
@@ -698,9 +766,9 @@ export function ShareBundle({ id }: { id: string }) {
       )}
       <p className="mt-3 text-[13px] leading-[18px] text-muted-foreground">
         {parts.dropped.length > 0 && <>Never sent: pins to your own notes ({parts.dropped.map(stem).join(", ")}). </>}
-        Plugins you installed go as where they come from: whoever applies it installs them, after saying yes. To share it from GitHub, put the file in a
-        repository: others import it by its name (owner/name).
+        Plugins you installed go as where they come from: whoever applies it installs them, after saying yes.
       </p>
+      <BundleLink b={b} />
     </div>
   )
 }
@@ -708,28 +776,19 @@ export function ShareBundle({ id }: { id: string }) {
 /** Import a bundle: pasted (its JSON, or a GitHub repository's name), or a file. Added to the user's, not applied. */
 export function ImportBundle() {
   const [text, setText] = useState("")
-  const [busy, setBusy] = useState(false)
   const file = useRef<HTMLInputElement>(null)
   useSheetGuard(() => (text.trim() ? ["What you pasted"] : []))
-  const go = async (f: () => Promise<BundleInfo>) => {
-    setBusy(true)
-    try {
-      const b = await f()
-      closeDetail()
-      notify(`Imported ${b.name}`, { action: { label: "Preview", run: () => openDetail(`bundle/${b.id}`) } })
-    } catch (e) { notifyError(e, "Couldn't import it") } finally { setBusy(false) }
-  }
   return (
-    <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void go(() => importText(text)) }} data-bundle-import-form>
-      <SheetHead icon={Import} tint="var(--primary)" kicker="Bundles" title="Import a bundle" sub="It's added to your bundles, not applied: its preview says what it would change." />
+    <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) openImport(text) }} data-bundle-import-form>
+      <SheetHead icon={Import} tint="var(--primary)" kicker="Bundles" title="Import a bundle" sub="Its preview says what it would change, then you apply it or keep it in your bundles." />
       <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} spellCheck={false} data-bundle-import-text
         placeholder="Paste a bundle, or a GitHub repository (owner/name)"
         className="mb-3 block w-full resize-y rounded-[8px] border-[0.5px] border-border bg-card px-3 py-2 font-mono text-[16px] outline-none placeholder:font-sans placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:text-[13px]" />
       <div className="flex flex-wrap gap-2">
-        <Button look="primary" type="submit" disabled={busy || !text.trim()} data-bundle-import>{busy ? "Importing…" : "Import"}</Button>
-        <Button type="button" disabled={busy} onClick={() => file.current?.click()}><FilePlus className="size-4" strokeWidth={2} />Choose a file…</Button>
+        <Button look="primary" type="submit" disabled={!text.trim()} data-bundle-import>Preview</Button>
+        <Button type="button" onClick={() => file.current?.click()}><FilePlus className="size-4" strokeWidth={2} />Choose a file…</Button>
       </div>
-      <input ref={file} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void go(() => importBundle(f)) }} />
+      <input ref={file} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) openImport(f) }} />
     </form>
   )
 }

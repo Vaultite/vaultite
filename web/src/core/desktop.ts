@@ -44,7 +44,7 @@ export type DesktopApi = {
    *  page saying whether a restart would lose nothing now. Older builds don't have it. */
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
   /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
-  on: (fn: (msg: { type: string; id?: string; path?: string; version?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
+  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; version?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
   /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
    *  have it. */
   syncMenu?: (snap: MenuSnapshot) => Promise<unknown>
@@ -353,6 +353,8 @@ export function startDesktop() {
     if (m.type === "command" && m.id) runCommandId(m.id)
     // A vaultite://command/<id> from another app: tried until the app has that command (just opened, still starting).
     else if (m.type === "link" && m.id) { const id = m.id; let n = 0; const go = () => { if (!runCommandId(id) && ++n < 40) setTimeout(go, 150) }; go() }
+    // A bundle's link (vaultite://bundle/<owner>/<name>): its preview.
+    else if (m.type === "link" && m.bundle) void import("@/core/bundles").then((b) => b.openBundleLink(m.bundle!))
     else if (m.type === "open" && m.path) open(m.path)
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spelled({ word: m.word ?? "", suggestions: m.suggestions ?? [] })

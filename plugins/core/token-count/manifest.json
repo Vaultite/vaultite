@@ -2,7 +2,7 @@
   "id": "token-count",
   "icon": "coins",
   "category": "agents",
-  "essential": true,
+  "offByDefault": true,
   "name": "Token count",
   "description": "An estimate of how many tokens Claude reads for the open file, in the status bar next to its words and characters, and limits for the files agents load at startup (CLAUDE.md, AGENTS.md, ME.md, skills): amber near one, red and marked in the file tree over it. Other files have a limit only when you set one, and the Agent context panel lists what each loads with its imports. Counted on this device, without Claude's tokenizer. Only warns: nothing stops a file from growing.",
   "settings": {

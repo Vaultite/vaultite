@@ -51,10 +51,10 @@ class AppViewController: CAPBridgeViewController {
         Links.pending = nil
         switch url.host {
         case "record": record()
-        case "command", "open":
+        case "command", "open", "bundle":
             let arg = String(url.path.dropFirst()) // (decoded)
-            guard !arg.isEmpty else { return }
-            shell.waiting = url.host == "open" ? ["open": arg] : ["command": arg]
+            guard !arg.isEmpty, let host = url.host else { return }
+            shell.waiting = [host: arg]
             // The server's page takes it now; the first screen opens the server, whose page takes it as it starts.
             webView?.evaluateJavaScript("dispatchEvent(new Event('vaultite:link'))")
         default: break

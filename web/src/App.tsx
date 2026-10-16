@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
+import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandId, typingIn, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
@@ -36,7 +36,7 @@ import { notify, notifyError } from "@/core/notify"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
-import { offerBundles, openBundles, previousSetup, restoreSetup, startSave } from "@/core/bundles"
+import { offerBundles, openBundleLink, openBundles, previousSetup, restoreSetup, startSave } from "@/core/bundles"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
@@ -66,6 +66,7 @@ import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
 // The app's own pages, which few visits open: loaded when they are.
 const Plugins = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.Plugins })))
+const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
 const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.Settings })))
 const SchemeGallery = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.SchemeGallery })))
 const HotkeysSheet = lazy(() => import("@/pages/Hotkeys").then((m) => ({ default: m.HotkeysSheet })))
@@ -74,18 +75,20 @@ const SettingsSection = lazy(() => import("@/pages/Settings").then((m) => ({ def
 const BundlesPage = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.Bundles })))
 const BundlePreview = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.BundlePreview })))
 const SaveBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.SaveBundle })))
-const MoreBundles = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.MoreBundles })))
 const ShareBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ShareBundle })))
 const ImportBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ImportBundle })))
+const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.IncomingBundle })))
 
 // The core app's own pages (Plugins, Settings), beside the vault's name at the sidebar's bottom. Every
 // other page is a file.
 type Page = { id: string; label: string; icon: LucideIcon; tint: string
+  /** It lays out and scrolls itself in a pane (Workspace's PageTab). */
+  full?: boolean
   /** It draws itself. */
   render: (store: Store) => React.ReactNode }
 const SYSTEM_PAGES: Page[] = [
-  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--primary)", render: (store) => <Suspense><Plugins store={store} /></Suspense> },
-  { id: "settings", label: "Settings", icon: SettingsIcon, tint: "var(--muted-foreground)", render: (store) => <Suspense><Settings store={store} /></Suspense> },
+  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--primary)", full: true, render: (store) => <Suspense><Plugins store={store} /></Suspense> },
+  { id: "settings", label: "Settings", icon: SettingsIcon, tint: "var(--muted-foreground)", full: true, render: (store) => <Suspense><Settings store={store} /></Suspense> },
 ]
 /** The app's pages without a button of their own: Bundles (pages/Bundles.tsx), reached from the command "Choose a
  *  bundle…", Settings and Plugins, and opened by itself on a new vault. */
@@ -128,11 +131,11 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
   "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />], // a Settings section, where the pane is narrow
   hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
   "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
-  "bundles-more": ["More bundles", () => <MoreBundles />], // the Bundles page's More…
+  "plugin-group/": ["Plugins", (store, id) => <PluginGroupSheet store={store} id={id} />], // a group's row on Plugins (the coding agents)
   "bundle-save": ["Save current setup", () => <SaveBundle />],
-  "bundle-save-look": ["Save the look", () => <SaveBundle look />],
   "bundle-share/": ["Share", (_, id) => <ShareBundle id={id} />],
   "bundle-import": ["Import a bundle", () => <ImportBundle />],
+  "bundle-incoming/": ["Import a bundle", (_, id) => <IncomingBundle id={id} />], // a bundle given to the app (core/bundles.ts openImport)
 }
 
 /** The detail sheet for a path: a plugin's (person/…, log/…), or the core's plugin sheet (plugin/<id>). */
@@ -262,7 +265,8 @@ export default function App() {
     else if (desktop && !detail && store) replaceHash(hashOf(activeTab().to))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, desktop, known, !!store])
-  useEffect(() => takeLinks({ command: runCommandId, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true } }), [])
+  useEffect(() => takeLinks({ command: runCommandId, open: (p) => { const s = getStore(); if (!s?.files.files.some((f) => f.path === p)) return false; openFile(p); return true },
+    bundle: (repo) => { if (!getStore()) return false; void openBundleLink(repo); return true } }), [])
   // First load with no address: show the tab that was open last time.
   useEffect(() => {
     if (!location.hash) replaceHash(hashOf(activeTab().to))
@@ -364,7 +368,7 @@ export default function App() {
     // Bundles (core/bundles.ts): setups of the app to start from, save and share.
     { id: "bundles:choose", name: "Choose a bundle…", run: openBundles, icon: Package },
     { id: "bundles:save", name: "Save current setup as a bundle…", run: () => void startSave(), icon: PackagePlus },
-    { id: "bundles:save-look", name: "Save the look as a bundle…", run: () => void startSave(true), icon: PaletteIcon },
+    { id: "bundles:import", name: "Import a bundle…", run: () => openDetail("bundle-import"), icon: Import },
     { id: "bundles:restore", name: "Restore previous setup", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
     { id: "theme:light", name: "Use light theme", when: () => getPrefs().theme !== "light", run: () => setPrefs({ theme: "light" }), icon: Sun },
     { id: "theme:dark", name: "Use dark theme", when: () => getPrefs().theme !== "dark", run: () => setPrefs({ theme: "dark" }), icon: Moon },

@@ -38,11 +38,11 @@ const server = http.createServer((req, res) => {
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(PORT, "127.0.0.1", ok) })
 /** A session's status as claude.ai would say it. */
 const setState = (id, status) => { const s = sessions.find((x) => x.id === `session_${id}`); s.session_status = status; s.updated_at = new Date().toISOString() }
-// Workspaces on (the calm sandbox has it off): pages' logins are per workspace.
+// Workspaces on (off by default): pages' logins are per workspace.
 const pluginsFile = path.join(VAULT, ".vaultite/plugins.json")
 if (fs.existsSync(pluginsFile)) {
   const p = JSON.parse(fs.readFileSync(pluginsFile, "utf8"))
-  fs.writeFileSync(pluginsFile, JSON.stringify({ ...p, disabled: (p.disabled ?? []).filter((x) => x !== "workspaces") }, null, 2) + "\n")
+  fs.writeFileSync(pluginsFile, JSON.stringify({ ...p, enabled: [...(p.enabled ?? []).filter((x) => x !== "workspaces"), "workspaces"] }, null, 2) + "\n")
 }
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
 fs.writeFileSync(path.join(VAULT, "Notes/Code.md"), `# Code\n\n[code](${SITE}/code) [other](${SITE}/other)\n`)

@@ -3,6 +3,7 @@
     "search:search",
     "pages:pages",
     "terminal:sessions",
+    "machines:machines",
     "files:files"
   ],
   "right": [

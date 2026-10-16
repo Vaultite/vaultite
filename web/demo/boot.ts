@@ -6,7 +6,8 @@ const ready = new Promise<void>((ok, no) => {
 })
 navigator.serviceWorker.onmessage = (e) => { if (e.data?.type === "fetch") server.postMessage(e.data, [...e.ports]) }
 
-/** core/live.ts's socket (/api/events), to the server over a port. Other sockets (a terminal's) need the app. */
+/** The app's sockets (core/live.ts's /api/events, a plugin's: the inbox's), to the server over a port. What needs a
+ *  machine (a terminal's) is off here, so the server refuses those. */
 class DemoSocket extends EventTarget {
   static CONNECTING = 0; static OPEN = 1; static CLOSING = 2; static CLOSED = 3
   readyState = 0
@@ -20,14 +21,15 @@ class DemoSocket extends EventTarget {
   constructor(url: string | URL) {
     super()
     this.url = String(url)
-    if (!new URL(this.url).pathname.endsWith("/api/events")) {
+    const u = new URL(this.url), at = u.pathname.indexOf("/api/")
+    if (at < 0) {
       setTimeout(() => { this.fire(new Event("error")); this.end(1006) }, 0)
       return
     }
     const ch = new MessageChannel()
     this.port = ch.port1
     this.port.onmessage = (e) => { if (e.data === null) this.end(1000); else this.fire(new MessageEvent("message", { data: e.data })) }
-    server.postMessage({ type: "socket" }, [ch.port2])
+    server.postMessage({ type: "socket", url: u.pathname.slice(at) + u.search }, [ch.port2])
     queueMicrotask(() => { this.readyState = 1; this.fire(new Event("open")) })
   }
   send(text: string) { this.port?.postMessage(text) }
@@ -82,25 +84,70 @@ async function reset() {
   location.replace(location.pathname)
 }
 
-/** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id> opens on that bundle, and a message from
- *  the page switches it, both only from the demo's own site. The page hears which one is on. */
+/** The bundle picker of the page around the demo (vaultite.com): ?bundle=<id> opens on that bundle, ?bundle=gh:<owner>/<name>
+ *  on one shared from GitHub (fetched by this browser: a bundle's link, vaultite.com/b/...), and a message from the page
+ *  switches it, all only from the demo's own site. The page hears which one is on, and what it is (vaultite-demo:info). */
 async function bundles() {
   const api = (path: string, body?: unknown) => fetch(`api/${path}`, body === undefined ? undefined
     : { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }).then((r) => r.json())
-  const tell = (bundle: string | null) => { if (parent !== window) parent.postMessage({ type: "vaultite-demo:bundle", bundle }, location.origin) }
-  const asked = new URLSearchParams(location.search).get("bundle")
+  const post = (m: unknown) => { if (parent !== window) parent.postMessage(m, location.origin) }
   let on: string | null = (await api("bundles")).previous?.bundle ?? null
-  if (asked && asked !== on) { const r = await api(`bundles/${encodeURIComponent(asked)}/apply`, { workspace: null, allowCode: false }); if (!r.error) on = asked }
-  tell(on)
+  /** Turn a bundle on (applied without what runs code: the demo left it out); false when it couldn't. `running`: the app
+   *  is, and follows it (its first page, Undo). */
+  const use = async (asked: string, running = false) => {
+    let id = asked
+    if (asked.startsWith("gh:")) {
+      const r = await api("bundles/import", { from: asked.slice(3) })
+      if (r.error) return fail(asked, r.error)
+      id = r.bundle.id
+    }
+    const p = await api(`bundles/${encodeURIComponent(id)}`)
+    if (p.error) return fail(asked, p.error)
+    const change = id !== on || !p.plan.empty
+    if (change && running) {
+      const { applyBundle } = await import("@/core/bundles")
+      await applyBundle(p.bundle, p.plan)
+    } else if (change) {
+      const r = await api(`bundles/${encodeURIComponent(id)}/apply`, { workspace: null, allowCode: false })
+      if (r.error) return fail(asked, r.error)
+      // (the app opens on its first page, not the tab another bundle left)
+      const first = r.plan?.pins?.list?.[0] ?? p.plan.pins?.list?.[0]
+      if (first && !location.hash) history.replaceState(null, "", `#file/${encodeURIComponent(first)}`)
+    }
+    on = id
+    const info = await api(`demo/bundle/${encodeURIComponent(id)}`)
+    if (!info.error) { post({ type: "vaultite-demo:info", asked, bundle: info }); if (change) leftOut(info) }
+    return true
+  }
+  const fail = (asked: string, error: string) => {
+    post({ type: "vaultite-demo:info", asked, error })
+    void toast(`Couldn't open ${asked.replace(/^gh:/, "")}: ${error}`, true)
+    return false
+  }
+  const asked = new URLSearchParams(location.search).get("bundle")
+  if (asked && asked !== on) await use(asked).catch((e) => fail(asked, String(e?.message ?? e)))
+  post({ type: "vaultite-demo:bundle", bundle: on })
   addEventListener("message", async (e) => {
     if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:apply" || typeof e.data.bundle !== "string") return
-    const { previewOf, applyBundle } = await import("@/core/bundles")
-    try {
-      const { bundle, plan } = await previewOf(e.data.bundle)
-      if (!plan.empty) await applyBundle(bundle, plan)
-      on = e.data.bundle
-    } finally { tell(on) }
+    try { await use(e.data.bundle, true) } catch (err) { fail(e.data.bundle, String((err as Error)?.message ?? err)) } finally { post({ type: "vaultite-demo:bundle", bundle: on }) }
   })
+}
+
+/** What the demo leaves out of a bundle, said plainly rather than looking broken: plugins needing a machine (terminals,
+ *  agents) and those it installs from elsewhere (they run code: the app asks first). */
+function leftOut(info: { needsApp: string[]; notInDemo: string[] }) {
+  const few = (names: string[]) => (names.length > 3 ? `${names.slice(0, 2).join(", ")} and ${names.length - 2} more` : names.join(", "))
+  const parts = [info.needsApp.length && `${few(info.needsApp)} need${info.needsApp.length === 1 ? "s" : ""} the Vaultite app`,
+    info.notInDemo.length && `${few(info.notInDemo)} run${info.notInDemo.length === 1 ? "s" : ""} code from elsewhere`].filter(Boolean)
+  if (parts.length) void toast(`Off in the demo: ${parts.join("; ")}. The rest is here to try`)
+}
+
+/** A toast, once the app is there to show it (it starts after the demo's server). */
+async function toast(text: string, error = false) {
+  for (let i = 0; i < 100 && !document.querySelector("[data-pane], [data-sonner-toaster], section[aria-label^='Notifications']"); i++) await new Promise((ok) => setTimeout(ok, 100))
+  const { notify } = await import("@/core/notify")
+  notify(text, { kind: error ? "error" : undefined, duration: 10_000,
+    action: error ? undefined : { label: "Get the app", run: () => { window.open("https://vaultite.com/download", "_blank", "noopener") } } })
 }
 
 await navigator.serviceWorker.register("sw.js", { scope: "./" })

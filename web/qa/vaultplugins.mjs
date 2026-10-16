@@ -4,7 +4,7 @@
 // its sheet names the file changed, its shortcut says why it does nothing; Allow loads it, no reload); with its edits
 // let run, editing shows at once; a file breaking the rules unloads it with the reason on the Plugins page; turned
 // off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; the rail shows one
-// category; Off shows what's off; a search looks in every category). Also a phone-width look at the Plugins page.
+// category; a search looks in every category). Also a phone-width look at the Plugins page.
 // WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, plugins.json's `enabled`, hotkeys.json; removed at the
 // end): throwaway server only.
 //   node web/qa/vaultplugins.mjs <base url> <vault path> [out dir]
@@ -77,18 +77,15 @@ check("sections in the categories' order", got.length > 1 && got.every((c, i) =>
 check("a vault plugin sits in its manifest's category", (await page.locator('[data-plugin-category="life"] [data-plugin-row="lighthouse"]').count()) === 1)
 check("nothing folds: no fold chevrons", (await page.locator("main [data-fold]").count()) === 0)
 await page.locator('[data-plugins-rail] [data-plugins-cat="ai-apps"]').click()
-check("the rail shows one category", await until(async () => (await sections()).join() === "ai-apps" && (await page.locator('[data-plugin-row="codex"]').count()) === 1
+check("the rail shows one category", await until(async () => (await sections()).join() === "ai-apps" && (await page.locator('[data-plugin-members~="codex"]').count()) === 1
   && (await page.locator('[data-plugin-row="files"]').count()) === 0, 8000), await sections())
 await shot("category")
 await page.getByPlaceholder("Search plugins").fill("codex")
-check("a search inside a category finds its match", await until(async () => (await page.locator('[data-plugin-row="codex"]').count()) === 1, 8000))
+check("a search inside a category finds its match", await until(async () => (await page.locator('[data-plugin-members~="codex"]').count()) === 1, 8000))
 check("…and offers Get plugins for it", (await page.locator("[data-plugins-search-more]").count()) === 1)
 await page.getByPlaceholder("Search plugins").fill("")
-await page.locator('[data-plugins-rail] [data-plugins-cat="all"]').click()
-await page.getByRole("radio", { name: /^Off \d+$/ }).click()
-check("Off shows what's off, Lighthouse among them", await until(async () => (await page.locator('[data-plugin-row="lighthouse"]').count()) === 1
-  && (await page.locator('[data-plugin-row="files"]').count()) === 0, 8000))
-await page.getByRole("radio", { name: /^All \d+$/ }).click()
+await page.locator('[data-plugins-rail] [data-plugins-installed]').click()
+check("Your plugins shows every category again", await until(async () => (await sections()).length > 1, 8000), await sections())
 
 // ---------- turned on ----------
 await sw.click()

@@ -24,7 +24,8 @@ a file name (the closest file to the link's when several have it; `[[Work/Idea]]
 `obsidian://`). `[[Note#Heading]]` goes to a heading, `[[Note#^id]]` to a paragraph or list item ending in ` ^id`,
 `[[#Heading]]` to one in the same file. `![[Note]]` on a line of its own shows that note's text there
 (`![[Note#Heading]]` its section, `![[Note#^id]]` that block); `/api/render` inlines it as a quote. A Markdown link to
-`vaultite://command/<id>` runs that app command when clicked (`[Open Claude Code](vaultite://command/terminal:claude-split)`).
+`vaultite://command/<id>` runs that app command when clicked (`[Open Claude Code](vaultite://command/terminal:claude-split)`);
+`vaultite://open/<path>` opens a vault file, and `vaultite://bundle/<owner>/<name>` a bundle's preview (`vau docs bundles`).
 
 **Blocks.** A fence like ```` ```block-person ```` (closed by ```` ``` ````, options inside as YAML, like `issues: 3`)
 is where the app draws something: a profile, a project's GitHub numbers, today's routines. What it shows comes from the

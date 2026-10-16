@@ -102,7 +102,7 @@ cloud.onChange = (s) => {
   // Told once signed in, and when it stops on its own (revoked, another machine): not every reconnect.
   const text = s.state === "connected" && signedIn ? `Your vault's MCP server is at ${s.url}` : s.state === "replaced" || (s.state === "off" && s.message) ? s.message : ""
   if (s.state !== "connecting") signedIn = false
-  if (text) try { void plugin.runOp("ui.notify", { text, actionOpen: "view:connections", actionLabel: "Show" }).catch(() => {}) } catch { /* still starting */ }
+  if (text) try { void plugin.runOp("ui.notify", { text, actionOpen: "view:connections" }).catch(() => {}) } catch { /* still starting */ }
 }
 if (settings || cloud.stored()) publicMcp()
 

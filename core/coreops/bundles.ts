@@ -11,9 +11,8 @@ const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
-pins, and preview.png, its card's picture). One with only the look (appearance.json, newtab.json, themes, snippets) is a
-look: applied over any setup, under Looks on the Bundles page. The
-app's own are Minimal, Life OS and Agents (then Pages and databases, Self-hosted on Tailscale and Everything); the user's are in
+pins, and preview.png, its card's picture); a part it leaves out stays as it is when it's applied. The app's own are
+Standard (standard, the app's defaults), Life OS (life-os) and Agents (agent-cockpit); the user's are in
 .vaultite/bundles/<id>/. \`vau docs bundles\` has the format, so you can write one too.
 
   list      the bundles there are, and the setup that can be restored
@@ -23,8 +22,7 @@ app's own are Minimal, Life OS and Agents (then Pages and databases, Self-hosted
             before is kept: \`vau bundle restore\` puts it back. A bundle with vault plugins runs code on this machine:
             ask the user, then pass --code.
   restore   put back the setup from before the last bundle applied
-  save      the current setup as the user's bundle <name> (--hotkeys, --vault-plugins to include those; --look for only
-            the look)
+  save      the current setup as the user's bundle <name> (--hotkeys, --vault-plugins to include those)
   export    one bundle as a single JSON file to share (<id>.bundle.json, or the file given; - prints it): not its
             picture, pages with the user's own text, nor pins to their notes, unless --include names them
   import    a bundle from that JSON file, a folder shaped like one, or a git repository (owner/name: the bundle's
@@ -36,7 +34,6 @@ app's own are Minimal, Life OS and Agents (then Pages and databases, Self-hosted
   vau bundle apply life-os
   vau bundle restore
   vau bundle save "My desk" --description "Writing and agents"
-  vau bundle save "Night shift" --look
   vau bundle export my-desk
   vau bundle import ~/Downloads/my-desk.bundle.json
   vau bundle import alice/writing-desk`
@@ -129,12 +126,11 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
       description: { type: "string", description: "one line about it" },
       hotkeys: { type: "boolean", description: "include the changed hotkeys" },
       vaultPlugins: { type: "boolean", description: "include the vault's own plugins" },
-      look: { type: "boolean", description: "only the look: colours, fonts, snippets, the status bar and a new tab's page" },
       workspace: WORKSPACE,
     },
     args: ["name"],
-    run: async ({ name, description, hotkeys, vaultPlugins, look, workspace }, ctx) => ctx.api("POST", "bundles", { name, description, hotkeys: !!hotkeys,
-      vaultPlugins: !!vaultPlugins, look: !!look, replace: true, workspace: workspace ?? await windowWorkspace(ctx) }),
+    run: async ({ name, description, hotkeys, vaultPlugins, workspace }, ctx) => ctx.api("POST", "bundles", { name, description, hotkeys: !!hotkeys,
+      vaultPlugins: !!vaultPlugins, replace: true, workspace: workspace ?? await windowWorkspace(ctx) }),
     text: (r) => `Saved ${r.bundle.name} as .vaultite/bundles/${r.bundle.id}/.`,
   }, {
     id: "bundle.export",

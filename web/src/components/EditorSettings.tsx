@@ -3,6 +3,7 @@
 import type { Store } from "@/core/data"
 import { editorSet, setEditor, useEditorSettings, type EditorSettings, type PropertiesShown } from "@/core/editorPrefs"
 import { Panel, ResetButton, Segmented, SettingRow, Switch } from "@/components/kit"
+import { PluginSwitches } from "@/components/PluginSwitches"
 
 type Flag = "readableLineLength" | "showInlineTitle" | "spellcheck" | "autoPairBrackets" | "autoPairMarkdown"
 
@@ -46,6 +47,7 @@ export function EditorPanel({ store }: { store: Store }) {
         </SettingRow>
         <FlagRow k="autoPairBrackets" label="Auto-pair brackets" sub="Brackets and quotes close themselves" row="auto-pair-brackets" value={e.autoPairBrackets} />
         <FlagRow k="autoPairMarkdown" label="Auto-pair Markdown" sub="Typing * _ ~ = or ` over a selection wraps it" row="auto-pair-markdown" value={e.autoPairMarkdown} />
+        <PluginSwitches section="editor" />
       </div>
     </Panel>
   )

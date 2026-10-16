@@ -1,5 +1,5 @@
 // Plugins' settings (components/PluginSettings.tsx) and the shorter Settings page: Settings has the app's own rows,
-// Plugins (the Plugins page beside the list: a gear there shows that plugin's settings beside it) and, under Features,
+// Plugins (the Plugins page in the menu's place, with a way back; a gear there opens the sheet) and, under Features,
 // the app's own (`alwaysOn`) plugins that have settings; its search finds every plugin's settings; on the Plugins page a
 // gear (on plugins that are on and have settings) opens the sheet; generated forms write only the key changed; custom
 // panels (Pinned, File explorer); a data.json-only plugin (Logs); a vault plugin's declared settings; every way to open
@@ -57,11 +57,10 @@ try {
       dirs: { type: "list", folder: true, label: "Watched folders", description: "folders whose files count" },
     } }, null, 2))
   const plugins = json(".vaultite/plugins.json") ?? {}
-  // Workspaces on (a vault may have it off, as the sandbox does: da5190b): its sheet and its menu's Settings… are tested;
-  // Vim off (off by default): an off plugin's settings are found, said off; Logs and Web viewer on (off by default): gears.
-  const on = ["qa-tracker", "logs", "web-viewer"]
-  writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []).filter((id) => id !== "vim" && !on.includes(id)), ...on],
-    disabled: (plugins.disabled ?? []).filter((id) => id !== "workspaces") }, null, 2))
+  // Workspaces on (off by default): its sheet and its menu's Settings… are tested; Vim off (off by default): an off
+  // plugin's settings are found, said off, and its switch is Editor's Vim keys; Logs and Web viewer on: gears.
+  const on = ["qa-tracker", "logs", "web-viewer", "workspaces"]
+  writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []).filter((id) => id !== "vim" && !on.includes(id)), ...on] }, null, 2))
   // (on in plugins.json alone it waits for this machine's yes: core/trust.ts)
   await fetch(`${B.replace(/\/+$/, "")}/api/ops/plugin.allow`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "qa-tracker" }) })
   await wait(1500)
@@ -74,29 +73,31 @@ try {
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
     check("Settings: its sections, then Plugins", ["general", "appearance", "editor", "hotkeys", "plugins"].every((id, i) => nav[i] === id), nav)
-    check("...no Manage plugins or Bundles rows", !(await page.locator("[data-settings-plugins], [data-settings-bundles]").count()))
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
       !(await page.locator("main [data-workspace-settings], main [data-pinned-settings]").count()), text)
     await shot(page, "1-settings-desktop")
-    const tall = await page.evaluate(() => document.querySelector("main").scrollHeight)
-    check("Features: the app's own plugins that have settings", text.includes("Features") && await page.locator('[data-settings-nav="plugin:page-preview"]').count() === 1 &&
+    const tall = await page.evaluate(() => document.querySelector("[data-settings] [data-rail-pane]").scrollHeight)
+    check("Features: the app's own plugins that have settings", text.includes("Features") && await page.locator('[data-settings-nav="plugin:search"]').count() === 1 &&
       await page.locator('[data-settings-nav="plugin:files"]').count() === 1)
     check("...not one with nothing to set", await page.locator('[data-settings-nav="plugin:outline"]').count() === 0)
     check("...nor one that can be switched (a gear away on Plugins)", !(await page.locator('[data-settings-nav="plugin:web-viewer"], [data-settings-nav="plugin:logs"], [data-settings-nav="plugin:workspaces"]').count()))
     const lit = (id) => page.locator(`[data-settings-nav="${id}"]`).evaluate((e) => e.className.includes("font-medium"))
 
-    // Plugins beside the list; a gear there shows that plugin's settings beside it, Plugins still lit.
+    // Plugins in the menu's place (one menu at a time), with a way back; a gear there opens the sheet.
+    await page.locator('[data-settings-nav="appearance"]').click()
     await page.locator('[data-settings-nav="plugins"]').click()
     const ps = page.locator('[data-settings-section="plugins"]')
-    check("Settings > Plugins: the Plugins page beside the list", !!(await until(() => ps.locator("[data-plugin-row]").count(), 4000)) &&
-      (await page.evaluate(() => location.hash)).startsWith("#settings") && await lit("plugins"))
-    check("...without the app's own parts", !(await ps.locator('[data-plugin-row="graph"], [data-plugin-row="page-preview"]').count()))
+    check("Settings > Plugins: the Plugins page in the menu's place", !!(await until(() => ps.locator("[data-plugin-row]").count(), 4000)) &&
+      (await page.evaluate(() => location.hash)).startsWith("#settings") && !(await page.locator("[data-settings-list]").count()) && await ps.locator("[data-plugins-rail]").count() === 1)
+    check("...without the app's own parts", !(await ps.locator('[data-plugin-row="files"], [data-plugin-row="mcp"]').count()))
     await shot(page, "1a-settings-plugins")
     await ps.locator("[data-plugin-gear=web-viewer]").click()
-    check("...a gear shows its settings beside the list", !!(await until(() => page.locator('[data-settings-section="plugin:web-viewer"] [data-plugin-settings-sheet="web-viewer"]').count(), 4000)) &&
-      !(await page.locator("dialog[open]").count()))
-    check("...Plugins still lit", await lit("plugins"))
+    check("...a gear opens its sheet", !!(await until(() => sheet(page, "web-viewer").count(), 4000)))
     await shot(page, "1b-settings-plugin-gear")
+    await closeSheet(page)
+    await ps.locator("[data-rail-back]").click()
+    check("...its way back: Settings' menu, at the section it left", !!(await until(() => page.locator("[data-settings-list]").count(), 4000)) && await lit("appearance") &&
+      await page.locator('[data-settings-section="appearance"]').count() === 1)
 
     // Search: the app's rows (going to one clears the search and flashes it) and every plugin's settings, its manifest's
     // and its panel's (settingsSearch), even one that's off; one opens its sheet at the setting.
@@ -104,7 +105,7 @@ try {
     const result = (id) => page.locator(`[data-settings-result="${id}"]`)
     await find.fill("hidden")
     check("search: Show hidden files, in File explorer's panel", !!(await until(() => result("plugin:files:showHidden").count(), 4000)) &&
-      (await result("plugin:files:showHidden").innerText()).includes("File explorer") && !(await page.locator("[data-settings-list]").count()))
+      (await result("plugin:files:showHidden").innerText()).includes("File explorer") && !(await page.locator("[data-settings-section]").count()))
     await shot(page, "1c-settings-search")
     await result("plugin:files:showHidden").click()
     check("...shows its settings beside the list, the setting flashed", !!(await until(() => page.locator('[data-settings-section="plugin:files"] [data-setting="showHidden"].reveal-flash').count(), 4000)))
@@ -113,6 +114,17 @@ try {
     check("search: a manifest's setting (Page preview's)", !!(await until(() => result("plugin:page-preview:delay").count(), 4000)))
     await find.fill("vimrc")
     check("search: an off plugin's panel setting, said off", !!(await until(() => result("plugin:vim:vimrc").count(), 4000)) && (await result("plugin:vim:vimrc").innerText()).includes("(off)"))
+    await find.fill("vim")
+    check("search: Vim keys, in Editor", !!(await until(() => result("plugin-vim").count(), 4000)) && (await result("plugin-vim").innerText()).includes("Editor"))
+    await result("plugin-vim").click()
+    const vimRow = page.locator('[data-settings-section="editor"] [data-settings-row="plugin-vim"]')
+    check("...shows Editor, the row flashed", !!(await until(() => vimRow.and(page.locator(".reveal-flash")).count(), 4000)) && await lit("editor"))
+    await vimRow.getByRole("switch").click()
+    check("...its switch turns Vim on (plugins.json's enabled), a gear to its settings", !!(await until(() => json(".vaultite/plugins.json")?.enabled?.includes("vim"), 4000)) &&
+      !!(await until(() => vimRow.locator("[data-plugin-gear=vim]").count(), 4000)))
+    await shot(page, "1d-settings-editor-vim")
+    await vimRow.getByRole("switch").click()
+    check("...and off", !!(await until(() => !json(".vaultite/plugins.json")?.enabled?.includes("vim"), 4000)))
     await find.fill("line num")
     await until(() => result("line-numbers").count(), 4000)
     check("search: the label's match first", (await page.locator("[data-settings-result]").first().getAttribute("data-settings-result")) === "line-numbers")
@@ -126,8 +138,12 @@ try {
     await go(page, "plugins")
     await until(() => page.locator("[data-plugin-gear]").count(), 4000)
     check("Plugins: a gear on a plugin with settings", await page.locator("[data-plugin-gear=web-viewer]").count() === 1 && await page.locator("[data-plugin-gear=logs]").count() === 1)
-    check("...none on one with nothing to set", await page.locator("[data-plugin-row=claude-code]").count() === 1 && await page.locator("[data-plugin-gear=claude-code]").count() === 0)
-    check("...none on one that's off", await page.locator("[data-plugin-row=vim]").count() === 1 && await page.locator("[data-plugin-gear=vim]").count() === 0)
+    check("...none on one that's off", await page.locator("[data-plugin-row=muse]").count() === 1 && await page.locator("[data-plugin-gear=muse]").count() === 0)
+    check("...nor Vim, whose switch is in Editor", await page.locator("[data-plugin-row=vim]").count() === 0)
+    await page.locator('[data-plugin-group="coding-agents"]').click()
+    check("...the coding agents' sheet: none on one with nothing to set", !!(await until(() => page.locator("dialog[open] [data-plugin-row=claude-code]").count(), 4000)) &&
+      await page.locator("dialog[open] [data-plugin-gear=claude-code]").count() === 0)
+    await closeSheet(page)
     check("...a vault plugin with declared settings has one", await page.locator("[data-plugin-gear=qa-tracker]").count() === 1)
     await page.locator("[data-plugin-row=web-viewer]").scrollIntoViewIfNeeded()
     await shot(page, "2-plugins-gears")
@@ -135,11 +151,10 @@ try {
     check("...its gear opens the sheet", !!(await until(() => sheet(page, "web-viewer").count(), 4000)))
     await closeSheet(page)
 
-    // A generated form, a Features plugin's beside Settings' list: Page preview.
-    await go(page, "settings")
-    await page.locator('[data-settings-nav="plugin:page-preview"]').click()
-    const s = page.locator('[data-settings-section="plugin:page-preview"] [data-plugin-settings-sheet="page-preview"]')
-    check("Features: Page preview's settings beside the list", !!(await until(() => s.count(), 4000)) && await lit("plugin:page-preview") && !(await lit("plugins")))
+    // A generated form: Page preview's sheet (a plugin that can be turned off: a gear away on Plugins).
+    await go(page, "settings/plugin-settings/page-preview")
+    const s = sheet(page, "page-preview")
+    check("form: Page preview's sheet", !!(await until(() => s.count(), 4000)))
     check("form: the declared settings, labelled", !!(await until(async () => (await s.locator("[data-setting]").count()) === 2 && (await s.innerText()).includes("Show a preview"), 4000)), await s.innerText())
     await s.locator("[role=radio]", { hasText: "Hover" }).click()
     check("form: a choice writes only its key", !!(await until(() => json(".vaultite/plugins/page-preview/data.json")?.trigger === "hover", 4000)), json(".vaultite/plugins/page-preview/data.json"))
@@ -157,6 +172,7 @@ try {
     // A change on disk shows at once.
     writeFileSync(file(".vaultite/plugins/page-preview/data.json"), JSON.stringify({ delay: 750 }) + "\n")
     check("form: follows the file", !!(await until(async () => (await delay.inputValue()) === "750", 4000)), await delay.inputValue())
+    await closeSheet(page)
 
     // A long choice unfolds in place: Search field's sort.
     await page.locator('[data-settings-nav="plugin:search"]').click()

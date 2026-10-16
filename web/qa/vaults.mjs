@@ -45,12 +45,13 @@ try {
   // Create a vault (through the API the sheet uses): the server serves it, the app reloads on it.
   const r = await api("vaults/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parent, name: "Second" }) })
   check("create: the server serves the new vault", (await api("vault")).path === path.join(parent, "Second") && r.vaults.some((v) => v.path === first), r)
-  // A new vault starts from Minimal (core/start.ts): only .vaultite/ written (no page until a setup is picked), and
+  // A new vault starts from Standard (core/start.ts): only .vaultite/ written (no page until a setup is picked), and
   // no starter content (Start here, agent pointers): that's setup's choice, not the sheet's.
   const second = path.join(parent, "Second")
   const pages = JSON.parse(fs.readFileSync(path.join(second, ".vaultite/pages.json"), "utf8"))
-  check("create: Minimal, nothing pinned, nothing offered",
-    !(JSON.parse(fs.readFileSync(path.join(second, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people") && JSON.stringify(pages.pinned) === "[]"
+  const pjFile = path.join(second, ".vaultite/plugins.json")
+  check("create: Standard, nothing pinned, nothing offered",
+    !((fs.existsSync(pjFile) ? JSON.parse(fs.readFileSync(pjFile, "utf8")) : {}).enabled ?? []).includes("people") && JSON.stringify(pages.pinned) === "[]"
     && !fs.existsSync(path.join(second, ".vaultite/bundles/onboarding.json")), pages)
   check("create: only .vaultite/ written, its rules in it", JSON.stringify(fs.readdirSync(second)) === '[".vaultite"]' && fs.existsSync(path.join(second, ".vaultite/AGENTS.md")), fs.readdirSync(second))
   await page.goto(B)

@@ -6,17 +6,16 @@ import { del, get, post, request } from "@/core/http"
 import { isDesktop } from "@/core/platform"
 import { activeTab, go } from "@/core/workspace"
 import { captureWindow } from "@/core/desktop"
-import { openDetail } from "@/core/nav"
+import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { notify, notifyError } from "@/core/notify"
 import { currentWorkspace } from "@/core/scope"
 import type { Sidebars } from "../../../core/sidebars.ts"
+import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
 
 export type BundleInfo = {
   id: string; source: "app" | "vault"; name: string; description: string; icon: string; tint: string; author: string; sort: number
-  /** One of the app's kept under More (bundle.json's `more`). */
-  more: boolean
   theme: string | null; scheme: string | null; density: string | null
   /** The app plugins on with it (null: it leaves them as they are), the pages it pins (null: the same). */
   on: string[] | null; pinned: string[] | null
@@ -31,8 +30,6 @@ export type BundleInfo = {
   hotkeys: boolean
   /** Its preview.png's version (the card's picture), or null: the card draws a sketch. */
   preview: string | null
-  /** It changes only the look (colours, fonts, snippets, the status bar, a new tab's page). */
-  look: boolean
   problems: string[]
 }
 type Change = { key: string; from: unknown; to: unknown }
@@ -52,7 +49,8 @@ export type Plan = {
   empty: boolean
 }
 export type Previous = { bundle: string; name: string; at: string }
-type Listing = { bundles: BundleInfo[]; previous: Previous | null; onboarding: boolean }
+/** `default`: the one a new vault starts from (Standard), and skipping the offer gives. */
+type Listing = { bundles: BundleInfo[]; default: string; previous: Previous | null; onboarding: boolean }
 
 let listing: Listing | null = null
 let loading: Promise<void> | null = null
@@ -113,8 +111,6 @@ export async function skipOnboarding() {
 }
 
 export type SaveOptions = { name: string; description?: string; icon?: string; hotkeys?: boolean; vaultPlugins?: boolean; replace?: boolean
-  /** Only the look (no plugins, panels, pins or settings). */
-  look?: boolean
   /** The card's picture: a PNG as base64. */
   preview?: string }
 
@@ -124,12 +120,11 @@ export const previewUrl = (b: Pick<BundleInfo, "id" | "preview">) => (b.preview 
 // The window as it was when saving began (the desktop app's), before the sheet covered it: the new bundle's picture.
 let shot: string | null = null
 export const takenShot = () => shot
-/** Start saving the setup (`look`: only the look). A picture of the window comes first, unless what's shown is the
- *  Bundles page itself. */
-export async function startSave(look = false) {
+/** Start saving the setup. A picture of the window comes first, unless what's shown is the Bundles page itself. */
+export async function startSave() {
   shot = null
   if (activeTab()?.to !== "bundles") shot = (await captureWindow().catch(() => null))?.png ?? null
-  openDetail(look ? "bundle-save-look" : "bundle-save")
+  openDetail("bundle-save")
 }
 
 /** Save the current setup as one of the user's bundles (the current workspace's panels and pins when it has its own). */
@@ -179,25 +174,74 @@ export async function exportBundle(b: BundleInfo, text?: string) {
   setTimeout(() => URL.revokeObjectURL(url), 1000)
 }
 
-/** Import a bundle from a file someone shared (its JSON): it joins the user's bundles, not applied. */
-export async function importBundle(file: File) {
-  return importText(await file.text(), file.name)
+/** What an import is given, from text: a bundle's JSON (pasted, maybe inside a message: from its first { to its last },
+ *  as `{file}`), or a git repository (owner/name, a URL: `{from}`), fetched by the server. Null when it's neither. */
+export function sourceOf(text: string): { file: unknown } | { from: string } | null {
+  const t = text.trim()
+  // (a bundle's link names its repository: core/bundlelinks.ts)
+  const link = /^(gh:|vaultite:\/\/bundle\/|(https?:\/\/)?(www\.)?vaultite\.com\/b\/)/i.test(t) ? parseRepo(t) : null
+  if (link) return { from: repoText(link) }
+  if (/^([\w.-]+\/[\w.-]+(\/[\w.-]+)*(@[\w.+/-]+)?|https?:\/\/\S+|git@\S+)$/.test(t)) return { from: t.replace(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(\.git)?\/?$/, "$1") }
+  const a = t.indexOf("{"), z = t.lastIndexOf("}")
+  try { return { file: JSON.parse(a >= 0 ? t.slice(a, z + 1) : t) } } catch { return null }
 }
 
-/** Import a bundle from text: its JSON (pasted, maybe inside a message: from its first { to its last }), or a git
- *  repository (owner/name, a URL), fetched by the server. */
+/** Text that names a bundle: its JSON ("vaultite": "bundle"), or a repository. What a paste on the Bundles page takes. */
+export const isBundleText = (text: string) => {
+  const s = sourceOf(text)
+  return !!s && ("from" in s || (typeof s.file === "object" && (s.file as { vaultite?: unknown } | null)?.vaultite === "bundle"))
+}
+
+const notABundle = (what: string) => new Error(`${what} isn't a bundle: paste its JSON, or a GitHub repository (owner/name)`)
+
+/** Import a bundle from text (sourceOf): it joins the user's bundles, not applied. */
 export async function importText(text: string, what = "that") {
-  const t = text.trim()
-  let body: unknown
-  if (/^([\w.-]+\/[\w.-]+(\/[\w.-]+)*(@[\w.+/-]+)?|https?:\/\/\S+|git@\S+)$/.test(t)) body = { from: t.replace(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(\.git)?\/?$/, "$1") }
-  else {
-    const a = t.indexOf("{"), z = t.lastIndexOf("}")
-    try { body = JSON.parse(a >= 0 ? t.slice(a, z + 1) : t) } catch { throw new Error(`${what} isn't a bundle: paste its JSON, or a GitHub repository (owner/name)`) }
-  }
+  const body = sourceOf(text)
+  if (!body) throw notABundle(what)
   const r = await post<{ bundle: BundleInfo }>("bundles/import", body)
   await refreshBundles()
   return r.bundle
 }
+
+/** A bundle given to the app (pasted, dropped, a link): text as importText takes it, or its file. */
+export type ImportSource = string | File
+/** An import's preview (core/bundles.ts incoming): the bundle as it would be added, what applying it would change,
+ *  the bundle of the user's it replaces (one from the same repository), and `file`: it as an export, to add. */
+export type Incoming = { bundle: BundleInfo; files: string[]; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }>
+  replaces: string | null; file: unknown }
+
+/** What importing a bundle would add and applying it change here, writing nothing (a repository is fetched). */
+export async function incomingOf(source: ImportSource): Promise<Incoming> {
+  const name = typeof source === "string" ? "that" : source.name
+  const body = sourceOf(typeof source === "string" ? source : await source.text())
+  if (!body) throw notABundle(name)
+  return post<Incoming>("bundles/import/preview", { ...body, workspace: currentWorkspace()?.n ?? null })
+}
+
+/** Add a previewed bundle to the user's bundles, as previewed. */
+export async function addIncoming(inc: Incoming) {
+  const r = await post<{ bundle: BundleInfo }>("bundles/import", { file: inc.file })
+  await refreshBundles()
+  return r.bundle
+}
+
+// What each import sheet was given (bundle-incoming/<n>): kept here, not in the address (a bundle's JSON can be MBs).
+const given = new Map<string, ImportSource>()
+let givenSeq = 0
+export const givenImport = (key: string) => given.get(key) ?? null
+
+/** Open the import flow on a bundle given to the app (pasted, dropped, a vaultite://bundle link, a demo's link): its
+ *  preview, which says what it would change, then Apply or Add. It takes the place of the Import sheet when that's open. */
+export function openImport(source: ImportSource) {
+  const key = String(++givenSeq)
+  given.set(key, source)
+  const d = route().detail
+  if (d === "bundle-import" || d.startsWith("bundle-incoming/")) replaceDetail(`bundle-incoming/${key}`)
+  else openDetail(`bundle-incoming/${key}`)
+}
+
+/** A bundle's link (vaultite://bundle/<owner>/<name>, from its page on vaultite.com): its import preview. */
+export const openBundleLink = (repo: string) => openImport(repo)
 
 /** Whether App should open the bundles page by itself: a new vault being offered them (once per load). */
 let offered = false

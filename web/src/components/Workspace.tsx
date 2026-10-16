@@ -44,8 +44,9 @@ setCloseGuard(async (tos) => {
   return true
 })
 
-/** A core page a tab can show (Plugins, Settings). */
-export type PageTab = { label: string; render?: (store: Store) => ReactNode }
+/** A core page a tab can show (Plugins, Settings). `full`: it lays out and scrolls itself under the tab's bar (a menu
+ *  beside what's picked, each scrolling on its own: RailLayout), and is kept drawn while hidden, as other pages are. */
+export type PageTab = { label: string; full?: boolean; render?: (store: Store) => ReactNode }
 type Props = {
   store: Store | null; error: string | null
   /** Where it starts: the sidebar's width (a CSS length: px open, spacing units as the rail). */
@@ -199,7 +200,8 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
   // The whole pane, no padding or scrolling of the tab's own: a view that says so (`full`), or a file whose format does
   // (`layout: "pane"`: a canvas), which then lays out its bar and drawing itself (FileView's PaneFile).
   const file = tabPath(to)
-  const full = view ? !!view.on && !!view.def.full : !!file && fillsPane(file, disabled)
+  const fullPage = !view && !file && !!p.page(to)?.full
+  const full = view ? !!view.on && !!view.def.full : file ? fillsPane(file, disabled) : fullPage
   // Each place comes back scrolled to where it was left (core/viewstate.ts). What the box scrolls while the next file
   // comes in (the browser clamping to a shorter page) isn't kept as anyone's place.
   const box = useRef<HTMLDivElement>(null)
@@ -223,8 +225,8 @@ function TabBody({ group, tab, shown, active = shown, focused: paneFocused, ...p
   const pane = useMemo(() => ({ group, focused, hidden: !shown, tab: tab?.id }), [group, focused, shown, tab?.id])
   // (a stacked tab that isn't the active one: data-stacked, so what looks for the pane's scroller finds the active one)
   const back = shown && !active
-  // A view that fills the pane isn't kept: drawn only while it's shown.
-  if (!shown && full) return null
+  // A view that fills the pane isn't kept: drawn only while it's shown (a page is).
+  if (!shown && full && !fullPage) return null
   // The focused pane's shown scroller is #main-scroll (scrollPage scrolls it).
   const scroller = cn("h-full min-h-0", full ? "relative overflow-hidden" : "overflow-y-auto overscroll-contain [scrollbar-gutter:stable]")
   return (
@@ -276,7 +278,13 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
   } else if (to === "new") body = startPage ? padded(true, null, <FileView store={p.store} path={startPage} pane />) : padded(false, <ViewBar>New tab</ViewBar>, <NewTab store={p.store} />)
   else {
     const page = p.page(to)
-    if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!)} />)
+    if (page?.render && full) body = (
+      <main className="absolute inset-0 flex flex-col">
+        <div className="shrink-0 px-8"><ViewBar>{page.label}</ViewBar></div>
+        <div className="relative min-h-0 flex-1"><Drawn draw={() => page.render!(p.store!)} /></div>
+      </main>
+    )
+    else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!)} />)
   }
   // A view whose arg is its own state (a search's query) stays mounted while it changes. One that fails to draw fails
   // alone, in its tab, which can close (else the app stops, and a reload opens it again).

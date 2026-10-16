@@ -5,7 +5,7 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, vault, write } = $
-  const { vau, conf } = $.vars
+  const { vau } = $.vars
   let cr: Any
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
@@ -435,10 +435,5 @@ export default async ($: VaultTest) => {
       fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
       await followMachines()
     }
-    // Off: its routes are 404s.
-    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: [...(conf("plugins").disabled ?? []), "inbox"] }, null, 2) + "\n")
-    ;[st] = await api("POST", "inbox/events", { title: "x" })
-    check("inbox off: events are 404s", st === 404, st)
-    fs.writeFileSync(path.join(VAULT, ".vaultite/plugins.json"), JSON.stringify({ ...conf("plugins"), disabled: (conf("plugins").disabled ?? []).filter((x: string) => x !== "inbox") }, null, 2) + "\n")
   }
 }

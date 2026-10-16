@@ -9,6 +9,7 @@ import { menuTemplate, type MenuSnapshot } from "./menu.ts"
 import { revive, webHandlers, webWindow } from "./web.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
+import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 
@@ -588,7 +589,7 @@ setupHandle("setup:pick", async () => {
   return r.canceled ? null : r.filePaths[0] ?? null
 })
 /** Choose the vault: a new folder (made now, empty) or a folder of the user's (none of its files change). Its server
- *  starts, and sets up a vault it has never opened (core/start.ts: Minimal, and a new one's Start here). */
+ *  starts, and sets up a vault it has never opened (core/start.ts: Standard, and a new one's Start here). */
 setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: string; starter?: boolean } | { kind: "open"; path: string } | null) => {
   dropChosen()
   if (!c) return null
@@ -1301,8 +1302,8 @@ app.on("open-file", (e, p) => {
   else early.push(p)
 })
 
-// vaultite:// from another app (Shortcuts, Raycast, a link): the iPhone app's addresses (ios/App/Shared/Links.swift),
-// `command/<id>` (a palette command) and `open/<path>` (a vault file), in the focused vault's window.
+// vaultite:// from another app or a link: the iPhone app's addresses (ios/App/Shared/Links.swift), `command/<id>`,
+// `open/<path>` and `bundle/<owner>/<name>` (a bundle's preview, never applied by the link), in the focused vault's window.
 const earlyLinks: string[] = []
 app.on("open-url", (e, url) => {
   e.preventDefault()
@@ -1316,7 +1317,8 @@ async function appLink(url: string) {
   let rest = ""
   try { rest = decodeURIComponent(u.pathname.replace(/^\/+/, "")) } catch { return }
   const what = u.hostname.toLowerCase()
-  if (what === "command" ? !/^[\w:.-]+$/.test(rest) : what !== "open" || !rest || rest.split("/").some((x) => x === ".." || x.startsWith("."))) return
+  if (what === "bundle") { const r = parseRepo(rest); if (!r) return; rest = repoText(r) }
+  else if (what === "command" ? !/^[\w:.-]+$/.test(rest) : what !== "open" || !rest || rest.split("/").some((x) => x === ".." || x.startsWith("."))) return
   let w: Win | null = focusedVault()
   if (!w) {
     const last = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0]
@@ -1332,7 +1334,8 @@ async function appLink(url: string) {
   } else {
     const to = w
     // (a window still loading takes it once its page listens; the page tries until the command is there)
-    const go = (n = 0) => { if (to.win.isDestroyed()) return; if (to.ready) to.win.webContents.send("vaultite", { type: "link", id: rest }); else if (n < 150) setTimeout(() => go(n + 1), 200) }
+    const msg = what === "bundle" ? { type: "link", bundle: rest } : { type: "link", id: rest }
+    const go = (n = 0) => { if (to.win.isDestroyed()) return; if (to.ready) to.win.webContents.send("vaultite", msg); else if (n < 150) setTimeout(() => go(n + 1), 200) }
     go()
   }
   if (w.win.isMinimized()) w.win.restore()

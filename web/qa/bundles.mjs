@@ -1,6 +1,8 @@
-// Bundles (core/bundles.ts, pages/Bundles.tsx): a new vault starts from Minimal with no offer; an older vault still
-// offered them opens on them, and skipping starts from Minimal. The page's cards and previews, Apply (each built-in: the files as previewed, its first
-// page, Undo), "Restore previous setup", Save current setup, Share and Import, and 390px. Screenshots.
+// Bundles (core/bundles.ts, pages/Bundles.tsx): a new vault starts from Standard with no offer; an older vault still
+// offered them opens on them (Standard picked, a line to import one), and skipping starts from Standard. The page's
+// cards and previews, Apply (each built-in: the files as previewed, its first page, Undo), "Restore previous setup",
+// Save current setup, Share, and Import (the sheet, a file, pasted or dropped on the page: its preview, then Add or
+// Apply), and 390px. Screenshots.
 // WRITES the vault's settings and bundles: throwaway servers only.
 //   node web/qa/bundles.mjs <base url> <vault path> <fresh base url> <fresh vault path> [out dir]
 // (the fresh server serves a folder the app had never opened: no .vaultite/ before it started)
@@ -32,10 +34,8 @@ async function notNow(page) {
   }
 }
 const toastWith = (page, text) => page.locator("[data-sonner-toast]", { hasText: text }).first()
-/** Open a bundle's card (one under More bundles: unfolded first). */
+/** Open a bundle's card. */
 async function card(page, id) {
-  await until(() => page.locator("[data-bundle]").count(), 6000)
-  if (!(await page.locator(`[data-bundle="${id}"]`).count())) await page.locator("[data-bundles-more]").click()
   await until(() => page.locator(`[data-bundle="${id}"]`).count(), 6000)
   await notNow(page)
   await page.locator(`[data-bundle="${id}"]`).click()
@@ -43,18 +43,18 @@ async function card(page, id) {
 const dismissAll = async (page) => { await page.mouse.move(5, 5); await page.waitForFunction(() => !document.querySelector("[data-sonner-toast]"), null, { timeout: 30_000 }).catch(() => {}); await wait(100) }
 const overflow = (page) => page.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 
-// ---------- 1. A new vault: Minimal, then Life OS ----------
+// ---------- 1. A new vault: Standard, then Life OS ----------
 {
   const { ctx, page } = await open(1280, 820)
   await go(page, FB)
   // (no Start here note unless setup asked for one: core/start.ts writes only .vaultite/)
-  check("a new vault opens on Minimal, not the bundles: nothing pinned, no note written", decodeURIComponent(await page.evaluate(() => location.hash)) !== "#bundles"
+  check("a new vault opens on Standard, not the bundles: nothing pinned, no note written", decodeURIComponent(await page.evaluate(() => location.hash)) !== "#bundles"
     && JSON.stringify(settings(FVAULT).pages?.pinned) === "[]" && !existsSync(`${FVAULT}/Start here.md`) && !(settings(FVAULT).plugins?.enabled ?? []).includes("people"), settings(FVAULT))
-  await shot(page, "new-vault-minimal")
+  await shot(page, "new-vault-standard")
   await go(page, FB, "bundles")
   await until(() => page.locator("[data-bundle]").count(), 6000)
-  check("three built-in bundles up front", await page.locator("[data-bundles-app] [data-bundle]").count() === 3, await page.locator("[data-bundles-app] [data-bundle]").count())
-  check("the other three under More", await page.locator("[data-bundles-more]").count() === 1 && !(await page.locator("[data-bundles-app-more]").count()))
+  const ids = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => e.dataset.bundle))
+  check("three built-in bundles, Standard first", ids.join() === "standard,life-os,agent-cockpit", ids)
   await page.locator('[data-bundle="life-os"]').click()
   await until(() => page.locator('dialog[open] [data-bundle-preview="life-os"]').count(), 6000)
   await shot(page, "preview-life-os-new-vault")
@@ -64,20 +64,23 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Dashboards/Today.md")), 6000)
   check("applied: its first page is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Dashboards/Today.md"), await page.evaluate(() => location.hash))
   const s = settings(FVAULT)
-  check("applied: Life OS's pins (its plugins' pages written in Dashboards/) and look", s.pages?.pinned?.[0] === "Dashboards/Today.md" && existsSync(`${FVAULT}/Dashboards/Today.md`) && s.appearance?.scheme === "flexoki" && s.plugins?.disabled?.includes("workspaces"), s)
+  check("applied: Life OS's pins (its plugins' pages written in Dashboards/) and look", s.pages?.pinned?.[0] === "Dashboards/Today.md" && existsSync(`${FVAULT}/Dashboards/Today.md`) && s.appearance?.scheme === "flexoki" && s.plugins?.enabled?.includes("today"), s)
   await wait(1200)
   await shot(page, "after-life-os-new-vault")
-  // A vault still offered the bundles (an older app's): it opens on them, and skipping starts from Minimal.
+  // A vault still offered the bundles (an older app's): it opens on them, Standard picked, and skipping starts from it.
   writeFileSync(`${FVAULT}/.vaultite/bundles/onboarding.json`, "{}\n")
   await go(page, FB)
   await until(() => page.evaluate(() => location.hash === "#bundles"), 6000)
   check("offered: it opens on the bundles, and greets", (await page.locator("main h1").first().innerText()).includes("Welcome"), await page.locator("main h1").first().innerText())
   await until(() => page.locator("[data-bundles-skip]").count(), 6000)
+  check("offered: Standard is picked, and a quiet line imports one", await page.locator('[data-bundle="standard"] [data-bundle-picked]').count() === 1
+    && await page.locator("[data-bundles-welcome-import]").count() === 1 && (await page.locator("[data-bundles-skip]").innerText()).includes("Standard"))
+  await shot(page, "welcome")
   await page.locator("[data-bundles-skip]").click()
   await until(() => !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`), 6000)
-  check("Start with Minimal ends the offer", !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`))
+  check("Start with Standard ends the offer", !existsSync(`${FVAULT}/.vaultite/bundles/onboarding.json`))
   const m = settings(FVAULT)
-  check("skipped: Minimal's plugins (Claude Code on), and Restore still Life OS's", !(m.plugins?.enabled ?? []).includes("people") && !m.plugins?.disabled?.includes("claude-code")
+  check("skipped: Standard's plugins (Claude Code on), and Restore still Life OS's", !(m.plugins?.enabled ?? []).includes("people") && !m.plugins?.disabled?.includes("claude-code")
     && json(FVAULT, ".vaultite/bundles/previous.json")?.bundle === "life-os", [m.plugins, json(FVAULT, ".vaultite/bundles/previous.json")?.bundle])
   await until(async () => (await page.locator("main h1").first().innerText()) === "Bundles", 6000)
   check("then the page is just Bundles", (await page.locator("main h1").first().innerText()) === "Bundles")
@@ -93,11 +96,10 @@ check("an existing vault isn't greeted", (await page.locator("main h1").first().
 await shot(page, "picker")
 const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the vault's pages folder)
 const want = {
-  "minimal": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links") && s.plugins.disabled.includes("workspaces"),
-  "pages": (s) => s.pages.pinned[0] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.density === "comfortable",
-  "life-os": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.appearance.scheme === "flexoki",
-  "agent-cockpit": (s) => s.pages.pinned[0] === `${PAGES}Agents.md` && s.appearance.scheme === "tokyo-night" && s.sidebars.right.includes("activity:feed"),
-  "self-hosted": (s) => s.pages.pinned[0] === `${PAGES}Server.md` && s.sidebars.left.includes("machines:machines") && json(VAULT, ".vaultite/plugins/history/data.json")?.keep_days === 30,
+  "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),
+  "life-os": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.scheme === "flexoki",
+  "agent-cockpit": (s) => s.pages.pinned[0] === `${PAGES}Agents.md` && s.pages.pinned.includes(`${PAGES}Server.md`) && s.appearance.scheme === "tokyo-night" && s.sidebars.right.includes("activity:feed") &&
+    s.sidebars.left.includes("machines:machines") && json(VAULT, ".vaultite/plugins/history/data.json")?.keep_days >= 30,
 }
 for (const id of Object.keys(want)) {
   await go(page, B, "bundles")
@@ -107,7 +109,7 @@ for (const id of Object.keys(want)) {
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   const text = await sheet.innerText()
   check(`${id}: the preview says what changes`, /Plugins|Sidebars|Pinned pages|Look/.test(text), text.slice(0, 200))
-  if (id === "agent-cockpit" || id === "pages") await shot(page, `preview-${id}`)
+  if (id === "agent-cockpit" || id === "life-os") await shot(page, `preview-${id}`)
   await page.locator("dialog[open] [data-bundle-apply]").click()
   await until(() => page.locator("[data-sonner-toast]", { hasText: "Applied" }).count(), 6000)
   await until(() => { const s = settings(VAULT); try { return want[id](s) } catch { return false } }, 6000)
@@ -124,24 +126,24 @@ for (const id of Object.keys(want)) {
 {
   const before = JSON.stringify(settings(VAULT))
   await go(page, B, "bundles")
-  await card(page, "minimal")
+  await card(page, "standard")
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-apply]").click()
-  const t = toastWith(page, "Applied Minimal")
+  const t = toastWith(page, "Applied Standard")
   await until(() => t.count(), 6000)
   await t.locator("[data-button]").click()
   await until(() => JSON.stringify(settings(VAULT)) === before, 6000)
   check("Undo puts every settings file back", JSON.stringify(settings(VAULT)) === before, [JSON.parse(before), settings(VAULT)])
   await dismissAll(page)
   await go(page, B, "bundles")
-  await card(page, "pages")
+  await card(page, "life-os")
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-apply]").click()
-  await until(() => toastWith(page, "Applied Pages and databases").count(), 6000)
+  await until(() => toastWith(page, "Applied Life OS").count(), 6000)
   await dismissAll(page)
   await go(page, B, "bundles")
   await until(() => page.locator("[data-bundles-previous]").count(), 6000)
-  check("the page offers Restore previous setup", (await page.locator("[data-bundles-previous]").innerText()).includes("Pages and databases"))
+  check("the page offers Restore previous setup", (await page.locator("[data-bundles-previous]").innerText()).includes("Life OS"))
   await page.locator("[data-bundles-previous] button").click()
   await until(() => JSON.stringify(settings(VAULT)) === before, 6000)
   check("Restore previous setup puts it back", JSON.stringify(settings(VAULT)) === before, settings(VAULT))
@@ -187,20 +189,55 @@ for (const id of Object.keys(want)) {
   await page.keyboard.press("Escape")
   await until(async () => !(await page.locator("dialog[open] [data-bundle-share-sheet]").count()), 6000)
   await dismissAll(page)
+  // Import from the sheet: pasted (inside a message), its preview first, then Add.
+  const incoming = "dialog[open] [data-bundle-incoming]"
   await page.locator("[data-bundles-import]").click()
   await until(() => page.locator("dialog[open] [data-bundle-import-text]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-import-text]").fill(`Here it is:\n${copied}`)
   await shot(page, "import")
   await page.locator("dialog[open] [data-bundle-import]").click()
+  await until(() => page.locator(`${incoming} [data-bundle-incoming-add]`).count(), 6000)
+  check("Import shows its preview first, nothing added yet", !existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2`) && /Plugins|Sidebars|Pinned pages|Look|Applying it changes nothing/.test(await page.locator(incoming).innerText()))
+  await shot(page, "import-preview")
+  await page.locator(`${incoming} [data-bundle-incoming-add]`).click()
   await until(() => existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`), 6000)
-  check("Import, pasted (inside a message), adds it under a free id", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`))
+  check("Add, from the preview, adds it under a free id", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`))
   await until(() => page.locator('[data-bundle="qa-desk-2"]').count(), 6000)
   check("and it shows", await page.locator('[data-bundle="qa-desk-2"]').count() === 1)
+  await dismissAll(page)
   await page.locator("[data-bundles-import]").click()
   await until(() => page.locator("dialog[open] [data-bundle-import-form]").count(), 6000)
   await page.locator("dialog[open] input[type=file]").setInputFiles(path)
+  await until(() => page.locator(`${incoming} [data-bundle-incoming-add]`).count(), 6000)
+  await page.locator(`${incoming} [data-bundle-incoming-add]`).click()
   await until(() => existsSync(`${VAULT}/.vaultite/bundles/qa-desk-3/bundle.json`), 6000)
   check("Import from a file", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-3/bundle.json`))
+  await dismissAll(page)
+  // Pasted anywhere on the page (no field focused): straight to its preview; Apply adds it and applies it.
+  await page.locator("main h1").first().click()
+  await page.evaluate((text) => { const dt = new DataTransfer(); dt.setData("text/plain", text); document.activeElement?.dispatchEvent(new ClipboardEvent("paste", { clipboardData: dt, bubbles: true, cancelable: true })) }, copied)
+  await until(() => page.locator(`${incoming} [data-bundle-incoming-apply]`).count(), 6000)
+  check("a bundle pasted on the page opens its preview", await page.locator(incoming).count() === 1)
+  await page.locator(`${incoming} [data-bundle-incoming-apply]`).click()
+  await until(() => json(VAULT, ".vaultite/bundles/previous.json")?.bundle === "qa-desk-4", 6000)
+  check("Apply, from the preview: added and applied", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-4/bundle.json`) && json(VAULT, ".vaultite/bundles/previous.json")?.bundle === "qa-desk-4",
+    json(VAULT, ".vaultite/bundles/previous.json")?.bundle)
+  await dismissAll(page)
+  // Dropped on the page: the same.
+  await go(page, B, "bundles")
+  await until(() => page.locator("[data-bundles-page]").count(), 6000)
+  await page.evaluate((text) => {
+    const dt = new DataTransfer()
+    dt.items.add(new File([text], "shared.bundle.json", { type: "application/json" }))
+    const el = document.querySelector("[data-bundles-page]")
+    el.dispatchEvent(new DragEvent("dragover", { dataTransfer: dt, bubbles: true, cancelable: true }))
+    el.dispatchEvent(new DragEvent("drop", { dataTransfer: dt, bubbles: true, cancelable: true }))
+  }, copied)
+  await until(() => page.locator(`${incoming} [data-bundle-incoming-add]`).count(), 6000)
+  check("a bundle's file dropped on the page opens its preview", await page.locator(incoming).count() === 1 && !(await page.locator("[data-bundles-drop]").count()))
+  await page.keyboard.press("Escape")
+  await until(async () => !(await page.locator(incoming).count()), 6000)
+  check("closed, nothing was added", !existsSync(`${VAULT}/.vaultite/bundles/qa-desk-5`))
   await dismissAll(page)
   // The command palette has the bundles.
   await page.keyboard.press("ControlOrMeta+p")

@@ -20,7 +20,7 @@ const list = async (by) => (await api("POST", "ops/review.list", by ? { by } : {
 // Activity on (some setups leave it off: the review is off with it), without its day recaps (their write asks first),
 // everything before kept, then the agents write.
 const plugins = await api("GET", "config/plugins", undefined, app)
-await api("PATCH", "config/plugins", { disabled: (plugins.disabled ?? []).filter((x) => x !== "activity" && x !== "review") }, app)
+await api("PATCH", "config/plugins", { enabled: [...(plugins.enabled ?? []).filter((x) => x !== "activity"), "activity"] }, app)
 const recaps = (await api("GET", "config/plugin/activity", undefined, app))?.recaps
 await api("PATCH", "config/plugin/activity", { recaps: false }, app)
 await wait(1500)

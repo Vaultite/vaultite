@@ -2,16 +2,15 @@
   "left": [
     "search:search",
     "pages:pages",
-    "terminal:sessions",
     "files:files"
   ],
   "right": [
-    "inbox:inbox",
     "backlinks:links",
     "outline:outline",
-    "activity:feed"
+    "inbox:inbox",
+    "tags:tags"
   ],
   "collapsed": [
-    "activity:feed"
+    "tags:tags"
   ]
 }

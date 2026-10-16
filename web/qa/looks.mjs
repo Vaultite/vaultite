@@ -1,7 +1,7 @@
 // The look end to end: Change colour scheme in the palette shows the whole app in the selected scheme as the selection
 // moves (saved only on Enter, Esc goes back); a new tab draws the page newtab.json names, and Show sections on new tabs
-// takes it back; a look bundle (only the look, with a picture) is listed under Looks with its picture.
-// WRITES appearance.json, newtab.json and a bundle: throwaway only.
+// takes it back.
+// WRITES appearance.json and newtab.json: throwaway only.
 //   node web/qa/looks.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -63,22 +63,6 @@ try {
   await page.screenshot({ path: `${OUT}newtab-page.png` })
   await command("Show sections on new tabs")
   check("Show sections on new tabs takes the page away", await until(() => !json("newtab").page) && await until(async () => (await pane.locator("[data-newtab-section]").count()) > 0), json("newtab"))
-
-  // A look bundle with a picture, under Looks.
-  const png = (await page.screenshot({ clip: { x: 0, y: 0, width: 640, height: 400 } })).toString("base64")
-  const saved = await page.evaluate(async (preview) => (await fetch("api/bundles", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ name: "QA look", look: true, preview }) })).json(), png)
-  check("a look saves as a look, with its picture", saved.bundle?.look === true && !!saved.bundle?.preview, saved)
-  await page.goto("about:blank"); await page.goto(`${base}/#bundles`)
-  const card = page.locator("[data-bundles-looks] [data-bundle='qa-look']")
-  check("it's under Looks", await until(() => card.count(), 15000))
-  check("its card shows the picture", await until(async () => (await card.locator("img").evaluate((i) => i.complete && i.naturalWidth > 0).catch(() => false))), null)
-  check("Yours doesn't list it", (await page.locator("[data-bundles-mine] [data-bundle='qa-look']").count()) === 0)
-  await page.locator("[data-bundles-looks]").scrollIntoViewIfNeeded()
-  await page.screenshot({ path: `${OUT}looks.png` })
-  await card.click()
-  check("its preview shows the picture", await until(() => page.locator("dialog[open] [data-bundle-picture]").count()))
-  await page.screenshot({ path: `${OUT}look-preview.png` })
-  await page.evaluate(() => fetch("api/bundles/qa-look", { method: "DELETE" }))
 } catch (e) {
   check("ran to the end", false, String(e?.stack ?? e).slice(0, 600))
 } finally {

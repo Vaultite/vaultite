@@ -4,7 +4,7 @@ import fs from "node:fs"
 import { isBuiltin } from "node:module"
 import path from "node:path"
 import { declProblems, declsOf, drawsOf, settingDeclProblems } from "./blocks.ts"
-import { CATEGORIES } from "./categories.ts"
+import { CATEGORIES, GROUPS, groupOf, SWITCH_SECTIONS } from "./categories.ts"
 import { API_VERSION, APP_VERSION, compareVersions, MIN_API_VERSION, parseVersion, tagVersion } from "./version.ts"
 import { DISCLOSURES, HOST, ICON_FILE, ICON_MAX, ICON_NAME, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
 
@@ -295,6 +295,14 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
     out.push(`${label}/manifest.json: offByDefault is for the app's plugins, and only true`)
   }
   if (vault && m.alwaysOn !== undefined) out.push(`${label}/manifest.json: alwaysOn is for the app's plugins`)
+  // (both place a switch: an alwaysOn plugin has none)
+  if (m.group !== undefined && (vault || m.alwaysOn === true || !groupOf(m.group))) {
+    out.push(`${label}/manifest.json: group is for the app's plugins with a switch, one of ${GROUPS.map((g) => g.id).join(", ")} (core/categories.ts)`)
+  }
+  const sw = m.switchIn as { section?: unknown; label?: unknown } | undefined
+  if (sw !== undefined && (vault || m.alwaysOn === true || m.group !== undefined || !SWITCH_SECTIONS.some((x) => x === sw?.section) || typeof sw?.label !== "string" || !sw.label)) {
+    out.push(`${label}/manifest.json: switchIn is {"section": ${SWITCH_SECTIONS.map((x) => `"${x}"`).join(" or ")}, "label": "..."}, for the app's plugins with a switch and no group`)
+  }
   // A vault plugin imports the app's plugins it requires; the others' files aren't the app's to bundle.
   const requires = (Array.isArray(m.requires) ? m.requires as string[] : [])
     .filter((r) => ids.has(r) && (!vault || ids.get(r) !== "vault")).map((r) => `@plugins/${ids.get(r)}/${r}`)

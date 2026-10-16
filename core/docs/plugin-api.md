@@ -80,6 +80,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `offByDefault`: Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim), and every built-in that isn't `essential` or `alwaysOn` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff).
 - `essential`: One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`, or by a bundle). Either way the Plugins page lists it by its category.
 - `alwaysOn`: Part of the app itself (built-in only): always on, no switch, not on the Plugins page; its settings are in Settings. Neither `essential` nor `offByDefault`.
+- `group`: Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS), which says which are on and opens a sheet of their switches; each keeps its own (built-in only).
+- `switchIn`: Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only).
 - `replaces`: Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in plugins standing in for the same one are alternatives: turning one on turns the other off.
 
 ### The app: `definePlugin({...})` in `index.tsx`

@@ -20,15 +20,15 @@ export const VAULT_BUNDLES = ".vaultite/bundles"
 const PREVIOUS = `${VAULT_BUNDLES}/previous.json`
 const ONBOARDING = `${VAULT_BUNDLES}/onboarding.json`
 /** The setup a vault opened for the first time starts from (core/start.ts), and one that skips the offer gets. */
-export const DEFAULT_BUNDLE = "minimal"
+export const DEFAULT_BUNDLE = "standard"
+/** The app's bundles that were folded into others: a vault that applied one has the one it's in now (tidy). */
+const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os", "self-hosted": "agent-cockpit" }
 /** Ids a bundle can't take: they're routes. */
 const RESERVED = new Set(["restore", "import", "onboarding", "previous"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys", "newtab"] as const
 /** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes. */
 export const PREVIEW = "preview.png"
-/** What a bundle that only changes the look may hold besides its files (themes, snippets, the new tab's page). */
-const SETUP = ["plugins.json", "sidebars.json", "pages.json", "hotkeys.json"]
 /** The app's own appearance when a key isn't set (web/src/core/prefs.ts DEFAULTS): a bundle setting one of these
  *  removes the key instead, so a vault never holds a default. */
 const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, fileIcons: true, tabBar: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
@@ -165,8 +165,6 @@ function parts(files: Files) {
 
 export type Info = {
   id: string; source: "app" | "vault"; name: string; description: string; icon: string; tint: string; author: string; sort: number
-  /** One of the app's kept under More on the page (bundle.json's `more`). */
-  more: boolean
   /** The look it sets (appearance.json's), for its card. */
   theme: string | null; scheme: string | null; density: string | null
   /** The app plugins that are on with it (null: it leaves them as they are), and the pages it pins (null: same). */
@@ -182,9 +180,6 @@ export type Info = {
   hotkeys: boolean
   /** Its preview.png's version (GET /api/bundles/<id>/preview.png), or null when it has none. */
   preview: string | null
-  /** It changes only the look (colours, fonts, snippets, the status bar, a new tab's page): plugins, panels, pins and
-   *  settings stay as they are. */
-  look: boolean
   problems: string[]
 }
 export type HomeBlock = { block: string; view: string | null; wide: boolean }
@@ -229,18 +224,12 @@ export function info(b: Bundle, host: Host): Info {
   try { const s = readSidebars(json(b, "sidebars.json")); if (s) panels = { left: s.left, right: s.right, collapsed: s.collapsed } } catch { /* problems says */ }
   return {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
-    sort: typeof m.sort === "number" ? m.sort : 1000, more: b.source === "app" && m.more === true,
+    sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
     on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files).map((x) => x.id)], from: str(m.from) || null, hotkeys: b.files["hotkeys.json"] !== undefined,
-    preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, look: !b.error && lookOnly(b.files),
+    preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null,
     problems: b.error ? [b.error] : problems(b.files),
   }
-}
-
-/** Only the look: none of the setup's files, no plugin's settings or code. */
-function lookOnly(files: Files) {
-  const p = parts(files)
-  return !SETUP.some((f) => files[f] !== undefined) && !p.code.length && !p.settings.size
 }
 
 /** What's wrong with a bundle's files (the shapes, not whether this app has what it names: the plan says that). */
@@ -498,6 +487,27 @@ function doneOnboarding(v: Vault) {
   try { fs.unlinkSync(v.abs(ONBOARDING)) } catch { /* not offered */ }
 }
 
+/** Bring a vault's bundles up to date as it opens: one of the user's under an id the app's took moves to a free id,
+ *  and a setup applied from a bundle since folded into another (FOLDED) is that one's. */
+export function tidy(v: Vault) {
+  const prev = readPrevious(v), dir = v.abs(VAULT_BUNDLES), was = prev?.bundle
+  let names: string[] = []
+  try { names = fs.readdirSync(dir) } catch { /* none of the user's */ }
+  for (const id of names) {
+    if (!fs.existsSync(path.join(APP_BUNDLES, id)) || !fs.existsSync(path.join(dir, id, "bundle.json"))) continue
+    const to = freeId(v, id, false)
+    fs.renameSync(path.join(dir, id), path.join(dir, to))
+    if (prev?.bundle === id) prev.bundle = to
+  }
+  // (one of the user's by a folded id, saved since, is theirs)
+  const into = prev && Object.hasOwn(FOLDED, prev.bundle) && !fs.existsSync(path.join(dir, prev.bundle, "bundle.json")) ? FOLDED[prev.bundle] : null
+  if (prev && into) {
+    prev.bundle = into
+    try { prev.name = String(JSON.parse(readText(path.join(APP_BUNDLES, into, "bundle.json"))).name ?? prev.name) } catch { /* its old name */ }
+  }
+  if (prev && prev.bundle !== was) writeAtomic(v.abs(PREVIOUS), JSON.stringify(prev, null, 1) + "\n")
+}
+
 /** The PATCH that turns `cur` into `next`: the keys that change, null for the ones that go. */
 function patchOf(cur: Item, next: Item) {
   const out: Item = {}
@@ -706,8 +716,6 @@ function pruneDirs(v: Vault, rel: string) {
 // ---------- saving the current setup, export, import ----------
 
 export type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean
-  /** Only the look: colours, fonts, snippets, the status bar and a new tab's page (no plugins, panels, pins or settings). */
-  look?: boolean
   /** A screenshot of the app it makes, a PNG as base64: its card's picture. */
   preview?: string }
 
@@ -717,15 +725,15 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = {}
   const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
-  put("bundle.json", { name: o.name.trim(), ...(o.description?.trim() ? { description: o.description.trim() } : {}), icon: o.icon || (o.look ? "palette" : "package"), ...(o.tint ? { tint: o.tint } : {}) })
+  put("bundle.json", { name: o.name.trim(), ...(o.description?.trim() ? { description: o.description.trim() } : {}), icon: o.icon || "package", ...(o.tint ? { tint: o.tint } : {}) })
   if (typeof o.preview === "string" && o.preview) {
     const png = Buffer.from(o.preview.replace(/^data:image\/png;base64,/, ""), "base64")
     if (!isPng(png)) throw new HTTPError(400, "the preview isn't a PNG image")
     files[PREVIEW] = png
   }
   const conf = v.config("plugins")
-  if (!o.look) await setupOf(host, o, files, put, conf, kinds)
-  const pinned = o.look ? [] : pinnedOf(await slotOf(host, o.workspace ?? null), v)
+  await setupOf(host, o, files, put, conf, kinds)
+  const pinned = pinnedOf(await slotOf(host, o.workspace ?? null), v)
   const look = v.config("appearance")
   if (Object.keys(look).length) put("appearance.json", look)
   const tab = v.config("newtab")
@@ -902,7 +910,6 @@ export function exportOf(b: Bundle) {
   return { vaultite: "bundle", format: 1, id: b.id, files }
 }
 
-/** A bundle from its JSON file (exportOf's), into the user's bundles. Never applied here. */
 /** An export's files, checked (400 with what's wrong). */
 function filesOf(o: unknown): { files: Files; id: string | null } {
   if (!isObj(o) || o.vaultite !== "bundle" || !isObj(o.files)) throw new HTTPError(400, "that isn't a Vaultite bundle (a JSON file with \"vaultite\": \"bundle\" and its files)")
@@ -919,24 +926,9 @@ function filesOf(o: unknown): { files: Files; id: string | null } {
   return { files, id: typeof o.id === "string" && ID.test(o.id) ? o.id : null }
 }
 
-/** Add a bundle's files to the user's bundles under a free id (`replace`: as that one of theirs). */
-function add(v: Vault, host: Host, files: Files, want: string | null, replace: string | null = null) {
-  const bad = problems(files)
-  if (bad.length) throw new HTTPError(400, `that bundle can't be read: ${bad.join("; ")}`)
-  const name = String(JSON.parse(textOf(files["bundle.json"])).name)
-  const id = replace ?? freeId(v, want ?? name, false)
-  writeBundle(v, id, files, !!replace)
-  return { bundle: info(find(v, id), host) }
-}
-
-export function importOf(v: Vault, body: unknown, host: Host) {
-  const { files, id } = filesOf(isObj(body) && isObj(body.file) ? body.file : body)
-  return add(v, host, files, id)
-}
-
 /** A bundle from a repository (its newest tag, else its default branch): its folder at the top, without the repository's
- *  own files, or one .bundle.json. bundle.json's `from` keeps where: getting it again replaces it. Never applied. */
-export async function importFrom(v: Vault, given: string, host: Host) {
+ *  own files, or one .bundle.json. bundle.json's `from` keeps where. */
+async function fetchFrom(given: string): Promise<{ files: Files; id: string | null }> {
   let src
   try { src = parseSource(given) } catch { throw new HTTPError(400, `'${given}' isn't a bundle's repository: owner/name on GitHub (owner/name/folder for one in a folder), a git URL, or a folder`) }
   if (src.archive) throw new HTTPError(400, "a bundle comes from a repository or a folder, not a zip")
@@ -966,11 +958,45 @@ export async function importFrom(v: Vault, given: string, host: Host) {
     const from = src.tag ? given.replace(/@[^@/]+$/, "") : given
     const m = json(files, "bundle.json") ?? {}
     files["bundle.json"] = JSON.stringify({ ...m, from }, null, 2) + "\n"
-    const was = list(v).find((b) => b.source === "vault" && (() => { try { return json(b, "bundle.json")?.from === from } catch { return false } })())
-    return add(v, host, files, id ?? slug(given.split("/").at(-1)!.replace(/\.git$|@.*$/g, "")), was?.id ?? null)
+    return { files, id: id ?? slug(given.split("/").at(-1)!.replace(/\.git$|@.*$/g, "")) }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
   }
+}
+
+/** What an import is given: an export (or `{file}`: one), or `{from}`: a repository to fetch it from. Checked. */
+async function incomingFiles(body: unknown) {
+  const got = isObj(body) && typeof body.from === "string" ? await fetchFrom(body.from) : filesOf(isObj(body) && isObj(body.file) ? body.file : body)
+  const bad = problems(got.files)
+  if (bad.length) throw new HTTPError(400, `that bundle can't be read: ${bad.join("; ")}`)
+  return got
+}
+
+/** The id an imported bundle takes: the user's one from the same repository (`from`: getting it again replaces it),
+ *  else a free one. */
+function idFor(v: Vault, files: Files, want: string | null) {
+  let from: unknown = null
+  try { from = json(files, "bundle.json")?.from } catch { /* problems says */ }
+  const was = typeof from === "string" && from ? list(v).find((b) => b.source === "vault" && (() => { try { return json(b, "bundle.json")?.from === from } catch { return false } })()) : null
+  return { id: was?.id ?? freeId(v, want ?? String(JSON.parse(textOf(files["bundle.json"])).name), false), replaces: was?.id ?? null }
+}
+
+/** A bundle into the user's bundles (from an export or a repository). Never applied here. */
+export async function importOf(v: Vault, body: unknown, host: Host) {
+  const { files, id: want } = await incomingFiles(body)
+  const { id, replaces } = idFor(v, files, want)
+  writeBundle(v, id, files, !!replaces)
+  return { bundle: info(find(v, id), host) }
+}
+
+/** What importing a bundle would add, and what applying it then would change here, without writing anything: the
+ *  import's preview. `file`: it as an export, to import as previewed (a repository isn't fetched again). */
+export async function incoming(host: Host, body: Item) {
+  const { files, id: want } = await incomingFiles(body)
+  const { id, replaces } = idFor(host.vault, files, want)
+  const b: Bundle = { id, source: "vault", files }
+  const p = await plan(b, host, workspaceOf(body.workspace))
+  return { bundle: info(b, host), files: Object.keys(files), plan: p, pages: pageLooks(b, host, [...p.pins?.list ?? [], ...p.pins?.unpin ?? []]), replaces, file: exportOf(b) }
 }
 
 /** How pages look in a list (their `icon`, `tint` and `plugin`), from the vault's file, else the bundle's or the plugin
@@ -999,11 +1025,12 @@ export async function handle(host: Host, method: string, parts: string[], query:
   if (parts.length === 0 && method === "GET") {
     const all = list(v).map((b) => info(b, host))
     all.sort((a, b) => (a.source === b.source ? 0 : a.source === "app" ? -1 : 1) || a.sort - b.sort || a.name.localeCompare(b.name))
-    return { bundles: all, ...status(v) }
+    return { bundles: all, default: DEFAULT_BUNDLE, ...status(v) }
   }
   if (parts.length === 0 && method === "POST") return save(host, { ...body, workspace: workspaceOf(body.workspace) } as SaveOptions)
   if (parts.length === 1 && id === "restore" && method === "POST") return restore(host)
-  if (parts.length === 1 && id === "import" && method === "POST") return typeof body.from === "string" ? importFrom(v, body.from, host) : importOf(v, body, host)
+  if (parts.length === 1 && id === "import" && method === "POST") return importOf(v, body, host)
+  if (parts.length === 2 && id === "import" && action === "preview" && method === "POST") return incoming(host, body)
   if (parts.length === 1 && id === "onboarding" && method === "POST") {
     // Skipping the offer is starting from the default, like a new vault does (nothing to restore).
     if (offering(v)) await apply(find(v, DEFAULT_BUNDLE), host, null, false, { remember: false })

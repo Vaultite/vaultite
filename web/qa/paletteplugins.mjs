@@ -13,7 +13,7 @@ const conf = () => api("GET", "config/plugins")
 
 const saved = await conf()
 await api("POST", "ops/plugin.new", { id: "qa-lamp", name: "Qa lamp", description: "A vault plugin for the palette's QA" })
-await api("PUT", "config/plugins", { ...saved, disabled: ["workspaces", "people", "people-map"], enabled: [] })
+await api("PUT", "config/plugins", { ...saved, disabled: [], enabled: [] })
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
@@ -40,10 +40,10 @@ check("after the commands", r.rows[r.rows.length - 1] === "Turn on Workspaces", 
 check("under its heading", r.heads.includes("Plugins that are off"), r.heads)
 await page.screenshot({ path: `${OUT}turn-on.png` })
 await pick("Turn on Workspaces"); await wait(500)
-check("picking it turns it on", !(await conf()).disabled.includes("workspaces"), (await conf()).disabled)
+check("picking it turns it on", (await conf()).enabled.includes("workspaces"), (await conf()).enabled)
 check("it says so", await toastWith("Workspaces is on").isVisible())
 await toastWith("Workspaces is on").getByRole("button", { name: "Undo" }).click(); await wait(500)
-check("Undo turns it off again", (await conf()).disabled.includes("workspaces"), (await conf()).disabled)
+check("Undo turns it off again", !(await conf()).enabled.includes("workspaces"), (await conf()).enabled)
 
 // 2. One that needs another that's off: both go on.
 r = await search("people m")
@@ -64,8 +64,8 @@ await pick("Turn off People"); await wait(500)
 c = await conf()
 check("picking it turns it off", !c.enabled.includes("people"), c.enabled)
 check("the toast says what goes with it", await toastWith(/^People is off, and People map\b.* with it/).isVisible(), await page.locator("[data-sonner-toast]").allInnerTexts())
-r = await search("disable tag")
-check("\"disable\" works too", r.rows.includes("Turn off Tags"), r.rows)
+r = await search("disable clip")
+check("\"disable\" works too", r.rows.includes("Turn off Web clipper"), r.rows)
 
 // 4. "turn on" alone lists what's off (Dock icon is off until asked for); never a vault plugin.
 r = await search("turn on")

@@ -39,7 +39,7 @@ let fakeFile = ""
 
 const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
 try {
-  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: ["workspaces"], enabled: [...(pluginsBefore.enabled ?? []), "agent-meters"] }) })
+  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ enabled: [...(pluginsBefore.enabled ?? []).filter((x) => x !== "workspaces"), "agent-meters"] }) })
   await api("config/sidebars", { method: "PUT", body: JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] }) })
   // (turning a plugin on reloads the app's plugins: the terminal opens once that's done)
   await page.goto(B); await page.waitForSelector("aside"); await wait(1500)
@@ -101,7 +101,7 @@ try {
   check("  Open conversation opens its Claude Code session", !!(await until(async () => (await hash()).includes(`claude-session/${SID}`), 5000)), await hash())
   await page.screenshot({ path: `${OUT}menu.png` })
 
-  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ disabled: ["workspaces"], enabled: pluginsBefore.enabled ?? [] }) })
+  await api("config/plugins", { method: "PATCH", body: JSON.stringify({ enabled: pluginsBefore.enabled ?? [] }) })
   check("with Agent meters off, the list still says its session id", !!(await until(async () => !(await api("terminals/sessions")).sessions?.find((x) => x.id === term)?.meter && (await sid()) === SID, 10000)),
     (await api("terminals/sessions")).sessions?.find((x) => x.id === term))
 } finally {

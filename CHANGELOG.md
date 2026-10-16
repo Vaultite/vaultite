@@ -11,6 +11,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Quick text size** is off by default: ⌘ and scroll, or a pinch, over a note or terminal changes its text size only
   with it on (Settings > Appearance, or the palette's Turn on quick text size). The palette finds commands by other
   words too: "font size" finds the text size ones.
+- **Three bundles**: Standard (the app's defaults: notes and links, a terminal and Claude Code), Life OS (with Pages
+  and databases' home page) and Agents (with Self-hosted's machines and server page); More… is gone, and a vault set up
+  from Minimal, Pages and databases or Self-hosted is on the one it's part of now.
+- **Share a bundle as a link**: with its file in a GitHub repository, `vaultite.com/b/<owner>/<name>` shows it and runs it
+  live in the web demo, and its Open in Vaultite (`vaultite://bundle/<owner>/<name>`) opens its preview in the Mac and
+  iPhone apps; the share sheet copies the link. The web demo imports bundles from GitHub too, and its inbox works.
+- **Settings and Plugins share one layout**, as System Settings: search at the top of the menu, the menu and the page
+  scrolling on their own (a section no longer scrolls the menu back up). Plugins' menu holds Your plugins, Get plugins,
+  Bundles and the categories; its From and On/Off filters are gone. In Settings, Plugins takes the menu's place, with a
+  way back.
 - **Bases save what you change, as Obsidian does**: a table's heading sorts, renames, summarizes or hides its column,
   drags to move it and resizes from its edge; the bar's Sort, Filter (all / any / none groups) and Properties menus
   change the view. Each is written to the `.base` or the fence (`sort`, `order`, `columnSize`, `filters`).
@@ -60,8 +70,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   plugin's sheet has Uninstall: its files go to the trash, its settings stay for when it's installed again.
 - **Sharing bundles**: Share on a bundle copies it as one file, or with a prompt for an agent, or saves it, leaving
   out its picture, pages with your own text and pins to your notes unless you turn them on. A bundle names the plugins
-  you installed by where they come from, so applying it installs them. Import takes a pasted bundle or a GitHub
-  repository (owner/name: a bundle's folder, or one .bundle.json), and Get the newest updates one from there.
+  you installed by where they come from, so applying it installs them. Import (beside Save current setup, or a bundle
+  pasted or dropped anywhere on the Bundles page) shows what it would change first, then Apply or Add; it takes a
+  bundle's JSON or file or a GitHub repository (owner/name: a bundle's folder, or one .bundle.json), and Get the newest
+  updates one from there.
 - Plugins says where each is from (built in, installed, yours) with a filter by that, and a plugin's sheet says off
   keeps its files and settings. A bundle's preview lists the plugins you added that it leaves as they are, with an
   option to turn those off too (restore turns them back on), and says it applies to every window and device.
@@ -95,11 +107,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own
   features with options, each shown beside the list (a sheet on a phone), no "Settings" line over its title; Plugin
   settings, the Setup rows and the Manage plugins and Bundles rows are gone (a plugin's gear on Plugins opens its own).
-- **Fewer plugins to manage**: 33 of the app's parts (files, search, canvas, terminal, spreadsheets, documents and
-  more) are always on and no longer listed; the graph, slides, buttons, page preview, the clipper and Export to PDF
-  are plugins you can turn off, and random note, unique note and note composer are off until turned on; Plugins has a Bundles button beside Get
-  plugins, a search there also lists the directory's plugins you don't have, and Vaultite's own carry a verified mark
-  in place of stars.
+- **Fewer plugins to manage**: 41 of the app's parts (files, search, the graph, the inbox, slides, buttons, page
+  preview, Export to PDF, canvas, terminal and more) are always on and no longer listed; the coding agents are one row,
+  Coding agents, whose sheet has each one's switch (Claude Code on, Codex, Cursor, OpenCode, OpenClaw and Hermes off
+  until turned on); Activity, Dispatch, Token count and Workspaces are off until turned on (a vault that had them on
+  keeps them on), as are random note, unique note and note composer; Vim is Settings, Editor, Vim keys. Plugins has a
+  Bundles button beside Get plugins, a search there also lists the directory's plugins you don't have, and Vaultite's
+  own carry a verified mark in place of stars.
 - Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, what it
   waits on, read only or read and write (enforced by the server), its name and Disconnect. A sign-in waiting for its
   code leads the page, and "Another app" sets up any MCP client.
@@ -129,8 +143,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   Claude Code in the app's terminals draws in the scheme's colours, and the browser's bars take its background.
 - **A start page of your own**: a new tab can show a dashboard instead of its sections (Choose a page for new tabs…,
   or `vau newtab page`), so it's any blocks, arranged by you or your agent.
-- **Looks**: save just the look (colours, fonts, snippets, the status bar, the new tab) as a bundle that applies over
-  any setup; bundles carry the new tab, and a bundle saved in the desktop app shows a picture of the window on its card.
+- Bundles carry the new tab, and a bundle saved in the desktop app shows a picture of the window on its card.
 - **Watch and listen anywhere in the app**: audio and video keep playing as you move around, in a mini player, on the
   lock screen and with the iPhone locked, and pick up where you stopped on any device; skips, speed, captions and
   picture in picture; a time in a note plays from there, and a transcript follows along.

@@ -31,7 +31,6 @@ are the only copy, and the user reads them too.
   where it goes (`| gh secret set NAME`), never asked in chat. Unsure who or what something is about: ask.
 
 ## Plugins
-- What the user did on a day (notes changed and what changed, tasks done, captures, logs): `activity.recap` (`vau recap 2026-10-06`), kept in `Recaps/<date>.md`.
 - Saving an Intelligent UI answer: its source as is, in a ```genui fence (`vau docs genui`).
 - Something for the user to read later (research, a summary) goes in their inbox: `inbox.add`.
 - `ME.md` is the user: read it before writing anything (who they are, the people who matter, how they want you to work, what not to store).

@@ -1,13 +1,22 @@
 {
   "disabled": [],
   "enabled": [
+    "activity",
     "ai-import",
     "audio-recorder",
+    "codex",
+    "cursor",
+    "dispatch",
     "grok-bot",
+    "hermes",
     "lessons",
     "machines",
     "notes",
+    "openclaw",
+    "opencode",
     "projects",
-    "web-viewer"
+    "token-count",
+    "web-viewer",
+    "workspaces"
   ]
 }

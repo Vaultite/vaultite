@@ -1,5 +1,5 @@
 // Set up Vaultite: the desktop app's first-run window (web/onboarding.html; electron/setup.ts): a new vault or a folder
-// to open. The vault starts from Minimal (core/start.ts); the rest comes later (its Start here note, Settings).
+// to open. The vault starts from Standard (core/start.ts); the rest comes later (its Start here note, Settings).
 import { useEffect, useState, type ReactNode } from "react"
 import { CircleAlert, FlaskConical, FolderOpen, FolderPlus, LoaderCircle, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"

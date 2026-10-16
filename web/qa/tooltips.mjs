@@ -14,7 +14,7 @@ await fetch(new URL("/api/pins", B), { method: "POST", body: JSON.stringify({ pa
 // The Outline panel in the sidebar, under the pins (Workspaces off: the sidebar is sidebars.json's).
 const plugins = path.join(VAULT, ".vaultite/plugins.json")
 const conf = existsSync(plugins) ? JSON.parse(readFileSync(plugins, "utf8")) : {}
-writeFileSync(plugins, JSON.stringify({ ...conf, disabled: (conf.disabled ?? []).filter((d) => d !== "outline").concat("workspaces") }, null, 2) + "\n")
+writeFileSync(plugins, JSON.stringify({ ...conf, disabled: (conf.disabled ?? []).filter((d) => d !== "outline"), enabled: (conf.enabled ?? []).filter((d) => d !== "workspaces") }, null, 2) + "\n")
 writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "outline:outline", "files:files"], right: [], collapsed: [] }, null, 2) + "\n")
 
 const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))

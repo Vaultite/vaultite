@@ -118,7 +118,7 @@ function tell(g: ErrorGroup) {
   // After this turn: the error may have come from inside a write that holds the vault.
   setImmediate(() => {
     try {
-      void plugin.runOp("ui.notify", { text: `${where}: ${g.message.slice(0, 160)}`, error: true, actionOpen: "view:errors", actionLabel: "Show" }).catch(() => { /* no window, no inbox */ })
+      void plugin.runOp("ui.notify", { text: `${where}: ${g.message.slice(0, 160)}`, error: true, actionOpen: "view:errors" }).catch(() => { /* no window, no inbox */ })
     } catch { /* unloaded meanwhile */ }
   })
 }

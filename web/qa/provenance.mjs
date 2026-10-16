@@ -30,7 +30,7 @@ await api("PUT", "file", { path: AI, text: "## Beds\n\n- Tomatoes along the fenc
 await api("PUT", "file", { path: PLAIN, text: "---\ntags: [Books]\n---\n\nThe books Alice Park lent me.\n" }, { "X-Vaultite-Client": "app/desktop" })
 check("an agent's new note through the API is origin: ai", origin(AI) === "ai", text(AI))
 check("the app's stays unlabelled: no label is the user's", text(PLAIN) === "---\ntags: [Books]\n---\n\nThe books Alice Park lent me.\n", text(PLAIN))
-await plugins((c) => ({ disabled: [...(c.disabled ?? []).filter((x) => x !== "token-count"), "token-count"] }))
+await plugins((c) => ({ enabled: (c.enabled ?? []).filter((x) => x !== "token-count") }))
 
 async function open(w, h, mobile = false) {
   const ctx = await browser.newContext({ viewport: { width: w, height: h }, ...(mobile ? { isMobile: true, hasTouch: true } : {}) })
@@ -143,8 +143,8 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   await api("PATCH", "config/plugin/properties", { chips: null })
   await go(page, PLAIN)
 
-  // Token count: on (it is by default), it shows after the counts and follows typing.
-  await plugins((c) => ({ disabled: (c.disabled ?? []).filter((x) => x !== "token-count") }))
+  // Token count: on, it shows after the counts and follows typing.
+  await plugins((c) => ({ enabled: [...(c.enabled ?? []).filter((x) => x !== "token-count"), "token-count"] }))
   const tokens = page.locator("[role=status] [data-tokens]")
   check("tokens: shown once turned on", await until(async () => (await tokens.count()) === 1, 8000))
   await go(page, PLAIN) // (the workspace's tabs may have been put back meanwhile)

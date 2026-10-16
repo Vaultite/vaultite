@@ -1,7 +1,7 @@
-// Plugins: one list by category (never the app's `alwaysOn` parts), each saying where it's from (built in, installed,
-// yours), Vaultite's marked as a trust mark. Tap one for its sheet; Get plugins is PluginBrowse.tsx, Bundles pages/Bundles.tsx.
-import { useEffect, useState } from "react"
-import { ChevronLeft, ChevronRight, Package, Plus, Search, Settings2 } from "lucide-react"
+// Plugins: a menu (RailLayout) of Your plugins, Get plugins (PluginBrowse.tsx), Bundles and the categories. Your plugins:
+// by category (never the `alwaysOn` parts), each saying where it's from, Vaultite's with a trust mark; tap for its sheet.
+import { useEffect, useState, type ReactNode } from "react"
+import { Bot, ChevronRight, Code, Compass, Cpu, Download, FileType, Heart, HeartPulse, Package, PenLine, Puzzle, Search, Settings2, Shapes, Wrench, type LucideIcon } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
@@ -12,10 +12,13 @@ import type { Store } from "@/core/data"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
-import { FilterField, PageHeader, Panel, Segmented, Switch } from "@/components/kit"
+import { PageHeader, Panel, SheetHead, Switch } from "@/components/kit"
+import { RailLayout, useRail, type RailItem } from "@/components/RailLayout"
 import { DirectoryMatches, PluginBrowse } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
 import { Bundles } from "@/pages/Bundles"
+import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/PluginGroup"
+import { groupOf } from "../../../core/categories.ts"
 
 /** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
@@ -49,7 +52,8 @@ function reveal(id: string) {
   requestAnimationFrame(() => requestAnimationFrame(() => pulse(p?.id ?? id)))
 }
 function pulse(id: string) {
-  const row = document.querySelector<HTMLElement>(`[data-plugin-row="${id}"]`)
+  // (one in a group: its group's row)
+  const row = document.querySelector<HTMLElement>(`[data-plugin-row="${id}"]`) ?? document.querySelector<HTMLElement>(`[data-plugin-members~="${id}"]`)
   if (!row) return
   const flash = () => { row.classList.remove("reveal-flash"); void row.offsetWidth; row.classList.add("reveal-flash") }
   const r = row.getBoundingClientRect()
@@ -61,7 +65,7 @@ function pulse(id: string) {
 
 /** `original`: the other app's plugin it stands in for, installed too (Obsidian's Excalidraw): one row for both, its
  *  switch and sheet the one that runs, and a line to swap them. `openSettings`: where its gear goes (else a sheet). */
-function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original, openSettings }: { p: Plugin; on: boolean; blocked: string[]; files: string[]; original?: Plugin; openSettings?: (id: string) => void }) {
+export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original, openSettings }: { p: Plugin; on: boolean; blocked: string[]; files: string[]; original?: Plugin; openSettings?: (id: string) => void }) {
   const theirs = !!original && !ownOn && switchedOn(original)
   const p = theirs ? original : own, on = ownOn || theirs, blocked = theirs ? [] : ownBlocked
   // Its own switch is kept: turn People back on and People map comes back as you left it.
@@ -158,13 +162,13 @@ function Waiting({ list }: { list: Plugin[] }) {
   )
 }
 
-/** A card of rows, hairlines between them. */
-function Rows({ list, files, originals, openSettings }: { list: Plugin[]; files: string[]; originals: Map<string, Plugin>; openSettings?: (id: string) => void }) {
+/** A card of rows, hairlines between them; a group's plugins one row, where the first of them is (`grouped`). */
+export function Rows({ list, files, originals, openSettings, grouped = true }: { list: Plugin[]; files: string[]; originals: Map<string, Plugin>; openSettings?: (id: string) => void; grouped?: boolean }) {
   const prefs = usePrefs(), { disabled } = prefs
   return (
     <Panel className="py-1">
       <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-        {list.map((p) => (
+        {list.map((p, i) => grouped && p.group ? list.findIndex((q) => q.group === p.group) === i && <GroupRow key={`group:${p.group}`} id={p.group} /> : (
           <PluginRow key={p.id} p={p} on={switchedOn(p, prefs)} blocked={(p.requires ?? []).filter((r) => !isEnabled(r, disabled))} files={files} original={originals.get(p.id)} openSettings={openSettings} />
         ))}
       </div>
@@ -172,21 +176,23 @@ function Rows({ list, files, originals, openSettings }: { list: Plugin[]; files:
   )
 }
 
-type Show = "all" | "on" | "off"
+/** The categories' icons in the menu (core/categories.ts names them). */
+const CATEGORY_ICONS: Record<string, LucideIcon> = {
+  navigation: Compass, writing: PenLine, life: Heart, health: HeartPulse, "ai-apps": Bot, agents: Wrench, developer: Code, formats: FileType, system: Cpu,
+}
 
-/** `openSettings`: where a plugin's gear goes (Settings shows them beside its list), else a sheet. */
-export function Plugins({ store, openSettings }: { store: Store; openSettings?: (id: string) => void }) {
+/** `back`: a way out above the search (Settings, whose menu this takes the place of). */
+export function Plugins({ store, back }: { store: Store; back?: { label: string; run: () => void } }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
+  const rail = useRail()
   const [query, setQuery] = useState("")
-  const [show, setShow] = useState<Show>("all")
-  const [from, setFrom] = useState<Source | "all">("all")
-  const [cat, setCat] = useState("all")
-  const [tab, setTab] = useState<"installed" | "get" | "bundles">("installed")
+  // What the menu picked: "installed" (Your plugins), "get", "bundles", or a category of the installed ("cat:<id>").
+  const [picked, setPicked] = useState("installed")
   const [source, setSource] = useState("") // Get plugins' source: "" the plugin directory, else a host's
   useEffect(() => {
-    beforeReveal = () => { setQuery(""); setShow("all"); setFrom("all"); setCat("all"); setTab("installed") }
+    beforeReveal = () => { setQuery(""); setPicked("installed") }
     return () => { beforeReveal = () => {} }
   }, [])
   const q = query.trim().toLowerCase()
@@ -194,124 +200,90 @@ export function Plugins({ store, openSettings }: { store: Store; openSettings?: 
   const originals = new Map<string, Plugin>()
   for (const p of all) { const s = standInOf(p); if (s && !originals.has(s.id)) originals.set(s.id, p) }
   const paired = new Set([...originals.values()].map((p) => p.id))
-  // On: its own switch, and everything it needs on (a blocked one counts as off); a stand-in's row, either of the two.
-  const isOn = (p: Plugin): boolean => switchedOn(p, prefs) && (p.requires ?? []).every((r) => isEnabled(r, prefs.disabled)) || (originals.has(p.id) && isOn(originals.get(p.id)!))
-  const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}`.toLowerCase()
-  const every = all.filter((p) => !paired.has(p.id) && !p.alwaysOn).sort((a, b) => byName.compare(a.name, b.name))
-  const fromCount = (x: Source) => every.filter((p) => sourceOf(p) === x).length
-  const listed = every.filter((p) => from === "all" || sourceOf(p) === from)
-  const onCount = listed.filter(isOn).length
-  const byShow = listed.filter((p) => show === "all" || (show === "on") === isOn(p))
-  const sections = byCategory(byShow).filter((s) => s.plugins.length)
-  // A category the filter emptied isn't left selected with nothing in it.
-  const current = cat === "all" || sections.some((s) => s.id === cat) ? cat : "all"
-  const shown = byShow.filter((p) => (current === "all" || sections.find((s) => s.id === current)!.plugins.includes(p))
-    && (!q || text(p).includes(q) || (originals.has(p.id) && text(originals.get(p.id)!).includes(q))))
+  const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}\n${groupWords(p)}`.toLowerCase()
+  // (one whose switch is in a Settings section isn't here: Vim keys, in Editor)
+  const every = all.filter((p) => !paired.has(p.id) && !p.alwaysOn && !p.switchIn).sort((a, b) => byName.compare(a.name, b.name))
+  const sections = byCategory(every).filter((s) => s.plugins.length)
+  // A category emptied (its last plugin removed) isn't left picked with nothing in it.
+  const cat = sections.find((s) => `cat:${s.id}` === picked) ?? null
+  const current = picked.startsWith("cat:") && !cat ? "installed" : picked
+  const shown = (cat?.plugins ?? every).filter((p) => !q || text(p).includes(q) || (originals.has(p.id) && text(originals.get(p.id)!).includes(q)))
   const waiting = all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")
-  const cats = [{ id: "all", label: "All plugins", n: byShow.length }, ...sections.map((s) => ({ id: s.id, label: s.label, n: s.plugins.length }))]
-  const getMore = () => { setTab("get") }
+  // (a group counts as its one row)
+  const rows = (list: Plugin[]) => list.filter((p, i) => !p.group || list.findIndex((q) => q.group === p.group) === i).length
+  const items: RailItem[] = [
+    { id: "installed", label: "Your plugins", icon: Puzzle, count: rows(every), attrs: { "data-plugins-installed": "" } },
+    { id: "get", label: "Get plugins", icon: Download, attrs: { "data-plugins-get": "" } },
+    { id: "bundles", label: "Bundles", icon: Package, attrs: { "data-plugins-bundles": "" } },
+    ...sections.map((s, i): RailItem => ({ id: `cat:${s.id}`, label: s.label, icon: CATEGORY_ICONS[s.id] ?? Shapes, count: rows(s.plugins),
+      heading: i === 0 ? "Categories" : undefined, attrs: { "data-plugins-cat": s.id } })),
+  ]
+  // Bundles has nothing to search: typing there looks in Your plugins.
+  const search = (v: string) => { setQuery(v); if (current === "bundles" && v.trim()) setPicked("installed") }
 
-  const back = (
-    <button type="button" onClick={() => { setTab("installed"); setQuery("") }} data-plugins-back
-      className="-ml-1.5 mb-1 inline-flex h-8 cursor-pointer items-center gap-0.5 rounded-[8px] pr-2 text-[15px] text-primary active:opacity-50 md:text-[13px]">
-      <ChevronLeft className="size-4.5" strokeWidth={2.25} />Plugins
-    </button>
-  )
-  if (tab === "bundles") return <>{back}<Bundles store={store} /></>
-  if (tab === "get") {
-    return (
-      <>
-        {back}
-        <PageHeader title="Get plugins" />
-        <FilterField value={query} onChange={setQuery} placeholder="Search for plugins" className="mb-5" />
-        <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={(id) => { setTab("installed"); reveal(id) }} />
-      </>
-    )
+  let pane: ReactNode
+  if (current === "bundles") pane = <Bundles store={store} />
+  else if (current === "get") {
+    pane = <>
+      <PageHeader title="Get plugins" />
+      <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={reveal} />
+    </>
+  } else {
+    pane = <>
+      <PageHeader title={cat?.label ?? "Your plugins"} />
+      <Waiting list={waiting} />
+      {!shown.length ? (
+        <p className="py-4 text-[15px] text-muted-foreground md:text-[13px]" data-plugins-empty>
+          {q ? `No installed plugin matches "${query.trim()}".` : "No plugins here."}
+        </p>
+      ) : !cat && !q ? (
+        // Everything: a section per category, headings only (nothing folds; the menu picks one).
+        byCategory(shown).filter((s) => s.plugins.length).map((s) => (
+          <section key={s.id} className="mb-5" data-plugin-category={s.id}>
+            <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">{s.label}</h2>
+            <Rows list={s.plugins} files={files} originals={originals} />
+          </section>
+        ))
+      ) : (
+        <section data-plugin-category={cat?.id ?? "all"}><Rows list={shown} files={files} originals={originals} /></section>
+      )}
+      {/* A search also looks where more plugins are: the directory's that aren't here, then Get plugins' other sources. */}
+      {q && <DirectoryMatches query={query} showInstalled={reveal} />}
+      {q && (
+        <button type="button" onClick={() => setPicked("get")} data-plugins-search-more
+          className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-2 py-2 text-left hover:bg-foreground/[0.04]">
+          <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-muted-foreground md:size-8 md:rounded-[8px]"><Search className="size-[18px]" strokeWidth={2} /></span>
+          <span className="min-w-0 flex-1">
+            <span className="block truncate text-[15px] font-medium md:text-[14px]">Search everywhere for "{query.trim()}"</span>
+            <span className="block text-[13px] text-muted-foreground md:text-[12px]">Get plugins, with every source</span>
+          </span>
+          <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
+        </button>
+      )}
+      <p className="mt-4 px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
+        Your own plugins live in <button type="button" onClick={() => showInTree(FOLDER)} data-tip="Show the folder in the file tree"
+          className="cursor-pointer text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">{FOLDER}</button>.
+      </p>
+    </>
   }
 
   return (
-    <div className="@container">
-      <PageHeader title="Plugins" className="items-center">
-        <div className="flex shrink-0 gap-2">
-          <button type="button" onClick={() => setTab("bundles")} data-plugins-bundles
-            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3.5 text-[15px] font-medium transition-colors hover:bg-foreground/[0.1] md:h-8 md:text-[13px]">
-            <Package className="size-4" strokeWidth={2.25} />Bundles
-          </button>
-          <button type="button" onClick={getMore} data-plugins-get
-            className="inline-flex h-9 shrink-0 cursor-pointer items-center gap-1.5 rounded-[8px] bg-foreground/[0.06] px-3.5 text-[15px] font-medium transition-colors hover:bg-foreground/[0.1] md:h-8 md:text-[13px]">
-            <Plus className="size-4" strokeWidth={2.25} />Get plugins
-          </button>
-        </div>
-      </PageHeader>
-      <div className="flex gap-8">
-        {/* Wide: the categories as a rail beside the list, like System Settings. */}
-        <nav aria-label="Categories" className="sticky top-0 hidden w-44 shrink-0 flex-col gap-px self-start @3xl:flex" data-plugins-rail>
-          {cats.map((c, i) => (
-            <div key={c.id}>
-              {i === 1 && <div className="px-2.5 pt-4 pb-1 text-[12px] font-semibold text-muted-foreground">Categories</div>}
-              <button type="button" onClick={() => setCat(c.id)} aria-pressed={current === c.id} data-plugins-cat={c.id}
-                className={cn("flex h-8 w-full cursor-pointer items-center justify-between gap-2 rounded-[7px] px-2.5 text-left text-[13px] transition-colors hover:bg-foreground/[0.05]",
-                  current === c.id && "bg-foreground/[0.08] font-medium")}>
-                <span className="truncate">{c.label}</span>
-                <span className="text-[12px] text-muted-foreground tabular-nums">{c.n}</span>
-              </button>
-            </div>
-          ))}
-        </nav>
-        <div className="min-w-0 flex-1">
-          <div className="mb-3 flex flex-wrap items-center gap-3">
-            <FilterField value={query} onChange={setQuery} placeholder="Search plugins" className="min-w-[180px]" />
-            <Segmented value={show} onChange={setShow} label="Show" className="shrink-0"
-              options={[{ value: "all", label: `All ${listed.length}` }, { value: "on", label: `On ${onCount}` }, { value: "off", label: `Off ${listed.length - onCount}` }]} />
-            {/* (only the sources it has: four with counts don't fit a phone) */}
-            <Segmented value={from} onChange={setFrom} label="From" className="max-w-full shrink-0"
-              options={[{ value: "all", label: "Any" }, ...(Object.keys(SOURCES) as Source[]).filter((x) => x === from || fromCount(x)).map((x) => ({ value: x, label: SOURCES[x] }))]} />
-          </div>
-          {/* Narrow: the same categories as a row of chips. */}
-          <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1 @3xl:hidden" role="group" aria-label="Categories" data-plugins-chips>
-            {cats.map((c) => (
-              <button key={c.id} type="button" onClick={() => setCat(c.id)} aria-pressed={current === c.id} data-plugins-cat={c.id}
-                className={cn("h-9 shrink-0 cursor-pointer rounded-full px-3.5 text-[15px] whitespace-nowrap md:h-7.5 md:px-3 md:text-[13px]",
-                  current === c.id ? "bg-foreground text-background" : "bg-muted")}>
-                {c.id === "all" ? "All" : c.label}
-              </button>
-            ))}
-          </div>
-          <Waiting list={waiting} />
-          {!shown.length ? (
-            <p className="py-4 text-[15px] text-muted-foreground md:text-[13px]" data-plugins-empty>
-              {q ? `No installed plugin matches "${query.trim()}".` : from === "yours" && !listed.length ? `None made in this vault: they'd be in ${FOLDER}.` : show === "off" ? "Every plugin is on." : "No plugins here."}
-            </p>
-          ) : current === "all" && !q ? (
-            // Everything: a section per category, headings only (nothing folds; the rail picks one).
-            byCategory(shown).filter((s) => s.plugins.length).map((s) => (
-              <section key={s.id} className="mb-5" data-plugin-category={s.id}>
-                <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">{s.label}</h2>
-                <Rows list={s.plugins} files={files} originals={originals} openSettings={openSettings} />
-              </section>
-            ))
-          ) : (
-            <section data-plugin-category={current}><Rows list={shown} files={files} originals={originals} openSettings={openSettings} /></section>
-          )}
-          {/* A search also looks where more plugins are: the directory's that aren't here, then Get plugins' other sources. */}
-          {q && <DirectoryMatches query={query} showInstalled={reveal} />}
-          {q && (
-            <button type="button" onClick={getMore} data-plugins-search-more
-              className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-2 py-2 text-left hover:bg-foreground/[0.04]">
-              <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-muted-foreground md:size-8 md:rounded-[8px]"><Search className="size-[18px]" strokeWidth={2} /></span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[15px] font-medium md:text-[14px]">Search everywhere for "{query.trim()}"</span>
-                <span className="block text-[13px] text-muted-foreground md:text-[12px]">Get plugins, with every source</span>
-              </span>
-              <ChevronRight className="size-4 shrink-0 text-tertiary" strokeWidth={2.5} />
-            </button>
-          )}
-          <p className="mt-4 px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
-            Your own plugins live in <button type="button" onClick={() => showInTree(FOLDER)} data-tip="Show the folder in the file tree"
-              className="cursor-pointer text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground hover:decoration-current">{FOLDER}</button>.
-          </p>
-        </div>
-      </div>
+    <div className="h-full" data-plugins>
+      <RailLayout rail={rail} label="Plugins" items={items} active={current} pick={setPicked} page={current} narrow="chips" back={back}
+        search={{ value: query, onChange: search, placeholder: "Search plugins" }} menuAttrs={{ "data-plugins-rail": "" }} chipsAttrs={{ "data-plugins-chips": "" }}>
+        {pane}
+      </RailLayout>
     </div>
+  )
+}
+
+/** A group's sheet (`plugin-group/<id>`, from its row): each of its plugins with its own switch and gear. */
+export function PluginGroupSheet({ store, id }: { store: Store; id: string }) {
+  const members = groupMembers(id, usePlugins())
+  return (
+    <>
+      <SheetHead icon={groupIcon(id)} tint="var(--primary)" title={groupOf(id)?.label ?? id} sub="Each one on or off on its own" />
+      <Rows list={members} files={store.pluginSettings ?? []} originals={new Map()} grouped={false} />
+    </>
   )
 }

@@ -178,10 +178,9 @@ there now; with none, the ones in the app's source. filter keeps ids and names w
     cli: "notify",
     summary: "Tell the user something happened: a toast in their window, kept in their inbox.",
     help: `Tells the user something finished or changed ("Imported 12 meals", "Wrote the weekly review"), not every step.
-With the Inbox plugin on (the default) it's an event in their inbox: a toast in every open window, a system
-notification while the desktop app is in the background, and kept for later when no window is open. Without it, a
-toast in the window the user was in last. actionOpen adds one button that opens a vault file or view (actionLabel
-names it; "Open" by default; the inbox's toast always says Open). error shows it as an error (a red icon).
+It's an event in their inbox: a toast in every open window, a system notification while the desktop app is in the
+background, and kept for later when no window is open. actionOpen adds its Open button, to a vault file or view.
+error shows it as an error (a red icon).
 
   vau notify "Imported 12 meals from Hevy"
   vau notify "Wrote your weekly review" --action-open "Notes/Weekly review.md"
@@ -189,27 +188,18 @@ names it; "Open" by default; the inbox's toast always says Open). error shows it
     kind: "write",
     params: {
       text: { type: "string", required: true, description: "what happened, one line" },
-      actionOpen: { type: "string", format: "path", description: "a vault file, view or web address its button opens" },
-      actionLabel: { type: "string", description: "the button's label (Open by default)" },
+      actionOpen: { type: "string", format: "path", description: "a vault file, view or web address its Open button opens" },
       error: { type: "boolean", description: "shown as an error" },
       terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal it's about (its id; vau fills it in when it runs in one)" },
     },
     args: ["text"],
-    // The Inbox keeps it (every window toasts it); with the Inbox off, the window the user was in last shows it.
-    run: async ({ text, actionOpen, actionLabel, error, terminal }, ctx) => {
-      if (actionLabel && !actionOpen) throw new OpError("actionLabel needs actionOpen (what the button opens)")
+    run: async ({ text, actionOpen, error, terminal }, ctx) => {
       const source = ctx.who.source === "cli" || ctx.who.source === "api" ? "vau" : ctx.who.source
-      try {
-        const ev = await ctx.api("POST", "inbox/events", { source, kind: error ? "error" : "info", title: text,
-          ...(actionOpen ? { link: actionOpen } : {}), ...(terminal ? { terminal } : {}) })
-        return { inbox: true, event: ev }
-      } catch (e) {
-        if (!(e instanceof OpError) || e.status !== 404) throw e
-      }
-      const button = actionOpen ? { label: actionLabel ?? "Open", open: actionOpen } : null
-      return { inbox: false, window: await ctx.ui({ action: "notify", text, kind: error ? "error" : null, button }).catch(noWindow) }
+      const event = await ctx.api("POST", "inbox/events", { source, kind: error ? "error" : "info", title: text,
+        ...(actionOpen ? { link: actionOpen } : {}), ...(terminal ? { terminal } : {}) })
+      return { event }
     },
-    text: (r, p) => `Shown: ${p.text}${p.actionOpen ? ` [${r.inbox ? "Open" : p.actionLabel ?? "Open"}: ${p.actionOpen}]` : ""}${r.inbox ? " (kept in the inbox)" : ""}`,
+    text: (_, p) => `Shown: ${p.text}${p.actionOpen ? ` [Open: ${p.actionOpen}]` : ""} (kept in the inbox)`,
     did: ({ text }) => ({ action: "ui", text: `Showed ${quoted(text)}` }),
   }, {
     id: "ui.choose",

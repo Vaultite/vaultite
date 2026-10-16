@@ -4,10 +4,11 @@ import "./node/prelude.ts"
 import "./mount.ts"
 import fs, { changes } from "./node/fs.ts"
 import { NEEDS_APP } from "./node/stub.ts"
-import { MACHINE } from "./machine.ts"
+import { fitForDemo, isObj, MACHINE, machineOff, panelsOff, type PluginsJson } from "./machine.ts"
+import { fromGitHub } from "./github.ts"
 import { jsonOf, open, type App } from "../../core/app.ts"
 import { Live } from "../../core/live.ts"
-import { contentType, HTTPError, Text } from "../../core/plugins.ts"
+import { contentType, HTTPError, matchSocket, Text } from "../../core/plugins.ts"
 import { clean } from "../../core/files.ts"
 import * as vaults from "../../core/vaults.ts"
 import { localToday, makeSandbox, MARKER, sampleStamp } from "../../core/sandbox.ts"
@@ -16,15 +17,19 @@ import type { IncomingMessage } from "node:http"
 
 const VAULT = "/Sandbox"
 
-/** What needs a machine stays off (machine.ts): in the sandbox's setup, and in every bundle the visitor applies. */
-function machineOff(file: string) {
-  const cfg = JSON.parse(fs.readFileSync(file, "utf8") as string)
-  cfg.disabled = [...new Set([...(cfg.disabled ?? []), ...MACHINE])]
-  cfg.enabled = (cfg.enabled ?? []).filter((id: string) => !MACHINE.includes(id))
-  fs.writeFileSync(file, JSON.stringify(cfg, null, 2) + "\n")
+function machineOffFile(file: string) {
+  fs.writeFileSync(file, JSON.stringify(machineOff(JSON.parse(fs.readFileSync(file, "utf8") as string)), null, 2) + "\n")
 }
+/** What each bundle would have turned on that the demo leaves out, for the page to say: its plugins.json as it came (the
+ *  ones needing a machine are worked out from it), and the plugins it brings or installs (code: not run here). */
+const leftOut = new Map<string, { plugins: PluginsJson; code: string[] }>()
 for (const id of fs.readdirSync("/app/bundles") as string[]) {
-  if (fs.existsSync(`/app/bundles/${id}/plugins.json`)) machineOff(`/app/bundles/${id}/plugins.json`)
+  const file = `/app/bundles/${id}/plugins.json`
+  if (!fs.existsSync(file)) continue
+  leftOut.set(id, { plugins: JSON.parse(fs.readFileSync(file, "utf8") as string), code: [] })
+  machineOffFile(file)
+  const sb = `/app/bundles/${id}/sidebars.json`
+  if (fs.existsSync(sb)) fs.writeFileSync(sb, JSON.stringify(panelsOff(JSON.parse(fs.readFileSync(sb, "utf8") as string)), null, 2) + "\n")
 }
 
 // ---------- the vault, kept in IndexedDB ----------
@@ -91,7 +96,7 @@ async function restore() {
   } else {
     makeSandbox(VAULT, today)
     fs.rmSync(`${VAULT}/${MARKER}`) // (the app's "changes here are lost" notice: here they're kept until Reset)
-    machineOff(`${VAULT}/.vaultite/plugins.json`)
+    machineOffFile(`${VAULT}/.vaultite/plugins.json`)
     await tx(["files"], (t) => t.objectStore("files").clear())
     meta = { day: today, sample, edited: false }
     dirty.add(VAULT)
@@ -152,11 +157,61 @@ async function handle(ask: Ask): Promise<Answer> {
   if (route === "ui") { const [out, status] = live.handle(method, body as Record<string, unknown>); return json(out, status) }
   const why = refused(method, route, body)
   if (why) return json({ error: why }, 403)
+  let took: { plugins: PluginsJson; code: string[] } | null = null
+  // (the import's preview too: what it shows is what the demo would apply)
+  if (method === "POST" && (route === "bundles/import" || route === "bundles/import/preview")) {
+    try { ({ body, took } = await demoImport(body as Record<string, unknown>)) } catch (e) { return json({ error: (e as Error).message }, e instanceof HTTPError ? e.status : 500) }
+  }
   // (who asks: a page on the network, so never the owner: what's the owner's only isn't offered)
   const req = { method, url: url.pathname + url.search, headers: { ...ask.headers, host: "demo" }, socket: { remoteAddress: "192.0.2.1", remotePort: 0 } } as unknown as IncomingMessage
   await app.syncPlugins()
+  if (parts[0] === "demo") return demoRoute(parts.slice(1), req).then((o) => json(o), (e) => json({ error: e.message }, e instanceof HTTPError ? e.status : 500))
   const out = await app.run(method, parts, query, body, req)
+  const added = (out.body as { bundle?: { id?: string } } | null)?.bundle?.id
+  if (took && out.status === 200 && added) leftOut.set(added, took)
   return reply(out)
+}
+
+// ---------- bundles from elsewhere ----------
+
+/** What the demo left out of a bundle, by where it's from: a preview's (fitted) file added later leaves nothing out itself. */
+const tookFrom = new Map<string, { plugins: PluginsJson; code: string[] }>()
+
+/** An import or its preview made fit for the demo (fitForDemo): a repository is fetched by this browser (fromGitHub) and
+ *  goes on as `{file}` (the app's import then replaces one from the same repository). */
+async function demoImport(body: Record<string, unknown>) {
+  const wrapped = isObj(body.file) || typeof body.from === "string"
+  const file: unknown = typeof body.from === "string" ? await fromGitHub(body.from) : isObj(body.file) ? body.file : body
+  if (!isObj(file) || !isObj(file.files)) return { body, took: null } // (the import says what's wrong)
+  const fit = fitForDemo(file.files)
+  let from = ""
+  try { const m = fit.files["bundle.json"]; from = String((typeof m === "string" ? JSON.parse(m) : m as Record<string, unknown>)?.from ?? "") } catch { /* the import says */ }
+  let took = { plugins: fit.plugins, code: fit.code }
+  if (from && (fit.code.length || !MACHINE.every((id) => fit.plugins.disabled?.includes(id)))) tookFrom.set(from, took)
+  else if (from && tookFrom.has(from)) took = tookFrom.get(from)!
+  const { from: _, ...rest } = body
+  return { body: wrapped ? { ...rest, file: { ...file, files: fit.files } } : { ...file, files: fit.files }, took }
+}
+
+/** GET /api/demo/bundle/<id>: a bundle as the page around the demo shows it: what it is, the plugins it turns on by
+ *  name, and those left out here (needing the app, or code from elsewhere). */
+async function demoRoute(parts: string[], req: IncomingMessage) {
+  if (parts[0] !== "bundle" || parts.length !== 2) throw new HTTPError(404, "no such demo route")
+  const out = await app.run("GET", ["bundles", parts[1]], {}, {}, req)
+  if (out.status !== 200) throw new HTTPError(out.status, (out.body as { error?: string })?.error ?? "not found")
+  const b = (out.body as { bundle: Record<string, unknown> }).bundle
+  const name = (id: string) => String(app.plugins.find((p) => p.id === id)?.manifest.name ?? id)
+  const was = leftOut.get(parts[1])
+  const wanted = was ? MACHINE.filter((id) => {
+    const p = app.plugins.find((x) => x.id === id)
+    if (!p) return false
+    return p.manifest.offByDefault ? !!was.plugins.enabled?.includes(id) : !!was.plugins.disabled && !was.plugins.disabled.includes(id)
+  }) : []
+  return {
+    id: b.id, name: b.name, description: b.description, author: b.author, icon: b.icon, tint: b.tint, from: b.from, theme: b.theme, scheme: b.scheme,
+    on: ((b.on as string[] | null) ?? []).map(name), pinned: ((b.pinned as string[] | null) ?? []).map((p) => p.split("/").pop()!.replace(/\.md$/, "")),
+    needsApp: wanted.map(name), notInDemo: was?.code ?? [], problems: b.problems,
+  }
 }
 
 function reply(out: { status: number; body: unknown }): Answer {
@@ -187,21 +242,32 @@ function answer(ask: Ask, port: MessagePort) {
   })
 }
 
-/** /api/events: core/live.ts's client, as a `ws` socket over a port. */
-async function socket(port: MessagePort) {
+/** A socket: /api/events (core/live.ts's client) or a plugin's (server.ts's upgrade), as a `ws` socket over a port. */
+async function socket(port: MessagePort, at: string) {
   await ready
   const on: Record<string, ((data?: unknown) => void)[]> = {}
   const ws = { OPEN: 1, readyState: 1, bufferedAmount: 0,
-    send: (text: string) => port.postMessage(text), on: (event: string, fn: (data?: unknown) => void) => { (on[event] ??= []).push(fn); return ws },
-    close: () => { ws.readyState = 3; port.postMessage(null); for (const fn of on.close ?? []) fn() }, terminate: () => ws.close(), ping() {} }
+    send: (text: string) => { if (ws.readyState === 1) port.postMessage(text) }, on: (event: string, fn: (data?: unknown) => void) => { (on[event] ??= []).push(fn); return ws },
+    close: () => { if (ws.readyState === 3) return; ws.readyState = 3; port.postMessage(null); for (const fn of on.close ?? []) fn() }, terminate: () => ws.close(), ping() {} }
   port.onmessage = (e) => { if (e.data === null) ws.close(); else for (const fn of on.message ?? []) fn(e.data) }
-  live.client(ws as never)
+  const url = new URL(at, "http://demo/")
+  if (url.pathname === "/api/events") return live.client(ws as never)
+  const parts = url.pathname.split("/").filter(Boolean).slice(1).map(decodeURIComponent)
+  const hit = matchSocket(app.plugins, parts)
+  if (!hit || app.vault.switchedOff().has(hit[0].id)) return ws.close()
+  const query: Record<string, string> = {}
+  for (const [k, v] of url.searchParams) if (v !== "" && !(k in query)) query[k] = v
+  const req = { method: "GET", url: at, headers: { host: "demo" }, socket: { remoteAddress: "192.0.2.1", remotePort: 0 } } as unknown as IncomingMessage
+  try {
+    await hit[1].accept?.(req, { wild: hit[2], query })
+    await hit[1].fn(ws as never, req, { wild: hit[2], query })
+  } catch { ws.close() }
 }
 
 self.onmessage = async (e: MessageEvent) => {
   const m = e.data as { type: string; ask?: Ask }
   if (m.type === "fetch") answer(m.ask!, e.ports[0])
-  else if (m.type === "socket") void socket(e.ports[0])
+  else if (m.type === "socket") void socket(e.ports[0], (m as { url?: string }).url ?? "/api/events")
   else if (m.type === "reset") {
     resetting = true
     await tx(["files", "meta"], (t) => { t.objectStore("files").clear(); t.objectStore("meta").clear() })

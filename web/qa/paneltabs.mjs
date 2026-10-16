@@ -21,7 +21,7 @@ const original = existsSync(settings) ? readFileSync(settings, "utf8") : null //
 const sidebarsFile = path.join(VAULT, ".vaultite/sidebars.json")
 const sidebarsBefore = existsSync(sidebarsFile) ? readFileSync(sidebarsFile, "utf8") : null
 // Workspaces off (their own QA checks them): the tabs are this browser's; the default panels, none folded.
-writeFileSync(settings, JSON.stringify({ ...JSON.parse(original ?? "{}"), disabled: ["workspaces"] }, null, 2) + "\n")
+{ const o = JSON.parse(original ?? "{}"); writeFileSync(settings, JSON.stringify({ ...o, disabled: [], enabled: (o.enabled ?? []).filter((x) => x !== "workspaces") }, null, 2) + "\n") }
 const DEFAULT = JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] })
 writeFileSync(sidebarsFile, DEFAULT + "\n")
 const sid = `qa${Date.now().toString(36)}`

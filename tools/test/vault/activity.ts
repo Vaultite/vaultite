@@ -40,9 +40,10 @@ export default async ($: VaultTest) => {
     const was = fs.existsSync(pj) ? fs.readFileSync(pj, "utf8") : null
     const base = was ? JSON.parse(was) : {}
     write("Act/fresh.md", "fresh\n")
-    fs.writeFileSync(pj, JSON.stringify({ ...base, disabled: [...(base.disabled ?? []), "activity"] }, null, 2) + "\n")
+    const enabled = (base.enabled ?? []).filter((x: string) => x !== "activity")
+    fs.writeFileSync(pj, JSON.stringify({ ...base, enabled }, null, 2) + "\n")
     await api("GET", "state") // a sync: plugins.json read with Activity off
-    fs.writeFileSync(pj, JSON.stringify({ ...base, disabled: (base.disabled ?? []).filter((x: string) => x !== "activity") }, null, 2) + "\n")
+    fs.writeFileSync(pj, JSON.stringify({ ...base, enabled: [...enabled, "activity"] }, null, 2) + "\n")
     fs.utimesSync(pj, new Date(), new Date(Date.now() + 2000)) // a new mtime even within the clock's resolution
     await actHeard("GET", "render?path=Act/fresh.md", undefined, null)
     check("activity: a plugin turned on just before a request hears it", (await actEvents("&actor=script")).some((e: Any) => e.paths?.includes("Act/fresh.md")))

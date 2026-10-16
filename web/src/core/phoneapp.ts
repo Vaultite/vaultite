@@ -18,9 +18,9 @@ export type ShellPlugin = {
   snapshot: (o: { x: number; y: number; width: number; height: number; scaled: number; quality?: number }) => Promise<{ url: string }>
   /** A tap from the phone's Taptic Engine (core/haptics.ts). Rejects in an app built before it had this. */
   haptic: (o: { weight: Haptic }) => Promise<void>
-  /** What a widget or a shortcut asked for, taken once: a command (vaultite://command/<id>) or a file to open
-   *  (vaultite://open/<path>). Rejects in an older app. */
-  pending: () => Promise<{ command?: string; open?: string }>
+  /** What a widget, a shortcut or a link asked for, taken once: a command (vaultite://command/<id>), a file to open
+   *  (vaultite://open/<path>) or a bundle's preview (vaultite://bundle/<owner>/<name>). Rejects in an older app. */
+  pending: () => Promise<{ command?: string; open?: string; bundle?: string }>
   /** Keep a vault file on this iPhone (App/Downloads.swift), fetched in the background from `url`. The rest reject in
    *  an app built before it had them. */
   download: (o: { url: string; path: string; title: string }) => Promise<void>
@@ -55,12 +55,12 @@ export function phoneVoiceNote() {
 // So a terminal opened here tells its shell it's the iPhone app (VAULTITE_CLIENT=iphone, plugins/core/terminal).
 if (phoneApp) document.cookie = "vaultite_client=iphone; path=/; max-age=31536000; samesite=strict"
 
-/** Do what the phone's widgets and shortcuts ask for (a palette command, a file to open): now, and whenever the shell
- *  says there's one (the event `vaultite:link`). Each is false while it can't yet (the app still starting). */
-export function takeLinks(run: { command: (id: string) => boolean; open: (path: string) => boolean }) {
+/** Do what the phone's widgets, shortcuts and links ask for (a palette command, a file to open, a bundle's preview): now,
+ *  and whenever the shell says there's one (the event `vaultite:link`). Each is false while it can't yet (the app still starting). */
+export function takeLinks(run: { command: (id: string) => boolean; open: (path: string) => boolean; bundle: (repo: string) => boolean }) {
   if (!phoneApp) return () => {}
-  const take = () => phoneApp!.pending().then(({ command, open }) => {
-    const act = command ? () => run.command(command) : open ? () => run.open(open) : null
+  const take = () => phoneApp!.pending().then(({ command, open, bundle }) => {
+    const act = command ? () => run.command(command) : open ? () => run.open(open) : bundle ? () => run.bundle(bundle) : null
     if (!act) return
     let tries = 0
     const go = () => { if (!act() && ++tries < 40) setTimeout(go, 150) }

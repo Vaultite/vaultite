@@ -36,10 +36,11 @@ export default async ($: VaultTest) => {
       const ins = String(r.result.instructions)
       check("mcp: the instructions are the plugins' lines that are on, an op's id said as its tool", ins.includes("- `ME.md` is the user") && ins.includes("`remember`") && !ins.includes("people.remember") &&
         ins.includes("`.vaultite/AGENTS.md` is the vault's rules") && !ins.includes("People/") && ins.length < 1500, ins)
-      await api("PUT", "config/plugins", { ...vault.config("plugins"), disabled: ["inbox"] })
+      const was = vault.config("plugins")
+      await api("PUT", "config/plugins", { ...was, enabled: was.enabled.filter((id: string) => id !== "activity") })
       const off = String((await rpc("initialize", { protocolVersion: "2025-06-18", clientInfo: { name: "claude-code" } })).result.instructions)
-      check("mcp: a plugin turned off takes its line out", ins.includes("inbox_add") && !off.includes("inbox_add") && off.includes("ME.md"), off)
-      await api("PUT", "config/plugins", { ...vault.config("plugins"), disabled: [] })
+      check("mcp: a plugin turned off takes its line out", ins.includes("Recaps/") && !off.includes("Recaps/") && off.includes("ME.md"), off)
+      await api("PUT", "config/plugins", was)
     }
     check("mcp: the session knows its client", session.client?.agent === "claude-code" && session.client.source === "claude" && session.client.client === "mcp", session)
     r = await rpc("initialize", { protocolVersion: "1999-01-01", clientInfo: { name: "Claude Desktop" } })

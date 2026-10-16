@@ -1,6 +1,6 @@
 // Set up Vaultite (web/src/components/Onboarding.tsx, electron/setup.ts, main.ts's setup:*) in the desktop app, on a
 // made-up home folder (VAULTITE_SETUP_HOME: iCloud Drive, an Obsidian vault, Claude Code's config): the first launch
-// shows one screen; a new vault in iCloud Drive starts from Minimal, its Start here written, pinned and opened, vau
+// shows one screen; a new vault in iCloud Drive starts from Standard, its Start here written, pinned and opened, vau
 // installed (it runs without Node and serves MCP), no AI app's config touched; a relaunch doesn't show it, the menu does;
 // an Obsidian vault opened changes none of its files; Manage vaults connects to another machine's server, opened in a
 // window with no bridge; "Try the playground first" opens the sandbox, and the next launch shows setup again; Manage vaults
@@ -99,8 +99,9 @@ try {
   check("Enter makes the vault in iCloud Drive and opens it", fs.existsSync(path.join(VAULT, ".vaultite")) && new URL(vw.url()).hostname === "127.0.0.1")
   check("the setup window closes", await until(() => !app.windows().some((x) => x.url().endsWith("onboarding.html")), 15000))
   check("setup is remembered as done, outside the vault", !!JSON.parse(fs.readFileSync(path.join(TMP, "userData/setup.json"), "utf8")).done && !fs.readdirSync(VAULT, { recursive: true }).some((f) => /setup\.json$/.test(f)))
-  const pj = JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins.json"), "utf8")), pages = JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/pages.json"), "utf8"))
-  check("it starts from Minimal: a terminal, no Life OS", !(pj.enabled ?? []).includes("people") && !(pj.enabled ?? []).includes("today") && !pj.disabled.includes("terminal"), pj)
+  // (Standard is the app's defaults: no plugins.json at all)
+  const pjFile = path.join(VAULT, ".vaultite/plugins.json"), pj = fs.existsSync(pjFile) ? JSON.parse(fs.readFileSync(pjFile, "utf8")) : {}, pages = JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/pages.json"), "utf8"))
+  check("it starts from Standard: a terminal, no Life OS", !(pj.enabled ?? []).includes("people") && !(pj.enabled ?? []).includes("today") && !(pj.disabled ?? []).includes("terminal"), pj)
   check("Start here is written and the only pin", fs.existsSync(path.join(VAULT, "Start here.md")) && JSON.stringify(pages.pinned) === '["Start here.md"]', pages)
   check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate(() => decodeURIComponent(location.hash).includes("Start here") && /run claude/.test(document.querySelector("[data-pane]")?.textContent ?? "")), 20000),
     await vw.evaluate(() => location.hash))
@@ -144,8 +145,9 @@ try {
   const touched = Object.keys({ ...obsidianBefore, ...obsidianAfter }).filter((f) => obsidianBefore[f] !== obsidianAfter[f])
   check("the Obsidian vault: none of its files changed, nothing added outside .vaultite/", !touched.length, touched)
   const gp = JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/pages.json"), "utf8"))
-  check("it starts from Minimal too, nothing pinned", JSON.stringify(gp.pinned) === "[]"
-    && !(JSON.parse(fs.readFileSync(path.join(OBSIDIAN, ".vaultite/plugins.json"), "utf8")).enabled ?? []).includes("people"), gp)
+  const gpFile = path.join(OBSIDIAN, ".vaultite/plugins.json")
+  check("it starts from Standard too, nothing pinned", JSON.stringify(gp.pinned) === "[]"
+    && !((fs.existsSync(gpFile) ? JSON.parse(fs.readFileSync(gpFile, "utf8")) : {}).enabled ?? []).includes("people"), gp)
   const rows = await gw.evaluate(() => [...document.querySelectorAll("[role=tree] [role=treeitem] > :first-child")].map((e) => e.textContent.trim()))
   check("the file tree shows its notes", rows.some((t) => /Welcome/.test(t)) && !rows.some((t) => /vaultite|^Dashboards$/.test(t)), rows)
   await gw.screenshot({ path: path.join(SHOTS, "4-own-folder.png") })

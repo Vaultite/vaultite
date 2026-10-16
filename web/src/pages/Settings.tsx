@@ -1,7 +1,7 @@
 // Settings: sections beside the one shown (a sheet each where narrow), saved in the vault (prefs.ts). Plugins add pages
-// (`settingsPages`); `alwaysOn` ones' options are under Features, the others' a gear away on Plugins.
-import { useMemo, useRef, useState, useEffect, type ReactNode } from "react"
-import { Keyboard, Palette, PenLine, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react"
+// (`settingsPages`); `alwaysOn` ones' options are under Features, the others' a gear away on Plugins (its own menu).
+import { useMemo, useState, useEffect, type ReactNode } from "react"
+import { Keyboard, Palette, PenLine, Puzzle, Search, SlidersHorizontal, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -14,11 +14,12 @@ import { cell } from "@/core/signal"
 import { quickTextSizeSub, textSizeKinds } from "@/core/textsize"
 import { capitalize } from "@/lib/utils"
 import { HotkeysSheet } from "@/pages/Hotkeys"
-import { FilterField, PageHeader, Panel, Segmented, SettingRow, SheetHead } from "@/components/kit"
-import { SidebarRow } from "@/components/Sidebar"
+import { Panel, Segmented, SettingRow, SheetHead } from "@/components/kit"
+import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
 import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
+import { switchesIn, switchRow } from "@/components/PluginSwitches"
 import { Catch } from "@/components/Guard"
 import { openBundles } from "@/core/bundles"
 import { Plugins } from "@/pages/Plugins"
@@ -77,8 +78,8 @@ const CORE: Sec[] = [
   { id: "editor", label: "Editor", icon: PenLine, render: (store) => headed("Editor", PenLine, <EditorPanel store={store} />) },
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, render: () => <HotkeysSheet /> },
 ]
-/** Plugins, beside the list (where it's narrow, its own page): a plugin's gear shows its settings here. */
-const PLUGINS_SEC: Sec = { id: "plugins", label: "Plugins", icon: Puzzle, render: (store) => <Plugins store={store} openSettings={(id) => shown.set(`plugin:${id}`)} /> }
+/** Plugins: in place of the menu (Settings draws it so), where it's narrow its own page. */
+const PLUGINS_SEC: Sec = { id: "plugins", label: "Plugins", icon: Puzzle, render: (store) => <Plugins store={store} /> }
 
 /** The pages plugins that are on add (Connections' AI apps), in plugin order. */
 function pluginPages(disabled: string[]): Sec[] {
@@ -112,27 +113,23 @@ export function SettingsSection({ store, id }: { store: Store; id: string }) {
   return <Catch fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{s.render(store)}</Catch>
 }
 
-/** The list: the app's sections and Plugins, plugins' pages, then the options of the app's own plugins (Features). A
- *  plugin's settings opened from Plugins keep Plugins lit. */
-function Nav({ store, active, pick }: { store: Store; active: string | null; pick: (id: string) => void }) {
-  const { disabled } = usePrefs()
+/** The menu: the app's sections and Plugins, plugins' pages, then the options of the app's own plugins (Features). */
+function menu(store: Store, disabled: string[]): RailItem[] {
   const pages = pluginPages(disabled)
   const options = withSettings(store, disabled).filter((p) => p.alwaysOn).sort((a, b) => byName.compare(a.name, b.name))
-  const lit = active?.startsWith("plugin:") && !pluginById(active.slice(7))?.alwaysOn ? PLUGINS_SEC.id : active
-  const row = (s: Sec) => (
-    <SidebarRow key={s.id} icon={s.icon} tint={s.tint} label={s.label} open active={lit === s.id} onClick={() => pick(s.id)} data-settings-nav={s.id} />
-  )
-  const heading = (t: string) => <div className="px-1.5 pt-4 pb-1 text-[12px] font-semibold text-muted-foreground">{t}</div>
-  return (
-    <nav aria-label="Settings" className="flex flex-col gap-px" data-settings-list>
-      {CORE.map(row)}
-      {row(PLUGINS_SEC)}
-      {pages.length > 0 && <div className="pt-3" />}
-      {pages.map(row)}
-      {options.length > 0 && heading("Features")}
-      {options.map((p) => row(pluginSec(p.id)!))}
-    </nav>
-  )
+  const item = (s: Sec, more: Partial<RailItem> = {}): RailItem => ({ id: s.id, label: s.label, icon: s.icon, tint: s.tint, attrs: { "data-settings-nav": s.id }, ...more })
+  return [
+    ...CORE.map((s) => item(s)), item(PLUGINS_SEC),
+    ...pages.map((s, i) => item(s, { gap: i === 0 })),
+    ...options.map((p, i) => item(pluginSec(p.id)!, { heading: i === 0 ? "Features" : undefined })),
+  ]
+}
+
+/** What the menu lights: a plugin's settings opened from Plugins (or found) keep Plugins lit; one switched in a section
+ *  (Vim keys), that section. */
+function litOf(active: string) {
+  const of = active.startsWith("plugin:") ? pluginById(active.slice(7)) : null
+  return of && !of.alwaysOn ? of.switchIn?.section ?? PLUGINS_SEC.id : active
 }
 
 // ---------- search
@@ -167,6 +164,8 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     { ...row("indent", "Indent", "Editor", '[data-settings-row="indent"]', "Tab or spaces"), words: "tabs spaces tab size" },
     { ...row("auto-pair-brackets", "Auto-pair brackets", "Editor", '[data-settings-row="auto-pair-brackets"]'), words: "close brackets quotes autopair" },
     { ...row("auto-pair-markdown", "Auto-pair Markdown", "Editor", '[data-settings-row="auto-pair-markdown"]'), words: "wrap selection bold italic autopair" },
+    // (plugins switched on and off there: Vim keys)
+    ...CORE.flatMap((c) => switchesIn(c.id).map((p) => ({ ...row(switchRow(p.id), p.switchIn!.label, c.label, `[data-settings-row="${switchRow(p.id)}"]`), words: `${p.name} plugin` }))),
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
     { ...row("vaults", "Manage vaults", "General", "[data-settings-vault]", store.vault.path), words: "vault folder" },
     row("version", "Version", "General", '[data-settings-row="version"]', "Vaultite and its plugin API"),
@@ -212,32 +211,23 @@ function Results({ found, query }: { found: Found[]; query: string }) {
   )
 }
 
-/** Wide enough for the list beside a section: Tailwind's @3xl (48rem), which the layout below switches at. */
-const sideBySide = (el: HTMLElement | null) => !!el && el.clientWidth >= 48 * parseFloat(getComputedStyle(document.documentElement).fontSize)
+/** Where Plugins' way back goes: the section shown before it. */
+let before = CORE[0].id
 
 export function Settings({ store }: { store: Store }) {
   const { disabled, order } = usePrefs()
   const [query, setQuery] = useState("")
   const q = query.trim()
-  const wrap = useRef<HTMLDivElement>(null)
+  const rail = useRail(), wide = rail[1]
   const current = shown.use()
-  // Whether the list is beside a section (else it's the page, and a section opens as a sheet), followed as it resizes.
-  const [wide, setWide] = useState(false)
-  useEffect(() => {
-    const el = wrap.current
-    if (!el) return
-    const ro = new ResizeObserver(() => setWide(sideBySide(el)))
-    ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
   // A plugin turned off takes its section with it: back to the first.
   const sec = sectionOf(current, disabled) ?? CORE[0]
   const show: Show = (id, selector) => {
     setQuery("")
     if (wide) {
+      if (id === PLUGINS_SEC.id && sec.id !== id) before = sec.id
       shown.set(id)
       if (selector) revealRow(selector)
-      else wrap.current?.closest<HTMLElement>("[data-pane]")?.scrollTo({ top: 0 })
     } else if (id === PLUGINS_SEC.id) {
       openPlugins()
     } else if (id.startsWith("plugin:")) {
@@ -249,23 +239,21 @@ export function Settings({ store }: { store: Store }) {
     }
   }
   const found = useMemo(() => (q ? search(findable(store, disabled, order, show), q) : []), [store, disabled, order, q, wide])
+  const items = menu(store, disabled)
+  // Plugins has a menu of its own: it takes this one's place, with a way back.
+  if (wide && sec.id === PLUGINS_SEC.id) return <div ref={rail[0]} className="h-full" data-settings data-settings-section={sec.id}><Plugins store={store} back={{ label: "Settings", run: () => shown.set(before) }} /></div>
   return (
-    <div ref={wrap} className="@container" data-settings>
-      <PageHeader title="Settings" />
-      {/* Enter goes to the first one found. */}
-      <form role="search" className="mb-4 flex" onSubmit={(e) => { e.preventDefault(); found[0]?.run() }} data-settings-search>
-        <FilterField value={query} onChange={setQuery} placeholder="Search settings" />
-      </form>
-      {q ? <Results found={found} query={q} /> : (
-        <div className="flex items-start gap-8">
-          <div className="w-full shrink-0 @3xl:sticky @3xl:top-14 @3xl:max-h-[calc(100dvh-9rem)] @3xl:w-48 @3xl:overflow-y-auto" data-settings-side>
-            <Nav store={store} active={wide ? sec.id : null} pick={(id) => show(id)} />
-          </div>
-          <div className="hidden min-w-0 flex-1 @3xl:block" data-settings-section={sec.id}>
-            <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
-          </div>
-        </div>
-      )}
+    <div className="h-full" data-settings>
+      <RailLayout rail={rail} label="Settings" items={items} active={q ? null : litOf(sec.id)} pick={(id) => show(id)} page={q ? "search" : sec.id} narrow="list" title="Settings"
+        search={{ value: query, onChange: setQuery, placeholder: "Search settings", onSubmit: () => found[0]?.run(), attrs: { "data-settings-search": "" } }}
+        menuAttrs={{ "data-settings-list": "" }}>
+        {q ? <>{wide && <SheetHead icon={Search} tint="var(--primary)" title="Search results" />}<Results found={found} query={q} /></>
+          : wide ? (
+            <div data-settings-section={sec.id}>
+              <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
+            </div>
+          ) : <RailMenu label="Settings" items={items} active={null} pick={(id) => show(id)} data-settings-list="" />}
+      </RailLayout>
     </div>
   )
 }

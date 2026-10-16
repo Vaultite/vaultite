@@ -136,7 +136,7 @@ try {
     // Set up Vaultite's way (electron/main.ts): a setup picked, its plugins write their pages (core/pages.ts).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
     const applied = []
-    for (const id of ["pages", "life-os"]) applied.push((await call("POST", `bundles/${id}/apply`, {})).status)
+    for (const id of ["standard", "life-os"]) applied.push((await call("POST", `bundles/${id}/apply`, {})).status)
     await fetch(`${ownBase}api/state`)
     await wait(500)
     const later = files(own)
@@ -158,7 +158,9 @@ try {
     // Every plugin on, the app running a while and every schedule run (as its plugin does, on its own): nothing outside
     // .vaultite/ changes but what the user did, until a plugin is allowed to write there.
     const list = await (await call("GET", "plugins")).json()
-    await call("PATCH", "config/plugins", { disabled: [], enabled: list.filter((p) => p.optIn || p.tier === "vault").map((p) => p.id) })
+    // (Activity and the agents' plugins too, off by default)
+    const agents = ["activity", "dispatch", "token-count", "workspaces", "codex", "cursor", "opencode", "openclaw", "hermes"]
+    await call("PATCH", "config/plugins", { disabled: [], enabled: [...list.filter((p) => p.optIn || p.tier === "vault").map((p) => p.id), ...agents] })
     await fetch(`${ownBase}api/state`)
     await call("PUT", "file", { path: "Notes/Plain.md", text: "Just a thought, edited.\n" }) // (the user's own: Activity's recap has a day to write)
     const edited = files(own)

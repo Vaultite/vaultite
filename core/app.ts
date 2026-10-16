@@ -10,6 +10,7 @@ import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
 import { ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
+import { migrate } from "./migrations.ts"
 import * as F from "./files.ts"
 import * as O from "./outside.ts"
 import * as pages from "./pages.ts"
@@ -814,13 +815,15 @@ export function jsonOf(body: unknown): string | Buffer {
  *  steps, so a starting server answers its web app's files meanwhile. */
 export async function open(vaultPath: string, { start = true, timing }: { start?: boolean; timing?: { mark(part: string): void } } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
-  // A vault the app has never opened (no .vaultite/ yet): it starts from Minimal (core/start.ts); the plugins' pages
+  // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the plugins' pages
   // come when it picks its setup (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
+    migrate(app.vault, fresh)
     app.tidyPluginLists()
+    B.tidy(app.vault)
     await turn()
     await app.vault.sync()
     timing?.mark("vault read")

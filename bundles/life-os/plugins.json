@@ -1,13 +1,5 @@
 {
-  "disabled": [
-    "activity",
-    "codex",
-    "cursor",
-    "opencode",
-    "workspaces",
-    "hermes",
-    "openclaw"
-  ],
+  "disabled": [],
   "enabled": [
     "ai-import",
     "audio-recorder",

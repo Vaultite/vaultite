@@ -1,31 +1,24 @@
 {
-  "disabled": [
-    "activity",
-    "workspaces",
-    "codex",
-    "cursor",
-    "opencode"
-  ],
+  "disabled": [],
   "enabled": [
     "audio-recorder",
     "books",
     "calendar",
-    "documents",
-    "ebooks",
+    "dispatch",
     "health",
+    "hermes",
     "learning",
     "lessons",
     "logs",
     "note-composer",
     "notes",
+    "openclaw",
     "people",
     "people-map",
-    "presentations",
     "projects",
     "random-note",
-    "slides",
-    "spreadsheets",
     "today",
+    "token-count",
     "unique-note",
     "web-viewer"
   ]

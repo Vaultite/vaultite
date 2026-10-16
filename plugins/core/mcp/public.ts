@@ -475,7 +475,7 @@ export class PublicMcp {
     this.signIns.set(s.id, s)
     if (Date.now() - this.lastNotice > 30_000) {
       this.lastNotice = Date.now()
-      void this.plugin.runOp("ui.notify", { text: `${app.name} wants to connect to your vault: type the code its page shows`, actionOpen: "view:connections", actionLabel: "Connect" }).catch(() => {})
+      void this.plugin.runOp("ui.notify", { text: `${app.name} wants to connect to your vault: type the code its page shows`, actionOpen: "view:connections" }).catch(() => {})
     }
     this.signInPage(res, s)
   }
@@ -503,7 +503,7 @@ export class PublicMcp {
       const refresh = `${id}.${crypto.randomBytes(32).toString("base64url")}`
       const at = new Date().toISOString()
       this.save((s) => { s.grants = { ...s.grants, [id]: { name: c.app.name, client: c.clientId, created: at, used: at, refresh: sha(refresh) } } })
-      void this.plugin.runOp("ui.notify", { text: `${c.app.name} is connected to your vault`, actionOpen: "view:connections", actionLabel: "Show" }).catch(() => {})
+      void this.plugin.runOp("ui.notify", { text: `${c.app.name} is connected to your vault`, actionOpen: "view:connections" }).catch(() => {})
       return this.issue(res, id, refresh)
     }
     if (f.grant_type === "refresh_token") {

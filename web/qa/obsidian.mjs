@@ -75,7 +75,7 @@ const pluginsJson = path.join(VAULT, ".vaultite", "plugins.json"), sidebarsJson 
 const hadPlugins = fs.existsSync(pluginsJson) ? fs.readFileSync(pluginsJson, "utf8") : null
 const hadSidebars = fs.existsSync(sidebarsJson) ? fs.readFileSync(sidebarsJson, "utf8") : null
 const conf = hadPlugins ? JSON.parse(hadPlugins) : {}
-fs.writeFileSync(pluginsJson, JSON.stringify({ ...conf, disabled: (conf.disabled ?? []).filter((d) => !["outline", "tags", "workspaces"].includes(d)).concat("workspaces") }, null, 2) + "\n")
+fs.writeFileSync(pluginsJson, JSON.stringify({ ...conf, disabled: (conf.disabled ?? []).filter((d) => !["outline", "tags"].includes(d)), enabled: (conf.enabled ?? []).filter((d) => d !== "workspaces") }, null, 2) + "\n")
 fs.writeFileSync(sidebarsJson, JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files", "outline:outline", "tags:tags"], right: [], collapsed: [] }, null, 2) + "\n")
 await wait(1000)
 
