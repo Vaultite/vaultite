@@ -299,6 +299,22 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
   return over
 }
 
+// Three across as soon as three fit (the built-ins are three: never two and one alone).
+const GRID = "grid grid-cols-1 gap-3 @lg:grid-cols-3"
+
+/** Where imported bundles land, so where importing starts; lit while a file is dragged over the page. */
+function ImportCard({ over }: { over: boolean }) {
+  return (
+    <button type="button" onClick={() => openDetail("bundle-import")} data-bundles-import-tile
+      className={cn("flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-dashed px-4 py-5 text-center transition-colors focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none",
+        over ? "border-primary bg-primary/8" : "border-foreground/15 hover:border-primary/60 hover:bg-primary/5")}>
+      <span className="grid size-9 place-items-center rounded-full bg-primary/12 text-primary"><Import className="size-[18px]" strokeWidth={2.25} /></span>
+      <span className="text-[15px] font-semibold">Import a bundle</span>
+      <span className="text-[13px] leading-[18px] text-muted-foreground">Paste it, drop its file or name a GitHub repository</span>
+    </button>
+  )
+}
+
 /** `section`: drawn as Settings' section. */
 export function Bundles({ store, section }: { store: Store; section?: boolean }) {
   const l = useBundles()
@@ -335,7 +351,7 @@ export function Bundles({ store, section }: { store: Store; section?: boolean })
       )}
       <div className="@container" data-keylist>
         {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
-        <div className="mb-7 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-app>
+        <div className={cn(GRID, "mb-7")} data-bundles-app>
           {app.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} picked={welcome && b.id === start?.id} />)}
         </div>
         {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
@@ -346,13 +362,10 @@ export function Bundles({ store, section }: { store: Store; section?: boolean })
         )}
         {(!welcome || mine.length > 0) && <>
           <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
-          {mine.length
-            ? <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-mine>
-              {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
-            </div>
-            : <p className="mb-6 text-[14px] leading-[20px] text-muted-foreground" data-bundles-mine>
-              Setups you save or import show here. To import one someone shared, paste it or drop its file on this page.
-            </p>}
+          <div className={cn(GRID, "mb-6")} data-bundles-mine>
+            {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
+            <ImportCard over={over} />
+          </div>
         </>}
       </div>
       {over && (

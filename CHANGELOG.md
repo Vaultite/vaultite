@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Bundles: Plugins' Bundles button and the command "Choose a bundle…" open Bundles as a page of its own, not inside
+  Settings. Its cards sit three across, and importing is also a tile under Yours, where imported bundles land.
 - Web links clicked in a terminal (an agent's output, `ls --hyperlink`) open in the Web viewer like links in notes, and
   ⌘-click sends them to the browser. Before, they always went to the browser.
 - **Plugins page: one Filter menu** in place of the row of category chips: by status (on or off), source (built in,

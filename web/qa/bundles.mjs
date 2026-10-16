@@ -205,7 +205,7 @@ for (const id of Object.keys(want)) {
   await until(() => page.locator('[data-bundle="qa-desk-2"]').count(), 6000)
   check("and it shows", await page.locator('[data-bundle="qa-desk-2"]').count() === 1)
   await dismissAll(page)
-  await page.locator("[data-bundles-import]").click()
+  await page.locator("[data-bundles-import-tile]").click()
   await until(() => page.locator("dialog[open] [data-bundle-import-form]").count(), 6000)
   await page.locator("dialog[open] input[type=file]").setInputFiles(path)
   await until(() => page.locator(`${incoming} [data-bundle-incoming-add]`).count(), 6000)

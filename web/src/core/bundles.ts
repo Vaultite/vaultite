@@ -5,7 +5,6 @@ import { getStore, reload } from "@/core/data"
 import { del, get, post, request } from "@/core/http"
 import { isDesktop } from "@/core/platform"
 import { activeTab, go } from "@/core/workspace"
-import { openSettings } from "@/core/settingsNav"
 import { captureWindow } from "@/core/desktop"
 import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
@@ -79,9 +78,8 @@ const onboarding = (): boolean => !!getStore()?.bundles?.onboarding
 /** Applying it puts code in the vault or turns a vault plugin on (core/bundles.ts runsCode). */
 export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
-/** Open Bundles (the command "Choose a bundle…", Plugins): Settings' section on a desktop, its own page while a new
- *  vault picks its first setup and on a phone. */
-export const openBundles = () => { if (!isDesktop()) location.hash = "#bundles"; else if (onboarding()) go("bundles"); else openSettings("bundles") }
+/** Open Bundles (the command "Choose a bundle…", Plugins) as its own page; inside Settings it's Your setup instead. */
+export const openBundles = () => { if (!isDesktop()) location.hash = "#bundles"; else go("bundles") }
 
 export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)

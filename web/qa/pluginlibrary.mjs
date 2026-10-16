@@ -97,8 +97,8 @@ for (const colorScheme of ["light", "dark"]) {
     check("an opt-in plugin's preview draws its blocks while it's off", await until(async () => (await page.locator('dialog[open] [data-block="muse-runs"]').count()) === 1, 4000))
     await page.keyboard.press("Escape"); await wait(500)
     await page.locator("[data-plugins-bundles]").click()
-    check("Bundles: Settings' Your setup", await until(() => page.locator('[data-settings-section="bundles"] [data-bundles-save]').count(), 6000) &&
-      (await page.locator("[data-settings-setup]").getAttribute("aria-current")) === "page")
+    check("Bundles: a page of its own, not Settings", await until(() => page.locator("[data-bundles-page] [data-bundles-save]").count(), 6000) &&
+      !(await page.locator("[data-settings]").count()))
     await page.screenshot({ path: `${OUT}plugins-bundles.png` })
     await page.goto("about:blank"); await page.goto(`${B}#plugins`)
     check("...back to the list", await until(() => page.locator("[data-plugin-row]").count(), 4000))

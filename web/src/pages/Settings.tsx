@@ -10,7 +10,7 @@ import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, pluginById, tintOfPlugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
 import { usePrefs } from "@/core/prefs"
-import { settingsSection } from "@/core/settingsNav"
+import { cell } from "@/core/signal"
 import { textSizeKinds } from "@/core/textsize"
 import { allSwitches, placeOf, useSwitches, type SwitchDef } from "@/core/switches"
 import { capitalize, cn } from "@/lib/utils"
@@ -25,6 +25,9 @@ import { Plugins } from "@/pages/Plugins"
 import { Bundles } from "@/pages/Bundles"
 import { notifyError } from "@/core/notify"
 import { API_VERSION, APP_VERSION } from "../../../core/version.ts"
+
+/** Which section is shown: kept while the app runs, so Settings reopens where it was. */
+const settingsSection = cell("general")
 
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
