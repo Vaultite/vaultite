@@ -30,8 +30,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Every on/off setting is a switch everywhere**, named as Settings names it: the palette shows it with its switch
   (Enter flips it, ⌘Enter opens it in Settings), menus and the menu bar with a check, and Settings' search flips it
   where it's found. Plugins' settings join on their own. What isn't a setting says what it does now: Show / Hide left
-  sidebar, Pin / Unpin tab, Stack / Unstack tabs, Start / Stop recording audio; "Turn on" is only for plugins, and
-  no command says "Toggle" any more except the editor's formatting.
+  sidebar, Pin / Unpin tab (in a tab's menu too, apart from its file's Pin for the sidebar), Stack / Unstack tabs,
+  Start / Stop recording audio; "Turn on" is only for plugins, and no command says "Toggle" any more except the
+  editor's formatting.
 - **Three bundles**: Standard (the app's defaults: notes and links, a terminal and Claude Code), Life OS (with Pages
   and databases' home page) and Agents (with Self-hosted's machines and server page); More… is gone, and a vault set up
   from Minimal, Pages and databases or Self-hosted is on the one it's part of now.

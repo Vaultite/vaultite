@@ -29,7 +29,8 @@ export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClas
 /** Right-click on a tab. */
 function tabMenu(tab: Tab, last: boolean, count: number, group: Group): MenuItem[] {
   const out: MenuItem[] = [
-    tab.pinned ? { label: "Unpin", icon: PinOff, run: () => togglePinTab(tab.id) } : { label: "Pin", icon: Pin, run: () => togglePinTab(tab.id) },
+    // ("Pin tab", as its command: the file's own Pin, further down, pins it to the sidebar)
+    tab.pinned ? { label: "Unpin tab", icon: PinOff, run: () => togglePinTab(tab.id) } : { label: "Pin tab", icon: Pin, run: () => togglePinTab(tab.id) },
     { label: "Close", icon: X, sep: true, run: () => closeTab(tab.id) },
     { label: "Close others", run: () => closeTabs("others", tab.id), disabled: count < 2 },
     { label: "Close tabs to the right", run: () => closeTabs("right", tab.id), disabled: last },
@@ -64,7 +65,7 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
     { label: n === 1 ? "Close tab" : `Close ${n} tabs`, icon: X, run: () => closeTabIds(ids) },
     { label: "Close other tabs", run: () => closeTabIds(ids, { keep: true }), disabled: tabs.length === all.length },
     ...(phone ? [] : [
-      { label: pinned ? "Unpin" : "Pin", icon: pinned ? PinOff : Pin, sep: true, run: () => tabs.forEach((t) => { if (!!t.pinned === pinned) togglePinTab(t.id) }) },
+      { label: `${pinned ? "Unpin" : "Pin"} ${n === 1 ? "tab" : `${n} tabs`}`, icon: pinned ? PinOff : Pin, sep: true, run: () => tabs.forEach((t) => { if (!!t.pinned === pinned) togglePinTab(t.id) }) },
       { label: "Move to new split right", icon: Columns2, run: () => moveTabsTo(ids, first, own!.id, "right"), disabled: !splits },
       { label: "Move to new split down", icon: Rows2, run: () => moveTabsTo(ids, first, own!.id, "bottom"), disabled: !splits },
       ...(isPopout() && hasMainWindow() ? [{ label: "Move to main window", icon: AppWindow, run: () => moveToMain(ids) }] : []),
@@ -188,7 +189,7 @@ function TabItem({ tab, info, active, focused, only, icons, menu }: { tab: Tab; 
       </button>
       {/* A pinned tab's pin, where the X goes: a click unpins it. */}
       {tab.pinned ? (
-        <button type="button" data-tab-pin data-no-drag aria-label={`Unpin ${info.label}`} data-tip="Unpin" onClick={(e) => { e.stopPropagation(); togglePinTab(tab.id) }}
+        <button type="button" data-tab-pin data-no-drag aria-label={`Unpin ${info.label}`} data-tip="Unpin tab" onClick={(e) => { e.stopPropagation(); togglePinTab(tab.id) }}
           className="absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground">
           <Pin className="size-3.5" strokeWidth={2} />
         </button>

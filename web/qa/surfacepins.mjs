@@ -31,15 +31,15 @@ try {
   const sidebarPin = async (name) => {
     await page.locator("[data-tab-bar] [data-tab-id]", { hasText: name }).first().click({ button: "right" }); await wait(200)
     const items = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
-    // (the first Pin keeps the tab; the sidebar's comes after the view's own items)
-    if (items.filter((t) => t === "Pin").length === 2) await page.locator("[role=menu] [role^=menuitem]", { hasText: /^Pin$/ }).last().click()
+    // (Pin tab keeps the tab; the sidebar's Pin comes after the view's own items)
+    if (items.includes("Pin tab") && items.filter((t) => t === "Pin").length === 1) await page.locator("[role=menu] [role^=menuitem]", { hasText: /^Pin$/ }).click()
     else await page.keyboard.press("Escape")
     return items
   }
 
   await go("#view/inbox")
   const items = await sidebarPin("Inbox")
-  check("an Inbox tab's menu has Pin for the sidebar, after the tab's own", items.filter((t) => t === "Pin").length === 2, items)
+  check("an Inbox tab's menu: Pin tab, then one Pin for the sidebar", items.indexOf("Pin tab") >= 0 && items.filter((t) => t === "Pin").length === 1 && items.indexOf("Pin") > items.indexOf("Pin tab"), items)
   check("Pin: it's pinned as its target", await until(async () => (await pins()).includes("view:inbox")), await pins())
   const inbox = page.locator(`nav[aria-label=Pages] [data-pin="view:inbox"]`)
   check("...in the sidebar, by its name", await until(async () => (await inbox.count()) === 1) && (await inbox.innerText()).trim() === "Inbox")
