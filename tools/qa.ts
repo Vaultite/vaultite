@@ -6,6 +6,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { record } from "./test/lib.ts"
+import { slot } from "../web/qa/lib/slots.mjs"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
@@ -113,7 +114,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
       else return { ok: true, ms: 0, out: "", skipped: `needs ${tok}` }
     }
     const child = spawn(process.execPath, [path.join(QA, `${name}.mjs`), ...args], {
-      cwd: ROOT, env: { ...process.env, ...env, QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1) },
+      cwd: ROOT, env: { ...process.env, ...env, VAULTITE_QA_SLOT: "1", QA_BASE: main.base, VAULTITE_URL: main.base.slice(0, -1) },
     })
     let text = ""
     child.stdout.on("data", (b) => { text += b })
@@ -143,7 +144,9 @@ await Promise.all(Array.from({ length: jobs }, async () => {
     const name = next()
     if (!name) { await wait(1000); continue }
     running.add(name)
-    const r = await run(name)
+    // (this machine's QA slot, shared with other agents' runs, held for the script and its servers)
+    const release = await slot(name)
+    const r = await run(name).finally(release)
     running.delete(name)
     if (r.skipped) { console.log(`skip ${name} (${r.skipped})`); continue }
     runs.set(name, [...runs.get(name) ?? [], r.ok])

@@ -40,6 +40,9 @@ Read `web/CLAUDE.md` first. UI text: sentence case, no emojis, no all caps.
   On a copy of a real vault, first strip its terminal tabs (`view:terminal/...` in
   `.vaultite/plugins/workspaces/*.json`: showing one starts its agent, a `resume-` one resumes the user's live session)
   and empty its machines (`.vaultite/plugins/machines/data.json`: `{"machines": []}`).
+- Many agents share one machine, often a small one: before heavy work (QA, builds, perf runs) check `uptime` and what
+  else runs (`pgrep -fl "Chrome for Testing"`), close every browser and server you start, and don't raise `--jobs`.
+  QA browsers queue for the machine's slots (`web/qa/lib/slots.mjs`); a run waiting for one is normal.
 - Stop a server by its port: `kill $(lsof -tiTCP:<port> -sTCP:LISTEN)`, then its terminal keeper (the pid in
   `vaultite-ptyd1-vaultite-<port>.sock.pid` under `core/runtime.ts`' dir) and `tmux -L vaultite-<port> kill-server`.
   Pattern kills (`pkill -f`, `killall`) hit the user's own apps.
