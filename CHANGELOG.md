@@ -11,6 +11,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Quick text size** is off by default: ⌘ and scroll, or a pinch, over a note or terminal changes its text size only
   with it on (Settings > Appearance, or the palette's Turn on quick text size). The palette finds commands by other
   words too: "font size" finds the text size ones.
+- **Bases save what you change, as Obsidian does**: a table's heading sorts, renames, summarizes or hides its column,
+  drags to move it and resizes from its edge; the bar's Sort, Filter (all / any / none groups) and Properties menus
+  change the view. Each is written to the `.base` or the fence (`sort`, `order`, `columnSize`, `filters`).
 - **Live answers**: ChatGPT's Intelligent UI saved to a note (the ChatGPT app, or an imported chat) is a ```genui fence
   drawn live with the app's own controls and colours, its script sandboxed; the values you pick are kept in the note.
   Its follow-up buttons ask Claude chat about the note.
@@ -72,8 +75,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   run a command or open a file in the focused vault, as on the iPhone.
 - Checkboxes tick in callouts, `<details>`, embedded notes and dashboards' text, reading or editing, as they do in a
   note's lines; with Vim, the cursor at the start of a list line shows its Markdown instead of drawing over its box.
-- **Tables edited cell by cell**: click a cell to edit its text in place; Tab, Enter, the arrows or a click move between
-  cells (adding a row at the end) with the columns holding still until you leave the table, right-click adds or deletes rows and columns and aligns a column, and </> shows the
+- **Tables edited cell by cell**, as in Obsidian: click a cell to edit its text in place; Tab, Enter, the arrows or a
+  click move between cells (adding a row at the end) with the columns holding still until you leave the table. A new
+  table (/table, Insert table) opens in its first cell. Grips on the row and column you point at select it, open its
+  menu (add, move, sort, align, clear, delete) and drag it elsewhere; + at the right and bottom edges adds a column or
+  a row. Drag across cells (or ⇧ and an arrow) to copy them into a spreadsheet, clear them, type over the last one
+  or paste a spreadsheet's cells over them; cells from a spreadsheet or a web page pasted into the text become a table. </> shows the
   Markdown. Tables are drawn as a ruled grid with a header row, the same in notes, dashboards and sheets.
 - Checkboxes are rounded squares; bullets sit in a wider column, so nested lists step in as they do when read.
 - A dashboard of only text reads in a note's centred column, editing it or not, and a line break in its text is a

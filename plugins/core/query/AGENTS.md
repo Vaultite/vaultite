@@ -21,6 +21,7 @@ views:
     filters: 'status == "reading"'
     order: [file.name, author, formula.left]      # the columns
     sort: [{property: formula.left, direction: DESC}]
+    columnSize: {note.author: 180}                 # a column's width (px)
     groupBy: {property: note.status, direction: ASC}   # a kanban's columns
     limit: 20
     summaries: {formula.left: Sum, note.current_page: rounded}
@@ -30,8 +31,11 @@ views:
   (nested tags count), `file.ext == "md"` (notes only), `!file.inFolder("Templates")`.
 - A base lists every file outside hidden folders, as in Obsidian: attachments, templates and `archived: true` ones too,
   but not the file it's in. Archive folders (`.archive/`) only with a view's `archived: true` (`only`: only archived).
-- Columns left out: the name and the keys most matches have. In the app a heading sorts (only there), a row opens its
-  file and a double-click on a plain value changes that property in the file (not a formula's or a file property).
+- Columns left out: the name and the keys most matches have. In the app a row opens its file and a double-click on a
+  plain value changes that property in the file (not a formula's or a file property; Tab and Enter go on to the next).
+- What the app changes in a view is written to its YAML, as Obsidian writes it (a fence in its note, an embed in its
+  .base): a heading's menu (sort, rename: `displayName`, summarize, hide), dragging a heading (`order`) or its edge
+  (`columnSize`), and the bar's Sort, Filter (the base's and the view's `filters`) and Properties (`order`) menus.
 - Keys this app adds to a view: a `kanban` is a column per value of `groupBy`
   (and No value), `groups: [idea, building]` first, even empty; moving a card (drag, or its … menu) writes that key.
   A `calendar` is a month by `date: started` (default `date`, else `created`), `month: 2026-09` to start there;

@@ -185,8 +185,9 @@ if (typeof window !== "undefined") {
     if (!run) return
     const was = lastIn.get(run)
     if (el!.closest(ROW)) lastIn.set(run, r!)
-    // Tabbed in from outside: back to its row, else the one that's chosen (the open file's).
-    if ((e.relatedTarget instanceof Node && run.contains(e.relatedTarget)) || !byTab(e)) return
+    // Tabbed in from outside: back to its row, else the one that's chosen (the open file's). A field in a row (a
+    // table's cell being edited, Tab moving it along) keeps it.
+    if ((e.relatedTarget instanceof Node && run.contains(e.relatedTarget)) || !byTab(e) || el!.matches("input, textarea")) return
     const back = was?.isConnected && was.getClientRects().length ? was : run.querySelector<HTMLElement>(`[aria-selected=true] ${ROW}, ${ROW}[aria-selected=true], ${ROW}[aria-current]:not([aria-current=false])`) ?? r!
     if (back !== el) focusRow(back)
   })

@@ -158,6 +158,7 @@ export { useNearEnd, useNearScreen, useRowsNear } from "@/core/near"
 // A page of cards keeps what's at the top of the screen in place when cards above it change size.
 export { keepAnchored } from "@/core/anchor"
 export { SortableList } from "@/components/Sortable"
+export { Resizer } from "@/components/Resizer"
 export { haptic, type Haptic } from "@/core/haptics"
 // Phones: keys above the on-screen keyboard, and the part of the window it leaves.
 export { KeyBar, keyboardUp, useVisibleArea, type BarKey } from "@/components/KeyBar"

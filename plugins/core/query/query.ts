@@ -47,6 +47,8 @@ export type Result = {
   views?: { name: string; type: string }[]; current?: number
   /** The declared types of its keys that have one (the vault's property types), so the app sorts them alike. */
   types?: Record<string, string>
+  /** Every frontmatter key the matches have, the commonest first (`allKeys`: a base's Properties menu). */
+  keys?: string[]
 }
 
 export class QueryError extends Error {}
@@ -211,7 +213,8 @@ const list = (v: unknown): string[] =>
   (Array.isArray(v) ? v : typeof v === "string" ? v.split(",") : v === undefined || v === null ? [] : [v])
     .map((x) => String(x).trim()).filter(Boolean)
 
-const label = (k: string) => k === "file" ? "Name"
+/** A column's name when the base gives it none: "Name", "Status", "Pages left" (formula.pages_left). */
+export const label = (k: string) => k === "file" ? "Name"
   : (k.replace(/^(formula|file)\./, "").charAt(0).toUpperCase() + k.replace(/^(formula|file)\./, "").slice(1)).replaceAll("_", " ")
 
 /** A key written the Bases way, as this engine names it: `file.name` is `file` (the name), `file.path` `path`,
@@ -230,7 +233,7 @@ export const propKey = (k: string): string | null =>
   SPECIAL.includes(k) || k.startsWith("formula.") || k.startsWith("file.") ? null : k
 
 /** A sort given as text ("-updated", "file") or the Bases way ({property: file.mtime, direction: DESC}). */
-function sortOf(v: unknown): SortKey[] {
+export function sortOf(v: unknown): SortKey[] {
   const items = Array.isArray(v) ? v : v === undefined || v === null ? [] : typeof v === "string" ? v.split(",") : [v]
   return items.flatMap((s): SortKey[] => {
     if (s && typeof s === "object" && !Array.isArray(s)) {
@@ -564,10 +567,18 @@ export function run(o: Opts, recs: Iterable<Rec>, now = new Date(), ctx: RunCtx 
     const d = v && typeof v === "object" ? (v as Record<string, unknown>).displayName : undefined
     if (typeof d === "string" && d.trim()) labels.set(keyOf(k), d.trim())
   }
+  // (what a base could show: its Properties menu)
+  let allKeys: string[] | undefined
+  if (o.allKeys) {
+    const n = new Map<string, number>()
+    for (const r of hits) for (const k of Object.keys(r.fm)) n.set(k, (n.get(k) ?? 0) + 1)
+    allKeys = [...n].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).slice(0, 300).map(([k]) => k)
+  }
   return {
     title: q.title, view: q.view, columns: cols.map((k) => ({ key: k, label: labels.get(k) ?? label(k) })), groups, total: hits.length, shown: rows.length, ...(q.offset ? { offset: q.offset } : {}), sort,
     ...(q.group ? { group: q.group } : {}), ...(date ? { date, month } : {}), ...(summaries ? { summaries } : {}),
     ...(map ? { coordinates: q.coordinates, unplaced } : {}), ...(notes.length ? { notes } : {}), ...(archived.length ? { archivedHidden: archived.length } : {}), ...(Object.keys(types).length ? { types } : {}),
+    ...(allKeys ? { keys: allKeys } : {}),
   }
 }
 

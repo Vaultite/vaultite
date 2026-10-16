@@ -1,21 +1,28 @@
 // A table in live preview, edited cell by cell (editor/tables.ts): a click opens a cell, a click on another moves to it
 // with the table still drawn (not its Markdown), its columns staying put while it's edited, even with Markdown wider
-// than its text; leaving it lets them settle, the typing in the file. WRITES a "Qa tablecells" folder: throwaway only.
+// than its text; leaving it lets them settle, the typing in the file. /table draws the grid at once, the cursor in its
+// first cell; + adds a row or a column; a column's grip opens its menu (Sort), a row's drags it elsewhere; cells dragged
+// across are copied as tab-separated text and HTML; tab-separated cells pasted into a cell fill the table, and into the
+// text make a table. Light, dark and phone-width screenshots. WRITES a "Qa tablecells" folder: throwaway only.
 //   node web/qa/tablecells.mjs <base url> [out dir]
-import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
-const NOTE = "Qa tablecells/Cells.md"
-const put = (path, text) => fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
-await fetch(`${B}api/file?path=${encodeURIComponent(NOTE)}`, { method: "DELETE" })
+const NOTE = "Qa tablecells/Cells.md", MORE = "Qa tablecells/More.md"
+const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
+// (the editor saves after a pause)
+const saved = (fn) => until(fn, 10000)
+const read = async (path) => (await (await fetch(`${B}api/file?path=${encodeURIComponent(path)}`)).json()).text
+for (const p of [NOTE, MORE]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
 await put(NOTE, "Top line\n\n| Where | Free | Note |\n|---|---|---|\n| Laptop | 122G | Up from **32G** on [[Lighthouse]] |\n| Desktop | 95G | `short` |\n\nBottom line\n")
 
-const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 })
+const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1, permissions: ["clipboard-read", "clipboard-write"] })
+await ctx.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
 const page = watch(await ctx.newPage())
 const ed = page.locator(".vau-editor")
-await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await wait(1500)
-if (!(await ed.locator(".cm-block-table").count())) { await palette(page, "Switch to live preview", 700); await wait(800) }
+await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
+await page.waitForSelector(".vau-editor .cm-block-table table", { timeout: 15000 }); await wait(300)
 const table = ed.locator(".cm-block-table table")
-const cell = (r, c) => table.locator("tr").nth(r).locator("th, td").nth(c)
+const cell = (r, c, t = table) => t.locator("tr").nth(r).locator("th, td").nth(c)
 // (clicked at its edge: its middle may be a link, which is followed)
 const click = (r, c) => cell(r, c).click({ position: { x: 3, y: 3 } })
 const widths = () => table.evaluate((t) => [...t.rows[0].cells].map((c) => Math.round(c.getBoundingClientRect().width)))
@@ -35,7 +42,134 @@ await page.screenshot({ path: `${OUT}/tablecells-editing.png` })
 await ed.locator(".cm-line", { hasText: "Bottom line" }).click(); await wait(400)
 check("leaving it closes the cell", !(await ed.locator(".cm-cell-input").count()) && await drawn())
 check("its columns settle once it's left", await table.evaluate((t) => t.style.tableLayout === ""))
-const text = async () => (await (await fetch(`${B}api/file?path=${encodeURIComponent(NOTE)}`)).json()).text
-const saved = await until(async () => (await text()).includes("[[Lighthouse]] and more text to wrap |\n"))
-check(`the typing is in the file (${JSON.stringify(saved || await text())})`, saved)
+const typed = await saved(async () => (await read(NOTE)).includes("[[Lighthouse]] and more text to wrap |\n"))
+check(`the typing is in the file (${JSON.stringify(typed || await read(NOTE))})`, typed)
+
+// ---- /table: the grid at once, the cursor in its first cell ----
+await put(MORE, "Intro\n\n")
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(MORE)}`); await wait(1500)
+await ed.locator(".cm-line").last().click(); await wait(200)
+await page.keyboard.type("/table"); await wait(400)
+await page.keyboard.press("Enter"); await wait(500)
+const inFirst = await page.evaluate(() => { const a = document.activeElement; return a?.classList.contains("cm-cell-input") && a.closest("tr")?.rowIndex === 0 && a.closest("th")?.cellIndex === 0 })
+check("/table draws the grid with the cursor in its first header cell", inFirst && !(await ed.locator(".cm-line", { hasText: "| --- |" }).count()))
+await page.keyboard.type("Name"); await page.keyboard.press("Tab"); await page.keyboard.type("Qty")
+check("typed into its cells", await saved(async () => (await read(MORE)).includes("| Name | Qty |")), await read(MORE))
+await page.keyboard.press("Escape"); await wait(300)
+await ed.locator(".cm-line").last().click(); await page.keyboard.type("After"); await wait(200)
+await command(page, "Insert table", 500)
+check("Insert table opens its first cell too", await page.evaluate(() => document.activeElement?.closest("tr")?.rowIndex === 0) && await ed.locator(".cm-block-table").count() === 2)
+await page.keyboard.press("Escape"); await wait(300)
+await page.goto("about:blank"); await wait(500)
+
+// ---- + adds a row and a column ----
+await put(MORE, "Intro\n\n| Fruit | Qty |\n| --- | --: |\n| pear | 10 |\n| Apple | 9 |\n| banana | 120 |\n\nEnd\n")
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(MORE)}`); await wait(1500)
+const t2 = ed.locator(".cm-block-table table")
+const rowsCols = () => t2.evaluate((t) => [t.rows.length, t.rows[0].cells.length].join("x"))
+await cell(1, 0, t2).hover(); await wait(200)
+await ed.locator(".cm-table-add.is-row").click(); await wait(400)
+check(`the row + adds a row, its first cell open (${await rowsCols()})`, await rowsCols() === "5x2" && await page.evaluate(() => document.activeElement?.closest("tr")?.rowIndex === 4))
+await cell(1, 0, t2).hover(); await wait(200)
+await ed.locator(".cm-table-add.is-col").click(); await wait(400)
+check(`the column + adds a column (${await rowsCols()})`, await rowsCols() === "5x3")
+check("both in the file", await saved(async () => (await read(MORE)).includes("| Fruit | Qty |  |\n|---|--:|---|")), await read(MORE))
+await page.keyboard.press("ControlOrMeta+z"); await wait(150); await page.keyboard.press("ControlOrMeta+z"); await wait(400)
+check(`undo takes back one each (${await rowsCols()})`, await saved(async () => (await read(MORE)).includes("| banana | 120 |\n\nEnd")), await read(MORE))
+await ed.locator(".cm-line", { hasText: "End" }).click(); await wait(300)
+
+// ---- a column's grip: its menu, Sort ----
+await cell(1, 1, t2).hover(); await wait(200)
+const grip = ed.locator(".cm-table-grip.is-col")
+check("hovering a cell shows its column's grip", await grip.isVisible())
+await page.screenshot({ path: `${OUT}/tablecells-grips.png` })
+await grip.click(); await wait(300)
+check("a click on the grip selects the column", await t2.locator(".is-selected").count() === 4)
+check("and opens its menu", await page.getByRole("menuitem", { name: "Sort descending" }).isVisible())
+await page.screenshot({ path: `${OUT}/tablecells-colmenu.png` })
+await page.getByRole("menuitem", { name: "Sort descending" }).click(); await wait(400)
+check("Sort descending orders by number, the header first", await saved(async () => /\| Fruit \| Qty \|\n\| --- \| --: \|\n\| banana \| 120 \|\n\| pear \| 10 \|\n\| Apple \| 9 \|/.test(await read(MORE))), await read(MORE))
+
+// ---- a row's grip dragged below another ----
+await cell(1, 0, t2).hover(); await wait(200)
+const rg = await ed.locator(".cm-table-grip.is-row").boundingBox()
+const last = await cell(3, 0, t2).boundingBox()
+await page.mouse.move(rg.x + rg.width / 2, rg.y + rg.height / 2); await page.mouse.down()
+for (let i = 1; i <= 8; i++) await page.mouse.move(rg.x + rg.width / 2, rg.y + ((last.y + last.height - 4 - rg.y) * i) / 8, { steps: 2 })
+check("dragging a row shows where it would go", await ed.locator(".cm-table-drop:not([hidden])").count() === 1)
+await page.screenshot({ path: `${OUT}/tablecells-drag.png` })
+await page.mouse.up(); await wait(400)
+check("dropped, the row moved there", await saved(async () => /\| pear \| 10 \|\n\| Apple \| 9 \|\n\| banana \| 120 \|/.test(await read(MORE))), await read(MORE))
+
+// ---- cells dragged across, copied ----
+await ed.locator(".cm-line", { hasText: "End" }).click(); await wait(300)
+const a = await cell(1, 0, t2).boundingBox(), b = await cell(2, 1, t2).boundingBox()
+await page.mouse.move(a.x + 24, a.y + a.height / 2); await page.mouse.down()
+await page.mouse.move(b.x + 24, b.y + b.height / 2, { steps: 6 }); await page.mouse.up(); await wait(200)
+check("cells dragged across are selected", await t2.locator(".is-selected").count() === 4)
+await page.screenshot({ path: `${OUT}/tablecells-selected.png` })
+await page.keyboard.press("ControlOrMeta+c"); await wait(200)
+const clip = await page.evaluate(async () => {
+  const [item] = await navigator.clipboard.read()
+  return { text: await (await item.getType("text/plain")).text(), html: item.types.includes("text/html") ? await (await item.getType("text/html")).text() : "" }
+})
+check(`copied as tab-separated text (${JSON.stringify(clip.text)})`, clip.text === "pear\t10\nApple\t9")
+check("and as an HTML table", /<table>.*<td>pear<\/td><td>10<\/td>.*<\/table>/.test(clip.html), clip.html)
+await page.keyboard.press("Backspace"); await wait(300)
+check("Backspace clears them", await saved(async () => /\|  \|  \|\n\|  \|  \|\n\| banana/.test(await read(MORE))), await read(MORE))
+await page.keyboard.press("ControlOrMeta+z"); await wait(300)
+await page.keyboard.press("Escape"); await wait(200)
+check("Escape drops the selection", await t2.locator(".is-selected").count() === 0)
+// (the cell at its end is open now: ⇧↓ selects from it)
+await page.keyboard.press("Shift+ArrowDown"); await wait(200)
+check("⇧↓ from a cell selects cells again", await t2.locator(".is-selected").count() === 2)
+await page.keyboard.type("Plum"); await wait(300)
+check("typing replaces the cell at the selection's end, editing it", await saved(async () => /\| banana \| Plum \|/.test(await read(MORE))) && await ed.locator(".cm-cell-input").inputValue() === "Plum", await read(MORE))
+await page.keyboard.press("ControlOrMeta+z"); await wait(300)
+check("one undo puts the cell back", await saved(async () => /\| banana \| 120 \|/.test(await read(MORE))), await read(MORE))
+await page.keyboard.press("Shift+ArrowUp"); await wait(200); await page.keyboard.press("F2"); await wait(200)
+check("F2 edits a selected cell as it is", await ed.locator(".cm-cell-input").inputValue() === "9")
+
+// ---- tab-separated cells pasted into a cell, and into the text ----
+await page.evaluate(() => navigator.clipboard.writeText("kiwi\t3\nlime\t4\nfig\t5"))
+await cell(3, 0, t2).click({ position: { x: 24, y: 8 } }); await wait(200)
+await page.keyboard.press("ControlOrMeta+v"); await wait(400)
+check("pasted into a cell, they fill the table from it, a row added", await saved(async () => /\| kiwi \| 3 \|\n\| lime \| 4 \|\n\| fig \| 5 \|\n\nEnd/.test(await read(MORE))), await read(MORE))
+await ed.locator(".cm-line", { hasText: "End" }).click(); await page.keyboard.press("End"); await page.keyboard.press("Enter"); await page.keyboard.press("Enter")
+await page.evaluate(() => navigator.clipboard.writeText("City\tPeople\nOslo\t700000"))
+await page.keyboard.press("ControlOrMeta+v"); await wait(500)
+check("pasted into the text, they make a table, drawn", await saved(async () => (await read(MORE)).includes("End\n\n| City | People |\n| --- | --- |\n| Oslo | 700000 |\n\n")) && await ed.locator(".cm-block-table").count() === 2, await read(MORE))
+await page.evaluate(() => navigator.clipboard.writeText("plain words\tnot\na table"))
+await page.keyboard.press("ControlOrMeta+v"); await wait(300)
+check("uneven tabs paste as text, on a line of their own after it", await saved(async () => (await read(MORE)).endsWith("| Oslo | 700000 |\n\nplain words\tnot\na table")), await read(MORE))
+
+// ---- a row wider than its header: still edited, its extra cell a column once the shape changes ----
+await put(MORE, "| A | B |\n| --- | --- |\n| 1 | 2 | extra |\n\nEnd\n")
+await page.goto("about:blank"); await page.goto(`${B}#file/${encodeURIComponent(MORE)}`); await wait(1500)
+const t3 = ed.locator(".cm-block-table table")
+await cell(1, 0, t3).click({ position: { x: 24, y: 8 } }); await wait(200)
+check("a row wider than its header is edited", await ed.locator(".cm-cell-input").count() === 1)
+await page.keyboard.press("ControlOrMeta+Enter"); await wait(300)
+check("its extra cell becomes a column when a row is added", await saved(async () => (await read(MORE)).startsWith("| A | B |  |\n|---|---|---|\n| 1 | 2 | extra |\n|  |  |  |\n")), await read(MORE))
+await page.keyboard.press("Escape")
+
+// ---- dark, and a phone's width ----
+await page.emulateMedia({ colorScheme: "dark" }); await wait(300)
+await cell(1, 1, t2).hover(); await wait(200)
+await page.screenshot({ path: `${OUT}/tablecells-dark.png` })
+await page.emulateMedia({ colorScheme: "light" })
+const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, hasTouch: true, isMobile: true })
+await phone.addInitScript(() => { try { localStorage.setItem("vaultite.editMode", "live") } catch { /* not the app's frame */ } })
+const mob = watch(await phone.newPage())
+await mob.goto(`${B}#file/${encodeURIComponent(MORE)}`); await wait(2000)
+// (a phone opens a note for reading: the pencil makes it editable)
+check("phone: reading, a table has no grips", await mob.locator(".cm-table-tools:not([hidden])").count() === 0)
+if (await mob.locator("[data-view-toggle=read]").count()) { await mob.locator("[data-view-toggle=read]").first().tap(); await wait(500) }
+const mt = mob.locator(".vau-editor .cm-block-table table").first()
+await cell(1, 0, mt).tap(); await wait(400)
+check("phone: a tapped cell shows its grips and +", await mob.locator(".cm-table-grip.is-row").first().isVisible() && await mob.locator(".cm-table-add.is-row").first().isVisible())
+await mob.screenshot({ path: `${OUT}/tablecells-phone.png` })
+await mob.locator(".cm-table-grip.is-row").first().tap(); await wait(400)
+check("phone: a tapped grip opens its menu", await mob.getByRole("menuitem", { name: "Move row down" }).isVisible())
+await mob.screenshot({ path: `${OUT}/tablecells-phone-menu.png` })
 await done()

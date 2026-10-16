@@ -379,11 +379,61 @@ const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/ta
   check("tables: only the changed row is rewritten, its pipe escaped", out[0] === "|a|b|" && out[2] === "| 1 | x \\| y |" && out[3] === "| 2 | a\\|b |", out.join("\n"))
   t.align.push(""); t.rows.forEach((r) => r.cells.push(""))
   check("tables: a new column gets its own separator", tt.writeTable(t).split("\n")[1] === "|---|:-:|---|", tt.writeTable(t))
-  check("tables: a row wider than its header isn't edited cell by cell", tt.parseTable("|a|\n|-|\n|1|2|") === null)
+  const ragged = tt.parseTable("|a|\n|-|\n|1|2|")!
+  ragged.rows[1].cells[0] = "3"
+  check("tables: a row wider than its header keeps its extra cells as cells change", tt.writeTable(ragged) === "|a|\n|-|\n| 3 | 2 |", tt.writeTable(ragged))
+  tt.widen(ragged); tt.insertRow(ragged, 2)
+  check("tables: a change to its shape makes them columns, the header's empty", tt.writeTable(ragged) === "| a |  |\n|---|---|\n| 3 | 2 |\n|  |  |", tt.writeTable(ragged))
   const padded = tt.parseTable("  | Name  | Qty |\n  | ----- | --- |\n  | Apple | 3   |")!
   padded.rows[1].cells[0] = "Pineapple"
   check("tables: a padded table stays lined up, indented as it was", tt.writeTable(padded) === "  | Name      | Qty |\n  | --------- | --- |\n  | Pineapple | 3   |", tt.writeTable(padded))
   check("tables: a line break in a cell is <br>", tt.escape("a\nb") === "a<br>b" && tt.unescape("x\\|y") === "x|y")
+}
+{
+  const t = tt.parseTable("| Name | Qty | When |\n| --- | --: | --- |\n| pear | 10 | 2026-03-01 |\n| Apple | 9 | 2025-12-31 |\n|  | 1,200 |  |\n| banana | 2.5 | 2026-01-15 |")!
+  const col = (c: number) => t.rows.slice(1).map((r) => r.cells[c]).join(",")
+  tt.sortRows(t, 1)
+  check("tables: sorting by a column orders numbers as numbers, the header first", t.rows[0].cells[0] === "Name" && col(1) === "2.5,9,10,1,200", col(1))
+  tt.sortRows(t, 0)
+  check("tables: text sorts ignoring case, empty cells last", col(0) === "Apple,banana,pear,", col(0))
+  tt.sortRows(t, 2, true)
+  check("tables: dates sort as dates, descending too, empty still last", col(2) === "2026-03-01,2026-01-15,2025-12-31,", col(2))
+  const out = tt.writeTable(t).split("\n")
+  check("tables: a sort moves rows as they were written, alignment kept", out[1] === "| --- | --: | --- |" && out[2] === "| pear | 10 | 2026-03-01 |" && out[5] === "|  | 1,200 |  |", out.join("\n"))
+  check("tables: numbers before words in the same column compare as text", tt.compareCells("10", "9") > 0 && tt.compareCells("**b**", "a") > 0 && tt.compareCells("[[Zed]]", "Abe") > 0)
+  tt.moveRow(t, 1, 3); tt.moveRow(t, 2, 0)
+  check("tables: a row moves among the body rows, never above the header", col(0) === "banana,Apple,pear," && t.rows[0].cells[0] === "Name", col(0))
+  tt.moveColumn(t, 1, 0)
+  check("tables: a column moves with its alignment", t.rows[0].cells.join() === "Qty,Name,When" && tt.writeTable(t).split("\n")[1] === "|--:|---|---|", tt.writeTable(t))
+  tt.fillCells(t, { r: 4, c: 1 }, [["x|y", "a\nb", "new"], ["z"]])
+  check("tables: cells pasted past its edges add rows and columns, pipes and line breaks escaped",
+    t.align.length === 4 && t.rows.length === 6 && t.rows[4].cells.join() === "1,200,x\\|y,a<br>b,new" && t.rows[5].cells.join() === ",z,,", tt.writeTable(t))
+  tt.clearCells(t, { r: 5, c: 1 }, { r: 4, c: 2 })
+  check("tables: clearing empties a range of cells", t.rows[4].cells.join() === "1,200,,,new" && t.rows[5].cells.join() === ",,,", t.rows[4].cells.join())
+  const wide = tt.parseTable("| 名前 | 数  |\n| ---- | --- |\n| 東京 | 1   |")!
+  check("tables: a padded table lines up by display width (CJK is two)", wide.padded && tt.width("東京") === 4 && tt.width("ab") === 2)
+  tt.insertRow(wide, 1)
+  check("tables: padded, a new row is padded too", tt.writeTable(wide) === "| 名前 | 数  |\n| ---- | --- |\n|      |     |\n| 東京 | 1   |", tt.writeTable(wide))
+  check("tables: the cell a column of a line is in", tt.cellAt("| a | b \\| c | d |", 2) === 0 && tt.cellAt("| a | b \\| c | d |", 10) === 1 && tt.cellAt("a | b", 4) === 1)
+}
+// Cells on the clipboard (editor/tablePaste.ts): a spreadsheet's, a page's table or CSV in; tab-separated and HTML out.
+{
+  const tp: typeof import("../web/src/editor/tablePaste.ts") = await web("editor/tablePaste.ts")
+  const sheets = '<meta charset="utf-8"><google-sheets-html-origin><style type="text/css"><!--td {border: 1px solid #cccccc;}--></style><table xmlns="http://www.w3.org/1999/xhtml" border="1"><colgroup><col width="100"/></colgroup><tbody><tr><td>Name</td><td>Note</td></tr><tr><td>Alice &amp; co</td><td>two<br/>lines</td></tr></tbody></table>'
+  check("paste: a spreadsheet's HTML table", same(tp.htmlTable(sheets), [["Name", "Note"], ["Alice & co", "two\nlines"]]), tp.htmlTable(sheets))
+  check("paste: not a page with a table somewhere in it", tp.htmlTable("<p>Intro</p><table><tr><td>a</td><td>b</td></tr></table>") === null)
+  check("paste: a cell spanning columns keeps the rest under their headings", same(tp.htmlTable("<table><tr><th>a</th><th>b</th><th>c</th></tr><tr><td colspan=2>x</td><td>y</td></tr></table>"), [["a", "b", "c"], ["x", "", "y"]]))
+  check("paste: tab-separated, quoted cells hold tabs, line breaks and quotes", same(tp.delimited('a\t"b\tc"\n"two\nlines"\t"say ""hi"""\n', "\t"), [["a", "b\tc"], ["two\nlines", 'say "hi"']]))
+  check("paste: into a cell, a spreadsheet's cells", same(tp.clipCells("a\tb\n1\t2", sheets), [["a", "b"], ["1", "2"]]) && same(tp.clipCells("a\tb"), [["a", "b"]]))
+  check("paste: into a cell, CSV lines", same(tp.clipCells("name,qty\npear,\"1,5\""), [["name", "qty"], ["pear", "1,5"]]))
+  check("paste: into a cell, a line or a paragraph is text", tp.clipCells("Hello, world") === null && tp.clipCells("one\ntwo") === null && tp.clipCells("x", "<table><tr><td>x</td></tr></table>") === null)
+  check("paste: the app's own copy keeps its Markdown (its text), not what its HTML drew", same(tp.clipCells("**a**\n[[B]]", "<table><tr><td><strong>a</strong></td></tr><tr><td><a>B</a></td></tr></table>"), [["**a**"], ["[[B]]"]]))
+  check("paste: in the text, lines with the same tabs are a table", same(tp.pastedTable("a\tb\n1\t2"), [["a", "b"], ["1", "2"]]))
+  check("paste: in the text, not one line, uneven tabs, tab-indented code, or one column",
+    tp.pastedTable("a\tb") === null && tp.pastedTable("a\tb\n1\t2\t3") === null && tp.pastedTable("\tfoo()\n\tbar()") === null && tp.pastedTable("x", "<table><tr><td>a</td></tr><tr><td>b</td></tr></table>") === null)
+  check("paste: in the text, a page's table", same(tp.pastedTable("", sheets), [["Name", "Note"], ["Alice & co", "two\nlines"]]))
+  check("paste: rows as a Markdown table, pipes and line breaks escaped", tp.markdownTable([["a", "b|c"], ["1", "x\ny"]]) === "| a | b\\|c |\n| --- | --- |\n| 1 | x<br>y |", tp.markdownTable([["a", "b|c"], ["1", "x\ny"]]))
+  check("copy: cells as tab-separated text, quoted where they must be", tp.tsvText([["a", "b\tc"], ["x\ny", 'say "hi"']]) === 'a\t"b\tc"\n"x\ny"\t"say ""hi"""')
 }
 const imgs = md.renderMarkdown("Before ![[photo.png|300]] and ![alt|200](../Img/photo.png) and ![[Idea]] after\n", vopts)
 check("markdown: vault images show (with widths), and an embed mid-line is drawn in its place",
@@ -802,6 +852,36 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("bases: a view added at the end (the columns copied), the rest as it was", added === text.replace("extra:", "  - type: table\n    name: All 2\n    order:\n      - file.name\n      - price\nextra:"), added)
   check("bases: a view removed, or put first", edit.removeView(text, 0) === "# my books\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: cards\n    name: Shelf\nextra: {keep: me}\n"
     && edit.firstView(text, 1).indexOf("name: Shelf") < edit.firstView(text, 1).indexOf("name: All") && edit.removeView("views:\n  - type: table\n", 0) === "views:\n  - type: table\n", edit.removeView(text, 0))
+  // The table's state, as Obsidian writes it: sort, order, columnSize, display names, summaries, filters.
+  const st = "# books\nviews:\n  - type: table\n    name: All # main\n    order: [file.name, price] # cols\n    sort:\n      - property: price # first\n        direction: ASC\n    columnSize:\n      note.price: 120\n      note.price: 200\n    x-plugin: {keep: me}\n"
+  const sorted = edit.setSort(st, 0, [{ key: "price", desc: true }, { key: "file", desc: false }])
+  check("bases: a header's sort written as Obsidian's, its comment kept, a new key Obsidian's way",
+    sorted === st.replace("direction: ASC\n", "direction: DESC\n      - property: file.name\n        direction: ASC\n"), sorted)
+  check("bases: no sort removes the key", !edit.setSort(st, 0, []).includes("sort:") && edit.setSort(st, 0, []).includes("x-plugin: {keep: me}"), edit.setSort(st, 0, []))
+  const ordered = edit.setOrder(st, 0, ["price", "file", "status"])
+  check("bases: columns reordered in their own style and spelling, a new one as note.x", ordered === st.replace("order: [file.name, price]", "order: [price, file.name, note.status]"), ordered)
+  const sized = edit.setColumnSize(st, 0, "price", 251.6)
+  check("bases: a column's width once (Obsidian's duplicate key gone), the rest kept", sized === st.replace("      note.price: 120\n      note.price: 200\n", "      note.price: 252\n"), sized)
+  check("bases: a new width makes columnSize; none removes it", edit.setColumnSize("views:\n  - type: table\n", 0, "formula.left", 90) === "views:\n  - type: table\n    columnSize:\n      formula.left: 90\n"
+    && !edit.setColumnSize(sized, 0, "price", null).includes("columnSize"), edit.setColumnSize(sized, 0, "price", null))
+  const named = edit.setDisplayName(st, "price", "Cost")
+  check("bases: a display name in properties, removed again with nothing left behind",
+    named === `${st}properties:\n  price:\n    displayName: Cost\n` && edit.setDisplayName(named, "price", "") === st, named)
+  check("bases: a summary for a column", edit.setSummary(st, 0, "price", "Sum").endsWith("    x-plugin: {keep: me}\n    summaries:\n      price: Sum\n"), edit.setSummary(st, 0, "price", "Sum"))
+  const filtered = edit.setFilters("# top\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n", 0, { and: ['status == "done"', '!file.hasTag("x")'] })
+  check("bases: a view's filters written, an expression starting ! quoted", filtered === "# top\nfilters: file.inFolder(\"Books\")\nviews:\n  - type: table\n    filters:\n      and:\n        - status == \"done\"\n        - '!file.hasTag(\"x\")'\n", filtered)
+  check("bases: the base's filters removed, the comment above them kept", edit.setFilters("# top\nfilters: x\nviews: []\n", null, undefined) === "# top\nviews: []\n")
+  const nested = "filters:\n  or:\n    - file.hasTag(\"a\") # tagged\n    - and:\n        - price > 2\n"
+  check("bases: a filter changed keeps the comments of the rest", edit.setFilters(nested, null, { or: ['file.hasTag("a")', { and: ["price > 3"] }] }) === nested.replace("price > 2", "price > 3"),
+    edit.setFilters(nested, null, { or: ['file.hasTag("a")', { and: ["price > 3"] }] }))
+  const fl = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "query", "filters.ts")).href)
+  const conds = ['status == "done"', "price > 10", '!file.inFolder("A/B")', 'note["due date"] >= date("2026-01-01")', '!tags.contains("ai")', "status.isEmpty()"]
+  check("bases: filter expressions read as conditions and written back the same", conds.every((s) => { const c = fl.condOf(s); return c && fl.exprOf({ ...c, src: undefined }) === s }),
+    conds.map((s) => fl.condOf(s)))
+  const tree = fl.treeOf({ or: ['file.hasTag("tag")', { and: ['file.hasTag("book")', "weird((("] }, { not: ["a"] }, { foo: 1 }] })
+  check("bases: a filter tree's groups, what can't be read kept as text or as it was",
+    tree.kind === "or" && tree.items[1].items[1].t === "raw" && tree.items[3].t === "other" && JSON.stringify(fl.valueOf(tree)) === '{"or":["file.hasTag(\\"tag\\")",{"and":["file.hasTag(\\"book\\")","weird((("]},{"not":["a"]},{"foo":1}]}'
+    && fl.valueOf(fl.treeOf(undefined)) === undefined && fl.exprOf({ t: "cond", prop: "due", op: "<", value: "2026-10-01" }) === 'due < date("2026-10-01")', fl.valueOf(tree))
   const fmts = await web("core/formats.ts")
   fmts.setFormatLookup((p: string) => (p.endsWith(".base") ? { ext: "base", page: false } : null))
   fmts.setFenceLookup((lang: string) => lang === "base")

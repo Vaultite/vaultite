@@ -646,6 +646,40 @@ dialog { --vau-panel-bottom: 0px; }
 .vau-editor .cm-block-table :is(th, td).is-editing { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--primary) 60%, transparent); }
 .vau-editor .cm-cell-input { display: block; width: 100%; min-width: 2em; margin: 0; padding: 0; border: 0; outline: 0; resize: none; overflow: hidden;
   background: transparent; color: inherit; font: inherit; line-height: inherit; text-align: inherit; caret-color: var(--primary); }
+/* Cells selected together, and a table's controls: grips on the row and column pointed at (by touch: of the cell being
+   edited), + right of it and under it, the line where a dragged row or column would go. Not while reading. */
+.vau-editor .cm-block-table :is(th, td).is-selected { background: color-mix(in srgb, var(--primary) 14%, transparent); }
+.vau-editor .cm-block-table > .cm-block-body { position: relative; }
+.cm-table-tools { position: absolute; top: 0; left: 0; z-index: 1; font-family: var(--font-sans); }
+.cm-content[contenteditable="false"] .cm-table-tools, .cm-table-tools[hidden] { display: none; }
+.cm-table-tool { position: absolute; display: flex; align-items: center; justify-content: center; padding: 0; border: 0;
+  color: var(--muted-foreground); cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 0.12s, color 0.12s, background-color 0.12s; }
+.cm-table-tool[hidden] { display: none; }
+@media (hover: hover) { .cm-block-table:hover .cm-table-tool { opacity: 1; pointer-events: auto; } }
+@media (hover: none) { .cm-table-tools[data-active] .cm-table-tool { opacity: 1; pointer-events: auto; } }
+/* (a finger's target is bigger than what's drawn) */
+.cm-table-tool::before { content: ""; position: absolute; inset: -3px; }
+@media (pointer: coarse) { .cm-table-tool::before { inset: -12px; } }
+.cm-table-grip { transform: translate(-50%, -50%); border-radius: 5px; background: var(--background); border: 0.5px solid var(--border); cursor: grab; }
+.cm-table-grip.is-col { width: 24px; height: 14px; }
+.cm-table-grip.is-row { width: 14px; height: 24px; }
+/* (by touch, inside the table's edge: a phone's edge is the sidebar's swipe) */
+@media (pointer: coarse) { .cm-table-grip.is-row { width: 10px; transform: translate(1px, -50%); } }
+/* Room for the column + at the right while editing: a table as wide as the text scrolls a little sooner. */
+.vau-editor .cm-content[contenteditable="true"] .cm-block-table table { max-width: calc(100% - 24px); }
+@media (pointer: coarse) { .vau-editor .cm-content[contenteditable="true"] .cm-block-table table { max-width: calc(100% - 30px); } }
+.cm-table-tool:hover, .cm-table-grip:active { color: var(--foreground); background: var(--muted); }
+.cm-table-add { border-radius: 5px; background: color-mix(in srgb, var(--foreground) 4%, transparent); }
+.cm-table-add.is-col { width: 18px; margin-left: 4px; }
+.cm-table-add.is-row { height: 18px; margin-top: 4px; }
+.cm-table-add svg { width: 12px; height: 12px; }
+@media (pointer: coarse) { .cm-table-add.is-col { width: 24px; } .cm-table-add.is-row { height: 24px; } .cm-table-add svg { width: 16px; height: 16px; } }
+.cm-table-drop { position: absolute; background: var(--primary); border-radius: 1px; pointer-events: none; }
+.cm-table-drop.is-row { height: 2px; margin-top: -1px; }
+.cm-table-drop.is-col { width: 2px; margin-left: -1px; }
+.cm-table-drop[hidden] { display: none; }
+.vau-editor .cm-table-keys { position: absolute; top: 0; left: 0; width: 1px; height: 1px; padding: 0; border: 0; opacity: 0; resize: none;
+  pointer-events: none; overflow: hidden; }
 .vau-editor .cm-block .wikilink { color: var(--notes); font-weight: 500; cursor: pointer; }
 .vau-editor .cm-block .wikilink.missing { color: var(--muted-foreground); font-weight: 400; text-decoration: underline dotted; text-underline-offset: 3px; }
 .vau-editor .cm-editor[contenteditable="false"] .cm-block, .vau-editor .cm-content[contenteditable="false"] .cm-block { cursor: default; }

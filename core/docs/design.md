@@ -52,6 +52,8 @@ Text is **bold**, *italic*, ~~struck~~, `code`, a [link](https://example.com), o
 | Rows | Line up |
 | In columns | Too |
 | Edited | A cell at a time: click one, Tab and Enter move on, right-click for rows, columns and alignment |
+| Reshaped | Grips on a row and a column: click for its menu (move, sort), drag to move it; + adds one |
+| Copied | Drag across cells: copy, clear, or paste a spreadsheet's cells |
 
 ```
 A code block keeps its spacing.
@@ -130,7 +132,7 @@ In a file whose kind draws one (a person's), a `## Timeline` section is drawn as
 
 ## Database views
 
-A ```` ```base ```` fence is a database view: Obsidian's Bases, written as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's views). `filters` pick the files (`file.inFolder("People")`, `file.hasTag("book")`, `type == "person" && status != "done"`; `and`, `or` and `not` lists), `formulas` add computed columns (`formula.left`), `properties` label them, and each of its `views` (tabs) has a `type` (`table`, `cards`, `list`, `kanban`, `calendar`, `map`), a `name` (its title), `order` (the columns), `sort`, `groupBy`, `limit` and `summaries` (`{pages: Sum}`: under the column). Click a heading to sort, a row to open it, double-click a value to change it. A `kanban` is a column per value of `groupBy` (and No value; `groups: [idea, building]` puts those first, even empty): drag a card to another column, or use its … menu, to change that key in the file. A `calendar` is a month by `date` (a date key; default `date`, else `created`; `month: 2026-09` to start on another month): arrows change the month, drag an item to another day to move its date; narrow, it's a list of the days. A base lists every file outside hidden folders, templates and attachments too (a view's `archived: true` adds archive folders, `only` lists only them); on a dashboard, `wide: true` takes the whole row.
+A ```` ```base ```` fence is a database view: Obsidian's Bases, written as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's views). `filters` pick the files (`file.inFolder("People")`, `file.hasTag("book")`, `type == "person" && status != "done"`; `and`, `or` and `not` lists), `formulas` add computed columns (`formula.left`), `properties` label them, and each of its `views` (tabs) has a `type` (`table`, `cards`, `list`, `kanban`, `calendar`, `map`), a `name` (its title), `order` (the columns), `sort`, `groupBy`, `limit` and `summaries` (`{pages: Sum}`: under the column). Click a row to open it, double-click a value to change it (Tab goes on to the next). A heading's menu sorts, renames, summarizes or hides its column; drag a heading to move it and its edge to resize it (`columnSize`); the bar's Sort, Filter and Properties menus change the view's `sort`, `filters` and columns. Each is written to the base's YAML, as Obsidian writes it. A `kanban` is a column per value of `groupBy` (and No value; `groups: [idea, building]` puts those first, even empty): drag a card to another column, or use its … menu, to change that key in the file. A `calendar` is a month by `date` (a date key; default `date`, else `created`; `month: 2026-09` to start on another month): arrows change the month, drag an item to another day to move its date; narrow, it's a list of the days. A base lists every file outside hidden folders, templates and attachments too (a view's `archived: true` adds archive folders, `only` lists only them); on a dashboard, `wide: true` takes the whole row.
 
 ```base
 filters: 'type == "person"'

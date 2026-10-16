@@ -1,19 +1,17 @@
-// A base's views: the files a query matches as a table, cards, list, board or calendar. Sorting is
-// here only; changing a value or moving a card writes that one property as a small edit.
+// A base's views: the files a query matches as a table, cards, list, board or calendar. Changing a value or moving a
+// card writes that one property as a small edit; the table's header changes the view (sort, columns, widths).
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info } from "lucide-react"
 import {
-  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, resolver, setProperty, startDrag,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, Resizer, resolver, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
-import { compare } from "./expr"
-import { byKeys, comparer, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
+import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
 
 export const TINT = "var(--indigo)"
 type Resolve = ReturnType<typeof resolver>
 const WIKI = /^\[\[([^[\]|#]+)(?:#[^[\]|]*)?(?:\|([^[\]]*))?\]\]$/
 const DAY = /^(\d{4})-(\d{2})-(\d{2})(?:[ T](\d{2}):(\d{2}))?/
-
 /** "2026-09-27" -> "27 Sep" (the year when it isn't this one); with a time, the time too. */
 function fmtDate(s: string) {
   const m = DAY.exec(s)!
@@ -66,12 +64,12 @@ function typed(s: string, was: unknown): unknown {
   return t
 }
 
-export type Sort = { key: string; desc: boolean } | null
+export type SortKey = { key: string; desc: boolean }
 type Save = (r: Row, key: string, v: unknown) => void
 
-/** A database view's answer, live (asked again whenever a note changes), with this view's sort and values written from
- *  here shown at once until the files say the same. `save` writes one property. */
-export function useQueryResult(url: string) {
+/** A database view's answer, live (asked again whenever a note changes), values written from here shown at once until
+ *  the files say the same (`save` writes one). `sort`: the view's sort, the rows in its order before the answer to it. */
+export function useQueryResult(url: string, sort?: SortKey[] | null) {
   // (Hidden files aren't the data, but Templates' settings (its folder is left out) and property types (they sort). A
   // moment, not a counter: live requests of the same path are shared for 10 s, so a remount must ask afresh.)
   const [v, setV] = useState(() => Date.now())
@@ -80,7 +78,6 @@ export function useQueryResult(url: string) {
   // (useLive keeps the last answer while the next loads: no flicker on every change; drawn again, a view starts from
   // its last answer.)
   const res = data
-  const [sort, setSort] = useState<Sort>(null)
   const [edits, setEdits] = useState<Record<string, unknown>>({})
   useEffect(() => {
     if (!res) return
@@ -97,18 +94,19 @@ export function useQueryResult(url: string) {
     })
   }, [res])
 
+  const want = sort && res && JSON.stringify(sort) !== JSON.stringify(res.sort) ? sort : null
   const groups = useMemo(() => {
     if (!res) return []
     const val = (r: Row, k: string) => (`${r.path}\0${k}` in edits ? edits[`${r.path}\0${k}`] : r.values[k])
+    // (a sort by a key the rows don't carry yet waits for the answer)
+    const first = res.groups.find((g) => g.rows.length)?.rows[0]
+    const by = want && first && want.every((s) => s.key in first.values) ? byKeys<Row>(want, val, res.types, typedValue) : null
     return res.groups.map((g) => ({
       ...g,
-      rows: (sort ? [...g.rows].sort((a, b) => {
-        const va = val(a, sort.key), vb = val(b, sort.key)
-        const blank = (x: unknown) => x === null || x === undefined || x === ""
-        return blank(va) || blank(vb) ? compare(va, vb) : comparer(res.types?.[sort.key], typedValue)(va, vb) * (sort.desc ? -1 : 1)
-      }) : g.rows).map((r) => ({ ...r, values: Object.fromEntries(Object.keys(r.values).map((k) => [k, val(r, k)])) })),
+      rows: (by ? [...g.rows].sort(by) : g.rows).map((r) => ({ ...r, values: Object.fromEntries(Object.keys(r.values).map((k) => [k, val(r, k)])) })),
     }))
-  }, [res, sort, edits])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [res, JSON.stringify(want), edits])
 
   // (The views are memoized: drawn again when what they show changes, not for every change in the vault.)
   const save = useCallback<Save>(async (r, key, value) => {
@@ -123,7 +121,7 @@ export function useQueryResult(url: string) {
     }
   }, [])
   const rows = useKeptCount(`query:${textKey(url)}`, res ? res.groups.reduce((n, g) => n + g.rows.length, 0) : undefined)
-  return { res, error: error && !data ? error : res ? null : error, loading: !res && !error, groups, sort, setSort, save, rows }
+  return { res, error: error && !data ? error : res ? null : error, loading: !res && !error, groups, save, rows }
 }
 
 const widths = ["42%", "30%", "55%", "36%", "48%"]
@@ -165,10 +163,24 @@ export function ResultSkeleton({ view, rows }: { view: string; rows: number }) {
 export const countText = (res: Result) => `${res.total > res.shown ? `${res.shown} of ${res.total}` : res.total} ${res.total === 1 ? "file" : "files"}`
   + (res.archivedHidden ? ` · ${res.archivedHidden} archived hidden` : "")
 
+/** What a table's header changes in its view (BaseView writes it to the base). */
+export type TableCtl = {
+  /** The view's sort, and its columns' widths by key. */
+  sort: SortKey[]; sizes: Record<string, number>
+  /** A column's header menu. */
+  menu: (c: Result["columns"][number]) => MenuItem[]
+  /** A column moved before another (null: to the end); resized (null: as wide as it draws). */
+  move: (key: string, before: string | null) => void
+  resize: (key: string, px: number | null) => void
+  /** The column whose name is being changed, and its new name (null: left as it was). */
+  renaming: string | null
+  rename: (key: string, name: string | null) => void
+}
+
 /** What a database view draws, by its view: notes on what was left out, then the table, cards, list, board, calendar
  *  or map. `fill`: it has a box of its own to fill (a .base in its tab), so a map takes the height it's given. */
-export function ResultBody({ res, groups, resolve, sort, setSort, save, month, setMonth, fill }: {
-  res: Result; groups: Result["groups"]; resolve: Resolve; sort: Sort; setSort: (s: Sort) => void; save: Save
+export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, fill }: {
+  res: Result; groups: Result["groups"]; resolve: Resolve; ctl?: TableCtl; save: Save
   month: string; setMonth: (m: string) => void; fill?: boolean
 }) {
   const special = res.view === "board" || res.view === "calendar" || res.view === "map"
@@ -183,7 +195,7 @@ export function ResultBody({ res, groups, resolve, sort, setSort, save, month, s
         : res.view === "board" ? <Board groups={groups} res={res} resolve={resolve} save={save} />
         : res.view === "calendar" ? <Calendar groups={groups} res={res} resolve={resolve} month={month} setMonth={setMonth} save={save} />
         : res.view === "map" ? <MapResult groups={groups} res={res} resolve={resolve} fill={fill} />
-        : res.view === "table" ? <Table groups={groups} res={res} resolve={resolve} sort={sort} setSort={setSort} save={save} />
+        : res.view === "table" ? <Table groups={groups} res={res} resolve={resolve} ctl={ctl} save={save} />
         : groups.map((g, i) => (
           <div key={g.name ?? `-${i}`}>
             {(groups.length > 1 || g.name) && <GroupHead name={g.name} n={g.rows.length} />}
@@ -214,34 +226,92 @@ const GroupHead = ({ name, n }: { name: string | null; n: number }) => (
   </div>
 )
 
-/** One table for every group (so the columns line up), each group under a heading row. */
-const Table = memo(function Table({ groups, res, resolve, sort, setSort, save }: {
-  groups: { name: string | null; rows: Row[]; summaries?: Record<string, unknown> }[]; res: Result; resolve: Resolve; sort: Sort; setSort: (s: Sort) => void
+/** A column at least this wide, when resized (Obsidian's least). */
+const MIN_WIDTH = 40
+
+/** One table for every group (so the columns line up), each group under a heading row. Its header (`ctl`): a click
+ *  opens a column's menu, dragging one moves it, its right edge resizes it. */
+const Table = memo(function Table({ groups, res, resolve, ctl, save }: {
+  groups: { name: string | null; rows: Row[]; summaries?: Record<string, unknown> }[]; res: Result; resolve: Resolve; ctl?: TableCtl
   save: (r: Row, key: string, v: unknown) => void
 }) {
   const [editing, setEditing] = useState<string | null>(null)
   const dropped = useRef(false) // Escape: the blur that follows doesn't save
+  const then = useRef<string | null>(null) // the cell Tab or Enter goes to once this one is saved
   const { open, cancel } = opener
   // (every row, drawn as it comes near the screen: the groups take theirs in turn)
   const total = groups.reduce((n, g) => n + g.rows.length, 0)
   const [drawn, mark] = useRowsNear(total)
   const upTo = groups.map((_, i) => groups.slice(0, i).reduce((n, g) => n + g.rows.length, 0))
-  // Asc, desc, then the query's own order.
-  const next = (key: string): Sort => (sort?.key !== key ? { key, desc: false } : !sort.desc ? { key, desc: true } : null)
+  const id = `query-cols:${useId()}`
+  const table = useRef<HTMLTableElement>(null)
+  const drag = useDrag()
+  const hit = useDropHit<string>(id)
+  useDropTarget<string>(id, (item, x, _y, el) => {
+    if (item.from !== "column" || item.column?.table !== id || !el || !table.current?.contains(el)) return null
+    const ths = [...table.current.querySelectorAll<HTMLElement>("thead th[data-query-col]")]
+    const before = ths.find((th) => { const r = th.getBoundingClientRect(); return x < r.left + r.width / 2 })?.dataset.queryCol ?? ""
+    const keys = res.columns.map((c) => c.key), from = keys.indexOf(item.column.key), to = before ? keys.indexOf(before) : keys.length
+    return to === from || to === from + 1 ? null : before
+  }, (item, before) => ctl?.move(item.column!.key, before || null))
+  // A width being dragged, drawn at once and written when let go.
+  const [live, setLive] = useState<{ key: string; px: number } | null>(null)
+  const from = useRef({ x: 0, w: 0 })
+  const width = (k: string) => (live?.key === k ? live.px : ctl?.sizes[k])
+  const sized = res.columns.some((c) => width(c.key))
+  // (a sized cell's content is a box that wide less the gap after it, so the column is that wide whatever it holds)
+  const box = (k: string, last: boolean) => { const w = width(k); return w ? { width: Math.max(w - (last ? 0 : 16), 8) } : undefined }
+  // The cells that can be edited, in order: where Tab, Shift-Tab and Enter go.
+  const cells = () => groups.flatMap((g, gi) => g.rows.slice(0, Math.max(0, drawn - upTo[gi])).flatMap((r) =>
+    res.columns.filter((c) => editable(c.key, r.values[c.key])).map((c) => `${r.path}\0${c.key}`)))
+  const step = (id: string, how: "next" | "prev" | "down") => {
+    const all = cells(), i = all.indexOf(id), key = id.split("\0")[1]
+    if (how === "down") return all.slice(i + 1).find((x) => x.split("\0")[1] === key) ?? null
+    return all[how === "next" ? i + 1 : i - 1] ?? null
+  }
+  const sortOf = (k: string) => ctl?.sort.find((s) => s.key === k)
   return (
     <div className="-mx-4 overflow-x-auto px-4" data-query-scroll data-no-edit>
-      <table className="w-full min-w-max border-collapse text-[14px]">
+      <table ref={table} className={cn("min-w-max border-collapse text-[14px]", !sized && "w-full")}>
         <thead>
             <tr className="border-b-[0.5px] border-border">
-              {res.columns.map((c) => (
-                <th key={c.key} className="py-1.5 pr-4 text-left font-normal last:pr-0">
-                  <button type="button" onClick={() => setSort(next(c.key))} data-query-sort={c.key}
-                    className="inline-flex cursor-pointer items-center gap-1 text-[13px] font-semibold text-muted-foreground hover:text-foreground">
-                    {c.label}
-                    {sort?.key === c.key && (sort.desc ? <ArrowDown className="size-3" strokeWidth={2.5} /> : <ArrowUp className="size-3" strokeWidth={2.5} />)}
-                  </button>
-                </th>
-              ))}
+              {res.columns.map((c, ci) => {
+                const last = ci === res.columns.length - 1, s = sortOf(c.key), w = width(c.key)
+                return (
+                  <th key={c.key} data-query-col={c.key} style={w ? { width: w, minWidth: w, maxWidth: w } : undefined}
+                    onPointerDown={ctl ? (e) => startDrag(e, { from: "column", column: { table: id, key: c.key }, label: c.label }) : undefined}
+                    onContextMenu={ctl ? menuFor(() => ctl.menu(c)) : undefined}
+                    className={cn("relative py-1.5 pr-4 text-left font-normal last:pr-0",
+                      drag?.item.column?.table === id && drag.item.column.key === c.key && "opacity-50",
+                      hit === c.key && "shadow-[inset_2px_0_0_var(--primary)]", hit === "" && last && "shadow-[inset_-2px_0_0_var(--primary)]")}>
+                    {ctl?.renaming === c.key ? (
+                      <input autoFocus defaultValue={c.label} aria-label={`Name of ${c.label}`} data-query-rename={c.key}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") e.currentTarget.blur()
+                          if (e.key === "Escape") { e.stopPropagation(); ctl.rename(c.key, null) }
+                        }}
+                        onBlur={(e) => ctl.rename(c.key, e.target.value === c.label ? null : e.target.value)}
+                        className="h-6 w-full min-w-[80px] rounded-[5px] border-[0.5px] border-border bg-background px-1 text-[13px] font-semibold outline-none focus:border-primary" />
+                    ) : (
+                      <div className={cn(w && "truncate")} style={box(c.key, last)}>
+                        <button type="button" onClick={ctl ? (e) => menuBelow(e, ctl.menu(c)) : undefined} data-query-sort={c.key} aria-haspopup={ctl ? "menu" : undefined}
+                          className="inline-flex max-w-full cursor-pointer items-center gap-1 text-[13px] font-semibold text-muted-foreground hover:text-foreground">
+                          <span className="truncate">{c.label}</span>
+                          {s && (s.desc ? <ArrowDown className="size-3 shrink-0" strokeWidth={2.5} /> : <ArrowUp className="size-3 shrink-0" strokeWidth={2.5} />)}
+                        </button>
+                      </div>
+                    )}
+                    {ctl && (
+                      <span data-no-drag className="absolute inset-y-0 -right-[3px] z-10 w-[6px] pointer-coarse:hidden" data-query-resize={c.key}>
+                        <Resizer label={`Resize ${c.label}`} className="absolute inset-0" onReset={() => ctl.resize(c.key, null)} resetTip="fit its contents"
+                          onStart={(x) => { from.current = { x, w: (table.current?.querySelector<HTMLElement>(`th[data-query-col="${CSS.escape(c.key)}"]`)?.getBoundingClientRect().width ?? 120) } }}
+                          onDrag={(x) => setLive({ key: c.key, px: Math.max(MIN_WIDTH, Math.round(from.current.w + x - from.current.x)) })}
+                          onEnd={() => setLive((l) => { if (l) ctl.resize(l.key, l.px); return null })} />
+                      </span>
+                    )}
+                  </th>
+                )
+              })}
             </tr>
           </thead>
         {groups.map((g, gi) => upTo[gi] < drawn && (
@@ -252,29 +322,37 @@ const Table = memo(function Table({ groups, res, resolve, sort, setSort, save }:
           {g.rows.slice(0, drawn - upTo[gi]).map((r) => (
             <tr key={r.path} tabIndex={-1} data-keyrow data-query-row={r.path} onClick={(e) => { if (!editing) open(r, e, !!(e.target as HTMLElement).closest("[data-editable]")) }}
               className="cursor-pointer border-b-[0.5px] border-border hover:bg-foreground/[0.03] [tbody:last-child>&:last-child]:border-0">
-              {res.columns.map((c) => {
+              {res.columns.map((c, ci) => {
                 const v = r.values[c.key]
                 const id = `${r.path}\0${c.key}`
                 const can = editable(c.key, v)
+                const last = ci === res.columns.length - 1, w = box(c.key, last)
+                const shown = editing === id ? (
+                  <input autoFocus defaultValue={v === null || v === undefined ? "" : typeof v === "boolean" ? (v ? "yes" : "no") : String(v)}
+                    aria-label={`${c.label} of ${r.title}`} onClick={(e) => e.stopPropagation()}
+                    className={cn("h-7 w-full rounded-[5px] border-[0.5px] border-border bg-background px-1.5 text-[14px] outline-none focus:border-primary", !w && "min-w-[120px]")}
+                    onKeyDown={(e) => {
+                      if (e.key === "Escape") { dropped.current = true; setEditing(null) }
+                      // (Tab and Shift-Tab: the next or the one before; Enter: the one below, as in a spreadsheet)
+                      const how = e.key === "Tab" ? (e.shiftKey ? "prev" : "next") : e.key === "Enter" ? "down" : null
+                      if (!how) return
+                      e.preventDefault()
+                      then.current = step(id, how)
+                      e.currentTarget.blur()
+                    }}
+                    onBlur={(e) => {
+                      setEditing(then.current)
+                      then.current = null
+                      if (dropped.current) return
+                      const to = typed(e.target.value, v)
+                      if (to !== (v ?? undefined)) save(r, c.key, to)
+                    }} />
+                ) : c.key === "file" ? <span className="font-medium">{r.title}</span> : <Value v={v} resolve={resolve} from={r.path} />
                 return (
-                  <td key={c.key} className="h-9 max-w-[280px] truncate py-1 pr-4 align-middle last:pr-0"
+                  <td key={c.key} className={cn("h-9 py-1 pr-4 align-middle last:pr-0", !w && "max-w-[280px] truncate")}
                     data-editable={can ? "" : undefined} data-tip={can && editing !== id ? "Double-click to edit" : undefined}
                     onDoubleClick={can ? (e) => { e.stopPropagation(); cancel(); dropped.current = false; setEditing(id) } : undefined}>
-                    {editing === id ? (
-                      <input autoFocus defaultValue={v === null || v === undefined ? "" : typeof v === "boolean" ? (v ? "yes" : "no") : String(v)}
-                        aria-label={`${c.label} of ${r.title}`} onClick={(e) => e.stopPropagation()}
-                        className="h-7 w-full min-w-[120px] rounded-[5px] border-[0.5px] border-border bg-background px-1.5 text-[14px] outline-none focus:border-primary"
-                        onKeyDown={(e) => {
-                          if (e.key === "Escape") { dropped.current = true; setEditing(null) }
-                          if (e.key === "Enter") (e.target as HTMLInputElement).blur()
-                        }}
-                        onBlur={(e) => {
-                          setEditing(null)
-                          if (dropped.current) return
-                          const to = typed(e.target.value, v)
-                          if (to !== (v ?? undefined)) save(r, c.key, to)
-                        }} />
-                    ) : c.key === "file" ? <span className="font-medium">{r.title}</span> : <Value v={v} resolve={resolve} from={r.path} />}
+                    {w ? <div className="truncate" style={w}>{shown}</div> : shown}
                   </td>
                 )
               })}

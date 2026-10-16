@@ -1,5 +1,5 @@
 // Database views (```base fences): Design.md's examples drawn; a "Qa query" folder of made-up people and a note with
-// bases: sorting by a heading (asc, desc, back), a row opens its file, double-click edits a value (one frontmatter line
+// bases: sorting from a heading's menu (asc, desc, removed; written in the fence), a row opens its file, double-click edits a value (one frontmatter line
 // changes on disk, the table follows), cards and list views, a bad filter says why, and at 390px the table scrolls in its
 // card without widening the page. Boards: columns in order, a card dragged to another column (one line on disk, no
 // flicker back), its … menu, phone (menu, the board scrolls in its card). Calendars: the month grid, today, prev/next,
@@ -57,19 +57,23 @@ check("the table lists the files, sorted by the view", JSON.stringify(await rows
 check("the count", (await table.locator("h2 + div").innerText()).includes("3 files"), await table.locator("h2 + div").innerText())
 check("a list is chips, a link a link", (await table.locator("[data-query-row] span.rounded-\\[5px\\]").count()) === 2
   && (await table.locator("[data-query-row] button", { hasText: "Alice Park" }).count()) === 1)
-await table.locator("[data-query-sort=every_days]").click(); await page.waitForTimeout(150)
-check("a heading sorts ascending", JSON.stringify(await rows()) === JSON.stringify(["Bob Lee.md", "Alice Park.md", "Lee Park.md"]), await rows())
-await table.locator("[data-query-sort=every_days]").click(); await page.waitForTimeout(150)
-check("again: descending", JSON.stringify(await rows()) === JSON.stringify(["Lee Park.md", "Alice Park.md", "Bob Lee.md"]), await rows())
-await table.locator("[data-query-sort=every_days]").click(); await page.waitForTimeout(150)
-check("again: the query's order", JSON.stringify(await rows()) === JSON.stringify(["Alice Park.md", "Bob Lee.md", "Lee Park.md"]), await rows())
+// A heading's menu sorts: written in the fence (the rows in its order at once).
+const sortBy = async (item) => { await table.locator("[data-query-sort=every_days]").click(); await page.locator("[role=menu]").getByText(item, { exact: true }).click(); await page.waitForTimeout(300) }
+await sortBy("Sort ascending")
+check("a heading's menu sorts ascending", JSON.stringify(await rows()) === JSON.stringify(["Bob Lee.md", "Alice Park.md", "Lee Park.md"]), await rows())
+await sortBy("Sort descending")
+check("then descending", JSON.stringify(await rows()) === JSON.stringify(["Lee Park.md", "Alice Park.md", "Bob Lee.md"]), await rows())
+await page.waitForTimeout(1000)
+check("the sort is the fence's, in the note", readFileSync(`${VAULT}/${F}/Views.md`, "utf8").includes("sort: [{property: every_days, direction: DESC}]"), readFileSync(`${VAULT}/${F}/Views.md`, "utf8").slice(0, 600))
+await sortBy("Remove sort")
+check("removed: the name's order", JSON.stringify(await rows()) === JSON.stringify(["Alice Park.md", "Bob Lee.md", "Lee Park.md"]), await rows())
 
 // Double-click a value: one line changes on disk (the comment on relation stays), the table follows.
 const samDays = table.locator(`[data-query-row="${F}/Bob Lee.md"] td`).nth(3)
 await samDays.dblclick(); await page.waitForTimeout(150)
 const input = table.locator("input")
 check("double-click edits a value (and doesn't open the file)", await input.isVisible() && (await page.evaluate(() => location.hash)).includes("Views.md"))
-await input.fill("10"); await input.press("Enter"); await page.waitForTimeout(1200)
+await input.fill("10"); await input.press("Enter"); await page.keyboard.press("Escape"); await page.waitForTimeout(1200)
 const sam = readFileSync(`${VAULT}/${F}/Bob Lee.md`, "utf8")
 check("the edit writes that one key, as a number", sam === "---\ntype: qa-person\nrelation: friend   # from running club\nlocation: Denver, CO\nevery_days: 10\n---\n\nLikes tea.\n", sam)
 check("the table shows it", (await samDays.innerText()).trim() === "10", await samDays.innerText())

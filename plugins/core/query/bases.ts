@@ -58,7 +58,7 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
   // (Obsidian has no archive: every file is in a base but archive folders, which `archived` lets in: this app's key)
   const arch = v.archived === "only" ? "only" : v.archived === true
   const opts: Opts = {
-    title: views[index].name, view, archived: arch || true, ...(arch ? { archiveFolders: true } : {}),
+    title: views[index].name, view, allKeys: true, archived: arch || true, ...(arch ? { archiveFolders: true } : {}),
     ...(filters.length ? { filters: filters.length === 1 ? filters[0] : { and: filters } } : {}),
     ...(obj(cfg.formulas) ? { formulas: cfg.formulas } : {}),
     ...(obj(cfg.properties) ? { properties: cfg.properties } : {}),

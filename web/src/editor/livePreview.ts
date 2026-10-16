@@ -2,7 +2,7 @@
 // are decorated from what's on screen; blocks (sections, tables, callouts, embeds, block fences) are a state field.
 import { redo, undo } from "@codemirror/commands"
 import { syntaxTree } from "@codemirror/language"
-import { EditorSelection, Facet, Prec, StateEffect, StateField, type EditorState, type Range, type Text, type Transaction } from "@codemirror/state"
+import { EditorSelection, Facet, Prec, StateEffect, StateField, Transaction, type EditorState, type Range, type Text } from "@codemirror/state"
 import { Decoration, EditorView, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view"
 import type { SyntaxNode } from "@lezer/common"
 import { embedOf, fenceBlock } from "@/core/formats"
@@ -17,6 +17,7 @@ import { frontmatter } from "./frontmatter"
 import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
+import { cellAt } from "./tableText"
 
 export type PreviewConfig = {
   /** false: plain Markdown (source mode). */
@@ -1535,6 +1536,31 @@ const intoBlock = (forward: boolean) => (view: EditorView) => {
 }
 const blockKeys = Prec.high(keymap.of([{ key: "ArrowDown", run: intoBlock(true) }, { key: "ArrowUp", run: intoBlock(false) }]))
 
+/** A table put in whole with the cursor in it (the slash menu's Table, Insert table): drawn at once with that cell open,
+ *  as Obsidian does, rather than its pipes showing until the cursor leaves. */
+const newTable = EditorView.updateListener.of((u) => {
+  if (!u.docChanged || !u.transactions.some((t) => t.annotation(Transaction.userEvent) === "input")) return
+  const { state, view } = u, head = state.selection.main
+  if (!head.empty || state.selection.ranges.length > 1) return
+  const put: number[] = []
+  u.changes.iterChangedRanges((_a, _b, from, to) => { if (from <= head.head && head.head <= to) put.push(from, to) })
+  const x = state.field(blockField).c.list.find((c) => c.kind === "table" && c.from <= head.head && head.head <= c.to)
+  if (!x || !put.length || x.from < put[0] || x.to > put[1]) return
+  const first = state.doc.lineAt(x.from).number, line = state.doc.lineAt(head.head)
+  const r = line.number - first
+  if (r === 1) return
+  const cell = { r: r > 1 ? r - 1 : 0, c: cellAt(line.text, head.head - line.from) }
+  const off = offBlocks(state, head.head)
+  if (off === null) return
+  // (after this update: an editor can't be changed inside one)
+  setTimeout(() => {
+    if (view.state.doc !== state.doc) return
+    view.dispatch({ selection: EditorSelection.cursor(off), userEvent: "select" })
+    const body = drawnBlocks(view).find((b) => b.from === x.from)?.el?.querySelector<HTMLElement>(":scope > .cm-block-body")
+    if (!body || !enterTable(body, cell)) view.dispatch({ selection: head })
+  })
+})
+
 /** Links: a click on a rendered link opens it (in the editor, only with ⌘ when its Markdown is showing). */
 export function linkHandler(open: (link: { wiki?: string; url?: string; tag?: string }, newTab: boolean) => void) {
   return EditorView.domEventHandlers({
@@ -1598,4 +1624,4 @@ export const fenceMenu = EditorView.domEventHandlers({
   },
 })
 
-export const livePreview = [focused, focusTracker, menuGone, inlinePlugin, blockField, blockKeys, fenceHover]
+export const livePreview = [focused, focusTracker, menuGone, inlinePlugin, blockField, blockKeys, newTable, fenceHover]

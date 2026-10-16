@@ -9,7 +9,7 @@ import { signal } from "@/core/signal"
 export type DragItem = {
   /** Where it comes from ("row": a database view's file, a board's card or a calendar's item; with `to`, a panel's row
    *  that opens something, like a terminal in the Terminals panel). */
-  from: "tab" | "group" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block"
+  from: "tab" | "group" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block" | "table" | "column"
   /** What it opens in a tab ("file:Notes/Idea.md", "view:terminal/abc", "settings"); none for a folder. */
   to?: string
   /** The tab it is (dropping it moves that tab); otherwise a drop opens a new one. */
@@ -32,6 +32,10 @@ export type DragItem = {
   status?: string
   /** A block of a page being edited, by name (its card moved: a dashboard's grid). */
   block?: string
+  /** A row or column of a table drawn in the editor: which table (editor/tables.ts), which reorders it. */
+  table?: string
+  /** A database view's column, by key, moved along its table's header (`table`: which table). */
+  column?: { table: string; key: string }
   /** Its source draws its own picture of it following the pointer (a phone's tab card, lifted whole): no DragGhost. */
   drawn?: boolean
 }
@@ -54,14 +58,20 @@ export const fingerHolding = () => fingerHolds
 // cancelable listener was there all along (as dnd-kit does).
 if (typeof window !== "undefined") addEventListener("touchmove", (e) => { if (fingerHolds && e.cancelable) e.preventDefault() }, { passive: false })
 
-type Target = {
+export type DropTarget = {
   /** What a drop here would do, or null (not over this target, or nothing would change). Called on every move. */
   at: (item: DragItem, x: number, y: number, el: Element | null) => { data: unknown; hint?: string; weak?: boolean } | null
   drop: (item: DragItem, data: unknown) => void
   /** The drag ended (dropped or not): stop timers. */
   end?: () => void
 }
-const targets = new Map<string, Target>()
+const targets = new Map<string, DropTarget>()
+
+/** Take drops until the function it returns is called: useDropTarget for what isn't drawn by React (the editor's tables). */
+export function addDropTarget(id: string, t: DropTarget) {
+  targets.set(id, t)
+  return () => { if (targets.get(id) === t) targets.delete(id) }
+}
 
 /** Take drops while mounted. `at` answers what a drop at (x, y) would do (`hint`: a word on the dragged item, like
  *  "Unpin"; `weak`: a catch-all answer, taken only when no other target answers); `drop` does it. */
@@ -160,10 +170,10 @@ export const setOutsideDrop = (fn: typeof outside) => { outside = fn }
 
 /** Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else
  *  a finger scrolls or taps). `data-no-drag` children stay plain buttons. */
-export function startDrag(e: React.PointerEvent<HTMLElement>, item: DragItem, { touch = false }: { touch?: boolean } = {}) {
+export function startDrag(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem, { touch = false }: { touch?: boolean } = {}) {
   if (e.button !== 0 || (e.target as Element).closest("[data-no-drag]")) return
   if (e.pointerType === "touch") { if (touch) pickUp(e, item); return }
-  const el = e.currentTarget, x0 = e.clientX, y0 = e.clientY, id = e.pointerId
+  const el = e.currentTarget as HTMLElement, x0 = e.clientX, y0 = e.clientY, id = e.pointerId
   let end: ReturnType<typeof lift> | null = null
   let last: PointerEvent | null = null
   const move = (ev: PointerEvent) => {
@@ -201,8 +211,8 @@ export function startDrag(e: React.PointerEvent<HTMLElement>, item: DragItem, { 
 
 /** A finger: picked up when the hold fires, dragged once it moves 10px (an open menu closes); before that, moving is a
  *  scroll. Touch events, since they go on while the page is held still. */
-function pickUp(e: React.PointerEvent<HTMLElement>, item: DragItem) {
-  const el = e.currentTarget
+function pickUp(e: React.PointerEvent<HTMLElement> | PointerEvent, item: DragItem) {
+  const el = e.currentTarget as HTMLElement
   let from = { x: e.clientX, y: e.clientY }, picked = false
   let end: ReturnType<typeof lift> | null = null
   const held = (ev: MouseEvent) => {
