@@ -5,7 +5,7 @@ import { createRequire } from "node:module"
 import net from "node:net"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { hold } from "./slots.mjs"
+import { hold } from "../../../tools/qa_slots.ts"
 
 /** Playwright's own Chromium (`npx playwright-core install chromium`), else Google Chrome (or Chromium on Linux), else
  *  the Mac's path, which scripts check to skip; VAULTITE_CHROME picks one. Not the installed Chrome first: a headless one
@@ -21,7 +21,7 @@ export const WEBGL = ["--enable-unsafe-swiftshader", "--use-angle=swiftshader", 
 
 export const wait = (ms) => new Promise((r) => setTimeout(r, ms))
 // (imported when used: boot.mjs, the smoke test, says it's skipped rather than failing where there's no Chrome)
-// (each waits for this machine's QA slot first: lib/slots.mjs)
+// (each waits for this machine's QA slot first: tools/qa_slots.ts)
 export const launch = async (opts) => { await hold(); return (await import("playwright-core")).chromium.launch({ executablePath: CHROME, ...opts }) }
 
 /** `fn`'s first truthy value within `ms`, else its last; a throw counts as not yet (the page may be mid-render). */

@@ -6,7 +6,7 @@ import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { record } from "./test/lib.ts"
-import { slot } from "../web/qa/lib/slots.mjs"
+import { slot } from "./qa_slots.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
