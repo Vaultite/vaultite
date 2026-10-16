@@ -11,7 +11,8 @@ import WatchConnectivity
 ///   - `do: answer`, `id`, `answer` (approve, deny, read): the op inbox.answer -> `ok`.
 ///   - `do: wake`: nothing; it wakes this app so the recordings sent with it come in now.
 /// A short voice note comes as message data, the phone near, answered with its outcome (JSON). Otherwise it comes as a file (transferFile, metadata `do: voice`, `id`): sent on (Voice.send: transcribed here when
-/// short, else by the server), and the outcome sent back (transferUserInfo: `voice` (its id), `text`, `path` or `error`).
+/// short, else by the server; `trim` seconds of silence cut from its end first), and the outcome sent back (`reply`: `voice`
+/// (its id), `text`, `path` or `error`).
 final class WatchLink: NSObject, WCSessionDelegate {
     static let shared = WatchLink()
 
@@ -88,20 +89,29 @@ final class WatchLink: NSObject, WCSessionDelegate {
 
     func session(_ session: WCSession, didReceive file: WCSessionFile) {
         guard file.metadata?["do"] as? String == "voice", let id = file.metadata?["id"] as? String else { return }
+        let trim = file.metadata?["trim"] as? Double ?? 0
         // The file is gone when this returns: keep it until it's transcribed.
         let kept = FileManager.default.temporaryDirectory.appendingPathComponent("voice-\(id).m4a")
         try? FileManager.default.removeItem(at: kept)
         do { try FileManager.default.moveItem(at: file.fileURL, to: kept) } catch {
-            WCSession.default.transferUserInfo(["voice": id, "error": Servers.say(error)])
+            Self.reply(["voice": id, "error": Servers.say(error)])
             return
         }
         let task = UIApplication.shared.beginBackgroundTask(withName: "voice")
         Task {
+            if trim > 0 { await Voice.trim(kept, by: trim) }
             var outcome: [String: Any] = ["voice": id]
             outcome.merge(await Voice.send(kept, from: "Apple Watch")) { $1 }
-            WCSession.default.transferUserInfo(outcome)
+            Self.reply(outcome)
             UIApplication.shared.endBackgroundTask(task)
         }
+    }
+
+    /// A voice note's outcome: straight back while the watch is near, else queued (watchOS hands it over when it likes).
+    static func reply(_ outcome: [String: Any]) {
+        let s = WCSession.default
+        guard s.isReachable else { s.transferUserInfo(outcome); return }
+        s.sendMessage(outcome, replyHandler: nil) { _ in s.transferUserInfo(outcome) }
     }
 }
 
@@ -155,6 +165,21 @@ enum Voice {
             sending.insert(name)
             defer { sending.remove(name) }
             do { try await upload(waiting.appendingPathComponent(name)) } catch { return }
+        }
+    }
+
+    /// Cut its last `seconds` (the silence a watch note stopped itself after); left whole when that fails.
+    static func trim(_ url: URL, by seconds: Double) async {
+        let asset = AVURLAsset(url: url)
+        guard let length = try? await asset.load(.duration).seconds, length > seconds,
+              let export = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetPassthrough) else { return }
+        let out = url.deletingLastPathComponent().appendingPathComponent("trimmed-\(url.lastPathComponent)")
+        export.timeRange = CMTimeRange(start: .zero, duration: CMTime(seconds: length - seconds, preferredTimescale: 600))
+        do {
+            try await export.export(to: out, as: .m4a)
+            _ = try FileManager.default.replaceItemAt(url, withItemAt: out)
+        } catch {
+            try? FileManager.default.removeItem(at: out)
         }
     }
 

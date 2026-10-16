@@ -28,24 +28,39 @@ struct MicView: View {
 
     var body: some View {
         VStack(spacing: 8) {
-            Button { Task { await recorder.toggle() } } label: {
+            Button { Task { if recorder.recording { recorder.stop() } else { await recorder.start() } } } label: {
                 ZStack {
+                    // How loud it hears you, around the button.
+                    Circle().stroke(Color.red.opacity(0.5), lineWidth: 4)
+                        .scaleEffect(1 + CGFloat(recorder.level) * 0.15)
+                        .opacity(recorder.recording && !recorder.paused ? 1 : 0)
+                        .animation(.easeOut(duration: 0.1), value: recorder.level)
                     Circle().fill(recorder.recording ? Color.red : Color.teal)
                     Image(systemName: recorder.recording ? "stop.fill" : "mic.fill")
                         .font(.system(size: 44, weight: .semibold))
                         .foregroundStyle(.white)
                 }
-                .frame(width: 112, height: 112)
+                .frame(width: 104, height: 104)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(recorder.recording ? "Stop and send" : "Record a voice note")
 
-            if let started = recorder.started {
-                Text(timerInterval: started...Date.distantFuture, countsDown: false)
-                    .font(.footnote.monospacedDigit())
-                    .foregroundStyle(.secondary)
+            if recorder.recording {
+                HStack {
+                    SmallButton(symbol: "xmark", label: "Discard") { recorder.discard() }
+                    Spacer(minLength: 0)
+                    if let since = recorder.since {
+                        Text(timerInterval: since...Date.distantFuture, pauseTime: recorder.pausedAt, countsDown: false)
+                            .font(.footnote.monospacedDigit())
+                            .foregroundStyle(recorder.paused ? .secondary : .primary)
+                    }
+                    Spacer(minLength: 0)
+                    SmallButton(symbol: recorder.paused ? "mic.fill" : "pause.fill", label: recorder.paused ? "Resume" : "Pause") {
+                        recorder.togglePause()
+                    }
+                }
             } else if let problem = recorder.problem {
-                Text(problem).font(.footnote).foregroundStyle(.red).multilineTextAlignment(.center)
+                Text(problem).font(.footnote).foregroundStyle(.secondary).multilineTextAlignment(.center)
             } else if let note = link.notes.first {
                 NoteLine(note: note)
             } else {
@@ -56,15 +71,39 @@ struct MicView: View {
     }
 }
 
-/// The last voice note's fate, in a line.
+struct SmallButton: View {
+    let symbol: String
+    let label: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 16, weight: .semibold))
+                .frame(width: 40, height: 40)
+                .background(Circle().fill(Color.gray.opacity(0.3)))
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(label)
+    }
+}
+
+/// The last voice note's fate, in a line: got as soon as it stops; a wait shows only once it's long.
 struct NoteLine: View {
     let note: PhoneLink.Note
 
     var body: some View {
         switch note.state {
         case .sending:
-            Label("Sending to your iPhone", systemImage: "iphone.radiowaves.left.and.right")
-                .font(.footnote).foregroundStyle(.secondary)
+            TimelineView(.everyMinute) { context in
+                if context.date.timeIntervalSince(note.at) < 5 * 60 {
+                    Label("Got it", systemImage: "checkmark.circle")
+                        .font(.footnote).foregroundStyle(.secondary)
+                } else {
+                    Label("Waiting for your iPhone", systemImage: "iphone.slash")
+                        .font(.footnote).foregroundStyle(.orange)
+                }
+            }
         case let .saved(text):
             VStack(spacing: 2) {
                 Label(note.agent.map { "Sent to \($0)" } ?? "In your inbox", systemImage: "checkmark.circle.fill")

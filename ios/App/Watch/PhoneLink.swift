@@ -4,7 +4,7 @@ import WatchKit
 
 /// The watch's way to the server, through the phone (the phone's side and what it's asked: App/WatchLink.swift). The
 /// Inbox's events and answering them are messages (the phone must be reachable); a voice note is a file, queued until
-/// the phone takes it, its outcome coming back later (`notes`).
+/// the phone takes it, its outcome coming back as a message when the phone is near, else later (`notes`).
 @MainActor
 final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     static let shared = PhoneLink()
@@ -28,6 +28,7 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         enum State: Equatable { case sending, saved(String), failed(String) }
         let id: String
         var state: State
+        var at = Date()
         /// The agent it was handed to (Claude, Codex), else nil: it's only in the inbox.
         var agent: String?
     }
@@ -96,24 +97,26 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     }
 
     /// Send a recording to the phone: a short one as a message while it's near (its outcome is the answer), else as a
-    /// file, queued while it's away (its outcome comes later, didReceiveUserInfo).
-    func send(recording url: URL) {
+    /// file, queued while it's away; `trim`, the seconds of silence the phone cuts from its end.
+    func send(recording url: URL, trim: TimeInterval = 0) {
         let id = UUID().uuidString
         notes.insert(Note(id: id, state: .sending), at: 0)
         notes = Array(notes.prefix(5))
         let s = WCSession.default
-        if s.isReachable, let data = try? Data(contentsOf: url), data.count < 60_000 {
+        var metadata: [String: Any] = ["do": "voice", "id": id]
+        if trim > 0 { metadata["trim"] = trim }
+        if trim == 0, s.isReachable, let data = try? Data(contentsOf: url), data.count < 60_000 {
             s.sendMessageData(data, replyHandler: { reply in
                 let outcome = (try? JSONSerialization.jsonObject(with: reply)) as? [String: Any] ?? [:]
                 try? FileManager.default.removeItem(at: url)
                 Task { @MainActor in self.heard(id, outcome) }
             }, errorHandler: { _ in
                 // Not now: as a file, then.
-                Task { @MainActor in s.transferFile(url, metadata: ["do": "voice", "id": id]) }
+                Task { @MainActor in s.transferFile(url, metadata: metadata) }
             })
             return
         }
-        s.transferFile(url, metadata: ["do": "voice", "id": id])
+        s.transferFile(url, metadata: metadata)
         if s.isReachable { s.sendMessage(["do": "wake"], replyHandler: nil) }
     }
 
@@ -128,7 +131,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         } else {
             notes.insert(Note(id: id, state: state, agent: agent), at: 0)
         }
-        WKInterfaceDevice.current().play(error == nil ? .success : .failure)
+        // Stopping was the haptic that it's got: another only when it went wrong.
+        if error != nil { WKInterfaceDevice.current().play(.failure) }
     }
 
     nonisolated func session(_ session: WCSession, activationDidCompleteWith state: WCSessionActivationState, error: Error?) {}
@@ -139,10 +143,18 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         Task { @MainActor in if self.problem != nil { await self.refresh() } }
     }
 
-    /// A voice note's outcome, from the phone.
+    /// A voice note's outcome, from the phone: a message when it's near, else queued.
+    nonisolated func session(_ session: WCSession, didReceiveMessage message: [String: Any]) {
+        outcome(message)
+    }
+
     nonisolated func session(_ session: WCSession, didReceiveUserInfo userInfo: [String: Any] = [:]) {
-        guard let id = userInfo["voice"] as? String else { return }
-        let outcome = userInfo.filter { ["error", "text", "terminal"].contains($0.key) }.mapValues { "\($0)" }
+        outcome(userInfo)
+    }
+
+    nonisolated private func outcome(_ info: [String: Any]) {
+        guard let id = info["voice"] as? String else { return }
+        let outcome = info.filter { ["error", "text", "terminal"].contains($0.key) }.mapValues { "\($0)" }
         Task { @MainActor in self.heard(id, outcome) }
     }
 
