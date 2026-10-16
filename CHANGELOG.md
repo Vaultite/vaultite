@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The web demo no longer says it couldn't load when a blocker stops the site's analytics script.
 - The design page shows the primitives and Markdown pages are made of; each block is listed by its plugin (`vau
   blocks`), so a new one is never missing from it.
 - **Quick text size** is off by default: ⌘ and scroll, or a pinch, over a note or terminal changes its text size only

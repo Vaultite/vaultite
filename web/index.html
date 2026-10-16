@@ -77,8 +77,9 @@
         addEventListener("error", (e) => {
           if (window.__vauStarted) return
           const t = e.target
-          // (a resource that didn't load: only the app's own script counts; a plugin's chunk is loadAppPlugins' to handle)
-          if (t && t !== window && t.tagName) { if (t.tagName === "SCRIPT") { show("Vaultite couldn't load", `${t.src} didn't load. Is the server running?`); keep(`${t.src} didn't load`) } }
+          // (a resource that didn't load: only the app's own script counts, not one a host adds that a blocker stops; a
+          // plugin's chunk is loadAppPlugins' to handle)
+          if (t && t !== window && t.tagName) { if (t.tagName === "SCRIPT" && new URL(t.src, location.href).origin === location.origin) { show("Vaultite couldn't load", `${t.src} didn't load. Is the server running?`); keep(`${t.src} didn't load`) } }
           else { show("Vaultite couldn't start", text(e.error || e.message)); keep((e.error && e.error.message) || e.message, e.error) }
         }, true)
       })()
