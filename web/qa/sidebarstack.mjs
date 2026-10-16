@@ -295,6 +295,11 @@ try {
   let items = await menuItems()
   check("a left panel's menu: Open in a tab, Panels, Move to right sidebar, Hide", ["Open File explorer in a tab", "Panels", "Move to right sidebar", "Hide File explorer"].every((x) => items.includes(x)) && !items.includes("Separate from tabs"), items)
   await page.keyboard.press("Escape")
+  // Its … opens the same menu, under the button.
+  await page.hover(head("files:files")); await page.click(`${L} [data-panel='files:files'] [data-heading-more]`)
+  const dots = await menuItems()
+  check("the heading's …: the same menu as right-click", JSON.stringify(dots) === JSON.stringify(items), [dots, items])
+  await page.keyboard.press("Escape")
   await page.click(head("terminal:sessions", "right"), { button: "right" })
   items = await menuItems()
   check("a right panel's menu: Move to left sidebar", items.includes("Open Terminals in a tab") && items.includes("Move to left sidebar") && items.includes("Hide Terminals"), items)

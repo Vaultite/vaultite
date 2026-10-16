@@ -1,7 +1,8 @@
 // A sidebar panel's heading, on its own so the file tree (which the sidebar imports) can use it too.
 import { createContext, useContext } from "react"
-import { ChevronDown, ChevronRight } from "lucide-react"
+import { ChevronDown, ChevronRight, Ellipsis } from "lucide-react"
 import { coarse } from "@/core/haptics"
+import { HeadingButton } from "@/components/Button"
 import { SwipeRow } from "@/components/SwipeRow"
 import { cn } from "@/lib/utils"
 
@@ -9,8 +10,8 @@ import { cn } from "@/lib/utils"
  *  how to fold or open it. None (a heading outside the sidebar, the rail): the heading is only a label. */
 export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void } | null>(null)
 
-/** A panel's heading: label left, hover buttons right (touch: swiped to); click folds the panel, drag moves it (`data-panel-handle`).
- *  Nothing in the rail. */
+/** A panel's heading: label left, hover buttons right (touch: swiped to), then … for its right-click menu; click folds
+ *  the panel, drag moves it (`data-panel-handle`). Nothing in the rail. */
 export function SidebarHeading({ title, open, children, className }: {
   title: string; open: boolean
   children?: React.ReactNode
@@ -47,7 +48,14 @@ export function SidebarHeading({ title, open, children, className }: {
     <div {...head} className={cn("flex h-7 items-center gap-0.5 pr-0.5 pl-1.5 transition-opacity duration-200", box)}>
       {label}
       <span className="flex-1" />
-      <span className="flex gap-0.5 opacity-0 transition-opacity group-hover/head:opacity-100 focus-within:opacity-100">{children}</span>
+      <span className="flex gap-0.5 opacity-0 transition-opacity group-hover/head:opacity-100 focus-within:opacity-100">
+        {children}
+        {/* The heading's right-click, under the button: whatever menu the panel gives it (Panels ▸, Hide...). */}
+        {f && <HeadingButton icon={Ellipsis} label={`More for ${title}`} tip="More" data-heading-more onClick={(e) => {
+          const r = e.currentTarget.getBoundingClientRect()
+          e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left, clientY: r.bottom + 4 }))
+        }} />}
+      </span>
     </div>
   )
 }
