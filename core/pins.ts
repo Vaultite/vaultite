@@ -1,11 +1,12 @@
-// A pinned list changed one pin at a time, so an old copy never brings back a page unpinned elsewhere. An entry is a
-// path, a heading or block in a note, a search, or a view (a coding agent's conversation). Pure: both sides.
+// A pinned list changed one pin at a time, so an old copy never brings back a page unpinned elsewhere. Pure: both
+// sides, so whether a path is a file or a folder comes from the vault (the app's file list, the disk), not its name.
 
 /** A search pinned: "search:<query>". */
 export const SEARCH = "search:"
 /** A view pinned, as a tab's target: "view:<name>/<arg>" (view:terminal/resume-claude-<session>: a conversation). */
 export const VIEW = "view:"
-/** What an entry is: a file, a heading (or block) in a note, a search, or a view (its tab's target). */
+/** What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its
+ *  tab's target: a coding agent's conversation). */
 export function pinKind(entry: string): { file: string; heading?: string } | { search: string } | { view: string } {
   if (entry.startsWith(SEARCH)) return { search: entry.slice(SEARCH.length) }
   if (entry.startsWith(VIEW)) return { view: entry }

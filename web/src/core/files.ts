@@ -397,6 +397,14 @@ export function folderList(t: FileTree) {
   return [...set].sort()
 }
 
+/** Whether `path` is a folder of the vault (folderList's, kept once per file list: the sidebar asks on every draw). */
+const folderSets = new WeakMap<FileTree, Set<string>>()
+export function isFolder(t: FileTree, path: string) {
+  let set = folderSets.get(t)
+  if (!set) folderSets.set(t, (set = new Set(folderList(t))))
+  return set.has(path)
+}
+
 /** A name for a file or folder that isn't taken in its folder ("Untitled", "Untitled 1"...: Obsidian's rule). */
 export function freeName(t: FileTree, folder: string, base: string, ext = ".md") {
   const taken = new Set([...t.files, ...t.others].map((f) => f.path.toLowerCase()).concat(t.folders.map((f) => (f + ext).toLowerCase())))

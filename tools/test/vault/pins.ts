@@ -61,6 +61,20 @@ export default async ($: VaultTest) => {
   const [noSearch] = await api("POST", "pins", { path: "search: ", pinned: true })
   check("a heading and a search are pinned; a missing note's heading and an empty search aren't", noHeading === 404 && noSearch === 404 &&
     pins() === list("Notes/A.md", "Dashboards/Today.md", "files", "Notes/A.md#Plan", "search:tag:#book"), [noHeading, noSearch, pins()])
+  // A folder (it opens in place) and a file that isn't a note (a recording) are pinned; a folder moved takes its pin.
+  fs.mkdirSync(path.join(VAULT, "Notes/Pin trips"), { recursive: true })
+  fs.writeFileSync(path.join(VAULT, "Notes/Pin trips/Lisbon.md"), "A trip.\n")
+  fs.writeFileSync(path.join(VAULT, "Notes/Pin trips/Voice note.m4a"), "")
+  const [folderPin] = await api("POST", "pins", { path: "Notes/Pin trips", pinned: true })
+  const [mediaPin] = await api("POST", "pins", { path: "Notes/Pin trips/Voice note.m4a", pinned: true })
+  const [noHeadingInFolder] = await api("POST", "pins", { path: "Notes/Pin trips#Plan", pinned: true })
+  check("a folder and a recording are pinned; a folder's heading isn't", folderPin === 200 && mediaPin === 200 && noHeadingInFolder === 404 &&
+    pins() === list("Notes/A.md", "Dashboards/Today.md", "files", "Notes/A.md#Plan", "search:tag:#book", "Notes/Pin trips", "Notes/Pin trips/Voice note.m4a"), [folderPin, mediaPin, noHeadingInFolder, pins()])
+  const moved = await api("POST", "file/move", { from: "Notes/Pin trips", to: "Pin trips" })
+  check("a pinned folder follows its move, and what's pinned in it", JSON.stringify(JSON.parse(pins()).slice(-2)) === list("Pin trips", "Pin trips/Voice note.m4a"), [moved, pins()])
+  await api("POST", "pins", { path: "Pin trips", pinned: false })
+  await api("POST", "pins", { path: "Pin trips/Voice note.m4a", pinned: false })
+  fs.rmSync(path.join(VAULT, "Pin trips"), { recursive: true })
   await api("POST", "pins", { path: "Notes/A.md#Plan", pinned: false })
   await api("POST", "pins", { path: "search:tag:#book", pinned: false })
   await api("POST", "pins", { path: "files", pinned: false })

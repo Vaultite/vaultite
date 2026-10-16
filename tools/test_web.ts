@@ -597,6 +597,11 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     pins.repinList(["N/a.md#Plan", "M"], "N", null).join() === "M" && JSON.stringify(pins.pinKind("N/a.md#^id")) === '{"file":"N/a.md","heading":"^id"}' &&
     JSON.stringify(pins.pinKind("view:terminal/resume-claude-a.md#x")) === '{"view":"view:terminal/resume-claude-a.md#x"}' && pins.repinList(["view:terminal/resume-claude-1"], "view:terminal", "x").join() === "view:terminal/resume-claude-1",
     pins.repinList(["N/a.md#Plan", "search:N/a.md", "N/a.md"], "N/a.md", "O/b.md"))
+  check("pins: a pinned folder is a path; it follows its move and its parent's, and goes with the trash",
+    JSON.stringify(pins.pinKind("Projects/Lighthouse")) === '{"file":"Projects/Lighthouse"}' &&
+    pins.repinList(["Projects/Lighthouse", "Projects/Lighthouse/a.mp4", "Projects"], "Projects/Lighthouse", "Archive/Lighthouse").join() === "Archive/Lighthouse,Archive/Lighthouse/a.mp4,Projects" &&
+    pins.repinList(["Projects/Lighthouse"], "Projects", "Work").join() === "Work/Lighthouse" && pins.repinList(["Projects/Lighthouse", "M"], "Projects/Lighthouse", null).join() === "M" &&
+    pins.repinList(["Projects/Lighthouse2"], "Projects/Lighthouse", "X").join() === "Projects/Lighthouse2")
   check("sidebars: the default is by sort, without hidden panels", sb.defaultSidebars([{ key: "b", sort: 20 }, { key: "a", sort: 10 }, { key: "h", sort: 0, hidden: true }]).left.join() === "a,b")
   const up = sb.placePanel(s, "files:files", { side: "left", before: "search:search" })
   check("sidebars: moved before another", up.left.join() === "files:files,search:search,pages:pages", up)

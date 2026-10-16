@@ -14,7 +14,7 @@ import { currentFile, getWorkspace, onWorkspaceChange } from "@/core/workspace"
 import { leaves, type Workspace } from "@/core/layout"
 import { useNearEnd } from "@/core/near"
 import { openInSplit } from "@/core/splits"
-import { iconOf, namedIcon, tintOf } from "@/core/pages"
+import { fileAt, iconOf, namedIcon, tintOf } from "@/core/pages"
 import { scopedState, subscribeScoped } from "@/core/scope"
 import { notify, notifyError } from "@/core/notify"
 import { newNoteFolder } from "@/core/conventions"
@@ -33,21 +33,33 @@ import { SidebarHeading } from "@/components/SidebarHeading"
 import { signal } from "@/core/signal"
 
 // ---------- which folders are open (the current workspace's: core/scope.ts) ----------
-// Kept per workspace so each desk has its own folders open; Notes until then.
-const openState = scopedState<string[]>("files:open", ["Notes"], "workspace")
-/** The kept list as a set, made again only when the list changes (what redraws compare). */
-let seenList: string[] | null = null
-let seenSet = new Set<string>()
-const openedNow = () => {
-  const l = openState.get()
-  if (l !== seenList) { seenList = l; seenSet = new Set(Array.isArray(l) ? l : []) }
-  return seenSet
+/** A list of open folders kept per workspace, so each desk has its own folders open. */
+function openSet(key: string, fallback: string[]) {
+  const state = scopedState<string[]>(key, fallback, "workspace")
+  // The kept list as a set, made again only when the list changes (what redraws compare).
+  let seenList: string[] | null = null
+  let seenSet = new Set<string>()
+  const now = () => {
+    const l = state.get()
+    if (l !== seenList) { seenList = l; seenSet = new Set(Array.isArray(l) ? l : []) }
+    return seenSet
+  }
+  const set = (next: Set<string>) => state.set([...next].sort())
+  return {
+    now, set,
+    toggle: (p: string) => { const n = new Set(now()); if (n.has(p)) { n.delete(p); setShowingAll(p, false) } else n.add(p); set(n) },
+    useAll: () => useSyncExternalStore(subscribeScoped, now),
+    /** Whether this folder is open: its row is drawn again when that changes, not when another folder opens. */
+    useHas: (p: string) => useSyncExternalStore(subscribeScoped, () => now().has(p)),
+  }
 }
-function setOpened(next: Set<string>) { openState.set([...next].sort()) }
-const useOpened = () => useSyncExternalStore(subscribeScoped, openedNow)
-/** Whether this folder is open: its row is drawn again when that changes, not when another folder opens. */
-const useIsOpen = (p: string) => useSyncExternalStore(subscribeScoped, () => openedNow().has(p))
-const toggle = (p: string) => { const n = new Set(openedNow()); if (n.has(p)) { n.delete(p); setShowingAll(p, false) } else n.add(p); setOpened(n) }
+type OpenSet = ReturnType<typeof openSet>
+/** The file tree's open folders: Notes until the workspace has its own. */
+const treeOpen = openSet("files:open", ["Notes"])
+/** Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened. */
+export const pinsOpen = openSet("pins:open", [])
+const openedNow = treeOpen.now
+const setOpened = treeOpen.set
 
 // ---------- long folders: their first files, then "Show N more" (prefs.folderLimit) ----------
 /** Cut only when it leaves out more than this many: "Show 2 more" would be a row in place of two. */
@@ -98,10 +110,11 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
   if (!opts.scroll && !opts.flash) return
   // Asked for (flash): a tree in sight, wherever the Files panel is (the right sidebar, a sidebar tab, folded, a
   // rail), or, with the panel hidden, the Files tab.
-  const shown = [...document.querySelectorAll<HTMLElement>("[role=tree]")].some((t) => t.offsetParent && !t.closest("[data-flyout]"))
+  const shown = [...document.querySelectorAll<HTMLElement>("[role=tree]")].some((t) => t.offsetParent && !t.closest("[data-flyout], [data-pin-tree]"))
   if (opts.flash && !shown && isDesktop() && !revealPanel(FILES_PANEL)) openView("files", { newTab: true })
   // After the folders render (and the sidebar opens).
-  const find = () => [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].find((el) => el.offsetParent)
+  // (the tree's row, not the same one in a pinned folder)
+  const find = () => [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].find((el) => el.offsetParent && !el.closest("[data-pin-tree]"))
   const go = (tries: number) => {
     const row = find()
     if (!row) { if (tries) setTimeout(() => go(tries - 1), 60); return }
@@ -251,6 +264,12 @@ export function fileIcon(path: string, type: string | null, disabled: string[], 
   return v?.icon ? { icon: v.icon, tint: tintOf(file?.tint) ?? v.tint } : { icon: FileText, tint: tintOf(file?.tint) }
 }
 
+/** A vault file's icon as the tree draws it, by its path (a note, an image, a recording...). */
+export function iconAt(path: string) {
+  const s = getStore(), file = s ? fileAt(s.files.files, path) : undefined
+  return fileIcon(path, file?.type ?? null, getPrefs().disabled, file)
+}
+
 /** An icon a plugin gives a file or folder (`fileIcons`), drawn; null without one. */
 function drawn(g?: FileIcon): { icon: LucideIcon; tint?: string } | null {
   const icon = g && namedIcon(g.icon)
@@ -328,8 +347,11 @@ const looks = (f?: VaultFile) => (f ? `${f.type}\0${f.kind}\0${f.icon ?? ""}\0${
 const openHiddenIn = (ws: Workspace, hidden: boolean) => hidden ? "" : [...new Set(leaves(ws.root).flatMap((g) => g.tabs.map((t) => t.to))
   .filter((to) => to.startsWith("file:") && isHidden(to.slice(5)) && !archives(to.slice(5))).map((to) => to.slice(5)))].sort().join("\n")
 
-export const FileTree = memo(function FileTree({ store, active, compact = true, header = true, title = "Files", pane, scroll = false, revealScroll = true, className }: {
+export const FileTree = memo(function FileTree({ store, active, compact = true, header = true, title = "Files", pane, scroll = false, revealScroll = true, className, folder }: {
   store: Store
+  /** Only what's in this folder, a level in, its folders opened apart from the tree's (a pinned folder, open in place:
+   *  plugins/core/pages). */
+  folder?: string
   /** The file open in the current tab (highlighted). */
   active?: string
   /** The header's name ("Files" in the sidebar). */
@@ -358,11 +380,12 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const last = useRef<Node | null>(null)
   const root = useMemo(() => (last.current = keepSame(last.current, build(store, fileSort, [...(openHidden ? openHidden.split("\n") : []), ...(openArchived ? [openArchived] : [])], showArchived))),
     [store, fileSort, openHidden, openArchived, showArchived])
-  const open = useOpened()
+  const opened = folder === undefined ? treeOpen : pinsOpen
+  const open = opened.useAll()
   const allFolders = useMemo(() => folderList(store.files), [store])
   const anyOpen = allFolders.some((f) => open.has(f))
   // Auto-reveal: the open file's folders open and the tree scrolls to it, whenever it changes (desktop sidebar).
-  useEffect(() => { if (header && autoReveal && active) revealInTree(active, { scroll: revealScroll }) }, [header, autoReveal, active, revealScroll])
+  useEffect(() => { if (header && folder === undefined && autoReveal && active) revealInTree(active, { scroll: revealScroll }) }, [header, folder, autoReveal, active, revealScroll])
   const [renaming, setRenaming] = useState<string | null>(null)
   // A folder just made: naming it isn't a rename to undo (no toast), like a new note's title.
   const fresh = useRef<string | null>(null)
@@ -495,7 +518,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     const more = (el as Element | null)?.closest?.<HTMLElement>("[data-tree-more]")
     if (more) return { target: more.dataset.treeMore!, folder: null }
     const row = (el as Element | null)?.closest?.<HTMLElement>("[data-tree-path]")
-    if (!row) return { target: "", folder: null }
+    if (!row) return { target: folder ?? "", folder: null }
     const p = row.dataset.treePath!
     return row.dataset.treeFolder ? { target: p, folder: p } : { target: folderOf(p), folder: null }
   }
@@ -508,10 +531,10 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   }
   // A closed folder held over for a moment opens (not the one being dragged, nor anything in it).
   const openLater = (from: string, folder: string | null) => {
-    const want = folder && !openedNow().has(folder) && folder !== from && !folder.startsWith(`${from}/`) ? folder : null
+    const want = folder && !opened.now().has(folder) && folder !== from && !folder.startsWith(`${from}/`) ? folder : null
     if (hover.current?.path === want) return
     if (hover.current) clearTimeout(hover.current.timer)
-    hover.current = want ? { path: want, timer: window.setTimeout(() => { if (!openedNow().has(want)) toggle(want) }, 700) } : null
+    hover.current = want ? { path: want, timer: window.setTimeout(() => { if (!opened.now().has(want)) opened.toggle(want) }, 700) } : null
   }
   // The tree's own drags: the folder it would move into. Tabs and pinned pages dragged here aren't moved (a tab or a
   // page isn't a place in the tree).
@@ -561,7 +584,23 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const { marks, icons } = usePluginRows(store, disabled)
   const decor = useFileRows(disabled)
   const limit = Math.max(0, Math.floor(Number(folderLimit) || 0))
-  const rows = useMemo<Rows>(() => ({ compact, fileIcons, disabled, pane, on, marks, icons, decor, limit }), [compact, fileIcons, disabled, pane, marks, icons, decor, limit])
+  const rows = useMemo<Rows>(() => ({ compact, fileIcons, disabled, pane, on, marks, icons, decor, limit, opened }), [compact, fileIcons, disabled, pane, marks, icons, decor, limit, opened])
+  const kids = { rows, active, renaming: renaming ?? undefined, dropOn: dropOn ?? undefined, dragging, draggingMany }
+
+  if (folder !== undefined) {
+    const sub = nodeAt(root, folder)
+    if (!sub?.children.length) return null
+    // A level in, under the pinned folder's row: its guide down from under that row's icon (SidebarRow's: 1.5 + 2 in).
+    return (
+      <div ref={box} {...treeDrop} data-pin-tree={folder} className={className}>
+        <ul ref={list} role="tree" aria-label={folder} aria-multiselectable data-keylist data-select-list={SELECT}
+          className="relative before:pointer-events-none before:absolute before:inset-y-0 before:left-(--guide) before:w-px before:bg-border"
+          style={{ "--guide": `calc(${space(3.5)} - 0.5px)` } as CSSProperties}>
+          <Kids n={sub} depth={1} {...kids} />
+        </ul>
+      </div>
+    )
+  }
 
   return (
     <div ref={box} {...treeDrop} data-file-drop className={cn("flex min-h-0 flex-col", className)}>
@@ -589,7 +628,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
       )}
       <ul ref={list} role="tree" aria-label="Files" aria-multiselectable data-keylist data-select-list={SELECT} data-drop-root={dropOn === "" || undefined} onContextMenu={(e) => { if (e.target === e.currentTarget) onMenu(e, root) }}
         className={cn("flex-1 rounded-[8px] pb-6 transition-colors", scroll && "min-h-0 overflow-y-auto overscroll-contain", dropOn === "" && "drop-target bg-primary/10")}>
-        <Kids n={root} depth={0} rows={rows} active={active} renaming={renaming ?? undefined} dropOn={dropOn ?? undefined} dragging={dragging} draggingMany={draggingMany} />
+        <Kids n={root} depth={0} {...kids} />
       </ul>
     </div>
   )
@@ -600,7 +639,14 @@ type RowHandlers = {
   rename: (n: Node, name: string) => void; cancelRename: (n: Node) => void; swipe: (n: Node) => SwipeAction[]
 }
 type Rows = { compact: boolean; fileIcons: boolean; disabled: string[]; pane?: string; on: { current: RowHandlers }; marks: Record<string, FileMark>
-  icons: Record<string, FileIcon>; decor: Record<string, FileRow>; limit: number }
+  icons: Record<string, FileIcon>; decor: Record<string, FileRow>; limit: number; opened: OpenSet }
+
+/** The folder at `path` in a tree, or undefined. */
+function nodeAt(root: Node, path: string): Node | undefined {
+  let n: Node | undefined = root
+  for (const part of path.split("/")) n = n?.children.find((c) => c.folder && c.name === part)
+  return n
+}
 
 /** A part's style ("color: red; --x: 1") as React's. */
 function styleOf(css?: string): CSSProperties | undefined {
@@ -644,7 +690,7 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
   const { compact, fileIcons, disabled, pane, on } = rows
   const mark = n.folder ? undefined : rows.marks[n.path]
   const decor = rows.decor[n.path]
-  const isOpen = useIsOpen(n.path)
+  const isOpen = rows.opened.useHas(n.path)
   const { icon: Icon, tint }: { icon: LucideIcon; tint?: string } =
     n.path === ".trash" ? { icon: Trash2 } : n.folder ? drawn(rows.icons[n.path]) ?? { icon: n.name === ARCHIVE_DIR ? Archive : isOpen ? FolderOpen : Folder } : fileIcon(n.path, n.file?.type ?? null, disabled, n.file)
   // Rows, paddings and indents are in spacing units (compact px / 4), so they follow density (index.css): the chevron
@@ -658,7 +704,7 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
   const pad = (compact ? 1.5 : 1) + depth * indent
   const click = (e: MouseEvent) => {
     if (selectClick(e, SELECT, n.path, currentFile())) return
-    if (n.folder) return toggle(n.path)
+    if (n.folder) return rows.opened.toggle(n.path)
     openFile(n.path, { newTab: e.metaKey || e.ctrlKey, pane })
   }
   return (

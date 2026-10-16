@@ -50,14 +50,15 @@ export function relocatedPin(vault: Vault, entry: string) {
   const f = pinFile(entry)
   return f === null ? entry : withPinFile(entry, vault.relocated(f))
 }
-/** Why `entry` can't be pinned (a file that isn't in the vault, an empty search), or null. */
+/** Why `entry` can't be pinned (a file or folder that isn't in the vault, an empty search), or null. A heading needs a
+ *  file; a path alone can be a folder (it opens in place in the sidebar). */
 export function pinProblem(vault: Vault, entry: string): string | null {
   const k = pinKind(entry)
   if ("search" in k) return k.search.trim() ? null : "a pinned search needs a query"
   if ("view" in k) return /^view:[\w-]+\/./.test(k.view) ? null : "a pinned view is view:<name>/<arg>"
   const full = path.join(vault.path, k.file)
-  if (k.file.split("/").includes("..") || isHiddenPath(k.file) || !fs.existsSync(full) || fs.statSync(full).isDirectory()) {
-    return `there's no file ${k.file} in the vault to pin`
+  if (!k.file || k.file.split("/").includes("..") || isHiddenPath(k.file) || !fs.existsSync(full) || (k.heading && fs.statSync(full).isDirectory())) {
+    return `there's no file or folder ${k.file} in the vault to pin`
   }
   return null
 }

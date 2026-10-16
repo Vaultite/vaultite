@@ -68,8 +68,11 @@ export function asKeys(fn: () => void) { fromKeys = true; try { fn() } finally {
 function rowsOf(el: Element | null, list: string) {
   const box = el?.closest<HTMLElement>(`[data-select-list="${CSS.escape(list)}"]`)
   if (!box) return []
-  return [...box.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0).map((r) => r.dataset.selectKey!)
+  return shownRows(box).map((r) => r.dataset.selectKey!)
 }
+/** A list's own rows in sight, in order: not those of a list inside it (a pinned folder's files, in the pinned list). */
+const shownRows = (box: HTMLElement) =>
+  [...box.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0 && r.closest("[data-select-list]") === box)
 
 /** A row's click: ⌘ (Ctrl) adds or takes it, ⇧ the run from the last picked (first from `current`, the open row, as
  *  in Finder); a phone selecting adds or takes. True when it was that; a plain click lets go and is the row's. */
@@ -161,7 +164,7 @@ function extend(delta: 1 | -1) {
   const at = keyRow()
   if (!at) return
   const box = at.row.closest<HTMLElement>("[data-select-list]")!
-  const rows = [...box.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0)
+  const rows = shownRows(box)
   const i = rows.indexOf(at.row), next = rows[i + delta]
   if (!next) return
   const order = rows.map((r) => r.dataset.selectKey!)
@@ -176,7 +179,7 @@ function selectAll() {
   const at = keyRow()
   if (!at) return
   const box = at.row.closest<HTMLElement>("[data-select-list]")!
-  const keys = [...box.querySelectorAll<HTMLElement>("[data-select-key]")].filter((r) => r.getClientRects().length > 0).map((r) => r.dataset.selectKey!)
+  const keys = shownRows(box).map((r) => r.dataset.selectKey!)
   put(make(at.list, keys, at.key))
 }
 

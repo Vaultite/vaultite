@@ -35,7 +35,7 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
     if (p in labels(vault)) { const { [p]: _, ...rest } = labels(vault); vault.setConfig("pages", { ...conf, pinned: out, labels: rest }); return { pinned: out } }
   }
   else if (at < 0 || body.before !== undefined) {
-    // A page is a file (or a heading in one, or a search): a path that isn't one would be a pin nothing shows.
+    // A page is a file or folder (or a heading in a note, or a search): a path that isn't one would be a pin nothing shows.
     const problem = at < 0 ? pinProblem(vault, p) : null
     if (problem) throw new HTTPError(404, problem)
     const rest = cur.filter((x) => x !== p)
@@ -147,7 +147,8 @@ plugin.op({
   cli: "pin",
   summary: "Pin a file to the sidebar (at the end, or before another): the current workspace's list with Workspaces on.",
   help: `Adds a file to the sidebar's pages, or moves it when it's already there and before is given. Any file can be a
-page: a dashboard, a note, an artifact (.html), a table (.csv). A heading in a note ("Notes/Idea.md#Plan", a block
+page: a dashboard, a note, an artifact (.html), a table (.csv), an image or a recording; a folder too, which opens
+in place in the list. A heading in a note ("Notes/Idea.md#Plan", a block
 "Notes/Idea.md#^id") and a search ("search:tag:#book") can be pinned too, like bookmarks, and a coding agent's
 conversation ("view:terminal/resume-claude-<session id>", "@<machine>" after it for another machine's): it opens the
 terminal running it, else resumes it there.
@@ -157,13 +158,14 @@ ${FLAGS}
   vau pin Dashboards/Finance.md
   vau pin Finance/Spending.html --before Dashboards/People.md
   vau pin "Notes/Idea.md#Plan"
+  vau pin Projects/Lighthouse
   vau pin "search:tag:#book"
   vau pin "view:terminal/resume-claude-0b5c9e2a-4f1d-4c4e-9a7e-2d6f1b3c8e90"
   vau pin Notes/Draft.md --workspace 2
   vau pin Dashboards/Today.md --vault`,
   kind: "write",
   params: {
-    path: { type: "string", format: "path", required: true, description: "the file (a path, or a name as the user says it)" },
+    path: { type: "string", format: "path", required: true, description: "the file or folder (a path, or a name as the user says it)" },
     before: { type: "string", format: "path", description: "the pinned page it goes before (else at the end)" },
     workspace: WORKSPACE, vault: VAULT,
   },

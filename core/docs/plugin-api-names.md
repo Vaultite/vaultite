@@ -164,6 +164,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `FilesPanel({ store, open, phone, file, bounded })`: The vault's files, the file explorer.
 - `FilesSettings()`
 - `filesSettingsSearch`: What the sheet has, for the Settings page's search (the plugin's `settingsSearch`).
+- `FileTree`
 - `FileView`: How a plugin shows its files: the icon in the tree and tabs.
 - `FilterField({ value, onChange, placeholder, className })`: A field that filters a list (plugins, hotkeys, a table's rows): one look everywhere.
 - `fmtAgo`
@@ -177,6 +178,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
+- `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Delete.
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
@@ -208,6 +210,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
 - `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams.
+- `iconAt(path)`: A vault file's icon as the tree draws it, by its path (a note, an image, a recording...).
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
@@ -216,6 +219,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
 - `isDesktop()`: A computer's width (the desktop's panes), not a phone's.
 - `isDoc(path)`: Notes, JSON and pages plugins draw (artifacts, tables): the files that can be pages (pinned).
+- `isFolder(t, path)`
 - `isHidden`: In a dot folder, or a dot file: shown only with hidden files on.
 - `isLinux`: A Linux computer (not Android).
 - `isMac`: A Mac, iPhone or iPad: ⌘ is the app's Mod key.
@@ -340,7 +344,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PIN_SEARCH`: A search pinned: "search:<query>".
 - `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>/<arg>" (view:terminal/resume-claude-<session>: a conversation).
 - `pinInWorkspace(path, on, before, base)`: Pin a page in the current workspace (at the end, or before `before`) or unpin it there; one without a list of its own starts from `base` (the vault's).
-- `pinKind(entry)`: What an entry is: a file, a heading (or block) in a note, a search, or a view (its tab's target).
+- `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a coding agent's conversation).
+- `pinnedFoldersOpen`: Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened.
 - `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`): the pin's key ("view:terminal/resume-claude-<session>") and its name now, or null when it can't be pinned.
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
@@ -377,6 +382,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `resolveView(target, disabled?)`: The target to open for this one (its view's `resolve`): a conversation already running, its terminal.
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
+- `revealInTree(path, opts?)`: Open every folder above a file.
 - `revealLabel`: Showing a file where it is: Finder on a Mac, the file manager elsewhere.
 - `revealPanel(key)`: Bring a sidebar panel into sight (Reveal current file in file tree): its sidebar open (not a rail), the panel unfolded.
 - `rightClickBelow(e)`: For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows.
@@ -421,7 +427,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
 - `SheetHead({ icon, tint, kicker, title, sub, children })`: No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new).
+- `showInTree(path)`: A file or folder in the file tree, flashed (hidden files turned on first when it's in a dot folder).
 - `showLabel`: The same for a toast's action, on something just saved.
+- `shownName(path)`: A file or folder as the app names it: a note without .md, other files with their extension.
 - `SidebarCtx`
 - `SidebarHeading`
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
@@ -609,8 +617,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
 - `pathAsSaid(tree, raw)`: A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or a path from before a folder moved; a web address is its web tab.
 - `pinFile(entry)`: The file an entry is in (null: a search or a view).
-- `pinKind(entry)`: What an entry is: a file, a heading (or block) in a note, a search, or a view (its tab's target).
-- `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file that isn't in the vault, an empty search), or null.
+- `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a coding agent's conversation).
+- `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file or folder that isn't in the vault, an empty search), or null.
 - `pipeSockets(ws, up, failed)`: Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its close comes back; `failed` when it can't be reached.
 - `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end) or unpinned (`on` false).
 - `Proc`: A process on this machine: its parent, its terminal's foreground group, when it started (epoch ms), its command line.

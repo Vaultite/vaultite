@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Folders can be pinned**: right-click a folder (or drag it to Pinned) and it opens in place in the sidebar, its files
+  under it like the file tree's. Images, recordings and PDFs pinned now show in the list too.
 - The web demo no longer says it couldn't load when a blocker stops the site's analytics script.
 - The design page shows the primitives and Markdown pages are made of; each block is listed by its plugin (`vau
   blocks`), so a new one is never missing from it.

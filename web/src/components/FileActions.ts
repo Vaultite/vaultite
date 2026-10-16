@@ -1,5 +1,5 @@
 // What the file menus do (the tree's, a tab's, the phone's), in one place so they say and do the same thing.
-import { Columns2, Copy, Ellipsis, FileInput, FileSymlink, FolderInput, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
+import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
 import { actionIcon, fileActions, runAction } from "@/core/actions"
 import { getStore } from "@/core/data"
 import { post } from "@/core/http"
@@ -15,7 +15,7 @@ import type { MenuItem } from "@/components/ContextMenu"
 import { choose } from "@/components/Chooser"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { pickIcon } from "@/components/IconPicker"
-import { askMove, askMoveMany, revealInTree } from "@/components/FileTree"
+import { askMove, askMoveMany, newNote, revealInTree } from "@/components/FileTree"
 import { notify, notifyError } from "@/core/notify"
 
 /** Put text on the clipboard: the Clipboard API (https and localhost), else a hidden text field and copy. */
@@ -202,6 +202,25 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
       ...moreItem(plug.more),
     ],
     !isProtected(file) ? [{ label: ro ? "Delete permanently" : "Delete", icon: Trash2, danger: true, run: () => remove(file) }] : [],
+  ])
+}
+
+/** A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its
+ *  path and Reveal in file tree, Delete. Renaming and New folder are the tree's, where the name is typed in place. */
+export function folderMenu(folder: string, opts: { skip?: string } = {}): MenuItem[] {
+  const locked = isProtected(folder) || inTrash(folder)
+  const plug = pluginFileGroups(folder, opts.skip, true)
+  return grouped([
+    locked ? [] : [{ label: "New note", icon: FilePlus, run: () => void newNote(folder) }, { label: "Move folder to…", icon: FolderInput, run: () => askMove(folder) }],
+    plug.navigate,
+    ...plug.rest,
+    [
+      copyPathItem(folder, { folder: true }),
+      { label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(folder, { scroll: true, flash: true, open: true }) },
+      ...revealItem(folder),
+      ...moreItem(plug.more),
+    ],
+    locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => remove(folder) }],
   ])
 }
 

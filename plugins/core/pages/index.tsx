@@ -1,11 +1,11 @@
-import { FileText, Pin, PinOff } from "lucide-react"
+import { Pin, PinOff } from "lucide-react"
 import {
-  currentEditor, currentFile, definePlugin, pinOfView, getTabLayout, iconOf, isDoc, isViewOpen, openFile, openView, PIN_SEARCH, stem, tintOf, useCommands, useFocusedFile,
+  currentEditor, currentFile, definePlugin, pinOfView, getTabLayout, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
   usePane, useWorkspaceVersion, type Store, type TabLayout,
 } from "@vaultite"
 import { PinCurrent, pinChecklist, PinnedPages } from "./Pinned"
 import { PinnedSettings } from "./SettingsPanel"
-import { isPinned, pinItems, pinnable, pinNoted, shownPinned } from "./types"
+import { isPinned, pinItems, pinnable, pinName, pinNoted, shownPinned } from "./types"
 
 // Pinned: all of pinning in the app (panel, Pin/Unpin, Open commands, a device's first tab, a phone's tiles). Off,
 // nothing is pinned or shown; the lists stay in the vault for when it's on again.
@@ -62,8 +62,8 @@ function PinnedView({ store }: { store: Store }) {
 function PageCommands({ store }: { store: Store }) {
   useWorkspaceVersion() // the list is the current workspace's
   const pages = shownPinned(store)
-  useCommands(() => pages.map(({ key: p, file }) => ({ id: `page:file/${encodeURIComponent(p)}`, name: `Open ${stem(p)}`, run: () => openFile(p), icon: iconOf(file) ?? FileText })),
-    [pages.map((p) => `${p.key}\t${p.file.icon ?? ""}`).join("\n")])
+  useCommands(() => pages.map(({ key: p }) => ({ id: `page:file/${encodeURIComponent(p)}`, name: `Open ${pinName(p)}`, run: () => openFile(p), icon: iconAt(p).icon })),
+    [pages.map((p) => `${p.key}\t${p.file?.icon ?? ""}`).join("\n")])
   return null
 }
 
@@ -75,14 +75,14 @@ function Tiles({ store }: { store: Store }) {
   return (
     <div data-new-tab-pages className="grid grid-cols-4 gap-y-2 py-1 mx-[calc(var(--spacing)*1.5_-_(100%_-_var(--spacing)*39)/6)]
       min-[600px]:grid-cols-6 min-[600px]:mx-[calc(var(--spacing)*1.5_-_(100%_-_var(--spacing)*57)/10)]">
-      {pages.map(({ key, file }) => {
-        const Icon = iconOf(file) ?? FileText
+      {pages.map(({ key }) => {
+        const { icon: Icon, tint } = iconAt(key)
         return (
           <a key={key} href={`#file/${encodeURIComponent(key)}`} className="flex min-w-0 flex-col items-center gap-1 active:opacity-60">
             <span className="grid size-9 place-items-center rounded-[11px] bg-card shadow-sm ring-[0.5px] ring-border">
-              <Icon className="size-[20px]" strokeWidth={1.9} style={{ color: tintOf(file.tint) ?? "var(--primary)" }} />
+              <Icon className="size-[20px]" strokeWidth={1.9} style={{ color: tint ?? "var(--primary)" }} />
             </span>
-            <span className="line-clamp-2 w-[calc(var(--spacing)*12)] max-w-full text-center text-[10px] leading-[13px] break-words">{stem(key)}</span>
+            <span className="line-clamp-2 w-[calc(var(--spacing)*12)] max-w-full text-center text-[10px] leading-[13px] break-words">{pinName(key)}</span>
           </a>
         )
       })}
@@ -105,9 +105,10 @@ export default definePlugin({
     { id: "file:pin-heading", name: "Pin current heading to the sidebar", desktop: true, when: () => { const h = headingHere(); return !!h && !isPinned(h) }, run: () => pinNoted(headingHere()!, true) },
     { id: "search:pin", name: "Pin current search to the sidebar", desktop: true, when: () => { const q = searchHere(); return !!q && !isPinned(q) }, run: () => pinNoted(searchHere()!, true) },
   ],
-  // A note, JSON, an artifact or a table can be a page: Pin or Unpin in its menus (the tree's, its tab's, the phone's …),
-  // in the current workspace's list with Workspaces on.
-  fileMenu: (path) => (pinnable(path) && isDoc(path) ? pinItems(path) : []),
+  // Any file of the vault, or a folder (it opens in place there): Pin or Unpin in its menus (the tree's, its tab's, the
+  // phone's …), in the current workspace's list with Workspaces on.
+  fileMenu: (path) => (pinnable(path) ? pinItems(path) : []),
+  folderMenu: (path) => (pinnable(path) ? pinItems(path) : []),
   // A view that can be pinned (a coding agent's terminal: its conversation): Pin or Unpin in its tab's menu and its row's.
   viewMenu: (target) => {
     const p = pinOfView(target)
@@ -115,8 +116,8 @@ export default definePlugin({
     return [isPinned(p.key) ? { label: "Unpin", icon: PinOff, run: () => void pinNoted(p.key, false) } : { label: "Pin", icon: Pin, run: () => void pinNoted(p.key, true, p.label) }]
   },
   // The pinned pages, found first (search's highest weight) and listed with the suggestions.
-  search: (store) => shownPinned(store).map(({ key, file }) => ({
-    id: `page-${key}`, title: stem(key), meta: "Page", kind: "Page", icon: iconOf(file) ?? FileText, tint: tintOf(file.tint) ?? "var(--primary)",
+  search: (store) => shownPinned(store).map(({ key }) => ({
+    id: `page-${key}`, title: pinName(key), meta: "Page", kind: "Page", icon: iconAt(key).icon, tint: iconAt(key).tint ?? "var(--primary)",
     file: key, text: key, recent: 0, weight: 12,
   })),
   // A new device opens on the first pinned page.

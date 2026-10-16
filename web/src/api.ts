@@ -24,7 +24,7 @@ export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conven
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
-export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, splitFm, stem } from "@/core/files"
+export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isFolder, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, shownName, splitFm, stem } from "@/core/files"
 /** A folder of the vault, picked in the palette (one typed that isn't there is made). */
 export { chooseFolder } from "@/components/FolderPicker"
 export { currentFile, useFocusedFile, type FocusedFile } from "@/core/workspace"
@@ -59,11 +59,11 @@ export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // database view's cards).
 export { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions } from "@/components/ConfirmDialog"
-export { copyText, fileMenu, filesMenu, grouped, linkTo, openItem, pluginFileGroups } from "@/components/FileActions"
+export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups } from "@/components/FileActions"
 export { deleteFile, restoreFile } from "@/core/files"
 // "Move file to…": the folder picker, then the move (with Undo); `before` runs once a folder is picked. Or straight
 // into a folder (a drop on it), one toast with Undo.
-export { askMove, askMoveMany, moveManyInto, treeShownItems } from "@/components/FileTree"
+export { askMove, askMoveMany, FileTree, iconAt, moveManyInto, pinsOpen as pinnedFoldersOpen, revealInTree, showInTree, treeShownItems } from "@/components/FileTree"
 // Recent files: opened lately in the workspace, and changed lately in the vault (a blank tab's sections, the Recent
 // files panel).
 export { changedFiles, RecentList, useFileIcon, useOpenedFiles, type RecentKind } from "@/components/RecentFiles"
