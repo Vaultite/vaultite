@@ -23,8 +23,8 @@ an agent started from it is told it runs inside Vaultite where it takes that (Cl
 From a terminal, `vau terminal` lists this machine's sessions (with an agent's own session id, when it says) and the tabs showing them, and opens, resumes (a Claude Code
 session by its title too), reads (`screen`), types into (`send`) and ends them; `vau terminal tidy` closes the tabs of
 agents' sessions that are gone. A session ended for good (its tab's End session, its row's x, `vau terminal end`: an
-agent asked to close itself runs it without an id) closes its tabs, on every device; an agent's session that ends by
-itself keeps them, saying so, with Restart. A shell ends only those ways or when its last tab closes at its prompt,
+agent asked to close itself runs it without an id) closes its tabs, on every device, as does exiting the shell left
+after an agent (exit, ⌃D); an agent's session that died or whose machine restarted keeps them, saying so, with Restart. A shell ends only those ways or when its last tab closes at its prompt,
 never for being left alone. It has no files, blocks or settings in the vault besides
 `.vaultite/plugins/terminal/data.json`: `{"scrollback": 10000}` is the lines of history each terminal keeps, whatever runs
 it, `{"allowUsers": ["someone@example.com"]}` lets more tailnet logins in through

@@ -397,9 +397,9 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     }
     // Ended by us: a SIGHUP, as when a shell is killed directly.
     const { code, signal } = s.ended ? { code: 0, signal: 1 } : exit ?? { code: 0, signal: 0 }
-    // A shell's clean exit closes its tabs: the ones away now too (another device's), once they're put back. An
-    // agent's session that ends by itself keeps its tabs, saying so, with Restart.
-    if (!code && !signal && !agentOf(id)) markEnded(id)
+    // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
+    // agent's session that died keeps its tabs, saying so, with Restart.
+    if (!code && !signal) markEnded(id)
     try { fs.rmSync(stateFile(id), { force: true }) } catch { /* none */ }
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue

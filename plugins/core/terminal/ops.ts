@@ -249,8 +249,8 @@ what you did first: the tab and what's in it go).
     id: "terminal.tidy",
     cli: "terminal tidy",
     summary: "Close the tabs whose agent's session is gone (an ended Claude Code, a machine restarted); shells' tabs stay.",
-    help: `An agent's session that ends by itself keeps its tabs (saying it ended, with Restart) until you close them or
-run this.
+    help: `An agent's session that died (or a machine restarted, or ended after its report) keeps its tabs (saying it
+ended, with Restart) until you close them or run this; exiting the shell after the agent closes them.
 
   vau terminal tidy`,
     kind: "write",

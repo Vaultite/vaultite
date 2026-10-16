@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Exiting the shell left after Claude Code or another agent (exit, ⌃D) closes its tab, as a shell's does; only an
+  agent's session that died or was ended after its report keeps its tab with "Session ended" and Restart.
 - **Quick Look for Markdown**: the space bar in Finder shows a note drawn as it reads (properties, headings, lists
   and checkboxes, callouts, code, tables), light or dark, even with the app closed.
 - On a Mac, Vaultite can be the default app for Markdown files, which then get the system's document icon made from

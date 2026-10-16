@@ -270,9 +270,9 @@ function create(id: string): Live {
         over()
       } else if (msg.t === "exit") {
         exited = true
-        // One ended for good (End session, vau terminal end) or a shell's clean exit (exit, ⌃D) closes the tab; an
-        // agent's session that ended by itself stays, saying so, and a shell's failure with its output, both with Restart.
-        if (msg.ended || (!agentOfTerminal(id) && !msg.code && !msg.signal)) return closeIt()
+        // Ended for good (End session, vau terminal end) or a clean exit (exit, ⌃D; an agent's too) closes the tab; an
+        // agent's session that died stays, saying so, and a shell's failure with its output, both with Restart.
+        if (msg.ended || (!msg.code && !msg.signal)) return closeIt()
         setStatus(agentOfTerminal(id) ? { kind: "ended" } : { kind: "exited", code: msg.code ?? 0, signal: msg.signal ?? 0 })
         over()
       }
