@@ -10,6 +10,8 @@ export default async ($: VaultTest) => {
     app.installPages()
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
     const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
+    // Its plugins (Activity off) and pins are put back at the end: the areas after it need them.
+    const pluginsBefore = conf("plugins"), pagesBefore = conf("pages")
     setConf("plugins", { disabled: ["activity"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
     setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
     setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/Today.md"] })
@@ -158,5 +160,8 @@ export default async ($: VaultTest) => {
     check("bundles: a number you set higher is never lowered", !r.plan.settings.some((x: Any) => x.plugin === "history" && x.key === "keep_days") &&
       r.plan.skipped.some((x: Any) => x.plugin === "history" && x.key === "keep_days" && /higher/.test(x.why)), [r.plan.settings, r.plan.skipped])
     if (hist) setConf("plugins/history/data", hist); else fs.rmSync(path.join(VAULT, ".vaultite/plugins/history/data.json"), { force: true })
+    for (const [name, was] of [["plugins", pluginsBefore], ["pages", pagesBefore]] as const) {
+      if (was) setConf(name, was); else fs.rmSync(path.join(VAULT, `.vaultite/${name}.json`), { force: true })
+    }
   }
 }
