@@ -24,9 +24,9 @@ type Source =
   | { kind: "live"; plugin: string; label: string; folders: { path: string; label: string }[] }
 type Sources = { name: string; path: string; line: number | null; sources: Source[] }
 
-/** One block, as its menu needs it. `nth`: which of its file's blocks of that name (two alike told apart); `edit`: in
- *  an editor, its place there; `options`: its options form unfolded; `showing`: its Markdown is what shows. */
-export type BlockRef = { name: string; text: string; path: string; nth?: number; edit?: BlockEdit; options?: () => void; showing?: boolean }
+/** One block, as its menu needs it. `nth`: which of its file's blocks of that name; `edit`: in an editor, its place
+ *  there; `options`: its options form unfolded; `showing`: its Markdown shows; `el`: what draws it, where that goes. */
+export type BlockRef = { name: string; text: string; path: string; nth?: number; edit?: BlockEdit; options?: () => void; showing?: boolean; el?: HTMLElement }
 
 /** How many files show in the menu itself; the rest are under "N more ▸". */
 const SHOWN = 8
@@ -66,7 +66,12 @@ export function openBlockMenu(at: { x: number; y: number }, b: BlockRef) {
   const head: MenuItem = { label: `${what}${plugin ? ` (${plugin.name})` : ""}${decl?.description ? `: ${decl.description}` : ""}`, icon: Blocks, caption: true, run: () => {} }
   // Where it is in the file (0-based, frontmatter counted), once the server says; an editor knows its own place.
   let line: number | null = null
-  const toSource = () => (edit?.source ? edit.source() : line === null ? openFile(path) : editAt(path, line + 1))
+  const toSource = () => {
+    if (edit?.source) return edit.source()
+    if (line === null) return openFile(path)
+    const y = b.el ? topOf(b.el) : null
+    editAt(path, line + 1, y === null ? {} : { from: { line, y } })
+  }
   const tail = (): MenuItem[] => b.showing ? [{ label: "Done", icon: SquareCheck, run: () => edit?.done() }] : [
     // (a read-only file, a plugin's built-in page, has no options to change)
     ...(decl?.options && Object.keys(decl.options).length && path && !isReadOnly(path)
@@ -88,15 +93,21 @@ export function openBlockMenu(at: { x: number; y: number }, b: BlockRef) {
   )
 }
 
+/** The top on screen of what a block draws (BlockSource adds no box: its children's), null when it's not drawn. */
+function topOf(el: HTMLElement): number | null {
+  const tops = [...el.children].map((c) => c.getBoundingClientRect()).filter((r) => r.height).map((r) => r.top)
+  return el.isConnected && tops.length ? Math.min(...tops) : null
+}
+
 /** A drawn block, with its menu on right-click (and a held finger: ContextMenu.tsx, watchHolds).
  *  `display: contents`: it adds no box, so the dashboard's grid and the editor's layout are the block's own. */
-export function BlockSource({ menu, name, children }: { menu: (at: { x: number; y: number }) => void; name: string; children: ReactNode }) {
+export function BlockSource({ menu, name, children }: { menu: (at: { x: number; y: number }, el: HTMLElement) => void; name: string; children: ReactNode }) {
   return (
     <div className="contents" data-block={name} data-hold-menu
       onContextMenu={(e) => {
         // (something in it answered the right-click itself: a routine's day opens its sheet)
         if (e.defaultPrevented) return
-        e.preventDefault(); e.stopPropagation(); menu({ x: e.clientX, y: e.clientY })
+        e.preventDefault(); e.stopPropagation(); menu({ x: e.clientX, y: e.clientY }, e.currentTarget)
       }}>
       {children}
     </div>

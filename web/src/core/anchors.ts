@@ -87,10 +87,13 @@ export function openAt(path: string, anchor: string, opts: { newTab?: boolean; p
 
 // ---------- editing a line: a block's "Edit source" ----------
 
-/** A file's view on screen that can take the cursor to a line (FileView: into editing first), `find` on it selected. */
-type LineTaker = { path: string; dom: () => HTMLElement | null; take: (line: number, find?: string) => void }
+/** Where a line is drawn now: its top at `y` on screen (a block's Markdown goes where the block was). */
+export type DrawnLine = { line: number; y: number }
+/** A file's view on screen that can take the cursor to a line (FileView: into editing first), `find` on it selected,
+ *  `from` kept where it's drawn. */
+type LineTaker = { path: string; dom: () => HTMLElement | null; take: (line: number, find?: string, from?: DrawnLine) => void }
 const takers: LineTaker[] = []
-let wanted: { path: string; line: number; find?: string; until: number } | null = null
+let wanted: { path: string; line: number; find?: string; from?: DrawnLine; until: number } | null = null
 
 function deliver() {
   if (!wanted) return
@@ -98,16 +101,16 @@ function deliver() {
   const shown = takers.filter((t) => t.path === wanted!.path && !!t.dom()?.isConnected && t.dom()!.getClientRects().length > 0)
   const t = shown.find((x) => x.dom()!.closest("#main-scroll")) ?? shown[shown.length - 1]
   if (!t) return
-  const { line, find } = wanted
+  const { line, find, from } = wanted
   wanted = null
-  t.take(line, find)
+  t.take(line, find, from)
 }
 
-/** Open a file in editing, the cursor at a 0-based line counting frontmatter (as the server numbers lines), scrolled
- *  to; `find`: the match there, selected. The file's view may still be on its way. */
-export function editAt(path: string, line: number, opts: { newTab?: boolean; pane?: string; find?: string } = {}) {
+/** Open a file in editing (its view may be on its way), the cursor at a 0-based line counting frontmatter, scrolled to;
+ *  `find`: the match there, selected; `from`: a line (numbered the same) on screen now, kept where it is. */
+export function editAt(path: string, line: number, opts: { newTab?: boolean; pane?: string; find?: string; from?: DrawnLine } = {}) {
   openFile(path, { newTab: opts.newTab, pane: opts.pane })
-  wanted = { path, line, find: opts.find, until: Date.now() + 4000 }
+  wanted = { path, line, find: opts.find, from: opts.from, until: Date.now() + 4000 }
   let n = 0
   const t = setInterval(() => { deliver(); if (!wanted || ++n > 40) clearInterval(t) }, 100)
   deliver()

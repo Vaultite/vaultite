@@ -16,6 +16,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - The web demo no longer says it couldn't load when a blocker stops the site's analytics script.
 - The palette, the quick switcher and the pickers find words in any order: "settings graph" finds Open graph view
   settings, with the words in the order typed ranking first. Tabs and plugins search the same way.
+- A block's **Edit source** shows its Markdown where the block was on screen, from reading a dashboard or a note and
+  from the editor's </>, on a desktop and a phone; Done draws it back in the same place. A search result opened at a
+  line puts it a third of the way down.
 - The design page shows the primitives and Markdown pages are made of; each block is listed by its plugin (`vau
   blocks`), so a new one is never missing from it.
 - **Pinch to resize text** is off by default: a pinch, or ⌘ and scroll, over a note or terminal changes its text size

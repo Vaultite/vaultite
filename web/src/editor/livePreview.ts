@@ -10,6 +10,7 @@ import { innerOf, setProp } from "@/core/frontmatter"
 import { CALLOUT, footnoteText, WIKI_LINK } from "@/core/markdown"
 import { haptic } from "@/core/haptics"
 import { isMac } from "@/core/platform"
+import { keepOnScreen } from "@/core/anchor"
 import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, scan, TAG } from "../../../core/sections.ts"
 import { parseOptions } from "../../../core/blocks.ts"
@@ -54,8 +55,8 @@ export type PreviewConfig = {
   version: number
   /** The file's path: drawn blocks are remembered by it (core/heights.ts). */
   place?: string
-  /** Blocks side by side, as a dashboard is read: each run of block fences with only blank lines between is drawn as
-   *  one element (`edit` moves, adds and removes them), and an empty one ends a text that doesn't end with blocks. */
+  /** Blocks side by side: each run of block fences with only blank lines between is one element (`edit` changes them;
+   *  each card a `[data-card]`, in order), and an empty one ends a text that doesn't end with blocks. */
   renderGrid?: (cards: GridCard[], el: HTMLElement, edit: GridEdit) => { update: (cards: GridCard[]) => void; destroy: () => void }
 }
 
@@ -670,8 +671,11 @@ function editOf(view: EditorView, find: () => Cand | null, bar: HTMLElement, own
   const source = own ?? (() => {
     const x = find()
     if (!x) return
-    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.line(x.a).to), scrollIntoView: true, userEvent: "select" })
+    // (its Markdown where the block was: what's above it may be drawn anew, so it's held there while that settles)
+    const was = drawnTop(view, x)
+    view.dispatch({ selection: EditorSelection.cursor(view.state.doc.line(x.a).to), scrollIntoView: was === null, userEvent: "select" })
     view.focus()
+    if (was !== null) keepOnScreen(view, () => lineTop(view, x.from), was)
   })
   return {
     bar,
@@ -698,9 +702,25 @@ function doneEditing(view: EditorView) {
   if (!x) return
   const doc = view.state.doc
   const at = x.b < doc.lines ? doc.line(x.b + 1).from : doc.line(x.b).to
+  // (the block drawn where its Markdown started, as it was shown in its place)
+  const was = lineTop(view, x.from)
   if (x.b >= doc.lines) view.dispatch({ changes: { from: at, insert: "\n" }, selection: EditorSelection.cursor(at + 1), userEvent: "input" })
-  else view.dispatch({ selection: EditorSelection.cursor(at), scrollIntoView: true, userEvent: "select" })
+  else view.dispatch({ selection: EditorSelection.cursor(at), userEvent: "select" })
   view.focus()
+  keepOnScreen(view, () => drawnTop(view, x), was)
+}
+
+/** The top on screen of the line at `pos` (of the block drawn there: its widget). */
+const lineTop = (view: EditorView, pos: number) => view.documentTop + view.lineBlockAt(Math.min(pos, view.state.doc.length)).top
+/** The top on screen of block x drawn: its card in a run drawn side by side (null until that's drawn), else its own. */
+function drawnTop(view: EditorView, x: Cand): number | null {
+  for (const el of view.contentDOM.querySelectorAll<HTMLElement>(".cm-grid")) {
+    const ms = paintedGrid.get(el)?.members ?? [], k = ms.findIndex((m) => m.a === x.a)
+    if (k < 0) continue
+    const cards = el.querySelectorAll<HTMLElement>("[data-card]")
+    return cards.length === ms.length ? cards[k].getBoundingClientRect().top : null
+  }
+  return lineTop(view, x.from)
 }
 
 /** Under a ```block-<name> whose Markdown shows: what's wrong with its options, and Done (back to the block). */

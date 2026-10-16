@@ -45,7 +45,7 @@ import { barButton, ViewBar } from "@/components/ViewBar"
 import { usePortalHost } from "@/components/kit"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { useHeldFocus } from "@/core/focus"
-import { useEditAt } from "@/core/anchors"
+import { useEditAt, type DrawnLine } from "@/core/anchors"
 import { useAutosave, type SaveStatus } from "@/core/autosave"
 import { trace } from "@/core/trace"
 import { addRestore, afterPlaced, cancelRestores, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
@@ -502,13 +502,26 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // (the cursor put back where it was left, as the file opens: a line asked for wins over it, before or after)
   const putBack = useRef<(() => void) | null>(null)
   const tookLine = useRef(false)
-  const toLine = useCallback((line: number, find?: string) => {
+  const toLine = useCallback((line: number, find?: string, from?: DrawnLine) => {
     if (ro || hidden) return
     tookLine.current = true
     putBack.current?.(); putBack.current = null
     cancelRestores()
-    if (shownNow.current === "read") { revealing.current = true; pick(edit) }
-    focusText([Math.max(0, line - fmLines(cur.current)), 0, find], true)
+    // (from reading, the editor is unseen until the line is in place, so it isn't seen getting there; 600 ms at most;
+    // not `visibility`, which would keep the cursor out of the text, its block's Markdown with it)
+    let there: (() => void) | undefined
+    const art = article.current
+    if (shownNow.current === "read") {
+      revealing.current = true
+      pick(edit)
+      if (art) {
+        art.style.opacity = "0"
+        there = () => { clearTimeout(late); art.style.opacity = "" }
+        const late = setTimeout(there, 600)
+      }
+    }
+    const fm = fmLines(cur.current)
+    focusText([Math.max(0, line - fm), 0, find], { hold: from && { line: Math.max(0, from.line - fm), y: from.y }, there })
   }, [ro, hidden, pick, edit, focusText])
   const articleEl = useCallback(() => article.current, [])
   useEditAt(path, articleEl, toLine)

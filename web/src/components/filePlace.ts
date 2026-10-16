@@ -2,6 +2,7 @@
 // files drawn without lines), and the cursor put into the text where they read.
 import { useCallback } from "react"
 import type { EditorApi } from "@/editor/Editor"
+import { holdPlace, keepOnScreen } from "@/core/anchor"
 import { scrollingBox } from "@/lib/utils"
 import type { Mode } from "@/components/fileState"
 
@@ -34,11 +35,16 @@ function lineInSight(v: EditorApi["view"], box: HTMLElement | null) {
   return b.from
 }
 
+/** Where `reveal` puts a line: `hold`'s line (body lines) kept at its y on screen, else the line a third of the way
+ *  down; `there` once it's in place. */
+export type Reveal = { hold?: { line: number; y: number }; there?: () => void }
+
 /** Once the shown view's editor is writable, put the cursor at `at` (null: first line in sight) without scrolling, or
  *  scroll to it with `reveal`. Gives up after a second or when the reader acts first. Returns a stop. */
 export function useTextFocus(editor: { current: { api: EditorApi; source: boolean } | null }, article: { current: HTMLElement | null },
   shown: { current: Mode }, cur: { current: { fm: string; body: string } }) {
-  return useCallback((at: [line: number, col: number, find?: string] | null, reveal = false) => {
+  return useCallback((at: [line: number, col: number, find?: string] | null, reveal: boolean | Reveal = false) => {
+    const { hold, there } = typeof reveal === "object" ? reveal : {}
     let frame = 0, stopped = false
     // (a line asked for waits longer: the editor's chunk may still be on its way)
     const until = performance.now() + (reveal ? 4000 : 1000)
@@ -75,8 +81,12 @@ export function useTextFocus(editor: { current: { api: EditorApi; source: boolea
           // (what was found on the line selected, as a search's match is)
           const i = at[2] ? line.text.toLowerCase().indexOf(at[2].toLowerCase()) : -1
           const selection = i >= 0 ? { anchor: line.from + i, head: line.from + i + at[2]!.length } : { anchor: pos }
-          v.dispatch({ selection, scrollIntoView: true })
+          v.dispatch({ selection })
           v.contentDOM.focus({ preventScroll: true })
+          // (held while it settles: blocks above it drawn late, a block's Markdown shown where it was drawn)
+          const n = hold ? hold.line + above + 1 : 0, held = n >= 1 && n <= doc.lines ? doc.line(n).from : null
+          const r = box?.getBoundingClientRect() ?? { top: 0, height: innerHeight }
+          keepOnScreen(v, () => v.documentTop + v.lineBlockAt(held ?? line.from).top, held !== null ? hold!.y : r.top + r.height / 3, there)
           return
         }
         if (!seen(pos)) pos = null
@@ -154,7 +164,6 @@ export function keepPlace(s: Spot, ed: EditorApi | null, above: number, article:
   // A drawn page with lines (a dashboard's cards), when there's no editor to find the line in.
   const parts = !v && s.line !== undefined && s.line >= 0 && article ? [...article.querySelectorAll<HTMLElement>("[data-line]")] : []
   const at = () => (box ? box.scrollTop : scrollY)
-  const to = (y: number) => { if (box) box.scrollTop = y; else scrollTo(0, y) }
   const line = v && s.line !== undefined && s.line >= 0 ? Math.min(Math.max(s.line + above + 1, 1), v.state.doc.lines) : 0
   /** How far to scroll from where it is now. */
   const delta = (): number => {
@@ -176,32 +185,10 @@ export function keepPlace(s: Spot, ed: EditorApi | null, above: number, article:
     const b = v.lineBlockAt(v.state.doc.line(line).from)
     return v.documentTop + b.top + (s.into ?? 0) * b.height - (box ? box.getBoundingClientRect().top : 0)
   }
-  // (until it's been still for half a second: blocks drawn late resize what's above; 3 s at most)
-  let stopped = false, frame = 0, still = 0
-  const until = performance.now() + 3000
-  const events = ["wheel", "touchstart", "keydown", "pointerdown"]
-  const stop = () => {
-    if (stopped) return
-    stopped = true
-    cancelAnimationFrame(frame)
-    for (const t of events) removeEventListener(t, stop, true)
-    done?.()
-  }
-  for (const t of events) addEventListener(t, stop, { capture: true, passive: true })
-  const apply = (d: number) => {
-    if (stopped) return
-    // (`there` out of the editor's measure cycle, which this is: it may put the cursor in the text)
-    if (Math.abs(d) >= 1) { to(at() + d); still = 0 } else if (++still === 1 && there) setTimeout(there, 0)
-    if (still > 30) return stop()
-    frame = requestAnimationFrame(step)
-  }
-  const step = () => {
-    if (stopped) return
-    if (performance.now() > until || (v && !v.dom.isConnected)) return stop()
-    if (v) v.requestMeasure({ read: delta, write: apply })
-    else apply(delta())
-  }
   if (line) ed!.reveal(line - 1)
-  step()
-  return stop
+  // (until it's been still for half a second: blocks drawn late resize what's above)
+  return holdPlace(box, delta, {
+    measure: v ? (read, write) => v.requestMeasure({ read, write }) : undefined,
+    gone: () => !!v && !v.dom.isConnected, done, there,
+  })
 }

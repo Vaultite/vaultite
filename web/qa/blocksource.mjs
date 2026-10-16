@@ -2,6 +2,8 @@
 // linking two notes of its own, read in reading view. Right-clicking the block opens its menu: what it is, the files it
 // shows (a click opens one), Options (its form) and "Edit source" (into editing, the cursor on its fence's first
 // option). The API answers the same for an agent, with the fence's line. On a phone, a held finger opens the menu.
+// "Edit source" keeps the block's place: on a dashboard with many blocks above it (drawn anew in editing, at sizes
+// not known yet), its Markdown shows where it was drawn, and Done draws it back there; on a desktop and a phone.
 // WRITES to the vault: throwaway server only.
 //   node web/qa/blocksource.mjs <base url> [out dir]
 import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
@@ -88,4 +90,42 @@ const pm = pp.locator("[role=menu]")
 check("phone: a held finger opens the menu", await pm.isVisible() && (await pm.innerText()).includes("First match"))
 check("…and lifting it opens nothing", !decodeURIComponent(pp.url()).includes("First match"))
 await pp.screenshot({ path: `${OUT}blocksource-phone.png` })
+await phone.close()
+
+const BOARD = `${DIR}/Board.md`
+const calendar = (i) => `\`\`\`base\nfilters: 'type == "log"'\nviews:\n  - type: calendar\n    name: Qa logs ${i}\n\`\`\``
+const above = Array.from({ length: 6 }, (_, i) => calendar(i)).join("\n\n"), below = Array.from({ length: 3 }, (_, i) => calendar(i + 6)).join("\n\n")
+const kanban = "```base\nfilters: 'type == \"project\"'\nviews:\n  - type: kanban\n    name: Qa target\n    groupBy:\n      property: status\nwide: true\n```"
+await post("file", { path: BOARD, text: `---\ntype: dashboard\n---\n\n${above}\n\n${kanban}\n\n${below}\n` })
+await wait(800)
+for (const device of ["desktop", "phone"]) {
+  const c = await browser.newContext(device === "phone" ? { viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true } : { viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 })
+  const p = watch(await c.newPage())
+  await p.goto(`${B}#file/${enc(BOARD)}`); await wait(2500)
+  const title = p.getByText("Qa target", { exact: true }).first()
+  // (the block a third of the way down, as it's read)
+  await title.scrollIntoViewIfNeeded()
+  await title.evaluate((el) => { const r = el.getBoundingClientRect(); let s = el.parentElement; while (s && !(s.scrollHeight > s.clientHeight && /auto|scroll/.test(getComputedStyle(s).overflowY))) s = s.parentElement; (s ?? document.scrollingElement).scrollBy(0, r.top - innerHeight / 3) })
+  await wait(1200)
+  const was = Math.round((await title.boundingBox()).y)
+  const at = await title.boundingBox()
+  if (device === "phone") {
+    const cdp = await c.newCDPSession(p), pt = { x: at.x + 10, y: at.y + at.height / 2 }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt] }); await wait(800)
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] }); await wait(600)
+  } else { await title.click({ button: "right" }); await wait(800) }
+  await p.locator("[role=menu]").getByRole("menuitem", { name: "Edit source" }).click()
+  await wait(3000)
+  // Its fence's line: the one before its first option.
+  const fence = await p.evaluate(() => {
+    const l = [...document.querySelectorAll(".cm-line")].find((x) => x.getClientRects().length && x.textContent === `filters: 'type == "project"'`)
+    return l ? Math.round(l.previousElementSibling.getBoundingClientRect().top) : null
+  })
+  check(`${device}: Edit source shows its Markdown where the block was (${was} -> ${fence})`, fence !== null && Math.abs(fence - was) < 60)
+  await p.screenshot({ path: `${OUT}blocksource-place-${device}.png` })
+  await p.locator(".cm-block-done").first().dispatchEvent("mousedown"); await wait(2500)
+  const back = await title.boundingBox()
+  check(`${device}: …and Done draws it back there (${fence} -> ${back && Math.round(back.y)})`, !!back && Math.abs(back.y - fence) < 80)
+  await c.close()
+}
 await done()

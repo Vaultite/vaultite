@@ -99,7 +99,7 @@ export function BlockView(props: { name: string; text: string; ctx: FileCtx; dis
   const write = edit?.setText ?? (ctx.setProperty && props.nth !== undefined && !ctx.host
     ? (t: string) => void setBlockText(ctx.path, name, props.nth!, t).catch((e) => notifyError(e, "Couldn't change its options")) : null)
   const options = !!decl?.options && Object.keys(decl.options).length > 0 && !!write
-  const menu = (at: { x: number; y: number }) => openBlockMenu(at, { name, text, path: ctx.path, nth: props.nth, edit, options: options ? () => setForm(true) : undefined })
+  const menu = (at: { x: number; y: number }, el?: HTMLElement) => openBlockMenu(at, { name, text, path: ctx.path, nth: props.nth, edit, el, options: options ? () => setForm(true) : undefined })
   // Right-click (or a held finger): where its data comes from, and editing it (components/BlockSource.tsx).
   return (
     <BlockSource name={name} menu={menu}>
