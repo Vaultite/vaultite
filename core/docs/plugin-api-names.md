@@ -807,7 +807,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `sessionsOf(procs, key, pick)`: Each process, newest first, with the session it writes: `pick`ed among those a newer one didn't take (`free`); a process whose pick was taken is left out.
 - `shellQuote(s)`: `s` as one word of a shell command.
 - `SqliteFile`: A database file opened read only, again when it was replaced; a query answers no rows rather than fail (no file, an older schema, busy).
-- `startAgent(ctx, id, prompt?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
+- `startAgent(ctx, id, prompt?, allow?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
 - `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
 - `TERMINAL_AGENT`: An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal").
 - `terminalOf(plugin, pid, hint?)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.

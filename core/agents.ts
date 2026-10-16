@@ -351,12 +351,14 @@ export type AgentStart = {
   /** The app's light or dark where it opens (null: unknown). The terminal's 16 colours are the colour scheme's, so an
    *  agent that can draw in them follows it. */
   dark?: boolean | null
+  /** Shell commands it may run without asking, by how they start ("vau companion"), for an agent that takes them. */
+  allow?: string[] | null
 }
 
 /** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
  *  when no plugin that's on brings that agent (the terminal goes again). */
-export async function startAgent(ctx: OpCtx, id: string, prompt?: string) {
-  const r = await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, prompt ? { prompt } : undefined) as Record<string, unknown>
+export async function startAgent(ctx: OpCtx, id: string, prompt?: string, allow?: string[]) {
+  const r = await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, prompt || allow ? { prompt, allow } : undefined) as Record<string, unknown>
   if (!r.agent) {
     await ctx.api("DELETE", `terminals/${encodeURIComponent(id)}`).catch(() => {})
     throw new OpError(`no agent '${parseTerminal(id)?.agent ?? id}' here: its plugin is off, or there's none by that name`, 409)

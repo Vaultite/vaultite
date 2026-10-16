@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Companion** (a new plugin, off until turned on): an always-on Claude Code or Codex session with its own cursor in the
+  app. Write `@claude` in a note (or ⌘⇧K) to ask it; it answers in a bubble by its cursor, comments in the margin,
+  suggests changes you take with Tab, or types into the note with you. Modes: quiet, notice, pair.
 - Highlights take Obsidian's six colours: `==🟢text==` draws green (🔴 🟠 🟡 🟢 🔵 🟣) everywhere a note is drawn, the
   emoji hidden. Typing `==` suggests the colours, a swatch on the highlight at the cursor changes its colour, and the
   editor's Format ▸ Highlight submenu colours what's selected.
