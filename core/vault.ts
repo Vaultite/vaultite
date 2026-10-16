@@ -200,7 +200,8 @@ export function fetchFromICloud(p: string, e: unknown) {
   fetching.set(p, now)
   // A file moved or archived meanwhile (an inbox item marked done) has nothing left to fetch: not an error.
   execFile("/usr/bin/brctl", ["download", p], { timeout: 60_000 }, (err) => {
-    if (err && fs.existsSync(p)) console.error(`couldn't ask iCloud for ${p}: ${err.message}`)
+    // (a warning: the next read asks again, a minute on)
+    if (err && fs.existsSync(p)) console.warn(`couldn't ask iCloud for ${p}: ${err.message}`)
   })
 }
 
@@ -1185,7 +1186,7 @@ export class Vault {
     try {
       raw = readText(this.abs(e.rel))
     } catch (ex) {
-      throw new ConflictError(`couldn't read ${e.rel} to change it (${(ex as Error).message}); try again`)
+      throw new ConflictError(`couldn't read ${e.rel} to change it (${(ex as Error).message}); try again`, { cause: ex })
     }
     const m = FM.exec(raw)
     const [baseOwned, baseBody] = rendered(k, old!)

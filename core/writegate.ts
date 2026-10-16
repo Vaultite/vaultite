@@ -25,9 +25,14 @@ export class WriteRefused extends Error {
   }
 }
 
-/** Log a failure: a refused write is a warning (the app asks the user; it isn't the server's error), else an error. */
+/** A file iCloud hasn't brought down yet (errno 11, EDEADLK), or a failure it caused: there at a later try. */
+export const notHereYet = (e: unknown): boolean =>
+  !!e && (Math.abs((e as NodeJS.ErrnoException).errno ?? 0) === 11 || notHereYet((e as Error).cause))
+
+/** Log a failure: a refused write is a warning (the app asks the user; it isn't the server's error), and so is a file
+ *  iCloud hasn't brought down yet (the job runs again), else an error. */
 export function logFailure(where: string, e: unknown) {
-  if (e instanceof WriteRefused) console.warn(`${where} ${e.message}`)
+  if (e instanceof WriteRefused || notHereYet(e)) console.warn(`${where} ${(e as Error).message}`)
   else console.error(where, e)
 }
 

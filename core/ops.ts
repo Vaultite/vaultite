@@ -421,6 +421,8 @@ export function pathAsSaid(tree: { files?: TreeFile[]; others?: TreeFile[]; fold
     return hits.length === 1 ? hits[0] : dash.length === 1 ? dash[0] : null
   }
   const tail = low.split("/").pop()!.replace(/\.md$/, "")
+  // (a path through a hidden folder, .vaultite/..., is never in the tree: it means that file, not another of its name)
+  const hidden = p.split("/").some((s) => s.startsWith("."))
   return all.find((x) => x === p) ?? by((x) => x === `${p}.md`) ?? by((x) => x.toLowerCase() === low || x.toLowerCase() === `${low}.md`) ??
-    by((x) => stem(x) === low) ?? (low.includes("/") ? by((x) => stem(x) === tail) : null) ?? p
+    by((x) => stem(x) === low) ?? (low.includes("/") && !hidden ? by((x) => stem(x) === tail) : null) ?? p
 }

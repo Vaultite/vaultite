@@ -11,6 +11,7 @@ import { disclosed, disclosuresOf } from "../pluginmeta.ts"
 import { autoUpdates, type Update } from "../updates.ts"
 import { compareVersions, tagVersion } from "../version.ts"
 import { DIR, digestOf } from "../vaultplugins.ts"
+import { notHereYet } from "../writegate.ts"
 import { type Any, strings } from "./common.ts"
 
 const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" }
@@ -65,6 +66,10 @@ export function installOps(app: App): Op[] {
           row.applied = true
         }
         out.push(row)
+      } catch (e) {
+        // (its files here not brought down by iCloud yet: looked at again next time, the others still checked)
+        if (!notHereYet(e)) throw e
+        out.push({ id, version: l.version, error: "its files here are still coming from iCloud: try again in a moment" })
       } finally {
         f.done()
       }

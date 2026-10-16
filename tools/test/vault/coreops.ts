@@ -88,6 +88,7 @@ export default async ($: VaultTest) => {
     check("pathAsSaid: a web address is its web tab", pathAsSaid(saidTree, " http://localhost:4317/ ") === "view:web/http://localhost:4317/" && pathAsSaid(saidTree, "HTTPS://example.com") === "view:web/HTTPS://example.com")
     check("pathAsSaid: a view is kept as is, its arg's last slash too", pathAsSaid(saidTree, " view:web/https://example.com/ ") === "view:web/https://example.com/" && pathAsSaid(saidTree, "view:inbox") === "view:inbox")
     check("pathAsSaid: a file's name still finds it", pathAsSaid(saidTree, "work") === "Work.md" && pathAsSaid(saidTree, "Old/Work") === "Work.md")
+    check("pathAsSaid: a hidden folder's file is kept, not another of its name", pathAsSaid(saidTree, ".vaultite/pages/Work.md") === ".vaultite/pages/Work.md")
 
     // MCP's tools that are ops now: an answer as text for an MCP client (they were checked against the old tools, which
     // are gone, before those went).
