@@ -86,6 +86,7 @@ export default async ($: VaultTest) => {
     const saidTree = { files: [{ path: "Work.md", type: "dashboard" }, { path: "Home/Logs/Work/Run.md" }], others: [], folders: ["Home", "Home/Logs", "Home/Logs/Work"] }
     check("pathAsSaid: a folder is kept, in its own case", pathAsSaid(saidTree, "Home/Logs/Work") === "Home/Logs/Work" && pathAsSaid(saidTree, "home/logs/work/") === "Home/Logs/Work")
     check("pathAsSaid: a web address is its web tab", pathAsSaid(saidTree, " http://localhost:4317/ ") === "view:web/http://localhost:4317/" && pathAsSaid(saidTree, "HTTPS://example.com") === "view:web/HTTPS://example.com")
+    check("pathAsSaid: a view is kept as is, its arg's last slash too", pathAsSaid(saidTree, " view:web/https://example.com/ ") === "view:web/https://example.com/" && pathAsSaid(saidTree, "view:inbox") === "view:inbox")
     check("pathAsSaid: a file's name still finds it", pathAsSaid(saidTree, "work") === "Work.md" && pathAsSaid(saidTree, "Old/Work") === "Work.md")
 
     // MCP's tools that are ops now: an answer as text for an MCP client (they were checked against the old tools, which

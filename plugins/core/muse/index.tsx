@@ -38,7 +38,7 @@ export default definePlugin({
     "muse-setup": (ctx) => <MuseSetup {...ctx} />,
   },
   views: {
-    "muse-session": { icon: MuseIcon, title: () => "Muse run", render: ({ arg }) => <AgentSession key={arg} src={SRC} id={arg} /> },
+    "muse-session": { icon: MuseIcon, title: () => "Muse run", pinAs: (arg) => arg || null, render: ({ arg }) => <AgentSession key={arg} src={SRC} id={arg} /> },
   },
   mockLive: () => ({ muse: overview(), "muse/runs": runs(), "muse/memory": memory(), "muse/dreams": dreams(), "muse/feed": feed() }),
 })

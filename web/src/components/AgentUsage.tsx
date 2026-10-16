@@ -525,7 +525,7 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
     } : b])),
     // A session read back (view:<view>/<id>, <id>@<machine> for another machine's): opened by clicking one that isn't
     // in one of the app's terminals.
-    views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} /> } },
+    views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), pinAs: (id) => id || null, render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} /> } },
     // (Terminal runs it: the service "agent:<agent>" in its plugin.ts says how)
     ...(process && opens ? {
       agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(accounts ? { accounts } : {}) } },

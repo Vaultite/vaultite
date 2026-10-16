@@ -75,6 +75,18 @@ export default async ($: VaultTest) => {
   await api("POST", "pins", { path: "Pin trips", pinned: false })
   await api("POST", "pins", { path: "Pin trips/Voice note.m4a", pinned: false })
   fs.rmSync(path.join(VAULT, "Pin trips"), { recursive: true })
+  // Views: a plugin's page (no arg), a web page by its address (vau pin <address>, named by --label); not a bare "view:".
+  const [inboxPin] = await api("POST", "pins", { path: "view:inbox", pinned: true })
+  const [noView] = await api("POST", "pins", { path: "view:", pinned: true })
+  const [webOp] = await api("POST", "ops/page.pin", { path: "https://example.com/docs/", label: "Example docs", vault: true })
+  const [fileLabel] = await api("POST", "ops/page.pin", { path: "Notes/A.md", label: "A", vault: true })
+  const web = "view:web/https://example.com/docs/"
+  check("a plugin's page and a web page (its address as is, named) are pinned; a bare view: and a file's label aren't",
+    inboxPin === 200 && noView === 404 && webOp === 200 && fileLabel === 400 && JSON.stringify(JSON.parse(pins()).slice(-2)) === list("view:inbox", web) &&
+    vault.config("pages").labels?.[web] === "Example docs", [inboxPin, noView, webOp, fileLabel, pins(), vault.config("pages").labels])
+  await api("POST", "ops/page.unpin", { path: "https://example.com/docs/", vault: true })
+  await api("POST", "pins", { path: "view:inbox", pinned: false })
+  check("unpinned, a web page's name goes with it", !JSON.parse(pins()).includes(web) && !(web in (vault.config("pages").labels ?? {})), [pins(), vault.config("pages").labels])
   await api("POST", "pins", { path: "Notes/A.md#Plan", pinned: false })
   await api("POST", "pins", { path: "search:tag:#book", pinned: false })
   await api("POST", "pins", { path: "files", pinned: false })

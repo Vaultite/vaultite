@@ -10,6 +10,7 @@ export default definePlugin({
     history: {
       icon: History,
       title: (path) => `${path.split("/").pop()!.replace(/\.md$/i, "")} history`,
+      pinAs: (path) => path || null,
       render: ({ arg }) => <HistoryView key={arg} path={arg} />,
     },
   },

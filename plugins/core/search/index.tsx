@@ -8,6 +8,8 @@ export default definePlugin({
   views: {
     search: {
       icon: Search, argState: true,
+      // (a search is pinned as itself, "search:<query>": Pinned)
+      pinAs: () => null,
       title: (q) => (q ? `Search: ${q}` : "Search"),
       render: ({ store, arg, setArg }) => <SearchPage store={store} query={arg} setQuery={setArg} />,
     },

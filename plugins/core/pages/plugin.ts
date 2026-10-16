@@ -48,13 +48,18 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
 
 plugin.route("POST", "pins", (req) => pinOne(plugin.vault, req.body ?? {}))
 
-/** Name a pinned view (POST /api/pins/label): what it shows as, its tab's title when pinned (a conversation's). */
+/** Name a pinned view: what it shows as, its tab's title when pinned (a conversation's, a web page's). */
+export function setLabel(vault: Vault, p: string, label: string) {
+  const conf = vault.config("pages"), now = labels(vault)
+  const name = label.trim().slice(0, 200)
+  if (now[p] !== name) vault.setConfig("pages", { ...conf, labels: { ...now, [p]: name } })
+}
+
+/** POST /api/pins/label: setLabel. */
 plugin.route("POST", "pins/label", (req) => {
   const { path: p, label } = (req.body ?? {}) as { path?: unknown; label?: unknown }
   if (typeof p !== "string" || !p.startsWith("view:") || typeof label !== "string") throw new HTTPError(400, "path (a view: view:<name>/<arg>) and label are required")
-  const conf = plugin.vault.config("pages"), now = labels(plugin.vault)
-  const name = label.trim().slice(0, 200)
-  if (now[p] !== name) plugin.vault.setConfig("pages", { ...conf, labels: { ...now, [p]: name } })
+  setLabel(plugin.vault, p, label)
   return { ok: true }
 })
 
@@ -115,9 +120,11 @@ async function target(ctx: OpCtx, { workspace, vault }: { workspace?: number; va
 const numbered = (pins: string[], indent = "") => (pins.length ? pins.map((p, i) => `${indent}${i + 1}. ${p}`).join("\n") : `${indent}(none)`)
 
 /** One change, in the list the user sees. */
-async function change(ctx: OpCtx, given: { path: string; before?: string; workspace?: number; vault?: boolean }, on: boolean) {
+async function change(ctx: OpCtx, given: { path: string; before?: string; label?: string; workspace?: number; vault?: boolean }, on: boolean) {
   const { t, label } = await target(ctx, given)
+  if (on && given.label?.trim() && !given.path.startsWith("view:")) throw new OpError("Only a view is named (label): a file or folder shows its own name")
   const r = t ? t.pin(given.path, on, given.before) : pinOne(plugin.vault, { path: given.path, pinned: on, ...(given.before ? { before: given.before } : {}) })
+  if (on && given.label?.trim()) setLabel(plugin.vault, given.path, given.label)
   return { path: given.path, pinned: r.pinned, label }
 }
 
@@ -145,13 +152,16 @@ plugin.op({
 plugin.op({
   id: "page.pin",
   cli: "pin",
-  summary: "Pin a file to the sidebar (at the end, or before another): the current workspace's list with Workspaces on.",
+  summary: "Pin a file, folder, web page or view to the sidebar (at the end, or before another): the current workspace's list with Workspaces on.",
   help: `Adds a file to the sidebar's pages, or moves it when it's already there and before is given. Any file can be a
 page: a dashboard, a note, an artifact (.html), a table (.csv), an image or a recording; a folder too, which opens
 in place in the list. A heading in a note ("Notes/Idea.md#Plan", a block
-"Notes/Idea.md#^id") and a search ("search:tag:#book") can be pinned too, like bookmarks, and a coding agent's
-conversation ("view:terminal/resume-claude-<session id>", "@<machine>" after it for another machine's): it opens the
-terminal running it, else resumes it there.
+"Notes/Idea.md#^id") and a search ("search:tag:#book") can be pinned too, like bookmarks, and so can a tab that isn't
+a file, as its target ("view:<name>" or "view:<name>/<arg>", as vau open takes it): a web page (its address, or
+"view:web/<address>": it opens in the Web viewer, named by label until it's opened, then by its title), a plugin's
+page ("view:inbox", "view:graph"), a coding agent's conversation ("view:terminal/resume-claude-<session id>",
+"@<machine>" after it for another machine's: it opens the terminal running it, else resumes it there). A view whose
+plugin is off doesn't show until it's on again.
 
 ${FLAGS}
 
@@ -160,13 +170,16 @@ ${FLAGS}
   vau pin "Notes/Idea.md#Plan"
   vau pin Projects/Lighthouse
   vau pin "search:tag:#book"
+  vau pin https://example.com/docs --label "Example docs"
+  vau pin view:inbox
   vau pin "view:terminal/resume-claude-0b5c9e2a-4f1d-4c4e-9a7e-2d6f1b3c8e90"
   vau pin Notes/Draft.md --workspace 2
   vau pin Dashboards/Today.md --vault`,
   kind: "write",
   params: {
-    path: { type: "string", format: "path", required: true, description: "the file or folder (a path, or a name as the user says it)" },
+    path: { type: "string", format: "path", required: true, description: "the file or folder (a path, or a name as the user says it), a web address, or a view (view:<name>/<arg>)" },
     before: { type: "string", format: "path", description: "the pinned page it goes before (else at the end)" },
+    label: { type: "string", description: "a view's name in the list (a web page's title); else its tab's" },
     workspace: WORKSPACE, vault: VAULT,
   },
   args: ["path"],
@@ -181,7 +194,7 @@ plugin.op({
   help: `Removes a page from the sidebar's pages. The file isn't touched.\n\n${FLAGS}\n\n  vau unpin Dashboards/Work.md\n  vau unpin Dashboards/Work.md --vault`,
   kind: "write",
   params: {
-    path: { type: "string", format: "path", required: true, description: "the file (a path, or a name as the user says it)" },
+    path: { type: "string", format: "path", required: true, description: "the file (a path, or a name as the user says it), a web address or a view" },
     workspace: WORKSPACE, vault: VAULT,
   },
   args: ["path"],

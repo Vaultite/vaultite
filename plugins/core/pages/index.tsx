@@ -1,11 +1,12 @@
+import { useEffect } from "react"
 import { Pin, PinOff } from "lucide-react"
 import {
-  currentEditor, currentFile, definePlugin, pinOfView, getTabLayout, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
-  usePane, useWorkspaceVersion, type Store, type TabLayout,
+  currentEditor, currentFile, definePlugin, getTabLayout, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
+  usePane, useViewsVersion, useWorkspaceVersion, viewPinLabel, type Store, type TabLayout,
 } from "@vaultite"
 import { PinCurrent, pinChecklist, PinnedPages } from "./Pinned"
 import { PinnedSettings } from "./SettingsPanel"
-import { isPinned, pinItems, pinnable, pinName, pinNoted, shownPinned } from "./types"
+import { currentPins, isPinned, pinItems, pinnable, pinName, pinNoted, relabel, shownPinned, viewPin } from "./types"
 
 // Pinned: all of pinning in the app (panel, Pin/Unpin, Open commands, a device's first tab, a phone's tiles). Off,
 // nothing is pinned or shown; the lists stay in the vault for when it's on again.
@@ -67,6 +68,20 @@ function PageCommands({ store }: { store: Store }) {
   return null
 }
 
+/** Pinned views renamed as their views learn their names (a web page's title, once it's loaded and as it changes). */
+function PinLabels({ store }: { store: Store }) {
+  useViewsVersion()
+  useWorkspaceVersion()
+  const pins = currentPins(store)
+  useEffect(() => {
+    for (const k of pins) {
+      const label = k.startsWith("view:") ? viewPinLabel(k) : null
+      if (label && label !== store.pinLabels?.[k]) relabel(k, label)
+    }
+  })
+  return null
+}
+
 /** A phone's new tab: pinned pages first, as tiles, in page units (drawn a size up). Spread evenly, first icon under
  *  the heading's text: each icon gets (W - 2·inset - n·icon) / (2n - 2) a side, inset 1.5 (SidebarRow's). */
 function Tiles({ store }: { store: Store }) {
@@ -94,7 +109,8 @@ export default definePlugin({
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,
     actions: ({ file }) => <PinCurrent file={file} />, menu: () => [{ label: "Pinned pages", icon: Pin, run: () => {}, items: pinChecklist(currentFile()) }] } },
   views: {
-    pages: { icon: Pin, title: () => "Pinned pages", render: ({ store }) => <PinnedView store={store} /> },
+    // (the list itself: pinned in itself it would only open the list)
+    pages: { icon: Pin, title: () => "Pinned pages", pinAs: () => null, render: ({ store }) => <PinnedView store={store} /> },
   },
   commands: [
     { id: "pages:open-tab", name: "Open pinned pages in a tab", run: () => openView("pages", { newTab: !isViewOpen("pages") }) },
@@ -109,9 +125,10 @@ export default definePlugin({
   // phone's …), in the current workspace's list with Workspaces on.
   fileMenu: (path) => (pinnable(path) ? pinItems(path) : []),
   folderMenu: (path) => (pinnable(path) ? pinItems(path) : []),
-  // A view that can be pinned (a coding agent's terminal: its conversation): Pin or Unpin in its tab's menu and its row's.
+  // A view that can be pinned (a web page, Inbox, a coding agent's terminal: its conversation, a search): Pin or Unpin
+  // in its tab's menu and its row's.
   viewMenu: (target) => {
-    const p = pinOfView(target)
+    const p = viewPin(target)
     if (!p) return []
     return [isPinned(p.key) ? { label: "Unpin", icon: PinOff, run: () => void pinNoted(p.key, false) } : { label: "Pin", icon: Pin, run: () => void pinNoted(p.key, true, p.label) }]
   },
@@ -126,5 +143,5 @@ export default definePlugin({
   newTab: { tiles: { title: "Pinned pages", sort: 0, only: "phone", heading: "Pinned", render: ({ store }) => <Tiles store={store} /> } },
   settingsPanel: ({ store }) => <PinnedSettings store={store} />,
   settingsSearch: [{ label: "Pinned pages", description: "which pages the sidebar pins, in order" }],
-  background: ({ store }) => <PageCommands store={store} />,
+  background: ({ store }) => <><PageCommands store={store} /><PinLabels store={store} /></>,
 })

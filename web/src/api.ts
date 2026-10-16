@@ -67,7 +67,7 @@ export { askMove, askMoveMany, FileTree, iconAt, moveManyInto, pinsOpen as pinne
 // Recent files: opened lately in the workspace, and changed lately in the vault (a blank tab's sections, the Recent
 // files panel).
 export { changedFiles, RecentList, useFileIcon, useOpenedFiles, type RecentKind } from "@/components/RecentFiles"
-export { agentOfTerminal, agentsOn, askAbout, iconNamed, pinOfView, resolveView, useAgents, useEnabled, viewMenuItems, viewShown, type Agent } from "@/core/plugins"
+export { agentOfTerminal, agentsOn, askAbout, iconNamed, pinOfView, resolveView, useAgents, useEnabled, viewMenuItems, viewPinLabel, viewShown, viewSurfaces, type Agent } from "@/core/plugins"
 export { parseTerminal, type TerminalAgent } from "../../core/terminalids.ts"
 // Plugins' colours (--<id>), which an artifact gets too (as --vau-<id>).
 export { editorMenuItems, tintNames, webPageActions } from "@/core/plugins"

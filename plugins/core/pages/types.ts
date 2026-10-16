@@ -1,7 +1,10 @@
 // Pinned's store keys and its changes, one per pin, unpin or move, applied by the server to the list as it is then and
 // shown at once. With Workspaces, the current workspace's list (the vault's until its first change).
 import { Pin, PinOff, type LucideIcon } from "lucide-react"
-import { currentWorkspace, fileAt, getStore, isDoc, isFolder, isHidden, mutate, notify, offPlugin, pinInWorkspace, pinKind, plural, post, shownName, stem, viewInfo, viewShown, workspacePins, type Store } from "@vaultite"
+import {
+  currentWorkspace, fileAt, getStore, isDoc, isFolder, isHidden, mutate, notify, offPlugin, PIN_SEARCH, pinInWorkspace, pinKind, pinOfView, plural, post, shownName, stem, viewInfo,
+  viewShown, workspacePins, type Store,
+} from "@vaultite"
 
 /** A file of the vault, as the store lists it. */
 export type VaultFile = Store["files"]["files"][number]
@@ -36,8 +39,8 @@ export function shownPinned(store: Store, list = currentPins(store)) {
 /** A pinned file's name: a note's without its extension, any other file's with it. */
 export const pinName = (path: string) => (isDoc(path) ? stem(path) : shownName(path))
 
-/** A pinned entry as it shows: a file (a page), a heading or block in a note, a search (bookmarks), or a view (a
- *  coding agent's conversation: its tab's target). */
+/** A pinned entry as it shows: a file (a page), a heading or block in a note, a search (bookmarks), or a view (its
+ *  tab's target: a web page, a coding agent's conversation, Inbox). */
 export type PinEntry = { key: string; label: string } & (
   { kind: "file"; path: string; file?: VaultFile } | { kind: "heading"; file: VaultFile; heading: string } | { kind: "folder"; path: string; parent: string }
   | { kind: "search"; query: string } | { kind: "view"; target: string })
@@ -82,13 +85,24 @@ export function pinVault(path: string, on = true, before?: string | null) {
 /** Pin (at the end, or before `before`) or unpin in the sidebar's list: the current workspace's with Workspaces on,
  *  else the vault's. `label`: a view's name, kept with it (a conversation's title, which its tab loses once it ends). */
 export function pin(path: string, on = true, before?: string | null, label?: string): Promise<unknown> {
-  if (on && label) {
-    mutate((s) => ({ ...s, pinLabels: { ...s.pinLabels, [path]: label } }))
-    void post("pins/label", { path, label }).catch(() => {})
-  }
+  if (on && label && path.startsWith("view:")) relabel(path, label)
   return currentWorkspace() ? pinInWorkspace(path, on, before, pinnedOf(getStore())) : pinVault(path, on, before)
 }
 export const togglePin = (path: string) => pin(path, !isPinned(path))
+
+/** Name a pinned view (pages.json's `labels`): a conversation's title, a web page's. */
+export function relabel(key: string, label: string) {
+  mutate((s) => ({ ...s, pinLabels: { ...s.pinLabels, [key]: label } }))
+  void post("pins/label", { path: key, label }).catch(() => {})
+}
+
+/** What pinning a view's tab pins (its key and name), or null: a search tab its search ("search:<query>"), any other
+ *  view as it says (pinOfView). */
+export function viewPin(target: string): { key: string; label: string } | null {
+  const search = /^view:search(?:\/(.*))?$/s.exec(target)
+  if (search) { const q = search[1]?.trim(); return q ? { key: PIN_SEARCH + q, label: q } : null }
+  return pinOfView(target)
+}
 
 /** Pin or unpin from a menu or command, where the sidebar may not be in view (folded, a phone): a toast says so, with
  *  Undo (back in its place). Drags and the checkbox menus show it where it happens, so they use pin. */

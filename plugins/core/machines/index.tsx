@@ -136,7 +136,7 @@ export default definePlugin({
     },
   },
   sidebar: { machines: { title: "Machines", heading: false, sort: 32, hidden: true, view: "machines", render: (ctx) => <MachinesPanel {...ctx} /> } },
-  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, render: (ctx) => <MachineFiles {...ctx} /> } },
+  views: { machines: { icon: Server, title: () => "Machines", render: () => <MachinesView /> }, "machine-files": { icon: FolderOpen, title: (id) => `${id.split("|")[0]} files`, argState: true, pinAs: (id) => id || null, render: (ctx) => <MachineFiles {...ctx} /> } },
   commands: [{ id: "machines:open-tab", name: "Open machines in a tab", run: () => openView("machines", { newTab: true }) }],
   mockLive: () => ({ machines: mock }),
   preview: () => <MachinesBlock />,

@@ -16,9 +16,12 @@ through the app or the API.
   `POST /api/workspaces/<n>/pins` with the same body: workspace n's. Or `vau pin <file> [--before <file>]`, `vau unpin
   <file>`, `vau pages` (the list): the list the user sees (the current workspace's), `--workspace <n>` another's,
   `--vault` pages.json's.
-- A coding agent's conversation can be pinned too, as its terminal's resume (`view:terminal/resume-claude-<session id>`,
-  `@<machine>` after it for another machine's): it opens the terminal running it, else resumes the conversation in a new
-  one. Its name is `labels` in pages.json (`{"<entry>": "<name>"}`), its title when pinned, kept since an ended
-  session's tab no longer knows it: `POST /api/pins/label {"path", "label"}`. Pin one from its terminal's tab or row
-  menu (Pin), or drag its row onto the list.
+- A tab that isn't a file can be pinned too, as its target (`view:<name>`, `view:<name>/<arg>`), from its tab's menu
+  (Pin) or by dragging the tab onto the list; the list's menu (More) offers each plugin's main page (`view:inbox`,
+  `view:graph`). A web page is `view:web/<address>` (`vau pin <address>`): it opens in the Web viewer, with its site's
+  icon. A coding agent's conversation is its terminal's resume (`view:terminal/resume-claude-<session id>`,
+  `@<machine>` after it for another machine's): it opens the terminal running it, else resumes the conversation in a
+  new one. A view's name is `labels` in pages.json (`{"<entry>": "<name>"}`), its title when pinned (a page's is
+  updated while it's open), kept since an ended session's tab no longer knows it: `POST /api/pins/label {"path",
+  "label"}`, or `vau pin <entry> --label <name>`. One whose plugin is off doesn't show until it's on again.
 - The phone has the same list in its drawer, and a new tab shows the pinned pages as tiles.

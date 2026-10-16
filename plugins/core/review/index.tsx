@@ -12,7 +12,7 @@ export default definePlugin({
     // Every writer's (view:review), or one's: view:review/<name as Activity says it, encoded>.
     review: { icon: GitCompareArrows, title: (arg) => (arg ? `${argOf(arg)}'s changes` : "AI changes"), render: ({ arg }) => <ReviewView key={arg} arg={arg} /> },
     // One file's: view:review-file/<vault path>.
-    "review-file": { icon: GitCompareArrows, title: (arg) => `${stem(arg)} changes`, render: ({ arg }) => <ReviewFileView key={arg} path={arg} /> },
+    "review-file": { icon: GitCompareArrows, title: (arg) => `${stem(arg)} changes`, pinAs: (arg) => arg || null, render: ({ arg }) => <ReviewFileView key={arg} path={arg} /> },
   },
   fileBar: { review: { sort: 51, render: (file) => (isHidden(file.path) || file.path.startsWith("/") ? null : <ReviewChip file={file} />) } },
   ambient: { review: { title: "AI changes to review", sort: 35, render: () => <ReviewCount /> } },

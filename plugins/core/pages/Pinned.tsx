@@ -5,21 +5,21 @@ import { ChevronRight, Folder, Hash, Heading, PinOff, Plus, Search } from "lucid
 import {
   checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
   pinnedFoldersOpen, showInTree,
-  openItem, openView, PIN_SEARCH, pinOfView, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
-  useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
+  openItem, openView, PIN_SEARCH, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
+  useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
-import { currentPins, isPinned, pin, pinMany, pinManyNoted, pinnable, pinNoted, shownEntries, type PinEntry } from "./types"
+import { currentPins, isPinned, pin, pinMany, pinManyNoted, pinnable, pinNoted, shownEntries, viewPin, type PinEntry } from "./types"
 
 const PINS = "pins"
 /** A file or folder dragged here can be pinned: not one from outside the vault, not a hidden one (or one of the list's
- *  own, a heading or a search, moved within it); or a view that can be pinned (a coding agent's terminal). */
+ *  own, a heading or a search, moved within it); or a view's tab that can be (a web page, a coding agent's terminal). */
 const canPin = (item: DragItem) => (item.from === "pin" ? !!item.path : pinsOf(item).length > 0)
 /** What a drop would pin: the dragged file or folder, the ones among several selected in the tree, or a view's pin (a
- *  terminal's conversation). */
+ *  web page, a terminal's conversation, a search). */
 const pinsOf = (item: DragItem) => (item.from === "pin" ? item.paths ?? [item.path!]
   : item.paths ? item.paths.filter((p) => pinnable(p) && inVault(p))
-  : item.to?.startsWith("view:") ? [pinOfView(item.to)?.key ?? ""].filter(Boolean)
+  : item.to?.startsWith("view:") ? [viewPin(item.to)?.key ?? ""].filter(Boolean)
   : (item.folder || item.to?.startsWith("file:")) && item.path && pinnable(item.path) ? [item.path] : [])
 /** A file or folder of the vault. */
 const inVault = (p: string) => {
@@ -45,8 +45,8 @@ function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
  *  the list, elsewhere in the sidebar (unpinned). */
 type PinDrop = { before: string | null; y: number; known: boolean } | { out: true }
 
-/** The list's menu (Pinned pages ▸): the shown ones ticked, then More ▸ with unpinned pages (dashboards) and the file
- *  on screen; a `checklist` from the store as is, redrawn after each click. Same-named ones say their folders. */
+/** The list's menu (Pinned pages ▸): the shown ones ticked, then More ▸ with unpinned pages, the file on screen and the
+ *  plugins' main views (Inbox, Graph view); a `checklist`, redrawn after each click. Same-named ones say their folders. */
 export function pinChecklist(file: string | undefined): MenuItem[] {
   const store = getStore()
   if (!store) return []
@@ -54,14 +54,15 @@ export function pinChecklist(file: string | undefined): MenuItem[] {
   const pages = store.files.files.filter((f) => isPage(f.path, store) && !f.archived && !offPlugin(f) && !isPinned(f.path))
     .sort((a, b) => stem(a.path).localeCompare(stem(b.path)))
   const here = file && pinnable(file) && !isPinned(file) && !pages.some((f) => f.path === file) ? [file] : []
-  const names = [...on.map((e) => e.label), ...pages.map((f) => stem(f.path))]
+  const views = viewSurfaces().filter((v) => !isPinned(v.key)).sort((a, b) => a.label.localeCompare(b.label))
+  const names = [...on.map((e) => e.label), ...pages.map((f) => stem(f.path)), ...views.map((v) => v.label)]
   const choice = (key: string, label: string): CheckItem => {
-    const dir = key.startsWith(PIN_SEARCH) ? "" : key.replace(/#.*$/, "").replace(/\/?[^/]*$/, "")
+    const dir = key.startsWith(PIN_SEARCH) || key.startsWith("view:") ? "" : key.replace(/#.*$/, "").replace(/\/?[^/]*$/, "")
     return { key, label, hint: names.filter((n) => n === label).length > 1 && dir ? dir.split("/").pop() : undefined }
   }
   return checklist("pins", {
     on: on.map((e) => choice(e.key, e.label)),
-    off: [pages.map((f) => choice(f.path, stem(f.path))), here.map((p) => choice(p, stem(p)))],
+    off: [pages.map((f) => choice(f.path, stem(f.path))), here.map((p) => choice(p, stem(p))), views.map((v) => choice(v.key, v.label))],
     set: (key, on, before) => void pin(key, on, on ? before : undefined),
   })
 }
@@ -114,7 +115,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
   }, (item, h) => {
     const keys = pinsOf(item)
     // (a view dropped here keeps its name now: a conversation's, which its tab loses once it ends)
-    if (keys.length === 1) void pin(keys[0], !("out" in h), "out" in h ? undefined : h.before, item.from !== "pin" && item.to?.startsWith("view:") ? pinOfView(item.to)?.label : undefined)
+    if (keys.length === 1) void pin(keys[0], !("out" in h), "out" in h ? undefined : h.before, item.from !== "pin" && item.to?.startsWith("view:") ? viewPin(item.to)?.label : undefined)
     else if ("out" in h) void pinManyNoted(keys, false)
     // (Placed before the first one after them that isn't among them.)
     else void pinMany(keys, true, h.before && keys.includes(h.before) ? currentPins(store).slice(currentPins(store).indexOf(h.before)).find((k) => !keys.includes(k)) ?? null : h.before)

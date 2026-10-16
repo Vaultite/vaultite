@@ -677,7 +677,7 @@ function safeView(name: string, def: ViewDef): ViewDef {
     try { return f(arg) } catch (e) { console.error(`view ${name}`, e); return or }
   })
   safe = { ...def, title: guard(def.title, name)!, iconFor: guard(def.iconFor, def.icon), iconClass: guard(def.iconClass, undefined),
-    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), pinAs: guard(def.pinAs, null), resolve: guard(def.resolve, null) }
+    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null) }
   safeViews.set(def, safe)
   return safe
 }
@@ -699,13 +699,33 @@ export function viewMenuItems(target: string, disabled = getPrefs().disabled): M
   })
 }
 
-/** What pinning a view's tab pins (its `pinAs`): the pin's key ("view:terminal/resume-claude-<session>") and its name
- *  now, or null when it can't be pinned. */
+/** What pinning a view's tab pins (its `pinAs`, else its arg): the pin's key ("view:web/https://example.com",
+ *  "view:inbox", "view:terminal/resume-claude-<session>") and its name now, or null when it can't be pinned. */
 export function pinOfView(target: string, disabled = getPrefs().disabled): { key: string; label: string } | null {
   const v = viewFor(target, disabled)
-  if (!v?.on || !v.def.pinAs) return null
-  const arg = v.def.pinAs(v.arg)
-  return arg ? { key: `view:${target.replace(/^view:/, "").split("/")[0]}/${arg}`, label: v.def.title(v.arg) } : null
+  if (!v?.on) return null
+  const arg = v.def.pinAs ? v.def.pinAs(v.arg) || null : v.arg
+  if (arg === null) return null
+  const name = target.replace(/^view:/, "").split("/")[0]
+  return { key: arg ? `view:${name}/${arg}` : `view:${name}`, label: v.def.pinLabel?.(arg) || v.def.title(v.arg) }
+}
+
+/** A pinned view's name now, when its view knows it (its `pinLabel`: a web page's title, once loaded), else null. */
+export function viewPinLabel(target: string, disabled = getPrefs().disabled): string | null {
+  const v = viewFor(target, disabled)
+  return (v?.on && v.def.pinLabel?.(v.arg)) || null
+}
+
+/** The main view of each plugin that's on, as a pin (its first view pinned as itself, without an arg: Inbox, Graph
+ *  view), in the plugins' order: what Pinned's menu offers. */
+export function viewSurfaces(disabled = getPrefs().disabled): { key: string; label: string }[] {
+  return active(disabled, getPrefs().order).flatMap((p) => {
+    for (const name of Object.keys(p.views ?? {})) {
+      const pin = pinOfView(`view:${name}`, disabled)
+      if (pin?.key === `view:${name}`) return [pin]
+    }
+    return []
+  })
 }
 
 /** Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show). */

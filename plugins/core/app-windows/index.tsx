@@ -71,6 +71,9 @@ export default definePlugin({
       keepsTab: true,
       // (the window it holds is the tab's own state: a tab without one takes one)
       argState: true,
+      // Pinned: the app, as a window's id is gone once it closes (a tab without one takes one).
+      pinAs: (arg) => parse(arg).bundle || null,
+      pinLabel: (arg) => nameOf(parse(arg).bundle),
       render: ({ arg, focused, setArg }) => <Suspense fallback={null}><AppTab arg={arg} focused={focused} setArg={setArg} /></Suspense>,
       onClose: (arg) => { const { wid } = parse(arg); if (wid) void appWindows?.release(wid) },
       // (closing the tab leaves the window to the app, but one made for the tab; this closes it, as its close button does)

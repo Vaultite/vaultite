@@ -3,10 +3,10 @@
 
 /** A search pinned: "search:<query>". */
 export const SEARCH = "search:"
-/** A view pinned, as a tab's target: "view:<name>/<arg>" (view:terminal/resume-claude-<session>: a conversation). */
+/** A view pinned, as a tab's target: "view:<name>" or "view:<name>/<arg>" (view:web/<address>: a web page). */
 export const VIEW = "view:"
 /** What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its
- *  tab's target: a coding agent's conversation). */
+ *  tab's target: a web page, Inbox, a coding agent's conversation). */
 export function pinKind(entry: string): { file: string; heading?: string } | { search: string } | { view: string } {
   if (entry.startsWith(SEARCH)) return { search: entry.slice(SEARCH.length) }
   if (entry.startsWith(VIEW)) return { view: entry }

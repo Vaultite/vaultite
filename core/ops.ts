@@ -405,8 +405,10 @@ type TreeFile = { path: string; type?: unknown }
  *  a path from before a folder moved; a web address is its web tab. Views, folders and misses come back as given ("Logs/Work" never picks Work.md). */
 export function pathAsSaid(tree: { files?: TreeFile[]; others?: TreeFile[]; folders?: string[] }, raw: string): string {
   if (/^https?:\/\//i.test(raw.trim())) return `view:web/${raw.trim()}` // a web address: its web tab
+  // (a view's arg as is: an address's last slash is its own)
+  if (raw.trim().startsWith("view:")) return raw.trim()
   const p = raw.trim().replace(/^\/+/, "").replace(/\/+$/, "")
-  if (!p || p.startsWith("view:")) return p
+  if (!p) return p
   const folder = (tree.folders ?? []).find((d) => d === p) ?? (tree.folders ?? []).find((d) => d.toLowerCase() === p.toLowerCase())
   if (folder) return folder
   const pages = new Set((tree.files ?? []).map((f) => f.path))

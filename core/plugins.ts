@@ -55,7 +55,7 @@ export function relocatedPin(vault: Vault, entry: string) {
 export function pinProblem(vault: Vault, entry: string): string | null {
   const k = pinKind(entry)
   if ("search" in k) return k.search.trim() ? null : "a pinned search needs a query"
-  if ("view" in k) return /^view:[\w-]+\/./.test(k.view) ? null : "a pinned view is view:<name>/<arg>"
+  if ("view" in k) return /^view:[\w-]+(\/.+)?$/.test(k.view) ? null : "a pinned view is view:<name> or view:<name>/<arg>"
   const full = path.join(vault.path, k.file)
   if (!k.file || k.file.split("/").includes("..") || isHiddenPath(k.file) || !fs.existsSync(full) || (k.heading && fs.statSync(full).isDirectory())) {
     return `there's no file or folder ${k.file} in the vault to pin`

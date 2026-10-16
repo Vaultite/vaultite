@@ -223,9 +223,12 @@ export type ViewDef = {
   keepsTab?: boolean
   /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session). */
   tabMenu?: (arg: string) => (FileMenuItem & { danger?: boolean })[]
-  /** It can be pinned (Pinned): the arg its pin keeps, which opens it again later (a coding agent's terminal: its
-   *  conversation, resumed); null: this one can't be. */
+  /** The arg its pin keeps (Pinned; null: this one can't be): unset, its arg as is (none: `view:<name>`, in Pinned's
+   *  menu). Else a lasting one (a terminal's conversation), `(a) => a || null` (it needs one), `() => null` (never). */
   pinAs?: (arg: string) => string | null
+  /** A pin's name, for its arg as pinned, once it knows it (a page's title, loaded; an app's name): a pinned one is
+   *  renamed as it changes. Else a pin is named by its tab's `title` when pinned. */
+  pinLabel?: (arg: string) => string | undefined
   /** Opened with this arg: the arg to show instead (a conversation's resume, while a terminal already runs it: that
    *  terminal), or null for this one. */
   resolve?: (arg: string) => string | null

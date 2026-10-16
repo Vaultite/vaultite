@@ -342,11 +342,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji.
 - `PIN_SEARCH`: A search pinned: "search:<query>".
-- `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>/<arg>" (view:terminal/resume-claude-<session>: a conversation).
+- `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>" or "view:<name>/<arg>" (view:web/<address>: a web page).
 - `pinInWorkspace(path, on, before, base)`: Pin a page in the current workspace (at the end, or before `before`) or unpin it there; one without a list of its own starts from `base` (the vault's).
-- `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a coding agent's conversation).
+- `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a web page, Inbox, a coding agent's conversation).
 - `pinnedFoldersOpen`: Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened.
-- `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`): the pin's key ("view:terminal/resume-claude-<session>") and its name now, or null when it can't be pinned.
+- `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`, else its arg): the pin's key ("view:web/https://example.com", "view:inbox", "view:terminal/resume-claude-<session>") and its name now, or null when it…
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
@@ -545,8 +545,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
 - `viewInfo(to, disabled?)`: A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too).
 - `viewMenuItems(target, disabled?)`: The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target.
+- `viewPinLabel(target, disabled?)`: A pinned view's name now, when its view knows it (its `pinLabel`: a web page's title, once loaded), else null.
 - `viewsChanged()`: Tell the tabs that a view's `title` or `iconClass` answers something else now.
 - `viewShown(target, disabled?)`: Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show).
+- `viewSurfaces(disabled?)`: The main view of each plugin that's on, as a pin (its first view pinned as itself, without an arg: Inbox, Graph view), in the plugins' order: what Pinned's menu offers.
 - `WebEvent`
 - `WebPageAction`: A button a plugin adds to a web page's bar in the Web viewer (its icon, `label` its tooltip), also in its tab's menu.
 - `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).
@@ -617,7 +619,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
 - `pathAsSaid(tree, raw)`: A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or a path from before a folder moved; a web address is its web tab.
 - `pinFile(entry)`: The file an entry is in (null: a search or a view).
-- `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a coding agent's conversation).
+- `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a web page, Inbox, a coding agent's conversation).
 - `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file or folder that isn't in the vault, an empty search), or null.
 - `pipeSockets(ws, up, failed)`: Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its close comes back; `failed` when it can't be reached.
 - `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end) or unpinned (`on` false).

@@ -138,6 +138,9 @@ export default definePlugin({
       full: true,
       // The address is the page's own state: following a link changes the tab's arg, not the page.
       argState: true,
+      // Pinned by its address, named by its title (kept up to date while it's open).
+      pinAs: (arg) => (/^https?:\/\//i.test(arg) ? arg : null),
+      pinLabel: titleOf,
       render: ({ arg, focused, setArg }) => (
         <Suspense fallback={null}><WebPage arg={arg} focused={focused} setArg={setArg} /></Suspense>
       ),
