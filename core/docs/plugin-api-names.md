@@ -474,7 +474,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `touches(paths, path)`: Does this change touch `path` (the file itself, or a folder it's in)?
 - `trace(topic, event)`: Something the app did, under `topic`: plain values only, never a file's text.
 - `TraceEvent`
-- `treeShownItems()`: What the tree shows beyond the user's notes, for its panel's, its tab's and its empty space's menus: hidden files, and archived ones when there are archive folders (the heading's buttons have the…
+- `treeShownItems()`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse).
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").

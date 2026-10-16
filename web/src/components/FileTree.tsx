@@ -3,7 +3,7 @@
 import { memo, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type DragEvent, type MouseEvent, type PointerEvent } from "react"
 import {
   Archive, ArrowUpNarrowWide, Bot, ChevronRight, ChevronsDownUp, ChevronsUpDown, Ellipsis, FileBraces, FileInput, FilePlus, FileText, Folder,
-  FolderInput, FolderOpen, FolderPlus, GalleryVertical, RotateCcw, SquareArrowOutUpRight, SquarePen, Trash2, type LucideIcon,
+  FolderInput, FolderOpen, FolderPlus, RotateCcw, SquareArrowOutUpRight, SquarePen, Trash2, type LucideIcon,
 } from "lucide-react"
 import { getStore, reload, type Store } from "@/core/data"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
@@ -151,12 +151,15 @@ const canMoveInto = (from: string, folder: string) =>
 /** An archive folder, or in one (People/.archive): hidden in the tree unless archived files are shown. */
 const archives = (p: string) => p.split("/").includes(ARCHIVE_DIR)
 
-/** What the tree shows beyond the user's notes, for its panel's, its tab's and its empty space's menus: hidden files, and
- *  archived ones when there are archive folders (the heading's buttons have the rest: sort, reveal, collapse). */
+/** The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and
+ *  revealing the open file (the heading's buttons have the rest: new, sort, collapse). */
 export function treeShownItems(): MenuItem[] {
-  const store = getStore()
-  const anyArchive = getPrefs().showArchived || (!!store && folderList(store.files).some(archives))
-  return commandItems("files:show-hidden", "files:hide-hidden", ...(anyArchive ? ["files:show-archived", "files:hide-archived"] : []))
+  const store = getStore(), { showArchived, autoReveal } = getPrefs()
+  const anyArchive = showArchived || (!!store && folderList(store.files).some(archives))
+  return [
+    ...commandItems("files:show-hidden", "files:hide-hidden", ...(anyArchive ? ["files:show-archived", "files:hide-archived"] : [])),
+    { label: "Auto-reveal current file", checked: autoReveal, sep: true, run: () => void setPrefs({ autoReveal: !autoReveal }) },
+  ]
 }
 
 /** Can things from the computer be dropped in this folder? */
@@ -357,7 +360,6 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
     [store, fileSort, openHidden, openArchived, showArchived])
   const open = useOpened()
   const allFolders = useMemo(() => folderList(store.files), [store])
-  const anyArchive = allFolders.some(archives)
   const anyOpen = allFolders.some((f) => open.has(f))
   // Auto-reveal: the open file's folders open and the tree scrolls to it, whenever it changes (desktop sidebar).
   useEffect(() => { if (header && autoReveal && active) revealInTree(active, { scroll: revealScroll }) }, [header, autoReveal, active, revealScroll])
@@ -571,8 +573,8 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
             { label: "Change sort order", icon: ArrowUpNarrowWide, run: (e: MouseEvent) => menuBelow(e, SORTS.flatMap((group, g) => group.map((o, i) => ({
               label: o.label, checked: fileSort === o.value, sep: g > 0 && i === 0, run: () => setPrefs({ fileSort: o.value }),
             })))) },
-            { label: "Auto-reveal current file", icon: GalleryVertical, pressed: autoReveal, run: () => setPrefs({ autoReveal: !autoReveal }) },
-            ...(anyArchive ? [{ label: showArchived ? "Hide archived files" : "Show archived files", icon: Archive, pressed: showArchived, run: () => setPrefs({ showArchived: !showArchived }) }] : []),
+            // Archived files are out of sight by default (the menus show them); while shown, a pressed button to hide them again.
+            ...(showArchived ? [{ label: "Hide archived files", icon: Archive, pressed: true, run: () => setPrefs({ showArchived: false }) }] : []),
             anyOpen
               ? { label: "Collapse all", icon: ChevronsDownUp, run: () => { setOpened(new Set()); setShowingAll(null) } }
               : { label: "Expand all", icon: ChevronsUpDown, run: () => setOpened(new Set(allFolders)) },
