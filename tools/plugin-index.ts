@@ -1,5 +1,5 @@
 // The plugin directory's index.json (core/pluginindex.ts), built daily in Vaultite/plugins (GITHUB_TOKEN): repos with
-// topic vaultite-plugin or in listed.json, at their latest release. [--listed l.json] [--blocked b.json] [--out f.json]
+// topic vaultite-plugin or in listed.json but not unlisted.json, at their latest release. --listed --unlisted --blocked --out
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -36,9 +36,11 @@ export function scoreOf(stars: number, last: string | null, open: number, closed
   return Math.round(100 * (0.5 * Math.min(1, Math.log10(1 + stars) / 3) + 0.3 * recency + 0.2 * closing))
 }
 
-/** The index: `listed` adds repositories ("owner/name") the topic search misses; `blocked` is the blocklist as it goes
- *  out ({"owner/name" or id: [versions or ranges]}). `skipped` says which repositories were left out, and why. */
-export async function buildIndex({ get, listed = [], blocked = {}, now = Date.now() }: { get: Get; listed?: string[]; blocked?: Record<string, string[]>; now?: number }) {
+/** The index: `listed` adds repos ("owner/name") the topic search misses, `unlisted` leaves out repos or folders
+ *  (still installable); `blocked` is the blocklist ({"owner/name" or id: [ranges]}). `skipped`: what is out and why. */
+export async function buildIndex({ get, listed = [], unlisted = [], blocked = {}, now = Date.now() }:
+  { get: Get; listed?: string[]; unlisted?: string[]; blocked?: Record<string, string[]>; now?: number }) {
+  const hidden = new Set(unlisted.map((u) => u.toLowerCase()))
   const repos = new Map<string, Repo>()
   for (let page = 1; page <= 10; page++) {
     const r = await get(`${API}/search/repositories?q=${encodeURIComponent("topic:vaultite-plugin")}&sort=stars&per_page=100&page=${page}`)
@@ -55,6 +57,7 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
   const plugins: Any[] = []
   for (const repo of repos.values()) {
     const full = repo.full_name
+    if (hidden.has(full.toLowerCase())) { skipped.push(`${full}: unlisted`); continue }
     if (repo.archived || repo.disabled) { skipped.push(`${full}: archived`); continue }
     type Tag = { name: string; commit?: { sha?: string } }
     const tags = await get(`${API}/repos/${full}/tags?per_page=100`)
@@ -90,6 +93,7 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
     const open = await count("open"), closed = await count("closed")
     for (const { dir, tag, ref, released } of units) {
       const where = dir ? `${full}/${dir}` : full
+      if (hidden.has(where.toLowerCase())) { skipped.push(`${where}: unlisted`); continue }
       // (a folder gone from the default branch, removed or renamed, keeps its old tags but isn't listed)
       if (dir && (await get(`${RAW}/${full}/HEAD/${dir}/manifest.json`)).status !== 200) { skipped.push(`${where}: no longer in the repository`); continue }
       const mf = await get(`${RAW}/${full}/${ref}/${dir ? `${dir}/` : ""}manifest.json`)
@@ -142,7 +146,7 @@ export function githubGet(token = process.env.GITHUB_TOKEN): Get {
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const flag = (n: string) => { const i = process.argv.indexOf(n); return i < 0 ? null : process.argv[i + 1] }
   const json = (f: string | null, fallback: unknown) => (f && fs.existsSync(f) ? JSON.parse(fs.readFileSync(f, "utf8")) : fallback)
-  const { index, skipped } = await buildIndex({ get: githubGet(), listed: json(flag("--listed"), []), blocked: json(flag("--blocked"), {}) })
+  const { index, skipped } = await buildIndex({ get: githubGet(), listed: json(flag("--listed"), []), unlisted: json(flag("--unlisted"), []), blocked: json(flag("--blocked"), {}) })
   fs.writeFileSync(flag("--out") ?? "index.json", JSON.stringify(index, null, 2) + "\n")
   for (const s of skipped) console.log(`skipped ${s}`)
   console.log(`${index.plugins.length} plugins`)

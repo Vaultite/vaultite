@@ -530,6 +530,11 @@ export default async ($: VaultTest) => {
     check("index builder: listed.json's repos are asked for too", asked.includes("https://api.github.com/repos/carol/listed"))
     check("index builder: sorted by score, the blocklist goes out, and the app reads it", index.plugins[0].id === "harbor" && (index.blocked as Any)["boblee/oldboat"][0] === "<1.0.0" &&
       (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins.length === 3)
+    asked.length = 0
+    const un = await buildIndex({ get, unlisted: ["carol/fleet/dinghy", "BobLee/OldBoat"], now })
+    check("index builder: unlisted.json's folders and repos are left out, unasked, the rest listed", un.index.plugins.map((p) => p.id).join() === "harbor" &&
+      un.skipped.includes("carol/fleet/dinghy: unlisted") && un.skipped.includes("boblee/oldboat: unlisted") &&
+      !asked.some((u) => u.includes("/dinghy/") || u.includes("boblee/oldboat/")), un)
     check("index builder: the score blends stars with upkeep", scoreOf(1000, "2026-09-30T00:00:00Z", 0, 10, now) === 100 && scoreOf(0, null, 0, 0, now) === 10 &&
       scoreOf(120, "2026-09-20T00:00:00Z", 2, 8, now) > scoreOf(120, "2025-01-01T00:00:00Z", 2, 8, now))
     check("index builder: an excerpt is cut at 280", excerpt("x".repeat(10) + " word".repeat(100)).length <= 280)
