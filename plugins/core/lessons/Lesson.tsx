@@ -43,7 +43,7 @@ function Recall({ q, answered, onAnswer }: { q: Extract<Question, { kind: "recal
       <Button look="primary" className={cn(big, "mt-3")} onClick={onAnswer}>Show answer</Button>
     </>
   )
-  return <div className="mt-3 border-l-2 border-[var(--green)] pl-3"><Markdown text={q.answer} full /></div>
+  return <div className="mt-3 border-l-3 border-[var(--green)] pl-3.5"><Markdown text={q.answer} full /></div>
 }
 
 function Order({ q, answered, onAnswer }: { q: Extract<Question, { kind: "order" }>; answered: boolean; onAnswer: () => void }) {

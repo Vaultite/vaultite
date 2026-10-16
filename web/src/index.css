@@ -663,7 +663,7 @@ dialog { --vau-panel-bottom: 0px; }
 .vau-editor :is(.cm-comment, .cm-blockid) { color: var(--muted-foreground); }
 .vau-editor .cm-flash { animation: vau-flash 1.6s ease-out; }
 @keyframes vau-flash { from { background: color-mix(in srgb, var(--yellow) 38%, transparent); } to { background: transparent; } }
-.note-embed { min-width: 0; border-left: 2px solid var(--border); padding: 0 0 2px 14px; margin: 2px 0; white-space: normal; }
+.note-embed { min-width: 0; border-left: 3px solid color-mix(in srgb, var(--notes) 55%, transparent); padding: 0 0 2px 14px; margin: 2px 0; white-space: normal; }
 .note-embed.is-fill { border-left: 0; padding: 0; margin: 0; }
 .note-embed-head { display: flex; max-width: 100%; align-items: center; gap: 6px; padding: 2px 0 6px; font-size: 13px; font-weight: 500;
   color: var(--muted-foreground); cursor: pointer; text-align: left; }
@@ -692,7 +692,7 @@ dialog { --vau-panel-bottom: 0px; }
 .dash-prose code { font-family: var(--font-code); font-size: 0.9em; }
 .dash-prose :not(pre) > code { padding: 1px 5px; border-radius: 5px; background: color-mix(in srgb, var(--foreground) 7%, transparent); }
 .dash-prose pre { padding: 10px 14px; border-radius: 10px; background: var(--card); border: 0.5px solid var(--border); overflow-x: auto; font-size: 15px; line-height: 22px; }
-.dash-prose blockquote { padding-left: 12px; border-left: 3px solid var(--border); color: var(--muted-foreground); }
+.dash-prose blockquote { padding-left: 14px; border-left: 3px solid color-mix(in srgb, var(--notes) 55%, transparent); color: color-mix(in srgb, var(--foreground) 80%, transparent); }
 .dash-prose hr { border: 0; border-top: 0.5px solid var(--border); margin: 16px 0; }
 .dash-prose del { color: var(--muted-foreground); }
 .dash-prose li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em; }
@@ -732,8 +732,10 @@ dialog { --vau-panel-bottom: 0px; }
 .mermaid-diagram.is-error { justify-content: flex-start; color: var(--red); font-size: 13px; font-family: var(--font-code); }
 .vau-editor .cm-block-math, .vau-editor .cm-block-mermaid { padding: 8px 0; }
 /* Callouts: > [!type] Title (core/markdown.ts); each type's colour from the scheme */
-.callout { --callout: var(--blue); margin: 0 0 14px; padding: 10px 14px; border-radius: 10px;
-  background: color-mix(in srgb, var(--callout) 9%, transparent); border-left: 3px solid var(--callout); }
+/* The bar is drawn inside the box, so the rounded corners don't bend it. */
+.callout { --callout: var(--blue); position: relative; margin: 0 0 14px; padding: 10px 14px 10px 22px; border-radius: 10px;
+  background: color-mix(in srgb, var(--callout) 9%, transparent); }
+.callout::before { content: ""; position: absolute; left: 8px; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: var(--callout); }
 .callout[data-callout="abstract"], .callout[data-callout="tip"] { --callout: var(--teal); }
 .callout[data-callout="success"] { --callout: var(--green); }
 .callout[data-callout="question"], .callout[data-callout="warning"] { --callout: var(--orange); }

@@ -501,7 +501,7 @@ const Stat: Part = ({ p, k }) => (
   </div>
 )
 
-const Quote: Part = ({ k }) => <blockquote className="border-l-2 border-border pl-3 text-muted-foreground"><Kids k={k} /></blockquote>
+const Quote: Part = ({ k }) => <blockquote className="border-l-3 border-[color-mix(in_srgb,var(--notes)_55%,transparent)] pl-3.5 text-foreground/80"><Kids k={k} /></blockquote>
 const Code: Part = ({ p, k }) => p.block === false || p.inline
   ? <code className="rounded-[4px] bg-foreground/[0.06] px-1 font-mono text-[0.9em]">{label(k) || str(p.code)}</code>
   : <Md s={"```" + (str(p.language ?? p.lang) ?? "") + "\n" + (str(p.code) ?? label(k)) + "\n```"} inline={false} from="" />
