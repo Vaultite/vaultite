@@ -89,6 +89,28 @@ flowchart LR
   Idea --> Note --> Project
 ```
 
+A chart, from rows of data:
+
+```chart
+type: bar
+title: Pages read
+data:
+  - {week: W1, pages: 120}
+  - {week: W2, pages: 180}
+  - {week: W3, pages: 90}
+```
+
+A live answer, ChatGPT's Intelligent UI as it wrote it: run sandboxed, drawn with the app's controls, the values picked kept in the note.
+
+```genui
+{@body const [n, setN] = DIL.useState(3)}
+<box gap={2} padding={3} radius="lg" background="surface-secondary">
+  <row justify="between"><label>Cups of coffee</label><title size="md">{n}</title></row>
+  <slider min={0} max={8} value={n} onChange={setN}/>
+  <caption>About {n * 95} mg of caffeine</caption>
+</box>
+```
+
 HTML is drawn as written, but safe: H<sub>2</sub>O, x<sup>2</sup>, <kbd>Esc</kbd>, a <span style="color: var(--red)">coloured</span> word, a line<br>break, and a toggle:
 
 <details>

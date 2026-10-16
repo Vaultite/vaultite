@@ -1,0 +1,9 @@
+{
+  "id": "genui",
+  "icon": "sparkles",
+  "category": "writing",
+  "alwaysOn": true,
+  "name": "Live answers",
+  "description": "Interactive answers in notes: ChatGPT's Intelligent UI saved as it is in a ```genui fence, drawn with the app's own controls and colours, its script sandboxed, the values you pick kept in the note; and ```chart fences.",
+  "forAgents": "Saving an Intelligent UI answer: its source as is, in a ```genui fence (`vau docs genui`)."
+}

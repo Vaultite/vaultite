@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Live answers**: ChatGPT's Intelligent UI saved to a note (the ChatGPT app, or an imported chat) is a ```genui fence
+  drawn live with the app's own controls and colours, its script sandboxed; the values you pick are kept in the note.
+  Its follow-up buttons ask Claude chat about the note.
+- ```chart fences draw bar, line, area, pie and scatter charts from rows of data, and code in Markdown shown outside
+  the editor (embeds, sheets, previews) is coloured like the editor's.
 - **Agent blocks are one set**: `agent-limits`, `agent-sessions`, `agent-usage`, `agent-projects`, `agent-models` and
   `agent-project` take `agent:` (claude-code, codex, cursor, grok-bot, opencode, openclaw, hermes) in place of each
   agent's own copies (`claude-usage`, `codex-sessions`...); a block for an agent whose plugin is off is off.

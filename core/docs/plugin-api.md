@@ -100,6 +100,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `fileFormat`: A format for one Markdown file, decided by the file as it opens (a hosted plugin taking a note's leaf: Kanban's boards); null leaves it to the app. Wins over `formats`; its source view is still the file's text.
 - `blocks`: What it draws where a file has a ```block-<name> fence (YAML options inside). Each is declared in its manifest and has a text side in plugin.ts, for /api/render: `npm run check` holds the app's plugins to both.
 - `fences`: Code fences it draws by language (```base). Its backend reads one as text with the service `fence:<lang>`.
+- `ask`: It answers a question about a file (an AI chat): a live answer's follow-up buttons ask it (`askAbout`).
 - `timeline`: Kinds of timeline entries it knows ("call": a phone icon), for the `## Timeline` sections kinds draw (a person's).
 - `views`: Tabs it can open that aren't files (see ViewDef), by name: `view:<name>`.
 - `agents`: Coding agents it brings, by name (see AgentDef): the Terminal plugin runs them.
@@ -144,7 +145,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `agent-meters:claude` (claude-code)
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.
-- `fence:base` (query)
+- `fence:<…>` (genui, chart, base): genui; query
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
 - `geocode` (people): A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place.
 - `geocode:known` (people): A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet).

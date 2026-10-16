@@ -50,6 +50,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `AppWindows`: Other Mac apps' windows in the desktop app's tabs (see electron/apps.ts): kept right behind the window, under a part of the page left see-through.
 - `ARCHIVE_DIR`: The hidden folder archived files move into, inside their own folder (the Archive plugin).
 - `archiveTwin(rel)`: The same path archived or not: People/Kai.md <-> People/.archive/Kai.md.
+- `askAbout(question, file?)`: Hand a question about a file to the AI chat a plugin that's on brings (its `ask`); false when there's none.
 - `askedAt(id)`: When the user asked for terminal `id`, if this page made it (for its opening's span).
 - `askMicrophone()`: Before recording: in the desktop app, macOS's permission for the microphone (false: refused).
 - `askMove(path, opts?)`: "Move file to…": pick a folder (fuzzy, "/" the top level), then move it there.
@@ -206,7 +207,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
 - `HostedPlugin`: A plugin another runs (one written for another app): listed by category with its host as byline, drawn like any, while its host answers its switch, approval and removal (PluginHost).
 - `hostPlugins(host, info, list?)`: A host's plugins now (null: none, the host gone or off): they replace its ones before, and whatever they draw (commands, panels, fences, editor extensions) follows.
-- `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math and mermaid diagrams.
+- `hydrateMarkdown(root)`: Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams.
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.

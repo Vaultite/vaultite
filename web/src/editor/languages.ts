@@ -2,7 +2,8 @@
 // chunk, loaded when a file needs it) and the colours, from the scheme's tokens so every scheme recolours code.
 import { LanguageDescription, HighlightStyle, type LanguageSupport } from "@codemirror/language"
 import { languages } from "@codemirror/language-data"
-import { tags as t } from "@lezer/highlight"
+import { highlightTree, tags as t } from "@lezer/highlight"
+import { StyleModule } from "style-mod"
 
 /** Names language-data doesn't know by their extension. */
 const ALIAS: Record<string, string> = { env: "properties", conf: "properties", cfg: "properties", plist: "xml", jsonl: "json", ndjson: "json",
@@ -51,6 +52,28 @@ export const codeStyle = HighlightStyle.define([
   { tag: [t.deleted, t.invalid], color: "var(--red)" },
   { tag: [t.punctuation, t.bracket, t.separator, t.operator], color: "var(--muted-foreground)" },
 ])
+
+let mounted = false
+/** Code in a language, coloured as the editor colours it, into `el` (Markdown drawn outside an editor); as it is when
+ *  the language is unknown. */
+export async function highlightInto(el: HTMLElement, lang: string) {
+  const support = await languageNamed(lang)
+  if (!support) return
+  if (!mounted && codeStyle.module) { StyleModule.mount(document, codeStyle.module); mounted = true }
+  const text = el.textContent ?? ""
+  const out = document.createDocumentFragment()
+  let at = 0
+  highlightTree(support.language.parser.parse(text), codeStyle, (from, to, cls) => {
+    if (from > at) out.append(text.slice(at, from))
+    const span = document.createElement("span")
+    span.className = cls
+    span.textContent = text.slice(from, to)
+    out.append(span)
+    at = to
+  })
+  if (at < text.length) out.append(text.slice(at))
+  if (el.textContent === text) el.replaceChildren(out)
+}
 
 /** The file's own indentation: a tab, or the smallest run of leading spaces (2 or 4...). */
 export const indentOf = (doc: string) => ownIndent(doc) ?? "  "

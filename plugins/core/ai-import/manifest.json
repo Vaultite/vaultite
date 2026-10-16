@@ -6,6 +6,7 @@
   "name": "AI import",
   "description": "Bring your history from ChatGPT and Claude: their official exports become a note per chat (and per Claude project), and what they remembered about you a list you review before any of it reaches ME.md or People.",
   "tint": "purple",
+  "requires": ["genui"],
   "settings": {
     "folder": { "type": "string", "folder": true, "default": "Chats", "label": "Folder", "description": "where chats go, a subfolder per AI (Chats/ChatGPT, Chats/Claude)" },
     "minMessages": { "type": "number", "default": 1, "min": 0, "label": "Fewest messages", "description": "chats with fewer messages are left out; 0 imports every one" },

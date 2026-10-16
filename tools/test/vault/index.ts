@@ -12,6 +12,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "blocks", deps: [] },
   { name: "pages", deps: [] },
   { name: "render", deps: ["blocks","pages"] },
+  { name: "genui", deps: ["pages"] },
   { name: "pins", deps: ["files","blocks","pages"] },
   { name: "icloud", deps: ["pages","pins"] },
   { name: "artifacts", deps: ["pages"] },

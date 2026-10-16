@@ -101,7 +101,7 @@ export function BlockView(props: { name: string; text: string; ctx: FileCtx; dis
   // Right-click (or a held finger): where its data comes from, and editing it (components/BlockSource.tsx).
   return (
     <BlockSource name={name} menu={menu}>
-      <Block {...props} />
+      <Block {...props} write={write} />
       {form && options && <BlockOptions decl={decl!} text={text} set={write!} close={() => setForm(false)} source={edit?.source ?? null} />}
       {edit && createPortal(<BlockBar name={name} options={options} form={form} setForm={setForm} menu={menu} />, edit.bar)}
     </BlockSource>
@@ -189,7 +189,7 @@ function OptionInput({ d, value, set }: { d: OptionDecl; value: unknown; set: (v
   )
 }
 
-function Block({ name, text, ctx, disabled, quiet, editing }: { name: string; text: string; ctx: FileCtx; disabled: string[]; quiet?: boolean; editing?: boolean }) {
+function Block({ name, text, ctx, disabled, quiet, editing, write }: { name: string; text: string; ctx: FileCtx; disabled: string[]; quiet?: boolean; editing?: boolean; write?: ((text: string) => void) | null }) {
   const parsed = parseOptions(text)
   const { plugin, render, decl, unnamed } = blockFor(name, disabled, parsed.options)
   if (!render) {
@@ -207,7 +207,7 @@ function Block({ name, text, ctx, disabled, quiet, editing }: { name: string; te
   // when its text changes)
   const drawn = typeof options.file === "string" && options.file.trim()
     ? <OtherFile name={name} text={text} options={options} ctx={ctx} render={render} editing={editing} />
-    : <Island key={plugin?.version} retry={text} name={name} editing={editing}><Drawn render={render} ctx={{ ...ctx, text, options }} /></Island>
+    : <Island key={plugin?.version} retry={text} name={name} editing={editing}><Drawn render={render} ctx={{ ...ctx, text, options, setText: write ?? undefined }} /></Island>
   if (!notes.length) return drawn
   return <>{drawn}<BlockNotes name={name} notes={notes} /></>
 }

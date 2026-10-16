@@ -1,6 +1,7 @@
 // ChatGPT's export into chats: each conversation a tree whose line from `current_node` to the root is the transcript.
 // It has no memory list, so memories come from `bio` calls, model_set_context (newest wins) and custom instructions.
 import { arr, type Chat, factsOf, isObj, type Memory, type Message, type Part, text, timeOf, aboutOf } from "./chat.ts"
+import { dataLine, fenceDil } from "../genui/dil.ts"
 
 type Node = { id: string; message?: Record<string, unknown> | null; parent?: string | null; children?: string[] }
 
@@ -118,6 +119,8 @@ export function readConversation(c: unknown): ChatGptRead | null {
       parts.push({ kind: "note", text: `Error: ${text(content.name)}${text(content.text) ? `: ${text(content.text)}` : ""}` })
     } else {
       parts = partsOf(content)
+      // An Intelligent UI answer: its markup as a ```genui fence, so it's drawn live, not shown as text.
+      if (role === "assistant") parts = parts.map((p) => (p.kind === "text" ? { ...p, text: fenceDil(p.text, dataLine(meta)) } : p))
       if (!parts.length && typeof content.text === "string" && content.text.trim()) parts.push({ kind: "text", text: clean(content.text) })
     }
     if (role === "tool") {

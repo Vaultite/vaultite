@@ -107,8 +107,16 @@ export const usePluginsVersion = () => pluginsChanged.use()
 
 export const pluginById = (id: string) => PLUGINS.find((x) => x.id === id)
 
+/** Hand a question about a file to the AI chat a plugin that's on brings (its `ask`); false when there's none. */
+export function askAbout(question: string, file?: string) {
+  const p = PLUGINS.find((x) => x.ask && isEnabled(x.id, getPrefs().disabled))
+  p?.ask!(question, file)
+  return !!p
+}
+
 /** An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude
  *  sessions. */
+
 export const iconNamed = (name: string) => PLUGINS.find((p) => p.icons?.[name])?.icons![name] ?? null
 
 /** Off until turned on (`enabled`): the vault's plugins (they run code), and the app's that change how everything

@@ -59,8 +59,8 @@ function pinElement(it: Item) {
   dot.style.setProperty("--c", colors.size === 1 ? [...colors][0] : DEFAULT_COLOR)
   const Icon = one?.icon ? namedIcon(one.icon) : null
   if (Icon) { dot.classList.add("nm-has-icon"); createRoot(dot).render(<Icon className="size-3.5" strokeWidth={2.5} />) }
-  b.append(dot, el("span", "nm-label", one ? one.title : `${it.pins.length} files`))
-  b.setAttribute("aria-label", one ? one.title : `${it.pins.length} files: ${it.pins.map((p) => p.title).join(", ")}`)
+  b.append(dot, el("span", "nm-label", one ? one.title : `${it.pins.length} places`))
+  b.setAttribute("aria-label", one ? one.title : `${it.pins.length} places: ${it.pins.map((p) => p.title).join(", ")}`)
   b.dataset.pin = one ? one.id : ""
   return b
 }

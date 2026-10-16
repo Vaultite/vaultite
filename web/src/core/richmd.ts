@@ -104,13 +104,19 @@ export function renderMermaid(src: string, el: HTMLElement) {
 /** Forget a diagram whose element went away (the editor's widget destroyed). */
 export const dropMermaid = (el: HTMLElement) => { diagrams.delete(el) }
 
-/** Draw what core/markdown.ts left for later inside `root`: math and mermaid diagrams. */
+/** Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams. */
 export function hydrate(root: HTMLElement) {
   for (const el of root.querySelectorAll<HTMLElement>("[data-math]")) {
     if (el.dataset.drawn) continue
     const tex = el.textContent ?? ""
     el.dataset.drawn = "1"
     renderMath(tex, el, el.dataset.math === "display")
+  }
+  for (const el of root.querySelectorAll<HTMLElement>("pre > code[class^='language-']")) {
+    if (el.dataset.drawn) continue
+    el.dataset.drawn = "1"
+    const lang = el.className.slice("language-".length)
+    void import("@/editor/languages").then((l) => l.highlightInto(el, lang)).catch(() => { /* stays plain */ })
   }
   for (const el of root.querySelectorAll<HTMLElement>("[data-mermaid]")) {
     if (el.dataset.drawn) continue

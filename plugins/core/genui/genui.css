@@ -1,0 +1,16 @@
+/* Live answers (parts.tsx): prose flush in its box, grids folding on a phone, selects and tables like the app's. */
+.genui .genui-md > :first-child { margin-top: 0; }
+.genui .genui-md > :last-child { margin-bottom: 0; }
+.genui-text .note-prose, .genui-text p { margin: 0; }
+@container (max-width: 480px) {
+  .genui-grid[data-cols="many"] { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .genui-grid[data-cols="many"] > .genui-cell[style*="span"] { grid-column: 1 / -1 !important; }
+}
+.genui-select { appearance: none; -webkit-appearance: none; background-repeat: no-repeat; background-position: right 10px center; background-size: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23888' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); }
+.genui-table { border-collapse: collapse; font-size: 14px; }
+.genui-table th, .genui-table td { padding: 6px 10px; border-bottom: 0.5px solid var(--border); vertical-align: top; }
+.genui-table th { font-weight: 600; color: var(--muted-foreground); font-size: 13px; }
+.genui-table tr:last-child td { border-bottom: 0; }
+.genui-slider { height: 20px; }
+.genui-block { padding: 2px 0; }

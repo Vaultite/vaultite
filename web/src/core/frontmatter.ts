@@ -2,7 +2,7 @@
 // so a file reads and writes the same whoever changes it (tools/test_web.ts checks).
 import { blocks, patchFrontmatter, renameKey } from "../../../core/textedit.ts"
 import { dates, dump, load } from "../../../core/yaml.ts"
-import { blocksIn } from "../../../core/sections.ts"
+import { blocksIn, scan } from "../../../core/sections.ts"
 import { activeFile } from "@/core/active"
 import { put } from "@/core/http"
 import { readFile, splitFm, type FileText } from "@/core/files"
@@ -94,7 +94,10 @@ export async function setProperty(path: string, key: string, value: unknown) {
 export async function setBlockText(path: string, name: string, nth: number, inner: string) {
   const open = activeFile()
   const f = open?.path === path ? { text: open.text() } : await readFile(path)
-  const b = blocksIn(f.text).filter((x) => x.name === name)[nth]
+  // (a fence a plugin draws is named by its language: "```base")
+  const b = name.startsWith("```")
+    ? scan(f.text).fences.filter((x) => x.close !== null && x.info.split(/\s/)[0].toLowerCase() === name.slice(3)).map((x) => ({ open: x.open, close: x.close! }))[nth]
+    : blocksIn(f.text).filter((x) => x.name === name)[nth]
   if (!b) throw new Error(`its block isn't in ${path} any more`)
   const lines = f.text.split("\n")
   lines.splice(b.open + 1, b.close - b.open - 1, ...(inner ? inner.split("\n") : []))

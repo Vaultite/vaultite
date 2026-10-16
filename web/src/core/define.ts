@@ -94,7 +94,9 @@ export type PageView = {
 export type PageCtx = FileCtx & { title: string; place: "page" | "sheet"; disabled: string[] }
 /** What a block gets: the file as in the editor now, its text and that text as YAML options with declared defaults.
  *  The core draws the rest alike for every block: plugin off, errors (each block isolated), loading, option notes. */
-export type BlockCtx = FileCtx & { text: string; options: Record<string, unknown> }
+export type BlockCtx = FileCtx & { text: string; options: Record<string, unknown>
+  /** Its text between the fences replaced (a live answer keeping its values); absent when the file can't be changed. */
+  setText?: (text: string) => void }
 /** A non-Markdown kind of file it draws by extension (.excalidraw). Its text is the only state: the drawing reports
  *  changes with `onChange`, the core saves and merges them. With its plugin off, the file is plain text. */
 export type FileFormat = {
@@ -512,6 +514,8 @@ export type PluginDef = {
   /** Code fences it draws by language (```base). Its backend reads one as text
    *  with the service `fence:<lang>`. */
   fences?: Record<string, (ctx: BlockCtx) => ReactNode>
+  /** It answers a question about a file (an AI chat): a live answer's follow-up buttons ask it (`askAbout`). */
+  ask?: (question: string, file?: string) => void
   /** Kinds of timeline entries it knows ("call": a phone icon), for the `## Timeline` sections kinds draw (a person's). */
   timeline?: Record<string, TimelineKind>
   /** Tabs it can open that aren't files (see ViewDef), by name: `view:<name>`. */
