@@ -3,7 +3,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
 import { Check, ChevronLeft, ChevronRight, Ellipsis, type LucideIcon } from "lucide-react"
-import { keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
+import { commandName, isOn, isSetting, keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
 import { fingerHolding, useDragging } from "@/core/drag"
 import { holdFocus } from "@/core/focus"
 import { haptic } from "@/core/haptics"
@@ -31,14 +31,16 @@ export type MenuItem = {
    *  comes from). `run` is unused. */
   caption?: boolean
 }
-/** Commands as menu rows (by id), those offered now, named and keyed as in the palette. A swapping pair (Show / Hide)
- *  is both ids: only the one offered shows. */
+/** Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check
+ *  ("Line numbers"), one that switches something else by what it does now ("Hide left sidebar"). */
 export function commandItems(...ids: string[]): MenuItem[] {
   return ids.flatMap((id) => {
     const c = offeredCommand(id)
     if (!c) return []
     const keys = keysOf(c)[0]
-    return [{ label: c.name, icon: typeof c.icon === "string" ? undefined : c.icon as LucideIcon | undefined, hint: keys ? keyHint(keys) : undefined, run: () => c.run() }]
+    return [{ label: commandName(c), icon: typeof c.icon === "string" ? undefined : c.icon as LucideIcon | undefined, hint: keys ? keyHint(keys) : undefined,
+      // (`keep`: a checkbox, not a choice among several; a menu that can redraw shows it flipped)
+      ...(isSetting(c) ? { checked: isOn(c), keep: true } : {}), run: () => c.run() }]
   })
 }
 

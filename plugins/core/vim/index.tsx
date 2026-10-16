@@ -52,7 +52,6 @@ const LEADER: Record<string, string[]> = {
   "file:copy-link": ["Space F L"],
   "file:reveal": ["Space F E"],
   "file:pin": ["Space F P"],
-  "file:unpin": ["Space F P"],
   "history:open": ["Space F H"],
   "templates:insert": ["Space F T"],
   "sidebar:toggle": ["Space E"],

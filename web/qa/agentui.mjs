@@ -109,11 +109,11 @@ try {
   await page.waitForSelector("[data-hotkeys]")
   const n = (await page.$$("[data-hotkey]")).length
   check("commands listed", n > 20, n)
-  // Every word must match: "left sidebar" lists toggling and focusing it, "toggle left sidebar" only the first.
+  // Every word must match: "left sidebar" lists showing and focusing it, "hide left sidebar" (its name while shown) only the first.
   const listed = () => page.$$eval("[data-hotkey]", (e) => e.map((x) => x.dataset.hotkey).sort().join())
   await page.fill("input[aria-label='Filter commands']", "left sidebar")
   check("filter", (await listed()) === "sidebar:focus-left,sidebar:toggle", await listed())
-  await page.fill("input[aria-label='Filter commands']", "toggle left sidebar")
+  await page.fill("input[aria-label='Filter commands']", "hide left sidebar")
   check("filter narrows", (await listed()) === "sidebar:toggle", await listed())
   const row = "[data-hotkey='sidebar:toggle']"
   await page.click(`${row} button[aria-label^='Add a hotkey']`)

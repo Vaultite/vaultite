@@ -32,9 +32,8 @@ function Preview() {
 
 export default definePlugin({
   commands: [
-    { id: "audio-recorder:start", name: "Start recording audio", when: idle, run: () => void start(), icon: Mic },
-    { id: "audio-recorder:stop", name: "Stop recording audio", when: recording, run: stop, icon: Square },
-    { id: "audio-recorder:toggle", name: "Start or stop recording audio", run: () => (recording() ? stop() : void start()), icon: Mic },
+    { id: "audio-recorder:toggle", name: "Start recording audio", run: () => (recording() ? stop() : void start()), icon: Mic,
+      nameWhenOn: "Stop recording audio", on: recording },
     { id: "audio-recorder:transcribe", name: "Transcribe audio", when: canTranscribe, run: transcribeHere, icon: Captions },
     // What the iPhone's voice note widget opens: said, transcribed, in the inbox (Inbox's inbox.voice).
     { id: "audio-recorder:voice-note", name: "Record a voice note for your inbox", when: () => idle() && pluginOn("inbox"), run: () => void voiceNote(), icon: Mic },

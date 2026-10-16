@@ -167,11 +167,12 @@ const archives = (p: string) => p.split("/").includes(ARCHIVE_DIR)
 /** The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and
  *  revealing the open file (the heading's buttons have the rest: new, sort, collapse). */
 export function treeShownItems(): MenuItem[] {
-  const store = getStore(), { showArchived, autoReveal } = getPrefs()
+  const store = getStore(), { showArchived } = getPrefs()
   const anyArchive = showArchived || (!!store && folderList(store.files).some(archives))
+  // (its switches, as Settings names them: core/switches.ts)
   return [
-    ...commandItems("files:show-hidden", "files:hide-hidden", ...(anyArchive ? ["files:show-archived", "files:hide-archived"] : [])),
-    { label: "Auto-reveal current file", checked: autoReveal, sep: true, run: () => void setPrefs({ autoReveal: !autoReveal }) },
+    ...commandItems("setting:show-hidden", ...(anyArchive ? ["setting:show-archived"] : [])),
+    ...commandItems("setting:auto-reveal").map((it) => ({ ...it, sep: true })),
   ]
 }
 

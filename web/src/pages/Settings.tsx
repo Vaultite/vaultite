@@ -11,15 +11,15 @@ import { isEnabled, PLUGINS, pluginById, tintOfPlugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
 import { usePrefs } from "@/core/prefs"
 import { cell } from "@/core/signal"
-import { quickTextSizeSub, textSizeKinds } from "@/core/textsize"
+import { textSizeKinds } from "@/core/textsize"
+import { allSwitches, placeOf, useSwitches, type SwitchDef } from "@/core/switches"
 import { capitalize } from "@/lib/utils"
 import { HotkeysSheet } from "@/pages/Hotkeys"
-import { Panel, Segmented, SettingRow, SheetHead } from "@/components/kit"
+import { Panel, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
 import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
-import { switchesIn, switchRow } from "@/components/PluginSwitches"
 import { Catch } from "@/components/Guard"
 import { openBundles } from "@/core/bundles"
 import { Plugins } from "@/pages/Plugins"
@@ -134,13 +134,16 @@ function litOf(active: string) {
 
 // ---------- search
 
-/** A setting search finds: `where` it is (Appearance, a plugin's name), and what choosing it does. */
-type Found = { id: string; label: string; sub?: string; where: string; words: string; run: () => void }
+/** A setting search finds: `where` it is (Appearance, a plugin's name), and what choosing it does; a switch is flipped
+ *  right there. */
+type Found = { id: string; label: string; sub?: string; where: string; words: string; run: () => void; switch?: SwitchDef }
 /** Goes to a section, and to the row `selector` finds in it: beside the list, or in a sheet where the pane is narrow. */
 type Show = (section: string, selector?: string) => void
 
 /** Everything in the sections and in plugins' settings that search can find. */
 function findable(store: Store, disabled: string[], order: string[], show: Show): Found[] {
+  const switches = allSwitches(disabled)
+  const switchOf = (plugin: string, key?: string) => switches.find((w) => w.plugin?.id === plugin && w.plugin.key === key)
   const row = (id: string, label: string, where: string, selector: string, sub = ""): Found =>
     ({ id, label, sub, where, words: "", run: () => show(where.toLowerCase(), selector) })
   const app: Found[] = [
@@ -150,22 +153,17 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     { ...row("theme", "Theme", "Appearance", '[data-settings-row="theme"]', "System, light or dark"), words: "dark mode light mode" },
     { ...row("scheme", "Colour scheme", "Appearance", '[data-settings-row="scheme"]'), words: "color colors colours obsidian themes" },
     { ...row("density", "Density", "Appearance", '[data-settings-row="density"]', "Compact or comfortable"), words: "spacing" },
-    row("file-icons", "File icons", "Appearance", '[data-settings-row="file-icons"]'),
-    row("line-numbers", "Line numbers", "Appearance", '[data-settings-row="line-numbers"]'),
-    { ...row("sidebar-scroll", "Scroll sidebar panels separately", "Appearance", '[data-settings-row="sidebar-scroll"]'), words: "sidebars" },
     { id: "fonts", label: "Fonts", sub: "Interface, text and code", where: "Appearance", words: "font typeface monospace", run: () => openDetail("fonts") },
     ...textSizeKinds(disabled, order).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),
-    { ...row("quick-text-size", "Quick text size", "Appearance", '[data-settings-row="quick-text-size"]', quickTextSizeSub()), words: "font size zoom scroll wheel pinch" },
     { ...row("snippets", "CSS snippets", "Appearance", 'section[aria-label="CSS snippets"]'), words: "styles custom" },
-    { ...row("readable-line-length", "Readable line length", "Editor", '[data-settings-row="readable-line-length"]'), words: "width wide column" },
     { ...row("properties-in-document", "Properties in document", "Editor", '[data-settings-row="properties-in-document"]', "Visible, hidden or source"), words: "frontmatter yaml metadata" },
-    { ...row("spellcheck", "Spellcheck", "Editor", '[data-settings-row="spellcheck"]'), words: "spelling spell check" },
     { ...row("indent", "Indent", "Editor", '[data-settings-row="indent"]', "Tab or spaces"), words: "tabs spaces tab size" },
-    { ...row("auto-pair-brackets", "Auto-pair brackets", "Editor", '[data-settings-row="auto-pair-brackets"]'), words: "close brackets quotes autopair" },
-    { ...row("auto-pair-markdown", "Auto-pair Markdown", "Editor", '[data-settings-row="auto-pair-markdown"]'), words: "wrap selection bold italic autopair" },
-    // (plugins switched on and off there: Vim keys)
-    ...CORE.flatMap((c) => switchesIn(c.id).map((p) => ({ ...row(switchRow(p.id), p.switchIn!.label, c.label, `[data-settings-row="${switchRow(p.id)}"]`), words: `${p.name} plugin` }))),
+    // (every switch: the app's, and plugins switched on and off here, Vim keys; File explorer's are its plugin's, below)
+    ...switches.filter((w) => !w.plugin).map((w): Found => {
+      const row = w.id.replace(/^setting:/, "")
+      return { id: row, label: w.name, sub: w.sub?.(), where: placeOf(w).name, words: w.words ?? "", run: () => show(w.section ?? "appearance", `[data-settings-row="${row}"]`), switch: w }
+    }),
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
     { ...row("vaults", "Manage vaults", "General", "[data-settings-vault]", store.vault.path), words: "vault folder" },
     row("version", "Version", "General", '[data-settings-row="version"]', "Vaultite and its plugin API"),
@@ -175,6 +173,8 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     const where = isEnabled(p.id, disabled) ? p.name : `${p.name} (off)`
     const own = [
       ...Object.entries(p.settingsDecls ?? {}).map(([key, d]) => ({ key, label: d.label, description: d.description })),
+      // (the app's switches in its sheet: File explorer's)
+      ...switches.filter((w) => w.plugin?.id === p.id && !p.settingsDecls?.[w.plugin.key]).map((w) => ({ key: w.plugin!.key, label: w.name, description: w.sub?.() })),
       ...(p.settingsSearch ?? []),
       ...(store.filing?.homes ?? []).filter((h) => h.plugin === p.id).map((h) => ({ key: `folder-${h.key}`, label: `${h.label} folder`, description: `where new ${h.label.toLowerCase()} go` })),
     ]
@@ -182,7 +182,8 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     return [
       { id: `plugin:${p.id}`, label: settingsTitle(p.name), where: "Plugin", words: "", run: () => show(`plugin:${p.id}`) },
       ...own.map((e, i): Found => ({ id: `plugin:${p.id}:${e.key ?? i}`, label: e.label, sub: e.description ? capitalize(e.description) : "",
-        where, words: e.key ?? "", run: () => show(`plugin:${p.id}`, e.key ? `${sheet} [data-setting="${CSS.escape(e.key)}"]` : undefined) })),
+        where, words: e.key ?? "", run: () => show(`plugin:${p.id}`, e.key ? `${sheet} [data-setting="${CSS.escape(e.key)}"]` : undefined),
+        switch: isEnabled(p.id, disabled) ? switchOf(p.id, e.key) : undefined })),
     ]
   })
   return [...app, ...plugins]
@@ -198,11 +199,24 @@ function search(all: Found[], query: string) {
 }
 
 function Results({ found, query }: { found: Found[]; query: string }) {
+  useSwitches()
   return (
     <Panel>
       {found.length ? (
         <div className="hairline" data-settings-results>
-          {found.map((f) => (
+          {/* A switch flips where it's found; the rest of its row still goes to it. */}
+          {found.map((f) => f.switch ? (
+            <div key={f.id} className="flex min-h-12 items-center gap-3 py-2" data-settings-result={f.id}>
+              <button type="button" onClick={f.run} className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] leading-[20px]">{f.label}</span>
+                  {f.sub && <span className="block text-[13px] leading-[18px] text-muted-foreground">{f.sub}</span>}
+                </span>
+                <span className="max-w-[40%] shrink-0 truncate text-right text-[14px] text-muted-foreground">{f.where}</span>
+              </button>
+              <Switch on={f.switch.get()} onChange={(on) => void f.switch!.set(on)} label={f.label} />
+            </div>
+          ) : (
             <SettingRow key={f.id} label={f.label} sub={f.sub || undefined} value={f.where} onClick={f.run} data-settings-result={f.id} />
           ))}
         </div>

@@ -21,6 +21,10 @@
   a `checklist()`.
 - Every scroller is a stacking context (index.css, by its `overflow-*` class), or iOS draws sticky headings over its
   scroll indicator; a scroller made another way gets `isolate`. Overlays hold the page with `usePageLock`.
+- On and off, named the Apple way, never "Toggle": a setting is a switch declared once (`core/switches.ts`; a plugin's:
+  a boolean in its manifest's `settings`), named as Settings names it, and every surface follows it (Settings, its
+  search, the palette, menus, the menu bar). What isn't a setting says what it does now (`on` + `nameWhenOn`: Show /
+  Hide left sidebar). "Turn on" is only for plugins.
 - A shortcut is a command (`core/commands.ts`), never a bare keydown listener; users rebind in `.vaultite/hotkeys.json`.
   Key names come from `keyHint` / `commandKeys(id)` and the platform from `isMac` (`core/platform.ts`), never typed in.
   A default key off a Mac avoids what Linux desktops take (Ctrl+Alt+arrows, Ctrl+.).

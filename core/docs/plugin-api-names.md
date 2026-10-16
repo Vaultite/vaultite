@@ -101,7 +101,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with.
 - `cn`
-- `commandItems(...ids)`: Commands as menu rows (by id), those offered now, named and keyed as in the palette.
+- `commandItems(...ids)`: Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check ("Line numbers"), one that switches something else by what it does now ("Hide left…
 - `commandKeys(id)`: Those keys as `keyHint` writes them, "" without any: for a button's tooltip, so it never names keys of its own.
 - `commandList()`: Every command registered now, available or not (`available` says which can run).
 - `confirmDialog(opts)`: Ask; resolves true when confirmed, false when cancelled.
@@ -534,7 +534,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTabLayout()`
 - `useTerminalAccount(id, a)`: The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the first (its bare name's).
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
-- `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` is on (off as in Obsidian: pinches set it off by accident).
+- `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` (Pinch to resize text) is on (off as in Obsidian: pinches set it off by accident).
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
 - `useViewsVersion()`: Re-render when a view's title or icon changes (returns a counter).

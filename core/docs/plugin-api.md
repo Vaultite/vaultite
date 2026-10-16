@@ -106,7 +106,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `timeline`: Kinds of timeline entries it knows ("call": a phone icon), for the `## Timeline` sections kinds draw (a person's).
 - `views`: Tabs it can open that aren't files (see ViewDef), by name: `view:<name>`.
 - `agents`: Coding agents it brings, by name (see AgentDef): the Terminal plugin runs them.
-- `commands`: Its commands, listed in the command palette while it's on.
+- `commands`: Its commands, listed in the command palette while it's on. One that switches something says what it does now (`on`, `nameWhenOn`), never "Toggle"; a boolean in its manifest's `settings` gets its switch command on its own.
 - `editor`: What it adds to every editor (see EditorExtension).
 - `slash`: Its entries in the editor's slash menu (see SlashItem). Every plugin's blocks are offered there already.
 - `sidebar`: Its panels in the desktop sidebar, by name (see SidebarPanel).
@@ -115,7 +115,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `ambient`: What it draws in the status bar whatever is open, by name (see AmbientItem).
 - `fileBar`: What it draws in a file's header, by name (see FileBarItem).
 - `noteTop`: What it draws at the top of a note's page, by name (see NoteTopItem).
-- `textSizes`: Content with a text size of its own apart from the app's zoom (core/textsize.ts), by id: it gets ⌘+scroll (`useTextSizeWheel`, while quick text size is on), commands and a Settings row; the view reads `useTextSize(id)`.
+- `textSizes`: Content with a text size of its own apart from the app's zoom (core/textsize.ts), by id: it gets ⌘+scroll (`useTextSizeWheel`, while Pinch to resize text is on), commands and a Settings row; the view reads `useTextSize(id)`.
 - `keyGroups`: Names for the first steps of its commands' key sequences, which the keys hint shows while one is under way (`{"Space F": "Files"}`; steps spelled as in `keys`).
 - `sidebarSetup`: Keeps the sidebars' setup itself, instead of sidebars.json (see SidebarSetup).
 - `conventions`: Where new files go and how links are written, as the vault says (see Conventions).

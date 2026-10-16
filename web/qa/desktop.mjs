@@ -163,7 +163,7 @@ check("File > New note on ⌘N, with its icon (a Mac's: GTK menus get none)", me
 check("most items have icons (a Mac's)", !MAC || Object.values(menu).filter((i) => i.icon).length > 40, Object.values(menu).filter((i) => i.icon).length)
 check("Go has Back and Forward, on the app's keys", menu["Go > Back"]?.key === (MAC ? "Cmd+Alt+Left" : "Alt+Left") && menu["Go > Forward"]?.key === (MAC ? "Cmd+Alt+Right" : "Alt+Right"), [menu["Go > Back"], menu["Go > Forward"]])
 check("File > Reopen closed tab on ⇧⌘T; Window has Pin and Stack tabs", menu["File > Reopen closed tab"]?.key === `${CMD}+Shift+T` &&
-  !!menu["Window > Pin or unpin tab"] && !!menu["Window > Stack or unstack tabs"], [menu["File > Reopen closed tab"], menu["Window > Pin or unpin tab"]])
+  !!menu["Window > Pin tab"] && !!menu["Window > Stack tabs"], [menu["File > Reopen closed tab"], menu["Window > Pin tab"]])
 check("View > Graph view on ⌘G", !menu["View > Graph view"] || menu["View > Graph view"].key === `${CMD}+G`, menu["View > Graph view"])
 check("Edit > Search the vault on ⇧⌘F", menu["Edit > Search the vault"]?.key === `${CMD}+Shift+F`, menu["Edit > Search the vault"])
 check("Help has the docs, release notes and logs", ["Help > Vaultite help", "Help > Release notes", "Help > Show logs"].every((k) => menu[k]), Object.keys(menu).filter((k) => k.startsWith("Help")))
@@ -179,12 +179,12 @@ const pins = await (await fetch(`${origin}/api/state`)).json().then((s) => s.pin
 if (pins.length) check("Go > Pinned lists the pinned pages", await until(async () => Object.keys(await menuInfo()).filter((k) => k.startsWith("Go > Pinned > ")).length > 0, 10000), pins)
 
 // The sidebar folded to its rail: the top-left tab bar makes room for the traffic lights and the toggle.
-await menuClick("Toggle left sidebar")
+await menuClick("Hide left sidebar")
 await wait(400)
 const firstTab = await win.locator("[data-corner] [role=tablist] [role=tab]").first().boundingBox()
 check("folded sidebar: the first tab clears the traffic lights (a Mac's) and the toggle", firstTab && firstTab.x >= (MAC ? 110 : 40), firstTab)
 await win.screenshot({ path: path.join(OUT, "rail.png") })
-await menuClick("Toggle left sidebar")
+await menuClick("Show left sidebar")
 
 // Finder drops, as CDP drag events with real files.
 const cdp = await win.context().newCDPSession(win)

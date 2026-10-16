@@ -9,7 +9,8 @@ import { signal } from "@/core/signal"
 
 export type Command = {
   id: string
-  /** Sentence case, a verb first: "Toggle reading view". */
+  /** Sentence case, a verb first ("Open quick switcher"), never "Toggle": a setting is named as Settings names it, and
+   *  what switches something else says what it does now (`on`, `nameWhenOn`). */
   name: string
   /** Shortcuts, first shown: "Mod+K" (⌘ on a Mac, Ctrl elsewhere), "Mod+Shift+F", "Mod+\\", or a sequence ("G G"). */
   keys?: string[]
@@ -25,20 +26,34 @@ export type Command = {
   label?: string
   /** Other words the palette finds it by ("font" for a text size), each typed word starting one of them or the name's. */
   words?: string
+  /** On now. Alone: a setting, named as Settings names it, drawn with a switch or a check (core/switches.ts). With
+   *  `nameWhenOn`: it says what it does now, `name` while off ("Show left sidebar"), `nameWhenOn` while on. */
+  on?: () => boolean
+  nameWhenOn?: string
+  /** A setting's place in Settings: its section's name ("Appearance") and how to go to it. */
+  place?: { name: string; open: () => void }
 }
+
+/** A setting: drawn with a switch (palette) or a check (menus), not renamed by its state. */
+export const isSetting = (c: Pick<Command, "on" | "nameWhenOn">) => !!c.on && !c.nameWhenOn
+/** Whether what it switches is on now (false for a command that switches nothing). */
+export const isOn = (c: Pick<Command, "on">) => { try { return !!c.on?.() } catch { return false } }
+/** What a command says now: `nameWhenOn` while what it switches is on, else its name. */
+export const commandName = (c: Pick<Command, "name" | "on" | "nameWhenOn">) => (c.nameWhenOn && isOn(c) ? c.nameWhenOn : c.name)
 
 const reg = new Map<string, Command>()
 /** Every command registered since the page loaded, still there or not (Settings > Hotkeys lists them all: a file's
  *  commands come and go with its tab). */
-const known = new Map<string, { id: string; name: string; keys?: string[] }>()
+type Known = { id: string; name: string; keys?: string[]; nameWhenOn?: string; where?: string }
+const known = new Map<string, Known>()
 const commandsChanged = signal()
 let list: Command[] = []
-let knownList: { id: string; name: string; keys?: string[] }[] = []
+let knownList: Known[] = []
 const changed = () => { list = [...reg.values()]; knownList = [...known.values()]; byKeys = null; commandsChanged.notify() }
 
 /** Add commands (the same id replaces the older one); returns how to take them away again. */
 export function registerCommands(cs: Command[]) {
-  for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys }) }
+  for (const c of cs) { reg.set(c.id, c); known.set(c.id, { id: c.id, name: c.name, keys: c.keys, nameWhenOn: c.nameWhenOn, where: c.place?.name }) }
   changed()
   return () => { for (const c of cs) if (reg.get(c.id) === c) reg.delete(c.id); changed() }
 }
@@ -53,7 +68,8 @@ export function useCommands(make: () => Command[], deps: unknown[]) {
  *  switcher", any case): false if there's none (Vim's :cmd). */
 export function runCommandNamed(text: string) {
   const want = text.trim().toLowerCase()
-  const c = available(list).find((x) => x.id.toLowerCase() === want) ?? available(list).find((x) => x.name.toLowerCase() === want)
+  const c = available(list).find((x) => x.id.toLowerCase() === want) ??
+    available(list).find((x) => x.name.toLowerCase() === want || x.nameWhenOn?.toLowerCase() === want)
   if (c) runCommand(c)
   return !!c
 }
@@ -73,7 +89,7 @@ export function runOrSay(run: () => unknown, name: string) {
 export function runCommandById(id: string) {
   const c = reg.get(id)
   if (!c || !available([c]).length) return false
-  runOrSay(c.run, c.name)
+  runOrSay(c.run, commandName(c))
   return true
 }
 
@@ -359,7 +375,7 @@ addEventListener("pointerdown", () => cancelKeys(), true)
 
 /** The user ran it from the palette or with its keys: for Activity. Commands run by code (runCommandById) and by id
  *  (runCommandId: the desktop app's menu, `vau command`, which the server hears itself) aren't noted. */
-const ran = (c: Command) => { if (!QUIET.has(c.id) && !standIns.has(c)) noteActivity("command", `Ran ${c.name}`) }
+const ran = (c: Command) => { if (!QUIET.has(c.id) && !standIns.has(c)) noteActivity("command", `Ran ${commandName(c)}`) }
 /** Opening the palettes is on the way to something else (what's run or opened from them is noted). */
 const QUIET = new Set(["palette:open", "switcher:open"])
 
@@ -371,12 +387,12 @@ export function recentCommands(): string[] {
 export function runCommand(c: Command) {
   try { localStorage.setItem(RECENT, JSON.stringify([c.id, ...recentCommands().filter((x) => x !== c.id)].slice(0, 5))) } catch { /* private mode */ }
   ran(c)
-  runOrSay(c.run, c.name)
+  runOrSay(c.run, commandName(c))
 }
 
 /** Run a command by id, if it's offered now (the desktop app's menu sends these). */
 export function runCommandId(id: string) {
   const c = available(list).find((x) => x.id === id)
-  if (c) runOrSay(c.run, c.name)
+  if (c) runOrSay(c.run, commandName(c))
   return !!c
 }

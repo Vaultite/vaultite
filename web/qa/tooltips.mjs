@@ -37,11 +37,11 @@ try {
   check("a name cut off: its whole name", (await tipOf(long)) === LONG, await tipOf(long))
 
   // The rail: every row says its name, cut off or not.
-  await page.click("[aria-label='Collapse sidebar']")
+  await page.click("[aria-label='Hide left sidebar']")
   await until(async () => (await page.$eval(short, (e) => e.getBoundingClientRect().width)) < 60)
   await wait(300)
   check("in the rail: a short name too", (await tipOf(short)) === "Start here", await tipOf(short))
-  await page.click("[aria-label='Expand sidebar']")
+  await page.click("[aria-label='Show left sidebar']")
   await wait(400)
 
   // The Outline panel: a heading cut off shows whole.

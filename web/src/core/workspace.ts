@@ -332,6 +332,8 @@ export function takeOut(ids: string[]) {
   }
 }
 
+/** Whether the focused pane's tabs are stacked. */
+export const isStacked = () => !!focused()?.stacked
 /** Stack a pane's tabs, or put them back in a row (Group.stacked). */
 export function toggleStacked(gid = state.focus) {
   set(withGroup(gid, (g) => { const { stacked, ...rest } = g; return stacked ? rest : { ...rest, stacked: true } }))

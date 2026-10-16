@@ -471,7 +471,10 @@ export type PluginCommand = { id: string; name: string; keys?: string[]; when?: 
   desktop?: boolean
   /** Its icon (a component, or a Lucide name: `mic`; its plugin's when left out) and a shorter name where it's a button
    *  (a blank tab's: core/newtab.ts). After `run` in the source. */
-  icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string; label?: string }
+  icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string; label?: string
+  /** It switches something, saying what it does now: `name` while off ("Start recording audio"), `nameWhenOn` while
+   *  `on()`. (A setting is a boolean in the manifest's `settings`: its switch command comes on its own.) */
+  on?: () => boolean; nameWhenOn?: string }
 
 /** A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to
  *  go to it. */
@@ -528,7 +531,8 @@ export type PluginDef = {
   views?: Record<string, ViewDef>
   /** Coding agents it brings, by name (see AgentDef): the Terminal plugin runs them. */
   agents?: Record<string, AgentDef>
-  /** Its commands, listed in the command palette while it's on. */
+  /** Its commands, listed in the command palette while it's on. One that switches something says what it does now
+   *  (`on`, `nameWhenOn`), never "Toggle"; a boolean in its manifest's `settings` gets its switch command on its own. */
   commands?: PluginCommand[]
   /** What it adds to every editor (see EditorExtension). */
   editor?: EditorExtension
@@ -547,7 +551,7 @@ export type PluginDef = {
   /** What it draws at the top of a note's page, by name (see NoteTopItem). */
   noteTop?: Record<string, NoteTopItem>
   /** Content with a text size of its own apart from the app's zoom (core/textsize.ts), by id: it gets ⌘+scroll
-   *  (`useTextSizeWheel`, while quick text size is on), commands and a Settings row; the view reads `useTextSize(id)`. */
+   *  (`useTextSizeWheel`, while Pinch to resize text is on), commands and a Settings row; the view reads `useTextSize(id)`. */
   textSizes?: Record<string, TextSizeKind>
   /** Names for the first steps of its commands' key sequences, which the keys hint shows while one is under way
    *  (`{"Space F": "Files"}`; steps spelled as in `keys`). */

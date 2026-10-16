@@ -759,7 +759,9 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Only the focused pane's file (splits: the other side's file is just shown).
   const live = pane && focused
   useCommands(() => (live ? [
-    ...(views.length > 1 ? [{ id: "view:toggle", name: "Toggle reading view", keys: ["Mod+E"], run: () => setMode(shown === "read" ? edit : "read"), icon: BookOpen }] : []),
+    // (named as the view it goes to: the palette keeps it, with its keys, over that view's own command)
+    ...(views.length > 1 ? [{ id: "view:toggle", name: "Switch to reading view", keys: ["Mod+E"], run: () => setMode(shown === "read" ? edit : "read"), icon: BookOpen,
+      nameWhenOn: `Switch to ${(views.find((v) => v.value === edit)?.label ?? "editing view").toLowerCase()}`, on: () => shown === "read" }] : []),
     ...views.filter((v) => v.value !== shown).map((v) => ({ id: `view:${v.value}`, name: `Switch to ${v.label.toLowerCase()}`, run: () => setMode(v.value), icon: MODES[v.value].icon })),
     ...moveCommand(path),
     ...(isReadOnly(path) || isOutside(path) || !isMd(path) ? [] : [{ id: "file:icon", name: "Change icon of current file", run: () => changeIcon(path, (n) => setProperty("icon", n)), icon: Smile }]),

@@ -47,7 +47,7 @@ function read(own: Record<string, unknown>, other: Partial<EditorSettings>): Edi
 
 let last: { own: unknown; other: unknown; value: EditorSettings } | null = null
 /** The settings now (the same object until they change). */
-function editorSettings(s: Store | null = getStore()): EditorSettings {
+export function editorSettings(s: Store | null = getStore()): EditorSettings {
   const own = getPrefs().editor, other = vaultEditor(s)
   if (last && last.own === own && JSON.stringify(last.other) === JSON.stringify(other)) return last.value
   last = { own, other, value: read(own, other) }

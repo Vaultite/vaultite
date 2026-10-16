@@ -99,8 +99,8 @@ export default definePlugin({
   commands: [
     { id: "pages:open-tab", name: "Open pinned pages in a tab", run: () => openView("pages", { newTab: !isViewOpen("pages") }) },
     // In the sidebar's list: the current workspace's, with Workspaces on.
-    { id: "file:pin", name: "Pin current file to the sidebar", desktop: true, when: () => pinnable(currentFile()) && !isPinned(currentFile()), run: () => pinNoted(currentFile(), true) },
-    { id: "file:unpin", name: "Unpin current file from the sidebar", desktop: true, when: () => !!currentFile() && isPinned(currentFile()), run: () => pinNoted(currentFile(), false), icon: PinOff },
+    { id: "file:pin", name: "Pin current file to the sidebar", desktop: true, when: () => pinnable(currentFile()) || (!!currentFile() && isPinned(currentFile())),
+      run: () => pinNoted(currentFile(), !isPinned(currentFile())), nameWhenOn: "Unpin current file from the sidebar", on: () => isPinned(currentFile()) },
     // Bookmarks: the heading the cursor is under, the search on screen.
     { id: "file:pin-heading", name: "Pin current heading to the sidebar", desktop: true, when: () => { const h = headingHere(); return !!h && !isPinned(h) }, run: () => pinNoted(headingHere()!, true) },
     { id: "search:pin", name: "Pin current search to the sidebar", desktop: true, when: () => { const q = searchHere(); return !!q && !isPinned(q) }, run: () => pinNoted(searchHere()!, true) },

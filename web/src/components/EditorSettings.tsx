@@ -2,20 +2,13 @@
 // of the same names. A setting the file doesn't have follows the vault's .obsidian/app.json, else Obsidian's default.
 import type { Store } from "@/core/data"
 import { editorSet, setEditor, useEditorSettings, type EditorSettings, type PropertiesShown } from "@/core/editorPrefs"
-import { Panel, ResetButton, Segmented, SettingRow, Switch } from "@/components/kit"
+import { coreSwitch } from "@/core/switches"
+import { Panel, ResetButton, Segmented, SettingRow } from "@/components/kit"
+import { SwitchRow } from "@/components/SwitchRow"
 import { PluginSwitches } from "@/components/PluginSwitches"
 
-type Flag = "readableLineLength" | "showInlineTitle" | "spellcheck" | "autoPairBrackets" | "autoPairMarkdown"
-
-/** A switch, with its way back to what the vault or Obsidian says. */
-function FlagRow({ k, label, sub, row, value }: { k: Flag; label: string; sub?: string; row: string; value: boolean }) {
-  return (
-    <SettingRow label={label} sub={sub} data-settings-row={row}>
-      <ResetButton on={editorSet(k)} onClick={() => setEditor({ [k]: null })} label={`Reset ${label.toLowerCase()}`} />
-      <Switch on={value} onChange={(on) => setEditor({ [k]: on })} label={label} />
-    </SettingRow>
-  )
-}
+/** A switch, with its way back to what the vault or Obsidian says (core/switches.ts). */
+const FlagRow = ({ row }: { row: string }) => <SwitchRow s={coreSwitch(`setting:${row}`)} />
 
 type Indent = "tab" | "2" | "4"
 const indentOf = (e: EditorSettings): Indent => (e.useTab ? "tab" : (String(e.tabSize) as Indent))
@@ -25,8 +18,8 @@ export function EditorPanel({ store }: { store: Store }) {
   return (
     <Panel>
       <div className="hairline">
-        <FlagRow k="readableLineLength" label="Readable line length" sub="Lines stop at a comfortable width" row="readable-line-length" value={e.readableLineLength} />
-        <FlagRow k="showInlineTitle" label="Show inline title" sub="The file's name at the top of the page" row="show-inline-title" value={e.showInlineTitle} />
+        <FlagRow row="readable-line-length" />
+        <FlagRow row="show-inline-title" />
         <SettingRow stack label="Properties in document" data-settings-row="properties-in-document">
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
             <ResetButton on={editorSet("propertiesInDocument")} onClick={() => setEditor({ propertiesInDocument: null })} label="Reset properties in document" />
@@ -35,7 +28,7 @@ export function EditorPanel({ store }: { store: Store }) {
               options={[{ value: "visible", label: "Visible" }, { value: "hidden", label: "Hidden" }, { value: "source", label: "Source" }]} />
           </div>
         </SettingRow>
-        <FlagRow k="spellcheck" label="Spellcheck" row="spellcheck" value={e.spellcheck} />
+        <FlagRow row="spellcheck" />
         <SettingRow stack label="Indent" sub="What Tab puts in a note not indented yet; one that is keeps its own" data-settings-row="indent">
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
             <ResetButton on={editorSet("useTab") || editorSet("tabSize")} label="Reset indent"
@@ -45,8 +38,8 @@ export function EditorPanel({ store }: { store: Store }) {
               options={[{ value: "tab", label: "Tab" }, { value: "2", label: "2 spaces" }, { value: "4", label: "4 spaces" }]} />
           </div>
         </SettingRow>
-        <FlagRow k="autoPairBrackets" label="Auto-pair brackets" sub="Brackets and quotes close themselves" row="auto-pair-brackets" value={e.autoPairBrackets} />
-        <FlagRow k="autoPairMarkdown" label="Auto-pair Markdown" sub="Typing * _ ~ = or ` over a selection wraps it" row="auto-pair-markdown" value={e.autoPairMarkdown} />
+        <FlagRow row="auto-pair-brackets" />
+        <FlagRow row="auto-pair-markdown" />
         <PluginSwitches section="editor" />
       </div>
     </Panel>

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { AppWindow, Archive, ArchiveRestore, ArchiveX, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, Eye, EyeOff, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListOrdered, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PanelTop, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, SeparatorHorizontal, Server, Settings as SettingsIcon, Shapes, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
+import { FoldVertical, AppWindow, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, Settings as SettingsIcon, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandId, typingIn, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
@@ -9,7 +9,7 @@ import { desktop as desktopApp, otherVaults } from "@/core/desktop"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
-import { activeTab, askRename, canReopenTab, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
+import { activeTab, askRename, canReopenTab, closeTab, closeTabs, currentFile, cycleTab, fillFirstTab, onWorkspaceChange, followHash, go, hashOf, tabsHere, navigate, newTab, reopenTab, selectTabAt, togglePinTab, toggleStacked, isStacked, isPopout, popOut, targetOf, useWorkspace } from "@/core/workspace"
 import { hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { vaultPath, type Tab } from "@/core/layout"
@@ -20,6 +20,7 @@ import { sayWindowState, setWindowState } from "@/core/live"
 import { backgrounds, detailFor, headerItems, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
+import { allSwitches, switchCommand } from "@/core/switches"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
@@ -317,10 +318,12 @@ export default function App() {
     // ⌘N, ⌘T, ⌘W are the browser's: the desktop app has them (its menu), the web gets another key or none.
     { id: "file:new", name: "Create new note", keys: desktopApp ? ["Mod+N"] : ["Mod+Alt+N"], run: () => void newNote(), label: "New note", icon: FilePlus },
     // On a phone the sidebars are drawers (components/PhoneDrawer.tsx).
-    { id: "sidebar:toggle", name: "Toggle left sidebar", keys: ["Mod+\\"],
-      run: () => (isDesktop() ? setPrefs({ sidebar: !getPrefs().sidebar }) : openDrawer(drawerOut() === "left" ? null : "left")), icon: PanelLeft },
-    { id: "sidebar:toggle-right", name: "Toggle right sidebar", keys: ["Mod+Shift+\\"],
-      run: () => { if (isDesktop()) document.querySelector<HTMLElement>("[data-sidebar-toggle=right]")?.click(); else openDrawer(drawerOut() === "right" ? null : "right") }, icon: PanelRight },
+    { id: "sidebar:toggle", name: "Show left sidebar", keys: ["Mod+\\"],
+      run: () => (isDesktop() ? setPrefs({ sidebar: !getPrefs().sidebar }) : openDrawer(drawerOut() === "left" ? null : "left")), icon: PanelLeft,
+      nameWhenOn: "Hide left sidebar", on: () => (isDesktop() ? getPrefs().sidebar : drawerOut() === "left") },
+    { id: "sidebar:toggle-right", name: "Show right sidebar", keys: ["Mod+Shift+\\"],
+      run: () => { if (isDesktop()) document.querySelector<HTMLElement>("[data-sidebar-toggle=right]")?.click(); else openDrawer(drawerOut() === "right" ? null : "right") }, icon: PanelRight,
+      nameWhenOn: "Hide right sidebar", on: () => (isDesktop() ? document.querySelector("[data-sidebar-toggle=right]")?.getAttribute("aria-expanded") === "true" : drawerOut() === "right") },
     { id: "tab:new", name: "Open new tab", keys: desktopApp ? ["Mod+T"] : undefined, when: isDesktop, run: () => newTab(), icon: Plus },
     { id: "split:right", name: "Split right", keys: ["Mod+Alt+\\"], when: isDesktop, run: () => splitTab("right"), icon: Columns2 },
     { id: "split:down", name: "Split down", when: isDesktop, run: () => splitTab("bottom"), icon: Rows2 },
@@ -334,8 +337,8 @@ export default function App() {
     { id: "nav:forward", name: "Navigate forward", keys: [isMac ? "Mod+Alt+ArrowRight" : "Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
     // (A pinned tab stays open: closed from its menu, or unpinned first.)
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, when: isDesktop, run: () => { if (!activeTab().pinned) closeTab(activeTab().id) }, icon: X },
-    { id: "tab:toggle-pin", name: "Toggle pin", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin },
-    { id: "tab:toggle-stacked", name: "Toggle stacked tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers },
+    { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
+    { id: "tab:toggle-stacked", name: "Stack tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers, nameWhenOn: "Unstack tabs", on: isStacked },
     // A window of its own (a pop-out): no sidebars, its own tabs.
     { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activeTab().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },
     { id: "tab:move-to-main", name: "Move current tab to main window", when: hasMainWindow, run: () => moveToMain([activeTab().id]), icon: AppWindow },
@@ -379,18 +382,12 @@ export default function App() {
     { id: "newtab:page", name: "Choose a page for new tabs…", run: chooseNewTabPage, icon: LayoutDashboard },
     { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
     { id: "hotkeys:open", name: "Open hotkeys", run: () => openDetail("hotkeys"), icon: Keyboard },
-    { id: "density:toggle", name: "Toggle comfortable density", run: () => setPrefs({ density: getPrefs().density === "comfortable" ? "compact" : "comfortable" }), icon: UnfoldVertical },
-    { id: "editor:toggle-line-numbers", name: "Toggle line numbers", run: () => setPrefs({ lineNumbers: !getPrefs().lineNumbers }), icon: ListOrdered },
-    { id: "file-icons:toggle", name: "Toggle file icons", run: () => setPrefs({ fileIcons: !getPrefs().fileIcons }), icon: Shapes },
-    { id: "sidebar:toggle-panel-dividers", name: "Toggle lines between sidebar panels", run: () => setPrefs({ panelDividers: !getPrefs().panelDividers }), icon: SeparatorHorizontal },
-    { id: "tab-bar:toggle", name: "Toggle tab bar", run: () => setPrefs({ tabBar: !getPrefs().tabBar }), icon: PanelTop },
+    // A choice of two, like the theme: the one not in use is offered (the menu bar's radio items).
+    { id: "density:compact", name: "Use compact density", when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },
+    { id: "density:comfortable", name: "Use comfortable density", when: () => getPrefs().density !== "comfortable", run: () => setPrefs({ density: "comfortable" }), icon: UnfoldVertical },
     // The note's history while the keyboard is beside its text, not in it (a property just removed, a chip clicked).
     { id: "editor:undo", name: "Undo", keys: ["Mod+Z"], when: besideText, run: () => currentEditor()?.undo?.(), icon: Undo2 },
     { id: "editor:redo", name: "Redo", keys: ["Mod+Shift+Z"], when: besideText, run: () => currentEditor()?.redo?.(), icon: Redo2 },
-    { id: "files:show-hidden", name: "Show hidden files", when: () => !getPrefs().showHidden, run: () => setPrefs({ showHidden: true }).then(reload), icon: Eye },
-    { id: "files:hide-hidden", name: "Hide hidden files", when: () => getPrefs().showHidden, run: () => setPrefs({ showHidden: false }).then(reload), icon: EyeOff },
-    { id: "files:show-archived", name: "Show archived files", when: () => !getPrefs().showArchived, run: () => setPrefs({ showArchived: true }), icon: Archive },
-    { id: "files:hide-archived", name: "Hide archived files", when: () => getPrefs().showArchived, run: () => setPrefs({ showArchived: false }), icon: ArchiveX },
     { id: "vault:reload", name: "Reload the vault", run: () => reload(), icon: RefreshCw },
     { id: "vault:manage", name: "Manage vaults", run: manageVaults, icon: Vault },
     { id: "vault:sandbox", name: "Open the playground", when: () => !!desktopApp?.openSandbox, run: () => desktopApp?.openSandbox?.(), icon: FlaskConical },
@@ -407,6 +404,8 @@ export default function App() {
   useCommands(settingsCommands, [disabled.join(), enabled.join(), pluginsVersion])
   // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the app's zoom (core/textsize.ts).
   useCommands(() => textSizeCommands(disabled, order), [disabled.join(), enabled.join(), order.join()])
+  // Every on/off setting, the app's and the plugins' (core/switches.ts).
+  useCommands(() => allSwitches(disabled).map(switchCommand), [disabled.join(), enabled.join(), pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it.
   const popout = isPopout()
   const side = popout ? "0px" : sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)

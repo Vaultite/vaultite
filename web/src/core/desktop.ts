@@ -1,6 +1,7 @@
 // The desktop app's side of the page (`window.vaultite`; null in a browser). Chromium moves focus between native views
 // without telling this page, so every focus here asks the main process for the keyboard back (`web.take`).
-import { available, commandList, isCustom, keysOf, onCommandsChanged, runCommandId } from "@/core/commands"
+import { available, commandList, commandName, isCustom, isOn, isSetting, keysOf, onCommandsChanged, runCommandId } from "@/core/commands"
+import { onSwitches } from "@/core/switches"
 import { getStore, onStore } from "@/core/data"
 import { get, post, upload as uploadFile } from "@/core/http"
 import { openFile } from "@/core/files"
@@ -88,7 +89,7 @@ function reportSafety(d: DesktopApi) {
 
 /** What the menu bar shows of a window (electron/menu.ts's MenuSnapshot). */
 export type MenuSnapshot = {
-  commands: { id: string; name: string; keys: string[]; custom: boolean; on: boolean }[]
+  commands: { id: string; name: string; keys: string[]; custom: boolean; on: boolean; checked?: boolean }[]
   pinned: { path: string; title: string }[]
   recent: { path: string; title: string }[]
 }
@@ -397,7 +398,8 @@ function syncMenu(sync: (snap: MenuSnapshot) => Promise<unknown>) {
     const exists = new Set(s?.files.files.map((f) => f.path) ?? [])
     const pins = workspacePins() ?? ((s as { pinned?: unknown } | null)?.pinned as string[] | undefined) ?? []
     const snap: MenuSnapshot = {
-      commands: commandList().map((c) => ({ id: c.id, name: c.name, keys: keysOf(c), custom: isCustom(c.id), on: available([c]).length > 0 })),
+      commands: commandList().map((c) => ({ id: c.id, name: commandName(c), keys: keysOf(c), custom: isCustom(c.id), on: available([c]).length > 0,
+        ...(isSetting(c) ? { checked: isOn(c) } : {}) })),
       pinned: (Array.isArray(pins) ? pins : []).filter((p) => exists.has(p)).map((p) => ({ path: p, title: title(p) })),
       recent: recentFiles().filter((p) => exists.has(p)).slice(0, 15).map((p) => ({ path: p, title: title(p) })),
     }
@@ -408,6 +410,8 @@ function syncMenu(sync: (snap: MenuSnapshot) => Promise<unknown>) {
   }
   const soon = () => { if (!timer) timer = window.setTimeout(send, 150) }
   onCommandsChanged(soon)
+  // (a setting's check, and names that follow what's on: Hide left sidebar)
+  onSwitches(soon)
   onStore(soon)
   subscribeScoped(soon)
   // (What's available follows the tab, the focus and what was clicked; keys that change it change the tab or the store.)

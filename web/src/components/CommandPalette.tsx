@@ -1,13 +1,15 @@
-// The command palette (⌘P): every command offered now, fuzzy by name, the ones used last first. A plugin that's off
-// whose name is typed is offered to turn on ("turn off" and a name, to turn off): how one finds a plugin unknown.
+// The command palette (⌘P): commands offered now, fuzzy by name, the used last first; a setting shows its switch. A
+// plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
 import { useMemo, useState } from "react"
-import { available, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
+import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
+import { useSwitches } from "@/core/switches"
 import { commandIcon } from "@/core/pages"
 import { isEnabled, names, pluginById, setSwitch, switchedOn, usePlugins, type Plugin } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
 import { fuzzy } from "@/core/search"
 import { Keys, Marked, Palette } from "@/components/Palette"
+import { cn } from "@/lib/utils"
 
 /** `plugin`: a row that switches a plugin, which is now on or off. */
 type Row = Command & { marks: number[]; plugin?: "on" | "off" }
@@ -57,7 +59,8 @@ function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   if (!verb && q.length < 2) return []
   const say = off ? TURN_OFF : TURN_ON
   return all.flatMap((p) => {
-    if (p.alwaysOn || isEnabled(p.id, disabled) !== off) return []
+    // (one switched in a Settings section is a switch there, as it's named: Vim keys)
+    if (p.alwaysOn || p.switchIn || isEnabled(p.id, disabled) !== off) return []
     // Only where the name has it as typed (a fuzzy hit across a long name would offer every plugin).
     const m = q ? fuzzy(q, p.name) : { score: 0, marks: [] }
     if (!m || (q && m.score < 100)) return []
@@ -85,8 +88,11 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const plugins = usePlugins()
   const { disabled } = usePrefs()
   const [q, setQ] = useState("")
+  const [sel, setSel] = useState<Row | null>(null)
+  const switched = useSwitches()
   const rows = useMemo((): Row[] => {
-    const cs = once(available(all))
+    // Named as they are now ("Hide left sidebar"), found by either name.
+    const cs = once(available(all).map((c) => (c.nameWhenOn ? { ...c, name: commandName(c), words: [c.words, c.name, c.nameWhenOn].filter(Boolean).join(" ") } : c)))
     if (!q.trim()) {
       const recent = recentCommands()
       const rank = (c: Command) => { const i = recent.indexOf(c.id); return i < 0 ? recent.length : i }
@@ -98,22 +104,43 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     const found: Row[] = cs.flatMap((c) => { const m = fuzzy(q.trim(), c.name); return m ? [{ ...c, marks: m.marks, score: m.score }] : c.words && byWords(c) ? [{ ...c, marks: [], score: -Infinity }] : [] })
       .sort((a, b) => b.score - a.score).map(({ score: _, ...c }) => c)
     return [...found, ...pluginRows(plugins, disabled, q.trim())]
-  }, [all, q, plugins, disabled])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [all, q, plugins, disabled, switched])
+  const setting = !!sel && isSetting(sel)
 
   return (
     <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} items={rows} onClose={onClose}
       // Switching a plugin isn't a command: it's left out of the recent ones.
-      onPick={(c) => { if (!c) return; onClose(); setTimeout(() => (c.plugin ? runOrSay(c.run, c.name) : runCommand(c)), 0) }}
+      onPick={(c, how) => {
+        if (!c) return
+        onClose()
+        setTimeout(() => (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)), 0)
+      }}
+      onSelect={setSel}
       section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : undefined)}
       empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No command matches "{q.trim()}".</p>}
-      hints={[["ArrowUp ArrowDown", "to navigate"], ["Enter", "to use"], ["Escape", "to dismiss"]]}
+      hints={setting
+        ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to switch"], ["Mod+Enter", "to open in Settings"], ["Escape", "to dismiss"]]
+        : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to use"], ["Escape", "to dismiss"]]}
       row={(c) => {
         const Icon = commandIcon(c)
         return <>
           {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /> : <span aria-hidden className="size-4 shrink-0" />}
           <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={c.name} marks={c.marks} /></span>
+          {isSetting(c) && c.place && <span className="hidden max-w-[35%] shrink-0 truncate text-[13px] text-muted-foreground md:block">{c.place.name}</span>}
           {keysOf(c)[0] && <Keys keys={keysOf(c)[0]} />}
+          {isSetting(c) && <SwitchMark on={isOn(c)} />}
         </>
       }} />
+  )
+}
+
+/** A setting's state at the end of its row: the switch Settings draws, small, to look at (Enter flips it). */
+function SwitchMark({ on }: { on: boolean }) {
+  return (
+    <span className={cn("relative h-[18px] w-[30px] shrink-0 rounded-full transition-colors", on ? "bg-primary" : "bg-foreground/[0.18]")}>
+      <span className={cn("absolute top-[2px] left-[2px] size-[14px] rounded-full bg-white shadow-[0_1px_2px_rgb(0_0_0/0.2)] transition-transform", on && "translate-x-[12px]")} />
+      <span className="sr-only">{on ? "On" : "Off"}</span>
+    </span>
   )
 }

@@ -347,16 +347,19 @@ try {
   check("Hide: out of the sidebar and of sidebars.json", !!(await until(async () => (await saved()) === "search:search|files:files|terminal:sessions")) && !(await shown()).includes("pages:pages"), await saved())
   check("the right sidebar empty: gone", !!(await until(async () => !(await page.$(R)))))
 
-  // ---------- a panel's own items (its `menu`): the File explorer's Show / Hide hidden files, on top ----------
+  // ---------- a panel's own items (its `menu`): the File explorer's Show hidden files switch, on top ----------
   const dotRow = `${panel("files:files")} [data-tree-path='.vaultite']`
+  const hiddenItem = () => page.getByRole("menuitemcheckbox", { name: "Show hidden files" })
   await page.click(head("files:files"), { button: "right" })
-  check("File explorer's menu: Show hidden files on top", (await menuItems())[0] === "Show hidden files", await menuItems())
-  await page.getByRole("menuitem", { name: "Show hidden files" }).click()
+  check("File explorer's menu: Show hidden files on top, unchecked", (await menuItems())[0] === "Show hidden files" && (await hiddenItem().getAttribute("aria-checked")) === "false", await menuItems())
+  await hiddenItem().click()
   check("...shows .vaultite in the tree", !!(await until(() => page.$(dotRow))))
+  await page.keyboard.press("Escape")
   await page.click(head("files:files"), { button: "right" })
-  check("...then the menu says Hide hidden files", (await menuItems())[0] === "Hide hidden files", await menuItems())
-  await page.getByRole("menuitem", { name: "Hide hidden files" }).click()
+  check("...then it's checked", (await hiddenItem().getAttribute("aria-checked")) === "true", await menuItems())
+  await hiddenItem().click()
   check("...which hides them again", !!(await until(async () => !(await page.$(dotRow)))))
+  await page.keyboard.press("Escape")
 
   // ---------- a pane's view tab back into a sidebar ----------
   await page.click(head("files:files"), { button: "right" })

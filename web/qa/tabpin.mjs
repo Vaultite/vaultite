@@ -20,7 +20,7 @@ const hash = (f) => page.evaluate((h) => { location.hash = h }, `#file/${encodeU
 
 await command(page, "Close all other tabs")
 await hash(a); await until(async () => (await tabs()).active === a)
-check("Toggle pin", await command(page, "Toggle pin") && same((await tabs()).tabs, [`${a} (pinned)`]), await tabs())
+check("Pin tab", await command(page, "Pin tab") && same((await tabs()).tabs, [`${a} (pinned)`]), await tabs())
 check("a pin where the X was", (await page.locator("[data-tab-pin]").count()) === 1 && !(await page.locator(`[data-tab-id] [data-tab-close]`).count()))
 
 // A link followed (the address) and the quick switcher: beside it, not in it.

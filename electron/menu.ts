@@ -12,8 +12,9 @@ const MOD = MAC ? "Cmd" : "Ctrl"
 
 /** What a vault window tells the menu (web/src/core/desktop.ts). */
 export type MenuSnapshot = {
-  /** Its commands now: keys in effect (`custom`: set in hotkeys.json, so none means none), `on`: available now. */
-  commands: { id: string; name: string; keys: string[]; custom?: boolean; on: boolean }[]
+  /** Its commands now, named as they are now ("Hide left sidebar"): keys in effect (`custom`: set in hotkeys.json, so
+   *  none means none), `on`: available now, `checked`: a setting's state (web/src/core/switches.ts). */
+  commands: { id: string; name: string; keys: string[]; custom?: boolean; on: boolean; checked?: boolean }[]
   /** The current workspace's pinned pages and its files opened lately (vault paths, with a title). */
   pinned: { path: string; title: string }[]
   recent: { path: string; title: string }[]
@@ -101,9 +102,9 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
   const byId = new Map((snap?.commands ?? []).map((c) => [c.id, c]))
   const used = new Set(SYSTEM_KEYS)
 
-  /** An item running command `id`: hidden while it doesn't exist (its plugin is off) unless `always` (then greyed,
-   *  with its default key), greyed while unavailable. `key`: its accelerator when the command has none. */
-  const cmd = (id: string, label: string, ico?: string, o: { key?: string; always?: boolean } = {}): MenuItemConstructorOptions | null => {
+  /** An item running command `id`: hidden while missing unless `always` (greyed, its default `key`), greyed while
+   *  unavailable. A setting is a checkbox; `named`: the command's name now ("Hide left sidebar"), else `label`. */
+  const cmd = (id: string, label: string, ico?: string, o: { key?: string; always?: boolean; named?: boolean } = {}): MenuItemConstructorOptions | null => {
     const c = byId.get(id)
     if (!c && !(o.always && CORE.has(id))) return null
     const keys = c && (c.custom || c.keys.length) ? c.keys : o.key ? [o.key] : []
@@ -112,7 +113,9 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       const a = accelerator(k)
       if (a && !used.has(a)) { accel = a; used.add(a); break }
     }
-    return { label, icon: icon(ico), accelerator: accel, enabled: !!c?.on, click: ctx.run(id) }
+    const text = o.named && c ? c.name : label
+    if (c?.checked !== undefined) return { label: text, type: "checkbox", checked: c.checked, accelerator: accel, enabled: c.on, click: ctx.run(id) }
+    return { label: text, icon: icon(ico), accelerator: accel, enabled: !!c?.on, click: ctx.run(id) }
   }
   /** The commands whose ids match, as items labelled by their names. */
   const all = (re: RegExp, ico?: string) => (snap?.commands ?? []).filter((c) => re.test(c.id)).map((c) => cmd(c.id, c.name, ico))
@@ -173,8 +176,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       cmd("file:rename", "Rename", "pencil", { always: true }),
       cmd("file:duplicate", "Duplicate", "copy", { always: true }),
       cmd("file:move", "Move to folder…", "folder-input"),
-      cmd("file:pin", "Pin to sidebar", "pin"),
-      cmd("file:unpin", "Unpin from sidebar", "pin-off"),
+      cmd("file:pin", "Pin current file to the sidebar", "pin", { named: true }),
       cmd("file:reveal-finder", MAC ? "Reveal in Finder" : "Show in folder", "folder-search", { always: true }),
       cmd("file:reveal", "Reveal in file tree", "list-tree"),
       cmd("history:open", "Version history", "history"),
@@ -220,10 +222,11 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
     { label: "View", submenu: items(
       cmd("palette:open", "Command palette", "command", { key: "Mod+P", always: true }),
       sep,
-      cmd("sidebar:toggle", "Toggle left sidebar", "panel-left", { key: "Mod+\\", always: true }),
-      cmd("sidebar:toggle-right", "Toggle right sidebar", "panel-right", { always: true }),
-      cmd("view:toggle", "Toggle reading view", "book-open", { key: "Mod+E", always: true }),
-      cmd("editor:toggle-line-numbers", "Toggle line numbers", "list-ordered", { always: true }),
+      cmd("sidebar:toggle", "Show left sidebar", "panel-left", { key: "Mod+\\", always: true, named: true }),
+      cmd("sidebar:toggle-right", "Show right sidebar", "panel-right", { always: true, named: true }),
+      cmd("view:toggle", "Switch to reading view", "book-open", { key: "Mod+E", always: true, named: true }),
+      cmd("setting:line-numbers", "Line numbers", undefined, { always: true }),
+      cmd("setting:tab-bar", "Tab bar"),
       sep,
       cmd("graph:open", "Graph view", "waypoints"),
       cmd("graph:local", "Local graph", "git-fork"),
@@ -238,10 +241,12 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
         radio("scheme:default", "Default colours"), radio("scheme:gruvbox", "Gruvbox"),
         cmd("scheme:choose", "More colour schemes…"),
         sep,
-        cmd("density:toggle", "Toggle comfortable density"),
-        cmd("file-icons:toggle", "Toggle file icons"),
+        radio("density:compact", "Compact"), radio("density:comfortable", "Comfortable"),
+        sep,
+        cmd("setting:file-icons", "File icons"),
+        cmd("setting:panel-dividers", "Lines between sidebar panels"),
       )),
-      sub("Text size", "type", items(...all(/^text-size:/))),
+      sub("Text size", "type", items(...all(/^text-size:/), sep, cmd("setting:quick-text-size", "Pinch to resize text"))),
       sep,
       { label: "Actual size", icon: icon("scan"), accelerator: `${MOD}+0`, click: ctx.zoom(0) },
       // ⌘= and ⌘+ (⇧⌘=, and the keypad's) both zoom in: Electron's zoomIn role only listens to ⌘+.
@@ -275,8 +280,8 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       sep,
       cmd("tab:next", "Next tab", "chevron-right", { key: "Ctrl+Tab", always: true }),
       cmd("tab:previous", "Previous tab", "chevron-left", { key: "Ctrl+Shift+Tab", always: true }),
-      cmd("tab:toggle-pin", "Pin or unpin tab", "pin", { always: true }),
-      cmd("tab:toggle-stacked", "Stack or unstack tabs", "layers", { always: true }),
+      cmd("tab:toggle-pin", "Pin tab", "pin", { always: true, named: true }),
+      cmd("tab:toggle-stacked", "Stack tabs", "layers", { always: true, named: true }),
       cmd("split:move-right", "Move tab to new split right"),
       cmd("split:move-down", "Move tab to new split down"),
       sep,
@@ -304,5 +309,5 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
 const CORE = new Set(["page:settings", "page:plugins", "hotkeys:open", "bundles:choose", "file:new", "tab:new", "switcher:open",
   "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
-  "editor:toggle-line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",
+  "setting:line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",
   "tab:toggle-pin", "tab:toggle-stacked"])

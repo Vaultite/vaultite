@@ -181,12 +181,13 @@ export function SidebarToggle({ side, open, empty, onClick, className }: { side:
     dropped(item)
   }, { hint: () => `To the ${side} sidebar` })
   const Icon = side === "left" ? PanelLeft : PanelRight
-  const name = side === "left" ? "sidebar" : "right sidebar"
+  // (as its command says it: Show / Hide, like View > Hide Sidebar)
+  const name = side === "left" ? "left sidebar" : "right sidebar"
   const keys = useCommandKeys(side === "left" ? "sidebar:toggle" : "sidebar:toggle-right", true)
   const dragging = !!d && !!draggedPanel(d.item)
   return (
     <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick}
-      aria-label={`${open ? "Collapse" : "Expand"} ${name}`} data-tip={dragging ? undefined : `${open ? "Collapse" : "Expand"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
+      aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
       className={cn("fixed top-[calc(env(safe-area-inset-top)+--spacing(1.5))] z-30 hidden size-7 cursor-pointer place-items-center rounded-[5px] transition-colors hover:bg-foreground/[0.06] hover:text-foreground md:grid",
         side === "left" ? "left-2" : "right-2",
         hit ? "bg-primary/15 text-primary ring-1 ring-primary" : dragging ? "text-primary ring-1 ring-primary/40" : empty ? "text-tertiary" : "text-muted-foreground", className)}>

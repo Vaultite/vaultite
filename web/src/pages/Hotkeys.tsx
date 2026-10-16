@@ -57,7 +57,7 @@ export function HotkeysSheet() {
   const rows = useMemo(() => {
     const words = query.toLowerCase().split(/\s+/).filter(Boolean)
     return [...known].sort((a, b) => a.name.localeCompare(b.name))
-      .filter((c) => words.every((w) => `${c.name} ${c.id} ${keysOf(c).join(" ")}`.toLowerCase().includes(w)))
+      .filter((c) => words.every((w) => `${c.name} ${c.nameWhenOn ?? ""} ${c.where ?? ""} ${c.id} ${keysOf(c).join(" ")}`.toLowerCase().includes(w)))
   }, [known, query])
 
   // Who else has these keys.
@@ -81,7 +81,8 @@ export function HotkeysSheet() {
           return (
             <div key={c.id} data-hotkey={c.id} className="flex min-h-10 items-center gap-3 py-1">
               <div className="min-w-0 flex-1">
-                <div className="truncate text-[14px]">{c.name}</div>
+                {/* (a setting's place: "Toasts" is Inbox's) */}
+                <div className="truncate text-[14px]">{c.name}{c.where && <span className="text-muted-foreground"> · {c.where}</span>}</div>
                 {notes.map((n) => <div key={n} data-hotkey-conflict className="truncate text-[12px] text-[var(--red)]">{n}</div>)}
               </div>
               <div className="flex shrink-0 flex-wrap items-center justify-end gap-1">

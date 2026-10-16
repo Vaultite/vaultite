@@ -7,7 +7,9 @@ import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { getPrefs, setPrefs, usePrefs, type Density, type Theme } from "@/core/prefs"
 import { DEFAULT_SCHEME, SCHEMES, schemeId } from "@/themes/schemes"
-import { quickTextSizeSub, STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
+import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
+import { coreSwitch } from "@/core/switches"
+import { SwitchRow } from "@/components/SwitchRow"
 import { cn, isDark } from "@/lib/utils"
 import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
@@ -216,28 +218,12 @@ export function AppearancePanel() {
           <Segmented<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })} className="w-full shrink-0 sm:w-[220px]"
             options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
         </SettingRow>
-        <SettingRow label="File icons" data-settings-row="file-icons">
-          <Switch on={prefs.fileIcons} onChange={(fileIcons) => setPrefs({ fileIcons })} label="File icons" />
-        </SettingRow>
-        <SettingRow label="Tab bar" data-settings-row="tab-bar">
-          <Switch on={prefs.tabBar} onChange={(tabBar) => setPrefs({ tabBar })} label="Tab bar" />
-        </SettingRow>
-        <SettingRow label="Line numbers" data-settings-row="line-numbers">
-          <Switch on={prefs.lineNumbers} onChange={(lineNumbers) => setPrefs({ lineNumbers })} label="Line numbers" />
-        </SettingRow>
-        <SettingRow label="Scroll sidebar panels separately" data-settings-row="sidebar-scroll">
-          <Switch on={prefs.sidebarScroll !== "sidebar"} onChange={(on) => setPrefs({ sidebarScroll: on ? "panels" : "sidebar" })} label="Scroll sidebar panels separately" />
-        </SettingRow>
-        <SettingRow label="Lines between sidebar panels" data-settings-row="panel-dividers">
-          <Switch on={prefs.panelDividers} onChange={(panelDividers) => setPrefs({ panelDividers })} label="Lines between sidebar panels" />
-        </SettingRow>
+        {["file-icons", "tab-bar", "line-numbers", "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <Fonts />
         {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (
           <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
         ))}
-        <SettingRow label="Quick text size" sub={quickTextSizeSub()} data-settings-row="quick-text-size">
-          <Switch on={prefs.quickTextSize} onChange={(quickTextSize) => setPrefs({ quickTextSize })} label="Quick text size" />
-        </SettingRow>
+        <SwitchRow s={coreSwitch("setting:quick-text-size")} />
       </div>
       <Snippets />
     </Panel>

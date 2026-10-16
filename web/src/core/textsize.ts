@@ -1,9 +1,8 @@
 // Text sizes per kind of content (notes, terminals, plugins' `textSizes`) apart from the app's zoom, like VS Code's
 // editor and terminal font sizes. Per device: a phone and a laptop want different sizes.
-import { AArrowDown, AArrowUp, ALargeSmall, MousePointer2, MousePointerBan } from "lucide-react"
+import { AArrowDown, AArrowUp, ALargeSmall } from "lucide-react"
 import { useEffect, type RefObject } from "react"
-import { devicePref, getPrefs, setPrefs, usePrefs } from "@/core/prefs"
-import { notify } from "@/core/notify"
+import { devicePref, getPrefs, usePrefs } from "@/core/prefs"
 import { keyHint } from "@/core/commands"
 import { active } from "@/core/plugins"
 
@@ -48,16 +47,10 @@ export function stepTextSize(kind: string, step: -1 | 0 | 1) {
 
 const WORDS = "font zoom bigger smaller"
 
-/** What quick text size does, under its name in Settings. */
-export const quickTextSizeSub = () => `${keyHint("Mod")} and scroll, or pinch, over a note or terminal`
+/** What Pinch to resize text (`quickTextSize`, a switch: core/switches.ts) does, under its name. */
+export const quickTextSizeSub = () => `Or ${keyHint("Mod")} and scroll, over a note or terminal`
 
-/** Quick text size on or off, saying so: nothing on screen changes. */
-function setQuick(on: boolean) {
-  setPrefs({ quickTextSize: on })
-  notify(`Quick text size is ${on ? "on" : "off"}`, { action: { label: "Undo", run: () => setPrefs({ quickTextSize: !on }) } })
-}
-
-/** Each kind's three commands, then turning quick text size on or off, for the palette (no keys by default). */
+/** Each kind's three commands, for the palette (no keys by default). */
 export function textSizeCommands(disabled: string[], order: string[]) {
   return [
     ...textSizeKinds(disabled, order).flatMap(([kind, k]) => {
@@ -68,8 +61,6 @@ export function textSizeCommands(disabled: string[], order: string[]) {
         { id: `text-size:${kind}:reset`, name: `Reset ${name} text size`, when: () => textSize(kind) !== 100, run: () => stepTextSize(kind, 0), icon: ALargeSmall, words: WORDS },
       ]
     }),
-    { id: "text-size:quick-on", name: "Turn on quick text size", when: () => !getPrefs().quickTextSize, run: () => setQuick(true), icon: MousePointer2, words: `${WORDS} scroll wheel pinch enable` },
-    { id: "text-size:quick-off", name: "Turn off quick text size", when: () => getPrefs().quickTextSize, run: () => setQuick(false), icon: MousePointerBan, words: `${WORDS} scroll wheel pinch disable` },
   ]
 }
 
@@ -78,7 +69,7 @@ export function textSizeCommands(disabled: string[], order: string[]) {
 const NOTCH = 50
 let acc = 0, accKind = "", accAt = 0
 
-/** ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` is on (off as in Obsidian: pinches
+/** ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` (Pinch to resize text) is on (off as in Obsidian: pinches
  *  set it off by accident). Children using the wheel keep it unless `first`, which takes it before them (a terminal). */
 export function useTextSizeWheel(ref: RefObject<HTMLElement | null>, kind: string | null, first = false) {
   useEffect(() => {

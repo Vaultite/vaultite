@@ -4,13 +4,12 @@ import { Settings2 } from "lucide-react"
 import { PLUGINS, setSwitch, switchedOn, usePlugins } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
+import { switchRow } from "@/core/switches"
 import { SettingRow, Switch } from "@/components/kit"
 
 /** The plugins whose switch is in this section. */
 export const switchesIn = (section: string) => PLUGINS.filter((p) => p.switchIn?.section === section)
 
-/** The row's id (`data-settings-row`), which Settings' search goes to. */
-export const switchRow = (id: string) => `plugin-${id}`
 
 export function PluginSwitches({ section }: { section: string }) {
   const prefs = usePrefs()
