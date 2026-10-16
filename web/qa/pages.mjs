@@ -40,8 +40,8 @@ for (const [id, name] of [["today", "Today"], ["people", "People"], ["health", "
 const side = async () => (side.last = await page.locator("nav[aria-label=Pages] a").allInnerTexts())
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 check("the sidebar lists the pinned pages", (await side()).length >= 5, await side())
-await page.locator("nav[aria-label=Pages]").click({ button: "right" }); await page.waitForTimeout(200)
-// The pages are a submenu, Pinned pages ▸.
+await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
+// The panel heading's menu: the pages are a submenu, Pinned pages ▸.
 await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().hover(); await page.waitForTimeout(300)
 const items = await page.locator("[role=menu] [role=menuitemcheckbox]").allInnerTexts()
 // The Learning page's own row (by its whole name)
@@ -56,13 +56,13 @@ await page.screenshot({ path: `${OUT}desktop-menu.png` })
 await row.click(); await page.waitForTimeout(300)
 check("ticking brings it back, ticked, in its place", same(await side(), sideBefore) && await row.getAttribute("aria-checked") === "true", [await side(), sideBefore])
 await page.keyboard.press("Escape"); await page.keyboard.press("Escape") // the submenu, then the menu
-// Right-clicked on a page's row (its own items first): the same list, its ticks following each click.
+// Right-clicked on a page's row: only its own items, Unpin last (the panel's menu is its heading's).
 await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).click({ button: "right" }); await page.waitForTimeout(200)
+const rowItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
+check("a page's row: its own items, Unpin last, no panel items", rowItems.at(-1) === "Unpin" && !rowItems.some((t) => /^(Pinned pages|Panels|Hide |Move to )/.test(t)), rowItems)
+await page.keyboard.press("Escape")
+await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
 await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().hover(); await page.waitForTimeout(300)
-await row.click(); await page.waitForTimeout(300)
-check("from a page's row: unticked shows unticked", await row.getAttribute("aria-checked") === "false" && !(await side()).includes("Learning"), await side())
-await row.click(); await page.waitForTimeout(300)
-check("from a page's row: ticked again shows ticked", await row.getAttribute("aria-checked") === "true" && (await side()).includes("Learning"), await side())
 // Pages not pinned are under More ▸: ticking one pins it at the end; the menu stays, its row ticked where it was.
 await page.locator("[role=menu] button", { hasText: /^More$/ }).last().hover(); await page.waitForTimeout(300)
 const moreRows = () => page.locator("[role=menu]").last().locator("[role=menuitemcheckbox]")

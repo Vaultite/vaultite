@@ -110,10 +110,9 @@ try {
   await (await item("Terminals")).click()
   check("Terminals back", !!(await until(async () => (await panels()).includes("terminal:sessions"))), await panels())
   await page.keyboard.press("Escape")
-  // The pages' own menu ends with the panel's: the same panels, under Panels ▸.
+  // A page's row has only its own items: the panels are its heading's.
   await page.click("aside [data-panel='pages:pages'] [data-pin]", { button: "right" })
-  await page.getByRole("menuitem", { name: "Panels" }).hover()
-  check("pages menu has the panels", !!(await until(() => item("File explorer"))))
+  check("a page's menu has no Panels", !(await page.getByRole("menuitem", { name: "Panels" }).count()))
   await page.keyboard.press("Escape")
 
   // Click a heading: its panel folds to it (a chevron after the name), saved in sidebars.json's `collapsed`; click again,

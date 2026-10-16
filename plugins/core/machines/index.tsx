@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react"
 import { ArrowUpRight, FolderOpen, Monitor, Server, SquareTerminal } from "lucide-react"
 import {
-  canRunAgents, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, panelMenu, places,
+  canRunAgents, confirmDialog, definePlugin, notify, notifyError, op, Empty, fetchMachines, List, Loading, LoadingRows, menuBelow, openMenu, openPlace, openTerminal, openView, Panel, places,
   SidebarHeading, SidebarRow,
   useKeptCount, useMachines, type Machine, type MenuItem, type SearchDoc, type SidebarCtx,
 } from "@vaultite"
@@ -45,14 +45,11 @@ async function machineMenu(e: MouseEvent, m: Machine) {
   if (items.length) menuBelow(at, items)
 }
 
-/** Right-click: the machine's items at the pointer, then the sidebar panel's own (`panel`), under a line. */
-function machineContextMenu(e: MouseEvent, m: Machine, panel?: string) {
+/** Right-click: the machine's items at the pointer (the panel's own menu is its heading's). */
+function machineContextMenu(e: MouseEvent, m: Machine) {
   e.preventDefault(); e.stopPropagation()
   const at = { x: e.clientX, y: e.clientY }
-  void machineItems(m).then((items) => {
-    const rest = panel ? panelMenu(panel).map((it, i) => (i || !items.length ? it : { ...it, sep: true })) : []
-    openMenu(at, [...items, ...rest])
-  })
+  void machineItems(m).then((items) => openMenu(at, items))
 }
 
 function MachineRow({ m }: { m: Machine }) {
@@ -82,12 +79,12 @@ function MachinesBlock() {
   )
 }
 
-function MachinesPanel({ open, panel }: SidebarCtx) {
+function MachinesPanel({ open }: SidebarCtx) {
   const list = useMachines()
   const rows = (list ?? []).map((m) => (
     <SidebarRow key={m.id} icon={m.platform === "linux" ? Server : Monitor} tint={m.online ? "var(--machines)" : undefined} label={m.label} open={open}
       tip={`${m.label}: ${about(m)}`} data-machine={m.id}
-      onClick={(e) => void machineMenu(e, m)} onContextMenu={(e) => machineContextMenu(e, m, panel)}>
+      onClick={(e) => void machineMenu(e, m)} onContextMenu={(e) => machineContextMenu(e, m)}>
       {open && !m.online && <span className="mr-1 text-[11px] text-tertiary">offline</span>}
     </SidebarRow>
   ))

@@ -3,7 +3,7 @@ import {
   currentEditor, currentFile, definePlugin, getTabLayout, iconOf, isDoc, isViewOpen, openFile, openView, PIN_SEARCH, stem, tintOf, useCommands, useFocusedFile,
   usePane, useWorkspaceVersion, type Store, type TabLayout,
 } from "@vaultite"
-import { PinCurrent, PinnedPages } from "./Pinned"
+import { PinCurrent, pinChecklist, PinnedPages } from "./Pinned"
 import { PinnedSettings } from "./SettingsPanel"
 import { isPinned, pinItems, pinnable, pinNoted, shownPinned } from "./types"
 
@@ -92,7 +92,7 @@ function Tiles({ store }: { store: Store }) {
 
 export default definePlugin({
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,
-    actions: ({ file }) => <PinCurrent file={file} /> } },
+    actions: ({ file }) => <PinCurrent file={file} />, menu: () => [{ label: "Pinned pages", icon: Pin, run: () => {}, items: pinChecklist(currentFile()) }] } },
   views: {
     pages: { icon: Pin, title: () => "Pinned pages", render: ({ store }) => <PinnedView store={store} /> },
   },

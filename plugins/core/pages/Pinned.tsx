@@ -1,10 +1,10 @@
 // The pinned pages (sidebar, drawer, view:pages): drag to reorder, onto a pane to open, elsewhere in the sidebar to
 // unpin; drop a file to pin it. The list is the sidebar's (types.ts): the current workspace's with Workspaces on.
 import { useEffect, useId, useRef } from "react"
-import { FileText, Hash, Heading, Pin, PinOff, Plus, Search } from "lucide-react"
+import { FileText, Hash, Heading, PinOff, Plus, Search } from "lucide-react"
 import {
   checklist, cn, currentWorkspace, getStore, HeadingButton, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
-  openItem, openView, panelMenu, PIN_SEARCH, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
+  openItem, openView, PIN_SEARCH, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
   useDropTarget, useEnabled, useSelectable, useSelectedKeys, useWorkspaceVersion, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
@@ -34,7 +34,7 @@ type PinDrop = { before: string | null; y: number; known: boolean } | { out: tru
 
 /** The list's menu (Pinned pages ▸): the shown ones ticked, then More ▸ with unpinned pages (dashboards) and the file
  *  on screen; a `checklist` from the store as is, redrawn after each click. Same-named ones say their folders. */
-function pinChecklist(file: string | undefined): MenuItem[] {
+export function pinChecklist(file: string | undefined): MenuItem[] {
   const store = getStore()
   if (!store) return []
   const on = shownEntries(store)
@@ -117,11 +117,6 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
       { label: "Unpin", icon: PinOff, run: () => void pinManyNoted(keys, false) },
     ]
   } })
-  // In a submenu (Pinned pages ▸), then the panel's own menu (which panels the sidebar shows, as anywhere else in it).
-  const menu = (): MenuItem[] => {
-    const items = pinChecklist(file)
-    return panel ? [{ label: "Pinned pages", icon: Pin, run: () => {}, items }, ...panelMenu(panel)] : items
-  }
   // A page just pinned (from a menu, a drop, another device) is scrolled into view: the panel may be shorter than its
   // pages, scrolling in its own box.
   const shownKey = pages.map((x) => x.key).join("\n")
@@ -147,11 +142,11 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
         startDrag(e, keys && keys.length > 1 ? { from: "pin", to, path: id, paths: keys, label: `${keys.length} pages` } : { from: "pin", to, path: id }, { touch: true })
       }}
         onPointerEnter={() => file && openingSoon(file)} onPointerLeave={() => openingSoon(null)}
-        // Right-clicked on a page: what the file tree offers to open a file, unpinning it, then the list's menu.
+        // Right-clicked on a page: what the file tree offers to open a file, then unpinning it (the panel's own menu is
+        // its heading's: Pinned pages ▸, Panels ▸, Hide).
         onContextMenu={menuFor(rowMenu(SELECT, id, () => [
           openItem(() => openEntry(entry, { newTab: true, pane }), () => openInSplit(to, "right")),
-          { label: "Unpin", icon: PinOff, run: () => pinNoted(id, false) },
-          ...menu().map((it, i) => (i ? it : { ...it, sep: true })),
+          { label: "Unpin", icon: PinOff, sep: true, run: () => pinNoted(id, false) },
         ]))}
         className={cn(d?.item.from === "pin" && (d.item.path === id || (picked && d.item.paths)) && "opacity-40")}>
         <SidebarRow data-pin={id} data-select-key={id} {...selectedAttr(picked)} href={`#${entry.kind === "search" ? `view/${encodeURIComponent(`search/${entry.query}`)}` : `file/${encodeURIComponent(file!)}`}`} icon={icon}
@@ -161,7 +156,8 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
     )
   }
   return (
-    <nav ref={list} aria-label="Pages" onContextMenu={menuFor(menu)}
+    // As a tab, the list's menu is the pages; in the sidebar it's the panel's (index.tsx: its `menu`).
+    <nav ref={list} aria-label="Pages" onContextMenu={panel ? undefined : menuFor(() => pinChecklist(file))}
       className={cn("relative shrink-0", dragging && !pages.length && "min-h-8 rounded-[6px] border border-dashed border-border")}>
       <div className="flex flex-col gap-px" data-select-list={SELECT}>{pages.map(row)}</div>
       {line !== null && <div aria-hidden data-pin-line className="pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary" style={{ top: line }} />}

@@ -288,7 +288,8 @@ export type SidebarCtx = { store: Store
   file: string
   /** The focused tab's target ("file:Notes/Idea.md", "view:terminal/abc", "plugins"). */
   tab: string
-  /** This panel's key ("pages:pages"), for its own menu: end it with `panelMenu(panel)` (Panels ▸, Separate from tabs, Move to the other sidebar). */
+  /** This panel's key ("pages:pages"). A row's right-click menu has only the row's items: the panel's (Panels ▸, Move to the
+   *  other sidebar, Hide) is its heading's and its empty space's. */
   panel?: string
   /** Drawn on a phone: a header item at the top of the phone's tab list (iOS sizes, 44px targets), or a panel in the
    *  phone's drawer (the desktop sidebar's panels, drawn a size up, without dragging: components/PhoneDrawer.tsx). */

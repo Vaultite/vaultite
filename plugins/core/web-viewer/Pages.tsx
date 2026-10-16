@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { EyeOff, Globe, KeyRound, LogOut, Plus } from "lucide-react"
 import {
-  confirmDialog, HeadingButton, menuFor, notifyError, panelMenu, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
+  confirmDialog, HeadingButton, menuFor, notifyError, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
   type SidebarCtx, type WebPageInfo, type WebSite,
 } from "@vaultite"
 import { siteIcon } from "./icons"
@@ -72,16 +72,15 @@ function Unavailable() {
   return <p className="px-1.5 py-1 text-[13px] leading-[18px] text-tertiary">Web pages open in Vaultite's desktop app.</p>
 }
 
-export function WebPagesPanel({ open, panel, openPage, ask }: Pick<SidebarCtx, "open" | "panel"> & { openPage: Open
+export function WebPagesPanel({ open, openPage, ask }: Pick<SidebarCtx, "open"> & { openPage: Open
   /** Ask for an address and open it (the heading's +). */
   ask: () => void }) {
   const { pages, sites: all, prof, refresh } = useWebPages()
   const sites = all?.filter((s) => !s.other) ?? null, others = all?.filter((s) => s.other) ?? []
-  const own = (items: MenuItem[]) => [...items, ...(panel ? panelMenu(panel).map((it, i) => (i ? it : { ...it, sep: true })) : [])]
   const pageRows = (pages ?? []).map((p) => (
     <SidebarRow key={p.id} icon={siteIcon(p.url)} label={p.title || hostOf(p.url)} open={open} tint={p.shown ? "var(--web-viewer)" : undefined}
       tip={`${p.title || hostOf(p.url)}: ${p.url}`} data-web-page-row={String(p.id)} onClick={() => openPage(p.url)}
-      onContextMenu={menuFor(() => own([{ label: "Open", icon: Globe, run: () => openPage(p.url) }]))}>
+      onContextMenu={menuFor(() => [{ label: "Open", icon: Globe, run: () => openPage(p.url) }])}>
       {!p.shown && <span className="mr-1 text-[11px] text-tertiary">kept</span>}
     </SidebarRow>
   ))
@@ -105,7 +104,7 @@ export function WebPagesPanel({ open, panel, openPage, ask }: Pick<SidebarCtx, "
               <SidebarRow key={s.site} icon={KeyRound} label={<SiteLabel s={s} />} open={open} tip={s.account ? `${s.site}: ${s.account}` : s.site}
                 tint={s.account ? "var(--web-viewer)" : undefined} data-web-site={s.site} onClick={() => openPage(`https://${s.site}/`)}
                 swipe={() => [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(prof, s, refresh) }]}
-                onContextMenu={menuFor(() => own(siteMenu(prof, s, openPage, refresh)))}>
+                onContextMenu={menuFor(() => siteMenu(prof, s, openPage, refresh))}>
                 <button type="button" aria-label={`Sign out of ${s.site}`} data-tip="Sign out"
                   className="hidden size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground group-hover/row:grid hover:bg-foreground/[0.08] hover:text-foreground"
                   onClick={(e) => { e.preventDefault(); e.stopPropagation(); void signOut(prof, s, refresh) }}>

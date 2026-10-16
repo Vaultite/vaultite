@@ -1,7 +1,7 @@
 import { useEffect, useRef } from "react"
 import { Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
 import {
-  closeTab, cn, definePlugin, del, dragTab, fmtAgo, HeadingButton, isPopout, menuFor, newTab, notifyError, openFile, openView, panelMenu, panesOf, put,
+  closeTab, cn, definePlugin, del, dragTab, fmtAgo, HeadingButton, isPopout, menuFor, newTab, notifyError, openFile, openView, panesOf, put,
   rowMenu, selectClick, selectedAttr, selectTab, SidebarHeading, SidebarRow, tabMenuOf, TABS, tabsMenu, useDrag, useSelectable, useSelected,
   useTabLabels, useTabLayout, type SidebarCtx, type Store, type Tab, type TabGroup, type TabInfo,
 } from "@vaultite"
@@ -11,13 +11,13 @@ import type { Device, DeviceTab } from "./types"
 // devices' tabs (plugin.ts), to open here.
 
 
-function Row({ t, g, i, only, panel }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean; panel?: string }) {
+function Row({ t, g, i, only }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean }) {
   const d = useDrag()
   const picked = useSelected(TABS, t.id)
   return (
     // Dragged like a tab in its bar: onto a pane (its edge splits), another bar, or Pinned; selected with others, they all go.
     <div onPointerDown={(e) => dragTab(e, t)} className={cn((d?.item.tab === t.id || (picked && d?.item.tabs)) && "opacity-50")}
-      onContextMenu={menuFor(rowMenu(TABS, t.id, () => [...tabMenuOf(t.id), ...(panel ? panelMenu(panel).map((it, n) => (n ? it : { ...it, sep: true })) : [])]))}>
+      onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} {...selectedAttr(picked)} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} label={i.label} open active={t.id === g.active}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         onClick={(e) => { if (e.button === 1) { if (!t.pinned && !only) closeTab(t.id) } else if (!selectClick(e, TABS, t.id, g.active)) selectTab(t.id) }}>
@@ -33,7 +33,7 @@ function Row({ t, g, i, only, panel }: { t: Tab; g: TabGroup; i: TabInfo; only: 
 }
 
 /** Every pane's tabs, in the panes' order; with more than one pane, each under its number (the focused one's in full). */
-function TabRows({ store, panel }: { store: Store; panel?: string }) {
+function TabRows({ store }: { store: Store }) {
   const ws = useTabLayout()
   const info = useTabLabels(store)
   const panes = panesOf(ws.root)
@@ -46,7 +46,7 @@ function TabRows({ store, panel }: { store: Store; panel?: string }) {
             <div className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium max-md:h-8 max-md:text-[13px]", n && "mt-1",
               g.id === ws.focus ? "text-muted-foreground" : "text-tertiary")}>Pane {n + 1}</div>
           )}
-          {g.tabs.map((t) => <Row key={t.id} t={t} g={g} i={info(t)} only={panes.length === 1 && g.tabs.length === 1 && t.to === "new"} panel={panel} />)}
+          {g.tabs.map((t) => <Row key={t.id} t={t} g={g} i={info(t)} only={panes.length === 1 && g.tabs.length === 1 && t.to === "new"} />)}
         </div>
       ))}
     </div>
@@ -123,14 +123,14 @@ function OtherDevices({ store }: { store: Store }) {
   )
 }
 
-function TabsPanel({ store, open, panel }: SidebarCtx) {
+function TabsPanel({ store, open }: SidebarCtx) {
   if (!open) return null
   return (
     <div className="flex shrink-0 flex-col" data-tabs-panel>
       <SidebarHeading title="Tabs" open={open}>
         <HeadingButton icon={Plus} label="New tab" onClick={() => newTab()} />
       </SidebarHeading>
-      <TabRows store={store} panel={panel} />
+      <TabRows store={store} />
       <OtherDevices store={store} />
     </div>
   )

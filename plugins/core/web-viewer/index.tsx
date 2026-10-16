@@ -148,7 +148,7 @@ export default definePlugin({
   },
   sidebar: {
     "web-pages": { title: "Web pages", heading: false, sort: 34, hidden: true, view: "web-pages",
-      render: (ctx) => <WebPagesPanel open={ctx.open} panel={ctx.panel} openPage={openPage} ask={() => void askAddress()} /> },
+      render: (ctx) => <WebPagesPanel open={ctx.open} openPage={openPage} ask={() => void askAddress()} /> },
   },
   webLink: (url, { mod }) => {
     if (!webPages || mod || !linksInViewer()) return false
