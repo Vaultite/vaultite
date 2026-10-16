@@ -36,7 +36,7 @@ export default async ($: VaultTest) => {
   // (in a context of its own: it takes fetch and the rest off its globals)
   const vm = await import("node:vm")
   const io = { post: (m: Any) => got.push(JSON.parse(JSON.stringify(m))), listen: (f: Any) => { send = (m: Any) => f(JSON.parse(JSON.stringify(m))) } }
-  vm.runInNewContext(`(${workerMain.toString()})(io)`, vm.createContext({ io, fetch: () => {} }))
+  vm.runInNewContext(`(${workerMain.toString()})(io)`, vm.createContext({ io, fetch: () => {}, setInterval, clearInterval, setTimeout, clearTimeout }))
   send({ type: "run", nodes, names: dil.stateNames(nodes), state: { size: "l" } })
   await new Promise((r) => setTimeout(r, 5))
   const said = (t: Any) => JSON.stringify(t)
@@ -56,6 +56,16 @@ export default async ($: VaultTest) => {
   await new Promise((r) => setTimeout(r, 5))
   check("genui: the program can't reach the network", said(got).includes("undefined"), got)
   check("genui: and the tests' own process keeps it", typeof fetch === "function")
+
+  // Other hooks before a useState don't shift what its saved value is named; useNow ticks.
+  got.length = 0
+  const timed = dil.parse("{@body const m = DIL.useMemo(() => 2, [])}{@body const now = DIL.useNow(true, 50)}{@body const [k, setK] = DIL.useState(1)}<text>k={k} t={now}</text>")
+  send({ type: "run", nodes: timed, names: dil.stateNames(timed), state: { k: 7 } })
+  await new Promise((r) => setTimeout(r, 180))
+  const ticks = got.filter((m) => m.type === "tree").map((m) => said(m.tree).match(/t=(\d+)/)?.[1])
+  check("genui: a saved value finds its useState past other hooks", said(got[0]?.tree).includes("k=7"), got[0])
+  check("genui: DIL.useNow draws again as time goes", new Set(ticks).size >= 2, ticks)
+  send({ type: "run", nodes: dil.parse("<text>x</text>"), names: [], state: {} })
 
   // Its values, kept in the fence's {@state} line.
   const kept = dil.withState(SRC, { size: "l", n: 3 })

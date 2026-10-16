@@ -1,7 +1,7 @@
 // A ```genui fence: its program run in the sandbox, what it draws shown with the app's components, and its values
 // (the key picked, a box ticked) kept in the fence's {@state} line, so the note opens as it was left, on any device.
 import { useEffect, useMemo, useRef, useState } from "react"
-import { askAbout, copyText, Markdown, notify, openWebLink, type BlockCtx } from "@vaultite"
+import { askAbout, copyText, Markdown, notify, onLook, openWebLink, type BlockCtx } from "@vaultite"
 import { dilText, parse, savedData, savedState, stateNames, withState } from "./dil"
 import { sandboxDoc, type FromSandbox, type Tree } from "./sandbox"
 import { Drawn, type Host } from "./parts"
@@ -27,7 +27,7 @@ export function GenUiFence(ctx: BlockCtx) {
   setText.current = ctx.setText
   const timer = useRef(0)
   const run = useRef(() => {})
-  run.current = () => frame.current?.contentWindow?.postMessage({ g: 1, type: "run", nodes, names, state: current.current, bindings: data.bindings }, "*")
+  run.current = () => frame.current?.contentWindow?.postMessage({ g: 1, type: "run", nodes, names, state: current.current, bindings: data.bindings, env: env() }, "*")
 
   const save = () => {
     clearTimeout(timer.current)
@@ -39,6 +39,10 @@ export function GenUiFence(ctx: BlockCtx) {
   }
   useEffect(() => () => { if (timer.current) save() }, [])
 
+  const box = useRef<HTMLDivElement>(null)
+  const env = () => ({ dark: document.documentElement.classList.contains("dark"), mobile: matchMedia("(pointer: coarse)").matches && innerWidth < 768, width: box.current?.clientWidth ?? innerWidth })
+  // Light or dark changed: drawn again for it (DIL.useTheme), keeping its values.
+  useEffect(() => onLook(() => { if (ready.current) run.current() }), [])
   // A new program (the source changed): run it, keeping the values it had.
   useEffect(() => { if (ready.current) run.current() }, [nodes])
   // Values changed from elsewhere (another device, an agent): run with those.
@@ -80,7 +84,7 @@ export function GenUiFence(ctx: BlockCtx) {
   }, [host])
 
   return (
-    <div className="genui-block" data-genui>
+    <div ref={box} className="genui-block" data-genui>
       <iframe ref={frame} srcDoc={sandboxDoc()} sandbox="allow-scripts" aria-hidden tabIndex={-1} title="" className="hidden" />
       {tree ? <Drawn tree={tree} host={host} /> : error ? <Fallback source={source} from={ctx.path} /> : <div className="min-h-24" />}
       {error && <p className="mt-2 text-[13px] text-muted-foreground">This live answer couldn't run: {error}</p>}

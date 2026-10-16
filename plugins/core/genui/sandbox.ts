@@ -2,6 +2,8 @@
 // app gets back a tree of known components, never markup. Both functions go as source: nothing outside is in scope.
 import type { Node } from "./dil.ts"
 
+/** Where it's drawn: light or dark, a phone, the width it has (for DIL.useTheme, useIsMobile, useBreakpoint). */
+export type Env = { dark: boolean; mobile: boolean; width: number }
 export type Tree = { t: "md"; s: string; slots?: Tree[] } | { t: "el"; n: string; p: Record<string, unknown>; k: Tree[] } | { t: "app"; p: Record<string, unknown>; html: string }
 /** What the sandbox sends the app. */
 export type FromSandbox =
@@ -12,7 +14,7 @@ export type FromSandbox =
   | { g: 1; type: "ready" }
 /** What the app sends it: a program to run (its saved values by name), a handler to call, or fresh saved values. */
 export type ToSandbox =
-  | { g: 1; type: "run"; nodes: Node[]; names: string[]; state: Record<string, unknown>; bindings?: Record<string, unknown> }
+  | { g: 1; type: "run"; nodes: Node[]; names: string[]; state: Record<string, unknown>; bindings?: Record<string, unknown>; env?: Env }
   | { g: 1; type: "call"; fn: number; args: unknown[] }
 
 /** The program's side (in the worker): compile the tree to JS once, render it with hooks, send what it drew. */
@@ -26,23 +28,27 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   let render: (() => unknown[]) | null = null
   let names: string[] = []
   let saved: Record<string, unknown> = {}
-  let slots: { v?: unknown; deps?: unknown[]; cleanup?: unknown }[] = []
+  let slots: { v?: unknown; deps?: unknown[]; cleanup?: unknown; name?: string }[] = []
   let effects: (() => void)[] = []
   let at = 0
+  // (useState calls by themselves, which saved values are named by: other hooks don't shift them)
+  let stateAt = 0
   let fns: ((...a: unknown[]) => unknown)[] = []
   let errors: string[] = []
   let queued = false
   let rendering = false
   let stateDirty = false
+  let env = { dark: false, mobile: false, width: 800 }
+  let ids = 0
 
   const same = (a?: unknown[], b?: unknown[]) => !!a && !!b && a.length === b.length && a.every((x, i) => Object.is(x, b[i]))
   const schedule = () => { if (!queued && !rendering) { queued = true; Promise.resolve().then(draw) } }
   const DIL = {
-    useState(init: unknown) {
+    useState(init: unknown, own = true) {
       const k = at++
+      const name = own ? names[stateAt++] : undefined
       if (!slots[k]) {
-        const name = names[k]
-        slots[k] = { v: name !== undefined && Object.hasOwn(saved, name) ? saved[name] : typeof init === "function" ? (init as () => unknown)() : init }
+        slots[k] = { name, v: name !== undefined && Object.hasOwn(saved, name) ? saved[name] : typeof init === "function" ? (init as () => unknown)() : init }
       }
       const s = slots[k]
       const set = (v: unknown) => {
@@ -55,7 +61,7 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       return [s.v, set]
     },
     useReducer(reducer: (s: unknown, a: unknown) => unknown, init: unknown) {
-      const [v, set] = DIL.useState(init) as [unknown, (v: unknown) => void]
+      const [v, set] = DIL.useState(init, false) as [unknown, (v: unknown) => void]
       return [v, (a: unknown) => set((cur: unknown) => reducer(cur, a))]
     },
     useMemo(fn: () => unknown, deps?: unknown[]) {
@@ -67,6 +73,25 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     },
     useCallback(fn: unknown, deps?: unknown[]) { return DIL.useMemo(() => fn, deps) },
     useRef(init: unknown) { const k = at++; if (!slots[k]) slots[k] = { v: { current: init } }; return slots[k].v },
+    // The time now, again every `ms` while `on` (a countdown's clock).
+    useNow(on = true, ms = 1000) {
+      const [now, setNow] = DIL.useState(Date.now(), false) as [number, (v: number) => void]
+      DIL.useEffect(() => {
+        if (!on) return
+        const t = setInterval(() => setNow(Date.now()), Math.max(50, ms))
+        return () => clearInterval(t)
+      }, [on, ms])
+      return on ? now : Date.now()
+    },
+    useTheme() { return { isDark: env.dark, isLight: !env.dark, theme: env.dark ? "dark" : "light" } },
+    useIsMobile() { return env.mobile },
+    useBreakpoint(bp: string) { return env.width >= (({ xs: 0, sm: 640, md: 768, lg: 1024, xl: 1280, "2xl": 1536 } as Record<string, number>)[bp] ?? 0) },
+    useId() { const k = at++; if (!slots[k]) slots[k] = { v: `dil-${ids++}` }; return slots[k].v },
+    // (no microphone or voice here: what they return says so)
+    useDictation() { return { supported: false, listening: false, transcript: "", start() {}, stop() {} } },
+    useSpeechSynthesizer() { return { supported: false, speaking: false, speak() {}, cancel() {}, stop() {} } },
+    useDILMessenger() { return { send() {}, lastMessage: null } },
+    useHtmlViewMessenger() { return { send() {}, lastMessage: null } },
     useEffect(fn: () => unknown, deps?: unknown[]) {
       const k = at++
       const s = slots[k]
@@ -141,7 +166,7 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
     queued = false
     if (!render) return
     for (let pass = 0; pass < 5; pass++) {
-      at = 0; errors = []; effects = []; fns = []; images = 0; maps = 0
+      at = 0; stateAt = 0; errors = []; effects = []; fns = []; images = 0; maps = 0
       rendering = true
       let tree: unknown[] = []
       try { tree = render() } catch (e) { rendering = false; post({ type: "error", message: e instanceof Error ? e.message : String(e) }); return }
@@ -155,7 +180,7 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
       if (stateDirty) {
         stateDirty = false
         const state: Record<string, unknown> = {}
-        names.forEach((name, k) => { const v = slots[k]?.v; if (k < slots.length && /^[\w$]+$/.test(name)) { const c = clone(v); if (c !== null || v === null) state[name] = c } })
+        for (const sl of slots) if (sl?.name && /^[\w$]+$/.test(sl.name)) { const c = clone(sl.v); if (c !== null || sl.v === null) state[sl.name] = c }
         post({ type: "state", state })
       }
       return
@@ -166,7 +191,9 @@ export function workerMain(io: { post: (m: unknown) => void; listen: (f: (m: Rec
   io.listen((m) => {
     if (m.type === "run") {
       names = (m.names as string[]) ?? []
+      if (m.env && typeof m.env === "object") env = { ...env, ...(m.env as typeof env) }
       saved = (m.state as Record<string, unknown>) ?? {}
+      for (const sl of slots) if (typeof sl?.cleanup === "function") try { (sl.cleanup as () => void)() } catch { /* its own */ }
       slots = []
       // What ChatGPT filled in by name (turn0product2), in scope as it was there.
       const bound = Object.entries((m.bindings as Record<string, unknown>) ?? {}).filter(([k]) => /^[A-Za-z_$][\w$]*$/.test(k))
