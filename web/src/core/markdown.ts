@@ -2,6 +2,7 @@
 // Obsidian, every link is one, raw HTML is drawn (sanitized) and `![[Note]]` is an embed (`data-md-embed`, caller's).
 import { Lexer, Marked, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
 import { COPY_ICON } from "./richmd"
+import { dropHighlightEmoji, highlightClass, highlightColor } from "./highlights"
 import { sanitizeHtml } from "./sanitize"
 
 const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
@@ -9,7 +10,7 @@ const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 export const WIKI_LINK = String.raw`\[\[([^[\]\n|]+?)(?:\|([^[\]\n]+?))?\]\]`
 const WIKI_START = new RegExp(`^!?${WIKI_LINK}`)
 /** A footnote's text as a tooltip shows it: links by their text, no marks. */
-export const footnoteText = (s: string) => s.replace(/\[\[([^\]|]+\|)?|\]\]|[*_`~]/g, "")
+export const footnoteText = (s: string) => dropHighlightEmoji(s).replace(/\[\[([^\]|]+\|)?|\]\]|[*_`~]/g, "")
 
 /** What a [[target]] is (its kind tints it: person, book...), or null: nothing yet. */
 export type Resolves = (target: string) => { kind: string } | null
@@ -163,9 +164,11 @@ function make({ resolves, asset }: MarkdownOpts = {}) {
     start: (src: string) => { const i = src.indexOf("=="); return i >= 0 ? i : undefined },
     tokenizer(src: string) {
       const r = /^==(?=[^\s=])([\s\S]*?[^\s=])==(?!=)/.exec(src)
-      if (r) return { type: "highlight", raw: r[0], tokens: this.lexer.inlineTokens(r[1]) }
+      if (!r) return
+      const c = highlightColor(r[1])
+      return { type: "highlight", raw: r[0], color: c?.color, tokens: this.lexer.inlineTokens(r[1].slice(c?.len ?? 0)) }
     },
-    renderer(t) { return `<mark>${this.parser.parseInline(t.tokens ?? [])}</mark>` },
+    renderer(t) { return `<mark${t.color ? ` class="${highlightClass(t.color)}"` : ""}>${this.parser.parseInline(t.tokens ?? [])}</mark>` },
   }
   const tag: TokenizerAndRendererExtension = {
     name: "tag",

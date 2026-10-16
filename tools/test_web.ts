@@ -353,6 +353,25 @@ const sec = await import(pathToFileURL(path.join(ROOT, "core", "sections.ts")).h
 const html = md.renderMarkdown("A ==bright== idea #idea/new and `#code`, %%hidden%% text ^b1\n\n%%\nnot shown\n%%\n\n[[Note#Plans]] and [x](Some%20Note.md#Plans) and [[#Top]]\n\n^alone\n",
   { resolves: (t) => (t.startsWith("Some Note") || t.startsWith("Note") ? { kind: "file" } : null) })
 check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"), html)
+{
+  // Obsidian's highlight colours (web/src/core/highlights.ts): an emoji first colours it and isn't shown.
+  const colored = md.renderMarkdown("==🟢go== ==🟣️two words== ==🔴== ==plain== 🟢 alone")
+  check("markdown: ==🟢text== is a green mark, the emoji (and a variation selector after it) not shown",
+    colored.includes('<mark class="hl-green">go</mark>') && colored.includes('<mark class="hl-purple">two words</mark>') && colored.includes("<mark>plain</mark>")
+    && !/🟢go|🟣/.test(colored) && colored.includes("🟢 alone"), colored)
+  const hl: typeof import("../web/src/core/highlights.ts") = await web("core/highlights.ts")
+  check("highlights: the colour a highlight starts with, and its emoji's length", hl.highlightColor("🔵sky")?.color === "blue" && hl.highlightColor("🔵sky")?.len === 2
+    && hl.highlightColor("🟠\uFE0Fx")?.len === 3 && hl.highlightColor("sky") === null && hl.highlightColor("⚪x") === null)
+  check("highlights: previews drop the emoji at a highlight's start only", hl.dropHighlightEmoji("A ==🟢green== and 🟢 ==x== a==🟢") === "A ==green== and 🟢 ==x== a==🟢",
+    hl.dropHighlightEmoji("A ==🟢green== and 🟢 ==x== a==🟢"))
+  check("highlights: a colour's class", hl.highlightClass("red") === "hl-red" && hl.highlightClass(null) === "" && hl.HIGHLIGHT_COLORS.map((c) => c.name).join() === "red,orange,yellow,green,blue,purple")
+  const tt2: typeof import("../web/src/editor/tableText.ts") = await web("editor/tableText.ts")
+  const cards: typeof import("../plugins/core/lessons/format.ts") = await import("../plugins/core/lessons/format.ts")
+  const [first] = cards.parseCards("## ==🟢Paris== is the capital of ==France==\n")
+  check("highlights: a cloze card's other blank shows its text, not its colour", cards.clozeText({ ...first, cloze: 1 }, false) === "Paris is the capital of **[...]**"
+    && cards.clozeText(first, true) === "==🟢Paris== is the capital of France", [cards.clozeText({ ...first, cloze: 1 }, false), cards.clozeText(first, true)])
+  check("highlights: a table sorts a coloured highlight by its text", tt2.compareCells("==🔴b==", "a") > 0 && tt2.compareCells("==🟢a==", "b") < 0)
+}
 check("markdown: #tags are clickable, not in code", html.includes('<a class="tag" data-tag="idea/new">#idea/new</a>') && html.includes("<code>#code</code>"), html)
 check("markdown: comments and block ids are hidden", !html.includes("hidden") && !html.includes("not shown") && !html.includes("^b1") && !html.includes("alone"), html)
 check("markdown: a heading link names the heading; same-file and Markdown links to notes are links",
@@ -1030,6 +1049,75 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("clear formatting: a selection stopping at hidden marks (live preview's Home and End) takes them in",
     clear(line, 2, line.length - 1) === "alpha beta x", clear(line, 2, line.length - 1))
   check("clear formatting: a word in its marks; a lone * stays", clear("a **b** c", 4, 5) === "a b c" && clear("2*3 x", 2, 3) === "2*3 x", [clear("a **b** c", 4, 5), clear("2*3 x", 2, 3)])
+}
+
+// ---------- Highlight colours in the editor (web/src/core/highlights.ts, web/src/editor/highlights.ts) ----------
+{
+  const { EditorState, EditorSelection } = await import("@codemirror/state")
+  const hl: typeof import("../web/src/core/highlights.ts") = await web("core/highlights.ts")
+  const { clearFormatting } = await import("../plugins/core/editing/edit.ts")
+  type View = { state: import("@codemirror/state").EditorState; dispatch(tr: import("@codemirror/state").TransactionSpec): void; focus(): void }
+  // "|" is the cursor, "[...]" a selection.
+  const view = (doc: string): View => {
+    const a = doc.indexOf("["), c = doc.indexOf("|")
+    const text = doc.replace(/[[\]|]/g, "")
+    const sel = c >= 0 ? EditorSelection.cursor(c) : EditorSelection.range(a, doc.indexOf("]") - 1)
+    return { state: EditorState.create({ doc: text, selection: sel }), dispatch(tr) { this.state = this.state.update(tr).state }, focus() {} }
+  }
+  const shown = (v: View) => {
+    const { from, to } = v.state.selection.main, t = v.state.doc.toString()
+    return from === to ? t.slice(0, from) + "|" + t.slice(from) : `${t.slice(0, from)}[${t.slice(from, to)}]${t.slice(to)}`
+  }
+  const act = (doc: string, fn: (v: never) => unknown) => { const v = view(doc); fn(v as never); return shown(v) }
+  const at = view("a ==🟢be|ta== c")
+  const h = hl.highlightAt(at.state, at.state.selection.main.head)
+  check("editor highlights: the one at the cursor, its marks and colour", h?.from === 2 && h.to === 12 && h.color === "green" && h.len === 2, h)
+  check("editor highlights: none outside", hl.highlightAt(view("a| ==x==").state, 1) === null)
+  check("editor highlights: recolour keeps the cursor in the text", act("a ==🟢be|ta== c", hl.colorHighlight("red")) === "a ==🔴be|ta== c", act("a ==🟢be|ta== c", hl.colorHighlight("red")))
+  check("editor highlights: Default takes the emoji out", act("a ==🟢be|ta== c", hl.colorHighlight(null)) === "a ==be|ta== c" && act("a ==be|ta== c", hl.colorHighlight("blue")) === "a ==🔵be|ta== c")
+  check("editor highlights: a selection highlighted in a colour, still selected", act("a [word] c", hl.colorHighlight("orange")) === "a ==🟠[word]== c", act("a [word] c", hl.colorHighlight("orange")))
+  check("editor highlights: the word at the cursor; nowhere, the cursor between new marks", act("a wo|rd c", hl.colorHighlight("green")) === "a ==🟢wo|rd== c"
+    && act("a | c", hl.colorHighlight("green")) === "a ==🟢|== c", [act("a wo|rd c", hl.colorHighlight("green")), act("a | c", hl.colorHighlight("green"))])
+  const un = view("a ==🟣be|ta== c")
+  check("editor highlights: toggling a coloured one off takes its colour too", hl.unhighlight(un as never) && shown(un) === "a be|ta c" && !hl.unhighlight(view("a ==be|ta== c") as never), shown(un))
+  const { highlightIcon, highlightItems }: { highlightIcon(c: string | null, now?: boolean): unknown; highlightItems(view: never, at?: number): { label: string; icon?: unknown; run(): void }[] } = await web("core/highlightMenu.ts")
+  const items = highlightItems(view("a ==🔵x|== c") as never)
+  check("editor highlights: the menu's colours, the one there ringed", items.map((i) => i.label).join() === "Default,Red,Orange,Yellow,Green,Blue,Purple"
+    && items.filter((i) => i.icon === highlightIcon(i.label === "Default" ? null : i.label.toLowerCase(), true)).map((i) => i.label).join() === "Blue", items.map((i) => i.label))
+  const sw = view("a ==🔵x|== c")
+  const swatch = highlightItems(sw as never, 2)
+  swatch.find((i) => i.label === "Yellow")!.run()
+  check("editor highlights: the swatch's menu recolours its highlight", shown(sw) === "a ==🟡x|== c", shown(sw))
+  swatch.find((i) => i.label === "Remove highlight")!.run()
+  check("editor highlights: and Remove highlight takes it out", shown(sw) === "a x| c", shown(sw))
+  const clear = (doc: string) => act(doc, (v: never) => clearFormatting(v, hl.HIGHLIGHT_EMOJI))
+  check("clear formatting: a coloured highlight's emoji goes with its marks (selected, at the cursor, or from where its marks hide)",
+    clear("[==🟢beta== x]") === "[beta x]" && clear("a ==🟢be|ta== c") === "a [beta] c" && clear("==🟢[beta]==") === "[beta]", [clear("[==🟢beta== x]"), clear("a ==🟢be|ta== c"), clear("==🟢[beta]==")])
+
+  // Typing == suggests the colours (CodeMirror's CompletionContext needs a page; the source reads its state and pos).
+  const { highlightSource }: { highlightSource(ctx: never): unknown } = await web("editor/highlights.ts")
+  const { markdown } = await import("@codemirror/lang-markdown")
+  const suggest = (doc: string) => {
+    const pos = doc.indexOf("|"), text = doc.replace("|", "")
+    const state = EditorState.create({ doc: text, extensions: [markdown()] })
+    const ctx = { state, pos, explicit: false, matchBefore(re: RegExp) {
+      const l = state.doc.lineAt(pos), t = l.text.slice(0, pos - l.from), m = new RegExp(`(?:${re.source})$`, re.flags).exec(t)
+      return m ? { from: l.from + m.index, to: pos, text: m[0] } : null
+    } } as never
+    return highlightSource(ctx) as { from: number; options: import("@codemirror/autocomplete").Completion[] } | null
+  }
+  const offered = suggest("A ==|")
+  check("editor highlights: == suggests the six colours", offered?.options.map((o) => o.label).join() === "Red,Orange,Yellow,Green,Blue,Purple" && offered.from === 4, offered?.options.map((o) => o.label))
+  check("editor highlights: narrowed by a name typed after it", suggest("A ==gr|")?.options.map((o) => o.label).join() === "Green" && suggest("A ==text|") === null)
+  check("editor highlights: not for a closing ==, a === or in code", suggest("A ==text==|") === null && suggest("a ===|") === null && suggest("`a ==|`") === null)
+  const pick = (doc: string) => {
+    const r = suggest(doc)!, v = view(doc)
+    const apply = r.options.find((o) => o.label === "Green")!.apply as (v: never, c: unknown, from: number, to: number) => void
+    apply(v as never, null, r.from, v.state.selection.main.head)
+    return shown(v)
+  }
+  check("editor highlights: a pick goes in with the closing == after the cursor, or alone before text", pick("A ==|") === "A ==🟢|==" && pick("A ==|word") === "A ==🟢|word",
+    [pick("A ==|"), pick("A ==|word")])
 }
 
 // ---------- Fuzzy matching (web/src/core/fuzzy.ts): the palette, the quick switcher and the pickers ----------

@@ -56,16 +56,22 @@ const MARK_CHAR = /[*_=~%`$]/
 const STRIP = [/(\*\*|__|==|~~|%%)(?=\S)(.*?\S)\1/g, /(?<![\w*])([*_])(?=\S)(.*?\S)\1(?![\w*])/g, /(`)([^`\n]+)`/g, /(\$)(?=\S)([^$\n]*?\S)\$/g]
 
 /** Clear formatting: the marks in what's selected (with nothing selected, the word at the cursor), and those around
- *  it, taken out; the text stays selected. */
-export const clearFormatting = (view: EditorView) => {
+ *  it, taken out; the text stays selected. `colors`: a highlight's colour emoji (HIGHLIGHT_EMOJI), taken with its ==. */
+export const clearFormatting = (view: EditorView, colors = "") => {
   const { state } = view
+  const opened = colors ? new RegExp(`==${colors}$`, "u") : null, colored = colors ? new RegExp(`(?<!=)==${colors}(?=\\S)`, "gu") : null
   view.dispatch(state.changeByRange((r) => {
     let { from, to } = r
     if (r.empty) { const w = state.wordAt(r.head); if (w) ({ from, to } = w) }
     // (an edge at marks live preview hides, where its Home, End or a drag stops: they're taken in too)
     else {
       const a = state.doc.lineAt(from).from, b = state.doc.lineAt(to).to
-      while (from > a && MARK_CHAR.test(state.sliceDoc(from - 1, from))) from--
+      for (;;) {
+        while (from > a && MARK_CHAR.test(state.sliceDoc(from - 1, from))) from--
+        const e = opened?.exec(state.sliceDoc(Math.max(a, from - 5), from))
+        if (!e) break
+        from -= e[0].length
+      }
       while (to < b && MARK_CHAR.test(state.sliceDoc(to, to + 1))) to++
     }
     for (let grew = true; grew;) {
@@ -73,8 +79,11 @@ export const clearFormatting = (view: EditorView) => {
       for (const m of MARKS) {
         if (state.sliceDoc(from - m.length, from) === m && state.sliceDoc(to, to + m.length) === m) { from -= m.length; to += m.length; grew = true; break }
       }
+      const hl = !grew && opened ? opened.exec(state.sliceDoc(Math.max(0, from - 5), from)) : null
+      if (hl && state.sliceDoc(to, to + 2) === "==") { from -= hl[0].length; to += 2; grew = true }
     }
     let text = state.sliceDoc(from, to)
+    if (colored) text = text.replace(colored, "==")
     for (let was = ""; was !== text;) { was = text; for (const re of STRIP) text = text.replace(re, "$2") }
     return { changes: { from, to, insert: text }, range: EditorSelection.range(from, from + text.length) }
   }), { userEvent: "input" })

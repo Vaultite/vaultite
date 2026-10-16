@@ -80,6 +80,8 @@ export function parseLesson(body: string): { intro: string; steps: Step[] } {
 }
 
 const CLOZE = /==([^=\n]+)==/g
+// A highlight's colour (==🟢blank==, web/src/core/highlights.ts), not shown when the blank is plain text.
+const COLOR = /^(?:🔴|🟠|🟡|🟢|🔵|🟣)\uFE0F?/u
 
 export function parseCards(body: string): Card[] {
   return sections(body).sections.flatMap(({ title, lines }): Card[] => {
@@ -100,5 +102,5 @@ export function lessonCards(body: string): Card[] {
 export function clozeText(card: Card, shown: boolean) {
   if (card.cloze == null) return card.prompt
   let i = 0
-  return card.prompt.replace(CLOZE, (_, t: string) => (i++ === card.cloze ? (shown ? `==${t}==` : "**[...]**") : t))
+  return card.prompt.replace(CLOZE, (_, t: string) => (i++ === card.cloze ? (shown ? `==${t}==` : "**[...]**") : t.replace(COLOR, "")))
 }

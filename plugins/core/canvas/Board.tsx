@@ -6,7 +6,7 @@ import {
   ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
   Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, createFile, dropHighlightEmoji, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -421,7 +421,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const convertToFile = async (n: CanvasNode) => {
     try {
       // (where new notes go: Notes, unless the vault says otherwise)
-      const f = await createFile(newNoteFolder(store, path), nameFromText(String(n.text ?? "")), String(n.text ?? ""))
+      const f = await createFile(newNoteFolder(store, path), nameFromText(dropHighlightEmoji(String(n.text ?? ""))), String(n.text ?? ""))
       const d = docRef.current
       commit({ ...d, nodes: d.nodes.map((x) => { if (x.id !== n.id) return x; const { text: _t, ...rest } = x; return { ...rest, type: "file", file: f.path } as CanvasNode }) })
     } catch { /* told by the app */ }

@@ -101,6 +101,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with.
 - `cn`
+- `colorHighlight(color)`: Colour the highlight each selection is in (null: the default, no emoji); elsewhere, highlight the selection (or the word at the cursor) in it.
 - `commandItems(...ids)`: Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check ("Line numbers"), one that switches something else by what it does now ("Hide left…
 - `commandKeys(id)`: Those keys as `keyHint` writes them, "" without any: for a button's tooltip, so it never names keys of its own.
 - `commandList()`: Every command registered now, available or not (`available` says which can run).
@@ -134,6 +135,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dow(s)`
 - `DragItem`
 - `dragTab(e, tab, opts?)`: Press on a tab: it drags, or (one of several selected) they all do.
+- `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
 - `Editable({ value, set, placeholder, className, children })`: A value a block shows that can be changed in place (a person's context): click, type, Enter.
 - `EditorCtx`: Which editor a plugin's editor extensions go into: a note (Markdown, live preview or source), a code file, or other text (JSON, an artifact's HTML, a CSV's source); `path`: its file, when it's one.
@@ -205,6 +207,13 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Heading`
 - `HeadingButton({ icon, label, tip, strokeWidth, className, … })`: An icon button in a panel's heading or a row: its label is its tooltip unless `tip` says otherwise.
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
+- `HIGHLIGHT_COLORS`: The six colours, in Obsidian's order: each one's name (drawn as `hl-<name>`) and emoji.
+- `HIGHLIGHT_EMOJI`: A colour emoji (with the variation selector some keyboards add after it).
+- `highlightAt(state, from, to?)`: The highlight from..to is in (its marks too), on that line.
+- `highlightClass(color)`: The class a highlight of that colour is drawn with (none for the default).
+- `highlightColor(text)`: The colour a highlight's text starts with, and how long its emoji is (UTF-16 units); null: the default.
+- `HighlightColor`
+- `highlightItems(view, at?)`: The colours as menu rows (Default first), the highlight at the selection's ringed; `at`: the one there (the swatch's), with Remove highlight under them.
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?, shrinks?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes (`shrinks`: see Held).
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
@@ -495,6 +504,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `treeShownItems()`: The tree's panel, tab and empty-space menus: hidden files, archived ones when there are archive folders, and revealing the open file (the heading's buttons have the rest: new, sort, collapse).
 - `typedValue(type, v)`: A value as its type sorts and compares it: numbers and dates as numbers (ms), checkboxes as true or false; undefined when the type doesn't change how it compares.
 - `typingIn(el)`: Where keys type: a text field, an editor, a terminal (contenteditable, or a field you type text in), or a widget that keeps its keys, marked `data-keeps-keys` (a remote screen takes every key, a…
+- `unhighlight(view)`: Take out the coloured highlight the selection is in, marks and colour (false if it's in none: plain ones toggle as the other marks do).
 - `useAgentRoute(route, options, query?, version?)`: A plugin's `route` for a block, with `query`, on its options' `machine` (this one when it's none or this) and `account`: `on` names another machine (" on Studio").
 - `useAgents()`
 - `useCommandKeys(id, paren?)`: `commandKeys`, kept up to date as commands and hotkeys change; " (⌘O)" with `paren`, "" without keys.

@@ -1,11 +1,11 @@
 import { ListTree } from "lucide-react"
-import { Bar, cn, definePlugin, openView, SidebarHeading, stem, useFocusedFile, useKeptCount, useOutline, type SidebarCtx } from "@vaultite"
+import { Bar, cn, definePlugin, dropHighlightEmoji, openView, SidebarHeading, stem, useFocusedFile, useKeptCount, useOutline, type SidebarCtx } from "@vaultite"
 
 // Outline: the focused file's headings, following scrolling and typing (the editor's text, not the
 // saved file: core/anchors.ts). A hidden sidebar panel and a tab.
 
 /** A heading as it reads: links by their text, without Markdown's marks. */
-const plain = (t: string) => t.replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, "$2").replace(/[*_`=]/g, "") || "Untitled"
+const plain = (t: string) => dropHighlightEmoji(t).replace(/\[\[([^\]|]*\|)?([^\]]*)\]\]/g, "$2").replace(/[*_`=]/g, "") || "Untitled"
 
 function OutlineList({ path }: { path: string }) {
   const md = /\.md$/i.test(path)

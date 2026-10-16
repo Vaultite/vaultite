@@ -15,6 +15,7 @@ import { notify } from "@/core/notify"
 import { active, type LinkTarget } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { WIKI_LINK } from "@/core/markdown"
+import { dropHighlightEmoji } from "@/core/highlights"
 import { type LinkEntry, linkIndex } from "../../../core/links.ts"
 
 export type Target = LinkTarget
@@ -23,7 +24,7 @@ export const WIKI = new RegExp(WIKI_LINK, "g")
 
 /** Markdown to plain text, for previews and search snippets: no marks, code fences, rules or table pipes. */
 export function plainText(md: string) {
-  return md
+  return dropHighlightEmoji(md)
     .replace(/^\s*(```|~~~)[\s\S]*?^\s*\1.*$/gm, " ")
     .replace(new RegExp(`!?${WIKI_LINK}`, "g"), (_, t: string, a?: string) => (a ?? (t.split("#")[0] || t.split("#").pop()!)).trim())
     .replace(/!\[([^\]]*)\]\([^)]*\)/g, "$1")

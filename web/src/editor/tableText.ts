@@ -1,4 +1,5 @@
 // A Markdown table as rows and back (editor/tables.ts edits it cell by cell): what changed is all that's rewritten.
+import { dropHighlightEmoji } from "../core/highlights.ts"
 
 export type Align = "" | "left" | "center" | "right"
 /** A row: its cells as written (`\|` escaped), and the line it came from while they're unchanged (kept as it was).
@@ -122,7 +123,7 @@ const collator = new Intl.Collator(undefined, { numeric: true, sensitivity: "bas
 const NUMBER = /^[-+]?[$€£¥]?\s?[-+]?(\d[\d,]*)?\.?\d+\s?%?$/
 const DATE = /^\d{4}-\d{1,2}-\d{1,2}(?:[ T][\d:.]+Z?)?$|^\d{4}\/\d{1,2}\/\d{1,2}$|^[A-Za-z]{3,9}\.? \d{1,2},? \d{4}$|^\d{1,2} [A-Za-z]{3,9}\.? \d{4}$/
 /** A cell's text as read: links by their names, without emphasis marks. */
-const plain = (cell: string) => shownText(cell).replace(/!?\[\[([^\]|]*)\|?([^\]]*)\]\]/g, (_, a, b) => b || a)
+const plain = (cell: string) => dropHighlightEmoji(shownText(cell)).replace(/!?\[\[([^\]|]*)\|?([^\]]*)\]\]/g, (_, a, b) => b || a)
   .replace(/!?\[([^\]]*)\]\([^)]*\)/g, "$1").replace(/(\*\*|__|\*|_|~~|==|`)/g, "").trim()
 const asNumber = (s: string) => (NUMBER.test(s) ? Number(s.replace(/[$€£¥,%\s]/g, "")) : NaN)
 const asDate = (s: string) => (DATE.test(s) ? Date.parse(s) : NaN)

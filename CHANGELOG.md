@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Highlights take Obsidian's six colours: `==🟢text==` draws green (🔴 🟠 🟡 🟢 🔵 🟣) everywhere a note is drawn, the
+  emoji hidden. Typing `==` suggests the colours, a swatch on the highlight at the cursor changes its colour, and the
+  editor's Format ▸ Highlight submenu colours what's selected.
 - Bundles: Plugins' Bundles button and the command "Choose a bundle…" open Bundles as a page of its own, not inside
   Settings. Its cards sit three across, and importing is also a tile under Yours, where imported bundles land.
 - **Plugin API 4**: a plugin offers modules to plugins that require it (manifest `exports`), imported as

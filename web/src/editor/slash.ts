@@ -21,7 +21,7 @@ function putText(view: EditorView, text: string, line = false) {
   if (/\[\[$/.test(view.state.sliceDoc(Math.max(0, at + (mark < 0 ? insert.length : mark) - 2), at + (mark < 0 ? insert.length : mark)))) startCompletion(view)
 }
 
-function inFrontmatter(ctx: CompletionContext) {
+export function inFrontmatter(ctx: CompletionContext) {
   const doc = ctx.state.doc
   if (doc.line(1).text !== "---") return false
   for (let i = 2; i <= doc.lines; i++) {

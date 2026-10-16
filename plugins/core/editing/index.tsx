@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
-import { activeFile, currentEditor, definePlugin, notifyError } from "@vaultite"
+import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, notifyError, unhighlight } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { NoteKeys } from "./keys"
 import { addPhotos } from "./photo"
@@ -36,8 +36,9 @@ const blocks: [string, string, string][] = [
 
 export default definePlugin({
   commands: [
-    ...marks.map(([id, name, m, keys]) => ({ id: `editor:toggle-${id}`, name, keys, when, run: run((e) => e.toggleMark(m)) })),
-    { id: "editor:clear-formatting", name: "Clear formatting", when, run: run((e) => e.clearFormatting), icon: RemoveFormatting },
+    // (a coloured highlight, ==🟢text==, goes with its colour)
+    ...marks.map(([id, name, m, keys]) => ({ id: `editor:toggle-${id}`, name, keys, when, run: run((e) => (m === "==" ? (v) => unhighlight(v) || e.toggleMark(m)(v) : e.toggleMark(m))) })),
+    { id: "editor:clear-formatting", name: "Clear formatting", when, run: run((e) => (v) => e.clearFormatting(v, HIGHLIGHT_EMOJI)), icon: RemoveFormatting },
     { id: "editor:insert-link", name: "Insert Markdown link", keys: ["Mod+K"], when, run: run((e) => e.insertLink), icon: Link },
     { id: "editor:insert-wikilink", name: "Add internal link", when, run: run((e) => e.insertWikilink), icon: Link2 },
     { id: "editor:toggle-checklist-status", name: "Toggle checkbox status", keys: ["Mod+L"], when, run: run((e) => e.toggleChecklist), icon: SquareCheck },

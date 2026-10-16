@@ -19,6 +19,9 @@ import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, r
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
+import { HIGHLIGHT, highlightClass, highlightColor, type HighlightColor } from "@/core/highlights"
+import { highlightItems } from "@/core/highlightMenu"
+import { openMenu } from "@/components/ContextMenu"
 
 export type PreviewConfig = {
   /** false: plain Markdown (source mode). */
@@ -1079,8 +1082,30 @@ function inline(view: EditorView): DecorationSet {
 }
 
 const inCode = (tree: ReturnType<typeof syntaxTree>, at: number) => /Code|URL|LinkMark|HTML|Comment/.test(tree.resolveInner(at, 1).name)
-const HIGHLIGHT = /(?<!=)==(?=[^\s=])(.+?)(?<=[^\s=])==(?!=)/g
 const COMMENT = /%%(.*?)%%/g
+
+/** The swatch before the highlight at the cursor: a click shows its colours. */
+class HighlightSwatch extends WidgetType {
+  readonly color: HighlightColor | null
+  constructor(color: HighlightColor | null) { super(); this.color = color }
+  eq(o: HighlightSwatch) { return o.color === this.color }
+  toDOM(view: EditorView) {
+    const el = document.createElement("span")
+    el.className = `cm-hl-swatch ${highlightClass(this.color)}`
+    el.setAttribute("role", "button")
+    el.setAttribute("aria-label", "Highlight colour")
+    el.dataset.tip = "Highlight colour"
+    // (the editor keeps the keyboard, and so the swatch, while the menu is open)
+    el.addEventListener("mousedown", (e) => e.preventDefault())
+    el.addEventListener("click", (e) => {
+      e.preventDefault(); e.stopPropagation()
+      const b = el.getBoundingClientRect()
+      openMenu({ x: b.left, y: b.bottom + 4 }, highlightItems(view, view.posAtDOM(el)))
+    })
+    return el
+  }
+  ignoreEvent() { return true }
+}
 
 /** One line's #tags, ==highlights==, %%comments%% and block id (live preview and reading). */
 function inlineMarks(state: EditorState, l: { from: number; to: number; text: string }, tree: ReturnType<typeof syntaxTree>, out: Range<Decoration>[]) {
@@ -1111,9 +1136,14 @@ function inlineMarks(state: EditorState, l: { from: number; to: number; text: st
     for (let m; (m = HIGHLIGHT.exec(t));) {
       const a = l.from + m.index, b = a + m[0].length
       if (inCode(tree, a) || inComment(a)) continue
-      out.push(mark("cm-highlight").range(a + 2, b - 2))
-      if (!touched(state, a, b)) out.push(hide.range(a, a + 2), hide.range(b - 2, b))
-      else out.push(mark("cm-hmark").range(a, a + 2), mark("cm-hmark").range(b - 2, b))
+      // (a colour emoji after the opening ==, ==🟢text==, goes with it; at the cursor, a swatch to change it)
+      const c = highlightColor(m[1]), e = a + 2 + (c?.len ?? 0)
+      if (e < b - 2) out.push(mark(c ? `cm-highlight ${highlightClass(c.color)}` : "cm-highlight").range(e, b - 2))
+      if (!touched(state, a, b)) out.push(hide.range(a, e), hide.range(b - 2, b))
+      else {
+        out.push(Decoration.widget({ widget: new HighlightSwatch(c?.color ?? null), side: -1 }).range(a))
+        out.push(mark("cm-hmark").range(a, e), mark("cm-hmark").range(b - 2, b))
+      }
     }
   }
   const id = t.includes("^") ? BLOCK_ID.exec(t) : null
@@ -1500,7 +1530,7 @@ export function findable(state: EditorState, from: number, to: number): boolean 
     return over(a, alias ? a + 3 + target.length : a + 2) || over(b - 2, b)
   })) return false
   if (t.includes("$") && each(MATH, (m) => over(m.index, m.index + m[0].length))) return false
-  if (t.includes("==") && each(HIGHLIGHT, (m) => over(m.index, m.index + 2) || over(m.index + m[0].length - 2, m.index + m[0].length))) return false
+  if (t.includes("==") && each(HIGHLIGHT, (m) => over(m.index, m.index + 2 + (highlightColor(m[1])?.len ?? 0)) || over(m.index + m[0].length - 2, m.index + m[0].length))) return false
   if (t.includes("[^")) {
     const d = FN_DEF.exec(t)
     if (d && over(0, d[0].length)) return false

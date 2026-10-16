@@ -8,7 +8,7 @@ import {
   Pilcrow, Quote, RemoveFormatting, Scissors, Search, Sigma, SquareCode, SquareSigma, Strikethrough, Table, TextCursorInput,
   TextSelect, type LucideIcon,
 } from "lucide-react"
-import { copyText, editorMenuItems, grouped, keyHint, keysOf, lookUp, notifyError, offeredCommand, openMenu, selectedText, spelling, type MenuItem } from "@vaultite"
+import { copyText, editorMenuItems, grouped, highlightItems, keyHint, keysOf, lookUp, notifyError, offeredCommand, openMenu, selectedText, spelling, type MenuItem } from "@vaultite"
 
 type Entry = [id: string, label: string, icon: LucideIcon]
 const FORMAT: (Entry | null)[] = [
@@ -36,9 +36,10 @@ function command(view: EditorView, e: Entry | null, sep = false): MenuItem[] {
   const keys = keysOf(c)[0]
   return [{ label: e[1], icon: e[2], sep, hint: keys ? keyHint(keys) : undefined, run: () => { view.focus(); c.run() } }]
 }
-/** A submenu of commands, a line where the list has a null. */
+/** A submenu of commands, a line where the list has a null. Highlight: a click toggles it, its submenu colours it. */
 const submenu = (view: EditorView, label: string, icon: LucideIcon, list: (Entry | null)[]): MenuItem[] => {
-  const items = list.flatMap((e, i) => command(view, e, list[i - 1] === null))
+  const items = list.flatMap((e, i) => command(view, e, list[i - 1] === null)
+    .map((it) => (e?.[0] === "editor:toggle-highlight" ? { ...it, split: true, items: highlightItems(view) } : it)))
   return items.length ? [{ label, icon, run: () => {}, items }] : []
 }
 

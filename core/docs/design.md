@@ -72,7 +72,7 @@ const greet = (name: string) => `Hello, ${name}`
 
 A footnote goes after a word[^1], its text anywhere in the file.
 
-Marks: ==a highlight==, a tag like #design/markdown (click it for the files that have it; it nests under #design, and this page is the one file that has it), `%%a comment%%` that reading hides, and `^an-id` at the end of a paragraph or list item, hidden too, so a link can go to it. ^design-marks
+Marks: ==a highlight== (a colour emoji first colours it: ==🔴red==, ==🟠orange==, ==🟡yellow==, ==🟢green==, ==🔵blue==, ==🟣purple==), a tag like #design/markdown (click it for the files that have it; it nests under #design, and this page is the one file that has it), `%%a comment%%` that reading hides, and `^an-id` at the end of a paragraph or list item, hidden too, so a link can go to it. ^design-marks
 
 A link goes to a place in a file: [[#Markdown]] a heading in this one, [[Me#About me]] a heading in another, [[#^design-marks]] a block. A note, a section or a block embedded shows its text, like the paragraph above (on a line of its own, or in the middle of one):
 

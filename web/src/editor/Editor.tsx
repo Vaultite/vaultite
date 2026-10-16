@@ -17,6 +17,7 @@ import { drawnBlocks, fenceMenu, findable, linkHandler, livePreview, offBlocks, 
 import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyLine } from "./frontmatter"
 import { slashSource } from "./slash"
 import { blockOptionSource } from "./blockOptions"
+import { highlightSource, optionDot } from "./highlights"
 import { pickLink, quiet, suggestKeys } from "./suggest"
 import { numberGutter } from "./numbers"
 import { keepState, keptKey, keptState } from "./kept"
@@ -371,7 +372,10 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
             },
           }),
           suggestKeys,
-          autocompletion({ override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl)].map(quiet), icons: false }),
+          autocompletion({
+            override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource].map(quiet),
+            icons: false, addToOptions: [{ render: optionDot, position: 20 }],
+          }),
           keymap.of([
             { key: "Mod-b", run: wrap("**") }, { key: "Mod-i", run: wrap("*") },
             { key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess },
