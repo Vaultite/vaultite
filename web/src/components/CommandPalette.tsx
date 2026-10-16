@@ -92,7 +92,10 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
       const rank = (c: Command) => { const i = recent.indexOf(c.id); return i < 0 ? recent.length : i }
       return [...cs].sort((a, b) => rank(a) - rank(b) || a.name.localeCompare(b.name)).map((c) => ({ ...c, marks: [] }))
     }
-    const found: Row[] = cs.flatMap((c) => { const m = fuzzy(q.trim(), c.name); return m ? [{ ...c, marks: m.marks, score: m.score }] : [] })
+    const typed = q.trim().toLowerCase().split(/\s+/)
+    const byWords = (c: Command) => { const ws = `${c.name} ${c.words}`.toLowerCase().split(/\s+/); return typed.every((t) => ws.some((w) => w.startsWith(t))) }
+    // A match by its other words comes after every match by name.
+    const found: Row[] = cs.flatMap((c) => { const m = fuzzy(q.trim(), c.name); return m ? [{ ...c, marks: m.marks, score: m.score }] : c.words && byWords(c) ? [{ ...c, marks: [], score: -Infinity }] : [] })
       .sort((a, b) => b.score - a.score).map(({ score: _, ...c }) => c)
     return [...found, ...pluginRows(plugins, disabled, q.trim())]
   }, [all, q, plugins, disabled])

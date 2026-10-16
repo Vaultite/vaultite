@@ -1,8 +1,10 @@
 // Text sizes per kind of content (notes, terminals, plugins' `textSizes`) apart from the app's zoom, like VS Code's
 // editor and terminal font sizes. Per device: a phone and a laptop want different sizes.
-import { AArrowDown, AArrowUp, ALargeSmall } from "lucide-react"
+import { AArrowDown, AArrowUp, ALargeSmall, MousePointer2, MousePointerBan } from "lucide-react"
 import { useEffect, type RefObject } from "react"
-import { devicePref, usePrefs } from "@/core/prefs"
+import { devicePref, getPrefs, setPrefs, usePrefs } from "@/core/prefs"
+import { notify } from "@/core/notify"
+import { keyHint } from "@/core/commands"
 import { active } from "@/core/plugins"
 
 /** A kind of content with a text size of its own. `label` names it in sentence case ("Terminal"). */
@@ -44,16 +46,31 @@ export function stepTextSize(kind: string, step: -1 | 0 | 1) {
   if (next !== undefined) setTextSize(kind, next)
 }
 
-/** Each kind's three commands, for the palette (no keys by default). */
+const WORDS = "font zoom bigger smaller"
+
+/** What quick text size does, under its name in Settings. */
+export const quickTextSizeSub = () => `${keyHint("Mod")} and scroll, or pinch, over a note or terminal`
+
+/** Quick text size on or off, saying so: nothing on screen changes. */
+function setQuick(on: boolean) {
+  setPrefs({ quickTextSize: on })
+  notify(`Quick text size is ${on ? "on" : "off"}`, { action: { label: "Undo", run: () => setPrefs({ quickTextSize: !on }) } })
+}
+
+/** Each kind's three commands, then turning quick text size on or off, for the palette (no keys by default). */
 export function textSizeCommands(disabled: string[], order: string[]) {
-  return textSizeKinds(disabled, order).flatMap(([kind, k]) => {
-    const name = k.label.toLowerCase()
-    return [
-      { id: `text-size:${kind}:increase`, name: `Increase ${name} text size`, run: () => stepTextSize(kind, 1), icon: AArrowUp },
-      { id: `text-size:${kind}:decrease`, name: `Decrease ${name} text size`, run: () => stepTextSize(kind, -1), icon: AArrowDown },
-      { id: `text-size:${kind}:reset`, name: `Reset ${name} text size`, when: () => textSize(kind) !== 100, run: () => stepTextSize(kind, 0), icon: ALargeSmall },
-    ]
-  })
+  return [
+    ...textSizeKinds(disabled, order).flatMap(([kind, k]) => {
+      const name = k.label.toLowerCase()
+      return [
+        { id: `text-size:${kind}:increase`, name: `Increase ${name} text size`, run: () => stepTextSize(kind, 1), icon: AArrowUp, words: WORDS },
+        { id: `text-size:${kind}:decrease`, name: `Decrease ${name} text size`, run: () => stepTextSize(kind, -1), icon: AArrowDown, words: WORDS },
+        { id: `text-size:${kind}:reset`, name: `Reset ${name} text size`, when: () => textSize(kind) !== 100, run: () => stepTextSize(kind, 0), icon: ALargeSmall, words: WORDS },
+      ]
+    }),
+    { id: "text-size:quick-on", name: "Turn on quick text size", when: () => !getPrefs().quickTextSize, run: () => setQuick(true), icon: MousePointer2, words: `${WORDS} scroll wheel pinch enable` },
+    { id: "text-size:quick-off", name: "Turn off quick text size", when: () => getPrefs().quickTextSize, run: () => setQuick(false), icon: MousePointerBan, words: `${WORDS} scroll wheel pinch disable` },
+  ]
 }
 
 /** How far the wheel goes for one step: a mouse's notch is one; a trackpad's pinch or scroll sends many small deltas,
@@ -61,14 +78,14 @@ export function textSizeCommands(disabled: string[], order: string[]) {
 const NOTCH = 50
 let acc = 0, accKind = "", accAt = 0
 
-/** ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size instead of zooming the page. Children using the wheel
- *  keep it (preventDefault) unless `first`, which takes it before them (a terminal scrolls on every wheel event). */
+/** ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` is on (off as in Obsidian: pinches
+ *  set it off by accident). Children using the wheel keep it unless `first`, which takes it before them (a terminal). */
 export function useTextSizeWheel(ref: RefObject<HTMLElement | null>, kind: string | null, first = false) {
   useEffect(() => {
     const el = ref.current
     if (!el || !kind) return
     const on = (e: WheelEvent) => {
-      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || (!first && e.defaultPrevented)) return
+      if (!getPrefs().quickTextSize || !(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey || (!first && e.defaultPrevented)) return
       e.preventDefault()
       if (first) e.stopPropagation()
       const px = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY

@@ -416,8 +416,8 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
   const area = useVisibleArea(phone && typing)
   const pageAt = useRef(0) // where the page was scrolled before the keyboard came up
   const touchActions = useRef({ key: (_send: (t: XTerm) => string) => {}, paste: () => {}, hide: () => {} })
-  // Its own text size, apart from the app's zoom: ⌘ (or ⌃) and the wheel, or a pinch, over it, before the terminal
-  // scrolls with it.
+  // Its own text size, apart from the app's zoom: ⌘ (or ⌃) and the wheel, or a pinch, over it (quick text size on),
+  // before the terminal scrolls with it.
   const size = useTextSize("terminal")
   useTextSizeWheel(host, "terminal", true)
   useEffect(() => {

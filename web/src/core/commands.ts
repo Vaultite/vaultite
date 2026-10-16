@@ -23,6 +23,8 @@ export type Command = {
   icon?: ComponentType<{ className?: string; strokeWidth?: number }> | string
   /** Its name on a button, shorter than `name` ("New note" for "Create new note"); `name` when left out. */
   label?: string
+  /** Other words the palette finds it by ("font" for a text size), each typed word starting one of them or the name's. */
+  words?: string
 }
 
 const reg = new Map<string, Command>()

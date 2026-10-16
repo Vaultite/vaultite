@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Quick text size** is off by default: ⌘ and scroll, or a pinch, over a note or terminal changes its text size only
+  with it on (Settings > Appearance, or the palette's Turn on quick text size). The palette finds commands by other
+  words too: "font size" finds the text size ones.
 - **Live answers**: ChatGPT's Intelligent UI saved to a note (the ChatGPT app, or an imported chat) is a ```genui fence
   drawn live with the app's own controls and colours, its script sandboxed; the values you pick are kept in the note.
   Its follow-up buttons ask Claude chat about the note.

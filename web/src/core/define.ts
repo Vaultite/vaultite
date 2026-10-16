@@ -541,7 +541,7 @@ export type PluginDef = {
   /** What it draws at the top of a note's page, by name (see NoteTopItem). */
   noteTop?: Record<string, NoteTopItem>
   /** Content with a text size of its own apart from the app's zoom (core/textsize.ts), by id: it gets ⌘+scroll
-   *  (`useTextSizeWheel`), commands and a Settings row; the view reads `useTextSize(id)`. */
+   *  (`useTextSizeWheel`, while quick text size is on), commands and a Settings row; the view reads `useTextSize(id)`. */
   textSizes?: Record<string, TextSizeKind>
   /** Names for the first steps of its commands' key sequences, which the keys hint shows while one is under way
    *  (`{"Space F": "Files"}`; steps spelled as in `keys`). */

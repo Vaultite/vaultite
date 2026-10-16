@@ -1,10 +1,10 @@
-// Text sizes (web/src/core/textsize.ts): a note's and a terminal's own size, apart from the app's zoom. ⌘ + the wheel over
-// a note steps it (110%, back down), a pinch (⌃ + small wheel deltas) too; only what's under the path bar grows (the
+// Text sizes (web/src/core/textsize.ts): a note's and a terminal's own size, apart from the app's zoom. Quick text size
+// is off at first (the wheel does nothing; the palette's "font size" turns it on). ⌘ + the wheel over a note steps it (110%, back down), a pinch (⌃ + small wheel deltas) too; only what's under the path bar grows (the
 // path bar and the sidebar stay), the column widens with it, and a click in the zoomed editor still lands where it
 // points; a dashboard isn't zoomed; the commands (Reset note text size) and Settings > Appearance's rows (− 100% +) do
 // the same; the size is this device's (localStorage), not the vault's. A terminal: ⌘ + the wheel makes its text bigger
 // and the shell gets fewer columns (`tput cols`). Phone width: the rows are there and a note is drawn at its size.
-// WRITES "Qa text size/" and runs a shell on the server's machine: throwaway server only.
+// WRITES "Qa text size/", appearance's quickTextSize (put back) and runs a shell on the server's machine: throwaway server only.
 //   node web/qa/textsize.mjs <base url> [out dir]
 import fs from "node:fs"
 import { apiAt, qa, terminalText, until, wait } from "./lib/qa.mjs"
@@ -35,6 +35,17 @@ await wait(600)
 const body0 = await box(".file-view .cm-content"), bar0 = await box(".file-view > *:first-child"), side0 = await box("aside")
 const lineH0 = await page.evaluate(() => document.querySelector(".file-view .cm-line")?.getBoundingClientRect().height)
 await page.screenshot({ path: `${OUT}note-100.png` })
+// Quick text size is off by default: ⌘ + the wheel leaves the size alone until the palette ("font size") turns it on.
+await api("PATCH", "config/appearance", { quickTextSize: null })
+await wheelOver(".file-view .cm-content", -100)
+check("quick text size off: ⌘ + wheel leaves 100%", (await pref("note")) === 100, await pref("note"))
+await page.keyboard.press("ControlOrMeta+p")
+await page.keyboard.type("font size")
+const turnOn = page.getByText("Turn on quick text size", { exact: true })
+check("palette: \"font size\" finds Turn on quick text size", await until(async () => (await turnOn.count()) > 0, 2000))
+await turnOn.click()
+check("Turn on quick text size: on in the vault", await until(async () => (await api("GET", "config/appearance")).quickTextSize === true, 2000))
+await wait(300)
 await wheelOver(".file-view .cm-content", -100)
 check("⌘ + wheel up over a note: 110%", (await pref("note")) === 110, await pref("note"))
 const lineH1 = await page.evaluate(() => document.querySelector(".file-view .cm-line")?.getBoundingClientRect().height)
@@ -172,5 +183,6 @@ const overflow = await p2.evaluate(() => document.documentElement.scrollWidth - 
 check("phone: nothing wider than the screen", overflow <= 0, overflow)
 
 await browser.close()
+await api("PATCH", "config/appearance", { quickTextSize: null }).catch(() => {})
 await api("DELETE", `file?path=${encodeURIComponent(NOTE)}`).catch(() => {})
 await done()

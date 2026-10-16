@@ -525,7 +525,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTabLayout()`
 - `useTerminalAccount(id, a)`: The account terminal `id` runs agent `a` in, by label, when it has several (else ""): the one its id names, or the first (its bare name's).
 - `useTextSize(kind)`: A kind's size, redrawn when it changes (any pref change redraws; it's cheap).
-- `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size instead of zooming the page.
+- `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size, while `quickTextSize` is on (off as in Obsidian: pinches set it off by accident).
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
 - `useViewsVersion()`: Re-render when a view's title or icon changes (returns a counter).

@@ -11,7 +11,7 @@ import { isEnabled, PLUGINS, pluginById, tintOfPlugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
 import { usePrefs } from "@/core/prefs"
 import { cell } from "@/core/signal"
-import { textSizeKinds } from "@/core/textsize"
+import { quickTextSizeSub, textSizeKinds } from "@/core/textsize"
 import { capitalize } from "@/lib/utils"
 import { HotkeysSheet } from "@/pages/Hotkeys"
 import { FilterField, PageHeader, Panel, Segmented, SettingRow, SheetHead } from "@/components/kit"
@@ -159,6 +159,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     { id: "fonts", label: "Fonts", sub: "Interface, text and code", where: "Appearance", words: "font typeface monospace", run: () => openDetail("fonts") },
     ...textSizeKinds(disabled, order).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),
+    { ...row("quick-text-size", "Quick text size", "Appearance", '[data-settings-row="quick-text-size"]', quickTextSizeSub()), words: "font size zoom scroll wheel pinch" },
     { ...row("snippets", "CSS snippets", "Appearance", 'section[aria-label="CSS snippets"]'), words: "styles custom" },
     { ...row("readable-line-length", "Readable line length", "Editor", '[data-settings-row="readable-line-length"]'), words: "width wide column" },
     { ...row("properties-in-document", "Properties in document", "Editor", '[data-settings-row="properties-in-document"]', "Visible, hidden or source"), words: "frontmatter yaml metadata" },

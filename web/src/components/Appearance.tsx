@@ -7,7 +7,7 @@ import { openFile } from "@/core/files"
 import { openDetail } from "@/core/nav"
 import { getPrefs, setPrefs, usePrefs, type Density, type Theme } from "@/core/prefs"
 import { DEFAULT_SCHEME, SCHEMES, schemeId } from "@/themes/schemes"
-import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
+import { quickTextSizeSub, STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize"
 import { cn, isDark } from "@/lib/utils"
 import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
@@ -235,6 +235,9 @@ export function AppearancePanel() {
         {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (
           <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
         ))}
+        <SettingRow label="Quick text size" sub={quickTextSizeSub()} data-settings-row="quick-text-size">
+          <Switch on={prefs.quickTextSize} onChange={(quickTextSize) => setPrefs({ quickTextSize })} label="Quick text size" />
+        </SettingRow>
       </div>
       <Snippets />
     </Panel>
