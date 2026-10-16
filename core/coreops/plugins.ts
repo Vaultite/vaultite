@@ -72,7 +72,7 @@ export async function allowPlugin(app: App, q: string, hash?: string, edits?: bo
 
 /** What's wrong with one plugin's folder, anywhere on this machine (a plugin's own repository): its manifest and imports
  *  like a vault plugin's, its commands, and for one to install (`tag`: what its version must be) version and repo. */
-export function folderProblems(dir: string, appIds: Map<string, string>, o: { installable?: boolean; tag?: string | null } = {}) {
+export function folderProblems(dir: string, appIds: Map<string, string>, o: { installable?: boolean; tag?: string | null; dirOf?: (id: string) => string } = {}) {
   const abs = path.resolve(dir), base = path.basename(abs)
   const r = checkVaultPlugin(abs, { ids: new Map([[base, "vault"], ...appIds]), label: ".", ...o })
   const id = typeof r.manifest?.id === "string" ? r.manifest.id : base

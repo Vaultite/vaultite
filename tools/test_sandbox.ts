@@ -110,7 +110,7 @@ const [, people] = await api("GET", "render?path=Start%20here.md")
 check("sandbox: the tour shows who's due", /Dave Kim/.test(people), people.slice(0, 600))
 const [, state] = await api("GET", "state")
 check("sandbox: only its two pages are pinned (the pages plugins bring aren't)", JSON.stringify(state.pinned) === '["Start here.md","Notes/How this vault works.md"]', state.pinned)
-check("sandbox: a plugin that's off has no page, the design system has one", !fs.existsSync(path.join(C, BUILT, "Codex.md")) && fs.existsSync(path.join(C, BUILT, "Today.md")) &&
+check("sandbox: a plugin that's off has no page, the design system has one", !fs.existsSync(path.join(C, BUILT, "Codex.md")) && fs.existsSync(path.join(C, BUILT, "People.md")) &&
   fs.existsSync(path.join(C, BUILT, "Design.md")))
 const pconf = JSON.parse(fs.readFileSync(path.join(C, ".vaultite/plugins.json"), "utf8"))
 await api("PUT", "config/plugins", { ...pconf, disabled: (pconf.disabled ?? []).filter((x: string) => x !== "codex"), enabled: [...(pconf.enabled ?? []), "codex"] })

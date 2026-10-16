@@ -12,6 +12,6 @@ export default definePlugin({
     page: { render: (ctx) => <Dashboard ctx={ctx} />, narrow: (ctx) => onlyText(ctx.body),
       editGrid: (cards, edit, ctx) => <EditGrid cards={cards} edit={edit} ctx={ctx} /> },
   },
-  // What a dashboard looks like: Health's, with made-up data.
-  preview: "health",
+  // What a dashboard looks like: People's, with made-up data.
+  preview: "people",
 })

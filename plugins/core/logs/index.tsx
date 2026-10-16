@@ -74,6 +74,11 @@ export default definePlugin({
       recent: t(l.date), weight: 0,
     }))
   },
-  // (its blocks on Health's page)
-  preview: "health",
+  // (its blocks with made-up logs, in the vault's areas)
+  preview: (s) => (
+    <div className="space-y-4">
+      <WeekGoals store={s} />
+      {[...new Set(s.logs.map((l) => l.area))].slice(0, 2).map((a) => <AreaPanel key={a} store={s} slug={a} empty="" />)}
+    </div>
+  ),
 })

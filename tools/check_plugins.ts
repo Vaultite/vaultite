@@ -28,7 +28,12 @@ if (flag("--plugin") !== null) {
   const { folderProblems } = await import("../core/coreops/plugins.ts")
   const { discover } = await import("../core/plugins.ts")
   const tag = flag("--tag") || null
-  const r = folderProblems(dir, new Map(discover().map(([tier, id]) => [id, tier])), { installable: process.argv.includes("--installable") || !!tag, tag })
+  // (one it requires may be one of Vaultite's own, moved out of the app: beside it, else in their checkout)
+  const { MOVED } = await import("../core/migrations.ts")
+  const official = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(fileURLToPath(import.meta.url), "../../../vaultite-plugins"))
+  const movedDir = (id: string) => [path.join(path.dirname(dir), id), path.join(official, id)].find((d) => fs.existsSync(path.join(d, "manifest.json")))
+  const ids = new Map([...Object.keys(MOVED).filter((id) => movedDir(id)).map((id): [string, string] => [id, "vault"]), ...discover().map(([tier, id]): [string, string] => [id, tier])])
+  const r = folderProblems(dir, ids, { installable: process.argv.includes("--installable") || !!tag, tag, dirOf: (id) => movedDir(id) ?? path.join(path.dirname(dir), id) })
   try { r.problems.push(...iconProblems(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")), "./manifest.json")) } catch { /* said */ }
   fs.rmSync(SCRATCH, { recursive: true, force: true })
   if (r.warnings.length) console.log(`Warnings (it still loads):\n${r.warnings.join("\n")}\n`)
@@ -217,7 +222,11 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   }
   const sb = json("sidebars.json")
   for (const k of [...sb?.left ?? [], ...sb?.right ?? []]) if (!panels.has(k) && !installs.has(k.split(":")[0])) problems.push(`${at}/sidebars.json: '${k}' isn't a sidebar panel of the app`)
-  for (const p of json("pages.json")?.pinned ?? []) if (!pages.has(p) && files[p] === undefined) problems.push(`${at}/pages.json: '${p}' is neither a plugin's page nor a file of the bundle`)
+  // (the pages of one it installs: from its checkout, else left unchecked)
+  const theirs = new Set([...installs].flatMap((i) => { const pd = path.join(OFFICIAL, i, "pages"); return fs.existsSync(pd) ? fs.readdirSync(pd).map((n) => `Dashboards/${n}`) : [] }))
+  for (const p of json("pages.json")?.pinned ?? []) {
+    if (!pages.has(p) && !theirs.has(p) && files[p] === undefined && (officialDecls || !installs.size)) problems.push(`${at}/pages.json: '${p}' is neither a plugin's page nor a file of the bundle`)
+  }
   for (const f of Object.keys(files)) {
     const m = /^plugins\/([^/]+)\/data\.json$/.exec(f)
     if (m && !ids.has(m[1]) && !installs.has(m[1])) problems.push(`${at}/${f}: '${m[1]}' isn't a plugin of the app`)

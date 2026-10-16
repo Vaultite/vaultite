@@ -80,10 +80,16 @@ const STEPS: { id: string; run: (v: Vault) => void }[] = [
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in
  *  the same change (an install can't take an id the app has); bundles name them with `install`. */
 export const MOVED: Record<string, string> = {
-  books: "Vaultite/plugins/books",
   "app-windows": "Vaultite/plugins/app-windows",
+  books: "Vaultite/plugins/books",
   "dock-icon": "Vaultite/plugins/dock-icon",
+  health: "Vaultite/plugins/health",
+  learning: "Vaultite/plugins/learning",
+  lessons: "Vaultite/plugins/lessons",
   "page-tabs": "Vaultite/plugins/page-tabs",
+  podcasts: "Vaultite/plugins/podcasts",
+  projects: "Vaultite/plugins/projects",
+  today: "Vaultite/plugins/today",
 }
 const movedStep = (id: string) => `moved:${id}`
 

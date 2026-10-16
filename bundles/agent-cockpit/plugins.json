@@ -19,5 +19,9 @@
     "token-count",
     "web-viewer",
     "workspaces"
-  ]
+  ],
+  "install": {
+    "lessons": { "name": "Lessons", "source": "Vaultite/plugins/lessons" },
+    "projects": { "name": "Projects", "source": "Vaultite/plugins/projects" }
+  }
 }

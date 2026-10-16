@@ -98,7 +98,7 @@ export default async ($: VaultTest) => {
       const { op, params: p, result, who } = await app.runOp(id, params, { who: whoOf("mcp", "claude-code") })
       return op.text!(result, p, who)
     }
-    for (const [tool, id, args] of [["search", "file.search", { query: "Written" }], ["read", "file.read", { path: "From vau" }], ["render", "file.render", { path: "Today" }],
+    for (const [tool, id, args] of [["search", "file.search", { query: "Written" }], ["read", "file.read", { path: "From vau" }], ["render", "file.render", { path: "Errors" }],
       ["list", "file.list", { folder: "Notes" }], ["list", "file.list", {}], ["query", "query.run", { type: "person", columns: ["file", "relation"], sort: "file" }]] as [string, string, Any][]) {
       const got = await asMcp(id, args)
       check(`op ${id}: an MCP client gets its answer as text, as the ${tool} tool (${JSON.stringify(args)})`, typeof got === "string" && got.trim().length > 0 && !got.startsWith("```json"), got.slice(0, 300))

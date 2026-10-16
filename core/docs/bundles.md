@@ -11,7 +11,7 @@ terminals, their activity, other machines and the server).
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```
   bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple"}
-  plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like today],
+  plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like people],
                       "install": {"tasks": {"name": "Tasks", "source": "Vaultite/plugins/tasks", "tag": "tasks/v1.0.1"}}: installed from there when applied;
                       one of the app's own plugins that moved to Vaultite's plugins, named in `enabled`, is installed from there too}
   sidebars.json      the panels, as .vaultite/sidebars.json ({} is the default panels)

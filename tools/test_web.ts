@@ -366,10 +366,6 @@ check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"),
     hl.dropHighlightEmoji("A ==🟢green== and 🟢 ==x== a==🟢"))
   check("highlights: a colour's class", hl.highlightClass("red") === "hl-red" && hl.highlightClass(null) === "" && hl.HIGHLIGHT_COLORS.map((c) => c.name).join() === "red,orange,yellow,green,blue,purple")
   const tt2: typeof import("../web/src/editor/tableText.ts") = await web("editor/tableText.ts")
-  const cards: typeof import("../plugins/core/lessons/format.ts") = await import("../plugins/core/lessons/format.ts")
-  const [first] = cards.parseCards("## ==🟢Paris== is the capital of ==France==\n")
-  check("highlights: a cloze card's other blank shows its text, not its colour", cards.clozeText({ ...first, cloze: 1 }, false) === "Paris is the capital of **[...]**"
-    && cards.clozeText(first, true) === "==🟢Paris== is the capital of France", [cards.clozeText({ ...first, cloze: 1 }, false), cards.clozeText(first, true)])
   check("highlights: a table sorts a coloured highlight by its text", tt2.compareCells("==🔴b==", "a") > 0 && tt2.compareCells("==🟢a==", "b") < 0)
 }
 check("markdown: #tags are clickable, not in code", html.includes('<a class="tag" data-tag="idea/new">#idea/new</a>') && html.includes("<code>#code</code>"), html)

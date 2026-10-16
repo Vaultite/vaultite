@@ -6,11 +6,11 @@ export default async ($: VaultTest) => {
   const { VAULT, api, check, read, tmp, vault, write } = $
   let code: number
   // /api/render: a file with its blocks filled in as text (for AIs); nothing is written.
-  const beforeToday = read("Dashboards/Today.md")
+  const before = read("Dashboards/People.md")
   let txt: Any
-  ;[code, txt] = await api("GET", "render?path=Dashboards/Today.md")
-  check("render fills a dashboard's blocks in", code === 200 && txt.includes("## Routines") && txt.includes("## This week") && !txt.includes("```block-"), txt.slice(0, 300))
-  check("render doesn't touch the file", read("Dashboards/Today.md") === beforeToday)
+  ;[code, txt] = await api("GET", "render?path=Dashboards/People.md")
+  check("render fills a dashboard's blocks in", code === 200 && txt.includes("## Reach out") && txt.includes("## Friends") && !txt.includes("```block-"), txt.slice(0, 300))
+  check("render doesn't touch the file", read("Dashboards/People.md") === before)
   check("render of a person file", (await api("GET", "render?path=People/Block Person.md"))[1].includes("Last in touch"))
   // Markdown's extras (callouts, footnotes, math, mermaid, code fences, <details>) are plain Markdown: render passes it through.
   {
@@ -29,7 +29,7 @@ export default async ($: VaultTest) => {
   check("render of a missing file is a 404", (await api("GET", "render?path=Nope.md"))[0] === 404)
   // The block contract (core/blocks.ts): options checked against the manifests' declarations, noted after the block's text.
   write("Notes/Block options.md", "```block-week-goals\ntitel: Mine\n```\n\n```block-graph\ndepth: 9\nheight: tall\n```\n\n" +
-    "```block-area\n```\n\n```block-week-goals\nareas: [workouts]\nwide: true\nstack: true\n```\n\n```block-routines\n- not: options\n```\n\n```block-nope\n```\n")
+    "```block-area\n```\n\n```block-week-goals\nareas: [workouts]\nwide: true\nstack: true\n```\n\n```block-people-due\n- not: options\n```\n\n```block-nope\n```\n")
   txt = (await api("GET", "render?path=Notes/Block options.md"))[1]
   check("render: an unknown option is noted after the block, with the name it's closest to",
     txt.includes("_(week-goals block: unknown option `titel` (did you mean `title`?))_") && txt.includes("## This week"), txt)
@@ -37,7 +37,7 @@ export default async ($: VaultTest) => {
     txt.includes("_(graph block: `depth` should be one of 1, 2, 3, 4, 5, not 9; `height` should be a number, not \"tall\")_"), txt)
   check("render: a required option left out is noted", txt.includes("_(area block: `area` is required)_"), txt)
   check("render: the options every block takes are fine anywhere", !/week-goals block: .*(wide|stack)/.test(txt), txt)
-  check("render: options that aren't a map are noted", txt.includes("_(routines block: its options should be `key: value` lines)_"), txt)
+  check("render: options that aren't a map are noted", txt.includes("_(people-due block: its options should be `key: value` lines)_"), txt)
   check("render: a block no plugin draws says so", txt.includes("_(no plugin draws block-nope)_") && !txt.includes("```block-nope"), txt)
   {
     // A declared block whose plugin has no text side reads as its declaration's description.
@@ -62,7 +62,7 @@ export default async ($: VaultTest) => {
     const qb = bl.blocks.find((b: Any) => b.name === "activity")
     check("/api/blocks: every app plugin's block, declared, with its options and text side", bc === 200 && qb?.plugin === "activity" && qb.declared && qb.text === true
       && qb.options.limit?.type === "number" && typeof qb.description === "string" && bl.common.wide && bl.common.file, qb)
-    check("/api/blocks: whether its plugin is on", bl.blocks.find((b: Any) => b.name === "routines")?.on === true, bl.blocks.length)
+    check("/api/blocks: whether its plugin is on", bl.blocks.find((b: Any) => b.name === "people-due")?.on === true, bl.blocks.length)
   }
   // GET /api/blocks/sources: where a block's data comes from, recorded while its text side runs (core/sources.ts).
   {
@@ -98,42 +98,48 @@ export default async ($: VaultTest) => {
   write("Notes/Showcase.md", "```block-person\nfile: Alice Park\n```\n\n```block-person\nfile: Nobody Here\n```\n")
   txt = (await api("GET", "render?path=Notes/Showcase.md"))[1]
   check("a block's file: draws it for that file", txt.includes("Seattle") && txt.includes("no file Nobody Here"), txt)
-  await api("POST", "logs", [{ area: "workouts", date: "2026-09-28", source: "claude", ext_id: "block-gym", title: "Push",
-    data: { exercises: [{ name: "Bench Press", sets: [{ type: "normal", weight_kg: 50, reps: 8 }] }] } }])
-  const gym = (await api("GET", "state"))[1].logs.find((x: Any) => x.ext_id === "block-gym")
-  let t = read(gym.id + ".md")
-  check("a new log's fences are its area's blocks too", t.includes("```block-log\n```\n\n```block-workout\n```"), t)
-  check("a workout renders as text", (await api("GET", `render?path=${gym.id}.md`))[1].includes("Bench Press: 50 kg x 8"))
   // Logs knows no areas of its own: with no areas setting, the plugins that draw them bring theirs (the service
-  // `log-areas`), and an area set without an icon or colour takes the one its plugin gives.
+  // `log-areas`: the made-up Regatta here), and an area set without an icon or colour takes the one its plugin gives.
   {
+    write(".vaultite/plugins/regatta/manifest.json", JSON.stringify({ id: "regatta", name: "Regatta", description: "Made up: sailing logs.", version: "1.0.0", disclosures: {} }))
+    write(".vaultite/plugins/regatta/plugin.ts", 'import { Plugin } from "@vaultite/core/plugins.ts"\nexport const plugin = new Plugin(import.meta.url)\n' +
+      'plugin.provide("log-areas", () => [{ slug: "water", name: "Water", icon: "waves", tint: "blue" }, { slug: "sailing", name: "Sailing", icon: "sailboat", tint: "teal",\n' +
+      '  parent: "water", blocks: ["race"], fields: [{ key: "distance_nm", label: "Distance", type: "number", unit: "nm" }] }])\n')
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/logs/data.json"), { force: true }) // (the areas logs above added)
+    const was: string[] = vault.config("plugins").enabled, without = was.filter((id) => id !== "regatta")
+    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: [...was, "regatta"] })
+    await $.app.syncPlugins()
+    const hash = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "regatta")?.hash
+    await api("POST", "ops/plugin.allow", { id: "regatta", hash })
     let areas = (await api("GET", "state"))[1].areas
-    const gymArea = areas.find((a: Any) => a.slug === "workouts")
-    check("areas come from the plugins that draw them", gymArea?.tint === "pink" && gymArea.icon === "dumbbell" && gymArea.parent === "health" &&
-      ["sleep", "nutrition", "study", "reading"].every((s) => areas.some((a: Any) => a.slug === s)), areas.map((a: Any) => a.slug))
-    // An offByDefault plugin's backend (Learning): its service brings nothing until it's in `enabled`.
-    const was: string[] = vault.config("plugins").enabled, without = was.filter((id) => id !== "learning")
+    const sail = areas.find((a: Any) => a.slug === "sailing")
+    check("areas come from the plugins that draw them", sail?.tint === "teal" && sail.icon === "sailboat" && sail.parent === "water" && areas.some((a: Any) => a.slug === "water"),
+      areas.map((a: Any) => a.slug))
+    await api("POST", "logs", [{ area: "sailing", date: "2026-09-28", source: "claude", ext_id: "block-sail", title: "Around the bay", data: { distance_nm: 12 } }])
+    const sailed = (await api("GET", "state"))[1].logs.find((x: Any) => x.ext_id === "block-sail")
+    check("a new log's fences are its area's blocks too", read(sailed.id + ".md").includes("```block-log\n```\n\n```block-race\n```"), read(sailed.id + ".md"))
     vault.setConfig("plugins", { ...vault.config("plugins"), enabled: without }) // (a settings change: /api/state is new)
     areas = (await api("GET", "state"))[1].areas
-    check("an offByDefault plugin's service is off until it's turned on", !areas.some((a: Any) => a.slug === "study"), areas.map((a: Any) => a.slug))
-    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: was })
+    check("a plugin's service is off until it's turned on: it brings no areas", !areas.some((a: Any) => a.slug === "sailing"), areas.map((a: Any) => a.slug))
+    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: [...without, "regatta"] })
     areas = (await api("GET", "state"))[1].areas
-    check("turned on (enabled), it brings its areas", areas.some((a: Any) => a.slug === "study"), areas.map((a: Any) => a.slug))
-    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: without })
+    check("turned on (enabled), it brings its areas", areas.some((a: Any) => a.slug === "sailing"), areas.map((a: Any) => a.slug))
+    vault.setConfig("plugins/logs/data", { areas: [{ slug: "sailing", name: "Racing", fields: [{ key: "distance_nm", label: "Distance", type: "number", unit: "nm" }] },
+      { slug: "chess", name: "Chess", icon: "trophy", tint: "pink" }] })
     areas = (await api("GET", "state"))[1].areas
-    check("a plugin that's off brings none", !areas.some((a: Any) => a.slug === "study") && areas.some((a: Any) => a.slug === "workouts"), areas.map((a: Any) => a.slug))
-    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: was, disabled: [] })
-    vault.setConfig("plugins/logs/data", { areas: [{ slug: "workouts", name: "Lifting", fields: [{ key: "volume_kg", label: "Volume", type: "number", unit: "kg" }] },
-      { slug: "chess", name: "Chess", icon: "trophy", tint: "teal" }] })
-    areas = (await api("GET", "state"))[1].areas
-    check("the areas setting wins; an area without an icon or colour takes its plugin's", areas.length === 2 && areas[0].name === "Lifting" &&
-      areas[0].tint === "pink" && areas[0].icon === "dumbbell" && areas[1].tint === "teal" && areas[1].icon === "trophy", areas)
+    check("the areas setting wins; an area without an icon or colour takes its plugin's", areas.length === 2 && areas[0].name === "Racing" &&
+      areas[0].tint === "teal" && areas[0].icon === "sailboat" && areas[1].tint === "pink" && areas[1].icon === "trophy", areas)
     const d = new Date(), day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`
-    await api("POST", "logs", [{ area: "workouts", date: day, source: "claude", ext_id: "area-total", title: "Legs", data: { volume_kg: 1234.5, place: "Home" } }])
-    write("Notes/Area options.md", "```block-area\narea: workouts\nmeta: [place, volume_kg]\ntotal: volume_kg\n```\n")
+    await api("POST", "logs", [{ area: "sailing", date: day, source: "claude", ext_id: "area-total", title: "Out to the point", data: { distance_nm: 1234.5, place: "Bay" } }])
+    write("Notes/Area options.md", "```block-area\narea: sailing\nmeta: [place, distance_nm]\ntotal: distance_nm\n```\n")
     txt = (await api("GET", "render?path=Notes/Area options.md"))[1]
     check("area: meta names fields shown on each row (numbers with their unit), total sums one over the week",
-      txt.includes("Volume: 1,234.5 kg.") && txt.includes(`${day}: Legs · Home · 1,234.5 kg`), txt)
+      txt.includes("Distance: 1,234.5 nm.") && txt.includes(`${day}: Out to the point · Bay · 1,234.5 nm`), txt)
     fs.rmSync(path.join(VAULT, ".vaultite/plugins/logs/data.json"))
+    // tidy up
+    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: without })
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/regatta"), { recursive: true })
+    $.app.vaultPlugins.trust.forget("regatta")
+    await $.app.syncPlugins()
   }
 }

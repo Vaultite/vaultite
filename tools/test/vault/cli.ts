@@ -25,7 +25,7 @@ export default async ($: VaultTest) => {
   const conf = (name: string) => JSON.parse(read(`.vaultite/${name}.json`))
   let cr = await vau("--help")
   check("vau: --help lists every command", cr.code === 0 && ["context", "render", "panels", "appearance", "hotkey", "open", "plugin"].every((n) => cr.out.includes(`  ${n} `)), cr.out)
-  check("vau: plugins' ops and commands are listed, after the core's (where am I first)", ["today", "workspace", "log", "note", "pin", "dashboard", "query", "mcp", "inbox", "clip", "properties", "activity", "perf", "remember", "terminal"].every((n) => cr.out.includes(`  ${n} `))
+  check("vau: plugins' ops and commands are listed, after the core's (where am I first)", ["workspace", "log", "note", "pin", "dashboard", "query", "mcp", "inbox", "clip", "properties", "activity", "perf", "remember", "terminal"].every((n) => cr.out.includes(`  ${n} `))
     && cr.out.indexOf("  context ") < cr.out.indexOf("  render ") && cr.out.indexOf("  render ") < cr.out.indexOf("  pin "), cr.out)
   cr = await vau("panels", "--help")
   check("vau: a command's --help has examples", cr.code === 0 && cr.out.includes("vau panels move terminals top"), cr.out)

@@ -15,11 +15,11 @@ export default async ($: VaultTest) => {
     const pluginsBefore = conf("plugins"), pagesBefore = conf("pages")
     setConf("plugins", { disabled: ["clipper"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
     setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
-    setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/Today.md"] })
+    setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/People.md"] })
     setConf("plugins/page-preview/data", { delay: 300 })
     await api("PATCH", "config/plugin/terminal", { allowRemote: true })
     for (const f of ["sidebars", "hotkeys"]) { try { fs.unlinkSync(path.join(VAULT, `.vaultite/${f}.json`)) } catch { /* none */ } }
-    const desk = { name: "Desk", sidebars: { left: ["files:files"], right: [], collapsed: [] }, pinned: ["People/Alice Park.md", "Dashboards/Today.md"] }
+    const desk = { name: "Desk", sidebars: { left: ["files:files"], right: [], collapsed: [] }, pinned: ["People/Alice Park.md", "Dashboards/People.md"] }
     writeWs({ workspaces: [desk] })
     const NAMES = ["plugins", "appearance", "pages", "sidebars", "hotkeys", "plugins/page-preview/data", "plugins/terminal/data", "plugins/history/data", "plugins/activity/data"]
     const before = Object.fromEntries(NAMES.map((n) => [n, conf(n)]))
@@ -30,14 +30,16 @@ export default async ($: VaultTest) => {
     check("bundles: the app's three, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,life-os,agent-cockpit" &&
       r.bundles.every((b: Any) => !b.problems.length || b.source !== "app") && r.default === "standard", r.bundles.map((b: Any) => [b.id, b.problems]))
     const LIFE = "Dashboards/Today.md,Dashboards/Home.md,Dashboards/People.md,Dashboards/Health.md,Dashboards/Learning.md,Dashboards/Projects.md,People/Alice Park.md"
+    // (the pages of the plugins it installs are known once they are)
+    const PREVIEWED = "Dashboards/Home.md,Dashboards/People.md,People/Alice Park.md"
     ;[code, r] = await api("GET", "bundles/life-os?workspace=1")
     const plan = r.plan
     check("bundles: the preview says what changes", code === 200 && plan.plugins.off.includes("machines") && plan.settings.some((s: Any) => s.plugin === "page-preview" && s.key === "trigger" && s.to === "hover") &&
-      plan.pins.list.join() === LIFE && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
+      plan.pins.list.join() === PREVIEWED && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
       plan.files.add.includes("Dashboards/Home.md") && !plan.empty, plan)
     ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1 })
     check("bundles: one installing a plugin asks first (it runs code)", code === 409 && r.error.includes("Books"), [code, r])
-    // (Books moved out of the app: Life OS installs it from a made-up Vaultite/plugins here)
+    // (Books and others moved out of the app: Life OS installs them from a made-up Vaultite/plugins here)
     const github = process.env.VAULTITE_GITHUB
     process.env.VAULTITE_GITHUB = officialRepos(path.join($.tmp, "official"))
     ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1, allowCode: true })
@@ -137,7 +139,7 @@ export default async ($: VaultTest) => {
       item("Dashboards/Plain.md")?.on && item("plugins/page-preview/data.json")?.keys?.includes("delay") && r.dropped.join() === "People/Alice Park.md", r)
     let out = JSON.parse((await api("GET", "bundles/my-desk/export"))[1])
     check("bundles: shared, it's without them: the pin to a note of the user's is taken out, the app's page kept", !out.files["preview.png"] && !out.files["Dashboards/Desk.md"] &&
-      !!out.files["Dashboards/Plain.md"] && out.files["pages.json"].pinned.join() === "Dashboards/Today.md", Object.keys(out.files))
+      !!out.files["Dashboards/Plain.md"] && out.files["pages.json"].pinned.join() === "Dashboards/People.md", Object.keys(out.files))
     out = JSON.parse((await api("POST", "bundles/my-desk/export", { include: ["preview.png"], leave: ["plugins/page-preview/data.json"] }))[1])
     check("bundles: what's sent can be chosen", !!out.files["preview.png"]?.base64 && !out.files["plugins/page-preview/data.json"], Object.keys(out.files))
     out = JSON.parse((await api("GET", "bundles/my-desk/export?all=1"))[1])

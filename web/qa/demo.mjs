@@ -1,5 +1,5 @@
 // The web demo (npm run build:demo): the app with its server in the browser. Serves web/dist-demo under /demo/ (or uses
-// <demo url>, a demo served elsewhere: not "base url", which tools/qa.ts fills with an app server's) and checks, in Chrome and WebKit, it starts, opens a note, Today and search, keeps an edit across a reload,
+// <demo url>, a demo served elsewhere: not "base url", which tools/qa.ts fills with an app server's) and checks, in Chrome and WebKit, it starts, opens a note, Life OS's pages and search, keeps an edit across a reload,
 // refuses a plugin that needs a machine, opens on a bundle (?bundle=), that the sample's files were edited across the
 // weeks before (also once a reload brings them back from IndexedDB), and that Reset brings the sample back.
 // WRITES: only the browser profile it makes.
@@ -63,9 +63,12 @@ async function visit(name, browser) {
   await open("Notes/Lisbon trip.md")
   is("a note opens in the editor", (await page.locator(".cm-content").count()) > 0 && (await shown()).includes("Lisbon"), (await shown()).slice(0, 200))
 
-  const today = (await api("GET", "files")).json?.files?.find((f) => f.plugin === "today" && f.type === "dashboard")?.path
-  await open(today)
-  is("Today draws its blocks", today && (await page.locator("[data-pane] [data-block]").count()) > 0, today ?? "no Today page")
+  // (Life OS's pages: Vaultite's own plugins, built in here)
+  for (const name of ["Today", "Health", "Learning", "Projects"]) {
+    const at = (await api("GET", "files")).json?.files?.find((f) => f.plugin === name.toLowerCase() && f.type === "dashboard")?.path
+    await open(at)
+    is(`${name} draws its blocks`, at && (await page.locator("[data-pane] [data-block]").count()) > 0, at ?? `no ${name} page`)
+  }
 
   const found = await api("POST", "ops/file.search", { query: "Lisbon" })
   is("search finds a note", found.status === 200 && JSON.stringify(found.json).includes("Lisbon trip"), found)
@@ -90,6 +93,7 @@ async function visit(name, browser) {
   const books = ((await api("GET", "state")).json?.books ?? []).length, life = (await api("GET", "demo/bundle/life-os")).json
   is("Vaultite's own plugins are built in: Life OS turns Books on, with the sample's books", books >= 3 && life?.on?.includes("Books") && !life?.notInDemo?.includes("Books") &&
     (await api("GET", "config/plugins")).json?.enabled?.includes("books"), { books, life })
+  is("...and Today, Health, Learning and Projects", ["Today", "Health", "Learning", "Projects"].every((n) => life?.on?.includes(n) && !life?.notInDemo?.includes(n)), life)
   const shelf = (await api("GET", "files")).json?.files?.find((f) => f.path.endsWith("Books/Piranesi.md"))?.path
   await open(shelf)
   is("a book draws its block", (await page.locator("[data-pane] [data-block]").count()) > 0, shelf)

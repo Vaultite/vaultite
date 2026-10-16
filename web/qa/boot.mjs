@@ -140,7 +140,7 @@ try {
     // Set up Vaultite's way (electron/main.ts): a setup picked, its plugins write their pages (core/pages.ts).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
     const applied = []
-    // (Life OS installs Books, one of Vaultite's plugins: as the user's yes in the app)
+    // (Life OS installs Vaultite's own plugins, Today and Books among them: as the user's yes in the app)
     for (const id of ["standard", "life-os"]) applied.push((await call("POST", `bundles/${id}/apply`, { allowCode: true })).status)
     await fetch(`${ownBase}api/state`)
     await wait(500)

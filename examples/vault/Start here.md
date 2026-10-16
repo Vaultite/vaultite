@@ -16,12 +16,9 @@ Vaultite is made for AIs to write in. [Open Claude Code](vaultite://command/term
 
 Each one writes a file, and the pages follow.
 
-## Your day
+## Who's due
 
-Routines tick themselves when a log comes in. Who's due comes from each person's file in `People/`.
-
-```block-routines
-```
+Who to catch up with comes from each person's file in `People/`.
 
 ```block-people-due
 ```
@@ -29,5 +26,5 @@ Routines tick themselves when a log comes in. Who's due comes from each person's
 ## Next
 
 - [[How this vault works]]: where things go, and what a note can hold.
-- [[Today]], [[People]], [[Health]] and [[Learning]]: pages drawn from the files.
+- [[People]]: a page drawn from the files. Life OS (Plugins ▸ Bundles) adds Today, Health and Learning.
 - ⌘O finds any file, ⌘P runs any command.

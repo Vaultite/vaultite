@@ -7,7 +7,7 @@ export default async ($: VaultTest) => {
   const { VAULT, api, app, check, read, sleep, tmp, TOOLS } = $
   const { uiLive, vau } = $.vars
   // vau open: no window, then two: only the one used last acts.
-  let cr = await vau("open", "Dashboards/Today.md")
+  let cr = await vau("open", "Dashboards/Errors.md")
   check("vau open: no window open says so", cr.code === 1 && cr.err.includes("no app window is open"), cr)
   const fakeWindow = () => {
     const w: Any = { OPEN: 1, readyState: 1, got: [] as Any[], close: () => {} }
@@ -21,13 +21,13 @@ export default async ($: VaultTest) => {
   uiLive.client(w2)
   w1.say({ type: "active" })
   await sleep(5)
-  cr = await vau("open", "Today", "--split", "down")
+  cr = await vau("open", "Errors", "--split", "down")
   const uiOf = (w: Any) => w.got.filter((m: Any) => m.type === "ui")
   check("vau open: the window used last gets it", cr.code === 0 && uiOf(w1).length === 1 && !uiOf(w2).length &&
-    uiOf(w1)[0].action === "open" && uiOf(w1)[0].path === "Dashboards/Today.md" && uiOf(w1)[0].split === "down", [cr, w1.got, w2.got])
-  cr = await vau("open", "Today", "--new-tab", "false")
+    uiOf(w1)[0].action === "open" && uiOf(w1)[0].path === "Dashboards/Errors.md" && uiOf(w1)[0].split === "down", [cr, w1.got, w2.got])
+  cr = await vau("open", "Errors", "--new-tab", "false")
   const nt1 = uiOf(w1).at(-1)
-  cr = await vau("open", "Today", "--new-tab")
+  cr = await vau("open", "Errors", "--new-tab")
   const nt2 = uiOf(w1).at(-1)
   check("vau: a switch takes true/false after it, or nothing", nt1.newTab === false && nt2.newTab === true, [nt1, nt2])
   w2.say({ type: "active" })
@@ -37,10 +37,10 @@ export default async ($: VaultTest) => {
   cr = await vau("open", "x.md", "--split", "left")
   check("vau open: a bad split is refused", cr.code === 1, cr)
   // vau notify: an event in the inbox (every window toasts it), kept with or without a window.
-  cr = await vau("notify", "Wrote", "the review", "--action-open", "Today")
+  cr = await vau("notify", "Wrote", "the review", "--action-open", "Errors")
   let [, inboxNow] = await api("GET", "inbox/events")
   check("vau notify: an inbox event, its link a vault path", cr.code === 0 && inboxNow.events[0]?.title === "Wrote the review" && inboxNow.events[0].kind === "info" &&
-    inboxNow.events[0].link === "Dashboards/Today.md" && inboxNow.events[0].source === "vau" && !uiOf(w2).some((m: Any) => m.action === "notify"), [cr, inboxNow.events[0]])
+    inboxNow.events[0].link === "Dashboards/Errors.md" && inboxNow.events[0].source === "vau" && !uiOf(w2).some((m: Any) => m.action === "notify"), [cr, inboxNow.events[0]])
   cr = await vau("notify", "It broke", "--error")
   ;[, inboxNow] = await api("GET", "inbox/events")
   check("vau notify --error: an error event, no link", cr.code === 0 && inboxNow.events[0]?.title === "It broke" && inboxNow.events[0].kind === "error" && !inboxNow.events[0].link, inboxNow.events[0])
@@ -56,7 +56,7 @@ export default async ($: VaultTest) => {
   cr = await vau("context", "--json")
   const ctxOut = JSON.parse(cr.out)
   check("vau context: vault, pinned pages, panels, plugins, appearance, windows", cr.code === 0 && ctxOut.vault === VAULT && ctxOut.windows === 2 &&
-    ctxOut.pinned.includes("Dashboards/Today.md") && ctxOut.panels[0].key === "search:search" && ctxOut.panels[0].side === "left" && ctxOut.appearance.theme === "dark", ctxOut)
+    ctxOut.pinned.includes("Dashboards/Errors.md") && ctxOut.panels[0].key === "search:search" && ctxOut.panels[0].side === "left" && ctxOut.appearance.theme === "dark", ctxOut)
   // vau's own switches: --count and --paths read an answer's list (itself, or its first); a non-list is an error.
   cr = await vau("files", "--json")
   const allFiles = JSON.parse(cr.out).files.map((f: Any) => f.path)

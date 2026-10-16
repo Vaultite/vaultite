@@ -79,9 +79,9 @@ const TASKS: Task[] = [
     },
   },
   {
-    name: "read today",
-    prompt: "What's on my Today page? Read it and tell me in two lines; don't change anything.",
-    script: async (call) => (await call("today", {})).text,
+    name: "read a page",
+    prompt: "What's on my People page? Read it and tell me in two lines; don't change anything.",
+    script: async (call) => (await call("render", { path: "Dashboards/People.md" })).text,
     grade: (answer, changed) => [["an answer", answer.trim().length > 20, answer.slice(0, 300)], ["nothing written", !changed.length, changed]],
   },
 ]

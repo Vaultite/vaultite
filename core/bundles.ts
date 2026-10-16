@@ -560,6 +560,8 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
     throw new HTTPError(409, `${info(b, host).name} brings vault plugins (${p.code.map((c) => c.name).join(", ")}): they run code on this machine. Apply it with allowCode to confirm.`)
   }
   const prev: Previous = { bundle: b.id, name: info(b, host).name, at: new Date().toISOString(), config: {}, absent: [], pins: null, pinned: [], workspace: null, added: [] }
+  // (the pins as they were: the plugins it turns on may pin their pages before its own pins are made)
+  const pinsWere = Array.isArray(v.config("pages").pinned) ? strs(v.config("pages").pinned) : null, pagesWere = fs.existsSync(v.abs(".vaultite/pages.json"))
   // 0. Plugins it installs from their source, first: one that can't be fetched stops the apply before anything changed.
   const fetch = p.code.filter((c) => c.source && !c.kept)
   if (fetch.length && !host.install) throw new HTTPError(501, "this server can't install plugins")
@@ -621,28 +623,35 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
     if (next.heightsAt === undefined) delete next.heightsAt
     await patch("sidebars", patchOf(v.config("sidebars"), next))
   }
-  // 5. Pins: the vault's list, then the workspace's own (the same edits), one at a time.
-  if (p.pins) {
+  // 5. Pins: the vault's list, then the workspace's own (the same edits), one at a time. The pages of plugins it installed
+  // are known only now they're loaded: planned again, adding the ones missing.
+  let pins = p.pins
+  if (fetch.length && pins) {
+    const again = await plan(b, host, n), theirs = new Map([...pluginPages(host)].map(([q, text]) => [homed(v, q), text]))
+    for (const rel of again.files.add) if (theirs.has(rel)) addFile(v, rel, theirs.get(rel)!, prev.added)
+    pins = again.pins
+  }
+  if (pins) {
     const cur = strs(v.config("pages").pinned)
-    prev.pins = Array.isArray(v.config("pages").pinned) ? cur : null
-    if (!fs.existsSync(v.abs(".vaultite/pages.json"))) prev.absent.push("pages")
-    prev.pinned = p.pins.list.filter((x) => !cur.includes(x))
-    await pinTo(host, cur, p.pins.list, null)
+    prev.pins = pinsWere
+    if (!pagesWere) prev.absent.push("pages")
+    prev.pinned = pins.list.filter((x) => !(pinsWere ?? []).includes(x))
+    await pinTo(host, cur, pins.list, null)
     // A bundle pinning nothing still says so: with no list, the pages plugins write would all be pinned (core/pages.ts).
     if (!Array.isArray(v.config("pages").pinned)) await host.call("PATCH", "config/pages", { pinned: [] })
   }
-  if (slot && n && (p.panels.workspace || (p.pins && Array.isArray(slot.pinned)))) {
+  if (slot && n && (p.panels.workspace || (pins && Array.isArray(slot.pinned)))) {
     const own = Array.isArray(slot.pinned) ? strs(slot.pinned) : null
     prev.workspace = { n, sidebars: slot.sidebars ?? null, pins: own, pinned: [] }
     if (p.panels.workspace) await host.call("PUT", `workspaces/${n}`, { sidebars: null })
-    if (own && p.pins?.workspace) {
-      prev.workspace.pinned = p.pins.workspace.filter((x) => !own.includes(x))
-      await pinTo(host, own, p.pins.workspace, n)
+    if (own && pins?.workspace) {
+      prev.workspace.pinned = pins.workspace.filter((x) => !own.includes(x))
+      await pinTo(host, own, pins.workspace, n)
     }
   }
   doneOnboarding(v)
   if (remember) writeAtomic(v.abs(PREVIOUS), JSON.stringify(prev, null, 1) + "\n")
-  return { applied: prev.name, plan: p, previous: { bundle: prev.bundle, name: prev.name, at: prev.at } }
+  return { applied: prev.name, plan: { ...p, pins }, previous: { bundle: prev.bundle, name: prev.name, at: prev.at } }
 }
 
 /** Put back the setup from before the last apply, and forget it. Changes made since to other keys stay. */

@@ -157,7 +157,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `history:<…>` (versions, text, keep, changed): history
 - `inbox:<…>` (folder, hook, handed, event, drop, ask, answer): inbox
 - `links:canvas` (canvas)
-- `log-areas` (health, learning, logs)
+- `log-areas` (logs)
 - `logs:areas` (logs): The areas as the app has them (Today's routines take their icon and weekly goal).
 - `looks:csv` (tables)
 - `machines` (machines)

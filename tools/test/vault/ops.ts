@@ -88,18 +88,6 @@ export default async ($: VaultTest) => {
     $.vars.stdinText = ""
     c = await vau("note", "--json", "Op json out", "--body", "x")
     check("vau note --json: the op's answer as JSON", c.code === 0 && JSON.parse(c.out).path === "Notes/Op json out.md", c)
-    // The other plugins' few ops: reads that were only routes, and a few common writes.
-    t = await run("routine.check", { routine: "stretch", date: "2026-09-25" })
-    check("routine.check: ticked in the day's note, by its name in any case", !t.error && t.text === "Ticked Stretch for 2026-09-25." && read("Daily/2026-09-25.md").includes("done: [Stretch]"), t)
-    t = await run("routine.check", { routine: "Stretch", date: "2026-09-25", done: false })
-    check("routine.check: done false unticks it", !t.error && !exists("Daily/2026-09-25.md"), t)
-    t = await run("routine.check", { routine: "Juggle" })
-    check("routine.check: a routine that isn't there is said, with the routines", t.error && t.text.includes("Stretch"), t)
-    await run("routine.check", { routine: "Stretch", date: "2026-09-25" })
-    t = await run("routine.list", { date: "2026-09-25" })
-    check("routine.list: the routines, which are done that day and that week", !t.error && t.result.date === "2026-09-25" && t.result.week_start === "2026-09-21" &&
-      t.result.routines.some((x: Any) => x.name === "Stretch" && x.done === true && x.auto === false && x.on === true && x.ticked === true && x.week[4] === true && x.week[5] === false && x.target === 7), t)
-    await run("routine.check", { routine: "Stretch", date: "2026-09-25", done: false })
     {
       // Daily notes: daily-note.open makes one where they go; Obsidian's daily-notes.json names them, finds them and fills them.
       t = await run("daily-note.open", { date: "2026-09-22" })
@@ -116,9 +104,6 @@ export default async ($: VaultTest) => {
       check("daily notes: one without a type is found by its name in Obsidian's folder and format", days.includes("Journal/2026/09/24-09-2026.md") && !days.includes("Journal/2026/09/Plans.md"), days)
       check("daily notes: Obsidian's settings are the defaults, never written", st.settingDefaults["plugins/daily-notes/data"]?.format === "YYYY/MM/DD-MM-YYYY" &&
         st.filing.homes.find((h: Any) => h.key === "days")?.folder === "Journal" && !exists(".vaultite/plugins/daily-notes/data.json") && !exists(".vaultite/folders.json"), [st.settingDefaults, st.filing])
-      t = await run("routine.check", { routine: "Stretch", date: "2026-09-24" })
-      check("daily notes: a tick goes into the note found by its name, no other made", !t.error && read("Journal/2026/09/24-09-2026.md").includes("done: [Stretch]") &&
-        read("Journal/2026/09/24-09-2026.md").includes("Rain.") && !read("Journal/2026/09/24-09-2026.md").includes("type:") && !exists("Daily/2026-09-24.md"), [t, read("Journal/2026/09/24-09-2026.md")])
       t = await run("daily-note.open", { date: "2026-09-23" })
       check("daily-note.open: named in the format, in the folder, from the template filled for that day", !t.error && t.result.path === "Journal/2026/09/23-09-2026.md" &&
         read("Journal/2026/09/23-09-2026.md") === "---\nmood: \n---\n\n# Wednesday\n", [t, exists(t.result?.path ?? "x") && read(t.result.path)])

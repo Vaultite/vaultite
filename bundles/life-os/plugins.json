@@ -17,6 +17,11 @@
     "web-viewer"
   ],
   "install": {
-    "books": { "name": "Books", "source": "Vaultite/plugins/books" }
+    "books": { "name": "Books", "source": "Vaultite/plugins/books" },
+    "health": { "name": "Health", "source": "Vaultite/plugins/health" },
+    "learning": { "name": "Learning", "source": "Vaultite/plugins/learning" },
+    "lessons": { "name": "Lessons", "source": "Vaultite/plugins/lessons" },
+    "projects": { "name": "Projects", "source": "Vaultite/plugins/projects" },
+    "today": { "name": "Today", "source": "Vaultite/plugins/today" }
   }
 }

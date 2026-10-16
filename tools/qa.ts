@@ -8,9 +8,11 @@ import path from "node:path"
 import { record } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
 import { officialRepos } from "./test/official.ts"
+import { MOVED } from "../core/migrations.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
+const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
 /** Not tests (benchmarks, a library, the smoke test), needing more than one machine, or another build (the demo's). */
 const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "termhost", "demo"])
 const TIMEOUT = 8 * 60_000
@@ -97,6 +99,11 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
     if ((usage(name) as string[]).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${path.join(tmp, "repos")}` })
     const main = await serve(vault, path.join(tmp, "local"), env)
     servers.push(main)
+    // (Vaultite's own plugins the sample turns on, from their checkout, as the demo has them)
+    const on: string[] = JSON.parse(fs.readFileSync(path.join(vault, ".vaultite/plugins.json"), "utf8")).enabled ?? []
+    for (const id of Object.keys(MOVED).filter((x) => on.includes(x) && fs.existsSync(path.join(OFFICIAL, x, "manifest.json")))) {
+      for (const a of [["plugin", "install", path.join(OFFICIAL, id)], ["plugin", "on", id]]) spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "--url", main.base, ...a], { stdio: "ignore" })
+    }
     const args: string[] = []
     for (const tok of usage(name)) {
       const t = tok.slice(1, -1).replace(/^<|>$/g, "")

@@ -4,7 +4,7 @@ import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, vault, write } = $
+  const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, write } = $
   const { vau } = $.vars
   let cr: Any
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
@@ -61,26 +61,9 @@ export default async ($: VaultTest) => {
       let [, l] = await api("GET", "inbox/events")
       const mine = (x: Any) => x.events.filter((e: Any) => e.source === "lessons")
       check("inbox events: a key keeps one of a kind, the newest", mine(l).length === 1 && mine(l)[0].title === "5 cards to review" && mine(l)[0].link === "detail:review", mine(l))
-      await api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: [...(vault.config("plugins").enabled ?? []), "lessons"] })
-      write(".vaultite/plugins/lessons/data.json", JSON.stringify({ remind_at: "00:00" }))
-      write("Cards/Reminder test.md", "---\ntype: cards\n---\n## What's two and two?\nFour.\n\n## What's the capital of France?\nParis.\n\n## What's the capital of Italy?\nRome.\n")
-      await vault.synced()
-      let [st2] = await api("POST", "ops/schedule.run", { id: "lessons/reminder" })
+      ;(app.plugins.find((p) => p.id === "inbox")!.service("inbox:drop") as (source: string, key: string) => void)("lessons", "cards-due")
       ;[, l] = await api("GET", "inbox/events")
-      check("lessons: no reminder for someone who never reviewed a card", st2 === 200 && mine(l).length === 0, mine(l))
-      fs.rmSync(path.join(VAULT, ".vaultite/plugins/lessons/reminded.json"), { force: true })
-      const [, first] = await api("POST", "ops/cards.due", { limit: 1 })
-      await api("POST", "ops/cards.review", { source: first.cards[0].source, card: first.cards[0].card, rating: "again" })
-      ;[st2] = await api("POST", "ops/schedule.run", { id: "lessons/reminder" })
-      ;[, l] = await api("GET", "inbox/events")
-      check("lessons: the day's reminder says how many cards are due, in place of the last", st2 === 200 && mine(l).length === 1 && /^\d+ cards to review$/.test(mine(l)[0].title) && mine(l)[0].title !== "5 cards to review", [st2, mine(l)])
-      const [, due] = await api("POST", "ops/cards.due", { limit: 100 })
-      for (const c of due.cards) await api("POST", "ops/cards.review", { source: c.source, card: c.card, rating: "good" })
-      ;[, l] = await api("GET", "inbox/events")
-      check("lessons: the last due card reviewed takes the reminder away", mine(l).length === 0, mine(l))
-      ;[st2] = await api("POST", "ops/schedule.run", { id: "lessons/reminder" })
-      ;[, l] = await api("GET", "inbox/events")
-      check("lessons: once a day only", mine(l).length === 0, mine(l))
+      check("inbox events: inbox:drop takes one of a kind away", mine(l).length === 0, mine(l))
     }
     ;[st] = await api("POST", "inbox/events", { source: "x" })
     check("inbox events: a title is required", st === 400, st)

@@ -10,7 +10,7 @@ import {
 } from "lucide-react"
 import type { ComponentType } from "react"
 import { getStore, type Store } from "@/core/data"
-import { anyIcon, markIcon } from "@/core/icons"
+import { anyIcon, GitHubIcon, markIcon } from "@/core/icons"
 import type { VaultFile } from "@/core/files"
 import { fileViewFor, iconNamed, isEnabled, pluginById } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
@@ -30,7 +30,7 @@ export const ICONS: Record<string, LucideIcon> = {
   bot: Bot, gem: Gem, layers: Layers, package: Package, server: Server, terminal: SquareTerminal,
   archive: Archive, blend: Blend, check: Check, circle: Circle, "circle-check": CircleCheck, "circle-dashed": CircleDashed,
   "circle-dot": CircleDot, "circle-help": CircleHelp, "circle-x": CircleX, clock: Clock, eye: Eye, pencil: Pencil,
-  "triangle-alert": TriangleAlert, user: User, "user-check": UserCheck, x: X,
+  "triangle-alert": TriangleAlert, user: User, "user-check": UserCheck, x: X, github: GitHubIcon,
 }
 
 /** An icon by its name (`dumbbell`): one of ICONS, one a plugin adds, any other of Lucide's, or an emoji; null for none. */

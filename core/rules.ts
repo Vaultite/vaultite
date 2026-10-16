@@ -96,8 +96,8 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
   for (const k of ["requires", "enhances"]) {
     const v = m[k] ?? []
     if (!Array.isArray(v)) out.push(`${where}: ${k} must be a list of plugin ids`)
-    // (it may use one that moved out of the app when that's installed)
-    else for (const other of v) if (!ids.has(other) && !(k === "enhances" && Object.hasOwn(MOVED, other))) out.push(`${where}: ${k} '${other}', which isn't a plugin`)
+    // (it may use or need one that moved out of the app, installed from Vaultite's plugins)
+    else for (const other of v) if (!ids.has(other) && !Object.hasOwn(MOVED, other)) out.push(`${where}: ${k} '${other}', which isn't a plugin`)
   }
   if (m.draws !== undefined && (!Array.isArray(m.draws) || m.draws.some((b) => typeof b !== "string" || !/^[\w-]+$/.test(b)))) {
     out.push(`${where}: draws lists blocks another plugin declares with \`by\` that it draws too (["agent-usage"])`)
@@ -379,6 +379,10 @@ export function iconNames(root: string): Set<string> {
   try { lucide = fs.readFileSync(path.join(root, "node_modules", "lucide-react", "dist", "esm", "icons", "index.mjs"), "utf8") } catch { /* none */ }
   const out = new Set([...lucide.matchAll(/from '\.\/([\w-]+)\.mjs'/g)].map((m) => m[1]))
   for (const d of walk(path.join(root, "plugins", "core")).filter((f) => f.endsWith("/index.tsx"))) for (const k of defKeys(fs.readFileSync(d, "utf8"), "icons")) out.add(k)
+  // (and the app's own names: web/src/core/pages.ts ICONS)
+  let own = ""
+  try { own = /export const ICONS[^=]*=\s*\{([^}]*)\}/.exec(fs.readFileSync(path.join(root, "web", "src", "core", "pages.ts"), "utf8"))?.[1] ?? "" } catch { /* none */ }
+  for (const m of own.matchAll(/"?([\w-]+)"?:\s*\w+/g)) out.add(m[1])
   return out
 }
 

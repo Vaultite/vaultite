@@ -76,7 +76,7 @@ export default async ($: VaultTest) => {
   const log = { area: "nutrition", date: "2026-09-29", source: "claude", ext_id: "meal-test", title: "Rice bowl", data: { meal: "Lunch", kcal: 650 } }
   await api("POST", "logs", [log])
   await api("POST", "logs", [{ ...log, data: { protein: 45 } }])
-  let [, logs] = await api("GET", "logs?area=health")
+  let [, logs] = await api("GET", "logs?area=nutrition")
   mine = logs.filter((l: Any) => l.ext_id === "meal-test")
   check("log upsert merges data into one file", mine.length === 1 && JSON.stringify(mine[0].data) === JSON.stringify({ meal: "Lunch", kcal: 650, protein: 45 }), mine)
   {
@@ -89,12 +89,4 @@ export default async ($: VaultTest) => {
   ;[code] = await api("POST", "logs", { area: "nutrition", date: "yesterday", title: "Lunch" })
   check("a date that isn't YYYY-MM-DD is a 400", code === 400 && !fs.readdirSync(path.join(VAULT, "Logs"), { recursive: true }).some((f) => String(f).includes("yesterday")), code)
 
-  // Routines: ticks go to the daily note, an empty note is removed
-  await api("POST", "routines", { name: "Stretch" })
-  await api("POST", "ops/routine.check", { routine: "Stretch", date: "2026-09-29", done: true })
-  check("tick writes the daily note", read("Daily/2026-09-29.md").includes("done: [Stretch]"), read("Daily/2026-09-29.md"))
-  ;[, s] = await api("GET", "state")
-  check("tick shows in checks", s.checks.some((c: Any) => c.routine === "Routines/Stretch" && c.date === "2026-09-29"), s.checks)
-  await api("POST", "ops/routine.check", { routine: "Routines/Stretch", date: "2026-09-29", done: false })
-  check("untick removes the empty note", !exists("Daily/2026-09-29.md"))
 }
