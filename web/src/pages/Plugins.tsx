@@ -20,6 +20,7 @@ import { DirectoryMatches, PluginBrowse } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
 import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/PluginGroup"
 import { groupOf } from "../../../core/categories.ts"
+import { hasWords } from "@/core/fuzzy"
 
 /** Names in the user's order, case aside (one collator, not one per comparison). */
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
@@ -223,7 +224,7 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
   const sections = byCategory(every).filter((s) => s.plugins.length)
   // A category emptied (its last plugin removed) isn't left picked with nothing in it.
   const cat = sections.find((s) => `cat:${s.id}` === picked) ?? null
-  const shown = (cat?.plugins ?? every).filter((p) => !q || text(p).includes(q) || (originals.has(p.id) && text(originals.get(p.id)!).includes(q)))
+  const shown = (cat?.plugins ?? every).filter((p) => !q || hasWords(q, text(p)) || (originals.has(p.id) && hasWords(q, text(originals.get(p.id)!))))
   const waiting = all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")
   // (a group counts as its one row)
   const rows = (list: Plugin[]) => list.filter((p, i) => !p.group || list.findIndex((q) => q.group === p.group) === i).length

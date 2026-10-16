@@ -4,7 +4,7 @@ import { isValidElement, useEffect, useMemo, useState, type ReactNode } from "re
 import { Check, type LucideIcon } from "lucide-react"
 import { anyIcon } from "@/core/icons"
 import { answerUi } from "@/core/live"
-import { fuzzy } from "@/core/search"
+import { fuzzy } from "@/core/fuzzy"
 import { Marked, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 

@@ -1,4 +1,4 @@
-// Search across the vault, fuzzy like fzf (letters in order, word starts and runs score higher; titles win). Archived
+// Search across the vault, fuzzy like fzf (words in any order, word starts and runs score higher; titles win). Archived
 // files come last and never as suggestions; plugins add live things with `searchLive`.
 import { useEffect, useMemo, useState } from "react"
 import { FileText } from "lucide-react"
@@ -8,6 +8,7 @@ import { folderOf, isHidden, stem } from "@/core/files"
 import { active, formatFor, type SearchDoc } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { excerpt, marksOf, wordRanges } from "../../../core/searchquery.ts"
+import { fuzzy } from "@/core/fuzzy"
 
 export type Hit = SearchDoc & {
   /** Indexes of matched characters in the title, for highlighting. */
@@ -16,32 +17,6 @@ export type Hit = SearchDoc & {
   metaMarks?: number[]
 }
 type Doc = SearchDoc
-
-const boundary = (s: string, i: number) => i === 0 || /[\s\-_/:.,(]/.test(s[i - 1]) || (/[a-z]/.test(s[i - 1]) && /[A-Z]/.test(s[i]))
-
-/** fzf-style subsequence match. Returns the score and matched positions, or null. */
-export function fuzzy(q: string, s: string): { score: number; marks: number[] } | null {
-  if (!q) return { score: 0, marks: [] }
-  const lq = q.toLowerCase(), ls = s.toLowerCase()
-  // Prefer a contiguous hit when there is one (it's what people mean when they type a whole word).
-  const at = ls.indexOf(lq)
-  if (at >= 0) {
-    const marks = [...lq].map((_, k) => at + k)
-    return { score: 100 + lq.length * 6 + (boundary(s, at) ? 30 : 0) + (at === 0 ? 20 : 0) - s.length * 0.1, marks }
-  }
-  const marks: number[] = []
-  let score = 0, run = 0, i = 0
-  for (const c of lq) {
-    if (c === " ") continue
-    const j = ls.indexOf(c, i)
-    if (j < 0) return null
-    run = marks.length && j === marks[marks.length - 1] + 1 ? run + 1 : 0
-    score += 1 + run * 3 + (boundary(s, j) ? 8 : 0) - Math.min(j - i, 10) * 0.3
-    marks.push(j)
-    i = j + 1
-  }
-  return { score: score - s.length * 0.1, marks }
-}
 
 /** Everything the quick switcher finds, once per store and settings (it's opened again and again, and the sidebar's
  *  search asks too). */

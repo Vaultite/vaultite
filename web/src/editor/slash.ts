@@ -4,7 +4,7 @@ import { startCompletion, type Completion, type CompletionContext } from "@codem
 import { syntaxTree } from "@codemirror/language"
 import type { EditorView } from "@codemirror/view"
 import type { SlashItem } from "@/core/define"
-import { fuzzy } from "@/core/search"
+import { fuzzy } from "@/core/fuzzy"
 
 const CODE = /^(FencedCode|CodeBlock|CodeText|InlineCode|CodeInfo|CodeMark)$/
 

@@ -14,6 +14,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Folders can be pinned**: right-click a folder (or drag it to Pinned) and it opens in place in the sidebar, its files
   under it like the file tree's. Images, recordings and PDFs pinned now show in the list too.
 - The web demo no longer says it couldn't load when a blocker stops the site's analytics script.
+- The palette, the quick switcher and the pickers find words in any order: "settings graph" finds Open graph view
+  settings, with the words in the order typed ranking first. Tabs and plugins search the same way.
 - The design page shows the primitives and Markdown pages are made of; each block is listed by its plugin (`vau
   blocks`), so a new one is never missing from it.
 - **Pinch to resize text** is off by default: a pinch, or ⌘ and scroll, over a note or terminal changes its text size

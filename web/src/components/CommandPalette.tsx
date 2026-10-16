@@ -7,7 +7,7 @@ import { commandIcon } from "@/core/pages"
 import { isEnabled, names, pluginById, setSwitch, switchedOn, usePlugins, type Plugin } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { notify } from "@/core/notify"
-import { fuzzy } from "@/core/search"
+import { fuzzy, hasWords } from "@/core/fuzzy"
 import { Keys, Marked, Palette } from "@/components/Palette"
 import { cn } from "@/lib/utils"
 
@@ -61,9 +61,9 @@ function pluginRows(all: Plugin[], disabled: string[], typed: string): Row[] {
   return all.flatMap((p) => {
     // (one switched in a Settings section is a switch there, as it's named: Vim keys)
     if (p.alwaysOn || p.switchIn || isEnabled(p.id, disabled) !== off) return []
-    // Only where the name has it as typed (a fuzzy hit across a long name would offer every plugin).
-    const m = q ? fuzzy(q, p.name) : { score: 0, marks: [] }
-    if (!m || (q && m.score < 100)) return []
+    // Only where the name has the words as typed (a fuzzy hit across a long name would offer every plugin).
+    const m = q ? hasWords(q, p.name) && fuzzy(q, p.name) : { score: 0, marks: [] }
+    if (!m) return []
     const list = off ? null : toSwitch(p)
     if (!off && !list?.length) return []
     return [{ id: `plugin-${off ? "off" : "on"}:${p.id}`, name: `${say}${p.name}`, icon: p.icon, marks: m.marks.map((i) => i + say.length),

@@ -24,6 +24,7 @@ import { FileView } from "@/components/FileView"
 import { TabPreview } from "@/components/TabPreview"
 import { spring, useLingeringSheet } from "@/core/motion"
 import { cn } from "@/lib/utils"
+import { hasWords } from "@/core/fuzzy"
 import { Drawn, Guard } from "@/components/Guard"
 import { HeldView, viewBody } from "@/components/Workspace"
 
@@ -596,7 +597,7 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
   const at = host ? pages.findIndex((w) => w.n === host.current()) : -1
   const q = query?.trim().toLowerCase() ?? ""
   const all = panes.flatMap((g) => g.tabs)
-  const found = q ? all.filter((t) => `${info(t).label}\n${t.to}`.toLowerCase().includes(q)) : null
+  const found = q ? all.filter((t) => hasWords(q, `${info(t).label}\n${t.to}`)) : null
   const more = (): MenuItem[] => [
     { label: "Select tabs", icon: CheckSquare, run: () => startSelecting(TABS) },
     { label: "Close other tabs", icon: X, sep: true, disabled: all.length < 2, run: () => closeTabIds(all.filter((t) => t.id !== cur.id).map((t) => t.id)) },

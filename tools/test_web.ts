@@ -1032,6 +1032,33 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("clear formatting: a word in its marks; a lone * stays", clear("a **b** c", 4, 5) === "a b c" && clear("2*3 x", 2, 3) === "2*3 x", [clear("a **b** c", 4, 5), clear("2*3 x", 2, 3)])
 }
 
+// ---------- Fuzzy matching (web/src/core/fuzzy.ts): the palette, the quick switcher and the pickers ----------
+{
+  const { fuzzy, hasWords }: { fuzzy(q: string, s: string): { score: number; marks: number[] } | null; hasWords(q: string, s: string): boolean } = await web("core/fuzzy.ts")
+  const shown = (q: string, s: string) => { const m = fuzzy(q, s); return m ? m.marks.map((i) => s[i]).join("") : null }
+  const rank = (q: string, list: string[]) => list.filter((s) => fuzzy(q, s)).sort((a, b) => fuzzy(q, b)!.score - fuzzy(q, a)!.score)
+  check("fuzzy: words in any order ('settings graph' finds Open graph view settings), each marked",
+    shown("settings graph", "Open graph view settings") === "graphsettings", shown("settings graph", "Open graph view settings"))
+  check("fuzzy: parts of words, in any order, as typed or by letters", shown("sett gra", "Open graph view settings") === "grasett"
+    && shown("vw grph", "Open graph view settings") === "grphvw" && fuzzy("settings graph", "Open settings") === null && fuzzy("graph zzz", "Open graph view") === null,
+    [shown("sett gra", "Open graph view settings"), shown("vw grph", "Open graph view settings")])
+  const cmds = ["Open graph view settings", "Open settings", "Graph settings", "Open local graph", "Toggle line numbers"]
+  check("fuzzy: the phrase as typed first, then words in order, then out of order",
+    rank("graph settings", ["Settings for the graph", "Graph view settings", "Graph settings"]).join("|") === "Graph settings|Graph view settings|Settings for the graph",
+    rank("graph settings", ["Settings for the graph", "Graph view settings", "Graph settings"]))
+  check("fuzzy: every word as typed beats one matched only by its letters",
+    rank("open graph", ["Open grand map path", "Open local graph"]).join("|") === "Open local graph|Open grand map path", rank("open graph", ["Open grand map path", "Open local graph"]))
+  check("fuzzy: the typed order scores more than the same words reversed, on the same name",
+    fuzzy("graph settings", cmds[0])!.score > fuzzy("settings graph", cmds[0])!.score)
+  check("fuzzy: one word as before (a run at a word start, else letters in order)",
+    JSON.stringify(fuzzy("graph", "Open graph view")) === JSON.stringify({ score: 158.5, marks: [5, 6, 7, 8, 9] })
+    && JSON.stringify(fuzzy("ogv", "Open graph view")?.marks) === "[0,5,11]" && fuzzy("xyz", "Open graph view") === null
+    && rank("graph", cmds).join("|") === "Graph settings|Open local graph|Open graph view settings", [fuzzy("graph", "Open graph view"), rank("graph", cmds)])
+  check("fuzzy: a word marked at a word's start when it's in one ('set': settings, not reset)", shown("set", "Reset settings") === "set" && fuzzy("set", "Reset settings")!.marks[0] === 6)
+  check("fuzzy: nothing typed matches everything, unmarked", JSON.stringify(fuzzy("  ", "Anything")) === JSON.stringify({ score: 0, marks: [] }))
+  check("has words: every word as typed, any order", hasWords("tabs alice", "Alice Park\nOpen tabs") && !hasWords("tabs bob", "Alice Park\nOpen tabs"))
+}
+
 {
   // A :has() on the whole page (:root, html, body) is checked again on every DOM change anywhere: typing in a note
   // recalculated 4x the styles with two of them. Which sidebar is there is an attribute App.tsx sets instead.
