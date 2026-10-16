@@ -12,6 +12,8 @@
 - Ask for a service (`plugin.provide` / `plugin.ask`), never for a plugin's id. Whether a plugin is off:
   `plugin.isOff()` / `vault.switchedOff()`.
 - A new app plugin: decide whether each built-in bundle turns it on (`bundles/CLAUDE.md`).
+- A plugin's `pages/*.md` are written once, as the user's files, when it's turned on (`core/pages.ts`): a change to
+  one reaches only vaults that turn it on later, never the copies already written.
 
 ## The rules
 `core/rules.ts` checks them (`npm run check`).
@@ -32,6 +34,8 @@
 - A block needs both sides and a declaration: the React render (`index.tsx`), the text (`plugin.block`: what
   `/api/render` shows an agent), and its manifest entry, the contract both sides, the editor and the docs read. Plus
   its entry in `core/pages/Design.md`.
+- One block many plugins draw (the coding agents' usage) is declared once, with `by` naming the option that picks
+  whose (`agent: codex`); each lists it in its manifest's `draws` and draws both sides, never a copy of its own.
 - A block is a view, never data: the backend never shows blocks to a kind (`prose()`), and API writes patch around
   them.
 - A file format a plugin draws gives its text through the service `text:<ext>` (render and search read it).

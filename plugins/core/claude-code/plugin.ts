@@ -572,7 +572,7 @@ function lastRequest(file: string) {
 
 // ---------- blocks as text (GET /api/render)
 
-plugin.block("claude-limits", async (ctx) => {
+plugin.block("agent-limits", async (ctx) => {
   const each = await Promise.all(agent.accountsFor(ctx.options.account).map(async (a) => ({ a, lim: await limits(a) })))
   return section("Plan limits", ...each.flatMap(({ a, lim }) => {
     const head = each.length > 1 ? `### ${a.label}` : ""
@@ -582,7 +582,7 @@ plugin.block("claude-limits", async (ctx) => {
 })
 
 const agent = codingAgent(plugin, {
-  id: "claude-code", name: "Claude Code", prefix: "claude", value: "estimated at list prices", sessionId: SESSION_ID, summary, live, plan: plans,
+  id: "claude-code", name: "Claude Code", value: "estimated at list prices", sessionId: SESSION_ID, summary, live, plan: plans,
   session, modelName, projectOf: (cwd) => projectOf(cwd, rootsOf), accounts: { all: accounts, word: "Claude Code account" },
   warm: () => Promise.all(accounts().map((a) => scanOf(a).refresh())),
   state: (s) => (s.status === "busy" ? "Working" : cap(String(s.status).toLowerCase()) || "Open"),

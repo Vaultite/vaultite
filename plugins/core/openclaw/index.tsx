@@ -2,8 +2,8 @@ import { Bot } from "lucide-react"
 import { agentPlugin, definePlugin, today, type AgentSource } from "@vaultite"
 import { CronBlock, MemoryBlock, type Job, type Memory } from "./Workspace"
 
-// OpenClaw's usage blocks and session tabs are the app's agent components (AgentUsage.tsx) on GET /api/openclaw; its
-// agents are their accounts. Its page is the OpenClaw dashboard (pages/OpenClaw.md); no plan limits: no limits block.
+// OpenClaw draws the agent blocks (`agent: openclaw`) and its session tabs with the app's agent components on GET
+// /api/openclaw; its agents are their accounts. No plan limits: no agent-limits.
 const SRC: AgentSource = {
   path: "openclaw", label: "OpenClaw", icon: Bot, tint: "var(--red)", agent: "openclaw", view: "openclaw-session",
   costNote: "Cost as OpenClaw recorded it",
@@ -23,7 +23,7 @@ const cron = (): Job[] => [
 export default definePlugin(agentPlugin(SRC, {
   // `icon: openclaw` in a file (its dashboard).
   icons: { openclaw: Bot },
-  blocks: { "openclaw-sessions": "sessions", "openclaw-usage": "usage", "openclaw-projects": "projects", "openclaw-models": "models", openclaw: "project",
+  blocks: { "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project",
     "openclaw-memory": (ctx) => <MemoryBlock {...ctx} />, "openclaw-cron": (ctx) => <CronBlock {...ctx} /> },
   // Its TUI in a terminal tab; an agent other than main is one of its accounts.
   process: ["openclaw"], accounts: "openclaw/accounts",

@@ -1,7 +1,7 @@
 ## Projects (`Projects/<Name>.md`)
 `type: project`, `status` (live | building | idea | paused), `tagline`, optional `repo` (`you/lighthouse` on GitHub),
 `path` (the checkout on the Mac), `links: [{label, url}]`, `sort`; other plugins' blocks if wanted, then notes: what's
-next, decisions (```` ```block-project ```` is drawn on top). Live numbers (stars, commits) are never written.
+next, decisions. Live numbers (stars, commits) are never written.
 
 ````
 ---
@@ -15,7 +15,10 @@ links:
 sort: 0                     # order on the page; the first gets the full row
 ---
 
+```block-project
+```
+
 Notes: what's next, decisions.
 ````
-Other plugins draw live numbers where the file has their blocks (`vau blocks` lists them). The `project` block is drawn
-on top of every project file; `projects` is on the Projects page.
+Other plugins draw live numbers where the file has their blocks (`vau blocks` lists them). A project's file has its
+`project` block's fence (the API writes it in a new one); `projects` is on the Projects page.

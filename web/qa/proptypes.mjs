@@ -1,6 +1,6 @@
 // Property types and `this` in database views: a "Qa types" folder with a note whose properties get a vault-wide type
 // from the icon before a key (only .vaultite/types.json's key changes, the input becomes a date picker, a value that
-// isn't a number gets its quiet note), and a note with a query (`file.links contains this`) embedded in another, which
+// isn't a number gets its quiet note), and a note with a ```base fence (`file.hasLink(this.file)`) embedded in another, which
 // lists what links to the note embedding it. Desktop and 390px. Screenshots in the third argument (or
 // /tmp/vaultite-proptypes/).
 // WRITES a "Qa types" folder and .vaultite/types.json (both removed after): throwaway server only.
@@ -18,7 +18,7 @@ const hadTypes = existsSync(TYPES) ? readFileSync(TYPES, "utf8") : null
 const F = "Qa types"
 await api("DELETE", `file?path=${encodeURIComponent(F)}`)
 await put(`${F}/Trip.md`, "---\ndue: 2026-09-01\nrating: '12'\nplace: Lighthouse\n---\n\nA trip.\n")
-await put(`${F}/Related.md`, "```block-query\ntitle: Qa linked here\nfrom: Qa types/\nwhere: \"file.links contains this\"\nview: list\n```\n")
+await put(`${F}/Related.md`, "```base\nfilters:\n  and:\n    - file.inFolder(\"Qa types\")\n    - file.hasLink(this.file)\nviews:\n  - type: list\n    name: Qa linked here\n```\n")
 await put(`${F}/Project.md`, "About the project.\n\n![[Related]]\n")
 await put(`${F}/Linker.md`, "See [[Project]].\n")
 await put(`${F}/Other.md`, "About [[Related]].\n")

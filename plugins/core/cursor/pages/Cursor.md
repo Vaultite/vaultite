@@ -3,21 +3,25 @@ type: dashboard
 plugin: cursor
 icon: cursor
 tint: purple
-subtitle: Cursor on this machine
 ---
 
-```block-cursor-limits
+```block-agent-limits
+agent: cursor
 ```
 
-```block-cursor-sessions
+```block-agent-sessions
+agent: cursor
 ```
 
-```block-cursor-usage
+```block-agent-usage
+agent: cursor
 wide: true
 ```
 
-```block-cursor-projects
+```block-agent-projects
+agent: cursor
 ```
 
-```block-cursor-models
+```block-agent-models
+agent: cursor
 ```

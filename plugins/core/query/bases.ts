@@ -1,5 +1,5 @@
-// Obsidian Bases: each view of a .base becomes a database view's options, run by the same engine as ```block-query. A
-// view type this app doesn't draw is a table with a note; unknown keys are kept. No Node.
+// Obsidian Bases: each view of a .base (or a ```base fence) becomes the query engine's options. A view type this app
+// doesn't draw is a table with a note; unknown keys are kept. No Node.
 import type { Opts } from "./query.ts"
 
 export type BaseView = { name: string; type: string }
@@ -11,7 +11,7 @@ const TYPES: Record<string, string> = { table: "table", cards: "cards", list: "l
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null)
 
 /** A base's views (a base without any has one table, "Table", like a new one in Obsidian). */
-function viewsOf(cfg: BaseConfig): Record<string, unknown>[] {
+export function viewsOf(cfg: BaseConfig): Record<string, unknown>[] {
   const vs = Array.isArray(cfg.views) ? cfg.views.map(obj).filter((v): v is Record<string, unknown> => !!v) : []
   return vs.length ? vs : [{ type: "table", name: "Table" }]
 }
@@ -55,8 +55,10 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
     notes.push("A kanban view needs a group (groupBy): shown as a table")
   }
   const filters = [cfg.filters, v.filters].filter((f) => f !== undefined && f !== null && f !== "")
+  // (Obsidian has no archive: every file is in a base but archive folders, which `archived` lets in: this app's key)
+  const arch = v.archived === "only" ? "only" : v.archived === true
   const opts: Opts = {
-    title: views[index].name, view, archived: true, // (Obsidian has no archive: every file is in a base)
+    title: views[index].name, view, archived: arch || true, ...(arch ? { archiveFolders: true } : {}),
     ...(filters.length ? { filters: filters.length === 1 ? filters[0] : { and: filters } } : {}),
     ...(obj(cfg.formulas) ? { formulas: cfg.formulas } : {}),
     ...(obj(cfg.properties) ? { properties: cfg.properties } : {}),
@@ -68,5 +70,6 @@ export function baseOptions(cfg: BaseConfig, want?: string | null): { opts: Opts
     ...(typeof v.limit === "number" && v.limit > 0 ? { limit: v.limit } : {}),
   }
   for (const k of ["coordinates", "markerColor", "markerIcon", "date", "month"]) if (typeof v[k] === "string") opts[k] = v[k]
+  if (Array.isArray(v.groups) && v.groups.length) opts.groups = v.groups.map(String)
   return { opts, views, index, notes }
 }

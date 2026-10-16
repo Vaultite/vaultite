@@ -1,6 +1,5 @@
 // Pinned: the files pinned to the sidebar (.vaultite/pages.json), all of pinning. Pins change one at a time on the file
 // as it is (POST /api/pins), so an old copy can't bring back pages unpinned elsewhere; pins follow moves.
-import fs from "node:fs"
 import { HTTPError, type OpCtx, OpError, type Param, pinProblem, Plugin, relocatedPin, repinList } from "../../../core/plugins.ts"
 import { ConfigError, type Item, type Vault } from "../../../core/vault.ts"
 
@@ -73,30 +72,24 @@ export function repin(vault: Vault, src: string, dst: string | null) {
 plugin.onMove((from, to) => repin(plugin.vault, from, to))
 
 /** What core/pages.ts tells "pages:installed" (its Installed). */
-type Installed = { made: string[]; pages: { path: string; plugin: string; tab: boolean }[] }
+type Installed = { made: string[] }
 
-/** Pin the pages just made (not another page's tab). A vault that never had pages.json gets every page; one that can't
- *  be read (mid-sync) is left alone, or every page the user unpinned would come back. */
-export function pinInstalled(vault: Vault, { made, pages }: Installed) {
-  const tabs = new Set(pages.filter((p) => p.tab).map((p) => p.path))
-  const heads = made.filter((m) => !tabs.has(m))
+/** Pin the pages a plugin just wrote, turned on. One whose pages.json can't be read (mid-sync) is left alone, or every
+ *  page the user unpinned would come back. */
+export function pinInstalled(vault: Vault, { made }: Installed) {
   let conf
   try { conf = vault.readConfig("pages") } catch (e) {
     if (e instanceof ConfigError) return
     throw e
   }
+  if (conf?.pinNew === false) return
+  const list = Array.isArray(conf?.pinned) ? conf.pinned as unknown[] : []
+  const add = made.filter((m) => !list.includes(m))
+  if (!add.length) return
+  vault.setConfig("pages", { ...conf, pinned: [...list, ...add] })
   // A plugin keeping lists of its own (Workspaces: a workspace's) pins them there too.
-  const also = (paths: string[]) => { const fn = plugin.service("pins:installed"); if (paths.length && typeof fn === "function") fn(paths) }
-  if (conf) {
-    if (conf.pinNew === false) return
-    const list = conf.pinned
-    const add = Array.isArray(list) ? heads.filter((m) => !list.includes(m)) : []
-    if (add.length) vault.setConfig("pages", { ...conf, pinned: [...list, ...add] })
-    also(add)
-    return
-  }
-  const all = [...new Set(pages.filter((p) => !p.tab && fs.existsSync(vault.abs(p.path))).map((p) => p.path))]
-  vault.setConfig("pages", { pinned: all })
+  const fn = plugin.service("pins:installed")
+  if (typeof fn === "function") fn(add)
 }
 
 plugin.provide("pages:installed", (info: Installed) => pinInstalled(plugin.vault, info))

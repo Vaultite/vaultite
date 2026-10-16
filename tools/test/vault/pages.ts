@@ -3,77 +3,92 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, app, check, exists, read, vault, write } = $
-  // Plugins' pages are built in (core/pages.ts): kept in .vaultite/pages as their templates are now, pinned once,
-  // read-only; Copy to my vault makes one the user's file (pins and links follow), and only then is it theirs to change.
-  const BI = (n: string) => `.vaultite/pages/Dashboards/${n}.md`
+  const { VAULT, TOOLS, ON, api, check, exists, read, vault, write } = $
+  // Plugins' pages (core/pages.ts): turning a plugin on writes its pages once into the pages folder, pinned; opening a
+  // vault writes none. dashboard.restore writes those missing, and moves the old copies in .vaultite/pages.
   const pinsNow = (): string[] => vault.config("pages").pinned ?? []
-  const made = app.installPages()
-  check("pages are built in: nothing outside .vaultite/", exists(BI("Today")) && exists(BI("People")) && !exists("Dashboards/Today.md"), made)
-  const pinned = pinsNow()
-  check("and pinned, only files (no phone Files page)", pinned.includes(BI("Today")) && !pinned.includes("files"), pinned)
-  check("a new vault's pins follow the plugins' pageSort",
-    pinned.slice(0, 5).join() === ["Today", "Health", "Learning", "People", "Projects"].map(BI).join(), pinned)
-  check("the core's own page (Design) is built in and pinned", exists(BI("Design")) && pinned.includes(BI("Design")), pinned)
-  check("a page's other tab is built in but not pinned", exists(BI("People map")) && !pinned.includes(BI("People map")) && pinned.includes(BI("People")), pinned)
-  fs.writeFileSync(path.join(VAULT, BI("Today")), read(BI("Today")).replace("icon: sun", "icon: star")) // as if an older app's
-  app.installPages()
-  check("a built-in page updates with its plugin", read(BI("Today")).includes("icon: sun"), read(BI("Today")).slice(0, 80))
-  let [rc] = await api("PUT", "file", { path: BI("Today"), text: "changed" })
-  check("a built-in page is read-only", rc === 403 && read(BI("Today")).includes("icon: sun"), rc)
-  ;[rc] = await api("DELETE", `file?path=${encodeURIComponent(BI("Today"))}`)
-  check("...and isn't deleted (unpin it, or turn its plugin off)", rc >= 400 && exists(BI("Today")), rc)
+  check("opening a vault writes no page", !exists("Dashboards") && !exists(".vaultite/pages"))
+  const OLD = (n: string) => `.vaultite/pages/Dashboards/${n}.md`
+  write(OLD("Today"), "---\ntype: dashboard\nplugin: today\n---\n\nAn older template\n")
+  write(OLD("Harbour"), "---\ntype: dashboard\n---\n\nA bundle's page\n")
+  write(".vaultite/generated/pages.json", "[]\n")
+  vault.setConfig("pages", { pinned: [OLD("Today"), OLD("Harbour"), OLD("Projects")] })
+  const conf = vault.config("plugins"), without = (id: string) => ({ ...conf, enabled: ON.filter((x) => x !== id) })
+  await api("PUT", "config/plugins", without("projects"))
+  vault.setConfig("newtab", { page: OLD("Harbour") })
+  write("Notes/To today.md", "Open [[.vaultite/pages/Dashboards/Today|Today]].\n")
+  await vault.sync()
+  let [rc, r] = await api("POST", "ops/dashboard.restore", {})
+  check("restore: the pages of the plugins that are on, in Dashboards/, the plugin's as it is now", rc === 200 && read("Dashboards/Today.md").includes("plugin: today") &&
+    !read("Dashboards/Today.md").includes("An older template") && exists("Dashboards/People.md") && exists("Dashboards/People map.md") && r.made.includes("Dashboards/Today.md"), [rc, r])
+  check("...a bundle's page there moves too, and the design system isn't a page of the user's", read("Dashboards/Harbour.md").includes("A bundle's page") && !exists("Dashboards/Design.md"))
+  check("...pins, links and the new tab's page follow (one to a plugin that's off, where its page will be), none added",
+    pinsNow().join() === "Dashboards/Today.md,Dashboards/Harbour.md,Dashboards/Projects.md" && !exists("Dashboards/Projects.md") &&
+    read("Notes/To today.md").includes("[[Dashboards/Today|Today]]") && vault.config("newtab").page === "Dashboards/Harbour.md", [pinsNow(), read("Notes/To today.md")])
+  check("...and the old folder goes", !exists(".vaultite/pages") && !exists(".vaultite/generated/pages.json"))
+  ;[rc, r] = await api("POST", "ops/dashboard.restore", {})
+  check("restore again changes nothing", rc === 200 && !r.made.length && !r.moved.length, r)
+  await api("PUT", "config/plugins", conf)
+  check("a plugin turned on writes its page, pinned once", exists("Dashboards/Projects.md") && pinsNow().filter((p) => p === "Dashboards/Projects.md").length === 1, pinsNow())
+  fs.rmSync(path.join(VAULT, "Dashboards/Learning.md"))
+  ;[rc, r] = await api("POST", "ops/dashboard.restore", { plugin: "learning" })
+  check("restore one plugin's: a page deleted comes back", rc === 200 && r.made.join() === "Dashboards/Learning.md", [rc, r])
+  ;[rc] = await api("POST", "ops/dashboard.restore", { plugin: "nope" })
+  check("restore: a plugin there's none of", rc === 404, rc)
+  vault.setConfig("pages", { pinned: ["Dashboards/Today.md"] })
+  vault.setConfig("newtab", {})
   {
-    const conf = vault.config("plugins")
-    await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "health") })
-    app.installPages()
-    check("its plugin off, its page goes", !exists(BI("Health")))
+    await api("PUT", "config/plugins", without("health"))
+    fs.rmSync(path.join(VAULT, "Dashboards/Health.md"))
+    await vault.sync()
+    await api("PUT", "config/plugins", conf)
+    check("turned on, a plugin writes its page and pins it", read("Dashboards/Health.md").includes("plugin: health") && pinsNow().includes("Dashboards/Health.md"), pinsNow())
+    write("Dashboards/Health.md", read("Dashboards/Health.md") + "\nMine now.\n")
+    await api("POST", "pins", { path: "Dashboards/Health.md", pinned: false })
+    await api("POST", "ops/plugin.disable", { id: "health" })
+    let [oc] = await api("POST", "ops/plugin.enable", { id: "health" })
+    check("...once: turned on again (vau plugin on), the user's file stays as it is, and unpinned", oc === 200 && read("Dashboards/Health.md").includes("Mine now.") && !pinsNow().includes("Dashboards/Health.md"), pinsNow())
+    fs.rmSync(path.join(VAULT, "Dashboards/Health.md"))
+    ;[oc] = await api("POST", "ops/plugin.disable", { id: "health" })
+    const pj = path.join(VAULT, ".vaultite/plugins.json")
+    fs.writeFileSync(pj, JSON.stringify(conf, null, 2) + "\n") // (turned on by hand, or on another machine)
+    await api("GET", "vault")
+    await api("GET", "vault")
+    check("...turned on outside the app (by hand, another machine), it writes nothing", oc === 200 && !vault.switchedOff().has("health") && !exists("Dashboards/Health.md"))
+    await api("POST", "ops/dashboard.restore", { plugin: "health" })
     const peopleOff = { ...conf, disabled: [...(conf.disabled ?? []), "people"] }
     await api("PUT", "config/plugins", peopleOff)
-    check("a plugin whose requirement is off is off too: no hooks, ops or services", vault.switchedOff().has("people-map") && app.plugins.find((p) => p.id === "people-map")!.isOff())
-    await api("PUT", "config/plugins", { ...conf, enabled: (conf.enabled ?? []).filter((x: string) => x !== "health") })
-    await api("POST", "pins", { path: BI("Health"), pinned: false }).catch(() => {})
+    check("a plugin whose requirement is off is off too: no hooks, ops or services", vault.switchedOff().has("people-map") && $.app.plugins.find((p) => p.id === "people-map")!.isOff())
     await api("PUT", "config/plugins", conf)
-    const back = app.installPages()
-    check("on again, it's back, not pinned again as new", exists(BI("Health")) && !back.includes(BI("Health")), back)
   }
-  // A new page goes where the user's own are, never the built-in folder (read-only), else Dashboards/.
+  vault.setConfig("pages", { pinned: ["Dashboards/Today.md", "Dashboards/People.md"] })
+  // The design system's page, as the sandbox has it (the tests below render it).
+  write("Dashboards/Design.md", fs.readFileSync(path.join(TOOLS, "..", "core", "pages", "Design.md"), "utf8"))
+  await vault.sync()
+  // A new page goes in the pages folder: the one set, else where most of the user's pages are, else Dashboards/.
   {
     let [nc, np] = await api("POST", "ops/dashboard.create", { name: "Mine", noPin: true })
-    check("dashboard new: none of the user's yet, Dashboards/, not the built-in folder", nc === 200 && np.path === "Dashboards/Mine.md", [nc, np])
-    for (const n of ["A", "B"]) write(`Personal/Dashboards/${n}.md`, "---\ntype: dashboard\n---\n")
-    await vault.sync()
+    check("dashboard new: in the pages folder, Dashboards/", nc === 200 && np.path === "Dashboards/Mine.md", [nc, np])
+    const folders = vault.config("folders"), had = exists(".vaultite/folders.json")
+    vault.setConfig("folders", { ...folders, dashboards: "Personal/Dashboards" })
     ;[nc, np] = await api("POST", "ops/dashboard.create", { name: "Mine too", noPin: true })
-    check("dashboard new: where most of the user's own pages are", nc === 200 && np.path === "Personal/Dashboards/Mine too.md", [nc, np])
+    check("dashboard new: in the pages folder set", nc === 200 && np.path === "Personal/Dashboards/Mine too.md", [nc, np])
+    if (had) vault.setConfig("folders", folders); else fs.rmSync(path.join(VAULT, ".vaultite/folders.json"))
     fs.rmSync(path.join(VAULT, "Personal"), { recursive: true })
     fs.rmSync(path.join(VAULT, "Dashboards/Mine.md"))
     await vault.sync()
   }
-  // Copy to my vault: its pins and links follow the copy; the built-in one goes and stays gone while the copy's there.
-  write("Notes/To today.md", "Open [[.vaultite/pages/Dashboards/Today|Today]].\n")
-  let [cc, copied] = await api("POST", "ops/dashboard.copy", { path: "Today", folder: "Dashboards" })
-  check("copy to my vault: the page is the user's file", cc === 200 && copied.path === "Dashboards/Today.md" && read("Dashboards/Today.md").includes("plugin: today") && !exists(BI("Today")), [cc, copied])
-  check("...its pin follows it, in its place", pinsNow()[0] === "Dashboards/Today.md" && !pinsNow().includes(BI("Today")), pinsNow())
-  check("...and so do links to it", !read("Notes/To today.md").includes(".vaultite/pages") && read("Notes/To today.md").includes("Today"), read("Notes/To today.md"))
-  app.installPages()
-  check("...and the built-in one doesn't come back", !exists(BI("Today")))
-  ;[cc] = await api("POST", "ops/dashboard.copy", { path: "Notes/To today.md" })
-  check("only a built-in page is copied", cc === 400 || cc === 404, cc)
-  // Every other page copied too, as a vault from before pages were built in had them (the tests below use them).
-  for (const n of fs.readdirSync(path.join(VAULT, ".vaultite/pages/Dashboards")).filter((x) => x.endsWith(".md"))) {
-    await api("POST", "ops/dashboard.copy", { path: `.vaultite/pages/Dashboards/${n}`, folder: "Dashboards" })
-  }
   write("Dashboards/Today.md", read("Dashboards/Today.md").replace("icon: sun", "icon: star"))
-  // Folders are the user's: a copy moved into another folder is still the user's page (its name, type and plugin);
-  // a path written before the move still renders.
+  // Folders are the user's: pages moved into another folder are still the user's pages (the pages folder follows
+  // them); a path written before the move still renders.
   {
     const dash = () => fs.readdirSync(path.join(VAULT, "Dashboards")).filter((n) => n.endsWith(".md"))
     const pinsWere = read(".vaultite/pages.json")
     fs.mkdirSync(path.join(VAULT, "Personal/Dashboards"), { recursive: true })
     for (const n of dash()) fs.renameSync(path.join(VAULT, "Dashboards", n), path.join(VAULT, "Personal/Dashboards", n))
     await vault.sync()
-    const madeNow = app.installPages()
-    check("pages: a copy moved to another folder is still the user's, no built-in one made", !madeNow.length && !exists(BI("People")), madeNow)
+    const [, again] = await api("POST", "ops/dashboard.restore", {})
+    check("pages: moved to another folder, they're still the user's: none written again", !again.made.length && !dash().length, again)
     const [, moved] = await api("GET", "render?path=Dashboards/Today.md")
     check("render: a path from before a move still reads the file", typeof moved === "string" && moved.includes("# Today") && moved.includes("plugin: today"), String(moved).slice(0, 80))
     const [, movedState] = await api("GET", "state")

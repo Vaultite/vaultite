@@ -13,6 +13,9 @@ contact: alice@example.com
 sort: 0
 ---
 
+```block-person
+```
+
 Product designer at a small studio. Always has a book recommendation.
 
 ## Timeline

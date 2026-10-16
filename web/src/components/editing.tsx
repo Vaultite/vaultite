@@ -19,9 +19,9 @@ const failed = () => <p className="text-[15px] text-muted-foreground">This secti
 
 /** Draw something into an element of the editor (a block, a section, an embed) as its own React root, redrawn with its
  *  new text; a failing one shows a note instead of breaking the editor. */
-export function island(draw: (t: string) => ReactNode, text: string, el: HTMLElement): Drawn {
+export function island<T = string>(draw: (t: T) => ReactNode, text: T, el: HTMLElement): { update: (t: T) => void; destroy: () => void } {
   const root = createRoot(el)
-  const paint = (t: string) => root.render(<Catch fallback={failed}><div className="cm-island">{draw(t)}</div></Catch>)
+  const paint = (t: T) => root.render(<Catch fallback={failed}><div className="cm-island">{draw(t)}</div></Catch>)
   paint(text)
   return { update: paint, destroy: () => setTimeout(() => root.unmount(), 0) }
 }

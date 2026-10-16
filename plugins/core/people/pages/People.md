@@ -3,9 +3,6 @@ type: dashboard
 plugin: people
 icon: users
 tint: people
-subtitle: Staying in touch
-tab: List
-tabs: [People map]
 ---
 
 ```block-people-due

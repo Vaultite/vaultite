@@ -3,7 +3,6 @@ type: dashboard
 plugin: learning
 icon: graduation-cap
 tint: learning
-subtitle: Study and reading
 ---
 
 ```block-area

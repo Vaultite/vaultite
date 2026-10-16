@@ -2,7 +2,7 @@
 // items. The editor draws it (editor/slash.ts).
 import { pad, type Store } from "@/core/data"
 import type { SlashItem } from "@/core/define"
-import { isEnabled, PLUGINS } from "@/core/plugins"
+import { blockFor, isEnabled, PLUGINS } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { capitalize } from "@/lib/utils"
 
@@ -41,11 +41,12 @@ export function slashItems(store: Store): SlashItem[] {
   const { disabled } = getPrefs()
   const on = PLUGINS.filter((p) => isEnabled(p.id, disabled))
   const blocks: SlashItem[] = on.flatMap((p) => Object.keys(p.blocks ?? {}).map((name) => {
-    // (its required options typed in, the cursor at the first: core/blocks.ts)
-    const decl = p.blockDecls?.[name]
-    const need = Object.entries(decl?.options ?? {}).filter(([, d]) => d.required).map(([k], i) => `${k}: ${i ? "" : "$|"}\n`).join("")
+    // (its required options typed in, the cursor at the first: core/blocks.ts; one another plugin declares names this one)
+    const decl = p.draws?.includes(name) ? blockFor(name, disabled).decl : p.blockDecls?.[name]
+    const by = decl?.by ? `${decl.by}: ${p.id}\n` : ""
+    const need = by + Object.entries(decl?.options ?? {}).filter(([k, d]) => d.required && k !== decl?.by).map(([k], i) => `${k}: ${i ? "" : "$|"}\n`).join("")
     return {
-      id: `block-${name}`, title: human(name), section: "Blocks", detail: p.name, keywords: `block ${name} ${p.name}`,
+      id: `block-${name}${by ? `:${p.id}` : ""}`, title: human(name), section: "Blocks", detail: p.name, keywords: `block ${name} ${p.name}`,
       text: `\`\`\`block-${name}\n${need}\`\`\`\n`, line: true,
     }
   }))

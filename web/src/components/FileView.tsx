@@ -14,7 +14,7 @@ import { isOutside } from "@/core/desktop"
 import { useVaultChange } from "@/core/live"
 import { followLink } from "@/core/links"
 import { drawEmbed, island, linkKind, useVaultEditing } from "@/components/editing"
-import { cleanName, folderOf, gone, inPagesDir, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
+import { cleanName, folderOf, gone, inTrash, isHidden, isJson, isMd, isProtected, isReadOnly, joinFm, joinPath, moveFile, nameable, onSettle, openFile, readFile, restoreFile, splitFm, stem, takeNew, type FileText } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { takeRename } from "@/core/workspace"
 import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
@@ -28,7 +28,6 @@ import { merge3 } from "@/core/merge"
 import { draftOf, dropDraft, keepDraft, type Draft } from "@/core/drafts"
 import { blockFor, fileBarItems, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, type FileCtx, type PageCtx } from "@/core/plugins"
 import type { FileFormat, FileHead } from "@/core/define"
-import { headOf } from "@/core/pages"
 import { FormatBox, FormatGuard } from "@/components/FormatView"
 import { Catch, Drawn, Guard } from "@/components/Guard"
 import { TimelineSection } from "@/components/Timeline"
@@ -36,15 +35,15 @@ import { usePane } from "@/core/pane"
 import { usePrefs } from "@/core/prefs"
 import { useEditorSettings } from "@/core/editorPrefs"
 import { useTextSize, useTextSizeWheel } from "@/core/textsize"
-import { BlockView, kindStamps, useKindBlocks, useKindSections } from "@/components/Blocks"
+import { BlockView, kindStamps, useKindSections } from "@/components/Blocks"
 import { openBlockMenu } from "@/components/BlockSource"
 import { optionNotes, parseOptions } from "../../../core/blocks.ts"
 import { Properties } from "@/components/Properties"
-import { PageTabs } from "@/components/PageTabs"
 import { effectiveType } from "../../../core/fileprops.ts"
 import { JsonView } from "@/components/JsonView"
 import { barButton, ViewBar } from "@/components/ViewBar"
 import { usePortalHost } from "@/components/kit"
+import { TITLE, TitleRow } from "@/components/FileTitle"
 import { useHeldFocus } from "@/core/focus"
 import { useEditAt } from "@/core/anchors"
 import { useAutosave, type SaveStatus } from "@/core/autosave"
@@ -100,8 +99,7 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
     ro.observe(t)
     return () => ro.disconnect()
   }, [editable])
-  // A phone's title is a size down: the header names the file too.
-  const cls = "block w-full text-[24px] leading-[30px] font-bold text-balance break-words md:text-[28px] md:leading-[34px]"
+  const cls = TITLE
   if (!editable) return <h1 id={sheet ? "sheet-title" : undefined} className={cls}>{name}</h1>
   // Naming a note just made (its title selected) isn't a rename to undo: no toast.
   const commit = () => {
@@ -152,8 +150,7 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, settle, locke
   /** Can't be renamed (read-only). */
   locked: boolean }) {
   const outside = isOutside(path)
-  // (a page in the app's pages folder shows as a page of its own: that folder isn't the user's)
-  const folders = folderOf(path) && !outside && !inPagesDir(path) ? folderOf(path).split("/") : []
+  const folders = folderOf(path) && !outside ? folderOf(path).split("/") : []
   const name = stem(path)
   const [editing, setEditing] = useState(false)
   const [v, setV] = useState(name)
@@ -228,11 +225,12 @@ function FileBar({ head, place }: { head: FileHead; place: "bar" | "line" }) {
 }
 
 /** What plugins draw at the top of a note (NoteTopItem), under its properties. */
-function NoteTop({ head }: { head: FileHead }) {
+function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
   const { disabled, order, enabled } = usePrefs()
   const plugins = usePluginsVersion()
   const items = useMemo(() => noteTopItems(disabled, order), [disabled, order, enabled, plugins])
-  return <>{items.map(({ key, item }) => <Guard key={key} what="This part" reset={head.path}><Drawn draw={() => item.render(head)} /></Guard>)}</>
+  const ctx = useMemo(() => ({ ...head, place }), [head, place])
+  return <>{items.map(({ key, item }) => <Guard key={key} what="This part" reset={head.path}><Drawn draw={() => item.render(ctx)} /></Guard>)}</>
 }
 
 /** Where a file is, above its title: "Notes / Ideas", "Vault". */
@@ -378,7 +376,7 @@ function Missing({ path, pane }: { path: string; pane: boolean }) {
   return (
     <article className={cn("file-view", pane && "mx-auto max-w-(--line-width) pb-24", !bar && "py-10")} data-path={path}>
       {bar && <PathBar path={path} settle={async () => {}} locked />}
-      <h1 className="text-[24px] leading-[30px] font-bold break-words md:text-[28px] md:leading-[34px]">{stem(path)}</h1>
+      <h1 className={TITLE}>{stem(path)}</h1>
       <p className="mt-2 text-[15px] text-muted-foreground">This file isn't in the vault any more. It may have been renamed or deleted.</p>
     </article>
   )
@@ -516,7 +514,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   useEditAt(path, articleEl, toLine)
   // A block's "This file's properties": where they're edited (into editing from reading; source mode while the setting
   // hides them).
-  const { propertiesInDocument: propsIn, readableLineLength: readable } = useEditorSettings(store)
+  const { propertiesInDocument: propsIn, readableLineLength: readable, showInlineTitle } = useEditorSettings(store)
   useEffect(() => {
     const on = (e: Event) => {
       if ((e as CustomEvent).detail !== path || ro || hidden) return
@@ -728,12 +726,13 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const plugins = usePluginsVersion() // (a plugin's fences arriving)
   // (and when the view changes: a block's option notes show while editing only)
   useEffect(() => setVersion((v) => v + 1), [store, fm, disabled, shown, plugins])
-  const kindBlocks = useKindBlocks(store, path)
   const sections = useKindSections(store, path)
+  // A page edited as it's read (a dashboard: PageView.editGrid): its blocks side by side in the editor, as read.
+  const editGrid = dash && shown === "live" ? pageView?.editGrid ?? null : null
+  const pageRef = useRef<PageCtx | null>(null)
   const config = useMemo<PreviewConfig>(() => ({
     live: shown !== "source",
     writable: !ro,
-    kindBlocks,
     resolves: (t) => linkKind(resolve, t),
     asset: (name) => assetUrl(store, name, path),
     ...imageActions(store),
@@ -744,7 +743,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     blockNotes: (name, text) => {
       // (a fence a plugin draws, ```dataview, has its own language inside, not options)
       if (name.startsWith("```")) return { notes: [] }
-      const { decl } = blockFor(name, disabled), { options, error } = parseOptions(text)
+      const { options, error } = parseOptions(text), { decl } = blockFor(name, disabled, options)
       return { notes: optionNotes(decl, options, error), about: decl?.description }
     },
     renderEmbed: (target, height, el, edit) => drawEmbed(store, target, height, el, path, edit),
@@ -752,7 +751,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     follow: (link, newTab) => followLink(store, link, newTab, path),
     version,
     place: path,
-  }), [shown, ro, resolve, store, disabled, version, path, kindBlocks, sections])
+    renderGrid: editGrid ? (cards, el, edit) => island((c) => editGrid(c, edit, pageRef.current!), cards, el) : undefined,
+  }), [shown, ro, resolve, store, disabled, version, path, sections, editGrid])
 
 
   // ⌘E switches between reading and editing; the palette also offers each view.
@@ -805,26 +805,25 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // Properties above the text, as the editor's setting says (Obsidian's "Properties in document"): visible (read-only
   // while reading), hidden, or the frontmatter as text while editing (`fmText`). The same in a tab, a sheet or a phone.
   const fmText = propsIn === "source" && shown === "live"
-  const showProps = !source && !json && !notebook && !format && (shown === "read" ? propsIn !== "hidden" : propsIn === "visible")
+  // (a dashboard being read is its blocks: no Properties)
+  const showProps = !source && !json && !notebook && !format && !(dash && shown === "read") && (shown === "read" ? propsIn !== "hidden" : propsIn === "visible")
   // Drawn JSON isn't an editor: merges from disk only update the text it's drawn from.
   useEffect(() => { if ((json || notebook || format) && !source) editor.current = null }, [json, notebook, format, source])
 
   // On desktop the bar shows where the file is, so nothing is above the title; phones have no path bar, so a file in a
   // tab says where it is, like in the sheet.
   const phoneTab = pane && !isDesktop()
-  // A file a plugin draws as a page, being read: the plugin's header in place of the title (in a sheet, under it), then
-  // the page (a dashboard's grid).
+  // A file a plugin draws as a page, being read: its title, then the page (a dashboard's grid).
   const board = dash && shown === "read"
   // A drawn file that's the whole page (an artifact) being read, in a tab: the page is all it draws (its own title
   // included), under the path bar.
   const layout = format?.layout ?? "box"
-  const app = layout === "full" && shown === "read"
-  const page = (board || app) && pane
-  // A page's other tabs (People map) carry the page's name (People).
-  const head = headOf(store.files.files, path)
-  const pageCtx: PageCtx = { ...ctx, title: stem(head?.path ?? path), place: pane ? "page" : "sheet", disabled }
-  // (a page of only text reads as a note does, in the same column whether it's read or edited)
-  const narrow = board && !!pageView?.narrow?.(pageCtx)
+  const page = layout === "full" && shown === "read" && pane
+  const pageCtx: PageCtx = { ...ctx, title: stem(path), place: pane ? "page" : "sheet", disabled }
+  pageRef.current = pageCtx
+  // A page read, or edited as it's read, is as wide as its cards; one of only text reads as a note does, in the same
+  // column whether it's read or edited.
+  const wide = (board || !!editGrid) && !pageView?.narrow?.(pageCtx)
   // A drawn file that takes its whole pane in a tab (`layout: "pane"`: a canvas): the bar, then the drawing edge to edge.
   const fills = pane && layout === "pane"
   const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit}
@@ -848,7 +847,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }, [props, resolve, path])
   const notices = <>
     {inTrash(path) && <InTrash path={path} note=" Restore it to edit it." />}
-    {isReadOnly(path) && !inTrash(path) && !inPagesDir(path) && <Banner tone="info">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</Banner>}
+    {isReadOnly(path) && !inTrash(path) && <Banner tone="info">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</Banner>}
     {status.kind === "conflict" && <Banner tone="warn" actions={[["Use theirs", saver.takeTheirs], ["Keep mine", saver.keepMine]]}>
       This file changed somewhere else, in the same lines you edited.</Banner>}
     {clashes.map(({ alias, other }) => (
@@ -880,25 +879,29 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }
 
   const fileArticle = (
-    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && ((board && !narrow) || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
+    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
+      data-grid={editGrid ? "" : undefined}
       onContextMenu={outsideMenu} data-file-drop={droppable ? "" : undefined} onDragOver={droppable ? (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault() } : undefined} onDrop={droppable ? onDrop : undefined}
       style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>
       {pathBar()}
       {phoneToggle}
       <div style={zoom ? { zoom } : undefined} data-text-size={zoom ? "note" : undefined}>
-        {page && board && pageView?.header?.(pageCtx)}
         {!page && (!pane || phoneTab) && (
           <TitleLine icon={view?.icon ?? Folder} tint={view?.tint} text={folderLine(path)} head={fileHead} pane={pane}
             toggle={!pane && !ro && views.length > 1 && <ViewToggle mode={shown} setMode={setMode} edit={edit} phone="sheet" />} />
         )}
-        {!page && !(code && pane && !phoneTab) && <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}
-          mode={shown} onEnter={toText} />}
-        {board && !pane && pageView?.header?.(pageCtx)}
-        {!source && <PageTabs store={store} path={path} pane={pane} className={page ? "-mt-1 mb-5" : "mt-3"} />}
+        {/* The inline title (Settings > Editor): off, the name is only in the tab and the path bar (a sheet, having
+            neither, keeps it). */}
+        {!page && !(code && pane && !phoneTab) && (showInlineTitle || !pane ? (
+          <TitleRow icon={props.icon} tint={props.tint} phone={phoneTab}>
+            <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}
+              mode={shown} onEnter={toText} />
+          </TitleRow>
+        ) : <h1 className="sr-only">{stem(path)}</h1>)}
         {notices}
         <div className={cn(!page && "mt-4")}>
           {showProps && <Properties path={path} block={fm} readOnly={ro || shown === "read"} onChange={setProps} types={store.propertyTypes} stamps={kindStamps(store, path)} />}
-          {isMd(path) && !source && !board && !drawing && <NoteTop head={fileHead} />}
+          {isMd(path) && !source && !drawing && <NoteTop head={fileHead} place={pane ? "page" : "sheet"} />}
           {board && pageView ? pageView.render(pageCtx) : <Suspense fallback={<div className="min-h-40" />}>
             {drawing ? framed(layout, pane, drawing) : notebook && !source ? (
               <Notebook text={body} />

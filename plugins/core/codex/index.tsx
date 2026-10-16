@@ -1,8 +1,8 @@
 import { agentPlugin, definePlugin, type AgentSource } from "@vaultite"
 import { OpenAIIcon } from "./OpenAIIcon"
 
-// Codex's blocks and session tabs are the app's agent components (AgentUsage.tsx) on GET /api/codex; its page is the
-// Codex dashboard (pages/Codex.md), and `codex` goes in a project file.
+// Codex draws the agent blocks (`agent: codex`) and its session tabs with the app's agent components (AgentUsage.tsx) on
+// GET /api/codex; its page is the Codex dashboard (pages/Codex.md).
 const SRC: AgentSource = {
   path: "codex", label: "Codex", icon: OpenAIIcon, tint: "var(--green)", agent: "codex", view: "codex-session",
   noLimits: "No limits yet. They come from ChatGPT through the codex CLI, or from Codex's last session on this machine.",
@@ -11,7 +11,7 @@ const SRC: AgentSource = {
 export default definePlugin(agentPlugin(SRC, {
   // `icon: openai` in a file (its dashboard).
   icons: { openai: OpenAIIcon },
-  blocks: { "codex-limits": "limits", "codex-sessions": "sessions", "codex-usage": "usage", "codex-projects": "projects", "codex-models": "models", codex: "project" },
+  blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   process: ["codex"],
   opens: { open: { id: "codex:open", name: "Open Codex" }, split: { id: "codex:open-split", desktop: true, name: "Open Codex in right split" } },
   demo: {

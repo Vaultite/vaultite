@@ -693,9 +693,8 @@ const sessionLine = (s: Item) => [s.private ? "Private session" : s.title || s.n
 
 /** How an agent's blocks word things. */
 type Words = {
-  /** Its name ("Claude Code") and its blocks' prefix ("claude": claude-sessions, claude-usage...). */
+  /** Its name ("Claude Code"). */
   name: string
-  prefix: string
   /** What a session is called ("chat"), and what's counted as one ("conversation"). */
   noun?: string
   count?: string
@@ -787,9 +786,10 @@ export function codingAgent<A extends Account>(plugin: Plugin, a: CodingAgent<A>
   return { accountsFor, accountOf: (id: unknown) => (id ? accountsFor(id)[0] : a.accounts?.all()[0]) }
 }
 
-/** The blocks every agent has: its sessions, usage, projects, models, and one project's (`<prefix>`). */
+/** The agent blocks every agent draws (the Coding agents plugin declares them): its sessions, usage, projects, models,
+ *  and one project's. */
 function usageBlocks(plugin: Plugin, w: Words, usage: (days: number, account: unknown) => Promise<Usage>) {
-  const [sessions, usageBlock, projects, models, project] = USAGE_BLOCKS(w.prefix)
+  const [sessions, usageBlock, projects, models, project] = USAGE_BLOCKS
   const noun = w.noun ?? "session", count = w.count ?? "session"
   const working = (min: number) => (!w.estimate ? `, ${fmtMin(min)} working` : "")
   plugin.block(sessions, async (ctx) => {

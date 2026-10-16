@@ -11,6 +11,9 @@ want_to: Ask for a last look at the Lighthouse launch
 sort: 2
 ---
 
+```block-person
+```
+
 Gives blunt, useful feedback on product ideas.
 
 ## Timeline

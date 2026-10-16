@@ -1,5 +1,5 @@
-// The sandbox: examples/vault with its dates moved to today plus generated daily logs, deterministic per date. Making
-// it again replaces only a folder that is a sandbox (or empty), so a wrong path never wipes anything. No app modules.
+// The sandbox: examples/vault dated to today, plus daily logs and its plugins' pages, deterministic per date. Making it
+// again replaces only a folder that is a sandbox (or empty), so a wrong path never wipes anything. No app modules.
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url"
 
 /** The day examples/vault is written as of: its "today". */
 export const ANCHOR = "2026-10-02"
-/** The sample vault in the app's source. */
-export const SAMPLE = path.join(path.dirname(path.dirname(fileURLToPath(import.meta.url))), "examples", "vault")
+/** The app's source, and the sample vault in it. */
+const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
+export const SAMPLE = path.join(ROOT, "examples", "vault")
 /** The marker in a sandbox's settings. */
 export const MARKER = path.join(".vaultite", "sandbox.json")
 
@@ -46,9 +47,9 @@ export function isSandbox(dir: string) {
 
 /** How the sandbox is made from the sample: raise it when makeSandbox makes different files (or times) from the same
  *  sample, so sandboxes made before are made again. */
-const MAKE = 2
+const MAKE = 3
 
-/** A stamp of the sample's files (names and contents) and of MAKE: an app update that changes either changes it. */
+/** A stamp of the sample's files (names and contents), its pages and MAKE: an app update that changes any changes it. */
 export function sampleStamp(source = SAMPLE) {
   const h = crypto.createHash("sha1").update(`make ${MAKE}\0`)
   for (const rel of (fs.readdirSync(source, { recursive: true }) as string[]).sort()) {
@@ -56,6 +57,7 @@ export function sampleStamp(source = SAMPLE) {
     if (!fs.statSync(p).isFile() || path.basename(rel) === ".DS_Store") continue
     h.update(rel.split(path.sep).join("/") + "\0").update(fs.readFileSync(p)).update("\0")
   }
+  for (const [rel, text] of pages(source)) h.update(`${rel}\0${text}\0`)
   return h.digest("hex").slice(0, 12)
 }
 
@@ -91,8 +93,34 @@ export function makeSandbox(dir: string, today = localToday(), source = SAMPLE):
     put(to, TEXT.test(rel) ? shiftDates(fs.readFileSync(from, "utf8"), shift) : fs.readFileSync(from))
   }
   for (const [rel, text] of daily(today)) put(rel, text)
+  for (const [rel, text] of pages(source)) if (!fs.existsSync(path.join(root, rel))) put(rel, text)
   put(MARKER, JSON.stringify({ made: today, anchor: ANCHOR, sample: sampleStamp(source) }, null, 2) + "\n")
   return { files, today }
+}
+
+/** The pages its plugins wrote when they were turned on (core/pages.ts: the built-in ones that are on in its
+ *  plugins.json), and the design system's page (every block, drawn). */
+function pages(source: string): [string, string][] {
+  let conf: { disabled?: string[]; enabled?: string[] } = {}
+  try { conf = JSON.parse(fs.readFileSync(path.join(source, ".vaultite", "plugins.json"), "utf8")) } catch { /* the defaults */ }
+  const dir = path.join(ROOT, "plugins", "core"), manifests = new Map<string, { alwaysOn?: boolean; offByDefault?: boolean; requires?: string[] }>()
+  for (const id of fs.readdirSync(dir)) {
+    try { manifests.set(id, JSON.parse(fs.readFileSync(path.join(dir, id, "manifest.json"), "utf8"))) } catch { /* not a plugin */ }
+  }
+  const on = (id: string, seen: string[] = []): boolean => {
+    const m = manifests.get(id)
+    if (!m || seen.includes(id)) return false
+    const own = m.alwaysOn || (m.offByDefault ? !!conf.enabled?.includes(id) : !conf.disabled?.includes(id))
+    return !!own && (m.requires ?? []).every((r) => on(r, [...seen, id]))
+  }
+  const out: [string, string][] = []
+  for (const id of [...manifests.keys()].sort()) {
+    const at = path.join(dir, id, "pages")
+    if (!on(id) || !fs.existsSync(at)) continue
+    for (const n of fs.readdirSync(at).filter((f) => f.endsWith(".md")).sort()) out.push([`Dashboards/${n}`, fs.readFileSync(path.join(at, n), "utf8")])
+  }
+  out.push(["Dashboards/Design.md", fs.readFileSync(path.join(ROOT, "core", "pages", "Design.md"), "utf8")])
+  return out
 }
 
 // ---------- what happens every day ----------
@@ -128,7 +156,7 @@ export function editedAt(rel: string, today: string): Date {
 const hm = (min: number) => `${String(Math.floor(min / 60) % 24).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`
 const q = (s: string) => (/^[\w .,()-]+$/.test(s) && !/^[\d.-]|: |^(true|false|null|yes|no)$/i.test(s) ? s : `'${s.replace(/'/g, "''")}'`)
 
-/** A log file: its frontmatter and a line of notes (its kind draws its blocks). */
+/** A log file: its frontmatter, its kind's fences (a workout's sets too) and a line of notes. */
 function log(area: string, date: string, title: string, n: number, data: Record<string, string | number | undefined>,
   opts: { duration?: number; body?: string; yaml?: string } = {}) {
   const fm = [
@@ -139,7 +167,8 @@ function log(area: string, date: string, title: string, n: number, data: Record<
     ...Object.entries(data).filter(([, v]) => v !== undefined && v !== "").map(([k, v]) => `${k}: ${typeof v === "number" ? v : q(String(v))}`),
     "---", "",
   ]
-  return fm.join("\n") + (opts.body ? `\n${opts.body}\n` : "")
+  const fences = ["log", ...(area === "workouts" ? ["workout"] : [])].map((b) => "```block-" + b + "\n```").join("\n\n")
+  return fm.join("\n") + `\n${fences}\n` + (opts.body ? `\n${opts.body}\n` : "")
 }
 
 type Lift = { name: string; base: number; step: number; reps: [number, number]; sets: number; bodyweight?: boolean }

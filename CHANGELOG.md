@@ -6,6 +6,31 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Agent blocks are one set**: `agent-limits`, `agent-sessions`, `agent-usage`, `agent-projects`, `agent-models` and
+  `agent-project` take `agent:` (claude-code, codex, cursor, grok-bot, opencode, openclaw, hermes) in place of each
+  agent's own copies (`claude-usage`, `codex-sessions`...); a block for an agent whose plugin is off is off.
+- Database views are only Obsidian's: a ```` ```base ```` fence, a `.base` file or its embed; `block-query` is gone, and
+  a base view's `groups` orders a board's columns, `archived: true` lists archive folders too, and a
+  base fence's menu lists the files it shows.
+- **A dashboard edits as it reads**: ⌘E keeps its grid, width and title, with the text between blocks typed in place
+  like a note's. Each card's bar drags it elsewhere (a held finger on a phone), sets Full width or Under the one before,
+  edits its options in the card (`</>`) or removes it; Add a block picks one to put in. Source mode is still its Markdown.
+- **Plugins' pages are your files**: turning a plugin on (Plugins, `vau plugin on`, a bundle, setup's example pages)
+  writes its pages once into your pages folder (Dashboards/ by default), pinned, and never touches them again; opening
+  a vault writes nothing. The read-only copies in `.vaultite/pages`, their bar and Copy to my vault are gone: `vau dashboard restore`
+  writes a page you deleted, and moves pins and links from the old copies once. The Design page is `vau docs design`.
+- **Page tabs is a plugin**, off by default: pages joined with `tabs:` and `tab:` get their strip only with it on.
+  People and People map, Activity, Days and Performance, Agents and each agent's page are pages of their own.
+- Pages have no subtitle any more: a line of text before the first block says what a page is, and the routines block
+  shows today's date in its heading. `vau dashboard new` drops `--subtitle`.
+- A dashboard's title is a note's: the same size and place, editable while editing (renaming it), with the file's
+  `icon` before it, as every file now shows; Properties stay hidden on a dashboard being read. Show inline title
+  (Settings, Editor) hides it in tabs. On a phone the header shows the name only once the title scrolls away.
+- **A kind's blocks are written**: a new person, project, book or log gets its blocks' fences on top of its file (so
+  does a file `vau type --apply` types), and only what a file has a fence of is drawn. `vau migrate --apply` adds them
+  to older files; `vau blocks tidy` is gone.
+- Links find a file by its name and `aliases`, no longer by `title:` or `name:`, as in Obsidian. A new file whose name
+  can't hold its title gets it as an alias, and `vau migrate --apply` adds those to older files.
 - A voice note handed to an agent says "Sent to Claude" on the watch (the agent it went to), not "Sent to the front
   door".
 - Pin a Claude Code conversation to the sidebar (Pin in its terminal's menu, or drag its row onto Pinned): it keeps its

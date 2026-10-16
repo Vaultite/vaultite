@@ -64,7 +64,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Dashboards/Today.md")), 6000)
   check("applied: its first page is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Dashboards/Today.md"), await page.evaluate(() => location.hash))
   const s = settings(FVAULT)
-  check("applied: Life OS's pins (its pages kept in .vaultite/pages) and look", s.pages?.pinned?.[0] === ".vaultite/pages/Dashboards/Today.md" && s.appearance?.scheme === "flexoki" && s.plugins?.disabled?.includes("workspaces"), s)
+  check("applied: Life OS's pins (its plugins' pages written in Dashboards/) and look", s.pages?.pinned?.[0] === "Dashboards/Today.md" && existsSync(`${FVAULT}/Dashboards/Today.md`) && s.appearance?.scheme === "flexoki" && s.plugins?.disabled?.includes("workspaces"), s)
   await wait(1200)
   await shot(page, "after-life-os-new-vault")
   // A vault still offered the bundles (an older app's): it opens on them, and skipping starts from Minimal.
@@ -91,7 +91,7 @@ await go(page, B, "bundles")
 await until(() => page.locator("[data-bundle]").count() >= 3, 6000)
 check("an existing vault isn't greeted", (await page.locator("main h1").first().innerText()) === "Bundles")
 await shot(page, "picker")
-const PAGES = ".vaultite/pages/Dashboards/" // (a bundle's pages are built in)
+const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the vault's pages folder)
 const want = {
   "minimal": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links") && s.plugins.disabled.includes("workspaces"),
   "pages": (s) => s.pages.pinned[0] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.density === "comfortable",

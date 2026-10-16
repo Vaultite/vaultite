@@ -1,30 +1,17 @@
-import { Copy, LayoutDashboard } from "lucide-react"
-import { dateText, definePlugin, inPagesDir, PageHeader, type PageCtx } from "@vaultite"
+import { LayoutDashboard } from "lucide-react"
+import { definePlugin } from "@vaultite"
 import { Dashboard, onlyText } from "./Dashboard"
-import { BuiltInBar, copyToVault } from "./BuiltIn"
+import { EditGrid } from "./EditGrid"
 
-// Dashboards: a `type: dashboard` file is a page of blocks while read; editing it edits the file. Off, it's a
-// Markdown file with its blocks one under another.
-
-/** `subtitle:` with "{date}" as today's date ("Thursday 1 October"). */
-const subtitleOf = (fm: Record<string, unknown>) => typeof fm.subtitle === "string" && fm.subtitle
-  ? fm.subtitle.replace("{date}", dateText(new Date(), { weekday: "long", day: "numeric", month: "long" })) : undefined
-
-function Header({ title, fm, place, path }: PageCtx) {
-  const sub = subtitleOf(fm)
-  // In a tab the page's name and subtitle are its title; in a sheet the file's title is there already.
-  if (place === "page") return <><PageHeader title={title} subtitle={sub} /><BuiltInBar path={path} plugin={fm.plugin} /></>
-  return <>{sub && <p className="mt-0.5 text-[15px] text-muted-foreground">{sub}</p>}<BuiltInBar path={path} plugin={fm.plugin} /></>
-}
+// Dashboards: a `type: dashboard` file is a page of blocks, read and edited as the same grid (its text edited in
+// place between them). Off, it's a Markdown file with its blocks one under another.
 
 export default definePlugin({
   files: {
     types: ["dashboard"], icon: LayoutDashboard,
-    page: { header: (ctx) => <Header {...ctx} />, render: (ctx) => <Dashboard ctx={ctx} className={ctx.place === "sheet" ? "mt-4" : undefined} />,
-      narrow: (ctx) => onlyText(ctx.body) },
+    page: { render: (ctx) => <Dashboard ctx={ctx} />, narrow: (ctx) => onlyText(ctx.body),
+      editGrid: (cards, edit, ctx) => <EditGrid cards={cards} edit={edit} ctx={ctx} /> },
   },
-  // A plugin's built-in page becomes the user's file (BuiltIn.tsx).
-  fileMenu: (path) => (inPagesDir(path) ? [{ label: "Copy to my vault", icon: Copy, section: "change", run: () => copyToVault(path) }] : []),
   // What a dashboard looks like: Today's, with made-up data.
   preview: "today",
 })

@@ -284,5 +284,5 @@ plugin.provide("agent:opencode", async ({ resume, context, state, prompt }: Agen
 
 // ---------- blocks as text (GET /api/render)
 
-codingAgent(plugin, { id: "opencode", name: "OpenCode", prefix: "opencode", value: "as OpenCode recorded it",
+codingAgent(plugin, { id: "opencode", name: "OpenCode", value: "as OpenCode recorded it",
   state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, summary, live, session })

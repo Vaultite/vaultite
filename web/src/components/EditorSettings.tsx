@@ -4,7 +4,7 @@ import type { Store } from "@/core/data"
 import { editorSet, setEditor, useEditorSettings, type EditorSettings, type PropertiesShown } from "@/core/editorPrefs"
 import { Panel, ResetButton, Segmented, SettingRow, Switch } from "@/components/kit"
 
-type Flag = "readableLineLength" | "spellcheck" | "autoPairBrackets" | "autoPairMarkdown"
+type Flag = "readableLineLength" | "showInlineTitle" | "spellcheck" | "autoPairBrackets" | "autoPairMarkdown"
 
 /** A switch, with its way back to what the vault or Obsidian says. */
 function FlagRow({ k, label, sub, row, value }: { k: Flag; label: string; sub?: string; row: string; value: boolean }) {
@@ -25,6 +25,7 @@ export function EditorPanel({ store }: { store: Store }) {
     <Panel>
       <div className="hairline">
         <FlagRow k="readableLineLength" label="Readable line length" sub="Lines stop at a comfortable width" row="readable-line-length" value={e.readableLineLength} />
+        <FlagRow k="showInlineTitle" label="Show inline title" sub="The file's name at the top of the page" row="show-inline-title" value={e.showInlineTitle} />
         <SettingRow stack label="Properties in document" data-settings-row="properties-in-document">
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
             <ResetButton on={editorSet("propertiesInDocument")} onClick={() => setEditor({ propertiesInDocument: null })} label="Reset properties in document" />

@@ -1,6 +1,6 @@
-// Database views (```block-query): Design.md's examples drawn; a "Qa query" folder of made-up people and a note with a
-// query: sorting by a heading (asc, desc, back), a row opens its file, double-click edits a value (one frontmatter line
-// changes on disk, the table follows), cards and list views, a bad where says why, and at 390px the table scrolls in its
+// Database views (```base fences): Design.md's examples drawn; a "Qa query" folder of made-up people and a note with
+// bases: sorting by a heading (asc, desc, back), a row opens its file, double-click edits a value (one frontmatter line
+// changes on disk, the table follows), cards and list views, a bad filter says why, and at 390px the table scrolls in its
 // card without widening the page. Boards: columns in order, a card dragged to another column (one line on disk, no
 // flicker back), its … menu, phone (menu, the board scrolls in its card). Calendars: the month grid, today, prev/next,
 // an item dragged to another day, the phone's agenda. Screenshots in the scratch folder given as the third argument (or /tmp/vaultite-query/).
@@ -20,19 +20,22 @@ await api("DELETE", `file?path=${encodeURIComponent(F)}`)
 await put(`${F}/Alice Park.md`, "---\ntype: qa-person\nrelation: friend\nlocation: Austin, TX\nevery_days: 30\ntags: [University, AI]\n---\n")
 await put(`${F}/Bob Lee.md`, "---\ntype: qa-person\nrelation: friend   # from running club\nlocation: Denver, CO\nevery_days: 7\n---\n\nLikes tea.\n")
 await put(`${F}/Lee Park.md`, "---\ntype: qa-person\nrelation: mentor\nlocation: Boston, MA with a long name that goes on and on to make the table wider than a phone\nevery_days: 60\nwith: '[[Alice Park]]'\n---\n")
-const block = (o) => "```block-query\n" + o + "\n```\n"
+// A ```base fence: its filters (and), then one view, its keys as YAML lines (`top`: top-level keys, like wide).
+const base = (filters, view, top = "") => "```base\nfilters:\n  and:\n" + filters.map((f) => `    - ${JSON.stringify(f)}\n`).join("")
+  + "views:\n" + view.split("\n").map((l, i) => `${i ? "    " : "  - "}${l}`).join("\n") + "\n" + top + "```\n"
+const inF = (sub = "") => `file.inFolder("${F}${sub}")`
 const pad = (n) => String(n).padStart(2, "0")
 const now = new Date(), MONTH = `${now.getFullYear()}-${pad(now.getMonth() + 1)}`, TODAY = `${MONTH}-${pad(now.getDate())}`
 const DAY1 = `${MONTH}-03`, DAY2 = `${MONTH}-${now.getDate() === 20 ? "21" : "20"}`
 await put(`${F}/Tasks/Write docs.md`, `---\ntype: qa-task   # keep this\nstatus: idea\ndue: ${DAY1}\n---\n\nNotes.\n`)
 await put(`${F}/Tasks/Fix map.md`, `---\ntype: qa-task\nstatus: doing\ndue: ${DAY1} 18:00\n---\n`)
 await put(`${F}/Tasks/Ship app.md`, `---\ntype: qa-task\nstatus: done\ndue: ${TODAY}\n---\n`)
-await put(`${F}/Board.md`, block("title: Qa board\nfrom: Qa query/Tasks/\ntype: qa-task\nview: board\ngroup: status\ngroups: [idea, doing, done]\ncolumns: [file, due]\nwide: true") + "\n"
-  + block("title: Qa calendar\nfrom: Qa query/Tasks/\ntype: qa-task\nview: calendar\ndate: due\nwide: true"))
-await put(`${F}/Views.md`, block("title: Qa people\nfrom: Qa query/\ntype: qa-person\ncolumns: [file, relation, location, every_days, tags, with]\nsort: file") + "\n"
-  + block("title: Qa cards\nfrom: Qa query/\ntype: qa-person\nview: cards\ncolumns: [file, relation, every_days]") + "\n"
-  + block("title: Qa list\nfrom: Qa query/\ntype: qa-person\nview: list\ngroup: relation\ncolumns: [file, location]") + "\n"
-  + block("title: Qa bad\nwhere: \"relation =\""))
+await put(`${F}/Board.md`, base([inF("/Tasks"), 'type == "qa-task"'], "type: kanban\nname: Qa board\ngroupBy: {property: status, direction: ASC}\ngroups: [idea, doing, done]\norder: [file.name, due]", "wide: true\n") + "\n"
+  + base([inF("/Tasks"), 'type == "qa-task"'], "type: calendar\nname: Qa calendar\ndate: due", "wide: true\n"))
+await put(`${F}/Views.md`, base([inF(), 'type == "qa-person"'], "type: table\nname: Qa people\norder: [file.name, relation, location, every_days, tags, with]\nsort: [{property: file.name, direction: ASC}]") + "\n"
+  + base([inF(), 'type == "qa-person"'], "type: cards\nname: Qa cards\norder: [file.name, relation, every_days]") + "\n"
+  + base([inF(), 'type == "qa-person"'], "type: list\nname: Qa list\ngroupBy: {property: relation, direction: ASC}\norder: [file.name, location]") + "\n"
+  + base(["relation =="], "type: table\nname: Qa bad"))
 const url = (p) => `${B}#file/${encodeURIComponent(p)}`
 const DESIGN = await pagePath(B, "Design") // (Dashboards/, or where the vault keeps its pages)
 
@@ -43,14 +46,14 @@ const page = watch(await ctx.newPage())
 await page.goto(url(DESIGN)); await page.waitForTimeout(2000)
 const design = page.locator("section.glass", { has: page.locator("[data-query]") }).first()
 await design.scrollIntoViewIfNeeded(); await page.waitForTimeout(300)
-check("Design.md draws a query block", await design.isVisible() && (await design.locator("[data-query-row]").count()) > 0)
+check("Design.md draws a base fence", await design.isVisible() && (await design.locator("[data-query-row]").count()) > 0)
 await design.screenshot({ path: `${OUT}query-desktop.png` })
 
 await page.goto(url(`${F}/Views.md`)); await page.waitForTimeout(2000)
 const card = (title) => page.locator("section.glass", { has: page.locator("h2", { hasText: title }) }).first()
 const table = card("Qa people")
 const rows = () => table.locator("[data-query-row]").evaluateAll((els) => els.map((e) => e.getAttribute("data-query-row").split("/").pop()))
-check("the table lists the files, sorted by the query", JSON.stringify(await rows()) === JSON.stringify(["Alice Park.md", "Bob Lee.md", "Lee Park.md"]), await rows())
+check("the table lists the files, sorted by the view", JSON.stringify(await rows()) === JSON.stringify(["Alice Park.md", "Bob Lee.md", "Lee Park.md"]), await rows())
 check("the count", (await table.locator("h2 + div").innerText()).includes("3 files"), await table.locator("h2 + div").innerText())
 check("a list is chips, a link a link", (await table.locator("[data-query-row] span.rounded-\\[5px\\]").count()) === 2
   && (await table.locator("[data-query-row] button", { hasText: "Alice Park" }).count()) === 1)
@@ -75,7 +78,7 @@ await page.screenshot({ path: `${OUT}query-views-desktop.png`, fullPage: true })
 check("cards view", (await card("Qa cards").locator("button[data-query-row]").count()) === 3)
 const groups = await card("Qa list").locator("[data-query-group]").allInnerTexts()
 check("list view with groups", groups.length === 2 && groups[0].startsWith("friend") && groups[1].startsWith("mentor"), groups)
-check("a bad where says why", (await card("Qa bad").innerText()).includes("expected a value"), await card("Qa bad").innerText())
+check("a bad filter says why", (await card("Qa bad").innerText()).includes("is left out"), await card("Qa bad").innerText())
 
 // A row opens its file.
 await table.locator(`[data-query-row="${F}/Lee Park.md"] td`).first().click(); await page.waitForTimeout(800)

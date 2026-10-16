@@ -1,0 +1,3 @@
+/* The strip: one line per tab; when they don't fit, it scrolls sideways with no scrollbar. */
+.page-tabs { scrollbar-width: none; }
+.page-tabs::-webkit-scrollbar { display: none; }

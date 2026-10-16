@@ -7,6 +7,9 @@ links:
 sort: 0
 ---
 
+```block-project
+```
+
 ## Next
 
 - Finish the [[Lighthouse launch checklist]].

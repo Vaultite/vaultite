@@ -1,6 +1,6 @@
-// Database views and Obsidian Bases on one engine (query.ts; bases.ts turns a view into options), served at
-// /api/query. Nothing is stored: the files are the data; edits are the app's small edits to frontmatter or the .base.
-import { HTTPError, Plugin, frontmatterTargets, type PropTypes, typedValue, typeOf, wikiTargets } from "../../../core/plugins.ts"
+// Obsidian Bases and `vau query` on one engine (query.ts; bases.ts turns a view into options), served at /api/query.
+// Nothing is stored: the files are the data; edits are the app's small edits to frontmatter or the .base.
+import { HTTPError, Plugin, frontmatterTargets, source, type PropTypes, typedValue, typeOf, wikiTargets } from "../../../core/plugins.ts"
 import { type Entry, type Item, loadFm, readText, type Vault } from "../../../core/vault.ts"
 import { baseOptions } from "./bases.ts"
 import { markdown, type Opts, QueryError, type Rec, type Result, run, type RunCtx } from "./query.ts"
@@ -43,19 +43,20 @@ type FileProps = { version: string | number; of: (rel: string) => Item }
 const fileProps = () => (plugin.service("file-props")?.() ?? null) as FileProps | null
 
 /** Every Markdown file as something to query (a base: every file, templates too, but none in a hidden folder like
- *  .archive/, as in Obsidian), but `self`: the file the view is in (a database in Projects/ doesn't list itself). */
+ *  .archive/, as in Obsidian, unless a view's `archived` lets archive folders in), but `self`: the file the view is in. */
 const HIDDEN = /(^|\/)\./
 function* records(vault: Vault, o: Opts, self?: string, base = false): Generator<Rec> {
   const skip = `${templatesFolder()}/`.toLowerCase()
   const from = (Array.isArray(o?.from) ? o.from : [o?.from]).map((f) => String(f ?? "").replace(/^\/+/, "").toLowerCase())
   const keep = base || from.some((f) => f && (f.startsWith(skip) || `${f}/` === skip))
+  const hidden = (rel: string) => base && HIDDEN.test(o.archiveFolders ? rel.replace(/(^|\/)\.archive\//g, "$1") : rel)
   for (const [rel, e] of vault.entries) {
-    if (rel === self || (!keep && rel.toLowerCase().startsWith(skip)) || (base && HIDDEN.test(rel))) continue
+    if (rel === self || (!keep && rel.toLowerCase().startsWith(skip)) || hidden(rel)) continue
     yield recOf(rel, e)
   }
   if (!base) return
   const props = fileProps()
-  for (const [rel, st] of vault.others) if (rel !== self && (keep || !rel.toLowerCase().startsWith(skip)) && !HIDDEN.test(rel)) yield otherRec(rel, st, props)
+  for (const [rel, st] of vault.others) if (rel !== self && !hidden(rel)) yield otherRec(rel, st, props)
 }
 
 /** The file a base's `this` is, by path. */
@@ -146,20 +147,6 @@ plugin.route("GET", "query", (req) => {
 })
 plugin.route("POST", "query", (req) => query(plugin.vault, optionsOf((req.body as Item)?.options ?? req.body)))
 
-const dayOf = (s: string) => { const [y, m, d] = String(s).split("-").map(Number); return y ? new Date(y, m - 1, d) : new Date() }
-
-// `this`: the note embedding the block's note when it's embedded, else the file it's in (the app's QueryBlock alike).
-plugin.block("query", (ctx) => {
-  try {
-    const res = runOpts(ctx.vault, ctx.options, ctx.path, ctx.host ?? ctx.path, dayOf(ctx.today))
-    ctx.source(res.groups.map((g) => g.rows.map((r) => r.path)))
-    return markdown(res)
-  } catch (e) {
-    if (e instanceof QueryError) return `_(query: ${e.message})_`
-    throw e
-  }
-})
-
 /** A base as Markdown: every view (or the one asked for), each under its name. `level`: its views' heading level. */
 function baseMarkdown(vault: Vault, text: string, at: { path?: string; view?: string; this?: string; level?: number } = {}) {
   let cfg: Record<string, unknown>, names: string[]
@@ -169,7 +156,9 @@ function baseMarkdown(vault: Vault, text: string, at: { path?: string; view?: st
   } catch (e) { return `_(base: ${(e as Error).message})_` }
   return names.map((name) => {
     try {
-      return markdown(runOpts(vault, { base: cfg, show: name }, at.path, at.this ?? at.path), at.level ?? 2)
+      const res = runOpts(vault, { base: cfg, show: name }, at.path, at.this ?? at.path)
+      source(res.groups.map((g) => g.rows.map((r) => r.path)))
+      return markdown(res, at.level ?? 2)
     } catch (e) {
       if (e instanceof QueryError) return `_(base: ${e.message})_`
       throw e
@@ -200,7 +189,7 @@ plugin.op({
   cli: "query",
   mcp: "query",
   summary: "Query the vault like a database: the files that match, as a table of their properties (a database view).",
-  help: `The same engine as \`\`\`block-query (vau docs query): from (folders), type (person, note, log, book, project...),
+  help: `The engine bases run on (vau docs query): from (folders), type (person, note, log, book, project...),
 tags, where ("relation = friend and every_days <= 30", "area = workouts and date >= 2026-09-01"), columns, sort ("-date"),
 group, limit and offset (a page: 50 rows at a time unless limit says). The answer as JSON has every row's values
 whole; as text it's a Markdown table (one per group), a long cell cut with "…".

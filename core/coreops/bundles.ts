@@ -45,10 +45,11 @@ export function bundleOps(app: App): Op[] {
   return [{
     id: "vault.starter",
     cli: "vault starter",
-    summary: "Give a new vault its starter content: a Start here note (pinned) and a line pointing agents at its rules in AGENTS.md and CLAUDE.md.",
-    help: `What Set up Vaultite's "Start with a Start here note" does for a new vault. Opening a folder writes nothing
-outside .vaultite/; this writes Start here.md (unless there's one), pins it, and has Agent files add its pointer
-line to the vault's AGENTS.md and CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
+    summary: "Give a new vault its starter content: a Start here note (pinned), its plugins' pages and a line pointing agents at its rules in AGENTS.md and CLAUDE.md.",
+    help: `What Set up Vaultite's "Start with example pages" does for a new vault. Opening a folder writes nothing
+outside .vaultite/; this writes Start here.md (unless there's one) and pins it, writes the pages of the plugins that
+are on (unpinned; vau dashboard restore), and has Agent files add its pointer line to the vault's AGENTS.md and
+CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
 
   vau vault starter`,
     kind: "write",

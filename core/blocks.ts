@@ -1,6 +1,6 @@
 // The block contract: what a ```block-<name> fence may say, declared in each plugin's manifest (format:
 // core/docs/vault-plugins.md), read by server and app alike (no Node). Bad options still pass, with a note to fix them.
-import { blocksIn, scan } from "./sections.ts"
+import { blocksIn } from "./sections.ts"
 import { load } from "./yaml.ts"
 
 export type OptionType = "string" | "number" | "boolean" | "list" | "map" | "enum"
@@ -21,7 +21,10 @@ export type BlockDecl = { description: string; options?: Record<string, OptionDe
    *  says it (core/sources.ts). */
   live?: string
   /** Vault paths it reads that its text side can't show it reading (a block drawn only in the app). */
-  reads?: string[] }
+  reads?: string[]
+  /** The option naming who draws it: a plugin whose manifest's `draws` lists it (`block-agent-usage` with `agent: codex`,
+   *  Codex's). It takes the ids of those that are on; with that plugin off, the block is off. */
+  by?: string }
 /** A manifest's `blocks`: name -> declaration. */
 export type BlockDecls = Record<string, BlockDecl>
 
@@ -34,30 +37,20 @@ export const COMMON: Record<string, OptionDecl> = {
   file: { type: "string", description: "draws it for another file: a name or path like a [[link]], or a folder ending in / for its newest file" },
 }
 
-/** Which of a file's kind's blocks (its view: `Kind.blocksFor`) are drawn on top of it: those its body doesn't place
- *  somewhere itself. They're never written into the file; a fence of one moves it there. */
-export function onTop(view: string[] | undefined, body: string): string[] {
+/** Which of a file's kind's blocks (`Kind.blocksFor`) its body has no fence of. One drawn for another file (`file:`)
+ *  isn't its own. */
+export function unplaced(view: string[] | undefined, body: string): string[] {
   if (!view?.length) return []
-  const placed = new Set(blocksIn(body).map((b) => b.name))
+  const placed = new Set(blocksIn(body).filter((b) => !/^\s*file\s*:/m.test(b.text)).map((b) => b.name))
   return view.filter((n) => !placed.has(n))
 }
 
-/** A body without the fences on its top that only repeat its kind's blocks (in their order, without options), which are
- *  drawn there anyway; null when it has none to take out. One its body places again further down stays. */
-export function tidyKindBlocks(view: string[] | undefined, body: string): string | null {
-  if (!view?.length) return null
-  const s = scan(body), placed = blocksIn(body, s)
-  let i = 0, n = 0
-  const blank = () => { while (i < s.lines.length && !s.lines[i].trim()) i++ }
-  blank()
-  for (const b of placed) {
-    if (b.open !== i || b.name !== view[n] || b.text.trim()) break
-    n++; i = b.close + 1; blank()
-  }
-  const later = new Set(placed.slice(n).map((b) => b.name))
-  while (n && later.has(view[n - 1])) n--
-  if (!n) return null
-  return s.lines.slice(placed[n - 1].close + 1).join("\n").replace(/^\s*\n/, "")
+/** A body with the fences of its kind's blocks it has none of written on its top, or null when it has them all. */
+export function withKindBlocks(view: string[] | undefined, body: string): string | null {
+  const missing = unplaced(view, body)
+  if (!missing.length) return null
+  const fences = missing.map((n) => "```block-" + n + "\n```").join("\n\n"), rest = body.replace(/^\s*\n/, "")
+  return rest.trim() ? `${fences}\n\n${rest}` : `${fences}\n`
 }
 
 const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
@@ -68,6 +61,18 @@ const types = (d: OptionDecl) => (Array.isArray(d.type) ? d.type : [d.type])
 export function declsOf(manifest: unknown): BlockDecls {
   const b = isMap(manifest) ? manifest.blocks : null
   return isMap(b) ? Object.fromEntries(Object.entries(b).filter(([, d]) => isMap(d))) as BlockDecls : {}
+}
+
+/** A manifest's `draws`: blocks other plugins declare that it draws (their declaration's `by` names it). */
+export function drawsOf(manifest: unknown): string[] {
+  const d = isMap(manifest) ? manifest.draws : null
+  return Array.isArray(d) ? d.filter((x): x is string => typeof x === "string") : []
+}
+
+/** A declaration with its `by` option taking only `ids`: the plugins that draw it and are on. */
+export function drawnBy(decl: BlockDecl, ids: string[]): BlockDecl {
+  const o = decl.by ? decl.options?.[decl.by] : undefined
+  return o ? { ...decl, options: { ...decl.options, [decl.by!]: { ...o, type: "enum", values: ids } } } : decl
 }
 
 /** Every option a block takes: its own, then the common ones. */
@@ -108,7 +113,7 @@ export function typeText(d: OptionDecl): string {
   // (true, false and an enum's values read as one choice: "true, false or only")
   const both = ts.includes("boolean") && ts.includes("enum")
   const words = ts.flatMap((t) => both && t === "boolean" ? [] : t === "enum"
-    ? [both ? ["true", "false", ...(d.values ?? [])].join(", ").replace(/, ([^,]*)$/, " or $1") : `one of ${(d.values ?? []).join(", ")}`]
+    ? [both ? ["true", "false", ...(d.values ?? [])].join(", ").replace(/, ([^,]*)$/, " or $1") : d.values?.length ? `one of ${d.values.join(", ")}` : "one of none (no plugin that draws it is on)"]
     : [t === "string" ? "a text" : t === "number" ? "a number" : t === "boolean" ? "true or false" : t === "list" ? "a list" : "a map"])
   return words.join(" or ")
 }
@@ -209,6 +214,9 @@ export function declProblems(blocks: unknown, where: string): string[] {
     if (!ONE_LINE(d.description)) out.push(`${at} needs a description (one line: what it shows)`)
     if (d.live !== undefined && !ONE_LINE(d.live)) out.push(`${at}: live is one line, where its live data comes from ("GitHub's API")`)
     if (d.reads !== undefined && (!Array.isArray(d.reads) || d.reads.some((r) => typeof r !== "string" || !r))) out.push(`${at}: reads is a list of vault paths`)
+    if (d.by !== undefined && !(typeof d.by === "string" && isMap(d.options) && isMap(d.options[d.by]) && types(d.options[d.by] as OptionDecl).includes("string"))) {
+      out.push(`${at}: by names one of its options, a text (the plugin that draws it: its manifest's draws lists the block)`)
+    }
     if (d.options === undefined) continue
     if (!isMap(d.options)) { out.push(`${at}: options must be an object, {"<option>": {"type": ..., "description": ...}}`); continue }
     for (const [k, o] of Object.entries(d.options)) {

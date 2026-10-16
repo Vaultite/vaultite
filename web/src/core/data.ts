@@ -63,6 +63,8 @@ export type VaultPluginInfo = {
   warnings: string[]
   /** Its blocks as its manifest declares them (core/blocks.ts). */
   blocks: BlockDecls
+  /** Blocks other plugins declare that it draws (its manifest's `draws`). */
+  draws?: string[]
   /** Its settings as its manifest declares them (core/blocks.ts SettingDecl). */
   settings?: SettingDecls
   /** Its bundle's version, when it's on and built (else null). */

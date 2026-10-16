@@ -3,9 +3,9 @@ type: dashboard
 plugin: activity
 icon: calendar-days
 tint: activity
-subtitle: What you did each day, kept in Recaps
-tab: Days
 ---
+
+What you did each day, kept in Recaps.
 
 ```block-recap-stats
 weeks: 10

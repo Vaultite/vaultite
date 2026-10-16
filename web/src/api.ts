@@ -24,7 +24,7 @@ export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conven
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
 export { AddToTimeline } from "@/components/Timeline"
-export { closeView, createFile, createNamed, folderOf, freeName, homeOf, inPagesDir, isDoc, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, splitFm, stem } from "@/core/files"
+export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, splitFm, stem } from "@/core/files"
 /** A folder of the vault, picked in the palette (one typed that isn't there is made). */
 export { chooseFolder } from "@/components/FolderPicker"
 export { currentFile, useFocusedFile, type FocusedFile } from "@/core/workspace"
@@ -45,7 +45,7 @@ export { type Workspace as TabLayout } from "@/core/layout"
 export { startedFresh } from "@/core/workspace"
 // Its tabs one by one (the Tabs panel): the layout live, its panes, showing, closing and opening a tab, and what each
 // tab shows and its menu, as in its bar.
-export { closeTab, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
+export { closeTab, goHere, hashOf, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
 export { leaves as panesOf, type Group as TabGroup, type Tab } from "@/core/layout"
 export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
@@ -74,8 +74,8 @@ export { editorMenuItems, tintNames, webPageActions } from "@/core/plugins"
 export { blockFor, fileRowsChanged, kindFolder, pluginById } from "@/core/plugins"
 export { besideActive, newNoteFolder } from "@/core/conventions"
 // How a file looks where it's listed (its `icon:` and `tint:`, or its plugin's), and pages:
-// a file a plugin draws as one (a dashboard) or a page's tab (core/tabs.ts: headOf is the page a tab belongs to).
-export { fileAt, headOf, iconOf, isPage, namedIcon, offPlugin, pageOf, tintOf } from "@/core/pages"
+// a file a plugin draws as one (a dashboard).
+export { fileAt, iconOf, isPage, namedIcon, offPlugin, pageOf, tintOf } from "@/core/pages"
 // Attachments (a pasted image, a recording): the folder they go in for a note, and saving files there as embeds.
 export { attachmentFolder, pasteAttachments } from "@/core/conventions"
 export {
@@ -145,7 +145,9 @@ export type { MapPin } from "@/components/PinMap"
 export const PinMap = lazy(() => import("@/components/PinMap"))
 // Blocks: a body in pieces (its blocks, embeds and the Markdown between them), a block's options, a block drawn on its
 // own, and who draws one (Dashboards lays a file's blocks out as a grid).
-export { BlockView, blockOptions, FileBlocks, segments, type Segment } from "@/components/Blocks"
+export { BlockView, blockOptions, chooseBlock, FileBlocks, segments, type Segment } from "@/components/Blocks"
+// A dashboard edited as it's read (PageView.editGrid): a run of its blocks, and what moves, adds and removes them.
+export type { GridCard, GridEdit } from "@/editor/livePreview"
 export { EmbedView } from "@/components/NoteEmbed"
 // Remembered heights: a card drawn again starts at the size it had (core/heights.ts), so a page doesn't jump as its
 // data comes in.

@@ -3,14 +3,15 @@ type: dashboard
 plugin: openclaw
 icon: openclaw
 tint: red
-subtitle: OpenClaw on this machine
 ---
 
-```block-openclaw-sessions
+```block-agent-sessions
+agent: openclaw
 wide: true
 ```
 
-```block-openclaw-usage
+```block-agent-usage
+agent: openclaw
 wide: true
 ```
 
@@ -20,8 +21,10 @@ wide: true
 ```block-openclaw-cron
 ```
 
-```block-openclaw-projects
+```block-agent-projects
+agent: openclaw
 ```
 
-```block-openclaw-models
+```block-agent-models
+agent: openclaw
 ```

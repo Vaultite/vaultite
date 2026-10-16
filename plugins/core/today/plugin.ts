@@ -286,5 +286,6 @@ plugin.block("routines", (ctx) => {
     const target = r.auto === "logs" && goals.get(r.area) ? goals.get(r.area) : 7
     rows.push(`[${doneOn(r, t, ticked, logs) ? "x" : " "}] ${r.name} (${n} of ${target} this week)`)
   }
-  return section("Routines", "Today, and this week so far:", bullets(rows, "No routines."))
+  // (today's date in its heading, as the app's block shows it: index.tsx)
+  return section(`Routines · ${formatDate(dayOf(t), "dddd D MMMM")}`, "Today, and this week so far:", bullets(rows, "No routines."))
 })

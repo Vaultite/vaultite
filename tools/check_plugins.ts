@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { parseAst } from "rolldown/parseAst"
-import { declsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
+import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
 import { blockProblems, defKeys, iconNames, nodeSide, pluginProblems, walk } from "../core/rules.ts"
 import { ICON_NAME } from "../core/pluginmeta.ts"
@@ -56,6 +56,7 @@ const ids = new Map([...found].map(([id, [tier]]) => [id, tier]))
 const problems: string[] = []
 const warnings: string[] = []
 const decls: BlockDecls = {} // every app plugin's blocks
+const drawers = new Map<string, string[]>() // block -> the app plugins that draw it for its declarer (`draws`)
 const vaultManifests = new Map<string, Record<string, unknown>>()
 const alwaysOn = new Set<string>() // app plugins with no switch: bundles leave them out
 for (const [name, [tier, d]] of found) {
@@ -78,6 +79,7 @@ for (const [name, [tier, d]] of found) {
   if (m.alwaysOn !== true && m.essential !== true && m.offByDefault !== true) problems.push(`${label}/manifest.json: a built-in that isn't alwaysOn or essential (a Vaultite plugin) is offByDefault`)
   if (m.alwaysOn === true) alwaysOn.add(name)
   Object.assign(decls, declsOf(m))
+  for (const b of drawsOf(m)) drawers.set(b, [...drawers.get(b) ?? [], name])
 }
 
 // Nothing of the plugin API runs while an app plugin's module loads: the core behind it may not have run yet (the Dock
@@ -144,6 +146,10 @@ function titleProblems(file: string, rel: string): string[] {
   return out
 }
 for (const d of [path.join(ROOT, "web", "src"), PLUGINS]) for (const f of walk(d)) if (f.endsWith(".tsx")) problems.push(...titleProblems(f, path.relative(ROOT, f)))
+
+// A block drawn for another plugin is declared with `by`, its `by` option taking those that draw it.
+for (const [b, ps] of drawers) if (!decls[b]?.by) problems.push(`plugins/core/${ps[0]}/manifest.json: draws '${b}', which no app plugin declares with \`by\``)
+for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, drawers.get(b) ?? [])
 
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "pages", "Design.md"), path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),

@@ -10,6 +10,7 @@ import type { MenuItem } from "@/components/ContextMenu"
 import type { Sidebars } from "../../../core/sidebars.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { TextSizeKind } from "@/core/textsize"
+import type { GridCard, GridEdit } from "@/editor/livePreview"
 import type { EditorSettings } from "@/core/editorPrefs"
 import type { Disclosures } from "../../../core/pluginmeta.ts"
 
@@ -33,6 +34,9 @@ export type Manifest = {
   /** Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core
    *  checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs. */
   blocks?: BlockDecls
+  /** Blocks another plugin declares that it draws too, picked by their `by` option (`block-agent-usage` with `agent:
+   *  codex`): it draws each in its definition and as text, like its own. */
+  draws?: string[]
   /** Its settings (.vaultite/plugins/<id>/data.json), typed like a block's options plus a label each (core/blocks.ts
    *  SettingDecl): its settings sheet draws them as a form, and its docs list them (`vau docs <id>`). */
   settings?: SettingDecls
@@ -73,19 +77,20 @@ export type FileView = {
   /** It draws these files as pages (see PageView): Dashboards' `type: dashboard`. */
   page?: PageView
 }
-/** A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview. The file is
- *  still the only state: the page comes from its frontmatter and blocks. */
+/** A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as
+ *  read with `editGrid`. The file is still the only state: the page comes from its frontmatter and blocks. */
 export type PageView = {
-  /** Its top, with the page's name: in a tab (`place: "page"`) in place of the file's title, in a sheet under it. */
-  header?: (ctx: PageCtx) => ReactNode
-  /** The rest of the page. */
+  /** The page, under the file's title (the same title as every file's). */
   render: (ctx: PageCtx) => ReactNode
   /** True when the page is only text (a dashboard without blocks): it reads at a note's width, centred like one,
    *  instead of a page of cards'. */
   narrow?: (ctx: PageCtx) => boolean
+  /** Edited as it's read: each run of blocks (with only blank lines between) drawn by this in the editor, its text
+   *  edited in place around them. */
+  editGrid?: (cards: GridCard[], edit: GridEdit, ctx: PageCtx) => ReactNode
 }
-/** What a page view gets: the file as it is in the editor, the page's name (a tab carries its head's), where it's
- *  drawn, and which plugins are off. */
+/** What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are
+ *  off. */
 export type PageCtx = FileCtx & { title: string; place: "page" | "sheet"; disabled: string[] }
 /** What a block gets: the file as in the editor now, its text and that text as YAML options with declared defaults.
  *  The core draws the rest alike for every block: plugin off, errors (each block isolated), loading, option notes. */
@@ -349,10 +354,10 @@ export type FileBarItem = {
   sort?: number
 }
 
-/** Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, in every
- *  mode but source. Nothing when render answers null. */
+/** Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, dashboards
+ *  too, in every mode but source; `place`: in a tab or a sheet. Nothing when render answers null. */
 export type NoteTopItem = {
-  render: (file: FileHead) => ReactNode
+  render: (file: FileHead & { place: "page" | "sheet" }) => ReactNode
   /** Its place, top to bottom, when several plugins have one. */
   sort?: number
 }

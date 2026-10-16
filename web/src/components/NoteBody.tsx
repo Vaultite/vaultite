@@ -5,17 +5,15 @@ import type { Store } from "@/core/data"
 import type { FileCtx } from "@/core/define"
 import { readProps } from "@/core/frontmatter"
 import { usePrefs } from "@/core/prefs"
-import { BlockView, segments, useKindBlocks } from "@/components/Blocks"
+import { BlockView, segments } from "@/components/Blocks"
 import { Markdown } from "@/components/Markdown"
 import { EmbedView } from "@/components/NoteEmbed"
 import { cn } from "@/lib/utils"
 
-/** `path`'s body (no frontmatter), drawn read-only. `fm`: its frontmatter as text, for the blocks that read it. `whole`:
- *  the file's whole body, so its kind's blocks it doesn't place are drawn on top, as its page has them. */
-export function NoteBody({ store, path, body, fm = "", whole, className }: { store: Store; path: string; body: string; fm?: string; whole?: boolean; className?: string }) {
+/** `path`'s body (no frontmatter), drawn read-only. `fm`: its frontmatter as text, for the blocks that read it. */
+export function NoteBody({ store, path, body, fm = "", className }: { store: Store; path: string; body: string; fm?: string; className?: string }) {
   const { disabled } = usePrefs()
-  const kind = useKindBlocks(store, path)
-  const parts = useMemo(() => segments(body, whole ? kind : undefined), [body, whole, kind])
+  const parts = useMemo(() => segments(body), [body])
   const ctx: FileCtx = useMemo(() => ({ store, path, fm: readProps(fm).props, body }), [store, path, fm, body])
   return (
     <div className={cn("note-body", className)} data-note-body={path}>

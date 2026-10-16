@@ -1,10 +1,10 @@
 ## Pinned
 The sidebar's pages are the files pinned there: `pinned` in `.vaultite/pages.json`, vault paths in order. Any file can
 be pinned (a dashboard, a note, an artifact, a table), and so can a heading in a note (`Notes/Idea.md#Plan`, a block
-`Notes/Idea.md#^id`) and a search (`search:tag:#book`), like bookmarks; the pages plugins bring are pinned when they're first installed,
-and only then (an unpinned one stays unpinned; never with `"pinNew": false` in pages.json). A pinned file whose `plugin:` is off, or that's archived, stays in
-`pinned` but doesn't show, and comes back where it was. A page's other tabs (`tabs:`) aren't pinned: the head's strip
-leads to them. Pins follow their files when they're moved or deleted through the app or the API.
+`Notes/Idea.md#^id`) and a search (`search:tag:#book`), like bookmarks; the pages a plugin writes when it's turned on
+are pinned then (never with `"pinNew": false` in pages.json). A pinned file whose `plugin:` is off, or that's archived,
+stays in `pinned` but doesn't show, and comes back where it was. Pins follow their files when they're moved or deleted
+through the app or the API.
 - With Workspaces on, each workspace has its own list (`pinned` in its entry, see Workspaces): pages.json's is then
   the default, what a workspace without a list of its own shows (and new workspaces start with); the first pin or
   unpin in a workspace copies it and changes the copy. The pages a plugin brings, pinned when it's turned on, go into

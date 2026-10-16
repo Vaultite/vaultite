@@ -18,7 +18,7 @@ import type { ServerError } from "./serverlog.ts"
 import { enabled, hostOps, HTTPError, LOADED, LOCAL, load as loadPlugins, vaultHere, match, matchServed, type Plugin, propertyTypes, Reply, reply, type RequestEnd, type RequestStart, Request, service, settingDefaults, Text } from "./plugins.ts"
 import { readTypes } from "./proptypes.ts"
 import { blockOn, blockSources, render } from "./render.ts"
-import { COMMON } from "./blocks.ts"
+import { type BlockDecls, COMMON, drawnBy, drawsOf } from "./blocks.ts"
 import { topic, topics } from "./docs.ts"
 import * as SP from "./statepatch.ts"
 import { coreOps } from "./coreops.ts"
@@ -58,7 +58,7 @@ export class App {
   private snaps: Snap[] = [] // the last states the app was given, oldest first
   private boot = Date.now().toString(36)
   private seq = 0
-  private pagesOf = "" // the plugins that were on when their pages were last installed (onKey)
+  private pagesOf = "" // the plugins that were on at the last look (onKey): those turned on since get their pages
   /** The user's open window, driven from outside (server.ts sets it: POST /api/ui's handler, core/live.ts). */
   ui: ((message: Item | null) => unknown) | null = null
   private core: Op[] | null = null
@@ -116,7 +116,7 @@ export class App {
     this.vaultPlugins.blocked = (vp) => this.index.blockedWhy(vp.id, typeof vp.manifest.version === "string" ? vp.manifest.version : null,
       [readLock(this.vault)[vp.id]?.repo, typeof vp.manifest.repo === "string" ? vp.manifest.repo : null])
     this.wire()
-    await this.syncPlugins(false)
+    await this.syncPlugins()
     timing?.mark("vault plugins")
     this.pagesOf = this.onKey()
     // (asked only of a vault with plugins installed from the directory: one day old, the blocklist is fetched again)
@@ -135,19 +135,24 @@ export class App {
     this.vault.patchConfig("plugins", { disabled: disabled.filter((id) => !both.includes(id) || !optIn(id)), enabled: enabled.filter((id) => !both.includes(id) || optIn(id)) })
   }
 
-  /** Load, reload or unload the vault's own plugins. Runs before every request and before the files are read, so a
-   *  plugin's kinds apply to them; `refresh`: their dashboards follow. */
-  async syncPlugins(refresh = true) {
-    const changed = await this.vaultPlugins.sync()
+  /** Load, reload or unload the vault's own plugins, and adopt updates made elsewhere. Runs before every request and
+   *  before the files are read, so a plugin's kinds apply to them; then the pages of plugins turned on (followPlugins). */
+  async syncPlugins({ pages: write = true } = {}) {
+    const changed = await this.loadPlugins()
     this.adopt()
+    this.followPlugins(write)
+    return changed
+  }
+
+  /** Load, reload or unload the vault's own plugins as plugins.json and this machine's yes say now. */
+  private async loadPlugins() {
+    const changed = await this.vaultPlugins.sync()
     if (changed) {
       this.plugins = [...this.app, ...this.vaultPlugins.loaded()]
       LOADED.splice(0, LOADED.length, ...this.plugins)
       this.vault.pluginList = this.plugins
     }
     setMarks(this.plugins.map((p) => p.manifest))
-    // Only the pages of plugins that are on are installed (core/pages.ts): one turned on brings its pages now.
-    if (refresh && (changed || this.pagesOf !== this.onKey())) this.installPages()
     return changed
   }
 
@@ -202,43 +207,45 @@ export class App {
     try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "What's new", open: link } }) } catch { /* no window */ }
   }
 
-  /** Which plugins are on, as one string (what installPages was last run for); "offering" while a new vault is being
-   *  offered the bundles. */
+  /** Which plugins are on, as one string; "offering" while a new vault is being offered the bundles (none yet). */
   private onKey() {
     return B.offering(this.vault) ? "offering" : [...enabled(this.vault, this.plugins)].sort().join(",")
   }
 
   /** GET /api/blocks: every plugin's blocks as declared in its manifest, with whether it's on and has a text side (an
-   *  undeclared block with a text side too: `declared: false`). */
+   *  undeclared block with a text side too: `declared: false`); a `by` option takes the plugins on that draw it. */
   blocks() {
     const on = enabled(this.vault, this.plugins)
     const loaded = new Map(this.plugins.map((p) => [p.id, p]))
+    const drawers = (block: string) => this.plugins.filter((p) => drawsOf(p.manifest).includes(block))
     const rows: Item[] = []
-    const add = (id: string, name: string, tier: string, decls: Item, texts: Set<string> | null) => {
+    const add = (id: string, name: string, tier: string, decls: BlockDecls, texts: Set<string> | null, draws: string[]) => {
       for (const [block, d] of Object.entries(decls)) {
-        rows.push({ name: block, plugin: id, pluginName: name, tier, on: on.has(id), declared: true, text: texts ? texts.has(block) : null,
-          description: d.description ?? "", options: d.options ?? {} })
+        const by = d.by ? drawers(block) : null
+        rows.push({ name: block, plugin: id, pluginName: name, tier, on: on.has(id), declared: true,
+          text: by ? by.some((p) => p.textBlocks.has(block)) : texts ? texts.has(block) : null,
+          description: d.description ?? "", options: (by ? drawnBy(d, by.filter((p) => on.has(p.id)).map((p) => p.id)) : d).options ?? {} })
       }
       for (const block of texts ?? []) {
-        if (!Object.hasOwn(decls, block)) rows.push({ name: block, plugin: id, pluginName: name, tier, on: on.has(id), declared: false, text: true, description: "", options: {} })
+        if (!Object.hasOwn(decls, block) && !draws.includes(block)) rows.push({ name: block, plugin: id, pluginName: name, tier, on: on.has(id), declared: false, text: true, description: "", options: {} })
       }
     }
-    for (const p of this.app) add(p.id, String(p.manifest.name ?? p.id), p.tier, p.blocks, new Set(p.textBlocks.keys()))
+    for (const p of this.app) add(p.id, String(p.manifest.name ?? p.id), p.tier, p.blocks, new Set(p.textBlocks.keys()), drawsOf(p.manifest))
     for (const v of this.vaultPlugins.list()) {
       const p = loaded.get(v.id as string)
-      add(v.id as string, v.name as string, "vault", v.blocks as Item, p ? new Set(p.textBlocks.keys()) : null)
+      add(v.id as string, v.name as string, "vault", v.blocks as BlockDecls, p ? new Set(p.textBlocks.keys()) : null, v.draws as string[])
     }
     return { common: COMMON, blocks: rows }
   }
 
-  installPages() {
-    const key = this.onKey(), picked = this.pagesOf === "offering"
+  /** Plugins a request turned on (in a hold: the app, vau, a bundle) write their pages (core/pages.ts; unpinned just as a
+   *  new vault picks its setup). Turned on elsewhere (by hand, another machine) or found on opening: nothing. */
+  private followPlugins(write = true) {
+    const key = this.onKey(), was = this.pagesOf
     this.pagesOf = key
-    // A new vault picking its setup gets the pages of the plugins it ends up with, not of every plugin on by default.
-    if (key === "offering") return []
-    // Just after it picked a bundle (which pinned its own pages; skipping picks Minimal) the rest aren't pinned; with no
-    // pins yet, all of them are.
-    return pages.install(this.vault, this.plugins, { pin: !(picked && fs.existsSync(this.vault.abs(".vaultite/pages.json"))) })
+    if (!write || key === was || key === "offering" || !this.holding.getStore()?.on) return []
+    const before = new Set(was === "offering" ? [] : was.split(","))
+    return pages.writePages(this.vault, this.plugins, key.split(",").filter((id) => id && !before.has(id)), { pin: was !== "offering" })
   }
 
   /** Everything the web app shows, worked out again only when the vault, its settings or its plugins changed, frozen
@@ -314,7 +321,8 @@ export class App {
       plugins: () => this.plugins,
       vaultPlugins: () => this.vaultPlugins.list(),
       call: (method, route, body) => this.apiAs(method, route, body, this.who(), { http }),
-      syncPlugins: () => this.syncPlugins(),
+      syncPlugins: (opts) => this.syncPlugins(opts),
+      writePages: (opts) => pages.writePages(this.vault, this.plugins, enabled(this.vault, this.plugins), opts),
       allow: async (ids) => {
         if (http && await this.ownerWhy(http, "allowing vault plugins")) return
         for (const id of ids) {
@@ -598,13 +606,17 @@ export class App {
   // ---------- holding the vault, calling ops and the API in-process, events (core/events.ts) ----------
 
   /** fn with the vault held (a write: synced first, then nobody else's write until it's done), as server.ts runs every
-   *  write request; at once when this call already holds it (an op run by an op). */
+   *  write request; at once when this call already holds it (an op run by an op). Then plugins it turned on: followPlugins. */
   hold<T>(fn: () => Promise<T> | T): Promise<T> {
     if (this.holding.getStore()?.on) return Promise.resolve().then(fn)
     return this.vault.lock(async () => {
       const token = { on: true }
       try {
-        return await this.holding.run(token, async () => { await this.vault.sync(); return await fn() })
+        return await this.holding.run(token, async () => {
+          await this.vault.sync()
+          this.pagesOf = this.onKey()
+          try { return await fn() } finally { await this.loadPlugins().then(() => this.followPlugins(), (e) => console.error("plugins:", e)) }
+        })
       } finally {
         token.on = false
       }
@@ -798,20 +810,17 @@ export function jsonOf(body: unknown): string | Buffer {
   return data
 }
 
-/** Open a vault: load the plugins, install dashboards, read every file. The event loop turns between steps, so a
- *  starting server answers its web app's files meanwhile. */
+/** Open a vault: load the plugins, read every file (writing nothing outside .vaultite/). The event loop turns between
+ *  steps, so a starting server answers its web app's files meanwhile. */
 export async function open(vaultPath: string, { start = true, timing }: { start?: boolean; timing?: { mark(part: string): void } } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
-  // A vault the app has never opened (no .vaultite/ yet): it starts from Minimal (core/start.ts); until then, no
-  // plugin's pages are installed (core/bundles.ts offering).
+  // A vault the app has never opened (no .vaultite/ yet): it starts from Minimal (core/start.ts); the plugins' pages
+  // come when it picks its setup (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
     app.tidyPluginLists()
-    await turn()
-    app.installPages()
-    timing?.mark("pages")
     await turn()
     await app.vault.sync()
     timing?.mark("vault read")

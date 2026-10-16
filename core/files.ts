@@ -7,13 +7,12 @@ import { setImmediate as turn } from "node:timers/promises"
 import { Readable } from "node:stream"
 import { pipeline } from "node:stream/promises"
 import { HTTPError, LOADED, type Plugin, reply, serviceFor } from "./plugins.ts"
-import { ARCHIVE_DIR, inArchive, inPagesDir } from "./fileprops.ts"
+import { ARCHIVE_DIR, inArchive } from "./fileprops.ts"
 import { isTextKind, kindOf, tooBig } from "./filetypes.ts"
 import { highlighter, matches, type Node, parse, SearchError } from "./searchquery.ts"
 import { merge3 } from "./textedit.ts"
 import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
-import { tabNames } from "./tabs.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
 import { guard } from "./writegate.ts"
 import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
@@ -27,10 +26,10 @@ export function showHidden(vault: Vault | null) {
   return !!(vault && vault.config("files").showHidden)
 }
 
-/** Read-only: the trash, the app's generated copies and plugins' built-in pages (Copy to my vault makes one the
- *  user's). Not .vaultite/AGENTS.md: the user's own rules go in it, under Agent files. */
+/** Read-only: the trash and the app's generated copies. Not .vaultite/AGENTS.md: the user's own rules go in it, under
+ *  Agent files. */
 export function locked(rel: string) {
-  return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/") || inPagesDir(rel)
+  return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")
 }
 
 /** [stem, extension] like Python's os.path.splitext: a leading dot isn't an extension. */
@@ -52,8 +51,7 @@ export function clean(p: unknown, mustExist = false, vault: Vault | null = null,
   const hidden = showHidden(vault) || (explicit && SETTINGS.test(parts.join("/"))) ||
     // Something in the trash, to restore it (Undo after a delete), even with hidden files off.
     (trash && parts.length > 1 && parts[0] === ".trash" && !parts.slice(1).some((x) => x.startsWith(".")))
-  const pages = inPagesDir(parts.join("/")) && parts.length > 2 // (a page in it, not the folder)
-  if (!parts.length || parts.some((x) => x === ".." || SKIP.has(x) || (x.startsWith(".") && x !== ARCHIVE_DIR && !hidden && !pages))) {
+  if (!parts.length || parts.some((x) => x === ".." || SKIP.has(x) || (x.startsWith(".") && x !== ARCHIVE_DIR && !hidden))) {
     throw new HTTPError(400, `not a path in the vault: '${p ?? "None"}'`)
   }
   if (parts.some((x) => /[*"\\<>:|?]/.test(x))) throw new HTTPError(400, 'names can\'t contain * " \\ < > : | ?')
@@ -118,10 +116,7 @@ function row(vault: Vault, rel: string, e: Entry): Item {
   const aliases = e.fm.aliases
   // How it shows in the tree, tabs and the sidebar (a dashboard's icon and colour, the plugin that brought it), if the file says.
   const look: Item = {}
-  for (const k of ["icon", "tint", "plugin", "tab"]) if (typeof e.fm[k] === "string") look[k] = e.fm[k]
-  // A page with tabs (core/tabs.ts): the files after it.
-  const tabs = tabNames(e.fm.tabs)
-  if (tabs) look.tabs = tabs
+  for (const k of ["icon", "tint", "plugin"]) if (typeof e.fm[k] === "string") look[k] = e.fm[k]
   const title = e.fm.title || e.fm.name || stemOf(rel)
   return {
     ...look,
@@ -164,9 +159,7 @@ export function tree(vault: Vault): Tree {
         r = row(vault, rel, e)
         if (!e.body.includes("](")) rows.set(e, r)
       }
-      // Its kind's blocks, drawn on top where it doesn't place them (a log's can follow its area's settings).
-      const view = e.kind?.blocksFor(e.fm) ?? [], out = vault.excluded(rel)
-      files.push(view.length || out ? { ...r, ...(view.length ? { kindBlocks: view } : {}), ...(out ? { excluded: true } : {}) } : r)
+      files.push(vault.excluded(rel) ? { ...r, excluded: true } : r)
     }
     // Files a plugin makes pages (its `looks:<ext>`: an artifact, a table) are files you open, like notes, named by their
     // title (else their name without the extension); the rest (images, PDFs, canvases) are only served.
@@ -216,7 +209,7 @@ function hiddenFiles(vault: Vault): [Item[], string[]] {
         stack.push([rel, hid])
         continue
       }
-      if (!hid || inPagesDir(rel)) continue // (the pages folder's are indexed: in the tree already)
+      if (!hid) continue
       files.push({ path: rel, mtime: ms(st.mtimeNs), ctime: statFrom(st).born, size: Number(st.size) })
     }
   }
@@ -688,7 +681,6 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       if (rel === ".vaultite" || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")) {
         throw new HTTPError(403, `${rel} is the app's; it can't be deleted`)
       }
-      if (inPagesDir(rel)) throw new HTTPError(403, `${rel} is a plugin's page: unpin it, or turn its plugin off`)
       let trashed: string | undefined
       guard(vault.abs(rel))
       if (rel === ".trash" || rel.startsWith(".trash/")) fs.rmSync(vault.abs(rel), { recursive: true }) // gone for good

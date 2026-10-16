@@ -2,8 +2,9 @@
 type: dashboard
 icon: server
 tint: teal
-subtitle: The machine that runs Vaultite
 ---
+
+The machine that runs Vaultite.
 
 ```block-machines
 wide: true

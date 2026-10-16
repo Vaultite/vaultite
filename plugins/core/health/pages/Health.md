@@ -3,7 +3,6 @@ type: dashboard
 plugin: health
 icon: heart
 tint: health
-subtitle: Training, sleep and food
 ---
 
 ```block-week-goals

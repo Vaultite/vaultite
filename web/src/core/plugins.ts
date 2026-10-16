@@ -24,6 +24,7 @@ import { autoUpdates, byPolicy } from "../../../core/updates.ts"
 import { setMarks } from "../../../core/fileprops.ts"
 import { switched } from "../../../core/pluginmeta.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
+import { drawnBy } from "../../../core/blocks.ts"
 
 export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
 export { readSidebars, sameSidebars } from "../../../core/sidebars.ts"
@@ -625,19 +626,29 @@ setFormatLookup((path) => {
 
 setFenceLookup((lang) => PLUGINS.some((p) => p.fences?.[lang] && isEnabled(p.id, getPrefs().disabled)))
 
-/** Who draws ```block-<name> (the enabled plugin that has it, else the one that would, off) and its declaration, null
- *  when undeclared. A "```<lang>" name is a code fence a plugin draws: its text is its own, so no declaration. */
-export function blockFor(name: string, disabled: string[]) {
+/** Who draws ```block-<name> (the enabled plugin that has it, else the one that would, off; with `by`, the one its option
+ *  names, else `unnamed` says why) and its declaration. A "```<lang>" name is a fence a plugin draws: no declaration. */
+export function blockFor(name: string, disabled: string[], options: Record<string, unknown> = {}) {
   if (name.startsWith("```")) {
     const lang = name.slice(3), all = PLUGINS.filter((p) => p.fences?.[lang])
     const on = all.find((p) => isEnabled(p.id, disabled))
-    return { plugin: on ?? all[0] ?? null, render: on ? on.fences![lang] : null, decl: null }
+    return { plugin: on ?? all[0] ?? null, render: on ? on.fences![lang] : null, decl: null, unnamed: "" }
+  }
+  const declared = PLUGINS.filter((p) => p.blockDecls && Object.hasOwn(p.blockDecls, name))
+  const declarer = declared.find((p) => isEnabled(p.id, disabled)) ?? declared[0]
+  const by = declarer?.blockDecls[name].by
+  if (by && isEnabled(declarer.id, disabled)) {
+    const drawers = PLUGINS.filter((p) => p.draws?.includes(name) && p.blocks?.[name])
+    const decl = drawnBy(declarer.blockDecls[name], drawers.filter((p) => isEnabled(p.id, disabled)).map((p) => p.id))
+    const p = drawers.find((x) => x.id === String(options[by] ?? "")) ?? null
+    const unnamed = p ? "" : `This ${name} block needs ${by}: one of ${decl.options![by].values!.join(", ") || "none that's on"}.`
+    return { plugin: p, render: p && isEnabled(p.id, disabled) ? p.blocks![name] : null, decl, unnamed }
   }
   const all = PLUGINS.filter((p) => p.blocks?.[name])
   const on = all.find((p) => isEnabled(p.id, disabled))
   const p = on ?? all[0] ?? null
   const decl = p?.blockDecls && Object.hasOwn(p.blockDecls, name) ? p.blockDecls[name] : null
-  return { plugin: p, render: on ? on.blocks![name] : null, decl }
+  return { plugin: p, render: on ? on.blocks![name] : null, decl, unnamed: "" }
 }
 
 // Views' titles and icons can follow live data a plugin keeps (a terminal's session name and state): the plugin says

@@ -4,7 +4,6 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, read, tmp, vault, write } = $
-  const { tree } = $.vars
   let code: number
   // /api/render: a file with its blocks filled in as text (for AIs); nothing is written.
   const beforeToday = read("Dashboards/Today.md")
@@ -60,43 +59,50 @@ export default async ($: VaultTest) => {
   // GET /api/blocks: every block, its plugin, on or off, its options.
   {
     const [bc, bl] = await api("GET", "blocks")
-    const qb = bl.blocks.find((b: Any) => b.name === "query")
-    check("/api/blocks: every app plugin's block, declared, with its options and text side", bc === 200 && qb?.plugin === "query" && qb.declared && qb.text === true
+    const qb = bl.blocks.find((b: Any) => b.name === "activity")
+    check("/api/blocks: every app plugin's block, declared, with its options and text side", bc === 200 && qb?.plugin === "activity" && qb.declared && qb.text === true
       && qb.options.limit?.type === "number" && typeof qb.description === "string" && bl.common.wide && bl.common.file, qb)
     check("/api/blocks: whether its plugin is on", bl.blocks.find((b: Any) => b.name === "routines")?.on === true, bl.blocks.length)
   }
   // GET /api/blocks/sources: where a block's data comes from, recorded while its text side runs (core/sources.ts).
   {
     write("Notes/Qa sources.md", "---\ntype: note\n---\n\n```block-person\nfile: Alice Park\n```\n\n```block-people-group\n```\n\n" +
-      "```block-query\ntype: person\n```\n\n```block-agenda\n```\n")
+      "```block-graph\ndepth: 2\n```\n\n```block-agenda\n```\n")
     const [sc, all] = await api("GET", "blocks/sources?path=Notes/Qa sources.md")
     const by = (n: string) => all.blocks.find((b: Any) => b.name === n)
     const at = (fence: string) => read("Notes/Qa sources.md").split("\n").indexOf(fence)
     const files = (b: Any) => b.sources.filter((x: Any) => x.kind === "file").map((x: Any) => x.path)
-    check("sources: every block in the file, each with its fence's line", sc === 200 && all.blocks.length === 4 && by("person").line === at("```block-person") && by("query").line === at("```block-query") && at("```block-query") > 0, all)
+    check("sources: every block in the file, each with its fence's line", sc === 200 && all.blocks.length === 4 && by("person").line === at("```block-person") && by("graph").line === at("```block-graph") && at("```block-graph") > 0, all)
     check("sources: a person's profile reads that person's file (its file:), not every person", JSON.stringify(files(by("person"))) === '["People/Alice Park.md"]' &&
       by("person").file === "People/Alice Park.md" && !by("person").sources.some((x: Any) => x.kind === "files"), by("person"))
     const group = by("people-group")
     check("sources: a list names the files it shows", files(group).includes("People/Alice Park.md") && !files(group).includes("Notes/Qa sources.md"), group)
-    check("sources: a query's are its matches, not the file it's in", files(by("query")).includes("People/Alice Park.md") && !files(by("query")).includes("Notes/Qa sources.md"), by("query"))
     check("sources: live data is said in the manifest's words", by("agenda").sources.some((x: Any) => x.kind === "live" && /calendars/.test(x.label)), by("agenda"))
-    const [c1, one] = await api("GET", "blocks/sources?path=Notes/Qa sources.md&name=query&text=type: person")
-    check("sources: one block by its name and options' text", c1 === 200 && one.name === "query" && one.line === at("```block-query") && one.description, one)
+    const [c1, one] = await api("GET", "blocks/sources?path=Notes/Qa sources.md&name=graph&text=depth: 2")
+    check("sources: one block by its name and options' text", c1 === 200 && one.name === "graph" && one.line === at("```block-graph") && one.description, one)
     check("sources: a missing file is a 404, a bad name a 400", (await api("GET", "blocks/sources?path=Nope.md"))[0] === 404 &&
       (await api("GET", "blocks/sources?path=Notes/Qa sources.md&name=no%20pe"))[0] === 400)
     check("sources: nothing is traced outside a request for them", (await api("GET", "render?path=Notes/Qa sources.md"))[0] === 200)
   }
-  // Tabs: a page's views are files (core/tabs.ts); the index carries tab/tabs and render says which tab this is.
-  const people = tree.files.find((x: Any) => x.path === "Dashboards/People.md")
-  check("the file index has a page's tabs", people.tab === "List" && JSON.stringify(people.tabs) === '["People map"]', people)
-  txt = (await api("GET", "render?path=Dashboards/People map.md"))[1]
-  check("render names the tabs, this one in bold", txt.includes("Tabs: [[People|List]] · **Map**"), txt.slice(0, 400))
+  // Page tabs (plugins/core/page-tabs): pages joined as tabs of one; the app's state has every group, render says which
+  // tab a page is. The core's file index knows nothing of them.
+  write("Notes/Tabs/Head.md", "---\ntab: List\ntabs: [Other]\n---\n\nThe head.\n")
+  write("Notes/Tabs/Other.md", "---\ntab: Map\n---\n\nThe other.\n")
   {
-    const { pageTabs } = await import("../../../core/tabs.ts")
-    const files = [{ path: "CLAUDE.md" }, { path: "Personal/Dashboards/Agents.md", tab: "Overview", tabs: ["Claude", "Codex"] }, { path: "Personal/Dashboards/Claude.md" }, { path: "Personal/Dashboards/Codex.md" }]
-    check("tabs: a name is found beside its head first (not the vault's CLAUDE.md)", pageTabs(files, "Personal/Dashboards/Agents.md").map((t) => t.path).join() === "Personal/Dashboards/Agents.md,Personal/Dashboards/Claude.md,Personal/Dashboards/Codex.md",
-      pageTabs(files, "Personal/Dashboards/Agents.md"))
+    const [, st] = await api("GET", "state")
+    const group = st.pageTabs?.find((g: Any) => g[0].path === "Notes/Tabs/Head.md")
+    check("page tabs: the state has the group, head first", JSON.stringify(group) === JSON.stringify([{ path: "Notes/Tabs/Head.md", label: "List" }, { path: "Notes/Tabs/Other.md", label: "Map" }]), st.pageTabs)
+    check("page tabs: the file index has no tab fields", !("tab" in st.files.files.find((f: Any) => f.path === "Notes/Tabs/Head.md")), null)
   }
+  txt = (await api("GET", "render?path=Notes/Tabs/Other.md"))[1]
+  check("page tabs: render names the tabs, this one in bold", txt.includes("Tabs: [[Head|List]] · **Map**"), txt.slice(0, 400))
+  {
+    const { tabGroups } = await import("../../../plugins/core/page-tabs/tabs.ts")
+    const files = [{ path: "CLAUDE.md" }, { path: "Personal/Dashboards/Agents.md", tab: "Overview", tabs: ["Claude", "Codex"] }, { path: "Personal/Dashboards/Claude.md" }, { path: "Personal/Dashboards/Codex.md" }]
+    check("page tabs: a name is found beside its head first (not the vault's CLAUDE.md)", tabGroups(files)[0].map((t) => t.path).join() === "Personal/Dashboards/Agents.md,Personal/Dashboards/Claude.md,Personal/Dashboards/Codex.md",
+      tabGroups(files))
+  }
+  fs.rmSync(path.join(VAULT, "Notes/Tabs"), { recursive: true })
   // `file:` in a block's options: drawn for another file (a name, or a folder's newest file).
   write("Notes/Showcase.md", "```block-person\nfile: Alice Park\n```\n\n```block-person\nfile: Nobody Here\n```\n")
   txt = (await api("GET", "render?path=Notes/Showcase.md"))[1]
@@ -105,7 +111,7 @@ export default async ($: VaultTest) => {
     data: { exercises: [{ name: "Bench Press", sets: [{ type: "normal", weight_kg: 50, reps: 8 }] }] } }])
   const gym = (await api("GET", "state"))[1].logs.find((x: Any) => x.ext_id === "block-gym")
   let t = read(gym.id + ".md")
-  check("a new log's kind's blocks are its area's too", !t.includes("```") && JSON.stringify((await api("GET", "files"))[1].files.find((f: Any) => f.path === gym.id + ".md")?.kindBlocks) === JSON.stringify(["log", "workout"]), t)
+  check("a new log's fences are its area's blocks too", t.includes("```block-log\n```\n\n```block-workout\n```"), t)
   check("a workout renders as text", (await api("GET", `render?path=${gym.id}.md`))[1].includes("Bench Press: 50 kg x 8"))
   // Logs knows no areas of its own: with no areas setting, the plugins that draw them bring theirs (the service
   // `log-areas`), and an area set without an icon or colour takes the one its plugin gives.

@@ -1,8 +1,8 @@
-// [[Links]] resolved as Obsidian does, on server and app (web/src/core/links.ts): a path, a file name, then titles,
-// aliases and plugins' names; of several, the closest to the linking file wins, an archived one last. No Node.
+// [[Links]] resolved as Obsidian does, on server and app (web/src/core/links.ts): a path, a file name, then aliases
+// and plugins' names; of several, the closest to the linking file wins, an archived one last. No Node.
 
 /** A file as links see it. `names` are what plugins add (a person's name); `archived`: it loses ties. */
-export type LinkFile = { path: string; title?: string; aliases?: string[]; names?: string[]; archived?: boolean }
+export type LinkFile = { path: string; aliases?: string[]; names?: string[]; archived?: boolean }
 /** Something a link can go to: a file (`path`), or only a name (`labels`) for what isn't one. `bare`: its name counts
  *  without its extension too (by default, a note's). */
 export type LinkEntry<T> = { value: T; path?: string; bare?: boolean; labels?: string[]; archived?: boolean }
@@ -120,7 +120,7 @@ export function linkIndex<T>(entries: LinkEntry<T>[]): { resolve: Resolve<T>; su
 /** A resolver over these files: a link target (written in `from`) to a file's path, or null. */
 export function linkResolver(files: LinkFile[]): Resolve<string> {
   return linkIndex(files.map((f) => ({ value: f.path, path: f.path, archived: f.archived,
-    labels: [f.title ?? "", ...(f.aliases ?? []), ...(f.names ?? [])] }))).resolve
+    labels: [...(f.aliases ?? []), ...(f.names ?? [])] }))).resolve
 }
 
 const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g

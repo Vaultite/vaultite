@@ -176,7 +176,7 @@ plugin.route("POST", "workspaces/*/pins/default", (req) => {
   return { pinned: own }
 })
 
-/** Pages just pinned in the vault's list because their plugin brought them (Pinned, when they're installed): a
+/** Pages just pinned in the vault's list because their plugin wrote them, turned on (Pinned): a
  *  workspace with a list of its own gets them too, at its end, so a plugin turned on shows its pages wherever you are. */
 plugin.provide("pins:installed", (paths: string[]) => {
   const list = slotList()

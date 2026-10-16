@@ -1,10 +1,9 @@
 // Pinning and dashboards are plugins (Pinned: plugins/core/pages, Dashboards: plugins/core/dashboards), each on and off,
-// on a computer and a phone. Both on: a dashboard is a page (its header, a grid of cards), a file opened from it opens
+// on a computer and a phone. Both on: a dashboard is a page (its title, a grid of cards), a file opened from it opens
 // beside it while a file opened from a pinned note replaces it (pinned isn't a page any more), Pin / Unpin are in the
 // tree's menu, the palette and Pinned's settings. Pinned off: no list in the sidebar or the phone's drawer, no Pin anywhere, no
 // tiles on a phone's new tab, a new device starts on a new tab, dashboards still pages. Dashboards off: a dashboard
-// opens as a Markdown file (its title, its blocks one under another in the editor), files open in its place, and
-// /api/render has no subtitle. Both off: nothing breaks. No page errors anywhere. WRITES .vaultite/plugins.json and
+// opens as a Markdown file (its title, its blocks one under another in the editor), files open in its place. Both off: nothing breaks. No page errors anywhere. WRITES .vaultite/plugins.json and
 // pages.json, and a note in Qa page plugins/ (removed at the end): throwaway server only.
 //   node web/qa/pageplugins.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -31,7 +30,7 @@ const PAGE_NAME = PAGE.split("/").pop().replace(/\.md$/, "")
 const pluginsFile = `${VAULT}/.vaultite/plugins.json`
 const pluginsWas = (() => { try { return readFileSync(pluginsFile, "utf8") } catch { return null } })()
 /** Turn plugins off (the file the app follows live), then a fresh page load. The vault's own list stays (Today is on
- *  only by it, and its page built in only while it's on). */
+ *  only by it, and its page hides while it's off). */
 async function setOff(ids) {
   const was = JSON.parse(pluginsWas ?? "{}")
   writeFileSync(pluginsFile, JSON.stringify({ ...was, disabled: [...was.disabled ?? [], ...ids] }) + "\n")
@@ -85,7 +84,8 @@ await setOff([])
   const { ctx, page } = await desktop()
   await page.goto(`${B}${hash(TODAY)}`)
   check("on: a dashboard is a grid of cards", await until(async () => (await isGrid(page)) > 0 && !(await editors(page)), 8000), await isGrid(page))
-  check("on: its header is the page's name", (await page.locator("article.file-view h1").first().innerText()).trim() === "Today")
+  check("on: its title is the page's name, as a note's", (await page.locator("article.file-view [data-title-row] h1").first().innerText()).trim() === "Today")
+  check("on: read, no Properties", (await page.locator("article.file-view section[aria-label=Properties]").count()) === 0)
   await page.screenshot({ path: `${OUT}on-today.png` })
   // A file opened from the dashboard (the tree) opens beside it.
   const n0 = await tabs(page)
@@ -173,8 +173,6 @@ await setOff(["dashboards"])
   check("dashboards off, phone: a dashboard opens as a file", (await m.locator("article.file-view .cm-editor").count()) > 0)
   await m.screenshot({ path: `${OUT}dashboards-off-phone.png`, fullPage: true })
   await pc.close()
-  const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(TODAY)}`)).text()
-  check("dashboards off: /api/render has no subtitle under the title", /\n# Today\n\n(?!\w+day, )/.test(md), md.slice(0, 160))
 }
 
 // ---------- both off ----------
@@ -196,5 +194,5 @@ await setOff(["dashboards", "pages"])
 if (pluginsWas === null) writeFileSync(pluginsFile, "{}\n"); else writeFileSync(pluginsFile, pluginsWas)
 rmSync(`${VAULT}/Qa page plugins`, { recursive: true, force: true })
 const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(TODAY)}`)).text()
-check("on again: /api/render has the subtitle under the title", /\n# Today\n\n\w+day, /.test(md), md.slice(0, 160))
+check("on again: /api/render has today's date in the routines' heading", /\n## Routines · \w+day \d+ \w+\n/.test(md), md.slice(0, 240))
 await done()

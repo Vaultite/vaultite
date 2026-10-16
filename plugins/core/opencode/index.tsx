@@ -1,8 +1,8 @@
 import { agentPlugin, definePlugin, type AgentSource } from "@vaultite"
 import { OpenCodeIcon } from "./OpenCodeIcon"
 
-// OpenCode's blocks and session tabs are the app's agent components (AgentUsage.tsx) on GET /api/opencode; its page is
-// the OpenCode dashboard (pages/OpenCode.md), and `opencode` goes in a project file. No plan limits: no limits block.
+// OpenCode draws the agent blocks (`agent: opencode`) and its session tabs with the app's agent components on GET
+// /api/opencode (pages/OpenCode.md). No plan limits: no agent-limits.
 const SRC: AgentSource = {
   path: "opencode", label: "OpenCode", icon: OpenCodeIcon, tint: "var(--blue)", agent: "opencode", view: "opencode-session",
   costNote: "Cost as OpenCode recorded it",
@@ -11,7 +11,7 @@ const SRC: AgentSource = {
 export default definePlugin(agentPlugin(SRC, {
   // `icon: opencode` in a file (its dashboard).
   icons: { opencode: OpenCodeIcon },
-  blocks: { "opencode-sessions": "sessions", "opencode-usage": "usage", "opencode-projects": "projects", "opencode-models": "models", opencode: "project" },
+  blocks: { "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   // (npm's package, Homebrew's too, runs it as bin/opencode.exe: what tmux names the pane)
   process: ["opencode", "opencode.exe"],
   opens: { open: { id: "opencode:open", name: "Open OpenCode" }, split: { id: "opencode:open-split", desktop: true, name: "Open OpenCode in right split" } },

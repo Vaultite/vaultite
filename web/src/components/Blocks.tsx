@@ -2,7 +2,8 @@
 // block its own error boundary), and while editing, option notes against its declaration.
 import { Suspense, useEffect, useMemo, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react"
 import { createPortal } from "react-dom"
-import { Ellipsis, SlidersHorizontal } from "lucide-react"
+import { Blocks, Ellipsis, SlidersHorizontal } from "lucide-react"
+import { choose } from "@/components/Chooser"
 import { Catch } from "@/components/Guard"
 import type { Store } from "@/core/data"
 import type { FileCtx } from "@/core/define"
@@ -14,24 +15,16 @@ import { notifyError } from "@/core/notify"
 import { resolver } from "@/core/links"
 import { blockFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
+import { slashItems } from "@/core/slash"
 import { Loading, Switch } from "@/components/kit"
 import { BlockSource, openBlockMenu } from "@/components/BlockSource"
 import type { BlockEdit } from "@/editor/livePreview"
 import { capitalize } from "@/lib/utils"
-import { onTop, optionNotes, parseOptions, resolveOptions, type BlockDecl, type OptionDecl } from "../../../core/blocks.ts"
+import { optionNotes, parseOptions, resolveOptions, type BlockDecl, type OptionDecl } from "../../../core/blocks.ts"
 
 /** A block's text read as options ({} when it's empty or isn't YAML), the way the server reads them (core/blocks.ts). */
 export function blockOptions(text: string): Record<string, unknown> {
   return parseOptions(text).options
-}
-
-/** A file's kind's blocks (the server's row: core/blocks.ts onTop). */
-export const kindBlocksOf = (store: Store, path: string) => store.files.files.find((f) => f.path === path)?.kindBlocks
-
-/** kindBlocksOf, the same array while they're the same. */
-export function useKindBlocks(store: Store, path: string): string[] | undefined {
-  const key = kindBlocksOf(store, path)?.join(",") ?? ""
-  return useMemo(() => (key ? key.split(",") : undefined), [key])
 }
 
 const NONE: string[] = []
@@ -50,10 +43,10 @@ export function kindStamps(store: Store, path: string): string[] {
 }
 
 /** A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped). `line`: its 0-based start, so a
- *  drawn page and the editor find the same place; `kind`: its kind's blocks, the unplaced ones drawn first. */
+ *  drawn page and the editor find the same place. */
 export type Segment = ({ block: string; text: string } | { md: string } | { embed: string; height?: number }) & { line: number }
-export function segments(body: string, kind?: string[]): Segment[] {
-  const out: Segment[] = onTop(kind, body).map((block) => ({ block, text: "", line: 0 }))
+export function segments(body: string): Segment[] {
+  const out: Segment[] = []
   const { lines, prose, fences } = scan(body)
   const opens = new Map(fences.map((f) => [f.open, f]))
   let md: string[] = []
@@ -85,12 +78,21 @@ export function segments(body: string, kind?: string[]): Segment[] {
   return out
 }
 
+/** Pick a block to add (the slash menu's: those of the plugins on), given as its fence with its required options. */
+export function chooseBlock(store: Store, pick: (fence: string) => void) {
+  const items = slashItems(store).filter((i) => i.section === "Blocks" && i.text)
+  choose({
+    title: "Add a block", placeholder: "Find a block…", items: items.map((i) => ({ id: i.id, label: i.title, detail: i.detail, icon: Blocks })),
+    onPick: (c) => { const it = items.find((i) => i.id === c.id); if (it?.text) pick(it.text.replace("$|", "")) },
+  })
+}
+
 /** ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`:
  *  nothing). `editing` shows option notes; `edit` (in an editor): its bar and options form, which writes its fence. */
 export function BlockView(props: { name: string; text: string; ctx: FileCtx; disabled: string[]; quiet?: boolean; editing?: boolean; nth?: number; edit?: BlockEdit }) {
   const { name, text, ctx, edit } = props
   const [form, setForm] = useState(false)
-  const decl = blockFor(name, props.disabled).decl
+  const decl = blockFor(name, props.disabled, parseOptions(text).options).decl
   // In an editor its fence changes there; drawn on a page (a dashboard), in its file, when that can be changed.
   const write = edit?.setText ?? (ctx.setProperty && props.nth !== undefined && !ctx.host
     ? (t: string) => void setBlockText(ctx.path, name, props.nth!, t).catch((e) => notifyError(e, "Couldn't change its options")) : null)
@@ -188,16 +190,16 @@ function OptionInput({ d, value, set }: { d: OptionDecl; value: unknown; set: (v
 }
 
 function Block({ name, text, ctx, disabled, quiet, editing }: { name: string; text: string; ctx: FileCtx; disabled: string[]; quiet?: boolean; editing?: boolean }) {
-  const { plugin, render, decl } = blockFor(name, disabled)
+  const parsed = parseOptions(text)
+  const { plugin, render, decl, unnamed } = blockFor(name, disabled, parsed.options)
   if (!render) {
     if (quiet) return null
     return (
       <p className="text-[15px] text-muted-foreground">
-        {plugin ? `${plugin.name} is off, so this ${name} block isn't drawn.` : `No plugin draws block-${name}.`}
+        {plugin ? `${plugin.name} is off, so this ${name} block isn't drawn.` : unnamed || `No plugin draws block-${name}.`}
       </p>
     )
   }
-  const parsed = parseOptions(text)
   const options = resolveOptions(decl, parsed.options)
   // A plugin's fence (```tasks) is written in its own language, not as options: nothing to note.
   const notes = editing && !name.startsWith("```") ? optionNotes(decl, parsed.options, parsed.error) : []
@@ -265,9 +267,7 @@ function OtherFile({ name, text, options, ctx, render, editing }: {
 export function FileBlocks({ store, path, fm = {}, fallback = [] }: { store: Store; path: string; fm?: Record<string, unknown>; fallback?: string[] }) {
   const { disabled } = usePrefs()
   const f = store.files.files.find((x) => x.path === path)
-  // (its kind's blocks it doesn't place first, as its page draws them)
-  const top = (f?.kindBlocks ?? []).filter((n) => !f!.blocks.some(([b]) => b === n))
-  const blocks = f ? [...top.map((n): [string, string] => [n, ""]), ...f.blocks] : fallback.map((n): [string, string] => [n, ""])
+  const blocks = f ? f.blocks : fallback.map((n): [string, string] => [n, ""])
   const ctx: FileCtx = { store, path, fm, body: "" }
   return <>{blocks.map(([name, text], i) => <BlockView key={i} name={name} text={text} ctx={ctx} disabled={disabled} quiet />)}</>
 }

@@ -9,7 +9,7 @@ import { signal } from "@/core/signal"
 export type DragItem = {
   /** Where it comes from ("row": a database view's file, a board's card or a calendar's item; with `to`, a panel's row
    *  that opens something, like a terminal in the Terminals panel). */
-  from: "tab" | "group" | "tree" | "pin" | "panel" | "row" | "newtab" | "status"
+  from: "tab" | "group" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block"
   /** What it opens in a tab ("file:Notes/Idea.md", "view:terminal/abc", "settings"); none for a folder. */
   to?: string
   /** The tab it is (dropping it moves that tab); otherwise a drop opens a new one. */
@@ -30,6 +30,8 @@ export type DragItem = {
   newtab?: { list: "sections" | "actions"; key: string }
   /** A status bar's ambient item, by key ("inbox:new"), moved along the bar or into its tray (StatusBar.tsx). */
   status?: string
+  /** A block of a page being edited, by name (its card moved: a dashboard's grid). */
+  block?: string
   /** Its source draws its own picture of it following the pointer (a phone's tab card, lifted whole): no DragGhost. */
   drawn?: boolean
 }

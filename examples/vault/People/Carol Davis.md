@@ -11,6 +11,9 @@ aliases: [Mom]
 sort: 3
 ---
 
+```block-person
+```
+
 Retired teacher. Gardens, and sends photos of every tomato.
 
 ## Timeline

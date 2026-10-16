@@ -10,53 +10,5 @@
   "settings": {
     "account": { "type": "boolean", "label": "Read usage from your Cursor account", "description": "with Cursor.app's sign-in on this machine, the plan's usage and what each request was worth are read from cursor.com every few minutes; the sign-in goes only to Cursor and nothing is kept. Off until you allow it" }
   },
-  "blocks": {
-    "cursor-limits": {
-      "description": "the plan's included usage this billing month: how much is used and when it renews",
-      "live": "Cursor's own files on this machine and its dashboard",
-      "options": {
-        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
-      }
-    },
-    "cursor-sessions": {
-      "description": "chats open now, then the latest ones",
-      "live": "Cursor's own files on this machine and its dashboard",
-      "options": {
-        "recent": { "type": "number", "default": 5, "description": "how many recent chats to list after the open ones" },
-        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
-      }
-    },
-    "cursor-usage": {
-      "description": "its value estimated at list prices, as Cursor meters it, and tokens per day, today and over the last days",
-      "live": "Cursor's own files on this machine and its dashboard",
-      "options": {
-        "days": { "type": "number", "default": 30, "min": 1, "max": 3650, "description": "how many days back it covers" },
-        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
-      }
-    },
-    "cursor-projects": {
-      "description": "its usage by project over the last days",
-      "live": "Cursor's own files on this machine and its dashboard",
-      "options": {
-        "days": { "type": "number", "default": 30, "min": 1, "max": 3650, "description": "how many days back it covers" },
-        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
-      }
-    },
-    "cursor-models": {
-      "description": "its usage by model over the last days",
-      "live": "Cursor's own files on this machine and its dashboard",
-      "options": {
-        "days": { "type": "number", "default": 30, "min": 1, "max": 3650, "description": "how many days back it covers" },
-        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
-      }
-    },
-    "cursor": {
-      "description": "in a project file: that project's usage over the last 30 days and its chats",
-      "live": "Cursor's own files on this machine and its dashboard",
-      "options": {
-        "project": { "type": "string", "description": "another project than the file's (its folder's name, as Cursor names it)" },
-        "machine": { "type": "string", "description": "another machine's (its id in the Machines plugin's list)" }
-      }
-    }
-  }
+  "draws": ["agent-limits", "agent-sessions", "agent-usage", "agent-projects", "agent-models", "agent-project"]
 }

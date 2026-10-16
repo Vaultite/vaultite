@@ -6,7 +6,7 @@ file marked `origin: human`, or an unlabeled one, only when the user asks; mark 
 new notes through the API get it by themselves; the user's, made in the app or the CLI by hand, get `human` only with
 `label_user` on) and never set `human`, `reviewed` or `mixed` yourself. Leave the
 key alone when you edit a file: the user relabels.
-Database views filter on it like any key (`where: origin = ai`, `where: not has origin`). Keeping an AI's change in
+Bases filter on it like any key (`origin == "ai"`, `!origin`; `vau query --where "origin = ai"`). Keeping an AI's change in
 Review (`review.keep`, the user's) labels a file that was `ai` `reviewed`.
 
 Files that aren't Markdown (images, videos, SVG, audio, PDFs, any attachment) have the same label, kept in
@@ -17,7 +17,7 @@ rewrites the user's photos. Read and set it with `vau origin <path>` / `vau orig
 the IPTC mark for AI-made media (XMP `Iptc4xmpExt:DigitalSourceType` = trainedAlgorithmicMedia, or a C2PA manifest
 saying so: ChatGPT's and Gemini's images) reads as `ai` (`from: file`). Labels follow files
 moved with `vau move` or the app. Agents set only `ai`: `provenance.set` refuses human, reviewed, mixed and removing a
-label from an agent. A database view over every file (a `.base`) filters attachments on `origin` too.
+label from an agent. A base lists attachments too, so it filters them on `origin` as well.
 
 The values are the vault's to change, in `.vaultite/plugins/provenance/data.json` (or its settings sheet):
 `values: [{value, label, icon, tint, hint}]` in the menu's order (`icon` a name like `pen-line`, `tint` a colour token:

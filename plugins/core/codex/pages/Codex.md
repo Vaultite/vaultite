@@ -3,21 +3,25 @@ type: dashboard
 plugin: codex
 icon: openai
 tint: green
-subtitle: Codex on this machine
 ---
 
-```block-codex-limits
+```block-agent-limits
+agent: codex
 ```
 
-```block-codex-sessions
+```block-agent-sessions
+agent: codex
 ```
 
-```block-codex-usage
+```block-agent-usage
+agent: codex
 wide: true
 ```
 
-```block-codex-projects
+```block-agent-projects
+agent: codex
 ```
 
-```block-codex-models
+```block-agent-models
+agent: codex
 ```

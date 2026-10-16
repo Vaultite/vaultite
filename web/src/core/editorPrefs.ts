@@ -20,11 +20,13 @@ export type EditorSettings = {
   readableLineLength: boolean
   /** Properties above the text (reading and editing), not at all, or as the frontmatter's text (editing). */
   propertiesInDocument: PropertiesShown
+  /** The file's name as a title at the top of the page; off, it's only in the tab and the path bar. */
+  showInlineTitle: boolean
 }
 
 const EDITOR_DEFAULTS: EditorSettings = {
   spellcheck: true, useTab: true, tabSize: 4, autoPairBrackets: true, autoPairMarkdown: true, readableLineLength: true,
-  propertiesInDocument: "visible",
+  propertiesInDocument: "visible", showInlineTitle: true,
 }
 
 /** A value of the right shape for `key`, or undefined (a hand-edited file's `"tabSize": "big"` is ignored). */

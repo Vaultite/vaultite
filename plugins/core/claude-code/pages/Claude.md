@@ -3,21 +3,25 @@ type: dashboard
 plugin: claude-code
 icon: claude
 tint: orange
-subtitle: Claude Code on this machine
 ---
 
-```block-claude-limits
+```block-agent-limits
+agent: claude-code
 ```
 
-```block-claude-sessions
+```block-agent-sessions
+agent: claude-code
 ```
 
-```block-claude-usage
+```block-agent-usage
+agent: claude-code
 wide: true
 ```
 
-```block-claude-projects
+```block-agent-projects
+agent: claude-code
 ```
 
-```block-claude-models
+```block-agent-models
+agent: claude-code
 ```

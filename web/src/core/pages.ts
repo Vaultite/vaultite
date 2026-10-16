@@ -1,5 +1,5 @@
 // Pages are files: the app's part is how a file looks where it's listed (`icon`, `tint`) and what makes it a page in
-// a tab (a plugin draws it as one, or it's a page's tab). Pinning and dashboards are plugins'.
+// a tab (a plugin draws it as one). Pinning and dashboards are plugins'.
 import {
   AppWindow, Banknote, Calculator, ChartColumn, ChartLine, ChartPie, PiggyBank, Receipt, Sheet,
   Activity, Apple, Bike, BookOpen, Bot, Brain, Briefcase, Gem, Layers, Package, Server, SquareTerminal, CalendarDays, Camera, Code2, Coffee, Compass, Dumbbell, Flag, FolderGit2,
@@ -14,7 +14,6 @@ import { anyIcon, markIcon } from "@/core/icons"
 import type { VaultFile } from "@/core/files"
 import { fileViewFor, iconNamed, isEnabled, pluginById } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
-import { tabHead } from "../../../core/tabs.ts"
 
 /** Icons a file can name in its frontmatter (`icon: sun`), lucide names; plugins add their own (`icons` in their
  *  definition: Claude Code's `claude`). */
@@ -61,19 +60,8 @@ export function tintOf(t?: string | null) {
   return t && /^[a-z][a-z-]*$/.test(t) ? `var(--${t})` : undefined
 }
 
-/** Left out of lists of pages (the sidebar's, a page's tabs): a page whose plugin (its `plugin:`, the one that brought
- *  it) is off. */
+/** Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off. */
 export const offPlugin = (f: Pick<VaultFile, "plugin"> | undefined, disabled = getPrefs().disabled) => !!f?.plugin && !!pluginById(f.plugin) && !isEnabled(f.plugin, disabled)
-
-/** The head of the page `path` is a tab of (core/tabs.ts' tabHead: People for People map), once per file list and path:
- *  it looks tabs up by name through every file, and the app asks on every draw. */
-const heads = new WeakMap<VaultFile[], globalThis.Map<string, VaultFile | null>>()
-export function headOf(files: VaultFile[], path: string): VaultFile | null {
-  let known = heads.get(files)
-  if (!known) heads.set(files, (known = new globalThis.Map()))
-  if (!known.has(path)) known.set(path, tabHead(files, path) as VaultFile | null)
-  return known.get(path)!
-}
 
 /** The vault's files by path, once per file list (the sidebar and the tabs ask on every draw). */
 const paths = new WeakMap<{ path: string }[], globalThis.Map<string, { path: string }>>()
@@ -89,13 +77,12 @@ export function pageView(path: string, store: Store | null = getStore(), disable
   return f ? fileViewFor(f, disabled)?.view.page ?? null : null
 }
 
-/** A page: a file a plugin draws as one (a dashboard), or one of a page's tabs. In a tab, a file opened from it opens
- *  beside it (core/workspace.ts go()), and a phone's tab list calls it a page. */
+/** A page: a file a plugin draws as one (a dashboard). In a tab, a file opened from it opens beside it
+ *  (core/workspace.ts go()), and a phone's tab list calls it a page. */
 export function isPage(path: string, store: Store | null = getStore()) {
-  return !!pageView(path, store) || (!!store && !!headOf(store.files.files, path))
+  return !!pageView(path, store)
 }
 
-/** A page a plugin brought, by its file name ("Activity"), wherever the user keeps it (core/pages.ts finds them there
- *  too), or undefined. */
+/** A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined. */
 export const pageOf = (store: Store | null | undefined, plugin: string, name: string) =>
   store?.files.files.find((f) => f.plugin === plugin && f.type === "dashboard" && f.path.split("/").pop() === `${name}.md`)

@@ -5,14 +5,13 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { settingsOf, type SettingDecls } from "./blocks.ts"
-import { copies, templates } from "./pages.ts"
+import { pageAt, templates } from "./pages.ts"
 import { git, parseSource, readLock, tagsOf } from "./installs.ts"
 import { digestOf } from "./vaultplugins.ts"
 import { switched } from "./pluginmeta.ts"
-import { inPagesDir, PAGES_DIR } from "./fileprops.ts"
 import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
-import { blocksIn } from "./sections.ts"
+import { blockName, scan } from "./sections.ts"
 import { readSidebars, type Sidebars } from "./sidebars.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
 
@@ -49,8 +48,11 @@ export type Host = {
   vaultPlugins: () => Item[]
   /** One request to this API (method, route under /api/, body): its body; OpError when it fails. */
   call: (method: string, route: string, body?: unknown) => Promise<unknown>
-  /** Load or unload vault plugins after plugins.json changed, and install their pages. */
-  syncPlugins: () => Promise<unknown>
+  /** Load or unload vault plugins after plugins.json changed; those turned on write their pages (core/pages.ts), but
+   *  with `pages: false` (a restore: they were on before). */
+  syncPlugins: (opts?: { pages?: boolean }) => Promise<unknown>
+  /** Write the pages of the plugins that are on that the pages folder has no file for (core/pages.ts). */
+  writePages?: (opts?: { pin?: boolean }) => string[]
   /** Allow vault plugins to run on this machine as their files are now (core/trust.ts), when this machine's owner asked. */
   allow?: (ids: string[]) => Promise<void>
   /** Install a vault plugin from its source (plugin.install, off), and uninstall one (plugin.uninstall). */
@@ -67,6 +69,10 @@ const hash = (data: string | Buffer) => crypto.createHash("sha256").update(data)
 const textOf = (f: string | Buffer | undefined) => (typeof f === "string" ? f : "")
 export const slug = (name: string) => name.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)
 const ID = /^[a-z0-9][a-z0-9-]*$/
+/** The plugins' pages as bundles name them (Dashboards/Today.md), with their text. */
+const pluginPages = (host: Host) => new Map(templates(host.plugins()).map(([, name, text]) => [`Dashboards/${name}`, text]))
+/** Where a bundle's page goes in this vault: Dashboards/ means its pages folder (core/pages.ts pageAt). */
+const homed = (v: Vault, p: string) => (p.startsWith("Dashboards/") ? pageAt(v, p.slice("Dashboards/".length)) : p)
 
 // ---------- reading bundles ----------
 
@@ -190,12 +196,18 @@ function homeOf(b: Bundle, host: Host, pinned: string[] | null): HomeBlock[] | n
   const first = pinned?.[0]
   if (!first) return []
   let text = ""
-  try { text = readText(host.vault.abs(host.vault.relocated(first))) } catch {
-    text = textOf(b.files[first]) || (templates(host.plugins()).find(([, rel]) => rel === first)?.[2] ?? "")
+  try { text = readText(host.vault.abs(host.vault.relocated(homed(host.vault, first)))) } catch {
+    text = textOf(b.files[first]) || (pluginPages(host).get(first) ?? "")
   }
   const out: HomeBlock[] = []
-  for (const b of blocksIn(text)) {
-    out.push({ block: b.name, view: /^view:\s*['"]?(\w+)/m.exec(b.text)?.[1] ?? null, wide: /^wide:\s*true\s*$/m.test(b.text) })
+  const s = scan(text)
+  for (const f of s.fences) {
+    // (a ```base fence: its first view's type, a kanban drawn as a board)
+    const name = f.close === null ? null : blockName(f.info) ?? (f.info.trim().split(/\s/)[0] === "base" ? "base" : null)
+    if (!name) continue
+    const body = s.lines.slice(f.open + 1, f.close!).join("\n")
+    const view = (name === "base" ? /^\s*-?\s*type:\s*['"]?(\w+)/m : /^view:\s*['"]?(\w+)/m).exec(body)?.[1] ?? null
+    out.push({ block: name, view: view === "kanban" ? "board" : view, wide: /^wide:\s*true\s*$/m.test(body) })
     if (out.length >= 6) break
   }
   return out
@@ -294,8 +306,8 @@ function switchedOn(conf: Item, id: string, optIn: boolean) {
 /** Pages the app brings (plugins' dashboards, the app's bundles' files): unpinned when the bundle applied doesn't pin
  *  them. Every other pin is the user's own and stays (their dashboards too, even saved in a bundle of theirs). */
 function brought(host: Host) {
-  const out = new Set(templates(host.plugins()).map(([, rel]) => rel))
-  for (const b of list(host.vault)) if (b.source === "app") for (const f of parts(b.files).vaultFiles) out.add(f)
+  const out = new Set([...pluginPages(host).keys()].map((p) => homed(host.vault, p)))
+  for (const b of list(host.vault)) if (b.source === "app") for (const f of parts(b.files).vaultFiles) out.add(homed(host.vault, f))
   for (const f of [...out]) out.add(host.vault.relocated(f)) // (and where the user moved them)
   return out
 }
@@ -394,25 +406,22 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
   const panels = { setup, changed: !!sb && (!same(readSidebars(v.config("sidebars")), setup) || !!ownPanels), workspace: sb && ownPanels ? n : null }
   // files: added when there's none (a vault plugin: its whole folder, when the vault has none by that id)
   const add: string[] = [], kept: string[] = []
-  // (its pages go in PAGES_DIR, built in like the plugins': only .vaultite/ is written)
-  const at = placeOf(b), there = (f: string) => fs.existsSync(v.abs(at(f)))
+  // (its pages go in the vault's pages folder, as the plugins' do)
+  const at = placeOf(b, v), there = (f: string) => fs.existsSync(v.abs(at(f)))
   for (const f of vaultFiles) (there(f) ? kept : add).push(at(f))
   for (const h of hidden) {
     const pm = /^\.vaultite\/plugins\/([^/]+)\//.exec(h)
     if (pm ? codeInfo.find((c) => c.id === pm[1])!.kept : fs.existsSync(v.abs(h))) continue
     add.push(h)
   }
-  // A page it names (a pin, the new tab's) as this vault has it: the user's file, their copy of a plugin's page, one the
-  // bundle brings, or a plugin's page built in (added when it isn't there); null when there's none.
-  const all = templates(host.plugins()), tpl = new Map(all.map(([, rel, text]) => [rel, text])), mine = copies(v, all)
-  const pageAt = (p: string): string | null => {
+  // A page it names (a pin, the new tab's) as this vault has it: one the bundle brings, a plugin's page in the pages
+  // folder (added when it isn't there), or the user's file; null when there's none.
+  const tpl = pluginPages(host)
+  const placed = (p: string): string | null => {
     if (!safePath(p)) return null
-    // (a file of the user's by a page's name isn't that page: its pages are in PAGES_DIR)
-    if (fs.existsSync(v.abs(p)) && !(tpl.has(p) || vaultFiles.includes(p))) return p
-    if (mine.has(p)) return mine.get(p)! // (the user's copy of a plugin's page)
     if (vaultFiles.includes(p)) return at(p)
-    if (tpl.has(p)) { const built = `${PAGES_DIR}/${p}`; if (!fs.existsSync(v.abs(built)) && !add.includes(built)) add.push(built); return built }
-    return null
+    if (tpl.has(p)) { const to = homed(v, p); if (!fs.existsSync(v.abs(to)) && !add.includes(to)) add.push(to); return to }
+    return fs.existsSync(v.abs(p)) ? p : null
   }
   // pins
   let pins: Plan["pins"] = null
@@ -420,7 +429,7 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
   if (pg && Array.isArray(pg.pinned)) {
     const want: string[] = [], gone: string[] = []
     for (const p of strs(pg.pinned)) {
-      const here = pageAt(p)
+      const here = placed(p)
       if (here) want.push(here)
       else gone.push(p)
     }
@@ -439,7 +448,7 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
   const appearance = diff("appearance", LOOK_DEFAULTS), hotkeys = diff("hotkeys")
   // The new tab's page as this vault has it (a page that isn't here: the sections stay).
   const nt = json(b, "newtab.json")
-  const newtab = nt ? Object.entries({ ...nt, ...(typeof nt.page === "string" ? { page: pageAt(nt.page) } : {}) })
+  const newtab = nt ? Object.entries({ ...nt, ...(typeof nt.page === "string" ? { page: placed(nt.page) } : {}) })
     .filter(([k, to]) => !same(v.config("newtab")[k], to)).map(([key, to]) => ({ key, from: v.config("newtab")[key] ?? null, to: to ?? null })) : []
   const pinsChange = !!pins && (pins.list.join("\n") !== strs(v.config("pages").pinned).join("\n") ||
     (!!pins.workspace && pins.workspace.join("\n") !== strs(slot!.pinned).join("\n")))
@@ -482,7 +491,7 @@ export function markNew(v: Vault) {
   writeAtomic(v.abs(ONBOARDING), JSON.stringify({ since: new Date().toISOString() }, null, 2) + "\n")
 }
 
-/** A new vault is still being offered the bundles (no plugin's pages are installed until it has picked: core/app.ts). */
+/** A new vault is still being offered the bundles (no plugin writes its pages until it has picked: core/app.ts). */
 export const offering = (v: Vault) => fs.existsSync(v.abs(ONBOARDING))
 
 function doneOnboarding(v: Vault) {
@@ -513,19 +522,19 @@ async function pinTo(host: Host, cur: string[], want: string[], n: number | null
   }
 }
 
-/** Where a bundle's file goes: a page (a dashboard) in PAGES_DIR, built in like the plugins' pages; anything else it
- *  brings (an image) at its own path, as applying it is the user's doing. */
-const placeOf = (b: Bundle) => (f: string) => {
+/** Where a bundle's file goes: a page (a dashboard) in Dashboards/ in the vault's pages folder, as the plugins' pages;
+ *  anything else (an image) at its own path. */
+const placeOf = (b: Bundle, v: Vault) => (f: string) => {
   const data = b.files[f]
-  return f.endsWith(".md") && typeof data === "string" && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(data) ? `${PAGES_DIR}/${f}` : f
+  return f.endsWith(".md") && typeof data === "string" && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(data) ? homed(v, f) : f
 }
 
 /** Applying it puts code in the vault or turns a vault plugin on: it asks first, like turning one on does. */
 export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
-/** `remember: false`: no previous setup to restore (a new vault's first, core/start.ts, or the offer skipped).
- *  `offAdded`: the plugins the user added that it doesn't name go off too (restore turns them back on). */
-export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false } = {}) {
+/** `remember: false`: no previous setup to restore (a new vault's first, or the offer skipped). `offAdded`: the plugins
+ *  the user added that it doesn't name go off too. `pages: false`: its plugins write no pages (a vault opening). */
+export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false, pages = true } = {}) {
   const v = host.vault
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const p = await plan(b, host, n)
@@ -560,12 +569,12 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
     await host.call("PATCH", name.startsWith("plugins/") ? `config/plugin/${name.split("/")[1]}` : `config/${name}`, body)
   }
   // 1. Files first, so the plugins and pins that need them find them. Vault plugins' folders, only when there's none.
-  const at = placeOf(b)
+  const at = placeOf(b, v)
   for (const f of vaultFiles) addFile(v, at(f), b.files[f], prev.added)
+  const tpl = new Map([...pluginPages(host)].map(([p, text]) => [homed(v, p), text]))
   for (const rel of p.files.add) {
-    const was = inPagesDir(rel) ? rel.slice(PAGES_DIR.length + 1) : rel // (a page's own path, in PAGES_DIR)
-    if (rel.startsWith(".vaultite/") && !inPagesDir(rel)) addFile(v, rel, b.files[rel.slice(".vaultite/".length)], prev.added)
-    else if (!b.files[was]) { const t = templates(host.plugins()).find(([, r]) => r === was); if (t) addFile(v, rel, t[2], prev.added) }
+    if (rel.startsWith(".vaultite/")) addFile(v, rel, b.files[rel.slice(".vaultite/".length)], prev.added)
+    else if (tpl.has(rel)) addFile(v, rel, tpl.get(rel)!, prev.added) // (a plugin's page it pins)
   }
   // 2. Plugins on and off: plugins.json's two lists, changed for the plugins that change (the rest as they are).
   const conf = v.config("plugins")
@@ -580,6 +589,8 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   if (allowCode && brought.length) await host.allow?.(brought)
   await patch("plugins", patchOf({ disabled: strs(conf.disabled), enabled: strs(conf.enabled) }, { disabled, enabled }))
   await host.syncPlugins()
+  // (pinned here, the pins below make the list the bundle's)
+  if (pages && json(b, "plugins.json")) host.writePages?.()
   // 3. Settings, appearance, hotkeys: the keys that change.
   const byPlugin = new Map<string, Item>()
   for (const s of p.settings) byPlugin.set(s.plugin, { ...byPlugin.get(s.plugin), [s.key]: s.to })
@@ -601,7 +612,7 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
     if (!fs.existsSync(v.abs(".vaultite/pages.json"))) prev.absent.push("pages")
     prev.pinned = p.pins.list.filter((x) => !cur.includes(x))
     await pinTo(host, cur, p.pins.list, null)
-    // A bundle pinning nothing still says so: with no list, the plugins' pages would all be pinned (core/app.ts).
+    // A bundle pinning nothing still says so: with no list, the pages plugins write would all be pinned (core/pages.ts).
     if (!Array.isArray(v.config("pages").pinned)) await host.call("PATCH", "config/pages", { pinned: [] })
   }
   if (slot && n && (p.panels.workspace || (p.pins && Array.isArray(slot.pinned)))) {
@@ -635,7 +646,7 @@ export async function restore(host: Host) {
       try { fs.unlinkSync(v.abs(`.vaultite/${name}.json`)) } catch { /* gone */ }
     }
   }
-  await host.syncPlugins()
+  await host.syncPlugins({ pages: false })
   // Pins: the old list, plus pages pinned since that the apply didn't pin; the workspace's the same way.
   if (prev.pins !== null || prev.pinned.length) {
     const cur = strs(v.config("pages").pinned), old = prev.pins ?? []
@@ -675,13 +686,13 @@ export async function restore(host: Host) {
     trashed.push(`.vaultite/plugins/${id}`)
   }
   fs.unlinkSync(v.abs(PREVIOUS))
-  await host.syncPlugins()
+  await host.syncPlugins({ pages: false })
   return { restored: prev.name, trashed }
 }
 
 /** A file to the vault's .trash (a note through the vault, so its index and pins follow). */
 function toTrash(v: Vault, rel: string) {
-  if (rel.endsWith(".md") && (!rel.startsWith(".") || inPagesDir(rel))) v.trash(rel)
+  if (rel.endsWith(".md") && !rel.startsWith(".")) v.trash(rel)
   else v.toTrash(rel)
 }
 
@@ -701,7 +712,7 @@ export type SaveOptions = { name: string; description?: string; icon?: string; t
   preview?: string }
 
 /** The current setup as a bundle's files: plugins, non-default settings (never `local` ones), panels and pins, look,
- *  hotkeys and vault plugins if asked, and pinned dashboards no plugin brings. */
+ *  hotkeys and vault plugins if asked, and the pinned dashboards (a plugin's unchanged by its name). */
 export async function current(host: Host, o: SaveOptions): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = {}
@@ -718,20 +729,13 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
   const look = v.config("appearance")
   if (Object.keys(look).length) put("appearance.json", look)
   const tab = v.config("newtab")
-  if (Object.keys(tab).length) put("newtab.json", { ...tab, ...(typeof tab.page === "string" && inPagesDir(tab.page) ? { page: tab.page.slice(PAGES_DIR.length + 1) } : {}) })
-  // The dashboards it pins that no plugin brings (and their other tabs), the new tab's page, and the theme and snippets it uses.
-  const tpl = new Set(templates(host.plugins()).map(([, rel]) => rel))
-  // (a page in PAGES_DIR, one a bundle brought, goes by its own path: where it goes is the vault's business)
+  if (Object.keys(tab).length) put("newtab.json", { ...tab, ...(typeof tab.page === "string" ? { page: asBundle(host, tab.page) } : {}) })
+  // The dashboards it pins, the new tab's page, and the theme and snippets it uses.
   const add = (at: string) => {
-    const rel = inPagesDir(at) ? at.slice(PAGES_DIR.length + 1) : at
-    if (files[rel] !== undefined || tpl.has(rel) || !safePath(rel)) return
+    if (files[at] !== undefined || asBundle(host, at) !== at || !safePath(at)) return
     let text: string
     try { text = readText(v.abs(at)) } catch { return }
-    if (rel.endsWith(".base") || (rel.endsWith(".md") && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(text))) {
-      files[rel] = text
-      const tabs = /^tabs:\s*\[(.*)\]\s*$/m.exec(text)?.[1]
-      for (const t of tabs ? tabs.split(",").map((x) => x.trim().replace(/^['"]|['"]$/g, "")).filter(Boolean) : []) add(`${path.dirname(at) === "." ? "" : path.dirname(at) + "/"}${t}.md`)
-    }
+    if (at.endsWith(".base") || (at.endsWith(".md") && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(text))) files[at] = text
   }
   for (const p of pinned) add(p)
   if (typeof tab.page === "string") add(tab.page)
@@ -743,6 +747,15 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
     try { if (safePath(s)) files[`snippets/${s}.css`] = readText(v.abs(`.vaultite/snippets/${s}.css`)) } catch { /* not there */ }
   }
   return files
+}
+
+/** A page as a bundle names it: a plugin's page as its plugin wrote it by its name (Dashboards/Today.md: where it goes
+ *  is the applying vault's business), any other by its path. */
+function asBundle(host: Host, p: string) {
+  let text: string
+  try { text = readText(host.vault.abs(p)) } catch { return p }
+  for (const [as, t] of pluginPages(host)) if (t === text && as.endsWith(`/${path.basename(p)}`)) return as
+  return p
 }
 
 /** The pages pinned: workspace slot's own list, else the vault's. */
@@ -786,8 +799,7 @@ async function setupOf(host: Host, o: SaveOptions, files: Files, put: (rel: stri
   }
   const slot = await slotOf(host, o.workspace ?? null)
   put("sidebars.json", readSidebars(slot?.sidebars) ?? readSidebars(v.config("sidebars")) ?? {})
-  // (a built-in page by its own path, Dashboards/Today.md: where it goes is the vault's business)
-  put("pages.json", { pinned: pinnedOf(slot, v).map((p) => (inPagesDir(p) ? p.slice(PAGES_DIR.length + 1) : p)) })
+  put("pages.json", { pinned: pinnedOf(slot, v).map((p) => asBundle(host, p)) })
   if (o.hotkeys) { const h = v.config("hotkeys"); if (Object.keys(h).length) put("hotkeys.json", h) }
 }
 
@@ -854,7 +866,7 @@ export function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: s
 
 /** Pins (and a new tab's page) that aren't pages the bundle brings or the app has. */
 function dropped(b: Bundle, host: Host) {
-  const tpl = new Set(templates(host.plugins()).map(([, rel]) => rel))
+  const tpl = pluginPages(host)
   const known = (p: string) => b.files[p] !== undefined || tpl.has(p)
   let pins: string[] = [], page: unknown = null
   try { pins = strs(json(b, "pages.json")?.pinned) } catch { /* problems says */ }
@@ -964,7 +976,7 @@ export async function importFrom(v: Vault, given: string, host: Host) {
 /** How pages look in a list (their `icon`, `tint` and `plugin`), from the vault's file, else the bundle's or the plugin
  *  template's: for the preview, before the files are there. */
 function pageLooks(b: Bundle, host: Host, paths: string[]) {
-  const tpl = new Map(templates(host.plugins()).map(([, rel, text]) => [rel, text]))
+  const tpl = pluginPages(host)
   const out: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> = {}
   for (const p of paths) {
     let text = ""

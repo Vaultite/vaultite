@@ -3,7 +3,7 @@ import path from "node:path"
 import type { VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, app, check, vault } = $
+  const { VAULT, api, check, vault } = $
   // Pins follow moves made through the API (an AI moving files), not only the app's: files, whole folders, and deletes.
   // "files" is an old app's phone Files page: a pin that isn't a file, kept in place.
   const pins = () => JSON.stringify(vault.config("pages").pinned ?? [])
@@ -32,12 +32,18 @@ export default async ($: VaultTest) => {
   await api("DELETE", "people/Block Person")
   check("an item deleted through its collection loses its pin", pins() === list(), pins())
 
-  // Pins change one at a time (POST /api/pins), on the list as it is; install never pins an unpinned dashboard again.
+  // Pins change one at a time (POST /api/pins), on the list as it is; a plugin turned on again never pins its page again.
+  // (turned on, a plugin whose page is gone writes it: core/pages.ts)
+  const turnOn = async (id: string, page?: string) => {
+    await api("POST", "ops/plugin.disable", { id })
+    if (page) fs.rmSync(path.join(VAULT, page), { force: true })
+    await api("POST", "ops/plugin.enable", { id })
+  }
   vault.setConfig("pages", { pinned: ["files", "Dashboards/Today.md", "Dashboards/Claude.md"] })
   await api("POST", "pins", { path: "Dashboards/Claude.md", pinned: false })
   check("unpin", pins() === list("files", "Dashboards/Today.md"), pins())
-  app.installPages()
-  check("install doesn't pin it again", pins() === list("files", "Dashboards/Today.md"), pins())
+  await turnOn("claude-code")
+  check("turned on again, its page isn't pinned again", pins() === list("files", "Dashboards/Today.md"), pins())
   fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
   fs.writeFileSync(path.join(VAULT, "Notes/A.md"), "A note to pin.\n")
   await api("POST", "pins", { path: "Notes/A.md", pinned: true, before: "Dashboards/Today.md" })
@@ -62,19 +68,20 @@ export default async ($: VaultTest) => {
   check("the old Files page can be unpinned, not pinned again", filesPin === 404 && pins() === list("Notes/A.md", "Dashboards/Today.md"), [filesPin, pins()])
   const pagesJson = path.join(VAULT, ".vaultite/pages.json")
   fs.writeFileSync(pagesJson, "{not json")
-  app.installPages()
-  check("an unreadable pages.json isn't replaced by every dashboard", fs.readFileSync(pagesJson, "utf8") === "{not json")
+  await turnOn("health", "Dashboards/Health.md")
+  check("an unreadable pages.json isn't replaced by the page a plugin writes", fs.readFileSync(pagesJson, "utf8") === "{not json" && fs.existsSync(path.join(VAULT, "Dashboards/Health.md")))
   fs.rmSync(pagesJson)
-  app.installPages()
-  check("a missing one gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
+  await turnOn("health", "Dashboards/Health.md")
+  check("a missing one gets the page", JSON.parse(pins()).includes("Dashboards/Health.md"), pins())
   // A pages.json that's in iCloud only isn't replaced by the default list.
   const pluginsWas = vault.config("plugins")
   fs.rmSync(pagesJson)
   fs.writeFileSync(path.join(VAULT, ".vaultite/.pages.json.icloud"), "")
-  app.installPages()
+  await turnOn("health", "Dashboards/Health.md")
   check("a pages.json in iCloud only isn't replaced", !fs.existsSync(pagesJson))
   fs.rmSync(path.join(VAULT, ".vaultite/.pages.json.icloud"))
-  app.installPages()
-  check("a vault with no pins gets the default list", JSON.parse(pins()).includes("Dashboards/Today.md"), pins())
+  await turnOn("health", "Dashboards/Health.md")
+  check("a vault with no pins gets the page", JSON.parse(pins()).includes("Dashboards/Health.md"), pins())
+  vault.setConfig("pages", { pinned: ["Today", "Health", "Learning", "People", "Projects"].map((n) => `Dashboards/${n}.md`) }) // (the areas after it pin around these)
   Object.assign($.vars, { pluginsWas })
 }

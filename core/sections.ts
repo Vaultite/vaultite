@@ -72,9 +72,18 @@ export function blocksIn(text: string, s = scan(text)): Placed[] {
   return out
 }
 
-/** A text without its blocks (each with the blank lines after it), and blank lines at its ends when it had any. */
+/** The views a text places: its blocks and its ```base fences (database views), which aren't its text either. */
+export function viewsIn(text: string, s = scan(text)): Placed[] {
+  const base = (info: string) => info.trim().split(/\s/)[0].toLowerCase() === "base"
+  return s.fences.flatMap((f) => {
+    const name = f.close === null ? null : blockName(f.info) ?? (base(f.info) ? "```base" : null)
+    return name ? [{ name, text: s.lines.slice(f.open + 1, f.close!).join("\n"), open: f.open, close: f.close! }] : []
+  })
+}
+
+/** A text without its views (each with the blank lines after it), and blank lines at its ends when it had any. */
 export function withoutBlocks(text: string): string {
-  const s = scan(text), placed = blocksIn(text, s)
+  const s = scan(text), placed = viewsIn(text, s)
   if (!placed.length) return text
   const keep = s.lines.map(() => true)
   for (const b of placed) {

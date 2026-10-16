@@ -88,7 +88,7 @@ export default async ($: VaultTest) => {
     check(`no ${bad} with hidden files off`, code === 400, code)
   }
   ;[, cfg] = await api("GET", "files")
-  check("hidden files aren't listed (but the plugins' built-in pages)", !JSON.stringify(cfg).replaceAll(".vaultite/pages/", "").includes(".vaultite/"), null)
+  check("hidden files aren't listed", !JSON.stringify(cfg).includes(".vaultite/"), null)
   let res: Any
   ;[, res] = await api("GET", "search?q=Linker")
   check("search finds by name", res.length && res[0].path === "Notes/Linker.md", res.slice(0, 2))

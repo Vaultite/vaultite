@@ -45,9 +45,8 @@ sections, a start page of any blocks, changed like any dashboard (`vau newtab pa
 sections again; one that's gone gives them back). `vau newtab` (show, hide, move, page; `button add`, `remove`,
 `move`, `icon`); right-click a blank tab (or a button: Change icon) to change it there. The same on every device and workspace.
 
-**Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). The plugins' pages are
-built in, in `.vaultite/pages/`: drawn, pinned and linked as usual, left out of the file tree, read-only, and they
-update with their plugin. `vau dashboard copy <page>` makes one the user's file (to change it).
+**Pinned pages**, `.vaultite/pages.json`'s `pinned`: `vau pin` / `vau unpin` (`vau docs pages`). A plugin turned on
+writes its pages into the pages folder once, as the user's files (`vau docs dashboards`).
 
 **Writes on its own**, `.vaultite/grants.json`: where each plugin may write outside `.vaultite/` when it acts on its own
 (timers, schedules, hooks), as its manifest's `writes` declares: `{"activity": {"Recaps": "allowed"}}` ("not now":
@@ -80,6 +79,8 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `readableLineLength`: true (default: a note's lines stop at `--line-width`) | false (the pane's width).
 - `propertiesInDocument`: `visible` (default: Properties above the text, reading too) | `hidden` | `source` (the
   frontmatter as text in live preview).
+- `showInlineTitle`: true (default: the file's name as a title at the top of every file, editable while editing) |
+  false (only in the tab and the path bar; a sheet keeps it). Not read from Obsidian's.
 
 **Appearance**, `.vaultite/appearance.json` (or `vau appearance <key> <value>`), one for every device:
 - `theme`: `system` | `light` | `dark` (Claude Code in the app's terminals starts in its ANSI theme of that mode, so it

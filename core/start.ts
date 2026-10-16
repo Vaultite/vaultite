@@ -20,17 +20,18 @@ Open a terminal (⌘P, or Ctrl+P off a Mac, then Open terminal) and run \`claude
 - Delete this note when you're done with it.
 `
 
-/** Set up a vault opened for the first time: Minimal's setup, all of it in .vaultite/ (its pages are built in). */
+/** Set up a vault opened for the first time: Minimal's setup, all of it in .vaultite/ (its plugins' pages come with
+ *  the starter content, or a setup picked). */
 export async function setUpNew(host: B.Host) {
   // (a list of pins first: the pages of the plugins Minimal turns on aren't all pinned, as a vault without one would be)
   await host.call("PATCH", "config/pages", { pinned: [] })
-  await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false })
+  await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false, pages: false })
 }
 
-/** The starter content, chosen in setup: a pinned Start here note, and a line in AGENTS.md and CLAUDE.md pointing
- *  agents started outside the app at the vault's rules (Agent files, allowed to keep them). Returns what it wrote. */
+/** The starter content, chosen in setup: a pinned Start here note, its plugins' pages (unpinned), and a line in
+ *  AGENTS.md and CLAUDE.md pointing agents at the vault's rules (Agent files, allowed to keep them). Returns what it wrote. */
 export async function starter(host: B.Host) {
-  const wrote: string[] = []
+  const wrote: string[] = [...host.writePages?.({ pin: false }) ?? []]
   await host.call("POST", "ops/plugin.grant", { id: "agent-files" })
   await host.call("PATCH", "config/plugin/agent-files", { rootFiles: true })
   wrote.push("AGENTS.md", "CLAUDE.md")

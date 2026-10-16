@@ -1,16 +1,19 @@
-// Phones: the top bar: the drawer button, the title, the page's own buttons (#phone-actions),
-// the right sidebar's, and the tab's … menu.
+// Phones: the top bar: the drawer button, the title (once the page's own has scrolled away), the page's own buttons
+// (#phone-actions), the right sidebar's, and the tab's … menu.
 import { Ellipsis, PanelLeft, PanelRight } from "lucide-react"
 import type { Tab } from "@/core/layout"
 import { menuBelow } from "@/components/ContextMenu"
 import { openDrawer, useHasDrawer } from "@/components/PhoneDrawer"
 import { phoneTabMenu } from "@/components/Tabs"
+import { titleInSight } from "@/components/FileTitle"
 import { cn } from "@/lib/utils"
 
 const button = "grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50"
 
 export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
   const left = useHasDrawer("left"), right = useHasDrawer("right")
+  // iOS large titles: the name shows here once the page's own title (FileTitle.tsx) has scrolled away, or if it has none.
+  const inSight = titleInSight.use()
   return (
     <header data-phone-header className="glass-strong fixed inset-x-0 top-0 z-30 pt-[env(safe-area-inset-top)] md:hidden">
       {/* Three columns, the outer two as wide as each other, so the name stays centred whatever buttons there are. */}
@@ -22,7 +25,7 @@ export function PhoneHeader({ title, tab }: { title: string; tab: Tab }) {
             </button>
           )}
         </div>
-        <div data-phone-title className="truncate px-1 text-center text-[17px] font-semibold">{title}</div>
+        <div data-phone-title className={cn("truncate px-1 text-center text-[17px] font-semibold transition-opacity duration-150", inSight && "opacity-0")}>{title}</div>
         <div className="flex items-center justify-end">
           <div id="phone-actions" className="flex items-center empty:hidden" />
           {right && (

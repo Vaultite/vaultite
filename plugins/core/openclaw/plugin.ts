@@ -397,7 +397,7 @@ so OpenClaw's agents get the vault's tools (the app must be running when they us
 
 // ---------- blocks as text (GET /api/render)
 
-const agent = codingAgent(plugin, { id: "openclaw", name: "OpenClaw", prefix: "openclaw", value: "as OpenClaw recorded it",
+const agent = codingAgent(plugin, { id: "openclaw", name: "OpenClaw", value: "as OpenClaw recorded it",
   state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, summary, live, session,
   accounts: { all: allAgents, word: "OpenClaw agent" } })
 

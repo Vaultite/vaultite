@@ -361,7 +361,6 @@ type: dashboard
 icon: layout-dashboard
 tint: blue
 plugin: ${id}
-subtitle: "{date}"
 ---
 
 \`\`\`block-${id}

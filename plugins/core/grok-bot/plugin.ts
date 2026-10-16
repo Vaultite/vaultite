@@ -59,13 +59,13 @@ async function limits() {
 
 // ---------- blocks as text (GET /api/render)
 
-plugin.block("grok-bot-limits", async () => {
+plugin.block("agent-limits", async () => {
   const lim = await limits()
   if (!lim) return section("Grok Bot", `_${allowed() ? "No week read yet: it comes from Cursor's dashboard, with Cursor.app signed in on this machine, on a plan with Grok Bot."
     : "Grok Bot's usage isn't read: allow it in Grok Bot's settings (Read Grok Bot's usage from your Cursor account)."}_`)
   return section("Grok Bot", limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`)
 })
 
-codingAgent(plugin, { id: "grok-bot", name: "Grok Bot", prefix: "grok-bot", noun: "conversation", count: "conversation", value: "estimated at list prices",
+codingAgent(plugin, { id: "grok-bot", name: "Grok Bot", noun: "conversation", count: "conversation", value: "estimated at list prices",
   estimate: true, cloud: true, state: () => "Working", sessionId: /^[\w.-]{4,100}$/, summary, live: async () => [],
   plan: async () => ({ plan: null, limits: await limits() }), session: conversation, modelName: cursorModelName, forget: forgetCursorAccount })

@@ -476,7 +476,7 @@ next session, or after /reload-mcp; it needs Hermes' MCP support (its installer'
 
 // ---------- blocks as text (GET /api/render)
 
-const agent = codingAgent(plugin, { id: "hermes", name: "Hermes", prefix: "hermes", value: "as Hermes recorded it",
+const agent = codingAgent(plugin, { id: "hermes", name: "Hermes", value: "as Hermes recorded it",
   state: (s) => (s.status === "busy" ? "Working" : "Idle"), sessionId: SESSION_ID, summary, live, session, modelName,
   accounts: { all: accounts, word: "Hermes profile" } })
 

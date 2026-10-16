@@ -28,12 +28,12 @@ function layout(body: string): Cell[] {
   return cells
 }
 
-export function Dashboard({ ctx, className }: { ctx: PageCtx; className?: string }) {
+export function Dashboard({ ctx }: { ctx: PageCtx }) {
   const { body, disabled } = ctx
   // Blocks nobody draws (their plugin is off) take no room.
   const cells = useMemo(() => layout(body).flatMap((c): Cell[] => {
     if ("md" in c || "embed" in c) return [c]
-    const blocks = c.blocks.filter((b) => blockFor(b.name, disabled).render)
+    const blocks = c.blocks.filter((b) => blockFor(b.name, disabled, blockOptions(b.text)).render)
     return blocks.length ? [{ ...c, blocks }] : []
   }), [body, disabled])
   // Each card's key for its remembered height: what it draws, and which of the same it is (not its place in the file,
@@ -55,7 +55,7 @@ export function Dashboard({ ctx, className }: { ctx: PageCtx; className?: string
   useEffect(() => (grid.current ? keepAnchored(grid.current, ":scope > [data-line]") : undefined), [])
   return (
     // Two columns when its pane is wide enough (a container query: a dashboard in a narrow split gets one).
-    <div className={cn("@container", className)}><div ref={grid} className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
+    <div className="@container"><div ref={grid} className="grid grid-cols-1 gap-4 @2xl:grid-cols-2">
       {cells.map((c, i) => "embed" in c ? (
         // (a note, or a part of one, is text: as long as the text around it; a page, a table or a PDF takes the row)
         <Card key={i} at={keys[i]} line={c.line} className={cn("min-w-0 @2xl:col-span-2", isNote(c.embed) && "max-w-(--line-width)")}><EmbedView target={c.embed} height={c.height} store={ctx.store} from={ctx.path} seen={[ctx.path]} /></Card>

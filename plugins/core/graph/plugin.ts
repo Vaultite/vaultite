@@ -47,10 +47,9 @@ export function vaultGraph(vault: Vault): Graph {
   for (const [rel, e] of vault.entries) {
     const title = e.fm.title || e.fm.name || stemOf(rel)
     const aliases = e.fm.aliases
-    const t: LinkFile = { path: rel, title: typeof title === "string" ? title : String(title), aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived }
-    targets.push(t)
+    targets.push({ path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
     files.push({
-      path: rel, title: t.title!, type: e.type, tags: splitTags(e.fm.tags), links: linksIn(e), ...(e.archived ? { archived: true } : {}),
+      path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: splitTags(e.fm.tags ?? e.fm.tag), links: linksIn(e), ...(e.archived ? { archived: true } : {}),
       ...(vault.excluded(rel) ? { excluded: true } : {}),
     })
   }

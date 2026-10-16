@@ -89,7 +89,7 @@ function MiniPanel({ k, b, folded, narrow }: { k: string; b: BundleInfo; folded:
 
 type Shape = "board" | "table" | "cards" | "calendar" | "meter" | "list" | "check" | "tiles" | "card"
 const shapeOf = ({ block, view }: { block: string; view: string | null }): Shape =>
-  block === "query" ? (view === "board" || view === "cards" || view === "calendar" ? view : "table")
+  block === "base" ? (view === "board" || view === "cards" || view === "calendar" ? view : "table")
   : /limits|usage|stats|perf|sleep|nutrition|goals|summary/.test(block) ? "meter"
   : /routines/.test(block) ? "check"
   : /machines|people-map/.test(block) ? "tiles"

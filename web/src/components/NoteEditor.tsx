@@ -12,7 +12,7 @@ import { renderMarkdown } from "@/core/markdown"
 import { notify } from "@/core/notify"
 import { timelineKinds, usePluginsVersion } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
-import { BlockView, useKindBlocks, useKindSections } from "@/components/Blocks"
+import { BlockView, useKindSections } from "@/components/Blocks"
 import { assetUrl, drawEmbed, imageActions, island, linkKind, useVaultEditing } from "@/components/editing"
 import { TimelineSection } from "@/components/Timeline"
 import { Editor } from "@/editor/lazy"
@@ -87,12 +87,10 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
   const [version, setVersion] = useState(0)
   const plugins = usePluginsVersion() // (a plugin's fences arriving)
   useEffect(() => setVersion((v) => v + 1), [store, fm, disabled, plugins])
-  const kindBlocks = useKindBlocks(store, from)
   const sections = useKindSections(store, from)
   const config = useMemo<PreviewConfig>(() => ({
     live: true,
     writable: editable,
-    ...(whole ? { kindBlocks } : {}),
     resolves: (t) => linkKind(resolve, t),
     asset: (name) => assetUrl(store, name, from),
     ...imageActions(store),
@@ -103,7 +101,7 @@ function Wired({ store, from, doc, editable, autoFocus, onEscape, onBlur, placeh
     renderMarkdown: (md) => renderMarkdown(md, { resolves: resolve, asset: (name) => assetUrl(store, name, from) }),
     follow: (link, newTab) => followLink(store, link, newTab, from),
     version,
-  }), [editable, resolve, store, disabled, version, from, ctx, whole, kindBlocks, sections])
+  }), [editable, resolve, store, disabled, version, from, ctx, sections])
   // Gone (ended with Escape, say): a blur as the editor is taken off the page isn't the user leaving it. (Layout
   // effects end before React takes the elements away.)
   const over = useRef(false)

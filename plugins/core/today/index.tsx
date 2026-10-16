@@ -1,9 +1,12 @@
 import { ListChecks } from "lucide-react"
-import { AmbientButton, definePlugin, dow, isArchived, notifyError, op, openFile, pageOf, Panel, plainText, today, useStore } from "@vaultite"
+import { AmbientButton, definePlugin, dow, formatDate, isArchived, notifyError, op, openFile, pageOf, Panel, parse, plainText, today, useStore } from "@vaultite"
 import { RoutineDay, RoutineHistory } from "./RoutineDetail"
 import { RoutineGrid } from "./RoutineGrid"
 import { mockRoutines } from "./mock"
 import { routineDone } from "./routines"
+
+/** Today in the routines' heading, as /api/render gives it (plugin.ts): "Thursday 15 October". */
+const DAY = "dddd D MMMM"
 
 /** The status bar's count of today's routines done, which opens Today. */
 function RoutinesToday() {
@@ -19,10 +22,14 @@ function RoutinesToday() {
 
 export default definePlugin({
   mock: mockRoutines,
-  // ```block-routines: this week's routines, to tick. Its page is the Today dashboard (pages/Today.md), where other
-  // plugins' blocks sit too (the calendar, this week's goals, sleep, meals).
+  // ```block-routines: this week's routines, to tick, under today's date. Its page is the Today dashboard
+  // (pages/Today.md), where other plugins' blocks sit too (the calendar, this week's goals, sleep, meals).
   blocks: {
-    routines: ({ store }) => <Panel title="Routines" icon={ListChecks} tint="var(--primary)"><RoutineGrid store={store} /></Panel>,
+    routines: ({ store }) => (
+      <Panel title={<>Routines <span className="font-normal text-muted-foreground">· {formatDate(parse(today()), DAY)}</span></>} icon={ListChecks} tint="var(--primary)">
+        <RoutineGrid store={store} />
+      </Panel>
+    ),
   },
   ambient: { routines: { title: "Routines today", sort: 10, render: () => <RoutinesToday /> } },
   details: {

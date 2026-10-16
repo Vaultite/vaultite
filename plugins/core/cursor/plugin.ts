@@ -402,13 +402,13 @@ plugin.provide("agent:cursor", async ({ resume, prompt }: AgentStart) => {
 
 // ---------- blocks as text (GET /api/render)
 
-plugin.block("cursor-limits", async () => {
+plugin.block("agent-limits", async () => {
   const [lim, p] = [await limits(), await plan()]
   if (!lim) return section("Cursor plan", `_${p ? `${p.name}. ` : ""}${allowed() ? "No usage read yet: it comes from Cursor's dashboard, with Cursor.app signed in on this machine."
     : "Usage from the Cursor account isn't read: allow it in Cursor's settings (Read usage from your Cursor account)."}_`)
   return section("Cursor plan", ...(p ? [`${p.name}${p.monthly ? `, $${p.monthly} a month` : ""}.`] : []), limitRows(lim.windows), `_From the ${lim.source}, ${ago(lim.observed)}._`)
 })
 
-codingAgent(plugin, { id: "cursor", name: "Cursor", prefix: "cursor", noun: "chat", count: "conversation", value: "estimated at list prices", estimate: true,
+codingAgent(plugin, { id: "cursor", name: "Cursor", noun: "chat", count: "conversation", value: "estimated at list prices", estimate: true,
   state: (s) => `${s.status === "busy" ? "Working" : "Open"}${s.kind === "IDE" ? " in Cursor" : ""}`, sessionId: SESSION_ID, summary, live,
   plan: async () => ({ plan: await plan(), limits: await limits() }), session: talk, modelName, projectOf, forget: forgetCursorAccount })

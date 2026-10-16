@@ -1,15 +1,18 @@
 // Live preview: Markdown drawn formatted, an element showing its Markdown again while the cursor's in it. Inline marks
 // are decorated from what's on screen; blocks (sections, tables, callouts, embeds, block fences) are a state field.
+import { redo, undo } from "@codemirror/commands"
 import { syntaxTree } from "@codemirror/language"
 import { EditorSelection, Facet, Prec, StateEffect, StateField, type EditorState, type Range, type Text, type Transaction } from "@codemirror/state"
 import { Decoration, EditorView, keymap, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from "@codemirror/view"
 import type { SyntaxNode } from "@lezer/common"
 import { embedOf, fenceBlock } from "@/core/formats"
+import { innerOf, setProp } from "@/core/frontmatter"
 import { CALLOUT, footnoteText, WIKI_LINK } from "@/core/markdown"
 import { haptic } from "@/core/haptics"
 import { isMac } from "@/core/platform"
 import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
 import { BLOCK_ID, blockName, scan, TAG } from "../../../core/sections.ts"
+import { parseOptions } from "../../../core/blocks.ts"
 import { frontmatter } from "./frontmatter"
 import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
@@ -33,8 +36,6 @@ export type PreviewConfig = {
   sections: string[]
   /** Draw a section into `el`; returns how to redraw it (new text, or the store changed) and clean up. */
   renderSection: (name: string, text: string, el: HTMLElement) => Drawn
-  /** The file's kind's blocks (core/blocks.ts onTop): those it doesn't place are drawn on top of its body. */
-  kindBlocks?: string[]
   /** Draw a ```block-<name> fence (`text`: the lines between its fences); `edit`: its bar and its text in the file. */
   renderBlock: (name: string, text: string, el: HTMLElement, edit: BlockEdit) => Drawn
   /** A block's menu at a point (right-click on its Markdown while it shows). */
@@ -52,6 +53,9 @@ export type PreviewConfig = {
   version: number
   /** The file's path: drawn blocks are remembered by it (core/heights.ts). */
   place?: string
+  /** Blocks side by side, as a dashboard is read: each run of block fences with only blank lines between is drawn as
+   *  one element (`edit` moves, adds and removes them), and an empty one ends a text that doesn't end with blocks. */
+  renderGrid?: (cards: GridCard[], el: HTMLElement, edit: GridEdit) => { update: (cards: GridCard[]) => void; destroy: () => void }
 }
 
 export type Drawn = { update: (text: string) => void; destroy: () => void }
@@ -64,10 +68,31 @@ export type BlockEdit = {
   nth: () => number
   /** Its Markdown shown, the cursor on its first line (null while reading). */
   source: (() => void) | null
-  /** The text between its fences replaced (null when the file can't be changed). */
-  setText: ((text: string) => void) | null
+  /** The text between its fences replaced (null when the file can't be changed); `typed`: one step of typing, which
+   *  undo takes back with the steps around it. */
+  setText: ((text: string, typed?: boolean) => void) | null
   /** Its Markdown is showing (the cursor is in it): Done puts the cursor after it. */
   done: () => void
+}
+/** A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its options). */
+export type GridCard = { name: string; text: string; wide: boolean; stack: boolean }
+/** What changes a run of blocks in the file, each block by its index in the run (found where it is now). */
+export type GridEdit = {
+  /** The file can be changed. */
+  writable: boolean
+  /** Block k as an editor's block: its bar (what BlockView adds goes in `bar`) and `source`, how its card shows it. */
+  block: (k: number, bar: HTMLElement, source: () => void) => BlockEdit
+  /** Block k moved before or after the cell (a block and those stacked under it) holding block `at` of run `to`: with
+   *  its own stacked ones, or (stacked itself) alone, then no longer stacked. */
+  move: (k: number, to: GridEdit, at: number, after: boolean) => void
+  /** A block's fence put in after the run (the text's end for an empty one). */
+  add: (fence: string) => void
+  /** Block k taken out; stacked under it, the next one takes its place. */
+  remove: (k: number) => void
+  /** One of block k's options set (undefined takes it out). */
+  set: (k: number, key: string, value: unknown) => void
+  /** Undo (or redo) in the file's history: a card's source field has the editor's. */
+  history: (redo?: boolean) => void
 }
 /** What an embed's menu changes in its Markdown: its size (`|300`: an image's width, a PDF's height; null takes it out),
  *  or the embed itself. */
@@ -410,11 +435,9 @@ class Block extends WidgetType {
   /** Its remembered height's key (core/heights.ts): the file, the block and its text; and for a ```block-<name>, its
    *  key in the file's dashboard, a guess before the editor has drawn it. */
   held: string; guess?: string
-  /** What changes it in the file, when it isn't a fence there (a kind's block: kindBlocks). */
-  own?: (view: EditorView, bar: HTMLElement) => BlockEdit
-  constructor(key: string, text: string, version: number, draw: Draw, place = "", own?: (view: EditorView, bar: HTMLElement) => BlockEdit) {
+  constructor(key: string, text: string, version: number, draw: Draw, place = "") {
     super()
-    this.key = key; this.text = text; this.version = version; this.draw = draw; this.own = own
+    this.key = key; this.text = text; this.version = version; this.draw = draw
     const name = key.startsWith("block:") ? key.slice(6) : null
     this.held = name ? blockHeightKey("editor", place, name, text) : `editor:${place}:${key}:${textKey(text)}`
     if (name) this.guess = blockHeightKey("page", place, name, text)
@@ -428,7 +451,7 @@ class Block extends WidgetType {
     el.dataset.key = this.key
     const body = document.createElement("div")
     body.className = "cm-block-body"
-    const bar = blockBar(view, el, this.own)
+    const bar = blockBar(view, el)
     // (a view's and a table's only: other text shows its Markdown when clicked, and the bar would cover what it draws
     // there, a timeline's Add; a table's cells are edited in place, so its </> is how its Markdown shows)
     el.append(body, ...(this.view || this.key === "table" ? [bar.el] : []))
@@ -436,22 +459,7 @@ class Block extends WidgetType {
     holds.set(el, holdHeight(el, this.held, true))
     drawn.set(el, this.draw(body, this.text, view, bar.edit))
     painted.set(el, this)
-    el.addEventListener("mousedown", (e) => {
-      // (a right-click, or ⌃-click on a Mac, is the block's menu; the cursor stays where it is)
-      if (e.button === 2 || (e.ctrlKey && e.button === 0 && isMac)) { e.preventDefault(); return }
-      const wiki = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag]")
-      if (wiki && (e.button === 0 || e.button === 1) && !wiki.closest("[data-embed]")) {
-        e.preventDefault()
-        if (e.button === 1) noPaste()
-        view.state.facet(previewConfig).follow(wiki.dataset.tag ? { tag: wiki.dataset.tag } : { wiki: wiki.dataset.wiki! }, e.metaKey || e.ctrlKey || e.button === 1)
-        return
-      }
-      const own = (e.target as Element).closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit]")
-      // (or handled inside: a table's cell opening redraws it, so the clicked cell is already gone from the page)
-      if ((own && el.contains(own)) || e.defaultPrevented || !view.state.facet(EditorView.editable)) return
-      e.preventDefault()
-      if (!this.view) bar.edit.source!()
-    })
+    el.addEventListener("mousedown", (e) => { if (pressed(view, el, e) && !this.view) bar.edit.source!() })
     return el
   }
   updateDOM(el: HTMLElement) {
@@ -469,10 +477,173 @@ class Block extends WidgetType {
 }
 type Draw = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => Drawn
 
+/** A press on a drawn block: a link in it followed, a right-click left to its menu, its own controls left alone; true
+ *  when it's a press on the block itself (the editor's cursor stays where it is). */
+function pressed(view: EditorView, el: HTMLElement, e: MouseEvent) {
+  // (a right-click, or ⌃-click on a Mac, is the block's menu; the cursor stays where it is)
+  if (e.button === 2 || (e.ctrlKey && e.button === 0 && isMac)) { e.preventDefault(); return false }
+  const wiki = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag]")
+  if (wiki && (e.button === 0 || e.button === 1) && !wiki.closest("[data-embed]")) {
+    e.preventDefault()
+    if (e.button === 1) noPaste()
+    view.state.facet(previewConfig).follow(wiki.dataset.tag ? { tag: wiki.dataset.tag } : { wiki: wiki.dataset.wiki! }, e.metaKey || e.ctrlKey || e.button === 1)
+    return false
+  }
+  const own = (e.target as Element).closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit]")
+  // (or handled inside: a table's cell opening redraws it, so the clicked cell is already gone from the page)
+  if ((own && el.contains(own)) || e.defaultPrevented || !view.state.facet(EditorView.editable)) return false
+  e.preventDefault()
+  return true
+}
+
+/** A run of blocks side by side (PreviewConfig.renderGrid): one element for them all, drawn again in place when one
+ *  changes. `members`: each block's fence lines now (1-based), which what changes them reads. */
+type Member = GridCard & { a: number; b: number }
+class Grid extends WidgetType {
+  members: Member[]; version: number; key: string; held: string
+  constructor(members: Member[], version: number, place = "") {
+    super()
+    this.members = members; this.version = version
+    this.key = members.map((m) => `${m.name}\0${m.wide}\0${m.stack}\0${m.text}`).join("\0\0")
+    this.held = `editor:${place}:grid:${textKey(this.key)}`
+  }
+  get cards(): GridCard[] { return this.members.map(({ name, text, wide, stack }) => ({ name, text, wide, stack })) }
+  eq(o: Grid) { return o.key === this.key && o.version === this.version }
+  toDOM(view: EditorView) {
+    const el = document.createElement("div")
+    el.className = "cm-grid"
+    holds.set(el, holdHeight(el, this.held, true))
+    grids.set(el, view.state.facet(previewConfig).renderGrid!(this.cards, el, gridEdit(view, el)))
+    paintedGrid.set(el, this)
+    el.addEventListener("mousedown", (e) => { pressed(view, el, e) })
+    return el
+  }
+  updateDOM(el: HTMLElement) {
+    const d = grids.get(el), was = paintedGrid.get(el)
+    if (!d) return false
+    if (!was || was.key !== this.key || was.version !== this.version) d.update(this.cards)
+    paintedGrid.set(el, this)
+    return true
+  }
+  destroy(el: HTMLElement) { grids.get(el)?.destroy(); grids.delete(el); holds.get(el)?.(); holds.delete(el) }
+  ignoreEvent() { return true }
+  get estimatedHeight() { return heightOf(this.held) ?? (this.members.length ? 240 : 60) }
+}
+const grids = new WeakMap<HTMLElement, { update: (cards: GridCard[]) => void; destroy: () => void }>()
+const paintedGrid = new WeakMap<HTMLElement, Grid>()
+
+/** A block's options with one set (undefined takes it out), line by line as Properties writes a frontmatter. */
+const withOption = (text: string, key: string, value: unknown) => innerOf(setProp(`---\n${text}\n---\n`, key, value))
+
+/** The lines a..b (1-based) taken out with the blank lines after them (before them, at the text's end). */
+function cut(doc: Text, a: number, b: number) {
+  let n = b + 1
+  while (n <= doc.lines && !doc.line(n).text.trim()) n++
+  if (n <= doc.lines) return { from: doc.line(a).from, to: doc.line(n).from }
+  let p = a - 1
+  while (p >= 1 && !doc.line(p).text.trim()) p--
+  return { from: p >= 1 ? doc.line(p).to : doc.line(a).from, to: doc.line(b).to }
+}
+/** The next line after `b` with something on it (past the end: none). */
+const nextFull = (doc: Text, b: number) => { let n = b + 1; while (n <= doc.lines && !doc.line(n).text.trim()) n++; return n }
+/** The cell block k of a run is in: from the block it's stacked under to the last stacked under that one. */
+function cellOf(ms: Member[], k: number): [number, number] {
+  let s = k
+  while (s > 0 && ms[s].stack) s--
+  let e = s
+  while (e + 1 < ms.length && ms[e + 1].stack) e++
+  return [s, e]
+}
+/** Text put in at the end of a document, a blank line from what's before it. */
+function atEnd(doc: Text, text: string) {
+  const end = doc.sliceString(Math.max(0, doc.length - 2))
+  return { from: doc.length, insert: `${!doc.length || end === "\n\n" ? "" : end.endsWith("\n") ? "\n" : "\n\n"}${text}\n` }
+}
+
+/** What changes the run drawn in `el`: its blocks found from where it is now (the text above it may have changed). */
+const runs = new WeakMap<GridEdit, { view: EditorView; run: () => { w: Grid } | null }>()
+function gridEdit(view: EditorView, el: HTMLElement): GridEdit {
+  const run = () => {
+    if (!el.isConnected) return null
+    let hit = null as { w: Grid } | null
+    const pos = view.posAtDOM(el)
+    view.state.field(blockField).deco.between(pos, pos, (from, _to, d) => { if (from === pos && d.spec.widget instanceof Grid) hit = { w: d.spec.widget } })
+    return hit
+  }
+  const member = (k: number) => run()?.w.members[k] ?? null
+  const fenceAt = (a: number) => view.state.field(blockField).c.list.find((x) => x.fence && x.a === a) ?? null
+  const put = (changes: { from: number; to?: number; insert?: string }[], userEvent: string) => {
+    if (view.state.facet(previewConfig).writable && changes.length) view.dispatch({ changes, userEvent })
+  }
+  const edit: GridEdit = {
+    get writable() { return view.state.facet(previewConfig).writable && view.state.facet(EditorView.editable) },
+    block: (k, bar, source) => {
+      const find = () => { const m = member(k); return m ? fenceAt(m.a) : null }
+      return editOf(view, find, bar, source)
+    },
+    move: (k, to, at, after) => {
+      const there = runs.get(to)
+      const ms = run()?.w.members, dst = there?.view === view ? there.run()?.w.members : null
+      if (!ms?.[k] || !dst) return
+      const doc = view.state.doc
+      const lead = k === 0 || !ms[k].stack
+      const [s, e] = lead ? cellOf(ms, k) : [k, k]
+      const A = ms[s].a, B = ms[e].b
+      let text = doc.sliceString(doc.line(A).from, doc.line(B).to)
+      if (!lead) {
+        const body = withOption(ms[k].text, "stack", undefined).replace(/\s+$/, "")
+        text = [doc.line(A).text, ...(body ? [body] : []), doc.line(B).text].join("\n")
+      }
+      let ins: { from: number; insert: string }
+      if (!dst.length) ins = atEnd(doc, text)
+      else {
+        const [ts, te] = cellOf(dst, Math.min(at, dst.length - 1))
+        const T = dst[ts].a, U = dst[te].b
+        // (onto its own cell, or where it already is: nothing moves)
+        if (T <= B && U >= A) return
+        if (lead && (after ? nextFull(doc, U) === A : nextFull(doc, B) === T)) return
+        ins = after ? { from: doc.line(U).to, insert: `\n\n${text}` } : { from: doc.line(T).from, insert: `${text}\n\n` }
+      }
+      put([cut(doc, A, B), ins], "move.drop")
+    },
+    add: (fence) => {
+      const doc = view.state.doc, ms = run()?.w.members, text = fence.replace(/\s+$/, "")
+      put([ms?.length ? { from: doc.line(ms[ms.length - 1].b).to, insert: `\n\n${text}` } : atEnd(doc, text)], "input.block")
+    },
+    remove: (k) => {
+      const ms = run()?.w.members
+      if (!ms?.[k]) return
+      const doc = view.state.doc, changes: { from: number; to?: number; insert?: string }[] = [cut(doc, ms[k].a, ms[k].b)]
+      const next = ms[k + 1]
+      // (the next one stacked under it is no longer: it takes its place)
+      if ((k === 0 || !ms[k].stack) && next?.stack) changes.push(fenceBody(doc, next, withOption(next.text, "stack", undefined)))
+      put(changes, "delete.block")
+    },
+    set: (k, key, value) => {
+      const m = member(k)
+      if (m) put([fenceBody(view.state.doc, m, withOption(m.text, key, value))], "input.block")
+    },
+    history: (again) => { (again ? redo : undo)(view) },
+  }
+  runs.set(edit, { view, run })
+  return edit
+}
+/** A fence's lines between its ``` replaced with `text`: only what differs, so the rest keeps its place in the history
+ *  and in a merge. */
+function fenceBody(doc: Text, m: { a: number; b: number }, text: string) {
+  const body = text.replace(/\s+$/, ""), open = doc.line(m.a)
+  const r = m.b > m.a + 1 ? { from: body ? doc.line(m.a + 1).from : open.to, to: doc.line(m.b - 1).to, insert: body } : { from: open.to, to: open.to, insert: body ? `\n${body}` : "" }
+  const was = doc.sliceString(r.from, r.to)
+  let s = 0, e = 0
+  while (s < was.length && s < r.insert.length && was[s] === r.insert[s]) s++
+  while (e < was.length - s && e < r.insert.length - s && was[was.length - 1 - e] === r.insert[r.insert.length - 1 - e]) e++
+  return { from: r.from + s, to: r.to - e, insert: r.insert.slice(s, r.insert.length - e) }
+}
+
 
 /** A drawn block's bar (on hover, top right): what its block adds (`slot`), then </>, its Markdown. And what changes
  *  it in the file, found from where it is now (the text above it may have changed since it was drawn). */
-function blockBar(view: EditorView, el: HTMLElement, own?: (view: EditorView, bar: HTMLElement) => BlockEdit): { el: HTMLElement; edit: BlockEdit } {
+function blockBar(view: EditorView, el: HTMLElement): { el: HTMLElement; edit: BlockEdit } {
   const bar = document.createElement("div")
   bar.className = "cm-block-bar"
   const slot = document.createElement("div")
@@ -488,19 +659,19 @@ function blockBar(view: EditorView, el: HTMLElement, own?: (view: EditorView, ba
     const s = view.state, at = s.doc.lineAt(Math.min(view.posAtDOM(el), s.doc.length)).number
     return s.field(blockField).c.list.find((x) => x.a === at) ?? null
   }
-  const edit = own ? own(view, slot) : editOf(view, cand, slot)
+  const edit = editOf(view, cand, slot)
   src.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); edit.source?.() })
   return { el: bar, edit }
 }
 
 /** What changes a block in the file, `find` saying where it is now. */
-function editOf(view: EditorView, find: () => Cand | null, bar: HTMLElement): BlockEdit {
-  const source = () => {
+function editOf(view: EditorView, find: () => Cand | null, bar: HTMLElement, own?: () => void): BlockEdit {
+  const source = own ?? (() => {
     const x = find()
     if (!x) return
     view.dispatch({ selection: EditorSelection.cursor(view.state.doc.line(x.a).to), scrollIntoView: true, userEvent: "select" })
     view.focus()
-  }
+  })
   return {
     bar,
     line: () => { const x = find(); return x ? x.a - 1 : null },
@@ -509,20 +680,14 @@ function editOf(view: EditorView, find: () => Cand | null, bar: HTMLElement): Bl
       return x?.fence ? list.filter((c) => c.fence?.name === x.fence!.name && c.a < x.a).length : 0
     },
     get source() { return view.state.facet(EditorView.editable) ? source : null },
-    get setText() { return view.state.facet(previewConfig).writable ? (t: string) => setInner(view, find(), t) : null },
+    get setText() { return view.state.facet(previewConfig).writable ? (t: string, typed?: boolean) => setInner(view, find(), t, typed) : null },
     done: () => doneEditing(view),
   }
 }
 
 /** The lines between a fence's ``` replaced with `text` (none when it's empty). */
-function setInner(view: EditorView, x: Cand | null, text: string) {
-  if (!x) return
-  const doc = view.state.doc, body = text.replace(/\s+$/, "")
-  const open = doc.line(x.a)
-  const changes = x.b > x.a + 1
-    ? { from: body ? doc.line(x.a + 1).from : open.to, to: doc.line(x.b - 1).to, insert: body }
-    : { from: open.to, insert: body ? `\n${body}` : "" }
-  view.dispatch({ changes, userEvent: "input.block" })
+function setInner(view: EditorView, x: Cand | null, text: string, typed = false) {
+  if (x) view.dispatch({ changes: fenceBody(view.state.doc, x, text), userEvent: typed ? "input.type" : "input.block" })
 }
 
 /** The cursor out of the block it's in (to the line after it), so the block is drawn again. */
@@ -978,7 +1143,7 @@ type Cand = { from: number; to: number; a: number; b: number; decos: Range<Decor
   /** What it is: its Block's key up to the first colon (table, callout, block, embed…), or "comment". */
   kind: string
   /** A ```block-<name>: its name and options, for its notes and menu while its Markdown shows. */
-  fence?: { name: string; text: string }
+  fence?: { name: string; text: string; wide?: boolean; stack?: boolean }
   /** Drawn wherever the cursor is (a comment's faint lines), and doesn't hide what's inside. */
   always?: boolean }
 type Cands = { cfg: PreviewConfig; read: boolean; list: Cand[] }
@@ -1014,7 +1179,10 @@ function candidates(state: EditorState): Cands {
       // (or a fence a plugin draws: ```base)
       const name = blockName(f.info) ?? fenceBlock(f.info)
       if (name) {
-        add(k, end, new Block(`block:${name}`, inner, cfg.version, (el, t, _, edit) => cfg.renderBlock(name, t, el, edit), cfg.place), false, { name, text: inner })
+        // (side by side, its options say where: read once per version of the text)
+        const o = cfg.renderGrid ? parseOptions(inner).options : null
+        add(k, end, new Block(`block:${name}`, inner, cfg.version, (el, t, _, edit) => cfg.renderBlock(name, t, el, edit), cfg.place), false,
+          { name, text: inner, ...(o && { wide: o.wide === true, stack: o.stack === true }) })
       } else if (f.info.split(/\s/)[0].toLowerCase() === "mermaid") add(k, end, new Block("mermaid", inner, 0, drawMermaid, cfg.place))
       k = end
       continue
@@ -1128,6 +1296,7 @@ function candidates(state: EditorState): Cands {
  *  edited is drawn; in a callout that's drawn it's part of it). */
 function visible(c: Cands, state: EditorState): DecorationSet {
   const out: Range<Decoration>[] = []
+  const grid = !!c.cfg.renderGrid && !c.read, cards: Cand[] = []
   const covered = new Uint8Array(state.doc.lines + 2)
   for (const x of c.list) {
     if (!x.always && touchedLines(state, x.from, x.to)) {
@@ -1137,10 +1306,34 @@ function visible(c: Cands, state: EditorState): DecorationSet {
     let free = true
     for (let n = x.a; n <= x.b && free; n++) if (covered[n]) free = false
     if (!free) continue
-    out.push(...x.decos)
+    if (grid && x.fence) cards.push(x)
+    else out.push(...x.decos)
     if (!x.always) covered.fill(1, x.a, x.b + 1)
   }
+  if (grid) out.push(...gridRuns(c, state, cards))
   return Decoration.set(out.sort((a, b) => a.from - b.from), true)
+}
+
+/** Blocks drawn side by side: each run of them with only blank lines between is one Grid, and a text that doesn't end
+ *  with one ends with an empty one (its Add). */
+function gridRuns(c: Cands, state: EditorState, cards: Cand[]): Range<Decoration>[] {
+  const { lines } = scanOf(state.doc)
+  const out: Range<Decoration>[] = []
+  const blankTo = (a: number, b: number) => { for (let n = a; n < b; n++) if (lines[n - 1].trim()) return false; return true }
+  cards.sort((x, y) => x.a - y.a)
+  const member = (x: Cand): Member => ({ name: x.fence!.name, text: x.fence!.text, wide: !!x.fence!.wide, stack: !!x.fence!.stack, a: x.a, b: x.b })
+  for (let i = 0; i < cards.length;) {
+    let j = i
+    while (j + 1 < cards.length && blankTo(cards[j].b + 1, cards[j + 1].a)) j++
+    out.push(Decoration.replace({ widget: new Grid(cards.slice(i, j + 1).map(member), c.cfg.version, c.cfg.place), block: true }).range(cards[i].from, cards[j].to))
+    i = j + 1
+  }
+  let last = lines.length
+  while (last > 0 && !lines[last - 1].trim()) last--
+  if (!cards.length || cards[cards.length - 1].b !== last) {
+    out.push(Decoration.widget({ widget: new Grid([], c.cfg.version, c.cfg.place), block: true, side: 1 }).range(state.doc.length))
+  }
+  return out
 }
 
 // A change within one line that can't start, end or reshape a block, on a line no block holds, leaves every block as it
@@ -1405,46 +1598,4 @@ export const fenceMenu = EditorView.domEventHandlers({
   },
 })
 
-// ---------- a kind's blocks: drawn on top of a file that doesn't place them, written into it once changed ----------
-
-/** The kind's blocks the text doesn't place, as widgets at the body's top (core/blocks.ts onTop). */
-function kindBlocks(state: EditorState): DecorationSet {
-  const cfg = state.facet(previewConfig)
-  if (!cfg.live || !cfg.kindBlocks?.length) return Decoration.none
-  const start = state.field(frontmatter, false) ?? 0
-  const placed = new Set(scanOf(state.doc).fences.map((f) => (f.close !== null ? blockName(f.info) : null)))
-  return Decoration.set(cfg.kindBlocks.filter((n) => !placed.has(n)).map((name) => Decoration.widget({
-    widget: new Block(`block:${name}`, "", cfg.version, (el, t, _, edit) => cfg.renderBlock(name, t, el, edit), cfg.place, (view, bar) => placeEdit(view, name, bar)),
-    block: true, side: -1,
-  }).range(start)))
-}
-const kindField = StateField.define<DecorationSet>({
-  create: kindBlocks,
-  update: (v, tr) => (tr.docChanged || tr.startState.facet(previewConfig) !== tr.state.facet(previewConfig) ? kindBlocks(tr.state) : v),
-  provide: (f) => EditorView.decorations.from(f),
-})
-
-/** A kind's block changed (its options, its source): its fence written at the body's top, where it was drawn, so it's
- *  the file's own from then on. */
-function placeEdit(view: EditorView, name: string, bar: HTMLElement): BlockEdit {
-  const place = (text: string, show: boolean) => {
-    const doc = view.state.doc, start = view.state.field(frontmatter, false) ?? 0
-    const rest = doc.sliceString(start), lead = /^\s*/.exec(rest)![0]
-    const fence = "```block-" + name + "\n" + (text.trim() ? text.replace(/\s+$/, "") + "\n" : "") + "```"
-    // (before the body's first line; in an empty body, a blank line under the frontmatter first)
-    const empty = !rest.trim(), at = empty ? doc.length : start + lead.lastIndexOf("\n") + 1
-    const insert = empty ? (at && doc.sliceString(at - 1, at) !== "\n" ? "\n" : "") + (start ? "\n" : "") + fence : fence + "\n\n"
-    const cursor = at + insert.indexOf("```") + "```block-".length + name.length
-    view.dispatch({ changes: { from: at, insert }, ...(show ? { selection: EditorSelection.cursor(cursor), scrollIntoView: true } : {}), userEvent: "input.block" })
-  }
-  return {
-    bar,
-    line: () => null,
-    nth: () => 0,
-    get source() { return view.state.facet(EditorView.editable) ? () => { place("", true); view.focus() } : null },
-    get setText() { return view.state.facet(previewConfig).writable ? (t: string) => place(t, false) : null },
-    done: () => doneEditing(view),
-  }
-}
-
-export const livePreview = [focused, focusTracker, menuGone, inlinePlugin, blockField, kindField, blockKeys, fenceHover]
+export const livePreview = [focused, focusTracker, menuGone, inlinePlugin, blockField, blockKeys, fenceHover]

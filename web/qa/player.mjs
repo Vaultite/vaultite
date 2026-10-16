@@ -6,6 +6,7 @@
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url, { chrome: { args: ["--autoplay-policy=no-user-gesture-required"] } })
 const enc = encodeURIComponent
 const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
@@ -47,7 +48,7 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
   await page.getByRole("button", { name: "Stop" }).click(); await wait(400)
   check(`${label}: Stop closes the mini player`, await page.locator("[data-mini-player]").count() === 0)
 
-  await page.goto(`${B}#file/${enc(".vaultite/pages/Dashboards/Queue.md")}`); await wait(2000)
+  await page.goto(`${B}#file/${enc(await pagePath(B, "Queue"))}`); await wait(2000)
   const row = page.locator('[data-queue-row="Qa player/Talk"]')
   check(`${label}: the queue shows its time left`, /left/.test(await row.innerText().catch(() => "")), await row.innerText().catch(() => ""))
   const play = page.locator('[data-queue-row="Qa player/Episode"] [aria-label="Play"]')

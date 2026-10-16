@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import { isBuiltin } from "node:module"
 import path from "node:path"
-import { declProblems, declsOf, settingDeclProblems } from "./blocks.ts"
+import { declProblems, declsOf, drawsOf, settingDeclProblems } from "./blocks.ts"
 import { CATEGORIES } from "./categories.ts"
 import { API_VERSION, APP_VERSION, compareVersions, MIN_API_VERSION, parseVersion, tagVersion } from "./version.ts"
 import { DISCLOSURES, HOST, ICON_FILE, ICON_MAX, ICON_NAME, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
@@ -83,6 +83,9 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
     const v = m[k] ?? []
     if (!Array.isArray(v)) out.push(`${where}: ${k} must be a list of plugin ids`)
     else for (const other of v) if (!ids.has(other)) out.push(`${where}: ${k} '${other}', which isn't a plugin`)
+  }
+  if (m.draws !== undefined && (!Array.isArray(m.draws) || m.draws.some((b) => typeof b !== "string" || !/^[\w-]+$/.test(b)))) {
+    out.push(`${where}: draws lists blocks another plugin declares with \`by\` that it draws too (["agent-usage"])`)
   }
   return [...out, ...metaProblems(m, where), ...compatProblems(m, where)]
 }
@@ -349,8 +352,8 @@ export function iconNames(root: string): Set<string> {
   return out
 }
 
-/** The blocks a coding agent plugin's `codingAgent(plugin, {prefix})` gives it (core/codingagents.ts). */
-export const USAGE_BLOCKS = (prefix: string) => ["-sessions", "-usage", "-projects", "-models", ""].map((s) => prefix + s)
+/** The agent blocks `codingAgent(plugin, ...)` gives a coding agent plugin a text side for (core/codingagents.ts). */
+export const USAGE_BLOCKS = ["agent-sessions", "agent-usage", "agent-projects", "agent-models", "agent-project"]
 
 /** The blocks a plugin's backend gives a text side (`plugin.block("<name>", ...)` in its .ts files, or codingAgent). */
 export function textBlockNames(dir: string): string[] {
@@ -359,7 +362,7 @@ export function textBlockNames(dir: string): string[] {
     if (!f.endsWith(".ts") || f.endsWith(".d.ts")) continue
     const src = fs.readFileSync(f, "utf8")
     for (const m of src.matchAll(/\.block\(\s*["'`]([\w-]+)["'`]/g)) out.add(m[1])
-    for (const m of src.matchAll(/codingAgent\([^)]*?prefix:\s*["'`]([\w-]+)["'`]/g)) for (const b of USAGE_BLOCKS(m[1])) out.add(b)
+    if (/\bcodingAgent\(plugin\b/.test(src)) for (const b of USAGE_BLOCKS) out.add(b)
   }
   return [...out]
 }
@@ -371,12 +374,13 @@ export function blockProblems(dir: string, m: Record<string, unknown>, label: st
   const out = [...declProblems(m.blocks, where), ...settingDeclProblems(m.settings, where)]
   let src = ""
   try { src = fs.readFileSync(path.join(dir, "index.tsx"), "utf8") } catch { /* no frontend */ }
-  const drawn = defKeys(src, "blocks"), texts = new Set(textBlockNames(dir)), decls = declsOf(m)
+  const drawn = defKeys(src, "blocks"), texts = new Set(textBlockNames(dir)), decls = declsOf(m), draws = drawsOf(m)
   for (const b of drawn) {
-    if (!Object.hasOwn(decls, b)) out.push(`${where}: block '${b}' (drawn by index.tsx) isn't declared in "blocks": what it shows and its options`)
+    if (!Object.hasOwn(decls, b) && !draws.includes(b)) out.push(`${where}: block '${b}' (drawn by index.tsx) isn't declared in "blocks": what it shows and its options`)
     if (!texts.has(b)) out.push(`${label}: block '${b}' has no text side: plugin.block("${b}", ...) in plugin.ts, what /api/render shows`)
   }
-  for (const b of Object.keys(decls)) if (!drawn.includes(b)) out.push(`${where}: declares block '${b}', which index.tsx doesn't draw`)
+  for (const b of Object.keys(decls)) if (!drawn.includes(b) && !decls[b].by) out.push(`${where}: declares block '${b}', which index.tsx doesn't draw`)
+  for (const b of draws) if (!drawn.includes(b)) out.push(`${where}: draws block '${b}', which index.tsx doesn't draw`)
   for (const p of defEntries(src, "sidebar")) if (!/\bview\s*:/.test(p.value))
     out.push(`${label}/index.tsx: sidebar panel '${p.key}' has no view: give it one (a tab showing it), so it drags onto a pane and opens in a tab`)
   return out

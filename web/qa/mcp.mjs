@@ -84,7 +84,7 @@ async function session(label, c) {
   t = await call("render", { path: "Today" })
   check(`${label} render`, !t.error && t.text.includes("# Today") && !t.text.includes("```block-"), t.text.slice(0, 200))
   t = await call("docs", { topic: "query" })
-  check(`${label} docs`, !t.error && t.text.includes("block-query"), t.text?.slice(0, 200))
+  check(`${label} docs`, !t.error && t.text.includes("```base"), t.text?.slice(0, 200))
   const alice = at("Alice Martin.md") // (People/, or wherever the vault keeps people)
   t = await call("list", { folder: alice.split("/").slice(0, -1).join("/") })
   check(`${label} list`, !t.error && t.text.includes(`${alice} (person)`), t)

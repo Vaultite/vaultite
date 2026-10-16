@@ -1,6 +1,6 @@
-// Where a block's data comes from (components/BlockSource.tsx, GET /api/blocks/sources): a note with a query block
-// over two notes of its own, read in reading view. Right-clicking the block opens its menu: what it is, the files it
-// matched (a click opens one), Options (its form) and "Edit source" (into editing, the cursor on its fence's first
+// Where a block's data comes from (components/BlockSource.tsx, GET /api/blocks/sources): a note with a graph block
+// linking two notes of its own, read in reading view. Right-clicking the block opens its menu: what it is, the files it
+// shows (a click opens one), Options (its form) and "Edit source" (into editing, the cursor on its fence's first
 // option). The API answers the same for an agent, with the fence's line. On a phone, a held finger opens the menu.
 // WRITES to the vault: throwaway server only.
 //   node web/qa/blocksource.mjs <base url> [out dir]
@@ -14,17 +14,17 @@ const NOTE = `${DIR}/Sources.md`
 for (const p of [NOTE, `${DIR}/First match.md`, `${DIR}/Second match.md`]) await fetch(`${B}api/file?path=${enc(p)}`, { method: "DELETE" })
 await post("file", { path: `${DIR}/First match.md`, text: "---\ntype: note\nkind: note\ntags: [Qasource]\n---\n\nOne.\n" })
 await post("file", { path: `${DIR}/Second match.md`, text: "---\ntype: note\nkind: note\ntags: [Qasource]\n---\n\nTwo.\n" })
-await post("file", { path: NOTE, text: "---\ntype: note\nkind: note\n---\n\nIntro line.\n\n```block-query\ntitle: Qa sources\ntags: [Qasource]\n```\n\nEnd line.\n" })
+await post("file", { path: NOTE, text: "---\ntype: note\nkind: note\n---\n\nIntro line, about [[First match]] and [[Second match]].\n\n```block-graph\ntitle: Qa sources\n```\n\nEnd line.\n" })
 await wait(800)
 
 // The API, as an agent asks it.
-const fenceLine = (await (await fetch(`${B}api/file?path=${enc(NOTE)}`)).json()).text.split("\n").indexOf("```block-query")
+const fenceLine = (await (await fetch(`${B}api/file?path=${enc(NOTE)}`)).json()).text.split("\n").indexOf("```block-graph")
 const all = await (await fetch(`${B}api/blocks/sources?path=${enc(NOTE)}`)).json()
 const q = all.blocks?.[0]
-check(`the file's blocks, each with its fence's line (${q?.name} at ${q?.line})`, q?.name === "query" && q.line === fenceLine && fenceLine > 0)
+check(`the file's blocks, each with its fence's line (${q?.name} at ${q?.line})`, q?.name === "graph" && q.line === fenceLine && fenceLine > 0)
 const files = (q?.sources ?? []).filter((s) => s.kind === "file").map((s) => s.path)
-check(`a query's sources are the files it matched (${files.join(", ")})`, files.length === 2 && files.every((f) => f.startsWith(`${DIR}/`)))
-const one = await (await fetch(`${B}api/blocks/sources?path=${enc(NOTE)}&name=query&text=${enc("title: Qa sources\ntags: [Qasource]")}`)).json()
+check(`a graph's sources are the files it shows (${files.join(", ")})`, files.includes(`${DIR}/First match.md`) && files.includes(`${DIR}/Second match.md`) && files.every((f) => f.startsWith(`${DIR}/`)))
+const one = await (await fetch(`${B}api/blocks/sources?path=${enc(NOTE)}&name=graph&text=${enc("title: Qa sources")}`)).json()
 check("one block, by its name and options' text", one.line === fenceLine && one.description)
 
 const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, deviceScaleFactor: 1 })
@@ -39,8 +39,8 @@ const block = page.locator(".file-view").getByText("Qa sources").first()
 await block.click({ button: "right" }); await wait(800)
 check("right-click on the block opens its menu", await menu.isVisible())
 const text = await menu.innerText()
-check("it says what the block is", /The query block \(Database views\)/.test(text) || /The query block/.test(text))
-check("it lists the files the query matched", text.includes("First match") && text.includes("Second match"))
+check("it says what the block is", /The graph block/.test(text))
+check("it lists the files it shows", text.includes("First match") && text.includes("Second match"))
 check("…then its options and its source", text.includes("Edit source") && text.includes("Options"))
 await page.screenshot({ path: `${OUT}blocksource-menu.png` })
 await menu.getByRole("menuitem", { name: /Options/ }).click(); await wait(500)

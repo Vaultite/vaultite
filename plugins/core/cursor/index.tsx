@@ -1,8 +1,8 @@
 import { agentPlugin, definePlugin, type AgentSource } from "@vaultite"
 import { CursorIcon } from "./CursorIcon"
 
-// Cursor's blocks and chat tabs are the app's agent components (AgentUsage.tsx) on GET /api/cursor; its page is the
-// Cursor dashboard (pages/Cursor.md), and `cursor` goes in a project file. Terminal runs its CLI.
+// Cursor draws the agent blocks (`agent: cursor`) and its chat tabs with the app's agent components (AgentUsage.tsx) on
+// GET /api/cursor; its page is the Cursor dashboard (pages/Cursor.md). Terminal runs its CLI.
 const SRC: AgentSource = {
   path: "cursor", label: "Cursor", icon: CursorIcon, tint: "var(--purple)", agent: "cursor", view: "cursor-session",
   noLimits: "No usage yet. It comes from Cursor's dashboard, with Cursor.app signed in on this machine and reading it allowed in Cursor's settings.",
@@ -14,7 +14,7 @@ const SRC: AgentSource = {
 export default definePlugin(agentPlugin(SRC, {
   // `icon: cursor` in a file (its dashboard).
   icons: { cursor: CursorIcon },
-  blocks: { "cursor-limits": "limits", "cursor-sessions": "sessions", "cursor-usage": "usage", "cursor-projects": "projects", "cursor-models": "models", cursor: "project" },
+  blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   process: ["agent", "cursor-agent"],
   opens: { open: { id: "terminal:cursor", name: "Open Cursor agent" }, split: { id: "terminal:cursor-split", desktop: true, name: "Open Cursor agent in right split" } },
   demo: {

@@ -11,6 +11,9 @@ aliases: [Bob]
 sort: 1
 ---
 
+```block-person
+```
+
 Nurse on night shifts; the best time to call is early afternoon.
 
 ## Timeline

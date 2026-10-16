@@ -100,7 +100,7 @@ async function switchTo(p: string) {
     } catch (e) {
       for (const plugin of app.app) plugin.vault = vault // still the old one
       LOADED.splice(0, LOADED.length, ...app.app)
-      await app.syncPlugins(false)
+      await app.syncPlugins()
       app.scheduler.start()
       throw e
     }

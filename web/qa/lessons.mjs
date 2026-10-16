@@ -88,7 +88,7 @@ const reviews = JSON.parse(read(".vaultite/plugins/lessons/reviews.json") || "{}
 check("reviews.json has both cards", Object.keys(reviews["Cards/Baking"] ?? {}).length === 2)
 check("...and the cards file is unchanged", !read("Cards/Baking.md").includes("due"))
 
-// (the sandbox has Learning on: its page is built in)
+// (the sandbox has Learning on: its page is there)
 await page.goto(`${B}#file/${encodeURIComponent(await pagePath(B, "Learning"))}`)
 check("the Learning page's block lists the lesson", await until(async () => await text("Starters").isVisible().catch(() => false), 8000))
 await shot(page, "5-learning")

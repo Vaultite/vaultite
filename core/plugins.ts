@@ -10,7 +10,7 @@ import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
-import { type BlockDecls, blocksDoc, declsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
+import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
 import { entryOf, type Op, type OpCtx, type OpDid, type OpEntry, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
@@ -783,7 +783,9 @@ export class Plugin {
   docs(): { text: string } | null {
     const p = path.join(this.dir, "AGENTS.md")
     const own = (fs.existsSync(p) ? readText(p) : "").replace(/\n{3,}/g, "\n\n").trim()
-    const extra = [settingsDoc(this.id, settingsOf(this.manifest)), blocksDoc(this.blocks), pluginOpsDoc(this.ops.map((o) => entryOf(o, this.id)))].filter(Boolean)
+    const draws = drawsOf(this.manifest), by = draws.map((b) => LOADED.find((x) => x.blocks[b]?.by)?.blocks[b].by).find(Boolean)
+    const drawn = draws.length ? `Draws ${draws.map((b) => `\`${b}\``).join(", ")} (declared once for all that draw them): this one's with \`${by ?? "by"}: ${this.id}\`.` : ""
+    const extra = [settingsDoc(this.id, settingsOf(this.manifest)), blocksDoc(this.blocks), drawn, pluginOpsDoc(this.ops.map((o) => entryOf(o, this.id)))].filter(Boolean)
     if (!own && !extra.length) return null
     return { text: [own || `## ${this.manifest.name ?? this.id}`, ...extra].join("\n\n") }
   }

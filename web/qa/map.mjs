@@ -2,8 +2,9 @@
 // horizontal swipe on the map that must pan the map, not scroll the page; reads only.
 //   node web/qa/map.mjs <base url> [out dir]
 import { SHOTS, WEBGL, qa } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, OUT = SHOTS], browser, check, done } = await qa(import.meta.url, { chrome: { args: WEBGL } })
-const MAP = `${B}#file/${encodeURIComponent(".vaultite/pages/Dashboards/People map.md")}` // People's Map tab
+const MAP = `${B}#file/${encodeURIComponent(await pagePath(B, "People map"))}`
 const report = []
 for (const [w, h, tag, mobile] of [[390, 844, "390", true], [320, 640, "320", true], [1440, 900, "desktop", false]]) {
   for (const scheme of ["light", "dark"]) {

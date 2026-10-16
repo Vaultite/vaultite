@@ -4,7 +4,7 @@
   "category": "life",
   "offByDefault": true,
   "name": "People map",
-  "description": "A map of everyone (the Map tab on People): their pins, grouped by place.",
+  "description": "A map of everyone (its own People map page): their pins, grouped by place.",
   "requires": ["people"],
   "blocks": {
     "people-map": {

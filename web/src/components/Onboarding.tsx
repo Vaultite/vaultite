@@ -92,7 +92,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
               <label className="flex items-start gap-3"><span className="w-16 shrink-0" />
                 <span className="flex flex-1 items-start gap-2">
                   <input type="checkbox" checked={starter} onChange={(e) => setStarter(e.target.checked)} data-starter className="mt-0.5 size-3.5 accent-[var(--primary)]" />
-                  <span>Start with example pages<span className="block text-muted-foreground">A Start here note, and AGENTS.md and CLAUDE.md pointing agents at the vault's rules.</span></span>
+                  <span>Start with example pages<span className="block text-muted-foreground">A Start here note, the plugins' pages (Agents, Activity...), and AGENTS.md and CLAUDE.md pointing agents at the vault's rules.</span></span>
                 </span>
               </label>
             </div>

@@ -29,9 +29,9 @@ export default async ($: VaultTest) => {
     } finally { fs.readFileSync = readWas }
     clearWs()
   }
-  // A dashboard's subtitle under its title (/api/render) is Dashboards' (the service "page-head").
-  write("Dashboards/Sub.md", "---\ntype: dashboard\nsubtitle: A line under it\n---\n\nText.\n")
+  // A dashboard in /api/render: its title, then its text (no line of its own under the title).
+  write("Dashboards/Sub.md", "---\ntype: dashboard\nicon: sun\n---\n\nText.\n")
   const [, sub] = await api("GET", "render?path=Dashboards/Sub.md")
-  check("render: a dashboard's subtitle under its title", sub.includes("# Sub\n\nA line under it\n\nText."), sub)
+  check("render: a dashboard is its title, then its text", sub.includes("# Sub\n\nText."), sub)
   fs.rmSync(path.join(VAULT, "Dashboards/Sub.md"))
 }

@@ -1,0 +1,8 @@
+{
+  "id": "page-tabs",
+  "icon": "panels-top-left",
+  "category": "navigation",
+  "offByDefault": true,
+  "name": "Page tabs",
+  "description": "Join pages as tabs of one: the first lists the others in tabs:, and each shows a strip under its title to switch between them."
+}

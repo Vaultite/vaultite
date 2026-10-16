@@ -1,8 +1,8 @@
 import { agentPlugin, definePlugin, type AgentSource } from "@vaultite"
 import { GrokBotIcon } from "./GrokBotIcon"
 
-// Grok Bot's blocks and conversation tabs are the app's agent components (AgentUsage.tsx) on GET /api/grok-bot; its page
-// is the Grok Bot dashboard (pages/Grok Bot.md). It runs in the cloud: nothing open here, nothing for Terminal to run.
+// Grok Bot draws the agent blocks (`agent: grok-bot`) and its conversation tabs with the app's agent components on GET
+// /api/grok-bot (pages/Grok Bot.md). It runs in the cloud: nothing open here, nothing for Terminal to run.
 const SRC: AgentSource = {
   path: "grok-bot", label: "Grok Bot", icon: GrokBotIcon, tint: "var(--teal)", agent: "grok-bot", view: "grok-bot-session",
   noLimits: "No week yet. It comes from Cursor's dashboard, with Cursor.app signed in on this machine, on a plan with Grok Bot.",
@@ -15,7 +15,7 @@ const SRC: AgentSource = {
 export default definePlugin(agentPlugin(SRC, {
   // `icon: grok-bot` in a file (its dashboard).
   icons: { "grok-bot": GrokBotIcon },
-  blocks: { "grok-bot-limits": "limits", "grok-bot-sessions": "sessions", "grok-bot-usage": "usage", "grok-bot-models": "models" },
+  blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-models": "models" },
   demo: {
     limits: { source: "Cursor dashboard", observed: 3, windows: [["week", "This week", 10080, 12, 60 * 70]] },
     daily: [0.4, 0, 0.9, 1.2, 0.3, 0.6, 1.5, 0, 0.8, 1.1], per: [1.8e6, 6, 0.6], cacheHit: 0.81,

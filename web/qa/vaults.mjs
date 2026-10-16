@@ -45,7 +45,7 @@ try {
   // Create a vault (through the API the sheet uses): the server serves it, the app reloads on it.
   const r = await api("vaults/create", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ parent, name: "Second" }) })
   check("create: the server serves the new vault", (await api("vault")).path === path.join(parent, "Second") && r.vaults.some((v) => v.path === first), r)
-  // A new vault starts from Minimal (core/start.ts): only .vaultite/ written (the plugins' pages built in there), and
+  // A new vault starts from Minimal (core/start.ts): only .vaultite/ written (no page until a setup is picked), and
   // no starter content (Start here, agent pointers): that's setup's choice, not the sheet's.
   const second = path.join(parent, "Second")
   const pages = JSON.parse(fs.readFileSync(path.join(second, ".vaultite/pages.json"), "utf8"))

@@ -4,9 +4,10 @@
 // on any error the page throws, on index.html's "couldn't start" screen, or on nothing drawn: the first page, Plugins,
 // Settings and a note in the editor (its chunk loads then). Then the screen itself: the app's code throwing as it loads,
 // and not loading at all, must each show it (rather than a blank window). Last, a vault of the user's own (Obsidian's,
-// plain Markdown, their AGENTS.md): opening it must change none of their files and add nothing outside .vaultite/, nor
-// must picking a setup for it as Set up Vaultite does, nor every plugin on with their schedules run (core/writegate.ts:
-// a plugin acting on its own writes outside .vaultite/ only once the user allowed it).
+// plain Markdown, their AGENTS.md): opening it must change none of their files and add nothing outside .vaultite/;
+// picking a setup for it as Set up Vaultite does adds only its plugins' pages, new files in Dashboards/; and every
+// plugin on with their schedules run writes nothing (core/writegate.ts: a plugin acting on its own writes outside
+// .vaultite/ only once the user allowed it).
 // WRITES: only the throwaway vault it makes (none with <base url>, which should be a throwaway server too).
 //   node web/qa/boot.mjs [<base url>]
 import { spawn, spawnSync } from "node:child_process"
@@ -132,26 +133,27 @@ try {
     const after = files(own)
     const touched = Object.keys({ ...before, ...after }).filter((f) => before[f] !== after[f])
     check("own vault: opening it changes none of the user's files and adds none outside .vaultite/", !touched.length, touched.join(", "))
-    // Set up Vaultite's way (electron/main.ts): a setup picked (the plugins' pages are built in, in .vaultite/pages).
+    // Set up Vaultite's way (electron/main.ts): a setup picked, its plugins write their pages (core/pages.ts).
     const call = (method, route, body) => fetch(`${ownBase}api/${route}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
     const applied = []
     for (const id of ["pages", "life-os"]) applied.push((await call("POST", `bundles/${id}/apply`, {})).status)
     await fetch(`${ownBase}api/state`)
     await wait(500)
     const later = files(own)
-    const added = Object.keys({ ...before, ...later }).filter((f) => before[f] !== later[f])
-    check("own vault: a setup picked in Set up Vaultite writes nothing outside .vaultite/", applied.every((c) => c === 200) && !added.length, [applied, added])
-    // ...while its pages are there all the same: in .vaultite/pages, pinned, drawn, out of the file tree.
+    const changed = Object.keys(before).filter((f) => before[f] !== later[f]), added = Object.keys(later).filter((f) => !(f in before))
+    check("own vault: a setup picked changes none of the user's files (their own Today too)", applied.every((c) => c === 200) && !changed.length, [applied, changed])
+    check("own vault: ...and adds only its plugins' pages, in Dashboards/", added.length > 0 && added.every((f) => f.startsWith("Dashboards/") && /^type: dashboard$/m.test(later[f])), added)
+    // ...its pages pinned and drawn, the user's files now.
     const st = await (await fetch(`${ownBase}api/state`)).json()
-    const today = st.files.files.find((f) => f.path === ".vaultite/pages/Dashboards/Today.md")
+    const people = st.files.files.find((f) => f.path === "Dashboards/People.md")
     const pinned = (await (await call("GET", "config/pages")).json()).pinned ?? []
-    check("own vault: the plugins' pages are in .vaultite/pages, pinned", today?.type === "dashboard" && pinned.includes(today.path) && !st.files.folders.some((f) => f.startsWith(".vaultite")), [today, pinned])
+    check("own vault: a plugin's page is the user's file, pinned", people?.type === "dashboard" && pinned.includes(people.path) && pinned.includes("Dashboards/Today.md"), [people, pinned])
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
     const page = await ctx.newPage()
     page.setDefaultNavigationTimeout(SLOW)
-    await page.goto(`${ownBase}#file/${encodeURIComponent(".vaultite/pages/Dashboards/Today.md")}`)
-    check("own vault: a page there draws its blocks", await page.waitForSelector("[data-block=routines]", { timeout: SLOW }).then(() => true, () => false))
-    check("own vault: the sidebar lists it", await page.locator("aside >> text=Today").count() > 0)
+    await page.goto(`${ownBase}#file/${encodeURIComponent("Dashboards/People.md")}`)
+    check("own vault: the page draws its blocks", await page.waitForSelector("[data-block=people-due]", { timeout: SLOW }).then(() => true, () => false))
+    check("own vault: the sidebar lists it", await page.locator("aside >> text=People").count() > 0)
     await ctx.close()
     // Every plugin on, the app running a while and every schedule run (as its plugin does, on its own): nothing outside
     // .vaultite/ changes but what the user did, until a plugin is allowed to write there.

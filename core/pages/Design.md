@@ -2,7 +2,6 @@
 type: dashboard
 icon: palette
 tint: purple
-subtitle: Everything a page can be made of
 ---
 
 The app's design system, as one file: every block and every piece of Markdown it draws, drawn live on your data. Pages are made by putting these together. A block is a fence, ```` ```block-<name> ````, with its options inside as YAML. Switch to editing (⌘E) to see how each one is written, and copy it into any file.
@@ -14,19 +13,19 @@ The primitives that arrange a page, and the options every block takes.
 | Primitive | How |
 | --- | --- |
 | Grid | A dashboard (`type: dashboard`, drawn by the Dashboards plugin) lays its blocks out in two columns; one in a narrow pane or on a phone; with Dashboards off, one under another like any file |
+| Editing | A dashboard edits as it reads: the same grid, its text typed in place between the blocks; a card's bar (on hover, always on a phone) drags it elsewhere, sets Full width and Under the one before, shows its source (`</>`) and removes it; Add a block puts one in. Source mode is the file's Markdown |
 | `wide: true` | The block takes the whole row |
 | `stack: true` | The block goes under the one before it, in the same column |
 | `file: <name>` | Any block, drawn for another file: a name or path like a `[[link]]`, or a folder ending in `/` for its newest file |
 | Options | Each block's own are declared by its plugin (`vau blocks <name>`); typing in a block suggests them. One it doesn't take, or of the wrong type, gets a quiet line under the block while editing, and the block is drawn anyway |
 | Markdown | Any text between blocks takes a row of its own, like this one |
-| Tabs | A page's views are files: the first lists them, `tabs: [People map]`, and each names its label, `tab: Map` |
 | Embeds | `![[Spending.html]]` or `![[Transactions.csv]]` on a line of its own: an interactive page or a table (`\|400`: its height); a PDF, audio, video, or a file a plugin draws (`![[Board.canvas]]`: a canvas of cards and arrows) the same way; a note (`![[Note]]`, a section `![[Note#Heading]]`, a block `![[Note#^id]]`) is its text |
-| Frontmatter | `icon` (a lucide name), `tint` (a colour token), `subtitle` (`{date}` is today), `plugin` (hidden while it's off) |
-| Archived | "Archive" in a file's menu: moved into `.archive/` in its folder with `archived: true` (hidden in the file tree until "Show archived files", then dimmed), left out of the sidebar, lists, the graph and database views, last in search |
+| Frontmatter | `icon` (a lucide name, drawn before the title), `tint` (a colour token), `plugin` (hidden while it's off) |
+| Archived | "Archive" in a file's menu: moved into `.archive/` in its folder with `archived: true` (hidden in the file tree until "Show archived files", then dimmed), left out of the sidebar, lists, the graph and database views (a base's `archived: true` adds them), last in search |
 
 Right-click any block (hold a finger on it on a phone) for where its data comes from: the files it shows (a click opens one), its plugin's settings and cache, and what's live; then Options (a form) and Edit source. In the editor a block stays drawn when clicked: hover for its bar, whose </> shows its Markdown.
 
-Every block shows the same states, drawn by the app: "Loading…" while its data comes (shimmering, after a moment so a fast load just appears; a list draws skeleton rows instead, as many as it had last time, so nothing jumps when the data comes), a line in its place if it can't be drawn (the rest of the page stays), and, outside a dashboard, a line saying its plugin is off (a dashboard leaves it out).
+Every block shows the same states, drawn by the app: "Loading…" while its data comes (shimmering, after a moment so a fast load just appears; a list draws skeleton rows instead, as many as it had last time, so nothing jumps when the data comes), a line in its place if it can't be drawn (the rest of the page stays), and, outside a dashboard, a line saying its plugin is off (a dashboard being read leaves it out).
 
 Toasts are the one thing the app draws outside pages: a short line at the bottom of the window that goes away by itself, with one button at most ("Moved to Notes · Undo"; an error has a red icon). A plugin shows one with `notify(text)`, an agent with `vau notify "text"`.
 
@@ -103,13 +102,13 @@ What's inside shows when it's opened.
 
 In the editor, `/` at the start of a line lists all of this, every block below and your templates, to put in.
 
-In a note (not a dashboard), a `## Timeline` section is drawn as a timeline: lines like `- 2026-09-28 · call · 30m · Caught up`.
+In a file whose kind draws one (a person's), a `## Timeline` section is drawn as a timeline: lines like `- 2026-09-28 · call · 30m · Caught up`.
 
 [^1]: Footnotes are numbered in the order they're referenced; hover one to read it, click it to go to its text.
 
 ## Today
 
-`routines`: today's routines, tap to tick. `agenda`: the calendar's next events. `week-goals`: this week against each area's goal (`areas: [workouts, study]`, `title`).
+`routines`: today's routines under today's date, tap to tick. `agenda`: the calendar's next events. `week-goals`: this week against each area's goal (`areas: [workouts, study]`, `title`).
 
 ```block-routines
 wide: true
@@ -209,53 +208,68 @@ file: Projects/
 
 ## Database views
 
-`query`: the files that match a query, as a table, cards, a list, a board or a calendar, like a database: `from` (a folder), `type`, `tags`, `where` (`relation = friend and every_days <= 30`: `= != < <= > >= contains`, `and`, `or`, `not`, `has <key>`), `columns` (frontmatter keys, and `file`, `folder`, `updated`, `created`), `sort` (`-updated`: descending), `group`, `groups` (the groups in order: `[idea, building, live]`), `view` (`table`, `cards`, `list`, `board`, `calendar`, `map`), `limit`, `title`, `archived` (`true`: archived files too, `only`: only them), and what a `.base` file has: `filters` (Bases expressions: `file.hasTag("book") && status != "done"`), `formulas` (computed columns, `formula.left`), `properties` (column labels), `summaries` (`{pages: Sum}`: under the column). Click a heading to sort, a row to open it, double-click a value to change it. A `board` is a column per value of `group` (and No value): drag a card to another column, or use its … menu, to change that key in the file. A `calendar` is a month by `date` (a date key; default `date`, else `created`; `month: 2026-09` to start on another month): arrows change the month, drag an item to another day to move its date; narrow, it's a list of the days.
+A ```` ```base ```` fence is a database view: Obsidian's Bases, written as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's views). `filters` pick the files (`file.inFolder("People")`, `file.hasTag("book")`, `type == "person" && status != "done"`; `and`, `or` and `not` lists), `formulas` add computed columns (`formula.left`), `properties` label them, and each of its `views` (tabs) has a `type` (`table`, `cards`, `list`, `kanban`, `calendar`, `map`), a `name` (its title), `order` (the columns), `sort`, `groupBy`, `limit` and `summaries` (`{pages: Sum}`: under the column). Click a heading to sort, a row to open it, double-click a value to change it. A `kanban` is a column per value of `groupBy` (and No value; `groups: [idea, building]` puts those first, even empty): drag a card to another column, or use its … menu, to change that key in the file. A `calendar` is a month by `date` (a date key; default `date`, else `created`; `month: 2026-09` to start on another month): arrows change the month, drag an item to another day to move its date; narrow, it's a list of the days. A base lists every file outside hidden folders, templates and attachments too (a view's `archived: true` adds archive folders, `only` lists only them); on a dashboard, `wide: true` takes the whole row.
 
-```block-query
-title: People
-type: person
-columns: [file, relation, location, every_days]
-group: relation
+```base
+filters: 'type == "person"'
+views:
+  - type: table
+    name: People
+    order: [file.name, relation, location, every_days]
+    groupBy:
+      property: relation
+      direction: ASC
 wide: true
 ```
 
-```block-query
-title: Recently changed
-where: "type != dashboard"
-columns: [file, folder, updated]
-sort: -updated
-view: list
-limit: 6
+```base
+filters:
+  and:
+    - file.ext == "md"
+    - type != "dashboard"
+views:
+  - type: list
+    name: Recently changed
+    order: [file.name, file.folder, updated]
+    sort:
+      - property: updated
+        direction: DESC
+    limit: 6
 ```
 
-```block-query
-title: Projects by status
-type: project
-view: board
-group: status
-groups: [idea, building, live, paused]
-columns: [file, tagline]
+```base
+filters: 'type == "project"'
+views:
+  - type: kanban
+    name: Projects by status
+    order: [file.name, tagline]
+    groupBy:
+      property: status
+      direction: ASC
+    groups: [idea, building, live, paused]
 wide: true
 ```
 
-```block-query
-title: Logs this month
-type: log
-view: calendar
-date: date
-columns: [file, area]
+```base
+filters: 'type == "log"'
+views:
+  - type: calendar
+    name: Logs this month
+    date: date
+    order: [file.name, area]
 wide: true
 ```
 
-```block-query
-title: People on a map
-type: person
-view: map
-columns: [file, location]
+```base
+filters: 'type == "person"'
+views:
+  - type: map
+    name: People on a map
+    order: [file.name, location]
 wide: true
 ```
 
-A `map` puts a pin per file where its `coordinates` say (`[lat, lon]`; `coordinates: <key>` for another), coloured by `markerColor`. A ```` ```base ```` fence is a base inline, its YAML as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's): filters, formulas, display names, summaries, and its views as tabs.
+A `map` puts a pin per file where its `coordinates` say (`[lat, lon]`; `coordinates: note.place` for another key), coloured by `markerColor` and with `markerIcon`. Several views are tabs:
 
 ```base
 filters: 'type == "book"'
@@ -275,13 +289,14 @@ views:
     order: [file.name, author]
 ```
 
-`this` in a `where` (or Bases' `filters`) is the note the view is in: here this page; embedded (`![[Linked here]]`), the note embedding it, so one note with this view, embedded in every project, lists what links to each. `project = this` (a property naming it), `status = this.status` (the same value as its own). Keys with a type (`.vaultite/types.json`: `vau properties types`) sort and compare as it: dates by time, numbers as numbers.
+`this` in `filters` is the note the view is in: here this page; embedded (`![[Linked here]]`), the note embedding it, so one note with this view, embedded in every project, lists what links to each. `project == this` (a property naming it), `status == this.status` (the same value as its own). Keys with a type (`.vaultite/types.json`: `vau properties types`) sort and compare as it: dates by time, numbers as numbers.
 
-```block-query
-title: Linked here
-where: "file.links contains this"
-columns: [file, folder]
-view: list
+```base
+filters: file.hasLink(this.file)
+views:
+  - type: list
+    name: Linked here
+    order: [file.name, file.folder]
 ```
 
 ## Graph
@@ -354,160 +369,40 @@ events: 3
 ```block-queue
 ```
 
-## Claude Code and this machine
+## Coding agents
 
-`claude-limits`: plan limits (each account's, with several). `claude-sessions`: open and recent sessions (`recent: 5`; click one for its terminal or its conversation), and the Remote Control servers running. `claude-usage`, `claude-projects` and `claude-models` (`days: 30`). `claude`: one project's usage (a file block; `project: <folder>`). Every agent block takes `account: <id>` (one of Claude Code's accounts) and `machine: <id>` (another machine's).
+One set of blocks for every coding agent, `agent:` naming whose (its plugin: `claude-code`, `codex`, `cursor`, `grok-bot`, `opencode`, `openclaw`, `hermes`); with that plugin off, the block is off. `agent-limits`: the plan's limits (each account's, with several; only agents with a plan: Claude Code, Codex, Cursor, Grok Bot). `agent-sessions`: open and recent sessions (`recent: 5`; click one for its terminal or its conversation), and Claude Code's Remote Control servers. `agent-usage`, `agent-projects` and `agent-models` (`days: 30`): value at list prices, or the cost OpenCode, OpenClaw and Hermes recorded. `agent-project`: one project's usage (a file block; `project: <folder>`; not Grok Bot, which runs in the cloud). Every agent block takes `account: <id>` (a Claude Code account, a Hermes profile, an OpenClaw agent) and `machine: <id>` (another machine's).
 
-```block-claude-limits
+```block-agent-limits
+agent: claude-code
 ```
 
-```block-claude-sessions
+```block-agent-sessions
+agent: claude-code
 recent: 3
 ```
 
-```block-claude-usage
+```block-agent-usage
+agent: codex
 days: 7
 ```
 
-```block-claude-projects
+```block-agent-projects
+agent: claude-code
 days: 7
 ```
 
-```block-claude-models
+```block-agent-models
+agent: opencode
 days: 7
 ```
 
-```block-claude
+```block-agent-project
+agent: claude-code
 file: Projects/
 ```
 
-## Machines
-
-`machines`: your other computers running Vaultite, whether they answer and what they run; click one for a terminal or an agent there.
-
-```block-machines
-```
-
-## Codex
-
-The same blocks for OpenAI's Codex (the agents' blocks are one set of components, `AgentUsage.tsx`): `codex-limits` (the ChatGPT plan's 5-hour and weekly limits), `codex-sessions`, `codex-usage`, `codex-projects`, `codex-models`, and `codex` in a project file.
-
-```block-codex-limits
-```
-
-```block-codex-sessions
-recent: 3
-```
-
-```block-codex-usage
-days: 7
-```
-
-```block-codex-projects
-days: 7
-```
-
-```block-codex-models
-days: 7
-```
-
-```block-codex
-file: Projects/
-```
-
-## Cursor
-
-`cursor-limits`: the plan's included usage. `cursor-sessions`: open and recent chats (`recent: 5`). `cursor-usage`, `cursor-projects` and `cursor-models` (`days: 30`). `cursor`: one project's usage (a file block; `project: <folder>`).
-
-```block-cursor-limits
-```
-
-```block-cursor-sessions
-recent: 3
-```
-
-```block-cursor-usage
-days: 7
-```
-
-```block-cursor-projects
-days: 7
-```
-
-```block-cursor-models
-days: 7
-```
-
-```block-cursor
-file: Projects/
-```
-
-## Grok Bot
-
-Cursor's cloud agent, from Cursor's dashboard: `grok-bot-limits` (its week), `grok-bot-sessions` (its latest conversations, `recent: 5`), `grok-bot-usage` and `grok-bot-models` (`days: 30`). It runs in the cloud, so nothing is open here and it has no project blocks.
-
-```block-grok-bot-limits
-```
-
-```block-grok-bot-sessions
-recent: 3
-```
-
-```block-grok-bot-usage
-days: 7
-```
-
-```block-grok-bot-models
-days: 7
-```
-
-## OpenCode
-
-The same blocks for OpenCode, with the cost OpenCode recorded (0 for free models): `opencode-sessions`, `opencode-usage`, `opencode-projects`, `opencode-models`, and `opencode` in a project file. OpenCode has no plan limits, so it has no limits block.
-
-```block-opencode-sessions
-recent: 3
-```
-
-```block-opencode-usage
-days: 7
-```
-
-```block-opencode-projects
-days: 7
-```
-
-```block-opencode-models
-days: 7
-```
-
-```block-opencode
-file: Projects/
-```
-
-## OpenClaw
-
-The same blocks for OpenClaw, with the cost OpenClaw recorded: `openclaw-sessions`, `openclaw-usage`, `openclaw-projects`, `openclaw-models`, and `openclaw` in a project file; its agents are the `account:`. `openclaw-memory`: an agent's memory files and latest daily notes, read only (`notes: 2`). `openclaw-cron`: its scheduled jobs.
-
-```block-openclaw-sessions
-recent: 3
-```
-
-```block-openclaw-usage
-days: 7
-```
-
-```block-openclaw-projects
-days: 7
-```
-
-```block-openclaw-models
-days: 7
-```
-
-```block-openclaw
-file: Projects/
-```
+Blocks of their own, read only: `openclaw-memory`, an OpenClaw agent's memory files and latest daily notes (`notes: 2`), and `openclaw-cron`, its scheduled jobs; `hermes-memory`, Hermes' SOUL.md and each entry of what it remembers, and `hermes-cron`, its scheduled jobs.
 
 ```block-openclaw-memory
 notes: 1
@@ -516,34 +411,17 @@ notes: 1
 ```block-openclaw-cron
 ```
 
-## Hermes
-
-The same blocks for Hermes Agent, with the cost Hermes recorded: `hermes-sessions`, `hermes-usage`, `hermes-projects`, `hermes-models`, and `hermes` in a project file; `account:` picks one of its profiles. Hermes has no plan limits, so it has no limits block. Two of its own, read only: `hermes-cron`, its scheduled jobs, and `hermes-memory`, its SOUL.md and each entry of what it remembers.
-
-```block-hermes-sessions
-recent: 3
-```
-
-```block-hermes-usage
-days: 7
-```
-
-```block-hermes-projects
-days: 7
-```
-
-```block-hermes-models
-days: 7
-```
-
-```block-hermes
-file: Projects/
+```block-hermes-memory
 ```
 
 ```block-hermes-cron
 ```
 
-```block-hermes-memory
+## Machines
+
+`machines`: your other computers running Vaultite, whether they answer and what they run; click one for a terminal or an agent there.
+
+```block-machines
 ```
 
 A Muse agent (a personal AI on its own VM), read live from its home folder on an agent machine (`machine:`; the first with one when left out): `muse` is who it is, its counts and what's left to tell it; `muse-runs` its latest runs, each opening its conversation (`recent: 10`); `muse-memory` what it learned (`notes: 3`); `muse-dreams` its nightly dreams (`dreams: 2`); `muse-feed` its feed's stories (`stories: 6`); `muse-setup` its jobs, connectors and objectives.

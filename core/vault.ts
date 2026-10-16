@@ -5,11 +5,12 @@ import { execFile } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
+import { withKindBlocks } from "./blocks.ts"
 import { merge3, patchFrontmatter, same } from "./textedit.ts"
 import { dates, dump, YAMLError } from "./yaml.ts"
 import { tagsOf } from "./sections.ts"
 import { bodyLine, FM, frontmatter, loadFm, parseText, prose, stripNl } from "./frontmatter.ts"
-import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived, PAGES_DIR } from "./fileprops.ts"
+import { ARCHIVE_DIR, archiveTwin, effectiveType, excluder, homeFolder, inArchive, isArchived } from "./fileprops.ts"
 import { kindOf } from "./filetypes.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
@@ -19,7 +20,7 @@ import { guard, setGate } from "./writegate.ts"
 export { hasTag, tagName, tagsOf } from "./sections.ts"
 // A file's type (its kind's, else its frontmatter's), whether it's archived (`archived: true`) and archive folders:
 // core/fileprops.ts.
-export { ARCHIVE_DIR, archiveTwin, effectiveType, inArchive, inPagesDir, isArchived, isHiddenPath, PAGES_DIR, unarchived } from "./fileprops.ts"
+export { ARCHIVE_DIR, archiveTwin, effectiveType, inArchive, isArchived, isHiddenPath, unarchived } from "./fileprops.ts"
 // A file's text and frontmatter, read and edited line by line: core/frontmatter.ts.
 export { bodyLine, FM, frontmatter, keepBlocks, loadFm, parseText, prose, renameProperty, renameTagText, setPropertyText } from "./frontmatter.ts"
 
@@ -339,8 +340,8 @@ export type KindSpec = {
   order?: (items: Item[]) => Item[]
   /** an update: the old item with the patch's fields on top (a kind can merge nested fields, like log data) */
   merge?: (old: Item, patch: Item) => Item
-  /** its files' view: blocks drawn on top of each file that doesn't place them itself (["person"]: ```block-person),
-   *  or a function of its frontmatter. Never written into the files. */
+  /** its files' blocks (["person"]: ```block-person), or a function of its frontmatter: written on top of a new file,
+   *  and by `vau type --apply` and `vau migrate`; only what a file places is drawn. */
   blocks?: string[] | ((fm: Item) => string[])
   /** `## ` headings its files' view draws instead of their text (["timeline"]): only in its files, never in any note */
   sections?: string[]
@@ -432,7 +433,7 @@ type Stat = { ns: bigint; size: number; born: number }
  *  request walks the vault, and these can hold tens of thousands of files nobody opens. */
 const CACHES = new Set(["node_modules", "__pycache__"])
 const sameStat = (a: Stat, b: Stat) => a.ns === b.ns && a.size === b.size
-const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated", PAGES_DIR])
+const NOT_SETTINGS = new Set([".vaultite/artifacts", ".vaultite/cache", ".vaultite/generated"])
 
 export class Entry {
   rel: string
@@ -468,6 +469,15 @@ export class Entry {
 
 const base = (rel: string) => rel.slice(rel.lastIndexOf("/") + 1)
 export const stemOf = (rel: string) => base(rel).replace(/\.md$/, "")
+
+/** A new file's owned keys with its title in `aliases` when its kind names files by their title and this one's name
+ *  can't hold it (links find a file by its name or aliases, never its `title:`/`name:`). */
+function named(k: Kind, item: Item, rel: string, owned: Item): Item {
+  const title = item[k.titleKey]
+  if (k.spec.filename || typeof title !== "string" || !title.trim() || stemOf(rel) === title) return owned
+  const had = Array.isArray(owned.aliases) ? owned.aliases.map(String) : []
+  return had.includes(title) ? owned : { ...owned, aliases: [title, ...had] }
+}
 
 export const ms = (ns: bigint) => Number(ns / 1000000n)
 
@@ -617,12 +627,12 @@ export class Vault {
     }
   }
 
-  /** Every file as links see it: its path, `title` (or `name`) and aliases. */
+  /** Every file as links see it: its path and aliases (its name is its title: `title:` and `name:` aren't link names). */
   private linkFiles(): LinkFile[] {
     const out: LinkFile[] = []
     for (const [rel, e] of this.entries) {
-      const title = e.fm.title || e.fm.name, aliases = e.fm.aliases
-      out.push({ path: rel, title: title ? String(title) : undefined, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
+      const aliases = e.fm.aliases
+      out.push({ path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
     }
     for (const rel of this.others.keys()) out.push({ path: rel })
     return out
@@ -852,21 +862,20 @@ export class Vault {
     return homeFolder(paths, k.folder, k.recursive)
   }
 
-  /** Where pages the user makes or copies go: the folder set (folders.json `dashboards`), else the one most of their
-   *  dashboards are in (never the built-in pages'), else Dashboards/. */
+  /** Where pages go (the user's, and those plugins write): the folder set (folders.json `dashboards`), else the one
+   *  most of their dashboards are in, else Dashboards/. */
   pagesHome(): string {
     const mine = [...this.entries.values()].filter((e) => e.fm.type === "dashboard").map((e) => e.rel)
     return this.folderSet("dashboards") ?? homeFolder(mine, "Dashboards") ?? "Dashboards"
   }
 
-  /** Every Markdown file with its kind (hidden folders and CACHES left out, not .archive or PAGES_DIR), and the other
-   *  files and folders, for the file tree (not PAGES_DIR's). */
+  /** Every Markdown file with its kind (hidden folders and CACHES left out, not .archive), and the other files and
+   *  folders, for the file tree. */
   private scan() {
     const found = new Map<string, Stat>()
     const others = new Map<string, Stat>()
     const folders: string[] = []
-    const stack = [""], pages = PAGES_DIR + "/"
-    if (fs.existsSync(path.join(this.path, PAGES_DIR))) stack.push(PAGES_DIR)
+    const stack = [""]
     const root = path.join(this.path, "/") // (joined by hand below: path.join per file is a tenth of the walk)
     // Linked folders followed (and the vault's own): a link back up (`ln -s .. x`) is walked once, not until paths are too long.
     const linked = new Set<string>()
@@ -895,7 +904,7 @@ export class Vault {
         if (st === null || st.isDirectory()) {
           if (CACHES.has(name)) continue
           if (st) { const key = `${st.dev}:${st.ino}`; if (linked.has(key)) continue; linked.add(key) }
-          if (!rel.startsWith(pages)) folders.push(rel)
+          folders.push(rel)
           stack.push(rel)
           continue
         }
@@ -1140,7 +1149,8 @@ export class Vault {
       throw new ConflictError(`${existing.rel} has frontmatter that can't be read; fix it before the app writes to it`)
     }
     // A new file gets what the onCreate hooks add, after the kind's own keys (target() only names a new item's file).
-    const text = this.compose(k, existing, old, old ? owned : { ...owned, ...this.creating(this.target(k, neu, null), { type: k.type, ...owned }) }, body)
+    const fresh = old ? null : this.target(k, neu, null)
+    const text = this.compose(k, existing, old, fresh === null ? owned : { ...named(k, neu, fresh, owned), ...this.creating(fresh, { type: k.type, ...owned }) }, body)
     const cur = old ? old.id + ".md" : null
     const rel = this.target(k, neu, old, archiving)
     if (text === null && rel === cur) return old // nothing changed
@@ -1170,7 +1180,7 @@ export class Vault {
    *  key, as Obsidian does) and the body is patched; what can't be a small edit is a conflict, never a rewrite. */
   private compose(k: Kind, e: Entry | null, old: Item | null, owned: Item, body: string): string | null {
     const full: Item = { type: k.type, ...owned }
-    if (e === null) return frontmatter(mergeFm({}, full), body)
+    if (e === null) return frontmatter(mergeFm({}, full), withKindBlocks(k.blocksFor(full), body) ?? body)
     let raw: string
     try {
       raw = readText(this.abs(e.rel))

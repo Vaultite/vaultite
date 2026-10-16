@@ -16,13 +16,8 @@ export const archiveTwin = (rel: string) => {
   const i = rel.lastIndexOf("/")
   return `${rel.slice(0, i + 1)}${ARCHIVE_DIR}/${rel.slice(i + 1)}`
 }
-/** Where the plugins' pages are built in (core/pages.ts), never among the user's notes. The vault indexes it like any
- *  folder (a page there is drawn, pinned and linked as usual); the file tree leaves it out. */
-export const PAGES_DIR = ".vaultite/pages"
-export const inPagesDir = (rel: string) => rel === PAGES_DIR || rel.startsWith(`${PAGES_DIR}/`)
-/** A dot folder or file somewhere in the path, other than an archive folder or the pages folder: hidden unless hidden
- *  files are shown. */
-export const isHiddenPath = (rel: string) => !inPagesDir(rel) && rel.split("/").some((p) => p.startsWith(".") && p !== ARCHIVE_DIR)
+/** A dot folder or file somewhere in the path, other than an archive folder: hidden unless hidden files are shown. */
+export const isHiddenPath = (rel: string) => rel.split("/").some((p) => p.startsWith(".") && p !== ARCHIVE_DIR)
 
 /** Whether a value of `archived` means archived: true or yes only (YAML reads both as true; quoted, they're text), so
  *  a stray `archived: 2024` or `archived: maybe` doesn't hide a file. */
@@ -51,12 +46,12 @@ export function effectiveType(kindType: string | null | undefined, fm: Record<st
   return hit ? hit[1] : null
 }
 
-/** Where new files of a kind go: the folder most are in (not an archive or the built-in pages'), preferring ones named
+/** Where new files of a kind go: the folder most are in (not an archive), preferring ones named
  *  like the kind's default so a few clipped notes don't draw new ones away. Ties: first by name; null when none. */
 export function homeFolder(paths: Iterable<string>, name?: string | null, nested = false): string | null {
   const count = new Map<string, number>()
   for (const p of paths) {
-    if (inArchive(p) || inPagesDir(p)) continue // (new files never go into an archive or the built-in pages)
+    if (inArchive(p)) continue // (new files never go into an archive)
     const d = p.slice(0, Math.max(0, p.lastIndexOf("/")))
     count.set(d, (count.get(d) ?? 0) + 1)
   }
@@ -95,5 +90,5 @@ export function attachmentDir(spec: string, from: string): string {
 }
 
 /** A folder new files go in, as settings show it (core/filing.ts): `set` when the vault's folders.json names it
- *  (else another app's setting or the guess). Keyed by a kind's collection, or `dashboards` (the plugins' pages). */
+ *  (else another app's setting or the guess). Keyed by a kind's collection, or `dashboards` (pages, the plugins' too). */
 export type Home = { key: string; type: string; plugin: string; label: string; folder: string; set: boolean }

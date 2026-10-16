@@ -2,8 +2,8 @@
 // a newtab.json written by hand followed live (sections in its order, its buttons as their commands draw them), the
 // right-click menu (a button moved and removed, a section hidden, each section's items only on it, Reset with Undo), dragging a section by its title and
 // a button to reorder them, a sidebar panel shown as a section, a button running its command, and the phone's page
-// (Pinned's tiles first). Recently changed and opened list the user's files, never the plugins' built-in pages (a copy
-// of one is the user's). WRITES .vaultite/newtab.json, plugins.json and two notes: throwaway only.
+// (Pinned's tiles first). Recently changed and opened list the user's files, the pages plugins wrote too. WRITES
+// .vaultite/newtab.json, plugins.json and a note: throwaway only.
 //   node web/qa/newtab.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, utimesSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -16,21 +16,18 @@ const before = existsSync(file) ? readFileSync(file, "utf8") : null
 const saved = () => { try { return JSON.parse(readFileSync(file, "utf8")) } catch { return {} } }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 
-// Plugins' built-in pages: one opened here, one changed just now (as a bundle or an update writes them); a note and a
-// copy of a page.
-const [builtIn, builtInChanged] = readdirSync(path.join(VAULT, ".vaultite/pages"), { recursive: true }).filter((f) => f.endsWith(".md"))
-const note = path.join(VAULT, "Notes/Changed lately.md"), copy = path.join(VAULT, "Notes/My copy of a page.md")
+// Pages plugins wrote (the user's files): one opened here, one changed just now; and a note.
+const [opened0, changed0] = readdirSync(path.join(VAULT, "Dashboards")).filter((f) => f.endsWith(".md"))
+const note = path.join(VAULT, "Notes/Changed lately.md")
 try {
   rmSync(file, { force: true })
-  const page0 = path.join(VAULT, ".vaultite/pages", builtInChanged)
   writeFileSync(note, "Written just now.\n")
-  writeFileSync(copy, readFileSync(page0, "utf8"))
-  utimesSync(page0, new Date(), new Date(Date.now() + 60_000))
+  utimesSync(path.join(VAULT, "Dashboards", changed0), new Date(), new Date(Date.now() + 60_000))
   const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))
   const sections = () => page.$$eval("[data-pane] [data-newtab-section]", (els) => els.map((e) => e.getAttribute("data-newtab-section")))
   const buttons = () => page.$$eval("[data-pane] [data-newtab-action]", (els) => els.map((e) => e.getAttribute("data-newtab-action")))
-  // Opened here: the built-in page, then the note (each stays in view long enough to count: core/scope.ts).
-  for (const p of [`.vaultite/pages/${builtIn}`, "Notes/Changed lately.md"]) {
+  // Opened here: a page, then the note (each stays in view long enough to count: core/scope.ts).
+  for (const p of [`Dashboards/${opened0}`, "Notes/Changed lately.md"]) {
     await page.goto("about:blank")
     await page.goto(`${B.replace(/\/$/, "")}/#file/${encodeURIComponent(p)}`)
     await page.waitForSelector("[aria-label='New tab']", { timeout: 30000 })
@@ -43,12 +40,12 @@ try {
   check("default: New note, Open a file, the command palette", same(await buttons(), ["file:new", "switcher:open", "palette:open"]), await buttons())
   const changed = await until(async () => {
     const rows = await page.$$eval("[data-pane] [data-newtab-section='core:changed'] [data-recent]", (els) => els.map((e) => e.getAttribute("data-recent")))
-    return rows.includes("Notes/My copy of a page.md") && rows
+    return rows.includes(`Dashboards/${changed0}`) && rows
   })
   // (the note is opened here, so it's under Recently opened instead)
-  check("recently changed: the user's files (a copy of a page too), never a plugin's built-in page", !!changed && !changed.some((p) => p.startsWith(".vaultite/")), changed)
+  check("recently changed: the user's files, a page a plugin wrote too", !!changed, changed)
   const opened = await page.$$eval("[data-pane] [data-newtab-section='core:opened'] [data-recent]", (els) => els.map((e) => e.getAttribute("data-recent")))
-  check("recently opened here: the note, not the built-in page", opened.includes("Notes/Changed lately.md") && !opened.some((p) => p.startsWith(".vaultite/")), opened)
+  check("recently opened here: the note", opened.includes("Notes/Changed lately.md"), opened)
   check("default: a button is drawn as its command (label, shortcut)", /New note/.test(await page.textContent("[data-pane] [data-newtab-action='file:new']")) &&
     /⌘O|Ctrl/.test(await page.textContent("[data-pane] [data-newtab-action='switcher:open']")))
   await page.screenshot({ path: path.join(OUT, "default.png") })
@@ -166,7 +163,7 @@ try {
   await phone.close()
 } finally {
   if (before === null) rmSync(file, { force: true }); else writeFileSync(file, before)
-  rmSync(note, { force: true }); rmSync(copy, { force: true })
+  rmSync(note, { force: true })
   await browser.close()
 }
 console.log(`\nshots in ${OUT}`)

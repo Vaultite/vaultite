@@ -1,6 +1,6 @@
 // Archiving (plugins/core/archive): Archive in a file's menu moves it into its folder's hidden .archive/ (the key set,
 // links rewritten), Undo in the toast brings it back; the tree hides .archive/ until its header's "Show archived files"
-// (files.json's showArchived), then shows it dimmed; Unarchive from there; an archived file stays out of a query; the
+// (files.json's showArchived), then shows it dimmed; Unarchive from there; an archived file stays out of a base; the
 // palette's "Move archived files into archive folders" moves a file archived by hand, after asking; a new canvas made
 // from an archived note goes beside it, not into .archive/. WRITES "Qa archive"
 // and files.json (put back): throwaway server only.
@@ -21,7 +21,7 @@ await api("POST", "folder", { path: D })
 await api("POST", "file", { path: `${D}/Old.md`, text: "An old note.\n" })
 await api("POST", "file", { path: `${D}/Keep.md`, text: "Still here.\n" })
 await api("POST", "file", { path: `${D}/Links.md`, text: `See [[${D}/Old]].\n` })
-await api("POST", "file", { path: `${D}/List.md`, text: `\`\`\`block-query\nfrom: ${D}\nview: list\n\`\`\`\n` })
+await api("POST", "file", { path: `${D}/List.md`, text: `\`\`\`base\nfilters: file.inFolder("${D}")\nviews:\n  - type: list\n\`\`\`\n` })
 const filesBefore = await api("GET", "config/files")
 await api("PUT", "config/files", { ...filesBefore, showHidden: false, showArchived: false, autoReveal: false })
 
@@ -50,7 +50,7 @@ check("Undo: the link back", !!(await until(() => body(`${D}/Links.md`) === `See
 
 // 2. Through the API (as an agent would), then the tree's toggle shows .archive/, dimmed.
 await api("POST", "ops/archive.add", { path: `${D}/Old.md` })
-check("the query leaves it out", !(await api("GET", `render?path=${encodeURIComponent(`${D}/List.md`)}`)).includes("Old"))
+check("a base leaves it out", !(await api("GET", `render?path=${encodeURIComponent(`${D}/List.md`)}`)).includes("Old"))
 const toggle = page.locator('aside [aria-label="Show archived files"]')
 check("the tree's header offers Show archived files", !!(await until(() => toggle.count())))
 await toggle.click()

@@ -2,11 +2,11 @@
 // the file as small edits keeping unknown keys (baseedit.ts), so Obsidian still reads it.
 import { useMemo, useState } from "react"
 import { CalendarDays, Columns3, Ellipsis, LayoutGrid, List, Map as MapIcon, Table2, type LucideIcon } from "lucide-react"
-import { cn, menuBelow, notify, notifyError, Panel, resolver, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
-import { countText, ResultBody, ResultSkeleton, TINT, useMonth, useQueryResult } from "./QueryView"
+import { cn, menuBelow, notify, notifyError, Panel, resolver, today, type BlockCtx, type FormatCtx, type MenuItem } from "@vaultite"
+import { countText, ResultBody, ResultSkeleton, TINT, useQueryResult } from "./QueryView"
 import { parse as parseYaml } from "yaml"
 import { addView, firstView, freeViewName, removeView, setViewType } from "./baseedit"
-import { pickView, viewNames, type BaseConfig } from "./bases"
+import { pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
 
 const ICONS: Record<string, LucideIcon> = { table: Table2, cards: LayoutGrid, list: List, map: MapIcon, kanban: Columns3, board: Columns3, calendar: CalendarDays }
 const iconOf = (type: string) => ICONS[type.toLowerCase()] ?? Table2
@@ -32,7 +32,8 @@ type Props = {
 
 export function BaseView({ store, text, path, host, view, place, onChange }: Props) {
   const [picked, setShow] = useState<string | null>(view ?? null)
-  const [month, setMonth] = useMonth(null)
+  // (a calendar's month: its arrows', else the view's `month`, else this one; the arrows don't change the file)
+  const [moved, setMonth] = useState<string | null>(null)
   // The views, from the text as it is now (a view just added has its tab at once); the server's when it doesn't parse.
   const cfg = useMemo<BaseConfig | null>(() => {
     try { const c = parseYaml(text || "{}"); return c && typeof c === "object" && !Array.isArray(c) ? c : {} } catch { return null }
@@ -43,6 +44,8 @@ export function BaseView({ store, text, path, host, view, place, onChange }: Pro
   const at = cfg ? pickView(cfg, show).index : null
   // (a calendar's month, as its arrows have it)
   const calendar = local !== null && at !== null && local[at]?.type.toLowerCase() === "calendar"
+  const own = calendar && cfg ? viewsOf(cfg)[at]?.month : null
+  const month = moved ?? (typeof own === "string" && /^\d{4}-\d{2}$/.test(own) ? own : today().slice(0, 7))
   // A .base is asked for by its path (the server reads the file: a short address, whatever its size; an edit here is
   // saved at once and heard back); a fence by its text.
   const url = useMemo(() => {

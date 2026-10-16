@@ -4,7 +4,7 @@ import { useId, useRef, type MouseEvent, type ReactNode, type RefObject } from "
 import { ArrowDown, ArrowLeft, ArrowRight, ArrowUp, Command as CommandIcon, EyeOff, Layers, LayoutDashboard, MousePointerClick, Plus, RotateCcw, Smile, Trash2 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { getStore } from "@/core/data"
-import { folderOf, inPagesDir, stem } from "@/core/files"
+import { folderOf, stem } from "@/core/files"
 import { fileAt } from "@/core/pages"
 import type { NewTabSection, SidebarPanel } from "@/core/define"
 import { available, commandList, keyHint, keysOf, runCommand, useCommandList, type Command } from "@/core/commands"
@@ -243,7 +243,7 @@ export function chooseNewTabPage() {
   const files = store.files.files.filter((f) => f.type === "dashboard").sort((a, b) => name(a).localeCompare(name(b)))
   choose({
     title: "New tab's page", placeholder: "A dashboard for new tabs…", current: page ?? undefined,
-    items: files.map((f) => ({ id: f.path, label: name(f), detail: inPagesDir(f.path) ? "Built in" : folderOf(f.path) || undefined, icon: LayoutDashboard })),
+    items: files.map((f) => ({ id: f.path, label: name(f), detail: folderOf(f.path) || undefined, icon: LayoutDashboard })),
     empty: <p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No dashboards yet.</p>,
     onPick: (it) => { void setNewTab({ page: it.id }) },
   })

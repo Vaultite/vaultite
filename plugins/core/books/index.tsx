@@ -25,6 +25,6 @@ export default definePlugin({
     id: `book-${b.id}`, title: b.title, meta: b.author, kind: "Book", icon: BookOpen, tint: "var(--learning)",
     detail: detailPath("book", b.id), file: `${b.id}.md`, text: `${b.author} ${plainText(b.notes)}`, recent: 0, weight: 4,
   })),
-  links: (s) => s.books.map((b) => ({ kind: "book", id: b.id, title: b.title, detail: detailPath("book", b.id), names: [b.title] })),
+  links: (s) => s.books.map((b) => ({ kind: "book", id: b.id, title: b.title, detail: detailPath("book", b.id), names: [] })),
   preview: "learning",
 })

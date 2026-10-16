@@ -1,7 +1,7 @@
 // A file's text and its frontmatter header: parsed, written and edited line by line, without touching the disk.
 import { patchFrontmatter, renameKey } from "./textedit.ts"
 import { dates, dump, load, YAMLError } from "./yaml.ts"
-import { blocksIn, fmTags, renameTagsIn, scan, tagName, withoutBlocks } from "./sections.ts"
+import { fmTags, renameTagsIn, scan, tagName, viewsIn, withoutBlocks } from "./sections.ts"
 import type { Item } from "./vault.ts"
 
 export function frontmatter(data: Item, body = "") {
@@ -88,16 +88,17 @@ export function renameTagText(text: string, from: string, to: string): string | 
 
 export const stripNl = (s: string) => s.replace(/^\n+|\n+$/g, "")
 
-/** The body without its blocks: what a kind parses. */
+/** The body without its blocks and ```base fences: what a kind parses. */
 export function prose(body: string) {
   return withoutBlocks(body ?? "")
 }
 
-/** `neu` (a body written whole) with the blocks `old` placed: those above all of its text on top, the rest at the end. */
+/** `neu` (a body written whole) with the views `old` placed (blocks, ```base fences): those above all of its text on top,
+ *  the rest at the end. */
 export function keepBlocks(old: string, neu: string) {
   const top: string[] = [], end: string[] = []
   const s = scan(old ?? "")
-  for (const b of blocksIn(old ?? "", s)) (prose(s.lines.slice(0, b.open).join("\n")).trim() ? end : top).push(s.lines.slice(b.open, b.close + 1).join("\n"))
+  for (const b of viewsIn(old ?? "", s)) (prose(s.lines.slice(0, b.open).join("\n")).trim() ? end : top).push(s.lines.slice(b.open, b.close + 1).join("\n"))
   if (!top.length && !end.length) return neu
   return [top.join("\n\n"), stripNl(neu ?? ""), end.join("\n\n")].filter(Boolean).join("\n\n")
 }

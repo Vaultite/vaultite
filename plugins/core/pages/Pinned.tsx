@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react"
 import { FileText, Hash, Heading, PinOff, Plus, Search } from "lucide-react"
 import {
-  checklist, cn, currentWorkspace, fileMenu, getStore, HeadingButton, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
+  checklist, cn, currentWorkspace, fileMenu, getStore, HeadingButton, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
   openItem, openView, PIN_SEARCH, pinOfView, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
   useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
@@ -74,9 +74,6 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
   useViewsVersion() // and when a pinned view's state does (a conversation running, waiting for an answer)
   const desk = currentWorkspace()
   const pages = shownEntries(store)
-  // A page's other tabs (People map) keep its head (People) lit.
-  const head = file ? headOf(store.files.files, file) : null
-  const lit = (p: string) => p === file || p === head?.path
   const list = useRef<HTMLElement>(null)
   const d = useDrag()
   const dragging = !!d && canPin(d.item)
@@ -142,7 +139,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
     const file = entry.kind === "search" || entry.kind === "view" ? null : entry.file.path
     const view = entry.kind === "view" ? viewInfo(entry.target) : null
     const icon = entry.kind === "view" ? view!.icon : entry.kind === "search" ? Search : entry.kind === "heading" ? (entry.heading.startsWith("^") ? Hash : Heading) : iconOf(entry.file) ?? FileText
-    const active = entry.kind === "file" ? lit(id) : entry.kind === "view" && !!tab && (tab === entry.target || tab === to)
+    const active = entry.kind === "file" ? id === file : entry.kind === "view" && !!tab && (tab === entry.target || tab === to)
     return (
       <div key={id} onPointerDown={(e) => {
         if (file) openingSoon(file, true)
@@ -161,7 +158,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
         <SidebarRow data-pin={id} data-select-key={id} {...selectedAttr(picked)} href={`#${file ? `file/${encodeURIComponent(file)}` : `view/${encodeURIComponent(to.slice(5))}`}`} icon={icon}
           tint={view?.tint} iconClassName={view?.iconClassName} badge={view?.badge}
           label={entry.label} open={open} more active={active} swipe={() => [{ label: "Unpin", icon: PinOff, run: () => pinNoted(id, false), removes: true }]}
-          onClick={(e) => { if (!selectClick(e, SELECT, id, entry.kind === "file" && lit(id) ? id : null)) openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane }) }} />
+          onClick={(e) => { if (!selectClick(e, SELECT, id, entry.kind === "file" && id === file ? id : null)) openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane }) }} />
       </div>
     )
   }

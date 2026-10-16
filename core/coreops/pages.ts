@@ -1,32 +1,35 @@
-// Plugins' pages are built in (core/pages.ts): copying one into the vault makes it the user's.
+// Plugins' pages (core/pages.ts): each plugin writes its own once when it's turned on; this writes them again.
 import type { App } from "../app.ts"
-import { inPagesDir } from "../fileprops.ts"
 import { type Op, OpError } from "../ops.ts"
-import { copyPage } from "../pages.ts"
+import { restorePages } from "../pages.ts"
+import { enabled } from "../plugins.ts"
 
 export function pageOps(app: App): Op[] {
   return [{
-    id: "dashboard.copy",
-    cli: "dashboard copy",
-    summary: "Copy a plugin's built-in page into the vault, to change it: from then on it's the user's file.",
-    help: `Plugins' pages are built in (.vaultite/pages/): read-only, and they update with their plugin. Copying one makes
-it a file of the user's, in folder (else where their pages are, Dashboards/ by default); its pins and links follow the
-copy, and the built-in one goes. The copy no longer updates with its plugin.
+    id: "dashboard.restore",
+    cli: "dashboard restore",
+    summary: "Write the pages of the plugins that are on that the pages folder has no file for (one deleted comes back).",
+    help: `A plugin writes its pages (Today, People...) once, when it's turned on, into the user's pages folder (the folder
+Dashboards' settings show, Dashboards/ by default) as the user's files. This writes those that folder has no file of
+that name for (not pinned), and moves what named the read-only copies older versions kept in .vaultite/pages/ (pins,
+links, the new tab's page) to the user's files, the old folder going. Running it again changes nothing.
 
-  vau dashboard copy .vaultite/pages/Dashboards/Today.md
-  vau dashboard copy Today --folder Personal/Dashboards`,
+  vau dashboard restore
+  vau dashboard restore --plugin today`,
     kind: "write",
-    params: {
-      path: { type: "string", required: true, description: "the built-in page: its path (.vaultite/pages/Dashboards/Today.md) or name (Today)" },
-      folder: { type: "string", description: "the vault folder to copy it into (else where the user's pages are)" },
+    params: { plugin: { type: "string", description: "only this plugin's pages (its id or name; it must be on)" } },
+    run: ({ plugin }) => {
+      let only: string | undefined
+      if (plugin) {
+        const q = String(plugin).trim().toLowerCase()
+        const p = app.plugins.find((x) => x.id === q) ?? app.plugins.find((x) => String(x.manifest.name ?? "").toLowerCase() === q)
+        if (!p) throw new OpError(`no plugin '${plugin}'`, 404)
+        if (!enabled(app.vault, app.plugins).has(p.id)) throw new OpError(`${p.manifest.name ?? p.id} is off: turn it on (vau plugin on ${p.id}), which writes its pages`)
+        only = p.id
+      }
+      return restorePages(app.vault, app.plugins, only)
     },
-    args: ["path"],
-    run: ({ path, folder }) => {
-      const q = String(path).trim().replace(/^\/+/, "")
-      const page = inPagesDir(q) ? q : [...app.vault.entries.keys()].find((r) => inPagesDir(r) && r.split("/").pop()!.toLowerCase() === `${q.replace(/\.md$/i, "")}.md`.toLowerCase())
-      if (!page) throw new OpError(`no built-in page '${path}'`, 404)
-      return { from: page, path: copyPage(app.vault, page, folder ? String(folder) : null) }
-    },
-    text: (r) => `Copied ${r.from} to ${r.path}: it's yours now (pins and links follow it).`,
+    text: (r) => [r.made.length ? `Wrote ${r.made.join(", ")}.` : "Every page is there already.",
+      ...(r.moved.length ? [`The old copies in .vaultite/pages are gone: pins and links to them go to ${r.moved.map(([, to]: string[]) => to).join(", ")}.`] : [])].join("\n"),
   }]
 }

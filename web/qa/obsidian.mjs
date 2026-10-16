@@ -9,6 +9,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const DIR = "Qa obsidian"
 const filler = Array.from({ length: 60 }, (_, i) => `Filler line ${i + 1} to make the note long enough to scroll.`).join("\n\n")
@@ -241,7 +242,7 @@ await palette(page, "Create new note", 700); await wait(1500)
 check(`a new note goes to newFileFolderPath: ${await page.evaluate(() => decodeURIComponent(location.hash))}`, await page.evaluate(() => decodeURIComponent(location.hash)).then((h) => h.includes(`${"Qa obsidian"}/Inbox/Untitled`)))
 
 // ---- the Design page ----
-await open(".vaultite/pages/Dashboards/Design.md") // (the core's page, built in: core/pages.ts)
+await open(await pagePath(B, "Design")) // (the design system's page: the sandbox has it)
 const dash = page.locator(".dash-prose")
 check("Design: a highlight and a tag", await dash.locator("mark").count() >= 1 && await dash.locator("a.tag").count() >= 1)
 check("Design: an embedded block", await page.locator(".file-view .note-embed").count() >= 1)

@@ -1,5 +1,5 @@
-// Database views: a query over the vault's files and frontmatter (options: AGENTS.md). One evaluator, no Node, for the
-// route and the block's text: a where compiles to Bases' expressions (expr.ts), with its lenient comparisons.
+// The query engine bases and `vau query` run on: the vault's files and frontmatter (options: AGENTS.md). No Node; a
+// where compiles to Bases' expressions (expr.ts), with its lenient comparisons.
 
 import { linkIndex } from "../../../core/links.ts"
 import {

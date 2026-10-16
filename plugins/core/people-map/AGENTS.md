@@ -1,2 +1,2 @@
 ## People map
-The `people-map` block is the People page's Map tab.
+The `people-map` block is what the People map page shows.

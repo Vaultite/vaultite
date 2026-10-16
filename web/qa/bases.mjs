@@ -3,8 +3,8 @@
 // layout this app doesn't draw). The .base opens as its views (tabs; a formula's values, the summary row, the note for
 // the unknown layout), the … menu changes the file as small edits (a view's layout, a new view, a view deleted and
 // Undo: comments and unknown keys stay), a card dragged on the kanban writes its note, the map draws a pin per place.
-// A note with a ```base fence and `![[Qa.base#Board]]` draws both (the embed on its view), and a ```block-query with a
-// formula and summaries. At 390px nothing scrolls sideways. Screenshots in the scratch folder given as the third
+// A note with ```base fences and `![[Qa.base#Board]]` draws them (the embed on its view; a fence's formula column and
+// summaries). At 390px nothing scrolls sideways. Screenshots in the scratch folder given as the third
 // argument (or /tmp/vaultite-bases/), light and dark, desktop and phone.
 // WRITES a "Qa bases" folder (removed after): throwaway server only.
 //   node web/qa/bases.mjs <base url> <vault path> [screenshots dir]
@@ -68,7 +68,7 @@ views:
 `
 await put(`${F}/Qa.base`, BASE)
 await put(`${F}/Demo.md`, "---\ntype: note\n---\n\nInline:\n\n```base\nfilters: file.inFolder(\"" + F + "/Places\")\nviews:\n  - type: table\n    name: Qa inline\n    order: [file.name, coordinates]\n```\n\n"
-  + `![[Qa.base#Board]]\n\n` + "```block-query\ntitle: Qa query\ntype: qa-book\nformulas:\n  left: pages - read\ncolumns: [file, pages, formula.left]\nsummaries:\n  pages: Sum\n  formula.left: Max\n```\n")
+  + `![[Qa.base#Board]]\n\n` + "```base\nfilters: 'type == \"qa-book\"'\nformulas:\n  left: pages - read\nviews:\n  - type: table\n    name: Qa query\n    order: [file.name, pages, formula.left]\n    summaries:\n      pages: Sum\n      formula.left: Max\n```\n")
 const url = (p) => `${B}#file/${encodeURIComponent(p)}`
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
@@ -144,7 +144,7 @@ await page.getByRole("button", { name: "Undo" }).click(); await page.waitForTime
 check("delete view: Undo brings it back", read(`${F}/Qa.base`).includes("name: Table\n"))
 await page.screenshot({ path: `${OUT}base-edited-desktop.png` })
 
-// A note: the fence, the embed (on its view), a query's formula and summaries.
+// A note: the fence, the embed (on its view), a fence's formula and summaries.
 await page.goto(url(`${F}/Demo.md`)); await page.waitForTimeout(3000)
 const fence = page.locator("section.glass", { has: page.locator("h2", { hasText: "Qa inline" }) }).first()
 check("a ```base fence draws its view", await fence.isVisible() && (await fence.locator("[data-query-row]").count()) === 3, await fence.innerText().catch(() => ""))
@@ -153,7 +153,7 @@ check("![[Qa.base#Board]] shows that view", (await embed.locator('[data-base-vie
   && (await embed.locator("[data-query-board]").count()) === 1)
 const q = page.locator("section.glass", { has: page.locator("h2", { hasText: "Qa query" }) }).first()
 const qs = (await q.locator('[data-query-summaries="all"]').innerText()).replace(/\s+/g, " ").trim()
-check("block-query: a formula column and summaries", qs === "Sum 600 Max 200", qs)
+check("a fence: a formula column and summaries", qs === "Sum 600 Max 200", qs)
 await page.screenshot({ path: `${OUT}base-note-desktop.png`, fullPage: true })
 await page.emulateMedia({ colorScheme: "dark" })
 await page.evaluate(() => document.documentElement.classList.add("dark")); await page.waitForTimeout(500)

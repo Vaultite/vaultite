@@ -43,7 +43,7 @@ export default async ($: VaultTest) => {
       cr.includes("## Claude Code by model") && cr.includes("lighthouse"), String(cr).slice(0, 400))
     check("Claude Code's costs are labelled estimates at list prices", cr.includes("_Costs estimated at list prices._"), String(cr).slice(0, 600))
     const tpl = fs.readFileSync(path.join(TOOLS, "..", "plugins", "core", "claude-code", "pages", "Claude.md"), "utf8")
-    check("the Claude page template has both blocks", tpl.includes("```block-claude-projects\n```") && tpl.includes("```block-claude-models\n```"), tpl)
+    check("the Claude page template has both blocks", tpl.includes("```block-agent-projects\nagent: claude-code\n```") && tpl.includes("```block-agent-models\nagent: claude-code\n```"), tpl)
   }
 
   // Claude Code accounts: a sibling of the config folder with sessions is an account; a private one's usage counts, but

@@ -5,6 +5,7 @@
 // scroll, copy always shown). WRITES a "Qa markdown" folder: throwaway only.
 //   node web/qa/markdown.mjs <base url> [out dir]
 import { SHOTS, apiAt, palette, qa, wait } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const PATH = "Qa markdown/Rich.md"
 const TEXT = `Intro with a note[^1] and a second one[^b].
@@ -120,7 +121,7 @@ await page.screenshot({ path: `${OUT}markdown-dark.png`, fullPage: true })
 await page.evaluate(() => document.documentElement.classList.remove("dark")); await wait(500)
 
 // The Design page, read as a dashboard (core/markdown.ts + hydrate).
-await page.goto(`${B}#file/${encodeURIComponent(".vaultite/pages/Dashboards/Design.md")}`); await wait(3000)
+await page.goto(`${B}#file/${encodeURIComponent(await pagePath(B, "Design"))}`); await wait(3000)
 const dash = page.locator(".dash-prose")
 check("Design: code block with its label", await dash.locator(".md-code .md-code-lang", { hasText: "ts" }).count() === 1)
 check("Design: callouts", await dash.locator('.callout[data-callout="tip"]').count() === 1 && await dash.locator("details.callout").count() === 1)

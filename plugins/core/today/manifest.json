@@ -13,7 +13,7 @@
   "pageSort": 10,
   "blocks": {
     "routines": {
-      "description": "this week's routines, to tick",
+      "description": "this week's routines, to tick, under today's date",
       "options": {}
     }
   },

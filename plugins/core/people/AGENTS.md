@@ -13,6 +13,9 @@ want_to: Catch up about the move   # optional to-do about them; remove the line 
 aliases: [Alice]              # optional other names, so [[Alice]] resolves
 ---
 
+```block-person
+```
+
 Durable facts about them, in short sentences.
 
 ## Timeline
@@ -33,5 +36,5 @@ handle), `sort: 3` (the order people are listed in, lower first; don't renumber 
 - The app also reads lines typed by hand: ` - ` or ` | ` between parts, "Call", "1h 30m", no kind (a note). A long
   entry may continue on indented lines under it. Other sections may follow the timeline (`## Gift ideas`); leave them.
 - The user's own pin: `PUT /api/me {"location"}`. Check a place: `GET /api/geocode?q=`.
-- The `person` block goes on top of a person's file; `people-due`, `people-wants` and `people-group` are for the People
-  page.
+- A person's file starts with its ```` ```block-person ```` fence (the API writes it in a new one; leave it where the
+  user put it); `people-due`, `people-wants` and `people-group` are for the People page.

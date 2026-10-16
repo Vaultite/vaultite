@@ -2,20 +2,30 @@
 // request and never saved, so files never hold a copy that goes stale. `machine:` blocks are asked of that machine.
 import fs from "node:fs"
 import os from "node:os"
-import { fallbackText, notesText, onTop, optionNotes, parseOptions, resolveOptions } from "./blocks.ts"
-import { blocksIn, extract, scan, splitAnchor, stripHidden } from "./sections.ts"
-import { pageTabs, tabNames, type TabFile } from "./tabs.ts"
+import { drawnBy, drawsOf, fallbackText, notesText, optionNotes, parseOptions, resolveOptions } from "./blocks.ts"
+import { blockName, blocksIn, extract, scan, splitAnchor, stripHidden } from "./sections.ts"
 import { type BlockCtx, enabled, HTTPError, type Plugin, propertyTypes, service, serviceFor, today } from "./plugins.ts"
 import { typeNotes } from "./proptypes.ts"
 import { noteHere, source, traced } from "./sources.ts"
 import { formatInput, type Item, readText, sortBy, stemOf, type Vault } from "./vault.ts"
 import { FM, prose } from "./frontmatter.ts"
 
-/** Who draws block `name`: the plugin that's on and declares it (manifest.json) or has its text (plugin.block), else
- *  one that's off. */
-function ownerOf(plugins: Plugin[], on: Set<string>, name: string) {
+/** Who draws block `name`: the plugin that's on and declares it or has its text (plugin.block), else one that's off; one
+ *  declared with `by`, the plugin its option names (core/blocks.ts), or `unnamed` says it names none. */
+function ownerOf(plugins: Plugin[], on: Set<string>, name: string, options: Item = {}) {
   const has = (x: Plugin) => x.textBlocks.has(name) || Object.hasOwn(x.blocks, name)
-  return { live: plugins.find((x) => on.has(x.id) && has(x)) ?? null, off: plugins.find((x) => !on.has(x.id) && has(x)) ?? null }
+  const declarer = plugins.find((x) => on.has(x.id) && Object.hasOwn(x.blocks, name)) ?? plugins.find((x) => Object.hasOwn(x.blocks, name))
+  const by = declarer?.blocks[name].by
+  if (!declarer || !by || !on.has(declarer.id)) {
+    const live = plugins.find((x) => on.has(x.id) && has(x)) ?? null, off = plugins.find((x) => !on.has(x.id) && has(x)) ?? null
+    const owner = live ?? off
+    return { live, off, decl: owner && Object.hasOwn(owner.blocks, name) ? owner.blocks[name] : null, unnamed: "" }
+  }
+  const drawers = plugins.filter((x) => drawsOf(x.manifest).includes(name))
+  const decl = drawnBy(declarer.blocks[name], drawers.filter((x) => on.has(x.id)).map((x) => x.id))
+  const p = drawers.find((x) => x.id === String(options[by] ?? "")) ?? null
+  const unnamed = p ? "" : `_(block-${name} needs \`${by}:\`, one of ${decl.options![by].values!.join(", ") || "none on"})_`
+  return { live: p && on.has(p.id) ? p : null, off: p && !on.has(p.id) ? p : null, decl, unnamed }
 }
 
 /** One block as Markdown: its plugin's text view (or its declaration's description when it has none), then what's
@@ -23,10 +33,9 @@ function ownerOf(plugins: Plugin[], on: Set<string>, name: string) {
 export async function blockText(vault: Vault, plugins: Plugin[], rel: string, fm: Item, body: string, name: string,
   text: string, on?: Set<string>, host?: string): Promise<string> {
   on = on ?? enabled(vault, plugins)
-  const { live: p, off } = ownerOf(plugins, on, name)
-  if (!p) return off ? `_(${off.manifest.name ?? off.id} is off)_` : `_(no plugin draws block-${name})_`
-  const decl = Object.hasOwn(p.blocks, name) ? p.blocks[name] : null
   const parsed = parseOptions(text)
+  const { live: p, off, decl, unnamed } = ownerOf(plugins, on, name, parsed.options)
+  if (!p) return off ? `_(${off.manifest.name ?? off.id} is off)_` : unnamed || `_(no plugin draws block-${name})_`
   const notes = notesText(name, optionNotes(decl, parsed.options, parsed.error))
   const o = resolveOptions(decl, parsed.options)
   let remote = false // (another machine's answer has its own notes)
@@ -130,15 +139,18 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
   if (rel && !e) throw new HTTPError(404, `no file '${rel}'`)
   let raw = ""
   try { raw = e ? readText(vault.abs(rel)) : "" } catch { /* gone meanwhile: no lines */ }
-  // Its blocks as they are in the file (```block-<name> fences): name, options' text, line.
-  const inFile = blocksIn(raw).map((b) => ({ name: b.name, text: b.text, line: b.open }))
   const on = enabled(vault, plugins)
+  // Its blocks as they are in the file (```block-<name> fences, and ```<lang> ones a plugin reads): name, text, line.
+  const reader = (name: string) => name.startsWith("```") ? plugins.find((x) => on.has(x.id) && Object.hasOwn(x.services, `fence:${name.slice(3)}`)) ?? null : null
+  const s = scan(raw)
+  const inFile = s.fences.flatMap((f) => {
+    const name = f.close === null ? null : blockName(f.info) ?? `\`\`\`${f.info.split(/\s/)[0].toLowerCase()}`
+    return name && (!name.startsWith("```") || reader(name)) ? [{ name, text: s.lines.slice(f.open + 1, f.close!).join("\n"), line: f.open }] : []
+  })
   const fm = e?.fm ?? {}, body = e?.body ?? ""
-  // (its kind's blocks it doesn't place are drawn on top: no line)
-  const top = onTop(e?.kind?.blocksFor(fm), body).map((name) => ({ name, text: "", line: null }))
-  if (query.name === undefined) return { path: rel, blocks: await Promise.all([...top, ...inFile].map((b) => one(b.name, b.text, b.line))) }
+  if (query.name === undefined) return { path: rel, blocks: await Promise.all(inFile.map((b) => one(b.name, b.text, b.line))) }
   const name = String(query.name)
-  if (!/^[\w-]{1,64}$/.test(name)) throw new HTTPError(400, "name: a block's name")
+  if (!/^(```)?[\w-]{1,64}$/.test(name)) throw new HTTPError(400, "name: a block's name")
   const same = (a: string, b: string) => a.replace(/\s+$/gm, "").trim() === b.replace(/\s+$/gm, "").trim()
   // (`nth`: which of the file's blocks of that name; else the first with that text)
   const nth = query.nth === undefined ? NaN : Number(query.nth)
@@ -147,17 +159,18 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
   return await one(name, query.text ?? hit?.text ?? "", hit?.line ?? null)
 
   async function one(name: string, text: string, line: number | null): Promise<BlockSources> {
-    const { live: p, off } = ownerOf(plugins, on, name)
+    const parsed = parseOptions(text).options, fence = reader(name)
+    const { live: p, off, decl } = fence ? { live: fence, off: null, decl: null } : ownerOf(plugins, on, name, parsed)
     const owner = p ?? off
-    const decl = owner && Object.hasOwn(owner.blocks, name) ? owner.blocks[name] : null
-    const o = resolveOptions(decl, parseOptions(text).options)
+    const o = resolveOptions(decl, parsed)
     const other = typeof o.file === "string" && o.file.trim() ? otherFile(vault, o.file, rel) : null
     const out: BlockSources = { name, plugin: owner?.id ?? null, pluginName: owner ? String(owner.manifest.name ?? owner.id) : null, on: !!p,
       description: decl?.description ?? "", options: decl?.options ?? {}, path: rel, line, file: other !== rel ? other : null, sources: [] }
     if (!owner) return out
     // (drawn only to see what it reads: a slow one, live data on its way, is left at what it read by then)
     let timer: ReturnType<typeof setTimeout> | undefined
-    const { trace } = await traced(() => p && p.textBlocks.has(name)
+    const { trace } = await traced(() => fence ? (fence.services[`fence:${name.slice(3)}`] as (c: { path: string; text: string }) => unknown)({ path: rel, text })
+      : p && p.textBlocks.has(name)
       ? Promise.race([blockText(vault, plugins, rel, fm, body, name, text, on), new Promise((r) => { timer = setTimeout(r, 8000) })])
       : null)
     clearTimeout(timer)
@@ -299,14 +312,9 @@ const EMBED = /^!\[\[([^\]|\n]+?)(?:\|[^\]\n]*)?\]\][ \t]*$/gm
 
 /** A body as the user reads it: blocks as text, %%comments%% and ^ids out, embeds on their own line inlined (a note or
  *  its section as a quote under its link). `seen`: the notes embedding this one, against cycles; `host`: the nearest. */
-async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: string, fm: Item, body: string, seen: string[], host?: string, whole = false): Promise<string> {
+async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: string, fm: Item, body: string, seen: string[], host?: string): Promise<string> {
   body = await inlineCode(plugins, on, rel, body, host)
   let text = ""
-  // A whole file: its kind's blocks it doesn't place, on top (the app's FileView draws them there too).
-  if (whole) for (const name of onTop(vault.entries.get(rel)?.kind?.blocksFor(fm), body)) {
-    const out = await blockText(vault, plugins, rel, fm, body, name, "", on, host)
-    text += out ? out + "\n\n" : ""
-  }
   // Each block placed in it, with the blank lines after it, as its text.
   const { lines } = scan(body)
   let from = 0
@@ -348,7 +356,7 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
     const fmm = FM.exec(raw)
     const part = extract(fmm ? raw.slice(fmm[0].length) : raw, anchor)
     if (part === null) { parts.push(`_(no ${anchor.startsWith("^") ? "block" : "heading"} ${anchor} in ${link.replace(/#.*\]\]$/, "]]")})_`); continue }
-    const inner = await expand(vault, plugins, on, note, other.fm, part, [...seen, key], rel, !anchor)
+    const inner = await expand(vault, plugins, on, note, other.fm, part, [...seen, key], rel)
     parts.push(`> ${link}\n>\n` + inner.replace(/\s+$/, "").split("\n").map((l) => (l ? `> ${l}` : ">")).join("\n"))
   }
   parts.push(text.slice(at))
@@ -379,18 +387,13 @@ export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) 
   const m = FM.exec(raw)
   const [head, body] = m ? [raw.slice(0, m[0].length), raw.slice(m[0].length)] : ["", raw]
   const on = enabled(vault, plugins)
-  const text = await expand(vault, plugins, on, rel, e.fm, body, [rel], undefined, true)
+  const text = await expand(vault, plugins, on, rel, e.fm, body, [rel])
   let title = `# ${stemOf(rel)}\n\n`
-  // What a plugin that's on draws under the title (Dashboards: a dashboard's subtitle), as Markdown.
-  const under = service(plugins.filter((p) => on.has(p.id)), "page-head")?.({ path: rel, type: e.type, fm: e.fm })
-  if (typeof under === "string" && under) title += under + "\n\n"
-  // A page with tabs (core/tabs.ts): which tab this is, and links to the others.
-  const files: TabFile[] = [...vault.entries].map(([path, x]) => ({
-    path, tab: typeof x.fm.tab === "string" ? x.fm.tab : undefined, tabs: tabNames(x.fm.tabs),
-    plugin: typeof x.fm.plugin === "string" ? x.fm.plugin : undefined,
-  }))
-  const tabs = pageTabs(files, rel, (f) => !!f.plugin && plugins.some((p) => p.id === f.plugin) && !on.has(f.plugin))
-  if (tabs.length) title += "Tabs: " + tabs.map((t) => t.path === rel ? `**${t.label}**` : `[[${stemOf(t.path)}|${t.label}]]`).join(" · ") + "\n\n"
+  // What the plugins that are on draw under the title (Page tabs: which tab this is), as Markdown.
+  for (const p of plugins) {
+    const under = on.has(p.id) && Object.hasOwn(p.services, "page-head") ? (p.services["page-head"] as (x: unknown) => unknown)({ path: rel, type: e.type, fm: e.fm }) : null
+    if (typeof under === "string" && under) title += under + "\n\n"
+  }
   // Values that aren't of their property's type (the vault's types: core/proptypes.ts), as the editor notes them.
   const notes = typeNotes(propertyTypes(vault, plugins), e.fm)
   if (notes.length) title += `_(properties: ${notes.join("; ")})_\n\n`

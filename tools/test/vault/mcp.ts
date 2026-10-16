@@ -106,7 +106,7 @@ export default async ($: VaultTest) => {
     t = await tool("docs", {})
     check("mcp docs: the topics (the op docs.read)", !t.error && t.text.includes("- `query`: Database views"), t)
     t = await tool("docs", { topic: "query" })
-    check("mcp docs: one topic", !t.error && t.text.startsWith("## Database views") && t.text.includes("- `query`:"), t.text?.slice(0, 200))
+    check("mcp docs: one topic", !t.error && t.text.startsWith("## Database views") && t.text.includes("```base") && t.text.includes("### query.run"), t.text?.slice(0, 200))
     t = await tool("list", { folder: "People" })
     check("mcp list: a folder's files and their types", !t.error && t.text.includes("- People/Sam Park.md (person)") && !t.text.includes("Notes/"), t)
     t = await tool("query", { type: "person", columns: ["file", "relation"], sort: "file" })

@@ -9,7 +9,7 @@ import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
 import { disclosuresOf, ICON_NAME, iconOf } from "./pluginmeta.ts"
 import { onItsOwn } from "./writegate.ts"
 import { blockProblems, hashed, inside, installProblems, pluginProblems, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
-import { declsOf, settingsOf } from "./blocks.ts"
+import { declsOf, drawsOf, settingsOf } from "./blocks.ts"
 import type { VaultEvent } from "./events.ts"
 import { hookProblems, Hooks } from "./hooks.ts"
 import type { Op } from "./ops.ts"
@@ -475,7 +475,7 @@ export class VaultPlugins {
         approval: changes ? { state: this.adopting.has(vp.id) ? "updating" : changes.since ? "changed" : "new", since: changes.since, changed: changes.files } : null,
         blocked: vp.blocked, hash: vp.digest.content, edits: !!this.trust.approval(vp.id)?.edits,
         // its blocks as its manifest declares them (core/blocks.ts): the app checks their options against them
-        blocks: declsOf(m),
+        blocks: declsOf(m), draws: drawsOf(m),
         // its settings as its manifest declares them: the app draws them as a form in its settings sheet
         settings: settingsOf(m),
         // the bundle's version (the web app imports it again when it changes), null when there's none to load

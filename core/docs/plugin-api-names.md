@@ -64,7 +64,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `beginKeys(keys)`: Start a sequence from code, as if its first steps were pressed: an editor that keeps its keys (Vim's Space in normal mode) hands the rest to the app.
 - `besideActive(fallback, skip?)`: The folder of the note being written, for a file made from it (a canvas, a drawing, a base): an archived note's as if it weren't (nothing new goes into an archive); `fallback` when it's a page,…
 - `BlockCtx`: What a block gets: the file as in the editor now, its text and that text as YAML options with declared defaults.
-- `blockFor(name, disabled)`: Who draws ```block-<name> (the enabled plugin that has it, else the one that would, off) and its declaration, null when undeclared.
+- `blockFor(name, disabled, options?)`: Who draws ```block-<name> (the enabled plugin that has it, else the one that would, off; with `by`, the one its option names, else `unnamed` says why) and its declaration.
 - `blockHeightKey(where, path, name, text, n?)`: A ```block-<name>'s key in a file: the same in a dashboard's grid (`where`: page, sheet) and in the editor (editor), so one can guess the other's size.
 - `blockOptions(text)`: A block's text read as options ({} when it's empty or isn't YAML), the way the server reads them (core/blocks.ts).
 - `BlockView(props)`: ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`: nothing).
@@ -91,6 +91,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `ChipValuesEditor({ values, onChange, label })`: A chip's values as rows to reorder, remove and unfold (colour, icon, line); `onChange` gets the whole list.
 - `Choice`
 - `choose(c)`: Ask the user to pick one of `items`.
+- `chooseBlock(store, pick)`: Pick a block to add (the slash menu's: those of the plugins on), given as its fence with its required options.
 - `chooseDefaultPlace()`: Choose where new terminals and agents open in the current workspace: a machine, and the agent's account there.
 - `chooseFolder(label, onPick)`: A folder for a setting: one of the vault's (not hidden or archive ones), or one typed, made first.
 - `choosePlace(opts?)`: Choose where to open a terminal or an agent (`agent`: only that one's places), then open it.
@@ -186,17 +187,20 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `getDefaultPlace()`
 - `getStore()`: The store as it is now (for code outside React).
 - `getTabLayout()`
+- `goHere(to)`: Show `to` in the active tab whatever it held (a page's tabs, List -> Map: the same place, its own history).
+- `GridCard`: A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its options).
+- `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
 - `grouped(groups)`: A menu made of groups, a line between each two (empty groups left out): the file menus' one shape.
 - `haptic(weight?)`
 - `Haptic`: iOS's kinds: impacts (light: a menu, a swipe past its mark, a tick; medium: picked up, put down, a row's action done), `selection` (an item passing another, a choice ticked), notifications…
+- `hashOf(to)`: The hash for a tab's target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new".
 - `hasSettings(p, files?)`: Whether a plugin has anything to set (whether it's on or not).
 - `hasTag(tags, want)`: Whether a file's tags have this one, or one nested under it (`project` matches `project/lighthouse`).
 - `HeaderItem`: Drawn at the right end of the sidebar's header (Workspaces' numbers); with the sidebar folded, at the top of the 28px icon rail with `open: false`; on phones at the top of the tab list with…
 - `Heading`
 - `HeadingButton({ icon, label, tip, strokeWidth, className, … })`: An icon button in a panel's heading or a row: its label is its tooltip unless `tip` says otherwise.
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
-- `headOf(files, path)`
 - `holdFocus()`: Call as something opens over the page, before it takes the focus; call what it returns as it closes.
 - `holdHeight(el, key, anyWidth?, shrinks?)`: Hold `el` at `key`'s remembered height (at its width; `anyWidth`: the latest) while its content comes in, then remember its height as it changes (`shrinks`: see Held).
 - `homeOf(s, kind, fallback)`: Where new files of a kind (its collection: "notes", "days") go: the folder its settings show (the server's: one set, else where most of its files are), else `fallback`.
@@ -207,7 +211,6 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
 - `inKeyList()`: The keyboard is on a row of a list.
-- `inPagesDir`
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
 - `isDesktop()`: A computer's width (the desktop's panes), not a phone's.
@@ -216,7 +219,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `isLinux`: A Linux computer (not Android).
 - `isMac`: A Mac, iPhone or iPad: ⌘ is the app's Mod key.
 - `iso(d)`
-- `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard), or one of a page's tabs.
+- `isPage(path, store?)`: A page: a file a plugin draws as one (a dashboard).
 - `isPopout()`
 - `isViewOpen(to)`: Whether a view (`terminal/abc`) is open in a tab somewhere.
 - `keepAnchored(grid, selector)`: Keep `cards` (the elements `grid` is made of, `selector`) anchored while `grid` is on the page.
@@ -267,18 +270,18 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `newTab(gid?)`: A new tab, in the focused group (or `gid`'s: its tab bar's +), next to the active one: a blank tab, one per pane (the blank tab it has already moves next to the active one instead; none, or the…
 - `NewTabCtx`
 - `NewTabSection`: A section of a blank tab's page, among the app's (Buttons 10, Recently opened here 20, Recently changed 30), in newtab.json's order, else by `sort`.
-- `NoteBody({ store, path, body, fm, whole, className })`: `path`'s body (no frontmatter), drawn read-only.
+- `NoteBody({ store, path, body, fm, className })`: `path`'s body (no frontmatter), drawn read-only.
 - `NoteEditor(props)`: Markdown that isn't a file, edited like a note (a canvas's text card).
 - `NoteEditorProps`
 - `noteFor(store, target, from)`: The note an embed names, or null (not a note, or no such file).
 - `NotePreview({ store, target, from })`: A note drawn whole for a glance (Page preview's popover), scrolled to the heading `target` names; a block target shows only that block.
-- `NoteTopItem`: Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, in every mode but source.
+- `NoteTopItem`: Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, dashboards too, in every mode but source; `place`: in a tab or a sheet.
 - `notify(text, opts?)`: Show a toast.
 - `notifyError(e, what?)`: An error as a toast: `notify(message, {kind: "error"})` for a caught exception, with what was being done.
 - `NotifyOptions`
 - `numberText(n)`: A number as text (1,234.5): n.toLocaleString(), with the formatter kept.
 - `offeredCommand(id)`: A command by its id, if it's registered and offered now (a menu made of commands: the editor's).
-- `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's, a page's tabs): a page whose plugin (its `plugin:`, the one that brought it) is off.
+- `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off.
 - `onActivity(fn)`: Hear what the user does (see noteActivity); returns how to stop.
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
 - `onCommandsChanged`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
@@ -312,10 +315,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Web viewer), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
-- `PageCtx`: What a page view gets: the file as it is in the editor, the page's name (a tab carries its head's), where it's drawn, and which plugins are off.
+- `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.
 - `PageHeader({ title, subtitle, children, className })`: A page's large title.
-- `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it (core/pages.ts finds them there too), or undefined.
-- `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview.
+- `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
+- `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as read with `editGrid`.
 - `Panel({ title, icon, tint, action, className, children })`: A card, headed like the Health app: small symbol and title in the category colour.
 - `PanelFold`
 - `panelMenu(key?, side?)`: Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`).
@@ -368,7 +371,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
-- `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then titles, aliases and plugins' names), or null.
+- `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then aliases and plugins' names), or null.
 - `resolveView(target, disabled?)`: The target to open for this one (its view's `resolve`): a conversation already running, its terminal.
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
@@ -393,7 +396,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
 - `Segmented({ value, options, onChange, label, className })`
-- `segments(body, kind?)`
+- `segments(body)`
 - `Selectable`: What a list's selected things can do together: its rows' right-click and the phone's bar.
 - `selectClick(e, list, key, current?)`: A row's click: ⌘ (Ctrl) adds or takes it, ⇧ the run from the last picked (first from `current`, the open row, as in Finder); a phone selecting adds or takes.
 - `selectedAttr(on)`: What a row draws while selected: `data-selected`, styled once in index.css.
@@ -502,7 +505,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useMachines()`: The machines, live (null until they're known; [] with the plugin off).
 - `useNearEnd(ref, onNear, shown, margin?)`: A list's end that loads more: `onNear` each time `ref`'s element comes within `margin` of what scrolls it, looked at again when `shown` changes (how many are shown: what's drawn since may have…
 - `useNearScreen(ref, margin?)`: Whether `ref`'s element has come within `margin` of the screen (of what scrolls it); stays true after.
-- `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`; not the plugins' built-in pages (the app opens them itself, as a device's first tab;…
+- `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `usePane()`
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
@@ -545,7 +548,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `WeeksGrid({ tip, tint, goal, weeks, onOpen })`
 - `weekStart(s)`
 - `WIKI`
-- `withoutBlocks(text)`: A text without its blocks (each with the blank lines after it), and blank lines at its ends when it had any.
+- `withoutBlocks(text)`: A text without its views (each with the blank lines after it), and blank lines at its ends when it had any.
 - `workspaceChanged()`: Tell the app the current workspace, or something kept in it, changed (the plugin keeping workspaces calls it).
 - `WorkspaceHost`: A plugin that keeps workspaces.
 - `WorkspaceInfo`: A workspace as other plugins see it: its number, its name (or "Workspace 2") and the places its tabs show (tab targets: "view:terminal/abc", "file:Notes/Idea.md").
@@ -681,12 +684,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `frontmatter(data, body?)`
 - `hasTag(tags, want)`: Whether a file's tags have this one, or one nested under it (`project` matches `project/lighthouse`).
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
-- `inPagesDir(rel)`
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
-- `isHiddenPath(rel)`: A dot folder or file somewhere in the path, other than an archive folder or the pages folder: hidden unless hidden files are shown.
+- `isHiddenPath(rel)`: A dot folder or file somewhere in the path, other than an archive folder: hidden unless hidden files are shown.
 - `Item`
 - `joinPath(folder, name)`: A folder and a name in it ("" is the vault's top).
-- `keepBlocks(old, neu)`: `neu` (a body written whole) with the blocks `old` placed: those above all of its text on top, the rest at the end.
+- `keepBlocks(old, neu)`: `neu` (a body written whole) with the views `old` placed (blocks, ```base fences): those above all of its text on top, the rest at the end.
 - `Kind`
 - `KindSpec`
 - `loadFm(raw)`: Frontmatter text -> a record.
@@ -700,9 +702,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NotFound`: Something that isn't there (the API answers 404).
 - `nowUtc()`
 - `num(v)`: A number from YAML, or null.
-- `PAGES_DIR`: Where the plugins' pages are built in (core/pages.ts), never among the user's notes.
 - `parseText(text)`: [frontmatter, body].
-- `prose(body)`: The body without its blocks: what a kind parses.
+- `prose(body)`: The body without its blocks and ```base fences: what a kind parses.
 - `publicOf(x)`: An item without its private `_` keys and empty records.
 - `READ_WAIT`: How long a sync waits for a file before going on without it; a read going on SLOW ms is held (iCloud).
 - `readSoon(p, wait?)`: A file's bytes read off the main thread, so a file iCloud is slow to give never holds the server; null when that takes over `wait` ms, or at once while an earlier read of it is held (the read goes…

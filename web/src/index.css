@@ -331,10 +331,6 @@
 }
 @media (min-width: 768px) { .chip-row { flex-wrap: wrap; overflow: visible; } }
 
-/* A page's tabs (PageTabs.tsx): one line each; when they don't fit, the strip scrolls sideways with no scrollbar. */
-.page-tabs { scrollbar-width: none; }
-.page-tabs::-webkit-scrollbar { display: none; }
-
 /* Scrollbars: thin and translucent in the theme's colours, instead of the browser's default (white in dark mode). */
 :root { color-scheme: light; --scrollbar: rgb(60 60 67 / 0.28); --scrollbar-hover: rgb(60 60 67 / 0.45); }
 .dark { color-scheme: dark; --scrollbar: rgb(235 235 245 / 0.22); --scrollbar-hover: rgb(235 235 245 / 0.38); }
@@ -621,6 +617,20 @@ dialog { --vau-panel-bottom: 0px; }
 @media (hover: hover) { .cm-block:hover > .cm-block-bar, .cm-block-bar:focus-within { opacity: 1; pointer-events: auto; } }
 .cm-content[contenteditable="false"] .cm-block-source { display: none; }
 .cm-content[contenteditable="false"] .cm-block-bar:not(:has(.cm-block-slot > *)) { display: none; }
+/* A dashboard edited as it's read (data-grid: livePreview's renderGrid): its text as long as a note's lines, its blocks
+   cards side by side as the page draws them, each with its bar on hover (always on a phone, in the flow, at a finger's size). */
+.file-view[data-grid] .cm-content > :is(.cm-line, .cm-block:not(.cm-block-embed)) { max-width: var(--line-width); }
+.vau-editor .cm-grid { padding: 8px 0; font-family: var(--font-sans); font-size: 1rem; line-height: 1.5; white-space: normal; cursor: default; }
+.cm-card:hover > .cm-block-bar, .cm-card > .cm-block-bar:focus-within { opacity: 1; pointer-events: auto; }
+@media (hover: none) {
+  .cm-card > .cm-block-bar { position: static; justify-content: flex-end; margin-bottom: 6px; border: 0; background: none; opacity: 1; pointer-events: auto; }
+  .cm-card > .cm-block-bar .cm-block-btn { width: 44px; height: 44px; }
+  .cm-card > .cm-block-bar .cm-card-grip { margin-right: auto; }
+}
+/* (Full width and Stacked mean nothing in one column) */
+.cm-card .is-wide-only { display: none; }
+@container (min-width: 42rem) { .cm-card .is-wide-only { display: inline-flex; } }
+.cm-card-source { margin-bottom: 10px; padding: 8px 12px; border-radius: 10px; background: color-mix(in srgb, var(--foreground) 4%, transparent); cursor: text; }
 /* Under a block's Markdown while it's edited: what's wrong with its options, and Done. */
 .vau-editor .cm-block-foot { display: flex; align-items: baseline; gap: 12px; padding: 2px 0 8px; font-family: var(--font-sans);
   font-size: 13px; line-height: 18px; color: var(--muted-foreground); white-space: normal; }

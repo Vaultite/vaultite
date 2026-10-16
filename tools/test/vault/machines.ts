@@ -77,13 +77,13 @@ export default async ($: VaultTest) => {
     fs.rmSync(path.join(VAULT, "Notes/Qa there.md"))
     const [, text] = await api("GET", "render?path=Dashboards/Design.md")
     check("machines: its block as text", String(text).includes("## Machines") && String(text).includes("Box: online, box"), String(text).slice(String(text).indexOf("## Machines"), String(text).indexOf("## Machines") + 300))
-    write("Dashboards/Qa machines.md", "---\ntype: dashboard\n---\n\n```block-claude-sessions\nmachine: box\nrecent: 2\n```\n\n```block-claude-sessions\nmachine: gone\n```\n\n```block-claude-sessions\nmachine: nope\n```\n")
+    write("Dashboards/Qa machines.md", "---\ntype: dashboard\n---\n\n```block-agent-sessions\nagent: claude-code\nmachine: box\nrecent: 2\n```\n\n```block-agent-sessions\nagent: claude-code\nmachine: gone\n```\n\n```block-agent-sessions\nagent: claude-code\nmachine: nope\n```\n")
     const [, page] = await api("GET", "render?path=Dashboards/Qa machines.md")
     check("machines: a block with machine: is drawn by that machine (its options without machine:)",
-      String(page).includes('## From box: claude-sessions Dashboards/Qa machines.md {"recent":2}') && String(page).includes("_(gone isn't answering)_") &&
+      String(page).includes('## From box: agent-sessions Dashboards/Qa machines.md {"agent":"claude-code","recent":2}') && String(page).includes("_(gone isn't answering)_") &&
       String(page).includes("_(no machine nope)_"), page)
     // (this test's api() passes the query as it's written: the server decodes it)
-    const [c2, one] = await api("GET", 'render/block?name=claude-sessions&path=Dashboards/Qa machines.md&options={"recent":1,"machine":"box"}')
+    const [c2, one] = await api("GET", 'render/block?name=agent-sessions&path=Dashboards/Qa machines.md&options={"agent":"claude-code","recent":1,"machine":"box"}')
     check("machines: one block drawn here for another machine, never passed on", c2 === 200 && String(one).startsWith("## Claude Code sessions"), [c2, String(one).slice(0, 100)])
     fs.rmSync(path.join(VAULT, "Dashboards/Qa machines.md"))
     peer.close()

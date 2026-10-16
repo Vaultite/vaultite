@@ -33,6 +33,6 @@ export default definePlugin({
   })),
   // [[Alice Park]] or an alias; an archived person's names count only when no one else answers to them (core/links.ts).
   links: (s) => s.people.map((p) => ({
-    kind: "person", id: p.id, title: p.name, detail: detailPath("person", p.id), names: [p.name, ...p.aliases],
+    kind: "person", id: p.id, title: p.name, detail: detailPath("person", p.id), names: p.aliases,
   })),
 })

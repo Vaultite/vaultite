@@ -146,10 +146,10 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
     onPick: (c) => { if (c.to) open(c.to); else void create() } })
 }
 
-/** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`), title and aliases. */
+/** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`) and aliases. */
 const fileTarget = (f: VaultFile): Target => ({
   kind: "file", id: f.path.replace(/\.md$/i, ""), title: stem(f.path), detail: "", file: f.path,
-  names: [f.title, ...f.aliases], ...(f.archived ? { archived: true } : {}),
+  names: f.aliases, ...(f.archived ? { archived: true } : {}),
 })
 /** Any other file (an image, a PDF), linked by its name or path with its extension. */
 const otherTarget = (path: string): Target => ({ kind: "file", id: path, title: path.split("/").pop()!, detail: "", file: path, names: [] })
@@ -202,8 +202,8 @@ function linkIndexOf(s: Store): Index {
   return index
 }
 
-/** Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then titles,
- *  aliases and plugins' names), or null. */
+/** Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then aliases
+ *  and plugins' names), or null. */
 export const resolver = (s: Store): Resolve => linkIndexOf(s).resolve
 
 /** How a [[link]] in `from` writes `path`: the shortest end of its path that finds it (its name when that's enough, as

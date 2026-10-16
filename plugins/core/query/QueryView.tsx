@@ -1,10 +1,10 @@
-// ```block-query and a .base's views: the files a query matches as a table, cards, list, board or calendar. Sorting is
+// A base's views: the files a query matches as a table, cards, list, board or calendar. Sorting is
 // here only; changing a value or moving a card writes that one property as a small edit.
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info, Table2 } from "lucide-react"
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info } from "lucide-react"
 import {
-  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, Panel, parse, PinMap, range, resolver, setProperty, startDrag,
-  textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type BlockCtx, type MapPin, type MenuItem,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, resolver, setProperty, startDrag,
+  textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
 import { compare } from "./expr"
 import { byKeys, comparer, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
@@ -191,32 +191,6 @@ export function ResultBody({ res, groups, resolve, sort, setSort, save, month, s
           </div>
         ))}
     </div>
-  )
-}
-
-/** A calendar's month: the options' `month`, else this one; the arrows change it here (not in the file). */
-export function useMonth(start: unknown) {
-  return useState(() => (typeof start === "string" && /^\d{4}-\d{2}$/.test(start) ? start : today().slice(0, 7)))
-}
-
-export function QueryBlock({ store, path, host, options }: BlockCtx) {
-  const [month, setMonth] = useMonth(options.month)
-  const q = useMemo(() => {
-    const { wide: _w, stack: _s, ...o } = options
-    return JSON.stringify(o.view === "calendar" ? { ...o, month } : o)
-  }, [options, month])
-  // (`this`: the note embedding this one, else this one: the block's text side alike)
-  const { res, error, groups, sort, setSort, save, rows } = useQueryResult(`query?q=${encodeURIComponent(q)}&self=${encodeURIComponent(path)}${host ? `&this=${encodeURIComponent(host)}` : ""}`)
-  // (Its views get the link resolver, not the store: the same one while the files and names didn't change.)
-  const resolve = resolver(store)
-  const title = typeof options.title === "string" && options.title ? options.title : "Query"
-  return (
-    <Panel title={title} icon={Table2} tint={TINT} className="min-w-0"
-      action={res && <span className="text-[13px] text-muted-foreground tabular-nums">{countText(res)}</span>}>
-      {error ? <p className="text-[15px] text-muted-foreground">Query: {error.replace(/^Error: /, "")}</p>
-        : !res ? <ResultSkeleton view={typeof options.view === "string" ? options.view : "table"} rows={rows} />
-        : <ResultBody res={res} groups={groups} resolve={resolve} sort={sort} setSort={setSort} save={save} month={month} setMonth={setMonth} />}
-    </Panel>
   )
 }
 

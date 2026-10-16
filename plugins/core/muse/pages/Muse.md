@@ -3,7 +3,6 @@ type: dashboard
 plugin: muse
 icon: muse
 tint: blue
-subtitle: Your Muse agent, read live from its machine
 ---
 
 ```block-muse

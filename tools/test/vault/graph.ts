@@ -34,8 +34,8 @@ export default async ($: VaultTest) => {
   check("graph: a first name alone links to nobody, an alias does", gedge("Graph test/Met.md", "People/Theo Park.md") && graph.edges.filter((e: Any) => e.from === "Graph test/Met.md").length === 1, graph.edges.filter((e: Any) => e.from === "Graph test/Met.md"))
   const { linkResolver } = await import("../../../core/links.ts")
   const lr = linkResolver([{ path: "Notes/Idea.md", aliases: ["Big idea"] }, { path: "People/Bob Lee.md" }, { path: "Idea.md" }, { path: "Work/Idea.md" },
-    { path: "Work/Deep/Plan.md" }, { path: "files/a.pdf" }, { path: "Books/Dune Part One.md", title: "Dune: Part One" }, { path: "Dune: Part One.md" }])
-  check("links: path, name, alias, title and heading resolve; a first name or a part of a path doesn't",
+    { path: "Work/Deep/Plan.md" }, { path: "files/a.pdf" }, { path: "Books/Dune Part One.md", aliases: ["Dune: Part One"] }, { path: "Dune: Part One.md" }])
+  check("links: path, name, alias and heading resolve (a name before an alias); a first name or a part of a path doesn't",
     lr("Notes/Idea") === "Notes/Idea.md" && lr("Big idea#Part") === "Notes/Idea.md" && lr("Dune: Part One") === "Dune: Part One.md" && lr("Bob") === null &&
     lr("Nobody") === null && lr("Deep/Plan") === "Work/Deep/Plan.md" && lr("eep/Plan") === null && lr("Other/Plan") === null && lr("a.pdf") === "files/a.pdf",
     [lr("Notes/Idea"), lr("Big idea"), lr("Bob"), lr("Deep/Plan"), lr("eep/Plan"), lr("a.pdf")])
@@ -111,9 +111,7 @@ export default async ($: VaultTest) => {
     const { homeFolder } = await import("../../../core/fileprops.ts")
     check("folders: homeFolder prefers folders named like the kind's", homeFolder(["Clippings/a.md", "Clippings/b.md", "Personal/Notes/c.md"], "Notes") === "Personal/Notes" &&
       homeFolder(["Personal/Logs/Gym/a.md", "Personal/Logs/Gym/b.md", "Logs/Sleep/c.md"], "Logs", true) === "Personal/Logs/Gym" &&
-      homeFolder(["Friends/a.md", "Friends/b.md", "c.md"], "People") === "Friends" && homeFolder([], "People") === null &&
-      homeFolder([".vaultite/pages/Dashboards/a.md", ".vaultite/pages/Dashboards/b.md", "Personal/Dashboards/c.md"], "Dashboards") === "Personal/Dashboards" &&
-      homeFolder([".vaultite/pages/Dashboards/a.md"], "Dashboards") === null)
+      homeFolder(["Friends/a.md", "Friends/b.md", "c.md"], "People") === "Friends" && homeFolder([], "People") === null)
     for (const d of ["Personal", "Archive"]) fs.rmSync(path.join(VAULT, d), { recursive: true })
     fs.rmSync(path.join(VAULT, "Templates/A person.md"))
   }

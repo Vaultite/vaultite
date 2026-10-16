@@ -3,38 +3,44 @@ type: dashboard
 plugin: terminal
 icon: bot
 tint: orange
-subtitle: Your coding agents on this machine
-tab: Overview
-tabs: [Claude, Codex, OpenCode, Cursor, OpenClaw, Hermes]
 ---
 
-```block-claude-limits
+```block-agent-limits
+agent: claude-code
 ```
 
-```block-codex-limits
+```block-agent-limits
+agent: codex
 ```
 
-```block-cursor-limits
+```block-agent-limits
+agent: cursor
 ```
 
 ```block-inbox
 wide: true
 ```
 
-```block-claude-sessions
+```block-agent-sessions
+agent: claude-code
 ```
 
-```block-codex-sessions
+```block-agent-sessions
+agent: codex
 ```
 
-```block-opencode-sessions
+```block-agent-sessions
+agent: opencode
 ```
 
-```block-cursor-sessions
+```block-agent-sessions
+agent: cursor
 ```
 
-```block-openclaw-sessions
+```block-agent-sessions
+agent: openclaw
 ```
 
-```block-hermes-sessions
+```block-agent-sessions
+agent: hermes
 ```

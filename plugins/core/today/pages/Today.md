@@ -3,7 +3,6 @@ type: dashboard
 plugin: today
 icon: sun
 tint: today
-subtitle: "{date}"
 ---
 
 ```block-routines
@@ -22,7 +21,8 @@ wide: true
 ```block-nutrition
 ```
 
-```block-claude-limits
+```block-agent-limits
+agent: claude-code
 ```
 
 ```block-inbox

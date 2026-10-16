@@ -21,7 +21,8 @@ import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { notify, notifyError } from "@/core/notify"
 import { closeDetail } from "@/core/nav"
-import { List, PageHeader, Row, Section, SheetHead, Switch } from "@/components/kit"
+import { List, Row, Section, SheetHead, Switch } from "@/components/kit"
+import { TITLE, TitleRow } from "@/components/FileTitle"
 import { capitalize, cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
 import { isDesktop } from "@/core/platform"
@@ -39,10 +40,9 @@ function preview(p: Plugin, s: Store, disabled: string[]): ReactNode {
   if (!view) return null
   return pages.map(({ name, text }) => {
     const { fm: props, body } = noteParts(text)
-    const sub = typeof props.subtitle === "string" ? props.subtitle.replace("{date}", dateText(new Date(), { weekday: "long", day: "numeric", month: "long" })) : undefined
     return (
       <div key={name}>
-        <PageHeader title={name} subtitle={sub} className="md:pt-6" />
+        <div className="mb-4 md:pt-6"><TitleRow icon={props.icon} tint={props.tint}><h1 className={TITLE}>{name}</h1></TitleRow></div>
         {view.render({ store: s, path: `Dashboards/${name}.md`, fm: props, body, title: name, place: "page", disabled: on })}
       </div>
     )

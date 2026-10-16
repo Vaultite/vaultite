@@ -3,12 +3,10 @@
 import fs from "node:fs"
 import type { App } from "../app.ts"
 import { commandList, pageIcons, schemes } from "../appsource.ts"
-import { closest, COMMON, optionText, tidyKindBlocks } from "../blocks.ts"
+import { closest, COMMON, optionText } from "../blocks.ts"
 import { jsonBlock, type Op, OpError } from "../ops.ts"
 import { type Any, lines, strings } from "./common.ts"
 import { pluginList } from "./plugins.ts"
-import { readText, writeAtomic } from "../vault.ts"
-import { FM } from "../frontmatter.ts"
 
 
 /** A text read as JSON when it is (numbers, true, lists), else the text. */
@@ -248,37 +246,6 @@ Ids: vau hotkeys --all.
     text: (r) => (r.reset ? `${r.id}: back to the default (${r.keys.join(", ") || "none"})` : `${r.id}: ${r.keys.join(", ") || "no shortcut"}`) +
       (r.known ? "" : `\n(no command '${r.id}' in the app's source: check vau hotkeys --all)`),
   }, {
-    id: "block.tidy",
-    cli: "blocks tidy",
-    summary: "Take out the fences on top of files that only repeat their kind's blocks, which are drawn there anyway.",
-    help: `A kind's own blocks (a person's profile, a log's fields) are drawn on top of each of its files without a fence.
-Files from before, or written by hand, may still start with those fences: this takes them out where they're at the
-very top, in the kind's order and without options, so the files hold only what's theirs. A fence with options, or
-moved further down, stays. --dry lists the files first.
-
-  vau blocks tidy --dry
-  vau blocks tidy`,
-    kind: "write",
-    params: { dry: { type: "boolean", description: "only list the files it would change" } },
-    run: async ({ dry }) => {
-      const files: string[] = []
-      for (const e of [...app.vault.entries.values()].sort((a, b) => (a.rel < b.rel ? -1 : 1))) {
-        const view = e.broken || !e.kind ? [] : e.kind.blocksFor(e.fm)
-        if (!view.length || !e.body.includes("block-")) continue
-        let raw: string
-        try { raw = readText(app.vault.abs(e.rel)) } catch { continue }
-        const head = FM.exec(raw)?.[0] ?? ""
-        const body = tidyKindBlocks(view, raw.slice(head.length))
-        if (body === null) continue
-        files.push(e.rel)
-        if (!dry) writeAtomic(app.vault.abs(e.rel), head + (head && body ? "\n" : "") + body)
-      }
-      if (!dry && files.length) await app.vault.sync()
-      return { dry: !!dry, files }
-    },
-    text: (r: Any) => !r.files.length ? "No file repeats its kind's blocks."
-      : `${r.dry ? "Would take" : "Took"} its kind's blocks out of ${r.files.length} file${r.files.length === 1 ? "" : "s"}:\n${r.files.map((p: string) => `- ${p}`).join("\n")}`,
-  }, {
     id: "block.list",
     cli: "blocks",
     summary: "Every block a page can be made of, with what it shows and its options; or one block's options.",
@@ -286,8 +253,8 @@ moved further down, stays. --dry lists the files first.
 are off marked. With a name: that block's options, what each takes and does. Put one in any file as a fence,
 \`\`\`block-<name>, options inside as YAML. Every block also takes \`wide: true\` (the whole row), \`stack: true\`
 (under the one before) and \`file: <name>\` (drawn for another file). An option a block doesn't take, or of the wrong
-type, shows as a note under it while editing and after its text in vau render. See them all drawn: vau render
-Dashboards/Design.md.
+type, shows as a note under it while editing and after its text in vau render. See them all, written as a page: vau
+docs design.
 
   vau blocks
   vau blocks query`,

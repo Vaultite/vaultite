@@ -1,7 +1,7 @@
 // Activity's frontend: draws what the server records (plugin.ts, model.ts) and reports what only the app knows
 // (Report.tsx).
 import { Activity, CalendarDays } from "lucide-react"
-import { definePlugin, fmtLongDay, getStore, openFile, openView, PageHeader, pageOf } from "@vaultite"
+import { definePlugin, getStore, openFile, openView, pageOf } from "@vaultite"
 import { FeedBlock, FeedView } from "./Feed"
 import { mockLive } from "./mock"
 import { ActivityPanel } from "./Panel"
@@ -30,13 +30,7 @@ export default definePlugin({
   // A day's recap (Recaps/<date>.md) read as its timeline; editing it is its Markdown.
   files: {
     types: ["recap"], folders: ["Recaps"], icon: CalendarDays, tint: RECAP_TINT,
-    page: {
-      header: ({ path, title, place }) => {
-        const d = path.split("/").pop()!.replace(/\.md$/, "")
-        return place === "page" ? <PageHeader title={/^\d{4}-\d\d-\d\d$/.test(d) ? fmtLongDay(d) : title} subtitle="What you did" /> : null
-      },
-      render: (ctx) => <RecapPage {...ctx} />,
-    },
+    page: { render: (ctx) => <RecapPage {...ctx} /> },
   },
   // The last few things done, one line each: hidden until the user shows it, a flyout in the rail, a tab (view:activity).
   sidebar: {

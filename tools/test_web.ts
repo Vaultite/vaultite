@@ -809,7 +809,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     === '[{"target":"Books.base#Reading","height":300},{"target":"Books.base"},null]' && JSON.stringify(fmts.embedParts("Books.base#Reading")) === '{"name":"Books.base","sub":"Reading"}',
     [fmts.embedOf("![[Books.base#Reading|300]]"), fmts.embedOf("![[x.csv#y]]")])
   check("fences: a plugin's language is drawn as the block ```lang; others are code", fmts.fenceBlock("base") === "```base" && fmts.fenceBlock("Base x") === "```base"
-    && fmts.fenceBlock("js") === null && fmts.fenceBlock("block-query") === null)
+    && fmts.fenceBlock("js") === null && fmts.fenceBlock("block-person") === null)
   fmts.setFormatLookup(() => null); fmts.setFenceLookup(() => false)
 }
 

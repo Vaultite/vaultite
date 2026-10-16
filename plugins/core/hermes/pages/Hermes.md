@@ -3,21 +3,24 @@ type: dashboard
 plugin: hermes
 icon: hermes
 tint: purple
-subtitle: Hermes Agent on this machine
 ---
 
-```block-hermes-sessions
+```block-agent-sessions
+agent: hermes
 wide: true
 ```
 
-```block-hermes-usage
+```block-agent-usage
+agent: hermes
 wide: true
 ```
 
-```block-hermes-projects
+```block-agent-projects
+agent: hermes
 ```
 
-```block-hermes-models
+```block-agent-models
+agent: hermes
 ```
 
 ```block-hermes-cron

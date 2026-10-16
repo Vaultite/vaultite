@@ -2,8 +2,8 @@ import { Feather } from "lucide-react"
 import { agentPlugin, definePlugin, type AgentSource } from "@vaultite"
 import { HermesCron, HermesMemory } from "./Memory"
 
-// Hermes' usage blocks and session tabs are the app's agent components (AgentUsage.tsx) on GET /api/hermes; its memory
-// and scheduled jobs are its own (Memory.tsx). Its page is the Hermes dashboard (pages/Hermes.md); no limits block.
+// Hermes draws the agent blocks (`agent: hermes`) and its session tabs with the app's agent components on GET
+// /api/hermes; its memory and scheduled jobs are its own (Memory.tsx). No plan limits: no agent-limits.
 const SRC: AgentSource = {
   path: "hermes", label: "Hermes", icon: Feather, tint: "var(--purple)", agent: "hermes", view: "hermes-session",
   costNote: "Cost as Hermes recorded it",
@@ -14,7 +14,7 @@ const ago = (min: number) => new Date(Date.now() - min * 60000).toISOString()
 export default definePlugin(agentPlugin(SRC, {
   // `icon: hermes` in a file (its dashboard).
   icons: { hermes: Feather },
-  blocks: { "hermes-sessions": "sessions", "hermes-usage": "usage", "hermes-projects": "projects", "hermes-models": "models", hermes: "project",
+  blocks: { "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project",
     "hermes-memory": (ctx) => <HermesMemory {...ctx} />, "hermes-cron": (ctx) => <HermesCron {...ctx} /> },
   // In its main home or a profile (its accounts).
   process: ["hermes"], accounts: "hermes/accounts",

@@ -8,7 +8,7 @@ import { runCommandId } from "@/core/commands"
 import { onUiAction, onVaultChange, onVaultMove, touches } from "@/core/live"
 import { isMedia, kindOf } from "@/core/filekinds"
 import { movePlaces } from "@/core/viewstate"
-import { homeFolder, inArchive, inPagesDir, isHiddenPath } from "../../../core/fileprops.ts"
+import { homeFolder, inArchive, isHiddenPath } from "../../../core/fileprops.ts"
 import { dump } from "../../../core/yaml.ts"
 import { notify as notice } from "@/core/notify"
 import { leaves, shownTab, tabPath, type Group } from "@/core/layout"
@@ -31,14 +31,10 @@ export type VaultFile = {
   problems: number
   /** Its ```block-<name> fences: [name, options text]. */
   blocks: [string, string][]
-  /** Its kind's blocks (core/blocks.ts onTop): those it doesn't place are drawn on top of it. */
-  kindBlocks?: string[]
   /** Its tags: frontmatter `tags` and inline #tags (core/sections.ts), when it has any. */
   tags?: string[]
   /** From its frontmatter, when it says: how it shows when pinned (a dashboard's icon and colour, the plugin it's from). */
   icon?: string; tint?: string; plugin?: string
-  /** A page with tabs (core/tabs.ts): this file's label, and the files after it (on the head). */
-  tab?: string; tabs?: string[]
   /** `archived: true` in its frontmatter (core/fileprops.ts): dimmed in the tree, left out of lists. */
   archived?: boolean
   /** Excluded files (the File explorer's setting): out of search and the graph, last in the quick switcher. */
@@ -109,13 +105,12 @@ export function findEmbed(s: Store, target: string, from?: string): string | nul
 export const isDoc = (path: string) => isMd(path) || isJson(path) || !!pageExt(path)
 /** In a dot folder, or a dot file: shown only with hidden files on. Not archive folders: an archived file opens as any. */
 export const isHidden = isHiddenPath
-export { inArchive, inPagesDir }
+export { inArchive }
 export const inTrash = (path: string) => path.startsWith(".trash/")
 /** The app's own: can't be renamed, moved or deleted (the settings folder, the trash, the generated copies). */
 export const isProtected = (path: string) => path === ".vaultite" || path === ".trash" || path === ".vaultite/generated" || path.startsWith(".vaultite/generated/")
-/** Read-only in the editor: things in the trash (restore them to edit), the app's generated copies and plugins' built-in
- *  pages (Copy to my vault makes one the user's). */
-export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/") || inPagesDir(path)
+/** Read-only in the editor: things in the trash (restore them to edit) and the app's generated copies. */
+export const isReadOnly = (path: string) => inTrash(path) || path.startsWith(".vaultite/generated/")
 
 /** Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body. */
 export function splitFm(text: string): { fm: string; body: string } {
@@ -396,7 +391,6 @@ export async function copyFile(path: string) {
 export function folderList(t: FileTree) {
   const set = new Set(t.folders)
   for (const f of [...t.files, ...t.others]) {
-    if (inPagesDir(f.path)) continue // (the app's pages folder isn't one of the user's)
     const parts = f.path.split("/")
     for (let i = 1; i < parts.length; i++) set.add(parts.slice(0, i).join("/"))
   }

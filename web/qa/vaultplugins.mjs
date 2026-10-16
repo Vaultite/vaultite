@@ -14,7 +14,7 @@ import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, errs, watch, done } = await qa(import.meta.url)
 const FIXTURE = new URL("../../tools/fixtures/lighthouse/", import.meta.url).pathname
 const DIR = ".vaultite/plugins/lighthouse"
-const PAGE = ".vaultite/pages/Dashboards/Lighthouse.md" // (its page, built in while it's on: core/pages.ts)
+const PAGE = "Dashboards/Lighthouse.md" // (its page, written when it's turned on: core/pages.ts)
 const abs = (p) => `${VAULT}/${p}`
 const read = (p) => readFileSync(abs(p), "utf8")
 const write = (p, t) => { mkdirSync(dirname(abs(p)), { recursive: true }); writeFileSync(abs(p), t) }
@@ -96,7 +96,7 @@ check("turning it on writes plugins.json's enabled", await until(async () => (pl
 check("the server loads it and builds its bundle", await until(async () => { const p = await listed(); return p?.loaded && p?.bundle }, 8000))
 ;[code] = await api("lighthouse")
 check("its route answers", code === 200, code)
-check("its dashboard was installed", await until(async () => { try { return read(PAGE).includes("block-lighthouse") } catch { return false } }, 8000))
+check("turned on, it writes its page", await until(async () => { try { return read(PAGE).includes("block-lighthouse") } catch { return false } }, 8000))
 check("the sidebar has its page", await until(async () => await page.locator(`[data-pin="${PAGE}"]`).count() > 0, 8000))
 const offered = () => page.evaluate(() => !!globalThis.__vaultite?.modules?.["@vaultite"]?.offeredCommand("lighthouse:beam"))
 check("its command is in the palette once it's on", await until(offered, 8000))

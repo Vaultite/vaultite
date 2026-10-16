@@ -7,7 +7,6 @@ export default async ($: VaultTest) => {
   let s: Any
   // Bundles (core/bundles.ts): applying is small edits that leave unrelated keys alone, and restoring is a round trip.
   {
-    app.installPages()
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
     const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
     // Its plugins (Activity off) and pins are put back at the end: the areas after it need them.
@@ -31,8 +30,8 @@ export default async ($: VaultTest) => {
     ;[code, r] = await api("GET", "bundles/pages?workspace=1")
     const plan = r.plan
     check("bundles: the preview says what changes", code === 200 && plan.plugins.off.includes("today") && plan.settings.some((s: Any) => s.plugin === "page-preview" && s.key === "trigger" && s.to === "hover") &&
-      plan.pins.list.join() === ".vaultite/pages/Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md" && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
-      plan.files.add.includes(".vaultite/pages/Dashboards/Home.md") && !plan.empty, plan)
+      plan.pins.list.join() === "Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md" && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
+      plan.files.add.includes("Dashboards/Home.md") && !plan.empty, plan)
     ;[code, r] = await api("POST", "bundles/pages/apply", { workspace: 1 })
     check("bundles: apply", code === 200 && r.applied === "Pages and databases", r)
     const pj = conf("plugins"), look = conf("appearance")
@@ -40,23 +39,23 @@ export default async ($: VaultTest) => {
     check("bundles: appearance keeps the keys the bundle doesn't set; one it sets to the default is removed", look.textFont === "Georgia" && !("theme" in look) && look.scheme === "paper" &&
       look.density === "comfortable", look)
     check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))
-    check("bundles: pins are the bundle's, then the user's own; a plugin's page it doesn't pin is unpinned", conf("pages").pinned.join() === ".vaultite/pages/Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", conf("pages"))
-    check("bundles: its dashboard is added", exists(".vaultite/pages/Dashboards/Home.md") && read(".vaultite/pages/Dashboards/Home.md").includes("block-query"))
+    check("bundles: pins are the bundle's, then the user's own; a plugin's page it doesn't pin is unpinned", conf("pages").pinned.join() === "Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", conf("pages"))
+    check("bundles: its dashboard is added", exists("Dashboards/Home.md") && read("Dashboards/Home.md").includes("```base"))
     check("bundles: sidebars.json is the bundle's", JSON.stringify(conf("sidebars").left) === JSON.stringify(["search:search", "pages:pages", "files:files"]), conf("sidebars"))
     let d = await slot1()
-    check("bundles: the current workspace follows: its own panels go, its pins get the same edits, the rest stays", d.name === "Desk" && !d.sidebars && d.pinned?.join() === ".vaultite/pages/Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", d)
+    check("bundles: the current workspace follows: its own panels go, its pins get the same edits, the rest stays", d.name === "Desk" && !d.sidebars && d.pinned?.join() === "Dashboards/Home.md,Dashboards/Projects.md,People/Alice Park.md", d)
     ;[, s] = await api("GET", "state")
     check("bundles: /api/state says what can be restored", s.bundles?.previous?.name === "Pages and databases" && s.bundles.onboarding === false, s.bundles)
     ;[, r] = await api("GET", "bundles/pages?workspace=1")
     check("bundles: applied again it changes nothing", r.plan.empty === true, r.plan)
     ;[code, r] = await api("POST", "bundles/restore")
-    check("bundles: restore", code === 200 && r.restored === "Pages and databases" && r.trashed.includes(".vaultite/pages/Dashboards/Home.md"), r)
+    check("bundles: restore", code === 200 && r.restored === "Pages and databases" && r.trashed.includes("Dashboards/Home.md"), r)
     const after = Object.fromEntries(NAMES.map((n) => [n, conf(n)]))
     check("bundles: apply then restore is a round trip (every settings file as it was, absent ones absent)", JSON.stringify(after) === JSON.stringify(before),
       NAMES.filter((n) => JSON.stringify(after[n]) !== JSON.stringify(before[n])).map((n) => [n, before[n], after[n]]))
     d = await slot1()
     check("bundles: the workspace is as it was", JSON.stringify({ n: d.name, s: d.sidebars, p: d.pinned }) === JSON.stringify({ n: deskBefore.name, s: deskBefore.sidebars, p: deskBefore.pinned }), [d, deskBefore])
-    check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists(".vaultite/pages/Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
+    check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists("Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
     ;[code] = await api("POST", "bundles/restore")
     check("bundles: restore twice is a 404", code === 404, code)
 
@@ -158,11 +157,11 @@ export default async ($: VaultTest) => {
     setConf("appearance", { ...appearanceBefore, scheme: "dracula" })
     ;[code, r] = await api("GET", "bundles/lamp-light")
     check("bundles: a look's plan: the scheme and the new tab's page, built in as it brings it; plugins and pins untouched",
-      r.plan.appearance.some((c: Any) => c.key === "scheme" && c.to === "nord") && r.plan.newtab.some((c: Any) => c.key === "page" && c.to === ".vaultite/pages/Dashboards/Lamp room.md") &&
+      r.plan.appearance.some((c: Any) => c.key === "scheme" && c.to === "nord") && r.plan.newtab.some((c: Any) => c.key === "page" && c.to === "Dashboards/Lamp room.md") &&
       r.plan.pins === null && !r.plan.plugins.on.length && !r.plan.plugins.off.length && !r.plan.panels.changed, r.plan)
     ;[code] = await api("POST", "bundles/lamp-light/apply", {})
-    check("bundles: applied, the new tab shows its page", code === 200 && conf("newtab")?.page === ".vaultite/pages/Dashboards/Lamp room.md" && conf("appearance")?.scheme === "nord" &&
-      exists(".vaultite/pages/Dashboards/Lamp room.md"), conf("newtab"))
+    check("bundles: applied, the new tab shows its page", code === 200 && conf("newtab")?.page === "Dashboards/Lamp room.md" && conf("appearance")?.scheme === "nord" &&
+      exists("Dashboards/Lamp room.md"), conf("newtab"))
     ;[code] = await api("POST", "bundles/restore")
     check("bundles: restored, the new tab as it was", code === 200 && !conf("newtab")?.page && conf("appearance")?.scheme === "dracula", conf("newtab"))
     await api("DELETE", "bundles/lamp-light")

@@ -9,6 +9,7 @@ import { get } from "@/core/http"
 import { folderOf, isReadOnly, openFile, stem } from "@/core/files"
 import { openPluginSettings } from "@/core/pluginSettings"
 import { blockFor } from "@/core/plugins"
+import { parseOptions } from "../../../core/blocks.ts"
 import { showLabel } from "@/core/platform"
 import { getPrefs } from "@/core/prefs"
 import { revealProperties } from "@/core/viewstate"
@@ -59,7 +60,7 @@ function sourceItems(found: Sources | Error | null, here: string): MenuItem[] {
  *  and its Markdown. */
 export function openBlockMenu(at: { x: number; y: number }, b: BlockRef) {
   const { name, text, path, edit } = b
-  const { plugin, decl } = blockFor(name, getPrefs().disabled)
+  const { plugin, decl } = blockFor(name, getPrefs().disabled, parseOptions(text).options)
   const fence = name.startsWith("```")
   const what = fence ? `A ${name.slice(3)} block` : `The ${name} block`
   const head: MenuItem = { label: `${what}${plugin ? ` (${plugin.name})` : ""}${decl?.description ? `: ${decl.description}` : ""}`, icon: Blocks, caption: true, run: () => {} }
@@ -76,8 +77,7 @@ export function openBlockMenu(at: { x: number; y: number }, b: BlockRef) {
     const rows = sourceItems(found, path), end = tail()
     return [head, { ...rows[0], sep: true }, ...rows.slice(1), ...end.map((x, i) => (i ? x : { ...x, sep: true }))]
   }
-  // (a fence a plugin draws, ```base, has no text side to trace: what it is and editing it)
-  if (fence || !path) { openMenu(at, [head, ...tail()]); return }
+  if (!path) { openMenu(at, [head, ...tail()]); return }
   const first = build(null)
   openMenu(at, first)
   const nth = b.nth ?? edit?.nth()

@@ -3,19 +3,22 @@ type: dashboard
 plugin: opencode
 icon: opencode
 tint: blue
-subtitle: OpenCode on this machine
 ---
 
-```block-opencode-sessions
+```block-agent-sessions
+agent: opencode
 wide: true
 ```
 
-```block-opencode-usage
+```block-agent-usage
+agent: opencode
 wide: true
 ```
 
-```block-opencode-projects
+```block-agent-projects
+agent: opencode
 ```
 
-```block-opencode-models
+```block-agent-models
+agent: opencode
 ```

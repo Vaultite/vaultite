@@ -330,12 +330,12 @@ plugin.provide("agent:codex", async ({ resume, prompt }: AgentStart) => {
 
 // ---------- blocks as text (GET /api/render)
 
-plugin.block("codex-limits", async () => {
+plugin.block("agent-limits", async () => {
   const lim = await limits()
   const p = planOf(lim?.plan ?? "")
   if (!lim) return section("Codex plan limits", "_No limits read yet: they come from ChatGPT through the codex CLI, or from Codex's last session._")
   return section("Codex plan limits", limitRows(lim.windows), `_${p ? `${p.name} plan, from` : "From"} the ${lim.source}, ${ago(lim.observed)}._`)
 })
 
-codingAgent(plugin, { id: "codex", name: "Codex", prefix: "codex", value: "estimated at list prices", state: (s) => (s.status === "busy" ? "Working" : "Idle"),
+codingAgent(plugin, { id: "codex", name: "Codex", value: "estimated at list prices", state: (s) => (s.status === "busy" ? "Working" : "Idle"),
   sessionId: SESSION_ID, summary, live, plan, session, modelName, projectOf: (cwd) => projectOf(cwd, rootsOf), warm: scan.refresh })

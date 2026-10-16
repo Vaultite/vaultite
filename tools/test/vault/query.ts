@@ -5,7 +5,7 @@ import type { Any, VaultTest } from "./harness.ts"
 export default async ($: VaultTest) => {
   const { VAULT, api, check, read, write } = $
   let code: number
-  // Database views (plugins/core/query): one evaluator (query.ts) for the route and the block's text.
+  // The query engine (plugins/core/query/query.ts): /api/query, query.run and bases run on it.
   {
     const { parseWhere, run, QueryError, markdown } = await import("../../../plugins/core/query/query.ts")
     const recs = [
@@ -58,7 +58,7 @@ export default async ($: VaultTest) => {
     [all.shown, page.shown, page.offset])
     write("Query test/Alice Park.md", "---\ntype: qtest\nrelation: friend\nevery_days: 30\n---\n\nHi.\n")
     write("Query test/Bob Lee.md", "---\ntype: qtest\nrelation: family\nevery_days: 7 # weekly\n---\n")
-    write("Query test/View.md", "---\ntags: [Trip]\n---\n\n```block-query\ntitle: Test people\nfrom: Query test/\ntype: qtest\ncolumns: [file, relation, every_days]\nsort: -every_days\n```\n")
+    write("Query test/View.md", "---\ntags: [Trip]\n---\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: table\n    name: Test people\n    order: [file.name, relation, every_days]\n    sort: [{property: every_days, direction: DESC}]\n```\n")
     let qr: Any
     ;[code, qr] = await api("GET", 'query?q={"from":"Query test/","type":"qtest","sort":"every_days"}')
     check("GET /api/query answers rows with paths and values", code === 200 && qr.groups[0].rows.map((r: Any) => r.path).join() === "Query test/Bob Lee.md,Query test/Alice Park.md"
@@ -85,13 +85,19 @@ export default async ($: VaultTest) => {
     const inArch = qr.groups.flatMap((g: Any) => g.rows).map((r: Any) => r.path)
     check("...but none in an archive folder: Obsidian never sees hidden folders", !inArch.some((p: string) => p.includes(".archive/")) && inArch.includes("Query test/Old Pal.md"), inArch)
     ;[, qr] = await api("POST", "query", { type: "qtest", archived: true })
-    check("...while a database view with archived: true lists them", qr.groups.flatMap((g: Any) => g.rows).some((r: Any) => r.path === "Query test/.archive/Gone Pal.md"), qr)
+    check("...while vau query's archived: true lists them", qr.groups.flatMap((g: Any) => g.rows).some((r: Any) => r.path === "Query test/.archive/Gone Pal.md"), qr)
+    ;[, qr] = await api("POST", "query", { base: "filters: 'type == \"qtest\"'\nviews:\n  - type: table\n    archived: true\n" })
+    const withArch = qr.groups.flatMap((g: Any) => g.rows).map((r: Any) => r.path)
+    ;[, qr] = await api("POST", "query", { base: "filters: 'type == \"qtest\"'\nviews:\n  - type: table\n    archived: only\n" })
+    const onlyArch = qr.groups.flatMap((g: Any) => g.rows).map((r: Any) => r.path).sort()
+    check("a base view's archived: true lets archive folders in, only: only archived files", withArch.includes("Query test/.archive/Gone Pal.md") && withArch.includes("Query test/Alice Park.md")
+      && JSON.stringify(onlyArch) === '["Query test/.archive/Gone Pal.md","Query test/Old Pal.md"]', [withArch, onlyArch])
     fs.rmSync(path.join(VAULT, "Query test/.archive"), { recursive: true })
     fs.rmSync(path.join(VAULT, "Query test/Old Pal.md"))
     ;[code, qr] = await api("POST", "query", { from: "Query test/", where: "relation" })
     check("a bad query is a 400 saying why", code === 400 && /expected/.test(qr.error), qr)
     const [, md] = await api("GET", "render?path=Query test/View.md")
-    check("the block reads as a Markdown table", md.includes("## Test people") && md.includes("| Name | Relation | Every days |")
+    check("a ```base fence reads as a Markdown table", md.includes("### Test people") && md.includes("| Name | Relation | Every days |")
       && md.indexOf("[[Alice Park]]") < md.indexOf("[[Bob Lee]]") && md.includes("| [[Bob Lee]] | family | 7 |"), md)
 
     // Boards: a column per value of the group key, the listed ones first (even empty), "No value" last.
@@ -121,12 +127,13 @@ export default async ($: VaultTest) => {
     check("calendar: a bad month says so", /month is YYYY-MM/.test(why), why)
 
     // As text, and a card moved: the app writes that one key (PUT /api/file with its base) and the board follows.
-    write("Query test/Board.md", "---\ntags: [Trip]\n---\n\n```block-query\ntitle: Test board\nfrom: Query test/\ntype: qtest\nview: board\ngroup: relation\ngroups: [friend, family, mentor]\ncolumns: [file, every_days]\n```\n\n```block-query\ntitle: Test calendar\nfrom: Query test/\ntype: qtest\nview: calendar\ndate: met\nmonth: 2026-09\n```\n")
+    write("Query test/Board.md", "---\ntags: [Trip]\n---\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: kanban\n    name: Test board\n    groupBy: {property: relation, direction: ASC}\n    groups: [friend, family, mentor]\n    order: [file.name, every_days]\n```\n\n```base\nfilters:\n  and:\n    - file.inFolder(\"Query test\")\n    - type == \"qtest\"\nviews:\n  - type: calendar\n    name: Test calendar\n    date: met\n    month: 2026-09\n```\n")
     write("Query test/Alice Park.md", "---\ntype: qtest\nrelation: friend\nevery_days: 30\nmet: 2026-09-12\n---\n\nHi.\n")
     let [, bmd] = await api("GET", "render?path=Query test/Board.md")
-    check("the board reads as a section per column, a bullet per file", bmd.includes("## Test board") && bmd.includes("### friend (1)\n\n- [[Alice Park]] · 30")
-      && bmd.includes("### family (1)\n\n- [[Bob Lee]] · 7") && bmd.includes("### mentor (0)\n\n_Empty._") && bmd.includes("### No value (0)"), bmd)
-    check("the calendar reads as its month, a bullet per file by date", bmd.includes("## Test calendar\n\n### September 2026\n\n- 2026-09-12 · [[Alice Park]]"), bmd)
+    check("a kanban reads as a section per column (its groups first, even empty), a bullet per file", bmd.includes("### Test board") && bmd.includes("#### friend (1)\n\n- [[Alice Park]] · 30")
+      && bmd.includes("#### family (1)\n\n- [[Bob Lee]] · 7") && bmd.includes("#### mentor (0)\n\n_Empty._") && bmd.includes("#### No value (0)")
+      && bmd.indexOf("#### friend") < bmd.indexOf("#### family") && bmd.indexOf("#### family") < bmd.indexOf("#### mentor"), bmd)
+    check("a calendar reads as its month (the view's), a bullet per file by date", bmd.includes("### Test calendar\n\n#### September 2026\n\n- 2026-09-12 · [[Alice Park]]"), bmd)
     const before = read("Query test/Bob Lee.md")
     ;[code] = await api("PUT", "file", { path: "Query test/Bob Lee.md", text: before.replace("relation: family", "relation: mentor"), base: before })
     ;[, qr] = await api("POST", "query", { from: "Query test/", type: "qtest", view: "board", group: "relation", groups: ["friend", "family", "mentor"] })
@@ -134,11 +141,11 @@ export default async ($: VaultTest) => {
       && read("Query test/Bob Lee.md") === "---\ntype: qtest\nrelation: mentor\nevery_days: 7 # weekly\n---\n"
       && JSON.stringify(qr.groups.map((x: Any) => [x.name, x.rows.length])) === '[["friend",1],["family",0],["mentor",1],[null,0]]', qr.groups)
     ;[, bmd] = await api("GET", "render?path=Query test/Board.md")
-    check("and reads so", bmd.includes("### family (0)") && bmd.includes("### mentor (1)\n\n- [[Bob Lee]] · 7"), bmd)
+    check("and reads so", bmd.includes("#### family (0)") && bmd.includes("#### mentor (1)\n\n- [[Bob Lee]] · 7"), bmd)
   }
 
   // Obsidian Bases: a .base read as text (every view), one view as JSON, embedded with #View (this: the note), a ```base
-  // fence in a note, a ```block-query with a formula and summaries.
+  // fence in a note with a formula and summaries.
   {
     write("Bases test/Books/Dune.md", "---\nstatus: done\npages: 400\nread: 400\nauthor: '[[Frank Herbert]]'\n---\n")
     write("Bases test/Books/Emma.md", "---\nstatus: reading\npages: 300\nread: 100\n---\n")
@@ -171,8 +178,8 @@ export default async ($: VaultTest) => {
     check("this: a file linking to the note is listed", md.includes("### Linked here\n\n| Name |") && md.includes("[[Dune]]"), md)
     ;[code, qr] = await api("POST", "query", { type: "nope", formulas: { x: "1 +" }, columns: ["file", "formula.x"], summaries: { file: "Count" }, filters: "bad(" })
     check("a broken formula or filter is a note, not an error", code === 200 && JSON.stringify(qr.notes) === '["Filter bad( is left out: there\'s no function bad()"]', qr)
-    write("Bases test/Query.md", "```block-query\ntitle: Pages\nfrom: Bases test/Books/\nformulas:\n  left: pages - read\ncolumns: [file, pages, formula.left]\nsummaries: {pages: Sum, formula.left: Average}\n```\n")
+    write("Bases test/Query.md", "```base\nfilters: file.inFolder(\"Bases test/Books\")\nformulas:\n  left: pages - read\nviews:\n  - type: table\n    name: Pages\n    order: [file.name, pages, formula.left]\n    summaries: {pages: Sum, formula.left: Average}\n```\n")
     ;[, md] = await api("GET", "render?path=Bases test/Query.md")
-    check("block-query: a formula column and summaries", md.includes("| [[Emma]] | 300 | 200 |") && md.includes("|  | **Sum** 700 | **Average** 100 |"), md)
+    check("a ```base fence: a formula column and summaries", md.includes("| [[Emma]] | 300 | 200 |") && md.includes("|  | **Sum** 700 | **Average** 100 |"), md)
   }
 }

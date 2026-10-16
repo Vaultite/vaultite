@@ -1,8 +1,8 @@
 import { AgentLimitsChip, agentPlugin, definePlugin, getStore, openFile, pageOf, type AgentSource } from "@vaultite"
 import { ClaudeIcon } from "./ClaudeIcon"
 
-// Claude Code's blocks and session tabs are the app's agent components (AgentUsage.tsx) on GET /api/claude-code; its
-// page is the Claude dashboard (pages/Claude.md), and `claude` goes in a project file.
+// Claude Code draws the agent blocks (`agent: claude-code`) and its session tabs with the app's agent components
+// (AgentUsage.tsx) on GET /api/claude-code; its page is the Claude dashboard (pages/Claude.md).
 const SRC: AgentSource = {
   path: "claude-code", label: "Claude Code", speaker: "Claude", icon: ClaudeIcon, tint: "var(--orange)", agent: "claude", view: "claude-session",
   noLimits: "No limits yet. They come from Claude Code, signed in on this machine, or else its status line or the Claude app.",
@@ -12,7 +12,7 @@ export default definePlugin(agentPlugin(SRC, {
   // `icon: claude` in a file (the Claude dashboard), and Terminal's Claude Code sessions.
   icons: { claude: ClaudeIcon },
   ambient: { limits: { title: "Claude limits", sort: 40, render: () => <AgentLimitsChip src={SRC} open={() => { const p = pageOf(getStore(), "claude-code", "Claude"); if (p) openFile(p.path) }} /> } },
-  blocks: { "claude-limits": "limits", "claude-sessions": "sessions", "claude-usage": "usage", "claude-projects": "projects", "claude-models": "models", claude: "project" },
+  blocks: { "agent-limits": "limits", "agent-sessions": "sessions", "agent-usage": "usage", "agent-projects": "projects", "agent-models": "models", "agent-project": "project" },
   // Its accounts (config folders: plugin.ts) are offered when choosing where to open it.
   process: ["claude"], accounts: "claude-code/accounts",
   opens: { open: { id: "terminal:claude", name: "Open Claude Code" }, split: { id: "terminal:claude-split", desktop: true, name: "Open Claude Code in right split" },

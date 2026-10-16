@@ -14,7 +14,7 @@ const post = (path, body) => fetch(`${B}api/${path}`, { method: "POST", headers:
 
 const NOTE = "Qa blocks/Options.md"
 const body = "Intro line.\n\n```block-week-goals\ntitel: Mine\n```\n\n```block-graph\ndepth: 9\n```\n\n```block-area\n```\n\n" +
-  "```block-query\ntitle: Qa query\nfrom: Qa blocks/\n```\n\nEnd line.\n"
+  "```block-errors\ntitle: Qa errors\n```\n\n```base\nfilters: file.inFolder(\"Qa blocks\")\nviews:\n  - type: table\n    name: Qa base\n```\n\nEnd line.\n"
 await fetch(`${B}api/file?path=${encodeURIComponent(NOTE)}`, { method: "DELETE" })
 await post("file", { path: NOTE, text: `---\ntype: note\nkind: note\n---\n\n${body}` })
 
@@ -37,7 +37,7 @@ const texts = await notes.allInnerTexts()
 check(`live preview: an unknown option is noted under its block (${JSON.stringify(texts)})`, texts.some((t) => t === "Unknown option titel (did you mean title?)"))
 check("…a wrong value too", texts.some((t) => t === "depth should be one of 1, 2, 3, 4, 5, not 9"))
 check("…and a required option left out", texts.some((t) => t === "area is required"))
-check("a block with fine options has none", !texts.some((t) => /query/i.test(t)))
+check("a ```base fence has none (its YAML is a base, not options)", !texts.some((t) => /filters|views/i.test(t)))
 check("option names are drawn as code", await page.locator('[data-block-notes="week-goals"] code', { hasText: "titel" }).count() === 1)
 const box = await page.locator('[data-block-notes="week-goals"]').boundingBox()
 check(`the note is one quiet line (${box?.height}px)`, box && box.height < 30)
@@ -61,14 +61,14 @@ check(`typing in a block suggests its options, not the ones it has (${labels.joi
 await page.screenshot({ path: `${OUT}blocks-suggest.png` })
 await page.keyboard.press("Enter"); await page.keyboard.type("280"); await wait(1500)
 check("a pick goes in as `key: ` and the value follows", /```block-graph\ndepth: 9\nheight: 280\n```/.test(read(NOTE)))
-await page.locator(".vau-editor .cm-line", { hasText: "title: Qa query" }).first().click()
+await page.locator(".vau-editor .cm-line", { hasText: "title: Qa errors" }).first().click()
 await page.keyboard.press("End"); await page.keyboard.press("Enter")
-await page.keyboard.type("vie"); await wait(400)
-await page.keyboard.press("Enter"); await page.keyboard.type("b"); await wait(500)
+await page.keyboard.type("sou"); await wait(400)
+await page.keyboard.press("Enter"); await page.keyboard.type("s"); await wait(500)
 const values = (await menu.locator("li").allInnerTexts().catch(() => [])).map((t) => t.split(/\s/)[0])
-check(`after an enum's key, its values (${values.join(", ")})`, values.includes("board"))
+check(`after an enum's key, its values (${values.join(", ")})`, values.includes("server"))
 await page.keyboard.press("Enter"); await wait(1500)
-check("…and the value goes in", /title: Qa query\nview: board\n/.test(read(NOTE)))
+check("…and the value goes in", /title: Qa errors\nsource: server\n/.test(read(NOTE)))
 await page.locator(".vau-editor .cm-line", { hasText: "End line." }).first().click()
 await page.keyboard.press("End"); await page.keyboard.press("Enter")
 await page.keyboard.type("de"); await wait(400)

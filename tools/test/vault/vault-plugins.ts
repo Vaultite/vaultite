@@ -86,9 +86,9 @@ export default async ($: VaultTest) => {
   check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(bundle) &&
     !/@layer plugin-variants[^]*md\\\\:hidden/.test(bundle), bundle.slice(0, 600))
   check("vault plugins: its docs join the topics", (await api("GET", "docs"))[1].some((t: Any) => t.id === "lighthouse"))
-  check("vault plugins: its dashboard installs and is pinned", read(".vaultite/pages/Dashboards/Lighthouse.md").includes("block-lighthouse")
-    && vault.config("pages").pinned.includes(".vaultite/pages/Dashboards/Lighthouse.md"))
-  ;[, out] = await api("GET", "render?path=.vaultite/pages/Dashboards/Lighthouse.md")
+  check("vault plugins: allowed and on, it writes its page, pinned", read("Dashboards/Lighthouse.md").includes("block-lighthouse")
+    && vault.config("pages").pinned.includes("Dashboards/Lighthouse.md"))
+  ;[, out] = await api("GET", "render?path=Dashboards/Lighthouse.md")
   check("vault plugins: its block as text", out.includes("## Lighthouse") && out.includes("[[Bob Lee]]: night shift"), out)
   check("vault plugins: its block declared, nothing to fix", !lh.warnings.length && lh.blocks.lighthouse?.description, lh)
   check("vault plugins: its blocks in /api/blocks", (await api("GET", "blocks"))[1].blocks.some((b: Any) => b.name === "lighthouse" && b.plugin === "lighthouse" && b.on && b.text), "")
