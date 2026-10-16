@@ -92,7 +92,9 @@ export function chooseBlock(store: Store, pick: (fence: string) => void) {
 export function BlockView(props: { name: string; text: string; ctx: FileCtx; disabled: string[]; quiet?: boolean; editing?: boolean; nth?: number; edit?: BlockEdit }) {
   const { name, text, ctx, edit } = props
   const [form, setForm] = useState(false)
-  const decl = blockFor(name, props.disabled, parseOptions(text).options).decl
+  const { decl, plugin } = blockFor(name, props.disabled, parseOptions(text).options)
+  // (a fence a plugin draws, ```base, is named by its plugin)
+  const label = name.startsWith("```") && plugin ? plugin.name : capitalize(name.replace(/-/g, " "))
   // In an editor its fence changes there; drawn on a page (a dashboard), in its file, when that can be changed.
   const write = edit?.setText ?? (ctx.setProperty && props.nth !== undefined && !ctx.host
     ? (t: string) => void setBlockText(ctx.path, name, props.nth!, t).catch((e) => notifyError(e, "Couldn't change its options")) : null)
@@ -103,7 +105,7 @@ export function BlockView(props: { name: string; text: string; ctx: FileCtx; dis
     <BlockSource name={name} menu={menu}>
       <Block {...props} write={write} />
       {form && options && <BlockOptions decl={decl!} text={text} set={write!} close={() => setForm(false)} source={edit?.source ?? null} />}
-      {edit && createPortal(<BlockBar name={name} options={options} form={form} setForm={setForm} menu={menu} />, edit.bar)}
+      {edit && createPortal(<BlockBar name={label} options={options} form={form} setForm={setForm} menu={menu} />, edit.bar)}
     </BlockSource>
   )
 }
@@ -113,7 +115,7 @@ function BlockBar({ name, options, form, setForm, menu }: { name: string; option
   const hold = (e: ReactMouseEvent) => e.preventDefault()
   return (
     <>
-      <span className="cm-block-name">{capitalize(name.replace(/-/g, " "))}</span>
+      <span className="cm-block-name">{name}</span>
       {options && (
         <button type="button" className="cm-block-btn" data-tip="Options" aria-label="Options" aria-pressed={form} onMouseDown={hold} onClick={() => setForm(!form)}>
           <SlidersHorizontal className="size-4" strokeWidth={2.25} />
