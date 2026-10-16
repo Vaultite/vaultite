@@ -1,6 +1,7 @@
-// Plugins' settings (components/PluginSettings.tsx) and the shorter Settings page: Settings has the app's own rows,
-// Plugins (the Plugins page in the menu's place, with a way back; a gear there opens the sheet) and, under Features,
-// the app's own (`alwaysOn`) plugins that have settings; its search finds every plugin's settings; on the Plugins page a
+// Plugins' settings (components/PluginSettings.tsx) and the shorter Settings page: Settings has Your setup (Bundles) on
+// top, the app's own rows, Plugins (a section beside the menu; a gear there opens the sheet) and, under Features, the
+// app's own (`alwaysOn`) plugins that have settings; its search finds every plugin's settings, in the menu's place, the
+// arrows lighting one and Enter going there; on the Plugins page a
 // gear (on plugins that are on and have settings) opens the sheet; generated forms write only the key changed; custom
 // panels (Pinned, File explorer); a data.json-only plugin (Logs); a vault plugin's declared settings; every way to open
 // a sheet; 390px. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
@@ -72,7 +73,7 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
-    check("Settings: its sections, then Plugins", ["general", "appearance", "editor", "hotkeys", "plugins"].every((id, i) => nav[i] === id), nav)
+    check("Settings: Your setup, its sections, then Plugins", ["bundles", "general", "appearance", "editor", "hotkeys", "plugins"].every((id, i) => nav[i] === id), nav)
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
       !(await page.locator("main [data-workspace-settings], main [data-pinned-settings]").count()), text)
     await shot(page, "1-settings-desktop")
@@ -83,21 +84,26 @@ try {
     check("...nor one that can be switched (a gear away on Plugins)", !(await page.locator('[data-settings-nav="plugin:web-viewer"], [data-settings-nav="plugin:logs"], [data-settings-nav="plugin:workspaces"]').count()))
     const lit = (id) => page.locator(`[data-settings-nav="${id}"]`).evaluate((e) => e.className.includes("font-medium"))
 
-    // Plugins in the menu's place (one menu at a time), with a way back; a gear there opens the sheet.
+    // Your setup: Bundles beside the menu.
+    await page.locator('[data-settings-nav="bundles"]').click()
+    check("Your setup: Bundles beside the menu", !!(await until(() => page.locator('[data-settings-section="bundles"] [data-bundles-page]').count(), 4000)) &&
+      await page.locator("[data-settings-list]").count() === 1)
+    // Plugins beside the menu (it stays: no menu of its own); a gear there opens the sheet; its Bundles goes to Your setup.
     await page.locator('[data-settings-nav="appearance"]').click()
     await page.locator('[data-settings-nav="plugins"]').click()
     const ps = page.locator('[data-settings-section="plugins"]')
-    check("Settings > Plugins: the Plugins page in the menu's place", !!(await until(() => ps.locator("[data-plugin-row]").count(), 4000)) &&
-      (await page.evaluate(() => location.hash)).startsWith("#settings") && !(await page.locator("[data-settings-list]").count()) && await ps.locator("[data-plugins-rail]").count() === 1)
+    check("Settings > Plugins: a section beside the menu", !!(await until(() => ps.locator("[data-plugin-row]").count(), 4000)) &&
+      (await page.evaluate(() => location.hash)).startsWith("#settings") && await page.locator("[data-settings-list]").count() === 1 && await lit("plugins") &&
+      await ps.locator("[data-plugins-chips]").count() === 1 && await ps.locator("[data-plugins-search] input").count() === 1)
     check("...without the app's own parts", !(await ps.locator('[data-plugin-row="files"], [data-plugin-row="mcp"]').count()))
     await shot(page, "1a-settings-plugins")
     await ps.locator("[data-plugin-gear=web-viewer]").click()
     check("...a gear opens its sheet", !!(await until(() => sheet(page, "web-viewer").count(), 4000)))
     await shot(page, "1b-settings-plugin-gear")
     await closeSheet(page)
-    await ps.locator("[data-rail-back]").click()
-    check("...its way back: Settings' menu, at the section it left", !!(await until(() => page.locator("[data-settings-list]").count(), 4000)) && await lit("appearance") &&
-      await page.locator('[data-settings-section="appearance"]').count() === 1)
+    await ps.locator("[data-plugins-bundles]").click()
+    check("...its Bundles button: Your setup", !!(await until(() => page.locator('[data-settings-section="bundles"]').count(), 4000)))
+    await page.locator('[data-settings-nav="appearance"]').click()
 
     // Search: the app's rows (going to one clears the search and flashes it) and every plugin's settings, its manifest's
     // and its panel's (settingsSearch), even one that's off; one opens its sheet at the setting.
@@ -105,11 +111,12 @@ try {
     const result = (id) => page.locator(`[data-settings-result="${id}"]`)
     await find.fill("hidden")
     check("search: Show hidden files, in File explorer's panel", !!(await until(() => result("plugin:files:showHidden").count(), 4000)) &&
-      (await result("plugin:files:showHidden").innerText()).includes("File explorer") && !(await page.locator("[data-settings-section]").count()))
+      (await result("plugin:files:showHidden").innerText()).includes("File explorer") && !(await page.locator("[data-settings-list]").count()) &&
+      await page.locator('[data-settings-section="appearance"]').count() === 1)
     await shot(page, "1c-settings-search")
     await result("plugin:files:showHidden").click()
     check("...shows its settings beside the list, the setting flashed", !!(await until(() => page.locator('[data-settings-section="plugin:files"] [data-setting="showHidden"].reveal-flash').count(), 4000)))
-    check("...the search cleared", (await find.inputValue()) === "")
+    check("...the search kept, the find lit", (await find.inputValue()) === "hidden" && (await result("plugin:files:showHidden").getAttribute("aria-selected")) === "true")
     await find.fill("delay")
     check("search: a manifest's setting (Page preview's)", !!(await until(() => result("plugin:page-preview:delay").count(), 4000)))
     await find.fill("vimrc")
@@ -118,7 +125,7 @@ try {
     check("search: Vim keys, in Editor", !!(await until(() => result("plugin-vim").count(), 4000)) && (await result("plugin-vim").innerText()).includes("Editor"))
     await result("plugin-vim").click()
     const vimRow = page.locator('[data-settings-section="editor"] [data-settings-row="plugin-vim"]')
-    check("...shows Editor, the row flashed", !!(await until(() => vimRow.and(page.locator(".reveal-flash")).count(), 4000)) && await lit("editor"))
+    check("...shows Editor, the row flashed", !!(await until(() => vimRow.and(page.locator(".reveal-flash")).count(), 4000)) && (await result("plugin-vim").getAttribute("aria-selected")) === "true")
     await vimRow.getByRole("switch").click()
     check("...its switch turns Vim on (plugins.json's enabled), a gear to its settings", !!(await until(() => json(".vaultite/plugins.json")?.enabled?.includes("vim"), 4000)) &&
       !!(await until(() => vimRow.locator("[data-plugin-gear=vim]").count(), 4000)))
@@ -129,10 +136,18 @@ try {
     await until(() => result("line-numbers").count(), 4000)
     check("search: the label's match first", (await page.locator("[data-settings-result]").first().getAttribute("data-settings-result")) === "line-numbers")
     await find.press("Enter")
-    check("...Enter goes to it: search cleared, the row flashed", !!(await until(() => page.locator('[data-settings-row="line-numbers"].reveal-flash').count(), 4000)) && (await find.inputValue()) === "")
+    check("...Enter goes to it, lit, the row flashed", !!(await until(() => page.locator('[data-settings-row="line-numbers"].reveal-flash').count(), 4000)) &&
+      (await result("line-numbers").getAttribute("aria-selected")) === "true")
+    await find.fill("font")
+    await until(() => page.locator("[data-settings-result]").count(), 4000)
+    const second = await page.locator("[data-settings-result]").nth(1).getAttribute("data-settings-result")
+    await find.press("ArrowDown"); await find.press("ArrowDown")
+    check("...the arrows light the next find", !!(await until(async () => (await result(second).getAttribute("aria-selected")) === "true", 4000)) &&
+      !(await page.locator("dialog[open]").count()))
     await find.fill("zzqx")
     check("search: nothing found says so", !!(await until(async () => (await page.locator("main").innerText()).includes("No settings match"), 4000)))
     await find.fill("")
+    check("...cleared, the menu is back", !!(await until(() => page.locator("[data-settings-list]").count(), 4000)))
 
     // Plugins: gears.
     await go(page, "plugins")
@@ -288,6 +303,11 @@ try {
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
     await page.locator('[data-settings-nav="plugins"]').click()
     check("phone: Settings > Plugins goes to the Plugins page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
+    check("phone: Plugins has its search and chips, no menu", !!(await until(() => page.locator("[data-plugins] [data-plugins-search] input").count(), 4000)) &&
+      await page.locator("[data-plugins-chips]").count() === 1 && !(await page.locator("[data-rail]").count()))
+    await page.goto(`${B}#settings`); await until(() => page.locator("[data-settings-setup]").count(), 4000)
+    await page.locator("[data-settings-setup]").click()
+    check("phone: Your setup goes to the Bundles page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))
     const wide = () => page.evaluate(() => { const d = document.querySelector("dialog[open]"); if (!d) return null
       return [...d.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1 && e.getBoundingClientRect().width > 0).map((e) => e.outerHTML.slice(0, 80)) })
     for (const id of ["page-preview", "pages", "search"]) {

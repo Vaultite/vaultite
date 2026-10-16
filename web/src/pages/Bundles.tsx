@@ -299,7 +299,8 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
   return over
 }
 
-export function Bundles({ store }: { store: Store }) {
+/** `section`: drawn as Settings' section. */
+export function Bundles({ store, section }: { store: Store; section?: boolean }) {
   const l = useBundles()
   const prev = store.bundles?.previous ?? null
   const welcome = !!store.bundles?.onboarding
@@ -313,7 +314,7 @@ export function Bundles({ store }: { store: Store }) {
   const over = useImportGestures(root)
   return (
     <div ref={root} className="relative min-h-full" data-file-drop data-bundles-page>
-      <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
+      <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} section={section} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
         <div className="flex shrink-0 flex-wrap justify-end gap-2">
           {welcome
             ? <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>

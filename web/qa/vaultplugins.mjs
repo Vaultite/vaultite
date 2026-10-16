@@ -3,7 +3,7 @@
 // draws (its Tailwind classes too); an edit to its files on disk unloads it until it's allowed again (its row says so,
 // its sheet names the file changed, its shortcut says why it does nothing; Allow loads it, no reload); with its edits
 // let run, editing shows at once; a file breaking the rules unloads it with the reason on the Plugins page; turned
-// off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; the rail shows one
+// off, it's gone again. The page's category sections (in order, a vault plugin in its manifest's; a chip shows one
 // category; a search looks in every category). Also a phone-width look at the Plugins page.
 // WRITES to the vault (.vaultite/plugins/lighthouse, Keepers/, plugins.json's `enabled`, hotkeys.json; removed at the
 // end): throwaway server only.
@@ -76,16 +76,16 @@ const got = await sections()
 check("sections in the categories' order", got.length > 1 && got.every((c, i) => ORDER.includes(c) && (!i || ORDER.indexOf(c) > ORDER.indexOf(got[i - 1]))), got)
 check("a vault plugin sits in its manifest's category", (await page.locator('[data-plugin-category="life"] [data-plugin-row="lighthouse"]').count()) === 1)
 check("nothing folds: no fold chevrons", (await page.locator("main [data-fold]").count()) === 0)
-await page.locator('[data-plugins-rail] [data-plugins-cat="ai-apps"]').click()
-check("the rail shows one category", await until(async () => (await sections()).join() === "ai-apps" && (await page.locator('[data-plugin-members~="codex"]').count()) === 1
+await page.locator('[data-plugins-chips] [data-plugins-cat="ai-apps"]').click()
+check("a chip shows one category", await until(async () => (await sections()).join() === "ai-apps" && (await page.locator('[data-plugin-members~="codex"]').count()) === 1
   && (await page.locator('[data-plugin-row="files"]').count()) === 0, 8000), await sections())
 await shot("category")
-await page.getByPlaceholder("Search plugins").fill("codex")
+await page.locator("[data-plugins-search] input").fill("codex")
 check("a search inside a category finds its match", await until(async () => (await page.locator('[data-plugin-members~="codex"]').count()) === 1, 8000))
 check("…and offers Get plugins for it", (await page.locator("[data-plugins-search-more]").count()) === 1)
-await page.getByPlaceholder("Search plugins").fill("")
-await page.locator('[data-plugins-rail] [data-plugins-installed]').click()
-check("Your plugins shows every category again", await until(async () => (await sections()).length > 1, 8000), await sections())
+await page.locator("[data-plugins-search] input").fill("")
+await page.locator("[data-plugins-chips] [data-plugins-all]").click()
+check("All shows every category again", await until(async () => (await sections()).length > 1, 8000), await sections())
 
 // ---------- turned on ----------
 await sw.click()
@@ -177,8 +177,8 @@ const pp = watch(await phone.newPage())
 await pp.goto(`${B}#plugins`); await wait(1500)
 const vrow = pp.locator('[data-plugin-row="lighthouse"]')
 check("phone: Lighthouse is listed", await until(async () => await vrow.count() === 1, 8000))
-check("phone: categories as chips, no rail", await pp.locator("[data-plugins-chips]").isVisible() && !(await pp.locator("[data-plugins-rail]").isVisible()))
-check("phone: its byline says who made it", (await pp.locator('[data-plugin-by="lighthouse"]').innerText()) === "by Alice Park")
+check("phone: categories as chips, no menu", await pp.locator("[data-plugins-chips]").isVisible() && !(await pp.locator("[data-rail]").count()))
+check("phone: its byline says it's the vault's own", (await pp.locator('[data-plugin-by="lighthouse"]').innerText()) === "Yours")
 const overflow = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 check("phone: nothing overflows", overflow <= 0, overflow)
 // Tapped as a thumb does: brought clear of the bottom bar first (scrolling only far enough to show it leaves the last

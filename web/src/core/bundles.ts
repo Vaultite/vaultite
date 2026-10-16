@@ -5,6 +5,7 @@ import { getStore, reload } from "@/core/data"
 import { del, get, post, request } from "@/core/http"
 import { isDesktop } from "@/core/platform"
 import { activeTab, go } from "@/core/workspace"
+import { openSettings } from "@/core/settingsNav"
 import { captureWindow } from "@/core/desktop"
 import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
@@ -78,8 +79,9 @@ const onboarding = (): boolean => !!getStore()?.bundles?.onboarding
 /** Applying it puts code in the vault or turns a vault plugin on (core/bundles.ts runsCode). */
 export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
-/** Open the bundles page (the command "Choose a bundle…", Settings, Plugins). */
-export const openBundles = () => { if (isDesktop()) go("bundles"); else location.hash = "#bundles" }
+/** Open Bundles (the command "Choose a bundle…", Plugins): Settings' section on a desktop, its own page while a new
+ *  vault picks its first setup and on a phone. */
+export const openBundles = () => { if (!isDesktop()) location.hash = "#bundles"; else if (onboarding()) go("bundles"); else openSettings("bundles") }
 
 export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
@@ -120,10 +122,11 @@ export const previewUrl = (b: Pick<BundleInfo, "id" | "preview">) => (b.preview 
 // The window as it was when saving began (the desktop app's), before the sheet covered it: the new bundle's picture.
 let shot: string | null = null
 export const takenShot = () => shot
-/** Start saving the setup. A picture of the window comes first, unless what's shown is the Bundles page itself. */
+/** Start saving the setup. A picture of the window comes first, unless what's shown is Bundles itself (or Settings). */
 export async function startSave() {
   shot = null
-  if (activeTab()?.to !== "bundles") shot = (await captureWindow().catch(() => null))?.png ?? null
+  const to = activeTab()?.to
+  if (to !== "bundles" && to !== "settings") shot = (await captureWindow().catch(() => null))?.png ?? null
   openDetail("bundle-save")
 }
 

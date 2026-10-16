@@ -14,13 +14,14 @@ export function usePortalHost(id: string | null) {
   return host
 }
 
-/** A page's large title. On desktop it sits right under its tab's bar (ViewBar), like a file's title, whatever the page. */
-export function PageHeader({ title, subtitle, children, className }: { title: string; subtitle?: ReactNode; children?: ReactNode; className?: string }) {
+/** A page's large title. On desktop it sits right under its tab's bar (ViewBar), like a file's title, whatever the page.
+ *  `section`: a section's (Settings'), at its sections' size. */
+export function PageHeader({ title, subtitle, section, children, className }: { title: string; subtitle?: ReactNode; section?: boolean; children?: ReactNode; className?: string }) {
   // On phones a size down: the header above names the page too (PhoneHeader).
   return (
     <header className={cn("mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-1 md:pt-0", className)}>
       <div>
-        <h1 className="text-[24px] leading-[30px] font-bold md:text-[34px] md:leading-[41px]">{title}</h1>
+        <h1 className={cn("text-[24px] leading-[30px] font-bold", !section && "md:text-[34px] md:leading-[41px]")}>{title}</h1>
         {subtitle && <p className="mt-0.5 text-[15px] leading-[20px] text-muted-foreground">{subtitle}</p>}
       </div>
       {children}
@@ -260,14 +261,14 @@ export function SettingRow({ label, sub, stack, value, onClick, chevron = Chevro
 }
 
 export function Segmented<T extends string>({ value, options, onChange, label, className }: {
-  value: T; options: { value: T; label: string }[]; onChange: (v: T) => void; label: string; className?: string
+  value: T; options: { value: T; label: string; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; className?: string
 }) {
   return (
     <div role="radiogroup" aria-label={label} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
       {options.map((o) => {
         const on = o.value === value
         return (
-          <button key={o.value} type="button" role="radio" aria-checked={on} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
+          <button key={o.value} type="button" role="radio" aria-checked={on} {...o.attrs} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
             className={cn(
               "relative min-h-8 flex-1 cursor-pointer rounded-[7px] px-4 text-[13px] whitespace-nowrap transition-[background,box-shadow] duration-200",
               on ? "bg-card font-semibold shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)] dark:bg-[var(--segment-on)]" : "font-medium text-foreground/80",

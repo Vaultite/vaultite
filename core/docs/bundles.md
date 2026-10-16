@@ -1,12 +1,12 @@
 ## Bundles
 A bundle is a whole setup of the app at once: which plugins are on, their settings, the sidebars' panels, the pinned
 pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks one on the
-Bundles page (the command "Choose a bundle…", Settings > Setup, the Plugins page; a vault opened for the first time
-starts from Standard, core/start.ts, as does one skipping the offer), saves their own setup as one, shares it as a file
-or a repository, and imports others' (Import, or pasting or dropping one on the page: its preview first). The app's
-own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Life OS (`life-os`: days,
-people, health, books, and pages and databases over them), Agents (`agent-cockpit`: coding agents in terminals, their
-activity, other machines and the server).
+Bundles page (Your setup, atop Settings' menu; the command "Choose a bundle…"; Plugins' Bundles; a vault opened for
+the first time starts from Standard, core/start.ts, as does one skipping the offer), saves their own setup as one,
+shares it as a file or a repository, and imports others' (Import, or pasting or dropping one on the page: its preview
+first). The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Life OS
+(`life-os`: days, people, health, books, and pages and databases over them), Agents (`agent-cockpit`: coding agents in
+terminals, their activity, other machines and the server).
 - A bundle is a folder shaped like `.vaultite/`, plus the vault files it needs. The user's are in
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```

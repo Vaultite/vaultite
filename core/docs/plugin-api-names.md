@@ -321,7 +321,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
 - `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.
-- `PageHeader({ title, subtitle, children, className })`: A page's large title.
+- `PageHeader({ title, subtitle, section, children, className })`: A page's large title.
 - `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
 - `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as read with `editGrid`.
 - `Panel({ title, icon, tint, action, className, children })`: A card, headed like the Health app: small symbol and title in the category colour.

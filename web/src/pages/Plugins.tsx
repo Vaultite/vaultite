@@ -1,7 +1,7 @@
-// Plugins: a menu (RailLayout) of Your plugins, Get plugins (PluginBrowse.tsx), Bundles and the categories. Your plugins:
-// by category (never the `alwaysOn` parts), each saying where it's from, Vaultite's with a trust mark; tap for its sheet.
-import { useEffect, useState, type ReactNode } from "react"
-import { Bot, ChevronRight, Code, Compass, Cpu, Download, FileType, Heart, HeartPulse, Package, PenLine, Puzzle, Search, Settings2, Shapes, Wrench, type LucideIcon } from "lucide-react"
+// Plugins: Your plugins (by category, never the `alwaysOn` parts; chips pick one) or Get plugins (PluginBrowse.tsx), the
+// search above the list it looks in. Each row says where it's from, Vaultite's with a trust mark; tap for its sheet.
+import { Fragment, useEffect, useState, type ReactNode } from "react"
+import { ChevronRight, Package, Search, Settings2 } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
@@ -12,11 +12,12 @@ import type { Store } from "@/core/data"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
-import { PageHeader, Panel, SheetHead, Switch } from "@/components/kit"
-import { RailLayout, useRail, type RailItem } from "@/components/RailLayout"
+import { FilterField, PageHeader, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
+import { PageScroller } from "@/components/RailLayout"
+import { Button } from "@/components/Button"
+import { openBundles } from "@/core/bundles"
 import { DirectoryMatches, PluginBrowse } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
-import { Bundles } from "@/pages/Bundles"
 import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/PluginGroup"
 import { groupOf } from "../../../core/categories.ts"
 
@@ -176,23 +177,39 @@ export function Rows({ list, files, originals, openSettings, grouped = true }: {
   )
 }
 
-/** The categories' icons in the menu (core/categories.ts names them). */
-const CATEGORY_ICONS: Record<string, LucideIcon> = {
-  navigation: Compass, writing: PenLine, life: Heart, health: HeartPulse, "ai-apps": Bot, agents: Wrench, developer: Code, formats: FileType, system: Cpu,
+/** Chips that pick what the list shows: all, or one category (a hairline after All). */
+function Chips({ items, active, pick }: { items: { id: string; label: string; count: number }[]; active: string; pick: (id: string) => void }) {
+  return (
+    <div className="-mx-1 mb-4 flex items-center gap-1.5 overflow-x-auto px-1 pb-1" role="group" aria-label="Categories" data-plugins-chips>
+      {items.map((it, i) => (
+        <Fragment key={it.id}>
+          {i === 1 && <span aria-hidden className="mx-1 h-5 w-px shrink-0 bg-border" />}
+          <button type="button" onClick={() => pick(it.id)} aria-pressed={active === it.id} data-plugins-cat={it.id === "all" ? undefined : it.id.slice(4)} data-plugins-all={it.id === "all" ? "" : undefined}
+            className={cn("h-9 shrink-0 cursor-pointer rounded-full px-3.5 text-[15px] whitespace-nowrap md:h-7.5 md:px-3 md:text-[13px]",
+              active === it.id ? "bg-foreground text-background" : "bg-muted")}>
+            {it.label}<span className="ml-1.5 tabular-nums opacity-60">{it.count}</span>
+          </button>
+        </Fragment>
+      ))}
+    </div>
+  )
 }
 
-/** `back`: a way out above the search (Settings, whose menu this takes the place of). */
-export function Plugins({ store, back }: { store: Store; back?: { label: string; run: () => void } }) {
+type Tab = "installed" | "get"
+
+/** `section`: drawn as Settings' section (Settings scrolls it), else a page of its own. `bundles`: what the Bundles
+ *  button opens (in Settings, its section). */
+export function Plugins({ store, section, bundles = openBundles }: { store: Store; section?: boolean; bundles?: () => void }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
-  const rail = useRail()
   const [query, setQuery] = useState("")
-  // What the menu picked: "installed" (Your plugins), "get", "bundles", or a category of the installed ("cat:<id>").
-  const [picked, setPicked] = useState("installed")
+  const [tab, setTab] = useState<Tab>("installed")
+  // The chip picked: "all" or a category of the installed ("cat:<id>").
+  const [picked, setPicked] = useState("all")
   const [source, setSource] = useState("") // Get plugins' source: "" the plugin directory, else a host's
   useEffect(() => {
-    beforeReveal = () => { setQuery(""); setPicked("installed") }
+    beforeReveal = () => { setQuery(""); setTab("installed"); setPicked("all") }
     return () => { beforeReveal = () => {} }
   }, [])
   const q = query.trim().toLowerCase()
@@ -206,38 +223,24 @@ export function Plugins({ store, back }: { store: Store; back?: { label: string;
   const sections = byCategory(every).filter((s) => s.plugins.length)
   // A category emptied (its last plugin removed) isn't left picked with nothing in it.
   const cat = sections.find((s) => `cat:${s.id}` === picked) ?? null
-  const current = picked.startsWith("cat:") && !cat ? "installed" : picked
   const shown = (cat?.plugins ?? every).filter((p) => !q || text(p).includes(q) || (originals.has(p.id) && text(originals.get(p.id)!).includes(q)))
   const waiting = all.filter((p) => p.tier !== "core" && switchedOn(p, prefs) && !p.problems?.length && !!p.meta?.approval && p.meta.approval.state !== "updating")
   // (a group counts as its one row)
   const rows = (list: Plugin[]) => list.filter((p, i) => !p.group || list.findIndex((q) => q.group === p.group) === i).length
-  const items: RailItem[] = [
-    { id: "installed", label: "Your plugins", icon: Puzzle, count: rows(every), attrs: { "data-plugins-installed": "" } },
-    { id: "get", label: "Get plugins", icon: Download, attrs: { "data-plugins-get": "" } },
-    { id: "bundles", label: "Bundles", icon: Package, attrs: { "data-plugins-bundles": "" } },
-    ...sections.map((s, i): RailItem => ({ id: `cat:${s.id}`, label: s.label, icon: CATEGORY_ICONS[s.id] ?? Shapes, count: rows(s.plugins),
-      heading: i === 0 ? "Categories" : undefined, attrs: { "data-plugins-cat": s.id } })),
-  ]
-  // Bundles has nothing to search: typing there looks in Your plugins.
-  const search = (v: string) => { setQuery(v); if (current === "bundles" && v.trim()) setPicked("installed") }
+  const chips = [{ id: "all", label: "All", count: rows(every) }, ...sections.map((s) => ({ id: `cat:${s.id}`, label: s.label, count: rows(s.plugins) }))]
 
-  let pane: ReactNode
-  if (current === "bundles") pane = <Bundles store={store} />
-  else if (current === "get") {
-    pane = <>
-      <PageHeader title="Get plugins" />
-      <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={reveal} />
-    </>
-  } else {
-    pane = <>
-      <PageHeader title={cat?.label ?? "Your plugins"} />
+  let list: ReactNode
+  if (tab === "get") list = <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={reveal} />
+  else {
+    list = <>
+      <Chips items={chips} active={cat ? picked : "all"} pick={setPicked} />
       <Waiting list={waiting} />
       {!shown.length ? (
         <p className="py-4 text-[15px] text-muted-foreground md:text-[13px]" data-plugins-empty>
           {q ? `No installed plugin matches "${query.trim()}".` : "No plugins here."}
         </p>
       ) : !cat && !q ? (
-        // Everything: a section per category, headings only (nothing folds; the menu picks one).
+        // All: a section per category, headings only (nothing folds; a chip picks one).
         byCategory(shown).filter((s) => s.plugins.length).map((s) => (
           <section key={s.id} className="mb-5" data-plugin-category={s.id}>
             <h2 className="mb-1.5 px-1 text-[13px] font-semibold text-muted-foreground md:text-[12px]">{s.label}</h2>
@@ -250,7 +253,7 @@ export function Plugins({ store, back }: { store: Store; back?: { label: string;
       {/* A search also looks where more plugins are: the directory's that aren't here, then Get plugins' other sources. */}
       {q && <DirectoryMatches query={query} showInstalled={reveal} />}
       {q && (
-        <button type="button" onClick={() => setPicked("get")} data-plugins-search-more
+        <button type="button" onClick={() => setTab("get")} data-plugins-search-more
           className="mt-3 flex w-full cursor-pointer items-center gap-3 rounded-[10px] px-2 py-2 text-left hover:bg-foreground/[0.04]">
           <span className="grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted text-muted-foreground md:size-8 md:rounded-[8px]"><Search className="size-[18px]" strokeWidth={2} /></span>
           <span className="min-w-0 flex-1">
@@ -267,14 +270,23 @@ export function Plugins({ store, back }: { store: Store; back?: { label: string;
     </>
   }
 
-  return (
-    <div className="h-full" data-plugins>
-      <RailLayout rail={rail} label="Plugins" items={items} active={current} pick={setPicked} page={current} narrow="chips" back={back}
-        search={{ value: query, onChange: search, placeholder: "Search plugins" }} menuAttrs={{ "data-plugins-rail": "" }} chipsAttrs={{ "data-plugins-chips": "" }}>
-        {pane}
-      </RailLayout>
-    </div>
+  const body = (
+    <>
+      <PageHeader title="Plugins" section={section}>
+        <Button onClick={bundles} data-plugins-bundles><Package className="size-4" strokeWidth={2.25} />Bundles</Button>
+      </PageHeader>
+      {/* The search is above the list it looks in: what's installed, or (Get plugins) every source. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <Segmented<Tab> label="Plugins" value={tab} onChange={setTab} className="shrink-0"
+          options={[{ value: "installed", label: "Your plugins", attrs: { "data-plugins-installed": "" } }, { value: "get", label: "Get plugins", attrs: { "data-plugins-get": "" } }]} />
+        <form role="search" className="flex min-w-[200px] flex-1" onSubmit={(e) => e.preventDefault()} data-plugins-search>
+          <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search all plugins" : "Search your plugins"} />
+        </form>
+      </div>
+      {list}
+    </>
   )
+  return <div data-plugins>{section ? body : <PageScroller>{body}</PageScroller>}</div>
 }
 
 /** A group's sheet (`plugin-group/<id>`, from its row): each of its plugins with its own switch and gear. */

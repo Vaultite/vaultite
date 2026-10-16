@@ -1,7 +1,7 @@
-// Settings: sections beside the one shown (a sheet each where narrow), saved in the vault (prefs.ts). Plugins add pages
-// (`settingsPages`); `alwaysOn` ones' options are under Features, the others' a gear away on Plugins (its own menu).
+// Settings: sections beside the one shown (a sheet each where narrow), headed by Your setup (Bundles). Plugins add pages
+// (`settingsPages`); `alwaysOn` ones' options are under Features, the others' a gear away in Plugins.
 import { useMemo, useState, useEffect, type ReactNode } from "react"
-import { Keyboard, Palette, PenLine, Puzzle, Search, SlidersHorizontal, type LucideIcon } from "lucide-react"
+import { Keyboard, Package, Palette, PenLine, Puzzle, SlidersHorizontal, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -10,10 +10,10 @@ import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, pluginById, tintOfPlugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
 import { usePrefs } from "@/core/prefs"
-import { cell } from "@/core/signal"
+import { settingsSection } from "@/core/settingsNav"
 import { textSizeKinds } from "@/core/textsize"
 import { allSwitches, placeOf, useSwitches, type SwitchDef } from "@/core/switches"
-import { capitalize } from "@/lib/utils"
+import { capitalize, cn } from "@/lib/utils"
 import { HotkeysSheet } from "@/pages/Hotkeys"
 import { Panel, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailLayout"
@@ -21,15 +21,15 @@ import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
 import { Catch } from "@/components/Guard"
-import { openBundles } from "@/core/bundles"
 import { Plugins } from "@/pages/Plugins"
+import { Bundles } from "@/pages/Bundles"
 import { notifyError } from "@/core/notify"
 import { API_VERSION, APP_VERSION } from "../../../core/version.ts"
 
 const byName = new Intl.Collator(undefined, { sensitivity: "base" })
 
-/** The Plugins page, the way Bundles opens its own (core/bundles.ts openBundles). */
-const openPlugins = () => { if (isDesktop()) go("plugins"); else location.hash = "#plugins" }
+/** Plugins' or Bundles' own page: where Settings is narrow, they're too wide for a sheet. */
+const openPage = (id: string) => { if (isDesktop()) go(id); else location.hash = `#${id}` }
 
 const UPDATES: Record<UpdateMode, string> = {
   automatic: "Downloaded, then the app restarts into it while you're away, with nothing unsaved",
@@ -78,8 +78,9 @@ const CORE: Sec[] = [
   { id: "editor", label: "Editor", icon: PenLine, render: (store) => headed("Editor", PenLine, <EditorPanel store={store} />) },
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, render: () => <HotkeysSheet /> },
 ]
-/** Plugins: in place of the menu (Settings draws it so), where it's narrow its own page. */
-const PLUGINS_SEC: Sec = { id: "plugins", label: "Plugins", icon: Puzzle, render: (store) => <Plugins store={store} /> }
+/** Plugins and Bundles: beside the menu, where it's narrow each its own page. */
+const PLUGINS_SEC: Sec = { id: "plugins", label: "Plugins", icon: Puzzle, render: (store) => <Plugins store={store} section bundles={() => settingsSection.set("bundles")} /> }
+const BUNDLES_SEC: Sec = { id: "bundles", label: "Bundles", icon: Package, render: (store) => <Bundles store={store} section /> }
 
 /** The pages plugins that are on add (Connections' AI apps), in plugin order. */
 function pluginPages(disabled: string[]): Sec[] {
@@ -99,11 +100,9 @@ const pluginSec = (id: string): Sec | null => {
 function sectionOf(id: string, disabled: string[]): Sec | null {
   if (id.startsWith("plugin:")) return pluginSec(id.slice(7))
   if (id === PLUGINS_SEC.id) return PLUGINS_SEC
+  if (id === BUNDLES_SEC.id) return BUNDLES_SEC
   return CORE.find((s) => s.id === id) ?? pluginPages(disabled).find((s) => s.id === id) ?? null
 }
-
-/** The section shown beside the list (kept while the app runs, so Settings reopens where it was). */
-const shown = cell("general")
 
 /** One section on its own: the sheet a narrow pane opens (`settings-section/<id>`). */
 export function SettingsSection({ store, id }: { store: Store; id: string }) {
@@ -148,7 +147,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     ({ id, label, sub, where, words: "", run: () => show(where.toLowerCase(), selector) })
   const app: Found[] = [
     ...pluginPages(disabled).map((s) => ({ id: `page-${s.id}`, label: s.label, where: "Settings", words: "", run: () => show(s.id) })),
-    { id: "bundles", label: "Bundles", sub: "A whole setup of the app at once", where: "Plugins", words: "setup", run: openBundles },
+    { id: "bundles", label: "Bundles", sub: "Your setup: try another, save and share yours", where: "Your setup", words: "setup save share import restore", run: () => show(BUNDLES_SEC.id) },
     { id: "plugins", label: "Plugins", sub: "Turn plugins on and off, get more", where: "Plugins", words: "extensions install", run: () => show(PLUGINS_SEC.id) },
     { ...row("theme", "Theme", "Appearance", '[data-settings-row="theme"]', "System, light or dark"), words: "dark mode light mode" },
     { ...row("scheme", "Colour scheme", "Appearance", '[data-settings-row="scheme"]'), words: "color colors colours obsidian themes" },
@@ -198,7 +197,29 @@ function search(all: Found[], query: string) {
     .map((f, i) => [f, inLabel(f), i] as const).sort((a, b) => b[1] - a[1] || a[2] - b[2]).map(([f]) => f)
 }
 
-function Results({ found, query }: { found: Found[]; query: string }) {
+/** What the search found, in the menu's place, each saying where it is: the one picked lit (System Settings' way). */
+function Results({ found, query, picked, choose }: { found: Found[]; query: string; picked: string | null; choose: (f: Found) => void }) {
+  useSwitches()
+  if (!found.length) return <p className="px-1.5 py-2 text-[13px] text-muted-foreground" data-settings-results>No settings match “{query}”</p>
+  return (
+    <div className="flex flex-col gap-px" role="listbox" aria-label="Settings found" data-settings-results>
+      {/* A switch flips where it's found; the rest of its row still goes to it. */}
+      {found.map((f) => (
+        <div key={f.id} role="option" aria-selected={picked === f.id} data-settings-result={f.id}
+          className={cn("flex items-center gap-2 rounded-[6px] pr-1.5", picked === f.id ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]")}>
+          <button type="button" onClick={() => choose(f)} className="flex min-w-0 flex-1 cursor-pointer flex-col py-1 pl-1.5 text-left">
+            <span className="truncate text-[13px] leading-[18px] font-medium">{f.label}</span>
+            <span className="truncate text-[12px] leading-[16px] text-muted-foreground">{f.where}</span>
+          </button>
+          {f.switch && <Switch on={f.switch.get()} onChange={(on) => void f.switch!.set(on)} label={f.label} />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+/** Narrow, the page is the menu: what the search found is the list. */
+function FoundList({ found, query }: { found: Found[]; query: string }) {
   useSwitches()
   return (
     <Panel>
@@ -225,25 +246,42 @@ function Results({ found, query }: { found: Found[]; query: string }) {
   )
 }
 
-/** Where Plugins' way back goes: the section shown before it. */
-let before = CORE[0].id
+/** Your setup, heading the menu: the bundle it came from (when one was applied here), opening Bundles. */
+function SetupCard({ store, active, pick }: { store: Store; active: boolean; pick: () => void }) {
+  const from = store.bundles?.previous?.name
+  return (
+    <button type="button" onClick={pick} aria-current={active ? "page" : undefined} data-settings-nav="bundles" data-settings-setup
+      className={cn("mb-3 flex w-full cursor-pointer items-center gap-2.5 rounded-[10px] p-2 text-left transition-colors",
+        active ? "bg-foreground/[0.08]" : "bg-foreground/[0.03] hover:bg-foreground/[0.06]")}>
+      <span className="grid size-10 shrink-0 place-items-center rounded-[9px] bg-primary text-primary-foreground md:size-8 md:rounded-[8px]">
+        <Package className="size-[20px] md:size-[18px]" strokeWidth={2} />
+      </span>
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[17px] leading-[22px] font-semibold md:text-[13px] md:leading-[18px]">Your setup</span>
+        <span className="block truncate text-[15px] leading-[20px] text-muted-foreground md:text-[12px] md:leading-[16px]">
+          {from ? `Based on ${from}` : "Try and share bundles"}
+        </span>
+      </span>
+    </button>
+  )
+}
 
 export function Settings({ store }: { store: Store }) {
   const { disabled, order } = usePrefs()
   const [query, setQuery] = useState("")
+  // The find picked: lit in the list, where Enter goes (else the first).
+  const [picked, setPicked] = useState<string | null>(null)
   const q = query.trim()
   const rail = useRail(), wide = rail[1]
-  const current = shown.use()
+  const current = settingsSection.use()
   // A plugin turned off takes its section with it: back to the first.
   const sec = sectionOf(current, disabled) ?? CORE[0]
   const show: Show = (id, selector) => {
-    setQuery("")
     if (wide) {
-      if (id === PLUGINS_SEC.id && sec.id !== id) before = sec.id
-      shown.set(id)
+      settingsSection.set(id)
       if (selector) revealRow(selector)
-    } else if (id === PLUGINS_SEC.id) {
-      openPlugins()
+    } else if (id === PLUGINS_SEC.id || id === BUNDLES_SEC.id) {
+      openPage(id)
     } else if (id.startsWith("plugin:")) {
       const key = selector?.match(/data-setting="(.*)"\]$/)?.[1]
       openPluginSettings(id.slice(7), key ? key.replace(/\\(.)/g, "$1") : undefined)
@@ -253,20 +291,32 @@ export function Settings({ store }: { store: Store }) {
     }
   }
   const found = useMemo(() => (q ? search(findable(store, disabled, order, show), q) : []), [store, disabled, order, q, wide])
+  const lit = found.find((f) => f.id === picked) ?? null
+  // (the search stays, so the next find is a click or an arrow away)
+  const choose = (f: Found) => { setPicked(f.id); f.run() }
+  // The arrows only light one (some open a sheet, which would take the keys): Enter goes there.
+  const move = (by: 1 | -1) => {
+    if (!found.length) return
+    const i = lit ? found.indexOf(lit) : -1
+    const f = found[Math.min(found.length - 1, Math.max(0, i + by))]
+    setPicked(f.id)
+    requestAnimationFrame(() => document.querySelector(`[data-settings-result="${CSS.escape(f.id)}"]`)?.scrollIntoView({ block: "nearest" }))
+  }
+  const typed = (v: string) => { setQuery(v); setPicked(null) }
   const items = menu(store, disabled)
-  // Plugins has a menu of its own: it takes this one's place, with a way back.
-  if (wide && sec.id === PLUGINS_SEC.id) return <div ref={rail[0]} className="h-full" data-settings data-settings-section={sec.id}><Plugins store={store} back={{ label: "Settings", run: () => shown.set(before) }} /></div>
+  const setup = <SetupCard store={store} active={wide && sec.id === BUNDLES_SEC.id} pick={() => show(BUNDLES_SEC.id)} />
+  const list = (active: string | null) => <>{setup}<RailMenu label="Settings" items={items} active={active} pick={(id) => show(id)} data-settings-list="" /></>
   return (
     <div className="h-full" data-settings>
-      <RailLayout rail={rail} label="Settings" items={items} active={q ? null : litOf(sec.id)} pick={(id) => show(id)} page={q ? "search" : sec.id} narrow="list" title="Settings"
-        search={{ value: query, onChange: setQuery, placeholder: "Search settings", onSubmit: () => found[0]?.run(), attrs: { "data-settings-search": "" } }}
-        menuAttrs={{ "data-settings-list": "" }}>
-        {q ? <>{wide && <SheetHead icon={Search} tint="var(--primary)" title="Search results" />}<Results found={found} query={q} /></>
-          : wide ? (
-            <div data-settings-section={sec.id}>
-              <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
-            </div>
-          ) : <RailMenu label="Settings" items={items} active={null} pick={(id) => show(id)} data-settings-list="" />}
+      <RailLayout rail={rail} page={sec.id} title="Settings"
+        side={q ? <Results found={found} query={q} picked={picked} choose={choose} /> : list(litOf(sec.id))}
+        search={{ value: query, onChange: typed, placeholder: "Search settings", attrs: { "data-settings-search": "" },
+          onSubmit: () => { const f = lit ?? found[0]; if (!f) return; if (wide) choose(f); else f.run() }, onMove: wide ? move : undefined }}>
+        {wide ? (
+          <div data-settings-section={sec.id}>
+            <Catch key={sec.id} fallback={() => <p className="text-[15px] text-muted-foreground">This section couldn't be drawn.</p>}>{sec.render(store)}</Catch>
+          </div>
+        ) : q ? <FoundList found={found} query={q} /> : list(null)}
       </RailLayout>
     </div>
   )

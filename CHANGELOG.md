@@ -27,10 +27,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Share a bundle as a link**: with its file in a GitHub repository, `vaultite.com/b/<owner>/<name>` shows it and runs it
   live in the web demo, and its Open in Vaultite (`vaultite://bundle/<owner>/<name>`) opens its preview in the Mac and
   iPhone apps; the share sheet copies the link. The web demo imports bundles from GitHub too, and its inbox works.
-- **Settings and Plugins share one layout**, as System Settings: search at the top of the menu, the menu and the page
-  scrolling on their own (a section no longer scrolls the menu back up). Plugins' menu holds Your plugins, Get plugins,
-  Bundles and the categories; its From and On/Off filters are gone. In Settings, Plugins takes the menu's place, with a
-  way back.
+- **Settings works like System Settings**: the search is at the top of the menu and what it finds takes the menu's
+  place (the arrows and Enter go through them, the page staying beside), the menu and the page scrolling on their own.
+  **Your setup** heads the menu: the bundle it's based on, opening Bundles (Choose a bundle… opens it too). Plugins is a
+  section like the others, with no menu of its own: Your plugins or Get plugins, the search above the list it looks in,
+  chips for the categories and a Bundles button; its From and On/Off filters are gone.
 - **Bases save what you change, as Obsidian does**: a table's heading sorts, renames, summarizes or hides its column,
   drags to move it and resizes from its edge; the bar's Sort, Filter (all / any / none groups) and Properties menus
   change the view. Each is written to the `.base` or the fence (`sort`, `order`, `columnSize`, `filters`).

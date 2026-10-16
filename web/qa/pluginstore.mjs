@@ -80,9 +80,9 @@ try {
   check("browse: New puts the newest first", await until(async () => (await rows())[0] === "skiff", 8000), await rows())
   await page.getByRole("radio", { name: "Updated" }).click()
   check("browse: Updated, the last released first", await until(async () => (await rows()).join() === "skiff,harbor,beacon", 8000), await rows())
-  await page.getByPlaceholder("Search plugins").fill("moorings")
+  await page.locator("[data-plugins-search] input").fill("moorings")
   check("browse: searched", await until(async () => (await rows()).join() === "skiff", 8000), await rows())
-  await page.getByPlaceholder("Search plugins").fill("")
+  await page.locator("[data-plugins-search] input").fill("")
   await page.getByRole("radio", { name: "Top" }).click()
 
   // ---------- install: off until turned on, which allows it here
