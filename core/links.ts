@@ -28,12 +28,24 @@ export function wikiTargets(text: string): string[] {
   return out
 }
 
-/** The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`). */
-export function frontmatterTargets(fm: Record<string, unknown>): string[] {
-  const out: string[] = []
-  for (const v of Object.values(fm)) for (const s of Array.isArray(v) ? v : [v]) if (typeof s === "string" && s.includes("[[")) out.push(...wikiTargets(s))
+/** `[[X]]` typed without quotes, which YAML reads as a list in a list ([["X"]]): the link it was meant to be, or null. */
+const unquoted = (v: unknown) => (Array.isArray(v) && v.length === 1 && Array.isArray(v[0]) && v[0].length === 1 && typeof v[0][0] === "string" ? `[[${v[0][0]}]]` : null)
+
+/** The [[links]] in a file's frontmatter, with the key each is under (`project: "[[Lighthouse]]"`, a list's items, and
+ *  `project: [[Lighthouse]]` unquoted too): [key, target]. */
+export function frontmatterLinks(fm: Record<string, unknown>): [string, string][] {
+  const out: [string, string][] = []
+  for (const [k, v] of Object.entries(fm)) {
+    for (const s of unquoted(v) !== null ? [v] : Array.isArray(v) ? v : [v]) {
+      const text = typeof s === "string" ? s : unquoted(s)
+      if (text?.includes("[[")) for (const t of wikiTargets(text)) out.push([k, t])
+    }
+  }
   return out
 }
+
+/** The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`). */
+export const frontmatterTargets = (fm: Record<string, unknown>): string[] => frontmatterLinks(fm).map(([, t]) => t)
 
 const dirOf = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
 const baseOf = (p: string) => p.slice(p.lastIndexOf("/") + 1)

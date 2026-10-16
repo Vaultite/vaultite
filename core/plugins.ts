@@ -36,7 +36,8 @@ export { record as recordSpan, span, spans, type Span } from "./spans.ts"
 /** The app's version and the plugin API's (core/version.ts). */
 export { API_VERSION, APP_VERSION } from "./version.ts"
 /** [[Links]]: the targets in a file, and a resolver like the app's (core/links.ts). */
-export { frontmatterTargets, type LinkFile, linkResolver, wikiTargets } from "./links.ts"
+export { frontmatterLinks, frontmatterTargets, type LinkFile, linkResolver, wikiTargets } from "./links.ts"
+export { matches as searchMatches, parse as parseSearch, type SearchDoc, SearchError } from "./searchquery.ts"
 /** A line diff (difflib's opcodes), for what changed between two texts; diffLines: the same, fast at any size. */
 export { opcodes } from "./textedit.ts"
 export { diffLines } from "./linediff.ts"

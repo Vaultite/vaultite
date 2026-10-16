@@ -564,7 +564,7 @@ export async function searchAll(vault: Vault, q: string, limit = 60, opts: Searc
   const check = (rel: string, body: string, ns: bigint, born: number, e: Entry | null, from = 0): Item | null => {
     const file = rel.split("/").pop()!
     const name = e ? stemOf(rel) : file
-    if (!matches(node, { name, file, path: rel, text: body, tags: e?.tags, props: e?.fm })) return null
+    if (!matches(node, { name, file, path: rel, text: body, tags: e?.tags, props: e?.fm, type: e?.type })) return null
     const score = names(name).length * 3 + (name.toLowerCase().includes(whole) ? 5 : 0)
     const item: Item = { path: rel, title: name, context: "", score, mtime: ms(ns), created: born, ...(e?.archived ? { archived: true } : {}) }
     // The search tab (view:search) shows every line that matched, like a search editor; `context` lines around each

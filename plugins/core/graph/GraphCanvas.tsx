@@ -4,18 +4,26 @@ import { useEffect, useRef, useState } from "react"
 import { Maximize } from "lucide-react"
 import { forceLink, forceManyBody, forceSimulation, forceX, forceY, type Simulation, type SimulationLinkDatum, type SimulationNodeDatum } from "d3-force"
 import { onLook } from "@vaultite"
-import { nameOf, type Graph, type GraphNode } from "./graph"
+import { nameOf, type Graph, type GraphEdge, type GraphNode } from "./graph"
 
 type SimNode = SimulationNodeDatum & { n: GraphNode; r: number; tok: string; color: string; label: string; low: string }
-type SimLink = SimulationLinkDatum<SimNode>
+/** `tok`/`color`: its own colour, when its link type has one. */
+type SimLink = SimulationLinkDatum<SimNode> & { e: GraphEdge; tok: string | null; color: string | null }
 
 export type CanvasProps = {
   graph: Graph
-  /** The colour token each node gets ("--blue"). */
+  /** The colour token each node gets ("--blue"); changing it recolours without laying the graph out again. */
   colorOf: (n: GraphNode) => string
+  /** A link's own colour token, if any (its type's). */
+  edgeColor?: (e: GraphEdge) => string | null
+  /** An arrowhead where each link goes (both ends when it goes both ways). */
+  arrows?: boolean
+  /** Multipliers on the drawing and the forces (1: as it's drawn by default); textFade -3 to 3: names show sooner
+   *  (below 0) or need more zoom (above). Changing them never lays the graph out from scratch. */
+  look?: Look
   /** The file the graph is about (a local graph): drawn with a ring and kept in the middle. */
   focus?: string
-  /** Nodes whose name has this are lit, the rest faded. */
+  /** The search the graph is filtered by: nodes whose name has it are named. */
   search?: string
   onOpen: (path: string, newTab: boolean) => void
   /** Where the layout is remembered between openings ("view", "local"). */
@@ -46,9 +54,29 @@ function token(name: string, fallback: string) {
   return v || fallback
 }
 
+/** Nodes' and links' colours from the tokens their props give them. */
+function recolour(nodes: SimNode[], links: SimLink[], p: { colorOf: (n: GraphNode) => string; edgeColor?: (e: GraphEdge) => string | null }) {
+  for (const n of nodes) { n.tok = p.colorOf(n.n); n.color = token(n.tok, "#8e8e93") }
+  for (const l of links) { l.tok = p.edgeColor?.(l.e) ?? null; l.color = l.tok ? token(l.tok, "") || null : null }
+}
+
 const radius = (degree: number, compact?: boolean) => Math.min(compact ? 9 : 16, (compact ? 3 : 3.5) + Math.sqrt(degree) * (compact ? 1.2 : 1.7))
 
-export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, scope, compact, refit }: CanvasProps) {
+export type Look = { nodeSize?: number; lineWidth?: number; textFade?: number; repel?: number; linkDistance?: number; center?: number }
+const num = (v: unknown, dflt: number) => (typeof v === "number" && Number.isFinite(v) ? v : dflt)
+
+/** The forces, by the look and the graph's size (`many`: big graphs push less, and settle sooner). */
+function setForces(sim: Simulation<SimNode, SimLink>, look: Look, compact: boolean, many: boolean) {
+  ;(sim.force("link") as ReturnType<typeof forceLink<SimNode, SimLink>>).distance((compact ? 48 : 46) * num(look.linkDistance, 1))
+  ;(sim.force("charge") as ReturnType<typeof forceManyBody<SimNode>>).strength((compact ? -150 : many ? -45 : -120) * num(look.repel, 1))
+  for (const k of ["x", "y"]) (sim.force(k) as ReturnType<typeof forceX<SimNode>>).strength((many ? 0.06 : 0.05) * num(look.center, 1))
+}
+
+export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = {}, focus, search, onOpen, scope, compact, refit }: CanvasProps) {
+  const paint = useRef({ colorOf, edgeColor })
+  paint.current = { colorOf, edgeColor }
+  const looks = useRef(look)
+  looks.current = look
   const wrap = useRef<HTMLDivElement>(null)
   const canvas = useRef<HTMLCanvasElement>(null)
   // Everything the drawing loop reads, kept in one mutable place so props changing never restarts the loop.
@@ -57,7 +85,7 @@ export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, sco
     sim: null as Simulation<SimNode, SimLink> | null,
     t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false, dirty: true,
     hover: null as SimNode | null, search: "", focus: "", font: "system-ui", colors: { fg: "#000", muted: "#888", line: "#ccc", bg: "#fff", accent: "#07f" },
-    onOpen, compact: !!compact, fit: null as (() => void) | null, setMoved: (_: boolean) => {},
+    onOpen, compact: !!compact, arrows: false, look: {} as Look, fit: null as (() => void) | null, setMoved: (_: boolean) => {},
   })
   const [moved, setMoved] = useState(false)
   st.current.onOpen = onOpen
@@ -82,26 +110,45 @@ export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, sco
         fresh++
       }
       const pinned = n.path === focus
-      return { n, x: pinned ? 0 : p.x, y: pinned ? 0 : p.y, fx: pinned ? 0 : undefined, fy: pinned ? 0 : undefined, r: radius(n.degree, compact), tok: colorOf(n), color: token(colorOf(n), "#8e8e93"), label: nameOf(n.path), low: `${nameOf(n.path)}\n${n.title}`.toLowerCase() }
+      return { n, x: pinned ? 0 : p.x, y: pinned ? 0 : p.y, fx: pinned ? 0 : undefined, fy: pinned ? 0 : undefined, r: radius(n.degree, compact) * num(looks.current.nodeSize, 1), tok: "", color: "", label: n.tag ? n.path : nameOf(n.path), low: `${nameOf(n.path)}\n${n.title}`.toLowerCase() }
     })
     const by = new Map(nodes.map((n) => [n.n.path, n]))
-    const links: SimLink[] = graph.edges.flatMap((e) => (by.has(e.from) && by.has(e.to) ? [{ source: by.get(e.from)!, target: by.get(e.to)! }] : []))
+    const links: SimLink[] = graph.edges.flatMap((e) => (by.has(e.from) && by.has(e.to) ? [{ source: by.get(e.from)!, target: by.get(e.to)!, e, tok: null, color: null }] : []))
+    recolour(nodes, links, paint.current)
     s.sim?.stop()
     const many = nodes.length > 800
     const sim = forceSimulation<SimNode, SimLink>(nodes)
-      .force("link", forceLink<SimNode, SimLink>(links).distance(compact ? 48 : 46).strength((l) => 1 / Math.min((adj.get((l.source as SimNode).n.path)?.size ?? 1), (adj.get((l.target as SimNode).n.path)?.size ?? 1)) * 0.7))
-      .force("charge", forceManyBody<SimNode>().strength(compact ? -150 : many ? -45 : -120).theta(many ? 1.1 : 0.9).distanceMax(many ? 420 : 700))
-      .force("x", forceX<SimNode>(0).strength(many ? 0.06 : 0.05))
-      .force("y", forceY<SimNode>(0).strength(many ? 0.06 : 0.05))
+      .force("link", forceLink<SimNode, SimLink>(links).strength((l) => 1 / Math.min((adj.get((l.source as SimNode).n.path)?.size ?? 1), (adj.get((l.target as SimNode).n.path)?.size ?? 1)) * 0.7))
+      .force("charge", forceManyBody<SimNode>().theta(many ? 1.1 : 0.9).distanceMax(many ? 420 : 700))
+      .force("x", forceX<SimNode>(0))
+      .force("y", forceY<SimNode>(0))
       .alphaDecay(many ? 0.045 : 0.03)
       .stop()
+    setForces(sim, looks.current, !!compact, many)
     sim.alpha(fresh > nodes.length / 3 ? 1 : fresh ? 0.3 : 0.08)
     Object.assign(s, { nodes, links, by, adj, sim, dirty: true })
     if (s.hover && !by.has(s.hover.n.path)) s.hover = null
-  }, [graph, scope, focus, compact, colorOf])
+  }, [graph, scope, focus, compact])
+  useEffect(() => { recolour(st.current.nodes, st.current.links, { colorOf, edgeColor }); st.current.dirty = true }, [colorOf, edgeColor])
 
   useEffect(() => { st.current.search = (search ?? "").trim().toLowerCase(); st.current.dirty = true }, [search])
   useEffect(() => { st.current.focus = focus ?? ""; st.current.dirty = true }, [focus])
+  useEffect(() => { st.current.arrows = !!arrows; st.current.dirty = true }, [arrows])
+  // The look: sizes at once; new forces stir the layout a little, from where it is.
+  const { nodeSize, lineWidth, textFade, repel, linkDistance, center } = look
+  useEffect(() => {
+    const s = st.current
+    s.look = { nodeSize, lineWidth, textFade }
+    for (const n of s.nodes) n.r = radius(n.n.degree, compact) * num(nodeSize, 1)
+    s.dirty = true
+  }, [nodeSize, lineWidth, textFade, compact])
+  const stirred = useRef(false)
+  useEffect(() => {
+    const sim = st.current.sim
+    if (!sim || !stirred.current) { stirred.current = true; return }
+    setForces(sim, { repel, linkDistance, center }, !!compact, st.current.nodes.length > 800)
+    if (sim.alpha() < 0.3) sim.alpha(0.3)
+  }, [repel, linkDistance, center, compact])
   useEffect(() => { if (refit) st.current.fit?.() }, [refit])
 
   // The colours, read again when the theme or scheme changes.
@@ -110,6 +157,7 @@ export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, sco
       const s = st.current
       s.colors = { fg: token("--foreground", "#1c1c1e"), muted: token("--muted-foreground", "#86868b"), line: token("--muted-foreground", "#86868b"), bg: token("--background", "#fff"), accent: token("--primary", "#007aff") }
       for (const n of s.nodes) n.color = token(n.tok, n.color)
+      for (const l of s.links) if (l.tok) l.color = token(l.tok, l.color ?? "")
       if (canvas.current) s.font = getComputedStyle(canvas.current).fontFamily || "system-ui"
       s.dirty = true
     }
@@ -268,27 +316,66 @@ export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, sco
       const lit = hover ? adj.get(hover.n.path) ?? new Set<string>() : null
       const q = s.search
       const match = (n: SimNode) => !q || n.low.includes(q)
-      const faded = (n: SimNode) => (lit ? n !== hover && !lit.has(n.n.path) : q ? !match(n) : false)
+      const faded = (n: SimNode) => (lit ? n !== hover && !lit.has(n.n.path) : false)
 
       // Edges: one path for the plain ones, one for the lit ones.
-      ctx.lineWidth = Math.max(0.35, (s.compact ? 0.8 : 0.9) / t.k)
+      const lw = num(s.look.lineWidth, 1)
+      ctx.lineWidth = Math.max(0.35 * lw, (s.compact ? 0.8 : 0.9) * lw / t.k)
       ctx.strokeStyle = colors.line
-      ctx.globalAlpha = lit || q ? 0.12 : nodes.length > 1000 ? 0.28 : 0.4
+      ctx.globalAlpha = lit ? 0.12 : nodes.length > 1000 ? 0.28 : 0.4
       ctx.beginPath()
-      const hot: SimLink[] = []
+      const hot: SimLink[] = [], plain: SimLink[] = []
+      const own = new Map<string, SimLink[]>()
       for (const l of links) {
         const a = l.source as SimNode, b = l.target as SimNode
         if (hover && (a === hover || b === hover)) { hot.push(l); continue }
+        if (l.color) { const g = own.get(l.color); if (g) g.push(l); else own.set(l.color, [l]); continue }
+        plain.push(l)
         ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!)
       }
       ctx.stroke()
+      // Arrowheads where links go, at the dot's edge, in the line's colour.
+      const heads = (ls: SimLink[]) => {
+        if (!s.arrows || !ls.length) return
+        const size = Math.max(4, ctx.lineWidth * 4)
+        ctx.fillStyle = ctx.strokeStyle
+        ctx.beginPath()
+        for (const l of ls) {
+          const a = l.source as SimNode, b = l.target as SimNode
+          for (const [from, to] of l.e.both ? [[a, b], [b, a]] : [[a, b]]) {
+            const dx = to.x! - from.x!, dy = to.y! - from.y!, d = Math.hypot(dx, dy)
+            if (d < to.r + size) continue
+            const ux = dx / d, uy = dy / d, tipX = to.x! - ux * to.r, tipY = to.y! - uy * to.r
+            ctx.moveTo(tipX, tipY)
+            ctx.lineTo(tipX - ux * size - uy * size * 0.5, tipY - uy * size + ux * size * 0.5)
+            ctx.lineTo(tipX - ux * size + uy * size * 0.5, tipY - uy * size - ux * size * 0.5)
+            ctx.closePath()
+          }
+        }
+        ctx.fill()
+      }
+      heads(plain)
+      // (links whose type has a colour: a path per colour, a little stronger than the grey ones)
+      if (own.size) {
+        const alpha = ctx.globalAlpha
+        ctx.globalAlpha = lit ? alpha : Math.min(1, alpha + 0.35)
+        for (const [color, ls] of own) {
+          ctx.strokeStyle = color
+          ctx.beginPath()
+          for (const l of ls) { const a = l.source as SimNode, b = l.target as SimNode; ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!) }
+          ctx.stroke()
+          heads(ls)
+        }
+        ctx.globalAlpha = alpha
+      }
       if (hot.length) {
         ctx.globalAlpha = 0.9
         ctx.strokeStyle = colors.accent
-        ctx.lineWidth = Math.max(0.8, 1.4 / t.k)
+        ctx.lineWidth = Math.max(0.8 * lw, 1.4 * lw / t.k)
         ctx.beginPath()
         for (const l of hot) { const a = l.source as SimNode, b = l.target as SimNode; ctx.moveTo(a.x!, a.y!); ctx.lineTo(b.x!, b.y!) }
         ctx.stroke()
+        heads(hot)
       }
 
       // Nodes: a path per colour, faded ones first.
@@ -320,11 +407,12 @@ export default function GraphCanvas({ graph, colorOf, focus, search, onOpen, sco
       const all = nodes.length
       // A small graph (a block, the sidebar) names the file's own neighbours; the rest once zoomed in.
       const near = s.compact && s.focus ? adj.get(s.focus) : null
-      const zoomLabels = t.k >= (s.compact ? 1.4 : all > 600 ? 1.6 : all > 150 ? 1.05 : 0.55)
+      const fade = Math.pow(2, num(s.look.textFade, 0) / 2)
+      const zoomLabels = t.k >= (s.compact ? 1.4 : all > 600 ? 1.6 : all > 150 ? 1.05 : 0.55) * fade
       let drawn = 0
       for (const n of nodes) {
         const important = n === hover || (lit?.has(n.n.path) ?? false) || n.n.path === s.focus || (!!q && match(n) && all < 400) || (!lit && (near?.has(n.n.path) ?? false) && (near?.size ?? 0) <= 24)
-        const big = n.r * t.k >= (s.compact ? 7 : 9)
+        const big = n.r * t.k >= (s.compact ? 7 : 9) * fade
         if (!important && !(zoomLabels || big)) continue
         if (!important && faded(n)) continue
         const sx = s.w / 2 + t.x + n.x! * t.k, sy = s.h / 2 + t.y + (n.y! + n.r) * t.k + 3

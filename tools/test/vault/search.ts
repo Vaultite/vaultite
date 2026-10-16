@@ -40,6 +40,10 @@ export default async ($: VaultTest) => {
     const sq = await import("../../../core/searchquery.ts")
     const n = sq.parse('budget (rent OR "buy food") -tag:done')
     check("searchquery: explain", sq.explain(n) === 'Files where the name or text has "budget", and (either the name or text has "rent", or the name or text has "buy food"), and not (it\'s tagged #done)', sq.explain(n))
+    const doc = { name: "Plan", file: "Plan.md", path: "Work/Deep/Plan.md", text: "", type: "project" }
+    check("searchquery: type: is the whole type, folder: the folder or one above it", sq.matches(sq.parse("type:Project folder:work"), doc) && sq.matches(sq.parse("folder:Work/Deep"), doc) &&
+      !sq.matches(sq.parse("type:proj"), doc) && !sq.matches(sq.parse("folder:Wor"), doc) && !sq.matches(sq.parse("folder:Deep"), doc) && sq.matches(sq.parse("type:(note OR project)"), doc) &&
+      sq.explain(sq.parse("type:person folder:People")) === "Files where its type is person, and it's in the folder People", sq.explain(sq.parse("type:person folder:People")))
     check("searchquery: plain words", sq.isPlain(sq.parse("budget rent")) && !sq.isPlain(n) && !sq.isPlain(sq.parse("a OR b")), null)
     check("searchquery: marks what matched, not what's excluded", JSON.stringify(sq.highlighter(n)("buy food, rent, done")) === "[[0,8],[10,14]]", sq.highlighter(n)("buy food, rent, done"))
     const ex = sq.excerpt("one two three four five six seven eight nine ten budget eleven", sq.wordRanges("one two three four five six seven eight nine ten budget eleven", ["budget"]), 30, 10)

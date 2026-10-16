@@ -1,8 +1,8 @@
 // Graph view's server side: /api/graph (the whole vault or a local graph) and its settings. Nodes include linked
 // attachments and files plugins read links from; links resolve like the app's. Nothing is stored.
 import fs from "node:fs"
-import { frontmatterTargets, HTTPError, type LinkFile, linkResolver, LOADED, OpError, Plugin, wikiTargets } from "../../../core/plugins.ts"
-import { type Entry, readText, splitTags, stemOf, type Vault } from "../../../core/vault.ts"
+import { frontmatterLinks, HTTPError, type LinkFile, linkResolver, LOADED, OpError, parseSearch, Plugin, type SearchDoc, SearchError, searchMatches, wikiTargets } from "../../../core/plugins.ts"
+import { type Entry, readText, stemOf, type Vault } from "../../../core/vault.ts"
 import { buildGraph, filterGraph, type Graph, type GraphFile, type GraphNode, localGraph, localMarkdown, MAX_DEPTH } from "./graph.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -23,12 +23,12 @@ function linkReader(vault: Vault, rel: string): ((text: string) => string[]) | n
 
 let cached: { vault: Vault; version: string; plugins: unknown[]; graph: Graph } | null = null
 
-// A file's link targets, once per read of it (an Entry is new each time its file is read): a change to one file
-// doesn't read every other file's links again.
-const targetsOf = new WeakMap<Entry, string[]>()
+// A file's link targets (its text's, and its frontmatter's by key), once per read of it (an Entry is new each time its
+// file is read): a change to one file doesn't read every other file's links again.
+const targetsOf = new WeakMap<Entry, { links: string[]; props: [string, string][] }>()
 function linksIn(e: Entry) {
   let t = targetsOf.get(e)
-  if (!t) targetsOf.set(e, t = [...wikiTargets(e.body), ...frontmatterTargets(e.fm)])
+  if (!t) targetsOf.set(e, t = { links: wikiTargets(e.body), props: frontmatterLinks(e.fm) })
   return t
 }
 
@@ -49,7 +49,7 @@ export function vaultGraph(vault: Vault): Graph {
     const aliases = e.fm.aliases
     targets.push({ path: rel, aliases: (Array.isArray(aliases) ? aliases : aliases ? [aliases] : []).map(String), archived: e.archived })
     files.push({
-      path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: splitTags(e.fm.tags ?? e.fm.tag), links: linksIn(e), ...(e.archived ? { archived: true } : {}),
+      path: rel, title: typeof title === "string" ? title : String(title), type: e.type, tags: e.tags, ...linksIn(e), ...(e.archived ? { archived: true } : {}),
       ...(vault.excluded(rel) ? { excluded: true } : {}),
     })
   }
@@ -74,7 +74,7 @@ export function vaultGraph(vault: Vault): Graph {
   }
   const resolve = linkResolver(targets)
   const linked = new Set<string>()
-  for (const f of [...files, ...others]) for (const t of f.links) { const p = resolve(t, f.path); if (p) linked.add(p) }
+  for (const f of [...files, ...others]) for (const t of [...f.links, ...(f.props ?? []).map(([, x]) => x)]) { const p = resolve(t, f.path); if (p) linked.add(p) }
   const graph = buildGraph([...files, ...others.filter((o) => o.links.length || linked.has(o.path))], resolve)
   cached = { vault, version, plugins: [...LOADED], graph: Object.freeze(graph) }
   return graph
@@ -116,6 +116,40 @@ plugin.route("GET", "graph", (req) => {
   return { nodes: local.nodes.map((n) => ({ ...n, dist: local.dist.get(n.path) })), edges: local.edges }
 })
 
+/** The files of the graph a search query matches (core/searchquery.ts, with type: and folder:), worked out again only
+ *  when the graph changes: what the graph's search box and groups ask for while typing. */
+const matchCache = new WeakMap<Graph, Map<string, string[] | string>>()
+function matching(vault: Vault, q: string): string[] | string {
+  const g = vaultGraph(vault)
+  let byQ = matchCache.get(g)
+  if (!byQ) matchCache.set(g, byQ = new Map())
+  const hit = byQ.get(q)
+  if (hit) return hit
+  let out: string[] | string
+  try {
+    const node = parseSearch(q)
+    out = node.t === "all" ? g.nodes.map((n) => n.path) : g.nodes.filter((n) => {
+      const e = vault.entries.get(n.path), file = n.path.slice(n.path.lastIndexOf("/") + 1)
+      const doc: SearchDoc = e ? { name: stemOf(n.path), file, path: n.path, text: e.body, tags: e.tags, props: e.fm, type: e.type } : { name: file, file, path: n.path, text: "" }
+      return searchMatches(node, doc)
+    }).map((n) => n.path)
+  } catch (e) {
+    if (!(e instanceof SearchError)) throw e
+    out = e.message
+  }
+  if (byQ.size > 50) byQ.clear()
+  byQ.set(q, out)
+  return out
+}
+
+// The files each query (a JSON list) matches, or why it can't be read: the search box's filter and the groups.
+plugin.route("GET", "graph/match", (req) => {
+  let qs: unknown
+  try { qs = JSON.parse(String(req.query.q ?? "[]")) } catch { throw new HTTPError(400, "q is a JSON list of queries") }
+  if (!Array.isArray(qs) || !qs.every((q) => typeof q === "string")) throw new HTTPError(400, "q is a JSON list of queries")
+  return { results: (qs as string[]).map((q) => { const r = matching(plugin.vault, q); return typeof r === "string" ? { error: r } : { paths: r } }) }
+})
+
 // ```block-graph: the file's neighbours in the graph, as links.
 plugin.block("graph", (ctx) => {
   const depth = depthOf(ctx.options.depth)
@@ -147,8 +181,8 @@ files are left out unless asked for. depth 2 to 5 adds what's that many links aw
     const sorted = (xs: string[]) => [...new Set(xs)].sort((a, b) => a.localeCompare(b))
     return {
       path,
-      in: sorted(g.edges.filter((e) => e.to === path && e.from !== path).map((e) => e.from)),
-      out: sorted(g.edges.filter((e) => e.from === path && e.to !== path).map((e) => e.to)),
+      in: sorted(g.edges.filter((e) => e.to === path || (e.both && e.from === path)).map((e) => (e.to === path ? e.from : e.to))),
+      out: sorted(g.edges.filter((e) => e.from === path || (e.both && e.to === path)).map((e) => (e.from === path ? e.to : e.from))),
       further: depth > 1 ? [...local.dist].filter(([, d]) => d > 1).sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0])).map(([p, d]) => ({ path: p, dist: d })) : [],
     }
   },

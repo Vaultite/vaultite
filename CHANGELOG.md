@@ -11,6 +11,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Web pages and plugin pages can be pinned**: Pin in a tab's menu (or drag the tab to Pinned) pins a web page, with
   its site's icon and title, Inbox, Graph view, a Claude chat, almost any tab; the Pinned menu's More offers each
   plugin's main page. `vau pin <address>` pins a web page.
+- **Graph view settings, as Obsidian's**: the search box filters the graph (`type:person`, `tag:#work`, `folder:Notes`,
+  `[status:done]`, also in search now), and the Filter panel adds tags and attachments as dots, colour groups from a
+  search, links coloured or hidden by the property they're in (`project: [[X]]`, unquoted too), a local graph's
+  incoming, outgoing and neighbour links, arrows, and sliders for sizes and forces.
 - **Folders can be pinned**: right-click a folder (or drag it to Pinned) and it opens in place in the sidebar, its files
   under it like the file tree's. Images, recordings and PDFs pinned now show in the list too.
 - The web demo no longer says it couldn't load when a blocker stops the site's analytics script.

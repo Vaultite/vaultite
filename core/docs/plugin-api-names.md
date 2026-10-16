@@ -589,6 +589,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
 - `fromInternet(req)`
+- `frontmatterLinks(fm)`: The [[links]] in a file's frontmatter, with the key each is under (`project: "[[Lighthouse]]"`, a list's items, and `project: [[Lighthouse]]` unquoted too): [key, target].
 - `frontmatterTargets(fm)`: The targets of the [[links]] in a file's frontmatter values (`with: "[[Alice Park]]"`).
 - `Handler`
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
@@ -617,6 +618,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pageText(type, body)`: A page's bytes as text, in the charset its header (`type`) or its <meta> names, else UTF-8.
 - `parseCsv(text)`: Rows of fields.
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
+- `parseSearch(q, opts?)`: A query as a tree (throws SearchError).
 - `pathAsSaid(tree, raw)`: A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or a path from before a folder moved; a web address is its web tab.
 - `pinFile(entry)`: The file an entry is in (null: a search or a view).
 - `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a web page, Inbox, a coding agent's conversation).
@@ -644,6 +646,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `RouteOptions`: `lock: false`: not held while it runs.
 - `runtimeDir()`: A folder only this user can use: a Mac's $TMPDIR is that already; Linux's /tmp is shared (another user could make the folder first and swap a script a shell runs), so $XDG_RUNTIME_DIR/vaultite,…
 - `sameSidebars(a, b)`: The same setup (what Workspaces compares to tell an unused workspace).
+- `SearchError`
+- `searchMatches(n, d)`: Whether a file matches.
 - `section(title, ...parts)`: ## Title, then the parts (blank ones left out).
 - `serverUrl()`: This server, as commands on this machine reach it (a shell's VAULTITE_URL, an agent's hooks).
 - `service(plugins, name)`: The first plugin's service called `name` (plugin.provide), or null when no plugin offers it.

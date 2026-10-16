@@ -54,7 +54,8 @@ const SORTS: [string, string][] = [
 /** What can be typed, shown while the field is empty: [what a click adds, what it does]. */
 const OPERATORS: [string, string][] = [
   ["path:", "in the path, folders included"], ["file:", "in the file's name"], ["content:", "in the text only"],
-  ["tag:", "tagged (tag:project finds #project/lighthouse too)"], ["line:", "on one line: line:(rent food)"],
+  ["tag:", "tagged (tag:project finds #project/lighthouse too)"], ["type:", "of a type: type:person"], ["folder:", "in a folder, or one inside it"],
+  ["line:", "on one line: line:(rent food)"],
   ["block:", "in one paragraph"], ["section:", "under one heading"], ["task:", "in a task (task-todo:, task-done:)"],
   ["match-case:", "in this case"], ["[", "has a property: [status] or [status:seed]"],
   ['"', '"a phrase": those words together'], ["-", "-word: without it"], ["OR", "either: work OR school"], ["/", "/regex/: a regular expression"],

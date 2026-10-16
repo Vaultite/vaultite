@@ -6,9 +6,10 @@ Finding files, in the app and for you. The quick switcher (⌘O, the sidebar's s
 - Plain words: every word in the file's name or text, any order, any case; a word matches part of a word.
 - `"a phrase"` together, `-word` without it, `a OR b` either, `( )` groups, `/regex/` a regular expression.
 - `file:` in the file's name, `path:` in its path (folders too), `content:` in its text only, `tag:#project` tagged
-  (nested ones too), `line:(a b)` on one line, `block:(a b)` in one paragraph, `section:(a b)` under one heading,
-  `task:x` / `task-todo:x` / `task-done:x` in a task (ticked or not; nothing after the colon: any), `match-case:X` /
-  `ignore-case:x`, `[status]` has a property, `[status:seed]` its value has it (`[status:seed OR exploring]`).
+  (nested ones too), `type:person` of that type, `folder:Notes` in that folder or one inside it, `line:(a b)` on one
+  line, `block:(a b)` in one paragraph, `section:(a b)` under one heading, `task:x` / `task-todo:x` / `task-done:x` in
+  a task (ticked or not; nothing after the colon: any), `match-case:X` / `ignore-case:x`, `[status]` has a property,
+  `[status:seed]` its value has it (`[status:seed OR exploring]`).
 - `GET /api/search?q=...&lines=5` adds each file's matching lines (numbered as the file's, frontmatter counted);
   `&context=N` lines around them, `&folder=Notes`, `&path=<file>` that file alone, `&sort=relevance | name | name-desc |
   modified | modified-old | created | created-old`, `&case=1`. `&limit=` files (500 at most) from `&offset=`;

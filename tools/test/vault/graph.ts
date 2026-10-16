@@ -23,7 +23,24 @@ export default async ($: VaultTest) => {
   const gedge = (a: string, b: string) => graph.edges.some((e: Any) => (e.from === a && e.to === b) || (e.from === b && e.to === a))
   check("graph: every Markdown file is a node", gc === 200 && !!gnode("Graph test/Hub.md") && !!gnode("Graph test/Alone.md"), gc)
   check("graph: links by name, path and alias are edges", gedge("Graph test/Hub.md", "Graph test/Spoke one.md") && gedge("Graph test/Hub.md", "Graph test/Spoke two.md") && gedge("Graph test/Spoke one.md", "Graph test/Far.md"), graph.edges.filter((e: Any) => e.from.startsWith("Graph")))
-  check("graph: a pair linked both ways is one edge", graph.edges.filter((e: Any) => [e.from, e.to].sort().join() === ["Graph test/Hub.md", "Graph test/Spoke one.md"].sort().join()).length === 1)
+  check("graph: a pair linked both ways is one edge, marked", graph.edges.filter((e: Any) => [e.from, e.to].sort().join() === ["Graph test/Hub.md", "Graph test/Spoke one.md"].sort().join()).length === 1 &&
+    graph.edges.find((e: Any) => [e.from, e.to].sort().join() === ["Graph test/Hub.md", "Graph test/Spoke one.md"].sort().join()).both === true &&
+    !graph.edges.find((e: Any) => e.from === "Graph test/Spoke one.md" && e.to === "Graph test/Far.md").both)
+  {
+    const { localGraph } = await import("../../../plugins/core/graph/graph.ts")
+    const N = (p: string) => ({ path: p, title: p, type: null, folder: "", tags: [], degree: 0 })
+    const dg = { nodes: ["A", "B", "C", "D", "E"].map(N), edges: [{ from: "A", to: "B", both: true as const }, { from: "A", to: "C" }, { from: "D", to: "A" }, { from: "C", to: "E" }, { from: "B", to: "C" }] }
+    const names = (g: { nodes: { path: string }[]; edges: { from: string; to: string }[] }) => `${g.nodes.map((n) => n.path).join("")}|${g.edges.map((e) => e.from + e.to).join(",")}`
+    const cases: [string, string][] = [
+      [names(localGraph(dg, "A", 1)), "ABCD|AB,AC,DA,BC"],
+      [names(localGraph(dg, "A", 1, { outgoing: false })), "ABD|AB,DA"],
+      [names(localGraph(dg, "A", 1, { incoming: false })), "ABC|AB,AC,BC"],
+      [names(localGraph(dg, "A", 1, { neighbors: false })), "ABCD|AB,AC,DA"],
+      [names(localGraph(dg, "A", 2, { incoming: false })), "ABCE|AB,AC,CE,BC"],
+      [names(localGraph(dg, "A", 2, { outgoing: false, incoming: false })), "A|"],
+    ]
+    check("graph: a local graph follows incoming, outgoing and neighbour links as asked", cases.every(([a, b]) => a === b), cases)
+  }
   check("graph: links in code and to nothing aren't edges", !graph.nodes.some((n: Any) => /Not a link|Nobody here/.test(n.path)))
   check("graph: degree, folder, tags", gnode("Graph test/Hub.md").degree === 3 && gnode("Graph test/Hub.md").folder === "Graph test" && gnode("Graph test/Hub.md").tags.includes("Lab") && gnode("Graph test/Alone.md").degree === 0, gnode("Graph test/Hub.md"))
   check("graph: an embedded canvas is a node, and its cards link to files", !!gnode("Graph test/Board.canvas") && gedge("Graph test/Board.canvas", "Graph test/Spoke one.md") && gedge("Graph test/Board.canvas", "Graph test/Far.md"), gnode("Graph test/Board.canvas"))
@@ -51,9 +68,45 @@ export default async ($: VaultTest) => {
   ;[, localG] = await api("GET", "graph?path=Graph test/Far.md&depth=2")
   check("graph: depth 2 reaches two links away, with dist", lp(localG).includes("Graph test/Hub.md") && localG.nodes.find((n: Any) => n.path === "Graph test/Hub.md").dist === 2, lp(localG))
   check("graph: a local graph of nothing is a 404", (await api("GET", "graph?path=Graph test/Missing.md"))[0] === 404)
+  // The search box filters by the search syntax, read by the server (text, properties, tags, type: and folder:).
+  const gt0 = await import("../../../plugins/core/graph/graph.ts")
+  const gmatch = async (...qs: string[]) => (await api("GET", `graph/match?q=${JSON.stringify(qs)}`))[1].results
+  const [mType, mTag, mFolder, mProp, mWord, mBad] = await gmatch("type:note", "tag:#lab", 'folder:"Graph test" -Hub', "[see]", "\"end of the line\"", "(oops")
+  const inG = (r: Any) => (r.paths ?? []).filter((p: string) => p.startsWith("Graph test/")).sort()
+  check("graph: a search matches by type, tag, folder, property and text", JSON.stringify(inG(mType)) === '["Graph test/Hub.md"]' && JSON.stringify(inG(mTag)) === '["Graph test/Hub.md"]' &&
+    inG(mFolder).length === 6 && !inG(mFolder).includes("Graph test/Hub.md") && JSON.stringify(inG(mProp)) === '["Graph test/Spoke two.md"]' && JSON.stringify(inG(mWord)) === '["Graph test/Far.md"]',
+    [mType, mTag, inG(mFolder), mProp, mWord])
+  write("Graph test/Typed.md", "---\nproject: [[Far]]\npeople: [\"[[Spoke one]]\", \"[[Alone]]\"]\n---\n\nSee [[Alone]].\n")
+  ;[, graph] = await api("GET", "graph")
+  const tedge = (a: string, b: string) => graph.edges.find((e: Any) => (e.from === a && e.to === b) || (e.from === b && e.to === a))
+  check("graph: a link in a property keeps its key, also unquoted; one in the text has no type", JSON.stringify(tedge("Graph test/Typed.md", "Graph test/Far.md")?.types) === '["project"]' &&
+    JSON.stringify(tedge("Graph test/Typed.md", "Graph test/Spoke one.md")?.types) === '["people"]' && JSON.stringify(tedge("Graph test/Typed.md", "Graph test/Alone.md")?.types) === '["body","people"]' &&
+    !tedge("Graph test/Hub.md", "Graph test/Spoke one.md")?.types && JSON.stringify(tedge("Graph test/Hub.md", "Graph test/Spoke two.md")?.types) === '["body","see"]',
+    graph.edges.filter((e: Any) => e.from.startsWith("Graph test/")))
+  check("graph: link types, the text's first", JSON.stringify(gt0.linkTypes({ nodes: [], edges: [{ from: "a", to: "b" }, { from: "a", to: "c", types: ["project"] }, { from: "a", to: "d", types: ["body", "people"] }, { from: "b", to: "d", types: ["people"] }] })) === '[["body",2],["people",2],["project",1]]')
+  fs.rmSync(path.join(VAULT, "Graph test/Typed.md"))
+  check("graph: a search it can't read says why", typeof mBad.error === "string" && !mBad.paths, mBad)
+  const gt = await import("../../../plugins/core/graph/graph.ts")
+  const tg = gt.withTags({ nodes: [{ path: "a.md", title: "a", type: null, folder: "", tags: ["Work", "x/y"], degree: 0 }, { path: "b.md", title: "b", type: null, folder: "", tags: ["work"], degree: 0 }, { path: "p.png", title: "p.png", type: null, folder: "", tags: [], degree: 0 }], edges: [] })
+  check("graph: tags as dots, one per tag whatever its case, linked to their files", JSON.stringify(tg.nodes.filter((n) => n.tag).map((n) => [n.path, n.degree])) === '[["#Work",2],["#x/y",1]]' &&
+    tg.edges.length === 3 && tg.edges.every((e) => e.to.startsWith("#")), tg)
+  {
+    const N = (path: string, folder: string, type: string | null = null) => ({ path, title: path, type, folder, tags: [], degree: 0 })
+    const gg = { nodes: [N("Logs/a.md", "Logs"), N("Logs/b.md", "Logs"), N("People/c.md", "People", "person"), N("d.md", "")], edges: [] }
+    const plain = gt.grouping(gg, "folder", [], [], new Set())
+    check("graph groups: with none of the user's, colour by folder as before, biggest first", plain.rows.map((r) => `${r.label}:${r.tok}:${r.count}`).join() === "Logs:--blue:2,Top level:--green:1,People:--orange:1", plain.rows)
+    const mine = gt.grouping(gg, "folder", [{ query: "type:person", color: "blue" }, { query: "x", color: "pink", hidden: true }], [new Set(["People/c.md", "Logs/a.md"]), new Set(["Logs/a.md", "d.md"])], new Set(["folder:Logs"]))
+    check("graph groups: the first a file is in colours it; folders get the colours left; hidden ones hide",
+      mine.colorOf(gg.nodes[0]) === "--blue" && mine.colorOf(gg.nodes[3]) === "--pink" && mine.colorOf(gg.nodes[1]) === "--green" &&
+      mine.rows.map((r) => `${r.label}:${r.count}`).join() === "type:person:2,x:1,Logs:1" && !mine.hides(gg.nodes[0]) && mine.hides(gg.nodes[1]) && mine.hides(gg.nodes[3]), mine.rows)
+    check("graph groups: colour by none greys the rest", gt.grouping(gg, "none", [], [], new Set()).colorOf(gg.nodes[0]) === "--gray")
+  }
+  check("graph: attachments are the files that aren't notes", tg.nodes.filter(gt.isAttachment).map((n) => n.path).join() === "p.png")
   write("Graph test/Far.md", "The end of the line, now with [[Alone]].\n")
   ;[, graph] = await api("GET", "graph")
   check("graph: follows a file changed on disk", gedge("Graph test/Far.md", "Graph test/Alone.md"))
+  const [, hubLinks] = await api("POST", "ops/graph.links", { path: "Graph test/Hub.md" })
+  check("graph.links: a pair linked both ways is in both lists", hubLinks.in.includes("Graph test/Spoke one.md") && hubLinks.out.includes("Graph test/Spoke one.md") && hubLinks.in.includes("Graph test/Spoke two.md"), hubLinks)
   write("Graph test/With graph.md", "Links to [[Hub]].\n\n```block-graph\ndepth: 2\n```\n")
   let [, gtext] = await api("GET", "render?path=Graph test/With graph.md")
   check("graph: the block as text lists neighbours as links", gtext.includes("- [[Hub]] (links to it)") && gtext.includes("**Two links away") && gtext.includes("[[Spoke one]]") && !gtext.includes("```block-graph"), gtext)

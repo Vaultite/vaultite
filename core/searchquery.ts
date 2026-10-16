@@ -14,14 +14,16 @@ export type Node =
   | { t: "all" }
   | { t: "term"; field: Field; m: Matcher }
   | { t: "tag"; tag: string }
+  | { t: "type"; type: string }
+  | { t: "folder"; folder: string }
   | { t: "prop"; key: string; value: Node | null }
   | { t: "scope"; unit: Unit; kid: Node }
 
 /** What a query is matched against: a file. `name`: what a plain word matches besides the text (a note's name without
- *  .md); `file`: its name with the extension (file:); `path`: from the vault's top (path:). */
-export type SearchDoc = { name: string; file: string; path: string; text: string; tags?: string[]; props?: Record<string, unknown> }
+ *  .md); `file`: its name with the extension (file:); `path`: from the vault's top (path:); `type`: the core's (type:). */
+export type SearchDoc = { name: string; file: string; path: string; text: string; tags?: string[]; props?: Record<string, unknown>; type?: string | null }
 
-const OPS = new Set(["file", "path", "content", "tag", "line", "block", "section", "task", "task-todo", "task-done", "match-case", "ignore-case"])
+const OPS = new Set(["file", "path", "content", "tag", "type", "folder", "line", "block", "section", "task", "task-todo", "task-done", "match-case", "ignore-case"])
 
 // ---------- reading a query ----------
 
@@ -186,6 +188,14 @@ class Parser {
         this.i++
         return { t: "tag", tag: next.v.replace(/^#/, "") }
       }
+      // (type: and folder: are whole names, like tag:, not parts of words)
+      if (op === "type" || op === "folder") {
+        if (empty) throw new SearchError(op === "type" ? "type: needs a type: type:person" : "folder: needs a folder: folder:Notes")
+        const of = (v: string): Node => (op === "type" ? { t: "type", type: v } : { t: "folder", folder: v.replace(/^\/+|\/+$/g, "") })
+        if (next.k === "(") return mapTerms(this.group(ctx), (m) => of(tagOf(m)))
+        this.i++
+        return of(next.v)
+      }
       if (op === "match-case" || op === "ignore-case") {
         if (empty) throw new SearchError(`${op}: needs something after it: ${op}:Word`)
         return value({ ...ctx, matchCase: op === "match-case" })
@@ -288,6 +298,11 @@ export function matches(n: Node, d: SearchDoc): boolean {
       return hit(d.name) || hit(d.text)
     }
     case "tag": return hasTag(d.tags ?? [], n.tag)
+    case "type": return (d.type ?? "").toLowerCase() === n.type.toLowerCase()
+    case "folder": {
+      const dir = d.path.slice(0, Math.max(0, d.path.lastIndexOf("/"))).toLowerCase(), want = n.folder.toLowerCase()
+      return dir === want || dir.startsWith(`${want}/`)
+    }
     case "prop": {
       const v = propValue(d.props, n.key)
       if (blank(v)) return false
@@ -350,6 +365,8 @@ export function explain(n: Node): string {
       case "all": return "anything"
       case "term": return `${FIELD[n.field]} ${n.m.label}`
       case "tag": return `it's tagged #${n.tag}`
+      case "type": return `its type is ${n.type}`
+      case "folder": return `it's in the folder ${n.folder}`
       case "prop": return n.value ? `its property ${n.key} has ${inner(n.value)}` : `it has the property ${n.key}`
       case "scope": return n.kid.t === "all" ? `it has ${UNIT[n.unit]}` : `${UNIT[n.unit]} has ${inner(n.kid)}`
       case "not": return `not (${say(n.kid)})`
