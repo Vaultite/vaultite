@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The file tree reveals the open file by default, however it was opened (⌘O, a link, a tab): its folders open and
+  the tree scrolls to it when it's out of sight. Off in Settings, Files.
 - Right-clicking a row in a sidebar panel (a pinned page, a tab, a recent file, a machine, a web page, a button) shows
   only that row's actions, Unpin last on a pinned page; the panel's own (Panels, Move to the other sidebar, Hide) are
   on its heading, and in its … (on hover, as a file's), which every sidebar panel's heading now has.
@@ -18,8 +20,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   run a command or open a file in the focused vault, as on the iPhone.
 - Checkboxes tick in callouts, `<details>`, embedded notes and dashboards' text, reading or editing, as they do in a
   note's lines; with Vim, the cursor at the start of a list line shows its Markdown instead of drawing over its box.
-- **Tables edited cell by cell**: click a cell to edit its text in place; Tab, Enter and the arrows move between
-  cells (adding a row at the end), right-click adds or deletes rows and columns and aligns a column, and </> shows the
+- **Tables edited cell by cell**: click a cell to edit its text in place; Tab, Enter, the arrows or a click move between
+  cells (adding a row at the end) with the columns holding still until you leave the table, right-click adds or deletes rows and columns and aligns a column, and </> shows the
   Markdown. Tables are drawn as a ruled grid with a header row, the same in notes, dashboards and sheets.
 - Checkboxes are rounded squares; bullets sit in a wider column, so nested lists step in as they do when read.
 - A dashboard of only text reads in a note's centred column, editing it or not, and a line break in its text is a

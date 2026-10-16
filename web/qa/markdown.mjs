@@ -1,6 +1,6 @@
 // Markdown's extras in notes and pages: code fences (highlighted, a language label and a copy button that copies),
 // callouts (folded ones toggle), footnotes, $math$ and $$ blocks (KaTeX), ```mermaid diagrams (light and dark),
-// <details>; in reading, live preview (clicking one shows its Markdown; ↑ and ↓ go into a table) and source mode, embeds
+// <details>; in reading, live preview (clicking one shows its Markdown; ↑ and ↓ go into a table's cells) and source mode, embeds
 // and blocks inside code fences left alone, the Design page read as a dashboard, and a phone at 390px (no sideways
 // scroll, copy always shown). WRITES a "Qa markdown" folder: throwaway only.
 //   node web/qa/markdown.mjs <base url> [out dir]
@@ -135,7 +135,7 @@ check("Design: copy copies", (await page.evaluate(() => navigator.clipboard.read
 await tsCode.screenshot({ path: `${OUT}markdown-design-code.png` })
 await page.locator(".dash-prose").first().screenshot({ path: `${OUT}markdown-design.png` })
 
-// Live preview from the keyboard, and Markdown inside code: ↓ and ↑ go into a drawn table (its Markdown shows) instead
+// Live preview from the keyboard, and Markdown inside code: ↓ and ↑ go into a drawn table (a cell opens) instead
 // of over it; an embed or a block written in a code fence stays code; typing after a closing --- with no line break
 // keeps the frontmatter; a checkbox in the trash doesn't tick. The files are the user's, made as the app makes them
 // (a file an agent makes through the API gets `origin: ai`: Provenance).
@@ -147,12 +147,13 @@ check("live: an embed or a block inside a code fence stays code", !(await ed.loc
 check("live: $$ after a ```` fence holding a ``` one is still drawn", await ed.locator(".cm-block-math").count() === 1)
 await ed.locator(".cm-line", { hasText: "Top line" }).click(); await page.keyboard.press("End")
 await page.keyboard.press("ArrowDown"); await page.keyboard.press("ArrowDown"); await wait(300)
-check("live: ↓ goes into a table, its Markdown shows", await ed.locator(".cm-line", { hasText: "| a | b |" }).count() === 1 && !(await ed.locator(".cm-block-table").count()))
+check("live: ↓ goes into a table, its first cell open", await ed.locator(".cm-block-table .cm-cell-input").count() === 1)
 for (let i = 0; i < 4; i++) await page.keyboard.press("ArrowDown")
 await wait(300)
 check("live: and out of it, drawn again", await ed.locator(".cm-block-table").count() === 1)
-await page.keyboard.press("ArrowUp"); await page.keyboard.press("ArrowUp"); await wait(300)
-check("live: ↑ goes back into it", !(await ed.locator(".cm-block-table").count()))
+for (let i = 0; i < 3; i++) await page.keyboard.press("ArrowUp")
+await wait(300)
+check("live: ↑ goes back into it", await ed.locator(".cm-block-table .cm-cell-input").count() === 1)
 await put("Qa markdown/Only frontmatter.md", "---\ntype: note\n---")
 await page.goto(`${B}#file/${encodeURIComponent("Qa markdown/Only frontmatter.md")}`); await wait(1500)
 await ed.locator(".cm-content").click(); await page.keyboard.type("Typed."); await wait(1500)

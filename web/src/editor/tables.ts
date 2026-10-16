@@ -32,6 +32,8 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
   let table = parseTable(text)
   let grid: HTMLTableCellElement[][] | null = null
   let editing: { r: number; c: number; input: HTMLTextAreaElement } | null = null
+  // Its columns' widths while a cell in it is edited: moving between cells moves nothing, they settle once it's left.
+  let frozen: { table: number; cols: number[] } | null = null
 
   const paint = () => {
     el.innerHTML = env.render(shown)
@@ -42,9 +44,18 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     const rows = [...t.rows]
     if (rows.length !== table.rows.length || rows.some((r) => r.cells.length !== table!.align.length)) return
     grid = rows.map((r) => [...r.cells] as HTMLTableCellElement[])
+    pin()
     // (a click in it edits a cell, not the table's Markdown; a held finger is its menu)
     t.dataset.noEdit = ""
     t.dataset.holdMenu = ""
+  }
+
+  const pin = () => {
+    const t = el.querySelector("table")
+    if (!t || !grid || !frozen || frozen.cols.length !== grid[0].length) return
+    t.style.tableLayout = "fixed"
+    t.style.width = `${frozen.table}px`
+    grid[0].forEach((cell, i) => { cell.style.width = `${frozen!.cols[i]}px` })
   }
 
   /** Where it is in the file now, if that's still what was drawn. */
@@ -72,16 +83,20 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
 
   function open(r: number, c: number, caret: number | "end" = "end") {
     if (!table || !grid || !env.canEdit()) return false
-    if (editing) close()
-    const cell = grid[r]?.[c]
+    if (!grid[r]?.[c]) return false
+    if (!frozen) {
+      const t = el.querySelector("table")!
+      frozen = { table: t.getBoundingClientRect().width, cols: grid[0].map((cell) => cell.getBoundingClientRect().width) }
+      pin()
+    }
+    if (editing) close(true)
+    const cell = grid?.[r]?.[c]
     if (!cell) return false
     const input = document.createElement("textarea")
     input.className = "cm-cell-input"
     input.rows = 1
     input.value = unescape(table.rows[r].cells[c]).replace(/<br\s*\/?>/gi, "\n")
     input.setAttribute("aria-label", r === 0 ? "Header cell" : "Cell")
-    // (at the width it was drawn: typing wraps in it rather than the columns jumping; they settle when it closes)
-    cell.style.minWidth = `${cell.getBoundingClientRect().width}px`
     cell.classList.add("is-editing")
     cell.replaceChildren(input)
     editing = { r, c, input }
@@ -102,9 +117,11 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     return true
   }
 
-  function close() {
+  /** `staying`: another of its cells opens next, so its columns stay as they are. */
+  function close(staying = false) {
     if (!editing) return
     editing = null
+    if (!staying) frozen = null
     paint()
   }
 
@@ -132,6 +149,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
     change(table)
     write("input.table")
     editing = null
+    frozen = null
     paint()
     open(Math.max(0, Math.min(r, table.rows.length - 1)), Math.max(0, Math.min(c, table.align.length - 1)))
   }
@@ -245,6 +263,7 @@ export function drawTable(el: HTMLElement, text: string, view: EditorView, env: 
       table = parseTable(t)
       const was = editing && { r: editing.r, c: editing.c, at: editing.input.selectionStart, focused: document.activeElement === editing.input }
       editing = null
+      if (!was?.focused) frozen = null
       paint()
       // (the nearest cell when its row or column went: an added row undone)
       if (was?.focused && table) open(Math.min(was.r, table.rows.length - 1), Math.min(was.c, table.align.length - 1), was.at)

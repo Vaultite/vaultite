@@ -19,7 +19,7 @@ const DECLS: Record<"showHidden" | "showArchived" | "fileSort" | "folderLimit" |
     labels: Object.fromEntries(sorts.map((s) => [s.value, s.label])), description: "folders stay first, by name" },
   folderLimit: { type: "number", default: 0, min: 0, label: "Files per folder",
     description: "how many of a folder's files show before a Show more row (in the sort order; its folders always show); 0 shows them all" },
-  autoReveal: { type: "boolean", default: false, label: "Reveal the open file", description: "opens its folders in the tree and scrolls to it" },
+  autoReveal: { type: "boolean", default: true, label: "Reveal the open file", description: "opens its folders in the tree and scrolls to it" },
   attachmentFolder: { type: "string", default: "Attachments", label: "Attachment folder",
     description: "where pasted and dropped files go: a folder, / for the top, ./ beside the note, ./name in a folder beside it" },
   excluded: { type: "list", default: [], lines: true, label: "Excluded files",

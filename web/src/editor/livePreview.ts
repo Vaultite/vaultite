@@ -447,7 +447,8 @@ class Block extends WidgetType {
         return
       }
       const own = (e.target as Element).closest("a, button, input, textarea, select, summary, [contenteditable=true], [data-no-edit]")
-      if ((own && el.contains(own)) || !view.state.facet(EditorView.editable)) return
+      // (or handled inside: a table's cell opening redraws it, so the clicked cell is already gone from the page)
+      if ((own && el.contains(own)) || e.defaultPrevented || !view.state.facet(EditorView.editable)) return
       e.preventDefault()
       if (!this.view) bar.edit.source!()
     })
