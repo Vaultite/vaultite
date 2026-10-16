@@ -1,4 +1,4 @@
-// Stacked tabs (components/Workspace.tsx Stacked; Toggle stacked tabs, the tab menu's Stack tabs): a
+// Stacked tabs (components/Workspace.tsx Stacked; the command and the tab menu's Stack tabs): a
 // pane's tabs side by side, each with its title on a spine; the active one in full view (scrolled to when another tab
 // is picked in the bar), and the one the keyboard and commands act on (#main-scroll); a click in another makes it the
 // active one; the setting survives a reload; Unstack puts them back. WRITES nothing.
@@ -17,7 +17,7 @@ await command(page, "Close all other tabs")
 await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(notes[0])}`); await wait(400)
 for (const f of notes.slice(1)) { await command(page, "Open new tab"); await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await wait(400) }
 
-check("Toggle stacked tabs", await command(page, "Toggle stacked tabs"))
+check("Stack tabs", await command(page, "Stack tabs"))
 const cols = page.locator("[data-stacked-tab]")
 check("every tab drawn, side by side", await until(async () => (await cols.count()) === notes.length), await cols.count())
 check("a spine for each, with its title", (await page.locator("[data-stack-spine]").count()) === notes.length)
