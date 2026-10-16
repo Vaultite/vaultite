@@ -13,7 +13,8 @@ the main writers. Served on a private network (a tailnet), no accounts.
   (`plugins/CLAUDE.md`).
 - Few strong primitives, composed (files, blocks, dashboards, tabs, the sheet, menus, the palette, drag). Add one only
   when nothing composes, make it general, and give it both sides (the app and `/api/render`).
-- `core/pages/Design.md` is the design system: a new block or Markdown feature goes in it.
+- `core/docs/design.md` is the design system: the page primitives and Markdown. A new one goes in it; a block is
+  declared in its plugin's manifest only.
 - Operations are the API (`core/ops.ts`): a new agent-facing feature is an op, which gives it its vau command, MCP tool
   and docs. Docs for agents come from ops, manifests, `core/AGENTS.md`, `core/docs/` and plugins' `AGENTS.md`.
 - Secrets live only in `data/config.json` on the server's machine: out of the vault, logs and commits.

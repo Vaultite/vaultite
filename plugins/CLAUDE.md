@@ -32,8 +32,7 @@
 
 ## Blocks
 - A block needs both sides and a declaration: the React render (`index.tsx`), the text (`plugin.block`: what
-  `/api/render` shows an agent), and its manifest entry, the contract both sides, the editor and the docs read. Plus
-  its entry in `core/pages/Design.md`.
+  `/api/render` shows an agent), and its manifest entry, the contract both sides, the editor and the docs read.
 - One block many plugins draw (the coding agents' usage) is declared once, with `by` naming the option that picks
   whose (`agent: codex`); each lists it in its manifest's `draws` and draws both sides, never a copy of its own.
 - A block is a view, never data: the backend never shows blocks to a kind (`prose()`), and API writes patch around

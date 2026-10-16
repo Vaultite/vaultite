@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 import { declsOf, drawnBy, drawsOf, optionNotes, parseOptions, type BlockDecls } from "../core/blocks.ts"
 import { blocksIn } from "../core/sections.ts"
-import { blockProblems, defKeys, iconNames, nodeSide, pluginProblems, walk } from "../core/rules.ts"
+import { blockProblems, iconNames, nodeSide, pluginProblems, walk } from "../core/rules.ts"
 import { ICON_NAME } from "../core/pluginmeta.ts"
 import { opProblems } from "../core/ops.ts"
 
@@ -152,7 +152,7 @@ for (const [b, ps] of drawers) if (!decls[b]?.by) problems.push(`plugins/core/${
 for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, drawers.get(b) ?? [])
 
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
-const docs = [path.join(ROOT, "core", "pages", "Design.md"), path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
+const docs = [path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
   ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f)), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
   ...walk(APP_BUNDLES).filter((f) => f.endsWith(".md")), ...walk(path.join(ROOT, "skills")).filter((f) => f.endsWith(".md"))]
 for (const f of docs) {
@@ -162,19 +162,6 @@ for (const f of docs) {
     if (!Object.hasOwn(decls, b.name)) { problems.push(`${rel}:${line}: block-${b.name} isn't a block any app plugin declares`); continue }
     const { options, error } = parseOptions(b.text)
     for (const n of optionNotes(decls[b.name], options, error)) problems.push(`${rel}:${line}: block-${b.name}: ${n}`)
-  }
-}
-
-// The design system shows every block.
-const DESIGN = path.join(ROOT, "core", "pages", "Design.md")
-const design = fs.existsSync(DESIGN) ? fs.readFileSync(DESIGN, "utf8") : ""
-const shown = new Set(blocksIn(design).map((b) => b.name))
-for (const [name, [tier, d]] of found) {
-  if (tier === "vault") continue // (the app's design system shows the app's blocks)
-  const index = path.join(d, "index.tsx")
-  if (!fs.existsSync(index)) continue
-  for (const b of defKeys(fs.readFileSync(index, "utf8"), "blocks")) {
-    if (!shown.has(b)) problems.push(`plugins/${tier}/${name}: block '${b}' isn't in core/pages/Design.md (the design system shows every block)`)
   }
 }
 
@@ -304,5 +291,5 @@ for (const f of sources.filter((f) => /\.(ts|tsx|mjs)$/.test(f))) {
 }
 
 if (warnings.length) console.log(`Warnings (vault plugins: they still load):\n${warnings.join("\n")}\n`)
-console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared, drawn as text and in the design system; every operation checked`)
+console.log(problems.join("\n") || `ok: ${found.size} plugins, every block declared and drawn as text; every operation checked`)
 process.exit(problems.length ? 1 : 0)

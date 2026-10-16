@@ -75,8 +75,9 @@ export default async ($: VaultTest) => {
     ;[c, body] = await api("POST", "ops/dispatch.run", { path: "Notes/Qa there.md", machine: "gone" })
     check("dispatch: an offline machine says so", c === 502 && String(body.error).includes("offline"), [c, body])
     fs.rmSync(path.join(VAULT, "Notes/Qa there.md"))
-    const [, text] = await api("GET", "render?path=Dashboards/Design.md")
-    check("machines: its block as text", String(text).includes("## Machines") && String(text).includes("Box: online, box"), String(text).slice(String(text).indexOf("## Machines"), String(text).indexOf("## Machines") + 300))
+    write("Dashboards/Qa machines list.md", "---\ntype: dashboard\n---\n\n```block-machines\n```\n")
+    const [, text] = await api("GET", "render?path=Dashboards/Qa machines list.md")
+    check("machines: its block as text", String(text).includes("Box: online, box"), String(text).slice(0, 300))
     write("Dashboards/Qa machines.md", "---\ntype: dashboard\n---\n\n```block-agent-sessions\nagent: claude-code\nmachine: box\nrecent: 2\n```\n\n```block-agent-sessions\nagent: claude-code\nmachine: gone\n```\n\n```block-agent-sessions\nagent: claude-code\nmachine: nope\n```\n")
     const [, page] = await api("GET", "render?path=Dashboards/Qa machines.md")
     check("machines: a block with machine: is drawn by that machine (its options without machine:)",

@@ -119,7 +119,7 @@ function pages(source: string): [string, string][] {
     if (!on(id) || !fs.existsSync(at)) continue
     for (const n of fs.readdirSync(at).filter((f) => f.endsWith(".md")).sort()) out.push([`Dashboards/${n}`, fs.readFileSync(path.join(at, n), "utf8")])
   }
-  out.push(["Dashboards/Design.md", fs.readFileSync(path.join(ROOT, "core", "pages", "Design.md"), "utf8")])
+  out.push(["Dashboards/Design.md", fs.readFileSync(path.join(ROOT, "core", "docs", "design.md"), "utf8")])
   return out
 }
 

@@ -11,18 +11,17 @@ export type Topic = { id: string; title: string; plugin: string | null; text: st
 /** A doc's title: its first `## ` heading, else the fallback. */
 const titleOf = (text: string, fallback: string) => /^##\s+(.+)$/m.exec(text)?.[1].trim() ?? fallback
 
-/** The design system (core/pages/Design.md): every block and piece of Markdown, as a dashboard to copy from. */
-const DESIGN = path.join(ROOT, "core", "pages", "Design.md")
+/** Titles of core docs that open with a page, not a `## ` heading. */
+const TITLES: Record<string, string> = { design: "Design: the primitives and Markdown pages are made of, as a dashboard" }
 
-/** Every topic: the core's (core/docs/*.md, and the design system), then each plugin's that has docs, an AGENTS.md or
- *  blocks or settings. */
+/** Every topic: the core's (core/docs/*.md), then each plugin's that has docs, an AGENTS.md or blocks or settings. */
 export function topics(plugins: Plugin[]): Topic[] {
   const dir = path.join(ROOT, "core", "docs")
   const core = fs.readdirSync(dir).filter((f) => f.endsWith(".md")).map((f): Topic => {
     const text = readText(path.join(dir, f)).trim()
-    return { id: f.slice(0, -3), title: titleOf(text, f.slice(0, -3)), plugin: null, text }
+    const id = f.slice(0, -3)
+    return { id, title: TITLES[id] ?? titleOf(text, id), plugin: null, text }
   })
-  core.push({ id: "design", title: "Design: every block and piece of Markdown, as a dashboard", plugin: null, text: readText(DESIGN).trim() })
   core.sort((a, b) => a.id.localeCompare(b.id))
   return [...core, ...plugins.flatMap((p) => {
     const d = p.docs()

@@ -63,7 +63,7 @@ export default async ($: VaultTest) => {
   }
   vault.setConfig("pages", { pinned: ["Dashboards/Today.md", "Dashboards/People.md"] })
   // The design system's page, as the sandbox has it (the tests below render it).
-  write("Dashboards/Design.md", fs.readFileSync(path.join(TOOLS, "..", "core", "pages", "Design.md"), "utf8"))
+  write("Dashboards/Design.md", fs.readFileSync(path.join(TOOLS, "..", "core", "docs", "design.md"), "utf8"))
   await vault.sync()
   // A new page goes in the pages folder: the one set, else where most of the user's pages are, else Dashboards/.
   {

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The design page shows the primitives and Markdown pages are made of; each block is listed by its plugin (`vau
+  blocks`), so a new one is never missing from it.
 - **Quick text size** is off by default: ⌘ and scroll, or a pinch, over a note or terminal changes its text size only
   with it on (Settings > Appearance, or the palette's Turn on quick text size). The palette finds commands by other
   words too: "font size" finds the text size ones.
