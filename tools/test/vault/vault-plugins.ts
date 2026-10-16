@@ -94,6 +94,8 @@ export default async ($: VaultTest) => {
   check("vault plugins: its block declared, nothing to fix", !lh.warnings.length && lh.blocks.lighthouse?.description, lh)
   check("vault plugins: its blocks in /api/blocks", (await api("GET", "blocks"))[1].blocks.some((b: Any) => b.name === "lighthouse" && b.plugin === "lighthouse" && b.on && b.text), "")
   check("vault plugins: its blocks in its docs, from the manifest", (await api("GET", "docs/lighthouse"))[1].includes("- `lighthouse`: whether the beam is on, and the keepers"))
+  ;[, out] = await api("GET", "render?path=Keepers/Bob Lee.md")
+  check("vault plugins: what it says under a page's title (page-head)", out.includes("# Bob Lee\n\nOn the night shift\n"), out)
   write("Beam log.md", "Tonight `=beam`, and `=other` and `x`.\n\n```\n`=beam` in code\n```\n")
   ;[, out] = await api("GET", "render?path=Beam log.md")
   check("vault plugins: inline code a plugin reads (inline-code) as its text, the rest and code fences as they are",
@@ -175,9 +177,9 @@ export default async ($: VaultTest) => {
     check("category: not a slug is refused", manifestProblems({ ...m, category: "Life stuff" }, "lighthouse", new Set()).some((p) => p.includes("category")))
     const root = path.dirname(TOOLS), people = path.join(root, "plugins", "core", "people")
     check("category: every app plugin names a listed one", !pluginProblems(people, root, new Map([["people", "core"]]), false, "people").some((p) => p.includes("category")))
-    const dock = path.join(root, "plugins", "core", "dock-icon")
-    check("offByDefault: an app plugin may be", !pluginProblems(dock, root, new Map([["dock-icon", "core"]]), false, "dock-icon").length)
-    check("offByDefault: not for a vault plugin", pluginProblems(dock, root, new Map([["dock-icon", "vault"]]), true, "dock-icon").some((p) => p.includes("offByDefault")))
+    const vim = path.join(root, "plugins", "core", "vim")
+    check("offByDefault: an app plugin may be", !pluginProblems(vim, root, new Map([["vim", "core"]]), false, "vim").length)
+    check("offByDefault: not for a vault plugin", pluginProblems(vim, root, new Map([["vim", "vault"]]), true, "vim").some((p) => p.includes("offByDefault")))
   }
   write(`${LH}/manifest.json`, lhManifest)
   lh = await vplugin()

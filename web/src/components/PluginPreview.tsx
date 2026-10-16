@@ -1,7 +1,7 @@
 // A plugin's detail sheet: what it does, its switch and settings, a vault plugin's approval on this machine (what changed,
 // what it says it does, Allow), and an inert live preview of its dashboards with made-up data (core/mock.ts).
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
-import { ChevronRight, Folder, RefreshCw, Server, Settings2, ShieldAlert } from "lucide-react"
+import { ChevronRight, Folder, Laptop, RefreshCw, Server, Settings2, ShieldAlert } from "lucide-react"
 import { dateText, PreviewLive, reload, type Store } from "@/core/data"
 import { mockStore } from "@/core/mock"
 import { noteParts } from "@/core/frontmatter"
@@ -306,7 +306,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
       {plugin.meta?.source && <Updates plugin={plugin} />}
       {plugin.meta && <About plugin={plugin} />}
       {/* Only what this plugin builds on, like VS Code's Dependencies tab (never what builds on it). */}
-      {(plugin.requires || plugin.enhances || plugin.runsOnServer) && (
+      {(plugin.requires || plugin.enhances || plugin.runsOnServer || plugin.desktopApp) && (
         <Section title="Works with" className="mb-5">
           <List>
             {plugin.requires && <Row title="Needs" right={
@@ -314,6 +314,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
                 data-tip={blocked.length ? `Turn on ${names(blocked)} to use this` : undefined}>{names(plugin.requires)}</span>} />}
             {plugin.enhances && <Row title="Does more with" right={names(plugin.enhances)} />}
             {plugin.runsOnServer && <Row title="Runs on" right={<span className="flex items-center gap-1.5"><Server className="size-3.5" />The server's machine</span>} />}
+            {plugin.desktopApp && <Row title="Works in" right={<span className="flex items-center gap-1.5" data-plugin-desktop><Laptop className="size-3.5" />The desktop app on a Mac</span>} />}
           </List>
         </Section>
       )}

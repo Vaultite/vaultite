@@ -116,11 +116,11 @@ export async function loadVaultPlugins(state: State) {
   }))
   const plugins = list.map((info): Plugin => {
     const hit = info.bundle ? loaded.get(info.id) : undefined
-    const { id, name, description, requires, enhances, runsOnServer, tint, category, group, replaces, marks, folder, pages, blocks, draws, settings, warnings } = info
+    const { id, name, description, requires, enhances, runsOnServer, desktopApp, tint, category, group, replaces, marks, folder, pages, blocks, draws, settings, warnings } = info
     const { version, author, repo, fundingUrl, disclosures, source, approval, blocked, hash, edits } = info
     return {
       ...hit?.def, icon: hit?.icon ?? pluginIcon(info.icon) ?? Puzzle, id, name, description, requires: requires.length ? requires : undefined,
-      enhances: enhances.length ? enhances : undefined, runsOnServer, tint, category, group, replaces, marks, folder, pages, tier: "vault", version: hit?.version,
+      enhances: enhances.length ? enhances : undefined, runsOnServer, desktopApp, tint, category, group, replaces, marks, folder, pages, tier: "vault", version: hit?.version,
       problems: [...info.problems, ...(hit?.error ? [hit.error] : [])], warnings: warnings ?? [], blockDecls: blocks ?? {},
       draws: draws?.length ? draws : undefined,
       settingsDecls: settings ?? {},

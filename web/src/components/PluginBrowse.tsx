@@ -30,6 +30,7 @@ type Entry = {
   readme: string; fundingUrl?: string
   /** Its manifest's icon (a name, or its SVG mark as a data address) and colour: as it looks once installed. */
   icon?: string; tint?: string
+  desktopApp?: boolean
 }
 type Found = { url: string; available: boolean; error?: string; plugins: Entry[] }
 
@@ -458,6 +459,7 @@ function DirectorySheet({ id }: { id: string }) {
       )}
       <Section title="About" className="mb-5">
         <List>
+          {e.desktopApp && <Row title="Works in" right="The desktop app on a Mac" />}
           <Row title="Version" right={e.installed && e.update ? `${e.version} (${e.installed} installed)` : e.version} />
           {e.author && <Row title="Author" right={e.author} />}
           <Row title="Source" right={e.source} />

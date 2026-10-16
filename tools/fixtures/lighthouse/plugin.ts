@@ -26,3 +26,6 @@ plugin.block("lighthouse", () => {
 
 // `beam` in inline code reads as whether it's on (the service `inline-code`; other inline code stays as it is).
 plugin.provide("inline-code", (ctx: { code: string }) => (ctx.code.trim() === "=beam" ? `the beam is ${now()}` : null))
+
+// Under a keeper's title in /api/render, their shift (the service `page-head`).
+plugin.provide("page-head", (ctx: { type?: string; fm: Record<string, unknown> }) => (ctx.type === "keeper" ? `On the ${str(ctx.fm.shift || "day")} shift` : null))

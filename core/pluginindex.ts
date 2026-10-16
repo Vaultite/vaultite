@@ -22,6 +22,8 @@ export type Entry = {
   topics: string[]; disclosures: Disclosures; readme: string; score: number; fundingUrl?: string; replaces?: Record<string, string[]>
   /** Its manifest's icon (a name, or its SVG as a data address: core/pluginmeta.ts iconOf) and colour. */
   icon?: string; tint?: string
+  /** It works only in the desktop app (its manifest's `desktopApp`). */
+  desktopApp?: boolean
 }
 export type Index = { generated: string | null; plugins: Entry[]; blocked: Record<string, string[]> }
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
@@ -46,6 +48,7 @@ export function readIndex(o: unknown): Index {
       issues: { open: num(issues.open), closed: num(issues.closed) }, topics: Array.isArray(e.topics) ? e.topics.filter((t): t is string => typeof t === "string").slice(0, 20) : [],
       disclosures: disclosuresOf(e), readme: str(e.readme, 600), score: num(e.score), ...(str(e.fundingUrl).startsWith("https://") ? { fundingUrl: str(e.fundingUrl) } : {}),
       ...(iconOf(e.icon) ? { icon: iconOf(e.icon)! } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.tint, 30)) ? { tint: str(e.tint) } : {}),
+      ...(e.desktopApp === true ? { desktopApp: true } : {}),
       ...(isObj(e.replaces) ? { replaces: Object.fromEntries(Object.entries(e.replaces).filter(([, v]) => Array.isArray(v))
         .map(([k, v]) => [k, (v as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 20)])) } : {}) })
   }

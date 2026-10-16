@@ -84,23 +84,14 @@ export default async ($: VaultTest) => {
       (await api("GET", "blocks/sources?path=Notes/Qa sources.md&name=no%20pe"))[0] === 400)
     check("sources: nothing is traced outside a request for them", (await api("GET", "render?path=Notes/Qa sources.md"))[0] === 200)
   }
-  // Page tabs (plugins/core/page-tabs): pages joined as tabs of one; the app's state has every group, render says which
-  // tab a page is. The core's file index knows nothing of them.
+  // `tabs:` without Page tabs (a plugin of Vaultite's own, installed): plain frontmatter, no strip, nothing under the title.
   write("Notes/Tabs/Head.md", "---\ntab: List\ntabs: [Other]\n---\n\nThe head.\n")
   write("Notes/Tabs/Other.md", "---\ntab: Map\n---\n\nThe other.\n")
   {
     const [, st] = await api("GET", "state")
-    const group = st.pageTabs?.find((g: Any) => g[0].path === "Notes/Tabs/Head.md")
-    check("page tabs: the state has the group, head first", JSON.stringify(group) === JSON.stringify([{ path: "Notes/Tabs/Head.md", label: "List" }, { path: "Notes/Tabs/Other.md", label: "Map" }]), st.pageTabs)
-    check("page tabs: the file index has no tab fields", !("tab" in st.files.files.find((f: Any) => f.path === "Notes/Tabs/Head.md")), null)
-  }
-  txt = (await api("GET", "render?path=Notes/Tabs/Other.md"))[1]
-  check("page tabs: render names the tabs, this one in bold", txt.includes("Tabs: [[Head|List]] · **Map**"), txt.slice(0, 400))
-  {
-    const { tabGroups } = await import("../../../plugins/core/page-tabs/tabs.ts")
-    const files = [{ path: "CLAUDE.md" }, { path: "Personal/Dashboards/Agents.md", tab: "Overview", tabs: ["Claude", "Codex"] }, { path: "Personal/Dashboards/Claude.md" }, { path: "Personal/Dashboards/Codex.md" }]
-    check("page tabs: a name is found beside its head first (not the vault's CLAUDE.md)", tabGroups(files)[0].map((t) => t.path).join() === "Personal/Dashboards/Agents.md,Personal/Dashboards/Claude.md,Personal/Dashboards/Codex.md",
-      tabGroups(files))
+    check("tabs: without Page tabs, no groups in the state", !("pageTabs" in st), Object.keys(st))
+    const [c, t] = await api("GET", "render?path=Notes/Tabs/Head.md")
+    check("tabs: without Page tabs, render shows the page as it is", c === 200 && t.includes("# Head\n\nThe head.") && !t.includes("Tabs:"), t)
   }
   fs.rmSync(path.join(VAULT, "Notes/Tabs"), { recursive: true })
   // `file:` in a block's options: drawn for another file (a name, or a folder's newest file).

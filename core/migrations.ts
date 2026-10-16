@@ -81,6 +81,9 @@ const STEPS: { id: string; run: (v: Vault) => void }[] = [
  *  the same change (an install can't take an id the app has); bundles name them with `install`. */
 export const MOVED: Record<string, string> = {
   books: "Vaultite/plugins/books",
+  "app-windows": "Vaultite/plugins/app-windows",
+  "dock-icon": "Vaultite/plugins/dock-icon",
+  "page-tabs": "Vaultite/plugins/page-tabs",
 }
 const movedStep = (id: string) => `moved:${id}`
 

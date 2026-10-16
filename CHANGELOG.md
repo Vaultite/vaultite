@@ -20,6 +20,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   join a Plugins page group (`group`) and keep settings files of its own (`<name>.json`) without changing its version.
 - **Books moved to Vaultite's plugins**: a vault that had it on installs it from there once, with its settings, and asks
   once to allow it; Life OS installs it. The web demo builds Vaultite's own plugins in.
+- **App windows, Dock icon and Page tabs moved to Vaultite's plugins** the same way (Get plugins). A plugin's manifest
+  may say it works only in the desktop app (`desktopApp`): its sheet says so and the web demo keeps it off. A vault
+  plugin's `page-head` service writes under a page's title in `/api/render`.
 - **Daily notes are their own plugin**, on from the start as in Obsidian: today's note (Open today's daily note,
   `vau daily`, the op `daily-note.open`, was `today.daily`), its date format, template and folder are in Daily notes'
   settings, moved there from Today's. Today keeps routines, ticked in the daily notes (`routine.check`; `POST

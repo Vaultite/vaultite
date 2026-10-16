@@ -115,6 +115,7 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
         ...(typeof m.fundingUrl === "string" && m.fundingUrl.startsWith("https://") ? { fundingUrl: m.fundingUrl } : {}),
         ...(m.replaces && typeof m.replaces === "object" ? { replaces: m.replaces } : {}),
         ...(icon ? { icon } : {}), ...(typeof m.tint === "string" && /^[a-z][a-z-]*$/.test(m.tint) ? { tint: m.tint } : {}),
+        ...(m.desktopApp === true ? { desktopApp: true } : {}),
       })
     }
   }

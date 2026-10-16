@@ -1,4 +1,4 @@
-/** App windows (plugins/core/app-windows): another Mac app's window kept right behind a see-through tab, moved by
+/** App windows (Vaultite/plugins app-windows): another Mac app's window kept right behind a see-through tab, moved by
  *  electron/appwindows.swift (the Accessibility API, as AeroSpace does); given back when its tab, window or app closes. */
 import { app, BrowserWindow, globalShortcut, screen } from "electron"
 import { execFile, spawn, type ChildProcess } from "node:child_process"
@@ -257,11 +257,12 @@ export const appHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
   "apps:through": (win, on) => setThrough(win, !!on && holesOf(win).length > 0, !!on),
 }
 
-/** Whether the vault has App windows on (off by default: in plugins.json's `enabled`), read as its window opens. */
+/** Whether the vault has App windows installed and on (in plugins.json's `enabled`), read as its window opens. */
 export function appsOn(vault: string) {
   try {
     const c = JSON.parse(fs.readFileSync(path.join(vault, ".vaultite", "plugins.json"), "utf8"))
-    return Array.isArray(c.enabled) && c.enabled.includes("app-windows") && !(Array.isArray(c.disabled) && c.disabled.includes("app-windows"))
+    return Array.isArray(c.enabled) && c.enabled.includes("app-windows") && !(Array.isArray(c.disabled) && c.disabled.includes("app-windows")) &&
+      fs.existsSync(path.join(vault, ".vaultite", "plugins", "app-windows", "manifest.json"))
   } catch { return false }
 }
 /** The windows made for app tabs (transparent); another shows none until it's opened again. */

@@ -5,7 +5,7 @@ export const OFFICIAL = typeof __DEMO_OFFICIAL__ === "undefined" ? [] : __DEMO_O
 // Plugins that need a machine (a shell, agents, other apps, the network as a server): off in the demo and refused if
 // turned on, their backends left out of its bundle (vite.demo.config.ts).
 export const MACHINE = ["terminal", "claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "dispatch", "mcp", "machines",
-  "activity", "agent-meters", "ai-import", "audio-recorder", "app-windows", "dock-icon", "clipper", "calendar",
+  "activity", "agent-meters", "ai-import", "audio-recorder", "clipper", "calendar",
   ...OFFICIAL.filter((o) => o.machine).map((o) => o.id)]
 
 /** Of those, the ones the demo still draws, with the made-up data of their own preview (a plugin's `mockLive`, answered in

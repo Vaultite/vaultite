@@ -53,7 +53,7 @@ export type State = PluginState & {
 export type KindInfo = { sections: string[]; stamps: string[] }
 /** A vault plugin as the server lists it (core/vaultplugins.ts on the server). */
 export type VaultPluginInfo = {
-  id: string; name: string; description: string; requires: string[]; enhances: string[]; runsOnServer: boolean; tint?: string; category?: string
+  id: string; name: string; description: string; requires: string[]; enhances: string[]; runsOnServer: boolean; desktopApp?: boolean; tint?: string; category?: string
   /** Its Plugins page row's group ("coding-agents": core/categories.ts GROUPS). */
   group?: string
   /** Its manifest's icon: a name, or its SVG file as a data address (core/pluginmeta.ts iconOf). */

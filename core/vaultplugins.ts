@@ -516,6 +516,7 @@ export class VaultPlugins {
       return {
         id: vp.id, name: typeof m.name === "string" && m.name ? m.name : vp.id, description: typeof m.description === "string" ? m.description : "",
         requires: Array.isArray(m.requires) ? m.requires : [], enhances: Array.isArray(m.enhances) ? m.enhances : [], runsOnServer: !!m.runsOnServer,
+        ...(m.desktopApp === true ? { desktopApp: true } : {}),
         minAppVersion: typeof m.minAppVersion === "string" ? m.minAppVersion : null, apiVersion: typeof m.apiVersion === "number" ? m.apiVersion : null,
         ...(typeof m.tint === "string" ? { tint: m.tint } : {}),
         ...(vp.icon ? { icon: vp.icon } : {}),

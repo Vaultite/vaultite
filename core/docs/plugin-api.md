@@ -73,6 +73,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `exports`: Modules plugins that require it may import, by path in its folder without extension (["types"]): theirs as `@plugins/<id>/types`, in index.tsx and plugin.ts alike, the same instance as its own.
 - `enhances`: Uses these when they're on (optional).
 - `runsOnServer`: Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it.
+- `desktopApp`: Works only in the desktop app on a Mac (other apps' windows, the Dock): elsewhere it's listed and does nothing, and the web demo keeps it off.
 - `tint`: Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages, files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else.
 - `category`: Its category on the Plugins page and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools: core/categories.ts); none or unknown: Other.
 - `blocks`: Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs.
@@ -169,7 +170,6 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `mcp:upload-link` (mcp): A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload without the file), or null when the vault isn't on the internet.
 - `me:file` (me)
 - `obsidian:stand-ins` (other-apps)
-- `page-head` (page-tabs): Under a page's title in /api/render: which tab this is, and links to the others (those of plugins that are on).
 - `pages:installed` (pages)
 - `pins:installed` (workspaces): Pages just pinned in the vault's list because their plugin wrote them, turned on (Pinned): a workspace with a list of its own gets them too, at its end, so a plugin turned on shows its pages wherever you are.
 - `pins:of` (workspaces): Workspace n's pinned pages, for Pinned's ops (`vau pin`): its own list (null: pages.json's, until its first change) and one change to it.

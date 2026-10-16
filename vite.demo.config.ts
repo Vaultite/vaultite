@@ -30,9 +30,9 @@ const official: Official[] = fs.readdirSync(OFFICIAL).sort().flatMap((id) => {
   let m: Record<string, unknown>
   try { m = JSON.parse(fs.readFileSync(path.join(dir, 'manifest.json'), 'utf8')) } catch { return [] }
   if (m.id !== id || m.repo !== 'Vaultite/plugins' || fs.existsSync(path.join(ROOT, 'plugins/core', id))) return []
-  // (what runs programs or reads the machine's files needs one: off here, as the app's are: web/demo/machine.ts)
+  // (what runs programs, reads the machine's files or needs the desktop app needs one: off here, as the app's are: web/demo/machine.ts)
   const d = (m.disclosures ?? {}) as { shell?: boolean }
-  return [{ id, dir, manifest: { ...m, offByDefault: true }, machine: m.runsOnServer === true || d.shell === true }]
+  return [{ id, dir, manifest: { ...m, offByDefault: true }, machine: m.runsOnServer === true || m.desktopApp === true || d.shell === true }]
 })
 /** Each official plugin's files the server reads (manifest, docs, pages, styles), at /app/plugins/core/<id>/ as the app's. */
 function officialFiles() {

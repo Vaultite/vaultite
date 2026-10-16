@@ -6,9 +6,9 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
 
 **`manifest.json`**: `{"id" (= the folder's name, not one the app has), "name", "description", "icon", "version": "1.0.0",
 "author", "repo": "owner/name", "fundingUrl", "disclosures", "requires": [plugin ids it can't work without],
-"enhances", "exports", "runsOnServer", "tint": "green", "category": "life", "group", "apiVersion": 4, "minAppVersion":
-"0.1.0", "forAgents", "blocks", "settings", "replaces", "userFiles", "marks", "writes"}`. A folder with only settings
-(`data.json`, `<name>.json`) is settings, not a plugin.
+"enhances", "exports", "runsOnServer", "desktopApp", "tint": "green", "category": "life", "group", "apiVersion": 4,
+"minAppVersion": "0.1.0", "forAgents", "blocks", "settings", "replaces", "userFiles", "marks", "writes"}`. A folder with
+only settings (`data.json`, `<name>.json`) is settings, not a plugin.
 - `exports`: modules in its folder that plugins requiring it may import (`["types", "lib/format"]`, without extension):
   `import { projectFor } from "@plugins/projects/Projects"`, in index.tsx and plugin.ts alike, the same instance as its own.
 - `group`: its row on the Plugins page is its group's (`"coding-agents"`), with the app's coding agents.
@@ -26,6 +26,8 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
   `.obsidian/` folder a vault has): someone coming from that app is offered it for theirs (`vau other-apps plugins`).
 - `runsOnServer`: it reads files or runs programs on the server's machine (its Plugins sheet says so); plugin.ts alone
   doesn't make it so.
+- `desktopApp`: it works only in the desktop app on a Mac (`appWindows`, `dockIcon`): its sheet says so, the web demo
+  keeps it off.
 - `icon`: how it looks wherever it's listed, and in the directory before anyone installs it: a Lucide name
   (`"heart-pulse"`, lucide.dev/icons) or one the app adds (`"claude"`, `"github"`), or a brand's mark as an SVG file in
   its folder (`"icon.svg"`, at most 16 kB): one colour, drawn in the text's colour. None: a puzzle piece.
@@ -127,7 +129,8 @@ in a sheet guards what isn't saved with `useSheetGuard(() => lines)`.
 - `fences: { "<lang>": (ctx) => ... }` draws ```` ```<lang> ```` code fences (a ```` ```base ````), `ctx.text` their
   lines; its backend's service `fence:<lang>`, `({path, text, host}) => Markdown`, is their text for agents. Inline code it
   draws (Dataview's `` `= this.file.name` ``) is an `editor` extension, and the service `inline-code`, `({path, code, host})
-  => Markdown`, or null to leave it as it is, its text.
+  => Markdown`, or null to leave it as it is, its text. What it draws under a note's title (`noteTop`) is, for agents, the
+  service `page-head`, `({path, type, fm}) => Markdown` or null.
 - `files: { types, page }` draws a type of file as a page. `settingsPanel: ({ store }) => ...` draws what a form can't,
   above its declared settings. `editor: (ctx) => extensions` adds CodeMirror extensions to every editor (may return a
   promise; `ctx.kind` "markdown" for notes): `@codemirror/state`, `view`, `language`, `commands`, `autocomplete`,

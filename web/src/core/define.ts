@@ -28,6 +28,9 @@ export type Manifest = {
   enhances?: string[]
   /** Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it. */
   runsOnServer?: boolean
+  /** Works only in the desktop app on a Mac (other apps' windows, the Dock): elsewhere it's listed and does nothing, and
+   *  the web demo keeps it off. */
+  desktopApp?: boolean
   /** Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages,
    *  files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else. */
   tint?: string

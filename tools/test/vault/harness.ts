@@ -48,9 +48,9 @@ export async function vaultHarness(from?: string) {
     fs.mkdirSync(path.join(VAULT, "People"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, "People", "Alice Park.md"), "---\ntype: person\nrelation: friend\nlocation: Seattle, WA\n---\n\n" +
       "Likes hiking.\n\n## Timeline\n\n- 2026-09-20 · call · 20 min · Caught up\n")
-    // The Vaultite plugins on (the tests use them), but the few that change the app for everyone (the Dock icon, Vim...).
+    // The Vaultite plugins on (the tests use them), but the few that change the app for everyone (Vim...).
     const root = path.join(TOOLS, "..", "plugins", "core")
-    const enabled = fs.readdirSync(root).filter((id) => !["agent-meters", "app-windows", "dock-icon", "recorder", "vim"].includes(id) &&
+    const enabled = fs.readdirSync(root).filter((id) => !["agent-meters", "recorder", "vim"].includes(id) &&
       !JSON.parse(fs.readFileSync(path.join(root, id, "manifest.json"), "utf8")).essential)
     fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins.json"), JSON.stringify({ disabled: [], enabled }, null, 2) + "\n")
