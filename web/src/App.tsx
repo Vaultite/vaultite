@@ -68,6 +68,7 @@ import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 // The app's own pages, which few visits open: loaded when they are.
 const Plugins = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.Plugins })))
 const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
+const GetPluginSheet = lazy(() => import("@/components/PluginBrowse").then((m) => ({ default: m.GetPluginSheet })))
 const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.Settings })))
 const SchemeGallery = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.SchemeGallery })))
 const HotkeysSheet = lazy(() => import("@/pages/Hotkeys").then((m) => ({ default: m.HotkeysSheet })))
@@ -134,6 +135,7 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
   hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
   "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
   "plugin-group/": ["Plugins", (store, id) => <PluginGroupSheet store={store} id={id} />], // a group's row on Plugins (the coding agents)
+  "plugin-get/": ["Get plugins", (_, id) => <GetPluginSheet id={id} />], // a row of Get plugins: one not installed yet
   "bundle-save": ["Save current setup", () => <SaveBundle />],
   "bundle-share/": ["Share", (_, id) => <ShareBundle id={id} />],
   "bundle-import": ["Import a bundle", () => <ImportBundle />],

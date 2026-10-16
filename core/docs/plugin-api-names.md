@@ -190,6 +190,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `getDefaultPlace()`
 - `getStore()`: The store as it is now (for code outside React).
 - `getTabLayout()`
+- `GitHubIcon`: GitHub's mark: a project's repository, a plugin's on GitHub.
 - `goHere(to)`: Show `to` in the active tab whatever it held (a page's tabs, List -> Map: the same place, its own history).
 - `GridCard`: A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its options).
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).

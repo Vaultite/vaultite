@@ -1,16 +1,24 @@
 // The Plugins page as one library (pages/Plugins.tsx): sections by category, the AI apps together whatever their
 // defaults (Muse; the coding agents one row, components/PluginGroup.tsx, its sheet each one's switch), each row a line
-// on what it does, Vaultite's marked as theirs; the app's own (`alwaysOn`) parts and Vim (in Editor) aren't rows; the
-// chips pick a category, the search above the list looks in all of them and in the directory; a plugin's sheet names its
-// category; no menu: Your plugins and Get plugins are tabs, Bundles a button (Settings' Your setup). Screenshots, light
-// and dark, wide and narrow. Reads only.
+// on what it does, on ones first, a built-in one with no source label or mark; the app's own (`alwaysOn`) parts and Vim
+// (in Editor) aren't rows; Filter narrows by status, source and category (chips under the search undo them), the search
+// above the list looks in all of them and in the directory; a plugin's sheet names its category; no menu: Your plugins
+// and Get plugins are tabs, Bundles a button (Settings' Your setup). Screenshots, light and dark, wide and narrow. Reads
+// only.
 //   node web/qa/pluginlibrary.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { pluginsFilter, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [B, OUT = "/tmp/pluginlibrary-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const rows = (page, cat) => page.locator(`[data-plugin-category="${cat}"] [data-plugin-row]`).evaluateAll((els) => els.map((e) => e.dataset.pluginRow))
+// Each section's rows, on (as its switch shows, or a group with any on) or off, in order.
+const onOff = (page) => page.evaluate(() => [...document.querySelectorAll("[data-plugin-category]")].map((s) =>
+  [...s.querySelectorAll("[data-plugin-row], [data-plugin-group]")].map((b) => {
+    const sw = b.parentElement.querySelector("[role=switch]")
+    return sw ? sw.getAttribute("aria-checked") === "true" : b.parentElement.querySelector("[data-plugin-group-on]")?.textContent !== "None on"
+  })))
+const onFirst = (lists) => lists.every((l) => l.every((on, i) => !i || l[i - 1] || !on))
 
 for (const colorScheme of ["light", "dark"]) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 }, colorScheme })
@@ -38,13 +46,31 @@ for (const colorScheme of ["light", "dark"]) {
     check("a search finds an agent in its group's row", await until(async () => (await page.locator('[data-plugin-members~="codex"]').count()) === 1, 4000))
     await page.locator("[data-plugins-search] input").fill("")
     check("every row says what it does", (await page.locator("[data-plugin-blurb]").count()) >= all.length - 2, [await page.locator("[data-plugin-blurb]").count(), all.length])
-    check("Vaultite's plugins are marked as theirs", (await page.locator('[data-plugin-row="dispatch"]').locator("..").locator("[data-certified]").count()) === 1)
-    check("no menu: chips and the search above the list", await page.locator("[data-plugins-chips]").isVisible() && await page.locator("[data-plugins-search] input").isVisible() &&
-      !(await page.locator("[data-rail]").count()))
-    await page.locator('[data-plugins-chips] [data-plugins-cat="ai-apps"]').click()
+    const dispatch = page.locator('[data-plugin-row="dispatch"]').locator("..")
+    check("a built-in plugin: no source label, no mark", (await dispatch.locator("[data-certified], [data-plugin-by]").count()) === 0)
+    check("each section: on ones first", onFirst(await onOff(page)), await onOff(page))
+    check("no menu: Filter and the search above the list, no chips under them", await page.locator("[data-plugins-filter]").isVisible() &&
+      await page.locator("[data-plugins-search] input").isVisible() && !(await page.locator("[data-rail]").count()) && !(await page.locator("[data-plugins-active]").count()))
+    await pluginsFilter(page, "AI apps", { category: true })
     check("a category shows only its plugins", await until(async () => (await page.locator("[data-plugin-row]").count()) === apps.length, 4000))
+    check("...one list, on ones first", onFirst(await onOff(page)), await onOff(page))
     await page.screenshot({ path: `${OUT}plugins-ai-apps.png` })
-    await page.locator("[data-plugins-chips] [data-plugins-all]").click()
+    await pluginsFilter(page, "Off")
+    check("Off and a category: only that category's plugins that are off", await until(async () => { const l = await onOff(page); return l.length === 1 && l[0].length > 0 && l[0].every((on) => !on) }, 4000), await onOff(page))
+    check("...both as chips, with the count", (await page.locator("[data-plugins-chip]").evaluateAll((els) => els.map((e) => e.dataset.pluginsChip))).join() === "status,category" &&
+      /^\d+ plugins?$/.test(await page.locator("[data-plugins-count]").innerText()))
+    await page.screenshot({ path: `${OUT}plugins-filtered.png` })
+    await page.locator('[data-plugins-chip="category"]').click()
+    check("Off alone: sections again, every row off", await until(async () => { const l = await onOff(page); return l.length > 1 && l.flat().every((on) => !on) }, 4000), await onOff(page))
+    await pluginsFilter(page, "On")
+    check("On: every row on", await until(async () => { const l = await onOff(page); return l.length > 0 && l.flat().every((on) => on) }, 4000), await onOff(page))
+    await page.locator("[data-plugins-search] input").fill("codex")
+    check("a search with On: the coding agents' row (one of them is on)", await until(async () => (await page.locator('[data-plugin-members~="codex"]').count()) === 1, 4000))
+    await pluginsFilter(page, "Off")
+    check("...with Off: not there", await until(async () => (await page.locator('[data-plugin-members~="codex"]').count()) === 0, 4000))
+    await page.locator("[data-plugins-search] input").fill("")
+    await page.locator("[data-plugins-clear]").click()
+    check("Clear all: no chips, every section", await until(async () => !(await page.locator("[data-plugins-active]").count()) && (await onOff(page)).length > 1, 4000))
     await page.locator("[data-plugins-search] input").fill("muse")
     check("a search finds a plugin by its description too", await until(async () => (await page.locator('[data-plugin-row="muse"]').count()) === 1, 4000))
     check("...and offers to search everywhere", await page.locator("[data-plugins-search-more]").count() === 1)
@@ -52,6 +78,13 @@ for (const colorScheme of ["light", "dark"]) {
     check("a search shows the directory's plugins that aren't installed", await until(async () =>
       (await page.locator('[data-plugins-not-installed] [data-browse-row="kanban"]').count()) === 1, 8000))
     await page.screenshot({ path: `${OUT}plugins-search-directory.png` })
+    const before = ctx.pages().length
+    await page.locator('[data-plugins-not-installed] [data-browse-row="kanban"] [data-browse-open]').click({ position: { x: 70, y: 14 } }) // (on its name)
+    const kanban = page.locator('dialog[open] [data-browse-sheet="kanban"]')
+    check("a directory plugin's name opens its sheet, not GitHub", await until(() => kanban.count(), 8000) && ctx.pages().length === before)
+    check("...with Install and a small GitHub button", await kanban.locator('[data-browse-sheet-action="install"]').isVisible() && await kanban.locator("[data-browse-web]").isVisible())
+    await page.screenshot({ path: `${OUT}plugins-get-sheet.png` })
+    await page.keyboard.press("Escape"); await wait(500)
     await page.locator("[data-plugins-search-more]").click()
     check("...Search everywhere opens Get plugins, its tab lit", await until(() => page.locator("[data-plugin-browse]").count(), 4000) &&
       (await page.locator("[data-plugins-get]").getAttribute("aria-checked")) === "true")
@@ -82,7 +115,7 @@ const narrow = await browser.newContext({ viewport: { width: 390, height: 844 },
 const pp = watch(await narrow.newPage(), { label: "phone" })
 await pp.goto(`${B}#plugins`)
 await until(() => pp.locator("[data-plugin-row]").count(), 10000)
-check("phone: chips, no menu", await pp.locator("[data-plugins-chips]").isVisible() && !(await pp.locator("[data-rail]").count()))
+check("phone: Filter, no menu", await pp.locator("[data-plugins-filter]").isVisible() && !(await pp.locator("[data-rail]").count()))
 const over = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
 check("phone: nothing overflows", over <= 0, over)
 await pp.screenshot({ path: `${OUT}plugins-phone.png` })

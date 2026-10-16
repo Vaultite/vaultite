@@ -8,6 +8,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Web links clicked in a terminal (an agent's output, `ls --hyperlink`) open in the Web viewer like links in notes, and
   ⌘-click sends them to the browser. Before, they always went to the browser.
+- **Plugins page: one Filter menu** in place of the row of category chips: by status (on or off), source (built in,
+  installed, in this vault) and category, each with its count. Active filters show as chips under the search, with how
+  many plugins match and Clear all. Plugins that are on come first. Built-in plugins no longer carry a "Built in" label;
+  "Yours" is now "In this vault".
+- **Get plugins rows open a sheet**, as Your plugins' do: what the plugin is, what it says it does, its version, author
+  and source, the start of its readme, and Install (an installed one opens its own sheet). Its page on GitHub is a small
+  GitHub button there; tapping a name no longer leaves the app.
 - On a Mac, the terminal keeper lets go of a shell's pseudo-terminal once it ends. Before, a keeper that ran for days
   used up the machine's, and new terminals, tmux and ssh couldn't start. When none are left, a new terminal says so.
 - **Web pages and plugin pages can be pinned**: Pin in a tab's menu (or drag the tab to Pinned) pins a web page, with

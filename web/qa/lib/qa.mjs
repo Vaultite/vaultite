@@ -110,6 +110,15 @@ export async function command(page, name, settle = 300) {
   return hit > 0
 }
 
+/** Picks a choice in the Plugins page's Filter menu (pages/Plugins.tsx): a status or source by its label ("On", "In this
+ *  vault"), or a category's (`{ category: true }`: through its submenu), then closes the menu. */
+export async function pluginsFilter(page, label, { category = false } = {}) {
+  await page.locator("[data-plugins-filter]").click()
+  if (category) await page.getByRole("menuitem", { name: /^Category/ }).click()
+  await page.locator("[role=menu]").last().getByRole("menuitemcheckbox", { name: new RegExp(`^${label}\\s*\\d+$`) }).click()
+  await page.locator('[aria-label="Close menu"]').click()
+}
+
 /** Real touches through CDP: `touch(type, x, y)`, and `swipe` a finger from one point to another in steps. */
 export async function fingers(page) {
   const cdp = await page.context().newCDPSession(page)

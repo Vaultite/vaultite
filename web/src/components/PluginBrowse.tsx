@@ -1,16 +1,18 @@
-// The Plugins page's Get plugins: the plugin directory (repos with the topic vaultite-plugin: core/pluginindex.ts), each
-// with Vaultite's mark or what it says it does, and Install; or a host's source (Obsidian's: PluginHost.browse).
-import { useEffect, useState } from "react"
-import { Download, MoreHorizontal, Puzzle, RefreshCw } from "lucide-react"
-import { dateText, fmtAgo, reload } from "@/core/data"
+// The Plugins page's Get plugins: the plugin directory (core/pluginindex.ts) or a host's source (PluginHost.browse), each
+// row with Install; tapped, its sheet (GetPluginSheet), the only way to its page on the web.
+import { useEffect, useState, type ReactNode } from "react"
+import { ChevronRight, Download, ExternalLink, MoreHorizontal, Puzzle, RefreshCw, type LucideIcon } from "lucide-react"
+import { dateText, fmtAgo, numberText, reload } from "@/core/data"
 import { op } from "@/core/http"
-import { openWebLink } from "@/core/links"
+import { openWebLink, snippet } from "@/core/links"
+import { openDetail, replaceDetail } from "@/core/nav"
+import { GitHubIcon } from "@/core/icons"
 import { notify, notifyError } from "@/core/notify"
 import { pluginIcon } from "@/core/pages"
 import { useKeptCount } from "@/core/heights"
 import { setPrefs, usePrefs } from "@/core/prefs"
 import { official, policyOf, type UpdatePolicy } from "../../../core/updates.ts"
-import { Bar, Loading, Panel, Segmented } from "@/components/kit"
+import { Bar, List, Loading, Panel, Row, Section, Segmented, SheetHead } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { capitalize, cn } from "@/lib/utils"
@@ -24,12 +26,40 @@ type Sort = "stars" | "new" | "updated"
 type Entry = {
   id: string; name: string; description: string; author: string; repo: string; dir: string | null; source: string; version: string; stars: number; released: string | null
   pushed: string | null; created: string | null; disclosures: Disclosures; installed: string | null; ours: boolean; update: boolean; blocked: string | null
+  /** Its readme's start (the directory keeps 600 characters), and where to support its author. */
+  readme: string; fundingUrl?: string
   /** Its manifest's icon (a name, or its SVG mark as a data address) and colour: as it looks once installed. */
   icon?: string; tint?: string
 }
 type Found = { url: string; available: boolean; error?: string; plugins: Entry[] }
 
 const SORTS: { value: Sort; label: string }[] = [{ value: "stars", label: "Top" }, { value: "new", label: "New" }, { value: "updated", label: "Updated" }]
+
+/** Its repository (and its folder in it) on GitHub. */
+const githubOf = (e: Entry) => `https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`
+
+/** Entries the lists showed, by sheet key (an id, a host's `<host>:<id>`): its sheet draws at once, then asks again. */
+const seen = new Map<string, Entry>()
+const seenHosted = new Map<string, BrowseEntry>()
+
+/** A row tapped: an installed one's own sheet, else its Get plugins sheet. */
+function openEntry(e: Entry) {
+  seen.set(e.id, e)
+  openDetail(e.installed !== null && pluginById(e.id) ? `plugin/${e.id}` : `plugin-get/${e.id}`)
+}
+
+/** A row that opens its sheet anywhere but on its own buttons, as Your plugins' rows (Plugins.tsx PluginRow): a button
+ *  under the row, the text letting taps through. */
+function Tappable({ id, name, open, children }: { id: string; name: string; open: () => void; children: ReactNode }) {
+  return (
+    <div className="group/prow relative isolate flex items-start gap-3 py-2.5" data-browse-row={id}>
+      <button type="button" onClick={open} aria-label={`${name}: details`} data-browse-open={id}
+        className="absolute inset-y-0 -inset-x-2 -z-10 cursor-pointer rounded-[8px] transition-colors group-hover/prow:bg-foreground/[0.04] active:bg-foreground/[0.07]" />
+      {children}
+      <ChevronRight className="pointer-events-none mt-2.5 -ml-1 size-4 shrink-0 text-tertiary max-md:mt-3" strokeWidth={2.5} />
+    </div>
+  )
+}
 
 function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) => void }) {
   const updated = e.released ?? e.pushed
@@ -39,21 +69,20 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
   const button = e.blocked ? null : e.update ? "Update" : e.installed !== null ? null : "Install"
   const Icon = pluginIcon(e.icon) ?? Puzzle
   return (
-    <div className="flex items-start gap-3 py-2.5" data-browse-row={e.id}>
+    <Tappable id={e.id} name={e.name} open={() => openEntry(e)}>
       {/* (the tile of its row once installed: Plugins.tsx) */}
-      <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" style={{ color: e.tint && `var(--${e.tint})` }} data-browse-icon>
+      <span className="pointer-events-none mt-0.5 grid size-9 shrink-0 place-items-center rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" style={{ color: e.tint && `var(--${e.tint})` }} data-browse-icon>
         <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
       </span>
-      <div className="min-w-0 flex-1">
+      <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          <button type="button" onClick={() => openWebLink(`https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`)} data-tip={`github.com/${e.source}`}
-            className="min-w-0 cursor-pointer truncate text-left text-[15px] leading-[20px] font-medium hover:underline md:text-[14px]">{e.name}</button>
-          {ours ? <Certified className="self-center" /> : <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>}
+          <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium md:text-[14px]" data-browse-name>{e.name}</span>
+          {ours ? <Certified className="pointer-events-auto self-center" /> : <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>}
         </div>
         {e.description && <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-3 md:line-clamp-2 md:text-[13px] md:leading-[18px]">{e.description}</p>}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground tabular-nums md:text-[12px]">
           <span>{e.version}</span>
-          {updated && <span data-tip={dateText(new Date(updated), { day: "numeric", month: "long", year: "numeric" })}>updated {fmtAgo(updated)}</span>}
+          {updated && <span className="pointer-events-auto" data-tip={dateText(new Date(updated), { day: "numeric", month: "long", year: "numeric" })}>updated {fmtAgo(updated)}</span>}
           {e.installed !== null && <span className="text-foreground/80" data-browse-installed>{e.update ? `${e.installed} installed` : "Installed"}</span>}
         </div>
         {says.length > 0 && (
@@ -70,7 +99,7 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
           {busy ? (button === "Install" ? "Installing…" : "Updating…") : button}
         </button>
       )}
-    </div>
+    </Tappable>
   )
 }
 
@@ -121,22 +150,26 @@ const TONES = { green: "text-[var(--green)]", orange: "text-[var(--orange)]", re
 
 /** A host's entry. One a plugin here does the job of offers that first (installing the original too would only draw the
  *  same twice), the original under its … menu. */
-function HostRow({ e, busy, install, use, show, more }: { e: BrowseEntry; busy: boolean; install: (e: BrowseEntry) => void; use: (e: BrowseEntry) => void; show: (id: string) => void; more: boolean }) {
+function HostRow({ host, e, busy, install, use, show, more }: { host: string; e: BrowseEntry; busy: boolean; install: (e: BrowseEntry) => void; use: (e: BrowseEntry) => void; show: (id: string) => void; more: boolean }) {
   const alt = !e.installed ? e.standIn : undefined
+  const open = () => {
+    const key = `${host}:${e.id}`
+    seenHosted.set(key, e)
+    openDetail(e.installed && e.plugin && pluginById(e.plugin) ? `plugin/${e.plugin}` : `plugin-get/${encodeURIComponent(key)}`)
+  }
   return (
-    <div className="flex items-start gap-3 py-2.5" data-browse-row={e.id}>
-      <div className="min-w-0 flex-1">
+    <Tappable id={e.id} name={e.name} open={open}>
+      <div className="pointer-events-none min-w-0 flex-1">
         <div className="flex items-baseline gap-2">
-          {e.url ? <button type="button" onClick={() => openWebLink(e.url!)} className="min-w-0 cursor-pointer truncate text-left text-[15px] leading-[20px] font-medium hover:underline md:text-[14px]">{e.name}</button>
-            : <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium md:text-[14px]">{e.name}</span>}
+          <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium md:text-[14px]" data-browse-name>{e.name}</span>
           {e.author && <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>}
         </div>
         {e.description && <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-3 md:line-clamp-2 md:text-[13px] md:leading-[18px]">{e.description}</p>}
         <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground tabular-nums md:text-[12px]">
           {e.stat && <span>{e.stat}</span>}
-          {e.badges?.map((b) => <span key={b.text} className={cn(b.tone && TONES[b.tone])} data-tip={b.tip} data-browse-badge>{b.text}</span>)}
+          {e.badges?.map((b) => <span key={b.text} className={cn("pointer-events-auto", b.tone && TONES[b.tone])} data-tip={b.tip} data-browse-badge>{b.text}</span>)}
           {e.standIn && (e.standIn.on ? <span className="text-foreground/80" data-browse-stand-in>Vaultite's {e.standIn.name} is on</span>
-            : <span data-tip="A plugin of Vaultite's does its job, and agents can read what it draws" data-browse-stand-in>Vaultite has {e.standIn.name}</span>)}
+            : <span className="pointer-events-auto" data-tip="A plugin of Vaultite's does its job, and agents can read what it draws" data-browse-stand-in>Vaultite has {e.standIn.name}</span>)}
           {e.installed && <span className="text-foreground/80" data-browse-installed>Installed</span>}
         </div>
       </div>
@@ -154,31 +187,49 @@ function HostRow({ e, busy, install, use, show, more }: { e: BrowseEntry; busy: 
           <MoreHorizontal className="size-4" strokeWidth={2.25} />
         </button>
       ) : more && <span aria-hidden className="-ml-1.5 size-8 shrink-0 max-md:size-9" />}
-    </div>
+    </Tappable>
   )
 }
 
+/** Install a host's plugin (`show`: the toast's Show): whether it went in. */
+async function installHosted(src: BrowseSource, e: BrowseEntry, show?: (id: string) => void) {
+  try {
+    await src.install(e.id)
+    notify(`${e.name} is installed and on`, e.plugin && show ? { action: { label: "Show", run: () => show(e.plugin!) } } : {})
+    return true
+  } catch (err) { notifyError(err, `Couldn't install ${e.name}`); return false }
+}
+/** Turn on (installing if needed) the plugin of Vaultite's that does a host's plugin's job: whether it did. */
+async function turnOnStandIn(e: BrowseEntry, show?: (id: string) => void) {
+  const s = e.standIn!
+  try {
+    await s.use()
+    notify(`Vaultite's ${s.name} is on`, show ? { action: { label: "Show", run: () => show(s.id) } } : {})
+    return true
+  } catch (err) { notifyError(err, `Couldn't turn on ${s.name}`); return false }
+}
+
 /** A host's source (Obsidian's community plugins): its list as it answers, and Install. */
-function HostBrowse({ src, query, showInstalled }: { src: BrowseSource; query: string; showInstalled: (id: string) => void }) {
+function HostBrowse({ host, src, query, showInstalled }: { host: string; src: BrowseSource; query: string; showInstalled: (id: string) => void }) {
   const [sort, setSort] = useState(src.sorts?.[0]?.value ?? "")
   const [found, setFound] = useState<Awaited<ReturnType<BrowseSource["search"]>> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [n, setN] = useState(0)
+  const v = usePluginsVersion()
   useEffect(() => {
     let live = true
     const t = setTimeout(() => { src.search(query.trim(), sort).then((f) => { if (live) setFound(f) }, () => { if (live) setFound({ available: false, entries: [] }) }) }, query ? 200 : 0)
     return () => { live = false; clearTimeout(t) }
-  }, [src, query, sort, n])
+  }, [src, query, sort, n, v])
   const act = async (e: BrowseEntry) => {
     setBusy(e.id)
-    try { await src.install(e.id); notify(`${e.name} is installed and on`, e.plugin ? { action: { label: "Show", run: () => showInstalled(e.plugin!) } } : {}); setN((x) => x + 1) }
-    catch (err) { notifyError(err, `Couldn't install ${e.name}`) } finally { setBusy(null) }
+    if (await installHosted(src, e, showInstalled)) setN((x) => x + 1)
+    setBusy(null)
   }
   const use = async (e: BrowseEntry) => {
-    const s = e.standIn!
     setBusy(e.id)
-    try { await s.use(); notify(`Vaultite's ${s.name} is on`, { action: { label: "Show", run: () => showInstalled(s.id) } }); setN((x) => x + 1) }
-    catch (err) { notifyError(err, `Couldn't turn on ${s.name}`) } finally { setBusy(null) }
+    if (await turnOnStandIn(e, showInstalled)) setN((x) => x + 1)
+    setBusy(null)
   }
   // (any row with a … menu keeps its slot in every row, so the buttons line up)
   const more = !!found?.entries.some((e) => !e.installed && e.standIn)
@@ -194,7 +245,7 @@ function HostBrowse({ src, query, showInstalled }: { src: BrowseSource; query: s
         <>
           <Panel className="py-0.5">
             <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-              {found.entries.map((e) => <HostRow key={e.id} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} more={more} />)}
+              {found.entries.map((e) => <HostRow key={e.id} host={host} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} more={more} />)}
             </div>
           </Panel>
           {(src.note || (found.total ?? 0) > found.entries.length) && (
@@ -220,7 +271,7 @@ export function PluginBrowse({ query, source, setSource, showInstalled }: { quer
         <Segmented value={src ? source : ""} onChange={setSource} label="Where from" className="mb-3 w-full max-w-[300px]"
           options={[{ value: "", label: "Vaultite directory" }, ...sources.map(([h, info]) => ({ value: h, label: info.browse!.title }))]} />
       )}
-      {src ? <HostBrowse key={source} src={src} query={query} showInstalled={showInstalled} /> : <Directory query={query} showInstalled={showInstalled} />}
+      {src ? <HostBrowse key={source} host={source} src={src} query={query} showInstalled={showInstalled} /> : <Directory query={query} showInstalled={showInstalled} />}
       <AutoUpdates />
     </section>
   )
@@ -231,6 +282,34 @@ export function DirectoryMatches({ query, showInstalled }: { query: string; show
   return <Directory query={query} showInstalled={showInstalled} compact />
 }
 
+/** Install a directory plugin and turn it on, or update it (`show`: the toast's Show): whether it did. */
+async function installEntry(e: Entry, show?: (id: string) => void) {
+  try {
+    if (e.update) {
+      const p = pluginById(e.id)
+      if (p) await updatePlugin(p)
+      return true
+    }
+    // Installing here is the yes to run it: one not Vaultite's asks first, saying what it does beyond the vault.
+    const says = official(e.source) ? [] : disclosed(e.disclosures)
+    if (!official(e.source) && !(await confirmDialog({
+      title: `Install and turn on ${e.name}?`,
+      body: `It runs code on the machine that serves this app, with your files${says.length ? `. It says it ${says.join(", ")}` : ""}. Install only plugins you trust.`,
+      confirm: "Install",
+    }))) return false
+    await op("plugin.install", { source: e.source })
+    await reload()
+    // (as its switch does: allowed here as installed, its panels shown, what it writes on its own asked)
+    const p = pluginById(e.id)
+    if (p) setSwitch(p, true); else await op("plugin.enable", { id: e.id })
+    notify(`${e.name} is installed and on`, show ? { action: { label: "Show", run: () => show(e.id) } } : {})
+    return true
+  } catch (err) {
+    notifyError(err, `Couldn't ${e.update ? "update" : "install"} ${e.name}`)
+    return false
+  }
+}
+
 /** `compact`: only those not installed, without the sort and the note (DirectoryMatches). */
 function Directory({ query, showInstalled, compact }: { query: string; showInstalled: (id: string) => void; compact?: boolean }) {
   const [sort, setSort] = useState<Sort>("stars")
@@ -238,6 +317,8 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
   const [busy, setBusy] = useState<string | null>(null)
   const [n, setN] = useState(0) // asked again after an install, or fetched again (`fresh`)
   const [fresh, setFresh] = useState(false)
+  // (and when the plugins change: one installed from its sheet says Installed here too)
+  const v = usePluginsVersion()
   useEffect(() => {
     let live = true
     const t = setTimeout(() => {
@@ -245,36 +326,13 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
         () => { if (live) setFound({ url: "", available: false, plugins: [] }) })
     }, query ? 200 : 0)
     return () => { live = false; clearTimeout(t) }
-  }, [query, sort, n, fresh])
+  }, [query, sort, n, fresh, v])
   const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? found.plugins.length : undefined)
 
   const act = async (e: Entry) => {
     setBusy(e.id)
-    try {
-      if (e.update) {
-        const p = pluginById(e.id)
-        if (p) await updatePlugin(p)
-      } else {
-        // Installing here is the yes to run it: one not Vaultite's asks first, saying what it does beyond the vault.
-        const says = official(e.source) ? [] : disclosed(e.disclosures)
-        if (!official(e.source) && !(await confirmDialog({
-          title: `Install and turn on ${e.name}?`,
-          body: `It runs code on the machine that serves this app, with your files${says.length ? `. It says it ${says.join(", ")}` : ""}. Install only plugins you trust.`,
-          confirm: "Install",
-        }))) return
-        await op("plugin.install", { source: e.source })
-        await reload()
-        // (as its switch does: allowed here as installed, its panels shown, what it writes on its own asked)
-        const p = pluginById(e.id)
-        if (p) setSwitch(p, true); else await op("plugin.enable", { id: e.id })
-        notify(`${e.name} is installed and on`, { action: { label: "Show", run: () => showInstalled(e.id) } })
-      }
-      setN((x) => x + 1)
-    } catch (err) {
-      notifyError(err, `Couldn't ${e.update ? "update" : "install"} ${e.name}`)
-    } finally {
-      setBusy(null)
-    }
+    if (await installEntry(e, showInstalled)) setN((x) => x + 1)
+    setBusy(null)
   }
 
   if (compact) {
@@ -316,6 +374,165 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
             Plugins from GitHub run code on this machine: what each says it does is above, unchecked.
           </p>
         </>
+      )}
+    </div>
+  )
+}
+
+// ---------- a plugin's sheet before it's installed ----------
+
+/** The way to its page on the web: a small GitHub mark (another site's: an arrow). */
+function WebLink({ url }: { url: string }) {
+  const github = /^https:\/\/github\.com\//.test(url)
+  const Icon: LucideIcon = github ? GitHubIcon : ExternalLink
+  return (
+    <button type="button" onClick={() => openWebLink(url)} aria-label={github ? "Open on GitHub" : "Open its page"} data-tip={github ? "GitHub" : "Its page"} data-browse-web
+      className="ml-auto grid size-11 shrink-0 cursor-pointer place-items-center rounded-[10px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:size-9 md:rounded-[8px]">
+      <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
+    </button>
+  )
+}
+
+const BIG = "h-11 min-w-32 px-5 text-[17px] md:h-9 md:min-w-28 md:text-[14px]"
+const NOTE = "text-[15px] leading-[20px] text-muted-foreground md:text-[13px] md:leading-[18px]"
+
+/** `plugin-get/<id>` (the directory's) or `plugin-get/<host>:<id>` (a host's source): what it is, what it says it does,
+ *  and Install; once installed, its own sheet. */
+export function GetPluginSheet({ id }: { id: string }) {
+  const at = id.indexOf(":")
+  return at < 0 ? <DirectorySheet key={id} id={id} /> : <HostedSheet key={id} host={id.slice(0, at)} id={id.slice(at + 1)} />
+}
+
+const notFound = (what: string) => <SheetHead icon={Puzzle} tint="var(--muted-foreground)" kicker="Not found" title={what} />
+
+function DirectorySheet({ id }: { id: string }) {
+  const v = usePluginsVersion()
+  // undefined: asking; null: not in the directory (or it can't be reached)
+  const [e, setE] = useState<Entry | null | undefined>(() => seen.get(id))
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    let live = true
+    op<Found>("plugin.search", { q: id }).then((f) => {
+      if (!live) return
+      const got = f.plugins.find((x) => x.id === id)
+      if (got) seen.set(id, got)
+      setE(got ?? seen.get(id) ?? null)
+    }, () => { if (live) setE((x) => x ?? null) })
+    return () => { live = false }
+  }, [id, v])
+  if (e === undefined) return <Loading />
+  if (!e) return notFound("This plugin isn't in the directory")
+  const ours = official(e.source)
+  const says = disclosed(e.disclosures)
+  const Icon = pluginIcon(e.icon) ?? Puzzle
+  const updated = e.released ?? e.pushed
+  const here = e.installed !== null && !!pluginById(e.id)
+  const install = async () => {
+    setBusy(true)
+    const ok = await installEntry(e)
+    setBusy(false)
+    // (installed: its own sheet, with its switch and settings)
+    if (ok && pluginById(e.id)) replaceDetail(`plugin/${e.id}`)
+  }
+  return (
+    <div data-browse-sheet={e.id}>
+      <SheetHead icon={Icon} tint={e.tint ? `var(--${e.tint})` : "var(--primary)"} kicker={ours ? "Vaultite" : e.author || "Plugin directory"}
+        title={<>{e.name}{ours && <Certified className="ml-1.5 align-[1px]" />}</>} sub={e.description} />
+      <div className="mb-5 flex items-center gap-3">
+        {e.blocked ? <p className="min-w-0 flex-1 text-[15px] text-[var(--red)] md:text-[13px]">Blocked by the directory: a known problem with this version.</p>
+          : here && !e.update ? <>
+            <span className={cn(NOTE, "text-foreground/80")} data-browse-installed>Installed</span>
+            <Button className={BIG} onClick={() => replaceDetail(`plugin/${e.id}`)} data-browse-sheet-show>Show</Button>
+          </> : (
+            <Button look="primary" className={BIG} disabled={busy} onClick={() => void install()} data-browse-sheet-action={e.update ? "update" : "install"}>
+              {busy ? (e.update ? "Updating…" : "Installing…") : e.update ? `Update to ${e.version}` : "Install"}
+            </Button>
+          )}
+        <WebLink url={githubOf(e)} />
+      </div>
+      {!ours && !here && !e.blocked && <p className={cn(NOTE, "-mt-2 mb-5 px-1")}>Installing turns it on: it runs code on the machine that serves this app, with your files. Install only plugins you trust.</p>}
+      {says.length > 0 && (
+        <Section title="What it says it does" className="mb-5">
+          <List>{says.map((x) => <Row key={x} title={capitalize(x)} />)}</List>
+        </Section>
+      )}
+      <Section title="About" className="mb-5">
+        <List>
+          <Row title="Version" right={e.installed && e.update ? `${e.version} (${e.installed} installed)` : e.version} />
+          {e.author && <Row title="Author" right={e.author} />}
+          <Row title="Source" right={e.source} />
+          {updated && <Row title="Updated" right={dateText(new Date(updated), { day: "numeric", month: "short", year: "numeric" })} />}
+          {e.stars > 0 && <Row title="Stars" right={numberText(e.stars)} />}
+          {e.fundingUrl && <Row title="Support it" right={<button type="button" onClick={() => openWebLink(e.fundingUrl!)}
+            className="cursor-pointer text-foreground/80 underline decoration-border underline-offset-2 hover:text-foreground">{new URL(e.fundingUrl).host}</button>} />}
+        </List>
+      </Section>
+      {e.readme && (
+        <Section title="From its readme" className="mb-5">
+          <p className="px-1 text-[15px] leading-[21px] md:text-[14px] md:leading-[20px]" data-browse-readme>{snippet(e.readme)}</p>
+        </Section>
+      )}
+      {/* (as a vault plugin's sheet says while it's off: PluginPreview.tsx) */}
+      {!here && <p className={cn(NOTE, "px-1")}>Its preview shows once it's installed and on: nothing of a plugin from GitHub runs before then.</p>}
+    </div>
+  )
+}
+
+function HostedSheet({ host, id }: { host: string; id: string }) {
+  const v = usePluginsVersion()
+  const key = `${host}:${id}`
+  const src = hostsNow().find(([h]) => h === host)?.[1].browse
+  const [e, setE] = useState<BrowseEntry | null | undefined>(() => seenHosted.get(key))
+  const [busy, setBusy] = useState(false)
+  useEffect(() => {
+    if (!src) return
+    let live = true
+    src.search(id, src.sorts?.[0]?.value ?? "").then((f) => {
+      if (!live) return
+      const got = f.entries.find((x) => x.id === id)
+      if (got) seenHosted.set(key, got)
+      setE(got ?? seenHosted.get(key) ?? null)
+    }, () => { if (live) setE((x) => x ?? null) })
+    return () => { live = false }
+  }, [src, id, key, v])
+  if (!src) return notFound("This source isn't here now")
+  if (e === undefined) return <Loading />
+  if (!e) return notFound(`This plugin isn't in ${src.title}`)
+  const alt = !e.installed ? e.standIn : undefined
+  const show = (pid: string) => replaceDetail(`plugin/${pid}`)
+  const run = async (f: () => Promise<boolean>, then?: string) => {
+    setBusy(true)
+    const ok = await f()
+    setBusy(false)
+    if (ok && then && pluginById(then)) show(then)
+  }
+  return (
+    <div data-browse-sheet={e.id}>
+      <SheetHead icon={Puzzle} tint="var(--primary)" kicker={src.title} title={e.name} sub={e.description} />
+      <div className="mb-5 flex flex-wrap items-center gap-3">
+        {e.installed ? <>
+          <span className={cn(NOTE, "text-foreground/80")} data-browse-installed>Installed</span>
+          {e.plugin && <Button className={BIG} onClick={() => show(e.plugin!)} data-browse-sheet-show>Show</Button>}
+        </> : alt?.on ? <Button className={BIG} onClick={() => show(alt.id)} data-browse-sheet-show>Show Vaultite's {alt.name}</Button>
+          : alt ? <>
+            <Button look="primary" className={BIG} disabled={busy} onClick={() => void run(() => turnOnStandIn(e), alt.id)} data-browse-sheet-action="use-stand-in">
+              {busy ? "Turning on…" : `Use Vaultite's ${alt.name}`}</Button>
+            <Button disabled={busy} onClick={() => void run(() => installHosted(src, e), e.plugin)} data-browse-sheet-action="install">Install the original</Button>
+          </> : (
+            <Button look="primary" className={BIG} disabled={busy} onClick={() => void run(() => installHosted(src, e), e.plugin)} data-browse-sheet-action="install">
+              {busy ? "Installing…" : "Install"}</Button>
+          )}
+        {e.url && <WebLink url={e.url} />}
+      </div>
+      {alt && !alt.on && <p className={cn(NOTE, "-mt-2 mb-5 px-1")}>Vaultite's {alt.name} does its job, and agents can read what it draws.</p>}
+      {(e.author || e.stat || !!e.badges?.length) && (
+        <Section title="About" className="mb-5">
+          <List>
+            {e.author && <Row title="Author" right={e.author} />}
+            {e.stat && <Row title="Used by" right={e.stat} />}
+            {e.badges?.map((b) => <Row key={b.text} title={<span className={cn(b.tone && TONES[b.tone])}>{b.text}</span>} meta={b.tip} wrap />)}
+          </List>
+        </Section>
       )}
     </div>
   )

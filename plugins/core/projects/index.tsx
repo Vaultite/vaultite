@@ -1,6 +1,5 @@
 import { FolderGit2 } from "lucide-react"
-import { definePlugin } from "@vaultite"
-import { GitHubIcon } from "./GitHubIcon"
+import { definePlugin, GitHubIcon } from "@vaultite"
 import { ProjectBlock, ProjectCards } from "./Projects"
 
 export default definePlugin({

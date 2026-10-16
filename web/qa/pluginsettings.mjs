@@ -94,7 +94,7 @@ try {
     const ps = page.locator('[data-settings-section="plugins"]')
     check("Settings > Plugins: a section beside the menu", !!(await until(() => ps.locator("[data-plugin-row]").count(), 4000)) &&
       (await page.evaluate(() => location.hash)).startsWith("#settings") && await page.locator("[data-settings-list]").count() === 1 && await lit("plugins") &&
-      await ps.locator("[data-plugins-chips]").count() === 1 && await ps.locator("[data-plugins-search] input").count() === 1)
+      await ps.locator("[data-plugins-filter]").count() === 1 && await ps.locator("[data-plugins-search] input").count() === 1)
     check("...without the app's own parts", !(await ps.locator('[data-plugin-row="files"], [data-plugin-row="mcp"]').count()))
     await shot(page, "1a-settings-plugins")
     await ps.locator("[data-plugin-gear=web-viewer]").click()
@@ -303,8 +303,8 @@ try {
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
     await page.locator('[data-settings-nav="plugins"]').click()
     check("phone: Settings > Plugins goes to the Plugins page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
-    check("phone: Plugins has its search and chips, no menu", !!(await until(() => page.locator("[data-plugins] [data-plugins-search] input").count(), 4000)) &&
-      await page.locator("[data-plugins-chips]").count() === 1 && !(await page.locator("[data-rail]").count()))
+    check("phone: Plugins has its search and Filter, no menu", !!(await until(() => page.locator("[data-plugins] [data-plugins-search] input").count(), 4000)) &&
+      await page.locator("[data-plugins-filter]").count() === 1 && !(await page.locator("[data-rail]").count()))
     await page.goto(`${B}#settings`); await until(() => page.locator("[data-settings-setup]").count(), 4000)
     await page.locator("[data-settings-setup]").click()
     check("phone: Your setup goes to the Bundles page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))

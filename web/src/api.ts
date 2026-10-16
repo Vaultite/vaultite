@@ -38,7 +38,7 @@ export { choose, type Choice } from "@/components/Chooser"
 /** The look changing (light or dark, colour scheme, a theme or snippet, fonts), once applied: read colour tokens again. */
 export { onLook } from "@/core/appearance"
 export { pickIcon } from "@/components/IconPicker"
-export { BrandIcon } from "@/core/icons"
+export { BrandIcon, GitHubIcon } from "@/core/icons"
 // The tabs and splits as a whole (Workspaces keeps one per workspace).
 export { getWorkspace as getTabLayout, onWorkspaceChange as onTabLayoutChange, replaceWorkspace as setTabLayout } from "@/core/workspace"
 export { type Workspace as TabLayout } from "@/core/layout"

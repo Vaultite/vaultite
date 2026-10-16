@@ -1,8 +1,7 @@
 // Projects: a card per project file, drawn from the file's own blocks (what it is, then any live numbers it asks for),
 // so a card changes when its file does.
 import { ArrowUpRight } from "lucide-react"
-import { capitalize, cn, Empty, FileBlocks, isArchived, openFile, Panel, type BlockCtx } from "@vaultite"
-import { GitHubIcon } from "./GitHubIcon"
+import { capitalize, cn, Empty, FileBlocks, GitHubIcon, isArchived, openFile, Panel, type BlockCtx } from "@vaultite"
 import type { Project } from "./types"
 
 const STATUS: Record<string, string> = { live: "var(--green)", building: "var(--blue)", idea: "var(--gray)", paused: "var(--orange)" }

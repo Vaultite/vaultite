@@ -1,7 +1,8 @@
 // The plugin directory and this machine's yes, in the app. Plugins > Get plugins: an index that can't be read is a quiet line;
 // a made-up index (a file: the server's VAULTITE_PLUGIN_INDEX) lists by stars, New and Updated, searched, each with its
-// version and what it says it does; Install fetches its made-up git repository (VAULTITE_GITHUB=file://<repos>) into
-// .vaultite/plugins/, off; its switch turns it on and allows it. A newer tag shows Update; updated, it waits on the
+// version and what it says it does; a row opens its sheet (what it says it does, Install, GitHub only from a small mark;
+// nothing opens the web), its own Install not; Install (after a question saying what one not Vaultite's does) fetches its
+// made-up git repository (VAULTITE_GITHUB=file://<repos>) into .vaultite/plugins/ and turns it on. A newer tag shows Update; updated, it waits on the
 // Plugins page and its sheet shows what changed, what it says it does, and Allow. One turned on by plugins.json alone
 // (a sync, a shared vault) waits too, and runs once allowed. Phone width: nothing overflows. WRITES the vault's plugins
 // and the index and repos given (throwaway server only, started with those two variables; npm run qa sets them).
@@ -85,17 +86,45 @@ try {
   await page.locator("[data-plugins-search] input").fill("")
   await page.getByRole("radio", { name: "Top" }).click()
 
+  // ---------- a row's sheet: what it is, Install, and GitHub only from its mark
+  await until(async () => (await rows()).join() === "beacon,harbor,skiff", 8000)
+  const pagesBefore = ctx.pages().length
+  await harborRow.locator("[data-browse-open]").click({ position: { x: 70, y: 14 } }) // (on its name: the text lets taps through to the row)
+  const getSheet = page.locator('dialog[open] [data-browse-sheet="harbor"]')
+  check("sheet: tapping its name opens its sheet, not GitHub", await until(() => getSheet.count(), 8000) && ctx.pages().length === pagesBefore, ctx.pages().map((p) => p.url()))
+  check("sheet: its version, author, source and what it says it does", await until(async () => {
+    const t = await getSheet.innerText()
+    return t.includes("1.0.0") && t.includes("Alice Park") && t.includes("alicepark/harbor") && t.includes("Talks to tides.example.com")
+  }, 8000), await getSheet.innerText().catch(() => ""))
+  check("sheet: Install, and a small GitHub button", await getSheet.locator('[data-browse-sheet-action="install"]').isVisible() &&
+    (await getSheet.locator("[data-browse-web]").getAttribute("aria-label")) === "Open on GitHub")
+  await shot("get-sheet")
+  await page.keyboard.press("Escape")
+  await until(async () => !(await page.locator("dialog[open]").count()), 4000)
+  await browse.locator('[data-browse-row="beacon"] [data-browse-open]').click({ position: { x: 600, y: 10 } })
+  check("sheet: tapping anywhere on a row opens it", await until(() => page.locator('dialog[open] [data-browse-sheet="beacon"]').count(), 8000))
+  await page.keyboard.press("Escape")
+  await until(async () => !(await page.locator("dialog[open]").count()), 4000)
+
   // ---------- install: off until turned on, which allows it here
   await harborRow.locator('[data-browse-action="install"]').click()
-  check("install: its folder, off, with where it came from", await until(async () => existsSync(file(".vaultite/plugins/harbor/plugin.ts")) && json(".vaultite/plugins-lock.json")?.harbor?.tag === "v1.0.0", 8000) &&
-    !(plugins().enabled ?? []).includes("harbor") && !(await listed("harbor"))?.loaded, json(".vaultite/plugins-lock.json"))
+  const ask = page.locator("dialog[open][data-confirm]")
+  check("install: the row's own Install opens no sheet, only its question", !!(await until(() => ask.count(), 4000)) && !(await page.locator("dialog[open] [data-browse-sheet]").count()))
+  check("install: one not Vaultite's says first what it does", (await ask.innerText()).includes("tides.example.com"), await ask.innerText())
+  check("install: nothing yet before the yes", !existsSync(file(".vaultite/plugins/harbor")))
+  await ask.locator("[data-confirm-ok]").click()
+  check("install: its folder, with where it came from", await until(async () => existsSync(file(".vaultite/plugins/harbor/plugin.ts")) && json(".vaultite/plugins-lock.json")?.harbor?.tag === "v1.0.0", 8000),
+    json(".vaultite/plugins-lock.json"))
   check("install: the row says it's installed", await until(async () => (await harborRow.innerText()).includes("Installed"), 8000), await harborRow.innerText())
-  check("install: nothing of it runs yet", (await api("harbor"))[0] === 404)
+  check("install turns it on: allowed here, it runs", await until(async () => (await api("harbor"))[1]?.tide === "high", 8000), await listed("harbor"))
+  await harborRow.locator("[data-browse-open]").click({ position: { x: 70, y: 14 } }) // (on its name: the text lets taps through to the row)
+  check("installed: its row opens its own sheet", await until(() => page.locator("dialog[open] [data-plugin-switch]").count(), 8000) &&
+    !(await page.locator("dialog[open] [data-browse-sheet]").count()))
+  await page.keyboard.press("Escape")
+  await until(async () => !(await page.locator("dialog[open]").count()), 4000)
   await page.locator("[data-plugins-installed]").click()
   const sw = page.getByRole("switch", { name: "Harbor plugin" })
-  await until(() => sw.count(), 8000)
-  await sw.click()
-  check("turned on here, it's allowed and runs", await until(async () => (await api("harbor"))[1]?.tide === "high", 8000), await listed("harbor"))
+  check("its switch on Your plugins is on", await until(async () => (await sw.getAttribute("aria-checked")) === "true", 8000))
   await page.locator('[data-plugin-row="harbor"]').click()
   const sheet = page.locator("dialog[open]")
   check("its sheet: version, author, repository, where it came from, what it says it does", await until(async () => {
@@ -152,6 +181,10 @@ try {
   await until(() => pp.locator("[data-browse-row]").count(), 8000)
   const over = await pp.evaluate(() => document.documentElement.scrollWidth - innerWidth)
   check("phone: Get plugins fits the screen", over <= 0, over)
+  await pp.locator('[data-browse-row="beacon"] [data-browse-open]').tap({ position: { x: 70, y: 14 } })
+  check("phone: a tapped row opens its sheet", await until(() => pp.locator('dialog[open] [data-browse-sheet="beacon"]').count(), 8000))
+  await pp.screenshot({ path: `${OUT}pluginstore-phone-sheet.png` })
+  await pp.keyboard.press("Escape"); await wait(400)
   await pp.screenshot({ path: `${OUT}pluginstore-phone.png` })
 } finally {
   await browser.close()
