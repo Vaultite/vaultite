@@ -20,6 +20,6 @@ logins, apart from the app's, on the Mac running the desktop app; nothing about 
 browser, and a web tab says so with a link out.
 - Pinned: Pin in a page's tab menu (or `vau pin <address>`) pins it to the sidebar by its address, with its site's icon
   and its title, kept up to date while it's open; a click opens it here. While the plugin is off it doesn't show.
-- Links: web links clicked in the app (in notes, blocks, sheets) open in a new web tab; ⌘-click (Ctrl elsewhere)
+- Links: web links clicked in the app (in notes, blocks, sheets, terminals) open in a new web tab; ⌘-click (Ctrl elsewhere)
   opens them in the system browser.
 - Its settings (below): `openLinks: browser` sends every link to the browser.

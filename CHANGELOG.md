@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Web links clicked in a terminal (an agent's output, `ls --hyperlink`) open in the Web viewer like links in notes, and
+  ⌘-click sends them to the browser. Before, they always went to the browser.
 - On a Mac, the terminal keeper lets go of a shell's pseudo-terminal once it ends. Before, a keeper that ran for days
   used up the machine's, and new terminals, tmux and ssh couldn't start. When none are left, a new terminal says so.
 - **Web pages and plugin pages can be pinned**: Pin in a tab's menu (or drag the tab to Pinned) pins a web page, with

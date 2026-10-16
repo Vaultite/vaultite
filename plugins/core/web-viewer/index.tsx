@@ -122,7 +122,7 @@ function Preview() {
     <Panel title="Web viewer" icon={Globe} tint="var(--web-viewer)">
       <p className="text-[15px] leading-[20px] text-muted-foreground">
         Web pages in a tab of the desktop app, next to your notes: back, forward, reload, and Save to vault, which clips the
-        page as you see it (one you're logged in to too) into a note in Clippings. Links in notes open here; {modKey}-click opens
+        page as you see it (one you're logged in to too) into a note in Clippings. Links in notes and terminals open here; {modKey}-click opens
         them in your browser. On the web and on phones links open in your browser as before.
       </p>
     </Panel>

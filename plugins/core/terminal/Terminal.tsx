@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, pastedFiles, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openWebLink, pastedFiles, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -178,10 +178,12 @@ function create(id: string): Live {
   const t = new XTerm({
     fontFamily: "'SF Mono', ui-monospace, Menlo, 'DejaVu Sans Mono', 'Noto Sans Mono', 'Liberation Mono', 'Ubuntu Mono', monospace", fontSize: fontSize(textSize("terminal")), lineHeight: 1.15,
     cursorBlink: true, scrollback: 10000, allowProposedApi: false, theme: theme(),
+    // Links go where notes' do (the Web viewer when it's on, ⌘-click the browser); OSC 8 ones (ls, gh) too.
+    linkHandler: { activate: (e, uri) => { if (/^https?:/i.test(uri)) openWebLink(uri, e.metaKey || e.ctrlKey) } },
   })
   const fit = new FitAddon()
   t.loadAddon(fit)
-  t.loadAddon(new WebLinksAddon((_e, uri) => window.open(uri, "_blank", "noopener")))
+  t.loadAddon(new WebLinksAddon((e, uri) => openWebLink(uri, e.metaKey || e.ctrlKey)))
   const box = document.createElement("div")
   box.style.width = box.style.height = "100%"
   const osc = t.parser.registerOscHandler(52, osc52)
