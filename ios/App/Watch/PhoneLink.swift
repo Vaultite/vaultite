@@ -28,7 +28,8 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         enum State: Equatable { case sending, saved(String), failed(String) }
         let id: String
         var state: State
-        var dispatched = false
+        /// The agent it was handed to (Claude, Codex), else nil: it's only in the inbox.
+        var agent: String?
     }
 
     @Published var events: [Event] = []
@@ -116,16 +117,16 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         if s.isReachable { s.sendMessage(["do": "wake"], replyHandler: nil) }
     }
 
-    /// A voice note's outcome (`error`, else `text` and `terminal` when the front door has it).
+    /// A voice note's outcome (`error`, else `text`, and `terminal` when an agent has it: `<agent>[_<account>]-<id>`).
     private func heard(_ id: String, _ outcome: [String: Any]) {
         let error = outcome["error"] as? String
         let state: Note.State = error.map { .failed($0) } ?? .saved(outcome["text"] as? String ?? "")
-        let dispatched = outcome["terminal"] != nil
+        let agent = (outcome["terminal"] as? String)?.split(whereSeparator: { $0 == "-" || $0 == "_" }).first.map { $0.prefix(1).uppercased() + $0.dropFirst() }
         if let i = notes.firstIndex(where: { $0.id == id }) {
             notes[i].state = state
-            notes[i].dispatched = dispatched
+            notes[i].agent = agent
         } else {
-            notes.insert(Note(id: id, state: state, dispatched: dispatched), at: 0)
+            notes.insert(Note(id: id, state: state, agent: agent), at: 0)
         }
         WKInterfaceDevice.current().play(error == nil ? .success : .failure)
     }

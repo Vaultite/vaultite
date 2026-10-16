@@ -177,7 +177,7 @@ export default async ($: VaultTest) => {
       const conf = path.join(VAULT, ".vaultite/plugins/inbox/data.json"), was = exists(".vaultite/plugins/inbox/data.json") ? fs.readFileSync(conf, "utf8") : null
       fs.writeFileSync(conf, JSON.stringify({ ...(was ? JSON.parse(was) : {}), dispatch: "claude" }))
       const [vs, vb] = await api("POST", "ops/inbox.voice", { text: "word ".repeat(1600), from: "Apple Watch" })
-      check("voice: a recording left running is kept, not handed to the front door", vs === 200 && vb.terminal === null && vb.why.includes("1600 words") && exists(vb.path), [vs, vb])
+      check("voice: a recording left running is kept, not handed to an agent", vs === 200 && vb.terminal === null && vb.why.includes("1600 words") && exists(vb.path), [vs, vb])
       if (was === null) fs.rmSync(conf); else fs.writeFileSync(conf, was)
       fs.rmSync(path.join(VAULT, vb.path))
     }

@@ -67,7 +67,7 @@ struct NoteLine: View {
                 .font(.footnote).foregroundStyle(.secondary)
         case let .saved(text):
             VStack(spacing: 2) {
-                Label(note.dispatched ? "Sent to the front door" : "In your inbox", systemImage: "checkmark.circle.fill")
+                Label(note.agent.map { "Sent to \($0)" } ?? "In your inbox", systemImage: "checkmark.circle.fill")
                     .font(.footnote).foregroundStyle(.green)
                 Text(text).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
             }

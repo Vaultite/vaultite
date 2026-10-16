@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { startAgent } from "../../../core/codingagents.ts"
+import { cap, startAgent } from "../../../core/codingagents.ts"
 import { AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
 import {
   bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
@@ -1189,7 +1189,7 @@ it down, do it, or say what it would do; one past 1,500 words (a recording left 
     }
     return { path: file, terminal, why }
   },
-  text: (r) => `In the inbox: ${r.path}${r.terminal ? `; the front door has it in ${r.terminal}` : r.why ? ` (not dispatched: ${r.why})` : ""}.`,
+  text: (r) => `In the inbox: ${r.path}${r.terminal ? `; ${cap(String(r.terminal).split(/[-_]/)[0])} has it in ${r.terminal}` : r.why ? ` (not dispatched: ${r.why})` : ""}.`,
 })
 
 /** Add an event from another plugin's backend (what it would POST): the service "inbox:event". */
