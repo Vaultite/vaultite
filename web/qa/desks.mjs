@@ -43,7 +43,9 @@ const pins = () => page.$$eval("aside [data-pin]", (els) => els.map((e) => e.get
 
 try {
   clearWorkspaces(VAULT)
-  writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...JSON.parse(pluginsBefore), disabled: ["backlinks"] }, null, 2) + "\n")
+  // (Workspaces is off by default)
+  const had = JSON.parse(pluginsBefore)
+  writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...had, disabled: ["backlinks"], enabled: [...(had.enabled ?? []).filter((x) => x !== "workspaces"), "workspaces"] }, null, 2) + "\n")
   writeFileSync(file(".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "terminal:sessions", "files:files"], right: [], collapsed: [] }) + "\n")
   // Its own files, whatever the vault holds: two pinned (at the top level, which the tree shows unfolded), a note to open
   // and one to pin, in Notes. pinNew off: pages that arrive with the plugins turned on above aren't pinned meanwhile.
