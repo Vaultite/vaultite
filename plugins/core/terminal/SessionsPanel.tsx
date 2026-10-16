@@ -5,7 +5,7 @@ import { Cloud, Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "l
 import {
   capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, fmtAgo, HeadingButton, isViewOpen, menuBelow, menuFor, notify,
   notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount,
-  useWorkspaceVersion, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
+  useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { cloudListed, getCloud, subscribeCloud } from "./cloud"
 import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
@@ -65,6 +65,8 @@ function menuOf(s: Session, a: Agent | null): MenuItem[] {
     ...(s.session ? [{ label: "Copy session ID", icon: Copy, run: copy(s.session, "session ID") }] : []),
     { label: "Copy terminal ID", icon: Copy, run: copy(s.id, "terminal ID") },
     ...(conversation ? [{ label: "Open conversation", icon: MessagesSquare, sep: true, run: () => openView(conversation, { newTab: !isViewOpen(conversation) }) }] : []),
+    // (Pin: its conversation, from Pinned)
+    ...viewMenuItems(`view:terminal/${s.id}`).map((it, i) => (i ? it : { ...it, sep: true })),
     { label: "End session", icon: X, danger: true, sep: true, run: () => void endForGood(s.id) },
   ]
 }

@@ -1,7 +1,7 @@
 // Pinned's store keys and its changes, one per pin, unpin or move, applied by the server to the list as it is then and
 // shown at once. With Workspaces, the current workspace's list (the vault's until its first change).
 import { Pin, PinOff, type LucideIcon } from "lucide-react"
-import { currentWorkspace, fileAt, getStore, isHidden, mutate, notify, offPlugin, pinInWorkspace, pinKind, plural, post, stem, workspacePins, type Store } from "@vaultite"
+import { currentWorkspace, fileAt, getStore, isHidden, mutate, notify, offPlugin, pinInWorkspace, pinKind, plural, post, stem, viewInfo, viewShown, workspacePins, type Store } from "@vaultite"
 
 /** A file of the vault, as the store lists it. */
 export type VaultFile = Store["files"]["files"][number]
@@ -10,6 +10,8 @@ declare module "@vaultite" {
   interface PluginState {
     /** The pinned entries, in order: vault paths. */
     pinned: string[]
+    /** A pinned view's name as it was when pinned (a conversation's), by its key. */
+    pinLabels?: Record<string, string>
   }
 }
 
@@ -28,9 +30,13 @@ export function shownPinned(store: Store, list = currentPins(store)) {
   })
 }
 
-/** A pinned entry as it shows: a file (a page), a heading or block in a note, or a search (bookmarks). */
+/** A pinned entry as it shows: a file (a page), a heading or block in a note, a search (bookmarks), or a view (a
+ *  coding agent's conversation: its tab's target). */
 export type PinEntry = { key: string; label: string } & (
-  { kind: "file"; file: VaultFile } | { kind: "heading"; file: VaultFile; heading: string } | { kind: "search"; query: string })
+  { kind: "file"; file: VaultFile } | { kind: "heading"; file: VaultFile; heading: string } | { kind: "search"; query: string } | { kind: "view"; target: string })
+
+/** A pinned view's name: as it was pinned, else its tab's. */
+export const viewLabel = (key: string, s: Store | null | undefined = getStore()) => s?.pinLabels?.[key] || viewInfo(key).label
 
 /** Every pinned entry that shows, in order: the pages (shownPinned), and the headings of notes that are there and are
  *  shown, and the searches. */
@@ -38,6 +44,7 @@ export function shownEntries(store: Store, list = currentPins(store)): PinEntry[
   return list.flatMap((p): PinEntry[] => {
     const k = pinKind(p)
     if ("search" in k) return k.search.trim() ? [{ key: p, kind: "search", query: k.search, label: k.search }] : []
+    if ("view" in k) return viewShown(k.view) ? [{ key: p, kind: "view", target: k.view, label: viewLabel(p, store) }] : []
     const f = fileAt(store.files.files, k.file)
     if (!f || offPlugin(f) || f.archived) return []
     if (!k.heading) return [{ key: p, kind: "file", file: f, label: stem(p) }]
@@ -60,17 +67,21 @@ export function pinVault(path: string, on = true, before?: string | null) {
 }
 
 /** Pin (at the end, or before `before`) or unpin in the sidebar's list: the current workspace's with Workspaces on,
- *  else the vault's. */
-export function pin(path: string, on = true, before?: string | null): Promise<unknown> {
+ *  else the vault's. `label`: a view's name, kept with it (a conversation's title, which its tab loses once it ends). */
+export function pin(path: string, on = true, before?: string | null, label?: string): Promise<unknown> {
+  if (on && label) {
+    mutate((s) => ({ ...s, pinLabels: { ...s.pinLabels, [path]: label } }))
+    void post("pins/label", { path, label }).catch(() => {})
+  }
   return currentWorkspace() ? pinInWorkspace(path, on, before, pinnedOf(getStore())) : pinVault(path, on, before)
 }
 export const togglePin = (path: string) => pin(path, !isPinned(path))
 
 /** Pin or unpin from a menu or command, where the sidebar may not be in view (folded, a phone): a toast says so, with
  *  Undo (back in its place). Drags and the checkbox menus show it where it happens, so they use pin. */
-export function pinNoted(path: string, on: boolean) {
+export function pinNoted(path: string, on: boolean, label?: string) {
   const k = pinKind(path)
-  const name = "search" in k ? `the search ${k.search}` : k.heading ?? path.split("/").pop()!.replace(/\.(md|html?|csv)$/i, "")
+  const name = "search" in k ? `the search ${k.search}` : "view" in k ? label ?? viewLabel(path) : k.heading ?? path.split("/").pop()!.replace(/\.(md|html?|csv)$/i, "")
   const list = currentPins()
   if (!on) {
     const after = list[list.indexOf(path) + 1] ?? null
@@ -78,7 +89,7 @@ export function pinNoted(path: string, on: boolean) {
     return pin(path, false)
   }
   notify(`Pinned ${name}`, { action: { label: "Undo", run: () => void pin(path, false) } })
-  return pin(path, true)
+  return pin(path, true, undefined, label)
 }
 
 /** Pin or unpin several (selected together), one after another so each lands, then one toast with Undo. `before`:

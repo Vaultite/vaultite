@@ -19,7 +19,7 @@ export { definePlugin, detailPath } from "@/core/define"
 /** The app's version and the plugin API's: a manifest's `minAppVersion` and `apiVersion` are checked against them. */
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
-export { pinKind, SEARCH as PIN_SEARCH } from "../../core/pins.ts"
+export { pinKind, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
 export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TimelineKind, ViewCtx, ViewDef, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
@@ -47,7 +47,7 @@ export { startedFresh } from "@/core/workspace"
 // tab shows and its menu, as in its bar.
 export { closeTab, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
 export { leaves as panesOf, type Group as TabGroup, type Tab } from "@/core/layout"
-export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, type TabInfo } from "@/components/Tabs"
+export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
@@ -67,7 +67,7 @@ export { askMove, askMoveMany, moveManyInto, treeShownItems } from "@/components
 // Recent files: opened lately in the workspace, and changed lately in the vault (a blank tab's sections, the Recent
 // files panel).
 export { changedFiles, RecentList, useFileIcon, useOpenedFiles, type RecentKind } from "@/components/RecentFiles"
-export { agentOfTerminal, agentsOn, iconNamed, useAgents, useEnabled, type Agent } from "@/core/plugins"
+export { agentOfTerminal, agentsOn, iconNamed, pinOfView, resolveView, useAgents, useEnabled, viewMenuItems, viewShown, type Agent } from "@/core/plugins"
 export { parseTerminal, type TerminalAgent } from "../../core/terminalids.ts"
 // Plugins' colours (--<id>), which an artifact gets too (as --vau-<id>).
 export { editorMenuItems, tintNames, webPageActions } from "@/core/plugins"
@@ -98,7 +98,7 @@ export {
 } from "@/core/scope"
 export type { Sidebars } from "@/core/plugins"
 // Views' tab titles and icons that follow live data (a terminal's session name): tell the tabs it changed.
-export { viewsChanged } from "@/core/plugins"
+export { useViewsVersion, viewsChanged } from "@/core/plugins"
 export { devicePref } from "@/core/prefs"
 // A value module state keeps, that hooks and subscribers follow (safe while a module loads).
 export { cell, type Cell } from "@/core/signal"

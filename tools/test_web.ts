@@ -544,7 +544,8 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("pins: follow a moved folder, go with the trash", pins.repinList(["N/a", "N/b", "M"], "N", "O").join() === "O/a,O/b,M" &&
     pins.repinList(["N/a", "M"], "N/a", null).join() === "M")
   check("pins: a heading follows its note, a search stays", pins.repinList(["N/a.md#Plan", "search:N/a.md", "N/a.md"], "N/a.md", "O/b.md").join() === "O/b.md#Plan,search:N/a.md,O/b.md" &&
-    pins.repinList(["N/a.md#Plan", "M"], "N", null).join() === "M" && JSON.stringify(pins.pinKind("N/a.md#^id")) === '{"file":"N/a.md","heading":"^id"}',
+    pins.repinList(["N/a.md#Plan", "M"], "N", null).join() === "M" && JSON.stringify(pins.pinKind("N/a.md#^id")) === '{"file":"N/a.md","heading":"^id"}' &&
+    JSON.stringify(pins.pinKind("view:terminal/resume-claude-a.md#x")) === '{"view":"view:terminal/resume-claude-a.md#x"}' && pins.repinList(["view:terminal/resume-claude-1"], "view:terminal", "x").join() === "view:terminal/resume-claude-1",
     pins.repinList(["N/a.md#Plan", "search:N/a.md", "N/a.md"], "N/a.md", "O/b.md"))
   check("sidebars: the default is by sort, without hidden panels", sb.defaultSidebars([{ key: "b", sort: 20 }, { key: "a", sort: 10 }, { key: "h", sort: 0, hidden: true }]).left.join() === "a,b")
   const up = sb.placePanel(s, "files:files", { side: "left", before: "search:search" })

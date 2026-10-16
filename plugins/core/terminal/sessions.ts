@@ -1,4 +1,4 @@
-import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, type Agent } from "@vaultite"
+import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, parseTerminal, type Agent } from "@vaultite"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
 // registers itself here while it's mounted.
@@ -202,6 +202,25 @@ export function subscribeSessions(fn: () => void) {
 export const getSessions = () => now
 /** The session with this id, as the server said last (null: not known yet). */
 export const sessionById = (id: string) => now.list?.find((s) => s.id === id) ?? null
+
+/** What a pin of terminal `id` keeps: its agent's conversation as a resume (resume-<agent>-<session>, then @<machine>),
+ *  when the agent has conversations (a session view) and says which one it's in; null for a shell. */
+export function pinOfTerminal(id: string): string | null {
+  const s = sessionById(id), t = parseTerminal(id)
+  const a = s ? agentIn(s) : agentOfTerminal(id)
+  const session = s?.session ?? t?.resume
+  if (!a?.session || !session) return null
+  const machine = s?.machine ?? t?.machine
+  return `resume-${a.name}-${session}${machine ? `@${machine}` : ""}`
+}
+
+/** The terminal already running the conversation resume id `id` names (not itself): opened there, it isn't resumed
+ *  twice. */
+export function runningResume(id: string): string | null {
+  const t = parseTerminal(id)
+  if (!t?.resume) return null
+  return now.list?.find((s) => s.id !== id && s.session === t.resume && (s.machine ?? null) === t.machine && agentIn(s)?.name === t.agent)?.id ?? null
+}
 
 /** The icon's status while an agent runs (when its hooks say: AgentStart's `state` on the server): a slow pulse while
  *  it works (opacity only, cheap), yellow with a dot while it waits on you (`waiting`, `tintOf`). */

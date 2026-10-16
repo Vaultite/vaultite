@@ -1,15 +1,18 @@
-// A pinned list changed one pin at a time, applied to the list as it is then, so a device with an old copy never brings
-// back a page unpinned elsewhere. An entry is a path, a heading or block in a note, or a search. Pure: both sides.
+// A pinned list changed one pin at a time, so an old copy never brings back a page unpinned elsewhere. An entry is a
+// path, a heading or block in a note, a search, or a view (a coding agent's conversation). Pure: both sides.
 
 /** A search pinned: "search:<query>". */
 export const SEARCH = "search:"
-/** What an entry is: a file, a heading (or block) in a note, or a search. */
-export function pinKind(entry: string): { file: string; heading?: string } | { search: string } {
+/** A view pinned, as a tab's target: "view:<name>/<arg>" (view:terminal/resume-claude-<session>: a conversation). */
+export const VIEW = "view:"
+/** What an entry is: a file, a heading (or block) in a note, a search, or a view (its tab's target). */
+export function pinKind(entry: string): { file: string; heading?: string } | { search: string } | { view: string } {
   if (entry.startsWith(SEARCH)) return { search: entry.slice(SEARCH.length) }
+  if (entry.startsWith(VIEW)) return { view: entry }
   const m = /^(.*?\.md)#(.+)$/i.exec(entry)
   return m ? { file: m[1], heading: m[2] } : { file: entry }
 }
-/** The file an entry is in (null: a search). */
+/** The file an entry is in (null: a search or a view). */
 export const pinFile = (entry: string) => { const k = pinKind(entry); return "file" in k ? k.file : null }
 /** The entry with its file moved to `file` (a search as it is). */
 export const withPinFile = (entry: string, file: string) => { const k = pinKind(entry); return "file" in k ? (k.heading ? `${file}#${k.heading}` : file) : entry }

@@ -11,7 +11,7 @@ import { moveTabsTo, hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
 import { leaves, vaultPath, type Group, type Tab } from "@/core/layout"
 import { PANES, type Drop } from "@/core/drop"
-import { useViewsVersion, viewFor } from "@/core/plugins"
+import { useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { fileIcon } from "@/components/FileTree"
@@ -100,6 +100,7 @@ function tabItems(tab: Tab, phone = false): MenuItem[] {
   const file = vaultPath(tab.to)
   const v = tab.to.startsWith("view:") ? viewFor(tab.to, getPrefs().disabled) : null
   if (v?.on && v.def.tabMenu) out.push(...v.def.tabMenu(v.arg).map((it, i) => ({ ...it, sep: i === 0 })))
+  if (v?.on) out.push(...viewMenuItems(tab.to).map((it, i) => ({ ...it, sep: i === 0 })))
   if (tab.to.startsWith("file:/")) out.push({ ...copyToVaultItem(tab.to.slice(5), () => selectTab(tab.id)), sep: true }, ...revealItem(tab.to.slice(5)))
   if (file) {
     const items = fileMenu(file, { phone, rename: () => { selectTab(tab.id); askRename(file) } })
@@ -212,14 +213,17 @@ export function useTabInfo(store: Store | null, pageInfo: (id: string) => TabInf
       const f = store?.files.files.find((x) => x.path === path)
       return { label: stem(path), ...fileIcon(path, f?.type ?? null, disabled, f) }
     }
-    if (t.to.startsWith("view:")) {
-      const v = viewFor(t.to, disabled)
-      return v ? { label: v.def.title(v.arg), icon: v.def.iconFor?.(v.arg) ?? v.def.icon,
-        iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on && !!v.def.iconBadge?.(v.arg) }
-        : { label: t.to.slice(5), icon: SquareDashed }
-    }
+    if (t.to.startsWith("view:")) return viewInfo(t.to, disabled)
     return pageInfo(t.to) ?? { label: t.to, icon: FileText }
   }
+}
+
+/** A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too). */
+export function viewInfo(to: string, disabled = getPrefs().disabled): TabInfo {
+  const v = viewFor(to, disabled)
+  return v ? { label: v.def.title(v.arg), icon: v.def.iconFor?.(v.arg) ?? v.def.icon,
+    iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on && !!v.def.iconBadge?.(v.arg) }
+    : { label: to.slice(5), icon: SquareDashed }
 }
 
 /** The app's own pages' names and icons (App's `pageInfo`), for what draws tabs outside the workspace (the Tabs panel). */

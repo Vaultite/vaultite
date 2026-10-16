@@ -17,6 +17,7 @@ import { closeTab, dropTabs, findOpen, focusGroup, getWorkspace, go, guarded, re
 import { openInSplit } from "@/core/splits"
 import { fileAt } from "@/core/pages"
 import { resolver } from "@/core/links"
+import { resolveView } from "@/core/plugins"
 
 
 export type VaultFile = {
@@ -170,7 +171,7 @@ onUiAction((m) => {
 /** Open a plugin's view. A view is shown once: already open anywhere, that tab shows whatever `newTab` or `split` say,
  *  so a terminal never gets two tabs fighting over its size. Else a new tab, or the group to the right. */
 export function openView(to: string, opts: { newTab?: boolean; split?: boolean; focus?: boolean } = {}) {
-  const target = to.startsWith("view:") ? to : `view:${to}`
+  const target = resolveView(to.startsWith("view:") ? to : `view:${to}`)
   if (findOpen(target)) return opts.focus === false ? undefined : go(target)
   if (opts.split) return openInSplit(target, "right", opts.focus !== false)
   go(target, opts.newTab)

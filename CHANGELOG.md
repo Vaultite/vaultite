@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Pin a Claude Code conversation to the sidebar (Pin in its terminal's menu, or drag its row onto Pinned): it keeps its
+  name, opens the terminal running it, or resumes it once its session has ended.
 - The file tree reveals the open file by default, however it was opened (⌘O, a link, a tab): its folders open and
   the tree scrolls to it when it's out of sight. Off in Settings, Files.
 - Right-clicking a row in a sidebar panel (a pinned page, a tab, a recent file, a machine, a web page, a button) shows

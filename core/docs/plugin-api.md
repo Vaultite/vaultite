@@ -118,6 +118,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `openElsewhere`: The places open in tabs it keeps off screen (other workspaces' tabs), so closing a tab here doesn't end what it shows (a terminal's shell) while one of those still has it.
 - `workspace`: Keeps workspaces (see WorkspaceHost): one plugin at a time, the first that's on.
 - `fileMenu`: Items it adds to a vault file's menu (the tree, the tab, the phone's …), for that file's path; [] for none.
+- `viewMenu`: Items it adds to a view's menus (its tab's, a terminal's row), for its tab's target ("view:terminal/abc"); [] for none.
 - `editorMenu`: Items it adds to a text editor's right-click menu (desktop), for that editor (`path`: its file); [] for none.
 - `folderMenu`: Items it adds to a folder's menu in the file tree, for that folder's path; [] for none.
 - `webPageActions`: Buttons it adds to a web page's bar in the Web viewer (see WebPageAction), for the page shown; [] for none.

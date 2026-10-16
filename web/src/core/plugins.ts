@@ -658,7 +658,7 @@ function safeView(name: string, def: ViewDef): ViewDef {
     try { return f(arg) } catch (e) { console.error(`view ${name}`, e); return or }
   })
   safe = { ...def, title: guard(def.title, name)!, iconFor: guard(def.iconFor, def.icon), iconClass: guard(def.iconClass, undefined),
-    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false) }
+    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), pinAs: guard(def.pinAs, null), resolve: guard(def.resolve, null) }
   safeViews.set(def, safe)
   return safe
 }
@@ -671,6 +671,32 @@ export function viewFor(to: string, disabled: string[]) {
     if (def) return { plugin: p, def: safeView(name, def), arg: rest.join("/"), on: isEnabled(p.id, disabled) }
   }
   return null
+}
+
+/** The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target. */
+export function viewMenuItems(target: string, disabled = getPrefs().disabled): MenuItem[] {
+  return active(disabled, getPrefs().order).flatMap((p) => {
+    try { return (p.viewMenu?.(target) ?? []).map(({ section: _, many: __, ...it }) => ({ ...it, icon: it.icon as MenuItem["icon"] })) } catch { return [] }
+  })
+}
+
+/** What pinning a view's tab pins (its `pinAs`): the pin's key ("view:terminal/resume-claude-<session>") and its name
+ *  now, or null when it can't be pinned. */
+export function pinOfView(target: string, disabled = getPrefs().disabled): { key: string; label: string } | null {
+  const v = viewFor(target, disabled)
+  if (!v?.on || !v.def.pinAs) return null
+  const arg = v.def.pinAs(v.arg)
+  return arg ? { key: `view:${target.replace(/^view:/, "").split("/")[0]}/${arg}`, label: v.def.title(v.arg) } : null
+}
+
+/** Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show). */
+export const viewShown = (target: string, disabled = getPrefs().disabled) => !!viewFor(target, disabled)?.on
+
+/** The target to open for this one (its view's `resolve`): a conversation already running, its terminal. */
+export function resolveView(target: string, disabled = getPrefs().disabled): string {
+  const v = viewFor(target, disabled)
+  const arg = v?.on ? v.def.resolve?.(v.arg) : null
+  return arg ? `view:${target.replace(/^view:/, "").split("/")[0]}/${arg}` : target
 }
 
 /** Whether a place is open in tabs a plugin that's on keeps off screen (`openElsewhere`: the other workspaces). */

@@ -13,7 +13,13 @@ export function pinned(vault: Vault): string[] {
   return Array.isArray(p) ? [...new Set(p.filter((x) => typeof x === "string").map((x) => relocatedPin(vault, x)))] : []
 }
 
-plugin.state(() => ({ pinned: pinned(plugin.vault) }))
+/** A pinned view's name as it was when pinned (a conversation's title), by its key: pages.json's `labels`. */
+export function labels(vault: Vault): Record<string, string> {
+  const l = vault.config("pages").labels
+  return l && typeof l === "object" && !Array.isArray(l) ? Object.fromEntries(Object.entries(l).filter(([, v]) => typeof v === "string")) as Record<string, string> : {}
+}
+
+plugin.state(() => ({ pinned: pinned(plugin.vault), pinLabels: labels(plugin.vault) }))
 
 /** Pin or unpin one entry (POST /api/pins), on the file as it is now. */
 export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; before?: unknown }) {
@@ -24,7 +30,11 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
   const cur = pinned(vault)
   const at = cur.indexOf(p)
   let out = cur
-  if (body.pinned === false) out = cur.filter((x) => x !== p)
+  if (body.pinned === false) {
+    out = cur.filter((x) => x !== p)
+    // (a view's name goes with it: pinned again, it's named as it is then)
+    if (p in labels(vault)) { const { [p]: _, ...rest } = labels(vault); vault.setConfig("pages", { ...conf, pinned: out, labels: rest }); return { pinned: out } }
+  }
   else if (at < 0 || body.before !== undefined) {
     // A page is a file (or a heading in one, or a search): a path that isn't one would be a pin nothing shows.
     const problem = at < 0 ? pinProblem(vault, p) : null
@@ -38,6 +48,16 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
 }
 
 plugin.route("POST", "pins", (req) => pinOne(plugin.vault, req.body ?? {}))
+
+/** Name a pinned view (POST /api/pins/label): what it shows as, its tab's title when pinned (a conversation's). */
+plugin.route("POST", "pins/label", (req) => {
+  const { path: p, label } = (req.body ?? {}) as { path?: unknown; label?: unknown }
+  if (typeof p !== "string" || !p.startsWith("view:") || typeof label !== "string") throw new HTTPError(400, "path (a view: view:<name>/<arg>) and label are required")
+  const conf = plugin.vault.config("pages"), now = labels(plugin.vault)
+  const name = label.trim().slice(0, 200)
+  if (now[p] !== name) plugin.vault.setConfig("pages", { ...conf, labels: { ...now, [p]: name } })
+  return { ok: true }
+})
 
 /** A file or folder moved (to null: to the trash): the pins follow it. */
 export function repin(vault: Vault, src: string, dst: string | null) {
@@ -135,7 +155,9 @@ plugin.op({
   summary: "Pin a file to the sidebar (at the end, or before another): the current workspace's list with Workspaces on.",
   help: `Adds a file to the sidebar's pages, or moves it when it's already there and before is given. Any file can be a
 page: a dashboard, a note, an artifact (.html), a table (.csv). A heading in a note ("Notes/Idea.md#Plan", a block
-"Notes/Idea.md#^id") and a search ("search:tag:#book") can be pinned too, like bookmarks.
+"Notes/Idea.md#^id") and a search ("search:tag:#book") can be pinned too, like bookmarks, and a coding agent's
+conversation ("view:terminal/resume-claude-<session id>", "@<machine>" after it for another machine's): it opens the
+terminal running it, else resumes it there.
 
 ${FLAGS}
 
@@ -143,6 +165,7 @@ ${FLAGS}
   vau pin Finance/Spending.html --before Dashboards/People.md
   vau pin "Notes/Idea.md#Plan"
   vau pin "search:tag:#book"
+  vau pin "view:terminal/resume-claude-0b5c9e2a-4f1d-4c4e-9a7e-2d6f1b3c8e90"
   vau pin Notes/Draft.md --workspace 2
   vau pin Dashboards/Today.md --vault`,
   kind: "write",

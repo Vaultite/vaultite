@@ -210,6 +210,12 @@ export type ViewDef = {
   keepsTab?: boolean
   /** Items for its tab's right-click menu, after Close and the splits (a terminal's End session). */
   tabMenu?: (arg: string) => (FileMenuItem & { danger?: boolean })[]
+  /** It can be pinned (Pinned): the arg its pin keeps, which opens it again later (a coding agent's terminal: its
+   *  conversation, resumed); null: this one can't be. */
+  pinAs?: (arg: string) => string | null
+  /** Opened with this arg: the arg to show instead (a conversation's resume, while a terminal already runs it: that
+   *  terminal), or null for this one. */
+  resolve?: (arg: string) => string | null
   /** The last tab showing it was closed (not moved, not navigated away from: it's still in that tab's history then;
    *  not while another tab has it, here or in another workspace). */
   onClose?: (arg: string) => void
@@ -542,6 +548,9 @@ export type PluginDef = {
   workspace?: WorkspaceHost
   /** Items it adds to a vault file's menu (the tree, the tab, the phone's …), for that file's path; [] for none. */
   fileMenu?: (path: string) => FileMenuItem[]
+  /** Items it adds to a view's menus (its tab's, a terminal's row), for its tab's target ("view:terminal/abc"); [] for
+   *  none. */
+  viewMenu?: (target: string) => FileMenuItem[]
   /** Items it adds to a text editor's right-click menu (desktop), for that editor (`path`: its file); [] for none. */
   editorMenu?: (ctx: { view: EditorView; path?: string }) => MenuItem[]
   /** Items it adds to a folder's menu in the file tree, for that folder's path; [] for none. */

@@ -4,28 +4,32 @@ import { useEffect, useId, useRef } from "react"
 import { FileText, Hash, Heading, PinOff, Plus, Search } from "lucide-react"
 import {
   checklist, cn, currentWorkspace, fileMenu, getStore, HeadingButton, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
-  openItem, openView, PIN_SEARCH, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
-  useDropTarget, useEnabled, useSelectable, useSelectedKeys, useWorkspaceVersion, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
+  openItem, openView, PIN_SEARCH, pinOfView, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
+  useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
 import { currentPins, isPinned, pin, pinMany, pinManyNoted, pinnable, pinNoted, shownEntries, type PinEntry } from "./types"
 
 const PINS = "pins"
 /** A file dragged here can be a page: not a folder, not a file from outside the vault, not a hidden one (or one of the
- *  list's own, a heading or a search, moved within it). */
-const canPin = (item: DragItem) => !!item.path && (item.from === "pin" || pinsOf(item).length > 0)
-/** What a drop would pin: the dragged file, or the files among several selected in the tree (not folders). */
+ *  list's own, a heading or a search, moved within it); or a view that can be pinned (a coding agent's terminal). */
+const canPin = (item: DragItem) => (item.from === "pin" ? !!item.path : pinsOf(item).length > 0)
+/** What a drop would pin: the dragged file, the files among several selected in the tree (not folders), or a view's
+ *  pin (a terminal's conversation). */
 const pinsOf = (item: DragItem) => (item.from === "pin" ? item.paths ?? [item.path!]
   : item.paths ? item.paths.filter((p) => pinnable(p) && !!getStore()?.files.files.some((f) => f.path === p))
+  : item.to?.startsWith("view:") ? [pinOfView(item.to)?.key ?? ""].filter(Boolean)
   : !item.folder && item.to?.startsWith("file:") && item.path && pinnable(item.path) ? [item.path] : [])
 /** The pinned pages' selection (core/select.ts), by entry key. */
 const SELECT = "pins"
-/** Where a pinned entry opens, as a tab's target (a heading: its note). */
-const targetOf = (e: PinEntry) => (e.kind === "search" ? `view:search/${e.query}` : `file:${e.file.path}`)
-/** Open a pinned entry: a page, a note at its heading, a search. */
+/** Where a pinned entry opens, as a tab's target (a heading: its note; a conversation: the terminal running it, if one
+ *  does). */
+const targetOf = (e: PinEntry) => (e.kind === "search" ? `view:search/${e.query}` : e.kind === "view" ? resolveView(e.target) : `file:${e.file.path}`)
+/** Open a pinned entry: a page, a note at its heading, a search, a view (a conversation, resumed unless it's running). */
 function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
   if (e.kind === "file") return openFile(e.key, opts)
   if (e.kind === "heading") return openAt(e.file.path, e.heading, opts)
+  if (e.kind === "view") return openView(e.target, { newTab: opts.newTab })
   openView(`search/${e.query}`, { newTab: opts.newTab })
 }
 /** Where a drop lands: before a page (null: the end; `known`: already pinned, so only its place changes), or `out` of
@@ -62,11 +66,12 @@ export function PinCurrent({ file }: { file: string }) {
   )
 }
 
-export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
+export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx & {
   /** Open pages in that pane (the Pinned tab opens them beside itself). */
   pane?: string }) {
   useEnabled() // drawn again when a plugin is turned on or off (its pages show or hide)
   useWorkspaceVersion() // and when the workspace, or its pins, change
+  useViewsVersion() // and when a pinned view's state does (a conversation running, waiting for an answer)
   const desk = currentWorkspace()
   const pages = shownEntries(store)
   // A page's other tabs (People map) keep its head (People) lit.
@@ -100,7 +105,8 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
     return { before, y: next ? next.getBoundingClientRect().top - top - 1 : end, known }
   }, (item, h) => {
     const keys = pinsOf(item)
-    if (keys.length === 1) void pin(keys[0], !("out" in h), "out" in h ? undefined : h.before)
+    // (a view dropped here keeps its name now: a conversation's, which its tab loses once it ends)
+    if (keys.length === 1) void pin(keys[0], !("out" in h), "out" in h ? undefined : h.before, item.from !== "pin" && item.to?.startsWith("view:") ? pinOfView(item.to)?.label : undefined)
     else if ("out" in h) void pinManyNoted(keys, false)
     // (Placed before the first one after them that isn't among them.)
     else void pinMany(keys, true, h.before && keys.includes(h.before) ? currentPins(store).slice(currentPins(store).indexOf(h.before)).find((k) => !keys.includes(k)) ?? null : h.before)
@@ -133,8 +139,10 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
   const row = (entry: PinEntry) => {
     const id = entry.key, to = targetOf(entry)
     const picked = picks.has(id)
-    const file = entry.kind === "search" ? null : entry.file.path
-    const icon = entry.kind === "search" ? Search : entry.kind === "heading" ? (entry.heading.startsWith("^") ? Hash : Heading) : iconOf(entry.file) ?? FileText
+    const file = entry.kind === "search" || entry.kind === "view" ? null : entry.file.path
+    const view = entry.kind === "view" ? viewInfo(entry.target) : null
+    const icon = entry.kind === "view" ? view!.icon : entry.kind === "search" ? Search : entry.kind === "heading" ? (entry.heading.startsWith("^") ? Hash : Heading) : iconOf(entry.file) ?? FileText
+    const active = entry.kind === "file" ? lit(id) : entry.kind === "view" && !!tab && (tab === entry.target || tab === to)
     return (
       <div key={id} onPointerDown={(e) => {
         if (file) openingSoon(file, true)
@@ -150,8 +158,9 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
           { label: "Unpin", icon: PinOff, sep: true, run: () => pinNoted(id, false) },
         ]))}
         className={cn(d?.item.from === "pin" && (d.item.path === id || (picked && d.item.paths)) && "opacity-40")}>
-        <SidebarRow data-pin={id} data-select-key={id} {...selectedAttr(picked)} href={`#${entry.kind === "search" ? `view/${encodeURIComponent(`search/${entry.query}`)}` : `file/${encodeURIComponent(file!)}`}`} icon={icon}
-          label={entry.label} open={open} more active={entry.kind === "file" && lit(id)} swipe={() => [{ label: "Unpin", icon: PinOff, run: () => pinNoted(id, false), removes: true }]}
+        <SidebarRow data-pin={id} data-select-key={id} {...selectedAttr(picked)} href={`#${file ? `file/${encodeURIComponent(file)}` : `view/${encodeURIComponent(to.slice(5))}`}`} icon={icon}
+          tint={view?.tint} iconClassName={view?.iconClassName} badge={view?.badge}
+          label={entry.label} open={open} more active={active} swipe={() => [{ label: "Unpin", icon: PinOff, run: () => pinNoted(id, false), removes: true }]}
           onClick={(e) => { if (!selectClick(e, SELECT, id, entry.kind === "file" && lit(id) ? id : null)) openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane }) }} />
       </div>
     )

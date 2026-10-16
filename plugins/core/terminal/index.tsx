@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, AmbientButton, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
-import { agentIn, current, endForGood, getSessions, labelOf, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
+import { agentIn, current, endForGood, getSessions, labelOf, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
 
@@ -92,8 +92,11 @@ export default definePlugin({
       full: true,
       // Links, pages and other views open beside a terminal, never in its tab.
       keepsTab: true,
+      // A coding agent's terminal pins as its conversation, and a pin opens the terminal running it, else resumes it.
+      pinAs: pinOfTerminal,
+      resolve: runningResume,
       // Its last tab closed: an idle shell ends, one running something keeps running (sessions.ts: tabClosed). Ending
-      // for good is the Terminals panel's x, the tab's End session, or the command.
+      // for good is the Terminals row's …, the tab's End session, or the command.
       onClose: (arg) => tabClosed(arg || "main"),
       tabMenu: (arg) => [{ label: "End session", icon: SquareX, danger: true, run: () => void endForGood(arg || "main") }],
       render: ({ arg, focused, close }) => (

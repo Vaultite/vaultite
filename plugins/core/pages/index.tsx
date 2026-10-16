@@ -1,6 +1,6 @@
 import { FileText, Pin, PinOff } from "lucide-react"
 import {
-  currentEditor, currentFile, definePlugin, getTabLayout, iconOf, isDoc, isViewOpen, openFile, openView, PIN_SEARCH, stem, tintOf, useCommands, useFocusedFile,
+  currentEditor, currentFile, definePlugin, pinOfView, getTabLayout, iconOf, isDoc, isViewOpen, openFile, openView, PIN_SEARCH, stem, tintOf, useCommands, useFocusedFile,
   usePane, useWorkspaceVersion, type Store, type TabLayout,
 } from "@vaultite"
 import { PinCurrent, pinChecklist, PinnedPages } from "./Pinned"
@@ -108,6 +108,12 @@ export default definePlugin({
   // A note, JSON, an artifact or a table can be a page: Pin or Unpin in its menus (the tree's, its tab's, the phone's …),
   // in the current workspace's list with Workspaces on.
   fileMenu: (path) => (pinnable(path) && isDoc(path) ? pinItems(path) : []),
+  // A view that can be pinned (a coding agent's terminal: its conversation): Pin or Unpin in its tab's menu and its row's.
+  viewMenu: (target) => {
+    const p = pinOfView(target)
+    if (!p) return []
+    return [isPinned(p.key) ? { label: "Unpin", icon: PinOff, run: () => void pinNoted(p.key, false) } : { label: "Pin", icon: Pin, run: () => void pinNoted(p.key, true, p.label) }]
+  },
   // The pinned pages, found first (search's highest weight) and listed with the suggestions.
   search: (store) => shownPinned(store).map(({ key, file }) => ({
     id: `page-${key}`, title: stem(key), meta: "Page", kind: "Page", icon: iconOf(file) ?? FileText, tint: tintOf(file.tint) ?? "var(--primary)",

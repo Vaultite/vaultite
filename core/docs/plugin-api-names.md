@@ -334,8 +334,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji.
 - `PIN_SEARCH`: A search pinned: "search:<query>".
+- `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>/<arg>" (view:terminal/resume-claude-<session>: a conversation).
 - `pinInWorkspace(path, on, before, base)`: Pin a page in the current workspace (at the end, or before `before`) or unpin it there; one without a list of its own starts from `base` (the vault's).
-- `pinKind(entry)`: What an entry is: a file, a heading (or block) in a note, or a search.
+- `pinKind(entry)`: What an entry is: a file, a heading (or block) in a note, a search, or a view (its tab's target).
+- `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`): the pin's key ("view:terminal/resume-claude-<session>") and its name now, or null when it can't be pinned.
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
@@ -367,6 +369,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.
 - `resolvePlace(agent, asked?)`: Where a new one opens: what's asked (machine "" is this one), else the workspace's default.
 - `resolver(s)`: Resolve a wikilink target written in `from` (Obsidian's rules: a path, the closest file of that name, then titles, aliases and plugins' names), or null.
+- `resolveView(target, disabled?)`: The target to open for this one (its view's `resolve`): a conversation already running, its terminal.
 - `restoreFile(path)`: Put something from the trash back where it was.
 - `restyleMap(map, t)`: Recolour a loaded style for the app (call on "style.load").
 - `revealLabel`: Showing a file where it is: Finder on a Mac, the file manager elsewhere.
@@ -521,12 +524,16 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useTextSizeWheel(ref, kind, first?)`: ⌘/⌃ + wheel (or a pinch) over `ref` steps `kind`'s size instead of zooming the page.
 - `useTick(ms?, on?)`: A number that goes up every `ms` while the page is shown (and `on`): redraws relative times, or asks again.
 - `useVaultChange(fn, paths?)`: Run fn when these paths change, or a folder they're in (or anything, when paths is omitted); a folder's files need a predicate, `(p) => p.startsWith("dir/")`.
+- `useViewsVersion()`: Re-render when a view's title or icon changes (returns a counter).
 - `useVisibleArea(on)`: The part of the window the user sees (above the on-screen keyboard), followed while `on`.
 - `useWorkspaceVersion()`: Redraws when the current workspace or what's kept in it changes; answers a number that changes then.
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
+- `viewInfo(to, disabled?)`: A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too).
+- `viewMenuItems(target, disabled?)`: The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target.
 - `viewsChanged()`: Tell the tabs that a view's `title` or `iconClass` answers something else now.
+- `viewShown(target, disabled?)`: Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show).
 - `WebEvent`
 - `WebPageAction`: A button a plugin adds to a web page's bar in the Web viewer (its icon, `label` its tooltip), also in its tab's menu.
 - `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).
@@ -596,8 +603,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseCsv(text)`: Rows of fields.
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
 - `pathAsSaid(tree, raw)`: A path as the user says it ("Today", "notes/idea") made a vault path: exact, with .md, any case, a file's name, or a path from before a folder moved; a web address is its web tab.
-- `pinFile(entry)`: The file an entry is in (null: a search).
-- `pinKind(entry)`: What an entry is: a file, a heading (or block) in a note, or a search.
+- `pinFile(entry)`: The file an entry is in (null: a search or a view).
+- `pinKind(entry)`: What an entry is: a file, a heading (or block) in a note, a search, or a view (its tab's target).
 - `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file that isn't in the vault, an empty search), or null.
 - `pipeSockets(ws, up, failed)`: Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its close comes back; `failed` when it can't be reached.
 - `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end) or unpinned (`on` false).
