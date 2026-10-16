@@ -86,6 +86,7 @@ function boxStyle(p: P): CSSProperties {
   if (p.textAlign) s.textAlign = p.textAlign as CSSProperties["textAlign"]
   if (p.opacity !== undefined) s.opacity = num(p.opacity)
   if (p.overflow) s.overflow = str(p.overflow) as CSSProperties["overflow"]
+  if (p.clip) s.overflow = "hidden"
   const c = tone(p.color)
   if (c) s.color = c
   return s
