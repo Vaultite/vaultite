@@ -182,7 +182,11 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
       const s = m.id !== undefined ? shell(m.id) : c.session
       if (!s) return undefined
       s.activity = Date.now()
-      try { s.pty.write(Buffer.from(String(m.b64 ?? ""), "base64") as unknown as string) } catch { /* ended */ }
+      // `paste` (vau terminal send, a long text): bracketed when the program asked for that, so it takes it whole
+      // rather than in the pty's pieces. (Markers inside it are taken out: they'd end it early.)
+      const text = Buffer.from(String(m.b64 ?? ""), "base64")
+      const data = m.paste && s.term.modes.bracketedPasteMode ? `\x1b[200~${text.toString("utf8").replace(/\x1b\[20[01]~/g, "")}\x1b[201~` : text
+      try { s.pty.write(data as unknown as string) } catch { /* ended */ }
       return undefined
     }
     case "resize": {

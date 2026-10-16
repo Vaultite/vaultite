@@ -90,12 +90,24 @@ export interface Backend {
   /** The screen and `lines` above it, as text. */
   screen(id: string, lines: number): Promise<string>
   /** Type `text` into it (as typed, not as keys), then Enter apart from it (a program reading a paste takes an Enter
-   *  inside it as a newline). */
-  send(id: string, text: string, enter: boolean): Promise<void>
+   *  inside it as a newline). `paste`: as a bracketed paste, when the program there asked for those (asPaste). */
+  send(id: string, text: string, enter: boolean, o?: { paste?: boolean }): Promise<void>
   rename?(from: string, to: string): Promise<void>
   /** Forget its history (what scrolling up shows): tmux's, once a ready shell's typed line has given way to an agent.
    *  (The keeper's goes with the script's `clear`, which clears the scrollback too.) */
   clearHistory?(id: string): Promise<void>
+}
+
+/** A long or multi-line text goes as a paste: typed, an agent reads it in the pty's ~1 KB pieces, each a paste of its
+ *  own (joined with a line break, or dropped while it's busy). A short one stays keys (a "1" answering a menu). */
+export const asPaste = (text: string) => Buffer.byteLength(text) > 256 || text.includes("\n")
+/** `text` as a bracketed paste (markers inside it taken out, so it can't end it early). */
+export const bracketed = (text: string) => `\x1b[200~${text.replace(/\x1b\[20[01]~/g, "")}\x1b[201~`
+/** Whether output leaves bracketed paste on (`\e[?2004h`) or off, else `was`. */
+export function pasteMode(d: string, was: boolean) {
+  let on = was
+  for (const m of d.matchAll(/\x1b\[\?([\d;]+)([hl])/g)) if (m[1].split(";").includes("2004")) on = m[2] === "h"
+  return on
 }
 
 /** How long typed text needs before its Enter: an agent takes a long text as a paste, and an Enter inside that is a new line. */
@@ -234,7 +246,7 @@ export async function mirrored(link: Link, scrollback = limits.scrollback()): Pr
 // ---------- pty: the server's own children (they end with it)
 
 export function plainBackend(): Backend {
-  const shells = new Map<string, { p: IPty; created: number; activity: number; out: Tail; attached: number }>()
+  const shells = new Map<string, { p: IPty; created: number; activity: number; out: Tail; attached: number; paste: boolean }>()
   const get = (id: string) => {
     const s = shells.get(id)
     if (!s) throw new Error(`there's no shell '${id}'`)
@@ -253,10 +265,11 @@ export function plainBackend(): Backend {
       const lib = await loadPty()
       const p = lib.spawn(spec.shell, shellArgs(spec.shell, spec.run), { name: "xterm-256color", cols: spec.cols, rows: spec.rows, cwd: spec.run?.cwd || spec.cwd,
         env: { ...spec.env, ...spec.ctx } })
-      const s = { p, created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0 }
+      const s = { p, created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0, paste: false }
       p.onData((d) => {
         s.activity = Date.now()
         s.out.push(d)
+        s.paste = pasteMode(d, s.paste)
       })
       p.onExit(() => { if (shells.get(id) === s) shells.delete(id) })
       shells.set(id, s)
@@ -273,9 +286,9 @@ export function plainBackend(): Backend {
     },
     kill: async (id) => { try { get(id).p.kill("SIGHUP") } catch { /* ended */ } },
     screen: async (id, lines) => plain(get(id).out.text()).replace(/\s+$/, "").split("\n").slice(-lines).join("\n"),
-    async send(id, text, enter) {
+    async send(id, text, enter, o) {
       const s = get(id)
-      if (text) s.p.write(text)
+      if (text) s.p.write(o?.paste && s.paste ? bracketed(text) : text)
       if (enter) { if (text) await new Promise((r) => setTimeout(r, settle(text))); s.p.write("\r") }
     },
   }
@@ -453,8 +466,9 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
     kill: async (id) => { await ask("kill", { id }) },
     rename: async (from, to) => { await ask("rename", { id: from, to }) },
     screen: async (id, lines) => String((await ask("screen", { id, lines })).text ?? ""),
-    async send(id, text, enter) {
-      if (text) await ask("input", { id, b64: Buffer.from(text).toString("base64") }).catch(() => {})
+    async send(id, text, enter, o) {
+      // (the keeper brackets a paste when its program asked for that: it has the screen's modes)
+      if (text) await ask("input", { id, b64: Buffer.from(text).toString("base64"), ...(o?.paste ? { paste: true } : {}) }).catch(() => {})
       if (enter) {
         if (text) await new Promise((r) => setTimeout(r, settle(text)))
         await ask("input", { id, b64: Buffer.from("\r").toString("base64") }).catch(() => {})

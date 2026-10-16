@@ -138,8 +138,16 @@ export function tmuxBackend(name: string, o: { conf: string; env: () => Record<s
       return tmux("capture-pane", "-p", "-J", "-t", pane(id), "-S", String(-Math.max(0, lines - height)))
     },
     clearHistory: async (id) => { await tmux("clear-history", "-t", pane(id)).catch(() => {}) },
-    async send(id, text, enter) {
-      if (text) await tmux("send-keys", "-t", pane(id), "-l", "--", text)
+    async send(id, text, enter, o) {
+      // A paste through a buffer: tmux brackets it (-p) when the program asked for that, its line breaks as they are (-r).
+      if (text && o?.paste) {
+        const buf = `vau-send-${id}`, dir = fs.mkdtempSync(path.join(os.tmpdir(), "vau-send-")), file = path.join(dir, "text")
+        try {
+          fs.writeFileSync(file, text, { mode: 0o600 })
+          await tmux("load-buffer", "-b", buf, file)
+        } finally { fs.rmSync(dir, { recursive: true, force: true }) }
+        await tmux("paste-buffer", "-p", "-r", "-d", "-b", buf, "-t", pane(id))
+      } else if (text) await tmux("send-keys", "-t", pane(id), "-l", "--", text)
       if (enter) { if (text) await new Promise((r) => setTimeout(r, 150)); await tmux("send-keys", "-t", pane(id), "Enter") }
     },
   }

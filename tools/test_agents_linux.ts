@@ -471,6 +471,31 @@ async function terminalsPart(backend: string, OC: string) {
     await endAndCheck(`hermes resumed (${tag})`, rh)
   }
 
+  // vau terminal send: a long text arrives whole, as one bracketed paste where the program asked for those (an agent
+  // takes typed text in the pty's ~1 KB pieces, each a paste of its own, and drops some while busy); a short one typed.
+  const recorder = path.join(TMP, "recorder.mjs")
+  fs.writeFileSync(recorder, [
+    `import fs from "node:fs"`,
+    `const [out, bp] = process.argv.slice(2); let got = ""`,
+    `process.stdin.setRawMode(true); process.stdout.write((bp === "1" ? "\\x1b[?2004h" : "") + "REC-READY\\r\\n")`,
+    `process.stdin.on("data", (d) => { got += d; if (got.endsWith("\\r")) { fs.writeFileSync(out, got); process.stdout.write(bp === "1" ? "\\x1b[?2004l" : ""); process.exit(0) } })`,
+  ].join("\n"))
+  const long = Array.from({ length: 1700 }, (_, i) => `w${i}`).join(" ") + " café ü \x1b[201~ end" // (~10k, a stray end marker in it)
+  for (const bp of [true, false]) {
+    const id = rand(), out = path.join(TMP, `sent-${id}`)
+    await term.start(id)
+    await screenHas(id, /\$ *$/m, 15000)
+    await term.send(id, `node ${recorder} ${out} ${bp ? 1 : 0}`)
+    await screenHas(id, /REC-READY/)
+    await term.send(id, "ok", false)
+    await term.send(id, long)
+    const got = await waitFor(() => { try { return fs.readFileSync(out, "utf8") } catch { return null } }, 10000)
+    const want = bp ? `ok\x1b[200~${long.replace("\x1b[201~", "")}\x1b[201~\r` : `ok${long}\r`
+    check(`send (${tag}): ${long.length} characters arrive whole, ${bp ? "as one bracketed paste" : "typed (no bracketed paste asked)"}; a short text typed`,
+      got === want, { got: got?.length, want: want.length, start: JSON.stringify(got?.slice(0, 40)), end: JSON.stringify(got?.slice(-40)) })
+    await endAndCheck(`send (${tag})`, id)
+  }
+
   if (backend !== "vaultite") return // the rest is the same in every backend
 
   // A first prompt reaches the agent whole: quotes, a dollar sign, backticks and accents.

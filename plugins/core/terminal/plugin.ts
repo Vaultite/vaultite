@@ -12,7 +12,7 @@ import {
   type Request,
 } from "../../../core/plugins.ts"
 import {
-  limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, type AgentRun, type Backend,
+  asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, type AgentRun, type Backend,
   type Link, type Listed as Shell,
 } from "./backend.ts"
 import { terminalOps } from "./ops.ts"
@@ -789,7 +789,7 @@ plugin.route("POST", "terminals/*/send", async (req) => {
   const text = typeof req.body?.text === "string" ? req.body.text : ""
   const enter = req.body?.enter !== false
   if (!text && !enter) throw new HTTPError(400, "send needs a text (or enter)")
-  await b.send(id, text, enter)
+  await b.send(id, text, enter, { paste: asPaste(text) })
   setTimeout(listChanged, 400)
   return { id, sent: text.length, enter }
 }, { lock: false })
