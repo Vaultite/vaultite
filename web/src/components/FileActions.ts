@@ -183,25 +183,33 @@ export const moreItem = (items: MenuItem[]): MenuItem[] =>
 
 /** A vault file's menu as its tab shows it (the tree's, but for New): change it, the plugins' groups, its path, Delete.
  *  `rename`: how it's renamed (else in its tab, opened first); `phone` leaves out what a phone hasn't got. */
-export function fileMenu(file: string, opts: { rename?: () => void; phone?: boolean } = {}): MenuItem[] {
+export function fileMenu(file: string, opts: { rename?: () => void; phone?: boolean; short?: boolean } = {}): MenuItem[] {
   const ro = isReadOnly(file), locked = ro || isProtected(file)
   const plug = pluginFileGroups(file)
+  const rename = renameItem(file, opts.rename ?? (() => { openFile(file); askRename(file) }))
+  const reveal: MenuItem = { label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(file, { scroll: true, flash: true }) }
+  const del: MenuItem[] = !isProtected(file) ? [{ label: ro ? "Delete permanently" : "Delete", icon: Trash2, danger: true, run: () => remove(file) }] : []
+  // `short` (a desktop tab's, the tree at hand): what's about the file where it is, the rest in More file actions ▸
+  // (Delete too: not a misclick away from Close)
+  if (opts.short) {
+    const more = grouped([
+      locked ? [] : [{ label: "Move file to…", icon: FileInput, run: () => askMove(file) }, duplicateItem(file)],
+      plug.navigate, ...plug.rest, plug.more, del,
+    ])
+    return [...(locked ? [] : [rename]), copyPathItem(file), reveal, ...revealItem(file),
+      ...(more.length ? [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: more }] : [])]
+  }
   return grouped([
     locked ? [] : [
       // (a phone renames in its title, so Change icon is an item of its own there)
-      ...(opts.phone ? iconItem(file) : [renameItem(file, opts.rename ?? (() => { openFile(file); askRename(file) }))]),
+      ...(opts.phone ? iconItem(file) : [rename]),
       { label: "Move file to…", icon: FileInput, run: () => askMove(file) },
       duplicateItem(file),
     ],
     plug.navigate,
     ...plug.rest,
-    [
-      copyPathItem(file),
-      ...(opts.phone ? [] : [{ label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(file, { scroll: true, flash: true }) }]),
-      ...revealItem(file),
-      ...moreItem(plug.more),
-    ],
-    !isProtected(file) ? [{ label: ro ? "Delete permanently" : "Delete", icon: Trash2, danger: true, run: () => remove(file) }] : [],
+    [copyPathItem(file), ...(opts.phone ? [] : [reveal]), ...revealItem(file), ...moreItem(plug.more)],
+    del,
   ])
 }
 

@@ -120,8 +120,8 @@ check("closing the lower pane's last tab closes it", ps2.length === 2 && ps2[1].
 check("...no horizontal divider left", await hsep.count() === 0)
 await tab(ps2[1].id, stem(notes[0])).click({ button: "right" }); await wait(200)
 const items = await page.locator("[role=menu] button").allInnerTexts()
-check("tab menu has the split items", ["Split right", "Split down", "Move to new split right", "Move to new split down"].every((x) => items.includes(x)), items)
-check("...Move to new split is off for a pane's only tab", await page.locator("[role=menu] button", { hasText: "Move to new split right" }).isDisabled())
+check("tab menu has the split items", ["Split right", "Split down"].every((x) => items.includes(x)), items)
+check("...Move to new split isn't offered for a pane's only tab (it's Split's submenu elsewhere)", !items.some((x) => x.startsWith("Move to new split")), items)
 await page.locator("[role=menu] button", { hasText: /^Close$/ }).click(); await wait(300)
 ps = await panes()
 // Full width: to the main area's right edge, the window's less an open right sidebar (--right-sidebar, App.tsx; the

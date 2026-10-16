@@ -253,7 +253,7 @@ try {
     await page.evaluate((f) => { location.hash = `#file/${encodeURIComponent(f)}` }, file)
     await until(async () => (await tabs()).some((t) => t.includes(file.replace(/\.md$/, ""))), 6000)
     await page.click(`section[aria-label=Pane] [role=tab]:has-text("${file.replace(/\.md$/, "")}")`, { button: "right" })
-    await menuItem("Move to new split right").click()
+    await menuItem("Split right").hover(); await wait(300); await menuItem("Move to new split right").click()
     return until(async () => { const g = await groups(); return g.length === 2 ? g : null }, 6000)
   }
   writeFileSync(paneFile, "A pane on its own.\n")
@@ -271,7 +271,7 @@ try {
   check("...dropped: one pane with both tabs", !!(await until(async () => { const g = await groups(); return g.length === 1 && g[0].tabs.some((t) => t.includes("Qa ws pane")) && g[0].tabs.some((t) => t.includes("Terminal")) }, 6000)), await groups())
   // A split again, then that pane onto number 3 (unused): 3 is made with it, this window keeps its other pane.
   await page.click(`section[aria-label=Pane] [role=tab]:has-text("Qa ws pane")`, { button: "right" })
-  await menuItem("Move to new split right").click()
+  await menuItem("Split right").hover(); await wait(300); await menuItem("Move to new split right").click()
   gs = await until(async () => { const g = await groups(); return g.length === 2 ? g : null }, 6000)
   seen = await drag(await mid(handle(gs[1].id)), 3)
   check("pane onto an unused number: it lights up, 'Move pane to workspace 3'", JSON.stringify(seen.lit) === "[\"3\"]" && seen.ghost.includes("Move pane to workspace 3"), seen)

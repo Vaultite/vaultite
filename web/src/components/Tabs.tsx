@@ -26,26 +26,30 @@ export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClas
   badge?: boolean }
 
 
-/** Right-click on a tab. */
-function tabMenu(tab: Tab, last: boolean, count: number, group: Group): MenuItem[] {
-  const out: MenuItem[] = [
-    // ("Pin tab", as its command: the file's own Pin, further down, pins it to the sidebar)
-    tab.pinned ? { label: "Unpin tab", icon: PinOff, run: () => togglePinTab(tab.id) } : { label: "Pin tab", icon: Pin, run: () => togglePinTab(tab.id) },
-    { label: "Close", icon: X, sep: true, run: () => closeTab(tab.id) },
+/** `it`, with `other` (its variant: moving instead of copying) in its submenu, or alone when that can't be done now. */
+const withVariant = (it: MenuItem, other: MenuItem): MenuItem => (other.disabled ? it : { ...it, split: true, items: [it, other] })
+
+/** Right-click on a tab: the tab's own (closing, where it shows), then what it shows. What a bar does (stack, hide)
+ *  is its empty space's, but stacked (to undo it where it shows) and where there's none to click (the bar hidden): `bar`. */
+function tabMenu(tab: Tab, last: boolean, count: number, group: Group, bar = false): MenuItem[] {
+  const siblings = hasSiblings(tab.id), blank = tab.to === "new"
+  return [
+    { label: "Close", icon: X, run: () => closeTab(tab.id) },
     { label: "Close others", run: () => closeTabs("others", tab.id), disabled: count < 2 },
     { label: "Close tabs to the right", run: () => closeTabs("right", tab.id), disabled: last },
     { label: "Close all", run: () => closeTabs("all", tab.id) },
-    { label: "Split right", icon: Columns2, sep: true, run: () => splitTab("right", tab.id) },
-    { label: "Split down", icon: Rows2, run: () => splitTab("bottom", tab.id) },
-    { label: "Move to new split right", run: () => moveToSplit("right", tab.id), disabled: !hasSiblings(tab.id) },
-    { label: "Move to new split down", run: () => moveToSplit("bottom", tab.id), disabled: !hasSiblings(tab.id) },
-    ...(isPopout() ? [{ label: "Move to main window", icon: AppWindow, sep: true, run: () => moveToMain([tab.id]), disabled: !hasMainWindow() }] : []),
-    { label: "Move to new window", icon: isPopout() ? undefined : AppWindow, sep: !isPopout(), run: () => popOut(tab.id, true), disabled: tab.to === "new" },
-    { label: "Open in new window", run: () => popOut(tab.id), disabled: tab.to === "new" },
-    ...barItems(group),
+    // ("Pin tab", as its command: the file's own Pin, under More file actions, pins it to the sidebar)
+    tab.pinned ? { label: "Unpin tab", icon: PinOff, sep: true, run: () => togglePinTab(tab.id) } : { label: "Pin tab", icon: Pin, sep: true, run: () => togglePinTab(tab.id) },
+    withVariant({ label: "Split right", icon: Columns2, run: () => splitTab("right", tab.id) },
+      { label: "Move to new split right", icon: Columns2, run: () => moveToSplit("right", tab.id), disabled: !siblings }),
+    withVariant({ label: "Split down", icon: Rows2, run: () => splitTab("bottom", tab.id) },
+      { label: "Move to new split down", icon: Rows2, run: () => moveToSplit("bottom", tab.id), disabled: !siblings }),
+    ...(isPopout() ? [{ label: "Move to main window", icon: AppWindow, run: () => moveToMain([tab.id]), disabled: !hasMainWindow() }] : []),
+    withVariant({ label: "Move to new window", icon: AppWindow, run: () => popOut(tab.id, true), disabled: blank },
+      { label: "Open in new window", icon: AppWindow, run: () => popOut(tab.id), disabled: blank }),
+    ...tabItems(tab),
+    ...(bar || group.stacked ? barItems(group) : []),
   ]
-  out.push(...tabItems(tab))
-  return out
 }
 
 /** The tabs' selection (core/select.ts): by tab id, the bars', the Tabs panel's and the phone's cards alike. */
@@ -104,7 +108,7 @@ function tabItems(tab: Tab, phone = false): MenuItem[] {
   if (v?.on) out.push(...viewMenuItems(tab.to).map((it, i) => ({ ...it, sep: i === 0 })))
   if (tab.to.startsWith("file:/")) out.push({ ...copyToVaultItem(tab.to.slice(5), () => selectTab(tab.id)), sep: true }, ...revealItem(tab.to.slice(5)))
   if (file) {
-    const items = fileMenu(file, { phone, rename: () => { selectTab(tab.id); askRename(file) } })
+    const items = fileMenu(file, { phone, short: !phone, rename: () => { selectTab(tab.id); askRename(file) } })
     if (items.length) items[0] = { ...items[0], sep: true }
     out.push(...items)
   }
@@ -239,7 +243,7 @@ export function tabMenuOf(id: string): MenuItem[] {
   const g = leaves(getWorkspace().root).find((x) => x.tabs.some((t) => t.id === id))
   if (!g) return []
   const i = g.tabs.findIndex((t) => t.id === id)
-  return tabMenu(g.tabs[i], i === g.tabs.length - 1, g.tabs.length, g)
+  return tabMenu(g.tabs[i], i === g.tabs.length - 1, g.tabs.length, g, !getPrefs().tabBar)
 }
 
 /** On top of its group's pane, so it never moves when a tab's page is narrower or wider than another's. */
@@ -299,7 +303,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
     return (
       <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden onContextMenu={menuFor(() => barMenu(group))}
         className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
-        <div data-pane-title onContextMenu={menuFor(() => tabMenu(shown, shown === tabs.at(-1), tabs.length, group))}
+        <div data-pane-title onContextMenu={menuFor(() => tabMenu(shown, shown === tabs.at(-1), tabs.length, group, true))}
           className={cn("flex min-w-0 flex-1 items-center gap-1.5 pl-2 text-[13px]", d?.item.group === group.id && "opacity-50")}>
           {fileIcons && <Badged on={i.badge}><i.icon className={cn("size-3.5 shrink-0", !i.tint && "text-muted-foreground", i.iconClassName)} strokeWidth={2.25} style={i.tint ? { color: i.tint } : undefined} /></Badged>}
           <span className={cn("min-w-0 truncate font-medium", focused ? "text-foreground" : "text-muted-foreground")}>{i.label}</span>

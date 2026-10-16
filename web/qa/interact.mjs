@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { REVEAL, apiAt, qa, until, wait } from "./lib/qa.mjs"
+import { apiAt, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/interact-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -152,21 +152,25 @@ await cmd("Change colour scheme"); await wait(400)
 await page.keyboard.press("Escape"); await wait(400)
 check("a sheet (colour schemes) closed with Escape: back in the editor", (await focus()).startsWith("editor:"), await focus())
 
-// ---------- a tab's menu and the tree's say the same about a file, in the same order ----------
+// ---------- a tab's menu: where the file is at hand, what changes it under More file actions ▸ ----------
 const menuItems = async (loc) => {
   await loc.click({ button: "right" }); await wait(250)
   const items = await page.$$eval("[role=menu] > button", (bs) => bs.map((b) => b.innerText.trim()))
   await page.keyboard.press("Escape"); await wait(200)
   return items
 }
-const FILE_ITEMS = ["Rename", "Move file to…", "Duplicate", "Pin", "Unpin", "Archive", "More", "Copy path", REVEAL, "Delete"]
-const fileOrder = (items) => items.filter((t) => FILE_ITEMS.includes(t))
-// (the tab's own items come first, its Pin among them: the file's start at Rename)
-const tabItems = await menuItems(page.locator("[data-tab-id]").first())
-const tabMenu = fileOrder(tabItems.slice(Math.max(0, tabItems.indexOf("Rename"))))
+const tabLoc = page.locator("[data-tab-id]").first()
+const tabItems = await menuItems(tabLoc)
+const fileItems = tabItems.slice(Math.max(0, tabItems.indexOf("Rename")))
+check("a file's tab menu: Rename, its path, Reveal, then More file actions", ["Rename", "Copy path", "Reveal in file tree"].every((x) => fileItems.includes(x)) && fileItems.at(-1) === "More file actions", tabItems)
+check("...not Move, Duplicate or Delete at its top level", !["Move file to…", "Duplicate", "Delete"].some((x) => tabItems.includes(x)), tabItems)
+await tabLoc.click({ button: "right" }); await wait(250)
+await page.locator("[role=menu] > button", { hasText: /^More file actions$/ }).hover(); await wait(300)
+const moreFile = await page.locator("[role=menu]").nth(1).locator("button").allInnerTexts()
+await page.keyboard.press("Escape"); await wait(100)
+if (await page.locator("[role=menu]").count()) { await page.keyboard.press("Escape"); await wait(100) }
+check("More file actions ▸: Move, Duplicate, then Delete last", moreFile[0] === "Move file to…" && moreFile.includes("Duplicate") && moreFile.at(-1) === "Delete", moreFile)
 await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, `${DIR}/One.md`); await wait(600)
-const treeMenu = fileOrder(await menuItems(page.locator(`aside [data-tree-path="${DIR}/One.md"]`).first()))
-check("a file's tab menu has the tree menu's file items, in its order", tabMenu.length >= 6 && tabMenu.join("|") === treeMenu.join("|"), { tabMenu, treeMenu })
 const pinMenu = await menuItems(page.locator("aside nav[aria-label=Pages] [data-pin]").first())
 check("a pinned page's menu opens it like the tree's (new tab, to the right in its submenu), has a file's items and unpins it last", pinMenu[0] === "Open in new tab" && pinMenu.includes("Copy path") && pinMenu.at(-1) === "Unpin" && pinMenu.filter((t) => t === "Unpin").length === 1, pinMenu)
 
