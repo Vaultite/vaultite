@@ -224,10 +224,13 @@ try {
     await page.keyboard.press("ControlOrMeta+Backslash"); await wait(400)
   }
 
-  // End it from the panel: its tab closes and the list empties.
+  // End it from the panel (its … , End session last): its tab closes and the list empties.
   const r = await page.$(`aside [data-session='${sid}']`)
   await r.hover()
-  await page.click(`aside [data-session='${sid}'] [aria-label='End session']`)
+  check("a session's row: … and no End button", !!(await page.$(`aside [data-session='${sid}'] [data-row-more]`)) && !(await page.$(`aside [data-session='${sid}'] [aria-label='End session']`)))
+  await page.click(`aside [data-session='${sid}'] [data-row-more]`)
+  check("its … : End session last", (await page.$$eval("[role=menu] [role^=menuitem]", (els) => els.map((e) => e.textContent.trim()))).at(-1) === "End session")
+  await page.click("[role=menuitem]:has-text('End session')")
   check("session ended", !!(await until(async () => !(await page.$(`aside [data-session='${sid}']`)))))
   check("its tab closed", !!(await until(async () => !decodeURIComponent(page.url()).includes(sid))), page.url())
   await page.screenshot({ path: `${OUT}6-ended.png` })

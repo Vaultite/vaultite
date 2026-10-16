@@ -40,7 +40,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
     <SidebarRow icon={a?.icon ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={waiting(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
-      active={tab === to} tip={tip} data-session={s.id} data-state={s.state} data-agent={a?.name}
+      active={tab === to} tip={tip} more data-session={s.id} data-state={s.state} data-agent={a?.name}
       data-where={where}
       data-machine={s.machine}
       swipe={() => [{ label: "End", icon: X, danger: true, run: () => void endForGood(s.id) }]}
@@ -52,8 +52,6 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{where}</span>}
       {/* (last, so every row's ring lines up at its edge) */}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
-      <HeadingButton icon={X} label="End session" className="hidden group-hover/row:grid" data-no-drag
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); void endForGood(s.id) }} />
     </SidebarRow>
     </div>
   )

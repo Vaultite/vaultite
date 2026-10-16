@@ -3,6 +3,7 @@ import { createContext, useContext } from "react"
 import { ChevronDown, ChevronRight, Ellipsis } from "lucide-react"
 import { coarse } from "@/core/haptics"
 import { HeadingButton } from "@/components/Button"
+import { rightClickBelow } from "@/components/ContextMenu"
 import { SwipeRow } from "@/components/SwipeRow"
 import { cn } from "@/lib/utils"
 
@@ -51,10 +52,7 @@ export function SidebarHeading({ title, open, children, className }: {
       <span className="flex gap-0.5 opacity-0 transition-opacity group-hover/head:opacity-100 focus-within:opacity-100">
         {children}
         {/* The heading's right-click, under the button: whatever menu the panel gives it (Panels ▸, Hide...). */}
-        {f && <HeadingButton icon={Ellipsis} label={`More for ${title}`} tip="More" data-heading-more onClick={(e) => {
-          const r = e.currentTarget.getBoundingClientRect()
-          e.currentTarget.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left, clientY: r.bottom + 4 }))
-        }} />}
+        {f && <HeadingButton icon={Ellipsis} label={`More for ${title}`} tip="More" data-heading-more onClick={rightClickBelow} />}
       </span>
     </div>
   )

@@ -3,7 +3,7 @@
 import { useEffect, useId, useRef } from "react"
 import { FileText, Hash, Heading, PinOff, Plus, Search } from "lucide-react"
 import {
-  checklist, cn, currentWorkspace, getStore, HeadingButton, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
+  checklist, cn, currentWorkspace, fileMenu, getStore, HeadingButton, headOf, iconOf, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
   openItem, openView, PIN_SEARCH, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
   useDropTarget, useEnabled, useSelectable, useSelectedKeys, useWorkspaceVersion, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
@@ -142,15 +142,16 @@ export function PinnedPages({ store, open, file, panel, pane }: SidebarCtx & {
         startDrag(e, keys && keys.length > 1 ? { from: "pin", to, path: id, paths: keys, label: `${keys.length} pages` } : { from: "pin", to, path: id }, { touch: true })
       }}
         onPointerEnter={() => file && openingSoon(file)} onPointerLeave={() => openingSoon(null)}
-        // Right-clicked on a page: what the file tree offers to open a file, then unpinning it (the panel's own menu is
-        // its heading's: Pinned pages ▸, Panels ▸, Hide).
+        // Right-clicked (or its …) on a page: opening it, a file's menu as anywhere else (its own Unpin left out), then
+        // Unpin last. The panel's own menu is its heading's: Pinned pages ▸, Panels ▸, Hide.
         onContextMenu={menuFor(rowMenu(SELECT, id, () => [
           openItem(() => openEntry(entry, { newTab: true, pane }), () => openInSplit(to, "right")),
+          ...(entry.kind === "file" ? fileMenu(id).filter((it) => it.label !== "Unpin").map((it, i) => (i ? it : { ...it, sep: true })) : []),
           { label: "Unpin", icon: PinOff, sep: true, run: () => pinNoted(id, false) },
         ]))}
         className={cn(d?.item.from === "pin" && (d.item.path === id || (picked && d.item.paths)) && "opacity-40")}>
         <SidebarRow data-pin={id} data-select-key={id} {...selectedAttr(picked)} href={`#${entry.kind === "search" ? `view/${encodeURIComponent(`search/${entry.query}`)}` : `file/${encodeURIComponent(file!)}`}`} icon={icon}
-          label={entry.label} open={open} active={entry.kind === "file" && lit(id)} swipe={() => [{ label: "Unpin", icon: PinOff, run: () => pinNoted(id, false), removes: true }]}
+          label={entry.label} open={open} more active={entry.kind === "file" && lit(id)} swipe={() => [{ label: "Unpin", icon: PinOff, run: () => pinNoted(id, false), removes: true }]}
           onClick={(e) => { if (!selectClick(e, SELECT, id, entry.kind === "file" && lit(id) ? id : null)) openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane }) }} />
       </div>
     )

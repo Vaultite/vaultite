@@ -187,6 +187,12 @@ export const menuBelow = (e: MouseEvent, items: MenuItem[]) => {
   const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
   openMenu({ x: r.left, y: r.bottom + 4 }, items)
 }
+/** For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows. */
+export const rightClickBelow = (e: MouseEvent) => {
+  e.preventDefault(); e.stopPropagation()
+  const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  e.currentTarget.dispatchEvent(new globalThis.MouseEvent("contextmenu", { bubbles: true, cancelable: true, clientX: r.left, clientY: r.bottom + 4 }))
+}
 /** For a button at the bottom (the status bar): the menu above it. */
 export const menuAbove = (e: MouseEvent, items: MenuItem[]) => {
   e.preventDefault(); e.stopPropagation()

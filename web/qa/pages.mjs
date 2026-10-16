@@ -59,7 +59,13 @@ await page.keyboard.press("Escape"); await page.keyboard.press("Escape") // the 
 // Right-clicked on a page's row: only its own items, Unpin last (the panel's menu is its heading's).
 await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).click({ button: "right" }); await page.waitForTimeout(200)
 const rowItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
-check("a page's row: its own items, Unpin last, no panel items", rowItems.at(-1) === "Unpin" && !rowItems.some((t) => /^(Pinned pages|Panels|Hide |Move to )/.test(t)), rowItems)
+check("a page's row: its own items, a file's (Copy path), Unpin last, no panel items", rowItems.at(-1) === "Unpin" && rowItems.filter((t) => t === "Unpin").length === 1 && rowItems.includes("Copy path") && !rowItems.some((t) => /^(Pinned pages|Panels|Hide |Move to )/.test(t)), rowItems)
+await page.keyboard.press("Escape")
+// Its … (on hover): the same menu.
+await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).hover()
+await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).locator("[data-row-more]").click(); await page.waitForTimeout(200)
+const dotItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
+check("a page's …: the same menu as right-click", JSON.stringify(dotItems) === JSON.stringify(rowItems), [dotItems, rowItems])
 await page.keyboard.press("Escape")
 await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
 await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().hover(); await page.waitForTimeout(300)

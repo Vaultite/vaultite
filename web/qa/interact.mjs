@@ -104,7 +104,8 @@ const tg = await dragTo(page.locator(`aside [data-session="${term}"]`).first(), 
 const ps = await panes()
 check("a Terminals panel row dropped on a pane's right edge: a split with that terminal", ps.length === 2 && ps[1].tabs.join() === "Terminal" && /Terminal/.test(tg.text ?? ""), [ps, tg])
 await page.locator(`aside [data-session="${term}"]`).first().hover()
-await page.locator(`aside [data-session="${term}"] [aria-label="End session"]`).first().click(); await wait(400)
+await page.locator(`aside [data-session="${term}"] [data-row-more]`).first().click(); await wait(200)
+await page.locator("[role=menuitem]", { hasText: "End session" }).click(); await wait(400)
 if (await page.$("[role=alertdialog]")) await page.locator("[role=alertdialog] button", { hasText: /End/ }).click()
 await wait(600)
 await fresh()
@@ -167,7 +168,7 @@ await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` },
 const treeMenu = fileOrder(await menuItems(page.locator(`aside [data-tree-path="${DIR}/One.md"]`).first()))
 check("a file's tab menu has the tree menu's file items, in its order", tabMenu.length >= 6 && tabMenu.join("|") === treeMenu.join("|"), { tabMenu, treeMenu })
 const pinMenu = await menuItems(page.locator("aside nav[aria-label=Pages] [data-pin]").first())
-check("a pinned page's menu opens it like the tree's (new tab, to the right in its submenu) and unpins it", pinMenu.slice(0, 2).join("|") === "Open in new tab|Unpin", pinMenu) // "Unpin" since 23d1a2c (one pinned list per workspace)
+check("a pinned page's menu opens it like the tree's (new tab, to the right in its submenu), has a file's items and unpins it last", pinMenu[0] === "Open in new tab" && pinMenu.includes("Copy path") && pinMenu.at(-1) === "Unpin" && pinMenu.filter((t) => t === "Unpin").length === 1, pinMenu)
 
 // ---------- the workspace list ----------
 await page.click("aside [data-workspace-switcher]"); await wait(300)

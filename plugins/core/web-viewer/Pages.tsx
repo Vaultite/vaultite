@@ -102,15 +102,9 @@ export function WebPagesPanel({ open, openPage, ask }: Pick<SidebarCtx, "open"> 
           <div className="flex flex-col gap-px" data-web-sites>
             {(sites ?? []).map((s) => (
               <SidebarRow key={s.site} icon={KeyRound} label={<SiteLabel s={s} />} open={open} tip={s.account ? `${s.site}: ${s.account}` : s.site}
-                tint={s.account ? "var(--web-viewer)" : undefined} data-web-site={s.site} onClick={() => openPage(`https://${s.site}/`)}
+                tint={s.account ? "var(--web-viewer)" : undefined} data-web-site={s.site} onClick={() => openPage(`https://${s.site}/`)} more
                 swipe={() => [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(prof, s, refresh) }]}
-                onContextMenu={menuFor(() => siteMenu(prof, s, openPage, refresh))}>
-                <button type="button" aria-label={`Sign out of ${s.site}`} data-tip="Sign out"
-                  className="hidden size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground group-hover/row:grid hover:bg-foreground/[0.08] hover:text-foreground"
-                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); void signOut(prof, s, refresh) }}>
-                  <LogOut className="size-3.5" strokeWidth={2.25} />
-                </button>
-              </SidebarRow>
+                onContextMenu={menuFor(() => siteMenu(prof, s, openPage, refresh))} />
             ))}
             {sites && !sites.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">No sites yet</p>}
             {others.length > 0 && (

@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import {
   askMove, askMoveMany, Badged, Bar, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
-  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
+  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
@@ -316,6 +316,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.body ? `${e.title}: ${e.body}` : e.title} time={fmtAgo(e.t, { short: true })}
             dim={e.read} icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
             <GateButtons e={e} className={small} size="size-3.5" />
+            {!(e.gate && !e.answer) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
             <HeadingButton icon={X} label="Dismiss" onClick={stop(() => { haptic("medium"); void forget(e.id) })} />
           </PanelRow>
         ))}

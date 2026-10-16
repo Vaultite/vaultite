@@ -2,7 +2,7 @@
 // turning them off empties it). The components here are exported to plugins.
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SquareArrowOutUpRight } from "lucide-react"
+import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SquareArrowOutUpRight } from "lucide-react"
 import type { SidebarCtx, SidebarPanel } from "@/core/define"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
@@ -13,7 +13,8 @@ import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
 import { coarse } from "@/core/haptics"
-import { checklist, menuFor, type CheckItem, type MenuItem } from "@/components/ContextMenu"
+import { checklist, menuFor, rightClickBelow, type CheckItem, type MenuItem } from "@/components/ContextMenu"
+import { HeadingButton } from "@/components/Button"
 import { FileTree } from "@/components/FileTree"
 import { Drawn, Guard } from "@/components/Guard"
 import { Badged } from "@/components/kit"
@@ -288,7 +289,7 @@ export const RAIL = 11
 export const ROW = "group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap transition-colors"
 
 /** A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows. */
-export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label, open, active, onClick, onContextMenu, href, tip, className, children, swipe, ...rest }: {
+export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
   /** None: the label alone (file icons turned off). */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   label: React.ReactNode; open: boolean; active?: boolean; href?: string
@@ -308,6 +309,9 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
   onClick?: (e: React.MouseEvent) => void; onContextMenu?: (e: React.MouseEvent) => void
   /** Drawn at the right end (a button, a count). */
   children?: React.ReactNode
+  /** A … on hover, after `children`, opening its right-click menu (its own or its wrapper's): for a row whose menu has
+   *  more than opening it. A finger holds the row instead. */
+  more?: boolean
   /** What a finger swiping it shows (the buttons a mouse finds on hover: SwipeRow). */
   swipe?: () => SwipeAction[]
 } & Record<`data-${string}`, string | undefined>) {
@@ -328,6 +332,7 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
       </Badged>}
       <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>
       {open && children}
+      {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
     </a>
   )
   return swipe && coarse && open ? <SwipeRow actions={swipe} className="rounded-[5px]">{row}</SwipeRow> : row

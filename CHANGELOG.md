@@ -11,6 +11,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Right-clicking a row in a sidebar panel (a pinned page, a tab, a recent file, a machine, a web page, a button) shows
   only that row's actions, Unpin last on a pinned page; the panel's own (Panels, Move to the other sidebar, Hide) are
   on its heading, and in its … (on hover, as a file's), which every sidebar panel's heading now has.
+- Sidebar rows have a … on hover with their right-click menu, as files do: a pinned page or a recent file gets a file's
+  whole menu (Unpin last on a pinned page); a terminal's End session and a site's Sign out moved into it, while a tab
+  keeps its close button.
 - Exiting the shell left after Claude Code or another agent (exit, ⌃D) closes its tab, as a shell's does; only an
   agent's session that died or was ended after its report keeps its tab with "Session ended" and Restart.
 - **Quick Look for Markdown**: the space bar in Finder shows a note drawn as it reads (properties, headings, lists
