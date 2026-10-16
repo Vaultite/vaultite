@@ -1,6 +1,6 @@
 // Bundles (core/bundles.ts, pages/Bundles.tsx): a new vault starts from Minimal with no offer; an older vault still
 // offered them opens on them, and skipping starts from Minimal. The page's cards and previews, Apply (each built-in: the files as previewed, its first
-// page, Undo), "Restore previous setup", Save current setup, Export and Import, and 390px. Screenshots.
+// page, Undo), "Restore previous setup", Save current setup, Share and Import, and 390px. Screenshots.
 // WRITES the vault's settings and bundles: throwaway servers only.
 //   node web/qa/bundles.mjs <base url> <vault path> <fresh base url> <fresh vault path> [out dir]
 // (the fresh server serves a folder the app had never opened: no .vaultite/ before it started)
@@ -22,6 +22,14 @@ async function go(page, base, h) {
   await page.goto(`${base}${h ? `#${h}` : ""}`)
   await until(() => page.locator("main").count(), 6000)
   await wait(1500)
+  await notNow(page)
+}
+/** A plugin asking to write on its own (core/grants.ts): Not now, so it doesn't cover the page. */
+async function notNow(page) {
+  for (let i = 0; i < 5 && await page.locator("dialog[open][data-confirm]", { hasText: "wants to write" }).count(); i++) {
+    await page.locator("dialog[open][data-confirm] button:not([data-confirm-ok])").first().click()
+    await wait(300)
+  }
 }
 const toastWith = (page, text) => page.locator("[data-sonner-toast]", { hasText: text }).first()
 /** Open a bundle's card (one under More bundles: unfolded first). */
@@ -29,6 +37,7 @@ async function card(page, id) {
   await until(() => page.locator("[data-bundle]").count(), 6000)
   if (!(await page.locator(`[data-bundle="${id}"]`).count())) await page.locator("[data-bundles-more]").click()
   await until(() => page.locator(`[data-bundle="${id}"]`).count(), 6000)
+  await notNow(page)
   await page.locator(`[data-bundle="${id}"]`).click()
 }
 const dismissAll = async (page) => { await page.mouse.move(5, 5); await page.waitForFunction(() => !document.querySelector("[data-sonner-toast]"), null, { timeout: 30_000 }).catch(() => {}); await wait(100) }
@@ -153,20 +162,45 @@ for (const id of Object.keys(want)) {
   check("Save current setup writes the bundle", json(VAULT, ".vaultite/bundles/qa-desk/bundle.json")?.name === "QA desk" && !!json(VAULT, ".vaultite/bundles/qa-desk/plugins.json"))
   await until(() => page.locator('[data-bundles-mine] [data-bundle="qa-desk"]').count(), 6000)
   check("it shows under Yours", await page.locator('[data-bundles-mine] [data-bundle="qa-desk"]').count() === 1)
+  // Share: what it sends (the picture off), Save file, Copy and Copy for an agent; then Import, pasted and from a file.
   await page.locator('[data-bundle="qa-desk"]').hover()
-  const [dl] = await Promise.all([
-    page.waitForEvent("download", { timeout: 8000 }),
-    (async () => { await page.locator('[data-bundle="qa-desk"] ~ button').click(); await page.getByText("Export…").click() })(),
-  ])
+  await page.locator('[data-bundle="qa-desk"] ~ button').click()
+  await page.getByText("Share…").click()
+  await until(() => page.locator("dialog[open] [data-bundle-share-sheet]").count(), 6000)
+  await until(() => page.locator("dialog[open] [data-bundle-export]:not([disabled])").count(), 6000)
+  await shot(page, "share")
+  const [dl] = await Promise.all([page.waitForEvent("download", { timeout: 8000 }), page.locator("dialog[open] [data-bundle-export]").click()])
   const path = `${OUT}qa-desk.bundle.json`
   await dl.saveAs(path)
   const exp = JSON.parse(readFileSync(path, "utf8"))
-  check("Export downloads one JSON file", dl.suggestedFilename() === "qa-desk.bundle.json" && exp.vaultite === "bundle" && !!exp.files["plugins.json"], dl.suggestedFilename())
-  await page.locator("input[type=file]").setInputFiles(path)
+  check("Share's Save file downloads one JSON file, without the picture", dl.suggestedFilename() === "qa-desk.bundle.json" && exp.vaultite === "bundle" && !!exp.files["plugins.json"] &&
+    !exp.files["preview.png"], dl.suggestedFilename())
+  await ctx.grantPermissions(["clipboard-read", "clipboard-write"], { origin: new URL(B).origin })
+  await page.locator("dialog[open] [data-bundle-copy-agent]").click()
+  await wait(300)
+  const clip = await page.evaluate(() => navigator.clipboard.readText())
+  check("Copy for an agent: what to do, then the bundle", /vau bundle import/.test(clip) && /Don't apply it until I say so/.test(clip) && clip.includes('"vaultite": "bundle"'), clip.slice(0, 200))
+  await page.locator("dialog[open] [data-bundle-copy]").click()
+  await wait(300)
+  const copied = await page.evaluate(() => navigator.clipboard.readText())
+  check("Copy: the bundle's JSON", JSON.parse(copied).vaultite === "bundle")
+  await page.keyboard.press("Escape")
+  await until(async () => !(await page.locator("dialog[open] [data-bundle-share-sheet]").count()), 6000)
+  await dismissAll(page)
+  await page.locator("[data-bundles-import]").click()
+  await until(() => page.locator("dialog[open] [data-bundle-import-text]").count(), 6000)
+  await page.locator("dialog[open] [data-bundle-import-text]").fill(`Here it is:\n${copied}`)
+  await shot(page, "import")
+  await page.locator("dialog[open] [data-bundle-import]").click()
   await until(() => existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`), 6000)
-  check("Import adds it under a free id", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`))
+  check("Import, pasted (inside a message), adds it under a free id", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`))
   await until(() => page.locator('[data-bundle="qa-desk-2"]').count(), 6000)
   check("and it shows", await page.locator('[data-bundle="qa-desk-2"]').count() === 1)
+  await page.locator("[data-bundles-import]").click()
+  await until(() => page.locator("dialog[open] [data-bundle-import-form]").count(), 6000)
+  await page.locator("dialog[open] input[type=file]").setInputFiles(path)
+  await until(() => existsSync(`${VAULT}/.vaultite/bundles/qa-desk-3/bundle.json`), 6000)
+  check("Import from a file", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-3/bundle.json`))
   await dismissAll(page)
   // The command palette has the bundles.
   await page.keyboard.press("ControlOrMeta+p")
@@ -188,6 +222,10 @@ await ctx.close()
   await until(() => pp.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   check("390px: the preview fits", await pp.evaluate(() => { const d = document.querySelector("dialog[open]"); return d ? d.scrollWidth - d.clientWidth : 0 }) <= 0)
   await shot(pp, "phone-preview")
+  await pp.evaluate(() => { location.hash = "#bundles/bundle-share/qa-desk" })
+  await until(() => pp.locator("dialog[open] [data-bundle-share-sheet]").count(), 6000)
+  check("390px: Share fits", await pp.evaluate(() => { const d = document.querySelector("dialog[open]"); return d ? d.scrollWidth - d.clientWidth : 0 }) <= 0)
+  await shot(pp, "phone-share")
   await pc.close()
 }
 await done()

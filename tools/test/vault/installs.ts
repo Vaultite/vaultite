@@ -257,15 +257,65 @@ export default async ($: VaultTest) => {
       await api("POST", "ops/plugin.uninstall", { id: "dinghy" })
     }
 
-    // Uninstalled: off, its folder in the trash, its lock entry and this machine's approval gone.
+    // Uninstalled: off, its folder in the trash (its settings kept), its lock entry and this machine's approval gone.
     let [xc, xo] = await api("POST", "ops/plugin.uninstall", { id: "harbor" })
-    check("uninstall: off, to the trash, out of the lock, approval forgotten", xc === 200 && !exists(".vaultite/plugins/harbor") && xo.trashed.startsWith(".trash/") &&
-      !lock().harbor && !(conf("plugins").enabled ?? []).includes("harbor") && !app.vaultPlugins.trust.approval("harbor"), [xc, xo])
+    check("uninstall: off, to the trash, out of the lock, approval forgotten", xc === 200 && !exists(".vaultite/plugins/harbor/manifest.json") && xo.trashed.startsWith(".trash/") &&
+      !lock().harbor && !(conf("plugins").enabled ?? []).includes("harbor") && !app.vaultPlugins.trust.approval("harbor") && !app.vaultPlugins.found.has("harbor"), [xc, xo])
+    check("uninstall: its settings stay, for when it's installed again", JSON.parse(read(".vaultite/plugins/harbor/data.json")).mine === 1 && xo.kept === ".vaultite/plugins/harbor/data.json", xo)
+    fs.rmSync(path.join(VAULT, ".vaultite/plugins/harbor"), { recursive: true })
     ;[xc] = await api("POST", "ops/plugin.uninstall", { id: "notags" })
     check("uninstall: the last one removes the lock file", xc === 200 && !exists(".vaultite/plugins-lock.json"))
     delete process.env.VAULTITE_PLUGIN_INDEX
     for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(harbor|notags|dinghy|ketch|skipper) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
     fs.rmSync(path.join(VAULT, ".vaultite/cache/plugin-index.json"), { force: true })
+
+    // Bundles name installed plugins by their source: applying installs them, restoring uninstalls them. A repository
+    // is a bundle too: its folder at the top (the repository's own files left out), or one .bundle.json.
+    {
+      process.env.VAULTITE_GITHUB = pathToFileURL(tmp).href
+      repo("beacon", { "manifest.json": manifest({ id: "beacon", name: "Beacon", repo: "repos/beacon", disclosures: {} }), "plugin.ts": PLUGIN_TS.replaceAll("harbor", "beacon") }, "v1.0.0")
+      const bi = await api("POST", "ops/plugin.install", { source: "repos/beacon" }), bon = await api("POST", "ops/plugin.enable", { id: "beacon" })
+      check("bundles: an installed plugin to save", bi[0] === 200 && bon[0] === 200, [bi, bon])
+      let [bc, bo] = await api("POST", "bundles", { name: "Lights" })
+      const pj = JSON.parse(read(".vaultite/bundles/lights/plugins.json"))
+      check("bundles: an installed plugin is saved as its source, not its files", bc === 200 && pj.install?.beacon?.source === "repos/beacon" && pj.install.beacon.tag === "v1.0.0" &&
+        pj.enabled.includes("beacon") && !exists(".vaultite/bundles/lights/plugins/beacon/manifest.json") && bo.bundle.code.includes("beacon"), [bo, pj])
+      await api("POST", "ops/plugin.uninstall", { id: "beacon" })
+      ;[bc, bo] = await api("GET", "bundles/lights")
+      check("bundles: its plan installs it from there", bc === 200 && bo.plan.code.some((c: Any) => c.id === "beacon" && c.source === "repos/beacon" && !c.kept) &&
+        bo.plan.plugins.on.includes("beacon") && !bo.plan.plugins.missing.includes("beacon"), bo.plan)
+      ;[bc] = await api("POST", "bundles/lights/apply", {})
+      check("bundles: installing runs code, so it needs allowCode", bc === 409 && !exists(".vaultite/plugins/beacon/manifest.json"), bc)
+      ;[bc, bo] = await api("POST", "bundles/lights/apply", { allowCode: true })
+      const beacon = ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === "beacon")
+      check("bundles: applied, it's installed at its tag, on and running", bc === 200 && lock().beacon?.tag === "v1.0.0" && (conf("plugins").enabled ?? []).includes("beacon") && beacon?.loaded, [bo, beacon])
+      ;[bc, bo] = await api("POST", "bundles/restore")
+      check("bundles: restored, the plugin it installed is uninstalled", bc === 200 && !exists(".vaultite/plugins/beacon/manifest.json") && (!exists(".vaultite/plugins-lock.json") || !lock().beacon) && bo.trashed.includes(".vaultite/plugins/beacon"), bo)
+      await api("DELETE", "bundles/lights")
+
+      const desk = { "bundle.json": JSON.stringify({ name: "Writing desk" }), "appearance.json": JSON.stringify({ scheme: "nord" }), "pages.json": JSON.stringify({ pinned: ["Dashboards/Desk.md"] }),
+        "Dashboards/Desk.md": "---\ntype: dashboard\n---\n\n```block-inbox\n```\n", "README.md": "# Writing desk\n", "LICENSE": "MIT\n" }
+      repo("desk", desk, "v1.0.0")
+      ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/desk" })
+      const got = (f: string) => exists(`.vaultite/bundles/${bo.bundle?.id}/${f}`)
+      check("bundles: from a repository: its folder, not the repository's own files", bc === 200 && bo.bundle.id === "desk" && bo.bundle.from === "repos/desk" &&
+        got("Dashboards/Desk.md") && got("appearance.json") && !got("README.md") && !got("LICENSE"), [bc, bo])
+      repo("desk", { "appearance.json": JSON.stringify({ scheme: "dracula" }) }, "v1.1.0")
+      ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/desk" })
+      check("bundles: got again from there, it's updated in place (its newest tag)", bc === 200 && bo.bundle.id === "desk" && bo.bundle.scheme === "dracula" &&
+        !exists(".vaultite/bundles/desk-2"), [bc, bo])
+      await api("DELETE", "bundles/desk")
+      const [, one] = await api("POST", "bundles/import", { vaultite: "bundle", format: 1, id: "night", files: { "bundle.json": { name: "Night" }, "appearance.json": { theme: "dark" } } })
+      repo("night", { "night.bundle.json": (await api("GET", `bundles/${one.bundle.id}/export`))[1] }, null)
+      await api("DELETE", `bundles/${one.bundle.id}`)
+      ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/night" })
+      check("bundles: from a repository holding one .bundle.json", bc === 200 && bo.bundle.name === "Night" && bo.bundle.theme === "dark", [bc, bo])
+      await api("DELETE", `bundles/${bo.bundle?.id}`)
+      ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/beacon" })
+      check("bundles: a repository without a bundle says so", bc === 404 && /has no bundle/.test(bo.error), [bc, bo])
+      delete process.env.VAULTITE_GITHUB
+      for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(beacon|lights|desk|night) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
+    }
 
     // Updating on their own (core/updates.ts): Vaultite's by default, notes from commits since, in the lock's history;
     // a version rolled back is skipped; another machine checks synced files against their source before they run.

@@ -24,8 +24,10 @@ export type BundleInfo = {
    *  known): what its card draws. */
   panels: { left: string[]; right: string[]; collapsed: string[] } | null
   home: { block: string; view: string | null; wide: boolean }[] | null
-  /** Vault plugins it brings (they run code). */
+  /** Vault plugins it brings or installs (they run code). */
   code: string[]
+  /** The repository it was imported from, or null. */
+  from: string | null
   hotkeys: boolean
   /** Its preview.png's version (the card's picture), or null: the card draws a sketch. */
   preview: string | null
@@ -35,8 +37,10 @@ export type BundleInfo = {
 }
 type Change = { key: string; from: unknown; to: unknown }
 export type Plan = {
-  plugins: { on: string[]; off: string[]; missing: string[] }
-  code: { id: string; name: string; kept: boolean }[]
+  /** `added`: plugins the user added that it leaves as they are (unless applied with offAdded). */
+  plugins: { on: string[]; off: string[]; missing: string[]; added: string[] }
+  /** `source`: where one it installs comes from (else it brings its files). */
+  code: { id: string; name: string; kept: boolean; source?: string; tag?: string | null }[]
   settings: (Change & { plugin: string })[]
   skipped: { plugin: string; key: string; why: string }[]
   panels: { setup: Sidebars | null; changed: boolean; workspace: number | null }
@@ -83,9 +87,10 @@ export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
 }
 
-/** Apply a bundle (the caller asked first when it runs code), then show its first page, with Undo in a toast. */
-export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false) {
-  const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode })
+/** Apply a bundle (the caller asked first when it runs code), then show its first page, with Undo in a toast. `offAdded`:
+ *  the plugins the user added that it doesn't name go off too. */
+export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false, offAdded = false) {
+  const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded })
   await reload()
   void refreshBundles()
   const first = r.plan.pins?.list[0] ?? plan.pins?.list[0]
@@ -140,16 +145,31 @@ export async function deleteBundle(b: BundleInfo) {
   notify(`Deleted ${b.name} (it's in the trash)`)
 }
 
-/** A bundle as one JSON text (GET /api/bundles/<id>/export), what an export downloads and a delete's Undo imports. */
-export async function bundleText(b: BundleInfo) {
-  const r = await request("GET", `bundles/${encodeURIComponent(b.id)}/export`)
+/** A bundle as one JSON text (core/bundles.ts shared): its parts chosen to share (`include`, `leave`), or `all` of it
+ *  (what a delete's Undo imports). */
+export async function bundleText(b: BundleInfo, o: { all?: boolean; include?: string[]; leave?: string[] } = {}) {
+  const r = await request("POST", `bundles/${encodeURIComponent(b.id)}/export`, o)
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? r.statusText)
   return r.text()
 }
 
-/** Download a bundle as one JSON file (<id>.bundle.json) to share. */
-export async function exportBundle(b: BundleInfo) {
-  const url = URL.createObjectURL(new Blob([await bundleText(b)], { type: "application/json" }))
+export type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
+/** Its parts to share or leave out, and the pins to the user's own notes it never sends. */
+export const shareOf = (id: string) => get<{ items: ShareItem[]; dropped: string[] }>(`bundles/${encodeURIComponent(id)}/share`)
+
+/** What Copy for an agent puts before the bundle: what it is and how to add it, applied only once the user says. */
+export const agentPrompt = (b: BundleInfo, text: string) => `This is a Vaultite bundle, "${b.name}": a setup of the Vaultite app (which plugins are on, their settings, the sidebars, \
+pinned pages, the look). It has no notes. Add it to my vault: save the JSON below to a file and run \`vau bundle import <file>\`. Then run \
+\`vau bundle show <id>\` and tell me what applying it would change${b.code.length ? ", and which plugins it installs (they run code)" : ""}. Don't apply it until I say so.
+
+\`\`\`json
+${text.trimEnd()}
+\`\`\`
+`
+
+/** Download a bundle as one JSON file (<id>.bundle.json) to share: `text` as chosen, else shared as it is by default. */
+export async function exportBundle(b: BundleInfo, text?: string) {
+  const url = URL.createObjectURL(new Blob([text ?? await bundleText(b)], { type: "application/json" }))
   const a = document.createElement("a")
   a.href = url
   a.download = `${b.id}.bundle.json`
@@ -161,8 +181,19 @@ export async function exportBundle(b: BundleInfo) {
 
 /** Import a bundle from a file someone shared (its JSON): it joins the user's bundles, not applied. */
 export async function importBundle(file: File) {
+  return importText(await file.text(), file.name)
+}
+
+/** Import a bundle from text: its JSON (pasted, maybe inside a message: from its first { to its last }), or a git
+ *  repository (owner/name, a URL), fetched by the server. */
+export async function importText(text: string, what = "that") {
+  const t = text.trim()
   let body: unknown
-  try { body = JSON.parse(await file.text()) } catch { throw new Error(`${file.name} isn't a bundle (not JSON)`) }
+  if (/^([\w.-]+\/[\w.-]+(\/[\w.-]+)*(@[\w.+/-]+)?|https?:\/\/\S+|git@\S+)$/.test(t)) body = { from: t.replace(/^https?:\/\/github\.com\/([^/]+\/[^/]+?)(\.git)?\/?$/, "$1") }
+  else {
+    const a = t.indexOf("{"), z = t.lastIndexOf("}")
+    try { body = JSON.parse(a >= 0 ? t.slice(a, z + 1) : t) } catch { throw new Error(`${what} isn't a bundle: paste its JSON, or a GitHub repository (owner/name)`) }
+  }
   const r = await post<{ bundle: BundleInfo }>("bundles/import", body)
   await refreshBundles()
   return r.bundle

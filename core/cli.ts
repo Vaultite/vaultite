@@ -345,12 +345,13 @@ const LOCAL: Record<string, Local> = {
       return { ...p, text, ...(base !== undefined && base !== true ? { base: read(String(base), "--base: the file with the text you started from") } : {}) }
     },
   },
-  // vau bundle import <file|folder>: a bundle's JSON file, or a folder shaped like a bundle.
+  // vau bundle import <file|folder|owner/name>: a bundle's JSON file, a folder shaped like a bundle, or a repository.
   "bundle.import": {
     params: async (p) => {
       const b = p.bundle
       if (typeof b !== "string" || /^\s*\{/.test(b)) return p
       const from = local(b)
+      if (!fs.existsSync(from) && /^([\w.-]+\/[\w.-]+|https?:\/\/|git@|ssh:\/\/)/.test(b)) return { from: b }
       if (fs.existsSync(from) && fs.statSync(from).isDirectory()) {
         const files: Record<string, string | { base64: string }> = {}
         const utf8 = new TextDecoder("utf-8", { fatal: true })

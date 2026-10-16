@@ -75,6 +75,8 @@ const BundlesPage = lazy(() => import("@/pages/Bundles").then((m) => ({ default:
 const BundlePreview = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.BundlePreview })))
 const SaveBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.SaveBundle })))
 const MoreBundles = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.MoreBundles })))
+const ShareBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ShareBundle })))
+const ImportBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ImportBundle })))
 
 // The core app's own pages (Plugins, Settings), beside the vault's name at the sidebar's bottom. Every
 // other page is a file.
@@ -129,6 +131,8 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
   "bundles-more": ["More bundles", () => <MoreBundles />], // the Bundles page's More…
   "bundle-save": ["Save current setup", () => <SaveBundle />],
   "bundle-save-look": ["Save the look", () => <SaveBundle look />],
+  "bundle-share/": ["Share", (_, id) => <ShareBundle id={id} />],
+  "bundle-import": ["Import a bundle", () => <ImportBundle />],
 }
 
 /** The detail sheet for a path: a plugin's (person/…, log/…), or the core's plugin sheet (plugin/<id>). */

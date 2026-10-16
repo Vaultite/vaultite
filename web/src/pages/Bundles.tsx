@@ -2,15 +2,16 @@
 // vault never opened before; a card opens a preview of what applying changes, asking first when it runs code.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react"
 import {
-  ArrowRight, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, Palette, PanelLeft, PanelRight, Pin, Plus,
-  Puzzle, Settings2, ShieldAlert, Trash2, type LucideIcon,
+  ArrowRight, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, Palette, PanelLeft, PanelRight, Pin, Plus,
+  Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { fmtAgo } from "@/core/data"
 import {
-  applyBundle, bundleText, deleteBundle, exportBundle, importBundle, previewOf, previewUrl, refreshBundles, restoreSetup, runsCode, saveBundle,
-  skipOnboarding, startSave, takenShot, useBundles, type BundleInfo,
+  agentPrompt, applyBundle, bundleText, deleteBundle, exportBundle, importBundle, importText, previewOf, previewUrl, refreshBundles, restoreSetup, runsCode,
+  saveBundle, shareOf, skipOnboarding, startSave, takenShot, useBundles, type BundleInfo, type ShareItem,
 } from "@/core/bundles"
+import { copyText } from "@/core/richmd"
 import { closeDetail, openDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
@@ -228,7 +229,8 @@ function BundleCard({ b, applied }: { b: BundleInfo; applied?: boolean }) {
       </button>
       {b.source === "vault" && (
         <button type="button" aria-label={`${b.name}: more`} data-tip="More" onClick={(e) => menuBelow(e, [
-          { label: "Export…", icon: Download, run: () => { exportBundle(b).catch((er) => notifyError(er, "Couldn't export it")) } },
+          { label: "Share…", icon: Share, run: () => openDetail(`bundle-share/${b.id}`) },
+          ...(b.from ? [{ label: "Get the newest", icon: RefreshCw, run: () => { void fetchAgain(b) } }] : []),
           { label: "Delete", icon: Trash2, danger: true, run: () => { void removeBundle(b) } },
         ])}
           className="absolute top-2 right-2 grid size-7 cursor-pointer place-items-center rounded-[7px] bg-background/80 text-muted-foreground opacity-0 backdrop-blur group-hover/card:opacity-100 hover:text-foreground focus-visible:opacity-100 max-md:opacity-100">
@@ -239,12 +241,17 @@ function BundleCard({ b, applied }: { b: BundleInfo; applied?: boolean }) {
   )
 }
 
+/** Get a bundle again from the repository it came from (its newest version replaces it). */
+async function fetchAgain(b: BundleInfo) {
+  try { await importText(b.from!); notify(`${b.name} is the newest from ${b.from}`) } catch (e) { notifyError(e, `Couldn't get ${b.name} again`) }
+}
+
 /** Delete one of the user's bundles (to the trash), with Undo: its export, imported again. */
 async function removeBundle(b: BundleInfo) {
   try {
-    const copy = await bundleText(b).catch(() => null)
+    const copy = await bundleText(b, { all: true }).catch(() => null)
     await deleteBundle(b)
-    if (copy) notify(`Deleted ${b.name}`, { action: { label: "Undo", run: () => importBundle(new File([copy], `${b.id}.bundle.json`)) } })
+    if (copy) notify(`Deleted ${b.name}`, { action: { label: "Undo", run: () => importText(copy) } })
   } catch (e) { notifyError(e, "Couldn't delete it") }
 }
 
@@ -293,7 +300,6 @@ export function MoreBundles() {
 
 export function Bundles({ store }: { store: Store }) {
   const l = useBundles()
-  const file = useRef<HTMLInputElement>(null)
   const prev = store.bundles?.previous ?? null
   const welcome = !!store.bundles?.onboarding
   // The list follows the vault (a bundle saved or imported by an AI, from another device).
@@ -303,13 +309,6 @@ export function Bundles({ store }: { store: Store }) {
   const more = l?.bundles.filter((b) => b.source === "app" && b.more) ?? []
   const mine = l?.bundles.filter((b) => b.source === "vault" && !b.look) ?? []
   const looks = l?.bundles.filter((b) => b.look) ?? []
-  const pick = async (f: File | undefined) => {
-    if (!f) return
-    try {
-      const b = await importBundle(f)
-      notify(`Imported ${b.name}`, { action: { label: "Preview", run: () => openDetail(`bundle/${b.id}`) } })
-    } catch (e) { notifyError(e, "Couldn't import it") }
-  }
   return (
     <>
       <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
@@ -338,7 +337,7 @@ export function Bundles({ store }: { store: Store }) {
         <div className="mb-6 grid grid-cols-1 gap-3 @lg:grid-cols-2 @3xl:grid-cols-3" data-bundles-mine>
           {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
           {!mine.length && <ActionCard icon={Plus} title="Save current setup" onClick={() => void startSave()} />}
-          <ActionCard icon={Import} title="Import a bundle" onClick={() => file.current?.click()} data-bundles-import />
+          <ActionCard icon={Import} title="Import a bundle" onClick={() => openDetail("bundle-import")} data-bundles-import />
         </div>
         {/* Bundles that change only the look: applied over any setup, plugins and panels as they are. */}
         <h2 className="mb-2 text-[17px] font-semibold">Looks</h2>
@@ -347,7 +346,6 @@ export function Bundles({ store }: { store: Store }) {
           <ActionCard icon={Palette} title="Save the look" onClick={() => void startSave(true)} data-bundles-save-look />
         </div>
       </div>
-      <input ref={file} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { void pick(e.target.files?.[0]); e.target.value = "" }} />
     </>
   )
 }
@@ -423,6 +421,7 @@ export function BundlePreview({ id }: { id: string }) {
   const [p, setP] = useState<Preview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [offAdded, setOffAdded] = useState(false)
   useEffect(() => { previewOf(id).then((x) => setP(x as Preview), (e) => setError(String(e?.message ?? e))) }, [id])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
@@ -432,43 +431,54 @@ export function BundlePreview({ id }: { id: string }) {
   const apply = async () => {
     if (code && !(await confirmDialog({
       title: `Run code from ${b.name}?`,
-      body: `It brings vault plugins (${plan.code.map((c) => c.name).join(", ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
+      body: `It brings vault plugins (${plan.code.map((c) => c.source && !c.kept ? `${c.name}, from ${c.source}` : c.name).join("; ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
       confirm: "Apply and run them", danger: true,
     }))) return
     setBusy(true)
     try {
       closeDetail()
-      await applyBundle(b, plan, code)
+      await applyBundle(b, plan, code, offAdded)
     } catch (e) { notifyError(e, `Couldn't apply ${b.name}`) } finally { setBusy(false) }
   }
   const pins = plan.pins
+  const added = plan.plugins.added ?? []
   return (
     <div data-bundle-preview={b.id}>
-      <SheetHead icon={Icon} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : "Your bundle"} title={b.name} sub={b.description || undefined} />
+      <SheetHead icon={Icon} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${b.from}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Button look="primary" disabled={busy || plan.empty || !!b.problems.length} onClick={apply} data-bundle-apply>
-          {plan.empty ? "This is your setup already" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
+        <Button look="primary" disabled={busy || (plan.empty && !offAdded) || !!b.problems.length} onClick={apply} data-bundle-apply>
+          {plan.empty && !offAdded ? "This is your setup already" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
         </Button>
-        {b.source === "vault" && <Button onClick={() => exportBundle(b).catch((e) => notifyError(e, "Couldn't export it"))}><Download className="size-4" strokeWidth={2} />Export</Button>}
+        {b.source === "vault" && <Button onClick={() => openDetail(`bundle-share/${b.id}`)} data-bundle-share><Share className="size-4" strokeWidth={2} />Share</Button>}
         {b.source === "vault" && <Button onClick={() => { closeDetail(); void removeBundle(b) }}><Trash2 className="size-4" strokeWidth={2} />Delete</Button>}
       </div>
+      {!b.look && <p className="-mt-2 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-reach>Applies to every window and device on this vault; agents lose the tools of plugins it turns off.</p>}
       {code && (
         <div className="mb-4 flex gap-3 rounded-[12px] bg-[color-mix(in_oklab,var(--red)_10%,transparent)] p-3.5" data-bundle-code>
           <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[var(--red)]" strokeWidth={2} />
           <div className="text-[14px] leading-[20px]">
             <div className="font-semibold">It runs code on this machine</div>
-            <div className="text-muted-foreground">It brings vault plugins: {plan.code.map((c) => c.name + (c.kept ? " (you have one by that name: yours stays)" : "")).join(", ")}. Applying asks you first.</div>
+            <div className="text-muted-foreground">It brings vault plugins: {plan.code.map((c) => c.name + (c.kept ? " (you have one by that name: yours stays)" : c.source ? ` (installed from ${c.source})` : "")).join(", ")}. Applying asks you first.</div>
           </div>
         </div>
       )}
       {!!b.problems.length && <p className="mb-4 text-[14px] text-[var(--red)]">{b.problems.join(". ")}</p>}
       {previewUrl(b) && <img src={previewUrl(b)!} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
       <div className="grid grid-cols-1 gap-3">
-        {(plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0) && (
+        {(plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0 || added.length > 0) && (
           <Panel title="Plugins" icon={Puzzle}>
             {!!plan.plugins.on.length && <Group title="Turns on" count={plan.plugins.on.length}><div className="flex flex-wrap gap-1.5">{plan.plugins.on.map((x) => <Chip key={x} id={x} />)}</div></Group>}
             {!!plan.plugins.off.length && <Group title="Turns off" count={plan.plugins.off.length}><div className="flex flex-wrap gap-1.5">{plan.plugins.off.map((x) => <Chip key={x} id={x} off />)}</div></Group>}
             {!!plan.plugins.missing.length && <Group title="Not in this app (skipped)"><p className="text-[13px] text-muted-foreground">{plan.plugins.missing.join(", ")}</p></Group>}
+            {!!added.length && (
+              <Group title={offAdded ? "Plugins you added: turned off too" : "Plugins you added stay as they are"} count={added.length}>
+                <div className="flex flex-wrap gap-1.5" data-bundle-added>{added.map((x) => <Chip key={x} id={x} off={offAdded} />)}</div>
+                <div className="mt-2 flex min-h-10 items-center gap-3">
+                  <span className="min-w-0 flex-1 text-[14px]">Turn those off too<span className="block text-[13px] text-muted-foreground">Restore previous setup turns them back on</span></span>
+                  <Switch on={offAdded} onChange={setOffAdded} label="Turn the plugins you added off too" />
+                </div>
+              </Group>
+            )}
           </Panel>
         )}
         {plan.panels.setup && plan.panels.changed && (
@@ -561,7 +571,9 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
   const [busy, setBusy] = useState(false)
   const l = useBundles()
   const prefs = usePrefs()
-  const vaultOn = usePlugins().filter((x) => x.tier === "vault" && switchedOn(x, prefs)).length
+  const on = usePlugins().filter((x) => x.tier === "vault" && switchedOn(x, prefs))
+  // (installed ones go as where they come from, always; the vault's own as their code, when asked)
+  const vaultOn = on.filter((x) => !x.meta?.source).length, installed = on.length - vaultOn
   const clash = l?.bundles.find((b) => b.source === "vault" && b.name.toLowerCase() === name.trim().toLowerCase())
   useSheetGuard(() => [name.trim() && `Name: ${name.trim()}`, description.trim() && `Description: ${description.trim()}`].filter((x) => !!x))
   const save = async () => {
@@ -570,7 +582,7 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
     try {
       const b = await saveBundle({ name, description, look, ...(look ? {} : { hotkeys, vaultPlugins: code }), ...(picture && shot ? { preview: shot } : {}), replace: !!clash })
       closeDetail()
-      notify(`Saved ${b.name}`, { action: { label: "Export", run: () => exportBundle(b) } })
+      notify(`Saved ${b.name}`, { action: { label: "Share", run: () => openDetail(`bundle-share/${b.id}`) } })
     } catch (e) { notifyError(e, "Couldn't save it") } finally { setBusy(false) }
   }
   const input = "h-10 w-full rounded-[8px] border-[0.5px] border-border bg-card px-3 text-[16px] outline-none placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:h-9 md:text-[14px]"
@@ -609,7 +621,7 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
             )}
             {!look && vaultOn > 0 && (
               <div className="flex min-h-12 items-center gap-3 py-2">
-                <div className="min-w-0 flex-1"><div className="text-[15px]">Your vault plugins</div><div className="text-[13px] text-muted-foreground">{vaultOn} on. They run code: whoever applies the bundle is asked first</div></div>
+                <div className="min-w-0 flex-1"><div className="text-[15px]">Plugins made in this vault</div><div className="text-[13px] text-muted-foreground">{vaultOn} on, as their code. Whoever applies the bundle is asked first</div></div>
                 <Switch on={code} onChange={setCode} label="Include vault plugins" />
               </div>
             )}
@@ -619,10 +631,105 @@ export function SaveBundle({ look: lookFirst = false }: { look?: boolean }) {
           {look
             ? "It keeps the colours, fonts, CSS snippets, the status bar and what a new tab shows (its page, if it has one). Not your notes."
             : <>It keeps which plugins are on, their settings that differ from the defaults (not who may reach this machine), the sidebars and pinned
-              pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows. Not your notes.</>}
+              pages{currentWorkspace() ? " (this workspace's)" : ""}, the dashboards they need, the look and what a new tab shows{installed ? `, and the ${installed === 1 ? "plugin" : `${installed} plugins`} you installed, by where they come from` : ""}. Not your notes.</>}
         </p>
         <div><Button look="primary" type="submit" disabled={busy || !name.trim()} data-bundle-save>{clash ? "Replace" : "Save"}</Button></div>
       </div>
+    </form>
+  )
+}
+
+// ---------- sharing and importing ----------
+
+const PART: Record<ShareItem["kind"], (x: ShareItem) => string> = {
+  picture: () => "A picture of your window: it may show your notes",
+  page: (x) => (x.own ? "A page with text of your own" : "A page it pins"),
+  file: () => "A file it brings",
+  settings: (x) => `Settings: ${x.keys?.join(", ") || "none"}`,
+  hotkeys: () => "Your keyboard shortcuts",
+  code: () => "A plugin made in your vault: its code",
+}
+
+/** Share a bundle as one file: what it sends (the user's own parts off at first), then Copy, Copy for an agent, Save. */
+export function ShareBundle({ id }: { id: string }) {
+  const b = useBundles()?.bundles.find((x) => x.id === id)
+  const [parts, setParts] = useState<{ items: ShareItem[]; dropped: string[] } | null>(null)
+  const [on, setOn] = useState<Record<string, boolean>>({})
+  const [text, setText] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  useEffect(() => {
+    shareOf(id).then((p) => { setParts(p); setOn(Object.fromEntries(p.items.map((x) => [x.path, x.on]))) }, (e) => setError(String(e?.message ?? e)))
+  }, [id])
+  // (made before a button is pressed: Safari copies only in the press itself)
+  useEffect(() => {
+    if (!parts || !b) return
+    let live = true
+    setText(null)
+    const include = parts.items.filter((x) => !x.on && on[x.path]).map((x) => x.path), leave = parts.items.filter((x) => x.on && !on[x.path]).map((x) => x.path)
+    bundleText(b, { include, leave }).then((t) => { if (live) setText(t) }, (e) => { if (live) setError(String(e?.message ?? e)) })
+    return () => { live = false }
+  }, [parts, on, b?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+  if (error) return <SheetHead icon={Share} tint="var(--muted-foreground)" kicker="Share" title="Can't share this bundle" sub={error} />
+  if (!b || !parts) return <div aria-busy><SheetHead icon={Share} tint="var(--muted-foreground)" kicker="Share" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
+  const copy = async (agent: boolean) => {
+    if (!text) return
+    if (await copyText(agent ? agentPrompt(b, text) : text)) notify(agent ? `Copied ${b.name}, with what an agent should do with it` : `Copied ${b.name}`)
+    else notifyError(new Error("the clipboard can't be reached here"), "Couldn't copy it")
+  }
+  return (
+    <div data-bundle-share-sheet={b.id}>
+      <SheetHead icon={Share} tint={tintOfBundle(b)} kicker="Share" title={b.name} sub="One file with this setup, not your notes: send it to someone, or paste it to their agent." />
+      <div className="mb-5 flex flex-wrap gap-2">
+        <Button look="primary" disabled={!text} onClick={() => void copy(false)} data-bundle-copy><Copy className="size-4" strokeWidth={2} />Copy</Button>
+        <Button disabled={!text} onClick={() => void copy(true)} data-bundle-copy-agent><Bot className="size-4" strokeWidth={2} />Copy for an agent</Button>
+        <Button disabled={!text} onClick={() => exportBundle(b, text!).catch((e) => notifyError(e, "Couldn't save it"))} data-bundle-export><Download className="size-4" strokeWidth={2} />Save file</Button>
+      </div>
+      {parts.items.length > 0 && (
+        <Panel title="What it sends" className="py-1">
+          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+            {parts.items.map((x) => (
+              <div key={x.path} className="flex min-h-12 items-center gap-3 py-2" data-share-part={x.path}>
+                <div className="min-w-0 flex-1"><div className="truncate text-[15px]">{x.kind === "page" ? stem(x.path) : x.label}</div><div className="text-[13px] text-muted-foreground">{PART[x.kind](x)}</div></div>
+                <Switch on={!!on[x.path]} onChange={(v) => setOn((o) => ({ ...o, [x.path]: v }))} label={`Send ${x.label}`} />
+              </div>
+            ))}
+          </div>
+        </Panel>
+      )}
+      <p className="mt-3 text-[13px] leading-[18px] text-muted-foreground">
+        {parts.dropped.length > 0 && <>Never sent: pins to your own notes ({parts.dropped.map(stem).join(", ")}). </>}
+        Plugins you installed go as where they come from: whoever applies it installs them, after saying yes. To share it from GitHub, put the file in a
+        repository: others import it by its name (owner/name).
+      </p>
+    </div>
+  )
+}
+
+/** Import a bundle: pasted (its JSON, or a GitHub repository's name), or a file. Added to the user's, not applied. */
+export function ImportBundle() {
+  const [text, setText] = useState("")
+  const [busy, setBusy] = useState(false)
+  const file = useRef<HTMLInputElement>(null)
+  useSheetGuard(() => (text.trim() ? ["What you pasted"] : []))
+  const go = async (f: () => Promise<BundleInfo>) => {
+    setBusy(true)
+    try {
+      const b = await f()
+      closeDetail()
+      notify(`Imported ${b.name}`, { action: { label: "Preview", run: () => openDetail(`bundle/${b.id}`) } })
+    } catch (e) { notifyError(e, "Couldn't import it") } finally { setBusy(false) }
+  }
+  return (
+    <form onSubmit={(e) => { e.preventDefault(); if (text.trim()) void go(() => importText(text)) }} data-bundle-import-form>
+      <SheetHead icon={Import} tint="var(--primary)" kicker="Bundles" title="Import a bundle" sub="It's added to your bundles, not applied: its preview says what it would change." />
+      <textarea autoFocus value={text} onChange={(e) => setText(e.target.value)} rows={7} spellCheck={false} data-bundle-import-text
+        placeholder="Paste a bundle, or a GitHub repository (owner/name)"
+        className="mb-3 block w-full resize-y rounded-[8px] border-[0.5px] border-border bg-card px-3 py-2 font-mono text-[16px] outline-none placeholder:font-sans placeholder:text-muted-foreground focus:ring-2 focus:ring-primary/40 md:text-[13px]" />
+      <div className="flex flex-wrap gap-2">
+        <Button look="primary" type="submit" disabled={busy || !text.trim()} data-bundle-import>{busy ? "Importing…" : "Import"}</Button>
+        <Button type="button" disabled={busy} onClick={() => file.current?.click()}><FilePlus className="size-4" strokeWidth={2} />Choose a file…</Button>
+      </div>
+      <input ref={file} type="file" accept=".json,application/json" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void go(() => importBundle(f)) }} />
     </form>
   )
 }

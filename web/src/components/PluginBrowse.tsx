@@ -2,7 +2,7 @@
 // with Vaultite's mark or what it says it does, and Install; or a host's source (Obsidian's: PluginHost.browse).
 import { useEffect, useState } from "react"
 import { Download, MoreHorizontal, Puzzle, RefreshCw } from "lucide-react"
-import { dateText, fmtAgo } from "@/core/data"
+import { dateText, fmtAgo, reload } from "@/core/data"
 import { op } from "@/core/http"
 import { openWebLink } from "@/core/links"
 import { notify, notifyError } from "@/core/notify"
@@ -12,10 +12,11 @@ import { setPrefs, usePrefs } from "@/core/prefs"
 import { official, policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 import { Bar, Loading, Panel, Segmented } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
+import { confirmDialog } from "@/components/ConfirmDialog"
 import { capitalize, cn } from "@/lib/utils"
 import { disclosed, type Disclosures } from "../../../core/pluginmeta.ts"
 import type { BrowseEntry, BrowseSource } from "@/core/define"
-import { hostsNow, pluginById, updatePlugin, usePluginsVersion } from "@/core/plugins"
+import { hostsNow, pluginById, setSwitch, updatePlugin, usePluginsVersion } from "@/core/plugins"
 import { Button } from "@/components/Button"
 import { Certified } from "@/components/Certified"
 
@@ -254,8 +255,19 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
         const p = pluginById(e.id)
         if (p) await updatePlugin(p)
       } else {
+        // Installing here is the yes to run it: one not Vaultite's asks first, saying what it does beyond the vault.
+        const says = official(e.source) ? [] : disclosed(e.disclosures)
+        if (!official(e.source) && !(await confirmDialog({
+          title: `Install and turn on ${e.name}?`,
+          body: `It runs code on the machine that serves this app, with your files${says.length ? `. It says it ${says.join(", ")}` : ""}. Install only plugins you trust.`,
+          confirm: "Install",
+        }))) return
         await op("plugin.install", { source: e.source })
-        notify(`${e.name} is installed, off until you turn it on`, { action: { label: "Show", run: () => showInstalled(e.id) } })
+        await reload()
+        // (as its switch does: allowed here as installed, its panels shown, what it writes on its own asked)
+        const p = pluginById(e.id)
+        if (p) setSwitch(p, true); else await op("plugin.enable", { id: e.id })
+        notify(`${e.name} is installed and on`, { action: { label: "Show", run: () => showInstalled(e.id) } })
       }
       setN((x) => x + 1)
     } catch (err) {
@@ -301,7 +313,7 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
             </div>
           </Panel>
           <p className="mt-2 px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
-            Plugins from GitHub run code on this machine once you turn them on: what each says it does is above, unchecked.
+            Plugins from GitHub run code on this machine: what each says it does is above, unchecked.
           </p>
         </>
       )}

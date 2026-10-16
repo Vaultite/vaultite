@@ -238,8 +238,9 @@ update by hand takes it. Allowed on this machine if it was before.
     id: "plugin.uninstall",
     cli: "plugin uninstall",
     summary: "Remove a vault plugin: turned off, its folder to the trash, its lock entry and this machine's approval gone.",
-    help: `Turns a vault plugin off, moves .vaultite/plugins/<id>/ (its settings too) to the vault's .trash, and forgets
-where it came from (.vaultite/plugins-lock.json) and that this machine allowed it.
+    help: `Turns a vault plugin off, moves .vaultite/plugins/<id>/ to the vault's .trash, and forgets where it came from
+(.vaultite/plugins-lock.json) and that this machine allowed it. One installed from elsewhere keeps its settings
+(data.json), for when it's installed again; one made here goes whole.
 
   vau plugin uninstall lighthouse`,
     kind: "destructive",
@@ -251,13 +252,17 @@ where it came from (.vaultite/plugins-lock.json) and that this machine allowed i
       if (!/^[a-z0-9][a-z0-9-]*$/.test(id) || !fs.existsSync(app.vault.abs(rel)) || !app.vaultPlugins.found.has(id)) throw new OpError(`there's no vault plugin '${id}'`, 404)
       const enabled = strings(app.vault.config("plugins").enabled)
       if (enabled.includes(id)) app.vault.patchConfig("plugins", { enabled: enabled.filter((x) => x !== id) })
+      const installed = !!readLock(app.vault)[id]
+      const data = installed ? (() => { try { return fs.readFileSync(app.vault.abs(`${rel}/data.json`)) } catch { return null } })() : null
       const to = app.vault.toTrash(rel)
+      // (a folder with only data.json isn't a plugin: installing it again finds its settings)
+      if (data) { fs.mkdirSync(app.vault.abs(rel), { recursive: true }); fs.writeFileSync(app.vault.abs(`${rel}/data.json`), data) }
       unlock(app.vault, id)
       app.vaultPlugins.trust.forget(id)
       await app.syncPlugins()
-      return { id, trashed: to }
+      return { id, trashed: to, kept: data ? `${rel}/data.json` : null }
     },
-    text: (r) => `Removed ${r.id}: its folder is in ${r.trashed}.`,
+    text: (r) => `Removed ${r.id}: its folder is in ${r.trashed}.${r.kept ? ` Its settings stay in ${r.kept}.` : ""}`,
   }, {
     id: "plugin.search",
     cli: "plugin search",

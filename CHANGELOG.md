@@ -14,6 +14,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Sidebar rows have a … on hover with their right-click menu, as files do: a pinned page or a recent file gets a file's
   whole menu (Unpin last on a pinned page); a terminal's End session and a site's Sign out moved into it, while a tab
   keeps its close button.
+- Installing a plugin from Get plugins turns it on (one not Vaultite's asks first, saying what it does), and a vault
+  plugin's sheet has Uninstall: its files go to the trash, its settings stay for when it's installed again.
+- **Sharing bundles**: Share on a bundle copies it as one file, or with a prompt for an agent, or saves it, leaving
+  out its picture, pages with your own text and pins to your notes unless you turn them on. A bundle names the plugins
+  you installed by where they come from, so applying it installs them. Import takes a pasted bundle or a GitHub
+  repository (owner/name: a bundle's folder, or one .bundle.json), and Get the newest updates one from there.
+- Plugins says where each is from (built in, installed, yours) with a filter by that, and a plugin's sheet says off
+  keeps its files and settings. A bundle's preview lists the plugins you added that it leaves as they are, with an
+  option to turn those off too (restore turns them back on), and says it applies to every window and device.
+- A plugin whose default changed is no longer left in both plugins.json lists; opening the vault tidies one that is.
 - Exiting the shell left after Claude Code or another agent (exit, ⌃D) closes its tab, as a shell's does; only an
   agent's session that died or was ended after its report keeps its tab with "Session ended" and Restart.
 - **Quick Look for Markdown**: the space bar in Finder shows a note drawn as it reads (properties, headings, lists

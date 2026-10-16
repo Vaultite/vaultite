@@ -9,7 +9,8 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```
   bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple"}
-  plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like today]}
+  plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like today],
+                      "install": {"tasks": {"name": "Tasks", "source": "Vaultite/plugins/tasks", "tag": "tasks/v1.0.1"}}: installed from there when applied}
   sidebars.json      the panels, as .vaultite/sidebars.json ({} is the default panels)
   pages.json         {"pinned": ["Dashboards/Desk.md", "Dashboards/Projects.md"]}
   appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable"}
@@ -17,7 +18,7 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page)
   preview.png        its card's picture: a screenshot of the app it makes (the desktop app takes one when saving)
   plugins/<id>/data.json   a plugin's settings: only the keys that differ from its defaults
-  plugins/<id>/      with a manifest.json: a vault plugin it brings (it runs code: applying asks the user, and their yes
+  plugins/<id>/      with a manifest.json: a vault plugin made in the vault that it brings (it runs code: applying asks the user, and their yes
                      allows it on that machine; one already in the vault keeps waiting until allowed on its own)
   themes/<Name>/, snippets/<name>.css   themes and CSS snippets it uses
   Dashboards/Desk.md any other file: a vault file at the same path (the dashboards it pins), added if there's none
@@ -41,10 +42,14 @@ starts from Minimal, core/start.ts, as does one skipping the offer), saves their
 - What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous setup" (the
   toast's Undo, Settings, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
   they're unchanged.
-- `vau bundle list | show <id> | apply <id> | restore | save <name> | export <id> | import <file> | delete <id>`, or the
+- Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
+  asked. Sharing (export, Copy) leaves out its picture, pages with the user's own text and pins to their notes, unless
+  asked (`--include`); `GET /api/bundles/<id>/share` lists the parts. A git repository is a bundle too: its folder at the
+  top, or one `.bundle.json`; `vau bundle import owner/name` adds it (bundle.json's `from` keeps where), again updates it.
+- `vau bundle list | show <id> | apply <id> | restore | save <name> | export <id> | import <file|owner/name> | delete <id>`, or the
   API: `GET /api/bundles`, `GET /api/bundles/<id>?workspace=<n>` (what applying would change: `plan`), `POST
   /api/bundles/<id>/apply {workspace}`, `POST /api/bundles/restore`, `POST /api/bundles {name, description, hotkeys,
-  vaultPlugins, workspace}` (save the current setup), `GET /api/bundles/<id>/export` (one JSON file:
-  `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`), `POST /api/bundles/import`.
+  vaultPlugins, workspace}` (save the current setup), `GET /api/bundles/<id>/export` (`POST` with `{include, leave, all}`; one JSON file:
+  `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`), `POST /api/bundles/import` (an export, or `{from}`).
 - To make one for the user, write the folder (pick blocks for its dashboards from `Dashboards/Design.md`), check it
   with `vau bundle show <id>`, and let them apply it: never apply one without asking, and never one that runs code.

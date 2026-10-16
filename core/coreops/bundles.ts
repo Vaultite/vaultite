@@ -25,8 +25,10 @@ app's own are Minimal, Life OS and Agents (then Pages and databases, Self-hosted
   restore   put back the setup from before the last bundle applied
   save      the current setup as the user's bundle <name> (--hotkeys, --vault-plugins to include those; --look for only
             the look)
-  export    one bundle as a single JSON file (<id>.bundle.json, or the file given; - prints it)
-  import    a bundle from that JSON file, or from a folder shaped like one; it's added, not applied
+  export    one bundle as a single JSON file to share (<id>.bundle.json, or the file given; - prints it): not its
+            picture, pages with the user's own text, nor pins to their notes, unless --include names them
+  import    a bundle from that JSON file, a folder shaped like one, or a git repository (owner/name: the bundle's
+            folder at its top, or one .bundle.json; getting it again updates it); it's added, not applied
   delete    one of the user's bundles (to the trash)
 
   vau bundle list
@@ -36,7 +38,8 @@ app's own are Minimal, Life OS and Agents (then Pages and databases, Self-hosted
   vau bundle save "My desk" --description "Writing and agents"
   vau bundle save "Night shift" --look
   vau bundle export my-desk
-  vau bundle import ~/Downloads/my-desk.bundle.json`
+  vau bundle import ~/Downloads/my-desk.bundle.json
+  vau bundle import alice/writing-desk`
 
 export function bundleOps(app: App): Op[] {
   return [{
@@ -83,7 +86,8 @@ line to the vault's AGENTS.md and CLAUDE.md (made if missing), allowing it to ke
       if (p.plugins.on.length) out.push(`Turns on: ${p.plugins.on.join(", ")}`)
       if (p.plugins.off.length) out.push(`Turns off: ${p.plugins.off.join(", ")}`)
       if (p.plugins.missing.length) out.push(`Not in this app (skipped): ${p.plugins.missing.join(", ")}`)
-      if (p.code.length) out.push(`Runs code: brings vault plugins ${p.code.map((x: Any) => x.id).join(", ")} (apply with --code, after asking the user)`)
+      if (p.plugins.added?.length) out.push(`Plugins the user added stay as they are: ${p.plugins.added.join(", ")} (--off-added turns them off too)`)
+      if (p.code.length) out.push(`Runs code: brings vault plugins ${p.code.map((x: Any) => x.source && !x.kept ? `${x.id} (installed from ${x.source}${x.tag ? ` at ${x.tag}` : ""})` : x.id).join(", ")} (apply with --code, after asking the user)`)
       if (p.panels.setup && p.panels.changed) out.push(`Panels: left ${p.panels.setup.left.join(", ") || "(none)"}; right ${p.panels.setup.right.join(", ") || "(none)"}`)
       if (p.pins) out.push(`Pinned pages: ${p.pins.list.join(", ") || "(none)"}${p.pins.unpin.length ? `; unpins ${p.pins.unpin.join(", ")}` : ""}`)
       for (const x of p.appearance) out.push(`Appearance ${x.key}: ${JSON.stringify(x.from)} -> ${JSON.stringify(x.to)}`)
@@ -99,10 +103,11 @@ line to the vault's AGENTS.md and CLAUDE.md (made if missing), allowing it to ke
     summary: "Apply a bundle: its plugins, settings, panels, pins and look (the setup from before is kept for restore).",
     help: HELP,
     kind: "write",
-    params: { id: ID, workspace: WORKSPACE, code: { type: "boolean", description: "allow the vault plugins it brings (they run code on this machine: ask the user first)" } },
+    params: { id: ID, workspace: WORKSPACE, code: { type: "boolean", description: "allow the vault plugins it brings (they run code on this machine: ask the user first)" },
+      offAdded: { type: "boolean", description: "also turn off the plugins the user added that it doesn't name (restore turns them back on)" } },
     args: ["id"],
-    run: async ({ id, workspace, code }, ctx) =>
-      ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code }),
+    run: async ({ id, workspace, code, offAdded }, ctx) =>
+      ctx.api("POST", `bundles/${enc(id)}/apply`, { workspace: workspace ?? await windowWorkspace(ctx), allowCode: !!code, offAdded: !!offAdded }),
     text: (r) => `Applied ${r.applied}. \`vau bundle restore\` puts back the setup from before.`,
   }, {
     id: "bundle.restore",
@@ -139,10 +144,15 @@ line to the vault's AGENTS.md and CLAUDE.md (made if missing), allowing it to ke
 Over the API the answer is the bundle's JSON; vau writes it to <id>.bundle.json, or to the file given after the id
 (- prints it).`,
     kind: "read",
-    params: { id: ID },
+    params: {
+      id: ID,
+      include: { type: "array", items: { type: "string" }, description: "parts left out by default to send anyway: preview.png, a page's path (GET /api/bundles/<id>/share lists them)" },
+      leave: { type: "array", items: { type: "string" }, description: "parts to leave out (a plugin's settings, plugins/<id>/data.json; its code, plugins/<id>/)" },
+      all: { type: "boolean", description: "every file as it is, the user's pins and picture too (a copy to keep, not to share)" },
+    },
     args: ["id"],
-    run: async ({ id }, ctx) => {
-      const r = await ctx.api("GET", `bundles/${enc(id)}/export`)
+    run: async ({ id, include, leave, all }, ctx) => {
+      const r = await ctx.api("POST", `bundles/${enc(id)}/export`, { include: include ?? [], leave: leave ?? [], all: !!all })
       return typeof r === "string" ? JSON.parse(r) : r
     },
     text: (r) => JSON.stringify(r, null, 2),
@@ -155,9 +165,14 @@ Over the API the answer is the bundle's JSON; vau writes it to <id>.bundle.json,
 Over the API, bundle is the bundle's JSON ({"vaultite": "bundle", "format": 1, "id", "files": {path: text, or {"base64": ...} for bytes}}); vau
 reads it from a file, or a folder shaped like a bundle.`,
     kind: "write",
-    params: { bundle: { format: "json", required: true, description: "the bundle: its JSON (vau: a .bundle.json file or a bundle's folder)" } },
+    params: {
+      bundle: { format: "json", description: "the bundle: its JSON (vau: a .bundle.json file, a bundle's folder, or a repository)" },
+      from: { type: "string", description: "a git repository to get it from: owner/name on GitHub (owner/name/folder, @tag), a git URL" },
+    },
     args: ["bundle"],
-    run: async ({ bundle }, ctx) => {
+    lock: false, // (fetching a repository waits on the network)
+    run: async ({ bundle, from }, ctx) => {
+      if (from) return ctx.api("POST", "bundles/import", { from })
       let b = bundle
       if (typeof b === "string") { try { b = JSON.parse(b) } catch { throw new OpError("bundle isn't a bundle's JSON") } }
       if (!b || typeof b !== "object" || Array.isArray(b)) throw new OpError("bundle isn't a bundle's JSON")

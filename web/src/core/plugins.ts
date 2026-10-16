@@ -22,6 +22,7 @@ import { askGrant } from "@/core/grants"
 import { CATEGORIES, categoryOf, OTHER } from "../../../core/categories.ts"
 import { autoUpdates, byPolicy } from "../../../core/updates.ts"
 import { setMarks } from "../../../core/fileprops.ts"
+import { switched } from "../../../core/pluginmeta.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 
 export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
@@ -247,8 +248,8 @@ function turn(p: Plugin, on: boolean) {
   if (on) { showPanelsOf(p); showSectionsOf(p) }
   // Turned on: what it writes on its own is asked now, once (core/grants.ts).
   if (on) void askGrant(p.id)
-  if (optIn(p)) return setPrefs({ enabled: on ? [...enabled.filter((id) => id !== p.id), p.id] : enabled.filter((id) => id !== p.id) })
-  return setPrefs({ disabled: on ? disabled.filter((id) => id !== p.id) : [...disabled.filter((id) => id !== p.id), p.id] })
+  const next = switched({ disabled, enabled }, p.id, on, optIn(p))
+  return setPrefs({ ...(next.disabled.join() !== disabled.join() ? { disabled: next.disabled } : {}), ...(next.enabled.join() !== enabled.join() ? { enabled: next.enabled } : {}) })
 }
 
 export function useEnabled() {

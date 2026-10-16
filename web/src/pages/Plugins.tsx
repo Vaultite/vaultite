@@ -1,5 +1,5 @@
-// Plugins: one list by category (never the app's `alwaysOn` parts), Vaultite's marked, others with a byline (trust is
-// asked on turning one on). Tap one for its sheet; Get plugins is PluginBrowse.tsx, Bundles pages/Bundles.tsx.
+// Plugins: one list by category (never the app's `alwaysOn` parts), each saying where it's from (built in, installed,
+// yours), Vaultite's marked as a trust mark. Tap one for its sheet; Get plugins is PluginBrowse.tsx, Bundles pages/Bundles.tsx.
 import { useEffect, useState } from "react"
 import { ChevronLeft, ChevronRight, Package, Plus, Search, Settings2 } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
@@ -26,11 +26,17 @@ const blurb = (d: string | undefined) => (d ?? "").split(/(?<=[\w)])[.:;] /)[0].
 /** Vaultite made it: built in, or installed from Vaultite's GitHub organisation (never what a manifest says). */
 const certified = (p: Plugin) => p.tier === "core" || (p.tier === "vault" && !!p.meta?.source && official(p.meta.source.source))
 
-/** Who made it, when it isn't Vaultite: a vault plugin's author, or the app whose plugin it is (Obsidian). */
-function bylineOf(p: Plugin): { text: string; tip?: string } | null {
-  if (p.tier === "hosted") { const h = hostOf(p); return h ? { text: h.title, tip: h.intro } : null }
-  if (p.tier === "vault" && !certified(p)) return { text: p.meta?.author ? `by ${p.meta.author}` : "yours" }
-  return null
+type Source = "built-in" | "installed" | "yours"
+const SOURCES: Record<Source, string> = { "built-in": "Built in", installed: "Installed", yours: "Yours" }
+/** Where it's from: the app's, installed (from a repository, or another app's plugin), or made in this vault. */
+const sourceOf = (p: Plugin): Source => (p.tier === "core" ? "built-in" : p.tier === "hosted" || p.meta?.source ? "installed" : "yours")
+
+/** Where it's from, and who made it when it isn't Vaultite: an installed plugin's author, or the app whose plugin it is. */
+function bylineOf(p: Plugin): { text: string; tip?: string } {
+  const from = SOURCES[sourceOf(p)]
+  if (p.tier === "hosted") { const h = hostOf(p); return h ? { text: `${from} · ${h.title}`, tip: h.intro } : { text: from } }
+  if (p.tier === "vault" && !certified(p) && p.meta?.author && sourceOf(p) === "installed") return { text: `${from} · by ${p.meta.author}` }
+  return { text: from }
 }
 
 /** Scroll a plugin's row into view (if needed), then pulse it once. The page clears its search and filters first, so
@@ -83,7 +89,7 @@ function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, original, op
         <div className="text-[15px] leading-[20px] font-medium max-md:line-clamp-2 md:truncate md:text-[14px]">
           {p.name}
           {certified(p) && <Certified className="pointer-events-auto ml-1" />}
-          {by && <span className="pointer-events-auto ml-1.5 text-[13px] font-normal text-muted-foreground md:text-[12px]" data-plugin-by={own.id} data-tip={by.tip}>{by.text}</span>}
+          <span className="pointer-events-auto ml-1.5 text-[13px] font-normal text-muted-foreground md:text-[12px]" data-plugin-by={own.id} data-plugin-source={sourceOf(p)} data-tip={by.tip}>{by.text}</span>
           {/* Something it needs is off: that's underlined, dashed (no extra line, so nothing shifts). */}
           {p.requires && (
             <span className="font-normal text-muted-foreground">
@@ -175,11 +181,12 @@ export function Plugins({ store, openSettings }: { store: Store; openSettings?: 
   const prefs = usePrefs()
   const [query, setQuery] = useState("")
   const [show, setShow] = useState<Show>("all")
+  const [from, setFrom] = useState<Source | "all">("all")
   const [cat, setCat] = useState("all")
   const [tab, setTab] = useState<"installed" | "get" | "bundles">("installed")
   const [source, setSource] = useState("") // Get plugins' source: "" the plugin directory, else a host's
   useEffect(() => {
-    beforeReveal = () => { setQuery(""); setShow("all"); setCat("all"); setTab("installed") }
+    beforeReveal = () => { setQuery(""); setShow("all"); setFrom("all"); setCat("all"); setTab("installed") }
     return () => { beforeReveal = () => {} }
   }, [])
   const q = query.trim().toLowerCase()
@@ -190,7 +197,9 @@ export function Plugins({ store, openSettings }: { store: Store; openSettings?: 
   // On: its own switch, and everything it needs on (a blocked one counts as off); a stand-in's row, either of the two.
   const isOn = (p: Plugin): boolean => switchedOn(p, prefs) && (p.requires ?? []).every((r) => isEnabled(r, prefs.disabled)) || (originals.has(p.id) && isOn(originals.get(p.id)!))
   const text = (p: Plugin) => `${p.name}\n${p.description ?? ""}`.toLowerCase()
-  const listed = all.filter((p) => !paired.has(p.id) && !p.alwaysOn).sort((a, b) => byName.compare(a.name, b.name))
+  const every = all.filter((p) => !paired.has(p.id) && !p.alwaysOn).sort((a, b) => byName.compare(a.name, b.name))
+  const fromCount = (x: Source) => every.filter((p) => sourceOf(p) === x).length
+  const listed = every.filter((p) => from === "all" || sourceOf(p) === from)
   const onCount = listed.filter(isOn).length
   const byShow = listed.filter((p) => show === "all" || (show === "on") === isOn(p))
   const sections = byCategory(byShow).filter((s) => s.plugins.length)
@@ -254,6 +263,9 @@ export function Plugins({ store, openSettings }: { store: Store; openSettings?: 
             <FilterField value={query} onChange={setQuery} placeholder="Search plugins" className="min-w-[180px]" />
             <Segmented value={show} onChange={setShow} label="Show" className="shrink-0"
               options={[{ value: "all", label: `All ${listed.length}` }, { value: "on", label: `On ${onCount}` }, { value: "off", label: `Off ${listed.length - onCount}` }]} />
+            {/* (only the sources it has: four with counts don't fit a phone) */}
+            <Segmented value={from} onChange={setFrom} label="From" className="max-w-full shrink-0"
+              options={[{ value: "all", label: "Any" }, ...(Object.keys(SOURCES) as Source[]).filter((x) => x === from || fromCount(x)).map((x) => ({ value: x, label: SOURCES[x] }))]} />
           </div>
           {/* Narrow: the same categories as a row of chips. */}
           <div className="-mx-1 mb-3 flex gap-1.5 overflow-x-auto px-1 pb-1 @3xl:hidden" role="group" aria-label="Categories" data-plugins-chips>
@@ -268,7 +280,7 @@ export function Plugins({ store, openSettings }: { store: Store; openSettings?: 
           <Waiting list={waiting} />
           {!shown.length ? (
             <p className="py-4 text-[15px] text-muted-foreground md:text-[13px]" data-plugins-empty>
-              {q ? `No installed plugin matches "${query.trim()}".` : show === "off" ? "Every plugin is on." : "No plugins here."}
+              {q ? `No installed plugin matches "${query.trim()}".` : from === "yours" && !listed.length ? `None made in this vault: they'd be in ${FOLDER}.` : show === "off" ? "Every plugin is on." : "No plugins here."}
             </p>
           ) : current === "all" && !q ? (
             // Everything: a section per category, headings only (nothing folds; the rail picks one).

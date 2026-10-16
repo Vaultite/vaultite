@@ -59,3 +59,10 @@ export function iconOf(icon: unknown, read?: (file: string) => string | null): s
   if (read && ICON_FILE.test(icon)) { const svg = read(icon); return svg === null ? null : svgIcon(svg) }
   return null
 }
+
+export type Lists = { disabled: string[]; enabled: string[] }
+/** plugins.json's two lists with one plugin switched: an opt-in one is on in `enabled`, any other off in `disabled`.
+ *  It leaves the other list, so one whose default changed is never in both. */
+export function switched(l: Lists, id: string, on: boolean, optIn: boolean): Lists {
+  return { disabled: [...l.disabled.filter((x) => x !== id), ...(!on && !optIn ? [id] : [])], enabled: [...l.enabled.filter((x) => x !== id), ...(on && optIn ? [id] : [])] }
+}

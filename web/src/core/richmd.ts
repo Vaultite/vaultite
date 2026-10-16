@@ -147,6 +147,12 @@ export function copyCode(button: HTMLElement, text: string) {
   else if (fallbackCopy(text)) done()
 }
 
+/** Copy text: the async clipboard, else the textarea way; false when neither could. */
+export async function copyText(text: string) {
+  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(text); return true } } catch { /* the other way */ }
+  return fallbackCopy(text)
+}
+
 // Clipboard without the async API (an http page on the tailnet): a hidden textarea and execCommand.
 function fallbackCopy(text: string) {
   const ta = document.createElement("textarea")

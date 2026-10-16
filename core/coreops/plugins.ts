@@ -6,6 +6,7 @@ import type { App } from "../app.ts"
 import { panelsOf, sectionsOf, type PluginDir } from "../appsource.ts"
 import { readNewTab } from "../newtab.ts"
 import { type Op, type OpCtx, OpError } from "../ops.ts"
+import { switched } from "../pluginmeta.ts"
 import { checkVaultPlugin, digestOf } from "../vaultplugins.ts"
 import { placePanel, readSidebars, sideOf } from "../sidebars.ts"
 import { API_VERSION } from "../version.ts"
@@ -96,9 +97,9 @@ export function pluginOps(app: App): Op[] {
     if (want && p.tier === "vault" && !(await ctx?.refusal?.("allowing a vault plugin to run on this machine"))) {
       try { app.vaultPlugins.allow(p.id); allowed = true } catch { /* can't be read yet */ }
     }
-    const key = p.optIn ? "enabled" : "disabled"
-    const cur = strings(app.vault.config("plugins")[key]).filter((x) => x !== p.id)
-    const conf = app.vault.patchConfig("plugins", { [key]: p.optIn === want ? [...cur, p.id] : cur })
+    const was = app.vault.config("plugins"), lists = { disabled: strings(was.disabled), enabled: strings(was.enabled) }
+    const next = switched(lists, p.id, want, p.optIn)
+    const conf = app.vault.patchConfig("plugins", Object.fromEntries((["disabled", "enabled"] as const).filter((k) => next[k].join() !== lists[k].join()).map((k) => [k, next[k]])))
     const saved = readSidebars(app.vault.config("sidebars"))
     const add = want && saved ? panelsOf(p).filter((d) => !d.hidden && !sideOf(saved, d.key)) : []
     if (add.length) {

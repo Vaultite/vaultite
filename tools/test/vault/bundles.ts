@@ -96,6 +96,22 @@ export default async ($: VaultTest) => {
     ;[code] = await api("DELETE", "bundles/life-os")
     check("bundles: the app's can't be deleted", code === 400, code)
 
+    // Sharing leaves out what's the user's own: the picture, a page with their text, pins to their notes.
+    write(".vaultite/bundles/my-desk/Dashboards/Desk.md", "---\ntype: dashboard\n---\n\nPlans for Bob's party\n\n```block-inbox\n```\n")
+    write(".vaultite/bundles/my-desk/Dashboards/Plain.md", "---\ntype: dashboard\n---\n\n## Today\n\n```block-inbox\n```\n")
+    fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/my-desk/preview.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]))
+    ;[code, r] = await api("GET", "bundles/my-desk/share")
+    const item = (f: string) => r.items?.find((x: Any) => x.path === f)
+    check("bundles: share lists the parts, the user's own off", code === 200 && item("preview.png")?.on === false && item("Dashboards/Desk.md")?.own && !item("Dashboards/Desk.md").on &&
+      item("Dashboards/Plain.md")?.on && item("plugins/page-preview/data.json")?.keys?.includes("delay") && r.dropped.join() === "People/Alice Park.md", r)
+    let out = JSON.parse((await api("GET", "bundles/my-desk/export"))[1])
+    check("bundles: shared, it's without them: the pin to a note of the user's is taken out, the app's page kept", !out.files["preview.png"] && !out.files["Dashboards/Desk.md"] &&
+      !!out.files["Dashboards/Plain.md"] && out.files["pages.json"].pinned.join() === "Dashboards/Today.md", Object.keys(out.files))
+    out = JSON.parse((await api("POST", "bundles/my-desk/export", { include: ["preview.png"], leave: ["plugins/page-preview/data.json"] }))[1])
+    check("bundles: what's sent can be chosen", !!out.files["preview.png"]?.base64 && !out.files["plugins/page-preview/data.json"], Object.keys(out.files))
+    out = JSON.parse((await api("GET", "bundles/my-desk/export?all=1"))[1])
+    check("bundles: all of it, as kept (a delete's Undo)", !!out.files["preview.png"] && !!out.files["Dashboards/Desk.md"] && out.files["pages.json"].pinned.includes("People/Alice Park.md"), Object.keys(out.files))
+
     // Files that aren't text (an image) go in and out as their bytes; one that can't be read is listed, saying why.
     const png = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0xff, 0x00, 0xfe, 0x01])
     write(".vaultite/bundles/pics/bundle.json", JSON.stringify({ name: "Pics" }))
@@ -152,6 +168,28 @@ export default async ($: VaultTest) => {
     await api("DELETE", "bundles/lamp-light")
     if (lookBefore) setConf("newtab", lookBefore); else fs.rmSync(path.join(VAULT, ".vaultite/newtab.json"), { force: true })
     setConf("appearance", appearanceBefore)
+
+    // Plugins the user added (the vault's, on) that a bundle doesn't name: listed and left alone, or off too with
+    // offAdded, which restore undoes.
+    const pluginsHere = read(".vaultite/plugins.json")
+    ;[code] = await api("POST", "bundles/coder/apply", { allowCode: true })
+    ;[, r] = await api("GET", "bundles/minimal")
+    check("bundles: a plugin you added that it doesn't name is listed, left alone", code === 200 && r.plan.plugins.added.includes("hello") && !r.plan.plugins.off.includes("hello"), r.plan.plugins)
+    ;[code] = await api("POST", "bundles/minimal/apply", { offAdded: true })
+    check("bundles: with offAdded, it's turned off too", code === 200 && !(conf("plugins").enabled ?? []).includes("hello"), conf("plugins"))
+    ;[code] = await api("POST", "bundles/restore")
+    check("bundles: restored, it's on again", code === 200 && conf("plugins").enabled.includes("hello"), conf("plugins"))
+    await api("POST", "ops/plugin.uninstall", { id: "hello" })
+    write(".vaultite/plugins.json", pluginsHere)
+
+    // A plugin in both of plugins.json's lists (its default changed since): switching it leaves it in one, and opening
+    // the vault tidies the rest.
+    setConf("plugins", { ...conf("plugins"), disabled: ["token-count", "vim"], enabled: ["token-count", "vim", "books"] })
+    await api("POST", "ops/plugin.enable", { id: "vim" })
+    check("bundles: switched on, an opt-in plugin is only in enabled", !conf("plugins").disabled.includes("vim") && conf("plugins").enabled.includes("vim"), conf("plugins"))
+    app.tidyPluginLists()
+    check("bundles: tidied, each is in the list that counts for it", conf("plugins").disabled.join() === "token-count" && [...conf("plugins").enabled].sort().join() === "books,vim", conf("plugins"))
+    write(".vaultite/plugins.json", pluginsHere)
 
     // A number the user set higher stays: a bundle never lowers it.
     const hist = conf("plugins/history/data")

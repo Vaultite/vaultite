@@ -2,7 +2,7 @@
 // what it says it does, Allow), and an inert live preview of its dashboards with made-up data (core/mock.ts).
 import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, Folder, RefreshCw, Server, Settings2, ShieldAlert } from "lucide-react"
-import { dateText, PreviewLive, type Store } from "@/core/data"
+import { dateText, PreviewLive, reload, type Store } from "@/core/data"
 import { mockStore } from "@/core/mock"
 import { noteParts } from "@/core/frontmatter"
 import { allowPlugin, autoUpdating, hostOf, isEnabled, names, pageViewOf, pluginById, PLUGINS, rollbackPlugin, setAutoUpdate, setSwitch, switchedOn, templatesOf, tintOfPlugin,
@@ -19,7 +19,8 @@ import { showInTree } from "@/components/FileTree"
 import { Where } from "@/components/PluginSettings"
 import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
-import { notifyError } from "@/core/notify"
+import { notify, notifyError } from "@/core/notify"
+import { closeDetail } from "@/core/nav"
 import { List, PageHeader, Row, Section, SheetHead, Switch } from "@/components/kit"
 import { capitalize, cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -240,6 +241,21 @@ function Updates({ plugin }: { plugin: Plugin }) {
   )
 }
 
+/** Remove a vault plugin (core/coreops/installs.ts plugin.uninstall): one installed keeps its settings, one made here goes
+ *  whole, its code with it. */
+async function uninstall(p: Plugin) {
+  const installed = !!p.meta?.source
+  if (!(await confirmDialog(installed
+    ? { title: `Uninstall ${p.name}?`, body: "Its files go to the trash. Its settings stay, in case you install it again.", confirm: "Uninstall", danger: true }
+    : { title: `Move ${p.name} to the trash?`, body: "It was made in this vault: its code and settings go to the trash.", confirm: "Move to trash", danger: true }))) return
+  try {
+    await op("plugin.uninstall", { id: p.id })
+    closeDetail()
+    await reload()
+    notify(installed ? `Uninstalled ${p.name}` : `Moved ${p.name} to the trash`)
+  } catch (e) { notifyError(e, `Couldn't remove ${p.name}`) }
+}
+
 // (what it is, not where it came from: its Author row says who made a vault plugin)
 const kickerOf = (p: Plugin) => categoryOf(p.category).label
 
@@ -259,8 +275,12 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
       <SheetHead icon={plugin.icon} tint={tintOfPlugin(plugin.id)} kicker={plugin.tier === "hosted" ? capitalize(hostOf(plugin)?.kind) : kickerOf(plugin)}
         title={plugin.name} sub={plugin.description} />
       {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && (
-        <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5">
-          <span className="flex-1 text-[15px]">{on && !blocked.length ? "On" : "Off"}</span>
+        <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2" data-plugin-switch>
+          <span className="min-w-0 flex-1">
+            <span className="block text-[15px]">{on && !blocked.length ? "On" : "Off"}</span>
+            {/* (removing it is Uninstall, below: off is only a switch) */}
+            <span className="block text-[13px] leading-[18px] text-muted-foreground">Off keeps its files and settings: turn it on again any time.</span>
+          </span>
           <Switch on={on && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
         </div>
       )}
@@ -324,6 +344,9 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
         <PreviewLive.Provider value={live}><Frame><Catch fallback={noPreview}>{preview(plugin, mock, disabled)}</Catch></Frame></PreviewLive.Provider>
       )}
       <Kept plugin={plugin} files={store.pluginSettings ?? []} />
+      {plugin.tier === "vault" && (
+        <Button className="mt-5 text-[var(--red)]" data-plugin-uninstall={plugin.id} onClick={() => void uninstall(plugin)}>{plugin.meta?.source ? "Uninstall" : "Move to trash"}</Button>
+      )}
       {plugin.tier === "hosted" && hostOf(plugin)?.uninstall && (
         <Button className="mt-5 text-[var(--red)]" data-plugin-uninstall={plugin.id}
           onClick={async () => { if (await confirmDialog({ title: `Uninstall ${plugin.name}?`, body: "Its files are removed from this vault. Its settings stay, in case you install it again.", confirm: "Uninstall", danger: true })) await hostOf(plugin)?.uninstall?.(plugin.id) }}>Uninstall</Button>

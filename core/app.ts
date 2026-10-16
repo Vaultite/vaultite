@@ -124,6 +124,17 @@ export class App {
     return this
   }
 
+  /** plugins.json with each plugin in only the list that counts for it now: one whose default changed was left in both
+   *  (written only then). The app's are opt-in when `offByDefault`, the vault's always. */
+  tidyPluginLists() {
+    const conf = this.vault.config("plugins")
+    const list = (k: string) => (Array.isArray(conf[k]) ? (conf[k] as unknown[]).filter((x): x is string => typeof x === "string") : [])
+    const disabled = list("disabled"), enabled = list("enabled"), both = disabled.filter((id) => enabled.includes(id))
+    if (!both.length) return
+    const optIn = (id: string) => { const p = this.app.find((x) => x.id === id); return !p || !!p.manifest.offByDefault }
+    this.vault.patchConfig("plugins", { disabled: disabled.filter((id) => !both.includes(id) || !optIn(id)), enabled: enabled.filter((id) => !both.includes(id) || optIn(id)) })
+  }
+
   /** Load, reload or unload the vault's own plugins. Runs before every request and before the files are read, so a
    *  plugin's kinds apply to them; `refresh`: their dashboards follow. */
   async syncPlugins(refresh = true) {
@@ -310,6 +321,8 @@ export class App {
           if (fs.existsSync(this.vault.abs(`.vaultite/plugins/${id}/manifest.json`))) this.vaultPlugins.allow(id)
         }
       },
+      install: async (source, tag) => { await this.callOp("plugin.install", { source, ...(tag ? { tag } : {}) }, this.who(), { http }) },
+      uninstall: async (id) => { await this.callOp("plugin.uninstall", { id }, this.who(), { http }) },
     }
   }
 
@@ -795,6 +808,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
+    app.tidyPluginLists()
     await turn()
     app.installPages()
     timing?.mark("pages")
