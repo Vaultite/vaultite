@@ -8,6 +8,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Bundles: Plugins' Bundles button and the command "Choose a bundle…" open Bundles as a page of its own, not inside
   Settings. Its cards sit three across, and importing is also a tile under Yours, where imported bundles land.
+- **Plugin API 4**: a plugin offers modules to plugins that require it (manifest `exports`), imported as
+  `@plugins/<id>/<module>` in index.tsx and plugin.ts alike, the app's plugins and vault plugins the same (was
+  `@plugins/core/<id>/...`, app plugins only); coding agent plugins get `@vaultite/core/agents.ts`; a vault plugin may
+  join a Plugins page group (`group`) and keep settings files of its own (`<name>.json`) without changing its version.
+- **Books moved to Vaultite's plugins**: a vault that had it on installs it from there once, with its settings, and asks
+  once to allow it; Life OS installs it. The web demo builds Vaultite's own plugins in.
+- **Daily notes are their own plugin**, on from the start as in Obsidian: today's note (Open today's daily note,
+  `vau daily`, the op `daily-note.open`, was `today.daily`), its date format, template and folder are in Daily notes'
+  settings, moved there from Today's. Today keeps routines, ticked in the daily notes (`routine.check`; `POST
+  /api/checks` is gone).
 - Web links clicked in a terminal (an agent's output, `ls --hyperlink`) open in the Web viewer like links in notes, and
   ⌘-click sends them to the browser. Before, they always went to the browser.
 - **Plugins page: one Filter menu** in place of the row of category chips: by status (on or off), source (built in,

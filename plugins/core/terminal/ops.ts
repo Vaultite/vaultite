@@ -1,7 +1,6 @@
 // Terminal's operations (`vau terminal`), through the plugin's own routes, Workspaces' and the user's window, so they
 // can do what the routes allow and nothing more.
-import { startAgent } from "../../../core/codingagents.ts"
-import { AGENT, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
+import { startAgent, TERMINAL_AGENT, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/agents.ts"
 import { fmtAgo, OpError, type OpCtx, type Plugin, quoted } from "../../../core/plugins.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -130,7 +129,7 @@ reads it). An agent with accounts starts in one with <agent>_<account> (claude_p
     },
     args: ["agent"],
     run: async ({ agent, split }, ctx) => {
-      if (agent && !AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
+      if (agent && !TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
       const t = newTerminalId(agent)
       const r = agent ? await startAgent(ctx, t) : await ctx.api("POST", `terminals/${t}`)
       await show(ctx, t, split ?? null)

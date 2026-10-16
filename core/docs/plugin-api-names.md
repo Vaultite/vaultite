@@ -749,3 +749,63 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `writeNew(p, data)`: A new file, whole or not at all (a full disk or a crash mid-write leaves no cut-off file to be refused as "already exists"); false if one came at `p` meanwhile.
 - `Writer`: Who asked for the write being made: the API request's X-Vaultite-Client ("app/desktop", "cli", "mcp"; null for anyone who doesn't say: curl, a script) and X-Vaultite-Agent (the CLI's coding agent).
 - `writeText(p, text)`: Text written as writeAtomic does, keeping the Windows line endings (\r\n) a file there has: text is read as \n.
+
+### `@vaultite/core/agents.ts` (plugin.ts: a coding agent's plugin)
+- `Account`: One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents.
+- `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
+- `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).
+- `agentName(id)`: An agent's name by its id or its name in a terminal ("claude"), or null.
+- `AgentStart`: What Terminal gives an agent's "agent:<name>" service, which answers the command (and folder) to run in a login shell, which then stays a plain shell.
+- `AgentState`: A terminal's agent as the Terminals panel shows it.
+- `ago(s)`: An ISO time as "2 h 10 min ago", "3 days ago".
+- `argvOf(args, valued, maybe?)`: A command line's words after its program: `opt(...names)` an option's value ("" for a switch; `--x=v` too), the next word for those in `valued`, and for those in `maybe` when it isn't an option;…
+- `buildCache(keep?)`: The last few things built (conversations), by key: `make` runs again only when the key's `version` changed.
+- `codingAgent(plugin, a)`: A coding agent's routes and blocks; it answers which accounts an `account` option names.
+- `CodingAgent`: A coding agent plugin: what it reads from its tool, which `codingAgent` makes its routes and blocks of.
+- `Counted`: A request as a tally counts it: when (epoch ms), its cost (null: no price for its model), tokens, cache reads, prompt tokens (cached or not), the model's name and the minutes it worked, when…
+- `cwds(pids)`: Each process's working folder (Linux's /proc, else lsof).
+- `dayOf(ts)`: Epoch seconds -> the local day.
+- `Entry`
+- `epochSeconds(s)`: ISO time ("2026-09-29T17:51:25.878Z") -> epoch seconds, or null.
+- `expandHome(p)`: A path with `~` for the home folder, resolved.
+- `findBin(name)`: A program on this machine: on the server's PATH (launchd's is short), beside the Node running it (npm's), or where installers put it; null when it's nowhere.
+- `firstPrompts(find)`: A session's first prompt as its title (`find` it by id), on one line and cut to 80 characters; kept once found.
+- `Head`
+- `HOME`: This machine's home folder, where agents keep their files.
+- `isoOf(ms)`: Epoch ms -> ISO time, or null.
+- `jsonLines(bin, args, o)`: Talks to `bin` in JSON lines over stdio: `first` sent, then `hear` gets each message read (`send` more, `done` with the answer).
+- `JsonlScan`: An agent's JSONL transcripts under `dirs`, read as they grow (at most every 5 s; all again once asked for older days): `line` hears each new line with its file's state (`fresh`, again when the…
+- `KNOWN_AGENTS`: The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its writes say they came from (default its id), how it calls itself (an MCP…
+- `limitRows(windows)`: A plan's limits, one line each: how much is used and when it renews.
+- `Limits`: A plan's limits as an agent reads them: where from, when, and each window.
+- `limitWindow(id, label, minutes, used, resets, now)`: A plan limit's window at `now` (epoch s; `resets` too): one that renewed since it was read is unused.
+- `Live`: A session open now as its process tells (times in epoch ms; `tmux`, its pane): codingAgent adds what the usage knows of it (cost, tokens, project, model) and the app's terminal it runs in.
+- `newTerminalId(agent?)`: A new terminal's id: 8 letters and digits, after `agent` (a name, or a name and account: TERMINAL_AGENT) when it runs one.
+- `notOnThisMachine(agent, id)`: A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell.
+- `numberOf(v)`: A number as stored, else 0.
+- `parseJson(v)`: A JSON text's value (its bytes too), or null.
+- `parseTerminal(id)`: The agent terminal `id` runs, in which account, the session it resumes and the machine it's on; null: a shell.
+- `priceList(table, sep?)`: A price table's entry for a model: the longest key it starts with (after `sep`, so "gpt-5" isn't "gpt-5.1"'s).
+- `processes()`: Every process on this machine: its pid, start (epoch ms) and command line.
+- `projectName(root)`: A project root's name: its folder's, "Home" for the home folder.
+- `projectOf(cwd, rootsOf?)`: A folder's project name, through `rootsOf` (an agent's own worktrees).
+- `projectRoots(cwds, own?)`: Folder -> its project's root.
+- `readLines(file, offset, line, chunk?)`: Calls `line` with each whole line of `file` from byte `offset`; returns where the last one ended.
+- `resumeTerminalId(name, session)`: The id of a terminal resuming agent `name`'s session `session`.
+- `Said`
+- `scanDays()`: How many days back the scans read now.
+- `sessionsOf(procs, key, pick)`: Each process, newest first, with the session it writes: `pick`ed among those a newer one didn't take (`free`); a process whose pick was taken is left out.
+- `shellQuote(s)`: `s` as one word of a shell command.
+- `SqliteFile`: A database file opened read only, again when it was replaced; a query answers no rows rather than fail (no file, an older schema, busy).
+- `startAgent(ctx, id, prompt?)`: Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer.
+- `Tally`: Usage over the last `days`, by day, project, model and session, as the agents' GET routes answer it.
+- `TERMINAL_AGENT`: An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal").
+- `terminalOf(plugin, pid, hint?)`: The app's terminal a process runs in (Terminal's, while it's on): its session id, or null.
+- `Tool`: A conversation's entries (a session's view tab): a tool call, what was said, and its head.
+- `toolSummary(input, keys, where?)`: One line saying what a tool call did: the first of `keys` it has ("git status", "src/app.ts"), else its first text; a search as "<pattern> in <the first of `where`>".
+- `Transcript`: A JSONL transcript read so far, read on from where it stopped when it grows.
+- `transcripts(make)`: The last few transcripts read, by file: `get` reads one on from where it was left, or null when it can't be read.
+- `truncate(s, n?)`: Long texts cut short: a view is for reading a conversation back, not for the raw data.
+- `Turn`: How long a turn worked, as a JSONL agent's transcripts say.
+- `Usage`: What an agent's GET route answers: its tally, plan, limits and live sessions.
+- `vauMcpServer()`: `vau mcp` as an agent's MCP server: by the Node running this server (an agent may pass its servers no PATH), told this server's address (another port isn't vau's default).

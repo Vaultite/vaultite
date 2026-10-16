@@ -9,7 +9,7 @@ import { pathToFileURL } from "node:url"
 import { OpError } from "./ops.ts"
 import { today } from "./plugins.ts"
 import { DISCLOSURES, disclosuresOf } from "./pluginmeta.ts"
-import { ignoreOf, userFilesOf, walk } from "./rules.ts"
+import { ignoreOf, settingsFile, userFilesOf, walk } from "./rules.ts"
 import { notesOf, type Update } from "./updates.ts"
 import { compareVersions, tagVersion } from "./version.ts"
 import { checkVaultPlugin, DIR, digestOf } from "./vaultplugins.ts"
@@ -22,7 +22,9 @@ export type Locked = { source: string; repo: string | null; tag: string | null; 
   /** Its updates, oldest first (at most HISTORY_MAX). */
   history?: Update[]
   /** A version rolled back from: updating on its own skips it (a newer one is taken). */
-  skip?: string }
+  skip?: string
+  /** It was one of the app's own plugins, installed by the app when it moved here (core/migrations.ts MOVED). */
+  moved?: true }
 export const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
 export const HISTORY_MAX = 30
 
@@ -212,8 +214,8 @@ function writeLock(vault: Vault, id: string, entry: Locked | null) {
 
 
 /** Put a fetched plugin in `.vaultite/plugins/<id>/`, swapping the whole folder at once and keeping its settings; locks
- *  it, with `change` in its history (an update: how, its notes, a version to skip from now on). */
-export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Update["how"]; notes: string[]; skip?: string }): Locked {
+ *  it, with `change` in its history (an update: how, its notes, a version to skip from now on), `moved` from the app. */
+export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Update["how"]; notes: string[]; skip?: string }, moved?: boolean): Locked {
   const was = readLock(vault)[f.id]
   const root = vault.abs(DIR), target = path.join(root, f.id)
   const fresh = path.join(root, `.${f.id}.new`), old = path.join(root, `.${f.id}.old`)
@@ -221,8 +223,9 @@ export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Upd
   fs.rmSync(old, { recursive: true, force: true })
   fs.mkdirSync(root, { recursive: true })
   fs.cpSync(f.dir, fresh, { recursive: true })
-  // (its settings and the files it keeps as the user's stay as they are here)
-  for (const f of ["data.json", ...userFilesOf(fresh)]) {
+  // (its settings, those it doesn't ship, and the files it keeps as the user's stay as they are here)
+  const settings = fs.existsSync(target) ? fs.readdirSync(target).filter((f) => settingsFile(f) && !fs.existsSync(path.join(fresh, f))) : []
+  for (const f of [...settings, ...userFilesOf(fresh)]) {
     if (!fs.existsSync(path.join(target, f))) continue
     fs.mkdirSync(path.dirname(path.join(fresh, f)), { recursive: true })
     fs.copyFileSync(path.join(target, f), path.join(fresh, f))
@@ -234,7 +237,7 @@ export function place(vault: Vault, f: Fetched, src: Source, change?: { how: Upd
   const history = [...(was?.history ?? []), ...(change && was ? [{ from: was.version, to: version, at: new Date().toISOString(), how: change.how, notes: change.notes }] : [])]
   const entry: Locked = { source: src.given, repo: src.repo ?? (typeof f.manifest.repo === "string" ? f.manifest.repo : null), tag: f.tag, commit: f.commit,
     version, hash: digestOf(target).content, installed: today(), ...(history.length ? { history: history.slice(-HISTORY_MAX) } : {}),
-    ...(change?.skip ? { skip: change.skip } : {}) }
+    ...(change?.skip ? { skip: change.skip } : {}), ...(moved ?? was?.moved ? { moved: true as const } : {}) }
   writeLock(vault, f.id, entry)
   return entry
 }

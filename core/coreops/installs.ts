@@ -10,11 +10,37 @@ import type { Entry } from "../pluginindex.ts"
 import { disclosed, disclosuresOf } from "../pluginmeta.ts"
 import { autoUpdates, type Update } from "../updates.ts"
 import { compareVersions, tagVersion } from "../version.ts"
+import { settingsFile } from "../rules.ts"
 import { DIR, digestOf } from "../vaultplugins.ts"
 import { notHereYet } from "../writegate.ts"
 import { type Any, strings } from "./common.ts"
 
 const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" }
+
+/** Install a plugin from `source` (at `tag`, else its newest): off, unless plugins.json has it on; `moved`, one of the
+ *  app's plugins that moved to it (core/migrations.ts MOVED), said so when it asks to be allowed here. */
+export async function installFrom(app: App, source: string, tag?: string | null, { moved = false } = {}) {
+  const src = parseSource(source, tag)
+  const f = await fetchSource(src, new Map(app.app.map((p) => [p.id, p.tier])), [...app.vaultPlugins.found.keys()])
+  try {
+    const version = String(f.manifest.version ?? "")
+    const why = app.index.blockedWhy(f.id, version, [src.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
+    if (why) throw new OpError(why, 409)
+    const lock = readLock(app.vault)
+    // (a folder with only its settings is kept for it: one of the app's plugins that became an install)
+    if (fs.existsSync(app.vault.abs(`${DIR}/${f.id}/manifest.json`))) {
+      throw new OpError(lock[f.id] ? `${f.id} is installed already (${lock[f.id].version}): vau plugin update ${f.id}`
+        : `there's a vault plugin '${f.id}' already, made here: rename or remove it first`, 409)
+    }
+    const entry = await app.hold(() => place(app.vault, f, src, undefined, moved))
+    app.vaultPlugins.trust.noEdits(f.id)
+    await app.syncPlugins()
+    return { id: f.id, name: String(f.manifest.name ?? f.id), version, tag: f.tag, commit: f.commit, untagged: f.untagged, folder: `${DIR}/${f.id}`,
+      disclosures: disclosuresOf(f.manifest), source: entry }
+  } finally {
+    f.done()
+  }
+}
 
 export function installOps(app: App): Op[] {
   const tiers = () => new Map(app.app.map((p) => [p.id, p.tier]))
@@ -106,28 +132,7 @@ another address.
     lock: false, // (fetching waits on the network: it writes only at the end)
     params: { source: SOURCE, tag: { type: "string", description: "the tag to install (else the newest version tag)" } },
     args: ["source"],
-    run: async ({ source, tag }) => {
-      const src = parseSource(source, tag)
-      const f = await fetchSource(src, tiers(), vaultIds())
-      try {
-        const version = String(f.manifest.version ?? "")
-        const why = blocked(f.id, version, [src.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
-        if (why) throw new OpError(why, 409)
-        const lock = readLock(app.vault)
-        // (a folder with only its settings, data.json, is kept for it: one of the app's plugins that became an install)
-        if (fs.existsSync(app.vault.abs(`${DIR}/${f.id}/manifest.json`))) {
-          throw new OpError(lock[f.id] ? `${f.id} is installed already (${lock[f.id].version}): vau plugin update ${f.id}`
-            : `there's a vault plugin '${f.id}' already, made here: rename or remove it first`, 409)
-        }
-        const entry = await app.hold(() => place(app.vault, f, src))
-        app.vaultPlugins.trust.noEdits(f.id)
-        await app.syncPlugins()
-        return { id: f.id, name: String(f.manifest.name ?? f.id), version, tag: f.tag, commit: f.commit, untagged: f.untagged, folder: `${DIR}/${f.id}`,
-          disclosures: disclosuresOf(f.manifest), source: entry }
-      } finally {
-        f.done()
-      }
-    },
+    run: ({ source, tag }) => installFrom(app, source, tag),
     text: (r) => [`Installed ${r.name} ${r.version} in ${r.folder}/${r.tag ? ` (${r.tag})` : r.commit ? ` (commit ${r.commit.slice(0, 7)})` : ""}.`,
       ...(r.untagged ? ["It has no version tags: it's the default branch as it is now (updates follow its commits)."] : []),
       ...disclosed(r.disclosures).map((d) => `It says it ${d}.`),
@@ -245,7 +250,7 @@ update by hand takes it. Allowed on this machine if it was before.
     summary: "Remove a vault plugin: turned off, its folder to the trash, its lock entry and this machine's approval gone.",
     help: `Turns a vault plugin off, moves .vaultite/plugins/<id>/ to the vault's .trash, and forgets where it came from
 (.vaultite/plugins-lock.json) and that this machine allowed it. One installed from elsewhere keeps its settings
-(data.json), for when it's installed again; one made here goes whole.
+(data.json and its other settings files), for when it's installed again; one made here goes whole.
 
   vau plugin uninstall lighthouse`,
     kind: "destructive",
@@ -258,14 +263,15 @@ update by hand takes it. Allowed on this machine if it was before.
       const enabled = strings(app.vault.config("plugins").enabled)
       if (enabled.includes(id)) app.vault.patchConfig("plugins", { enabled: enabled.filter((x) => x !== id) })
       const installed = !!readLock(app.vault)[id]
-      const data = installed ? (() => { try { return fs.readFileSync(app.vault.abs(`${rel}/data.json`)) } catch { return null } })() : null
+      const kept = installed ? fs.readdirSync(app.vault.abs(rel)).filter(settingsFile).map((f) => [f, fs.readFileSync(app.vault.abs(`${rel}/${f}`))] as const) : []
       const to = app.vault.toTrash(rel)
-      // (a folder with only data.json isn't a plugin: installing it again finds its settings)
-      if (data) { fs.mkdirSync(app.vault.abs(rel), { recursive: true }); fs.writeFileSync(app.vault.abs(`${rel}/data.json`), data) }
+      // (a folder with only settings isn't a plugin: installing it again finds them)
+      if (kept.length) fs.mkdirSync(app.vault.abs(rel), { recursive: true })
+      for (const [f, data] of kept) fs.writeFileSync(app.vault.abs(`${rel}/${f}`), data)
       unlock(app.vault, id)
       app.vaultPlugins.trust.forget(id)
       await app.syncPlugins()
-      return { id, trashed: to, kept: data ? `${rel}/data.json` : null }
+      return { id, trashed: to, kept: kept.length ? `${rel}/` : null }
     },
     text: (r) => `Removed ${r.id}: its folder is in ${r.trashed}.${r.kept ? ` Its settings stay in ${r.kept}.` : ""}`,
   }, {

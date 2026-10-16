@@ -6,11 +6,13 @@ import net from "node:net"
 import path from "node:path"
 import { promisify } from "node:util"
 import zlib from "node:zlib"
-import { type AgentStart, ago, type Any, argvOf, codingAgent, cut, expandHome, findBin, firstPrompts, HOME, isoOf, jsonOf, type Live, notHere, num, processes, quote,
-  rebuilt, roots, scanDays, SqliteFile, Tally, vauMcpServer } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, argvOf, codingAgent, truncate, expandHome, findBin, firstPrompts, HOME, isoOf, parseJson, type Live, notOnThisMachine, numberOf, processes, shellQuote,
+  buildCache, projectRoots, scanDays, SqliteFile, Tally, vauMcpServer } from "../../../core/agents.ts"
 import { bullets, fmtMin, localDate, OpError, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { conversation, injected, textOf } from "./transcript.ts"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
 
 export const plugin = new Plugin(import.meta.url)
 const run = promisify(execFile)
@@ -22,7 +24,7 @@ const STATE = env("OPENCLAW_STATE_DIR") ? expandHome(env("OPENCLAW_STATE_DIR")) 
 const unzstd = typeof zlib.zstdDecompressSync === "function" ? zlib.zstdDecompressSync : null
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** A JSON object stored as text, else {}. */
-const parse = (s: unknown): Any => { const v = typeof s === "string" ? jsonOf(s) : null; return v && typeof v === "object" && !Array.isArray(v) ? v : {} }
+const parse = (s: unknown): Any => { const v = typeof s === "string" ? parseJson(s) : null; return v && typeof v === "object" && !Array.isArray(v) ? v : {} }
 
 // ---------- the databases
 
@@ -31,7 +33,7 @@ function eventOf(r: Item): Any {
   if (typeof r.event_json === "string") return parse(r.event_json)
   if (!unzstd || !(r.event_zstd instanceof Uint8Array)) return {}
   try {
-    return parse(Buffer.from(unzstd(r.event_zstd, { maxOutputLength: num(r.event_utf8_bytes) || 4 << 20 })).toString("utf8"))
+    return parse(Buffer.from(unzstd(r.event_zstd, { maxOutputLength: numberOf(r.event_utf8_bytes) || 4 << 20 })).toString("utf8"))
   } catch {
     return {}
   }
@@ -89,8 +91,8 @@ class Agent {
       .map((n) => {
         const e = parse(n.entry_json)
         return [n.session_key, { key: n.session_key, current: str(n.current_session_id), status: str(n.status), parent: str(n.parent_session_key) || str(n.spawned_by),
-          title: str(n.label) || str(n.display_name) || str(e.label) || str(e.displayName), archived: !!n.archived_at, created: num(n.created_at),
-          updated: num(n.updated_at), activity: num(n.last_activity_at), started: num(e.sessionStartedAt), model: str(e.model), cwd: str(e.spawnedCwd) }]
+          title: str(n.label) || str(n.display_name) || str(e.label) || str(e.displayName), archived: !!n.archived_at, created: numberOf(n.created_at),
+          updated: numberOf(n.updated_at), activity: numberOf(n.last_activity_at), started: numberOf(e.sessionStartedAt), model: str(e.model), cwd: str(e.spawnedCwd) }]
       }))
     this.bySession = new Map([...this.nodes.values()].map((n) => [n.current, n]))
     this.windows = new Map(this.db.all(`SELECT session_id, session_key, display_name FROM session_windows WHERE updated_at >= ?`, cutoff)
@@ -110,8 +112,8 @@ class Agent {
     let prev = { sid: "", at: 0 }
     for (const r of rows) {
       if (!r.role && !r.event_zstd) continue
-      const since = r.sid === prev.sid ? num(r.at) - prev.at : 0
-      prev = { sid: r.sid, at: num(r.at) }
+      const since = r.sid === prev.sid ? numberOf(r.at) - prev.at : 0
+      prev = { sid: r.sid, at: numberOf(r.at) }
       let m: Any = { timestamp: r.ts, provider: r.provider, model: r.model, usage: parse(r.usage) }
       if (r.event_zstd) {
         const k = `${r.sid}:${r.seq}`
@@ -120,11 +122,11 @@ class Agent {
         if (m.role !== "assistant") continue
       } else if (r.role !== "assistant") continue
       const u = m.usage ?? {}
-      const n = [num(u.input), num(u.output), num(u.cacheRead), num(u.cacheWrite)]
-      const tokens = num(u.totalTokens) || n.reduce((a, b) => a + b, 0)
+      const n = [numberOf(u.input), numberOf(u.output), numberOf(u.cacheRead), numberOf(u.cacheWrite)]
+      const tokens = numberOf(u.totalTokens) || n.reduce((a, b) => a + b, 0)
       const cost = typeof u.cost?.total === "number" && u.cost.total >= 0 ? u.cost.total : null
       if (!tokens && !cost) continue // failed before any tokens
-      const ts = num(m.timestamp) || num(r.at)
+      const ts = numberOf(m.timestamp) || numberOf(r.at)
       // A fork copies the replies before it, times and counts kept: the first one counts.
       const key = [ts, m.provider, m.model, ...n].join("|")
       if (seen.has(key)) continue
@@ -197,7 +199,7 @@ async function summary(days: number, agents: Agent[]) {
     const top = a.top(r.session)
     if (!where.has(top)) where.set(top, a.cwdOf(top))
   }
-  const root = roots(new Set(where.values()))
+  const root = projectRoots(new Set(where.values()))
   for (const [a, r] of rows) {
     const sid = a.top(r.session), cwd = where.get(sid)!, proj = root.get(cwd)!
     const s = t.session(sid, () => ({ title: a.titleOf(sid), root: proj, cwd, account: a.id }))
@@ -249,7 +251,7 @@ async function live(agents: Agent[]): Promise<Live[]> {
 // ---------- one session's conversation (the view tab: view:openclaw-session/<transcript id>)
 
 const SESSION_ID = /^[\w.-]{4,100}$/
-const talks = rebuilt<ReturnType<typeof conversation>>()
+const talks = buildCache<ReturnType<typeof conversation>>()
 
 /** The agent and session key a transcript belongs to, or null when it isn't here. */
 function sessionAt(id: string): { agent: Agent; key: string } | null {
@@ -287,7 +289,7 @@ const notesOf = (v: unknown) => Math.min(Math.max(Math.trunc(Number(v ?? 2)) || 
 function readFile(file: string) {
   try {
     const st = fs.statSync(file)
-    return st.isFile() ? { text: cut(fs.readFileSync(file, "utf8").trim(), 20000), modified: isoOf(st.mtimeMs) } : null
+    return st.isFile() ? { text: truncate(fs.readFileSync(file, "utf8").trim(), 20000), modified: isoOf(st.mtimeMs) } : null
   } catch {
     return null
   }
@@ -309,7 +311,7 @@ plugin.route("GET", "openclaw/memory", (req) => memory(agentOf(req.query.account
 /** How often a job runs, in words. */
 function scheduleText(s: Any) {
   if (s?.kind === "cron") return `cron ${str(s.expr)}${s.tz ? ` (${s.tz})` : ""}`
-  const min = num(s?.everyMs) / 60000, days = min / 1440
+  const min = numberOf(s?.everyMs) / 60000, days = min / 1440
   if (s?.kind === "every") return `every ${!Number.isInteger(days) ? fmtMin(min) : days === 1 ? "day" : `${days} days`}`
   if (s?.kind === "at") return `once, ${str(s.at)}`
   if (s?.kind === "on-exit") return "when a command exits"
@@ -330,7 +332,7 @@ function cronJobs(account?: unknown) {
     .map((r) => {
       const job = parse(r.job_json), st = parse(r.state_json)
       return { id: str(r.job_id), name: str(r.name) || str(r.job_id), description: str(r.description), enabled: !!r.enabled, agent: str(r.agent_id) || "main",
-        schedule: scheduleText(job.schedule), task: taskText(job.payload), next: r.enabled ? isoOf(num(st.nextRunAtMs)) : null, last: isoOf(num(st.lastRunAtMs)),
+        schedule: scheduleText(job.schedule), task: taskText(job.payload), next: r.enabled ? isoOf(numberOf(st.nextRunAtMs)) : null, last: isoOf(numberOf(st.lastRunAtMs)),
         status: running.has(r.job_id) || st.runningAtMs ? "running" : str(st.lastRunStatus) || str(st.lastStatus), error: str(st.lastError).slice(0, 300) }
     })
     .filter((j) => !account || j.agent === account)
@@ -354,12 +356,12 @@ function gatewayUp(): Promise<boolean> {
  *  `--local` (its embedded runtime) when no gateway runs, as on a server set up without one. */
 plugin.provide("agent:openclaw", async ({ resume, profile, prompt }: AgentStart) => {
   const at = resume ? sessionAt(resume) : null
-  if (resume && !at) return notHere("OpenClaw", resume)
+  if (resume && !at) return notOnThisMachine("OpenClaw", resume)
   const key = at?.key || (profile ? `agent:${profile}:main` : "")
   const cwd = at ? at.agent.cwdOf(resume!) : ""
   const local = (await gatewayUp()) ? "" : " --local"
   // (the key in its environment too: on Linux its process title hides its arguments, tuis())
-  return { command: `OPENCLAW_TUI_SESSION=${quote(key || "agent:main:main")} openclaw tui${local}${key ? ` --session ${quote(key)}` : ""}${prompt ? ` --message ${quote(prompt)}` : ""}`,
+  return { command: `OPENCLAW_TUI_SESSION=${shellQuote(key || "agent:main:main")} openclaw tui${local}${key ? ` --session ${shellQuote(key)}` : ""}${prompt ? ` --message ${shellQuote(prompt)}` : ""}`,
     cwd: cwd && fs.existsSync(cwd) ? cwd : null }
 })
 

@@ -54,6 +54,8 @@ export type KindInfo = { sections: string[]; stamps: string[] }
 /** A vault plugin as the server lists it (core/vaultplugins.ts on the server). */
 export type VaultPluginInfo = {
   id: string; name: string; description: string; requires: string[]; enhances: string[]; runsOnServer: boolean; tint?: string; category?: string
+  /** Its Plugins page row's group ("coding-agents": core/categories.ts GROUPS). */
+  group?: string
   /** Its manifest's icon: a name, or its SVG file as a data address (core/pluginmeta.ts iconOf). */
   icon?: string
   /** Other apps' plugins it stands in for (its manifest's `replaces`). */
@@ -81,9 +83,9 @@ export type VaultMeta = {
   source: { source: string; repo: string | null; tag: string | null; commit: string | null; version: string; installed: string
     /** Its updates, oldest first (core/installs.ts Update); a version rolled back from; whether it's Vaultite's own. */
     history?: Update[]; skip?: string; official: boolean } | null
-  /** On, but waiting for this machine's owner to allow it: new here, or changed since (`changed`: its files that did);
-   *  `updating`: updated on its own elsewhere, being checked against its source to run here too. */
-  approval: { state: "new" | "changed" | "updating"; since: string | null; changed: string[] } | null
+  /** On, waiting for this machine's yes: new here, changed since (`changed`: its files that did), moved out of the app
+   *  to Vaultite's plugins, or `updating` (updated elsewhere, being checked against its source). */
+  approval: { state: "new" | "changed" | "moved" | "updating"; since: string | null; changed: string[] } | null
   /** Why the plugin directory blocks this version, or null. */
   blocked: string | null
   /** Its files' hash: allowing it is refused if they changed since it was shown. */

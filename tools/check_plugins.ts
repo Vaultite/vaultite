@@ -36,6 +36,7 @@ if (flag("--plugin") !== null) {
   process.exit(r.problems.length ? 1 : 0)
 }
 const { APP_BUNDLES, problems: bundleProblems } = await import("../core/bundles.ts")
+const { MOVED } = await import("../core/migrations.ts")
 const { checkVaultPlugin } = await import("../core/vaultplugins.ts")
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const PLUGINS = path.join(ROOT, "plugins")
@@ -151,6 +152,14 @@ for (const d of [path.join(ROOT, "web", "src"), PLUGINS]) for (const f of walk(d
 for (const [b, ps] of drawers) if (!decls[b]?.by) problems.push(`plugins/core/${ps[0]}/manifest.json: draws '${b}', which no app plugin declares with \`by\``)
 for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, drawers.get(b) ?? [])
 
+// The app's Markdown may use the blocks of Vaultite's own plugins (those that moved out of it): read from their checkout
+// (VAULTITE_PLUGINS, else beside the app), else left unchecked.
+const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
+const officialDecls: BlockDecls | null = fs.existsSync(OFFICIAL) ? {} : null
+for (const id of officialDecls ? fs.readdirSync(OFFICIAL) : []) {
+  try { const m = JSON.parse(fs.readFileSync(path.join(OFFICIAL, id, "manifest.json"), "utf8")); if (m.repo === "Vaultite/plugins") Object.assign(officialDecls!, declsOf(m)) } catch { /* not a plugin */ }
+}
+
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),
   ...walk(PLUGINS).filter((f) => /\/(pages\/[^/]+|AGENTS)\.md$/.test(f)), ...walk(path.join(ROOT, "examples", "vault")).filter((f) => f.endsWith(".md")),
@@ -159,10 +168,20 @@ for (const f of docs) {
   const text = fs.readFileSync(f, "utf8"), rel = path.relative(ROOT, f)
   for (const b of blocksIn(text)) {
     const line = b.open + 1
-    if (!Object.hasOwn(decls, b.name)) { problems.push(`${rel}:${line}: block-${b.name} isn't a block any app plugin declares`); continue }
+    const decl = Object.hasOwn(decls, b.name) ? decls[b.name] : officialDecls && Object.hasOwn(officialDecls, b.name) ? officialDecls[b.name] : null
+    if (!decl) {
+      if (officialDecls) problems.push(`${rel}:${line}: block-${b.name} isn't a block any app plugin declares, nor one of Vaultite's own (${OFFICIAL}: pull it?)`)
+      continue
+    }
     const { options, error } = parseOptions(b.text)
-    for (const n of optionNotes(decls[b.name], options, error)) problems.push(`${rel}:${line}: block-${b.name}: ${n}`)
+    for (const n of optionNotes(decl, options, error)) problems.push(`${rel}:${line}: block-${b.name}: ${n}`)
   }
+}
+
+// A plugin that moved out of the app (core/migrations.ts MOVED) is gone from it: an install can't take an id the app has.
+for (const [id, source] of Object.entries(MOVED)) {
+  if (ids.get(id) === "core") problems.push(`plugins/core/${id}: it moved to ${source} (core/migrations.ts MOVED): take it out of the app`)
+  if (!/^Vaultite\/plugins\/[a-z][a-z0-9-]*$/.test(source) || !source.endsWith(`/${id}`)) problems.push(`core/migrations.ts: MOVED.${id} is Vaultite/plugins/${id}, not ${source}`)
 }
 
 // The app's bundles: their shapes, and every plugin, panel and pinned page they name is one the app has.
@@ -186,16 +205,22 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   problems.push(...bundleProblems(files).map((x) => `${at}: ${x}`))
   const json = (f: string) => { try { return JSON.parse(files[f] ?? "null") } catch { return null } }
   const pj = json("plugins.json")
+  // (one it installs, an official plugin, is checked in its own repository)
+  const installs = new Set(Object.keys(pj?.install ?? {}))
+  for (const [p, x] of Object.entries<{ source?: string }>(pj?.install ?? {})) {
+    if (!/^Vaultite\/plugins\/[a-z][a-z0-9-]*$/.test(x?.source ?? "")) problems.push(`${at}/plugins.json: '${p}' is installed from ${x?.source}: the app's bundles install only Vaultite's plugins (Vaultite/plugins/<id>)`)
+    if (ids.has(p)) problems.push(`${at}/plugins.json: '${p}' is one of the app's plugins: it isn't installed`)
+  }
   for (const k of ["disabled", "enabled"]) for (const p of pj?.[k] ?? []) {
-    if (!ids.has(p)) problems.push(`${at}/plugins.json: '${p}' isn't a plugin of the app`)
+    if (!ids.has(p) && !installs.has(p)) problems.push(`${at}/plugins.json: '${p}' isn't a plugin of the app${MOVED[p] ? ` (it moved: install it from ${MOVED[p]})` : ""}`)
     else if (alwaysOn.has(p)) problems.push(`${at}/plugins.json: '${p}' is always on: leave it out`)
   }
   const sb = json("sidebars.json")
-  for (const k of [...sb?.left ?? [], ...sb?.right ?? []]) if (!panels.has(k)) problems.push(`${at}/sidebars.json: '${k}' isn't a sidebar panel of the app`)
+  for (const k of [...sb?.left ?? [], ...sb?.right ?? []]) if (!panels.has(k) && !installs.has(k.split(":")[0])) problems.push(`${at}/sidebars.json: '${k}' isn't a sidebar panel of the app`)
   for (const p of json("pages.json")?.pinned ?? []) if (!pages.has(p) && files[p] === undefined) problems.push(`${at}/pages.json: '${p}' is neither a plugin's page nor a file of the bundle`)
   for (const f of Object.keys(files)) {
     const m = /^plugins\/([^/]+)\/data\.json$/.exec(f)
-    if (m && !ids.has(m[1])) problems.push(`${at}/${f}: '${m[1]}' isn't a plugin of the app`)
+    if (m && !ids.has(m[1]) && !installs.has(m[1])) problems.push(`${at}/${f}: '${m[1]}' isn't a plugin of the app`)
   }
 }
 

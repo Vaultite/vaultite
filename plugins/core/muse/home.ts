@@ -2,7 +2,7 @@
 // or, far more often, on an agent machine through Machines' file agent; and what its files say, parsed leniently.
 import fs from "node:fs"
 import path from "node:path"
-import { cut, toolSummary, type Entry, type Tool } from "../../../core/codingagents.ts"
+import { truncate, toolSummary, type Entry, type Tool } from "../../../core/agents.ts"
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
@@ -262,21 +262,21 @@ export function conversation(transcript: string) {
     if (it.type === "message" && it.role === "user") {
       const text = str(it.text).trim()
       if (!text) continue
-      if (src === "runtime") entries.push({ kind: "user", text: cut(text, 20000), at })
-      else entries.push({ kind: "tool", id: "", name: src === "runtime.tool_guidance" ? "Guidance" : "Instructions", summary: titleOf(text), input: cut(text, 20000), result: null, error: false, at })
+      if (src === "runtime") entries.push({ kind: "user", text: truncate(text, 20000), at })
+      else entries.push({ kind: "tool", id: "", name: src === "runtime.tool_guidance" ? "Guidance" : "Instructions", summary: titleOf(text), input: truncate(text, 20000), result: null, error: false, at })
     } else if ((it.type === "message" && it.role === "assistant") || it.type === "commentary_text") {
       const text = str(it.text).trim()
-      if (text) entries.push({ kind: "assistant", text: cut(text, 20000), at })
+      if (text) entries.push({ kind: "assistant", text: truncate(text, 20000), at })
     } else if (it.type === "function_call") {
       let args: Any = it.arguments
       try { args = typeof args === "string" ? JSON.parse(args) : args } catch { /* as it is */ }
       const t: Tool = { kind: "tool", id: str(it.call_id), name: str(it.name) || "tool", summary: toolSummary(args ?? {}, PICK),
-        input: cut(typeof args === "string" ? args : JSON.stringify(args ?? {}, null, 2)), result: null, error: false, at }
+        input: truncate(typeof args === "string" ? args : JSON.stringify(args ?? {}, null, 2)), result: null, error: false, at }
       entries.push(t)
       if (t.id) calls.set(t.id, t)
     } else if (it.type === "function_call_output") {
       const t = calls.get(str(it.call_id)), out = typeof it.output === "string" ? it.output : JSON.stringify(it.output ?? "", null, 2)
-      if (t) { t.result = cut(out); t.error = it.is_error === true || it.status === "error" }
+      if (t) { t.result = truncate(out); t.error = it.is_error === true || it.status === "error" }
     }
   }
   return entries

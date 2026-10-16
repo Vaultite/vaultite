@@ -255,10 +255,6 @@ export default async ($: VaultTest) => {
   const anote = (await api("POST", "notes", { ext_id: "idea-archive-test", title: "Archive me", body: "Soon gone.", kind: "idea", status: "seed" }))[1]
   const anow = (await api("PUT", `notes/${encodeURIComponent(anote.id)}`, { archived: true }))[1]
   check("archived: notes too", anow.id.includes("/.archive/") && /\narchived: true\n/.test(read(`${anow.id}.md`)) && !(await api("GET", "notes"))[1].some((n: Any) => n.id === anow.id) && (await api("GET", "notes?archived=true"))[1].some((n: Any) => n.id === anow.id), anow)
-  await api("POST", "books", { title: "Shelved book", author: "Bob Lee", status: "reading" })
-  await api("PUT", "books/Shelved book", { archived: true })
-  write("Arch/Books.md", "```block-books\n```\n")
-  check("archived: left out of Books' list", !(await api("GET", "render?path=Arch/Books.md"))[1].includes("Shelved book"))
   await api("POST", "logs", [{ area: "nutrition", date: "2026-09-29", source: "claude", ext_id: "archived-meal", title: "Old meal", data: { kcal: 100 } }])
   let [, alogs] = await api("GET", "logs?area=nutrition")
   let alog = alogs.find((l: Any) => l.ext_id === "archived-meal")

@@ -59,7 +59,7 @@ enum VaultiteAction: String, AppEnum {
         switch self {
         case .voiceNote: Links.record
         case .newNote: Links.command("file:new")
-        case .dailyNote: Links.command("today:daily-note")
+        case .dailyNote: Links.command("daily-notes:today")
         case .search: Links.command("search:open-tab")
         case .openNote: Links.command("switcher:open")
         }

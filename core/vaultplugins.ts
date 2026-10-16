@@ -6,10 +6,11 @@ import { isBuiltin, registerHooks } from "node:module"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
-import { disclosuresOf, ICON_NAME, iconOf } from "./pluginmeta.ts"
+import { disclosuresOf, exportsOf, ICON_NAME, iconOf, PLUGIN_MODULE } from "./pluginmeta.ts"
 import { onItsOwn } from "./writegate.ts"
-import { blockProblems, hashed, inside, installProblems, pluginProblems, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
+import { blockProblems, exportFile, hashed, inside, installProblems, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, drawsOf, settingsOf } from "./blocks.ts"
+import { groupOf } from "./categories.ts"
 import type { VaultEvent } from "./events.ts"
 import { hookProblems, Hooks } from "./hooks.ts"
 import type { Op } from "./ops.ts"
@@ -52,18 +53,43 @@ const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").trim() // eslint-d
 const message = (e: unknown) => plain(String((e as Error)?.message ?? e)).split("\n").slice(0, 6).join("\n")
 
 // --- plugin.ts: what it may import
-const FOLDERS = new Map<string, string>() // vault plugin id -> its folder
+const FOLDERS = new Map<string, { dir: string; hash: string }>() // vault plugin id -> its folder and the version loaded
 const APP = pathToFileURL(path.join(ROOT, "server.ts")).href
 const TAG = /[?&]plugin=([^&]+)&v=(\w+)$/
+const BUILT_IN = path.join(ROOT, "plugins", "core") + path.sep
+
+/** Module `name` of plugin `id` (@plugins/<id>/<name>) for an importer that requires it: the app's plugin's file, or a
+ *  loaded vault plugin's at its version (the same module its own plugin.ts has). */
+function moduleUrl(id: string, name: string, vault: boolean): string | null {
+  const own = path.join(BUILT_IN, id)
+  if (fs.existsSync(path.join(own, "manifest.json"))) { const f = exportFile(own, name); return f && pathToFileURL(f).href }
+  const at = vault ? FOLDERS.get(id) : undefined, f = at && exportFile(at.dir, name)
+  return f ? `${pathToFileURL(f).href}?plugin=${encodeURIComponent(id)}&v=${at!.hash}` : null
+}
+const requiresOf = (dir: string): string[] => { try { const r = JSON.parse(readText(path.join(dir, "manifest.json"))).requires; return Array.isArray(r) ? r : [] } catch { return [] } }
 
 registerHooks({
   resolve(spec, context, next) {
     const m = context.parentURL ? TAG.exec(context.parentURL) : null
-    if (!m) return next(spec, context)
-    const id = decodeURIComponent(m[1]), dir = FOLDERS.get(id)
+    // (an app plugin's backend: another's module, one it exports, of a plugin it requires)
+    if (!m) {
+      const p = spec.startsWith("@plugins/") && context.parentURL?.startsWith("file:") ? fileURLToPath(context.parentURL) : ""
+      if (!p.startsWith(BUILT_IN)) return next(spec, context)
+      const mod = PLUGIN_MODULE.exec(spec), from = p.slice(BUILT_IN.length).split(path.sep)[0]
+      const url = mod && requiresOf(path.join(BUILT_IN, from)).includes(mod[1]) ? moduleUrl(mod[1], mod[2], false) : null
+      if (!url) throw new Error(`${from}: can't import '${spec}': a plugin imports the modules that plugins it requires export`)
+      return next(url, context)
+    }
+    const id = decodeURIComponent(m[1]), dir = FOLDERS.get(id)?.dir
     const refuse = (why: string): never => { throw new Error(`${id}: plugin.ts can't import '${spec}': ${why}`) }
     if (!dir) return refuse("the plugin isn't loaded")
     const own = "a vault plugin imports only its own folder's files (not hidden ones, nor node_modules)"
+    const mod = PLUGIN_MODULE.exec(spec)
+    if (mod) {
+      if (!requiresOf(dir).includes(mod[1])) return refuse(`a plugin imports only from plugins it \`requires\``)
+      const url = moduleUrl(mod[1], mod[2], true)
+      return url ? next(url, context) : refuse(`${mod[1]} isn't loaded, or doesn't export '${mod[2]}'`)
+    }
     const core = VAULT_CORE.exec(spec)
     if (core) return next(pathToFileURL(path.join(ROOT, "core", `${core[1]}.ts`)).href, context)
     if (isBuiltin(spec)) return next(spec, context)
@@ -77,7 +103,7 @@ registerHooks({
       return next(spec, { ...context, parentURL: APP }) // an npm package: the app's
     }
     return refuse("a vault plugin's backend imports its own folder, @vaultite/core/plugins.ts (vault.ts, client.ts, " +
-      "timeline.ts), Node's modules and the app's npm packages")
+      "timeline.ts, agents.ts), modules of plugins it requires (@plugins/<id>/<module>), Node's modules and the app's npm packages")
   },
 })
 
@@ -135,20 +161,25 @@ function withAssets(file: string, css: string) {
 }
 
 /** The bundle: its styles and the plugins it requires first, then the module (its default export: the
- *  definePlugin({...})), and the chunks its import()s load. `tiers`: the app's plugins, id -> tier. */
-async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
+ *  definePlugin({...})) with the modules it exports, and the chunks its import()s load. */
+async function bundle(vp: VaultPlugin) {
   const { rolldown } = await import("rolldown")
   const dir = fs.realpathSync(vp.dir)
-  const requires = ((vp.manifest.requires ?? []) as string[]).filter((r) => tiers.has(r)).map((r) => `@plugins/${tiers.get(r)}/${r}`)
+  const requires = new Set((vp.manifest.requires ?? []) as string[])
   const preload = new Set<string>()
   const sheets: string[] = [] // stylesheets it imports (a package's own: "@excalidraw/excalidraw/index.css"), in order
   const refuse = (spec: string, why: string): never => { throw new Error(`can't import '${spec}': ${why}`) }
-  // Its icon by a Lucide name comes in the bundle (`icon`), so the app needn't load all of Lucide's to draw it.
+  // Its icon by a Lucide name comes in the bundle (`icon`), so the app needn't load all of Lucide's to draw it; the
+  // modules it exports too (`__exports`: what plugins that require it import, the same instances as its own).
   const index = path.join(dir, "index.tsx"), ENTRY = "\0vau-entry"
   const lucide = vp.icon && ICON_NAME.test(vp.icon) ? path.join(ROOT, "node_modules", "lucide-react", "dist", "esm", "icons", `${vp.icon}.mjs`) : ""
-  const entry = lucide && fs.existsSync(lucide) ? `export { default } from ${JSON.stringify(index)}\nexport { default as icon } from ${JSON.stringify(lucide)}` : ""
+  const offered = exportsOf(vp.manifest).flatMap((x) => { const f = exportFile(dir, x, vp.manifest); return f ? [[x, f]] : [] })
+  const entry = [fs.existsSync(index) ? `export { default } from ${JSON.stringify(index)}` : "",
+    lucide && fs.existsSync(lucide) ? `export { default as icon } from ${JSON.stringify(lucide)}` : "",
+    ...offered.map(([, f], i) => `import * as m${i} from ${JSON.stringify(f)}`),
+    offered.length ? `export const __exports = { ${offered.map(([x], i) => `${JSON.stringify(x)}: m${i}`).join(", ")} }` : ""].filter(Boolean).join("\n")
   const build = await rolldown({
-    input: entry ? ENTRY : index,
+    input: ENTRY,
     cwd: ROOT,
     platform: "browser",
     logLevel: "silent",
@@ -160,7 +191,8 @@ async function bundle(vp: VaultPlugin, tiers: Map<string, string>) {
         if (spec === ENTRY || importer === ENTRY) return spec
         if (SHARED.has(spec)) return `\0vau:${spec}`
         if (SHARED_EDITOR.has(spec) || spec.startsWith("@plugins/")) {
-          if (spec.startsWith("@plugins/") && !requires.some((r) => spec.startsWith(r + "/"))) refuse(spec, "a plugin may only import plugins it `requires`")
+          const mod = PLUGIN_MODULE.exec(spec)
+          if (spec.startsWith("@plugins/") && (!mod || !requires.has(mod[1]))) refuse(spec, "a plugin imports the modules that plugins it `requires` export")
           preload.add(spec)
           return `\0vau:${spec}`
         }
@@ -206,13 +238,14 @@ async function withStyles(vp: VaultPlugin, c: Code) {
 
 // --- the folder
 
-/** The files that aren't its code: data.json, its settings, and its manifest's `userFiles` (changing them isn't a new version). */
+/** The files that aren't its code: its settings (data.json, <name>.json) and its manifest's `userFiles` (changing them
+ *  isn't a new version). */
 function notCode(dir: string) {
   const own = userFilesOf(dir)
-  return (f: string) => f === path.join(dir, "data.json") || own.has(path.relative(dir, f).split(path.sep).join("/"))
+  return (f: string) => settingsFile(path.relative(dir, f)) || own.has(path.relative(dir, f).split(path.sep).join("/"))
 }
 
-/** Its files, as `<path>:<size>:<mtime>` lines (data.json and its userFiles left out). */
+/** Its files, as `<path>:<size>:<mtime>` lines (its settings and userFiles left out). */
 function statOf(dir: string) {
   const skip = notCode(dir)
   return walk(dir).filter((f) => !skip(f)).map((f) => {
@@ -225,7 +258,7 @@ function statOf(dir: string) {
   }).join("\n")
 }
 
-/** Each of its files' hash (data.json and its userFiles left out), and the whole's: what this machine approves, and the
+/** Each of its files' hash (its settings and userFiles left out), and the whole's: what this machine approves, and the
  *  lock records. */
 export function digestOf(dir: string): Digest {
   const files: Record<string, string> = {}
@@ -240,9 +273,23 @@ export function digestOf(dir: string): Digest {
   return { content: whole.digest("hex").slice(0, 16), files }
 }
 
+/** Names in an order where each comes after those it `deps` on (a cycle: as they are). */
+function dependencyOrder(names: string[], deps: Map<string, string[]>) {
+  const out: string[] = [], seen = new Set<string>()
+  const visit = (n: string, path: string[]) => {
+    if (seen.has(n) || path.includes(n)) return
+    for (const d of deps.get(n) ?? []) visit(d, [...path, n])
+    seen.add(n)
+    out.push(n)
+  }
+  for (const n of names) visit(n, [])
+  return out
+}
+
 /** What's wrong with a vault plugin's folder, as `label`: its manifest (read unless given), files, commands, and for
- *  one to install (`installable`, `tag`) its version and repo. `ids`: id -> tier. Warnings: it loads anyway. */
-export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; label: string; tag?: string | null; installable?: boolean; manifest?: Item }) {
+ *  one to install (`installable`, `tag`) its version and repo. `ids`: id -> tier; `dirOf`: a vault plugin's folder. Warnings: it loads anyway. */
+export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; label: string; tag?: string | null; installable?: boolean; manifest?: Item
+  dirOf?: (id: string) => string }) {
   const { ids, label } = o
   let manifest: Item | null = o.manifest ?? null, unread = ""
   if (!manifest) try { manifest = JSON.parse(readText(path.join(dir, "manifest.json"))) } catch (e) { unread = (e as Error).message }
@@ -251,7 +298,7 @@ export function checkVaultPlugin(dir: string, o: { ids: Map<string, string>; lab
   if (ids.has(id) && ids.get(id) !== "vault") problems.push(`${label}: the app already has a plugin called '${id}'`)
   if (!manifest) return { manifest, problems: [...problems, `${label}: no readable manifest.json (${unread})`], warnings: [] as string[] }
   if (!/^[a-z][a-z0-9-]*$/.test(id)) problems.push(`${label}/manifest.json: id must be lowercase letters, digits and dashes, starting with a letter`)
-  problems.push(...pluginProblems(dir, ROOT, ids, true, label, manifest), ...hookProblems(manifest, dir, `${label}/manifest.json`))
+  problems.push(...pluginProblems(dir, ROOT, ids, true, label, manifest, o.dirOf), ...hookProblems(manifest, dir, `${label}/manifest.json`))
   if (o.installable || o.tag) problems.push(...installProblems(manifest, o.tag ?? null, `${label}/manifest.json`))
   return { manifest, problems, warnings: blockProblems(dir, manifest, label) }
 }
@@ -335,19 +382,22 @@ export class VaultPlugins {
     }
     const ids = new Map([...names.map((n): [string, string] => [n, "vault"]), ...this.tiers])
     const on = this.enabled()
-    for (const name of names) {
+    // (the plugins it requires first: it imports their modules, at their versions, which are part of its own)
+    const deps = new Map(names.map((n) => [n, requiresOf(path.join(root, n)).filter((r) => r !== n && names.includes(r))]))
+    for (const name of dependencyOrder(names, deps)) {
       const dir = path.join(root, name)
-      const stat = `${statOf(dir)}\n${names.join(",")}`
+      const theirs = deps.get(name)!.map((r) => this.found.get(r)?.hash ?? "").join(",")
+      const stat = `${statOf(dir)}\n${names.join(",")}\n${theirs}`
       let vp = this.found.get(name)
       if (!vp || vp.stat !== stat) {
         let manifest: Item = { id: name, name }
         try {
-          const r = checkVaultPlugin(dir, { ids, label: `${DIR}/${name}` })
+          const r = checkVaultPlugin(dir, { ids, label: `${DIR}/${name}`, dirOf: (id) => path.join(root, id) })
           const { problems, warnings } = r
           manifest = r.manifest ?? manifest
           const digest = digestOf(dir)
           // (the app's built stylesheet too: which of its classes the app has decides their layer)
-          const hash = crypto.createHash("sha256").update(BUILD).update((builtCss(), appCss?.file ?? "")).update(digest.content).digest("hex").slice(0, 12)
+          const hash = crypto.createHash("sha256").update(BUILD).update((builtCss(), appCss?.file ?? "")).update(digest.content).update(theirs).digest("hex").slice(0, 12)
           const icon = iconOf(manifest.icon, (f) => { const file = path.join(dir, f); return inside(dir, file) && fs.statSync(file, { throwIfNoEntry: false })?.isFile() ? readText(file) : null })
           vp = { plugin: null, loaded: "", bundle: null, failed: {}, blocked: null, ...vp, id: name, dir, manifest, icon, stat, problems, warnings, hash, digest }
         } catch (e) {
@@ -362,7 +412,8 @@ export class VaultPlugins {
       if (!want) { vp.failed = {}; this.hooks.stopped(name) } // turned on again: tried again, its startup runs again
       if (vp.plugin && (!want || vp.loaded !== vp.hash)) { this.unload(vp); changed = true }
       if (want && !vp.plugin && vp.failed.load?.[0] !== vp.hash && (await this.load(vp))) changed = true
-      if (vp.plugin && fs.existsSync(path.join(dir, "index.tsx")) && vp.bundle?.hash !== vp.hash && vp.failed.build?.[0] !== vp.hash) await this.build(vp)
+      const front = fs.existsSync(path.join(dir, "index.tsx")) || exportsOf(vp.manifest).length > 0
+      if (vp.plugin && front && vp.bundle?.hash !== vp.hash && vp.failed.build?.[0] !== vp.hash) await this.build(vp)
     }
     if (!this.trust.made) this.trust.save()
     return changed
@@ -370,7 +421,7 @@ export class VaultPlugins {
 
   private async load(vp: VaultPlugin) {
     try {
-      FOLDERS.set(vp.id, fs.realpathSync(vp.dir)) // what Node resolves imports to (the vault may be a symlink)
+      FOLDERS.set(vp.id, { dir: fs.realpathSync(vp.dir), hash: vp.hash }) // what Node resolves imports to (the vault may be a symlink)
       const file = path.join(vp.dir, "plugin.ts")
       let p: Plugin
       if (fs.existsSync(file)) {
@@ -406,6 +457,8 @@ export class VaultPlugins {
 
   private unload(vp: VaultPlugin) {
     const p = vp.plugin!
+    const at = FOLDERS.get(vp.id)
+    if (at) at.hash = "" // (its modules aren't another's to import now)
     p.unload()
     for (const k of p.kinds) this.vault.unregister(k)
     p.forget()
@@ -424,7 +477,7 @@ export class VaultPlugins {
         built = JSON.parse(readText(file))
       } catch {
         let code: Code
-        try { code = JSON.parse(readText(codeFile)) } catch { code = await bundle(vp, this.tiers) }
+        try { code = JSON.parse(readText(codeFile)) } catch { code = await bundle(vp) }
         built = await withStyles(vp, code)
         fs.mkdirSync(CACHE, { recursive: true })
         const mine = new RegExp(`^${vp.id.replace(/[^\w-]/g, "\\$&")}-(code-)?[0-9a-f]{12}\\.json$`) // (not claude-chat's for claude)
@@ -467,13 +520,16 @@ export class VaultPlugins {
         ...(typeof m.tint === "string" ? { tint: m.tint } : {}),
         ...(vp.icon ? { icon: vp.icon } : {}),
         ...(typeof m.category === "string" ? { category: m.category } : {}),
+        ...(groupOf(m.group) ? { group: m.group } : {}),
         ...(m.replaces && typeof m.replaces === "object" && !Array.isArray(m.replaces) ? { replaces: m.replaces } : {}),
         ...(m.marks && typeof m.marks === "object" && !Array.isArray(m.marks) ? { marks: m.marks } : {}),
         folder: `${DIR}/${vp.id}`, on: on.has(vp.id), loaded: !!vp.plugin, problems: [...vp.problems, ...failed, ...(vp.blocked ? [vp.blocked] : [])], warnings: vp.warnings,
         version: str("version"), author: str("author"), repo: str("repo"), fundingUrl: str("fundingUrl"), disclosures: disclosuresOf(m),
         // where it was installed from (.vaultite/plugins-lock.json: core/installs.ts), null for one made here
         source: lock[vp.id] && typeof lock[vp.id] === "object" ? { ...lock[vp.id], official: official(String(lock[vp.id].source ?? "")) } : null,
-        approval: changes ? { state: this.adopting.has(vp.id) ? "updating" : changes.since ? "changed" : "new", since: changes.since, changed: changes.files } : null,
+        // ("moved": one of the app's own plugins, installed when it moved out of the app: asked once with the others)
+        approval: changes ? { state: this.adopting.has(vp.id) ? "updating" : changes.since ? "changed" : (lock[vp.id] as Item | undefined)?.moved ? "moved" : "new",
+          since: changes.since, changed: changes.files } : null,
         blocked: vp.blocked, hash: vp.digest.content, edits: !!this.trust.approval(vp.id)?.edits,
         // its blocks as its manifest declares them (core/blocks.ts): the app checks their options against them
         blocks: declsOf(m), draws: drawsOf(m),

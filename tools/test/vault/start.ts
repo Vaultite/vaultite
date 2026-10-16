@@ -38,7 +38,7 @@ export default async ($: VaultTest) => {
     const files = fs.readdirSync(own, { recursive: true }).map(String).filter((f) => !f.startsWith(".vaultite")).sort()
     check("a folder of notes: Standard, and nothing added among its files", !(conf(own, "plugins")?.enabled ?? []).length && JSON.stringify(files) === '["Ideas","Ideas/One.md"]'
       && fs.readFileSync(path.join(own, "Ideas/One.md"), "utf8") === "An idea.\n", files)
-    check("new vault: its settings start up to date (core/migrations.ts)", conf(fresh, "migrations")?.done?.includes("plugins-opt-in-2026-10") && !(pj?.enabled ?? []).includes("codex"), conf(fresh, "migrations"))
+    check("new vault: its settings start up to date (core/migrations.ts)", conf(fresh, "migrations")?.done?.includes("plugins-opt-in-2026-10") && conf(fresh, "migrations")?.done?.includes("daily-notes-2026-10") && !(pj?.enabled ?? []).includes("codex"), conf(fresh, "migrations"))
     // Opened before, from when the agents' plugins were on from the start: what was on stays on, once.
     const opened = path.join(tmp, "Opened before")
     fs.mkdirSync(path.join(opened, ".vaultite"), { recursive: true })
@@ -54,6 +54,27 @@ export default async ($: VaultTest) => {
     fs.writeFileSync(path.join(older, ".vaultite/plugins.json"), JSON.stringify({ ...op, enabled: ["people"] }))
     await open(older)
     check("migrated once: turned off since, they stay off", conf(older, "plugins").enabled.join() === "people", conf(older, "plugins"))
+    // Daily notes out of Today: its settings (not over Daily notes' own), hotkey and button follow, in saved bundles and
+    // the setup a restore puts back too.
+    const daily = path.join(tmp, "Daily before")
+    const put = (rel: string, o: unknown) => { fs.mkdirSync(path.dirname(path.join(daily, rel)), { recursive: true }); fs.writeFileSync(path.join(daily, rel), JSON.stringify(o)) }
+    put(".vaultite/plugins/today/data.json", { format: "YYYY/MM/YYYY-MM-DD", template: "Templates/Day" })
+    put(".vaultite/plugins/daily-notes/data.json", { template: "Templates/Mine" })
+    put(".vaultite/hotkeys.json", { "file:new": ["Mod+N"], "today:daily-note": ["Mod+D"] })
+    put(".vaultite/newtab.json", { actions: ["file:new", "today:daily-note"], icons: { "today:daily-note": "sun" } })
+    put(".vaultite/bundles/mine/plugins/today/data.json", { format: "DD-MM-YYYY", other: 1 })
+    put(".vaultite/bundles/previous.json", { bundle: "mine", name: "Mine", at: "2026-10-01", config: { hotkeys: { "today:daily-note": null }, "plugins/today/data": { format: null } },
+      absent: ["plugins/today/data"], pins: null, pinned: [], workspace: null, added: [] })
+    await open(daily)
+    check("migrated: Today's daily note settings are Daily notes' (its own kept), Today's file gone", JSON.stringify(conf(daily, "plugins/daily-notes/data")) === '{"template":"Templates/Mine","format":"YYYY/MM/YYYY-MM-DD"}'
+      && !fs.existsSync(path.join(daily, ".vaultite/plugins/today/data.json")), conf(daily, "plugins/daily-notes/data"))
+    check("migrated: the command's hotkey and button follow it, in their place", JSON.stringify(conf(daily, "hotkeys")) === '{"file:new":["Mod+N"],"daily-notes:today":["Mod+D"]}'
+      && JSON.stringify(conf(daily, "newtab")) === '{"actions":["file:new","daily-notes:today"],"icons":{"daily-notes:today":"sun"}}', [conf(daily, "hotkeys"), conf(daily, "newtab")])
+    check("migrated: a saved bundle's daily note settings too, its other keys kept", JSON.stringify(conf(daily, "bundles/mine/plugins/daily-notes/data")) === '{"format":"DD-MM-YYYY"}'
+      && JSON.stringify(conf(daily, "bundles/mine/plugins/today/data")) === '{"other":1}', conf(daily, "bundles/mine/plugins/today/data"))
+    const prev = conf(daily, "bundles/previous")
+    check("migrated: a restore puts back Daily notes' keys", JSON.stringify(prev?.config) === '{"hotkeys":{"daily-notes:today":null},"plugins/today/data":{},"plugins/daily-notes/data":{"format":null}}'
+      && prev.absent.includes("plugins/daily-notes/data") && conf(daily, "migrations")?.done?.includes("daily-notes-2026-10"), prev)
     // A new vault still being offered the bundles writes no page; given one that pins nothing, its plugins write theirs,
     // none pinned.
     const offered = path.join(tmp, "Offered")

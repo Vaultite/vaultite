@@ -1,5 +1,5 @@
 import { ListChecks } from "lucide-react"
-import { AmbientButton, definePlugin, dow, formatDate, isArchived, notifyError, op, openFile, pageOf, Panel, parse, plainText, today, useStore } from "@vaultite"
+import { AmbientButton, definePlugin, dow, formatDate, isArchived, openFile, pageOf, Panel, parse, plainText, today, useStore } from "@vaultite"
 import { RoutineDay, RoutineHistory } from "./RoutineDetail"
 import { RoutineGrid } from "./RoutineGrid"
 import { mockRoutines } from "./mock"
@@ -42,14 +42,6 @@ export default definePlugin({
       title: (s, [id]) => s.routines.find((x) => x.id === id)?.name ?? "",
     },
   },
-  // Daily notes: today's, made when there's none yet where daily notes go, named and filled as the settings say (the
-  // server's today.daily).
-  commands: [{
-    id: "today:daily-note", name: "Open today's daily note",
-    run: async () => {
-      try { openFile((await op<{ path: string }>("today.daily", { date: today() })).path) } catch (e) { notifyError(e, "Couldn't open today's daily note") }
-    },
-  }],
   search: (s) => s.routines.map((r) => ({
     id: `routine-${r.id}`, title: r.name, meta: "Routine", kind: "Routine", icon: ListChecks, tint: "var(--primary)",
     detail: `routine/${encodeURIComponent(r.id)}`, file: `${r.id}.md`, text: plainText(r.notes), recent: 0, weight: 4,

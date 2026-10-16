@@ -112,10 +112,11 @@ function Approval({ plugin }: { plugin: Plugin }) {
     <div className="mb-5 rounded-[10px] bg-muted px-3.5 py-3" data-plugin-approval={plugin.id}>
       <div className="flex items-center gap-2 text-[15px] font-medium">
         <ShieldAlert className="size-[18px] shrink-0 text-[var(--orange)]" strokeWidth={2} />
-        {a.state === "new" ? "Waiting for you to allow it on this machine" : "Changed since you allowed it"}
+        {a.state === "changed" ? "Changed since you allowed it" : "Waiting for you to allow it on this machine"}
       </div>
       <p className="mt-1 text-[14px] leading-[19px] text-muted-foreground md:text-[13px] md:leading-[18px]">
         {host ? host.trust ?? "It runs code on this machine."
+          : a.state === "moved" ? "It was part of the app and moved to Vaultite's plugins: it's installed from there, with your settings."
           : a.state === "new" ? "It's on in this vault, but this machine hasn't run it: it came by sync, a shared vault or a bundle."
           : `Its files changed since you allowed ${a.since ? `version ${a.since}` : "it"}, here or wherever the vault syncs.`}{host ? "" : " It runs code on this machine, so nothing of it runs until you allow it."} Allow
         it only if you trust where it came from.

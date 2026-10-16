@@ -1,14 +1,16 @@
 // Cursor: what Cursor (the IDE and its CLI, `agent`) does on this machine: chats from its own files, usage from Cursor's
-// dashboard with the IDE's sign-in (core/cursoraccount.ts; Grok Bot's requests are its own plugin's). Nothing is written.
+// dashboard with the IDE's sign-in (account.ts; Grok Bot's requests are its own plugin's). Nothing is written.
 import { createHash } from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentStart, ago, type Any, codingAgent, cut, cwds, type Entry, HOME, isoOf, jsonOf, limitRows, limitWindow, type Live, notHere, processes, projectName,
-  quote, roots, type Said, scanDays, sessionsOf, SqliteFile, Tally, terminalOf, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, codingAgent, truncate, cwds, type Entry, HOME, isoOf, parseJson, limitRows, limitWindow, type Live, notOnThisMachine, processes, projectName,
+  shellQuote, projectRoots, type Said, scanDays, sessionsOf, SqliteFile, Tally, terminalOf, type Tool, toolSummary } from "../../../core/agents.ts"
 import { clampPct, CURSOR_USER_DIR as USER_DIR, cursorAccount, type CursorAccount, cursorModelName as modelName, cursorState as stateDb, forgetCursorAccount, isGrokBot,
-  minutesBetween, NO_ACCOUNT, secOf as sec, stored, text } from "../../../core/cursoraccount.ts"
+  minutesBetween, NO_ACCOUNT, secOf as sec, stored, text } from "./account.ts"
 import { localDate, Plugin, section } from "../../../core/plugins.ts"
 import { sortBy } from "../../../core/vault.ts"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
 
 export const plugin = new Plugin(import.meta.url)
 const GAP = 5 * 60_000 // requests further apart than this aren't one stretch of work
@@ -94,7 +96,7 @@ async function ideChats(): Promise<Chat[]> {
     const id = String(r.key).slice("composerData:".length)
     const head = heads.get(id)
     if (!(r.n || r.old) || r.draft || r.sub || head?.isSubagent) continue
-    const ws = jsonOf(r.ws) ?? {}
+    const ws = parseJson(r.ws) ?? {}
     const cwd = fileUri(ws.uri) || where.get(String(head?.workspaceId ?? ws.id ?? "")) || ""
     const first = ms(r.created), last = ms(r.updated) || first
     chats.push({ id, source: "ide", title: String(r.name || ""), cwd, model: String(r.model || ""), first, last, status: String(r.status || "") })
@@ -108,7 +110,7 @@ async function ideChats(): Promise<Chat[]> {
 /** store.db's metadata: key "0" is the hex of a JSON (agentId, name, createdAt, lastUsedModel, mode...). */
 function storeMeta(db: SqliteFile): Any {
   const s = text(db.all("SELECT value FROM meta WHERE key = '0'")[0]?.value)
-  return jsonOf(/^[0-9a-f]+$/i.test(s) && s.length % 2 === 0 ? Buffer.from(s, "hex") : s) ?? {}
+  return parseJson(/^[0-9a-f]+$/i.test(s) && s.length % 2 === 0 ? Buffer.from(s, "hex") : s) ?? {}
 }
 
 const cli = new Map<string, [number, Chat | null]>() // chat folder -> [its meta.json and store.db mtimes, the chat]
@@ -163,7 +165,7 @@ function chatsOf(cwd: string) {
 
 const isoAt = (t: number) => isoOf(t) ?? ""
 const pretty = (v: unknown) => {
-  if (typeof v === "string") { const j = jsonOf(v); return j !== null && typeof j === "object" ? JSON.stringify(j, null, 2) : v }
+  if (typeof v === "string") { const j = parseJson(v); return j !== null && typeof j === "object" ? JSON.stringify(j, null, 2) : v }
   return v == null ? "" : JSON.stringify(v, null, 2)
 }
 type Talk = { title: string; cwd: string; model: string; first: string; last: string; branch: string; entries: Entry[] }
@@ -171,7 +173,7 @@ type Talk = { title: string; cwd: string; model: string; first: string; last: st
 const PICK = ["explanation", "description", "command", "target_file", "targetFile", "file_path", "path", "relativeWorkspacePath",
   "pattern", "query", "search_term", "url", "globPattern", "glob_pattern"]
 /** One line saying what a tool call did: its command, file, pattern or query. */
-const summarize = (input: unknown) => toolSummary(typeof input === "string" ? jsonOf(input) ?? {} : input, PICK)
+const summarize = (input: unknown) => toolSummary(typeof input === "string" ? parseJson(input) ?? {} : input, PICK)
 
 /** What the user typed: the <user_query> of a prompt, without the context blocks Cursor puts around it. */
 function userText(s: string) {
@@ -182,7 +184,7 @@ function userText(s: string) {
 
 /** An IDE chat's conversation: its messages in order (fullConversationHeadersOnly), each a `bubbleId:` row. */
 async function ideTalk(id: string, chat: Chat): Promise<Talk | null> {
-  const data = jsonOf(stateDb.all("SELECT value FROM cursorDiskKV WHERE key = ?", `composerData:${id}`)[0]?.value)
+  const data = parseJson(stateDb.all("SELECT value FROM cursorDiskKV WHERE key = ?", `composerData:${id}`)[0]?.value)
   if (!data) return null
   try {
     const order: string[] = (data.fullConversationHeadersOnly ?? []).map((h: Any) => String(h?.bubbleId ?? "")).filter(Boolean)
@@ -190,14 +192,14 @@ async function ideTalk(id: string, chat: Chat): Promise<Talk | null> {
     const byId = new Map(rows.map((r) => [String(r.key).split(":").pop()!, r.value]))
     // An old chat keeps its messages inline, in `conversation`.
     const inline: Any[] = Array.isArray(data.conversation) ? data.conversation : []
-    const bubbles: Any[] = order.length ? order.map((b) => jsonOf(byId.get(b)) ?? inline.find((x) => x?.bubbleId === b)).filter(Boolean) : inline
+    const bubbles: Any[] = order.length ? order.map((b) => parseJson(byId.get(b)) ?? inline.find((x) => x?.bubbleId === b)).filter(Boolean) : inline
     const entries: Entry[] = []
     let model = chat.model
     for (const b of bubbles) {
       const at = isoAt(ms(b.createdAt ?? b.timingInfo?.clientStartTime))
       if (b.type === 1) {
         const t = userText(String(b.text ?? ""))
-        if (t) entries.push({ kind: "user", text: cut(t, 20000), at })
+        if (t) entries.push({ kind: "user", text: truncate(t, 20000), at })
         continue
       }
       if (b.type !== 2) continue
@@ -205,12 +207,12 @@ async function ideTalk(id: string, chat: Chat): Promise<Talk | null> {
       const tf = b.toolFormerData
       if (tf && (tf.name || tf.tool)) {
         const input = tf.rawArgs ?? tf.params ?? ""
-        const result = tf.result == null ? null : cut(pretty(tf.result))
+        const result = tf.result == null ? null : truncate(pretty(tf.result))
         entries.push({ kind: "tool", id: String(tf.toolCallId ?? b.bubbleId ?? ""), name: String(tf.name || tf.tool), summary: summarize(input),
-          input: cut(pretty(input)), result, error: tf.status === "error" || !!tf.error, at })
+          input: truncate(pretty(input)), result, error: tf.status === "error" || !!tf.error, at })
       }
       const t = String(b.text ?? "").trim()
-      if (t) entries.push({ kind: "assistant", text: cut(t, 20000), at })
+      if (t) entries.push({ kind: "assistant", text: truncate(t, 20000), at })
     }
     return { title: chat.title, cwd: chat.cwd, model, first: isoAt(chat.first), last: isoAt(chat.last), branch: "", entries }
   } catch {
@@ -228,22 +230,22 @@ async function cliTalk(chat: Chat): Promise<Talk | null> {
     for (const r of db.all("SELECT data FROM blobs ORDER BY rowid")) {
       const buf = r.data instanceof Uint8Array ? Buffer.from(r.data) : Buffer.from(text(r.data))
       if (buf[0] !== 0x7b) continue // not JSON: the binary tree that links them
-      const m = jsonOf(buf)
+      const m = parseJson(buf)
       if (!m || typeof m !== "object" || typeof m.role !== "string") continue
       const parts: Any[] = typeof m.content === "string" ? [{ type: "text", text: m.content }] : Array.isArray(m.content) ? m.content : []
       if (m.role === "user") {
         const t = userText(parts.filter((p) => p?.type === "text").map((p) => String(p.text ?? "")).join("\n\n"))
-        if (t) entries.push({ kind: "user", text: cut(t, 20000), at: "" })
+        if (t) entries.push({ kind: "user", text: truncate(t, 20000), at: "" })
       } else if (m.role === "assistant") {
         for (const p of parts) {
           if (p?.type === "text" && String(p.text ?? "").trim()) {
             const last = entries[entries.length - 1]
             if (last?.kind === "assistant") last.text += `\n\n${String(p.text).trim()}`
-            else entries.push({ kind: "assistant", text: cut(String(p.text).trim(), 20000), at: "" })
+            else entries.push({ kind: "assistant", text: truncate(String(p.text).trim(), 20000), at: "" })
           } else if (p?.type === "tool-call") {
             const input = p.args ?? p.input ?? {}
             const t: Tool = { kind: "tool", id: String(p.toolCallId ?? ""), name: String(p.toolName ?? "Tool"), summary: summarize(input),
-              input: cut(pretty(input)), result: null, error: false, at: "" }
+              input: truncate(pretty(input)), result: null, error: false, at: "" }
             tools.set(t.id, t)
             entries.push(t)
           }
@@ -252,7 +254,7 @@ async function cliTalk(chat: Chat): Promise<Talk | null> {
         for (const p of parts) {
           if (p?.type !== "tool-result") continue
           const t = tools.get(String(p.toolCallId ?? ""))
-          if (t) { t.result = cut(pretty(p.result ?? p.output ?? "")); t.error = !!p.isError }
+          if (t) { t.result = truncate(pretty(p.result ?? p.output ?? "")); t.error = !!p.isError }
         }
       }
     }
@@ -288,7 +290,7 @@ const account = (): Promise<CursorAccount> => (allowed() ? plugin.memo(300, read
 
 /** Cursor's own worktrees (~/.cursor/worktrees/<repo>/<name>) belong to their repository. */
 const WORKTREES = path.join(CONFIG_DIR, "worktrees") + "/"
-const rootsOf = (cwds: Iterable<string>) => roots(cwds, (c) => (c.startsWith(WORKTREES) ? WORKTREES + c.slice(WORKTREES.length).split("/")[0] : c))
+const rootsOf = (cwds: Iterable<string>) => projectRoots(cwds, (c) => (c.startsWith(WORKTREES) ? WORKTREES + c.slice(WORKTREES.length).split("/")[0] : c))
 const nameOf = (root: string) => (root === "" ? "No folder" : projectName(root))
 const projectOf = (cwd: string) => nameOf(cwd ? rootsOf([cwd]).get(cwd)! : "")
 const ELSEWHERE = "Not on this machine" // a conversation that isn't
@@ -396,8 +398,8 @@ const SESSION_ID = /^[\w.-]{4,100}$/
  *  (it reads the vault's AGENTS.md itself) nor hooks; an IDE chat can't be resumed by the CLI: its folder gets a new one. */
 plugin.provide("agent:cursor", async ({ resume, prompt }: AgentStart) => {
   const c = resume ? (await chats()).find((x) => x.id === resume) : undefined
-  if (resume && !c) return notHere("Cursor", resume)
-  return { command: c?.source === "cli" ? `agent --resume ${quote(c.id)}${prompt ? ` ${quote(prompt)}` : ""}` : prompt ? `agent ${quote(prompt)}` : "agent", cwd: c?.cwd || null }
+  if (resume && !c) return notOnThisMachine("Cursor", resume)
+  return { command: c?.source === "cli" ? `agent --resume ${shellQuote(c.id)}${prompt ? ` ${shellQuote(prompt)}` : ""}` : prompt ? `agent ${shellQuote(prompt)}` : "agent", cwd: c?.cwd || null }
 })
 
 // ---------- blocks as text (GET /api/render)

@@ -4,9 +4,7 @@ import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
   const { VAULT, api, check, read, write } = $
-  // ---------- Books' created, journal entries as a tag, people's sort ----------
-  await api("POST", "books", { title: "New created", author: "Alice Park", status: "want" })
-  check("books: a new book gets `created`", /\ncreated: '\d{4}-\d\d-\d\d \d\d:\d\d:\d\d'\n/.test(read("Books/New created.md")), read("Books/New created.md"))
+  // ---------- journal entries as a tag, people's sort ----------
   write("Notes/Tagged journal.md", "---\ntype: note\ntags: [journal]\n---\n\nAnother day.\n")
   write("Notes/Inline journal.md", "---\ntype: note\n---\n\nA third day. #Journal\n")
   let [, s] = await api("GET", "state")

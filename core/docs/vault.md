@@ -13,7 +13,7 @@ files are. Each kind has a usual folder (`People/`, `Notes/`, `Logs/<Area>/`, `R
 `Projects/`; dashboards in `Dashboards/`): new files go in the folder its plugin's settings set (`.vaultite/folders.json`),
 else where that kind's files already are (a new person where most people are, a log where its area's logs are), and
 only into the usual folder when there are none. Daily notes are also found by their name in their folder (`vau docs
-today`). Notes in the templates folder (`Templates/`) are never items, whatever their type. Any other Markdown file or
+daily-notes`). Notes in the templates folder (`Templates/`) are never items, whatever their type. Any other Markdown file or
 folder is fine (a plain note, found by its name; its links count). Database views, the graph and the app all go by the
 type. `.vaultite/` is the app's settings (`vau docs app`); `.vaultite/cache/` is live
 data plugins fetched and `.vaultite/generated/` the app's own copies, and `.vaultite/AGENTS.md` its rules for AIs: don't edit them.

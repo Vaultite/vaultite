@@ -27,9 +27,11 @@ struct RoutinesEntry: TimelineEntry {
     let routines: [Feed.Routine]
     let stale: Bool
     var page: String? = nil
+    /// Today is off on the server: there are no routines to tick.
+    var off = false
     var today: [Feed.Routine] { routines.filter(\.on) }
     /// Where a tap outside a routine goes: the Today page, else today's daily note.
-    var link: URL { page.map(Links.open) ?? Links.command("today:daily-note") }
+    var link: URL { page.map(Links.open) ?? Links.command("daily-notes:today") }
     var done: Int { today.filter(\.done).count }
     /// Today in the week, Monday first.
     var weekday: Int { (Calendar.current.component(.weekday, from: date) + 5) % 7 }
@@ -59,7 +61,7 @@ struct RoutinesProvider: TimelineProvider {
         let (r, stale) = await Feed.routines()
         // Kept from another day: nothing of it is known today.
         let list = r.map { r in r.date == Feed.today() ? r.routines : r.routines.map { var x = $0; x.done = false; x.ticked = false; x.week = []; return x } } ?? []
-        return RoutinesEntry(date: .now, routines: list, stale: stale, page: r?.page)
+        return RoutinesEntry(date: .now, routines: list, stale: stale, page: r?.page, off: r?.off ?? false)
     }
 }
 
@@ -90,10 +92,11 @@ struct RoutinesView: View {
                 .gaugeStyle(.accessoryCircularCapacity)
                 .containerBackground(.clear, for: .widget)
         case .accessoryInline:
-            Label("\(entry.done) of \(total) routines", systemImage: "checkmark.circle").containerBackground(.clear, for: .widget)
+            Label(entry.off ? Empty.off : "\(entry.done) of \(total) routines", systemImage: "checkmark.circle").containerBackground(.clear, for: .widget)
         case .accessoryRectangular:
             VStack(alignment: .leading) {
                 Text("Routines \(entry.done)/\(total)").font(.headline)
+                if entry.off { Text(Empty.off).font(.caption).lineLimit(2) }
                 ForEach(today.filter { !$0.done }.prefix(2), id: \.self) { Text($0.name).font(.caption).lineLimit(1) }
                 if total > 0 && entry.done == total { Text("All done").font(.caption) }
             }
@@ -129,9 +132,10 @@ struct Header: View {
 }
 
 struct Empty: View {
+    static let off = "Turn on Today for routines"
     let entry: RoutinesEntry
     var body: some View {
-        Text(entry.stale ? "Can't reach your Mac" : "No routines today").font(.caption).foregroundStyle(.secondary)
+        Text(entry.stale ? "Can't reach your Mac" : entry.off ? Self.off : "No routines today").font(.caption).foregroundStyle(.secondary)
     }
 }
 

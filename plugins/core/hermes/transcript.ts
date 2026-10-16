@@ -1,6 +1,8 @@
 // A Hermes session's conversation, from its rows in Hermes' messages table: what the user said, the model's answers
 // (Markdown) and each tool call with its result. System rows, reasoning and compression summaries are left out.
-import { type Any, cut, type Entry, jsonOf as json, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { truncate, type Entry, parseJson as json, type Said, type Tool, toolSummary } from "../../../core/agents.ts"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
 
 /** A row of the messages table, as stored (content may be JSON after Hermes' "\0json:" marker). */
 export type Row = { role: string; content: string | null; tool_calls: string | null; tool_call_id: string | null
@@ -42,7 +44,7 @@ export function conversation(rows: Row[]) {
     if (r.role === "user" || r.role === "assistant") {
       const text = textOf(r.content)
       if (text) {
-        const said: Said = { kind: r.role, text: cut(text, 20000), at: when }
+        const said: Said = { kind: r.role, text: truncate(text, 20000), at: when }
         entries.push(said)
         if (r.role === "user" && !head.prompt) head.prompt = text.replace(/\s+/g, " ").slice(0, 80)
       }
@@ -52,7 +54,7 @@ export function conversation(rows: Row[]) {
         const args = c?.function?.arguments ?? c?.arguments ?? {}
         const input = typeof args === "string" ? (json(args) ?? args) : args
         const t: Tool = { kind: "tool", id: String(c?.id ?? ""), name, summary: summarize(name, input),
-          input: cut(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: null, error: false, at: when }
+          input: truncate(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: null, error: false, at: when }
         entries.push(t)
         if (t.id) calls.set(t.id, t)
       }
@@ -60,7 +62,7 @@ export function conversation(rows: Row[]) {
       const t = calls.get(String(r.tool_call_id ?? ""))
       if (!t) continue
       const out = result(r.content)
-      t.result = cut(out.text)
+      t.result = truncate(out.text)
       t.error = out.error
     }
   }

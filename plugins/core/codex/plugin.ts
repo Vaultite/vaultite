@@ -2,11 +2,12 @@
 // from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentStart, ago, cap, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notHere,
-  priceList, processes, projectOf, quote, roots, sessionsOf, stamp, Tally, terminalOf, Transcript, transcripts } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
+  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
 const CODEX = process.env.CODEX_HOME || path.join(HOME, ".codex")
@@ -95,7 +96,7 @@ class Scan extends JsonlScan<Resp, FileState> {
     }
     const p = d?.payload
     if (!p || typeof p !== "object") return
-    const ts = stamp(d.timestamp)
+    const ts = epochSeconds(d.timestamp)
     const m = f.meta
     if (ts) { m.first ||= ts; m.last = Math.max(m.last, ts) }
     if (kind === "meta") {
@@ -168,7 +169,7 @@ function cost(r: Resp) {
 
 /** Codex's own worktrees (~/.codex/worktrees/<id>/<repo>) belong to their repository. */
 const WORKTREES = path.join(CODEX, "worktrees") + "/"
-const rootsOf = (cwds: Iterable<string>) => roots(cwds, (c) => (c.startsWith(WORKTREES) ? c.slice(WORKTREES.length).split("/").slice(1).join("/") || c : c))
+const rootsOf = (cwds: Iterable<string>) => projectRoots(cwds, (c) => (c.startsWith(WORKTREES) ? c.slice(WORKTREES.length).split("/").slice(1).join("/") || c : c))
 
 async function summary(days: number) {
   await scan.refresh()
@@ -323,8 +324,8 @@ async function session(id: string) {
  *  background server, so no context (it reads the vault's AGENTS.md itself) and no hooks. */
 plugin.provide("agent:codex", async ({ resume, prompt }: AgentStart) => {
   const t = resume ? await transcript(resume) : null
-  if (resume && !t) return notHere("Codex", resume)
-  return { command: resume ? `codex resume ${quote(resume)}${prompt ? ` ${quote(prompt)}` : ""}` : prompt ? `codex -- ${quote(prompt)}` : "codex",
+  if (resume && !t) return notOnThisMachine("Codex", resume)
+  return { command: resume ? `codex resume ${shellQuote(resume)}${prompt ? ` ${shellQuote(prompt)}` : ""}` : prompt ? `codex -- ${shellQuote(prompt)}` : "codex",
     cwd: t?.talk.head.cwd || null }
 })
 

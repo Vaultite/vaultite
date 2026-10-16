@@ -4,7 +4,7 @@ import { AgendaPanel } from "./Agenda"
 export default definePlugin({
   // ```block-agenda: today's and the coming days' events (on Today).
   blocks: { agenda: () => <AgendaPanel /> },
-  preview: "today",
+  preview: () => <AgendaPanel />,
   mockLive: () => {
     const t = today()
     return {

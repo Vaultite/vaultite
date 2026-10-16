@@ -4,12 +4,13 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type AgentMeter, type AgentStart, ago, cap, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
-  limitWindow, type Live, notHere, priceList, processes, projectName, projectOf, quote, roots, stamp, Tally, terminalOf, Transcript, transcripts,
-  type Usage } from "../../../core/codingagents.ts"
+import { type AgentMeter, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+  limitWindow, type Live, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
+  type Usage } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, WANTED } from "./transcript.ts"
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
 const DEFAULT_DIR = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : path.join(HOME, ".claude")
@@ -100,7 +101,7 @@ class Scan extends JsonlScan<Resp> {
       else if (d.type === "ai-title" && d.aiTitle && this.titles.get(sid)?.[0] !== "custom") this.titles.set(sid, ["ai", d.aiTitle])
       return
     }
-    const ts = stamp(d.timestamp)
+    const ts = epochSeconds(d.timestamp)
     if (ts === null) return
     if (kind === "turn") {
       if (d.subtype === "turn_duration" && d.durationMs) {
@@ -145,7 +146,7 @@ function cost(r: Resp) {
 }
 
 /** A worktree under .claude/worktrees/ belongs to the repository it's in. */
-const rootsOf = (cwds: Iterable<string>) => roots(cwds, (c) => c.split("/.claude/worktrees/")[0])
+const rootsOf = (cwds: Iterable<string>) => projectRoots(cwds, (c) => c.split("/.claude/worktrees/")[0])
 const nameOf = (root: string, accts: Account[] = []) => root.startsWith(PRIVATE)
   ? accts.find((a) => a.id === root.slice(PRIVATE.length))?.label ?? "Private" : projectName(root)
 
@@ -481,17 +482,17 @@ function hooks(state: AgentStart["state"], report: string | null): object | null
  *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
 plugin.provide("agent:claude", async ({ resume, context, state, report, profile, prompt, dark }: AgentStart) => {
   const found = resume ? sessionFile(resume, true) : null
-  if (resume && !found) return notHere("Claude Code", resume)
+  if (resume && !found) return notOnThisMachine("Claude Code", resume)
   const a = found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
-  const env = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? `CLAUDE_CONFIG_DIR=${quote(a.dir)}` : ""
+  const env = a && (a.dir !== path.join(HOME, ".claude") || process.env.CLAUDE_CONFIG_DIR) ? `CLAUDE_CONFIG_DIR=${shellQuote(a.dir)}` : ""
   const cwd = found ? (await transcript(found.file))?.talk.head.cwd || null : null
   // Its ANSI themes draw in the terminal's 16 colours, which are the app's colour scheme.
   const theme = typeof dark === "boolean" ? { theme: dark ? "dark-ansi" : "light-ansi" } : null
   const told = hooks(state, report ?? null)
   const settings = told || theme ? { ...told, ...theme } : null
   return {
-    command: [env, "claude", resume && `--resume ${quote(resume)}`, context && `--append-system-prompt ${quote(context)}`,
-      settings && `--settings ${quote(JSON.stringify(settings))}`, prompt && `-- ${quote(prompt)}`].filter(Boolean).join(" "),
+    command: [env, "claude", resume && `--resume ${shellQuote(resume)}`, context && `--append-system-prompt ${shellQuote(context)}`,
+      settings && `--settings ${shellQuote(JSON.stringify(settings))}`, prompt && `-- ${shellQuote(prompt)}`].filter(Boolean).join(" "),
     cwd,
   }
 })

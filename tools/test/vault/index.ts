@@ -18,6 +18,8 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "artifacts", deps: ["pages"] },
   { name: "vaults", deps: ["pages"] },
   { name: "vault-plugins", deps: ["pages"] },
+  { name: "plugin-modules", deps: ["pages"] },
+  { name: "moved", deps: ["pages"] },
   { name: "filetypes", deps: ["pages"] },
   { name: "live", deps: ["pages"] },
   { name: "query", deps: ["pages"] },

@@ -91,10 +91,10 @@ export default async ($: VaultTest) => {
 
   // Routines: ticks go to the daily note, an empty note is removed
   await api("POST", "routines", { name: "Stretch" })
-  await api("POST", "checks", { routine: "Stretch", date: "2026-09-29", done: true })
+  await api("POST", "ops/routine.check", { routine: "Stretch", date: "2026-09-29", done: true })
   check("tick writes the daily note", read("Daily/2026-09-29.md").includes("done: [Stretch]"), read("Daily/2026-09-29.md"))
   ;[, s] = await api("GET", "state")
   check("tick shows in checks", s.checks.some((c: Any) => c.routine === "Routines/Stretch" && c.date === "2026-09-29"), s.checks)
-  await api("POST", "checks", { routine: "Routines/Stretch", date: "2026-09-29", done: false })
+  await api("POST", "ops/routine.check", { routine: "Routines/Stretch", date: "2026-09-29", done: false })
   check("untick removes the empty note", !exists("Daily/2026-09-29.md"))
 }

@@ -1,8 +1,8 @@
 // Health's workouts card, ```block-workouts: an area's sessions, with each lift's latest top set and the top grade when its
 // logs have them (a link if the area has one). Sleep and nutrition are in sections.tsx; pages/Health.md puts them together.
 import { addDays, detailPath, fmtDay, List, numberText, openDetail, Row, Section, Stat, today, type Store } from "@vaultite"
-import { logsOf, type Log } from "@plugins/core/logs/types"
-import { AreaPanel } from "@plugins/core/logs/sections"
+import { logsOf, type Log } from "@plugins/logs/types"
+import { AreaPanel } from "@plugins/logs/sections"
 import { exercises, fmtSet, lifts, splitName } from "./gym"
 import { climbLine, topGrade } from "./climbs"
 

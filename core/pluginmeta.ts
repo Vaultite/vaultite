@@ -66,3 +66,13 @@ export type Lists = { disabled: string[]; enabled: string[] }
 export function switched(l: Lists, id: string, on: boolean, optIn: boolean): Lists {
   return { disabled: [...l.disabled.filter((x) => x !== id), ...(!on && !optIn ? [id] : [])], enabled: [...l.enabled.filter((x) => x !== id), ...(on && optIn ? [id] : [])] }
 }
+
+/** "@plugins/<id>/<module>": a module another plugin offers (its manifest's `exports`), to plugins that `require` it. */
+export const PLUGIN_MODULE = /^@plugins\/([a-z][a-z0-9-]*)\/([\w-]+(?:\/[\w-]+)*)$/
+/** A module name a manifest's `exports` may list: a path in its folder without its extension ("types", "lib/format"). */
+export const EXPORT_NAME = /^(?!(?:plugin|index|import|cli)$)[\w-]+(?:\/[\w-]+)*$/
+
+/** The modules a manifest `exports`, as far as they read (core/rules.ts says what's wrong). */
+export function exportsOf(m: Record<string, unknown>): string[] {
+  return Array.isArray(m.exports) ? m.exports.filter((x): x is string => typeof x === "string" && EXPORT_NAME.test(x)) : []
+}

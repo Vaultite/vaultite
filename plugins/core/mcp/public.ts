@@ -9,7 +9,7 @@ import { agentLines, APP_VERSION, fromInternet, OpError, type Plugin, type Who }
 import { type Disclosures, disclosed } from "../../../core/pluginmeta.ts"
 import { hashed } from "../../../core/rules.ts"
 import type { Item } from "../../../core/vault.ts"
-import { agentName } from "../../../core/terminalids.ts"
+import { agentName } from "../../../core/agents.ts"
 import { blockedHost } from "../../../core/web.ts"
 import { byUser } from "../../../core/writegate.ts"
 import { toolsOf } from "./catalog.ts"

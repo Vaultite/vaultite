@@ -115,7 +115,7 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
         {problem ? <div className={cn(line, "text-[var(--red)]")}>{problem.split("\n")[0].replace(`${p.folder}/`, "")}</div>
           // On in the vault, but this machine hasn't allowed it (as it is now): the sheet shows what changed and Allow.
           : waiting ? <div className={cn(line, "text-muted-foreground")} data-plugin-waiting={p.id}>
-            {p.meta!.approval!.state === "new" ? "Waiting for you to allow it on this machine" : "Changed: waiting for you to allow it again"}</div>
+            {p.meta!.approval!.state === "changed" ? "Changed: waiting for you to allow it again" : "Waiting for you to allow it on this machine"}</div>
           : original ? (
             <div className={cn(line, "text-muted-foreground")} data-plugin-pair={own.id}>
               {theirs ? capitalize(kind) : mine}{" · "}

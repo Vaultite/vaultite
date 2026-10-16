@@ -7,13 +7,17 @@ import { Puzzle, type LucideIcon } from "lucide-react"
 import * as api from "@/api"
 import type { PluginDef, Plugin } from "@/core/define"
 import type { State, VaultPluginInfo } from "@/core/data"
-import { setVaultPlugins } from "@/core/plugins"
+import { allowPlugin, setVaultPlugins } from "@/core/plugins"
 import { pluginIcon } from "@/core/pages"
 import { openDetail } from "@/core/nav"
 import { notify } from "@/core/notify"
 
-// The app's plugins' modules, for vault plugins that require them (@plugins/core/logs/sections): loaded when asked.
-const repo = import.meta.glob(["../../../plugins/*/*/**/*.{ts,tsx}", "!../../../plugins/**/plugin.ts", "!../../../plugins/**/import.ts", "!../../../plugins/**/cli.ts"])
+// The modules the app's plugins export (their manifests' `exports`), for vault plugins that require them
+// (@plugins/logs/sections): loaded when asked.
+const repo = import.meta.glob(["../../../plugins/core/*/**/*.{ts,tsx}", "!../../../plugins/**/plugin.ts", "!../../../plugins/**/import.ts", "!../../../plugins/**/cli.ts"])
+const manifests = import.meta.glob<{ exports?: string[] }>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" })
+/** Each vault plugin's bundle version in the state being loaded: a plugin's modules come from its bundle (`__exports`). */
+const versions = new Map<string, string>()
 
 const modules: Record<string, unknown> = { "@vaultite": api, react: React, "react-dom": ReactDOM, "react/jsx-runtime": jsxRuntime }
 // The app's CodeMirror (core/rules.ts SHARED_EDITOR), for plugins whose `editor` extensions need the editor's own copy.
@@ -24,10 +28,24 @@ const editor: Record<string, () => Promise<unknown>> = {
   "@lezer/common": () => import("@lezer/common"), "@lezer/highlight": () => import("@lezer/highlight"),
 }
 
-/** "@plugins/core/logs/sections" -> its loader's key ("../../../plugins/core/logs/sections.tsx"). */
-function repoKey(spec: string) {
-  const base = `../../../plugins/${spec.slice("@plugins/".length).replace(/\.tsx?$/, "")}`
-  return [".ts", ".tsx", "/index.ts", "/index.tsx"].map((x) => base + x).find((k) => k in repo) ?? null
+/** "@plugins/logs/sections" -> its loader: an app plugin's module it exports, or a vault plugin's from its bundle. */
+function moduleLoader(spec: string): (() => Promise<unknown>) | null {
+  const m = /^@plugins\/([a-z][a-z0-9-]*)\/([\w-]+(?:\/[\w-]+)*)$/.exec(spec)
+  if (!m) return null
+  const [, id, name] = m, own = manifests[`../../../plugins/core/${id}/manifest.json`]
+  if (own) {
+    const base = `../../../plugins/core/${id}/${name}`
+    const key = own.exports?.includes(name) ? [".ts", ".tsx", "/index.ts", "/index.tsx"].map((x) => base + x).find((k) => k in repo) : undefined
+    return key ? repo[key] : null
+  }
+  const v = versions.get(id)
+  if (!v) return null
+  return async () => {
+    const mod = await import(/* @vite-ignore */ new URL(`api/plugins/${encodeURIComponent(id)}/${v}/bundle.js`, document.baseURI).href)
+    const got = (mod.__exports as Record<string, unknown> | undefined)?.[name]
+    if (!got) throw new Error(`${id} doesn't export ${name}`)
+    return got
+  }
 }
 
 declare global {
@@ -53,7 +71,7 @@ globalThis.__vaultite = {
   async preload(specs) {
     for (const spec of specs) {
       if (spec in modules) continue
-      const key = repoKey(spec), load = editor[spec] ?? (key && repo[key])
+      const load = editor[spec] ?? moduleLoader(spec)
       if (!load) throw new Error(`no module ${spec} in the app`)
       modules[spec] = await load()
     }
@@ -73,8 +91,9 @@ async function importBundle(info: VaultPluginInfo, version: string, retry: boole
     let late = 0
     const mod = await Promise.race([import(/* @vite-ignore */ url), new Promise<never>((_, no) => { late = window.setTimeout(() => no(new Error("its code didn't arrive in 20 s")), 20_000) })])
       .finally(() => clearTimeout(late))
-    const def = mod.default as PluginDef | undefined
-    if (!def || typeof def !== "object") throw new Error("index.tsx has no default export (export default definePlugin({...}))")
+    const def = (mod.default ?? null) as PluginDef | null
+    // (one without index.tsx only offers its modules to plugins that require it)
+    if (def === null ? !mod.__exports : typeof def !== "object") throw new Error("index.tsx has no default export (export default definePlugin({...}))")
     // (its icon by a Lucide name comes with it: core/vaultplugins.ts bundle)
     return { version, def, icon: mod.icon as LucideIcon | undefined, error: null }
   } catch (e) {
@@ -87,19 +106,21 @@ async function importBundle(info: VaultPluginInfo, version: string, retry: boole
 /** The vault plugins in this state: bundles that are new since last time are imported, then the list is replaced. */
 export async function loadVaultPlugins(state: State) {
   const list = state.vaultPlugins ?? []
+  versions.clear()
+  for (const info of list) if (info.bundle) versions.set(info.id, info.bundle)
   await Promise.all(list.map(async (info) => {
     if (!info.bundle) return void loaded.delete(info.id)
     const hit = loaded.get(info.id)
-    if (hit?.version === info.bundle && !hit.def && Date.now() - (hit.at ?? 0) < RETRY) return
-    if (hit?.version !== info.bundle || !hit.def) loaded.set(info.id, await importBundle(info, info.bundle, hit?.version === info.bundle))
+    if (hit?.version === info.bundle && hit.error && Date.now() - (hit.at ?? 0) < RETRY) return
+    if (hit?.version !== info.bundle || hit.error) loaded.set(info.id, await importBundle(info, info.bundle, hit?.version === info.bundle))
   }))
   const plugins = list.map((info): Plugin => {
     const hit = info.bundle ? loaded.get(info.id) : undefined
-    const { id, name, description, requires, enhances, runsOnServer, tint, category, replaces, marks, folder, pages, blocks, draws, settings, warnings } = info
+    const { id, name, description, requires, enhances, runsOnServer, tint, category, group, replaces, marks, folder, pages, blocks, draws, settings, warnings } = info
     const { version, author, repo, fundingUrl, disclosures, source, approval, blocked, hash, edits } = info
     return {
       ...hit?.def, icon: hit?.icon ?? pluginIcon(info.icon) ?? Puzzle, id, name, description, requires: requires.length ? requires : undefined,
-      enhances: enhances.length ? enhances : undefined, runsOnServer, tint, category, replaces, marks, folder, pages, tier: "vault", version: hit?.version,
+      enhances: enhances.length ? enhances : undefined, runsOnServer, tint, category, group, replaces, marks, folder, pages, tier: "vault", version: hit?.version,
       problems: [...info.problems, ...(hit?.error ? [hit.error] : [])], warnings: warnings ?? [], blockDecls: blocks ?? {},
       draws: draws?.length ? draws : undefined,
       settingsDecls: settings ?? {},
@@ -118,7 +139,16 @@ function tell(on: Plugin[]) {
   let said: Record<string, string> = {}
   try { said = JSON.parse(localStorage.getItem(SAID) ?? "{}") } catch { /* private mode */ }
   const next: Record<string, string> = {}
-  for (const p of on) {
+  // The app's plugins that moved to Vaultite's plugins, installed with the vault's settings: one ask for all of them.
+  const moved = on.filter((p) => !p.problems?.length && p.meta?.approval?.state === "moved")
+  for (const p of moved) next[p.id] = `approval:${p.meta!.hash}`
+  if (moved.some((p) => said[p.id] !== next[p.id])) {
+    const names = new Intl.ListFormat("en", { type: "conjunction" }).format(moved.map((p) => p.name))
+    notify(`${names} moved out of the app to Vaultite's plugins, with your settings: allow ${moved.length > 1 ? "them" : "it"} on this machine`, {
+      id: "plugins:moved", duration: Infinity,
+      action: { label: "Allow", run: async () => { for (const p of moved) if (!(await allowPlugin(p))) return; notify(`${names} ${moved.length > 1 ? "are" : "is"} on again`) } } })
+  }
+  for (const p of on.filter((x) => !moved.includes(x))) {
     const problems = p.problems ?? []
     // On, but waiting for this machine's yes (it came by sync, or changed): said once per version.
     if (!problems.length && p.meta?.approval) {

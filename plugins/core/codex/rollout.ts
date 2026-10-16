@@ -1,6 +1,6 @@
 // A Codex session's rollout as a conversation: what the user said, Codex's answers (Markdown) and each tool call (a
 // command, a file change, an MCP tool, a web search) with its result. Both rollout shapes are read (Conversation).
-import { cut, type Entry, type Head, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { truncate, type Entry, type Head, type Said, type Tool, toolSummary } from "../../../core/agents.ts"
 
 /** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
 export const WANTED = ['"item_completed"', '"user_message"', '"agent_message"', '"function_call', '"custom_tool_call', '"local_shell_call"',
@@ -33,7 +33,7 @@ const home = (p: string) => p.replace(/^\/Users\/[^/]+/, "~")
 function toolOf(it: Record<string, any>, at: string): Tool | null { // eslint-disable-line @typescript-eslint/no-explicit-any
   const id = String(it.id ?? "")
   const t = (name: string, summary: string, input: string, result: string | null, error = false): Tool =>
-    ({ kind: "tool", id, name, summary: summary.replace(/\s+/g, " ").trim().slice(0, 200), input: cut(input), result: result === null ? null : cut(result), error, at })
+    ({ kind: "tool", id, name, summary: summary.replace(/\s+/g, " ").trim().slice(0, 200), input: truncate(input), result: result === null ? null : truncate(result), error, at })
   switch (it.type) {
     case "CommandExecution": {
       const cmd = commandOf(it.command)
@@ -91,7 +91,7 @@ export class Conversation {
     text = text.trim()
     if (!text) return
     if (kind === "user" && !this.head.title) this.head.title = titleOf(text)
-    this.entries.push({ kind, text: cut(text, 20000), at })
+    this.entries.push({ kind, text: truncate(text, 20000), at })
   }
 
   /** One line of the file (a JSON record). */
@@ -140,14 +140,14 @@ export class Conversation {
       const cmd = p.type === "local_shell_call" ? commandOf(p.action?.command) : input && typeof input === "object" && "command" in input ? commandOf((input as { command: unknown }).command) : ""
       const name = p.type === "local_shell_call" || p.name === "shell" || p.name === "exec_command" ? "Shell" : String(p.name ?? "Tool")
       const tool: Tool = { kind: "tool", id: String(p.call_id ?? p.id ?? ""), name, summary: (cmd || summarize(name, input)).replace(/\s+/g, " ").slice(0, 200),
-        input: cut(cmd || str(input)), result: null, error: false, at }
+        input: truncate(cmd || str(input)), result: null, error: false, at }
       this.tools.set(tool.id, tool)
       this.entries.push(tool)
     } else if (p.type === "function_call_output" || p.type === "custom_tool_call_output") {
       const tool = this.tools.get(String(p.call_id ?? ""))
       if (!tool) return
       const out = p.output
-      tool.result = cut(typeof out === "string" ? out : Array.isArray(out) ? userText(out) : str(out?.content ?? out))
+      tool.result = truncate(typeof out === "string" ? out : Array.isArray(out) ? userText(out) : str(out?.content ?? out))
       tool.error = out?.success === false
     }
   }

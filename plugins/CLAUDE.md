@@ -12,6 +12,8 @@
 - Ask for a service (`plugin.provide` / `plugin.ask`), never for a plugin's id. Whether a plugin is off:
   `plugin.isOff()` / `vault.switchedOff()`.
 - A new app plugin: decide whether each built-in bundle turns it on (`bundles/CLAUDE.md`).
+- Moving one out to Vaultite/plugins: its folder goes there (tagged), out of here in the same change, and into
+  `MOVED` (`core/migrations.ts`): vaults that had it on install it once; bundles name it with `install`.
 - A plugin's `pages/*.md` are written once, as the user's files, when it's turned on (`core/pages.ts`): a change to
   one reaches only vaults that turn it on later, never the copies already written.
 
@@ -26,8 +28,9 @@
    (`core/trust.ts`), so a synced vault can't set it.
 4. A vault setting never chooses a program to run here: the owner's yes is `plugin.allows` / `plugin.allow`, kept on
    this machine. What only the owner may (a shell, the screen): `plugin.ownerOnly(req)`.
-5. Imports: `@vaultite`, its own folder and plugins it `requires` (a required backend via `plugin.peer(id).exports`);
-   the backend reaches the core only through `CORE_FOR_PLUGINS`. Settings come through the API, never from disk.
+5. Imports: `@vaultite`, its own folder and the modules plugins it `requires` export (`@plugins/<id>/<module>`, its
+   manifest's `exports`; a running backend via `plugin.peer(id).exports`); the backend reaches the core only through
+   `CORE_FOR_PLUGINS`. Settings come through the API, never from disk.
 6. What it writes outside `.vaultite/` on its own, its manifest's `writes` declares (`core/CLAUDE.md`, write gate).
 
 ## Blocks
@@ -49,6 +52,6 @@
 ## Gotchas
 - Audio recorder: the transcriber's `model` is a name, never a path (whisper unpickles a path).
 - File history: a whole top-level folder missing (iCloud) isn't a delete.
-- Coding agent plugins share `core/codingagents.ts`. Claude Code's value is at API list prices: add new models to its
+- Coding agent plugins share `core/agents.ts`, the public agents API (vault plugins' too: keep its names stable). Claude Code's value is at API list prices: add new models to its
   `PRICES`. Their tests use made-up homes (`tools/fixtures/<id>`), pointed at by env vars in
   `tools/test/vault/harness.ts`.

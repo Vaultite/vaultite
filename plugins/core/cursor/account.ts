@@ -1,7 +1,9 @@
 // Cursor's account, read for the plugins that show it (Cursor, Grok Bot): its dashboard API with Cursor.app's sign-in.
 // One read serves both, kept 5 minutes here; each plugin asks only once its user allowed it.
 import path from "node:path"
-import { type Any, HOME, SqliteFile } from "./codingagents.ts"
+import { HOME, SqliteFile } from "../../../core/agents.ts"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
 
 /** Cursor.app's User folder (CURSOR_USER_DIR: the tests'), and its state database (its chats, its sign-in). */
 export const CURSOR_USER_DIR = process.env.CURSOR_USER_DIR || path.join(HOME, "Library", "Application Support", "Cursor", "User")

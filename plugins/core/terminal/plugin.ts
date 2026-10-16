@@ -5,8 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentMeter, type AgentStart, type AgentState, quote } from "../../../core/codingagents.ts"
-import { parseTerminal } from "../../../core/terminalids.ts"
+import { type AgentMeter, type AgentStart, type AgentState, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request,
@@ -177,7 +176,7 @@ const APP_ROOT = path.resolve(plugin.dir, "..", "..", "..")
 function vauBin(): string {
   if (!process.versions.electron) return path.join(APP_ROOT, "bin")
   const dir = path.join(LOCAL_DIR, "bin"), file = path.join(dir, "vau")
-  const text = `#!/bin/sh\n# vau for Vaultite's terminals (plugins/core/terminal), remade as needed.\nELECTRON_RUN_AS_NODE=1 exec ${quote(process.execPath)} ${quote(path.join(APP_ROOT, "bin", "vau"))} "$@"\n`
+  const text = `#!/bin/sh\n# vau for Vaultite's terminals (plugins/core/terminal), remade as needed.\nELECTRON_RUN_AS_NODE=1 exec ${shellQuote(process.execPath)} ${shellQuote(path.join(APP_ROOT, "bin", "vau"))} "$@"\n`
   try {
     if (fs.readFileSync(file, "utf8") !== text) throw new Error("old")
   } catch {
@@ -252,10 +251,10 @@ function agentReady(id: string, agent: string) {
 /** The shell command a hook runs to mark a terminal's state (its state `file`), and `tell` (Inbox) when the change is
  *  news: finished, asks something, was answered ($prev, the hook's JSON on stdin). */
 export function stateCommand(file: string, tell?: ((s: AgentState) => string) | null) {
-  const mark = (s: AgentState) => `printf %s ${s} > ${quote(file)} 2>/dev/null || true`
+  const mark = (s: AgentState) => `printf %s ${s} > ${shellQuote(file)} 2>/dev/null || true`
   if (!tell) return mark
   const news: Record<AgentState, string> = { idle: `[ "$prev" = working ]`, waiting: `[ "$prev" != waiting ]`, working: `[ "$prev" = waiting ]` }
-  return (s: AgentState) => `prev=$(cat ${quote(file)} 2>/dev/null); ${mark(s)}; if ${news[s]}; then ${tell(s)}; fi`
+  return (s: AgentState) => `prev=$(cat ${shellQuote(file)} 2>/dev/null); ${mark(s)}; if ${news[s]}; then ${tell(s)}; fi`
 }
 
 /** The shell command an agent's terminal runs, and where (null: a plain shell). */

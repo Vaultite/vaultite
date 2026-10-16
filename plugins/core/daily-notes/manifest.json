@@ -1,0 +1,22 @@
+{
+  "id": "daily-notes",
+  "icon": "calendar-days",
+  "category": "writing",
+  "essential": true,
+  "name": "Daily notes",
+  "description": "A note for each day, named by its date, in its folder, made from a template: open today's from the command palette.",
+  "settings": {
+    "format": {
+      "type": "string",
+      "default": "YYYY-MM-DD",
+      "label": "Date format",
+      "description": "the date format daily notes are named in (YYYY-MM-DD, YYYY/MM/YYYY-MM-DD for a folder each month...)"
+    },
+    "template": {
+      "type": "string",
+      "default": "",
+      "label": "Template",
+      "description": "a note new daily notes start from, its path without .md (Templates/Daily); none: they start empty"
+    }
+  }
+}

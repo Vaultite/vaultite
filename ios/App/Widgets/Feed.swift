@@ -36,8 +36,8 @@ enum Feed {
             ticked = try c.decodeIfPresent(Bool.self, forKey: .ticked) ?? (done && !auto)
         }
     }
-    /// `page`: the Today page, which a tap outside a routine opens.
-    struct Routines: Codable { let date: String; var page: String? = nil; let routines: [Routine] }
+    /// `page`: the Today page, which a tap outside a routine opens. `off`: the server has no routines (Today is off there).
+    struct Routines: Codable { let date: String; var page: String? = nil; let routines: [Routine]; var off: Bool? = nil }
 
     /// An agent waiting for the user (an unread `waiting` event); `ask` permission with a terminal: Approve and Deny.
     struct Waiting: Codable, Hashable, Identifiable {
@@ -61,8 +61,13 @@ enum Feed {
     static func routines() async -> (Routines?, stale: Bool) {
         let date = today()
         return await kept("widget.routines") {
-            let r = try await Servers.call("POST", "ops/routine.list", ["date": date], from: "widget")
-            return try decode(Routines.self, r)
+            do {
+                let r = try await Servers.call("POST", "ops/routine.list", ["date": date], from: "widget")
+                return try decode(Routines.self, r)
+            } catch let e as Servers.Failure where e.status == 404 {
+                // No such op there: Today is off (or not installed), which isn't a Mac out of reach.
+                return Routines(date: date, routines: [], off: true)
+            }
         }
     }
 

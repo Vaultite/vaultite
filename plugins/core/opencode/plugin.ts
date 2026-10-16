@@ -5,8 +5,8 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
-import { type AgentStart, argvOf, codingAgent, cwds, firstPrompts, HOME, type Live, notHere, num, processes, quote, rebuilt, roots, scanDays,
-  sessionsOf, SqliteFile, Tally } from "../../../core/codingagents.ts"
+import { type AgentStart, argvOf, codingAgent, cwds, firstPrompts, HOME, type Live, notOnThisMachine, numberOf, processes, shellQuote, buildCache, projectRoots, scanDays,
+  sessionsOf, SqliteFile, Tally } from "../../../core/agents.ts"
 import { localDate, Plugin } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 import { conversation, type Row } from "./transcript.ts"
@@ -46,7 +46,7 @@ class Store extends SqliteFile {
     if (!this.due(() => { this.replies = []; this.sessions.clear() })) return
     const cutoff = Date.now() - scanDays() * 86400000
     this.sessions = new Map(this.all(`SELECT id, parent_id, directory, title, time_created, time_updated FROM session WHERE time_updated >= ?`, cutoff)
-      .map((s) => [s.id, { id: s.id, parent: s.parent_id ?? null, directory: s.directory ?? "", title: s.title ?? "", created: num(s.time_created), updated: num(s.time_updated) }]))
+      .map((s) => [s.id, { id: s.id, parent: s.parent_id ?? null, directory: s.directory ?? "", title: s.title ?? "", created: numberOf(s.time_created), updated: numberOf(s.time_updated) }]))
     const rows = this.all(`SELECT id, session_id AS sid, time_created AS created, json_extract(data, '$.modelID') AS model,
         json_extract(data, '$.providerID') AS provider, json_extract(data, '$.cost') AS cost,
         json_extract(data, '$.tokens.input') AS input, json_extract(data, '$.tokens.output') AS output,
@@ -57,16 +57,16 @@ class Store extends SqliteFile {
     const seen = new Set<string>()
     const out: Reply[] = []
     for (const r of rows) {
-      const n = [num(r.input), num(r.output), num(r.reasoning), num(r.cread), num(r.cwrite)]
+      const n = [numberOf(r.input), numberOf(r.output), numberOf(r.reasoning), numberOf(r.cread), numberOf(r.cwrite)]
       const tokens = n.reduce((a, b) => a + b, 0)
-      if (!tokens && !num(r.cost)) continue // still streaming, or failed before any tokens
-      const ts = num(r.t0) || num(r.created)
+      if (!tokens && !numberOf(r.cost)) continue // still streaming, or failed before any tokens
+      const ts = numberOf(r.t0) || numberOf(r.created)
       // A fork copies the replies before it with new ids but the same times and counts: the first one counts.
       const key = [ts, r.provider, r.model, ...n].join("|")
       if (seen.has(key)) continue
       seen.add(key)
-      const t1 = num(r.t1)
-      out.push({ id: r.id, session: r.sid, ts, model: String(r.model ?? ""), provider: String(r.provider ?? ""), cost: num(r.cost), tokens,
+      const t1 = numberOf(r.t1)
+      out.push({ id: r.id, session: r.sid, ts, model: String(r.model ?? ""), provider: String(r.provider ?? ""), cost: numberOf(r.cost), tokens,
         input: n[0], read: n[3], write: n[4], ms: t1 > ts ? Math.min(t1 - ts, 30 * 60000) : 0, root: String(r.root ?? ""), day: localDate(new Date(ts)) })
     }
     this.replies = out
@@ -126,7 +126,7 @@ async function summary(days: number) {
     const top = topOf.get(r.session)!
     if (!where.has(top)) where.set(top, (r.session === top && r.root) || store.sessions.get(top)?.directory || r.root)
   }
-  const root = roots(new Set(where.values()))
+  const root = projectRoots(new Set(where.values()))
   for (const r of rows) {
     const sid = topOf.get(r.session)!, proj = root.get(where.get(sid)!)!, mn = modelName(names, `${r.provider}/${r.model}`)
     const s = t.session(sid, () => {
@@ -180,7 +180,7 @@ async function live(): Promise<Live[]> {
   for (const [p, s] of sessionsOf(procs, (x: Item) => String(x.id), (p, free) => {
     const cwd = p.dir ? path.resolve(dirs.get(p.pid) ?? "/", p.dir) : dirs.get(p.pid) ?? ""
     return p.session ? store.all(`SELECT id, title, directory, time_created, time_updated FROM session WHERE id = ?`, p.session)[0]
-      : cands.find((c) => free(c) && c.directory === cwd && num(c.time_updated) >= p.started - 5000 && !!c.headless === (p.kind === "run"))
+      : cands.find((c) => free(c) && c.directory === cwd && numberOf(c.time_updated) >= p.started - 5000 && !!c.headless === (p.kind === "run"))
   })) {
     if (!s) continue
     const last = store.all(`SELECT time_created AS created, json_extract(data, '$.role') AS role, json_extract(data, '$.time.completed') AS done,
@@ -190,7 +190,7 @@ async function live(): Promise<Live[]> {
     const model = store.all(`SELECT json_extract(data, '$.providerID') AS provider, json_extract(data, '$.modelID') AS model FROM message
       WHERE session_id = ? AND json_extract(data, '$.role') = 'assistant' ORDER BY time_created DESC, id DESC LIMIT 1`, s.id)[0]
     out.push({ pid: p.pid, id: s.id, title: titleOf({ id: s.id, title: s.title ?? "" }), status: busy ? "busy" : "idle", kind: p.kind,
-      cwd: String(s.directory ?? ""), started: p.started, since: num(last?.done) || num(last?.created) || num(s.time_updated),
+      cwd: String(s.directory ?? ""), started: p.started, since: numberOf(last?.done) || numberOf(last?.created) || numberOf(s.time_updated),
       model: model?.model ? modelName(names, `${model.provider}/${model.model}`) : null })
   }
   return out
@@ -199,7 +199,7 @@ async function live(): Promise<Live[]> {
 // ---------- one session's conversation (the view tab: view:opencode-session/<id>)
 
 const SESSION_ID = /^[\w.-]{4,100}$/
-const talks = rebuilt<ReturnType<typeof conversation>>()
+const talks = buildCache<ReturnType<typeof conversation>>()
 
 function sessionRow(id: string): Item | null {
   return SESSION_ID.test(id) ? store.all(`SELECT id, title, directory, time_updated FROM session WHERE id = ?`, id)[0] ?? null : null
@@ -215,7 +215,7 @@ function talk(s: Item) {
       parts.get(p.message_id)!.push(p.data)
     }
     const rows: Row[] = store.all(`SELECT id, time_created, data FROM message WHERE session_id = ? ORDER BY time_created, id`, s.id)
-      .map((m) => ({ id: m.id, created: num(m.time_created), data: m.data, parts: parts.get(m.id) ?? [] }))
+      .map((m) => ({ id: m.id, created: numberOf(m.time_created), data: m.data, parts: parts.get(m.id) ?? [] }))
     return conversation(rows)
   })
 }
@@ -270,7 +270,7 @@ export default { id: "vaultite-state", server: async () => { show(); return { ev
  *  (merged into the user's config): an instructions file and the state plugin above. */
 plugin.provide("agent:opencode", async ({ resume, context, state, prompt }: AgentStart) => {
   const row = resume ? sessionRow(resume) : null
-  if (resume && !row) return notHere("OpenCode", resume)
+  if (resume && !row) return notOnThisMachine("OpenCode", resume)
   const config: Item = {}
   try {
     if (context) config.instructions = [tmpFile(".md", context)]
@@ -278,8 +278,8 @@ plugin.provide("agent:opencode", async ({ resume, context, state, prompt }: Agen
   } catch {
     // no temp folder: it runs as it is
   }
-  const env = Object.keys(config).length ? `OPENCODE_CONFIG_CONTENT=${quote(JSON.stringify(config))} ` : ""
-  return { command: `${env}opencode${resume ? ` --session ${quote(resume)}` : ""}${prompt ? ` --prompt ${quote(prompt)}` : ""}`, cwd: row?.directory || null }
+  const env = Object.keys(config).length ? `OPENCODE_CONFIG_CONTENT=${shellQuote(JSON.stringify(config))} ` : ""
+  return { command: `${env}opencode${resume ? ` --session ${shellQuote(resume)}` : ""}${prompt ? ` --prompt ${shellQuote(prompt)}` : ""}`, cwd: row?.directory || null }
 })
 
 // ---------- blocks as text (GET /api/render)

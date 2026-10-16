@@ -9,7 +9,7 @@ import {
   bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, Plugin, processTable, recordSpan, section, spans, type Proc, type RequestEnd,
   type RequestStart, type Span,
 } from "../../../core/plugins.ts"
-import { agentName, KNOWN_AGENTS } from "../../../core/terminalids.ts"
+import { agentName, KNOWN_AGENTS } from "../../../core/agents.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
 import { buildRecap, type Sources } from "./build.ts"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, renderRecap } from "./recap.ts"
@@ -230,18 +230,12 @@ type Did = { action: Action; text: string; paths: string[] } | null
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
 const strip = (p: string) => p.replace(/\.md$/, "")
 
-/** A request, worded ("Edited Notes/Idea.md"); null: not worth an event (the app reading, its own reports). */
-/** A day's note, wherever daily notes are (Today's kind), for a tick's activity line. */
-function dayFile(date: string) {
-  const d = plugin.vault.has("days") ? plugin.vault.get("days", date) : null
-  return d ? `${d.id}.md` : `${plugin.vault.has("days") ? plugin.vault.home("days") ?? "Daily" : "Daily"}/${date}.md`
-}
-
 function failed(method: string, route: string, end: RequestEnd): Did {
   const what = route.startsWith("ops/") ? route.slice(4) : `${method} /api/${route}`
   return { action: "failed", text: `${what} failed: ${(end.error || `status ${end.status}`).slice(0, 200)}`, paths: [] }
 }
 
+/** A request, worded ("Edited Notes/Idea.md"); null: not worth an event (the app reading, its own reports). */
 function describe(method: string, route: string, query: Record<string, string>, body: unknown, byApp: boolean): Did {
   const parts = route.split("/")
   const b = (body && typeof body === "object" && !Array.isArray(body) ? body : {}) as Record<string, unknown>
@@ -290,7 +284,6 @@ function describe(method: string, route: string, query: Record<string, string>, 
     if (parts[1] === "move") return { action: "move", text: "Moved tabs between workspaces", paths: [] }
     return { action: "settings", text: parts[1] ? `Changed workspace ${parts[1]}` : "Changed the workspaces", paths: [] }
   }
-  if (route === "checks") return { action: "save", text: `${b.done === false ? "Unticked" : "Ticked"} ${str(b.routine)}${str(b.date) ? ` for ${str(b.date)}` : ""}`, paths: str(b.date) ? [dayFile(str(b.date))] : [] }
   if (route === "clip") return { action: "create", text: `Clipped ${str(b.url).slice(0, 120) || "a web page"}`, paths: [] }
   if (route === "interactions") return { action: "save", text: `Added to ${str(b.person)}'s timeline${str(b.kind) ? ` (${str(b.kind)})` : ""}`, paths: [] }
   if (route === "calendar/refresh") return { action: "request", text: "Refreshed the calendar", paths: [] }

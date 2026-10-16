@@ -74,5 +74,6 @@ export default definePlugin({
       recent: t(l.date), weight: 0,
     }))
   },
-  preview: "today",
+  // (its blocks on Health's page)
+  preview: "health",
 })

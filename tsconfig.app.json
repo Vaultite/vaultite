@@ -1,6 +1,6 @@
 {
   "compilerOptions": {
-    "paths": { "@/*": ["./web/src/*"], "@vaultite": ["./web/src/api.ts"], "@plugins/*": ["./plugins/*"] },
+    "paths": { "@/*": ["./web/src/*"], "@vaultite": ["./web/src/api.ts"], "@plugins/*": ["./plugins/core/*"] },
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.app.tsbuildinfo",
     "target": "es2023",

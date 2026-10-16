@@ -3,11 +3,12 @@
 import fs from "node:fs"
 import path from "node:path"
 import { isMap, isScalar, type Node, parseDocument, type Scalar } from "yaml"
-import { type AgentStart, ago, argvOf, cap, codingAgent, cwds, expandHome, firstPrompts, HOME, type Live, notHere, num, processes, projectOf, quote,
-  rebuilt, roots, scanDays, sessionsOf, SqliteFile, Tally, vauMcpServer } from "../../../core/codingagents.ts"
+import { type AgentStart, ago, argvOf, codingAgent, cwds, expandHome, firstPrompts, HOME, type Live, notOnThisMachine, numberOf, processes, projectOf, shellQuote,
+  buildCache, projectRoots, scanDays, sessionsOf, SqliteFile, Tally, vauMcpServer } from "../../../core/agents.ts"
 import { bullets, localDate, localTime, OpError, Plugin, section } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 import { conversation, type Row, textOf } from "./transcript.ts"
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
 /** A message's content read as bytes: node:sqlite's text ends at a NUL, and Hermes starts its JSON parts (an image
@@ -52,8 +53,8 @@ const COUNTS = ["input_tokens", "output_tokens", "cache_read_tokens", "cache_wri
 
 /** What a row cost: what was charged, else Hermes' estimate; null when Hermes had no price for it. */
 function costOf(r: Item, tokens: number): number | null {
-  if (num(r.actual_cost_usd) > 0) return num(r.actual_cost_usd)
-  if (num(r.estimated_cost_usd) > 0) return num(r.estimated_cost_usd)
+  if (numberOf(r.actual_cost_usd) > 0) return numberOf(r.actual_cost_usd)
+  if (numberOf(r.estimated_cost_usd) > 0) return numberOf(r.estimated_cost_usd)
   return r.cost_status === "unknown" && tokens > 0 ? null : 0
 }
 
@@ -85,7 +86,7 @@ class Store extends SqliteFile {
     const rows = this.all(`SELECT id, source, title, model, cwd, ${c("git_repo_root")}, ${c("git_branch")}, ${c("cost_status")}, ${last} AS last,
         ${COUNTS.join(", ")}, estimated_cost_usd, actual_cost_usd FROM sessions WHERE ${last} >= ?`, cutoff)
     const ses = (r: Item): Ses => ({ id: r.id, source: String(r.source ?? ""), title: String(r.title ?? ""), model: String(r.model ?? ""),
-      cwd: String(r.cwd ?? ""), repo: String(r.git_repo_root ?? ""), branch: String(r.git_branch ?? ""), last: num(r.last) })
+      cwd: String(r.cwd ?? ""), repo: String(r.git_repo_root ?? ""), branch: String(r.git_branch ?? ""), last: numberOf(r.last) })
     this.sessions = new Map(rows.map((r) => [r.id, ses(r)]))
     // A session's top (a compression's first part, a subagent's parent) names it, even when it's older than the scan.
     for (const r of rows) {
@@ -105,7 +106,7 @@ class Store extends SqliteFile {
     }
     const out: Use[] = []
     const add = (session: string, r: Item, ts: number, model: string) => {
-      const n = COUNTS.map((k) => num(r[k]))
+      const n = COUNTS.map((k) => numberOf(r[k]))
       const tokens = n.reduce((a, b) => a + b, 0)
       const cost = costOf(r, tokens)
       if (!tokens && !cost) return
@@ -113,11 +114,11 @@ class Store extends SqliteFile {
     }
     for (const r of rows) {
       const parts = byModel.get(r.id) ?? []
-      for (const u of parts) add(r.id, u, (num(u.last_seen) || num(r.last)) * 1000, String(u.model ?? ""))
+      for (const u of parts) add(r.id, u, (numberOf(u.last_seen) || numberOf(r.last)) * 1000, String(u.model ?? ""))
       const main = parts.filter((u) => !u.task)
       const rest: Item = { cost_status: r.cost_status }
-      for (const k of [...COUNTS, "estimated_cost_usd", "actual_cost_usd"]) { const v = num(r[k]) - main.reduce((a, u) => a + num(u[k]), 0); rest[k] = v > 1e-9 ? v : 0 }
-      add(r.id, rest, num(r.last) * 1000, String(r.model ?? ""))
+      for (const k of [...COUNTS, "estimated_cost_usd", "actual_cost_usd"]) { const v = numberOf(r[k]) - main.reduce((a, u) => a + numberOf(u[k]), 0); rest[k] = v > 1e-9 ? v : 0 }
+      add(r.id, rest, numberOf(r.last) * 1000, String(r.model ?? ""))
     }
     this.uses = out
     const turns: Turn[] = []
@@ -125,8 +126,8 @@ class Store extends SqliteFile {
     const close = () => { if (sid && end > start) turns.push({ session: sid, day: localDate(new Date(start * 1000)), min: Math.min(end - start, 1800) / 60 }) }
     for (const m of this.all(`SELECT session_id AS s, role, timestamp AS t FROM messages WHERE timestamp >= ? AND ${this.active()}
       ORDER BY session_id, timestamp, id`, cutoff)) {
-      if (m.s !== sid || m.role === "user") { close(); sid = m.s; start = end = num(m.t); if (m.role !== "user") start = end = 0 }
-      else if (start) end = num(m.t)
+      if (m.s !== sid || m.role === "user") { close(); sid = m.s; start = end = numberOf(m.t); if (m.role !== "user") start = end = 0 }
+      else if (start) end = numberOf(m.t)
     }
     close()
     this.turns = turns
@@ -191,7 +192,7 @@ function summary(days: number, accts: Account[]) {
       const top = st.top(u.session), s = st.sessions.get(top)
       if (!where.has(top)) where.set(top, s?.repo || s?.cwd || "")
     }
-    const root = roots(new Set([...where.values()].filter(Boolean)))
+    const root = projectRoots(new Set([...where.values()].filter(Boolean)))
     const keys = new Map<string, string>()
     for (const u of uses) {
       const sid = st.top(u.session), s = st.sessions.get(sid), dir = where.get(sid)!
@@ -255,7 +256,7 @@ async function live(accts: Account[]): Promise<Live[]> {
     }
     return st.all(`SELECT id, cwd, started_at FROM sessions WHERE ended_at IS NULL AND source IN ('cli', 'tui')
       AND (started_at >= ? OR ? = 1) ORDER BY started_at DESC`, since, p.latest ? 1 : 0)
-      .find((c) => free(c.id) && c.cwd === cwdOf(p) && (p.latest || num(c.started_at) * 1000 >= p.started - 5000))?.id
+      .find((c) => free(c.id) && c.cwd === cwdOf(p) && (p.latest || numberOf(c.started_at) * 1000 >= p.started - 5000))?.id
   })) {
     if (!id) continue
     const a = homeOf(p), st = storeOf(a)
@@ -265,7 +266,7 @@ async function live(accts: Account[]): Promise<Live[]> {
     const calls = (() => { try { return JSON.parse(String(last?.tool_calls ?? "null")) } catch { return null } })()
     const busy = !!last && (last.role === "user" || last.role === "tool" || (last.role === "assistant" && Array.isArray(calls) && calls.length > 0))
     out.push({ pid: p.pid, id: top, title: titleOf(st, st.sessions.get(top) ?? { id: top, title: String(s?.title ?? "") }), status: busy ? "busy" : "idle",
-      kind: p.kind, cwd: s?.cwd || cwdOf(p), started: p.started, since: (num(last?.timestamp) || num(s?.started_at)) * 1000,
+      kind: p.kind, cwd: s?.cwd || cwdOf(p), started: p.started, since: (numberOf(last?.timestamp) || numberOf(s?.started_at)) * 1000,
       model: s?.model ? modelName(String(s.model)) : null, account: a.id })
   }
   return out
@@ -274,7 +275,7 @@ async function live(accts: Account[]): Promise<Live[]> {
 // ---------- one session's conversation (the view tab: view:hermes-session/<id>)
 
 const SESSION_ID = /^[\w.:-]{4,100}$/
-const talks = rebuilt<ReturnType<typeof conversation>>()
+const talks = buildCache<ReturnType<typeof conversation>>()
 
 /** The session `id`, whichever home it's in. */
 function findSession(id: string): { a: Account; st: Store; row: Item } | null {
@@ -316,11 +317,11 @@ function session(id: string) {
  *  a first prompt seeds the session (`chat -q`). Hermes takes no added instructions, so `context` isn't passed. */
 plugin.provide("agent:hermes", async ({ resume, profile, prompt }: AgentStart) => {
   const found = resume ? findSession(resume) : null
-  if (resume && !found) return notHere("Hermes", resume)
+  if (resume && !found) return notOnThisMachine("Hermes", resume)
   const a = found?.a ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
-  const env = process.env.HERMES_HOME ? `HERMES_HOME=${quote(mainHome())}` : ""
+  const env = process.env.HERMES_HOME ? `HERMES_HOME=${shellQuote(mainHome())}` : ""
   return {
-    command: [env, "hermes", a && a.id !== "default" && `-p ${quote(a.id)}`, resume && `-r ${quote(resume)}`, prompt && `chat -q ${quote(prompt)}`]
+    command: [env, "hermes", a && a.id !== "default" && `-p ${shellQuote(a.id)}`, resume && `-r ${shellQuote(resume)}`, prompt && `chat -q ${shellQuote(prompt)}`]
       .filter(Boolean).join(" "),
     cwd: found ? String(found.row.cwd ?? "") || null : null,
   }

@@ -12,3 +12,11 @@ declare module "virtual:plugin-icons" {
   const icons: Record<string, LucideIcon | string>
   export default icons
 }
+
+// Vaultite's own plugins the web demo builds in as the app's (vite.demo.config.ts), keyed as plugins/core's globs are.
+declare module "virtual:official-plugins" {
+  import type { Manifest, PluginDef } from "@/core/define"
+  export const manifests: Record<string, Manifest>
+  export const modules: Record<string, PluginDef>
+  export const pages: Record<string, string>
+}

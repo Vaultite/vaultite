@@ -6,8 +6,12 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
 
 **`manifest.json`**: `{"id" (= the folder's name, not one the app has), "name", "description", "icon", "version": "1.0.0",
 "author", "repo": "owner/name", "fundingUrl", "disclosures", "requires": [plugin ids it can't work without],
-"enhances", "runsOnServer", "tint": "green", "category": "life", "apiVersion": 3, "minAppVersion": "0.1.0", "forAgents",
-"blocks", "settings", "replaces", "userFiles", "marks", "writes"}`. A folder with only `data.json` is settings, not a plugin.
+"enhances", "exports", "runsOnServer", "tint": "green", "category": "life", "group", "apiVersion": 4, "minAppVersion":
+"0.1.0", "forAgents", "blocks", "settings", "replaces", "userFiles", "marks", "writes"}`. A folder with only settings
+(`data.json`, `<name>.json`) is settings, not a plugin.
+- `exports`: modules in its folder that plugins requiring it may import (`["types", "lib/format"]`, without extension):
+  `import { projectFor } from "@plugins/projects/Projects"`, in index.tsx and plugin.ts alike, the same instance as its own.
+- `group`: its row on the Plugins page is its group's (`"coding-agents"`), with the app's coding agents.
 - `version` (semver), `author`, `repo` (its GitHub repository) and `fundingUrl` (https): shown in its sheet; one to
   install from GitHub needs `version` and `repo`.
 - `disclosures`: what it does beyond the vault, shown before anyone allows it: `{"network": ["api.example.com"],
@@ -50,11 +54,13 @@ then `plugin.kind(new Kind({...}))` (a kind of file; `Kind` from `@vaultite/core
 "finance/summary", (req) => ({...}))` (at `/api/finance/summary`), `plugin.serve("<prefix>", fn)` (addresses outside
 `/api/` with their own headers), `plugin.block("<name>", (ctx) => "Markdown")` (the block as text, for `/api/render`),
 `plugin.settings()` (its `data.json`; `plugin.settings({}, "<name>")` another file of its own, `<name>.json`, for
-what's written often in parts; another's: `plugin.peer("<id>")?.settings()`; plugins.json:
+what's written often in parts: settings, never its version; another's: `plugin.peer("<id>")?.settings()`; plugins.json:
 `plugin.vault.config("plugins")`; never read them from disk), `plugin.provide("<name>", fn)` (a service others ask for
 by name), `plugin.memo(ttl, fn)` / `plugin.writeCache()` for live data, `plugin.onUnload(fn)` to stop timers. It may
-import only `@vaultite/core/plugins.ts`, `vault.ts`, `client.ts`, `timeline.ts`, its own folder, Node's modules and
-npm packages the app has (so may its other modules, the ones `index.tsx` doesn't import); a required plugin through `plugin.peer("<id>").exports`. The vault's files: `plugin.vault.entries`
+import only `@vaultite/core/plugins.ts`, `vault.ts`, `client.ts`, `timeline.ts`, `agents.ts` (a coding agent's: its
+usage, sessions and terminals; `vau docs plugin-api-names`), its own folder, the modules plugins it requires export,
+Node's modules and npm packages the app has (so may its other modules, the ones `index.tsx` doesn't import); a required
+plugin's running backend through `plugin.peer("<id>").exports`. The vault's files: `plugin.vault.entries`
 (each Markdown file's path, `fm`, `tags`...), and any file's text by `fs` at `plugin.vault.abs(path)` (write only through ops
 or the API).
 
@@ -112,8 +118,8 @@ title="...">...</Panel> }, files, details, search, links, commands, sidebar, hea
 whenever notes change, for a route that reads them), `openFile`, `Markdown`, `Loading`,
 `notify`, `SidebarRow`, `SidebarHeading`, `SettingRow`, `SettingField`, `usePluginSettings(id)` for its data.json, live
 and written...), plus `react`, `lucide-react`, npm packages the app has (CodeMirror's are the editor's own; a package's
-stylesheet too: `import "pkg/index.css"`), its own folder and modules of app plugins it `requires`
-(`@plugins/core/logs/types` has `Log`, `logsOf`). `import()` a big package where it's used: it loads then, not at every start.
+stylesheet too: `import "pkg/index.css"`), its own folder and the modules plugins it `requires` export
+(`@plugins/logs/types` has `Log`, `logsOf`). `import()` a big package where it's used: it loads then, not at every start.
 Drag with `startDrag` and take drops with `useDropTarget`; in a tab, an element marked `data-drops` takes files dropped
 on it before the pane does (else they open there). Style with Tailwind and the app's colours (`text-muted-foreground`, `bg-card`, `text-[var(--green)]`), never hex; no
 emojis, sentence case. Tell the user things with `notify("Imported 12 rows", { action: { label: "Undo", run } })`; a form

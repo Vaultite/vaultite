@@ -4,9 +4,12 @@
   "category": "life",
   "offByDefault": true,
   "name": "Today",
-  "description": "Routines you tick each day, and the Today page: a dashboard of blocks from this and other plugins (the calendar, this week's goals, sleep, meals).",
+  "description": "Routines you tick each day in your daily notes, and the Today page: a dashboard of blocks from this and other plugins (the calendar, this week's goals, sleep, meals).",
   "forAgents": "Their day or week: `today.render` (the Today page as text).",
   "tint": "orange",
+  "requires": [
+    "daily-notes"
+  ],
   "enhances": [
     "logs"
   ],
@@ -15,20 +18,6 @@
     "routines": {
       "description": "this week's routines, to tick, under today's date",
       "options": {}
-    }
-  },
-  "settings": {
-    "format": {
-      "type": "string",
-      "default": "YYYY-MM-DD",
-      "label": "Daily note name",
-      "description": "the date format daily notes are named in (YYYY-MM-DD, YYYY/MM/YYYY-MM-DD for a folder each month...)"
-    },
-    "template": {
-      "type": "string",
-      "default": "",
-      "label": "Daily note template",
-      "description": "a note new daily notes start from, its path without .md (Templates/Daily); none: they start empty"
     }
   }
 }

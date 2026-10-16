@@ -1,6 +1,6 @@
 // Sections Health adds to a log's sheet: a workout's exercises and sets, a session's climbs.
 import { cn, Group, Section } from "@vaultite"
-import type { Log } from "@plugins/core/logs/types"
+import type { Log } from "@plugins/logs/types"
 import { exercises, fmtSet } from "./gym"
 
 export function LogSections({ log }: { log: Log }) {

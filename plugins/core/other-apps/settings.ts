@@ -106,7 +106,7 @@ export function obsidianDefaults(vault: Vault): Record<string, Item> {
     // (Obsidian's daily notes go at the top when its folder is unset)
     out.folders = { days: typeof d.folder === "string" ? folder(d.folder) : "" }
     const set = keys({ format: text(d.format), template: text(d.template) && folder(d.template).replace(/\.md$/i, "") })
-    if (Object.keys(set).length) out["plugins/today/data"] = set
+    if (Object.keys(set).length) out["plugins/daily-notes/data"] = set
   }
   return out
 }

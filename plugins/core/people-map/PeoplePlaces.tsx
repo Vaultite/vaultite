@@ -3,7 +3,7 @@
 import { Component, lazy, Suspense, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { ChevronRight, MapPin, MapPinOff } from "lucide-react"
 import { cn, detailPath, Empty, get, isArchived, List, openDetail, Panel, type Store } from "@vaultite"
-import type { Person } from "@plugins/core/people/types"
+import type { Person } from "@plugins/people/types"
 import { colorOf, initials, located, meOf, placesOf, RELATIONS, YOU_COLOR, type Place } from "./places"
 import type { Focus } from "./PeopleMap"
 

@@ -2,7 +2,7 @@
 // then "@<machine>" when elsewhere; else a plain shell. Read and made only here; Node-free: the web imports it.
 
 /** An agent as a terminal names it: its name ("claude"), or its name and one of its accounts ("claude_personal"). */
-export const AGENT = /^[a-z][a-z0-9]*(?:_[a-z0-9]{1,32})?$/
+export const TERMINAL_AGENT = /^[a-z][a-z0-9]*(?:_[a-z0-9]{1,32})?$/
 const PROFILE = /^[a-z0-9]{1,32}$/
 
 export type TerminalAgent = { agent: string; profile: string | null; resume: string | null; machine: string | null }
@@ -22,7 +22,7 @@ export function parseTerminal(id: string): TerminalAgent | null {
 /** Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`). */
 export const agentIn = (name: string, profile?: string | null) => (profile && PROFILE.test(profile) ? `${name}_${profile}` : name)
 
-/** A new terminal's id: 8 letters and digits, after `agent` (a name, or a name and account: AGENT) when it runs one. */
+/** A new terminal's id: 8 letters and digits, after `agent` (a name, or a name and account: TERMINAL_AGENT) when it runs one. */
 export function newTerminalId(agent?: string | null) {
   const id = Array.from({ length: 8 }, () => "abcdefghijklmnopqrstuvwxyz0123456789"[Math.floor(Math.random() * 36)]).join("")
   return agent ? `${agent}-${id}` : id

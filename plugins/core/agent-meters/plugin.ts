@@ -1,6 +1,6 @@
 /** Agent meters: each agent's terminal's context and prompt cache (from its plugin's service "agent-meters:<name>",
  *  which Terminal asks), as the settings say to draw them, for the Terminals list (the service "terminal:meters"). */
-import type { AgentMeter } from "../../../core/codingagents.ts"
+import type { AgentMeter } from "../../../core/agents.ts"
 import { Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)

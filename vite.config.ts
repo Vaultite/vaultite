@@ -3,7 +3,8 @@ import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import fs from 'node:fs'
 import { defineConfig, type Plugin } from 'vite'
-import { ICON_FILE, ICON_NAME, svgIcon } from './core/pluginmeta.ts'
+import { ICON_FILE, ICON_NAME, PLUGIN_MODULE, svgIcon } from './core/pluginmeta.ts'
+import { exportFile } from './core/rules.ts'
 
 // A page open in a browser keeps asking for the build it loaded from (a view's chunk, the first time it's opened), so a
 // rebuild keeps the files of the last days' builds rather than emptying dist/assets: a page from before the rebuild
@@ -30,8 +31,9 @@ function keepRecentBuilds(): Plugin {
 
 // The app's plugins' icons (their manifests' `icon`: core/pluginmeta.ts) as virtual:plugin-icons, each Lucide one
 // imported alone: all of Lucide's is a chunk of its own (web/src/core/icons.tsx), loaded only when a file names one.
-function pluginIcons(): Plugin {
-  const ID = 'virtual:plugin-icons', DIR = path.resolve(import.meta.dirname, 'plugins/core')
+// `more`: other plugins' folders by id (the demo's official ones).
+export function pluginIcons(more: Record<string, string> = {}): Plugin {
+  const ID = 'virtual:plugin-icons', CORE = path.resolve(import.meta.dirname, 'plugins/core')
   const LUCIDE = path.resolve(import.meta.dirname, 'node_modules/lucide-react/dist/esm/icons')
   return {
     name: 'vaultite-plugin-icons',
@@ -39,8 +41,9 @@ function pluginIcons(): Plugin {
     load(id) {
       if (id !== `\0${ID}`) return null
       const imports = ['import { markIcon } from "@/core/icons"'], entries: string[] = []
-      for (const name of fs.readdirSync(DIR).sort()) {
-        const file = path.join(DIR, name, 'manifest.json')
+      const dirs: Record<string, string> = { ...Object.fromEntries(fs.readdirSync(CORE).map((n) => [n, path.join(CORE, n)])), ...more }
+      for (const name of Object.keys(dirs).sort()) {
+        const DIR = path.dirname(dirs[name]), file = path.join(dirs[name], 'manifest.json')
         if (!fs.existsSync(file)) continue
         this.addWatchFile(file)
         const icon: unknown = JSON.parse(fs.readFileSync(file, 'utf8')).icon
@@ -58,15 +61,44 @@ function pluginIcons(): Plugin {
   }
 }
 
+/** @plugins/<id>/<module>: a module a plugin's manifest `exports` (core/rules.ts checks who may import it), from the
+ *  folders that hold plugins (the app's own; the demo's official ones too). */
+export function pluginModules(dirs: string[]): Plugin {
+  return {
+    name: 'vaultite-plugin-modules',
+    enforce: 'pre',
+    resolveId(spec) {
+      const m = PLUGIN_MODULE.exec(spec)
+      if (!m) return null
+      for (const d of dirs) {
+        if (!fs.existsSync(path.join(d, m[1], 'manifest.json'))) continue
+        const f = exportFile(path.join(d, m[1]), m[2])
+        if (f) return f
+        this.error(`${spec}: ${m[1]} doesn't export '${m[2]}' (its manifest's exports)`)
+      }
+      return this.error(`${spec}: there's no plugin ${m[1]}`)
+    },
+  }
+}
+
+/** virtual:official-plugins: Vaultite's own plugins the demo builds in as the app's (vite.demo.config.ts); none here. */
+export function noOfficialPlugins(): Plugin {
+  const ID = 'virtual:official-plugins'
+  return {
+    name: 'vaultite-official-plugins',
+    resolveId: (id) => (id === ID ? `\0${ID}` : null),
+    load: (id) => (id === `\0${ID}` ? 'export const manifests = {}, modules = {}, pages = {}\n' : null),
+  }
+}
+
 // The app is in web/ (the core) and plugins/ (every feature, one folder each); both are bundled together.
 export default defineConfig({
   root: 'web',
-  plugins: [react(), tailwindcss(), keepRecentBuilds(), pluginIcons()],
+  plugins: [pluginModules([path.resolve(import.meta.dirname, 'plugins/core')]), react(), tailwindcss(), keepRecentBuilds(), pluginIcons(), noOfficialPlugins()],
   resolve: {
     alias: {
       // What plugins import: the plugin API (web/src/api.ts). Core code uses @/.
       '@vaultite': path.resolve(import.meta.dirname, './web/src/api.ts'),
-      '@plugins': path.resolve(import.meta.dirname, './plugins'),
       '@': path.resolve(import.meta.dirname, './web/src'),
     },
   },

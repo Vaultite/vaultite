@@ -1,6 +1,6 @@
 // A Claude Code session's transcript as a conversation: what the user said, Claude's answers (Markdown) and each tool
 // call with its result; attachments, thinking, sidechains and meta lines are skipped.
-import { cut, type Entry, type Head, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { truncate, type Entry, type Head, type Tool, toolSummary } from "../../../core/agents.ts"
 
 /** Byte strings a line must have to matter (the rest is skipped without parsing): plugin.ts tests them on the raw line. */
 export const WANTED = ['"type":"user"', '"type":"assistant"', '"ai-title"', '"custom-title"']
@@ -72,14 +72,14 @@ export class Conversation {
         for (const c of content) {
           if (c?.type !== "tool_result") continue
           const t = this.tools.get(String(c.tool_use_id))
-          if (t) { t.result = cut(resultText(c.content)); t.error = !!c.is_error }
+          if (t) { t.result = truncate(resultText(c.content)); t.error = !!c.is_error }
         }
         return
       }
       const text = userText(content)
       if (!text) return
       if (!this.firstPrompt) this.firstPrompt = text.replace(/\s+/g, " ").slice(0, 80)
-      this.entries.push({ kind: "user", text: cut(text, 20000), at })
+      this.entries.push({ kind: "user", text: truncate(text, 20000), at })
       return
     }
     if (typeof m.model === "string" && !m.model.startsWith("<")) this.models.set(m.model, (this.models.get(m.model) ?? 0) + 1)
@@ -89,12 +89,12 @@ export class Conversation {
         const last = this.entries[this.entries.length - 1]
         const text = String(c.text).trim()
         if (last?.kind === "assistant" && m.id && this.lastMsg === m.id) last.text += `\n\n${text}`
-        else this.entries.push({ kind: "assistant", text: cut(text, 20000), at })
+        else this.entries.push({ kind: "assistant", text: truncate(text, 20000), at })
         this.lastMsg = m.id ?? ""
       } else if (c?.type === "tool_use") {
         const input = c.input ?? {}
         const t: Tool = { kind: "tool", id: String(c.id ?? ""), name: String(c.name ?? "Tool"), summary: summarize(String(c.name ?? ""), input),
-          input: cut(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: null, error: false, at }
+          input: truncate(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: null, error: false, at }
         this.tools.set(t.id, t)
         this.entries.push(t)
         this.lastMsg = ""

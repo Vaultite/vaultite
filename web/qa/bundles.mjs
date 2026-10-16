@@ -34,6 +34,12 @@ async function notNow(page) {
   }
 }
 const toastWith = (page, text) => page.locator("[data-sonner-toast]", { hasText: text }).first()
+/** Life OS installs Books, one of Vaultite's plugins: its ask (none once it's there), said yes to. */
+async function installs(page) {
+  const ask = page.locator("dialog[open][data-confirm]", { hasText: "Install Books" })
+  await until(async () => (await ask.count()) || (await page.locator("[data-sonner-toast]", { hasText: "Applied" }).count()), 6000)
+  if (await ask.count()) await ask.locator("[data-confirm-ok]").click()
+}
 /** Open a bundle's card. */
 async function card(page, id) {
   await until(() => page.locator(`[data-bundle="${id}"]`).count(), 6000)
@@ -59,6 +65,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await until(() => page.locator('dialog[open] [data-bundle-preview="life-os"]').count(), 6000)
   await shot(page, "preview-life-os-new-vault")
   await page.locator("dialog[open] [data-bundle-apply]").click()
+  await installs(page)
   await until(() => toastWith(page, "Applied Life OS").count(), 6000)
   check("applied: a toast with Undo", await toastWith(page, "Applied Life OS").isVisible() && (await toastWith(page, "Applied Life OS").locator("[data-button]").innerText()) === "Undo")
   await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Dashboards/Today.md")), 6000)
@@ -111,6 +118,7 @@ for (const id of Object.keys(want)) {
   check(`${id}: the preview says what changes`, /Plugins|Sidebars|Pinned pages|Look/.test(text), text.slice(0, 200))
   if (id === "agent-cockpit" || id === "life-os") await shot(page, `preview-${id}`)
   await page.locator("dialog[open] [data-bundle-apply]").click()
+  if (id === "life-os") await installs(page)
   await until(() => page.locator("[data-sonner-toast]", { hasText: "Applied" }).count(), 6000)
   await until(() => { const s = settings(VAULT); try { return want[id](s) } catch { return false } }, 6000)
   const s = settings(VAULT)
@@ -139,6 +147,7 @@ for (const id of Object.keys(want)) {
   await card(page, "life-os")
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-apply]").click()
+  await installs(page)
   await until(() => toastWith(page, "Applied Life OS").count(), 6000)
   await dismissAll(page)
   await go(page, B, "bundles")

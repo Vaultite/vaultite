@@ -1,6 +1,6 @@
 // An OpenCode session's conversation, from its rows in OpenCode's database: what the user said, the model's answers
 // (Markdown) and each tool call with its result. Reasoning, step markers, patches and synthetic parts are left out.
-import { cut, type Entry, jsonOf as parse, type Said, toolSummary } from "../../../core/codingagents.ts"
+import { truncate, type Entry, parseJson as parse, type Said, toolSummary } from "../../../core/agents.ts"
 
 /** A row of the message table and the part rows that belong to it, in order. */
 export type Row = { id: string; created: number; data: string; parts: string[] }
@@ -42,12 +42,12 @@ export function conversation(rows: Row[]) {
         const st = p.state ?? {}, input = st.input ?? {}
         const out = st.status === "error" ? String(st.error ?? "") : st.status === "completed" ? String(st.output ?? "") : null
         entries.push({ kind: "tool", id: String(p.callID ?? p.id ?? ""), name: String(p.tool ?? "tool"), summary: summarize(String(p.tool ?? ""), input),
-          input: cut(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: out === null ? null : cut(out),
+          input: truncate(typeof input === "string" ? input : JSON.stringify(input, null, 2)), result: out === null ? null : truncate(out),
           error: st.status === "error", at: at(st.time?.start) || when })
         said = null
       }
     }
-    if (said) said.text = cut(said.text, 20000)
+    if (said) said.text = truncate(said.text, 20000)
     if (m.role === "user" && !head.prompt && said) head.prompt = said.text.replace(/\s+/g, " ").slice(0, 80)
   }
   const top = [...models].sort((a, b) => b[1] - a[1])[0]

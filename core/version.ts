@@ -1,7 +1,7 @@
 // The app's version and the plugin API's (no Node). Bump API_VERSION when a change would break a plugin written for
 // the one before; a manifest asking for more, or older than MIN_API_VERSION, isn't loaded.
 export const APP_VERSION = "0.4.0"
-export const API_VERSION = 3
+export const API_VERSION = 4
 /** The oldest plugin API this app still loads plugins for. */
 export const MIN_API_VERSION = 1
 

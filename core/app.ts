@@ -10,7 +10,8 @@ import * as Look from "./appearance.ts"
 import * as B from "./bundles.ts"
 import { ownerRefusal } from "./owner.ts"
 import { MARKER as SANDBOX_MARKER } from "./sandbox.ts"
-import { migrate } from "./migrations.ts"
+import { migrate, migrateMoved } from "./migrations.ts"
+import { installFrom } from "./coreops/installs.ts"
 import * as F from "./files.ts"
 import * as O from "./outside.ts"
 import * as pages from "./pages.ts"
@@ -62,6 +63,8 @@ export class App {
   private pagesOf = "" // the plugins that were on at the last look (onKey): those turned on since get their pages
   /** The user's open window, driven from outside (server.ts sets it: POST /api/ui's handler, core/live.ts). */
   ui: ((message: Item | null) => unknown) | null = null
+  /** The plugins that moved out of the app being installed, once it's open (core/migrations.ts migrateMoved). */
+  moving: Promise<void> = Promise.resolve()
   private core: Op[] | null = null
   /** Set while a call holds the vault, so an op it runs runs at once instead of waiting on itself. Turned off when the
    *  hold ends, so work that outlives it (a job) takes the vault again. */
@@ -828,6 +831,9 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
     await app.vault.sync()
     timing?.mark("vault read")
     if (fresh) await setUpNew(app.host()).catch((e) => console.error("setting up the new vault:", e))
+    // (in the background: it waits on the network)
+    app.moving = migrateMoved({ vault: app.vault, has: (id) => app.app.some((p) => p.id === id),
+      install: (source) => installFrom(app, source, null, { moved: true }) }).catch((e) => console.error("installing the plugins that moved out of the app:", e))
   }
   return app
 }

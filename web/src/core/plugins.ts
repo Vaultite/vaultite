@@ -3,6 +3,7 @@
 import { signal } from "@/core/signal"
 import { Puzzle } from "lucide-react"
 import BUILT_IN_ICONS from "virtual:plugin-icons"
+import * as official from "virtual:official-plugins"
 import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
@@ -30,10 +31,11 @@ export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
 export { readSidebars, sameSidebars } from "../../../core/sidebars.ts"
 export type { DetailDef, FileCtx, FileFormat, FileView, FormatCtx, HeaderItem, PageCtx, PageView, SidebarSetup, LinkTarget, Manifest, Plugin, PluginDef, SearchDoc, SidebarCtx, SidebarPanel } from "@/core/define"
 
-const manifests = import.meta.glob<Manifest>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" })
-const modules = import.meta.glob<PluginDef>("../../../plugins/core/*/index.tsx", { eager: true, import: "default" })
+// (the web demo's official plugins too, built in there: vite.demo.config.ts)
+const manifests = { ...import.meta.glob<Manifest>("../../../plugins/core/*/manifest.json", { eager: true, import: "default" }), ...official.manifests }
+const modules = { ...import.meta.glob<PluginDef>("../../../plugins/core/*/index.tsx", { eager: true, import: "default" }), ...official.modules }
 // The dashboards each plugin brings (the server copies them into the vault's Dashboards/; here for previews).
-const pages = import.meta.glob<string>("../../../plugins/core/*/pages/*.md", { eager: true, query: "?raw", import: "default" })
+const pages = { ...import.meta.glob<string>("../../../plugins/core/*/pages/*.md", { eager: true, query: "?raw", import: "default" }), ...official.pages }
 
 const folder = (path: string) => path.split("/").slice(-3, -1).join("/") // "core/people"
 

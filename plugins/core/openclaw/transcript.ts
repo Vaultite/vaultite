@@ -1,6 +1,8 @@
 // An OpenClaw session's conversation, from its transcript events (a `session` header, then entries linked by parentId):
 // what the user said, the answers and each tool call with its result; thinking and bookkeeping entries are left out.
-import { type Any, cut, type Entry, type Said, type Tool, toolSummary } from "../../../core/codingagents.ts"
+import { truncate, type Entry, type Said, type Tool, toolSummary } from "../../../core/agents.ts"
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any
 
 const at = (v: unknown) => {
   const ms = typeof v === "number" ? v : typeof v === "string" ? Date.parse(v) : NaN
@@ -55,7 +57,7 @@ export function conversation(events: Any[]) {
     if (m.role === "user") {
       const text = injected(m) ? "" : textOf(m.content)
       if (!text) continue
-      entries.push({ kind: "user", text: cut(text, 20000), at: when })
+      entries.push({ kind: "user", text: truncate(text, 20000), at: when })
       head.prompt ||= text.replace(/\s+/g, " ").slice(0, 80)
     } else if (m.role === "assistant") {
       if (str(m.model)) models.set(m.model, (models.get(m.model) ?? 0) + 1)
@@ -71,22 +73,22 @@ export function conversation(events: Any[]) {
           const meta = (c.name === "tool_call" || c.name === "tool_describe") && str(c.arguments?.id)
           const args = meta && c.name === "tool_call" && c.arguments?.args && typeof c.arguments.args === "object" ? c.arguments.args : c.arguments ?? {}
           const name = meta ? (str(c.arguments.id).split(":").pop() ?? "").replace(/^[\w-]+__/, "") + (c.name === "tool_describe" ? " (describe)" : "") : str(c.name)
-          const t: Tool = { kind: "tool", id: str(c.id), name: name || "tool", summary: toolSummary(args, PICK), input: cut(JSON.stringify(args, null, 2)),
+          const t: Tool = { kind: "tool", id: str(c.id), name: name || "tool", summary: toolSummary(args, PICK), input: truncate(JSON.stringify(args, null, 2)),
             result: null, error: false, at: when }
           entries.push(t)
           if (t.id) calls.set(t.id, t)
           said = null
         }
       }
-      if (said) said.text = cut(said.text, 20000)
+      if (said) said.text = truncate(said.text, 20000)
     } else if (m.role === "toolResult") {
       const t = calls.get(str(m.toolCallId))
-      const out = cut(textOf(m.content))
+      const out = truncate(textOf(m.content))
       if (t) { t.result = out; t.error = m.isError === true } else {
         entries.push({ kind: "tool", id: str(m.toolCallId), name: str(m.toolName) || "tool", summary: "", input: "", result: out, error: m.isError === true, at: when })
       }
     } else if (m.role === "bashExecution") {
-      entries.push({ kind: "tool", id: str(e.id), name: "bash", summary: toolSummary(str(m.command), []), input: str(m.command), result: cut(str(m.output)),
+      entries.push({ kind: "tool", id: str(e.id), name: "bash", summary: toolSummary(str(m.command), []), input: str(m.command), result: truncate(str(m.output)),
         error: typeof m.exitCode === "number" && m.exitCode !== 0, at: when })
     }
   }

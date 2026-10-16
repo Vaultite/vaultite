@@ -2,7 +2,7 @@
 // client per shell held by the server, so a restart kills only clients. Used when chosen, and by shells started there.
 import { execFile } from "node:child_process"
 import fs from "node:fs"
-import { quote } from "../../../core/codingagents.ts"
+import { shellQuote } from "../../../core/agents.ts"
 import { outliving, runtimeDir } from "../../../core/plugins.ts"
 import os from "node:os"
 import path from "node:path"
@@ -27,8 +27,8 @@ export function tmuxBackend(name: string, o: { conf: string; env: () => Record<s
   /** What tmux runs for a shell: through sh, which writes the shell's exit status, named after the tmux session it's in
    *  when it ends (a ready shell is renamed when it's taken). */
   const tmuxCommand = (sh: string, args: string[]) => ["/bin/sh", "-c",
-    `"$0" "$@"; s=$?; n=$(${quote(TMUX)} -S "\${TMUX%%,*}" display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null); ` +
-    `echo $s > ${quote(STATUS_DIR)}/"\${n#${PREFIX}}.exit"`, sh, ...args]
+    `"$0" "$@"; s=$?; n=$(${shellQuote(TMUX)} -S "\${TMUX%%,*}" display-message -p -t "$TMUX_PANE" '#{session_name}' 2>/dev/null); ` +
+    `echo $s > ${shellQuote(STATUS_DIR)}/"\${n#${PREFIX}}.exit"`, sh, ...args]
   /** Vaultite's variables for new-session (-e). PATH can't go this way (tmux gives a new session's command the PATH of
    *  the client that made it), so it's the client's own. */
   const tmuxVars = (ctx: Record<string, string>) => Object.entries(ctx).filter(([k]) => k !== "PATH").flatMap(([k, v]) => ["-e", `${k}=${v}`])

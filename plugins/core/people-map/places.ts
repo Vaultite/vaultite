@@ -1,7 +1,7 @@
 // Where people are (relation colours, initials, the user's place, grouping into places), shared with the lazy map
 // chunk, so it stays free of map code.
 import type { Store } from "@vaultite"
-import type { Person } from "@plugins/core/people/types"
+import type { Person } from "@plugins/people/types"
 import { regionOf } from "./regions.ts"
 
 /** Apple system colours per relation (pins, avatars, legend). */

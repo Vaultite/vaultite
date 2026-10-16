@@ -4,14 +4,14 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { cap, startAgent } from "../../../core/codingagents.ts"
-import { AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/terminalids.ts"
+import { startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/agents.ts"
 import {
   bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, type OpCtx, type Request,
 } from "../../../core/plugins.ts"
 import { isArchived, type Item, Kind, localStamp, nowUtc, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import * as push from "./push.ts"
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -98,7 +98,7 @@ function settings() {
   const s = plugin.loaded ? plugin.settings({}) : {}
   return { keep: Math.max(1, Number(s.keep_days) || 7), push: ["all", "waiting", "off"].includes(str(s.push)) ? str(s.push) : "waiting",
     turns: str(s.turns) === "notify" ? "notify" : "quiet", audio: s.voice_audio !== false,
-    dispatch: AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
+    dispatch: TERMINAL_AGENT.test(str(s.dispatch).trim()) ? str(s.dispatch).trim() : "",
     prompt: str(s.dispatch_prompt).trim() || str(plugin.manifest.settings?.dispatch_prompt?.default) }
 }
 

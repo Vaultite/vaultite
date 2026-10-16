@@ -101,11 +101,11 @@ export default async ($: VaultTest) => {
       t.result.routines.some((x: Any) => x.name === "Stretch" && x.done === true && x.auto === false && x.on === true && x.ticked === true && x.week[4] === true && x.week[5] === false && x.target === 7), t)
     await run("routine.check", { routine: "Stretch", date: "2026-09-25", done: false })
     {
-      // Daily notes: today.daily makes one where they go; Obsidian's daily-notes.json names them, finds them and fills them.
-      t = await run("today.daily", { date: "2026-09-22" })
-      check("today.daily: a day's note made in Daily/, typed (no folder set finds them)", !t.error && t.result.path === "Daily/2026-09-22.md" && t.result.made && read("Daily/2026-09-22.md").startsWith("---\ntype: day\n---"), t)
-      t = await run("today.daily", { date: "2026-09-22" })
-      check("today.daily: there already, it's the same note", !t.error && t.result.path === "Daily/2026-09-22.md" && !t.result.made, t)
+      // Daily notes: daily-note.open makes one where they go; Obsidian's daily-notes.json names them, finds them and fills them.
+      t = await run("daily-note.open", { date: "2026-09-22" })
+      check("daily-note.open: a day's note made in Daily/, typed (no folder set finds them)", !t.error && t.result.path === "Daily/2026-09-22.md" && t.result.made && read("Daily/2026-09-22.md").startsWith("---\ntype: day\n---"), t)
+      t = await run("daily-note.open", { date: "2026-09-22" })
+      check("daily-note.open: there already, it's the same note", !t.error && t.result.path === "Daily/2026-09-22.md" && !t.result.made, t)
       fs.rmSync(path.join(VAULT, "Daily/2026-09-22.md"))
       write(".obsidian/daily-notes.json", JSON.stringify({ folder: "Journal/", format: "YYYY/MM/DD-MM-YYYY", template: "Tpl/Day.md" }))
       write("Tpl/Day.md", "---\nmood: \n---\n# {{date:dddd}}\n")
@@ -114,13 +114,13 @@ export default async ($: VaultTest) => {
       let [, st] = await api("GET", "state")
       const days = st.files.files.filter((f: Any) => f.kind === "days").map((f: Any) => f.path)
       check("daily notes: one without a type is found by its name in Obsidian's folder and format", days.includes("Journal/2026/09/24-09-2026.md") && !days.includes("Journal/2026/09/Plans.md"), days)
-      check("daily notes: Obsidian's settings are the defaults, never written", st.settingDefaults["plugins/today/data"]?.format === "YYYY/MM/DD-MM-YYYY" &&
-        st.filing.homes.find((h: Any) => h.key === "days")?.folder === "Journal" && !exists(".vaultite/plugins/today/data.json") && !exists(".vaultite/folders.json"), [st.settingDefaults, st.filing])
+      check("daily notes: Obsidian's settings are the defaults, never written", st.settingDefaults["plugins/daily-notes/data"]?.format === "YYYY/MM/DD-MM-YYYY" &&
+        st.filing.homes.find((h: Any) => h.key === "days")?.folder === "Journal" && !exists(".vaultite/plugins/daily-notes/data.json") && !exists(".vaultite/folders.json"), [st.settingDefaults, st.filing])
       t = await run("routine.check", { routine: "Stretch", date: "2026-09-24" })
       check("daily notes: a tick goes into the note found by its name, no other made", !t.error && read("Journal/2026/09/24-09-2026.md").includes("done: [Stretch]") &&
         read("Journal/2026/09/24-09-2026.md").includes("Rain.") && !read("Journal/2026/09/24-09-2026.md").includes("type:") && !exists("Daily/2026-09-24.md"), [t, read("Journal/2026/09/24-09-2026.md")])
-      t = await run("today.daily", { date: "2026-09-23" })
-      check("today.daily: named in the format, in the folder, from the template filled for that day", !t.error && t.result.path === "Journal/2026/09/23-09-2026.md" &&
+      t = await run("daily-note.open", { date: "2026-09-23" })
+      check("daily-note.open: named in the format, in the folder, from the template filled for that day", !t.error && t.result.path === "Journal/2026/09/23-09-2026.md" &&
         read("Journal/2026/09/23-09-2026.md") === "---\nmood: \n---\n\n# Wednesday\n", [t, exists(t.result?.path ?? "x") && read(t.result.path)])
       write(".obsidian/templates.json", JSON.stringify({ folder: "Tpl/", dateFormat: "D MMM YYYY" }))
       let [, tpl] = await api("GET", "templates")
@@ -130,11 +130,11 @@ export default async ($: VaultTest) => {
       check("templates: the app's own folder over Obsidian's", tpl.folder === "Templates" && tpl.dateFormat === "D MMM YYYY", tpl)
       fs.rmSync(path.join(VAULT, ".vaultite/plugins/templates/data.json"))
       fs.rmSync(path.join(VAULT, ".obsidian/templates.json"))
-      write(".vaultite/plugins/today/data.json", JSON.stringify({ format: "YYYY-MM-DD", template: "" }))
+      write(".vaultite/plugins/daily-notes/data.json", JSON.stringify({ format: "YYYY-MM-DD", template: "" }))
       write(".vaultite/folders.json", JSON.stringify({ days: "Days" }))
-      t = await run("today.daily", { date: "2026-09-21" })
-      check("today.daily: the app's own settings over Obsidian's", !t.error && t.result.path === "Days/2026-09-21.md" && read(t.result.path) === "", t)
-      for (const f of [".obsidian/daily-notes.json", ".vaultite/plugins/today/data.json", ".vaultite/folders.json"]) fs.rmSync(path.join(VAULT, f))
+      t = await run("daily-note.open", { date: "2026-09-21" })
+      check("daily-note.open: the app's own settings over Obsidian's", !t.error && t.result.path === "Days/2026-09-21.md" && read(t.result.path) === "", t)
+      for (const f of [".obsidian/daily-notes.json", ".vaultite/plugins/daily-notes/data.json", ".vaultite/folders.json"]) fs.rmSync(path.join(VAULT, f))
       for (const d of ["Journal", "Tpl", "Days"]) fs.rmSync(path.join(VAULT, d), { recursive: true })
       await app.vault.sync()
     }
@@ -207,13 +207,11 @@ export default async ($: VaultTest) => {
     check("calendar.events: with no calendars, says so", !t.error && t.text.startsWith("No calendars connected yet"), t)
     t = await run("calendar.events", { from: "2026-10-05", to: "2026-10-01" })
     check("calendar.events: a range backwards is refused", t.error, t)
-    await api("POST", "books", { title: "Op book", total_pages: 300, status: "want" })
-    t = await run("book.progress", { book: "op book", page: 120 })
-    check("book.progress: the page, reading from now", !t.error && t.text === "Op book: reading, page 120 of 300." && read("Books/Op book.md").includes("current_page: 120") && read("Books/Op book.md").includes("started:"), [t, read("Books/Op book.md")])
     const en: string[] = vault.config("plugins").enabled
-    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: en.filter((x) => x !== "books") })
-    check("ops: an offByDefault plugin's aren't there until it's turned on", !app.opNamed("book.progress"), app.opNamed("book.progress")?.op.id)
+    vault.setConfig("plugins", { ...vault.config("plugins"), enabled: en.filter((x) => x !== "people") })
+    check("ops: an offByDefault plugin's aren't there until it's turned on", !app.opNamed("people.remember"), app.opNamed("people.remember")?.op.id)
     vault.setConfig("plugins", { ...vault.config("plugins"), enabled: en })
+    check("ops: ...and are once it is", !!app.opNamed("people.remember"))
     c = await vau("properties")
     check("vau properties: every key, counted", c.code === 0 && /^tags\s+\d+\s+list/m.test(c.out), c)
     c = await vau("tags", "topic")

@@ -19,8 +19,11 @@ export type Manifest = {
   /** Its icon, wherever it's listed (and in the directory before it's installed): a Lucide name ("heart-pulse"), one a
    *  plugin adds ("claude": `icons`), or an SVG file in its folder ("icon.svg", a mark in one colour: drawn in the text's). */
   icon?: string
-  /** Can't work without these plugins: off while any of them is off. */
+  /** Can't work without these plugins: off while any of them is off. It may import the modules they export. */
   requires?: string[]
+  /** Modules plugins that require it may import, by path in its folder without extension (["types"]): theirs as
+   *  `@plugins/<id>/types`, in index.tsx and plugin.ts alike, the same instance as its own. */
+  exports?: string[]
   /** Uses these when they're on (optional). */
   enhances?: string[]
   /** Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it. */
@@ -50,7 +53,7 @@ export type Manifest = {
    *  Settings. Neither `essential` nor `offByDefault`. */
   alwaysOn?: boolean
   /** Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS),
-   *  which says which are on and opens a sheet of their switches; each keeps its own (built-in only). */
+   *  which says which are on and opens a sheet of their switches; each keeps its own. */
   group?: string
   /** Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim
    *  keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only). */

@@ -2,6 +2,7 @@
   "id": "people",
   "icon": "users",
   "category": "life",
+  "exports": ["types"],
   "offByDefault": true,
   "name": "People",
   "description": "Who to reach out to (the People page). A person's file opens as their profile, with the timeline drawn from its Timeline section.",

@@ -187,6 +187,9 @@ ${serverExports("core/plugins.ts").join("\n")}
 
 ### \`@vaultite/core/vault.ts\` (plugin.ts: the vault's files)
 ${serverExports("core/vault.ts").join("\n")}
+
+### \`@vaultite/core/agents.ts\` (plugin.ts: a coding agent's plugin)
+${serverExports("core/agents.ts").join("\n")}
 `,
   }
 }

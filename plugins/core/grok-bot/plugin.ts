@@ -1,8 +1,8 @@
 // Grok Bot: what Cursor's always-on cloud agent did, from Cursor's dashboard with Cursor.app's sign-in (the read it
-// shares with Cursor's plugin, core/cursoraccount.ts): its week, its value by day and model, its conversations.
-import { ago, codingAgent, isoOf, limitRows, limitWindow, scanDays, Tally } from "../../../core/codingagents.ts"
+// shares with Cursor's plugin, its account.ts): its week, its value by day and model, its conversations.
+import { ago, codingAgent, isoOf, limitRows, limitWindow, scanDays, Tally } from "../../../core/agents.ts"
 import { clampPct, cursorAccount, type CursorAccount, cursorModelName, forgetCursorAccount, isGrokBot, minutesBetween, NO_ACCOUNT,
-  secOf } from "../../../core/cursoraccount.ts"
+  secOf } from "@plugins/cursor/account"
 import { localDate, Plugin, section } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)

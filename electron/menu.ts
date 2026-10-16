@@ -267,7 +267,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
       cmd("nav:back", "Back", "arrow-left", { always: true }),
       cmd("nav:forward", "Forward", "arrow-right", { always: true }),
       sep,
-      cmd("today:daily-note", "Today's daily note", "calendar"),
+      cmd("daily-notes:today", "Today's daily note", "calendar"),
       cmd("inbox:open", "Inbox", "inbox"),
       cmd("activity:open", "Activity", "activity"),
       cmd("web:open", "Web page…", "globe"),

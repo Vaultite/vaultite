@@ -1,5 +1,5 @@
 // When a routine counts as done on a date: ticked by hand (that day's note lists it), or ticked by your data.
-import { addDays, haptic, optimistic, post, type Store } from "@vaultite"
+import { addDays, haptic, op, optimistic, type Store } from "@vaultite"
 import { ticked, type Routine } from "./types"
 
 /** Did a routine tick itself? auto "logs": any log in its area that day. "bed<HH:MM": that night's sleep log began
@@ -21,7 +21,7 @@ export const routineDone = (s: Store, r: Routine, date: string) => ticked(s, r.i
 export const routineLogs = (s: Store, r: Routine, date: string) =>
   r.area == null ? [] : s.logs.filter((l) => l.area === r.area && l.date === (r.auto?.startsWith("bed<") ? addDays(date, 1) : date))
 
-/** Tick or untick by hand: shows at once, then writes Daily/<date>.md. */
+/** Tick or untick by hand: shows at once, then writes that day's daily note (routine.check). */
 export function toggle(routine: string, date: string) {
   haptic()
   let done = false
@@ -29,7 +29,7 @@ export function toggle(routine: string, date: string) {
     done = !ticked(s, routine, date)
     const checks = s.checks.filter((c) => c.routine !== routine || c.date !== date)
     return { ...s, checks: done ? [...checks, { routine, date }] : checks }
-  }, () => post("checks", { routine, date, done }), "Couldn't save it")
+  }, () => op("routine.check", { routine, date, done }), "Couldn't save it")
 }
 
 /** What a routine shows as its icon: its own, else its area's ("" for none). */

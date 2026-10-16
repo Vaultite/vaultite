@@ -4,19 +4,29 @@ import fs from "node:fs"
 import { isBuiltin } from "node:module"
 import path from "node:path"
 import { declProblems, declsOf, drawsOf, settingDeclProblems } from "./blocks.ts"
+import { MOVED } from "./migrations.ts"
 import { CATEGORIES, GROUPS, groupOf, SWITCH_SECTIONS } from "./categories.ts"
 import { API_VERSION, APP_VERSION, compareVersions, MIN_API_VERSION, parseVersion, tagVersion } from "./version.ts"
-import { DISCLOSURES, HOST, ICON_FILE, ICON_MAX, ICON_NAME, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
+import { DISCLOSURES, EXPORT_NAME, exportsOf, HOST, ICON_FILE, ICON_MAX, ICON_NAME, PLUGIN_MODULE, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
 
 export const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
 export const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
 /** A file that runs in Node: a backend's, or a test (test.ts, *.test.ts: never bundled into the app). */
 export const nodeSide = (file: string) => BACKEND.has(path.basename(file)) || /(^|\.)test\.ts$/.test(path.basename(file))
-// codingagents.ts, terminalids.ts, cursoraccount.ts: what the coding agent plugins share; not part of the vault plugins'
-// API (VAULT_CORE).
-export const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "codingagents.ts", "terminalids.ts", "cursoraccount.ts"])
+/** The core's modules a plugin's backend may import: the plugin API (built-in plugins by path, vault plugins as VAULT_CORE). */
+export const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts"])
 /** What a vault plugin's backend imports the core as: "@vaultite/core/plugins.ts" (".ts" optional). */
-export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline)(?:\.ts)?$/
+export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline|agents)(?:\.ts)?$/
+
+/** The file of module `name` a plugin's manifest `exports` (its folder's name.ts, .tsx or name/index), or null. */
+export function exportFile(dir: string, name: string, manifest?: Record<string, unknown>): string | null {
+  let m = manifest
+  if (!m) try { m = JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8")) } catch { return null }
+  if (!exportsOf(m!).includes(name)) return null
+  const base = path.join(dir, ...name.split("/"))
+  return [`${base}.ts`, `${base}.tsx`, path.join(base, "index.ts"), path.join(base, "index.tsx")]
+    .find((f) => fs.statSync(f, { throwIfNoEntry: false })?.isFile() && hashed(dir, f)) ?? null
+}
 /** What a vault plugin's frontend gets from the app itself, never bundled: one React, one store. */
 export const SHARED = new Set(["@vaultite", "react", "react/jsx-runtime", "react-dom"])
 /** The app's CodeMirror, loaded with the plugin, never bundled: an `editor` extension works only with the editor's own copy. */
@@ -39,7 +49,10 @@ export const inside = (dir: string, p: string) => p === dir || p.startsWith(dir 
 /** A file of a plugin's that's part of its version (walk's files: no hidden ones, no node_modules): all a vault plugin
  *  may import or run, so what this machine approved (core/trust.ts) is all that runs. */
 export const hashed = (dir: string, p: string) => inside(dir, p) && !path.relative(dir, p).split(path.sep).some((s) => s.startsWith(".") || s === "node_modules")
-  && !userFilesOf(dir).has(path.relative(dir, p).split(path.sep).join("/"))
+  && !settingsFile(path.relative(dir, p)) && !userFilesOf(dir).has(path.relative(dir, p).split(path.sep).join("/"))
+/** Its settings, written as the user's (data.json, and `<name>.json` of plugin.settings({}, name)): a `.json` at its
+ *  folder's top but manifest.json. Not its version, never imported, kept by installs and updates. */
+export const settingsFile = (rel: string) => /^[\w-]+\.json$/.test(rel) && rel !== "manifest.json"
 
 const CODE = /\.(m?[jt]sx?|cjs|css|wasm|sh|py|rb|pl)$/i
 /** The files a plugin writes as the user's own (its manifest's `userFiles`: Vim's init.vim): not its version, kept by
@@ -82,7 +95,8 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
   for (const k of ["requires", "enhances"]) {
     const v = m[k] ?? []
     if (!Array.isArray(v)) out.push(`${where}: ${k} must be a list of plugin ids`)
-    else for (const other of v) if (!ids.has(other)) out.push(`${where}: ${k} '${other}', which isn't a plugin`)
+    // (it may use one that moved out of the app when that's installed)
+    else for (const other of v) if (!ids.has(other) && !(k === "enhances" && Object.hasOwn(MOVED, other))) out.push(`${where}: ${k} '${other}', which isn't a plugin`)
   }
   if (m.draws !== undefined && (!Array.isArray(m.draws) || m.draws.some((b) => typeof b !== "string" || !/^[\w-]+$/.test(b)))) {
     out.push(`${where}: draws lists blocks another plugin declares with \`by\` that it draws too (["agent-usage"])`)
@@ -112,6 +126,9 @@ export function metaProblems(m: Record<string, unknown>, where = "manifest.json"
     out.push(`${where}: userFiles lists the files it writes as the user's own, by path in its folder (["init.vim"]), never code or manifest.json`)
   }
   out.push(...writesProblems(m, where))
+  if (m.exports !== undefined && (!Array.isArray(m.exports) || m.exports.some((x) => typeof x !== "string" || !EXPORT_NAME.test(x)))) {
+    out.push(`${where}: exports lists the modules plugins that require it may import, by path in its folder without extension (["types", "lib/format"]), never plugin, index, import or cli`)
+  }
   if (m.disclosures !== undefined) {
     const d = m.disclosures
     if (!isMap(d)) out.push(`${where}: disclosures is an object: {"network": ["api.example.com"], "shell": true, "outsideVault": true, "clipboard": true}`)
@@ -184,8 +201,8 @@ export type ImportRules = {
   root: string
   /** A vault plugin (stricter: see the top of this file). */
   vault: boolean
-  /** "@plugins/<tier>/<id>" of the plugins it requires. */
-  requires: string[]
+  /** The plugins it requires, by id: their folders (it may import the modules they export: @plugins/<id>/<module>). */
+  requires: Map<string, string>
   /** A vault plugin's files its index.tsx reaches (frontFiles): any other is its backend's, like plugin.ts. */
   front?: Set<string>
 }
@@ -222,20 +239,22 @@ export function importProblems(file: string, src: string, where: string, rules: 
       const inCore = path.dirname(target) === path.join(rules.root, "core")
       const core = path.basename(target)
       if (!inCore || !(CORE_FOR_PLUGINS.has(core) || (core === "cli.ts" && path.basename(file) === "cli.ts"))) {
-        say(spec, "a plugin's backend talks to the core only through core/plugins.ts, core/vault.ts, core/client.ts, core/timeline.ts, core/codingagents.ts, core/terminalids.ts and core/cursoraccount.ts")
+        say(spec, `a plugin's backend talks to the core only through ${[...CORE_FOR_PLUGINS].map((f) => `core/${f}`).join(", ")}`)
       }
       continue
     }
     if (spec.startsWith("@/")) { say(spec, "use \"@vaultite\" (the plugin API) instead"); continue }
-    if (backend) {
-      if (!rules.vault || isBuiltin(spec) || VAULT_CORE.test(spec)) continue
-      if (spec.startsWith("@vaultite")) say(spec, "a vault plugin's backend imports the core as @vaultite/core/plugins.ts, vault.ts, client.ts or timeline.ts")
-      else if (spec.startsWith("@plugins/")) say(spec, "a backend uses a plugin it requires through plugin.peer(\"<id>\").exports")
-      else if (!fs.existsSync(path.join(rules.root, "node_modules", packageOf(spec)))) say(spec, "the app has no such package")
+    if (spec.startsWith("@plugins/")) {
+      const m = PLUGIN_MODULE.exec(spec), dir = m ? rules.requires.get(m[1]) : undefined
+      if (!m) say(spec, "another plugin's module is @plugins/<id>/<module>")
+      else if (dir === undefined) say(spec, `a plugin imports only from plugins it \`requires\` (not ${m[1]})`)
+      else if (!exportFile(dir, m[2])) say(spec, `${m[1]} doesn't export '${m[2]}' (its manifest's \`exports\`)`)
       continue
     }
-    if (spec.startsWith("@plugins/")) {
-      if (!rules.requires.some((x) => spec.startsWith(x + "/"))) say(spec, "a plugin may only import plugins it `requires`")
+    if (backend) {
+      if (!rules.vault || isBuiltin(spec) || VAULT_CORE.test(spec)) continue
+      if (spec.startsWith("@vaultite")) say(spec, "a vault plugin's backend imports the core as @vaultite/core/plugins.ts, vault.ts, client.ts, timeline.ts or agents.ts")
+      else if (!fs.existsSync(path.join(rules.root, "node_modules", packageOf(spec)))) say(spec, "the app has no such package")
       continue
     }
     if (!rules.vault || SHARED.has(spec) || SHARED_EDITOR.has(spec)) continue
@@ -269,8 +288,9 @@ export function settingsProblems(src: string, where: string, id: string): string
 }
 
 /** Every rule a plugin folder breaks: its manifest's and every file's imports. `ids`: every plugin there is, with their
- *  tier ("core", "vault"). `label`: how to name the folder in messages. */
-export function pluginProblems(dir: string, root: string, ids: Map<string, string>, vault: boolean, label: string, manifest?: Record<string, unknown>) {
+ *  tier ("core", "vault"). `label`: how to name the folder in messages. `dirOf`: a vault plugin's folder (else beside it). */
+export function pluginProblems(dir: string, root: string, ids: Map<string, string>, vault: boolean, label: string, manifest?: Record<string, unknown>,
+  dirOf?: (id: string) => string) {
   const name = path.basename(dir)
   let m: Record<string, unknown>
   try {
@@ -296,16 +316,17 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
   }
   if (vault && m.alwaysOn !== undefined) out.push(`${label}/manifest.json: alwaysOn is for the app's plugins`)
   // (both place a switch: an alwaysOn plugin has none)
-  if (m.group !== undefined && (vault || m.alwaysOn === true || !groupOf(m.group))) {
-    out.push(`${label}/manifest.json: group is for the app's plugins with a switch, one of ${GROUPS.map((g) => g.id).join(", ")} (core/categories.ts)`)
+  if (m.group !== undefined && (m.alwaysOn === true || !groupOf(m.group))) {
+    out.push(`${label}/manifest.json: group is for plugins with a switch, one of ${GROUPS.map((g) => g.id).join(", ")} (core/categories.ts)`)
   }
   const sw = m.switchIn as { section?: unknown; label?: unknown } | undefined
   if (sw !== undefined && (vault || m.alwaysOn === true || m.group !== undefined || !SWITCH_SECTIONS.some((x) => x === sw?.section) || typeof sw?.label !== "string" || !sw.label)) {
     out.push(`${label}/manifest.json: switchIn is {"section": ${SWITCH_SECTIONS.map((x) => `"${x}"`).join(" or ")}, "label": "..."}, for the app's plugins with a switch and no group`)
   }
-  // A vault plugin imports the app's plugins it requires; the others' files aren't the app's to bundle.
-  const requires = (Array.isArray(m.requires) ? m.requires as string[] : [])
-    .filter((r) => ids.has(r) && (!vault || ids.get(r) !== "vault")).map((r) => `@plugins/${ids.get(r)}/${r}`)
+  // It imports the modules the plugins it requires export (an app plugin requires only the app's).
+  const requires = new Map((Array.isArray(m.requires) ? m.requires as string[] : []).filter((r) => ids.has(r) && (vault || ids.get(r) === "core"))
+    .map((r): [string, string] => [r, ids.get(r) === "core" ? path.join(root, "plugins", "core", r) : dirOf?.(r) ?? path.join(path.dirname(dir), r)]))
+  for (const x of exportsOf(m)) if (!exportFile(dir, x, m)) out.push(`${label}/manifest.json: exports '${x}', which isn't a module in its folder (${x}.ts, ${x}.tsx or ${x}/index.ts)`)
   // (what its .vaultiteignore leaves out of an install, its tests and QA, never runs in the app)
   const ignored = ignoreOf(dir)
   const front = vault ? frontFiles(dir) : undefined
@@ -360,7 +381,7 @@ export function iconNames(root: string): Set<string> {
   return out
 }
 
-/** The agent blocks `codingAgent(plugin, ...)` gives a coding agent plugin a text side for (core/codingagents.ts). */
+/** The agent blocks `codingAgent(plugin, ...)` gives a coding agent plugin a text side for (core/agents.ts). */
 export const USAGE_BLOCKS = ["agent-sessions", "agent-usage", "agent-projects", "agent-models", "agent-project"]
 
 /** The blocks a plugin's backend gives a text side (`plugin.block("<name>", ...)` in its .ts files, or codingAgent). */

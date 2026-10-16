@@ -43,7 +43,9 @@ enum Servers {
 
     struct Failure: LocalizedError {
         let errorDescription: String?
-        init(_ text: String) { errorDescription = text }
+        /// The server's HTTP status (0: no answer, or not the server's).
+        var status = 0
+        init(_ text: String, status: Int = 0) { errorDescription = text; self.status = status }
     }
 
     /// A request to the current server's API (`route` after /api/), its JSON answer; a 4xx or 5xx throws the server's
@@ -62,7 +64,7 @@ enum Servers {
         let (data, response) = try await URLSession.shared.data(for: request)
         let answer = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(status) { throw Failure(answer["error"] as? String ?? "The server answered \(status)") }
+        if !(200..<300).contains(status) { throw Failure(answer["error"] as? String ?? "The server answered \(status)", status: status) }
         return answer
     }
 
@@ -83,7 +85,7 @@ enum Servers {
         let (data, response) = try await URLSession.shared.upload(for: request, fromFile: file)
         let answer = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] ?? [:]
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-        if !(200..<300).contains(status) { throw Failure(answer["error"] as? String ?? "The server answered \(status)") }
+        if !(200..<300).contains(status) { throw Failure(answer["error"] as? String ?? "The server answered \(status)", status: status) }
         return answer
     }
 

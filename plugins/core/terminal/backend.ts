@@ -1,7 +1,7 @@
 // Where shells live so they can outlive the server: the keeper (ptyd.ts, default), tmux, the server's own child (only
 // when the keeper can't start), or another plugin's. The types here are the contract a plugin's backend implements.
 import fs from "node:fs"
-import { quote } from "../../../core/codingagents.ts"
+import { shellQuote } from "../../../core/agents.ts"
 import { outliving, runtimeDir } from "../../../core/plugins.ts"
 import net from "node:net"
 import os from "node:os"
@@ -9,7 +9,7 @@ import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
 
-/** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/codingagents.ts). */
+/** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts). */
 export type AgentRun = { command: string; cwd?: string | null }
 
 /** A new shell: the login shell in `cwd`, running `run` first for an agent. `env`: the server's less what's about it;
@@ -173,12 +173,12 @@ export function shellArgs(shell: string, run: AgentRun | null) {
   const login = loginArgs(shell)
   if (!run) return login
   const zdot = path.basename(shell) === "zsh" ? `if [ -n "$VAULTITE_ZDOTDIR" ]; then export ZDOTDIR="$VAULTITE_ZDOTDIR"; fi; ` : ""
-  return [...login.filter((a) => a !== "-i"), "-i", "-c", `${run.command}; ${zdot}exec ${[shell, ...login].map(quote).join(" ")}`]
+  return [...login.filter((a) => a !== "-i"), "-i", "-c", `${run.command}; ${zdot}exec ${[shell, ...login].map(shellQuote).join(" ")}`]
 }
 /** The script a ready shell sources to become an agent's (typed into it as one short line). */
 export function runScript(file: string, id: string, run: AgentRun) {
-  fs.writeFileSync(file, `rm -f ${quote(file)}\nclear\nexport VAULTITE_TERMINAL=${quote(id)}\n${run.cwd ? `cd ${quote(run.cwd)} && ` : ""}${run.command}\n`, { mode: 0o600 })
-  return ` source ${quote(file)}`
+  fs.writeFileSync(file, `rm -f ${shellQuote(file)}\nclear\nexport VAULTITE_TERMINAL=${shellQuote(id)}\n${run.cwd ? `cd ${shellQuote(run.cwd)} && ` : ""}${run.command}\n`, { mode: 0o600 })
+  return ` source ${shellQuote(file)}`
 }
 
 // ---------- node-pty, loaded on first use (if the native module can't load here, only the terminal breaks)

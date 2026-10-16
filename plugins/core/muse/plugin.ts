@@ -1,7 +1,7 @@
 // Muse: what a Muse agent (a personal AI on its own VM) keeps in its home, read live through a machine's file agent
 // or here (MUSE_HOME): who it is, runs, learnings, dreams, feed, jobs. Never written to; what's new reaches the Inbox.
 import os from "node:os"
-import { ago } from "../../../core/codingagents.ts"
+import { ago } from "../../../core/agents.ts"
 import { bullets as list, HTTPError, Plugin, type Request, section } from "../../../core/plugins.ts"
 import { bullets, connectors, conversation, cronJob, dailyNote, dreamText, feedFile, frontmatter, type Home, isMuse, localHome, nameOf, pool,
   remoteHome, runOf, type Run, slotOf, unfilled } from "./home.ts"

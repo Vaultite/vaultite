@@ -1,6 +1,6 @@
 {
   "files": [],
-  "compilerOptions": { "paths": { "@/*": ["./web/src/*"], "@vaultite": ["./web/src/api.ts"], "@plugins/*": ["./plugins/*"] } },
+  "compilerOptions": { "paths": { "@/*": ["./web/src/*"], "@vaultite": ["./web/src/api.ts"], "@plugins/*": ["./plugins/core/*"] } },
   "references": [
     { "path": "./tsconfig.app.json" },
     { "path": "./tsconfig.node.json" },

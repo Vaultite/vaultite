@@ -4,7 +4,7 @@ import {
   addDays, Bars, dateText, detailPath, Empty, fmtDay, fmtMin, List, openDetail, Panel, parse, range, Row, snippet,
   Stat, today, type Store,
 } from "@vaultite"
-import { logsOf } from "@plugins/core/logs/types"
+import { logsOf } from "@plugins/logs/types"
 
 export function SleepPanel({ store, nights = 7 }: { store: Store; nights?: number }) {
   const t = today()

@@ -80,8 +80,23 @@ async function visit(name, browser) {
   await page.goto(`${base}?bundle=agent-cockpit`)
   await drawn()
   const bundles = (await api("GET", "bundles")).json, plugins = (await api("GET", "config/plugins")).json
-  is("?bundle= starts on that bundle, what needs a machine still off", bundles?.previous?.bundle === "agent-cockpit" && !plugins?.enabled?.includes("machines"),
+  is("?bundle= starts on that bundle, what needs a machine still off (but what draws made-up data)", bundles?.previous?.bundle === "agent-cockpit" && !plugins?.enabled?.includes("dispatch") && plugins?.enabled?.includes("machines"),
     { previous: bundles?.previous, enabled: plugins?.enabled })
+
+  // Vaultite's own plugins are built in (vite.demo.config.ts): Life OS's Books, which it installs in the app, is there.
+  await page.goto("about:blank")
+  await page.goto(`${base}?bundle=life-os`)
+  await drawn()
+  const books = ((await api("GET", "state")).json?.books ?? []).length, life = (await api("GET", "demo/bundle/life-os")).json
+  is("Vaultite's own plugins are built in: Life OS turns Books on, with the sample's books", books >= 3 && life?.on?.includes("Books") && !life?.notInDemo?.includes("Books") &&
+    (await api("GET", "config/plugins")).json?.enabled?.includes("books"), { books, life })
+  const shelf = (await api("GET", "files")).json?.files?.find((f) => f.path.endsWith("Books/Piranesi.md"))?.path
+  await open(shelf)
+  is("a book draws its block", (await page.locator("[data-pane] [data-block]").count()) > 0, shelf)
+  const wanted = await api("POST", "bundles/import/preview", { file: { vaultite: "bundle", format: 1, id: "shelf", files: {
+    "bundle.json": { name: "Shelf" }, "plugins.json": { enabled: ["books", "lighthouse"], install: { books: { source: "Vaultite/plugins/books" }, lighthouse: { source: "alicepark/lighthouse" } } } } } })
+  const code = (wanted.json?.plan?.code ?? []).map((c) => c.id), missing = wanted.json?.plan?.plugins?.missing ?? []
+  is("a bundle installing Vaultite's own gets the built-in one here, others' are left out", wanted.status === 200 && !code.length && !missing.includes("books"), wanted.json?.plan)
 
   const MARK = "Edited in the demo"
   await open("Notes/Lisbon trip.md")

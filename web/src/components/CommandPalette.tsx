@@ -18,9 +18,10 @@ const TURN_ON = "Turn on ", TURN_OFF = "Turn off "
 /** Plugins' names as a list: "Code stats, GitHub, and Reddit". */
 const listed = (ids: string[]) => new Intl.ListFormat("en", { type: "conjunction" }).format(ids.map((i) => names([i])))
 
-/** What turning `p` on switches: it, and what it needs that's switched off (all the way down; none of the vault's). */
+/** What turning `p` on switches: it, and what it needs that's switched off (all the way down). A vault plugin turned on
+ *  here is allowed here, as its switch does. */
 function toSwitch(p: Plugin, seen: string[] = []): Plugin[] | null {
-  if (p.tier !== "core" || p.problems?.length || seen.includes(p.id)) return null
+  if (p.tier === "hosted" || p.problems?.length || seen.includes(p.id)) return null
   const out = switchedOn(p) ? [] : [p]
   for (const r of p.requires ?? []) {
     const q = pluginById(r)

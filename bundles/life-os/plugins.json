@@ -15,5 +15,8 @@
     "projects",
     "today",
     "web-viewer"
-  ]
+  ],
+  "install": {
+    "books": { "name": "Books", "source": "Vaultite/plugins/books" }
+  }
 }

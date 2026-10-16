@@ -7,6 +7,7 @@ import path from "node:path"
 import { settingsOf, type SettingDecls } from "./blocks.ts"
 import { pageAt, templates } from "./pages.ts"
 import { git, parseSource, readLock, tagsOf } from "./installs.ts"
+import { MOVED } from "./migrations.ts"
 import { digestOf } from "./vaultplugins.ts"
 import { switched } from "./pluginmeta.ts"
 import { OpError } from "./ops.ts"
@@ -133,14 +134,19 @@ function json(b: Bundle | Files, rel: string): Item | null {
   throw new HTTPError(400, `the bundle's ${rel} isn't a JSON object`)
 }
 
-/** A vault plugin a bundle installs from where it comes from (plugins.json `install`), rather than bringing its files. */
+/** A vault plugin a bundle installs from where it comes from (plugins.json `install`), rather than bringing its files;
+ *  one it turns on that moved out of the app (core/migrations.ts MOVED) too. Not one the app (`host`) has itself. */
 export type Install = { id: string; name: string; source: string; tag: string | null }
-function installsOf(files: Files): Install[] {
+function installsOf(files: Files, host?: Host): Install[] {
   let pj: Item | null = null
   try { pj = json(files, "plugins.json") } catch { return [] }
   const o = pj && isObj(pj.install) ? pj.install : {}
-  return Object.entries(o).filter(([id, v]) => ID.test(id) && isObj(v) && typeof v.source === "string" && !!v.source)
+  const out = Object.entries(o).filter(([id, v]) => ID.test(id) && isObj(v) && typeof v.source === "string" && !!v.source)
     .map(([id, v]) => ({ id, name: typeof (v as Item).name === "string" ? String((v as Item).name) : id, source: String((v as Item).source), tag: typeof (v as Item).tag === "string" ? String((v as Item).tag) : null }))
+  for (const id of strs(pj?.enabled)) {
+    if (Object.hasOwn(MOVED, id) && !out.some((x) => x.id === id)) out.push({ id, name: id.charAt(0).toUpperCase() + id.slice(1), source: MOVED[id], tag: null })
+  }
+  return out.filter((x) => !host?.plugins().some((p) => p.id === x.id && p.tier !== "vault"))
 }
 
 /** What a bundle's files are: its settings, the vault plugins it brings, the vault files it adds. */
@@ -226,7 +232,7 @@ export function info(b: Bundle, host: Host): Info {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
     sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
-    on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files).map((x) => x.id)], from: str(m.from) || null, hotkeys: b.files["hotkeys.json"] !== undefined,
+    on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files, host).map((x) => x.id)], from: str(m.from) || null, hotkeys: b.files["hotkeys.json"] !== undefined,
     preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null,
     problems: b.error ? [b.error] : problems(b.files),
   }
@@ -283,7 +289,7 @@ function pluginTargets(b: Bundle, host: Host): Map<string, boolean> | null {
     if (p.tier === "vault" || p.manifest.alwaysOn) continue
     if (p.manifest.offByDefault) { if (enabled) out.set(p.id, enabled.has(p.id)) } else if (disabled) out.set(p.id, !disabled.has(p.id))
   }
-  for (const id of [...parts(b.files).code, ...installsOf(b.files).map((x) => x.id)]) out.set(id, !!enabled?.has(id))
+  for (const id of [...parts(b.files).code, ...installsOf(b.files, host).map((x) => x.id)]) out.set(id, !!enabled?.has(id))
   return out
 }
 
@@ -366,7 +372,7 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
   }
   const pj = json(b, "plugins.json")
   const added = targets ? [...kinds].filter(([id, k]) => k.vault && !targets.has(id) && switchedOn(conf, id, true)).map(([id]) => id) : []
-  const installs = installsOf(b.files)
+  const installs = installsOf(b.files, host)
   const missing = [...new Set([...strs(pj?.disabled), ...strs(pj?.enabled)])].filter((id) => !kinds.has(id) && !code.includes(id) && !installs.some((x) => x.id === id))
   const here = (id: string) => fs.existsSync(v.abs(`.vaultite/plugins/${id}/manifest.json`))
   const codeInfo: Plan["code"] = [...code.map((id) => {

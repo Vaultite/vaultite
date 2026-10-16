@@ -69,7 +69,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `name` (required)
 - `description` (required)
 - `icon`: Its icon, wherever it's listed (and in the directory before it's installed): a Lucide name ("heart-pulse"), one a plugin adds ("claude": `icons`), or an SVG file in its folder ("icon.svg", a mark in one colour: drawn in the text's).
-- `requires`: Can't work without these plugins: off while any of them is off.
+- `requires`: Can't work without these plugins: off while any of them is off. It may import the modules they export.
+- `exports`: Modules plugins that require it may import, by path in its folder without extension (["types"]): theirs as `@plugins/<id>/types`, in index.tsx and plugin.ts alike, the same instance as its own.
 - `enhances`: Uses these when they're on (optional).
 - `runsOnServer`: Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it.
 - `tint`: Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages, files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else.
@@ -80,7 +81,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `offByDefault`: Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim), and every built-in that isn't `essential` or `alwaysOn` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff).
 - `essential`: One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`, or by a bundle). Either way the Plugins page lists it by its category.
 - `alwaysOn`: Part of the app itself (built-in only): always on, no switch, not on the Plugins page; its settings are in Settings. Neither `essential` nor `offByDefault`.
-- `group`: Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS), which says which are on and opens a sheet of their switches; each keeps its own (built-in only).
+- `group`: Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS), which says which are on and opens a sheet of their switches; each keeps its own.
 - `switchIn`: Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only).
 - `replaces`: Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in plugins standing in for the same one are alternatives: turning one on turns the other off.
 - `marks`: Frontmatter keys that type a file without `type:` ({"kanban-plugin": "kanban"}: core/fileprops.ts setMarks).

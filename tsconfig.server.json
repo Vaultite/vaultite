@@ -3,7 +3,7 @@
     "incremental": true,
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.server.tsbuildinfo",
     // how a vault plugin's backend imports the core (core/vaultplugins.ts): the example in tools/fixtures
-    "paths": { "@vaultite/core/*": ["./core/*"] },
+    "paths": { "@vaultite/core/*": ["./core/*"], "@plugins/*": ["./plugins/core/*.ts", "./plugins/core/*/index.ts"] },
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "types": ["node"],

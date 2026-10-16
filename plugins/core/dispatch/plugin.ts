@@ -2,8 +2,7 @@
 // Machines. The agent gets the note's path, not its text, so it reads the latest version and can edit it.
 import fs from "node:fs"
 import path from "node:path"
-import { quote, startAgent } from "../../../core/codingagents.ts"
-import { AGENT, agentIn, newTerminalId } from "../../../core/terminalids.ts"
+import { shellQuote, startAgent, TERMINAL_AGENT, agentIn, newTerminalId } from "../../../core/agents.ts"
 import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -31,13 +30,13 @@ export function actions(): Action[] {
     if (!x || typeof x !== "object") continue
     const r = x as Record<string, unknown>
     const agent = str(r.agent), command = str(r.command)
-    if (!(agent && AGENT.test(agent)) && !command) continue
+    if (!(agent && TERMINAL_AGENT.test(agent)) && !command) continue
     const label = str(r.label) || agent || "Command"
     let id = slug(str(r.id)) || slug(label) || "action", n = 2
     while (out.some((a) => a.id === id)) id = `${slug(str(r.id)) || slug(label) || "action"}-${n++}`
     const a: Action = { id, label }
     if (str(r.icon)) a.icon = str(r.icon)
-    if (agent && AGENT.test(agent)) {
+    if (agent && TERMINAL_AGENT.test(agent)) {
       a.agent = agent
       a.prompt = typeof r.prompt === "string" && r.prompt.trim() ? r.prompt : DEFAULT_PROMPT
       if (r.report === false) a.report = false
@@ -53,7 +52,7 @@ plugin.state(() => ({ dispatch: { actions: actions(), defaults: DEFAULT_ACTIONS 
 
 /** A template with {path}, {file}, {title} and {vault} filled in (shell-quoted in a command); other braces stay. */
 export function fill(template: string, vars: Record<string, string>, shell = false) {
-  return template.replace(/\{(path|file|title|vault)\}/g, (_m, k: string) => (shell ? quote(vars[k]) : vars[k]))
+  return template.replace(/\{(path|file|title|vault)\}/g, (_m, k: string) => (shell ? shellQuote(vars[k]) : vars[k]))
 }
 
 /** How dispatch.run's refusal of a command not yet allowed here starts (the app asks the user on it). */

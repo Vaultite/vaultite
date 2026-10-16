@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 import { tidy } from "../../../core/bundles.ts"
+import { officialRepos } from "../official.ts"
 
 export default async ($: VaultTest) => {
   const { ON, VAULT, api, app, check, exists, read, write, writeWs } = $
@@ -35,7 +36,15 @@ export default async ($: VaultTest) => {
       plan.pins.list.join() === LIFE && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
       plan.files.add.includes("Dashboards/Home.md") && !plan.empty, plan)
     ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1 })
+    check("bundles: one installing a plugin asks first (it runs code)", code === 409 && r.error.includes("Books"), [code, r])
+    // (Books moved out of the app: Life OS installs it from a made-up Vaultite/plugins here)
+    const github = process.env.VAULTITE_GITHUB
+    process.env.VAULTITE_GITHUB = officialRepos(path.join($.tmp, "official"))
+    ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1, allowCode: true })
     check("bundles: apply", code === 200 && r.applied === "Life OS", r)
+    check("bundles: a plugin it installs is installed from Vaultite's plugins, on and allowed here", exists(".vaultite/plugins/books/manifest.json") &&
+      conf("plugins-lock")?.books?.source === "Vaultite/plugins/books" && !!app.vaultPlugins.trust.approved("books", app.vaultPlugins.found.get("books")?.digest.content ?? ""), conf("plugins-lock"))
+    if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
     const pj = conf("plugins"), look = conf("appearance")
     check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.order?.[0] === "people" && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)
     check("bundles: appearance keeps the keys the bundle doesn't set; one it sets to the default is removed", look.textFont === "Georgia" && !("theme" in look) && look.scheme === "flexoki" &&

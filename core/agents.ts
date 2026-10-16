@@ -1,5 +1,5 @@
-// What the coding agent plugins (Claude Code, Codex, Cursor, Grok Bot, Hermes, OpenClaw, OpenCode) share: their routes
-// and blocks (codingAgent), usage tallies, processes, transcripts and databases; Terminal, Dispatch and the Inbox start agents.
+// The coding agents API (@vaultite/core/agents.ts, built-in and vault plugins alike): what an agent plugin reads its tool
+// with (usage tallies, processes, transcripts, databases), its routes and blocks (codingAgent), and starting agents.
 import { execFile, spawn } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
@@ -9,9 +9,12 @@ import type { DatabaseSync } from "node:sqlite"
 import { bullets, fmtMin, HTTPError, localDate, OpError, type OpCtx, type Plugin, processTable, type Request, ROOT, section, serverUrl } from "./plugins.ts"
 import { stableNode } from "./service.ts"
 import { parseTerminal } from "./terminalids.ts"
+/** A terminal's id and the agent it runs (core/terminalids.ts, which the web app shares). */
+export { agentIn, agentName, KNOWN_AGENTS, newTerminalId, parseTerminal, resumeTerminalId, TERMINAL_AGENT, type TerminalAgent } from "./terminalids.ts"
 import { USAGE_BLOCKS } from "./rules.ts"
 import { type Item, sortBy } from "./vault.ts"
 
+/** This machine's home folder, where agents keep their files. */
 export const HOME = os.homedir()
 
 /** `vau mcp` as an agent's MCP server: by the Node running this server (an agent may pass its servers no PATH), told
@@ -27,6 +30,7 @@ const pad = (n: number) => String(n).padStart(2, "0")
 export const isoOf = (ms: number | null | undefined) => (ms ? new Date(ms).toISOString() : null)
 /** How many days back the scans read: 35, and as far as a block or a query has asked for since the server started. */
 let reach = 35
+/** How many days back the scans read now. */
 export const scanDays = () => reach
 /** A block's or a query's `days`: 30 when unset, any range up to ten years; asking for more widens the scans. */
 function daysOf(v: unknown) {
@@ -36,19 +40,18 @@ function daysOf(v: unknown) {
   return days
 }
 
-export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type Any = any
+type Any = any
 /** A JSON text's value (its bytes too), or null. */
-export function jsonOf(v: unknown): Any {
+export function parseJson(v: unknown): Any {
   try { return JSON.parse(v instanceof Uint8Array ? Buffer.from(v).toString("utf8") : String(v)) } catch { return null }
 }
 /** A number as stored, else 0. */
-export const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
+export const numberOf = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0)
 /** A path with `~` for the home folder, resolved. */
 export const expandHome = (p: string) => (p === "~" || p.startsWith("~/") ? path.join(HOME, p.slice(1)) : path.resolve(p))
 /** ISO time ("2026-09-29T17:51:25.878Z") -> epoch seconds, or null. */
-export function stamp(s: unknown): number | null {
+export function epochSeconds(s: unknown): number | null {
   const t = typeof s === "string" ? Date.parse(s) : NaN
   return Number.isNaN(t) ? null : t / 1000
 }
@@ -68,7 +71,7 @@ export function priceList<T>(table: Record<string, T>, sep = "") {
 }
 
 /** `fn` run at most every `ms` (or sooner when `due`), callers sharing a run in progress. */
-export function throttled(ms: number, fn: () => Promise<void>, due?: () => boolean) {
+function throttled(ms: number, fn: () => Promise<void>, due?: () => boolean) {
   let at = 0, running: Promise<void> | null = null
   return (): Promise<void> => {
     if (running) return running
@@ -82,7 +85,7 @@ export function throttled(ms: number, fn: () => Promise<void>, due?: () => boole
 
 /** Folder -> its project's root. A worktree belongs to its repository: `own` maps the agent's own worktree folders,
  *  and a sibling <repo>-<task> of a folder that's also there counts as <repo>. */
-export function roots(cwds: Iterable<string>, own = (c: string) => c) {
+export function projectRoots(cwds: Iterable<string>, own = (c: string) => c) {
   const base = new Map([...cwds].map((c) => [c, own(c).replace(/\/+$/, "") || "/"]))
   const names = new Set(base.values())
   const repo = (r: string) => {
@@ -97,12 +100,13 @@ export function roots(cwds: Iterable<string>, own = (c: string) => c) {
   return new Map([...base].map(([c, r]) => [c, repo(r)]))
 }
 
+/** A project root's name: its folder's, "Home" for the home folder. */
 export const projectName = (root: string) => (root === HOME || root === "" ? "Home" : path.basename(root) || root)
 /** A folder's project name, through `rootsOf` (an agent's own worktrees). */
-export const projectOf = (cwd: string, rootsOf: (cwds: string[]) => Map<string, string> = roots) => projectName(rootsOf([cwd]).get(cwd)!)
+export const projectOf = (cwd: string, rootsOf: (cwds: string[]) => Map<string, string> = projectRoots) => projectName(rootsOf([cwd]).get(cwd)!)
 
 /** The accounts `id` names ("" or none: all of them); none of them is a 404 that lists them. */
-export function accountsNamed<A extends { id: string }>(all: A[], id: unknown, what: string): A[] {
+function accountsNamed<A extends { id: string }>(all: A[], id: unknown, what: string): A[] {
   if (typeof id !== "string" || !id) return all
   const one = all.filter((a) => a.id === id)
   if (!one.length) throw new HTTPError(404, `no ${what} '${id}' here (they are: ${all.map((a) => a.id).join(", ") || "none"})`)
@@ -213,6 +217,7 @@ export class Tally {
 }
 
 type Summary = ReturnType<Tally["result"]>
+/** What an agent's GET route answers: its tally, plan, limits and live sessions. */
 export type Usage = Summary & { plan: { name: string; monthly: number | null } | null; limits: Limits | null; live: Item[] } & Item
 
 // ---------- processes
@@ -322,6 +327,7 @@ export function jsonLines<T>(bin: string, args: string[], o: { env: NodeJS.Proce
 
 // ---------- Terminal runs them (the service "agent:<name>")
 
+/** A terminal's agent as the Terminals panel shows it. */
 export type AgentState = "working" | "waiting" | "idle"
 /** A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens`
  *  its last request read of a `window`, cached for `ttl` seconds from `last` (ms). */
@@ -359,20 +365,21 @@ export async function startAgent(ctx: OpCtx, id: string, prompt?: string) {
 }
 
 /** `s` as one word of a shell command. */
-export const quote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
+export const shellQuote = (s: string) => `'${s.replaceAll("'", "'\\''")}'`
 /** A session to resume that isn't on this machine (a tab from a synced or shared workspace): a note, then a plain shell. */
-export const notHere = (agent: string, id: string) =>
-  ({ command: `printf '%s\\n' ${quote(`There's no ${agent} session ${id} on this machine to resume.`)}`, cwd: null })
+export const notOnThisMachine = (agent: string, id: string) =>
+  ({ command: `printf '%s\\n' ${shellQuote(`There's no ${agent} session ${id} on this machine to resume.`)}`, cwd: null })
 
 // ---------- conversations (a session's view tab)
 
+/** A conversation's entries (a session's view tab): a tool call, what was said, and its head. */
 export type Tool = { kind: "tool"; id: string; name: string; summary: string; input: string; result: string | null; error: boolean; at: string }
 export type Said = { kind: "user" | "assistant"; text: string; at: string }
 export type Entry = Said | Tool
 export type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
 
-/** Long texts cut: a view is for reading a conversation back, not for the raw data. */
-export const cut = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}\n… (${(s.length - n).toLocaleString("en-US")} more characters)` : s)
+/** Long texts cut short: a view is for reading a conversation back, not for the raw data. */
+export const truncate = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}\n… (${(s.length - n).toLocaleString("en-US")} more characters)` : s)
 
 /** One line saying what a tool call did: the first of `keys` it has ("git status", "src/app.ts"), else its first text;
  *  a search as "<pattern> in <the first of `where`>". */
@@ -643,7 +650,7 @@ export class SqliteFile {
 }
 
 /** The last few things built (conversations), by key: `make` runs again only when the key's `version` changed. */
-export function rebuilt<T>(keep = 4) {
+export function buildCache<T>(keep = 4) {
   const kept = new Map<string, { version: string; data: T }>()
   return (key: string, version: string, make: () => T): T => {
     const hit = kept.get(key)
@@ -672,6 +679,7 @@ function when(s: string) {
   return `${left < 20 * 60 ? hm : `${t.toLocaleDateString("en-US", { weekday: "short" })} ${hm}`} (in ${soon})`
 }
 
+/** An ISO time as "2 h 10 min ago", "3 days ago". */
 export function ago(s: string | null) {
   const m = s ? (Date.now() - Date.parse(s)) / 60000 : 0
   return m < 1 ? "just now" : m < 48 * 60 ? `${fmtMin(m)} ago` : `${Math.floor(m / 1440)} days ago`
@@ -682,6 +690,7 @@ export function limitWindow(id: string, label: string, minutes: number, used: nu
   if (resets && resets <= now) { used = 0; resets = null }
   return { id, label, minutes, used: Math.round(Number(used) * 10) / 10, resets_at: resets ? isoOf(resets * 1000) : null }
 }
+/** A plan's limits as an agent reads them: where from, when, and each window. */
 export type Limits = { source: string; observed: string | null; windows: ReturnType<typeof limitWindow>[] }
 
 /** A plan's limits, one line each: how much is used and when it renews. */

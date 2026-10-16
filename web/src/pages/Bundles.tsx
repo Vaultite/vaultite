@@ -1,5 +1,6 @@
 // Bundles: setups to start from, save and share (format: core/bundles.ts); a card, or a bundle pasted or dropped on the
 // page, opens a preview of what applying it changes, asking first when it runs code.
+import { official } from "../../../core/updates.ts"
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import {
   ArrowRight, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PanelLeft, PanelRight, Pin, Plus,
@@ -224,7 +225,8 @@ function BundleCard({ b, applied, picked }: { b: BundleInfo; applied?: boolean; 
           </div>
           {(!!b.code.length || !!b.problems.length) && (
             <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-[12px]">
-              {!!b.code.length && <span className="font-medium text-[var(--red)]">Runs code</span>}
+              {!!b.code.length && (b.source === "app" ? <span className="text-muted-foreground">Installs plugins</span>
+                : <span className="font-medium text-[var(--red)]">Runs code</span>)}
               {!!b.problems.length && <span className="text-[var(--red)]" data-tip={b.problems.join("\n")}>Can't be read</span>}
             </div>
           )}
@@ -443,8 +445,12 @@ function PageRow({ path, look, state }: { path: string; look?: { icon: string | 
   )
 }
 
-/** Applying runs code from it: ask first. */
-const askToRun = (b: BundleInfo, plan: Plan) => confirmDialog({
+/** Applying runs code from it: ask first (Vaultite's own plugins, said so: they come from Vaultite's plugins). */
+const askToRun = (b: BundleInfo, plan: Plan) => plan.code.every((c) => c.source && official(c.source)) ? confirmDialog({
+  title: `Install ${new Intl.ListFormat("en", { type: "conjunction" }).format(plan.code.map((c) => c.name))}?`,
+  body: `${b.name} installs Vaultite's own plugins from its plugin directory. Like any plugin, they run on the machine that serves this app, with your files.`,
+  confirm: "Install and apply",
+}) : confirmDialog({
   title: `Run code from ${b.name}?`,
   body: `It brings vault plugins (${plan.code.map((c) => c.source && !c.kept ? `${c.name}, from ${c.source}` : c.name).join("; ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
   confirm: "Apply and run them", danger: true,
