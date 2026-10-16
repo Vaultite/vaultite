@@ -51,6 +51,14 @@ function forward(s: Shell, d: string) {
   for (const c of s.attached) if (c.ready) c.send({ t: "data", d })
 }
 
+/** node-pty couldn't open a pseudo-terminal: on a Mac, usually all of them are taken (kern.tty.ptmx_max, 511). */
+const noPty = (e: unknown) => /posix_openpt|openpty|forkpty/.test(String((e as Error)?.message ?? e))
+function outOfPtys(id: string, e: unknown) {
+  const held = shells.size
+  log("create", id, `failed: no pseudo-terminal left (this keeper holds ${held} shells)`, e)
+  return new Error(`the machine has no pseudo-terminal left (this keeper holds ${held} shells): end some terminals or tmux sessions (${(e as Error).message})`)
+}
+
 function create(m: Record<string, unknown>) {
   const id = String(m.id ?? "")
   if (!id) throw new Error("no id")
@@ -67,8 +75,9 @@ function create(m: Record<string, unknown>) {
       if (retire()) throw new Error(`RETIRING: this keeper's files are gone (${SELF}): ask the next one`)
       throw new Error(`this keeper's files are gone (${SELF}), and it still holds shells: ${(e as Error).message}`)
     }
+    if (noPty(e)) throw outOfPtys(id, e)
     fixHelper()
-    p = spawn()
+    try { p = spawn() } catch (e2) { throw noPty(e2) ? outOfPtys(id, e2) : e2 }
   }
   const term = new Terminal({ cols, rows, scrollback: Number(m.scrollback) > 0 ? Number(m.scrollback) : SCROLLBACK, allowProposedApi: true })
   const ser = new SerializeAddon()

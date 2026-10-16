@@ -142,15 +142,26 @@ export default async ($: VaultTest) => {
       ? fs.readdirSync(`/proc/${pid}/fd`).filter((f) => { try { return /^\/dev\/(ptmx|pts\/)/.test(fs.readlinkSync(`/proc/${pid}/fd/${f}`)) } catch { return false } }).length
       : execFileSync("lsof", ["-p", String(pid)]).toString().split("\n").filter((l) => /\/dev\/(ptmx|ttys)|\(revoked\)/.test(l)).length
     const spec = { shell: "/bin/sh", run: null, cwd: tmp, env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 80, rows: 24, scrollback: 100 }
-    const ids = ["leak1", "leak2", "leak3", "leak4", "leak5"]
-    for (const id of ids) await keeper.create(id, spec)
-    const pid = Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8"))
-    const open = ptys(pid)
-    for (const id of ids) await keeper.kill(id)
-    const ended = await waitFor(async () => (await keeper.list()).length === 0, 10_000, 100)
-    const left = ptys(pid)
-    try { process.kill(pid, "SIGTERM") } catch { /* gone */ }
-    check("terminal: the keeper lets go of a shell's pty once it ends", open >= ids.length && ended && left === 0, { open, ended, left })
+    // One at a time (a machine short of ptys still runs it), ended each way: killed, exiting, a spare taken then killed.
+    const ways: [string, (id: string) => Promise<unknown>][] = [
+      ["leak-kill", (id) => keeper.kill(id)],
+      ["leak-exit", (id) => keeper.send(id, "exit", true)],
+      ["leak-spare", async (id) => { await keeper.rename!(id, `${id}-taken`); await keeper.kill(`${id}-taken`) }],
+    ]
+    const seen: Record<string, unknown>[] = []
+    // (ended even when a step throws: a keeper left behind holds its shells' ptys)
+    const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
+    try {
+      for (const [id, end] of ways) {
+        await keeper.create(id, spec, { spare: id === "leak-spare" })
+        const pid = Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8"))
+        const open = ptys(pid)
+        await end(id)
+        const ended = await waitFor(async () => (await keeper.list()).length === 0, 10_000, 100)
+        seen.push({ id, open, ended, left: ptys(pid) })
+      }
+    } finally { stop() }
+    check("terminal: the keeper lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ended && s.left === 0), seen)
   }
 
   // Routes: * is one segment, a last ** the rest.

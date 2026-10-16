@@ -7,7 +7,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - On a Mac, the terminal keeper lets go of a shell's pseudo-terminal once it ends. Before, a keeper that ran for days
-  used up the machine's, and new terminals, tmux and ssh couldn't start.
+  used up the machine's, and new terminals, tmux and ssh couldn't start. When none are left, a new terminal says so.
 - **Web pages and plugin pages can be pinned**: Pin in a tab's menu (or drag the tab to Pinned) pins a web page, with
   its site's icon and title, Inbox, Graph view, a Claude chat, almost any tab; the Pinned menu's More offers each
   plugin's main page. `vau pin <address>` pins a web page.

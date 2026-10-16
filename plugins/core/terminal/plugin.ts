@@ -358,7 +358,8 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     if (!(b.spares && (await takeSpare(b, id, from, run)))) {
       timing.tags.how = "new"
       try { await b.create(id, spec) } catch (e) {
-        if (b !== keeper) throw e
+        // (out of ptys, the server couldn't start one either: the keeper's message says why)
+        if (b !== keeper || /no pseudo-terminal left/.test((e as Error).message)) throw e
         console.error("terminal: the keeper couldn't start a shell, so this server holds it:", e)
         b = fallback
         await b.create(id, spec)
