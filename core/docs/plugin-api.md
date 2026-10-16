@@ -83,6 +83,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `group`: Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS), which says which are on and opens a sheet of their switches; each keeps its own (built-in only).
 - `switchIn`: Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only).
 - `replaces`: Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in plugins standing in for the same one are alternatives: turning one on turns the other off.
+- `marks`: Frontmatter keys that type a file without `type:` ({"kanban-plugin": "kanban"}: core/fileprops.ts setMarks).
 
 ### The app: `definePlugin({...})` in `index.tsx`
 `import { definePlugin } from "@vaultite"`; every key is optional (its icon is its manifest's).

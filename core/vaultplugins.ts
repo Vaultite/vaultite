@@ -468,6 +468,7 @@ export class VaultPlugins {
         ...(vp.icon ? { icon: vp.icon } : {}),
         ...(typeof m.category === "string" ? { category: m.category } : {}),
         ...(m.replaces && typeof m.replaces === "object" && !Array.isArray(m.replaces) ? { replaces: m.replaces } : {}),
+        ...(m.marks && typeof m.marks === "object" && !Array.isArray(m.marks) ? { marks: m.marks } : {}),
         folder: `${DIR}/${vp.id}`, on: on.has(vp.id), loaded: !!vp.plugin, problems: [...vp.problems, ...failed, ...(vp.blocked ? [vp.blocked] : [])], warnings: vp.warnings,
         version: str("version"), author: str("author"), repo: str("repo"), fundingUrl: str("fundingUrl"), disclosures: disclosuresOf(m),
         // where it was installed from (.vaultite/plugins-lock.json: core/installs.ts), null for one made here

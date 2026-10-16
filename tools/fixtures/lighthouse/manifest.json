@@ -9,6 +9,7 @@
   "repo": "alicepark/lighthouse",
   "disclosures": {},
   "apiVersion": 1,
+  "marks": { "lighthouse-log": "keeper" },
   "blocks": {
     "lighthouse": {
       "description": "whether the beam is on, and the keepers",

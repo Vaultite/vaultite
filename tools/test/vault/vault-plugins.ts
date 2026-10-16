@@ -13,6 +13,7 @@ export default async ($: VaultTest) => {
   const vplugin = async (id = "lighthouse") => ((await api("GET", "plugins"))[1] as Any[]).find((p) => p.id === id)
   let lh = await vplugin()
   check("vault plugins: listed", lh && lh.name === "Lighthouse" && lh.folder === LH && !lh.problems.length, lh)
+  check("vault plugins: its marks reach the app (a file typed by a frontmatter key opens as the plugin draws it)", lh.marks?.["lighthouse-log"] === "keeper", lh.marks)
   check("vault plugins: a new one is off, and nothing of it runs", !lh.on && !lh.loaded && lh.bundle === null && (await api("GET", "lighthouse"))[0] === 404
     && (await api("GET", `plugins/lighthouse/${lh.hash}/bundle.js`))[0] === 404 && !app.plugins.some((p) => p.id === "lighthouse"))
   check("vault plugins: a folder with only settings isn't one", !(await vplugin("tide")))

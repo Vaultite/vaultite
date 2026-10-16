@@ -58,6 +58,8 @@ export type VaultPluginInfo = {
   icon?: string
   /** Other apps' plugins it stands in for (its manifest's `replaces`). */
   replaces?: Record<string, string[]>
+  /** Frontmatter keys that type a file without `type:` (its manifest's `marks`). */
+  marks?: Record<string, string>
   folder: string; on: boolean; loaded: boolean; problems: string[]
   /** What it should fix but runs anyway (a block without its declaration or its text side). */
   warnings: string[]

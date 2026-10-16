@@ -58,6 +58,8 @@ export type Manifest = {
   /** Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in
    *  plugins standing in for the same one are alternatives: turning one on turns the other off. */
   replaces?: Record<string, string[]>
+  /** Frontmatter keys that type a file without `type:` ({"kanban-plugin": "kanban"}: core/fileprops.ts setMarks). */
+  marks?: Record<string, string>
 }
 
 export type DetailDef = {
