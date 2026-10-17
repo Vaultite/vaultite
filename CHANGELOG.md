@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.5.0 (2026-10-17)
+
 A companion agent writes beside you, AI apps draw the vault as cards, and the app is simpler to set up.
 
 - **Companion**: an always-on Claude Code or Codex agent with its own cursor in your notes and drawings; write `@claude`
