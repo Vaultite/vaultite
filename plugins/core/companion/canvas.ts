@@ -65,14 +65,15 @@ const quote = (s?: string) => JSON.stringify((s ?? "").length > 60 ? `${s!.slice
 const LINES = new Set(["arrow", "line"])
 const itemLine = (i: CanvasItem) => `${i.id} ${i.type}${i.text ? ` ${quote(i.text)}` : ""}${LINES.has(i.type) ? ` ${i.from ?? "(a free end)"} -> ${i.to ?? "(a free end)"}` : ` at ${i.x},${i.y}`}`
 
-/** What changed from `a` to `b`, a line each: + added, - deleted, ~ changed (an arrow's shape follows its ends: left out). */
+/** What changed from `a` to `b`, a line each: + added, - deleted, ~ changed (an arrow's shape follows its ends: left out;
+ *  so does a pixel's drift, as a text's size measured again once its font loads: nothing to wake an agent for). */
 export function changesOf(a: Map<string, CanvasItem>, b: CanvasItem[]): string[] {
-  const out: string[] = [], now = new Set(b.map((i) => i.id))
+  const out: string[] = [], now = new Set(b.map((i) => i.id)), off = (x: number, y: number) => Math.abs(x - y) > 1
   for (const i of b) {
     const o = a.get(i.id)
     if (!o) out.push(`+ ${itemLine(i)}`)
     else if ((o.text ?? "") !== (i.text ?? "")) out.push(`~ ${i.id} ${i.type}: ${quote(o.text)} -> ${quote(i.text)}`)
-    else if (LINES.has(i.type) ? o.from !== i.from || o.to !== i.to : o.x !== i.x || o.y !== i.y || o.w !== i.w || o.h !== i.h) out.push(`~ ${itemLine(i)}${LINES.has(i.type) ? "" : ` ${i.w}x${i.h}`}`)
+    else if (LINES.has(i.type) ? o.from !== i.from || o.to !== i.to : off(o.x, i.x) || off(o.y, i.y) || (i.type !== "text" && (off(o.w, i.w) || off(o.h, i.h)))) out.push(`~ ${itemLine(i)}${LINES.has(i.type) ? "" : ` ${i.w}x${i.h}`}`)
   }
   for (const [id, o] of a) if (!now.has(id)) out.push(`- ${itemLine(o)}`)
   return out.length > 40 ? [...out.slice(0, 40), `… and ${out.length - 40} more`] : out
