@@ -23,7 +23,8 @@ function Elsewhere({ url }: { url: string }) {
   )
 }
 
-/** Something of the app's is over the box (see the head of this file). */
+/** Something of the app's is over the box (see the head of this file); `data-under-pages` bits (a companion's cursor)
+ *  are just drawn under the page. */
 function covered(box: HTMLElement, r: DOMRect) {
   if ("dragging" in document.documentElement.dataset) return true
   // Every ~48px across and down (a menu or a flyout is wider than that), 8px in from the edges: the dividers beside a
@@ -36,7 +37,7 @@ function covered(box: HTMLElement, r: DOMRect) {
     const x = Math.min(w, r.left + E + (cw * i) / (cols - 1))
     for (let j = 0; j < rows; j++) {
       const at = document.elementFromPoint(x, Math.min(h, r.top + E + (ch * j) / (rows - 1)))
-      if (at && at !== box && !box.contains(at) && !at.closest("[data-sonner-toaster]")) return true
+      if (at && at !== box && !box.contains(at) && !at.closest("[data-sonner-toaster], [data-under-pages]")) return true
     }
   }
   return false

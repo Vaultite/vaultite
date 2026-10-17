@@ -230,10 +230,10 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")} style={{ transform: nudge ? `translate(${nudge.x}px, ${nudge.y}px)` : undefined, transition: "transform .18s ease-out" }}>
         <Arrow tint={tint} />
       </div>
-      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip onPointerDown={down} onContextMenu={(e) => e.preventDefault()}
+      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages onPointerDown={down} onContextMenu={(e) => e.preventDefault()}
         className={cn("pointer-events-auto absolute top-0 left-0 z-[1] size-5 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
           drag ? "cursor-grabbing" : "cursor-pointer")} />
-      <button type="button" tabIndex={tag ? 0 : -1} aria-label={`Go to ${a.name}`} data-tip={a.path ? "Go to where it is" : undefined} onClick={() => follow(a)}
+      <button type="button" tabIndex={tag ? 0 : -1} aria-label={`Go to ${a.name}`} data-under-pages data-tip={a.path ? "Go to where it is" : undefined} onClick={() => follow(a)}
         className={cn("absolute flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
           flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag ? "pointer-events-auto cursor-pointer" : "opacity-0")} style={{ background: tint }}>
         {a.name}
