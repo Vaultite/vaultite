@@ -110,6 +110,22 @@ export default async ($: VaultTest) => {
   ;[, r] = await api("POST", "ops/companion.status", {})
   check("companion: after acting, next is no seen tick", r.agents.some((a: Any) => a.name === "Claude" && a.state === "watching" && !a.seen), r.agents)
   {
+    // Going to another note wakes no one: the cursor follows there at once, and the open comes with the next moment.
+    const waiting = api("POST", "ops/companion.next", { timeout: 1 })
+    await $.sleep(50)
+    c.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
+    c.addMoment({ kind: "open", path: "Notes/C.md", line: 4 })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: an open moves the cursor there, no turn needed", r.agents.some((a: Any) => a.name === "Claude" && a.path === "Notes/C.md" && a.line === 4 && a.state === "watching"), r.agents)
+    ;[, r] = await waiting
+    check("companion: an open alone wakes no one", r.moments.length === 0, r.moments)
+    const next = api("POST", "ops/companion.next", { timeout: 3 })
+    await $.sleep(50)
+    c.addMoment({ kind: "edit", path: "Notes/C.md", line: 4, hunks: [{ line: 4, removed: [], added: ["New thought"] }] })
+    ;[, r] = await next
+    check("companion: it comes with the next moment, the last note they went to only", r.moments.map((m: Any) => `${m.kind} ${m.path}`).join() === "open Notes/C.md,edit Notes/C.md", r.moments)
+  }
+  {
     // Typing on, before the agent saw it: one moment, from what the line was to what it is.
     const one = c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi"], added: ["Hi or a"] }] })
     const two = c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi or a"], added: ["Hi or an", "x"] }] })

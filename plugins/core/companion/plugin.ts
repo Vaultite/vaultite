@@ -152,7 +152,11 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   }
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
-  for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
+  // (an open wakes no one: it rides along with the next moment, and the cursors free to follow go there now)
+  if (m.kind === "open") {
+    for (const a of agents.values()) if (meantFor(full, a.name) && a.state === "watching" && live(a.name) && !handed.has(key(a.name)))
+      setAgent(a.name, { path: full.path, line: full.line, x: full.x, y: full.y, find: undefined, state: "watching" })
+  } else for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
   // (one starting shows that until its first `next` takes it)
   if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}) })
   return full
@@ -653,7 +657,7 @@ plugin.op({
 ask: they addressed you (@claude anywhere in a line of a note, sent at Enter or a pause; or Ask companion on a
 selection): its text is what follows a leading @name, else the whole line. Always answer. edit: lines
 they changed after a pause (notice and pair modes). point: they dropped your cursor on a line (and a selection):
-look there and answer, as for an ask. open: they went to a note. reply, accept, reject, dismiss: their
+look there and answer, as for an ask. open: the note they went to, with the next moment. reply, accept, reject, dismiss: their
 answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
 text around them, numbered: no need to read it again. While you wait your cursor rests; given moments, it shows you
 reading (thinking, for an ask) there until you act, or run this again: the user sees a seen tick. Run it again after
@@ -681,18 +685,23 @@ to the companion, or to an agent with --watch.
     if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
     else if (joined || a.state === "away" || a.state === "writing" || a.state === "thinking" || a.state === "starting") setAgent(name, { state: "watching" })
     const after = p.after ?? delivered.get(k) ?? Math.max(0, seq - 20)
-    let got = moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000 && meantFor(m, name))
-    if (!got.length && p.timeout > 0) {
+    const pending = () => moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000 && meantFor(m, name))
+    let got = pending()
+    // (opens alone wait for the next moment, which they come with)
+    if (got.every((m) => m.kind === "open") && p.timeout > 0) {
       waiters.get(k)?.([])
-      got = await new Promise<Moment[]>((resolve) => {
-        const timer = setTimeout(() => { if (waiters.get(k) === wake) waiters.delete(k); resolve([]) }, p.timeout * 1000)
-        const wake = (m: Moment[]) => { clearTimeout(timer); resolve(m) }
+      const woken = await new Promise<boolean>((resolve) => {
+        const timer = setTimeout(() => { if (waiters.get(k) === wake) waiters.delete(k); resolve(false) }, p.timeout * 1000)
+        const wake = (m: Moment[]) => { clearTimeout(timer); resolve(m.length > 0) }
         waiters.set(k, wake)
       })
+      got = woken ? pending() : []
       seen.set(k, Date.now())
     }
     if (got.length) {
       delivered.set(k, got[got.length - 1].seq)
+      // (of the notes they went to, the last one)
+      got = got.filter((m, i) => m.kind !== "open" || !got.slice(i + 1).some((x) => x.kind === "open"))
       did(name, "handed", got.map((m) => m.seq))
       const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
       if (asked) asking.add(k)
