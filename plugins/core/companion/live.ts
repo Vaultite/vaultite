@@ -98,8 +98,8 @@ async function edit(e: EditAsk) {
   }
 }
 
-/** Something the user did, for the agents. */
-export const sendMoment = (m: { kind: "ask" | "edit"; path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[] }) =>
+/** Something the user did, for the agents (an ask: for `agent`, else the companion). */
+export const sendMoment = (m: { kind: "ask" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[] }) =>
   say({ t: "moment", ...m })
 /** The user's answer to a note: accept or reject a suggestion, dismiss a comment, reply to one. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
@@ -115,8 +115,10 @@ export function sayWhere(active = false) {
   say({ t: "where", open, focus, active: active && document.hasFocus() })
 }
 
-/** The names that address the companion after @ (lower case): its own, every agent's, and "companion". */
-export const mentionNames = () => [...new Set(["companion", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase())])]
+/** The agents around now, the companion first. */
+export const liveAgents = () => state.agents.filter((a) => a.state !== "away").sort((a, b) => Number(b.name === state.name) - Number(a.name === state.name))
+/** The names that address an agent after @ (lower case): every agent's, and the companion's own, "claude" and "companion". */
+export const mentionNames = () => [...new Set(["companion", "claude", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase())])]
 
 // ---------- for the overlay
 
@@ -160,8 +162,10 @@ export function hunksOf(a: string[], b: string[]): Hunk[] {
   return removed.length || added.length ? [{ line: s + 1, removed: removed.slice(0, 40), added: added.slice(0, 40) }] : []
 }
 
-/** A line that addresses the companion ("@claude what's…", "- @codex: fix this"): what it asks, or null. */
-export function mentionIn(line: string, names = mentionNames()): string | null {
+/** Where a line can address an agent: its start, after a list's marker or a task's box. */
+export const MENTION_AT = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?$/
+/** A line that addresses an agent ("@claude what's…", "- @ada: fix this"): who and what it asks, or null. */
+export function mentionIn(line: string, names = mentionNames()): { name: string; text: string } | null {
   const m = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?@([\w-]+)[:,]?\s*(.*)$/.exec(line)
-  return m && names.includes(m[1].toLowerCase()) ? m[2].trim() || "(no words: look at this)" : null
+  return m && names.includes(m[1].toLowerCase()) ? { name: m[1], text: m[2].trim() || "(no words: look at this)" } : null
 }

@@ -24,6 +24,13 @@ const dismissed = StateField.define<number | null>({
   },
 })
 
+/** Lists a plugin's editor extension adds (`EditorState.languageData.of(() => [{ suggest: source }])`): the editor's own
+ *  sources override CodeMirror's `autocomplete` data. */
+export const pluginSuggest: CompletionSource = async (ctx) => {
+  for (const source of ctx.state.languageDataAt<CompletionSource>("suggest", ctx.pos)) { const r = await source(ctx); if (r) return r }
+  return null
+}
+
 const starts = new WeakMap<EditorView, number>()
 /** A source that stays quiet where its list was closed with Escape (Ctrl-Space still asks it). */
 export function quiet(source: CompletionSource): CompletionSource {

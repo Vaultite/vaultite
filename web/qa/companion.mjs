@@ -150,6 +150,25 @@ r = await until(async () => { const x = await op("companion.next", { timeout: 4 
 const edits = r?.moments.filter((m) => m.kind === "edit") ?? []
 check("edit: typing while it types is one moment, theirs only", edits.length === 1 && edits[0].hunks[0].added.some((l) => l.endsWith("sunny. or so")) && !JSON.stringify(edits).includes("Mulch"), r)
 
+// Several agents: @ lists the ones around, and "@ada …" + Enter asks Ada alone, who shows thinking.
+await op("companion.next", { timeout: 0, as: "Ada" })
+await op("companion.next", { timeout: 0 })
+await editor.getByText("Basil between them").click()
+await page.keyboard.press("Meta+End")
+await page.keyboard.type("\n@")
+const listed = await until(async () => (await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()).join(" "), 3000)
+check("@: the agents around are listed, the companion first", /^claude.*ada/s.test(listed ?? ""), listed)
+await page.keyboard.type("ada is basil a perennial?\n")
+r = await until(async () => { const x = await op("companion.next", { timeout: 2, as: "Ada" }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
+check("@ada: the ask reaches Ada", r?.moments.some((m) => m.kind === "ask" && m.text === "is basil a perennial?" && m.for === "Ada"), r)
+const ada = page.locator('.companion-cursor[data-agent="Ada"]')
+await until(async () => (await ada.getAttribute("data-state")) === "thinking", 3000)
+check("@ada: Ada thinks, Claude doesn't", (await ada.getAttribute("data-state")) === "thinking" && (await cursor.getAttribute("data-state")) !== "thinking")
+r = await op("companion.next", { timeout: 0 })
+check("@ada: Claude isn't asked", !r.moments.some((m) => m.kind === "ask"), r)
+await op("companion.say", { text: "No, an annual.", as: "Ada" })
+await page.screenshot({ path: `${OUT}two.png` })
+
 // Ask command: starts an @claude line.
 await editor.getByText("Basil between them").click()
 await page.keyboard.press("End")

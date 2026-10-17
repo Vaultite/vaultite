@@ -15,7 +15,9 @@ export type Hunk = { line: number; added: string[]; removed: string[] }
 /** What the user did, as an agent sees it. ask: they addressed it (@claude in a note, Ask companion); edit and open only in
  *  notice and pair; reply, accept, reject, dismiss: their answer to one of its items. */
 export type Moment = { seq: number; t: number; kind: "ask" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
-  path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string }
+  path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
+  /** The agent it's for (an ask to @name, an answer to its item); none (edit, open): the companion and agents that watch. */
+  for?: string }
 /** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`). */
 export type Target = { path?: string; line?: number; find?: string }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change. */
@@ -50,12 +52,16 @@ const nameOf = (agent: string) => {
 
 // ---------- state ----------
 
+// (agents are keyed by their name in lower case: @ada and --as Ada are the same one)
 const moments: Moment[] = []
 let seq = 0
 const delivered = new Map<string, number>() // agent -> last seq it was given
 const handed = new Set<string>() // agents given moments they haven't acted on yet
 const waiters = new Map<string, (m: Moment[]) => void>() // agent -> its waiting `next`
 const agents = new Map<string, Agent>()
+const seen = new Map<string, number>() // agent -> when it last ran `next`
+const watching = new Set<string>() // agents besides the companion that asked for edit and open moments
+const loaded = Date.now(), LIVE_MS = 10 * 60_000
 const notes = new Map<string, Note>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let nid = 0
@@ -72,6 +78,18 @@ const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.s
 const broadcast = (m: object) => { const text = JSON.stringify(m); for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text) }
 const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()] })
 
+const key = (name: string) => name.trim().toLowerCase()
+const isMain = (name: string) => key(name) === key(ownName())
+/** An agent still around: waiting for moments, or it waited a moment ago. */
+const live = (name: string) => waiters.has(key(name)) || Date.now() - (seen.get(key(name)) ?? 0) < LIVE_MS
+/** Who an ask to @name is for: that agent when it's around, else the companion (@claude, @companion, a name gone). */
+export function addressee(name?: string) {
+  const a = name ? agents.get(key(name)) : undefined
+  return a && a.state !== "away" && live(a.name) ? a.name : ownName()
+}
+/** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch. */
+const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) : isMain(name) || watching.has(key(name)))
+
 /** Where the user is: the window they used last. */
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at)[0]?.focus ?? null
 
@@ -81,6 +99,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   if (md === "off") return null
   if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
   const full = { ...m, seq: ++seq, t: m.t ?? Date.now() } as Moment
+  if (m.kind === "edit" || m.kind === "open") delete full.for
+  else full.for = addressee(m.for)
   log.append(full.t, [full])
   // (more of the same lines before any agent saw the last: one moment)
   const last = moments[moments.length - 1]
@@ -88,8 +108,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   if (merged) { Object.assign(last, { hunks: merged, t: full.t }); return last }
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
-  for (const [name, wake] of waiters) { waiters.delete(name); wake([full]) }
-  if (m.kind === "ask" || m.kind === "reply") for (const a of agents.values()) setAgent(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) })
+  for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
+  if (full.for && (m.kind === "ask" || m.kind === "reply")) setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) })
   return full
 }
 
@@ -103,18 +123,18 @@ export function mergeHunks(a: Hunk[], b: Hunk[]): Hunk[] | null {
 
 /** The agent named `name`, made the first time it acts (its tint the next free one, Claude orange, Codex blue). */
 function agentOf(name: string): Agent {
-  let a = agents.get(name)
+  let a = agents.get(key(name))
   if (!a) {
     const used = new Set([...agents.values()].map((x) => x.tint))
     const want = /claude/i.test(name) ? "orange" : /codex/i.test(name) ? "blue" : null
     const tint = want && !used.has(want) ? want : TINTS.find((t) => !used.has(t)) ?? TINTS[agents.size % TINTS.length]
     a = { name, tint, state: "watching", t: Date.now() }
-    agents.set(name, a)
+    agents.set(key(name), a)
   }
   return a
 }
 function setAgent(name: string, change: Partial<Agent>) {
-  if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(name)
+  if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(key(name))
   const a = Object.assign(agentOf(name), { seen: undefined }, change, { t: Date.now() })
   broadcast({ t: "agent", agent: a })
   return a
@@ -286,7 +306,7 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
     broadcast({ t: "note", note: n })
     if (KEPT.has(n.kind) && n.path) save(n.path)
   } else dropNote(id)
-  addMoment({ kind: verdict, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) })
+  addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) })
 }
 
 plugin.onUnload(() => {
@@ -315,7 +335,7 @@ plugin.socket("companion/live", (ws) => {
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
     } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "edit"].includes(m.kind)) {
       w.at = Date.now()
-      addMoment({ kind: m.kind as "ask" | "edit", path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
+      addMoment({ kind: m.kind as "ask" | "edit", for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
         selection: str(m.selection) || undefined, hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined })
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined)
@@ -382,37 +402,61 @@ const lineText = (p: string, n: number) => { try { return readText(plugin.vault.
 
 /** What its session runs unasked: its own commands and reading the vault. */
 const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview"]
-const sessionFile = () => `${plugin.localDir()}/session.json`
-const sessionId = (): string | null => { try { return JSON.parse(fs.readFileSync(sessionFile(), "utf8")).id ?? null } catch { return null } }
+// The companion's session is session.json; another agent started by name (start --as Ada) is session-ada.json.
+const sessionFile = (name?: string | null) => `${plugin.localDir()}/${name && !isMain(name) ? `session-${key(name)}` : "session"}.json`
+const sessionId = (name?: string | null): string | null => { try { return JSON.parse(fs.readFileSync(sessionFile(name), "utf8")).id ?? null } catch { return null } }
+/** Every session started here: the companion's (its name) and the others'. */
+function sessions(): { name: string; id: string }[] {
+  let files: string[] = []
+  try { files = fs.readdirSync(plugin.localDir()).filter((f) => /^session(-[\w-]+)?\.json$/.test(f)) } catch { /* none yet */ }
+  return files.flatMap((f) => {
+    try {
+      const s = JSON.parse(fs.readFileSync(`${plugin.localDir()}/${f}`, "utf8"))
+      return typeof s.id === "string" ? [{ name: f === "session.json" ? ownName() : str(s.name), id: s.id }] : []
+    } catch { return [] }
+  })
+}
 const running = async (id: string | null) => !!id && !!(await plugin.ask<boolean>("terminal:runs", false, id))
+const nextCmd = (name: string) => `vau companion next --timeout 240${isMain(name) ? "" : ` --as ${name}`}`
 
-async function start(ctx: OpCtx) {
-  const was = sessionId()
-  if (await running(was)) return { id: was!, running: true }
-  const id = newTerminalId(agentSetting())
-  await startAgent(ctx, id, setting("prompt"), ALLOW)
-  fs.writeFileSync(sessionFile(), JSON.stringify({ id, t: Date.now() }))
-  lastAsk = Date.now()
-  return { id, running: false }
+async function start(ctx: OpCtx, as?: string, agent?: string) {
+  const name = as?.trim() || ownName()
+  if (!/^[\w-]{1,30}$/.test(name)) throw new OpError("a name is one word (letters, digits, - or _): it's what @ calls it by")
+  const was = sessionId(name)
+  if (await running(was)) return { id: was!, running: true, name }
+  const id = newTerminalId(agent || agentSetting())
+  const prompt = isMain(name) ? setting("prompt")
+    : `${setting("prompt")} Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`
+  await startAgent(ctx, id, prompt, ALLOW)
+  fs.writeFileSync(sessionFile(name), JSON.stringify({ id, name, t: Date.now() }))
+  seen.set(key(name), Date.now())
+  setAgent(name, { state: "watching" })
+  return { id, running: false, name }
 }
 
-async function stop() {
-  const id = sessionId()
-  try { fs.rmSync(sessionFile()) } catch { /* none */ }
-  if (await running(id)) await plugin.runOp("terminal.end", { id })
-  for (const a of agents.values()) setAgent(a.name, { state: "away" })
-  return { id }
+/** End a session (the companion's by default), or every one. */
+async function stop(as?: string, all = false) {
+  const gone = all ? sessions() : [{ name: as?.trim() || ownName(), id: sessionId(as) ?? "" }]
+  for (const s of gone) {
+    try { fs.rmSync(sessionFile(s.name)) } catch { /* none */ }
+    if (await running(s.id)) await plugin.runOp("terminal.end", { id: s.id })
+  }
+  for (const a of agents.values()) if (all || gone.some((s) => key(s.name) === key(a.name))) setAgent(a.name, { state: "away" })
+  return { id: gone[0]?.id || null }
 }
 
-// A session whose turn ended stops watching: nudged back when nobody has waited on moments for a while.
-let lastAsk = 0
+// A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. Another agent
+// quiet that long is away (asks to it go to the companion).
 const NUDGE = 5 * 60_000
 const watchdog: ReturnType<typeof setInterval> | null = setInterval(async () => {
-  if (plugin.isOff() || mode() === "off" || waiters.size || Date.now() - lastAsk < NUDGE) return
-  const id = sessionId()
-  if (!(await running(id))) return
-  lastAsk = Date.now()
-  await plugin.runOp("terminal.send", { id, text: "Keep watching: run `vau companion next --timeout 240` again, and never end your turn." }).catch(() => {})
+  if (plugin.isOff() || mode() === "off") return
+  for (const a of agents.values()) if (!isMain(a.name) && a.state !== "away" && !live(a.name)) setAgent(a.name, { state: "away" })
+  for (const s of sessions()) {
+    const k = key(s.name)
+    if (waiters.has(k) || Date.now() - (seen.get(k) ?? loaded) < NUDGE || !(await running(s.id))) continue
+    seen.set(k, Date.now())
+    await plugin.runOp("terminal.send", { id: s.id, text: `Keep watching: run \`${nextCmd(s.name)}\` again, and never end your turn.` }).catch(() => {})
+  }
 }, 60_000)
 watchdog.unref?.()
 
@@ -429,7 +473,8 @@ function target(p: Record<string, unknown>): Target {
   if (!path) throw new OpError("the user has no file open: give path")
   return { path, ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}) }
 }
-const who = (p: Record<string, unknown>) => str(p.as).trim() || ownName()
+/** The agent acting: --as (as it was first called), else the companion. */
+const who = (p: Record<string, unknown>) => { const n = str(p.as).trim(); return n ? agents.get(key(n))?.name ?? n : ownName() }
 
 plugin.op({
   id: "companion.next",
@@ -441,7 +486,8 @@ they changed after a pause (notice and pair modes). open: they went to a note. r
 answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
 text around them, numbered: no need to read it again. While you wait your cursor rests; given moments, it shows you
 reading (thinking, for an ask) there until you act, or run this again: the user sees a seen tick. Run it again after
-acting, forever.
+acting, forever. With several agents (--as), each gets the asks to its @name and answers to its items; edit and open go
+to the companion, or to an agent with --watch.
 
   vau companion next --timeout 240`,
   kind: "read",
@@ -450,35 +496,38 @@ acting, forever.
     timeout: { type: "integer", minimum: 0, maximum: 240, default: 100, description: "seconds to wait for a moment" },
     after: { type: "integer", minimum: 0, description: "only moments after this one (default: after the last you were given)" },
     as: AS,
+    watch: { type: "boolean", description: "also get edit and open moments (notice, pair), which only the companion gets otherwise" },
   },
   run: async (p, ctx) => {
-    const name = who(p)
-    lastAsk = Date.now()
+    const name = who(p), k = key(name)
+    seen.set(k, Date.now())
+    if (p.watch) watching.add(k)
+    else watching.delete(k)
     did(name, "next")
-    const a = agentOf(name)
+    const joined = !agents.has(k), a = agentOf(name)
     // (back without acting on what it was handed: it let it pass, which the user sees as a tick)
-    if (handed.has(name)) setAgent(name, { state: "watching", seen: true })
-    else if (a.state === "away" || a.state === "writing") setAgent(name, { state: "watching" })
-    const after = p.after ?? delivered.get(name) ?? Math.max(0, seq - 20)
-    let got = moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000)
+    if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
+    else if (joined || a.state === "away" || a.state === "writing") setAgent(name, { state: "watching" })
+    const after = p.after ?? delivered.get(k) ?? Math.max(0, seq - 20)
+    let got = moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000 && meantFor(m, name))
     if (!got.length && p.timeout > 0) {
-      waiters.get(name)?.([])
+      waiters.get(k)?.([])
       got = await new Promise<Moment[]>((resolve) => {
-        const timer = setTimeout(() => { if (waiters.get(name) === wake) waiters.delete(name); resolve([]) }, p.timeout * 1000)
+        const timer = setTimeout(() => { if (waiters.get(k) === wake) waiters.delete(k); resolve([]) }, p.timeout * 1000)
         const wake = (m: Moment[]) => { clearTimeout(timer); resolve(m) }
-        waiters.set(name, wake)
+        waiters.set(k, wake)
       })
-      lastAsk = Date.now()
+      seen.set(k, Date.now())
     }
     if (got.length) {
-      delivered.set(name, got[got.length - 1].seq)
+      delivered.set(k, got[got.length - 1].seq)
       did(name, "handed", got.map((m) => m.seq))
       const at = [...got].reverse().find((m) => m.path)
       setAgent(name, { state: got.some((m) => m.kind === "ask" || m.kind === "reply") ? "thinking" : "reading",
         ...(at ? { path: at.path, line: at.line, find: undefined } : {}) })
-      handed.add(name)
+      handed.add(k)
     }
-    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(name) ?? after, notes: await excerpts(ctx, got) }
+    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got) }
   },
   text: (r) => momentsText(r.moments, r.mode, r.focus, r.notes),
 })
@@ -695,16 +744,22 @@ plugin.op({
 plugin.op({
   id: "companion.status",
   cli: "companion status",
-  summary: "What the companion is: its mode, its session, the agents in the app and what they left there.",
+  summary: "What the companion is: its mode, its sessions, the agents in the app and what they left there.",
   kind: "read",
   params: {},
   run: async () => {
     const id = sessionId()
+    const all = await Promise.all(sessions().map(async (s) => ({ ...s, running: await running(s.id) })))
     return { mode: mode(), name: ownName(), session: (await running(id)) ? id : null, windows: windows.size, focus: focus(),
-      agents: [...agents.values()], notes: [...notes.values()], moments: moments.slice(-10) }
+      sessions: all.filter((s) => s.running).map(({ name, id }) => ({ name, id })),
+      agents: [...agents.values()].map((a) => ({ ...a, live: a.state !== "away" && live(a.name), watch: isMain(a.name) || watching.has(key(a.name)) })),
+      notes: [...notes.values()], moments: moments.slice(-10) }
   },
   text: (r) => [`Mode: ${r.mode}. Session: ${r.session ?? "not running"}. Windows: ${r.windows}.`,
-    ...r.agents.map((a: Agent) => `- ${a.name} (${a.tint}): ${a.state}${a.path ? ` at ${a.path}${a.line ? `:${a.line}` : ""}` : ""}`),
+    ...r.agents.map((a: Agent & { live: boolean }) => {
+      const s = r.sessions.find((x: { name: string }) => key(x.name) === key(a.name))
+      return `- ${a.name} (${a.tint})${isMain(a.name) ? ", the companion" : ""}: ${a.live || isMain(a.name) ? a.state : "away"}${a.path ? ` at ${a.path}${a.line ? `:${a.line}` : ""}` : ""}${s ? `, session ${s.id}` : ""}`
+    }),
     ...r.notes.map((n: Note) => `- ${n.id} ${n.kind} by ${n.agent}${n.path ? ` in ${n.path}` : ""}: ${cut(n.text ?? n.replace ?? n.find ?? "", 80)}`)].join("\n"),
 })
 
@@ -712,26 +767,31 @@ plugin.op({
   id: "companion.start",
   cli: "companion start",
   owner: "a coding agent",
-  summary: "Start the companion's always-on session (its agent, in a terminal on this machine), unless it runs.",
+  summary: "Start the companion's always-on session (its agent, in a terminal on this machine), or another agent's by name.",
+  help: `With --as, another agent joins under that name, with its own cursor colour: @name in a note asks it.
+
+  vau companion start
+  vau companion start --as Ada --agent codex`,
   kind: "write",
   lock: false,
-  params: {},
-  run: async (_p, ctx) => {
+  params: { as: { type: "string", description: "start another agent under this name (one word; default: the companion)" },
+    agent: { type: "string", description: "the coding agent it runs (claude, codex, claude_personal...; default: the setting)" } },
+  run: async (p, ctx) => {
     if (mode() === "off") await plugin.patchSettings({ mode: "quiet" })
-    return await start(ctx)
+    return await start(ctx, str(p.as), str(p.agent))
   },
-  text: (r) => `${r.running ? "Already running" : "Started"} in ${r.id} (vau terminal screen ${r.id}).`,
+  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name} in ${r.id} (vau terminal screen ${r.id}).`,
 })
 
 plugin.op({
   id: "companion.stop",
   cli: "companion stop",
   owner: "the terminal",
-  summary: "End the companion's session; its cursor goes away until it starts again.",
+  summary: "End the companion's session (or another agent's, by name); its cursor goes away until it starts again.",
   kind: "write",
   lock: false,
-  params: {},
-  run: async () => await stop(),
+  params: { as: { type: "string", description: "the agent started with start --as (default: the companion)" }, all: { type: "boolean", description: "every session" } },
+  run: async (p) => await stop(str(p.as), !!p.all),
   text: (r) => (r.id ? `Ended ${r.id}.` : "It wasn't running."),
 })
 
@@ -822,7 +882,7 @@ plugin.onSync((vault) => {
   const now = `${mode()}\n${ownName()}`
   if (now === lastSaid) return
   // (turned off: its session ends too)
-  if (lastSaid && mode() === "off") void stop().catch(() => {})
+  if (lastSaid && mode() === "off") void stop(undefined, true).catch(() => {})
   lastSaid = now
   broadcast(snapshot())
 })

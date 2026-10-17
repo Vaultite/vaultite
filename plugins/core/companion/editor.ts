@@ -1,9 +1,10 @@
 // The companion in a note's editor: what the user writes said after a pause (and at once for "@claude …"), the agents'
 // highlights, comments' anchors and suggestions drawn in the text, Tab and Esc for a suggestion, and edits typed in.
-import { Annotation, ChangeSet, type EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
+import type { CompletionContext } from "@codemirror/autocomplete"
+import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { pluginSettings, type EditorCtx } from "@vaultite"
-import { accept, answer, bump, type EditAsk, getState, hunksOf, mentionIn, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { accept, answer, bump, type EditAsk, getState, hunksOf, liveAgents, MENTION_AT, mentionIn, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 
 /** Its own changes: not the user's, so not said back as theirs. */
 const own = Annotation.define<boolean>()
@@ -190,7 +191,7 @@ function watcher(path: string) {
             if (!inserted.toString().includes("\n")) return
             const line = tr.state.doc.lineAt(fromB)
             const ask = mentionIn(line.text)
-            if (ask && getState().mode !== "off") sendMoment({ kind: "ask", path, line: line.number, text: ask })
+            if (ask && getState().mode !== "off") sendMoment({ kind: "ask", agent: ask.name, path, line: line.number, text: ask.text })
           })
           continue
         }
@@ -243,6 +244,15 @@ const theme = EditorView.baseTheme({
   "@keyframes cm-companion-fade": { "0%, 40%": {}, "100%": { backgroundColor: "transparent" } },
 })
 
+/** @ where a line can ask an agent: the agents around now, the companion first. */
+function mentions(ctx: CompletionContext) {
+  const m = ctx.matchBefore(/@[\w-]*$/)
+  if (!m || getState().mode === "off" || !MENTION_AT.test(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
+  const names = liveAgents().map((a) => a.name)
+  return { from: m.from + 1, validFor: /^[\w-]*$/,
+    options: (names.length ? names : [getState().name]).map((n) => ({ label: n.toLowerCase(), detail: n === getState().name ? "companion" : undefined, boost: n === getState().name ? 1 : 0, apply: `${n.toLowerCase()} ` })) }
+}
+
 /** The extension for a note's editor (only a file's own: an embed or a field has no path). */
 export function companionExtension(ctx: EditorCtx): Extension {
   if (ctx.kind !== "markdown" || !ctx.path) return []
@@ -251,5 +261,5 @@ export function companionExtension(ctx: EditorCtx): Extension {
     { key: "Tab", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
     { key: "Escape", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
   ]))
-  return [typed, typingAt, watcher(path), keys, theme]
+  return [typed, typingAt, watcher(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions }])]
 }

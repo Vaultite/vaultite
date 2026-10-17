@@ -151,6 +151,42 @@ export default async ($: VaultTest) => {
     const [, got] = await api("POST", "ops/companion.next", { timeout: 2 })
     check("companion replay: recorded moments come again, in order", st === 200 && r.replaying === 2 && got.moments.map((m: Any) => m.text).join() === "first,second", [r, got])
   }
+  {
+    // Several agents: an ask goes to the one named after @, an answer to its item's agent, edit and open to the companion.
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    await api("POST", "ops/companion.look", { path: "Notes/A.md", line: 1 })
+    await api("POST", "ops/companion.next", { timeout: 0, as: "Ada" })
+    const ada = api("POST", "ops/companion.next", { timeout: 5, as: "ada" })
+    await $.sleep(50)
+    c.addMoment({ kind: "ask", for: "ADA", path: "Notes/A.md", line: 3, text: "for Ada" })
+    let [, got] = await ada
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: @ada is an ask for Ada alone, who shows thinking (any case)", got.moments.length === 1 && got.moments[0].text === "for Ada" &&
+      r.agents.find((a: Any) => a.name === "Ada")?.state === "thinking" && r.agents.find((a: Any) => a.name === "Claude")?.state !== "thinking", [got, r.agents])
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: and the companion doesn't get it", !got.moments.some((m: Any) => m.text === "for Ada"), got)
+    c.addMoment({ kind: "ask", for: "bob", text: "who?" })
+    c.addMoment({ kind: "ask", text: "plain" })
+    c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] })
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    const [, adaGot] = await api("POST", "ops/companion.next", { timeout: 0, as: "Ada" })
+    check("companion: an unknown name and no name go to the companion, edits too; Ada gets none", got.moments.map((m: Any) => m.text ?? m.kind).join() === "who?,plain,edit" &&
+      adaGot.moments.length === 0, [got, adaGot])
+    await api("POST", "ops/companion.next", { timeout: 0, as: "Ada", watch: true })
+    c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] })
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0, as: "Ada", watch: true })
+    check("companion: an agent with watch gets edits too", got.moments.some((m: Any) => m.kind === "edit"), got)
+    ;[, r] = await api("POST", "ops/companion.comment", { path: "Notes/A.md", find: "Alice", text: "From Ada", as: "Ada" })
+    c.answer(r.id, "reply", "Thanks Ada")
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0, as: "Ada" })
+    const [, mainGot] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: a reply goes to the agent whose comment it is", got.moments.some((m: Any) => m.kind === "reply" && m.text === "Thanks Ada") &&
+      !mainGot.moments.some((m: Any) => m.kind === "reply"), [got, mainGot])
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: status lists Ada, joined, in a colour of its own", r.agents.some((a: Any) => a.name === "Ada" && a.live && a.tint !== "orange") &&
+      (await api("POST", "ops/companion.status", {}))[1].agents.length === 2, r.agents)
+    check("companion: an agent's name is one word", (await api("POST", "ops/companion.start", { as: "two words" }))[0] >= 400)
+  }
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)
 }

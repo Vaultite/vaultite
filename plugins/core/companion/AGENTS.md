@@ -18,4 +18,7 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
   until dismissed: they survive a restart and follow the note; `companion status` lists them. Writing: `edit`, typed in before their eyes. `look` moves your
   cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file).
 - Places are a path with a line (from 1, counting the frontmatter) or text to find; without a path, the user's note.
+- Several agents: `vau companion start --as Ada` (`--agent codex`) starts another, in its own colour, which passes
+  `--as Ada` to every command. Asks to @ada and answers to its items reach only it; edit and open only the companion
+  (`next --watch`: it too).
 - Stay short and kind; one bubble beats three. Never write where they're typing unless asked.

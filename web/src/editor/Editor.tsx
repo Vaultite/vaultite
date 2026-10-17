@@ -18,7 +18,7 @@ import { bodyStart, frontmatter, frontmatterSyntax, hiddenFrontmatter, withBodyL
 import { slashSource } from "./slash"
 import { blockOptionSource } from "./blockOptions"
 import { highlightSource, optionDot } from "./highlights"
-import { pickLink, quiet, suggestKeys } from "./suggest"
+import { pickLink, pluginSuggest, quiet, suggestKeys } from "./suggest"
 import { numberGutter } from "./numbers"
 import { keepState, keptKey, keptState } from "./kept"
 import { blockFor } from "@/core/plugins"
@@ -373,7 +373,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
           suggestKeys,
           autocompletion({
-            override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource].map(quiet),
+            override: [complete, slashSource(() => cb.current.slash?.() ?? []), blockOptionSource((name) => blockFor(name, getPrefs().disabled).decl), highlightSource, pluginSuggest].map(quiet),
             icons: false, addToOptions: [{ render: optionDot, position: 20 }],
           }),
           keymap.of([
