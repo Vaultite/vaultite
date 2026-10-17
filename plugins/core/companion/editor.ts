@@ -188,7 +188,7 @@ function watcher(path: string) {
     }
     update(u: ViewUpdate) {
       if (u.docChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refresh)))) this.decorations = decorate(u.view, path)
-      if (u.docChanged || u.geometryChanged || u.viewportChanged) bump()
+      if (u.docChanged || u.geometryChanged || u.viewportChanged || u.selectionSet || u.focusChanged) bump()
       if (u.focusChanged || (u.selectionSet && u.state.doc.lineAt(u.state.selection.main.head).number !== u.startState.doc.lineAt(u.startState.selection.main.head).number)) {
         if (this.whereTimer) clearTimeout(this.whereTimer)
         this.whereTimer = setTimeout(() => sayWhere(u.view.hasFocus), u.focusChanged ? 0 : 800)
