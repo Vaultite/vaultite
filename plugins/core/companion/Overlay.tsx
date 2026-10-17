@@ -115,10 +115,11 @@ function Card({ n, x, y, folded, cap, onHeight }: { n: Note; x: number; y: numbe
   }
   const send = () => { const t = draft.trim(); if (t) answer(n.id, "reply", t); setDraft(""); setReplying(false) }
   return (
-    <div ref={keep} data-companion-note={n.id} className="companion-pop pointer-events-auto absolute top-0 left-0 flex w-[212px] flex-col rounded-[10px] border border-border/60 bg-background text-[13px] leading-snug shadow-md"
-      style={{ transform: `translate(${folded ? x - 198 : x}px, ${folded ? y + 24 : y}px)`, transition: "transform .25s ease-out", borderLeft: `3px solid ${tint}`, maxHeight: cap }}>
+    <div ref={keep} data-companion-note={n.id} className="companion-pop pointer-events-auto absolute top-0 left-0 flex w-[212px] flex-col rounded-[10px] border border-border/60 bg-background pl-1.5 text-[13px] leading-snug shadow-md"
+      style={{ transform: `translate(${folded ? x - 198 : x}px, ${folded ? y + 24 : y}px)`, transition: "transform .25s ease-out", maxHeight: cap }}>
+      {/* (its colour as a straight bar clear of the rounded corners, not a border bent around them) */}
+      <span aria-hidden className="absolute inset-y-2.5 left-[3px] w-[3px] rounded-full" style={{ background: tint }} />
       <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2 text-[11.5px] font-semibold text-muted-foreground">
-        <span className="size-2 rounded-full" style={{ background: tint }} />
         <span className="min-w-0 flex-1 truncate">{n.agent}{n.kind === "suggestion" ? " suggests" : ""}</span>
         <button type="button" aria-label={n.kind === "suggestion" ? "Reject" : "Dismiss"} data-tip={n.kind === "suggestion" ? `Reject (${keyHint("Escape")})` : "Dismiss"}
           className="grid size-5 cursor-pointer place-items-center rounded hover:bg-foreground/[0.07]"
