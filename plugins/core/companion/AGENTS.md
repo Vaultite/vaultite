@@ -14,7 +14,8 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - Modes: quiet (only asks reach you), notice (also `edit` and `open` after a pause: speak only when it clearly helps),
   pair (you may also write in their notes with `companion edit`).
 - Words by your cursor: `say` (gone after a while). What should stay: `comment`, by a line, which they can reply to.
-  A change they decide on: `suggest` (Tab takes it). Writing: `edit`, typed in before their eyes. `look` moves your
+  A change they decide on: `suggest` (Tab takes it). Both are kept beside the note (`.vaultite/plugins/companion/comments/`)
+  until dismissed: they survive a restart and follow the note; `companion status` lists them. Writing: `edit`, typed in before their eyes. `look` moves your
   cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file).
 - Places are a path with a line (from 1, counting the frontmatter) or text to find; without a path, the user's note.
 - Stay short and kind; one bubble beats three. Never write where they're typing unless asked.

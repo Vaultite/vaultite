@@ -62,8 +62,8 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "requests", deps: ["pages","bundles"] },
   { name: "token-count", deps: ["pages"] },
   { name: "installs", deps: ["pages","vault-plugins","cli"] },
+  { name: "companion", deps: ["pages"] },
   { name: "start", deps: ["pages"] },
   { name: "resilience", deps: ["pages"] },
   { name: "treewatch", deps: ["pages"] },
-  { name: "companion", deps: ["pages"] },
 ]

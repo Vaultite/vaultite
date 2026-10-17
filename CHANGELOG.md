@@ -11,7 +11,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   suggests changes you take with Tab, or types into the note with you. Modes: quiet, notice, pair. Its cursor shows it
   reading what you did, and a tick when it saw it and let it pass. `vau companion timings` shows how fast it answered
   each moment. Margin cards scroll with the note, which keeps room under its text for the lowest; a long card scrolls
-  inside, its Reply always in reach.
+  inside, its Reply always in reach. Its comments and suggestions are kept beside the note, so they survive a restart,
+  follow the note and reach your other devices.
 - Highlights take Obsidian's six colours: `==🟢text==` draws green (🔴 🟠 🟡 🟢 🔵 🟣) everywhere a note is drawn, the
   emoji hidden. Typing `==` suggests the colours, a swatch on the highlight at the cursor changes its colour, and the
   editor's Format ▸ Highlight submenu colours what's selected.

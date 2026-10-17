@@ -1,7 +1,7 @@
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { api, check, read, write } = $
+  const { api, check, exists, read, write } = $
   // Companion (plugins/core/companion): moments in, ops out; the windows' socket is QA's (web/qa/companion.mjs).
   const c = await import("../../../plugins/core/companion/plugin.ts")
   check("companion: text found nearest the line it was said to be on", c.nearest("a\nx\nb\nx\n", "x", 4) === 6 && c.nearest("a\nx\nb\nx\n", "x") === 2 && c.nearest("abc", "z") === -1)
@@ -84,6 +84,53 @@ export default async ($: VaultTest) => {
   check("companion: a kept highlight is in the file in its colour", st === 200 && read("Notes/A.md").includes("==🟠Tuesday=="), [st, read("Notes/A.md")])
   ;[st, r] = await api("POST", "ops/companion.edit", { path: "Notes/A.md", find: "Wednesday", text: "x" })
   check("companion: an edit of text that isn't there says so", st >= 400 && /isn't in the file/.test(JSON.stringify(r)), [st, r])
+
+  {
+    // Comments and suggestions kept: a sidecar per note, read again when the server starts or another machine writes it.
+    const side = (p: string) => `.vaultite/plugins/companion/comments/${p}.json`
+    const kept = (p: string) => (exists(side(p)) ? JSON.parse(read(side(p))).comments : null)
+    const status = async () => (await api("POST", "ops/companion.status", {}))[1].notes as Any[]
+    check("companion: an item's line follows its text, or its line's text; gone, null",
+      c.anchorLine("x\na\nb\n", { find: "b", line: 2 }) === 3 && c.anchorLine("x\ny\na\n", { anchor: "a", line: 1 }) === 3 &&
+      c.anchorLine("x\n", { find: "b", line: 1 }) === null && c.anchorLine("x\ny\n", { line: 9 }) === 2)
+    write("Kept/K.md", "# K\n\nMeet Bob\nPlan the trip\n")
+    let [, cm] = await api("POST", "ops/companion.comment", { path: "Kept/K.md", find: "Bob", text: "Bob is in Lisbon." })
+    const [, ln] = await api("POST", "ops/companion.comment", { path: "Kept/K.md", line: 4, text: "Which trip?" })
+    const [, sg] = await api("POST", "ops/companion.suggest", { path: "Kept/K.md", find: "Plan", replace: "Book" })
+    await api("POST", "ops/companion.comment", { id: cm.id, text: "Back on Friday." })
+    c.answer(cm.id, "reply", "Thanks")
+    let k = kept("Kept/K.md")
+    check("companion: comments and suggestions are kept in the note's sidecar, replies too", k?.length === 3 && !("path" in k[0]) &&
+      k.find((n: Any) => n.id === cm.id)?.replies?.map((r: Any) => r.text).join() === "Back on Friday.,Thanks" && k.find((n: Any) => n.id === ln.id)?.anchor === "Plan the trip", k)
+    c.loadAll(true)
+    check("companion: and read again as the server starts", (await status()).filter((n) => n.path === "Kept/K.md").map((n) => n.id).sort().join() === [cm.id, ln.id, sg.id].sort().join())
+    write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet Bob\nPlan the trip\n")
+    c.loadAll()
+    k = kept("Kept/K.md")
+    check("companion: lines written above move them with their text", k.find((n: Any) => n.id === cm.id).line === 5 && k.find((n: Any) => n.id === ln.id).line === 6, k)
+    write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet\n")
+    c.loadAll()
+    k = kept("Kept/K.md")
+    check("companion: their text gone, a comment stays by its last line, a suggestion goes", k.length === 2 && k.find((n: Any) => n.id === cm.id).line === 5 &&
+      k.find((n: Any) => n.id === ln.id).line === 5 && !(await status()).some((n) => n.id === sg.id), k)
+
+    write(side("Kept/K.md"), JSON.stringify({ comments: [...k, { id: "nzz1", kind: "comment", agent: "Claude", t: 1, text: "From the phone", line: 1 }] }))
+    $.app.changed([side("Kept/K.md")])
+    check("companion: a sidecar another machine wrote is read again", (await status()).some((n) => n.id === "nzz1" && n.path === "Kept/K.md"))
+
+    await api("POST", "ops/file.move", { from: "Kept/K.md", to: "Kept/Sub/L.md" })
+    check("companion: moved or renamed, the sidecar follows its note", !exists(side("Kept/K.md")) && kept("Kept/Sub/L.md")?.length === 3 &&
+      (await status()).filter((n) => n.path === "Kept/Sub/L.md").length === 3)
+    await api("POST", "ops/file.move", { from: "Kept/Sub", to: "Kept/Moved" })
+    check("companion: and with its folder", kept("Kept/Moved/L.md")?.length === 3 && !exists(side("Kept/Sub/L.md")))
+    const [, del] = await api("DELETE", "file", { path: "Kept/Moved/L.md" })
+    check("companion: deleted, it goes into the trash with it", kept(del.trashed)?.length === 3 && !exists(side("Kept/Moved/L.md")), del)
+    await api("POST", "file/restore", { path: del.trashed })
+    check("companion: and comes back with it", kept("Kept/Moved/L.md")?.length === 3 && !exists(side(del.trashed)))
+    for (const n of await status()) if (n.path === "Kept/Moved/L.md") c.answer(n.id, "dismiss")
+    check("companion: all dismissed, the sidecar and its empty folders go", !exists(side("Kept/Moved/L.md")) && !exists(".vaultite/plugins/companion/comments/Kept"))
+    await api("POST", "ops/companion.next", { timeout: 0 }) // (its replies and dismissals, for the replay's below)
+  }
 
   {
     // The harness: recorded moments sent again, spaced as they came (faster with speed).

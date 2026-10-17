@@ -1,9 +1,11 @@
-// Companion: one always-on agent session that watches the user write (moments from the app's editors) and answers in the
-// app (its cursor, bubbles, margin comments, suggestions, edits typed in). Live state only: nothing in the vault.
+// Companion: one always-on agent session that watches the user write and answers in the app (its cursor, bubbles,
+// margin comments, suggestions, edits typed in). Comments and suggestions are kept in a sidecar per note; the rest is live.
 import fs from "node:fs"
+import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { agentName, newTerminalId, startAgent } from "../../../core/agents.ts"
 import { localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
+import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -19,9 +21,9 @@ export type Target = { path?: string; line?: number; find?: string }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
- *  a highlight (gone after a while). */
+ *  a highlight (gone after a while). `anchor`: a comment's line as it read, to find it again without `find`. */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
-  text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[] }
+  text?: string; replace?: string; anchor?: string; replies?: { by: "user" | "agent"; text: string }[] }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it. */
@@ -106,17 +108,162 @@ function setAgent(name: string, change: Partial<Agent>) {
   return a
 }
 
+/** A new item's id: short to type, and random so one kept by another machine's server isn't taken. */
+function newId() {
+  let id: string
+  do id = `n${Math.random().toString(36).slice(2, 6)}`; while (notes.has(id))
+  return id
+}
+
 function putNote(n: Omit<Note, "id" | "t">, ttl?: number) {
-  const note: Note = { ...n, id: `n${++nid}`, t: Date.now() }
+  const note: Note = { ...n, id: newId(), t: Date.now() }
   notes.set(note.id, note)
   broadcast({ t: "note", note })
   if (ttl) timers.set(note.id, setTimeout(() => dropNote(note.id), ttl))
+  if (KEPT.has(note.kind)) save(note.path!)
   return note
 }
 export function dropNote(id: string) {
   clearTimeout(timers.get(id)); timers.delete(id)
-  if (notes.delete(id)) broadcast({ t: "drop", id })
+  const n = notes.get(id)
+  if (!n || !notes.delete(id)) return
+  broadcast({ t: "drop", id })
+  if (KEPT.has(n.kind) && n.path) save(n.path)
 }
+
+// ---------- comments and suggestions kept: a sidecar per note, so they outlive the server and reach other devices
+
+const KEPT = new Set(["comment", "suggestion"])
+const DIR = ".vaultite/plugins/companion/comments"
+const sidecar = (p: string) => `${DIR}/${p}.json`
+/** Each sidecar's text as last written or read: our own writes come back from the watcher. */
+const written = new Map<string, string>()
+const kept = (p: string) => [...notes.values()].filter((n) => n.path === p && KEPT.has(n.kind))
+const lineCount = (text: string) => text.split("\n").length - (text.endsWith("\n") ? 1 : 0)
+const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
+
+/** Write a note's sidecar as its kept items are now; none: the file goes. */
+export function save(p: string) {
+  const rel = sidecar(p), list = kept(p)
+  const text = list.length ? `${JSON.stringify({ comments: list.map(({ path: _, ...n }) => n) }, null, 2)}\n` : ""
+  if (text === (written.get(rel) ?? "")) return
+  const abs = plugin.vault.abs(rel)
+  try {
+    if (text) writeAtomic(abs, text)
+    else {
+      fs.rmSync(abs, { force: true })
+      // (its folders too, once empty)
+      for (let d = path.dirname(abs), top = plugin.vault.abs(DIR); d.startsWith(top) && fs.readdirSync(d).length === 0; d = path.dirname(d)) fs.rmdirSync(d)
+    }
+  } catch (e) { console.error(`companion: couldn't save ${rel}: ${(e as Error).message}`) }
+  if (text) written.set(rel, text); else written.delete(rel)
+}
+
+/** A note's kept items as its sidecar has them now (the server started, or another machine wrote it). */
+function load(p: string) {
+  const rel = sidecar(p), abs = plugin.vault.abs(rel)
+  let text = ""
+  try { text = readText(abs) } catch (e) {
+    // (in iCloud only for now, or unreadable: as it was until it reads)
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT" || fs.existsSync(path.join(path.dirname(abs), `.${path.basename(abs)}.icloud`))) return
+  }
+  if (text === (written.get(rel) ?? "")) return
+  let list: unknown
+  try { list = text ? JSON.parse(text).comments : [] } catch { return }
+  if (!Array.isArray(list)) return
+  if (text) written.set(rel, text); else written.delete(rel)
+  const now = new Map(list.filter((n): n is Note => n && typeof n.id === "string" && KEPT.has(n.kind)).map((n) => [n.id, { ...n, path: p }]))
+  for (const n of kept(p)) if (!now.has(n.id)) { notes.delete(n.id); broadcast({ t: "drop", id: n.id }) }
+  for (const n of now.values()) {
+    if (JSON.stringify(notes.get(n.id)) === JSON.stringify(n)) continue
+    notes.set(n.id, n)
+    broadcast({ t: "note", note: n })
+  }
+}
+
+/** The line an item is on in `text` now: where its find (or anchor line) is nearest its line, null when that's gone. */
+export function anchorLine(text: string, n: Pick<Note, "find" | "anchor" | "line">): number | null {
+  if (n.find) {
+    const i = nearest(text, n.find, n.line)
+    return i < 0 ? null : text.slice(0, i).split("\n").length
+  }
+  const lines = text.split("\n")
+  if (!n.anchor) return Math.max(1, Math.min(n.line ?? 1, lineCount(text)))
+  let best: number | null = null
+  lines.forEach((l, i) => { if (l.trim() === n.anchor && (best === null || Math.abs(i + 1 - (n.line ?? 1)) < Math.abs(best - (n.line ?? 1)))) best = i + 1 })
+  return best
+}
+
+/** A note's kept items found again in its text: a comment whose text is gone stays by its last line, a suggestion goes. */
+function follow(p: string) {
+  const list = kept(p)
+  let text: string
+  try { text = readText(plugin.vault.abs(p)) } catch { return }
+  let changed = false
+  for (const n of list) {
+    const line = anchorLine(text, n) ?? (n.kind === "comment" ? Math.max(1, Math.min(n.line ?? 1, lineCount(text))) : null)
+    if (line === null) { notes.delete(n.id); broadcast({ t: "drop", id: n.id }) } else if (line !== n.line) { n.line = line; broadcast({ t: "note", note: n }) } else continue
+    changed = true
+  }
+  if (changed) save(p)
+}
+// (after a pause: a suggestion just taken is answered before its text is gone from the file)
+const following = new Map<string, ReturnType<typeof setTimeout>>()
+const followSoon = (p: string) => {
+  clearTimeout(following.get(p))
+  following.set(p, setTimeout(() => { following.delete(p); follow(p) }, 2000))
+}
+
+/** Every sidecar read (as when the server starts), and its note's items found again; fresh: memory's forgotten first. */
+export function loadAll(fresh = false) {
+  if (fresh) { for (const n of notes.values()) if (KEPT.has(n.kind)) notes.delete(n.id); written.clear() }
+  const top = plugin.vault.abs(DIR)
+  let files: string[] = []
+  try { files = (fs.readdirSync(top, { recursive: true }) as string[]).filter((f) => f.endsWith(".json")) } catch { /* none yet */ }
+  for (const f of files) {
+    const p = f.split(path.sep).join("/").slice(0, -5)
+    load(p)
+    // (a trashed note's, once it's gone for good from the trash)
+    if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { for (const n of kept(p)) notes.delete(n.id); save(p) } else follow(p)
+  }
+}
+
+let loadedFor: Vault | null = null
+plugin.onChange((paths) => {
+  if (!loadedFor) return
+  if (paths === null) return loadAll()
+  for (const p of paths) {
+    if (p.startsWith(`${DIR}/`) && p.endsWith(".json")) load(p.slice(DIR.length + 1, -5))
+    else if (kept(p).length) {
+      if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { for (const n of kept(p)) dropNote(n.id) } else followSoon(p)
+    }
+  }
+})
+
+// Kept items follow their note: moved, renamed, into the trash and back (even while it's off).
+plugin.onMove((from, to, trashed) => {
+  const dest = to ?? trashed ?? null
+  const there = (p: string) => (dest === null ? null : dest + p.slice(from.length))
+  for (const [a, b] of [[sidecar(from), dest && sidecar(dest)], [`${DIR}/${from}`, dest && `${DIR}/${dest}`]]) {
+    const abs = plugin.vault.abs(a!)
+    if (!fs.existsSync(abs) || (a === `${DIR}/${from}` && !fs.statSync(abs).isDirectory())) continue
+    try {
+      if (b) { fs.mkdirSync(path.dirname(plugin.vault.abs(b)), { recursive: true }); fs.renameSync(abs, plugin.vault.abs(b)) } else fs.rmSync(abs, { recursive: true, force: true })
+    } catch (e) { console.error(`companion: couldn't move ${a}: ${(e as Error).message}`) }
+  }
+  for (const [k, text] of [...written]) {
+    const p = k.slice(DIR.length + 1, -5)
+    if (!under(p, from)) continue
+    written.delete(k)
+    const q = there(p)
+    if (q) written.set(sidecar(q), text)
+  }
+  for (const n of [...notes.values()]) {
+    if (!n.path || !under(n.path, from) || !KEPT.has(n.kind)) continue
+    const q = there(n.path)
+    if (q) { n.path = q; broadcast({ t: "note", note: n }) } else { notes.delete(n.id); broadcast({ t: "drop", id: n.id }) }
+  }
+})
 
 /** The user's answer to an item from the app: a moment for its agent; a suggestion or a dismissed comment goes away. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
@@ -125,12 +272,13 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
   if (verdict === "reply" && text) {
     n.replies = [...(n.replies ?? []), { by: "user", text }]
     broadcast({ t: "note", note: n })
+    if (KEPT.has(n.kind) && n.path) save(n.path)
   } else dropNote(id)
   addMoment({ kind: verdict, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) })
 }
 
 plugin.onUnload(() => {
-  for (const t of timers.values()) clearTimeout(t)
+  for (const t of [...timers.values(), ...following.values()]) clearTimeout(t)
   for (const ws of windows.keys()) ws.close()
   for (const wake of waiters.values()) wake([])
   if (watchdog) clearInterval(watchdog)
@@ -215,6 +363,8 @@ export function nearest(text: string, find: string, line?: number) {
   return best
 }
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
+/** Line `n` (from 1) of a file, trimmed: "" when it can't be read. */
+const lineText = (p: string, n: number) => { try { return readText(plugin.vault.abs(p)).split("\n")[n - 1]?.trim() ?? "" } catch { return "" } }
 
 // ---------- the always-on session
 
@@ -436,12 +586,14 @@ it: with id (the comment's), your words join its thread.
       if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id} (dismissed?)`, 404)
       n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text) }]
       broadcast({ t: "note", note: n })
+      save(n.path!)
       setAgent(name, { path: n.path, line: n.line, find: n.find, state: "watching" })
       return n
     }
     const t = target(p)
     setAgent(name, { ...t, state: "watching" })
-    return putNote({ kind: "comment", agent: name, text: str(p.text), ...t })
+    const anchor = !t.find && t.line ? lineText(t.path!, t.line) : ""
+    return putNote({ kind: "comment", agent: name, text: str(p.text), ...t, ...(anchor ? { anchor } : {}) })
   },
   text: (r) => `Commented (${r.id}).`,
 })
@@ -653,7 +805,8 @@ plugin.op({
 // ---------- a change of settings (mode, name) reaches the windows
 
 let lastSaid = ""
-plugin.onSync(() => {
+plugin.onSync((vault) => {
+  if (loadedFor !== vault) { loadedFor = vault; loadAll(true) }
   const now = `${mode()}\n${ownName()}`
   if (now === lastSaid) return
   // (turned off: its session ends too)
