@@ -203,6 +203,12 @@ export function readLock(vault: Vault): Record<string, Locked> {
   return Object.fromEntries(Object.entries(o).filter(([, v]) => v && typeof v === "object" && typeof (v as Item).source === "string")) as Record<string, Locked>
 }
 
+/** Whether a plugin's folder is as the lock says it was installed (`now`: its digest, when known). A lock written before
+ *  its settings files but data.json were left out of the digest (2026-10) has them in: compat.json isn't an edit. */
+export function asLocked(dir: string, l: Locked, now = digestOf(dir).content) {
+  return now === l.hash || digestOf(dir, true).content === l.hash
+}
+
 function writeLock(vault: Vault, id: string, entry: Locked | null) {
   let cur: Item = {}
   try { cur = vault.readConfig(LOCK) ?? {} } catch { throw new OpError(".vaultite/plugins-lock.json doesn't read: not overwriting it (fix it, or try again)", 409) }

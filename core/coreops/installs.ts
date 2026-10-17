@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { App } from "../app.ts"
-import { diff, fetchSource, type Locked, newer, parseSource, place, readLock, releaseNotes, tagOf, unlock } from "../installs.ts"
+import { asLocked, diff, fetchSource, type Locked, newer, parseSource, place, readLock, releaseNotes, tagOf, unlock } from "../installs.ts"
 import { type Op, OpError } from "../ops.ts"
 import { localDate, localTime } from "../plugins.ts"
 import type { Entry } from "../pluginindex.ts"
@@ -11,7 +11,7 @@ import { disclosed, disclosuresOf } from "../pluginmeta.ts"
 import { autoUpdates, type Update } from "../updates.ts"
 import { compareVersions, tagVersion } from "../version.ts"
 import { settingsFile } from "../rules.ts"
-import { DIR, digestOf } from "../vaultplugins.ts"
+import { DIR } from "../vaultplugins.ts"
 import { notHereYet } from "../writegate.ts"
 import { type Any } from "./common.ts"
 import { strings } from "../values.ts"
@@ -76,7 +76,7 @@ export function installOps(app: App): Op[] {
         const changes = diff(dir, f.dir, was, f.manifest)
         // (a newer commit of a repository of several plugins may not touch this one)
         if (!next.tag && !changes.files.length) { out.push({ id, version: l.version, current: true }); continue }
-        const edited = fs.existsSync(dir) && digestOf(dir).content !== l.hash
+        const edited = fs.existsSync(dir) && !asLocked(dir, l)
         const row: Any = { id, name: String(f.manifest.name ?? id), version: l.version, to: String(f.manifest.version ?? ""), tag: f.tag, commit: f.commit, files: changes.files,
           disclosures: changes.disclosures, edited, applied: false }
         const why = blocked(id, row.to, [l.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])

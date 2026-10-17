@@ -34,7 +34,7 @@ import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
 import { digestOf, VaultPlugins } from "./vaultplugins.ts"
 import * as G from "./grants.ts"
 import { byUser, onItsOwn, runHook, WriteRefused } from "./writegate.ts"
-import { type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
+import { asLocked, type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
 import { autoUpdates } from "./updates.ts"
 import { disclosuresOf, saysMore } from "./pluginmeta.ts"
 import { PluginIndex } from "./pluginindex.ts"
@@ -169,7 +169,7 @@ export class App {
     const vps = this.vaultPlugins
     for (const vp of vps.found.values()) {
       const l = lock[vp.id], a = vps.trust.approval(vp.id)
-      if (!l?.history?.length || !a || a.edits || l.hash !== vp.digest.content || vps.trust.approved(vp.id, vp.digest.content)) continue
+      if (!l?.history?.length || !a || a.edits || !asLocked(vp.dir, l, vp.digest.content) || vps.trust.approved(vp.id, vp.digest.content)) continue
       // (the lock could name another source, and the new version could say it does more: both the user's call)
       if (a.source !== l.source || !a.says || saysMore(a.says, disclosuresOf(vp.manifest))) continue
       if (!vps.enabled().has(vp.id) || vp.problems.length || !autoUpdates(this.vault.config("plugins"), vp.id, l.source)) continue

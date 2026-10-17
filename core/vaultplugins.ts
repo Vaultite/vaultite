@@ -245,6 +245,11 @@ function notCode(dir: string) {
   const own = userFilesOf(dir)
   return (f: string) => settingsFile(path.relative(dir, f)) || own.has(path.relative(dir, f).split(path.sep).join("/"))
 }
+/** What wasn't its code before its other settings files were (2026-10): data.json and its `userFiles`. */
+function notCodeBefore(dir: string) {
+  const own = userFilesOf(dir)
+  return (f: string) => f === path.join(dir, "data.json") || own.has(path.relative(dir, f).split(path.sep).join("/"))
+}
 
 /** Its files, as `<path>:<size>:<mtime>` lines (its settings and userFiles left out). */
 function statOf(dir: string) {
@@ -260,11 +265,11 @@ function statOf(dir: string) {
 }
 
 /** Each of its files' hash (its settings and userFiles left out), and the whole's: what this machine approves, and the
- *  lock records. */
-export function digestOf(dir: string): Digest {
+ *  lock records. `before`: as it was hashed before its other settings files were left out (core/installs.ts asLocked). */
+export function digestOf(dir: string, before = false): Digest {
   const files: Record<string, string> = {}
   const whole = crypto.createHash("sha256")
-  const skip = notCode(dir)
+  const skip = (before ? notCodeBefore : notCode)(dir)
   for (const f of walk(dir)) {
     if (skip(f)) continue
     const rel = path.relative(dir, f).split(path.sep).join("/")

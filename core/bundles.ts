@@ -6,9 +6,8 @@ import os from "node:os"
 import path from "node:path"
 import { settingsOf, type SettingDecls } from "./blocks.ts"
 import { pageAt, templates } from "./pages.ts"
-import { git, parseSource, readLock, tagsOf } from "./installs.ts"
+import { asLocked, git, parseSource, readLock, tagsOf } from "./installs.ts"
 import { MOVED } from "./migrations.ts"
-import { digestOf } from "./vaultplugins.ts"
 import { switched } from "./pluginmeta.ts"
 import { OpError } from "./ops.ts"
 import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
@@ -719,7 +718,7 @@ async function restore(host: Host) {
   const lock = readLock(v), conf = v.config("plugins")
   for (const id of prev.installed ?? []) {
     const dir = v.abs(`.vaultite/plugins/${id}`)
-    if (!lock[id] || strs(conf.enabled).includes(id) || !fs.existsSync(dir) || digestOf(dir).content !== lock[id].hash) continue
+    if (!lock[id] || strs(conf.enabled).includes(id) || !fs.existsSync(dir) || !asLocked(dir, lock[id])) continue
     await host.uninstall?.(id)
     trashed.push(`.vaultite/plugins/${id}`)
   }
@@ -817,7 +816,7 @@ async function setupOf(host: Host, o: SaveOptions, files: Files, put: (rel: stri
   for (const x of host.vaultPlugins().filter((x) => x.on)) {
     const id = String(x.id), l = lock[id]
     let unedited = false
-    try { unedited = !!l && digestOf(v.abs(`.vaultite/plugins/${id}`)).content === l.hash } catch { /* unreadable: its own */ }
+    try { unedited = !!l && asLocked(v.abs(`.vaultite/plugins/${id}`), l) } catch { /* unreadable: its own */ }
     if (unedited && !/^(\/|~\/|\.|file:)/.test(l.source)) install[id] = { name: String(x.name ?? id), source: l.source, ...(l.tag ? { tag: l.tag } : {}) }
     else if (o.vaultPlugins) own.push(id)
   }
