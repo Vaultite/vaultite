@@ -6,12 +6,12 @@ import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
 import { localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { type Hunk, nearest } from "./text.ts"
+export { nearest } // (its tests reach it through the plugin)
 
 export const plugin = new Plugin(import.meta.url)
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
-/** Lines changed together: from `line` (1-based, in the file's text, frontmatter too), `removed` replaced by `added`. */
-export type Hunk = { line: number; added: string[]; removed: string[] }
 /** What the user did, as an agent sees it. ask: they addressed it; point: they dropped its cursor on a line ("look at
  *  this"); edit and open only in notice and pair; reply, accept, reject, dismiss: their answer to one of its items. */
 export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
@@ -49,7 +49,7 @@ export type Act = { t: number; as: string; op: string; seqs?: number[] }
 export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[]; scene?: string }
 
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
-export const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
+const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
 const KEEP = 300, SAY_MS = 12_000, HIGHLIGHT_MS = 10_000, EDIT_WAIT = 10_000, SAVED_MS = 3000
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
@@ -67,7 +67,7 @@ export function howOf(agent: string, model = "", effort = "") {
   return { model: model || own("model"), effort: effort || own("effort") }
 }
 /** The configured agent's name: the setting, else its own (claude: Claude). */
-export const ownName = () => str(plugin.settings().name).trim() || nameOf(agentSetting())
+const ownName = () => str(plugin.settings().name).trim() || nameOf(agentSetting())
 const nameOf = (agent: string) => {
   const base = agent.split("_")[0]
   return base === "claude" ? "Claude" : agentName(base) ?? base.charAt(0).toUpperCase() + base.slice(1)
@@ -118,7 +118,7 @@ const isMain = (name: string) => key(name) === key(ownName())
 /** An agent still around: waiting for moments, or it waited a moment ago. */
 const live = (name: string) => waiters.has(key(name)) || Date.now() - (seen.get(key(name)) ?? 0) < LIVE_MS
 /** Who an ask to @name is for: that agent when it's around, else the companion (@claude, @companion, a name gone). */
-export function addressee(name?: string) {
+function addressee(name?: string) {
   const a = name ? agents.get(key(name)) : undefined
   return a && a.state !== "away" && live(a.name) ? a.name : ownName()
 }
@@ -166,7 +166,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
 
 /** The ask `m` goes on from: the last to the same agent on that line of that note, a few minutes ago, which `m`'s
  *  text begins like (dictation lands a sentence at a time, and a pause between sends the half written). */
-export function continues(m: Moment): Moment | undefined {
+function continues(m: Moment): Moment | undefined {
   const was = moments.findLast((x) => x.kind === "ask" && x.path === m.path && x.for === m.for && x.seq !== m.seq)
   if (!was || !was.text || !m.text || was.line !== m.line || m.t - was.t > 5 * 60_000) return undefined
   let n = 0
@@ -223,7 +223,7 @@ function putNote(n: Omit<Note, "id" | "t">, ttl?: number) {
   if (KEPT.has(note.kind)) save(note.path!)
   return note
 }
-export function dropNote(id: string) {
+function dropNote(id: string) {
   clearTimeout(timers.get(id)); timers.delete(id)
   const n = notes.get(id)
   if (!n || !notes.delete(id)) return
@@ -445,7 +445,7 @@ plugin.onUnload(() => {
   for (const t of [...timers.values(), ...following.values()]) clearTimeout(t)
   for (const ws of windows.keys()) ws.close()
   for (const wake of waiters.values()) wake([])
-  if (watchdog) clearInterval(watchdog)
+  clearInterval(watchdog)
 })
 
 // ---------- the app's windows: /api/companion/live
@@ -559,16 +559,6 @@ export function editText(cur: string, e: Omit<Edit, "path">) {
   return lines.join("\n")
 }
 
-/** Where `find` is in `text`: the occurrence nearest line `line` (1-based), -1 when it isn't. */
-export function nearest(text: string, find: string, line?: number) {
-  let best = -1, bestD = Infinity
-  for (let i = text.indexOf(find); i >= 0; i = text.indexOf(find, i + 1)) {
-    const d = line ? Math.abs(text.slice(0, i).split("\n").length - line) : 0
-    if (d < bestD) { best = i; bestD = d }
-    if (!line) break
-  }
-  return best
-}
 const cut = (s: string, n: number) => (s.length > n ? `${s.slice(0, n)}…` : s)
 /** Line `n` (from 1) of a file, trimmed: "" when it can't be read. */
 const lineText = (p: string, n: number) => { try { return readText(plugin.vault.abs(p)).split("\n")[n - 1]?.trim() ?? "" } catch { return "" } }
@@ -691,7 +681,7 @@ async function stop(as?: string, all = false) {
 // A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. Another agent
 // quiet that long is away (asks to it go to the companion).
 const NUDGE = 5 * 60_000
-const watchdog: ReturnType<typeof setInterval> | null = setInterval(async () => {
+const watchdog = setInterval(async () => {
   if (plugin.isOff() || mode() === "off") return
   // (the companion stays, but not starting forever)
   for (const a of agents.values()) if (a.state !== "away" && !live(a.name) && (!isMain(a.name) || a.state === "starting")) setAgent(a.name, { state: isMain(a.name) ? "watching" : "away" })
@@ -1193,7 +1183,7 @@ came (faster with speed), so you can watch what the session makes of them.
     const t0 = ms[0]?.t ?? 0
     void (async () => {
       for (const m of ms) {
-        const wait = Math.min(30_000, Math.max(0, (m.t - t0) / p.speed) - 0)
+        const wait = Math.min(30_000, Math.max(0, (m.t - t0) / p.speed))
         await new Promise((r) => setTimeout(r, wait))
         addMoment({ ...m, t: Date.now() })
       }

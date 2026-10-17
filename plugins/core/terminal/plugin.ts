@@ -492,7 +492,8 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
 export const TERMINAL_ID = /^[\w-]{1,64}(@[a-z0-9][a-z0-9-]{0,62})?$/
 
 const machineOf = (id: string) => plugin.ask<Machine | null>("machines:machine", null, id)
-const machineList = () => plugin.ask<Machine[]>("machines", [])
+/** The other machines online that have a terminal. */
+const terminalMachines = async () => (await plugin.ask<Machine[]>("machines", [])).filter((m) => !m.self && m.online && m.plugins?.includes("terminal"))
 
 /** Joins this socket to `path` on machine `m` (see above). */
 function joinRemote(ws: WebSocket, m: Machine | null, id: string, path: string, query: Record<string, string>) {
@@ -532,7 +533,7 @@ async function locate(id: string): Promise<string | null> {
   if (!TERMINAL_ID.test(id) || id.includes("@")) return null
   const self = await plugin.ask<unknown>("machines:self", null)
   if (await runsHere(id)) return typeof self === "string" && self ? self : null
-  const others = (await machineList()).filter((m) => !m.self && m.online && m.plugins?.includes("terminal"))
+  const others = await terminalMachines()
   const found = await Promise.all(others.map(async (m) => ((await sessionsOn(m))?.some((x) => x.id === id) ? m.id : null)))
   return found.find(Boolean) ?? null
 }
@@ -672,7 +673,7 @@ async function list(local: boolean): Promise<Listed[]> {
 
 /** Follow every other machine that has a terminal (and drop the ones that went away). */
 async function followMachines() {
-  const want = (await machineList()).filter((m) => !m.self && m.online && m.plugins?.includes("terminal"))
+  const want = await terminalMachines()
   for (const [id, r] of remotes) if (!want.some((m) => m.id === id)) { r.sock.terminate(); remotes.delete(id); listChanged() }
   for (const m of want) {
     if (remotes.has(m.id) || ![...watchers.values()].some((local) => !local)) continue

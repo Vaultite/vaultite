@@ -3,9 +3,8 @@
 import { Lexer, Marked, type Token, type Tokens, type TokenizerAndRendererExtension } from "marked"
 import { COPY_ICON } from "./richmd"
 import { dropHighlightEmoji, highlightClass, highlightColor } from "./highlights"
-import { sanitizeHtml } from "./sanitize"
+import { esc, sanitizeHtml } from "./sanitize"
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 /** A wiki link's source: `[[target]]` or `[[target|shown]]` (groups 1 and 2), for building the patterns that need it. */
 export const WIKI_LINK = String.raw`\[\[([^[\]\n|]+?)(?:\|([^[\]\n]+?))?\]\]`
 const WIKI_START = new RegExp(`^!?${WIKI_LINK}`)

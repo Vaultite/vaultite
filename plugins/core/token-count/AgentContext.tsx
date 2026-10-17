@@ -3,11 +3,10 @@
 import { FileText, SquareArrowOutUpRight } from "lucide-react"
 import { cn, Foldable, HeadingButton, openFile, openView, SidebarHeading, startDrag, type SidebarCtx, type Store } from "@vaultite"
 import type { Level, Sized } from "./limits"
-import { tokenText } from "./estimate"
+import { shortTokens } from "./estimate"
 import "./types"
 
 /** "12k", "840": a size without its tilde and unit. */
-export const short = (n: number) => tokenText(n).replace(/^~| tokens?$/g, "")
 export const toneOf = (l: Level) => (l === "over" ? "text-(--red)" : l === "near" ? "text-(--orange)" : "text-muted-foreground")
 const name = (p: string) => p.slice(p.lastIndexOf("/") + 1)
 const folder = (p: string) => p.slice(0, Math.max(0, p.lastIndexOf("/")))
@@ -31,14 +30,14 @@ function Row({ path, size, tip, level, depth = 0, big }: { path: string; size: s
   )
 }
 
-const sizeTip = (s: Sized) => [`About ${short(s.tokens)} tokens` + (s.total !== undefined ? `, ${short(s.total)} with its imports` : ""),
-  s.limit ? `Its limit: ${short(s.limit)}` : "No limit"].join("\n")
+const sizeTip = (s: Sized) => [`About ${shortTokens(s.tokens)} tokens` + (s.total !== undefined ? `, ${shortTokens(s.total)} with its imports` : ""),
+  s.limit ? `Its limit: ${shortTokens(s.limit)}` : "No limit"].join("\n")
 
 /** Over, near, and the load chains. */
 export function ContextList({ store, big }: { store: Store; big?: boolean }) {
   const files = store.tokenCount?.files ?? []
   const over = files.filter((s) => s.level === "over"), near = files.filter((s) => s.level === "near"), chains = files.filter((s) => s.chain)
-  const of = (s: Sized) => `${short(s.total ?? s.tokens)} / ${short(s.limit)}`
+  const of = (s: Sized) => `${shortTokens(s.total ?? s.tokens)} / ${shortTokens(s.limit)}`
   if (!over.length && !near.length && !chains.length) {
     return <p className={cn("pl-1.5 text-tertiary", big ? "text-[15px]" : "h-7 text-[13px] leading-7")} data-context-empty>No file is near its limit.</p>
   }
@@ -58,9 +57,9 @@ export function ContextList({ store, big }: { store: Store; big?: boolean }) {
         <Foldable data-context-group="chains" title="Loaded at startup" count={chains.length} big={big}>
           {chains.map((s) => (
             <div key={s.path} data-context-chain={s.path}>
-              <Row path={s.path} size={short(s.total ?? s.tokens)} tip={`${sizeTip(s)}\nWhat an agent loads with it: it and its @imports`} level={s.level} big={big} />
+              <Row path={s.path} size={shortTokens(s.total ?? s.tokens)} tip={`${sizeTip(s)}\nWhat an agent loads with it: it and its @imports`} level={s.level} big={big} />
               {s.chain!.map((c) => (
-                <Row key={c.path} path={c.path} size={short(c.tokens)} tip={`About ${short(c.tokens)} tokens, imported by ${c.from}`} level="ok" depth={c.depth} big={big} />
+                <Row key={c.path} path={c.path} size={shortTokens(c.tokens)} tip={`About ${shortTokens(c.tokens)} tokens, imported by ${c.from}`} level="ok" depth={c.depth} big={big} />
               ))}
             </div>
           ))}

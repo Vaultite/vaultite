@@ -8,7 +8,7 @@
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
-import { qa } from "./lib/qa.mjs"
+import { qa, until } from "./lib/qa.mjs"
 
 const { args: [B, VAULT], check, done } = await qa(import.meta.url, { chrome: false })
 const BASE = B.replace(/\/+$/, "")
@@ -150,7 +150,7 @@ await session("stdio", stdioClient())
 const activity = async () => (await (await fetch(`${BASE}/api/activity?limit=60`)).json()).events
   .filter((e) => /QA note|ME\.md|Clipped/.test(e.text + (e.paths ?? []).join()))
 let mine = []
-for (let t = Date.now(); Date.now() - t < 10000; await new Promise((r) => setTimeout(r, 250))) if ((mine = await activity()).length >= 6) break
+await until(async () => (mine = await activity()).length >= 6, 10000, 250)
 check("activity: the tools' writes are Claude Code's", mine.length >= 4 && mine.every((e) => e.actor.kind === "agent" && e.actor.name === "Claude Code"), mine.map((e) => [e.actor, e.text]))
 
 // Who may connect: another site's page, a proxy and a tailnet login that isn't the owner's are refused before anything.

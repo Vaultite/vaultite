@@ -37,7 +37,7 @@ function outsideVault(p: string) {
 }
 
 /** "my-tool --x {file}" as arguments: spaces split them, quotes ("a b", 'a b') keep them together. */
-export function splitCommand(cmd: string): string[] {
+function splitCommand(cmd: string): string[] {
   const out: string[] = []
   for (const m of cmd.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) out.push(m[1] ?? m[2] ?? m[3])
   return out
@@ -53,7 +53,7 @@ function defaultModel() {
 
 const SWIFT = path.join(import.meta.dirname, "transcribe.swift")
 /** The helper's file name: its source's hash, so a changed source is built again. */
-export const helperName = () => `transcribe-${crypto.createHash("sha1").update(fs.readFileSync(SWIFT)).digest("hex").slice(0, 12)}`
+const helperName = () => `transcribe-${crypto.createHash("sha1").update(fs.readFileSync(SWIFT)).digest("hex").slice(0, 12)}`
 const quiet = (bin: string, args: string[], timeout = 120_000) => new Promise<{ ok: boolean; out: string; err: string }>((done) =>
   execFile(bin, args, { timeout }, (e, out, err) => done({ ok: !e, out: String(out).trim(), err: String(err).trim() })))
 

@@ -135,8 +135,8 @@ for (const dark of [false, true]) {
     await shot("crumb-reveal")
     // Rename by clicking the name.
     await bar.locator("button", { hasText: note }).click(); await wait(200)
-    await page.keyboard.type(`${note} renamed`); await page.keyboard.press("Enter"); await wait(1500)
-    check("rename from the path bar", existsSync(`${VAULT}/Notes/${note} renamed.md`) && (await bar.innerText()).includes(`${note} renamed`))
+    await page.keyboard.type(`${note} renamed`); await page.keyboard.press("Enter")
+    check("rename from the path bar", await until(async () => existsSync(`${VAULT}/Notes/${note} renamed.md`) && (await bar.innerText()).includes(`${note} renamed`)))
     // Tabs: + right after the last tab.
     const plus = await page.locator("[data-tab-bar] button[aria-label='New tab']").boundingBox()
     const lastTab = await page.locator("[data-tab-bar] [role=tab]").last().boundingBox()
@@ -159,8 +159,7 @@ for (const dark of [false, true]) {
     check("AGENTS.md is editable", await page.locator(".cm-content[contenteditable=true]").count() > 0)
     check("AGENTS.md has the robot icon", await tree.locator("[data-tree-path='AGENTS.md'] svg.lucide-bot").count() === 1)
     await page.locator(".cm-line").last().click(); await page.keyboard.press("End"); await page.keyboard.type(" QA edit.")
-    await wait(2000)
-    check("typing in AGENTS.md saves", readFileSync(`${VAULT}/AGENTS.md`, "utf8").includes("QA edit."))
+    check("typing in AGENTS.md saves", await until(async () => readFileSync(`${VAULT}/AGENTS.md`, "utf8").includes("QA edit.")))
     // File icons off.
     await page.goto(`${B}#settings`); await wait(800)
     await page.locator('[data-settings-nav="appearance"]').click(); await wait(300)

@@ -8,7 +8,7 @@ export type BaseConfig = Record<string, unknown>
 /** What Obsidian calls a view's type -> what this app draws. */
 const TYPES: Record<string, string> = { table: "table", cards: "cards", list: "list", map: "map", kanban: "board", board: "board", calendar: "calendar" }
 
-const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null)
+export const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null)
 
 /** A base's views (a base without any has one table, "Table", like a new one in Obsidian). */
 export function viewsOf(cfg: BaseConfig): Record<string, unknown>[] {

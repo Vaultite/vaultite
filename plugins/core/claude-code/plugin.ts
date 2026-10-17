@@ -12,6 +12,7 @@ import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, WANTED } from "./transcript.ts"
 import { SAMPLE_DIR, sample } from "./sample.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+const int = (v: unknown) => Math.trunc(Number(v) || 0)
 
 export const plugin = new Plugin(import.meta.url)
 const DEFAULT_DIR = process.env.CLAUDE_CONFIG_DIR ? path.resolve(process.env.CLAUDE_CONFIG_DIR) : path.join(HOME, ".claude")
@@ -113,7 +114,6 @@ class Scan extends JsonlScan<Resp> {
     const m = d.message || {}
     const u = m.usage, model = m.model
     if (!u || typeof u !== "object" || Array.isArray(u) || !model || String(model).startsWith("<")) return
-    const int = (v: unknown) => Math.trunc(Number(v) || 0)
     const w = int(u.cache_creation_input_tokens)
     const w1 = int((u.cache_creation || {}).ephemeral_1h_input_tokens)
     const row: Resp = { ts, model, cwd: d.cwd || "", session: d.sessionId || "",
@@ -562,7 +562,6 @@ function lastRequest(file: string) {
   if (was?.size === size) return was.meter
   const t = tail(file)
   if (!t) return null
-  const int = (v: unknown) => Math.trunc(Number(v) || 0)
   let meter: Read | null = null
   for (const line of t.text.split("\n").reverse()) {
     if (!line.includes('"type":"assistant"') || !line.includes('"usage"') || line.includes('"isSidechain":true')) continue

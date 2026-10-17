@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react"
 import { createPortal } from "react-dom"
 import { FileDown, Printer } from "lucide-react"
-import { activeFile, cell, currentFile, definePlugin, dismissNotice, getStore, NoteBody, notify, notifyError, Panel, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
+import { activeFile, cell, currentFile, definePlugin, dismissNotice, getStore, NoteBody, notify, notifyError, Panel, plural, readFile, savePdf, splitFm, stem, type Store } from "@vaultite"
 
 type Job = { path: string; text: string; how: "pdf" | "print"; ready: () => void }
 const job = cell<Job | null>(null)
@@ -40,7 +40,7 @@ async function settled(root: HTMLElement) {
       for (const img of imgs) img.loading = "eager" // (note embeds drawn since)
       const left = imgs.filter((i) => !i.complete).length
       if (!left || skip) break
-      const text = `Waiting for ${left} of ${imgs.length} ${imgs.length === 1 ? "image" : "images"}…`
+      const text = `Waiting for ${left} of ${plural(imgs.length, "image")}…`
       // (said again each second: a toast swiped away comes back, or the export would wait unseen)
       if (Date.now() - started > 1500 && (text !== said || Date.now() - saidAt > 1000)) {
         said = text; saidAt = Date.now()

@@ -1260,7 +1260,7 @@ function candidates(state: EditorState): Cands {
         if (depth <= 0) break
       }
       if (end > lines.length) continue
-      add(k, end, new Block("details", doc.sliceString(row(k).from, row(end).to), cfg.version, drawRich, cfg.place))
+      add(k, end, new Block("details", doc.sliceString(row(k).from, row(end).to), cfg.version, drawHtml, cfg.place))
       k = end
       continue
     }
@@ -1268,7 +1268,7 @@ function candidates(state: EditorState): Cands {
     if (HTML_BLOCK.test(t)) {
       let end = k
       while (end < lines.length && prose[end] && lines[end].trim()) end++
-      add(k, end, new Block("html", doc.sliceString(row(k).from, row(end).to), cfg.version, drawRich, cfg.place))
+      add(k, end, new Block("html", doc.sliceString(row(k).from, row(end).to), cfg.version, drawHtml, cfg.place))
       k = end
     }
   }
@@ -1330,7 +1330,7 @@ function candidates(state: EditorState): Cands {
         const first = doc.lineAt(n.from), last = doc.lineAt(n.to)
         const m = /^\s{0,3}>\s?(.*)$/.exec(first.text)
         if (m && CALLOUT.test(m[1])) {
-          add(first.number, last.number, new Block("callout", doc.sliceString(first.from, last.to), cfg.version, drawRich, cfg.place))
+          add(first.number, last.number, new Block("callout", doc.sliceString(first.from, last.to), cfg.version, drawHtml, cfg.place))
         }
         return false
       }
@@ -1409,10 +1409,10 @@ function mapped(c: Cands, tr: Transaction): Cands | null {
 
 /** Markdown drawn as HTML (a callout, <details>, a table) by the config as it is then; drawn again only when that changes
  *  what it shows, so a toggle opened stays open. Its checkboxes tick in the file, reading too, as the editor's own do. */
-function drawHtml(el: HTMLElement, text: string, view: EditorView, rich = true, edit?: BlockEdit): Drawn {
+function drawHtml(el: HTMLElement, text: string, view: EditorView, edit: BlockEdit): Drawn {
   let last = "", now = text
   const tick = (nth: number, on: boolean) => {
-    const at = edit?.line()
+    const at = edit.line()
     if (at == null || !view.state.facet(previewConfig).writable) return
     const from = view.state.doc.line(at + 1).from
     if (view.state.sliceDoc(from, from + now.length) !== now) return
@@ -1427,15 +1427,14 @@ function drawHtml(el: HTMLElement, text: string, view: EditorView, rich = true, 
     el.innerHTML = html
     last = html
     el.querySelectorAll("details").forEach((d, i) => { if (i < open.length) d.open = open[i] })
-    if (rich) hydrate(el)
-    wireTasks(el, edit && view.state.facet(previewConfig).writable ? tick : null)
+    hydrate(el)
+    wireTasks(el, view.state.facet(previewConfig).writable ? tick : null)
     markdownDrawn(el)
   }
   paint(text)
-  if (rich) el.addEventListener("click", (e) => richClick(e, el))
+  el.addEventListener("click", (e) => richClick(e, el))
   return { update: paint, destroy: () => {} }
 }
-const drawRich = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => drawHtml(el, text, view, true, edit)
 /** A table, edited cell by cell where it can be (./tables.ts), else as Markdown drawn. */
 const drawTable = (el: HTMLElement, text: string, view: EditorView, edit: BlockEdit) => drawCells(el, text, view, {
   render: (md) => view.state.facet(previewConfig).renderMarkdown(md),

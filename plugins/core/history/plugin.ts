@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import { once } from "node:events"
 import fs from "node:fs"
 import path from "node:path"
-import { HTTPError, isTextKind, kindOf, LOADED, LOCAL, Plugin, Text, vaultHere } from "../../../core/plugins.ts"
+import { HTTPError, isTextKind, kindOf, LOADED, LOCAL, localDate, localTime, Plugin, Text, vaultHere } from "../../../core/plugins.ts"
 import { fetchFromICloud, READ_WAIT, type Vault, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -370,7 +370,7 @@ plugin.route("GET", "history/version", async (req) => {
 
 // ---------- operations (core/ops.ts)
 
-const when = (t: number) => { const d = new Date(t), p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}` }
+const when = (t: number) => `${localDate(t)} ${localTime(t)}`
 
 plugin.op({
   id: "history.list",

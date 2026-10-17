@@ -2,7 +2,7 @@
 // any file; embeds show a picture. As text for AIs: its cards and connections.
 import { lazy, Suspense, type ReactNode } from "react"
 import { LayoutDashboard, Scan, ZoomIn, ZoomOut } from "lucide-react"
-import { besideActive, definePlugin, freeName, getStore, openNew, post, reload, type FileFormat } from "@vaultite"
+import { besideActive, definePlugin, freeName, getStore, openNew, plural, post, reload, type FileFormat } from "@vaultite"
 import { parseCanvas } from "./codec"
 import { focusedBoard, panStep } from "./keys"
 
@@ -26,7 +26,7 @@ const box = (node: ReactNode) => <Suspense fallback={<div className="absolute in
 const format: FileFormat = {
   exts: ["canvas"], icon: LayoutDashboard, tint: "var(--teal)", json: true, layout: "pane",
   // (its words would be the JSON's)
-  status: (text) => { try { const n = parseCanvas(text).nodes.filter((x) => x.type !== "group").length; return `${n} ${n === 1 ? "card" : "cards"}` } catch { return null } },
+  status: (text) => { try { const n = parseCanvas(text).nodes.filter((x) => x.type !== "group").length; return plural(n, "card") } catch { return null } },
   render: (ctx) => box(<Board {...ctx} />),
   embed: (ctx) => box(<Board {...ctx} editable={false} place="embed" />),
 }

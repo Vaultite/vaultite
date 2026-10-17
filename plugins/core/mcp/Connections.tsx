@@ -2,7 +2,7 @@
 // (access, activity, rename, disconnect); RemoteAccess is Vaultite Cloud and the addresses. Polls, faster while connecting.
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from "react"
 import { Bot, Check, Copy, ExternalLink, Globe, KeyRound, Plug, Plus, type LucideIcon } from "lucide-react"
-import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, post, Row, Section, Segmented, SettingRow, SheetHead, Switch, useEnabled, useKeptCount, useLive } from "@vaultite"
+import { Button, backDetail, confirmDialog, copyText, del, detailPath, Empty, fmtAgo, Group, iconNamed, Loading, LoadingRows, notify, notifyError, op, openDetail, openFile, openView, openWebLink, Panel, patch, plural, post, Row, Section, Segmented, SettingRow, SheetHead, Switch, useEnabled, useKeptCount, useLive } from "@vaultite"
 
 type Access = "read" | "write"
 /** `actor`: the name Activity gives what it does. */
@@ -488,7 +488,7 @@ function ConnectionPage({ c, onDone }: { c: Connection; onDone: () => void }) {
         <Section title="Waiting for you">
           <Group>
             {gates.map((e) => <Row key={e.id} title={`Asks to ${e.title.slice(`${c.name} asks to `.length)}`} meta="Approve or deny" onOpen={() => openDetail(detailPath("inbox-gate", e.id))} data-connection-gate />)}
-            {!!review && <Row title={`Review ${review} ${review === 1 ? "change" : "changes"}`} meta={`What ${c.name} changed, to keep or undo`} onOpen={() => openView(`review/${encodeURIComponent(c.name)}`)} data-connection-review />}
+            {!!review && <Row title={`Review ${plural(review, "change")}`} meta={`What ${c.name} changed, to keep or undo`} onOpen={() => openView(`review/${encodeURIComponent(c.name)}`)} data-connection-review />}
           </Group>
         </Section>
       )}

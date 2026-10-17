@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import {
   askMove, askMoveMany, Badged, Bar, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
-  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
+  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
@@ -16,11 +16,12 @@ import type { InboxEvent, InboxItem } from "./types"
 import { settings } from "./settings"
 
 
+const waiting = (r: InboxItem) => r.status === "new" && !isArchived(r)
 /** The results waiting for review: status new, newest first (the store's order). */
-export const toReview = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => r.status === "new" && !isArchived(r))
+export const toReview = (store: Store): InboxItem[] => (store.inbox ?? []).filter(waiting)
 
 /** The results already dealt with: done (so in Inbox/.archive/; an old one archived without it too), newest first. */
-const settled = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => r.status !== "new" || isArchived(r))
+const settled = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => !waiting(r))
 
 /** How many things are new: unread events and results to review. */
 export function useCount(store: Store) {
@@ -100,7 +101,7 @@ const resultKey = (r: InboxItem) => `r:${r.id}`, eventKey = (e: InboxEvent) => `
 async function markManyDone(list: InboxItem[], done = true) {
   const all = await Promise.allSettled(list.map((r) => change(r, { status: done ? "done" : "new", ...(done ? {} : { archived: false }) })))
   const now = all.flatMap((x) => (x.status === "fulfilled" ? [x.value] : []))
-  if (now.length) notify(`${done ? "Marked" : "Put back"} ${now.length} ${now.length === 1 ? "result" : "results"} ${done ? "done" : "to review"}`,
+  if (now.length) notify(`${done ? "Marked" : "Put back"} ${plural(now.length, "result")} ${done ? "done" : "to review"}`,
     { action: { label: "Undo", run: () => void markManyDone(now, !done) } })
 }
 
@@ -108,7 +109,7 @@ async function markManyDone(list: InboxItem[], done = true) {
 function selectionItems(store: Store, keys: string[]): MenuItem[] {
   const all = store.inbox ?? [], { events } = getEvents()
   const results = all.filter((r) => keys.includes(resultKey(r)))
-  const fresh = results.filter((r) => r.status === "new" && !isArchived(r)), dealt = results.filter((r) => !fresh.includes(r))
+  const fresh = results.filter(waiting), dealt = results.filter((r) => !fresh.includes(r))
   const evs = events.filter((e) => keys.includes(eventKey(e)))
   const out: MenuItem[] = []
   if (fresh.length) out.push(
@@ -127,7 +128,7 @@ function useInboxSelect(store: Store) {
 }
 
 /** Phones: a row swiped sideways shows what's done with it most (SwipeRow): Done and File to…, back to review, Dismiss. */
-const resultSwipe = (r: InboxItem): SwipeAction[] => r.status === "new" && !isArchived(r)
+const resultSwipe = (r: InboxItem): SwipeAction[] => waiting(r)
   ? [{ label: "File to", icon: FolderInput, run: () => fileTo(r) }, { label: "Done", icon: Check, run: () => markDone(r), removes: true }]
   : [{ label: "To review", icon: RotateCcw, run: () => reopen(r), removes: true }]
 const eventSwipe = (e: InboxEvent): SwipeAction[] => [

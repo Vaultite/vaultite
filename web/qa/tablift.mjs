@@ -3,7 +3,7 @@
 // Writes only this browser's tabs (localStorage), so any server; nothing in the vault.
 //   node web/qa/tablift.mjs <base url>
 import { mkdirSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
+import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/flick/"], browser, check, fails } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -69,8 +69,8 @@ async function toEnd(name, id, where) {
   check(name, (await ids()).at(-1) === id, await ids())
 }
 // Seven cards, so the last row has room beside its card.
-await P.locator("[data-tabs-new]").tap(); await wait(1200); await P.click("[data-tabs-button]"); await wait(1200)
-check("seven cards", (await ids()).length === 7, await ids())
+await P.locator("[data-tabs-new]").tap(); await wait(1200); await P.click("[data-tabs-button]")
+check("seven cards", await until(async () => (await ids()).length === 7), await ids())
 await toEnd("dropped beside the last card: it goes last", await o(4), "beside")
 await toEnd("dropped below the grid: it goes last", await o(4), "below")
 check("still seven cards", (await ids()).length === 7, await ids())

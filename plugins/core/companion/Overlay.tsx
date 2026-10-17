@@ -3,10 +3,11 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile, snippet } from "@vaultite"
+import { canvasOf, canvasShown, capitalize, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile, snippet } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, getState, type Target, nearest, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, getState, type Target, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
 
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it. */
@@ -16,7 +17,7 @@ const MARGIN = 228 // a card's width and its gaps: less room than this beside th
 export const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 /** A target's position in its editor, or null when the text is gone. */
-export function posIn(v: EditorView, t: { line?: number; find?: string }) {
+function posIn(v: EditorView, t: { line?: number; find?: string }) {
   const doc = v.state.doc
   if (t.find) { const i = nearest(doc.toString(), t.find, t.line); if (i >= 0) return i }
   return t.line ? doc.line(Math.max(1, Math.min(t.line, doc.lines))).from : null
@@ -87,8 +88,7 @@ export function follow(a: Target & { name: string }) {
   const path = a.path, go = () => {
     const v = viewOf(path)
     if (!v) return false
-    const doc = v.state.doc, i = a.find ? nearest(doc.toString(), a.find, a.line) : -1
-    scroller(v, i >= 0 ? i : doc.line(Math.max(1, Math.min(a.line ?? 1, doc.lines))).from)
+    scroller(v, posIn(v, { find: a.find, line: a.line || 1 })!)
     return true
   }
   if (go()) return
@@ -98,7 +98,6 @@ export function follow(a: Target & { name: string }) {
 }
 
 const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", away: "away" }
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 /** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
@@ -131,7 +130,7 @@ function Popover({ a, left, up, close }: { a: Agent; left: number; up: boolean; 
   return (
     <div data-companion-popover={a.name} className={cn("companion-pop pointer-events-auto absolute flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg", up ? "bottom-[26px]" : "top-[42px]")}
       style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
-      {(a.model || a.effort) && <div data-companion-how className="px-3 pt-2 text-[11.5px] font-medium text-muted-foreground">{[a.model && cap(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")}</div>}
+      {(a.model || a.effort) && <div data-companion-how className="px-3 pt-2 text-[11.5px] font-medium text-muted-foreground">{[a.model && capitalize(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")}</div>}
       {mine.length > 0 && (
         <div ref={list} className="max-h-[240px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:thin]">
           {mine.map((n) => (
@@ -304,7 +303,7 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
 }
 
 /** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
-const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
+export const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
 
 /** A margin card. Not open, a long one shows its first lines faded (a dot, where the margin's narrow); open, all of it. */
 function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: number; y: number; folded: boolean; open: boolean; cap: number
@@ -314,7 +313,7 @@ function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: nu
   const [more, setMore] = useState(false)
   const [replying, setReplying] = useState(false)
   const [draft, setDraft] = useState("")
-  const tint = `var(--${getState().agents.find((a) => a.name === n.agent)?.tint ?? "orange"})`
+  const tint = tintOf(n.agent)
   // (how far below its line it reaches: the next card goes under it, and the note keeps room to scroll to it)
   useLayoutEffect(() => {
     if (ref.current) onHeight(ref.current.offsetHeight)

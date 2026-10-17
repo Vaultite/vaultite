@@ -17,7 +17,7 @@ const FLAGS = new Set(["open", "reversed", "allowfullscreen"])
 /** What a frame may do (a video player): run its own scripts on its own site and go full screen; never steer the app. */
 const FRAME = ' sandbox="allow-scripts allow-same-origin allow-presentation" referrerpolicy="strict-origin-when-cross-origin" loading="lazy"'
 
-const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
+export const esc = (s: string) => s.replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`)
 /** Text between tags as it is (its entities too), but a stray < or > that isn't a tag. */
 const text = (s: string) => s.replace(/</g, "&lt;").replace(/>/g, "&gt;")
 const unesc = (s: string) => s.replace(/&(#x[0-9a-f]+|#\d+|amp|lt|gt|quot|apos);/gi, (_, e: string) => {

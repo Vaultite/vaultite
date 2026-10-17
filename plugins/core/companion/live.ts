@@ -1,6 +1,7 @@
 // The companion as this window knows it: the server's agents and notes (/api/companion/live), the editors showing
 // files, and what the user does in them, said back. No CodeMirror here: the editor is its own chunk (editor.ts).
 import type { EditorView } from "@codemirror/view"
+import type { Hunk } from "./text.ts"
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
@@ -12,7 +13,6 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   dismissed?: number
   /** The text it was on is gone: shown by its last line. */
   orphaned?: boolean }
-export type Hunk = { line: number; added: string[]; removed: string[] }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 
 /** said: each agent's last says (gone from the screen or not), oldest first. */
@@ -36,7 +36,7 @@ function heard(agents: Agent[], name?: string) {
   showAgents()
 }
 /** Show agent `name` as `a` now, before the server says so (for `ms` at most). */
-export function expect(name: string, a: Partial<Agent>, ms: number) {
+function expect(name: string, a: Partial<Agent>, ms: number) {
   clearTimeout(ahead.get(name)?.timer)
   ahead.set(name, { a: { ...a, seen: undefined, t: Date.now() }, timer: setTimeout(() => { ahead.delete(name); showAgents() }, ms) })
   showAgents()
@@ -201,18 +201,6 @@ export async function accept(n: Note) {
 
 // ---------- text
 
-/** Where `find` is in `text`: the occurrence nearest line `line` (1-based), -1 when it isn't. */
-export function nearest(text: string, find: string, line?: number) {
-  if (!find) return -1
-  let best = -1, bestD = Infinity
-  for (let i = text.indexOf(find); i >= 0; i = text.indexOf(find, i + 1)) {
-    const d = line ? Math.abs(text.slice(0, i).split("\n").length - line) : 0
-    if (d < bestD) { best = i; bestD = d }
-    if (!line) break
-  }
-  return best
-}
-
 /** The lines changed from `a` to `b`, as one stretch (what a pause in typing changes is mostly one place). */
 export function hunksOf(a: string[], b: string[]): Hunk[] {
   let s = 0
@@ -223,8 +211,10 @@ export function hunksOf(a: string[], b: string[]): Hunk[] {
   return removed.length || added.length ? [{ line: s + 1, removed: removed.slice(0, 40), added: added.slice(0, 40) }] : []
 }
 
+/** A line's list marker or task box, if any. */
+const LEAD = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/
 /** Where a line can address an agent with any of its names: its start, after a list's marker or a task's box. */
-const MENTION_AT = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?$/
+const MENTION_AT = new RegExp(`${LEAD.source}$`)
 /** An @ that can start a mention: not after a word, a dot or a slash (an email, a link). */
 const MENTION_RE = /(?<![\w@./])@([\w-]+)/g
 /** Whether an @ typed after `before` (the line up to it) starts a mention. */
@@ -234,7 +224,7 @@ export const midNames = () => [...new Set([state.name, ...liveAgents().map((a) =
 export type Mention = { from: number; to: number; name: string }
 /** A line's @names that address an agent: at its start any agent's name, after that only `mid` ones. */
 export function mentionsOf(line: string, names = mentionNames(), mid = midNames()): Mention[] {
-  const out: Mention[] = [], lead = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/.exec(line)![0].length
+  const out: Mention[] = [], lead = LEAD.exec(line)![0].length
   for (const m of line.matchAll(MENTION_RE)) {
     const k = m[1].toLowerCase()
     if ((m.index === lead ? names : mid).includes(k)) out.push({ from: m.index, to: m.index + m[0].length, name: m[1] })
@@ -250,4 +240,4 @@ export function mentionIn(line: string, names = mentionNames(), mid = midNames()
   return { name: m.name, text: text || "(no words: look at this)" }
 }
 /** Whether a line's ask has words of its own, besides its @names (sent after a pause only then). */
-export const asksSomething = (line: string, ms: Mention[]) => !!ms.reduceRight((s, m) => s.slice(0, m.from) + s.slice(m.to), line).replace(/^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/, "").replace(/[\s\p{P}]/gu, "")
+export const asksSomething = (line: string, ms: Mention[]) => !!ms.reduceRight((s, m) => s.slice(0, m.from) + s.slice(m.to), line).replace(LEAD, "").replace(/[\s\p{P}]/gu, "")

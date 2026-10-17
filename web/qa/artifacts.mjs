@@ -5,7 +5,7 @@
 //   node web/qa/artifacts.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, realpathSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
-import { qa, wait, SHOTS as OUT } from "./lib/qa.mjs"
+import { qa, until, wait, SHOTS as OUT } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const temp = (p) => [realpathSync("/tmp"), realpathSync(tmpdir())].some((t) => realpathSync(p).startsWith(t + "/"))
 if (!temp(VAULT)) { console.error("artifacts: the vault must be a throwaway one in a temporary folder"); process.exit(2) }
@@ -105,8 +105,7 @@ if (f) {
   check("web link opens a new tab", !!p2 && p2.url().startsWith("https://example.com"), p2?.url())
   if (p2) await p2.close()
   await fr.click("#note")
-  await wait(1200)
-  check("vault link opens the note", decodeURIComponent(await page.evaluate(() => location.hash)).includes("QA/QA note.md"), await page.evaluate(() => location.hash))
+  check("vault link opens the note", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes("QA/QA note.md")), await page.evaluate(() => location.hash))
 }
 
 // A note with both embedded, being read.
@@ -129,8 +128,7 @@ check("artifact in a dashboard, with its height", !!f && Math.abs(bh - 300) < 2,
 
 // The table opened: filter and sort.
 await page.goto(`${B}#file/${enc("QA/QA table.csv")}`)
-await wait(1500)
-check("table opens as a table", (await page.locator(".csv-view tbody tr").count()) === 4)
+check("table opens as a table", await until(async () => (await page.locator(".csv-view tbody tr").count()) === 4))
 await page.fill(".csv-view input", "coffee")
 check("filter", (await page.locator(".csv-view tbody tr").count()) === 1)
 await page.fill(".csv-view input", "")

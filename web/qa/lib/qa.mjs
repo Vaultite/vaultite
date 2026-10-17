@@ -95,10 +95,10 @@ export const apiAt = (base, headers = {}) => async (method, p, body) => {
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text()
 }
 
-/** Runs a command from the command palette (⌘P), then waits `settle` ms for it. */
+/** Runs a command from the command palette (⌘P), once it lists it, then waits `settle` ms for it. */
 export async function palette(page, name, settle = 800) {
-  await page.keyboard.press("ControlOrMeta+p"); await wait(300)
-  await page.keyboard.type(name); await wait(300)
+  await page.keyboard.press("ControlOrMeta+p"); await until(() => page.locator("[role=option]").count(), 3000)
+  await page.keyboard.type(name); await until(() => page.locator("[role=option]", { hasText: name }).count(), 3000)
   await page.keyboard.press("Enter"); await wait(settle)
 }
 

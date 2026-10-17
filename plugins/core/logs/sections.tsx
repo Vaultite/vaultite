@@ -3,7 +3,7 @@
 import type { ReactNode } from "react"
 import { ArrowUpRight, Target } from "lucide-react"
 import {
-  detailPath, Empty, fmtDay, fmtMin, List, openDetail, Panel, plain, Ring, Row, Section, snippet, Stat, today, WeeksGrid,
+  detailPath, Empty, fmtDay, fmtMin, List, openDetail, Panel, plain, plural, Ring, Row, Section, snippet, Stat, today, WeeksGrid,
   weekStart, type Store,
 } from "@vaultite"
 import { areaBySlug, between, logsOf, minutes, sessionDays, type Log } from "./types"
@@ -28,7 +28,7 @@ export function WeekGoals({ store, slugs, title = "This week" }: { store: Store;
               <div className="min-w-0">
                 <div className="text-[15px] font-medium">{a!.name}</div>
                 <div className="text-[13px] text-muted-foreground tabular-nums">
-                  {goal ? `${n} of ${goal}` : `${n} ${n === 1 ? "session" : "sessions"}`}{mins ? ` · ${fmtMin(mins)}` : ""}
+                  {goal ? `${n} of ${goal}` : plural(n, "session")}{mins ? ` · ${fmtMin(mins)}` : ""}
                 </div>
               </div>
             </div>
@@ -64,7 +64,7 @@ export function AreaPanel({
         <>
           <div className="mb-4 grid grid-cols-2 gap-4">
             <Stat label="This week" value={useTime ? fmtMin(minutes(thisWeek)) : thisWeek.length}
-              hint={`${days} ${days === 1 ? "day" : "days"}${area?.weekly_goal ? ` of ${area.weekly_goal}` : ""}`} />
+              hint={`${plural(days, "day")}${area?.weekly_goal ? ` of ${area.weekly_goal}` : ""}`} />
             {stat ?? <Stat label="Last session" value={fmtDay(logs[0].date)} hint={plain(logs[0].title) || undefined} />}
           </div>
           <WeeksGrid tint={tint} goal={area?.weekly_goal}

@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { OpError, pathAsSaid, Plugin } from "../../../core/plugins.ts"
 import { parseText, type Vault } from "../../../core/vault.ts"
-import { estimateTokens, tokenText } from "./estimate.ts"
+import { estimateTokens, shortTokens, tokenText } from "./estimate.ts"
 import { importsOf, isChainRoot, levelOf, limitFor, type Limits, limitsOf, type Link, MAX_DEPTH, pathLike, type Sized, worse } from "./limits.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -126,9 +126,8 @@ function vaultRel(vault: Vault, p: string): string | null {
   return null
 }
 
-const short = (n: number) => tokenText(n).replace(/^~| tokens?$/g, "")
 const line = (s: Sized) => `- ${s.path}: ${tokenText(s.tokens)}` +
-  (s.total !== undefined ? `, ~${short(s.total)} with its imports` : "") + (s.limit ? ` (limit ${short(s.limit)})` : " (no limit)")
+  (s.total !== undefined ? `, ~${shortTokens(s.total)} with its imports` : "") + (s.limit ? ` (limit ${shortTokens(s.limit)})` : " (no limit)")
 const chainText = (s: Sized) => [
   ...(s.chain ?? []).map((c) => `  ${"  ".repeat(c.depth - 1)}- @${c.path}: ${tokenText(c.tokens)}`),
   ...(s.outside?.length ? [`  - not counted, outside the vault: ${s.outside.join(", ")}`] : []),

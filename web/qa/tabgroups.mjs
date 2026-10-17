@@ -5,7 +5,7 @@
 // drop. Writes only this browser's tabs (localStorage), so any server; nothing in the vault.
 //   node web/qa/tabgroups.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
+import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/tabgroups-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 
@@ -43,8 +43,8 @@ async function holdMove(from, to) {
 }
 const row = (id) => `dialog[open] [data-tab-row="${id}"]`
 
-await P.click("[data-tabs-button]"); await wait(1200)
-check("one pane: every tab a card", (await cards()).join() === "a,b,c,d", await cards())
+await P.click("[data-tabs-button]")
+check("one pane: every tab a card", await until(async () => (await cards()).join() === "a,b,c,d"), await cards())
 const g1 = await holdMove(await at(row("a")), await at(row("c")))
 check("dropped on a card's middle: the picture says Group, in the sheet", !!g1 && g1.text.includes("Group"), g1)
 check("...the two make a pane beside theirs, the tab on screen kept", (await panes()) === "bd*d | ca", await panes())

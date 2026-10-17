@@ -7,7 +7,7 @@
 // (touch, no trackpad) never gets it. WRITES a "Qa vim" folder, .vaultite/plugins/vim/ and
 // plugins.json's `enabled`: throwaway only.
 //   node web/qa/vim.mjs <base url> [out dir]
-import { apiAt, palette, qa, SHOTS, wait, command } from "./lib/qa.mjs"
+import { apiAt, palette, qa, SHOTS, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, errs, watch, noErrors, done } = await qa(import.meta.url)
 const NOTE = "Qa vim/Note.md", CODE = "Qa vim/code.ts", OTHER = "Qa vim/Other page.md", MD = "Qa vim/Motions.md"
 const VIMRC = ".vaultite/plugins/vim/init.vim"
@@ -59,22 +59,22 @@ await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await wait(1500)
 await livePreview()
 await lineEl("first line").click(); await wait(200)
 check("off by default: no Vim in the editor", await vimOn() === 0)
-await page.keyboard.press("End"); await page.keyboard.type("!"); await wait(1200)
-check("off: typing types", (await read(NOTE)).replace(/^---\n[\s\S]*?\n---\n\n?/, "").startsWith("first line!\n")) // (after its origin header)
+await page.keyboard.press("End"); await page.keyboard.type("!")
+check("off: typing types", await until(async () => (await read(NOTE)).replace(/^---\n[\s\S]*?\n---\n\n?/, "").startsWith("first line!\n"))) // (after its origin header)
 
 await vim(true); await wait(2500)
 await lineEl("second line").click(); await wait(200)
 check("turned on elsewhere: the open editor takes Vim's keys", await vimOn() > 0)
 await page.keyboard.press("Escape"); await wait(100)
 check("the status bar says Normal", await mode() === "normal")
-await page.keyboard.type("0x"); await wait(1200)
-check("normal mode: x deletes a letter", (await read(NOTE)).includes("\necond line\n"))
-await page.keyboard.type("dd"); await wait(1200)
-check("dd deletes the line", !(await read(NOTE)).includes("econd line"))
+await page.keyboard.type("0x")
+check("normal mode: x deletes a letter", await until(async () => (await read(NOTE)).includes("\necond line\n")))
+await page.keyboard.type("dd")
+check("dd deletes the line", await until(async () => !(await read(NOTE)).includes("econd line")))
 await page.keyboard.type("I"); await wait(100)
 check("the status bar says Insert", await mode() === "insert")
-await page.keyboard.type("hello "); await page.keyboard.press("Escape"); await wait(1200)
-check("I...<Esc> inserts, back in normal mode", (await read(NOTE)).includes("hello third line"))
+await page.keyboard.type("hello "); await page.keyboard.press("Escape")
+check("I...<Esc> inserts, back in normal mode", await until(async () => (await read(NOTE)).includes("hello third line")))
 await page.keyboard.type("z"); await wait(300); await page.keyboard.press("Escape")
 check("normal mode: letters aren't typed", !(await read(NOTE)).includes("zhello"))
 await page.keyboard.type(":w"); await page.keyboard.press("Enter"); await wait(300)
@@ -85,8 +85,8 @@ await page.keyboard.type("yy"); await wait(300)
 check("yy copies the line to the system clipboard", (await page.evaluate(() => navigator.clipboard.readText())).includes("hello third line"))
 await page.evaluate(() => navigator.clipboard.writeText("from elsewhere"))
 await page.evaluate(() => window.dispatchEvent(new Event("focus"))); await wait(300)
-await page.keyboard.type("P"); await wait(1200)
-check("p pastes what was copied elsewhere", (await read(NOTE)).includes("from elsewhere"))
+await page.keyboard.type("P")
+check("p pastes what was copied elsewhere", await until(async () => (await read(NOTE)).includes("from elsewhere")))
 await page.screenshot({ path: `${OUT}vim-note.png` })
 
 // Markdown motions, links and folds.
@@ -101,8 +101,8 @@ await page.keyboard.type("[["); await wait(200)
 check("[[ goes back", (await cursorLine())?.includes("First heading"))
 await page.keyboard.type("gl"); await wait(200)
 check("gl goes to the next link", (await cursorLine())?.includes("Other page"))
-await page.keyboard.type("gf"); await wait(1500)
-check("gf follows the link under the cursor", (await tabFile()).includes("Other page"))
+await page.keyboard.type("gf")
+check("gf follows the link under the cursor", await until(async () => (await tabFile()).includes("Other page")))
 await page.goBack(); await wait(1500)
 await lineEl("Second heading").click(); await wait(200)
 await page.keyboard.press("Escape"); await page.keyboard.type("za"); await wait(400)
@@ -111,13 +111,13 @@ await page.keyboard.type("zR"); await wait(300)
 check("zR opens every fold", await page.locator(".cm-foldPlaceholder").count() === 0)
 
 // : commands drive the app.
-await page.keyboard.type(":e Other page"); await page.keyboard.press("Enter"); await wait(1500)
-check(":e opens a file by name", (await tabFile()).includes("Other page"))
+await page.keyboard.type(":e Other page"); await page.keyboard.press("Enter")
+check(":e opens a file by name", await until(async () => (await tabFile()).includes("Other page")))
 await lineEl("The other page").click(); await page.keyboard.press("Escape")
-await page.keyboard.type(":vs"); await page.keyboard.press("Enter"); await wait(1500)
-check(":vs splits right", await page.locator("[data-pane]").count() === 2)
-await page.keyboard.type(":q"); await page.keyboard.press("Enter"); await wait(1200)
-check(":q closes the tab (and its pane)", await page.locator("[data-pane]").count() === 1)
+await page.keyboard.type(":vs"); await page.keyboard.press("Enter")
+check(":vs splits right", await until(async () => await page.locator("[data-pane]").count() === 2))
+await page.keyboard.type(":q"); await page.keyboard.press("Enter")
+check(":q closes the tab (and its pane)", await until(async () => await page.locator("[data-pane]").count() === 1))
 
 // Space: the leader, handed to the app.
 await lineEl("The other page").click(); await page.keyboard.press("Escape")
@@ -156,11 +156,11 @@ check("a good vimrc reports nothing", !(await page.locator("[data-sonner-toast]"
 await page.goto(`${B}#file/${encodeURIComponent(CODE)}`); await wait(1500)
 await lineEl("const b").click(); await wait(200)
 check("a code file gets Vim too", await vimOn() > 0)
-await page.keyboard.press("Escape"); await page.keyboard.type("0cwlet"); await page.keyboard.press("Escape"); await wait(1200)
-check("code: cw changes a word", (await read(CODE)).includes("let b = 2"))
+await page.keyboard.press("Escape"); await page.keyboard.type("0cwlet"); await page.keyboard.press("Escape")
+check("code: cw changes a word", await until(async () => (await read(CODE)).includes("let b = 2")))
 await page.keyboard.type("gg0"); await page.keyboard.press("Control+v"); await page.keyboard.type("j"); await page.keyboard.press("Shift+I")
-await page.keyboard.type("// "); await page.keyboard.press("Escape"); await wait(1200)
-check("Ctrl+V, I...<Esc> inserts on every line of the block", (await read(CODE)).startsWith("// const a = 1\n// let b = 2"))
+await page.keyboard.type("// "); await page.keyboard.press("Escape")
+check("Ctrl+V, I...<Esc> inserts on every line of the block", await until(async () => (await read(CODE)).startsWith("// const a = 1\n// let b = 2")))
 await page.screenshot({ path: `${OUT}vim-code.png` })
 
 // Vim's settings (its settings sheet): off on this device.
@@ -176,8 +176,8 @@ await page.evaluate(() => { try { const k = Object.keys(localStorage).find((x) =
 
 await vim(false); await wait(2500)
 await page.goto(`${B}#file/${encodeURIComponent(CODE)}`); await wait(1500)
-await lineEl("let b").click(); await page.keyboard.press("End"); await page.keyboard.type("x"); await wait(1200)
-check("off again: typing types", (await read(CODE)).includes("let b = 2x"))
+await lineEl("let b").click(); await page.keyboard.press("End"); await page.keyboard.type("x")
+check("off again: typing types", await until(async () => (await read(CODE)).includes("let b = 2x")))
 
 // A phone: Vim needs a keyboard, so the vault's setting doesn't reach it.
 await vim(true)

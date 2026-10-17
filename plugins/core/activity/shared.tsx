@@ -3,7 +3,7 @@
 import { type ComponentType } from "react"
 import type { LucideIcon } from "lucide-react"
 import { Bot, Code, HardDrive, Terminal, User } from "lucide-react"
-import { dateText, isViewOpen, notify, numberText, openView, useAgents } from "@vaultite"
+import { dateText, isViewOpen, iso, notify, numberText, openView, useAgents } from "@vaultite"
 import type { Actor, ActorKind } from "./model"
 
 type Look = { icon: LucideIcon | ComponentType<{ className?: string; strokeWidth?: number }>; tint: string }
@@ -37,8 +37,7 @@ export function whoOf(a: Actor) {
 
 // ---------- times and sizes
 
-const pad = (n: number) => String(n).padStart(2, "0")
-export const localDay = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
+export const localDay = (t: number) => iso(new Date(t))
 export const clock = (t: number) => dateText(new Date(t), { hour: "numeric", minute: "2-digit" })
 export const ms = (v: number | undefined) => (v === undefined ? "–" : v < 1000 ? `${Math.round(v)} ms` : `${(v / 1000).toFixed(v < 10_000 ? 1 : 0)} s`)
 export const mb = (v: number) => (v < 1024 ? `${Math.round(v)} MB` : `${(v / 1024).toFixed(1)} GB`)

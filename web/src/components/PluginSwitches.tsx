@@ -8,7 +8,7 @@ import { switchRow } from "@/core/switches"
 import { SettingRow, Switch } from "@/components/kit"
 
 /** The plugins whose switch is in this section. */
-export const switchesIn = (section: string) => PLUGINS.filter((p) => p.switchIn?.section === section)
+const switchesIn = (section: string) => PLUGINS.filter((p) => p.switchIn?.section === section)
 
 
 export function PluginSwitches({ section }: { section: string }) {

@@ -58,8 +58,6 @@ type OpenSet = ReturnType<typeof openSet>
 const treeOpen = openSet("files:open", ["Notes"])
 /** Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened. */
 export const pinsOpen = openSet("pins:open", [])
-const openedNow = treeOpen.now
-const setOpened = treeOpen.set
 
 // ---------- long folders: their first files, then "Show N more" (prefs.folderLimit) ----------
 /** Cut only when it leaves out more than this many: "Show 2 more" would be a row in place of two. */
@@ -103,10 +101,10 @@ export async function showInTree(path: string) {
 export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boolean; open?: boolean } = {}) {
   const parts = path.split("/").slice(0, opts.open ? undefined : -1)
   if (revealedPath !== path) { revealedPath = path; moreSubs.notify() }
-  const n = new Set(openedNow())
+  const n = new Set(treeOpen.now())
   let changed = false
   for (let i = 1; i <= parts.length; i++) { const f = parts.slice(0, i).join("/"); if (!n.has(f)) { n.add(f); changed = true } }
-  if (changed) setOpened(n)
+  if (changed) treeOpen.set(n)
   if (!opts.scroll && !opts.flash) return
   // Asked for (flash): a tree in sight, wherever the Files panel is (the right sidebar, a sidebar tab, folded, a
   // rail), or, with the panel hidden, the Files tab.
@@ -486,7 +484,6 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const swipe = (n: Node): SwipeAction[] => {
     if (!n.path || n.path === ".trash" || isProtected(n.path)) return []
     if (inTrash(n.path)) return [{ label: "Restore", icon: RotateCcw, run: () => restore(n), removes: true }, { label: "Delete", icon: Trash2, run: () => remove(n.path), danger: true }]
-    if (fixed(n.path)) return []
     return [
       { label: "Move", icon: n.folder ? FolderInput : FileInput, run: () => askMove(n.path) },
       { label: "Delete", icon: Trash2, run: () => remove(n.path), danger: true, removes: true },
@@ -616,8 +613,8 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
             // Archived files are out of sight by default (the menus show them); while shown, a pressed button to hide them again.
             ...(showArchived ? [{ label: "Hide archived files", icon: Archive, pressed: true, run: () => setPrefs({ showArchived: false }) }] : []),
             anyOpen
-              ? { label: "Collapse all", icon: ChevronsDownUp, run: () => { setOpened(new Set()); setShowingAll(null) } }
-              : { label: "Expand all", icon: ChevronsUpDown, run: () => setOpened(new Set(allFolders)) },
+              ? { label: "Collapse all", icon: ChevronsDownUp, run: () => { treeOpen.set(new Set()); setShowingAll(null) } }
+              : { label: "Expand all", icon: ChevronsUpDown, run: () => treeOpen.set(new Set(allFolders)) },
           ] as { label: string; icon: LucideIcon; pressed?: boolean; run: (e: MouseEvent) => void }[]).map((b) => (
             <button key={b.label} type="button" onClick={b.run} data-tip={b.label} aria-label={b.label} aria-pressed={b.pressed}
               className={cn("grid size-6 cursor-pointer place-items-center rounded-[4px] hover:bg-foreground/[0.06] hover:text-foreground",
@@ -735,7 +732,7 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
             className={cn("flex min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-8 text-left", compact ? "h-full" : "min-h-11 self-stretch", archived && "opacity-50")} style={{ paddingLeft: space(pad) }}>
             {n.folder
               ? <ChevronRight className={cn("size-3.5 shrink-0 text-muted-foreground transition-transform duration-150", isOpen && "rotate-90")} strokeWidth={2.5} />
-              : <span className={compact ? "w-3.5 shrink-0" : "w-3.5 shrink-0"} />}
+              : <span className="w-3.5 shrink-0" />}
             {decor?.before?.length ? <RowNodes nodes={decor.before} />
               : fileIcons && <Icon className={cn("shrink-0", compact ? "size-[15px]" : "size-[18px]", !tint && "text-muted-foreground")} strokeWidth={2} style={tint ? { color: tint } : undefined} />}
             <span {...partProps(decor?.name)} className={cn(decor?.name?.className, "min-w-0 flex-1", compact ? "truncate" : "py-2.5 leading-[22px] break-words", faint && "text-muted-foreground")}>{n.name}</span>

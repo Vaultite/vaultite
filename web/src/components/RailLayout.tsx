@@ -56,7 +56,7 @@ export function RailMenu({ label, items, active, pick, ...rest }: { label: strin
 
 /** A box that scrolls itself; a tab kept drawn while hidden (display: none) loses its scroll, put back as it shows.
  *  `page`: a new one starts at the top. */
-export function Scroller({ page, className, children, ...rest }: { page?: string; className?: string; children: ReactNode } & Attrs) {
+function Scroller({ page, className, children, ...rest }: { page?: string; className?: string; children: ReactNode } & Attrs) {
   const { hidden } = usePane()
   const el = useRef<HTMLDivElement>(null), kept = useRef(0)
   useLayoutEffect(() => { if (page !== undefined) el.current?.scrollTo({ top: 0 }) }, [page])

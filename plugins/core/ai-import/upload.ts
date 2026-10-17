@@ -87,7 +87,7 @@ export async function applyReview(path: string) {
   try {
     const r = await post<{ added: number; failed: number; results: { fact: string; error?: string }[] }>("ops/ai-import.apply", { path })
     if (!r.added && !r.failed) notify("Nothing ticked to add")
-    else if (!r.failed) notify(`Added ${r.added} memor${r.added === 1 ? "y" : "ies"}`)
+    else if (!r.failed) notify(`Added ${plural(r.added, "memory", "memories")}`)
     else notify(`Added ${r.added}; ${r.failed} couldn't be (why is under each)`, { kind: "error" })
   } catch (e) {
     notify(`Couldn't add them: ${(e as Error).message}`, { kind: "error" })

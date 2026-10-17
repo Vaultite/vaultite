@@ -100,8 +100,7 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
     ro.observe(t)
     return () => ro.disconnect()
   }, [editable])
-  const cls = TITLE
-  if (!editable) return <h1 id={sheet ? "sheet-title" : undefined} className={cls}>{name}</h1>
+  if (!editable) return <h1 id={sheet ? "sheet-title" : undefined} className={TITLE}>{name}</h1>
   // Naming a note just made (its title selected) isn't a rename to undo: no toast.
   const commit = () => {
     const write = enter.current
@@ -115,7 +114,7 @@ const Title = memo(function Title({ path, editable, sheet, focus, settle, mode, 
         if (e.key === "Enter") { e.preventDefault(); enter.current = true; (e.target as HTMLTextAreaElement).blur() }
         if (e.key === "Escape") { setV(name); (e.target as HTMLTextAreaElement).blur() }
       }}
-      className={cn(cls, "resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted-foreground")} />
+      className={cn(TITLE, "resize-none overflow-hidden bg-transparent outline-none placeholder:text-muted-foreground")} />
   )
 })
 

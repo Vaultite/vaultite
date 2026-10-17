@@ -3,7 +3,7 @@
 // the phone; the note's sheet address (#<tab>/file/<path>) opens the note on a phone (in a sheet).
 // Read-only (no writes to the vault):  node web/qa/notes.mjs <base url> [out dir]
 // Needs a note that links to another note and to a person (found in the vault by subjects.mjs: "take" links to "idea").
-import { SHOTS, qa } from "./lib/qa.mjs"
+import { SHOTS, qa, until } from "./lib/qa.mjs"
 import { subjects } from "./subjects.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const enc = encodeURIComponent // ids are vault paths ("Notes/Idea"), encoded in the hash
@@ -38,10 +38,10 @@ for (const [w, h, tag, mobile] of [[390, 844, "390", true], [1440, 900, "desktop
     await shot("note")
     if (scheme !== "light") { await ctx.close(); continue }
     // The other note, then Back.
-    await tap(link(page, scope, ideaText)); await page.waitForTimeout(1000)
-    check(`${k} the note link opens ${idea.id}`, (await hashOf(page)).includes(idea.id), await hashOf(page))
-    await page.goBack(); await page.waitForTimeout(800)
-    check(`${k} Back returns to the note`, (await hashOf(page)).includes(take.id), await hashOf(page))
+    await tap(link(page, scope, ideaText))
+    check(`${k} the note link opens ${idea.id}`, await until(async () => (await hashOf(page)).includes(idea.id)), await hashOf(page))
+    await page.goBack()
+    check(`${k} Back returns to the note`, await until(async () => (await hashOf(page)).includes(take.id)), await hashOf(page))
     if (!mobile) await unfocus(page)
     // The person, then Back.
     await tap(link(page, scope, personText)); await page.waitForTimeout(1000)

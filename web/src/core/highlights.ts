@@ -24,7 +24,7 @@ export function highlightColor(text: string): { color: HighlightColor; len: numb
   return { color: HIGHLIGHT_COLORS.find((c) => c.emoji === emoji)!.name, len: m[0].length }
 }
 
-export const emojiOf = (color: HighlightColor | null) => (color ? HIGHLIGHT_COLORS.find((c) => c.name === color)!.emoji : "")
+const emojiOf = (color: HighlightColor | null) => (color ? HIGHLIGHT_COLORS.find((c) => c.name === color)!.emoji : "")
 
 /** The class a highlight of that colour is drawn with (none for the default). */
 export const highlightClass = (color: HighlightColor | null | undefined) => (color ? `hl-${color}` : "")

@@ -1,7 +1,8 @@
 // Comments and suggestions as threads: where they show (the setting `comments`), a note's in its order, and the
 // Conversations panel brought into sight for one.
 import { dockAtEnd, offerPanel, panelSide, pluginSettings, revealPanel } from "@vaultite"
-import { nearest, type Note, pick, viewOf } from "./live"
+import { type Note, pick, viewOf } from "./live"
+import { nearest } from "./text"
 
 const settings = pluginSettings<{ comments?: string }>("companion")
 /** Where comments and suggestions show: the Conversations panel, a dot by each one's line (the default), or cards in

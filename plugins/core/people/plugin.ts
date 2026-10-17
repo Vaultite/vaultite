@@ -4,6 +4,7 @@ import { bullets, daysBetween, HTTPError, Plugin, reply, section } from "../../.
 import { entryLine, entryProblem, parseEntry, timelineKind } from "../../../core/timeline.ts"
 import { cmp, isArchived, type Item, Kind, num, safeName, sortBy, splitTags, str, truthy } from "../../../core/vault.ts"
 import { geocoder, type Places } from "./geocode.ts"
+import { often } from "./often.ts"
 import { peopleOps } from "./ops.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -298,8 +299,6 @@ plugin.block("person", (ctx) => {
   ])
 })
 
-/** How often, the way the cards say it (People.tsx): "daily", "every 2 weeks", "every 10 days". */
-const often = (n: number) => ({ 1: "daily", 7: "weekly", 14: "every 2 weeks", 30: "monthly", 60: "every 2 months" } as Record<number, string>)[n] ?? `every ${n} days`
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 plugin.block("people-due", (ctx) => {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowUp, Eye, EyeOff, File, Folder, PenLine, RefreshCw, Server } from "lucide-react"
-import { get, post, machinePath, notify, notifyError, op, Panel, Loading, Empty, Bar, FilterField, Segmented, useKeptCount, useMachines, type ViewCtx } from "@vaultite"
-import { FilePreview, ago, fmtSize } from "./Preview"
+import { fmtAgo, get, post, machinePath, notify, notifyError, op, Panel, Loading, Empty, Bar, FilterField, Segmented, useKeptCount, useMachines, type ViewCtx } from "@vaultite"
+import { FilePreview, fmtSize } from "./Preview"
 
 type Entry = { name: string; dir: boolean; link: boolean; size: number | null; mtime?: number | null }
 type Listing = { path: string; parent: string | null; entries: Entry[]; truncated: boolean }
@@ -107,7 +107,7 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
             {e.dir ? <Folder size={16} className="shrink-0 text-muted-foreground" /> : <File size={16} className="shrink-0 text-muted-foreground" />}
             <span className="min-w-0 flex-1 break-all">{e.name}{e.link ? " ↗" : ""}</span>
             {!e.dir && e.size != null && <span className={muted}>{fmtSize(e.size)}</span>}
-            {e.mtime != null && <span className={`${muted} hidden min-w-16 text-right @md:inline`}>{ago(e.mtime)}</span>}
+            {e.mtime != null && <span className={`${muted} hidden min-w-16 text-right @md:inline`}>{fmtAgo(e.mtime)}</span>}
           </button> })}
           {data?.truncated && <p className="text-[13px] text-muted-foreground">Showing the first 5,000 entries.</p>}
         </div>
@@ -120,7 +120,7 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
               return <button type="button" key={f.path} data-keyrow onClick={() => open(f.path)} className={`${row} hover:bg-accent`}>
                 <File size={16} className="shrink-0 text-muted-foreground" />
                 <span className="min-w-0 flex-1 break-all">{f.path.slice(f.path.lastIndexOf("/") + 1)}{rel && <span className="ml-2 font-mono text-[12px] text-muted-foreground">{rel}</span>}</span>
-                <span className={muted}>{ago(f.mtime)}</span>
+                <span className={muted}>{fmtAgo(f.mtime)}</span>
               </button> })}</div>
           </section>
           : data && <Empty>Choose a file to read it.</Empty>}

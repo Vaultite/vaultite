@@ -6,7 +6,7 @@ import { cn, menuBelow, notify, notifyError, Panel, put, readFile, resolver, tod
 import { countText, ResultBody, ResultSkeleton, TINT, useQueryResult, type TableCtl } from "./QueryView"
 import { parse as parseYaml } from "yaml"
 import { addView, firstView, freeViewName, removeView, setColumnSize, setDisplayName, setOrder, setSort, setSummary, setViewType } from "./baseedit"
-import { pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
+import { obj, pickView, viewNames, viewsOf, type BaseConfig } from "./bases"
 import { keyOf, label, sortOf, type Result } from "./query"
 import { SUMMARIES } from "./expr"
 import { BarButton, BUTTONS, filterCount, FilterMenu, Popover, PropertiesMenu, SortMenu, type BaseEdit } from "./Toolbar"
@@ -20,8 +20,6 @@ const LAYOUTS: { type: string; label: string }[] = [
 ]
 /** The summaries a column's menu offers (Obsidian's; Count is this app's). */
 const SUMMARY_NAMES = SUMMARIES.filter((s) => s !== "Count")
-
-const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null)
 
 type Props = {
   store: BlockCtx["store"]; text: string

@@ -3,8 +3,9 @@
 import { closeCompletion, type Completion, type CompletionContext, completionStatus, selectedCompletion, startCompletion } from "@codemirror/autocomplete"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
-import { accept, answer, asksSomething, bump, canMention, type EditAsk, getState, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { capitalize, keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, getState, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { nearest } from "./text"
 
 /** Its own changes: not the user's, so not said back as theirs. */
 const own = Annotation.define<boolean>()
@@ -369,7 +370,6 @@ const theme = EditorView.baseTheme({
 
 type How = { model: string; effort: string }
 const MODELS = ["sonnet", "opus", "haiku"], EFFORTS = ["low", "medium", "high"]
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 /** The Start row's name (as typed) on its option. */
 const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string }) | null)?.startAs
 
@@ -377,8 +377,8 @@ const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string
 function begin(view: EditorView, path: string, name: string, from: number, to: number, how: How) {
   const insert = `${name.toLowerCase()} `
   view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.complete" })
-  void op("companion.start", { as: cap(name), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
-    path, line: view.state.doc.lineAt(from).number }).catch((e) => notifyError(e, `Couldn't start ${cap(name)}`))
+  void op("companion.start", { as: capitalize(name), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
+    path, line: view.state.doc.lineAt(from).number }).catch((e) => notifyError(e, `Couldn't start ${capitalize(name)}`))
 }
 
 /** @ anywhere a mention can start: the agents around now, the companion first; a name none has, a Start row last. */
@@ -395,7 +395,7 @@ const mentions = (path: string) => (ctx: CompletionContext) => {
   if (fresh) {
     const how = st.fresh
     options.push({ label: typed, displayLabel: `Start @${typed}`, boost: -99, startAs: typed,
-      detail: ["new companion", how.model && cap(how.model), how.effort].filter(Boolean).join(" · "),
+      detail: ["new companion", how.model && capitalize(how.model), how.effort].filter(Boolean).join(" · "),
       apply: (view: EditorView, _c: Completion, from: number, to: number) => begin(view, path, typed, from, to, how) })
   }
   // (asked again as they type once no agent's name fits, for the Start row to name what they typed)
@@ -459,7 +459,7 @@ function chooserView(view: EditorView) {
       for (const x of list.includes(on) ? list : [on, ...list]) {
         const b = r.appendChild(document.createElement("button"))
         b.type = "button"
-        b.textContent = cap(x)
+        b.textContent = capitalize(x)
         if (x === on) b.setAttribute("aria-pressed", "true")
         b.onclick = () => view.dispatch({ effects: choose.of({ ...c, row: i, ...(i ? { effort: x } : { model: x }) }) })
       }

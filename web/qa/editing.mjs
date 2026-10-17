@@ -6,7 +6,7 @@
 // light and dark. WRITES a "Qa editing" folder and renames a property in it: throwaway server only.
 //   node web/qa/editing.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { SHOTS, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const json = { "Content-Type": "application/json" }
@@ -93,11 +93,11 @@ await page.keyboard.press("ControlOrMeta+Alt+f"); await wait(500)
 check("⌥⌘F opens it with replace", await page.locator("input[aria-label=Replace]").count() === 1)
 await page.locator("input[aria-label=Find]").fill("banana"); await wait(200)
 await page.locator("input[aria-label=Replace]").fill("plantain"); await wait(200)
-await page.getByRole("button", { name: "Replace all" }).click(); await wait(1400)
-check("replace all writes every match", (await read(NOTE)).includes("plantain bread") && !/banana/i.test((await read(NOTE)).replace("## Bananas", "")))
+await page.getByRole("button", { name: "Replace all" }).click()
+check("replace all writes every match", await until(async () => (await read(NOTE)).includes("plantain bread") && !/banana/i.test((await read(NOTE)).replace("## Bananas", ""))))
 await page.keyboard.press("Escape"); await wait(200)
-await page.keyboard.press("ControlOrMeta+z"); await wait(1400)
-check("⌘Z undoes the replace all", (await read(NOTE)).includes("Banana bread"))
+await page.keyboard.press("ControlOrMeta+z")
+check("⌘Z undoes the replace all", await until(async () => (await read(NOTE)).includes("Banana bread")))
 // Reading: find only
 await page.keyboard.press("ControlOrMeta+e"); await wait(800)
 await page.keyboard.press("ControlOrMeta+f"); await wait(500)
@@ -159,8 +159,8 @@ check("folding a heading hides its section, subheadings included, not the next h
 check("a … marks the fold", await ed.locator(".cm-foldPlaceholder").count() === 1)
 await shot("folded")
 // remembered
-await page.reload(); await wait(2500)
-check("the fold is remembered after a reload", await line("Apple pie").count() === 0 && await ed.locator(".cm-foldPlaceholder").count() === 1)
+await page.reload()
+check("the fold is remembered after a reload", await until(async () => await line("Apple pie").count() === 0 && await ed.locator(".cm-foldPlaceholder").count() === 1, 10000))
 await palette("Unfold all headings and lists"); await wait(300)
 check("Unfold all shows everything again", await line("Apple pie").count() === 1)
 await palette("Fold all headings and lists"); await wait(300)
@@ -196,10 +196,10 @@ const scrolled = await page.locator("[data-preview-body]").evaluate((b) => {
 }).catch(() => null)
 check(`a heading link previews at that heading (${scrolled})`, scrolled !== null && scrolled < 40)
 // a link inside the preview previews too, and a click follows it
-await page.locator("[data-preview-level='0'] [data-wiki='Alice Martin']").hover(); await wait(1000)
-check("a link in a preview previews in turn", await page.locator("[data-preview-level='1']").count() === 1)
-await page.locator("[data-preview-level='0'] [data-wiki='Alice Martin']").click(); await wait(1200)
-check("clicking a link in a preview follows it and closes the previews", await page.locator("[data-preview-level]").count() === 0 && decodeURIComponent(page.url()).includes("Alice Martin"))
+await page.locator("[data-preview-level='0'] [data-wiki='Alice Martin']").hover()
+check("a link in a preview previews in turn", await until(async () => await page.locator("[data-preview-level='1']").count() === 1))
+await page.locator("[data-preview-level='0'] [data-wiki='Alice Martin']").click()
+check("clicking a link in a preview follows it and closes the previews", await until(async () => await page.locator("[data-preview-level]").count() === 0 && decodeURIComponent(page.url()).includes("Alice Martin")))
 await page.goBack(); await wait(1500)
 await palette("Switch to live preview")
 await ed.locator("[data-wiki='Linked note']").first().hover(); await wait(1000)
@@ -223,10 +223,9 @@ await page.getByRole("button", { name: "Rename", exact: true }).click(); await w
 const text = await read(NOTE)
 check("renamed in the file: only the key's text changed, its comment stayed", text.includes("qa_phase: draft # a comment that stays") && !text.includes("qa_stage"))
 check("and in every other file that had it", (await read(OTHER)).includes("qa_phase: draft"))
-await page.waitForTimeout(800)
-check("the list follows the vault", await page.locator("[data-properties-view] [data-property='qa_phase']").count() === 1)
-await page.getByRole("button", { name: "Undo" }).click(); await wait(1500)
-check("Undo renames it back", (await read(NOTE)).includes("qa_stage: draft # a comment that stays"))
+check("the list follows the vault", await until(async () => await page.locator("[data-properties-view] [data-property='qa_phase']").count() === 1))
+await page.getByRole("button", { name: "Undo" }).click()
+check("Undo renames it back", await until(async () => (await read(NOTE)).includes("qa_stage: draft # a comment that stays")))
 
 // dark
 await page.emulateMedia({ colorScheme: "dark" })

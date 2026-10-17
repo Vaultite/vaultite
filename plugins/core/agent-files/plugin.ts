@@ -32,7 +32,7 @@ const read = (p: string) => {
 const notHereYet = (e: unknown) => Math.abs((e as NodeJS.ErrnoException)?.errno ?? 0) === 11
 
 /** The user's own rules in the file's text: what's under OWN (the app's note there left out), or "". */
-export function ownPart(text: string | null) {
+function ownPart(text: string | null) {
   if (!text) return ""
   const lines = text.split("\n"), at = lines.findIndex((l) => l.trim() === OWN)
   if (at < 0) return ""
@@ -71,7 +71,7 @@ export function point(abs: (rel: string) => string, name: string, on: boolean) {
 }
 
 /** Write the rules (on), or leave only the user's part of them (off: none, no file). */
-export function writeRules(on: boolean) {
+function writeRules(on: boolean) {
   const file = plugin.vault.abs(RULES), cur = read(file), own = ownPart(cur)
   const want = on ? rulesText(own) : own ? `${OWN}\n\n${own}\n` : null
   if (want === cur) return

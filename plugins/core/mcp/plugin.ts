@@ -89,15 +89,16 @@ plugin.provide("mcp:tool", async (req: Request | null, name: string, args: Recor
   return typeof out === "string" ? out : out.text
 })
 
+const toolNamed = async (name: string) => (await toolsWithApps({ tools: () => toolsOf(plugin.host.catalog()), apps })).find((x) => x.name === name)
 /** For a host drawing cards in the app (a plugin's block): a tool as tools/list declares it, its CallToolResult run as
  *  the request's caller (an in-app op's checks), and a card's resources/read with its page's CSP. */
 plugin.provide("mcp:app-host", () => ({
   tool: async (name: string) => {
-    const t = (await toolsWithApps({ tools: () => toolsOf(plugin.host.catalog()), apps })).find((x) => x.name === name)
+    const t = await toolNamed(name)
     return t ? { declared: declared(t), kind: plugin.host.catalog().find((e) => e.mcp === name)?.kind ?? null } : null
   },
   call: async (req: Request, name: string, args: Record<string, unknown>) => {
-    const t = (await toolsWithApps({ tools: () => toolsOf(plugin.host.catalog()), apps })).find((x) => x.name === name)
+    const t = await toolNamed(name)
     if (!t) throw new OpError(`no tool ${name}`, 404)
     return callTool(t, args, { client: { agent: null, label: "", source: "" }, op: (id, params) => plugin.host.call(id, params, undefined, { http: req.http }) }, appUrl())
   },

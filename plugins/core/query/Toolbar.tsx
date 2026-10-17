@@ -6,13 +6,11 @@ import { ArrowUpDown, Code, Ellipsis, GripVertical, List, ListFilter, Plus, Tras
 import { choose, cn, FilterField, menuBelow, SortableList, useDismiss, type MenuItem } from "@vaultite"
 import { keyOf, label, sortOf, type Result } from "./query"
 import { setFilters, setOrder, setSort } from "./baseedit"
-import { viewsOf, type BaseConfig } from "./bases"
+import { obj, viewsOf, type BaseConfig } from "./bases"
 import { condOf, countOf, exprOf, FILE_OPS, NO_VALUE, treeOf, valueOf, type Cond, type Group, type Item, type Op } from "./filters"
 
 /** What a menu changes: the base as it is now (`cfg`), its view `at`, the answer shown, and `edit` (a change to its text). */
 export type BaseEdit = { cfg: BaseConfig; at: number; res: Result | null; columns: string[]; edit: (fn: (t: string) => string) => void }
-
-const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? v as Record<string, unknown> : null)
 
 /** The file's own properties, as Obsidian lists them (engine keys: query.ts keyOf). */
 const FILE_PROPS: [string, string][] = [

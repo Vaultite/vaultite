@@ -4,13 +4,12 @@ import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "reac
 import { Check, MessagesSquare, RotateCcw, X } from "lucide-react"
 import { cn, fmtAgo, keyHint, Markdown, op, snippet, useFocusedFile, type SidebarCtx } from "@vaultite"
 import { accept, answer, getState, type Note, pick, reopen, subscribe, tintOf } from "./live"
-import { cut, follow } from "./Overlay"
+import { cut, follow, inked } from "./Overlay"
 import { Faces } from "./Presence"
 import { threadsOf } from "./threads"
 
 type Filter = "open" | "resolved"
 /** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
-const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
 
 /** The note's dismissed comments (kept on the server), asked again as its open ones change. */
 function usePast(path: string, open: Note[]) {

@@ -5,7 +5,7 @@
 // WRITES to the vault: throwaway server only.
 //   node web/qa/slash.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync } from "node:fs"
-import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
 const post = (path, body) => fetch(`${B}api/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
@@ -61,8 +61,8 @@ await page.screenshot({ path: `${OUT}slash-templates-empty.png` })
 const empty = await page.getByRole("button", { name: "Add three examples" }).count()
 check("no templates: the picker offers examples", empty === 1)
 await page.screenshot({ path: `${OUT}slash-templates-empty.png` })
-await page.getByRole("button", { name: "Add three examples" }).click(); await wait(1500)
-check("examples written to the templates folder", existsSync(`${VAULT}/${TPL}/Person.md`) && existsSync(`${VAULT}/${TPL}/Journal.md`))
+await page.getByRole("button", { name: "Add three examples" }).click()
+check("examples written to the templates folder", await until(async () => existsSync(`${VAULT}/${TPL}/Person.md`) && existsSync(`${VAULT}/${TPL}/Journal.md`)))
 await page.keyboard.type("Person"); await wait(300)
 await page.screenshot({ path: `${OUT}slash-templates-pick.png` })
 await page.keyboard.press("Enter"); await wait(2000)

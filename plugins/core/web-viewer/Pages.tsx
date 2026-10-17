@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { EyeOff, Globe, KeyRound, LogOut, Plus } from "lucide-react"
 import {
-  confirmDialog, HeadingButton, menuFor, notifyError, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
+  confirmDialog, HeadingButton, menuFor, notifyError, plural, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
   type SidebarCtx, type WebPageInfo, type WebSite,
 } from "@vaultite"
 import { siteIcon } from "./icons"
@@ -54,7 +54,7 @@ async function signOut(prof: string, s: WebSite, done: () => void) {
 async function clearOthers(prof: string, others: WebSite[], done: () => void) {
   const names = others.map((s) => s.site)
   const ok = await confirmDialog({
-    title: `Clear ${names.length} ${names.length === 1 ? "tracker" : "trackers"}?`,
+    title: `Clear ${plural(names.length, "tracker")}?`,
     body: `Cookies these sites left while you were on other sites' pages (ad and analytics networks, not logins of yours): ${names.join(", ")}. Their cookies and storage are deleted.`,
     confirm: "Clear", danger: true,
   })
@@ -108,7 +108,7 @@ export function WebPagesPanel({ open, openPage, ask }: Pick<SidebarCtx, "open"> 
             ))}
             {sites && !sites.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">No sites yet</p>}
             {others.length > 0 && (
-              <SidebarRow icon={EyeOff} label={`${others.length} ${others.length === 1 ? "tracker" : "trackers"}`} open={open} data-web-trackers={String(others.length)}
+              <SidebarRow icon={EyeOff} label={plural(others.length, "tracker")} open={open} data-web-trackers={String(others.length)}
                 tip={`Cookies from sites you didn't open, left by other sites' pages: ${others.map((s) => s.site).join(", ")}`}
                 onClick={() => void clearOthers(prof, others, refresh)}>
                 <span className="mr-1 text-[11px] text-tertiary">Clear</span>

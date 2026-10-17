@@ -7,7 +7,7 @@
 // WRITES to the vault: throwaway server only.
 //   node web/qa/blocks.mjs <base url> <vault path> [out dir]
 import { readFileSync } from "node:fs"
-import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
 const post = (path, body) => fetch(`${B}api/${path}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
@@ -47,8 +47,7 @@ check("the block with a note is still drawn", await page.locator(".cm-content", 
 
 // Fixed on disk (as an AI would): its line goes.
 await fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: NOTE, text: read(NOTE).replace("titel: Mine", "title: Mine") }) })
-await wait(2500)
-check("fixed on disk, its note goes", !(await notes.allInnerTexts()).some((t) => t.includes("titel")))
+check("fixed on disk, its note goes", await until(async () => !(await notes.allInnerTexts()).some((t) => t.includes("titel")), 10000))
 
 // Source mode: suggestions inside a block's fence.
 await palette(page, "Switch to source mode")
@@ -59,16 +58,16 @@ await page.keyboard.type("he"); await wait(500)
 const labels = (await menu.locator("li").allInnerTexts().catch(() => [])).map((t) => t.split(/\s/)[0])
 check(`typing in a block suggests its options, not the ones it has (${labels.join(", ")})`, await menu.isVisible() && labels.includes("height") && !labels.includes("depth"))
 await page.screenshot({ path: `${OUT}blocks-suggest.png` })
-await page.keyboard.press("Enter"); await page.keyboard.type("280"); await wait(1500)
-check("a pick goes in as `key: ` and the value follows", /```block-graph\ndepth: 9\nheight: 280\n```/.test(read(NOTE)))
+await page.keyboard.press("Enter"); await page.keyboard.type("280")
+check("a pick goes in as `key: ` and the value follows", await until(async () => /```block-graph\ndepth: 9\nheight: 280\n```/.test(read(NOTE))))
 await page.locator(".vau-editor .cm-line", { hasText: "title: Qa errors" }).first().click()
 await page.keyboard.press("End"); await page.keyboard.press("Enter")
 await page.keyboard.type("sou"); await wait(400)
 await page.keyboard.press("Enter"); await page.keyboard.type("s"); await wait(500)
 const values = (await menu.locator("li").allInnerTexts().catch(() => [])).map((t) => t.split(/\s/)[0])
 check(`after an enum's key, its values (${values.join(", ")})`, values.includes("server"))
-await page.keyboard.press("Enter"); await wait(1500)
-check("…and the value goes in", /title: Qa errors\nsource: server\n/.test(read(NOTE)))
+await page.keyboard.press("Enter")
+check("…and the value goes in", await until(async () => /title: Qa errors\nsource: server\n/.test(read(NOTE))))
 await page.locator(".vau-editor .cm-line", { hasText: "End line." }).first().click()
 await page.keyboard.press("End"); await page.keyboard.press("Enter")
 await page.keyboard.type("de"); await wait(400)
@@ -82,8 +81,8 @@ await page.keyboard.press("End"); await page.keyboard.press("Enter"); await page
 await page.keyboard.type("/area"); await wait(500)
 const pick = menu.locator("li", { hasText: /^Area/ })
 if (await pick.count()) await pick.first().click(); else await page.keyboard.press("Enter")
-await wait(300); await page.keyboard.type("workouts"); await wait(1500)
-check("a block from the slash menu comes with its required options, the cursor at the first", /```block-area\narea: workouts\n```/.test(read(NOTE)))
+await wait(300); await page.keyboard.type("workouts")
+check("a block from the slash menu comes with its required options, the cursor at the first", await until(async () => /```block-area\narea: workouts\n```/.test(read(NOTE))))
 
 // The Plugins page: listed by category, not by where a plugin came from.
 await page.goto(`${B}#plugins`); await wait(1500)

@@ -4,7 +4,7 @@
 // and blocks inside code fences left alone, the Design page read as a dashboard, and a phone at 390px (no sideways
 // scroll, copy always shown). WRITES a "Qa markdown" folder: throwaway only.
 //   node web/qa/markdown.mjs <base url> [out dir]
-import { SHOTS, apiAt, palette, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
 import { pagePath } from "./subjects.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 const PATH = "Qa markdown/Rich.md"
@@ -183,8 +183,8 @@ const hiddenBefore = (await api("GET", "config/files")).showHidden ?? null
 await api("PATCH", "config/files", { showHidden: true })
 await put("Qa markdown/Trashed.md", "- [ ] a task\n")
 const trashed = (await (await fetch(`${B}api/file?path=${encodeURIComponent("Qa markdown/Trashed.md")}`, { method: "DELETE" })).json()).trashed
-await page.goto(`${B}#file/${encodeURIComponent(trashed)}`); await wait(1500)
-check(`a checkbox in the trash is disabled (${trashed})`, await ed.locator("input.cm-task[disabled]").count() === 1)
+await page.goto(`${B}#file/${encodeURIComponent(trashed)}`)
+check(`a checkbox in the trash is disabled (${trashed})`, await until(async () => await ed.locator("input.cm-task[disabled]").count() === 1))
 await api("PATCH", "config/files", { showHidden: hiddenBefore })
 
 // Phone.

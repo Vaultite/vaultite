@@ -7,6 +7,7 @@ import {
   addDays, AddToTimeline, capitalize, cn, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
   today, WeeksGrid, type BlockCtx, type Store, type TimelineEntry, type TimelineKind,
 } from "@vaultite"
+import { often } from "./often"
 import type { Interaction, Person } from "./types"
 
 
@@ -50,7 +51,6 @@ function status(s: Store, p: Person) {
   const overdue = every ? (since === null ? Infinity : since - every) : -Infinity
   return { last, since, due, overdue }
 }
-const often = (n: number) => ({ 1: "daily", 7: "weekly", 14: "every 2 weeks", 30: "monthly", 60: "every 2 months" } as Record<number, string>)[n] ?? `every ${n} days`
 const ago = (since: number | null) =>
   since === null ? "Never" : since === 0 ? "Today" : since === 1 ? "Yesterday" : `${since} d ago`
 /** "today", "yesterday", "Saturday", "Sep 20": fmtDay mid-sentence (only its relative words lower-cased). */

@@ -97,9 +97,9 @@ check("links: \"/\" makes folders", existsSync(`${VAULT}/Qa safe/Sub/Deep note.m
 // A rename to a name with characters a file can't have is refused, saying which.
 await open(page, "Qa safe/Rename me.md")
 const title = page.locator("textarea[aria-label='File name']")
-await title.fill("Rename: me"); await title.press("Enter"); await wait(1200)
-check("rename: refused, saying why", existsSync(`${VAULT}/Qa safe/Rename me.md`) && await page.locator("text=A file name can't have :").count() > 0)
-await title.fill("Moved/Rename me"); await title.press("Enter"); await wait(1500)
-check("rename: \"/\" moves it into a folder", existsSync(`${VAULT}/Qa safe/Moved/Rename me.md`), readdirSync(`${VAULT}/Qa safe`, { recursive: true }))
+await title.fill("Rename: me"); await title.press("Enter")
+check("rename: refused, saying why", await until(async () => existsSync(`${VAULT}/Qa safe/Rename me.md`) && await page.locator("text=A file name can't have :").count() > 0))
+await title.fill("Moved/Rename me"); await title.press("Enter")
+check("rename: \"/\" moves it into a folder", await until(() => existsSync(`${VAULT}/Qa safe/Moved/Rename me.md`)), readdirSync(`${VAULT}/Qa safe`, { recursive: true }))
 
 await done()

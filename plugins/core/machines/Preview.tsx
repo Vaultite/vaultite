@@ -19,7 +19,6 @@ export function fmtSize(n: number) {
   while (v >= 1024 && i < u.length - 1) { v /= 1024; i++ }
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${u[i]}`
 }
-export const ago = (ms: number) => fmtAgo(new Date(ms).toISOString())
 const isObj = (v: unknown): v is Obj => !!v && typeof v === "object" && !Array.isArray(v)
 
 /** A file of an agent machine, drawn by its kind; Raw shows the text as it is. */
@@ -43,7 +42,7 @@ export function FilePreview({ id, path, tick }: { id: string; path: string; tick
     <div className="flex items-start gap-2">
       <div className="min-w-0 flex-1">
         <p className="text-[15px] font-medium break-all">{name}</p>
-        {file ? <p className="text-[13px] text-muted-foreground">{fmtSize(file.size)}{file.mtime ? ` · ${ago(file.mtime)}` : ""}</p>
+        {file ? <p className="text-[13px] text-muted-foreground">{fmtSize(file.size)}{file.mtime ? ` · ${fmtAgo(file.mtime)}` : ""}</p>
           : !error && <p className="loading-in text-[13px]" aria-busy><Bar w="7em" /></p>}
         <p className="font-mono text-[12px] break-all text-muted-foreground">{path}</p>
       </div>

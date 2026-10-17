@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react"
 import { Archive, Check, CheckCheck, ChevronDown, ChevronRight, GitCompareArrows, RotateCcw } from "lucide-react"
 import {
-  AmbientButton, Button, capitalize, cn, DiffRows, fmtAgo, fmtStamp, Loading, notify, notifyError, op, openFile, openView, plural, post, put,
+  AmbientButton, Button, capitalize, cn, DiffRows, fmtAgo, fmtStamp, folderOf, Loading, notify, notifyError, op, openFile, openView, plural, post, put,
   readFile, stem, textDiff, useLive, type DiffLine, type FileHead,
 } from "@vaultite"
 import { argOf, reviewFileView, reviewView, useReview, type Pending } from "./open"
@@ -14,7 +14,6 @@ type Undo = { was: Record<string, number | null>; relabeled?: { path: string; wa
 const names = (by: string[]) => (by.length <= 2 ? by.join(" and ") : `${by.slice(0, -1).join(", ")} and ${by.at(-1)}`)
 /** "ChatGPT edited", "Claude and Codex created". */
 const whoDid = (f: Pending) => `${names(f.by)} ${f.created ? "created" : "edited"}`
-const folderOf = (path: string) => path.split("/").slice(0, -1).join("/")
 
 /** What undoes a keep: the marks as they were, and the labels put back. */
 async function unkeep(u: Undo) {
