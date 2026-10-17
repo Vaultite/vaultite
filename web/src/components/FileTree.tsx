@@ -134,16 +134,17 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
 
 /** Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of
  *  its panel (rows pass under it). The tree itself is as tall as its rows, so it says nothing about that. */
-function seenArea(el: HTMLElement) {
-  let top = 0, bottom = innerHeight
+export function seenArea(el: HTMLElement) {
+  let top = 0, bottom = innerHeight, left = 0, right = innerWidth
   for (let p = el.parentElement; p; p = p.parentElement) {
-    if (getComputedStyle(p).overflowY === "visible") continue
+    const st = getComputedStyle(p)
+    if (st.overflowY === "visible" && st.overflowX === "visible") continue
     const b = p.getBoundingClientRect()
-    top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom)
+    top = Math.max(top, b.top); bottom = Math.min(bottom, b.bottom); left = Math.max(left, b.left); right = Math.min(right, b.right)
   }
   const head = el.closest("[data-panel]")?.querySelector<HTMLElement>("[data-panel-handle]")
   if (head && getComputedStyle(head).position === "sticky") top = Math.max(top, head.getBoundingClientRect().bottom)
-  return { top, bottom }
+  return { top, bottom, left, right }
 }
 
 /** The tree's drop target (core/drag.ts): moving things into a folder. Each tree has its own (the sidebar's, and one

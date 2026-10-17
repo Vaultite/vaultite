@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, capitalize, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile, snippet } from "@vaultite"
+import { canvasOf, canvasShown, capitalize, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile, seenArea, snippet } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { accept, type Agent, answer, getState, type Target, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
@@ -28,7 +28,7 @@ function coords(v: EditorView, pos: number) {
   const r = (v.dom.closest("[data-pane]") ?? v.scrollDOM).getBoundingClientRect()
   // (what of it shows: above the status bar or a phone's bar, drawn over its foot)
   const bars = [...document.querySelectorAll("[data-status-bar], [data-phone-bar]")].map((el) => el.getBoundingClientRect()).filter((b) => b.height && b.left < r.right && b.right > r.left)
-  const k = clipOf(v.dom)
+  const k = seenArea(v.dom)
   const box = { left: Math.max(r.left, k.left), right: Math.min(r.right, k.right), top: Math.max(r.top, k.top), bottom: Math.min(r.bottom, k.bottom, ...bars.map((b) => b.top)) }
   let c: { left: number; top: number; bottom: number } | null = null
   try { c = v.coordsAtPos(pos) } catch { /* outside the drawn part */ }
@@ -36,25 +36,14 @@ function coords(v: EditorView, pos: number) {
   return { x: c ? c.left : box.left + 24, y: Math.max(box.top + 2, Math.min(box.bottom - 30, y)), shown: !!c && c.top >= box.top - 4 && c.bottom <= box.bottom + 4, box }
 }
 
-/** What of `el` its scrollers and clippers (and the screen) let show: a rect, empty when `el` is wholly outside. */
-export function clipOf(el: Element) {
-  let c = { left: 0, top: 0, right: innerWidth, bottom: innerHeight }
-  for (let p = el.parentElement; p; p = p.parentElement) {
-    const s = getComputedStyle(p)
-    if (s.overflowX === "visible" && s.overflowY === "visible") continue
-    const r = p.getBoundingClientRect()
-    c = { left: Math.max(c.left, r.left), top: Math.max(c.top, r.top), right: Math.min(c.right, r.right), bottom: Math.min(c.bottom, r.bottom) }
-  }
-  return c
-}
-
-/** A file that isn't open: its row in the file tree, when one shows it. Scrolled out of its list, the cursor sits at the
- *  list's edge on that side ("up there"), never over what's beside the list. */
+/** A file that isn't open: its row in the file tree, a copy in view before one scrolled away (or pinned). Out of its
+ *  list, the cursor sits at the list's edge on that side ("up there"), never over what's beside the list. */
 function rowOf(path: string): Spot | null {
-  const el = [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].find((e) => e.offsetParent)
-  const r = el?.getBoundingClientRect()
-  if (!el || !r || !r.height) return null
-  const c = clipOf(el)
+  const rows = [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].filter((e) => e.offsetParent && e.getBoundingClientRect().height)
+  const seen = (e: HTMLElement) => { const r = e.getBoundingClientRect(), c = seenArea(e); return r.bottom > c.top && r.top < c.bottom && r.right > c.left && r.left < c.right }
+  const el = rows.find(seen) ?? rows.find((e) => !e.closest("[data-pin-tree]")) ?? rows[0]
+  if (!el) return null
+  const r = el.getBoundingClientRect(), c = seenArea(el)
   if (c.bottom - c.top < 12 || c.right - c.left < 12) return null
   const x = Math.max(c.left + 4, Math.min(c.right - 24, r.left + Math.min(r.width - 24, 120)))
   const y = Math.max(c.top + 2, Math.min(c.bottom - 24, r.top + 4))

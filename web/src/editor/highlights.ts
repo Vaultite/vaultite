@@ -2,7 +2,7 @@
 import type { Completion, CompletionContext, CompletionResult } from "@codemirror/autocomplete"
 import { syntaxTree } from "@codemirror/language"
 import type { EditorView } from "@codemirror/view"
-import { HIGHLIGHT_COLORS, highlightClass, paragraphAt, type HighlightColor } from "@/core/highlights"
+import { HIGHLIGHT_COLORS, closesHighlight, highlightClass, paragraphAt, type HighlightColor } from "@/core/highlights"
 import { capitalize } from "@/lib/utils"
 import { inFrontmatter } from "./slash"
 
@@ -24,7 +24,7 @@ export function highlightSource(ctx: CompletionContext): CompletionResult | null
   const m = ctx.matchBefore(/(?<![=\\])==[a-z]*$/i)
   if (!m) return null
   // (a highlight open since an earlier line of the paragraph: this == closes it)
-  if ((ctx.state.sliceDoc(paragraphAt(ctx.state.doc, m.from).from, m.from).match(/(?<!=)==(?!=)/g)?.length ?? 0) % 2) return null
+  if (closesHighlight(ctx.state.sliceDoc(paragraphAt(ctx.state.doc, m.from).from, m.from))) return null
   for (let n: ReturnType<ReturnType<typeof syntaxTree>["resolveInner"]> | null = syntaxTree(ctx.state).resolveInner(m.from, 1); n; n = n.parent) {
     if (CODE.test(n.name)) return null
   }

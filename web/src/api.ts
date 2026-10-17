@@ -27,6 +27,7 @@ export { AddToTimeline } from "@/components/Timeline"
 export { closeView, createFile, createNamed, folderOf, freeName, homeOf, isDoc, isFolder, isHidden, isViewOpen, markNew, openFile, openNew, openingSoon, openView, pastedFiles, readFile, settleFile, shownName, splitFm, stem } from "@/core/files"
 /** A folder of the vault, picked in the palette (one typed that isn't there is made). */
 export { chooseFolder } from "@/components/FolderPicker"
+export { seenArea } from "@/components/FileTree"
 export { currentFile, useFocusedFile, type FocusedFile } from "@/core/workspace"
 export { openInSplit } from "@/core/splits"
 /** CSV, the vault's tables, parsed the same way everywhere (core/csv.ts, shared with the server). */
@@ -114,7 +115,7 @@ export { openAt, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, selectedText, type OpenEditor } from "@/core/editors"
 export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 // Highlight colours (==🟢text==): the class each draws with (hl-<colour>), and colouring one in an editor.
-export { blockPieces, colorHighlight, dropHighlightEmoji, HIGHLIGHT_COLORS, HIGHLIGHT_EMOJI, highlightAt, highlightClass, highlightColor, unhighlight, type HighlightColor } from "@/core/highlights"
+export { blockPieces, paragraphAt, colorHighlight, dropHighlightEmoji, HIGHLIGHT_COLORS, HIGHLIGHT_EMOJI, highlightAt, highlightClass, highlightColor, unhighlight, type HighlightColor } from "@/core/highlights"
 export { highlightItems } from "@/core/highlightMenu"
 export { openAround, textRanges } from "@/core/findText"
 export { hasTag, headingsOf, tagName, tagsOf, withoutBlocks } from "../../core/sections.ts"

@@ -19,7 +19,7 @@ import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, r
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
-import { HIGHLIGHT_SPAN, highlightClass, highlightColor, paragraphAt, type HighlightColor } from "@/core/highlights"
+import { commentSpans, highlightClass, highlightColor, highlightSpans, paragraphAt, unquoted, type HighlightColor } from "@/core/highlights"
 import { highlightItems } from "@/core/highlightMenu"
 import { openMenu } from "@/components/ContextMenu"
 
@@ -1083,7 +1083,6 @@ function inline(view: EditorView): DecorationSet {
 }
 
 const inCode = (tree: ReturnType<typeof syntaxTree>, at: number) => /Code|URL|LinkMark|HTML|Comment/.test(tree.resolveInner(at, 1).name)
-const COMMENT_SPAN = /%%[^]*?%%/g
 
 /** The ==highlights== and %%comments%% of the paragraph a line is in: they run on over its soft line breaks (and never
  *  over a blank line or another block), so they're read once for the whole paragraph. Kept for the lines that follow. */
@@ -1094,20 +1093,20 @@ function paragraphMarks(state: EditorState, l: { from: number; to: number }, tre
   const text = state.sliceDoc(r.from, r.to)
   const p: Para = { ...r, comments: [], marks: [] }
   if (text.includes("%%")) {
-    for (const m of text.matchAll(COMMENT_SPAN)) {
-      const a = r.from + m.index, b = a + m[0].length
+    for (const [x, y] of commentSpans(text)) {
+      const a = r.from + x, b = r.from + y
       if (inCode(tree, a)) continue
       // (%% lines of their own, over several lines, are a block: blockField)
       const first = state.doc.lineAt(a), last = state.doc.lineAt(b)
-      if (first.number !== last.number && !state.sliceDoc(first.from, a).trim() && !state.sliceDoc(b, last.to).trim()) continue
+      if (first.number !== last.number && !unquoted(state.sliceDoc(first.from, a)).trim() && !state.sliceDoc(b, last.to).trim()) continue
       p.comments.push([a, b])
     }
   }
   if (text.includes("==")) {
-    for (const m of text.matchAll(HIGHLIGHT_SPAN)) {
-      const a = r.from + m.index, b = a + m[0].length
+    for (const m of highlightSpans(text)) {
+      const a = r.from + m.index, b = a + m.length
       if (inCode(tree, a) || p.comments.some(([x, y]) => a >= x && a < y)) continue
-      p.marks.push({ a, b, inner: m[1] })
+      p.marks.push({ a, b, inner: m.inner })
     }
   }
   return cache.p = p
@@ -1347,7 +1346,7 @@ function candidates(state: EditorState): Cands {
     while (end <= lines.length && commentMarks(lines[end - 1]) % 2 === 0) end++
     if (end > lines.length) break
     // (a comment that shares its lines with text, in one paragraph: the paragraph's marks, inlineMarks)
-    if (paragraphAt(doc, row(k).from).to >= row(end).to && (lines[k - 1].slice(0, lines[k - 1].indexOf("%%")).trim() || lines[end - 1].slice(lines[end - 1].lastIndexOf("%%") + 2).trim())) { k = end; continue }
+    if (paragraphAt(doc, row(k).from).to >= row(end).to && (unquoted(lines[k - 1].slice(0, lines[k - 1].indexOf("%%"))).trim() || lines[end - 1].slice(lines[end - 1].lastIndexOf("%%") + 2).trim())) { k = end; continue }
     if (read) add(k, end, null)
     else {
       const decos: Range<Decoration>[] = []
@@ -1564,11 +1563,13 @@ export function findable(state: EditorState, from: number, to: number): boolean 
   })) return false
   if (t.includes("$") && each(MATH, (m) => over(m.index, m.index + m[0].length))) return false
   // (==marks== and %%comments%% run over a paragraph's soft line breaks)
-  const para = paragraphAt(state.doc, from), ptext = state.sliceDoc(para.from, para.to)
-  const overAt = (a: number, b: number) => para.from + a < to && para.from + b > from
-  if (ptext.includes("==")) {
-    for (const m of ptext.matchAll(HIGHLIGHT_SPAN)) {
-      if (overAt(m.index, m.index + 2 + (highlightColor(m[1])?.len ?? 0)) || overAt(m.index + m[0].length - 2, m.index + m[0].length)) return false
+  let para: { from: number; to: number } | undefined, ptext = ""
+  const text = () => { if (!para) { para = paragraphAt(state.doc, from); ptext = state.sliceDoc(para.from, para.to) } return ptext }
+  const overAt = (a: number, b: number) => para!.from + a < to && para!.from + b > from
+  // (a highlight's marks are on the lines they're on: the text between them, other lines', is shown)
+  if (t.includes("==") && text().includes("==")) {
+    for (const m of highlightSpans(ptext)) {
+      if (overAt(m.index, m.index + 2 + (highlightColor(m.inner)?.len ?? 0)) || overAt(m.index + m.length - 2, m.index + m.length)) return false
     }
   }
   if (t.includes("[^")) {
@@ -1579,7 +1580,7 @@ export function findable(state: EditorState, from: number, to: number): boolean 
   const callout = CALLOUT_HEAD.exec(t)
   if (callout && over(0, callout[1].length)) return false
   if (read) {
-    if (ptext.includes("%%") && [...ptext.matchAll(COMMENT_SPAN)].some((m) => overAt(m.index, m.index + m[0].length))) return false
+    if (text().includes("%%") && commentSpans(ptext).some(([a, b]) => overAt(a, b))) return false
     const id = t.includes("^") ? BLOCK_ID.exec(t) : null
     if (id && over(id.index, t.length)) return false
   }

@@ -348,6 +348,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `panelMenu(key?, side?)`: Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`).
 - `panelSide(key, s?)`: Which sidebar a panel is in (null: hidden).
 - `panesOf(n)`: Every group, left to right and top to bottom.
+- `paragraphAt(doc, pos)`: The lines of the soft-wrapped paragraph around `pos`: up to a blank line or a line that starts another block (list item, quote, heading, fence, table, math, HTML, footnote definition, callout…
 - `parse(s)`
 - `parseCsv(text)`: Rows of fields.
 - `parseDate(text, fmt, opts?)`: The date `text` names in a moment.js format (a week's first day), or null if the format doesn't write it ("2026-13-01" in YYYY-MM-DD); `loose`: what the text starts with, read as moment does.
@@ -423,6 +424,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SearchDoc`
 - `SearchPage({ store, query, setQuery })`
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
+- `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it).
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
 - `Segmented({ value, options, onChange, label, className })`
 - `segments(body)`

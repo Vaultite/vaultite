@@ -10,7 +10,7 @@ mkdirSync(OUT, { recursive: true })
 const DIR = "Qa highlights", NOTE = `${VAULT}/${DIR}/Colours.md`, enc = encodeURIComponent
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 mkdirSync(`${VAULT}/${DIR}`, { recursive: true })
-const START = "Plain ==default== and ==🔴red== ==🟠orange== ==🟡yellow== ==🟢green== ==🔵blue== ==🟣purple==. ^cols\n\nswatch ==🟢here== end\n\nword\n\n![[Colours#^cols]]\n\nsoft ==one\ntwo== end\n\n- ==x\n- y== list\n"
+const START = "Plain ==default== and ==🔴red== ==🟠orange== ==🟡yellow== ==🟢green== ==🔵blue== ==🟣purple==. ^cols\n\nswatch ==🟢here== end\n\nword\n\n![[Colours#^cols]]\n\nsoft ==one\ntwo== end\n\n- ==x\n- y== list\n\nkeep %%hid\nden%% tail\n\n> %%\n> quoted\n> %%\n"
 writeFileSync(NOTE, START)
 const disk = () => readFileSync(NOTE, "utf8")
 const saved = (want) => until(() => disk().includes(want), 4000)
@@ -39,6 +39,8 @@ try {
   const soft = await ed.locator(".cm-line").evaluateAll((ls) => ls.filter((l) => /^soft|^two/.test(l.textContent)).map((l) => [...l.querySelectorAll(".cm-highlight")].map((h) => h.textContent)))
   check("live: ==a\\nb== marks both lines of one paragraph, hides its marks", JSON.stringify(soft) === '[["one"],["two"]]', soft)
   check("live: ==x and y== in two list items are not a highlight", await ed.locator(".cm-line", { hasText: "list" }).locator(".cm-highlight").count() === 0)
+  const cm = await ed.locator(".cm-line").evaluateAll((ls) => ls.filter((l) => /^den|quoted/.test(l.textContent.replace(/^>\s*/, ""))).map((l) => [l.textContent, l.classList.contains("cm-comment"), [...l.querySelectorAll(".cm-comment")].map((c) => c.textContent)]))
+  check("live: a %%comment%% over a soft break is faint on its text only; a quoted %% block is faint whole", cm.length === 2 && cm[0][2].join().startsWith("den") && !cm[0][2].join().includes("tail") && cm[1][1], cm)
   const embed = page.locator("[data-pane] .note-embed").first()
   check("embed (Markdown to HTML): coloured marks, no emoji", await until(async () => (await embed.locator("mark.hl-green").count()) === 1)
     && !EMOJI.test(await embed.innerText()), await embed.innerText().catch(() => ""))

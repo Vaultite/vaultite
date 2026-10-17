@@ -79,6 +79,7 @@ check("look: a note that isn't open, its row in the file tree", !!row && !!there
     return true
   })
   await wait(700)
+  check("look: (setup) the file list scrolls on a short window", !!scrolled)
   if (scrolled) {
     const out = await rowEl.evaluate((el) => {
       let s = el.parentElement
@@ -87,7 +88,8 @@ check("look: a note that isn't open, its row in the file tree", !!row && !!there
       return { hidden: r.bottom <= box.top || r.top >= box.bottom, top: box.top, bottom: box.bottom }
     })
     const c = await cursor.boundingBox()
-    check("look: a row scrolled out of its list, the cursor sits at the list's edge", !out.hidden || (!!c && c.y >= out.top - 2 && c.y <= out.bottom), { out, c })
+    check("look: (setup) the row is scrolled out of its list", out.hidden, out)
+    check("look: a row scrolled out of its list, the cursor sits at the list's edge", out.hidden && !!c && c.y >= out.top - 2 && c.y <= out.bottom, { out, c })
   }
   await page.setViewportSize(size); await wait(400)
 }

@@ -21,7 +21,7 @@ const STUBS: Record<string, string> = {
 }
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vau-shim-")), "vaultite.ts")
-fs.writeFileSync(shim, `export { blockPieces } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}`)
+fs.writeFileSync(shim, `export { blockPieces, paragraphAt } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}`)
 registerHooks({
   resolve(spec, context, next) {
     if (spec === "@vaultite") return { url: pathToFileURL(shim).href, shortCircuit: true }
@@ -404,6 +404,31 @@ check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"),
   check("mark toggle: off again over blocks; the selection stays on the text", run(marked, all(marked), ed.toggleMark("==")) === t1)
   check("mark toggle: only the unmarked blocks get marks when some are", run("==a==\n\nb", all("==a==\n\nb"), ed.toggleMark("==")) === "==a==\n\n==b==")
   check("mark toggle: a selection inside one paragraph is one mark", run("one\ntwo", all("one\ntwo"), ed.toggleMark("==")) === "==one\ntwo==")
+  // ---- blocks that take no mark, selections that cover them ----
+  const sel = (t: string) => run(t, all(t), ed.toggleMark("**")), col = (t: string) => run(t, all(t), hl.colorHighlight(null))
+  const fence = "para\n\n```js\nlet a = 1\n```\n\n---\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n$$\nx = 1\n$$\n\n> [!note] Title\n> body\n\nlast"
+  const wrapped = "**para**\n\n```js\nlet a = 1\n```\n\n---\n\n| a | b |\n|---|---|\n| 1 | 2 |\n\n$$\nx = 1\n$$\n\n> [!note] Title\n> **body**\n\n**last**"
+  check("mark toggle: fences, code, rules, tables, math and callout heads are left out", sel(fence) === wrapped, sel(fence))
+  check("highlight toolbar: the same blocks are left out", col(fence) === wrapped.replaceAll("**", "=="), col(fence))
+  check("mark toggle: a triple-click over list items marks the text, not the bullets", sel("- a\n- b") === "- **a**\n- **b**" && sel("- [-] a\n- [x] b") === "- [-] **a**\n- [x] **b**" && sel("> q\n> r") === "> **q\n> r**")
+  check("mark toggle: one item selected whole is marked on its text", sel("- a") === "- **a**" && sel("## Title") === "## **Title**")
+  check("mark toggle: only code selected changes nothing", sel("```\ncode\n```") === "```\ncode\n```" && sel("a\n\n---") === "**a**\n\n---")
+  {
+    // the selection stays on the text after colouring several blocks
+    let state = EditorState.create({ doc: "one\n\ntwo", selection: EditorSelection.single(0, 8) })
+    hl.colorHighlight(null)({ get state() { return state }, dispatch: (tr: any) => { state = state.update(tr).state } } as any)
+    const m = state.selection.main
+    check("highlight toolbar: after colouring blocks the selection is on the text, inside the marks", state.doc.toString() === "==one==\n\n==two==" && m.from === 2 && m.to === 14, [state.doc.toString(), m.from, m.to])
+  }
+  check("clear formatting: marks across list items or headings aren't joined", run("**a\n- b**", all("**a\n- b**"), ed.clearFormatting) === "**a\n- b**" && run("- **a** and ==b==", all("- **a** and ==b=="), ed.clearFormatting) === "- a and b")
+  const pa = (t: string, n = 0) => para(t, n)
+  check("paragraphs: end at math, HTML, footnote definitions, a callout head, a quote's change, a table header, a setext underline",
+    pa("a\n$$\nx\n$$") === "a" && pa("a\n<div>\nb") === "a" && pa("a\n[^1]: note") === "a" && pa("a\n> [!note] T\n> b") === "a" && pa("> a\n>> b") === "> a" &&
+    pa("p\nh1 | h2\n--|--\nx | y") === "p" && pa("p\nh1 | h2\n--|--\nx | y", 3) === "h1 | h2" && pa("Title\n=====") === "Title" && pa("> a\nb") === "> a\nb")
+  check("highlights: the colour list is offered for an opening == and not for a closing one", hl.closesHighlight("==a\nb") && !hl.closesHighlight("a == b ") && !hl.closesHighlight("a") && hl.closesHighlight("x ==y z") && !hl.closesHighlight("==a== b "))
+  check("highlights: unclosed openers are one linear pass", (() => { const t0 = Date.now(); const r = hl.highlightSpans("==x\n".repeat(20000)); return r.length === 0 && Date.now() - t0 < 100 })())
+  check("highlights: spans and comments over a paragraph's text", JSON.stringify(hl.highlightSpans("a ==b\nc== d ==e==")) === '[{"index":2,"length":7,"inner":"b\\nc"},{"index":12,"length":5,"inner":"e"}]'
+    && JSON.stringify(hl.commentSpans("x %%a\nb%% y %%")) === "[[2,9]]")
   check("clear formatting: strips a mark over a soft break, not across a blank line",
     run("==a\nb==", all("==a\nb=="), ed.clearFormatting) === "a\nb")
 }

@@ -5,7 +5,7 @@ import { deleteLine, moveLineDown, moveLineUp } from "@codemirror/commands"
 export { indentLess, indentMore } from "@codemirror/commands"
 import { EditorSelection, type EditorState, type Line } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
-import { blockPieces } from "@vaultite"
+import { blockPieces, paragraphAt } from "@vaultite"
 
 /** How many of `c` run back from `pos` (or on from it, `dir` 1). */
 function run(state: EditorState, pos: number, c: string, dir: -1 | 1) {
@@ -42,13 +42,13 @@ export const toggleMark = (m: string) => (view: EditorView) => {
     let { from, to } = r
     if (!r.empty) {
       const pieces = blockPieces(state.doc, from, to)
-      if (pieces.length > 1) {
-        const offs = pieces.map((p) => unmarkOf(state, p.from, p.to, m))
-        const changes = offs.every((o) => o) ? offs.flat() as { from: number; to: number; insert?: string }[]
-          : pieces.flatMap((p, i) => offs[i] ? [] : [{ from: p.from, insert: m }, { from: p.to, insert: m }])
-        const cs = state.changes(changes)
-        return { changes: cs, range: EditorSelection.range(cs.mapPos(pieces[0].from, 1), cs.mapPos(pieces[pieces.length - 1].to, -1)) }
-      }
+      // (nothing to mark in code, a table, a rule...: left alone)
+      if (!pieces.length) return { range: r }
+      const offs = pieces.map((p) => unmarkOf(state, p.from, p.to, m))
+      const changes = offs.every((o) => o) ? offs.flat() as { from: number; to: number; insert?: string }[]
+        : pieces.flatMap((p, i) => offs[i] ? [] : [{ from: p.from, insert: m }, { from: p.to, insert: m }])
+      const cs = state.changes(changes)
+      return { changes: cs, range: EditorSelection.range(cs.mapPos(pieces[0].from, 1), cs.mapPos(pieces[pieces.length - 1].to, -1)) }
     }
     if (r.empty) {
       const w = state.wordAt(r.head)
@@ -103,9 +103,21 @@ export const clearFormatting = (view: EditorView, colors = "") => {
       const hl = !grew && opened ? opened.exec(state.sliceDoc(Math.max(0, from - 5), from)) : null
       if (hl && state.sliceDoc(to, to + 2) === "==") { from -= hl[0].length; to += 2; grew = true }
     }
-    let text = state.sliceDoc(from, to)
-    if (colored) text = text.replace(colored, "==")
-    for (let was = ""; was !== text;) { was = text; for (const re of STRIP) text = text.replace(re, "$2") }
+    // (a paragraph at a time: a mark never runs across list items, headings or quotes)
+    const strip = (t: string) => {
+      if (colored) t = t.replace(colored, "==")
+      for (let was = ""; was !== t;) { was = t; for (const re of STRIP) t = t.replace(re, "$2") }
+      return t
+    }
+    let text = "", done = from
+    for (let pos = from; pos <= to;) {
+      const para = paragraphAt(state.doc, pos), a = Math.max(para.from, from), b = Math.min(para.to, to)
+      text += state.sliceDoc(done, a) + strip(state.sliceDoc(a, b))
+      done = b
+      if (para.to >= state.doc.length) break
+      pos = para.to + 1
+    }
+    text += state.sliceDoc(done, to)
     return { changes: { from, to, insert: text }, range: EditorSelection.range(from, from + text.length) }
   }), { userEvent: "input" })
   return true
