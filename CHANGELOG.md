@@ -14,6 +14,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   inside, its Reply always in reach. Its comments and suggestions are kept beside the note, so they survive a restart,
   follow the note and reach your other devices. More agents join by name (`vau companion start --as Ada`), each in its
   own colour: `@ada` asks only that one.
+- **Shortcodes** (a new plugin, on from the start): type `:` and a name for an emoji or one of the app's icons, as in
+  Slack or Discord (`:fir` suggests 🔥, recently used first; `:fire:` typed whole becomes it). Icons go in as
+  `:LiCalendar:`, as Obsidian's Iconize writes them, and show as the icon.
 - Highlights take Obsidian's six colours: `==🟢text==` draws green (🔴 🟠 🟡 🟢 🔵 🟣) everywhere a note is drawn, the
   emoji hidden. Typing `==` suggests the colours, a swatch on the highlight at the cursor changes its colour, and the
   editor's Format ▸ Highlight submenu colours what's selected.

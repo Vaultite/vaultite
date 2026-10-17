@@ -75,6 +75,7 @@
     "docx-preview": "0.4.1",
     "electron-updater": "^6.8.9",
     "foliate-js": "1.0.1",
+    "gemoji": "^8.1.0",
     "ical.js": "^2.2.1",
     "katex": "^0.16.47",
     "linkedom": "^0.18.13",

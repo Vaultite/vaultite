@@ -26,9 +26,15 @@ const dismissed = StateField.define<number | null>({
 
 /** Lists a plugin's editor extension adds (`EditorState.languageData.of(() => [{ suggest: source }])`): the editor's own
  *  sources override CodeMirror's `autocomplete` data. */
-export const pluginSuggest: CompletionSource = async (ctx) => {
-  for (const source of ctx.state.languageDataAt<CompletionSource>("suggest", ctx.pos)) { const r = await source(ctx); if (r) return r }
-  return null
+export const pluginSuggest: CompletionSource = (ctx) => {
+  const sources = ctx.state.languageDataAt<CompletionSource>("suggest", ctx.pos)
+  // (at once when the sources answer at once: a list still waiting lets Enter through as a new line)
+  const next = (i: number): ReturnType<CompletionSource> => {
+    if (i >= sources.length) return null
+    const r = sources[i](ctx)
+    return r instanceof Promise ? r.then((x) => x ?? next(i + 1)) : r ?? next(i + 1)
+  }
+  return next(0)
 }
 
 const starts = new WeakMap<EditorView, number>()
@@ -55,3 +61,6 @@ const close = (view: EditorView) => {
 
 /** Goes before `autocompletion()`, so its Escape and Tab come first (Tab otherwise indents). */
 export const suggestKeys = [dismissed, Prec.highest(keymap.of([{ key: "Escape", run: close }, { key: "Tab", run: acceptCompletion }]))]
+
+/** A suggestion's picture before its label (an emoji, an icon): its option's `glyph` (autocompletion's addToOptions). */
+export const optionGlyph = (c: Completion) => (c as Completion & { glyph?: () => Node }).glyph?.() ?? null

@@ -1,0 +1,13 @@
+{
+  "id": "shortcodes",
+  "icon": "face-slightly-smiling",
+  "category": "writing",
+  "essential": true,
+  "name": "Shortcodes",
+  "description": "Type : and a name for an emoji or an icon, as in Slack or Discord: :fi suggests 🔥, and :fire: typed whole becomes it. Icons go in as :LiCalendar:, Obsidian's Iconize way, and show as the icon.",
+  "replaces": { "obsidian": ["emoji-shortcodes"] },
+  "settings": {
+    "emoji": { "type": "boolean", "default": true, "label": "Emoji", "description": "suggest emoji after :, and turn :fire: into 🔥" },
+    "icons": { "type": "boolean", "default": true, "label": "Icons", "description": "suggest the app's icons too (:icon-calendar), and show :LiCalendar: as the icon" }
+  }
+}

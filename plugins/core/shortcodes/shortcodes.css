@@ -1,0 +1,5 @@
+/* An icon in the text, at the text's size and colour; and the emoji or icon before a suggestion's name. */
+.vau-shortcode-icon { display: inline-flex; vertical-align: -0.125em; }
+.vau-shortcode-icon > svg { width: 1em; height: 1em; }
+.cm-tooltip-autocomplete :is(.vau-shortcode-emoji, .vau-shortcode-icon) { display: inline-flex; flex: none; justify-content: center; width: 1.25em;
+  margin-right: 8px; font-size: 1.1em; align-self: center; }
