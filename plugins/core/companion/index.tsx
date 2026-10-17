@@ -1,6 +1,7 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCirclePlus, MousePointer2, Power, SquareTerminal } from "lucide-react"
 import { choose, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
+import { askDrawing, watchCanvases } from "./canvas"
 import { connect, getState, liveAgents, type Mode, sendMoment, subscribe } from "./live"
 import { follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
@@ -34,10 +35,10 @@ async function showSession() {
 }
 
 /** Ask the companion (or `agent`): about the selection (which agent, when several are around), or start an "@claude "
- *  line below the cursor to write the question on. */
+ *  line below the cursor to write the question on. In a drawing, about what's selected there. */
 function ask(agent?: string) {
   const ed = currentEditor()
-  if (!ed?.path || ed.kind !== "markdown") return notify(`Open a note to ask ${getState().name}`)
+  if (!ed?.path || ed.kind !== "markdown") return void (askDrawing(agent) || notify(`Open a note to ask ${getState().name}`))
   const v = ed.view, sel = v.state.selection.main, path = ed.path
   if (!sel.empty) {
     const send = (to: string) => sendMoment({ kind: "ask", agent: to, path, line: v.state.doc.lineAt(sel.from).number, text: "(look at the selection)", selection: v.state.sliceDoc(sel.from, sel.to) })
@@ -74,6 +75,7 @@ function Status() {
 
 function Background() {
   useEffect(() => connect(), [])
+  useEffect(() => watchCanvases(), [])
   return <Overlay />
 }
 

@@ -23,9 +23,12 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
   /** How long (ms) the user had stopped typing when the app sent it: the pause they waited. */
   waited?: number
   /** An ask whose line they went on writing after it went: the seq of the one it continues. */
-  more?: number }
-/** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`). */
-export type Target = { path?: string; line?: number; find?: string }
+  more?: number
+  /** On a drawing (`find`: the element asked in): the user's pointer, what changed after a pause, the scene as text. */
+  x?: number; y?: number; changes?: string[]; scene?: string }
+/** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`); on a
+ *  drawing, an element (`find`: its id or text) or a point of it (x, y). */
+export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
@@ -38,8 +41,8 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   dismissed?: number }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
-/** A note's lines from..to (1-based, of `of`), sent with the moments in it. */
-export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[] }
+/** A note's lines from..to (1-based, of `of`), sent with the moments in it; a drawing's scene as text. */
+export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[]; scene?: string }
 
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
 export const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
@@ -93,7 +96,7 @@ const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "think
 /** The app's windows: which files each has open, where its user is, when they last did anything. */
 type Win = { open: string[]; focus: Target | null; at: number; was?: string }
 const windows = new Map<WebSocket, Win>()
-const asked = new Map<string, { done: (ok: boolean, error?: string) => void }>()
+const asked = new Map<string, { done: (ok: boolean, error?: string, reply?: Record<string, unknown>) => void }>()
 
 const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 const broadcast = (m: object) => { const text = JSON.stringify(m); for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text) }
@@ -139,7 +142,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
-  if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply")) setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) })
+  if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply")) setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}) })
   return full
 }
 
@@ -222,6 +225,17 @@ const written = new Map<string, string>()
 const kept = (p: string) => [...notes.values()].filter((n) => n.path === p && KEPT.has(n.kind))
 const lineCount = (text: string) => text.split("\n").length - (text.endsWith("\n") ? 1 : 0)
 const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
+
+/** A drawing's typed actions made on its text (`draw:<ext>`, from the plugin that draws it), or null: not a drawing. */
+type Draw = (text: string, actions: unknown[]) => { text: string; touched: string[] }
+function drawer(p: string): Draw | null {
+  const exts = p.slice(p.lastIndexOf("/") + 1).toLowerCase().split(".").slice(1)
+  for (let i = 0; i < exts.length; i++) { const fn = plugin.service(`draw:${exts.slice(i).join(".")}`); if (typeof fn === "function") return fn as Draw }
+  return null
+}
+export const drawing = (p: string) => !!drawer(p)
+/** A point given (x and y, numbers), as a target's or a moment's fields. */
+const point = (o: Record<string, unknown>) => (typeof o.x === "number" && typeof o.y === "number" && Number.isFinite(o.x + o.y) ? { x: Math.round(o.x), y: Math.round(o.y) } : {})
 
 /** Write a note's sidecar as its kept items are now; none: the file goes. */
 export function save(p: string) {
@@ -423,16 +437,17 @@ plugin.socket("companion/live", (ws) => {
       w.open = Array.isArray(m.open) ? m.open.filter((p): p is string => typeof p === "string") : w.open
       const f = m.focus as Target | null
       // (an editor left for the terminal or a menu: still their note while it's open)
-      w.focus = f && typeof f.path === "string" ? { path: f.path, line: Number(f.line) || 1 } : w.focus && w.open.includes(w.focus.path!) ? w.focus : null
+      w.focus = f && typeof f.path === "string" ? { path: f.path, ...(drawing(f.path) ? point(f as Record<string, unknown>) : { line: Number(f.line) || 1 }) } : w.focus && w.open.includes(w.focus.path!) ? w.focus : null
       if (m.active) w.at = Date.now()
       // (another note, not the same one focused again)
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
     } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "point", "edit"].includes(m.kind)) {
       w.at = Date.now()
       addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
-        selection: str(m.selection) || undefined, find: m.kind === "point" ? str(m.find).slice(0, 200) || undefined : undefined,
+        selection: str(m.selection) || undefined, find: m.kind === "point" || str(m.scene) ? str(m.find).slice(0, 200) || undefined : undefined,
         hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
-        ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}) })
+        ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}), ...point(m),
+        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}) })
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
     } else if (m.t === "reopen" && typeof m.id === "string") {
@@ -440,7 +455,7 @@ plugin.socket("companion/live", (ws) => {
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined)
     } else if (m.t === "done" && typeof m.rid === "string") {
-      asked.get(m.rid)?.done(m.ok === true, str(m.error) || undefined)
+      asked.get(m.rid)?.done(m.ok === true, str(m.error) || undefined, m)
     }
   })
   ws.on("close", () => windows.delete(ws))
@@ -463,20 +478,23 @@ function inTurn<T>(path: string, fn: () => Promise<T>): Promise<T> {
   return run
 }
 
+/** Ask a window to make a change (`m`): true once it's made (`reply`: its answer), its error, false when it can't (it
+ *  doesn't show the file now). No answer by `wait` ms: it may still be at it, so writing the file too would mix the two. */
+async function askWindow(ws: WebSocket, m: object, wait: number, reply: Record<string, unknown> = {}) {
+  const rid = `e${++nid}`
+  const ok = await new Promise<boolean | string | null>((resolve) => {
+    const timer = setTimeout(() => { asked.delete(rid); resolve(null) }, wait)
+    asked.set(rid, { done: (ok, error, r) => { clearTimeout(timer); asked.delete(rid); Object.assign(reply, r); resolve(ok || error || false) } })
+    send(ws, { ...m, rid })
+  })
+  if (typeof ok === "string") throw new OpError(ok, 409)
+  if (ok === null) throw new OpError("the window showing it didn't say it was done: read it again before another change", 504)
+  return ok
+}
+
 const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(e.path, async (): Promise<"typed" | "written"> => {
   const ws = editorFor(e.path)
-  if (ws) {
-    const rid = `e${++nid}`
-    const ok = await new Promise<boolean | string | null>((resolve) => {
-      const timer = setTimeout(() => { asked.delete(rid); resolve(null) }, EDIT_WAIT + e.text.length * 20)
-      asked.set(rid, { done: (ok, error) => { clearTimeout(timer); asked.delete(rid); resolve(ok || error || false) } })
-      send(ws, { t: "edit", rid, agent: agent.name, animate, ...e })
-    })
-    if (ok === true) return "typed"
-    if (typeof ok === "string") throw new OpError(ok, 409)
-    // (no answer: it may still be typing, so writing the file too would mix the two)
-    if (ok === null) throw new OpError("the window showing the note didn't say it was done: read the note again before another edit", 504)
-  }
+  if (ws && await askWindow(ws, { t: "edit", agent: agent.name, animate, ...e }, EDIT_WAIT + e.text.length * 20)) return "typed"
   const f = await ctx.api("GET", `file?path=${encodeURIComponent(e.path)}`)
   const cur = String(f.text ?? "")
   await ctx.api("PUT", "file", { path: f.path, text: editText(cur, e), base: cur })
@@ -587,13 +605,19 @@ watchdog.unref?.()
 const AS = { type: "string", description: "your name in the app, when several agents keep the user company (default: the companion's, Claude)" } as const
 const PATH = { type: "string", format: "path", description: "the file (Notes/Idea.md); default: the one the user is in" } as const
 const LINE = { type: "integer", minimum: 0, description: "a line of it (from 1, counting its frontmatter)" } as const
-const FIND = { type: "string", description: "text in that line or near it, exactly as in the file (the occurrence nearest line)" } as const
+const FIND = { type: "string", description: "text in that line or near it, exactly as in the file (the occurrence nearest line); on a drawing, an element's id or text" } as const
+const X = { type: "number", description: "on a drawing: a point of it, with y (its units, as its elements')" } as const
+const Y = { type: "number", description: "on a drawing: a point of it, with x" } as const
 
 /** A target from params: the user's file when none is given. */
 function target(p: Record<string, unknown>): Target {
   const path = str(p.path) || focus()?.path
   if (!path) throw new OpError("the user has no file open: give path")
-  return { path, ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}) }
+  return { path, ...(p.line !== undefined ? { line: Number(p.line) } : {}), ...(str(p.find) ? { find: str(p.find) } : {}), ...point(p) }
+}
+/** What a drawing doesn't have (a margin, lines to write in): the op that does it there instead. */
+function notOnDrawing(t: Target, what: string) {
+  if (t.path && drawing(t.path)) throw new OpError(`${t.path} is a drawing: ${what}`)
 }
 /** The agent acting: --as (as it was first called), else the companion. */
 const who = (p: Record<string, unknown>) => { const n = str(p.as).trim(); return n ? agents.get(key(n))?.name ?? n : ownName() }
@@ -650,7 +674,7 @@ to the companion, or to an agent with --watch.
       const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
       if (asked) asking.add(k)
       setAgent(name, { state: asked ? "thinking" : "reading",
-        ...(at ? { path: at.path, line: at.line, find: at.find } : {}) })
+        ...(at ? { path: at.path, line: at.line, find: at.find, x: undefined, y: undefined } : {}) })
       handed.add(k)
     }
     return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got) }
@@ -659,10 +683,12 @@ to the companion, or to an agent with --watch.
 })
 
 /** The text around what the user asked or wrote, per note: all of a short note for an ask or a reply. */
-async function excerpts(ctx: OpCtx, ms: Moment[]) {
+export async function excerpts(ctx: OpCtx, ms: Moment[]) {
   const by = new Map<string, Moment[]>()
-  for (const m of ms) if (m.path && (m.kind === "ask" || m.kind === "point" || m.kind === "reply" || m.kind === "edit")) by.set(m.path, [...(by.get(m.path) ?? []), m])
   const out: Excerpt[] = []
+  // (a drawing: its scene as the window that sent the moment saw it, the last one)
+  for (const m of [...ms].reverse()) if (m.path && m.scene && !out.some((e) => e.path === m.path)) out.push({ path: m.path, from: 0, to: 0, of: 0, lines: [], scene: m.scene })
+  for (const m of ms) if (m.path && !m.scene && (m.kind === "ask" || m.kind === "point" || m.kind === "reply" || m.kind === "edit")) by.set(m.path, [...(by.get(m.path) ?? []), m])
   for (const [path, list] of by) {
     try {
       const f = await ctx.api("GET", `file?path=${encodeURIComponent(path)}`) as { text?: unknown }
@@ -690,15 +716,16 @@ export function excerpt(path: string, text: string, ms: Moment[]): Excerpt | nul
 
 /** Moments as an agent reads them. */
 export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = []) {
-  const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path} at line ${f.line ?? 1}.` : ""}`
+  const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path}${f.x !== undefined ? ` at ${f.x},${f.y}` : ` at line ${f.line ?? 1}`}.` : ""}`
   if (!ms.length) return `${head}\nNothing yet: run vau companion next again.`
   const out = [head]
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : ""
-    if (m.kind === "ask") out.push(`- ask${at}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
+    if (m.kind === "ask") out.push(`- ask${at}${m.scene && m.find ? ` (in ${m.find})` : ""}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "edit") {
       out.push(`- edit${at}`)
+      for (const c of m.changes ?? []) out.push(`  ${c}`)
       for (const h of m.hunks ?? []) {
         out.push(`  at line ${h.line}:`)
         for (const l of h.removed) out.push(`  - ${l}`)
@@ -709,6 +736,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
   }
   for (const e of notes) {
+    if (e.scene) { out.push(`${e.path}, the drawing (ids for companion draw, say --find):`, e.scene); continue }
     out.push(`${e.path}, lines ${e.from}-${e.to} of ${e.of}:`)
     e.lines.forEach((l, i) => out.push(`${String(e.from + i).padStart(4)}  ${l}`))
   }
@@ -720,13 +748,14 @@ plugin.op({
   cli: "companion look",
   summary: "Move your cursor to a place in a note, without a word: where your attention is.",
   help: `  vau companion look --path Notes/Idea.md --line 12
-  vau companion look --find "the second paragraph"`,
+  vau companion look --find "the second paragraph"
+  vau companion look --path Drawings/Plan.excalidraw --find login`,
   kind: "read",
-  params: { path: PATH, line: LINE, find: FIND, as: AS },
+  params: { path: PATH, line: LINE, find: FIND, x: X, y: Y, as: AS },
   run: async (p) => {
     const t = target(p)
     did(who(p), "look")
-    setAgent(who(p), { ...t, state: acting(who(p)), find: t.find })
+    setAgent(who(p), { ...t, state: acting(who(p)), find: t.find, x: t.x, y: t.y })
     return t
   },
   text: (r) => `Looking at ${r.path}${r.line ? `:${r.line}` : ""}.`,
@@ -739,15 +768,16 @@ plugin.op({
   help: `Short, one or two sentences. With a place, your cursor goes there first. What should stay goes in a comment.
 
   vau companion say "Done: three tasks added below."
-  vau companion say "That date is a Sunday." --find "May 3"`,
+  vau companion say "That date is a Sunday." --find "May 3"
+  vau companion say "This step needs a way back." --path Drawings/Plan.excalidraw --find login`,
   kind: "read",
-  params: { text: { type: "string", required: true, description: "what to say (Markdown)" }, path: PATH, line: LINE, find: FIND, as: AS },
+  params: { text: { type: "string", required: true, description: "what to say (Markdown)" }, path: PATH, line: LINE, find: FIND, x: X, y: Y, as: AS },
   args: ["text"],
   run: async (p) => {
     const name = who(p)
     did(name, "say")
-    const t = p.path || p.line !== undefined || p.find ? target(p) : {}
-    setAgent(name, { ...t, state: acting(name) })
+    const t = p.path || p.line !== undefined || p.find || p.x !== undefined ? target(p) : {}
+    setAgent(name, { ...t, ...("path" in t ? { find: t.find, x: t.x, y: t.y } : {}), state: acting(name) })
     const n = putNote({ kind: "say", agent: name, text: str(p.text), ...t }, SAY_MS)
     const mine = said.filter((x) => key(x.agent) === key(name))
     said = [...said.filter((x) => !mine.slice(0, -(SAID - 1)).includes(x)), { ...n }]
@@ -783,6 +813,7 @@ it: with id (the comment's), your words join its thread.
       return n
     }
     const t = target(p)
+    notOnDrawing(t, "say it by an element (companion say --find <id>), or draw a text (companion draw)")
     setAgent(name, { ...t, state: acting(name) })
     const anchor = !t.find && t.line ? lineText(t.path!, t.line) : ""
     return putNote({ kind: "comment", agent: name, text: str(p.text), ...t, ...(anchor ? { anchor } : {}) })
@@ -805,6 +836,7 @@ moment tells you what they chose.
   run: async (p) => {
     if (!str(p.find)) throw new OpError("give find: the text to change")
     const name = who(p), t = target(p)
+    notOnDrawing(t, "change it with companion draw")
     did(name, "suggest")
     setAgent(name, { ...t, state: acting(name) })
     return putNote({ kind: "suggestion", agent: name, ...t, replace: str(p.replace), ...(str(p.why) ? { text: str(p.why) } : {}) })
@@ -830,6 +862,7 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
   args: ["text"],
   run: async (p, ctx) => {
     const name = who(p), t = target(p), after = str(p.after) || undefined
+    notOnDrawing(t, "change it with companion draw")
     did(name, "edit")
     const a = setAgent(name, { ...t, ...(after ? { find: after } : {}), state: "writing" })
     try {
@@ -843,7 +876,7 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
 plugin.op({
   id: "companion.highlight",
   cli: "companion highlight",
-  summary: "Highlight text in a note in your colour: for a while, or kept in the file (==🟠text==) with keep.",
+  summary: "Highlight text in a note in your colour: for a while, or kept in the file (==🟠text==) with keep; on a drawing, an element.",
   help: `  vau companion highlight --find "the budget is due Friday"
   vau companion highlight --path Notes/Idea.md --find "key insight" --keep`,
   kind: "read",
@@ -853,6 +886,7 @@ plugin.op({
     if (!str(p.find)) throw new OpError("give find: the text to highlight")
     const name = who(p), t = target(p)
     did(name, "highlight")
+    if (p.keep) notOnDrawing(t, "keep is for notes; its highlight is your selection there for a while")
     const a = setAgent(name, { ...t, state: acting(name) })
     if (!p.keep) return putNote({ kind: "highlight", agent: name, ...t }, HIGHLIGHT_MS)
     await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: `==${EMOJI[a.tint] ?? ""}${t.find}==` }, false)
@@ -873,6 +907,42 @@ plugin.op({
   },
   text: (r) => [`${r.path}: ${r.open.length} open, ${r.past.length} dismissed.`,
     ...[...r.open, ...r.past].map((n: Note) => `- ${n.id}${n.dismissed ? " (dismissed)" : ""} by ${n.agent} at line ${n.line ?? "?"}: ${cut(n.text ?? "", 80)}${n.replies?.length ? ` (${n.replies.length} replies)` : ""}`)].join("\n"),
+})
+
+plugin.op({
+  id: "companion.draw",
+  cli: "companion draw",
+  summary: "Change a drawing: add, move, change or delete its elements, drawn before the user's eyes when it's open (they can undo it), else saved to the file.",
+  help: `actions: a JSON list, all checked before any is made (\`vau docs excalidraw\` has every field). Ids are in the
+drawing's text (next, vau render). Only in pair mode or when they asked you to.
+
+  vau companion draw --path Drawings/Plan.excalidraw --actions '[{"op":"add","type":"rectangle","id":"login","x":0,"y":0,"label":"Log in","fill":"blue"},
+    {"op":"add","type":"arrow","from":"login","to":"home","label":"ok"}, {"op":"move","id":"home","dx":40,"dy":0},
+    {"op":"change","id":"home","label":"Start"}, {"op":"delete","id":"old"}]'`,
+  kind: "write",
+  lock: false,
+  params: { actions: { type: "array", required: true, items: { type: "object" }, description: "what to do, in order: {\"op\": \"add\" | \"move\" | \"change\" | \"delete\", ...}" },
+    path: PATH, as: AS },
+  run: async (p, ctx) => {
+    const name = who(p), t = target(p), apply = drawer(t.path!)
+    if (!apply) throw new OpError(`${t.path} isn't a drawing (a .excalidraw file, its plugin on): companion edit writes in notes`)
+    did(name, "draw")
+    const a = setAgent(name, { path: t.path, line: undefined, find: undefined, x: undefined, y: undefined, state: "writing" })
+    try {
+      return await inTurn(t.path!, async () => {
+        const f = await ctx.api("GET", `file?path=${encodeURIComponent(t.path!)}`), cur = String(f.text ?? "")
+        let made: ReturnType<Draw>
+        try { made = apply(cur, p.actions) } catch (e) { throw new OpError((e as Error).message) }
+        const ws = editorFor(t.path!), reply: { touched?: unknown } = {}
+        const drawn = !!ws && await askWindow(ws, { t: "draw", agent: a.name, path: t.path, actions: p.actions }, EDIT_WAIT + p.actions.length * 300, reply)
+        if (!drawn) await ctx.api("PUT", "file", { path: f.path, text: made.text, base: cur })
+        const touched = drawn && Array.isArray(reply.touched) ? reply.touched.map(String) : made.touched
+        if (touched.length) setAgent(name, { find: touched.at(-1) })
+        return { path: t.path, how: drawn ? "drawn" : "written", touched }
+      })
+    } finally { setAgent(name, { state: acting(name) }) }
+  },
+  text: (r) => `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`,
 })
 
 plugin.op({

@@ -112,6 +112,7 @@ export { backlinks, followLink, mentions, openTag, openWebLink, plainText, resol
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
 export { openAt, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, selectedText, type OpenEditor } from "@/core/editors"
+export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 // Highlight colours (==🟢text==): the class each draws with (hl-<colour>), and colouring one in an editor.
 export { colorHighlight, dropHighlightEmoji, HIGHLIGHT_COLORS, HIGHLIGHT_EMOJI, highlightAt, highlightClass, highlightColor, unhighlight, type HighlightColor } from "@/core/highlights"
 export { highlightItems } from "@/core/highlightMenu"

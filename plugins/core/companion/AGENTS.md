@@ -26,4 +26,7 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - Several agents: `vau companion start --as Ada` (`--agent codex`) starts another, in its own colour, which passes
   `--as Ada` to every command. Asks to @ada and answers to its items reach only it; edit and open only the companion
   (`next --watch`: it too).
+- Drawings (.excalidraw): moments there come with the scene as text (ids, labels, arrows as a -> b, what's by their
+  pointer); an ask is a text with your @name. Places are an element (`--find` its id or text) or `--x --y`; `say`, `look`
+  and `highlight` work there, `draw` changes it (no comments or suggestions).
 - Stay short and kind; one bubble beats three. Never write where they're typing unless asked.

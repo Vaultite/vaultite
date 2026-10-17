@@ -3,7 +3,7 @@
 import type { EditorView } from "@codemirror/view"
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
-export type Target = { path?: string; line?: number; find?: string }
+export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string }
@@ -60,6 +60,10 @@ export function viewOf(path: string): EditorView | null {
   }
   return best
 }
+/** The drawings this window shows (canvas.ts registers them): their paths, where the user is in one, and who makes an
+ *  agent's drawing there. */
+let drawings: { where: () => { open: string[]; focus: Target | null }; draw: (m: Record<string, unknown>) => void } | null = null
+export const setDrawings = (d: typeof drawings) => { drawings = d }
 /** Who types an edit into an editor (editor.ts registers it once loaded). */
 let typer: ((v: EditorView, e: EditAsk) => Promise<void>) | null = null
 export const setTyper = (fn: typeof typer) => { typer = fn }
@@ -108,10 +112,11 @@ function open() {
       set({ notes: has ? state.notes.map((x) => (x.id === n.id ? n : x)) : [...state.notes, n] })
     } else if (m.t === "drop") set({ notes: state.notes.filter((x) => x.id !== m.id) })
     else if (m.t === "edit") void edit(m as unknown as EditAsk)
+    else if (m.t === "draw") { if (drawings) drawings.draw(m); else say({ t: "done", rid: m.rid, ok: false }) }
   }
 }
 
-const say = (m: object) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
+export const say = (m: object) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
 
 let turn: Promise<unknown> = Promise.resolve()
 /** Edits typed one at a time, each where the last left the note. */
@@ -130,7 +135,8 @@ const edit = (e: EditAsk) => inTurn(async () => {
 
 /** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
  *  `waited`: ms since they last typed. */
-export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number }) {
+export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number
+  x?: number; y?: number; changes?: string[]; scene?: string }) {
   say({ t: "moment", ...m })
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
   if (a && a.state !== "away") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
@@ -151,9 +157,10 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
 
 /** Which files this window shows and where the user is (`active`: they did something here). */
 export function sayWhere(active = false) {
-  const open = [...new Set([...views].filter(([v]) => v.dom.isConnected).map(([, p]) => p))]
+  const drawn = drawings?.where() ?? { open: [], focus: null }
+  const open = [...new Set([...[...views].filter(([v]) => v.dom.isConnected).map(([, p]) => p), ...drawn.open])]
   const f = [...views.keys()].find((v) => v.hasFocus)
-  const focus = f ? { path: views.get(f)!, line: f.state.doc.lineAt(f.state.selection.main.head).number } : null
+  const focus = f ? { path: views.get(f)!, line: f.state.doc.lineAt(f.state.selection.main.head).number } : drawn.focus
   say({ t: "where", open, focus, active: active && document.hasFocus() })
 }
 

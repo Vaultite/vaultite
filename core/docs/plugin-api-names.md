@@ -76,6 +76,11 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
+- `canvases()`: The canvases in the page (a hidden tab's too: `canvasShown` tells).
+- `CanvasItem`: A thing on a canvas as others read it, in the canvas's units (x/y its top left): a shape, a text, an arrow joining `from` and `to` (items' ids).
+- `canvasOf(path)`: The canvas showing `path`: one on screen first.
+- `CanvasPeer`: Someone else on a canvas: their pointer (in its units), name and colour (a CSS colour), what they have selected.
+- `canvasShown(c)`
 - `capitalize(s)`
 - `captureWindow()`: The window as a PNG (base64), or null: a browser, or a build without it.
 - `cell(initial)`: One value that hooks and subscribers follow: `set` a new one (the same one changes nothing), `use()` it in React (`use(pick)`: a part of it, drawn again only when that part changes).
@@ -299,6 +304,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off.
 - `onActivity(fn)`: Hear what the user does (see noteActivity); returns how to stop.
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.
+- `onCanvases(fn)`: Called when a canvas comes or goes.
 - `onCommandsChanged`: Call `fn` whenever commands or hotkeys change (the desktop app's menu bar follows them); returns how to stop.
 - `onLook(fn)`: Calls `fn` whenever the look changes (light or dark, colour scheme, a theme, a snippet, fonts), once it applies: read the colour tokens again there.
 - `onMachine(id, machine?)`: `id` on `machine` ("" or none: as it is).
@@ -311,6 +317,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openAgent(name, opts?)`: Open agent `name` in a terminal tab, new or `resume` (a session id, in the tab that has it).
 - `openAround(r)`: Open the closed <details> a range is in, so what was found shows.
 - `openAt(path, anchor, opts?)`: Open a file at a heading ("Heading", "Parent#Child") or a block ("^id"); no anchor: just open it.
+- `OpenCanvas`
 - `openDetail(path)`
 - `OpenEditor`
 - `openFile(path, opts?)`: Open a file in a tab (go), on phones too; Back returns.
@@ -383,6 +390,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readSidebars`
 - `RecentKind`
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
+- `registerCanvas(c)`: A canvas came on screen: registered until it goes (the returned function).
 - `reload()`
 - `replaceDetail(path)`: Swap the open detail without adding a history entry (picking another note in the desktop reader pane).
 - `replaceHash(to, state?)`: Change the address in place (no history entry, the entry's `state` given) and tell the app.

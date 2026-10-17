@@ -21,6 +21,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   comment) and a box to ask it there; drag it onto text (a held finger on a phone) to say "look at this". A note's
   top bar shows each agent around in its colour (a click goes where it is) and its comments, dismissed ones too, to
   bring back. Long margin cards show a few lines until opened. A narrow status bar drops its counts before overlapping.
+  In a drawing (Excalidraw) each agent is one of its collaborators, clicked to follow: its words pop by an element, a
+  text with `@claude` asks it, and it draws with you (`vau companion draw`), one ⌘Z taking a drawing back. Formats draw
+  others the same way through `registerCanvas`.
 - **Shortcodes** (a new plugin, on from the start): type `:` and a name for an emoji or one of the app's icons, as in
   Slack or Discord (`:fir` suggests 🔥, recently used first; `:fire:` typed whole becomes it). Icons go in as
   `:LiCalendar:`, as Obsidian's Iconize writes them, and show as the icon.

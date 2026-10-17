@@ -1,14 +1,15 @@
 // The agents over the whole app: each one's cursor gliding to where its attention is (parked by the status bar when
-// it's nowhere), its words in a bubble by the cursor, and its comments and suggestions in the margin of the note.
+// it's nowhere), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Pin, X } from "lucide-react"
-import { cn, fmtTime, haptic, keyHint, Markdown, notify, openFile } from "@vaultite"
+import { canvasOf, canvasShown, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
+import { pointFor } from "./canvas"
 import { accept, type Agent, answer, getState, type Target, nearest, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
 
-/** low: too near the bottom of where it's drawn for its flag below it (the flag goes above). */
-type Spot = { x: number; y: number; parked?: boolean; low?: boolean }
+/** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it. */
+type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean }
 const FLAG = 44 // the arrow and its flag below it
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
 
@@ -46,6 +47,11 @@ function home(i: number): Spot {
  *  is writing (their caret stays theirs) or it's talking (its words open into the space after the text). */
 function spotOf(a: Agent, i: number, talking: boolean): Spot | null {
   if (a.state === "away") return null
+  const canvas = a.path ? canvasOf(a.path) : null
+  if (canvas && canvasShown(canvas)) {
+    const p = canvas.toScreen(pointFor(canvas, a)), r = canvas.el.getBoundingClientRect()
+    return { x: Math.max(r.left + 4, Math.min(r.right - 24, p.x)), y: Math.max(r.top + 4, Math.min(r.bottom - 24, p.y)), drawn: true }
+  }
   if (typing && typing.agent === a.name && typing.view.dom.isConnected) {
     const c = coords(typing.view, Math.min(typing.pos, typing.view.state.doc.length))
     return { x: c.x, y: c.y, low: c.y + FLAG > c.box.bottom }
@@ -166,6 +172,7 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [open])
+  if (spot.drawn && !said) return null
   const enter = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return
     setHover(true)
@@ -217,6 +224,7 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
       style={{ transform: `translate(${at.x - 3}px, ${at.y - 2}px)`, transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typing?.agent === a.name ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
         opacity: idle && !hover && !open ? 0.55 : 1, zIndex: open || drag ? 56 : undefined }}>
+      {!spot.drawn && <>
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")} style={{ transform: nudge ? `translate(${nudge.x}px, ${nudge.y}px)` : undefined, transition: "transform .18s ease-out" }}>
         <Arrow tint={tint} />
       </div>
@@ -234,13 +242,14 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
       </button>
       {/* (kept inside the window) */}
       {open && <Popover a={a} up={low || at.y > innerHeight - 360} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} />}
+      </>}
       {said && !open && !drag && (
         <div key={said.id} className={cn("companion-pop pointer-events-auto absolute flex w-max cursor-pointer items-start gap-1 rounded-[12px] border border-border/60 bg-background py-1.5 pr-1 pl-3 text-[13.5px] leading-snug text-foreground shadow-lg",
           right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")} style={{ maxWidth: Math.max(160, Math.min(300, right ? at.x - 30 : innerWidth - at.x - 34)), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}
           onClick={() => answer(said.id, "dismiss")}>
           <Markdown text={said.text ?? ""} className="companion-md min-w-0 pr-1" />
-          <button type="button" aria-label="Pin as a comment" data-tip="Pin as a comment" className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-7"
-            onClick={(e) => { e.stopPropagation(); pin(said.id) }}><Pin className="size-3" /></button>
+          {!spot.drawn && <button type="button" aria-label="Pin as a comment" data-tip="Pin as a comment" className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-7"
+            onClick={(e) => { e.stopPropagation(); pin(said.id) }}><Pin className="size-3" /></button>}
         </div>
       )}
     </div>
