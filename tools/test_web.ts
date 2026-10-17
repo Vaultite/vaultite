@@ -256,9 +256,10 @@ check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [[
   check("diff: random small edits are told right", ok)
   const big = Array.from({ length: 300_000 }, (_, k) => `line ${k}`), edited = big.slice()
   edited.splice(150_000, 1, "changed"); edited.splice(10, 0, "added")
-  const t0 = performance.now(), ops = diffLines(big, edited)
-  check("diff: 300k lines, two edits, quickly and exactly", rebuilds(big, edited) && ops.filter((o) => o[0] !== "equal").length === 2 && performance.now() - t0 < 3000,
-    [ops.length, performance.now() - t0])
+  const t0 = performance.now(), ops = diffLines(big, edited), took = performance.now() - t0
+  // Loose on purpose: a quadratic diff takes minutes here, and a busy machine once took 3.8 s
+  check("diff: 300k lines, two edits, quickly and exactly", rebuilds(big, edited) && ops.filter((o) => o[0] !== "equal").length === 2 && took < 10_000,
+    [ops.length, took])
   const x = Array.from({ length: 50_000 }, (_, k) => String(k % 3)), y = x.slice().reverse()
   check("diff: what's too tangled to compare is still right", rebuilds(x, y))
 }
