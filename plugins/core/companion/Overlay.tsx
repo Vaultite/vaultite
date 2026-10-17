@@ -277,7 +277,7 @@ export function Overlay() {
       <style>{STYLE}</style>
       {[...panes.values()].map((p) => (
         <div key={p.id} className="pointer-events-none fixed inset-x-0 z-[54] overflow-hidden" style={{ top: p.top, height: Math.max(0, p.bottom - p.top) }}>
-          {p.cards.map((c) => <Card key={c.n.id} n={c.n} x={c.x} y={c.y - p.top} folded={c.folded} cap={Math.max(120, Math.min(480, p.bottom - p.top - 16))}
+          {p.cards.map((c) => <Card key={c.n.id} n={c.n} x={c.x} y={c.y - p.top} folded={c.folded} cap={Math.max(120, p.bottom - p.top - 16)}
             onHeight={(h) => measured(c.n.id, h)} />)}
         </div>
       ))}
