@@ -1,3 +1,4 @@
+import fs from "node:fs"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -231,6 +232,8 @@ export default async ($: VaultTest) => {
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: status lists Ada, joined, in a colour of its own", r.agents.some((a: Any) => a.name === "Ada" && a.live && a.tint !== "orange") &&
       (await api("POST", "ops/companion.status", {}))[1].agents.length === 2, r.agents)
+    const kept = JSON.parse(fs.readFileSync(`${c.plugin.localDir()}/tints.json`, "utf8"))
+    check("companion: each agent's colour is kept, for after a restart", kept.ada === r.agents.find((a: Any) => a.name === "Ada")?.tint && kept.claude === "orange", kept)
     check("companion: an agent's name is one word", (await api("POST", "ops/companion.start", { as: "two words" }))[0] >= 400)
   }
   await api("PATCH", "config/plugin/companion", { mode: "off" })

@@ -151,13 +151,19 @@ export function mergeHunks(a: Hunk[], b: Hunk[]): Hunk[] | null {
   return [{ line: x.line, removed: x.removed, added: [...x.added.slice(0, k), ...y.added, ...x.added.slice(k + y.removed.length)].slice(0, 40) }]
 }
 
-/** The agent named `name`, made the first time it acts (its tint the next free one, Claude orange, Codex blue). */
+/** Each agent's tint as it last had it, kept here: the same colour after a restart, whoever comes back first. */
+const tintsFile = () => `${plugin.localDir()}/tints.json`
+let tints: Record<string, string> | null = null
+/** The agent named `name`, made the first time it acts (its tint its own from before, else the next free one: Claude
+ *  orange, Codex blue, which the others take last). */
 function agentOf(name: string): Agent {
   let a = agents.get(key(name))
   if (!a) {
+    if (!tints) try { tints = JSON.parse(fs.readFileSync(tintsFile(), "utf8")) } catch { tints = {} }
     const used = new Set([...agents.values()].map((x) => x.tint))
-    const want = /claude/i.test(name) ? "orange" : /codex/i.test(name) ? "blue" : null
-    const tint = want && !used.has(want) ? want : TINTS.find((t) => !used.has(t)) ?? TINTS[agents.size % TINTS.length]
+    const want = tints![key(name)] ?? (isMain(name) || /claude/i.test(name) ? "orange" : /codex/i.test(name) ? "blue" : null)
+    const tint = want && !used.has(want) ? want : TINTS.find((t) => !used.has(t) && t !== "orange" && t !== "blue") ?? TINTS.find((t) => !used.has(t)) ?? TINTS[agents.size % TINTS.length]
+    if (tints![key(name)] !== tint) { tints![key(name)] = tint; try { fs.writeFileSync(tintsFile(), JSON.stringify(tints)) } catch { /* as it was */ } }
     a = { name, tint, state: "watching", t: Date.now() }
     agents.set(key(name), a)
   }
