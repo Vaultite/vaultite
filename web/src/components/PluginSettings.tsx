@@ -315,7 +315,7 @@ function Folders({ k, d, value, set }: { k: string; d: SettingDecl; value: unkno
 function Chips({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const list = Array.isArray(value) ? value : []
   return (
-    <SettingRow stack label={d.label} sub={capitalize(d.description)} data-setting={k}>
+    <SettingRow below label={d.label} sub={capitalize(d.description)} data-setting={k}>
       <div className="flex flex-wrap gap-1.5">
         {(d.values ?? []).map((v) => {
           const on = list.includes(v)

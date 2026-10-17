@@ -432,7 +432,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
 - `SettingDecls`
 - `SettingField({ k, d, value, set })`: One setting as a form row, by its declaration: what the sheet draws for each declared key, and a plugin's panel can use for settings kept elsewhere (File explorer's, in .vaultite/files.json).
-- `SettingRow({ label, sub, stack, value, onClick, chevron, children, … })`: A setting: name and line on the left, control on the right, with even room so hairline-separated rows look alike.
+- `SettingRow({ label, sub, stack, below, value, onClick, chevron, children, … })`: A setting: name and line on the left, control on the right (`stack`: under it on phones; `below`: always, a chip list); `onClick`: the whole row is a button with `value` and a chevron.
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).

@@ -116,6 +116,7 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
         ...(m.replaces && typeof m.replaces === "object" ? { replaces: m.replaces } : {}),
         ...(icon ? { icon } : {}), ...(typeof m.tint === "string" && /^[a-z][a-z-]*$/.test(m.tint) ? { tint: m.tint } : {}),
         ...(m.desktopApp === true ? { desktopApp: true } : {}),
+        ...(typeof m.category === "string" && /^[a-z][a-z-]*$/.test(m.category) ? { category: m.category } : {}),
       })
     }
   }

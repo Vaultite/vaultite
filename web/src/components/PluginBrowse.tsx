@@ -1,5 +1,5 @@
-// The Plugins page's Get plugins: the plugin directory (core/pluginindex.ts) or a host's source (PluginHost.browse), each
-// row with Install; tapped, its sheet (GetPluginSheet), the only way to its page on the web.
+// The Plugins page's Get plugins: the plugin directory (core/pluginindex.ts) or a host's source (PluginHost.browse), as
+// the page's Filter picks (GetFilters); each row with Install, tapped its sheet (GetPluginSheet), the way to its web page.
 import { useEffect, useState, type ReactNode } from "react"
 import { ChevronRight, Download, ExternalLink, MoreHorizontal, Puzzle, RefreshCw, type LucideIcon } from "lucide-react"
 import { dateText, fmtAgo, numberText, reload } from "@/core/data"
@@ -10,9 +10,9 @@ import { GitHubIcon } from "@/core/icons"
 import { notify, notifyError } from "@/core/notify"
 import { pluginIcon } from "@/core/pages"
 import { useKeptCount } from "@/core/heights"
-import { setPrefs, usePrefs } from "@/core/prefs"
-import { official, policyOf, type UpdatePolicy } from "../../../core/updates.ts"
-import { Bar, List, Loading, Panel, Row, Section, Segmented, SheetHead } from "@/components/kit"
+import { official } from "../../../core/updates.ts"
+import { categoryOf } from "../../../core/categories.ts"
+import { Bar, List, Loading, Panel, Row, Section, SheetHead } from "@/components/kit"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { capitalize, cn } from "@/lib/utils"
@@ -29,12 +29,30 @@ type Entry = {
   /** Its readme's start (the directory keeps 600 characters), and where to support its author. */
   readme: string; fundingUrl?: string
   /** Its manifest's icon (a name, or its SVG mark as a data address) and colour: as it looks once installed. */
-  icon?: string; tint?: string
+  icon?: string; tint?: string; category?: string
   desktopApp?: boolean
 }
 type Found = { url: string; available: boolean; error?: string; plugins: Entry[] }
 
 const SORTS: { value: Sort; label: string }[] = [{ value: "stars", label: "Top" }, { value: "new", label: "New" }, { value: "updated", label: "Updated" }]
+
+/** Get plugins' choices, in the page's Filter menu: where from ("" the directory, else a host), the order ("" the
+ *  source's first), installed or not, and a category (the directory's only: hosts' plugins have none). */
+export type GetShow = "all" | "not" | "installed"
+export type GetFilters = { source: string; sort: string; show: GetShow; cat: string }
+export const GET_NONE: GetFilters = { source: "", sort: "", show: "all", cat: "" }
+export const SHOWS: Record<GetShow, string> = { all: "All", not: "Not installed", installed: "Installed" }
+/** What the source's list holds, before Show and Category: the menu counts with it. */
+export type Listed = { installed: boolean; category?: string }[]
+
+/** The sources to get plugins from: the directory, then each host's. */
+export const getSources = () => [{ value: "", label: "Vaultite directory" }, ...hostsNow().filter(([, h]) => h.browse).map(([h, info]) => ({ value: h, label: info.browse!.title }))]
+const hostSource = (source: string) => hostsNow().find(([h, info]) => h === source && info.browse)?.[1].browse
+/** A source's orders, and the one picked (else its first). */
+export const sortsOf = (source: string) => (source ? hostSource(source)?.sorts ?? [] : SORTS)
+export const sortOf = (f: GetFilters) => { const all = sortsOf(f.source); return all.find((s) => s.value === f.sort)?.value ?? all[0]?.value ?? "" }
+export const passesGet = (e: { installed: boolean; category?: string }, f: GetFilters) =>
+  (f.show === "all" || e.installed === (f.show === "installed")) && (!f.cat || categoryOf(e.category).id === f.cat)
 
 /** Its repository (and its folder in it) on GitHub. */
 const githubOf = (e: Entry) => `https://github.com/${e.repo}${e.dir ? `/tree/HEAD/${e.dir}` : ""}`
@@ -125,27 +143,6 @@ function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
   )
 }
 
-const POLICY_HINT: Record<UpdatePolicy, string> = {
-  vaultite: "Vaultite's own update by themselves; others wait for you to update them.",
-  all: "Every installed plugin updates by itself, on each machine that allowed it.",
-  off: "None: update each from its page, or from here.",
-}
-
-/** Which installed plugins update on their own (plugins.json `updates`): Vaultite's, all of them, or none. */
-function AutoUpdates() {
-  const policy = policyOf(usePrefs())
-  return (
-    <div className="mt-6 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5 max-md:flex-col max-md:items-stretch" data-plugins-updates>
-      <span className="min-w-0 flex-1">
-        <span className="block text-[15px] md:text-[13px] md:font-medium">Update on their own</span>
-        <span className="block text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">{POLICY_HINT[policy]}</span>
-      </span>
-      <Segmented value={policy} onChange={(v) => void setPrefs({ updates: v })} label="Which plugins update on their own" className="w-full shrink-0 md:w-[230px]"
-        options={[{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]} />
-    </div>
-  )
-}
-
 const TONES = { green: "text-[var(--green)]", orange: "text-[var(--orange)]", red: "text-[var(--red)]" }
 
 
@@ -211,8 +208,8 @@ async function turnOnStandIn(e: BrowseEntry, show?: (id: string) => void) {
 }
 
 /** A host's source (Obsidian's community plugins): its list as it answers, and Install. */
-function HostBrowse({ host, src, query, showInstalled }: { host: string; src: BrowseSource; query: string; showInstalled: (id: string) => void }) {
-  const [sort, setSort] = useState(src.sorts?.[0]?.value ?? "")
+function HostBrowse({ host, src, query, filters, showInstalled, onListed }: { host: string; src: BrowseSource; query: string; filters: GetFilters; showInstalled: (id: string) => void; onListed: (l: Listed | null) => void }) {
+  const sort = sortOf(filters)
   const [found, setFound] = useState<Awaited<ReturnType<BrowseSource["search"]>> | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [n, setN] = useState(0)
@@ -232,21 +229,23 @@ function HostBrowse({ host, src, query, showInstalled }: { host: string; src: Br
     if (await turnOnStandIn(e, showInstalled)) setN((x) => x + 1)
     setBusy(null)
   }
+  useEffect(() => { onListed(found?.available ? found.entries.map((e) => ({ installed: !!e.installed })) : null) }, [found, onListed])
+  const entries = found?.entries.filter((e) => passesGet({ installed: !!e.installed }, filters)) ?? []
   // (any row with a … menu keeps its slot in every row, so the buttons line up)
-  const more = !!found?.entries.some((e) => !e.installed && e.standIn)
-  const rows = useKeptCount(`plugins:browse:${src.title}`, found ? found.entries.length : undefined)
+  const more = entries.some((e) => !e.installed && e.standIn)
+  const rows = useKeptCount(`plugins:browse:${src.title}`, found ? entries.length : undefined)
   return (
     <>
-      {src.sorts && src.sorts.length > 1 && <Segmented value={sort} options={src.sorts} onChange={setSort} label="Sort plugins" className="mb-3 w-full max-w-[300px]" />}
+      <ListHead title={`${src.title} plugins`} />
       {!found ? (rows ? <RowSkeletons count={rows} /> : <Loading />) : !found.available ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{src.title}'s plugin list can't be reached right now.</p>
-      ) : !found.entries.length ? (
-        <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{query.trim() ? `No plugins match "${query.trim()}".` : "Nothing here yet."}</p>
+      ) : !entries.length ? (
+        <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{emptyText(query, found.entries.length > 0, "Nothing here yet.")}</p>
       ) : (
         <>
           <Panel className="py-0.5">
             <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-              {found.entries.map((e) => <HostRow key={e.id} host={host} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} more={more} />)}
+              {entries.map((e) => <HostRow key={e.id} host={host} e={e} busy={busy === e.id} install={act} use={use} show={showInstalled} more={more} />)}
             </div>
           </Panel>
           {(src.note || (found.total ?? 0) > found.entries.length) && (
@@ -260,20 +259,29 @@ function HostBrowse({ host, src, query, showInstalled }: { host: string; src: Br
   )
 }
 
-/** `query`: the page's search field. `source`: "" the plugin directory, else the host whose source shows.
- *  `showInstalled`: back to the installed plugins, at this one. */
-export function PluginBrowse({ query, source, setSource, showInstalled }: { query: string; source: string; setSource: (s: string) => void; showInstalled: (id: string) => void }) {
+/** Above the list: where it's from, and anything about the whole list (Fetch again). */
+function ListHead({ title, children }: { title: string; children?: ReactNode }) {
+  return (
+    <div className="mb-1.5 flex min-h-7 items-center gap-2 px-1" data-browse-head>
+      <h2 className="min-w-0 flex-1 truncate text-[13px] font-semibold text-muted-foreground md:text-[12px]">{title}</h2>
+      {children}
+    </div>
+  )
+}
+
+/** Nothing to show: none match the search, or (`some`: the list has plugins) none match the filters. */
+const emptyText = (query: string, some: boolean, none: string) =>
+  some ? "No plugins match these filters." : query.trim() ? `No plugins match "${query.trim()}".` : none
+
+/** `query`: the page's search field. `filters`: the page's Filter menu (its source, order and which show); `onListed`:
+ *  what the source's list holds, for the menu's counts. `showInstalled`: back to the installed plugins, at this one. */
+export function PluginBrowse({ query, filters, showInstalled, onListed }: { query: string; filters: GetFilters; showInstalled: (id: string) => void; onListed: (l: Listed | null) => void }) {
   usePluginsVersion()
-  const sources = hostsNow().filter(([, h]) => h.browse)
-  const src = sources.find(([h]) => h === source)?.[1].browse
+  const src = filters.source ? hostSource(filters.source) : undefined
   return (
     <section className="@container" data-plugin-browse>
-      {sources.length > 0 && (
-        <Segmented value={src ? source : ""} onChange={setSource} label="Where from" className="mb-3 w-full max-w-[300px]"
-          options={[{ value: "", label: "Vaultite directory" }, ...sources.map(([h, info]) => ({ value: h, label: info.browse!.title }))]} />
-      )}
-      {src ? <HostBrowse key={source} host={source} src={src} query={query} showInstalled={showInstalled} /> : <Directory query={query} showInstalled={showInstalled} />}
-      <AutoUpdates />
+      {src ? <HostBrowse key={filters.source} host={filters.source} src={src} query={query} filters={filters} showInstalled={showInstalled} onListed={onListed} />
+        : <Directory query={query} filters={filters} showInstalled={showInstalled} onListed={onListed} />}
     </section>
   )
 }
@@ -312,8 +320,8 @@ async function installEntry(e: Entry, show?: (id: string) => void) {
 }
 
 /** `compact`: only those not installed, without the sort and the note (DirectoryMatches). */
-function Directory({ query, showInstalled, compact }: { query: string; showInstalled: (id: string) => void; compact?: boolean }) {
-  const [sort, setSort] = useState<Sort>("stars")
+function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact }: { query: string; filters?: GetFilters; showInstalled: (id: string) => void; onListed?: (l: Listed | null) => void; compact?: boolean }) {
+  const sort = sortOf(filters) as Sort
   const [found, setFound] = useState<Found | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
   const [n, setN] = useState(0) // asked again after an install, or fetched again (`fresh`)
@@ -328,7 +336,9 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
     }, query ? 200 : 0)
     return () => { live = false; clearTimeout(t) }
   }, [query, sort, n, fresh, v])
-  const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? found.plugins.length : undefined)
+  useEffect(() => { onListed?.(found?.available ? found.plugins.map((e) => ({ installed: e.installed !== null, category: e.category })) : null) }, [found, onListed])
+  const shown = found?.plugins.filter((e) => passesGet({ installed: e.installed !== null, category: e.category }, filters)) ?? []
+  const rows = useKeptCount(compact ? "plugins:matches" : "plugins:directory", found ? shown.length : undefined)
 
   const act = async (e: Entry) => {
     setBusy(e.id)
@@ -353,22 +363,21 @@ function Directory({ query, showInstalled, compact }: { query: string; showInsta
 
   return (
     <div data-plugin-directory>
-      <div className="mb-3 flex items-center gap-3">
-        <Segmented value={sort} options={SORTS} onChange={setSort} label="Sort plugins" className="w-full max-w-[300px]" />
+      <ListHead title="Vaultite directory">
         <button type="button" onClick={() => setFresh(true)} disabled={fresh} aria-label="Fetch the directory again" data-tip="Fetch again" data-browse-refresh
-          className="ml-auto grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50 max-md:size-11">
-          <RefreshCw className={cn("size-4", fresh && "animate-spin")} strokeWidth={2} />
+          className="-my-1 -mr-1 grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:opacity-50 max-md:size-11">
+          <RefreshCw className={cn("size-3.5", fresh && "animate-spin")} strokeWidth={2} />
         </button>
-      </div>
+      </ListHead>
       {!found ? (rows ? <RowSkeletons count={rows} tile /> : <Loading />) : !found.available ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>The plugin directory can't be reached right now.</p>
-      ) : !found.plugins.length ? (
-        <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{query.trim() ? `No plugins match "${query.trim()}".` : "No plugins in the directory yet."}</p>
+      ) : !shown.length ? (
+        <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{emptyText(query, found.plugins.length > 0, "No plugins in the directory yet.")}</p>
       ) : (
         <>
           <Panel className="py-0.5">
             <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-              {found.plugins.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
+              {shown.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
             </div>
           </Panel>
           <p className="mt-2 px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">

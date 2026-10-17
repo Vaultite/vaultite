@@ -505,7 +505,7 @@ export default async ($: VaultTest) => {
       "https://raw.githubusercontent.com/carol/fleet/HEAD/skiff/manifest.json": { id: "skiff", version: "0.2.0" },
       "https://raw.githubusercontent.com/carol/fleet/r1/raft/manifest.json": { id: "raft", name: "Raft", version: "1.0.0" },
       "https://api.github.com/repos/alicepark/harbor/releases/latest": { tag_name: "v1.2.0", published_at: "2026-09-15T00:00:00Z" },
-      "https://raw.githubusercontent.com/alicepark/harbor/v1.2.0/manifest.json": { id: "harbor", name: "Harbor", version: "1.2.0", description: "Tides.", author: "Alice Park", icon: "anchor", tint: "teal", disclosures: { network: ["tides.example.com"] }, fundingUrl: "https://example.com/fund" },
+      "https://raw.githubusercontent.com/alicepark/harbor/v1.2.0/manifest.json": { id: "harbor", name: "Harbor", version: "1.2.0", description: "Tides.", author: "Alice Park", icon: "anchor", tint: "teal", category: "life", disclosures: { network: ["tides.example.com"] }, fundingUrl: "https://example.com/fund" },
       "https://api.github.com/repos/boblee/oldboat/tags?per_page=100": [{ name: "v0.9.0", commit: { sha: "aaa" } }, { name: "v0.10.0", commit: { sha: "bbb" } }, { name: "nightly" }],
       "https://api.github.com/repos/boblee/oldboat/commits/bbb": { commit: { committer: { date: "2024-02-01T00:00:00Z" } } },
       "https://raw.githubusercontent.com/boblee/oldboat/v0.10.0/manifest.json": { id: "oldboat", name: "Old boat", version: "0.10.0", description: "Rowing." },
@@ -541,6 +541,7 @@ export default async ($: VaultTest) => {
     check("index builder: an icon by name as it is, an SVG file inline (the app reads both)", hb?.icon === "anchor" && hb.tint === "teal" &&
       dg?.icon === `data:image/svg+xml,${encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M2 2h20v20z"/></svg>')}` &&
       fromIndex.find((p) => p.id === "dinghy")?.icon === dg.icon && fromIndex.find((p) => p.id === "harbor")?.tint === "teal", { hb: hb?.icon, dg: dg?.icon })
+    check("index builder: a manifest's category, for Get plugins' filter", hb?.category === "life" && fromIndex.find((p) => p.id === "harbor")?.category === "life" && !dg?.category, hb?.category)
     check("index builder: listed.json's repos are asked for too", asked.includes("https://api.github.com/repos/carol/listed"))
     check("index builder: sorted by score, the blocklist goes out, and the app reads it", index.plugins[0].id === "harbor" && (index.blocked as Any)["boblee/oldboat"][0] === "<1.0.0" &&
       (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins.length === 3)

@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process"
 import { cpSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname, join } from "node:path"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { pluginsFilter, qa, until, wait } from "./lib/qa.mjs"
 
 const { args: [BASE, VAULT, INDEX, REPOS, OUT = "/tmp/pluginstore-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 const B = BASE.replace(/\/+$/, "")
@@ -38,9 +38,9 @@ const entry = (o) => ({ description: "Made up.", author: "Bob Lee", version: "1.
 const writeIndex = (harborVersion) => {
   mkdirSync(dirname(INDEX), { recursive: true })
   writeFileSync(INDEX, JSON.stringify({ format: 1, generated: new Date().toISOString(), blocked: {}, plugins: [
-    entry({ id: "harbor", name: "Harbor", author: "Alice Park", repo: "alicepark/harbor", version: harborVersion, tag: `v${harborVersion}`, stars: 40, released: "2026-06-01T00:00:00Z",
+    entry({ id: "harbor", name: "Harbor", category: "life", author: "Alice Park", repo: "alicepark/harbor", version: harborVersion, tag: `v${harborVersion}`, stars: 40, released: "2026-06-01T00:00:00Z",
       description: "The harbour's tides, and when the boats leave.", icon: "anchor", tint: "teal", disclosures: { network: ["tides.example.com"], ...(harborVersion === "1.1.0" ? { shell: true } : {}) } }),
-    entry({ id: "beacon", name: "Beacon", repo: "boblee/beacon", stars: 90, created: "2024-01-01T00:00:00Z", released: "2025-01-01T00:00:00Z" }),
+    entry({ id: "beacon", name: "Beacon", category: "developer", repo: "boblee/beacon", stars: 90, created: "2024-01-01T00:00:00Z", released: "2025-01-01T00:00:00Z" }),
     entry({ id: "skiff", name: "Skiff", repo: "boblee/skiff", stars: 5, created: "2026-09-01T00:00:00Z", released: "2026-09-30T00:00:00Z", description: "Small boats and their moorings." }),
   ] }))
 }
@@ -77,14 +77,20 @@ try {
   check("browse: each with its icon (a puzzle piece for one without)", await browse.locator("[data-browse-icon] svg").count() === 3 &&
     await harborRow.locator("[data-browse-icon]").evaluate((e) => getComputedStyle(e).color === getComputedStyle(document.documentElement).getPropertyValue("--teal").trim() || !!e.style.color))
   await shot("browse")
-  await page.getByRole("radio", { name: "New" }).click()
+  await pluginsFilter(page, "New")
   check("browse: New puts the newest first", await until(async () => (await rows())[0] === "skiff", 8000), await rows())
-  await page.getByRole("radio", { name: "Updated" }).click()
+  await pluginsFilter(page, "Updated")
   check("browse: Updated, the last released first", await until(async () => (await rows()).join() === "skiff,harbor,beacon", 8000), await rows())
+  check("browse: an order other than Top is a chip", (await page.locator("[data-plugins-chip]").allInnerTexts()).join() === "Sort: Updated")
   await page.locator("[data-plugins-search] input").fill("moorings")
   check("browse: searched", await until(async () => (await rows()).join() === "skiff", 8000), await rows())
   await page.locator("[data-plugins-search] input").fill("")
-  await page.getByRole("radio", { name: "Top" }).click()
+  await page.locator("[data-plugins-clear]").click()
+  await pluginsFilter(page, "Life", { category: true })
+  check("browse: Filter's Category narrows the directory", await until(async () => (await rows()).join() === "harbor", 8000), await rows())
+  await pluginsFilter(page, "Not installed")
+  check("browse: and Show, counted", (await page.locator("[data-plugins-count]").innerText()) === "1 plugin", await page.locator("[data-plugins-count]").innerText().catch(() => ""))
+  await page.locator("[data-plugins-clear]").click()
 
   // ---------- a row's sheet: what it is, Install, and GitHub only from its mark
   await until(async () => (await rows()).join() === "beacon,harbor,skiff", 8000)

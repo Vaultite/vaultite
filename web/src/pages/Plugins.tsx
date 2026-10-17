@@ -1,6 +1,6 @@
-// Plugins: Your plugins (by category, never the `alwaysOn` parts; Filter narrows them) or Get plugins (PluginBrowse.tsx),
-// the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
-import { useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
+// Plugins: Your plugins (by category, never the `alwaysOn` parts) or Get plugins (PluginBrowse.tsx), each narrowed by
+// Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
 import { ChevronRight, ListFilter, Package, Search, Settings2, X } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
@@ -15,10 +15,10 @@ import { openDetail } from "@/core/nav"
 import { FilterField, PageHeader, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
 import { Button } from "@/components/Button"
 import { openBundles } from "@/core/bundles"
-import { DirectoryMatches, PluginBrowse } from "@/components/PluginBrowse"
+import { DirectoryMatches, GET_NONE, getSources, passesGet, PluginBrowse, SHOWS, sortOf, sortsOf, type GetFilters, type GetShow, type Listed } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
 import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/PluginGroup"
-import { categoryOf, groupOf } from "../../../core/categories.ts"
+import { CATEGORIES, categoryOf, groupOf, OTHER } from "../../../core/categories.ts"
 import { hasWords } from "@/core/fuzzy"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
 
@@ -189,7 +189,7 @@ const NONE: Filters = { status: "all", source: "any", cat: "" }
 const STATUSES: Record<Status, string> = { all: "All", on: "On", off: "Off" }
 
 /** The filters on, under the search: each a chip that removes it, then how many rows show and Clear all. */
-function ActiveFilters({ chips, count, remove, clear }: { chips: { id: keyof Filters; label: string }[]; count: number; remove: (id: keyof Filters) => void; clear: () => void }) {
+function ActiveFilters<K extends string>({ chips, count, remove, clear }: { chips: { id: K; label: string }[]; count: number | null; remove: (id: K) => void; clear: () => void }) {
   if (!chips.length) return null
   return (
     <div className="-mt-1.5 mb-4 flex flex-wrap items-center gap-1.5" role="group" aria-label="Filters" data-plugins-active>
@@ -200,7 +200,7 @@ function ActiveFilters({ chips, count, remove, clear }: { chips: { id: keyof Fil
         </button>
       ))}
       <span className="ml-auto flex shrink-0 items-center gap-3 pl-2 text-[15px] text-muted-foreground md:text-[13px]">
-        <span className="tabular-nums" data-plugins-count>{count} {count === 1 ? "plugin" : "plugins"}</span>
+        {count !== null && <span className="tabular-nums" data-plugins-count>{count} {count === 1 ? "plugin" : "plugins"}</span>}
         <button type="button" onClick={clear} data-plugins-clear className="cursor-pointer font-medium text-primary hover:opacity-80">Clear all</button>
       </span>
     </div>
@@ -208,6 +208,13 @@ function ActiveFilters({ chips, count, remove, clear }: { chips: { id: keyof Fil
 }
 
 type Tab = "installed" | "get"
+
+/** The categories a source's list has plugins in, in the page's order (none: it has no categories). */
+function categoriesIn(l: Listed | null) {
+  if (!l?.some((e) => e.category)) return []
+  const ids = new Set(l.map((e) => categoryOf(e.category).id))
+  return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
+}
 
 /** `section`: drawn as Settings' section, else a page of its own (each scrolled by what holds it). `bundles`: what the
  *  Bundles button opens (in Settings, its section). */
@@ -221,7 +228,13 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
   const [filters, setFiltersState] = useState(NONE)
   const latest = useRef(filters)
   const setFilters = (f: Filters) => { latest.current = f; setFiltersState(f) }
-  const [source, setSource] = useState("") // Get plugins' source: "" the plugin directory, else a host's
+  // Get plugins' filters (in a ref too, as Your plugins'), and what its source lists, for the menu's counts.
+  const [got, setGotState] = useState(GET_NONE)
+  const gotRef = useRef(got)
+  const setGot = (f: GetFilters) => { gotRef.current = f; setGotState(f) }
+  const [listed, setListedState] = useState<Listed | null>(null)
+  const listedRef = useRef(listed)
+  const setListed = useCallback((l: Listed | null) => { listedRef.current = l; setListedState(l) }, [])
   useEffect(() => {
     beforeReveal = () => { setQuery(""); setTab("installed"); latest.current = NONE; setFiltersState(NONE) }
     return () => { beforeReveal = () => {} }
@@ -282,9 +295,33 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
       ] },
     ]
   }
+  // Get plugins' menu: the order, where from, then which show and (the directory's) a category, counted in what the
+  // source lists now.
+  const getMenu = (): MenuItem[] => {
+    const f = gotRef.current, l = listedRef.current
+    const pick = (g: Partial<GetFilters>) => () => setGot({ ...gotRef.current, ...g })
+    const count = (g: Partial<GetFilters>) => (l ? String(l.filter((e) => passesGet(e, { ...f, ...g })).length) : undefined)
+    const sort = sortOf(f), sources = getSources(), cats = categoriesIn(l)
+    const picked = cats.find((c) => c.id === f.cat)
+    return [
+      { label: "Sort by", caption: true, run: () => {} },
+      ...sortsOf(f.source).map((s) => ({ label: s.label, checked: sort === s.value, keep: true, run: pick({ sort: s.value }) })),
+      ...(sources.length > 1 ? [
+        { label: "Source", caption: true, sep: true, run: () => {} },
+        // (another source has its own orders and no categories, and its list comes in afresh)
+        ...sources.map((s) => ({ label: s.label, checked: f.source === s.value, keep: true, run: () => { if (gotRef.current.source !== s.value) { setListed(null); pick({ source: s.value, sort: "", cat: "" })() } } })),
+      ] : []),
+      { label: "Show", caption: true, sep: true, run: () => {} },
+      ...(Object.keys(SHOWS) as GetShow[]).map((s) => ({ label: SHOWS[s], checked: f.show === s, keep: true, hint: count({ show: s }), run: pick({ show: s }) })),
+      ...(!f.source && cats.length ? [{ label: "Category", sep: true, hint: picked?.label ?? "All", run: () => {}, items: [
+        { label: "All", checked: !picked, keep: true, hint: count({ cat: "" }), run: pick({ cat: "" }) },
+        ...cats.map((c) => ({ label: c.label, checked: picked === c, keep: true, hint: count({ cat: c.id }), run: pick({ cat: c.id }) })),
+      ] }] : []),
+    ]
+  }
   const openFilter = (e: MouseEvent<HTMLButtonElement>) => {
-    const r = e.currentTarget.getBoundingClientRect()
-    openMenu({ x: r.left, y: r.bottom + 4 }, menu(), false, menu)
+    const r = e.currentTarget.getBoundingClientRect(), items = tab === "get" ? getMenu : menu
+    openMenu({ x: r.left, y: r.bottom + 4 }, items(), false, items)
   }
   const chips: { id: keyof Filters; label: string }[] = [
     ...(filters.status !== "all" ? [{ id: "status" as const, label: STATUSES[filters.status] }] : []),
@@ -292,8 +329,22 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
     ...(cat ? [{ id: "cat" as const, label: cat.label }] : []),
   ]
 
+  const sortLabel = sortsOf(got.source).find((s) => s.value === sortOf(got))
+  const getChips: { id: keyof GetFilters; label: string }[] = [
+    ...(got.source ? [{ id: "source" as const, label: getSources().find((s) => s.value === got.source)?.label ?? got.source }] : []),
+    ...(sortLabel && sortLabel !== sortsOf(got.source)[0] ? [{ id: "sort" as const, label: `Sort: ${sortLabel.label}` }] : []),
+    ...(got.show !== "all" ? [{ id: "show" as const, label: SHOWS[got.show] }] : []),
+    ...(got.cat ? [{ id: "cat" as const, label: categoryOf(got.cat).label }] : []),
+  ]
+  const filtered = tab === "get" ? getChips.length : chips.length
+
   let list: ReactNode
-  if (tab === "get") list = <PluginBrowse query={query} source={source} setSource={setSource} showInstalled={reveal} />
+  if (tab === "get") list = <>
+    <ActiveFilters chips={getChips} count={listed ? listed.filter((e) => passesGet(e, got)).length : null}
+      remove={(id) => { if (id === "source") setListed(null); setGot(id === "source" ? { ...got, source: "", sort: "", cat: "" } : { ...got, [id]: GET_NONE[id] }) }}
+      clear={() => { if (got.source) setListed(null); setGot(GET_NONE) }} />
+    <PluginBrowse query={query} filters={got} showInstalled={reveal} onListed={setListed} />
+  </>
   else {
     list = <>
       <ActiveFilters chips={chips} count={rows(shown)} remove={(id) => setFilters({ ...filters, [id]: NONE[id] })} clear={() => setFilters(NONE)} />
@@ -346,12 +397,10 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
           <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-plugins-search>
             <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search all plugins" : "Search your plugins"} />
           </form>
-          {tab === "installed" && (
-            <Button onClick={openFilter} aria-haspopup="menu" data-plugins-filter={chips.length}
-              className={cn("px-3 md:h-7.5 md:px-2.5", chips.length && "bg-primary/10 text-primary hover:bg-primary/15")}>
-              <ListFilter className="size-4" strokeWidth={2.25} />Filter
-            </Button>
-          )}
+          <Button onClick={openFilter} aria-haspopup="menu" data-plugins-filter={filtered}
+            className={cn("px-3 md:h-7.5 md:px-2.5", filtered && "bg-primary/10 text-primary hover:bg-primary/15")}>
+            <ListFilter className="size-4" strokeWidth={2.25} />Filter
+          </Button>
         </div>
       </div>
       {list}

@@ -110,12 +110,12 @@ export async function command(page, name, settle = 300) {
   return hit > 0
 }
 
-/** Picks a choice in the Plugins page's Filter menu (pages/Plugins.tsx): a status or source by its label ("On", "In this
- *  vault"), or a category's (`{ category: true }`: through its submenu), then closes the menu. */
+/** Picks a choice in the Plugins page's Filter menu (pages/Plugins.tsx): a status, source or (Get plugins) order by its
+ *  label ("On", "In this vault", "New"), or a category's (`{ category: true }`: through its submenu), then closes it. */
 export async function pluginsFilter(page, label, { category = false } = {}) {
   await page.locator("[data-plugins-filter]").click()
   if (category) await page.getByRole("menuitem", { name: /^Category/ }).click()
-  await page.locator("[role=menu]").last().getByRole("menuitemcheckbox", { name: new RegExp(`^${label}\\s*\\d+$`) }).click()
+  await page.locator("[role=menu]").last().getByRole("menuitemcheckbox", { name: new RegExp(`^${label}(\\s*\\d+)?$`) }).click()
   await page.locator('[aria-label="Close menu"]').click()
 }
 

@@ -40,6 +40,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Get plugins rows open a sheet**, as Your plugins' do: what the plugin is, what it says it does, its version, author
   and source, the start of its readme, and Install (an installed one opens its own sheet). Its page on GitHub is a small
   GitHub button there; tapping a name no longer leaves the app.
+- **Get plugins has a Filter menu too**: sort by Top, New or Updated (the same three for Obsidian's plugins), source,
+  installed or not, and category, with counts and chips as on Your plugins. It replaces the two switchers over the
+  list. Which plugins update on their own is now Plugin updates in Settings > General.
+- Settings: a list of chips (Editing commands' keys over the keyboard) sits under its label, so the label no longer
+  squeezes into a narrow column.
 - On a Mac, the terminal keeper lets go of a shell's pseudo-terminal once it ends. Before, a keeper that ran for days
   used up the machine's, and new terminals, tmux and ssh couldn't start. When none are left, a new terminal says so.
 - **Web pages and plugin pages can be pinned**: Pin in a tab's menu (or drag the tab to Pinned) pins a web page, with

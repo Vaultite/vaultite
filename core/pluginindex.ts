@@ -24,6 +24,8 @@ export type Entry = {
   icon?: string; tint?: string
   /** It works only in the desktop app (its manifest's `desktopApp`). */
   desktopApp?: boolean
+  /** Its manifest's category (core/categories.ts; one unknown here lists as Other). */
+  category?: string
 }
 export type Index = { generated: string | null; plugins: Entry[]; blocked: Record<string, string[]> }
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
@@ -48,7 +50,7 @@ export function readIndex(o: unknown): Index {
       issues: { open: num(issues.open), closed: num(issues.closed) }, topics: Array.isArray(e.topics) ? e.topics.filter((t): t is string => typeof t === "string").slice(0, 20) : [],
       disclosures: disclosuresOf(e), readme: str(e.readme, 600), score: num(e.score), ...(str(e.fundingUrl).startsWith("https://") ? { fundingUrl: str(e.fundingUrl) } : {}),
       ...(iconOf(e.icon) ? { icon: iconOf(e.icon)! } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.tint, 30)) ? { tint: str(e.tint) } : {}),
-      ...(e.desktopApp === true ? { desktopApp: true } : {}),
+      ...(e.desktopApp === true ? { desktopApp: true } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.category, 30)) ? { category: str(e.category) } : {}),
       ...(isObj(e.replaces) ? { replaces: Object.fromEntries(Object.entries(e.replaces).filter(([, v]) => Array.isArray(v))
         .map(([k, v]) => [k, (v as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 20)])) } : {}) })
   }

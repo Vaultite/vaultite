@@ -9,7 +9,7 @@ import { go } from "@/core/workspace"
 import { openDetail } from "@/core/nav"
 import { isEnabled, PLUGINS, pluginById, tintOfPlugin } from "@/core/plugins"
 import { hasSettings, openPluginSettings, revealRow, withSettings, settingsTitle } from "@/core/pluginSettings"
-import { usePrefs } from "@/core/prefs"
+import { setPrefs, usePrefs } from "@/core/prefs"
 import { cell } from "@/core/signal"
 import { textSizeKinds } from "@/core/textsize"
 import { allSwitches, placeOf, useSwitches, type SwitchDef } from "@/core/switches"
@@ -25,6 +25,7 @@ import { Plugins } from "@/pages/Plugins"
 import { Bundles } from "@/pages/Bundles"
 import { notifyError } from "@/core/notify"
 import { API_VERSION, APP_VERSION } from "../../../core/version.ts"
+import { policyOf, type UpdatePolicy } from "../../../core/updates.ts"
 
 /** Which section is shown: kept while the app runs, so Settings reopens where it was. */
 const settingsSection = cell("general")
@@ -54,7 +55,25 @@ function UpdatesRow() {
   )
 }
 
-/** The vault this window shows (Manage vaults: the others, a new one), the app's version and its updates. */
+const PLUGIN_UPDATES: Record<UpdatePolicy, string> = {
+  vaultite: "Vaultite's own update by themselves; others wait for you to update them",
+  all: "Every installed plugin updates by itself, on each machine that allowed it",
+  off: "None: update each from its page in Plugins",
+}
+
+/** Which installed plugins update on their own (plugins.json `updates`): Vaultite's, all of them, or none. */
+function PluginUpdatesRow() {
+  const policy = policyOf(usePrefs())
+  return (
+    <SettingRow stack label="Plugin updates" sub={PLUGIN_UPDATES[policy]} data-settings-row="plugin-updates">
+      <Segmented<UpdatePolicy> label="Which plugins update on their own" value={policy} onChange={(v) => void setPrefs({ updates: v })} className="w-full shrink-0 sm:w-[260px]"
+        options={[{ value: "vaultite", label: "Vaultite's" }, { value: "all", label: "All" }, { value: "off", label: "None" }]} />
+    </SettingRow>
+  )
+}
+
+/** The vault this window shows (Manage vaults: the others, a new one), the app's version and its updates, and its
+ *  plugins'. */
 function General({ store }: { store: Store }) {
   const path = store.vault.path
   const name = path.split("/").filter(Boolean).pop() ?? "Vault"
@@ -65,6 +84,7 @@ function General({ store }: { store: Store }) {
           onClick={() => { if (desktopApp) void desktopApp.manageVaults(); else openDetail("vaults") }} />
         <SettingRow label="Vaultite" data-settings-row="version" sub={`Plugin API ${API_VERSION}`} value={APP_VERSION} />
         <UpdatesRow />
+        <PluginUpdatesRow />
       </div>
     </Panel>
   )
@@ -170,6 +190,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     { ...row("vaults", "Manage vaults", "General", "[data-settings-vault]", store.vault.path), words: "vault folder" },
     row("version", "Version", "General", '[data-settings-row="version"]', "Vaultite and its plugin API"),
     ...(desktopApp?.updates ? [{ ...row("updates", "Updates", "General", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
+    { ...row("plugin-updates", "Plugin updates", "General", '[data-settings-row="plugin-updates"]', "Vaultite's, all or none"), words: "update automatically plugins" },
   ]
   const plugins = PLUGINS.filter((p) => hasSettings(p, store.pluginSettings ?? [])).sort((a, b) => byName.compare(a.name, b.name)).flatMap((p) => {
     const where = isEnabled(p.id, disabled) ? p.name : `${p.name} (off)`
