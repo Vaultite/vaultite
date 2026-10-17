@@ -361,6 +361,12 @@ export type AgentStart = {
 /** How a session is started, besides its id and first prompt. */
 export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
 
+/** What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's
+ *  claude.sample). It answers SampleAnswer, or throws an Error with `code` (a claude.sample error code). */
+export type SampleAsk = { prompt: string; system: string; tier: "quick" | "default" | "complex"; model?: string; effort?: string
+  onText?: (delta: string) => void; signal?: AbortSignal }
+export type SampleAnswer = { text: string; truncated: boolean; model?: string }
+
 /** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
  *  when no plugin that's on brings that agent (the terminal goes again). */
 export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: AgentHow = {}) {

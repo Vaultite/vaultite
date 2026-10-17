@@ -32,6 +32,7 @@ are the only copy, and the user reads them too.
 
 ## Plugins
 - Saving an Intelligent UI answer: its source as is, in a ```genui fence (`vau docs genui`).
+- A claude.ai artifact the user wants here: write the HTML the Artifact read returns (or the one you made) as a `.html` file; it runs as is.
 - Something for the user to read later (research, a summary) goes in their inbox: `inbox.add`.
 - A tool's card in a note: ```block-mcp-app with `tool:` (one that reads, like tasks_list) and `arguments:` (`vau docs mcp-apps`).
 - `ME.md` is the user: read it before writing anything (who they are, the people who matter, how they want you to work, what not to store).

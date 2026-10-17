@@ -177,6 +177,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `property-types` (other-apps)
 - `provenance:user` (provenance): What the user said or wrote, made by another plugin's backend (Inbox's voice notes): the label to give it.
 - `provenance:agent` (provenance): And what an agent's are labelled (an AI app's note for the inbox).
+- `sample` (claude-code)
 - `setting-defaults` (other-apps)
 - `sidebars:of` (workspaces): Workspace n's sidebars, for the core's panel ops (`vau panels`): its own setup (null: sidebars.json's) and how to save one.
 - `tabs:open` (workspaces): Every place open in any workspace's tabs, as this machine has them, for "tabs:open": a terminal shown in a workspace nobody's looking at isn't idle.

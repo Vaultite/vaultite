@@ -60,6 +60,73 @@ export default async ($: VaultTest) => {
     check("nothing next to an outside page is served", page?.status === 404, page?.status)
   }
 
+  {
+    // claude.ai artifacts: their db and window.storage in a sidecar that follows the file, publish rewriting the page
+    // (unless it changed since it loaded), sample allowed per page on this machine, the runtime in the page.
+    write("Claude/Drill.html", "<!doctype html><html><head><meta charset=utf8></head><body><title>Drill</title><p>x</p></body></html>")
+    ;[code] = await api("POST", "artifact/data", { path: "Claude/Drill.html", db: [{ path: "data/users/u_owner/bests", data: { pairs: { "A-D": 31 } } }, { path: "x/gone", data: { a: 1 } }, { path: "x/gone", data: null }],
+      storage: [{ key: "k", value: "v" }, { shared: true, key: "s", value: 2 }] })
+    let side = JSON.parse(read(".vaultite/artifacts/Claude/Drill.html.data.json"))
+    check("artifact data: documents and storage kept beside it", code === 200 && side.db["data/users/u_owner/bests"].pairs["A-D"] === 31 && !side.db["x/gone"] &&
+      side.storage.personal.k === "v" && side.storage.shared.s === "2", side)
+    ;[code] = await api("POST", "artifact/data", { path: "Claude/Drill.html", db: [{ path: "odd", data: {} }] })
+    check("artifact data: a document path has an even number of segments", code === 400, code)
+    page = await app.serve("v", "Claude/Drill.html", "Claude/Drill.html", {})
+    const served = String((page?.body as Any)?.text ?? "")
+    check("the page starts with its data and the runtime", served.includes('"pairs":{"A-D":31}') && served.includes("claudeRuntime") && served.includes("u_owner"), served.slice(0, 200))
+    const st = await import("../../../plugins/core/html/claude.ts")
+    const version = st.versionOf(vault, "Claude/Drill.html")
+    ;[code, out] = await api("POST", "artifact/publish", { path: "Claude/Drill.html", html: "<p>no doctype</p>", version })
+    check("publish: only a whole page", code === 400, code)
+    ;[code, out] = await api("POST", "artifact/publish", { path: "Claude/Drill.html", html: "<!doctype html><title>Drill</title><p>two</p>", version: version - 5 })
+    check("publish: a page that changed since it loaded is a conflict", code === 409 && out.live === String(version) && read("Claude/Drill.html").includes("<p>x</p>"), [code, out])
+    ;[code, out] = await api("POST", "artifact/publish", { path: "Claude/Drill.html", html: "<!doctype html><title>Drill</title><p>two</p>", version })
+    check("publish rewrites the page", code === 200 && read("Claude/Drill.html").includes("<p>two</p>") && out.version === String(st.versionOf(vault, "Claude/Drill.html")), [code, out])
+    const html = (await import("../../../plugins/core/html/plugin.ts")).plugin
+    check("sample: not allowed until the owner says so", !html.allows(st.sampleGrant("Claude/Drill.html")))
+    ;[code] = await api("POST", "artifact/allow", { path: "Claude/Drill.html" })
+    check("sample: allowed for that page", code === 200 && html.allows(st.sampleGrant("Claude/Drill.html")), code)
+    await api("POST", "file/move", { from: "Claude/Drill.html", to: "Claude/Chords.html" })
+    side = JSON.parse(read(".vaultite/artifacts/Claude/Chords.html.data.json"))
+    check("its data and its yes follow a move", side.db["data/users/u_owner/bests"] && !exists(".vaultite/artifacts/Claude/Drill.html.data.json") && html.allows(st.sampleGrant("Claude/Chords.html")))
+
+    // The runtime's pure parts: queries and reading a JSON reply.
+    const { queryDocs, parseReply } = await import("../../../plugins/core/html/runtime.ts")
+    const docs = new Map<string, Record<string, unknown>>([["t/a", { n: 3, tags: ["x"] }], ["t/b", { n: 1 }], ["t/c", { n: 2, tags: ["x", "y"] }], ["t/d", {}], ["t/a/sub/z", { n: 9 }], ["u/a", { n: 5 }]])
+    const q = (o: Partial<Parameters<typeof queryDocs>[1]>) => queryDocs(docs, { coll: "t", where: [], order: null, limit: null, ...o })
+    check("query: a collection's own documents, by id", q({}).join() === "t/a,t/b,t/c,t/d", q({}))
+    check("query: orderBy, missing fields last; limit", q({ order: ["n", "desc"], limit: 3 }).join() === "t/a,t/c,t/b" && q({ order: ["n", "asc"] }).at(-1) === "t/d", q({ order: ["n", "desc"] }))
+    check("query: where", q({ where: [["n", ">=", 2]] }).join() === "t/a,t/c" && q({ where: [["tags", "array-contains", "y"]] }).join() === "t/c" &&
+      q({ where: [["n", "in", [1, 3]]] }).join() === "t/a,t/b" && q({ where: [["n", "!=", 1]] }).join() === "t/a,t/c")
+    check("json replies: whole, fenced, or one value among words", (parseReply('{"a":1}') as Any).a === 1 && (parseReply("Here:\n```json\n[1,2]\n```") as Any)[1] === 2 &&
+      (parseReply('Sure. {"ok": true} Done.') as Any).ok === true && parseReply("no json here") === undefined)
+
+    // The service "sample" runs `claude -p` (here a fake one): text streamed, the tier's model, a named one that fails
+    // falls back.
+    const bin = path.join(tmp, "fakebin")
+    fs.mkdirSync(bin, { recursive: true })
+    fs.writeFileSync(path.join(bin, "claude"), `#!/bin/sh
+cat > /dev/null
+case "$*" in *claude-gone-1*) echo '{"type":"result","is_error":true,"result":"no such model","api_error_status":404}'; exit 0;; esac
+for w in "Hello" " there"; do echo "{\\"type\\":\\"stream_event\\",\\"event\\":{\\"type\\":\\"content_block_delta\\",\\"delta\\":{\\"type\\":\\"text_delta\\",\\"text\\":\\"$w\\"}}}"; done
+echo "{\\"type\\":\\"result\\",\\"is_error\\":false,\\"result\\":\\"Hello there\\",\\"stop_reason\\":\\"end_turn\\",\\"args\\":\\"$*\\"}"
+`, { mode: 0o755 })
+    const oldPath = process.env.PATH
+    process.env.PATH = `${bin}:${oldPath}`
+    try {
+      const { sample } = await import("../../../plugins/core/claude-code/sample.ts")
+      const deltas: string[] = []
+      const r = await sample({ prompt: "hi", system: "s", tier: "quick", model: "claude-gone-1", onText: (d) => deltas.push(d) }, path.join(tmp, "claude-home"))
+      check("sample: streamed text, a missing model falls back to the tier", r.text === "Hello there" && deltas.join("|") === "Hello| there" && !r.model, [r, deltas])
+      const ctl = new AbortController()
+      ctl.abort()
+      const e = await sample({ prompt: "hi", system: "s", tier: "default", signal: ctl.signal }, tmp).catch((x) => x)
+      check("sample: an aborted call is cancelled", e?.code === "cancelled", e)
+    } finally {
+      process.env.PATH = oldPath
+    }
+  }
+
   // Files dropped in from a browser: a free name like Finder's, bytes never over an existing file.
   let up: Any
   await api("POST", "folder", { path: "Inbox" })

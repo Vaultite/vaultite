@@ -5,14 +5,17 @@ import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, LOCAL, parseCsv } from "../../../core/plugins.ts"
 import { type Item, readText, type Vault, writeAtomic } from "../../../core/vault.ts"
+import type { ArtifactData } from "./claude.ts"
+import { claudeRuntime, parseReply, queryDocs } from "./runtime.ts"
 
 export const ARTIFACT = /\.html?$/i
 
 // ---------- the sandbox ----------
 
-/** For every file served under /v/: its own opaque origin (no allow-same-origin), no network, no popups or forms. */
+/** For every file served under /v/: its own opaque origin (no allow-same-origin), no network, no popups. Forms fire
+ *  their submit event (artifacts handle it) but never submit (form-action 'none'). */
 export const CSP = [
-  "sandbox allow-scripts allow-modals allow-downloads allow-pointer-lock",
+  "sandbox allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms",
   "default-src 'none'",
   "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob:",
   "style-src 'self' 'unsafe-inline'",
@@ -93,26 +96,32 @@ function stateOf(vault: Vault, rel: string): Record<string, string> {
   }
 }
 
+/** What claude.ai's runtime (runtime.ts) starts with; an outside page gets none of it. */
+export type Runtime = { outside?: boolean; data?: ArtifactData; version?: number; name?: string; sample?: boolean; sampleAllowed?: boolean }
+
 /** The artifact's HTML with the bridge first in its <head> and CDN links pointed at the cache. An `outside` page runs
  *  the same way, but the app answers none of its vault requests and keeps none of its storage. */
-export function page(vault: Vault, rel: string, query: Record<string, string>, outside = false) {
+export function page(vault: Vault, rel: string, query: Record<string, string>, rt: Runtime = {}) {
+  const outside = !!rt.outside
   const html = viaCache(readText(outside ? rel : vault.abs(rel)))
   const cfg = {
     path: rel, dark: query.theme === "dark", scheme: query.scheme || "default", embed: query.embed === "1",
     state: outside ? {} : stateOf(vault, rel),
+    claude: { outside, data: (!outside && rt.data) || { db: {}, storage: { shared: {}, personal: {} } }, version: rt.version ?? 0, name: rt.name ?? "",
+      sample: !outside && !!rt.sample, sampleAllowed: !outside && !!rt.sampleAllowed },
   }
   const json = JSON.stringify(cfg).replace(/</g, "\\u003c")
-  const script = `<script>(${bridge.toString()})(${json}, ${parseCsv.toString()})</script>`
+  const script = `<script>(${bridge.toString()})(${json}, ${parseCsv.toString()}, ${claudeRuntime.toString()}, ${queryDocs.toString()}, ${parseReply.toString()})</script>`
   const head = /<head\b[^>]*>/i.exec(html) ?? /<html\b[^>]*>/i.exec(html)
   if (head) return html.slice(0, head.index + head[0].length) + script + html.slice(head.index + head[0].length)
   const doctype = /^\s*<!doctype[^>]*>/i.exec(html)
   return doctype ? doctype[0] + script + html.slice(doctype[0].length) : script + html
 }
 
-type Cfg = { path: string; dark: boolean; scheme: string; embed: boolean; state: Record<string, string> }
+type Cfg = { path: string; dark: boolean; scheme: string; embed: boolean; state: Record<string, string>; claude: Record<string, any> }
 
 /** Runs first inside the artifact (its source is injected as is, so it must stand alone: no imports, no outer names). */
-function bridge(cfg: Cfg, parseCsv: (text: string) => string[][]) {
+function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeof claudeRuntime, query: typeof queryDocs, reply: typeof parseReply) {
   const w = window as any
   const top = window.parent !== window ? window.parent : null
   const post = (m: Record<string, unknown>) => { if (top) top.postMessage({ vau: 1, ...m }, "*") }
@@ -159,13 +168,16 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][]) {
 
   // Asking the app: vault files (read only), the file list.
   let seq = 0
-  const waits = new Map<number, { ok: (x: any) => void; fail: (e: Error) => void }>()
-  const ask = (op: string, args: Record<string, unknown>) => new Promise<any>((ok, fail) => {
-    if (!top) return fail(new Error("open this in Vaultite to read the vault"))
+  const waits = new Map<number, { ok: (x: any) => void; fail: (e: Error) => void; event?: (x: any) => void }>()
+  const ask = (op: string, args: Record<string, unknown>, event?: (x: any) => void) => {
     const id = ++seq
-    waits.set(id, { ok, fail })
-    post({ type: "ask", id, op, args })
-  })
+    return Object.assign(new Promise<any>((ok, fail) => {
+      if (!top) return fail(new Error("open this in Vaultite to read the vault"))
+      waits.set(id, { ok, fail, event })
+      post({ type: "ask", id, op, args })
+    }), { id })
+  }
+  const heard: Record<string, ((d: any) => void)[]> = {}
   const resolve = (p: string) => {
     const parts: string[] = []
     for (const s of (p.startsWith("/") ? p.slice(1) : folder + p).split("/")) {
@@ -194,6 +206,11 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][]) {
       if (ev === "change") post({ type: "listening" })
     },
   }
+
+  // claude.ai's runtime: window.claude and window.storage.
+  runtime({ ...cfg.claude, framed: !!top, path: cfg.path, title: () => document.title } as any, {
+    ask, post, listen: (type, f) => { (heard[type] ??= []).push(f) },
+  }, query, reply)
 
   // fetch() of a vault file (a relative URL: "Transactions.csv") is a read; anything else has no network.
   const realFetch = window.fetch.bind(window)
@@ -247,11 +264,13 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][]) {
     if (d.type === "reply") {
       const wt = waits.get(d.id)
       waits.delete(d.id)
-      if (wt) (d.error ? wt.fail(new Error(d.error)) : wt.ok(d.value))
-    } else if (d.type === "theme") {
+      if (wt) (d.error ? wt.fail(Object.assign(new Error(d.error), d.code ? { code: d.code, ...d.more } : {})) : wt.ok(d.value))
+    } else if (d.type === "event") waits.get(d.id)?.event?.(d.value)
+    else if (d.type === "theme") {
       applyTheme(d)
       emit("theme", { dark: theme.dark, scheme: theme.scheme })
     } else if (d.type === "change") emit("change", d.paths)
+    else heard[d.type]?.forEach((f) => { try { f(d) } catch (err) { console.error(err) } })
   })
 }
 
@@ -295,7 +314,7 @@ export function artifactText(vault: Vault, rel: string, html = readText(vault.ab
     reads.add(m[1].startsWith("/") ? m[1].slice(1) : path.posix.normalize(folder + m[1]))
   }
   const words = decodeEntities(html
-    .replace(/<(head|script|style|template|svg)\b[\s\S]*?<\/\1>/gi, " ")
+    .replace(/<(head|script|style|template|svg|title)\b[\s\S]*?<\/\1>/gi, " ")
     .replace(/<!--[\s\S]*?-->/g, " ")
     .replace(/<(br|\/p|\/div|\/li|\/h[1-6]|\/tr|\/section|\/header)\b[^>]*>/gi, "\n")
     .replace(/<[^>]+>/g, " "))

@@ -814,6 +814,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `readLines(file, offset, line, chunk?)`: Calls `line` with each whole line of `file` from byte `offset`; returns where the last one ended.
 - `resumeTerminalId(name, session)`: The id of a terminal resuming agent `name`'s session `session`.
 - `Said`
+- `SampleAnswer`
+- `SampleAsk`: What the service "sample" is asked: one reply to `prompt`, no tools, nothing remembered (an artifact's claude.sample).
 - `scanDays()`: How many days back the scans read now.
 - `sessionsOf(procs, key, pick)`: Each process, newest first, with the session it writes: `pick`ed among those a newer one didn't take (`free`); a process whose pick was taken is left out.
 - `shellQuote(s)`: `s` as one word of a shell command.

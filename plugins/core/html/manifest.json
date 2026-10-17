@@ -4,5 +4,6 @@
   "category": "formats",
   "alwaysOn": true,
   "name": "HTML pages",
+  "forAgents": "A claude.ai artifact the user wants here: write the HTML the Artifact read returns (or the one you made) as a `.html` file; it runs as is.",
   "description": "Interactive pages: an .html file runs in a sandbox (no network, no reach into the app), reads the vault's files and tables through a small bridge, and ![[Spending.html]] shows one in a note."
 }

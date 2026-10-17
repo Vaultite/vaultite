@@ -8,8 +8,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Enter right after typing in the palette or a picker takes the first match; typed fast, it could do nothing.
 - Desktop app: a tooltip over a web page shows above it even while several toasts are up.
-- **MCP Apps**: claude.ai and ChatGPT draw cards for the vault's tools: a note read shows drawn with Open in Vaultite, a
+- **MCP Apps**: claude.ai and ChatGPT draw cards for the vault's tools: a note read shows the note with Open in Vaultite, a
   task list ticks in place, a Kanban board moves its cards. The same cards draw in a note with a `block-mcp-app`.
+- Artifacts made in Claude run as saved, as `.html` files: their saved data, asking Claude (through Claude Code, once
+  you allow a page), saving themselves and downloads work as they do on claude.ai.
 - A file's menu is the same wherever it's right-clicked or held: an image or PDF in its tab, an embed in a note, an image
   in a block's text, a canvas card, a database's result, a recent file. Plugins' items (Use as Dock icon, Open local
   graph) show in each, not only in the tab's menu.

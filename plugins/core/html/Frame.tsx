@@ -1,7 +1,19 @@
 // An artifact in a sandboxed iframe, this side answering its bridge (reads, file list, storage, links, height, theme).
 // A file it read changing tells it (`vau.on("change")`) or reloads it, so pages stay live.
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { cn, getStore, isHidden, onLook, openFile, readFile, stem, tintNames, touches, useVaultChange } from "@vaultite"
+import { cn, confirmDialog, getStore, isHidden, notifyError, onLook, openFile, readFile, stem, tintNames, touches, useVaultChange } from "@vaultite"
+
+// Every view of one artifact (here and in the app's other windows) hears the others' db and storage writes.
+type Peer = (m: Record<string, unknown>) => void
+const peers = new Map<string, Set<Peer>>()
+const channel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel("vaultite-artifacts")
+if (channel) channel.onmessage = (e) => peers.get(e.data?.path)?.forEach((f) => f(e.data.msg))
+const tell = (path: string, msg: Record<string, unknown>, self: Peer) => {
+  peers.get(path)?.forEach((f) => f !== self && f(msg))
+  channel?.postMessage({ path, msg })
+}
+const postJson = (url: string, body: unknown) => fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const failed = async (r: Response) => { try { return (await r.json()) ?? {} } catch { return {} } }
 
 // The app's colours an artifact can use, as --vau-<name> (so they follow the colour scheme), and plugins' tints
 // (--vau-today...).
@@ -46,6 +58,10 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   const reads = useRef(new Map<string, number | null>())
   const listening = useRef(false)
   const growth = useRef<number[]>([])
+  // Asking Claude: declined once, it stays declined while this view is open; the calls running, by their ask.
+  const declined = useRef(false)
+  const asking = useRef(new Map<number, WebSocket>())
+  useEffect(() => { declined.current = false }, [path])
 
   // The theme is read when the frame loads (no flash); later changes are sent to it.
   useEffect(() => { setUrl(src(path, !page, reloads)); setReady(false); reads.current.clear(); listening.current = false }, [path, page, reloads])
@@ -82,7 +98,8 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
       if (!win || e.source !== win) return
       const d = e.data
       if (!d || d.vau !== 1) return
-      const reply = (value?: unknown, error?: string) => win.postMessage({ vau: 1, type: "reply", id: d.id, value, error }, "*")
+      const reply = (value?: unknown, error?: string, code?: string, more?: Record<string, unknown>) =>
+        win.postMessage({ vau: 1, type: "reply", id: d.id, value, error, code, more }, "*")
       // A page from outside the
       // vault (an absolute path) is anyone's: it gets nothing of the vault, keeps no storage, and opens only web links.
       const outside = path.startsWith("/")
@@ -99,7 +116,8 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
       } else if (d.type === "open") {
         if (typeof d.url === "string" && /^(https?|mailto):/i.test(d.url)) window.open(d.url, "_blank", "noopener,noreferrer")
         else if (typeof d.path === "string" && d.path && !isHidden(d.path) && !outside) openFile(d.path, { newTab: !page })
-      } else if (d.type === "ask") {
+      } else if (d.type === "abort") asking.current.get(d.id)?.close()
+      else if (d.type === "ask") {
         if (outside) return reply(undefined, "a page from outside the vault can't read the vault")
         const args = (d.args ?? {}) as Record<string, unknown>
         if (d.op === "read") {
@@ -118,11 +136,57 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
           const s = getStore()
           const all = s ? [...s.files.files, ...s.files.others] : []
           reply(all.filter((f) => f.path.startsWith(pre) && !isHidden(f.path)).map((f) => ({ path: f.path, mtime: f.mtime, size: f.size })))
+        } else if (d.op === "consent") {
+          if (declined.current) return reply(false)
+          const ok = await confirmDialog({
+            title: `Let ${String(args.title || stem(path))} ask Claude?`,
+            body: "It runs Claude Code on this machine, with your account and usage, and sends only what the page writes. It's asked once for this page.",
+            confirm: "Allow", cancel: "Don't allow",
+          })
+          if (!ok) { declined.current = true; return reply(false) }
+          const r = await postJson("api/artifact/allow", { path }).catch(() => null)
+          if (!r?.ok) { notifyError(new Error((await (r ? failed(r) : {})).error ?? "offline"), "Couldn't allow it"); return reply(false) }
+          reply(true)
+        } else if (d.op === "sample") {
+          const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}${new URL("api/artifact/sample", location.href).pathname}`)
+          let done = false
+          asking.current.set(d.id, ws)
+          ws.onopen = () => ws.send(JSON.stringify({ ...args, path }))
+          ws.onmessage = (e) => {
+            let m: Record<string, any>
+            try { m = JSON.parse(String(e.data)) } catch { return }
+            if (m.t === "text") win.postMessage({ vau: 1, type: "event", id: d.id, value: { delta: m.delta } }, "*")
+            else if (m.t === "done") { done = true; reply({ text: m.text, truncated: m.truncated, model: m.model }) }
+            else if (m.t === "error") { done = true; reply(undefined, m.message, m.code) }
+          }
+          ws.onclose = () => { asking.current.delete(d.id); if (!done) reply(undefined, "the call ended", "cancelled") }
+        } else if (d.op === "db" || d.op === "storage") {
+          const writes = Array.isArray(args.writes) ? args.writes : []
+          const r = await postJson("api/artifact/data", { path, [d.op]: writes }).catch(() => null)
+          if (!r?.ok) return reply(undefined, (await (r ? failed(r) : {})).error ?? "offline", "unavailable")
+          tell(path, { type: d.op, writes }, forward)
+          reply(true)
+        } else if (d.op === "publish") {
+          const r = await postJson("api/artifact/publish", { path, html: args.html, version: args.version }).catch(() => null)
+          const body = r ? await failed(r) : {}
+          if (r?.status === 409) { setReloads((n) => n + 1); return reply(undefined, body.error, "conflict", { live: body.live }) }
+          if (!r?.ok) return reply(undefined, body.error ?? "offline", r?.status === 413 ? "too_large" : r?.status === 400 ? "invalid_content" : "upstream_error")
+          reply({ version: body.version })
+          self.current = Number(body.version)
+          setTimeout(() => setReloads((n) => n + 1), 50)
         } else reply(undefined, `unknown request '${d.op}'`)
       }
     }
+    const calls = asking.current
+    const forward: Peer = (m) => frame.current?.contentWindow?.postMessage({ vau: 1, ...m }, "*")
+    if (!peers.has(path)) peers.set(path, new Set())
+    peers.get(path)!.add(forward)
     addEventListener("message", onMessage)
-    return () => removeEventListener("message", onMessage)
+    return () => {
+      removeEventListener("message", onMessage)
+      peers.get(path)?.delete(forward)
+      for (const ws of calls.values()) ws.close()
+    }
   }, [path, page, sendTheme])
 
   // Live: when the server says files changed (core/live.ts), the ones it read are checked (their mtimes, so the app's
@@ -156,7 +220,7 @@ export function ArtifactFrame({ path, page, height, fill, className }: {
   const shown = height ?? Math.max(h ?? (page ? 0 : 160), min)
   return (
     <iframe ref={frame} src={url} title={stem(path)}
-      sandbox="allow-scripts allow-modals allow-downloads allow-pointer-lock"
+      sandbox="allow-scripts allow-modals allow-downloads allow-pointer-lock allow-forms"
       referrerPolicy="no-referrer" loading={page ? "eager" : "lazy"}
       className={cn("block w-full border-0 bg-transparent transition-opacity duration-150", ready ? "opacity-100" : "opacity-0", className)}
       style={{ height: fill ? "100%" : shown, colorScheme: isDark() ? "dark" : "light" }} />

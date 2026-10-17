@@ -5,11 +5,12 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { type AgentMeter, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
-  limitWindow, type Live, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
+  limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, WANTED } from "./transcript.ts"
+import { SAMPLE_DIR, sample } from "./sample.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
 export const plugin = new Plugin(import.meta.url)
@@ -260,7 +261,8 @@ const windows = (rl: Item, used: string, resets: (v: unknown) => number | null, 
 /** Where the asking runs: its brief session is told apart from the user's by this folder (live() leaves it out). */
 const ASKING_DIR = path.join(os.tmpdir(), "vaultite-claude-limits")
 let askingReal = ""
-const isAsking = (cwd: string) => !!askingReal && cwd === askingReal
+let sampleReal = ""
+const isAsking = (cwd: string) => (!!askingReal && cwd === askingReal) || cwd === (sampleReal ||= (() => { try { return fs.realpathSync(SAMPLE_DIR) } catch { return "" } })())
 
 /** Asks Claude Code (stream-json, its SDK's control requests; no prompt, so nothing is sent to a model) what the
  *  account's plan has used: what /usage shows, with the account's own login. Null when it can't say. */
@@ -456,6 +458,9 @@ async function session(id: string) {
   if (!t) return null
   return { ...t.talk.head, title: titleOf(id) || t.talk.head.title, entries: t.talk.entries }
 }
+
+// An artifact asking Claude (claude.sample), in the default account.
+plugin.provide("sample", (a: SampleAsk) => sample(a, DEFAULT_DIR))
 
 // ---------- Terminal runs it (the service "agent:claude")
 
