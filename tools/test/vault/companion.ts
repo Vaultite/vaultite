@@ -90,6 +90,13 @@ export default async ($: VaultTest) => {
 
   ;[st, r] = await api("POST", "ops/companion.edit", { path: "Notes/A.md", find: "friday", text: "Tuesday" })
   check("companion: with no window showing the note, an edit is written to the file", st === 200 && r.how === "written" && read("Notes/A.md") === "# A\n\nCall Alice Tuesday\n", [st, r])
+  {
+    // Three at once: one at a time, none lost or mixed.
+    write("Notes/B.md", "# B\n\nOne\n")
+    const all = await Promise.all(["Two", "Three", "Four"].map((t, i) => api("POST", "ops/companion.edit", { path: "Notes/B.md", after: ["One", "Two", "Three"][i], text: t })))
+    check("companion: quick edits of a note go one at a time, each where the last left it", all.every(([s]) => s === 200) && read("Notes/B.md") === "# B\n\nOne\nTwo\nThree\nFour\n", [all, read("Notes/B.md")])
+    check("companion: after anchors new lines to a line's text, wherever it moved", c.editText("a\nb\nc", { after: "b", line: 1, text: "x" }) === "a\nb\nx\nc")
+  }
   ;[st, r] = await api("POST", "ops/companion.highlight", { path: "Notes/A.md", find: "Tuesday", keep: true })
   check("companion: a kept highlight is in the file in its colour", st === 200 && read("Notes/A.md").includes("==🟠Tuesday=="), [st, read("Notes/A.md")])
   ;[st, r] = await api("POST", "ops/companion.edit", { path: "Notes/A.md", find: "Wednesday", text: "x" })

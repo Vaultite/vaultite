@@ -27,19 +27,23 @@ const typed = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 })
 
-/** Where an agent types, kept through the user's own typing meanwhile. */
-const at = StateEffect.define<number | null>()
-const typingAt = StateField.define<number | null>({
+/** What an agent is typing: already in the note in one change (so nothing the user types can split it), shown a few
+ *  letters a frame from `at`, the rest veiled. */
+const spanIs = StateEffect.define<{ from: number; at: number; to: number } | null>()
+const span = StateField.define<{ from: number; at: number; to: number } | null>({
   create: () => null,
   update(v, tr) {
-    for (const e of tr.effects) if (e.is(at)) return e.value
-    return v === null ? null : tr.changes.mapPos(v, 1)
+    for (const e of tr.effects) if (e.is(spanIs)) return e.value
+    if (!v || !tr.docChanged) return v
+    const to = tr.changes.mapPos(v.to, -1)
+    return { from: Math.min(to, tr.changes.mapPos(v.from, 1)), at: Math.min(to, tr.changes.mapPos(v.at, 1)), to }
   },
+  provide: (f) => EditorView.decorations.from(f, (v) => (v && v.at < v.to ? Decoration.set([Decoration.mark({ class: "cm-companion-veiled" }).range(v.at, v.to)]) : Decoration.none)),
 })
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-/** Type edit `e` into `view`: find replaced (or new lines after line, or at the end), a few letters a frame. */
+/** Type edit `e` into `view`: find replaced (or new lines after the line with after, after line, or at the end). */
 async function type(view: EditorView, e: EditAsk) {
   const doc = view.state.doc.toString()
   let from: number, to: number, text = e.text
@@ -47,6 +51,11 @@ async function type(view: EditorView, e: EditAsk) {
     from = nearest(doc, e.find, e.line)
     if (from < 0) throw new Error(`"${e.find.slice(0, 60)}" isn't in the note any more`)
     to = from + e.find.length
+  } else if (e.after) {
+    const i = nearest(doc, e.after, e.line)
+    if (i < 0) throw new Error(`"${e.after.slice(0, 60)}" isn't in the note any more`)
+    from = to = view.state.doc.lineAt(i + e.after.length).to
+    text = `\n${text.replace(/\n$/, "")}`
   } else if (e.append || e.line === undefined) {
     from = to = doc.length
     text = !doc || doc.endsWith("\n") ? text.replace(/\n?$/, "\n") : `\n${text.replace(/\n$/, "")}`
@@ -57,22 +66,20 @@ async function type(view: EditorView, e: EditAsk) {
     from = to = view.state.doc.line(Math.min(e.line, view.state.doc.lines)).to
     text = `\n${text.replace(/\n$/, "")}`
   }
-  const tint = tintOf(e.agent)
-  const tx = (spec: object) => view.dispatch({ ...spec, annotations: [own.of(true), Transaction.userEvent.of("input.companion")] })
-  tx({ changes: { from, to }, effects: at.of(from) })
-  const animate = e.animate !== false && !matchMedia("(prefers-reduced-motion: reduce)").matches
-  const steps = animate ? Math.max(1, Math.round(Math.min(1600, text.length * 14) / 16)) : 1
-  const size = Math.ceil(text.length / steps)
-  const start = view.state.field(typingAt) ?? from
-  for (let i = 0; i < text.length; i += size) {
-    if (!view.dom.isConnected) throw new Error("the note was closed while typing")
-    const pos = view.state.field(typingAt) ?? from
-    tx({ changes: { from: pos, insert: text.slice(i, i + size) } })
-    setTyping({ view, pos: pos + Math.min(size, text.length - i), agent: e.agent })
-    if (animate) await sleep(16)
+  const animate = e.animate !== false && document.visibilityState === "visible" && !matchMedia("(prefers-reduced-motion: reduce)").matches
+  view.dispatch({ changes: { from, to, insert: text }, effects: spanIs.of({ from, at: animate ? from : from + text.length, to: from + text.length }),
+    annotations: [own.of(true), Transaction.userEvent.of("input.companion")] })
+  if (animate) {
+    const size = Math.ceil(text.length / Math.max(1, Math.round(Math.min(1600, text.length * 14) / 16)))
+    for (let s = view.state.field(span); s && s.at < s.to && view.dom.isConnected; s = view.state.field(span)) {
+      const at = Math.min(s.to, s.at + size)
+      view.dispatch({ effects: spanIs.of({ ...s, at }) })
+      setTyping({ view, pos: at, agent: e.agent })
+      await sleep(16)
+    }
   }
-  const end = view.state.field(typingAt) ?? start + text.length
-  view.dispatch({ effects: [at.of(null), lit.of({ from: Math.min(start, end), to: end, tint })] })
+  const s = view.state.field(span)
+  view.dispatch({ effects: [spanIs.of(null), ...(s ? [lit.of({ from: s.from, to: s.to, tint: tintOf(e.agent) })] : [])] })
   setTyping(null)
   setTimeout(() => { if (view.dom.isConnected) view.dispatch({ effects: lit.of(null) }) }, 4500)
 }
@@ -239,6 +246,7 @@ const theme = EditorView.baseTheme({
   ".cm-companion-del": { textDecoration: "line-through", textDecorationColor: "var(--c)", textDecorationThickness: "2px", opacity: ".6" },
   ".cm-companion-ins": { color: "var(--c)", backgroundColor: "color-mix(in srgb, var(--c) 12%, transparent)", borderRadius: "3px", padding: "0 2px", marginLeft: "2px",
     animation: "cm-companion-in .3s ease-out" },
+  ".cm-companion-veiled, .cm-companion-veiled *": { color: "transparent !important" },
   ".cm-companion-typed": { backgroundColor: "color-mix(in srgb, var(--c) 24%, transparent)", borderRadius: "2px", animation: "cm-companion-fade 4s ease-in forwards" },
   "@keyframes cm-companion-in": { from: { backgroundColor: "transparent" } },
   "@keyframes cm-companion-fade": { "0%, 40%": {}, "100%": { backgroundColor: "transparent" } },
@@ -261,5 +269,5 @@ export function companionExtension(ctx: EditorCtx): Extension {
     { key: "Tab", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
     { key: "Escape", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
   ]))
-  return [typed, typingAt, watcher(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions }])]
+  return [typed, span, watcher(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions }])]
 }

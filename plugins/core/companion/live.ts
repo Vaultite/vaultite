@@ -8,7 +8,7 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[] }
 export type Hunk = { line: number; added: string[]; removed: string[] }
-export type EditAsk = Target & { rid: string; agent: string; text: string; append?: boolean; animate?: boolean }
+export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 
 type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; connected: boolean }
 let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], connected: false }
@@ -87,7 +87,11 @@ function open() {
 
 const say = (m: object) => { if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(m)) }
 
-async function edit(e: EditAsk) {
+let turn: Promise<unknown> = Promise.resolve()
+/** Edits typed one at a time, each where the last left the note. */
+const inTurn = <T>(fn: () => Promise<T>) => { const run = turn.then(fn); turn = run.catch(() => {}); return run }
+
+const edit = (e: EditAsk) => inTurn(async () => {
   const v = e.path ? viewOf(e.path) : null
   if (!v || !typer) return say({ t: "done", rid: e.rid, ok: false })
   try {
@@ -96,7 +100,7 @@ async function edit(e: EditAsk) {
   } catch (err) {
     say({ t: "done", rid: e.rid, ok: false, error: err instanceof Error ? err.message : String(err) })
   }
-}
+})
 
 /** Something the user did, for the agents (an ask: for `agent`, else the companion). */
 export const sendMoment = (m: { kind: "ask" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[] }) =>
@@ -134,7 +138,7 @@ export const setTyping = (t: typeof typing) => { typing = t; bump() }
 /** Take a suggestion: its change made in the editor showing it, and the agent told. */
 export async function accept(n: Note) {
   const v = n.path ? viewOf(n.path) : null
-  if (v && typer && n.find !== undefined) await typer(v, { rid: "", agent: n.agent, path: n.path, find: n.find, line: n.line, text: n.replace ?? "", animate: false })
+  if (v && typer && n.find !== undefined) await inTurn(() => typer!(v, { rid: "", agent: n.agent, path: n.path, find: n.find, line: n.line, text: n.replace ?? "", animate: false }))
   answer(n.id, "accept")
 }
 

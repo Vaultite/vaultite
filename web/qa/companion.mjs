@@ -150,6 +150,19 @@ r = await until(async () => { const x = await op("companion.next", { timeout: 4 
 const edits = r?.moments.filter((m) => m.kind === "edit") ?? []
 check("edit: typing while it types is one moment, theirs only", edits.length === 1 && edits[0].hunks[0].added.some((l) => l.endsWith("sunny. or so")) && !JSON.stringify(edits).includes("Mulch"), r)
 
+// Three quick edits while the user types: one at a time, each whole, and their typing whole.
+await editor.getByText("along the fence").click()
+await page.keyboard.press("End")
+const LINES = ["- Pinch the basil flowers off", "- Harvest tomatoes from the top", "- Compost the vines in October"]
+const three = Promise.all(LINES.map((text) => op("companion.edit", { path: NOTE, append: true, text })))
+for (const ch of " and in pots") { await page.keyboard.type(ch); await wait(40) }
+const done3 = await three
+await until(() => LINES.every((l) => text(NOTE).includes(l)) && text(NOTE).includes("sunny. or so and in pots"), 6000)
+const lines3 = text(NOTE).split("\n")
+check("edits: three at once while the user types land one at a time, none mixed", done3.every((x) => x.how === "typed") &&
+  LINES.every((l) => lines3.filter((x) => x === l).length === 1) && lines3.some((l) => l.endsWith("sunny. or so and in pots")), { done3, text: text(NOTE) })
+await op("companion.next", { timeout: 0 })
+
 // Several agents: @ lists the ones around, and "@ada …" + Enter asks Ada alone, who shows thinking.
 await op("companion.next", { timeout: 0, as: "Ada" })
 await op("companion.next", { timeout: 0 })

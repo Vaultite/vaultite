@@ -33,7 +33,7 @@ export type Excerpt = { path: string; from: number; to: number; of: number; line
 
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
 export const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
-const KEEP = 300, SAY_MS = 12_000, HIGHLIGHT_MS = 10_000, EDIT_WAIT = 4_000
+const KEEP = 300, SAY_MS = 12_000, HIGHLIGHT_MS = 10_000, EDIT_WAIT = 10_000
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** A setting, else its manifest's default. */
@@ -348,38 +348,58 @@ plugin.socket("companion/live", (ws) => {
 
 // ---------- edits: typed in by the window that has the file open, else written on disk
 
-type Edit = { path: string; find?: string; text: string; line?: number; append?: boolean }
+type Edit = { path: string; find?: string; after?: string; text: string; line?: number; append?: boolean }
 
 /** The window to type an edit in: the most recent one with the file open. */
 const editorFor = (path: string) => [...windows.entries()].filter(([, w]) => w.open.includes(path)).sort((a, b) => b[1].at - a[1].at)[0]?.[0] ?? null
 
-async function applyEdit(ctx: OpCtx, agent: Agent, e: Edit, animate = true): Promise<"typed" | "written"> {
+const turns = new Map<string, Promise<unknown>>()
+/** One edit of a note at a time, typed or written: the next waits for it (two at once interleave their letters). */
+function inTurn<T>(path: string, fn: () => Promise<T>): Promise<T> {
+  const run = (turns.get(path) ?? Promise.resolve()).then(fn)
+  const tail = run.catch(() => {})
+  turns.set(path, tail)
+  void tail.then(() => { if (turns.get(path) === tail) turns.delete(path) })
+  return run
+}
+
+const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(e.path, async (): Promise<"typed" | "written"> => {
   const ws = editorFor(e.path)
   if (ws) {
     const rid = `e${++nid}`
-    const ok = await new Promise<boolean | string>((resolve) => {
-      const timer = setTimeout(() => { asked.delete(rid); resolve(false) }, EDIT_WAIT + e.text.length * 20)
+    const ok = await new Promise<boolean | string | null>((resolve) => {
+      const timer = setTimeout(() => { asked.delete(rid); resolve(null) }, EDIT_WAIT + e.text.length * 20)
       asked.set(rid, { done: (ok, error) => { clearTimeout(timer); asked.delete(rid); resolve(ok || error || false) } })
       send(ws, { t: "edit", rid, agent: agent.name, animate, ...e })
     })
     if (ok === true) return "typed"
     if (typeof ok === "string") throw new OpError(ok, 409)
+    // (no answer: it may still be typing, so writing the file too would mix the two)
+    if (ok === null) throw new OpError("the window showing the note didn't say it was done: read the note again before another edit", 504)
   }
   const f = await ctx.api("GET", `file?path=${encodeURIComponent(e.path)}`)
   const cur = String(f.text ?? "")
   await ctx.api("PUT", "file", { path: f.path, text: editText(cur, e), base: cur })
   return "written"
-}
+})
 
-/** `cur` with edit `e` made: `find` replaced by `text`, or `text` as new lines after `line` (0: first) or at the end. */
+/** `cur` with edit `e` made: `find` replaced by `text`, or `text` as new lines after the line with `after`, after `line`
+ *  (0: first) or at the end. */
 export function editText(cur: string, e: Omit<Edit, "path">) {
+  const missing = (s: string) => new OpError(`"${cut(s, 60)}" isn't in the file: read it again (it may have changed) and copy the text exactly`)
   if (e.find) {
     const at = nearest(cur, e.find, e.line)
-    if (at < 0) throw new OpError(`"${cut(e.find, 60)}" isn't in the file: read it again (it may have changed) and copy the text exactly`)
+    if (at < 0) throw missing(e.find)
     return cur.slice(0, at) + e.text + cur.slice(at + e.find.length)
   }
+  let line = e.line
+  if (e.after) {
+    const at = nearest(cur, e.after, e.line)
+    if (at < 0) throw missing(e.after)
+    line = cur.slice(0, at + e.after.length).split("\n").length
+  }
   const lines = cur.split("\n")
-  const n = e.append || e.line === undefined ? (cur.endsWith("\n") ? lines.length - 1 : lines.length) : Math.max(0, Math.min(lines.length, e.line))
+  const n = e.append || line === undefined ? (cur.endsWith("\n") ? lines.length - 1 : lines.length) : Math.max(0, Math.min(lines.length, line))
   lines.splice(n, 0, ...e.text.replace(/\n$/, "").split("\n"))
   return lines.join("\n")
 }
@@ -685,22 +705,24 @@ plugin.op({
   id: "companion.edit",
   cli: "companion edit",
   summary: "Write in a note: typed in before the user's eyes when it's open (they can undo it), else saved to the file.",
-  help: `Only in pair mode or when they asked you to. find and text: find replaced by text. Without find: text as new lines
-after line (0: at the top), or at the end.
+  help: `Only in pair mode or when they asked you to. find and text: find replaced by text. after and text: new lines after
+the line with that text. Else new lines after line (0: at the top), or at the end. Prefer find or after: a line number
+goes stale as they type. Edits of a note go one at a time; each returns once it's in.
 
   vau companion edit --path Notes/Idea.md --find "- [ ] Call Alice" --text "- [x] Call Alice"
-  vau companion edit --line 14 --text "- Ask Ben about the budget"`,
+  vau companion edit --after "## Budget" --text "- Ask Ben about the budget"`,
   kind: "write",
   lock: false,
   params: { text: { type: "string", required: true, description: "what to write" }, find: { type: "string", description: "the text it replaces, exactly as in the file" },
+    after: { type: "string", description: "new lines go after the line with this text (exactly as in the file)" },
     path: PATH, line: LINE, append: { type: "boolean", description: "at the end of the file" }, as: AS },
   args: ["text"],
   run: async (p, ctx) => {
-    const name = who(p), t = target(p)
+    const name = who(p), t = target(p), after = str(p.after) || undefined
     did(name, "edit")
-    const a = setAgent(name, { ...t, state: "writing" })
+    const a = setAgent(name, { ...t, ...(after ? { find: after } : {}), state: "writing" })
     try {
-      const how = await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: str(p.text), append: !!p.append })
+      const how = await applyEdit(ctx, a, { path: t.path!, find: t.find, after, line: t.line, text: str(p.text), append: !!p.append })
       return { path: t.path, how }
     } finally { setAgent(name, { state: "watching" }) }
   },
