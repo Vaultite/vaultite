@@ -153,12 +153,13 @@ function suggestionAt(view: EditorView, path: string): Note | null {
 // ---------- what the user does, said to the agents
 
 /** How long without typing before what they wrote is said: longer mid-sentence, anything but a sentence's end
- *  (dictation lands in bursts, with thinking between, and a burst is often half a thought). */
+ *  (dictation lands in bursts, with thinking between, and a burst is often half a thought); not for an ask, which,
+ *  written on, comes again. */
 function pauseIn(state: EditorState) {
   const ms = (Number(pluginSettings("companion").get().pause) || 2) * 1000
   const head = state.selection.main.head, line = state.doc.lineAt(head)
   const before = state.sliceDoc(line.from, head).trimEnd()
-  return before && !/[.?!…:;]["'”’)\]*_`]*$/u.test(before) ? ms * 2.5 : ms
+  return before && !/[.?!…:;]["'”’)\]*_`]*$/u.test(before) && !mentionIn(line.text) ? ms * 2.5 : ms
 }
 
 /** The ask a pause will send, per editor: its line's start, the pause (ms), and a count that restarts its chip's fill. */

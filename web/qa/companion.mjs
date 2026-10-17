@@ -111,6 +111,13 @@ check("@claude mid-line: the ask reaches it at the pause, the whole line", r?.mo
 await page.keyboard.press("Enter")
 r = await op("companion.next", { timeout: 3 })
 check("@claude mid-line: Enter after it doesn't ask again", !r.moments?.some((m) => m.kind === "ask"), r)
+// An ask mid-sentence goes at the pause all the same: written on, it comes again.
+await page.keyboard.type("@claude and what about the")
+t0 = Date.now()
+r = await until(async () => { const x = await op("companion.next", { timeout: 3 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 5000)
+check("@claude mid-sentence: the ask goes at the pause, not the longer one", r?.moments.some((m) => m.kind === "ask" && m.text === "and what about the") && Date.now() - t0 < 1800, { ms: Date.now() - t0, r })
+await page.keyboard.press("Enter")
+await op("companion.next", { timeout: 2 })
 await page.keyboard.type("Mail bob@claude.com or ask @nobody.")
 r = await op("companion.next", { timeout: 4 })
 check("@ in an email or an unknown name mid-line: no chip, no ask", !r.moments?.some((m) => m.kind === "ask") &&
