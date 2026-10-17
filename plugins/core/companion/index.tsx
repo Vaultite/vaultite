@@ -51,7 +51,7 @@ function Status() {
   const s = useSyncExternalStore(subscribe, getState)
   const a = s.agents.find((x) => x.name === s.name) ?? s.agents[0]
   const tint = s.mode === "off" ? undefined : `var(--${a?.tint ?? "orange"})`
-  const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "thinking" ? "thinking" : a.state === "writing" ? "writing" : null
+  const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "watching" ? null : a.state
   const items = (): MenuItem[] => [
     ...MODES.map((m) => ({ label: m.label, checked: s.mode === m.mode, run: () => void setMode(m.mode) })),
     { label: `Ask ${s.name}`, icon: MessageCirclePlus, run: ask, sep: true },

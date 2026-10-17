@@ -69,17 +69,19 @@ function Arrow({ tint }: { tint: string }) {
 function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) {
   const tint = `var(--${a.tint})`
   const right = spot.x > window.innerWidth - 320
-  // (quiet when it's only watching: the arrow, its name once it does something)
+  // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
   const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
+  const seen = a.state === "watching" && !!a.seen
   return (
-    <div className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state}
+    <div className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined}
       style={{ transform: `translate(${spot.x - 3}px, ${spot.y - 2}px)`, transition: `transform ${a.state === "writing" || typing?.agent === a.name ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
         opacity: idle ? 0.55 : 1 }}>
       <div className={cn(a.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div>
       <div className={cn("absolute top-[18px] flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
         right ? "right-[-6px]" : "left-[13px]", idle && "opacity-0")} style={{ background: tint }}>
         {a.name}
-        {a.state === "thinking" && <span className="companion-dots" aria-label="thinking"><i /><i /><i /></span>}
+        {(a.state === "thinking" || a.state === "reading") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
+        {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
       </div>
       {said && (
         <div key={said.id} className={cn("companion-pop pointer-events-auto absolute bottom-[2px] w-max max-w-[300px] cursor-pointer rounded-[12px] border border-border/60 bg-background px-3 py-1.5 text-[13.5px] leading-snug text-foreground shadow-lg",
@@ -153,10 +155,12 @@ const STYLE = `
 .companion-dots i { width: 3px; height: 3px; border-radius: 9px; background: currentColor; animation: companion-dot 1s infinite ease-in-out; }
 .companion-dots i:nth-child(2) { animation-delay: .15s } .companion-dots i:nth-child(3) { animation-delay: .3s }
 @keyframes companion-dot { 0%, 80%, 100% { opacity: .35 } 40% { opacity: 1 } }
+.companion-seen { animation: companion-seen .5s ease-out; }
+@keyframes companion-seen { from { opacity: 0; scale: .4; } }
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
 .companion-said p { margin: 0; }
-@media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-dots i { animation: none !important; transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-dots i, .companion-seen { animation: none !important; transition: none !important; } }
 `
 
 export function Overlay() {

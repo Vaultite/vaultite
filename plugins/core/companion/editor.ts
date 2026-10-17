@@ -1,6 +1,6 @@
 // The companion in a note's editor: what the user writes said after a pause (and at once for "@claude …"), the agents'
 // highlights, comments' anchors and suggestions drawn in the text, Tab and Esc for a suggestion, and edits typed in.
-import { Annotation, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
+import { Annotation, type EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { pluginSettings, type EditorCtx } from "@vaultite"
 import { accept, answer, bump, type EditAsk, getState, hunksOf, mentionIn, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
@@ -144,6 +144,15 @@ function suggestionAt(view: EditorView, path: string): Note | null {
 
 // ---------- what the user does, said to the agents
 
+/** How long without typing before what they wrote is said: longer mid-sentence (dictation lands in bursts, with
+ *  thinking between, and a burst is often half a thought). */
+function pauseIn(state: EditorState) {
+  const ms = (Number(pluginSettings("companion").get().pause) || 2) * 1000
+  const head = state.selection.main.head, line = state.doc.lineAt(head)
+  const before = state.sliceDoc(line.from, head).trimEnd()
+  return before && /[\p{L}\p{N},]$/u.test(before) ? ms * 2.5 : ms
+}
+
 function watcher(path: string) {
   return ViewPlugin.fromClass(class {
     decorations: DecorationSet
@@ -180,15 +189,17 @@ function watcher(path: string) {
         return
       }
       this.dirty = true
-      if (this.timer) clearTimeout(this.timer)
-      const pause = Number(pluginSettings("companion").get().pause) || 2
-      this.timer = setTimeout(() => this.report(this.view.state.doc), pause * 1000)
+      this.later()
       u.changes.iterChanges((_fa, _ta, fromB, _tb, inserted) => {
         if (!inserted.toString().includes("\n")) return
         const line = u.state.doc.lineAt(fromB)
         const ask = mentionIn(line.text)
         if (ask && getState().mode !== "off") sendMoment({ kind: "ask", path, line: line.number, text: ask })
       })
+    }
+    later() {
+      if (this.timer) clearTimeout(this.timer)
+      this.timer = setTimeout(() => (this.view.composing ? this.later() : this.report(this.view.state.doc)), pauseIn(this.view.state))
     }
     report(doc: Text) {
       if (this.timer) { clearTimeout(this.timer); this.timer = null }

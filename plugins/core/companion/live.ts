@@ -4,7 +4,7 @@ import type { EditorView } from "@codemirror/view"
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string }
-export type Agent = Target & { name: string; tint: string; state: "watching" | "thinking" | "writing" | "away"; t: number }
+export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[] }
 export type Hunk = { line: number; added: string[]; removed: string[] }

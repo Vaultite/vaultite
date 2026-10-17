@@ -48,7 +48,20 @@ export default async ($: VaultTest) => {
   ;[st, r] = await waiting
   check("companion: a waiting next wakes on what the user writes (notice)", st === 200 && r.moments[0]?.kind === "edit" && r.moments[0].hunks[0].added[0] === "Call Alice friday", r)
   check("companion: with the note's lines around what they wrote", r.notes[0]?.path === "Notes/A.md" && r.notes[0].lines.includes("Call Alice friday"), r.notes)
-  check("companion: moments read as lines for an agent", c.momentsText(r.moments, "notice", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
+  const edited = r.moments
+  ;[, r] = await api("POST", "ops/companion.status", {})
+  check("companion: handed an edit, its cursor reads it there", r.agents.some((a: Any) => a.name === "Claude" && a.state === "reading" && a.path === "Notes/A.md" && a.line === 2), r.agents)
+  ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
+  const seen = r.moments
+  ;[, r] = await api("POST", "ops/companion.status", {})
+  check("companion: back for more without acting, it let it pass: seen, there", !seen.length && r.agents.some((a: Any) => a.name === "Claude" && a.state === "watching" && a.seen && a.path === "Notes/A.md"), r.agents)
+  c.addMoment({ kind: "open", path: "Notes/A.md", line: 1 })
+  await api("POST", "ops/companion.next", { timeout: 0 })
+  await api("POST", "ops/companion.look", { path: "Notes/A.md", line: 1 })
+  await api("POST", "ops/companion.next", { timeout: 0 })
+  ;[, r] = await api("POST", "ops/companion.status", {})
+  check("companion: after acting, next is no seen tick", r.agents.some((a: Any) => a.name === "Claude" && a.state === "watching" && !a.seen), r.agents)
+  check("companion: moments read as lines for an agent", c.momentsText(edited, "notice", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
 
   ;[st, r] = await api("POST", "ops/companion.suggest", { path: "Notes/A.md", find: "friday", replace: "Friday", why: "A day's name" })
   const id = r.id

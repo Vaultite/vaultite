@@ -1,5 +1,5 @@
-// Companion: an agent's cursor glides to where it looks, its words pop in a bubble by it, comments sit in the margin
-// (a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
+// Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
+// words pop in a bubble by it, comments sit in the margin (a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
 // and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
 // the agent hears at once; what the user writes reaches it after a pause. Driven through the ops an agent calls.
 // WRITES "QA companion/" and the plugin's data.json: throwaway server only.
@@ -71,6 +71,25 @@ await wait(800)
 await page.screenshot({ path: `${OUT}thinking.png` })
 r = await until(async () => { const x = await op("companion.next", { timeout: 3 }); return x.moments?.find((m) => m.kind === "edit") ? x : null }, 8000)
 check("edit: what the user wrote reaches it after a pause, as lines added", r?.moments.some((m) => m.kind === "edit" && m.hunks?.some((h) => h.added.includes("@claude how far apart should they be?"))), r)
+
+// Handed a moment, its cursor reads it there; back for more without a word, a seen tick.
+await until(async () => (await cursor.getAttribute("data-state")) === "reading", 3000)
+check("edit: handed what they wrote, its cursor shows it reading", (await cursor.getAttribute("data-state")) === "reading")
+await op("companion.next", { timeout: 0 })
+await until(async () => (await cursor.getAttribute("data-seen")) !== null, 3000)
+check("silence: back for more without acting, a seen tick by its cursor", await cursor.getByLabel("seen").isVisible())
+await wait(600)
+await page.screenshot({ path: `${OUT}seen.png` })
+
+// Mid-sentence it waits longer: a burst of dictation is often half a thought.
+await page.keyboard.type("Then the")
+let t0 = Date.now()
+r = await op("companion.next", { timeout: 6 })
+check("pause: mid-sentence, what they wrote waits longer than the pause", r.moments?.some((m) => m.kind === "edit") && Date.now() - t0 > 1800, { ms: Date.now() - t0, r })
+await page.keyboard.type(" basil.")
+t0 = Date.now()
+r = await op("companion.next", { timeout: 6 })
+check("pause: a sentence's end, only the pause", r.moments?.some((m) => m.kind === "edit") && Date.now() - t0 < 1800, { ms: Date.now() - t0, r })
 
 // A comment in the margin, a reply to it.
 r = await op("companion.comment", { path: NOTE, find: "how far apart", text: "About 60 cm: they get big." })
@@ -145,6 +164,19 @@ await pp.getByText("Plant it after the last frost.").waitFor({ timeout: 3000 })
 const opened = await pp.locator("[data-companion-note]").last().boundingBox()
 check("phone: a tap opens it, inside the screen", !!opened && opened.x >= 0 && opened.x + opened.width <= 390, opened)
 await pp.screenshot({ path: `${OUT}phone.png` })
+// Its cursor reads there too, and ticks when it lets it pass.
+writeFileSync(`${OUT}moment.jsonl`, JSON.stringify({ kind: "edit", path: NOTE, line: 5, hunks: [{ line: 5, added: ["Basil between them."], removed: [] }], t: 1 }))
+await op("companion.replay", { file: `${OUT}moment.jsonl` })
+await until(async () => (await op("companion.next", { timeout: 2 })).moments?.length, 4000)
+const pc = pp.locator('.companion-cursor[data-agent="Claude"]')
+await until(async () => (await pc.getAttribute("data-state")) === "reading", 3000)
+const pcb = await pc.boundingBox()
+check("phone: handed a moment, its cursor reads it, inside the screen", !!pcb && pcb.x >= 0 && pcb.x + 20 <= 390, pcb)
+await op("companion.next", { timeout: 0 })
+await until(async () => (await pc.getAttribute("data-seen")) !== null, 3000)
+await wait(600)
+check("phone: and a seen tick", await pc.getByLabel("seen").isVisible())
+await pp.screenshot({ path: `${OUT}phone-seen.png` })
 await phone.close()
 
 await op("companion.clear")

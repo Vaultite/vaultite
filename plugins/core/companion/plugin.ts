@@ -16,7 +16,8 @@ export type Moment = { seq: number; t: number; kind: "ask" | "edit" | "open" | "
   path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string }
 /** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`). */
 export type Target = { path?: string; line?: number; find?: string }
-export type Agent = Target & { name: string; tint: string; state: "watching" | "thinking" | "writing" | "away"; t: number }
+/** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change. */
+export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
  *  a highlight (gone after a while). */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
@@ -50,6 +51,7 @@ const nameOf = (agent: string) => {
 const moments: Moment[] = []
 let seq = 0
 const delivered = new Map<string, number>() // agent -> last seq it was given
+const handed = new Set<string>() // agents given moments they haven't acted on yet
 const waiters = new Map<string, (m: Moment[]) => void>() // agent -> its waiting `next`
 const agents = new Map<string, Agent>()
 const notes = new Map<string, Note>()
@@ -98,7 +100,8 @@ function agentOf(name: string): Agent {
   return a
 }
 function setAgent(name: string, change: Partial<Agent>) {
-  const a = Object.assign(agentOf(name), change, { t: Date.now() })
+  if (change.state === "watching" || change.state === "writing" || change.state === "away") handed.delete(name)
+  const a = Object.assign(agentOf(name), { seen: undefined }, change, { t: Date.now() })
   broadcast({ t: "agent", agent: a })
   return a
 }
@@ -274,8 +277,9 @@ plugin.op({
 ask: they addressed you (a line "@claude ..." in a note, or Ask companion on a selection): always answer. edit: lines
 they changed after a pause (notice and pair modes). open: they went to a note. reply, accept, reject, dismiss: their
 answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
-text around them, numbered: no need to read it again. While you wait your cursor rests; after an ask it shows you
-thinking until you act. Run it again after acting, forever.
+text around them, numbered: no need to read it again. While you wait your cursor rests; given moments, it shows you
+reading (thinking, for an ask) there until you act, or run this again: the user sees a seen tick. Run it again after
+acting, forever.
 
   vau companion next --timeout 240`,
   kind: "read",
@@ -290,7 +294,9 @@ thinking until you act. Run it again after acting, forever.
     lastAsk = Date.now()
     did(name, "next")
     const a = agentOf(name)
-    if (a.state === "away" || a.state === "writing") setAgent(name, { state: "watching" })
+    // (back without acting on what it was handed: it let it pass, which the user sees as a tick)
+    if (handed.has(name)) setAgent(name, { state: "watching", seen: true })
+    else if (a.state === "away" || a.state === "writing") setAgent(name, { state: "watching" })
     const after = p.after ?? delivered.get(name) ?? Math.max(0, seq - 20)
     let got = moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000)
     if (!got.length && p.timeout > 0) {
@@ -302,7 +308,14 @@ thinking until you act. Run it again after acting, forever.
       })
       lastAsk = Date.now()
     }
-    if (got.length) { delivered.set(name, got[got.length - 1].seq); did(name, "handed", got.map((m) => m.seq)) }
+    if (got.length) {
+      delivered.set(name, got[got.length - 1].seq)
+      did(name, "handed", got.map((m) => m.seq))
+      const at = [...got].reverse().find((m) => m.path)
+      setAgent(name, { state: got.some((m) => m.kind === "ask" || m.kind === "reply") ? "thinking" : "reading",
+        ...(at ? { path: at.path, line: at.line, find: undefined } : {}) })
+      handed.add(name)
+    }
     return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(name) ?? after, notes: await excerpts(ctx, got) }
   },
   text: (r) => momentsText(r.moments, r.mode, r.focus, r.notes),
