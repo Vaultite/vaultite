@@ -103,6 +103,7 @@ export default async ($: VaultTest) => {
     const [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: edits of the same lines before the agent saw them are one moment", one === two && got.moments.length === 1 &&
       JSON.stringify(got.moments[0].hunks) === JSON.stringify([{ line: 3, removed: ["Hi"], added: ["Hi or an", "x", "y"] }]), got.moments)
+    check("companion: an edit of spaces alone isn't a moment", c.addMoment({ kind: "edit", path: "Notes/A.md", line: 4, hunks: [{ line: 4, removed: ["Hi."], added: ["Hi. ", ""] }] }) === null)
     check("companion: an edit elsewhere stays its own", c.mergeHunks([{ line: 3, removed: [], added: ["a"] }], [{ line: 9, removed: ["b"], added: ["c"] }]) === null)
   }
   check("companion: moments read as lines for an agent", c.momentsText(edited, "notice", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))

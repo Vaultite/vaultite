@@ -109,6 +109,9 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   const md = mode()
   if (md === "off") return null
   if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
+  // (spaces alone changed, as a trailing one: nothing to see, and an agent woken for it isn't free for what is)
+  const words = (ls: string[]) => ls.map((l) => l.trim()).filter(Boolean).join("\n")
+  if (m.kind === "edit" && m.hunks?.length && m.hunks.every((h) => words(h.added) === words(h.removed))) return null
   const full = { ...m, seq: ++seq, t: m.t ?? Date.now() } as Moment
   if (m.kind === "edit" || m.kind === "open") delete full.for
   else full.for = addressee(m.for)
