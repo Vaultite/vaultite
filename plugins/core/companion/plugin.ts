@@ -90,8 +90,8 @@ export function addressee(name?: string) {
 /** Whether `name` gets moment `m`: its own, and edit and open for the companion and agents that watch. */
 const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) : isMain(name) || watching.has(key(name)))
 
-/** Where the user is: the window they used last. */
-export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at)[0]?.focus ?? null
+/** Where the user is: the window they used last that has a note (`next`, and the ops' default place, both say this). */
+export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
 
 /** Take in a moment from the app: kept (and logged), and given to the agents waiting. */
 export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
@@ -329,7 +329,8 @@ plugin.socket("companion/live", (ws) => {
     if (m.t === "where") {
       w.open = Array.isArray(m.open) ? m.open.filter((p): p is string => typeof p === "string") : w.open
       const f = m.focus as Target | null
-      w.focus = f && typeof f.path === "string" ? { path: f.path, line: Number(f.line) || 1 } : null
+      // (an editor left for the terminal or a menu: still their note while it's open)
+      w.focus = f && typeof f.path === "string" ? { path: f.path, line: Number(f.line) || 1 } : w.focus && w.open.includes(w.focus.path!) ? w.focus : null
       if (m.active) w.at = Date.now()
       // (another note, not the same one focused again)
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }

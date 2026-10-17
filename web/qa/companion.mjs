@@ -108,6 +108,12 @@ await page.keyboard.type("Mail bob@claude.com or ask @nobody.")
 r = await op("companion.next", { timeout: 4 })
 check("@ in an email or an unknown name mid-line: no chip, no ask", !r.moments?.some((m) => m.kind === "ask") &&
   (await editor.locator(".cm-line", { hasText: "Mail bob" }).locator(".cm-companion-mention").count()) === 0, r)
+// Out of the editor (to its terminal, a menu): the note is still where they are, for next and the ops alike.
+await page.evaluate(() => document.activeElement?.blur())
+await wait(500)
+r = await op("companion.say", { text: "Going well.", find: "how is it going" })
+check("say: no path, the note they just left the editor of", r.path === NOTE, r)
+await editor.click()
 
 // A comment in the margin, a reply to it.
 r = await op("companion.comment", { path: NOTE, find: "how far apart", text: "About 60 cm: they get big." })
