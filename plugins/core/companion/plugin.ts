@@ -81,12 +81,24 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   if (md === "off") return null
   if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
   const full = { ...m, seq: ++seq, t: m.t ?? Date.now() } as Moment
+  log.append(full.t, [full])
+  // (more of the same lines before any agent saw the last: one moment)
+  const last = moments[moments.length - 1]
+  const merged = m.kind === "edit" && last?.kind === "edit" && last.path === m.path && ![...delivered.values()].some((d) => d >= last.seq) ? mergeHunks(last.hunks ?? [], m.hunks ?? []) : null
+  if (merged) { Object.assign(last, { hunks: merged, t: full.t }); return last }
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
-  log.append(full.t, [full])
   for (const [name, wake] of waiters) { waiters.delete(name); wake([full]) }
   if (m.kind === "ask" || m.kind === "reply") for (const a of agents.values()) setAgent(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) })
   return full
+}
+
+/** Two edits in a row as one, when the second changes only lines the first wrote (or right after them); else null. */
+export function mergeHunks(a: Hunk[], b: Hunk[]): Hunk[] | null {
+  if (a.length !== 1 || b.length !== 1) return null
+  const [x] = a, [y] = b, k = y.line - x.line
+  if (k < 0 || k + y.removed.length > x.added.length) return null
+  return [{ line: x.line, removed: x.removed, added: [...x.added.slice(0, k), ...y.added, ...x.added.slice(k + y.removed.length)].slice(0, 40) }]
 }
 
 /** The agent named `name`, made the first time it acts (its tint the next free one, Claude orange, Codex blue). */

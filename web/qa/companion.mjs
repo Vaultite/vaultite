@@ -139,6 +139,17 @@ await page.locator(".cm-companion-hl").waitFor({ timeout: 3000 })
 check("highlight: lit in its colour", (await page.locator(".cm-companion-hl").innerText()) === "sunny")
 await page.screenshot({ path: `${OUT}highlight.png` })
 
+// The user typing while it types: one moment after their pause, without its words, not one a key.
+await op("companion.next", { timeout: 0 })
+await editor.getByText("along the fence").click()
+await page.keyboard.press("End")
+const typing = op("companion.edit", { path: NOTE, append: true, text: "- Mulch in June, before the heat comes and dries the soil out" })
+for (const ch of " or so") { await page.keyboard.type(ch); await wait(120) }
+await typing
+r = await until(async () => { const x = await op("companion.next", { timeout: 4 }); return x.moments?.length ? x : null }, 8000)
+const edits = r?.moments.filter((m) => m.kind === "edit") ?? []
+check("edit: typing while it types is one moment, theirs only", edits.length === 1 && edits[0].hunks[0].added.some((l) => l.endsWith("sunny. or so")) && !JSON.stringify(edits).includes("Mulch"), r)
+
 // Ask command: starts an @claude line.
 await editor.getByText("Basil between them").click()
 await page.keyboard.press("End")

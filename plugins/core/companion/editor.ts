@@ -1,6 +1,6 @@
 // The companion in a note's editor: what the user writes said after a pause (and at once for "@claude …"), the agents'
 // highlights, comments' anchors and suggestions drawn in the text, Tab and Esc for a suggestion, and edits typed in.
-import { Annotation, type EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
+import { Annotation, ChangeSet, type EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { pluginSettings, type EditorCtx } from "@vaultite"
 import { accept, answer, bump, type EditAsk, getState, hunksOf, mentionIn, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
@@ -157,6 +157,7 @@ function watcher(path: string) {
   return ViewPlugin.fromClass(class {
     decorations: DecorationSet
     baseline: Text
+    pending: ChangeSet // what they typed since baseline
     dirty = false
     timer: ReturnType<typeof setTimeout> | null = null
     whereTimer: ReturnType<typeof setTimeout> | null = null
@@ -166,6 +167,7 @@ function watcher(path: string) {
       this.view = view
       this.decorations = decorate(view, path)
       this.baseline = view.state.doc
+      this.pending = ChangeSet.empty(view.state.doc.length)
       views.set(view, path)
       queueMicrotask(() => sayWhere())
       this.stop = subscribe(() => requestAnimationFrame(() => { if (view.dom.isConnected) view.dispatch({ effects: refresh.of(null) }) }))
@@ -178,24 +180,29 @@ function watcher(path: string) {
         this.whereTimer = setTimeout(() => sayWhere(u.view.hasFocus), u.focusChanged ? 0 : 800)
       }
       if (!u.docChanged) return
-      if (u.transactions.some((t) => t.annotation(own))) {
-        // (theirs: what the user wrote before it is said first, then theirs is the new starting point)
-        if (this.dirty) this.report(u.startState.doc)
-        this.baseline = u.state.doc
-        return
+      let typed = false
+      for (const tr of u.transactions) {
+        if (!tr.docChanged) continue
+        if (!tr.annotation(own) && ["input", "delete", "move", "undo", "redo"].some((e) => tr.isUserEvent(e))) {
+          typed = true
+          this.pending = this.pending.compose(tr.changes)
+          tr.changes.iterChanges((_fa, _ta, fromB, _tb, inserted) => {
+            if (!inserted.toString().includes("\n")) return
+            const line = tr.state.doc.lineAt(fromB)
+            const ask = mentionIn(line.text)
+            if (ask && getState().mode !== "off") sendMoment({ kind: "ask", path, line: line.number, text: ask })
+          })
+          continue
+        }
+        // (an agent's typing, or a change from disk: folded into where they started, so their pause stays one moment)
+        const o = tr.changes.map(this.pending.invert(this.baseline))
+        this.baseline = o.apply(this.baseline)
+        this.pending = this.pending.map(o)
+        if (this.pending.newLength !== tr.changes.newLength) this.pending = ChangeSet.of({ from: 0, to: this.baseline.length, insert: tr.state.doc }, this.baseline.length)
       }
-      if (!u.transactions.some((t) => t.isUserEvent("input") || t.isUserEvent("delete") || t.isUserEvent("move") || t.isUserEvent("undo") || t.isUserEvent("redo"))) {
-        this.baseline = u.state.doc // (a change from disk or another device: not typed here)
-        return
-      }
+      if (!typed) return
       this.dirty = true
       this.later()
-      u.changes.iterChanges((_fa, _ta, fromB, _tb, inserted) => {
-        if (!inserted.toString().includes("\n")) return
-        const line = u.state.doc.lineAt(fromB)
-        const ask = mentionIn(line.text)
-        if (ask && getState().mode !== "off") sendMoment({ kind: "ask", path, line: line.number, text: ask })
-      })
     }
     later() {
       if (this.timer) clearTimeout(this.timer)
@@ -210,6 +217,7 @@ function watcher(path: string) {
         if (hunks.length) sendMoment({ kind: "edit", path, line: hunks[0].line, hunks })
       }
       this.baseline = doc
+      this.pending = ChangeSet.empty(doc.length)
     }
     destroy() {
       if (this.dirty) this.report(this.view.state.doc)

@@ -61,6 +61,16 @@ export default async ($: VaultTest) => {
   await api("POST", "ops/companion.next", { timeout: 0 })
   ;[, r] = await api("POST", "ops/companion.status", {})
   check("companion: after acting, next is no seen tick", r.agents.some((a: Any) => a.name === "Claude" && a.state === "watching" && !a.seen), r.agents)
+  {
+    // Typing on, before the agent saw it: one moment, from what the line was to what it is.
+    const one = c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi"], added: ["Hi or a"] }] })
+    const two = c.addMoment({ kind: "edit", path: "Notes/A.md", line: 3, hunks: [{ line: 3, removed: ["Hi or a"], added: ["Hi or an", "x"] }] })
+    c.addMoment({ kind: "edit", path: "Notes/A.md", line: 5, hunks: [{ line: 5, removed: [], added: ["y"] }] })
+    const [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: edits of the same lines before the agent saw them are one moment", one === two && got.moments.length === 1 &&
+      JSON.stringify(got.moments[0].hunks) === JSON.stringify([{ line: 3, removed: ["Hi"], added: ["Hi or an", "x", "y"] }]), got.moments)
+    check("companion: an edit elsewhere stays its own", c.mergeHunks([{ line: 3, removed: [], added: ["a"] }], [{ line: 9, removed: ["b"], added: ["c"] }]) === null)
+  }
   check("companion: moments read as lines for an agent", c.momentsText(edited, "notice", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
 
   ;[st, r] = await api("POST", "ops/companion.suggest", { path: "Notes/A.md", find: "friday", replace: "Friday", why: "A day's name" })
