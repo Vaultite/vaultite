@@ -769,7 +769,16 @@ async function current(host: Host, o: SaveOptions): Promise<Files> {
     try { for (const [rel, data] of Object.entries(readFolder(v.abs(`.vaultite/themes/${scheme}`)))) files[`themes/${scheme}/${rel}`] = data } catch (e) { if (e instanceof HTTPError) throw e }
   }
   for (const s of strs(look.snippets)) {
-    try { if (safePath(s)) files[`snippets/${s}.css`] = readText(v.abs(`.vaultite/snippets/${s}.css`)) } catch { /* not there */ }
+    let css: string
+    try { if (!safePath(s)) continue; css = readText(v.abs(`.vaultite/snippets/${s}.css`)) } catch { continue }
+    files[`snippets/${s}.css`] = css
+    // The fonts beside it that it loads (url("Instrument Serif.woff2")).
+    for (const m of css.matchAll(/url\(\s*["']?([^"')]+\.(?:woff2?|ttf|otf))["']?\s*\)/gi)) {
+      let name: string
+      try { name = decodeURIComponent(m[1]) } catch { continue }
+      if (name.includes("/") || !safePath(name)) continue
+      try { files[`snippets/${name}`] = fs.readFileSync(v.abs(`.vaultite/snippets/${name}`)) } catch { /* not there */ }
+    }
   }
   return files
 }

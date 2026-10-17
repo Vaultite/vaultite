@@ -22,7 +22,7 @@ terminals, their activity, other machines and the server).
   plugins/<id>/data.json   a plugin's settings: only the keys that differ from its defaults
   plugins/<id>/      with a manifest.json: a vault plugin made in the vault that it brings (it runs code: applying asks the user, and their yes
                      allows it on that machine; one already in the vault keeps waiting until allowed on its own)
-  themes/<Name>/, snippets/<name>.css   themes and CSS snippets it uses
+  themes/<Name>/, snippets/<name>.css   themes and CSS snippets it uses, and the fonts the snippets load
   Dashboards/Desk.md any other file: a vault file at the same path (the dashboards it pins; Dashboards/ is the vault's
                      pages folder), added if there's none
   ```

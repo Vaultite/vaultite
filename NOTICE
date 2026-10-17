@@ -7,6 +7,8 @@ This product includes third-party software and assets:
   in electron/menu-icons/ are rendered from them, and web/src/core/lucide-tags.json lists their search tags.
 - shadcn/ui (https://ui.shadcn.com), MIT License, Copyright (c) 2023 shadcn: web/src/shadcn.css and
   web/src/components/ui/button.tsx are adapted from it.
+- Instrument Serif (https://github.com/Instrument/instrument-serif), SIL Open Font License 1.1, Copyright 2022 The
+  Instrument Serif Project Authors: in the Life OS bundle (bundles/life-os/snippets/).
 - Colour palettes in web/src/themes/, each under the licence listed in web/src/themes/LICENSES.md.
 
 Obsidian is a trademark of Dynalist Inc. Vaultite is not affiliated with or endorsed by Dynalist Inc.; the name is used

@@ -21,7 +21,6 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-    --font-heading: var(--font-sans);
     --font-mono: var(--font-code);
     /* Settings' interface font (--font-ui, set on <html> by core/appearance.ts) before the default. */
     --font-sans: var(--font-ui, -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Inter', system-ui, sans-serif, 'Noto Color Emoji');
@@ -112,6 +111,9 @@
     /* A note's widest line in a tab (FileView), for snippets to change; ⌘+ zoom scales it. */
     --line-width: 700px;
 }
+/* Titles and large headings: --font-heading when a snippet sets it (a bundle's look), else unset, so they keep the
+   font around them (the text font in a note). */
+.title-font, .note-prose :is(.h1, .h2, .h3), .vau-editor :is(.cm-h1, .cm-h2, .cm-h3), .dash-prose :is(h1, h2, h3) { font-family: var(--font-heading); }
 /* Density: comfortable spaces everything out by scaling Tailwind's spacing unit (paddings, gaps, row and bar heights:
    the 28px rows become 31.5px, the 40px bars 45px, the file tree's rows 26px to 29.25px, the rail 44px to 49.5px). So a
    size that should follow it is in spacing units (`h-7`, `pl-[calc(--spacing(2)-0.5px)]`, `space(n)` in inline styles,

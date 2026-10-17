@@ -78,7 +78,8 @@ A companion agent writes beside you, AI apps draw the vault as cards, and the ap
 - **Three bundles**: Standard, Life OS and Agents, on a Bundles page of its own (Your setup, "Choose a bundle…"). Share
   one as a file, a prompt for an agent or a link (`vaultite.com/b/<owner>/<name>` runs it live in the web demo, and Open
   in Vaultite opens it in the Mac and iPhone apps). Import shows what it would change first and takes JSON, a file or a
-  GitHub repository. Bundles carry the new tab and the plugins you installed.
+  GitHub repository. Bundles carry the new tab and the plugins you installed, and can bring their own fonts: Life OS
+  titles its notes and pages in Instrument Serif (a CSS snippet sets `--font-heading` and loads a font beside it).
 - **Plugin API 4**: a plugin offers modules to plugins that require it (manifest `exports`, imported as
   `@plugins/<id>/<module>`, was `@plugins/core/<id>/...`); coding agent plugins get `@vaultite/core/agents.ts`; a vault
   plugin may join a Plugins page group (`group`), keep settings files of its own (`<name>.json`), say it works only in

@@ -1,0 +1,12 @@
+/* Serif titles: the titles of notes, pages and dashboards, and their large headings, in Instrument Serif.
+   Instrument Serif: Copyright 2022 The Instrument Serif Project Authors, SIL Open Font License 1.1
+   (Instrument Serif OFL.txt, beside this file). */
+@font-face {
+  font-family: "Instrument Serif";
+  src: url("Instrument Serif.woff2") format("woff2");
+  /* It has one weight: bold headings draw it as it is rather than a faked bold. A size up, as it runs small. */
+  font-weight: 100 900;
+  font-display: swap;
+  size-adjust: 115%;
+}
+:root { --font-heading: "Instrument Serif", Georgia, serif; }

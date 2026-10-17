@@ -5,7 +5,7 @@ import { namedIcon, tintOf } from "@/core/pages"
 import { cell } from "@/core/signal"
 
 /** The title's text. A phone's is a size down: its header names the file too, once the title scrolls away. */
-export const TITLE = "block w-full text-[24px] leading-[30px] font-bold text-balance break-words md:text-[28px] md:leading-[34px]"
+export const TITLE = "title-font block w-full text-[24px] leading-[30px] font-bold text-balance break-words md:text-[28px] md:leading-[34px]"
 
 /** Whether the page's own title is in sight below the phone's header (PhoneHeader hides its name meanwhile). */
 export const titleInSight = cell(false)

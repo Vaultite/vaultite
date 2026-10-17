@@ -104,4 +104,6 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are each device's.
 - `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`). A snippet is
   CSS added after the app's; the colours are variables (`--background`, `--foreground`, `--card`, `--primary`,
-  `--red`...), so `:root { --primary: #d33682; }` changes the accent; `--line-width` is a note's widest line (700px).
+  `--red`...), so `:root { --primary: #d33682; }` changes the accent; `--line-width` is a note's widest line (700px);
+  `--font-heading` the titles' and large headings' font (unset: the font around them). A font file beside the snippets
+  (`.woff2`, `.woff`, `.ttf`, `.otf`) loads by its name: `@font-face { src: url("Instrument Serif.woff2") }`.

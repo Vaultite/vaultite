@@ -21,7 +21,7 @@ export function PageHeader({ title, subtitle, section, children, className }: { 
   return (
     <header className={cn("mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-1 md:pt-0", className)}>
       <div>
-        <h1 className={cn("text-[24px] leading-[30px] font-bold", !section && "md:text-[34px] md:leading-[41px]")}>{title}</h1>
+        <h1 className={cn("text-[24px] leading-[30px] font-bold", !section && "title-font md:text-[34px] md:leading-[41px]")}>{title}</h1>
         {subtitle && <p className="mt-0.5 text-[15px] leading-[20px] text-muted-foreground">{subtitle}</p>}
       </div>
       {children}

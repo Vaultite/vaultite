@@ -63,4 +63,16 @@ body { --accent-h: 200; --harbor-ink: 20, 30, 40; }
     const saved = JSON.parse(read(".vaultite/appearance.json"))
     check("appearance: a PUT keeps keys it doesn't send", saved.fromCli === 1 && saved.density === "comfortable" && saved.scheme === "theme:Harbor" && saved.snippets[0] === "Wide lines", saved)
   }
+  {
+    // A font beside the snippets: served by name for a snippet's @font-face, and saved with a bundle of the snippet.
+    write(".vaultite/snippets/Serif face.woff2", "wOF2fake")
+    write(".vaultite/snippets/Wide lines.css", `@font-face { font-family: "Serif face"; src: url("Serif%20face.woff2") }\n`)
+    const [s1, font] = await api("GET", "snippets/Serif%20face.woff2")
+    check("snippets: a font beside them is served", s1 === 200 && Buffer.from(font).toString() === "wOF2fake", font)
+    const [s2] = await api("GET", "snippets/..%2Fappearance.woff2")
+    check("snippets: fonts stay in the folder", s2 >= 400, s2)
+    const [, made] = await api("POST", "bundles", { name: "Serif look" })
+    check("bundles: a snippet's fonts are saved with it", exists(`.vaultite/bundles/${made.bundle?.id}/snippets/Serif face.woff2`), made.bundle?.id)
+    await api("DELETE", `bundles/${made.bundle?.id}`)
+  }
 }

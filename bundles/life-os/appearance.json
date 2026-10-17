@@ -2,5 +2,8 @@
   "theme": "system",
   "scheme": "flexoki",
   "density": "comfortable",
-  "fileIcons": true
+  "fileIcons": true,
+  "snippets": [
+    "Serif titles"
+  ]
 }

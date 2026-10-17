@@ -13,6 +13,7 @@ type Vars = Record<string, string>
 const THEMES = ".vaultite/themes"
 const SNIPPETS = ".vaultite/snippets"
 const NAME = /^[^/\\.][^/\\]*$/ // a plain file or folder name
+const FONTS: Record<string, string> = { ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".otf": "font/otf" }
 
 const mtime = (p: string) => { try { return Math.round(fs.statSync(p).mtimeMs) } catch { return 0 } }
 function readJSON(p: string): Record<string, unknown> {
@@ -89,6 +90,15 @@ export function handle(vault: Vault, method: string, parts: string[], body: Reco
         return new Text(fs.readFileSync(vault.abs(`${SNIPPETS}/${file}`), "utf8"), "text/css; charset=utf-8")
       } catch {
         throw new HTTPError(404, `no snippet '${file}' in ${SNIPPETS}`)
+      }
+    }
+    // A font beside the snippets, so one's @font-face can name it by file: url("Instrument Serif.woff2").
+    const font = FONTS[path.extname(file ?? "").toLowerCase()]
+    if (method === "GET" && parts.length === 2 && font && NAME.test(file)) {
+      try {
+        return new Text(fs.readFileSync(vault.abs(`${SNIPPETS}/${file}`)), font, { "Cache-Control": "no-cache" })
+      } catch {
+        throw new HTTPError(404, `no font '${file}' in ${SNIPPETS}`)
       }
     }
     if (method === "POST" && parts.length === 1) {
