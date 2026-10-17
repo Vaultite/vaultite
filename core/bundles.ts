@@ -309,6 +309,14 @@ function brought(host: Host) {
   return out
 }
 
+/** CSS snippets the app's bundles bring (Life OS's serif titles): turned off when the bundle applied doesn't use them,
+ *  as their pins are, so one bundle's look doesn't stay on in another. The user's own stay. */
+function broughtSnippets(host: Host) {
+  const out = new Set<string>()
+  for (const b of list(host.vault)) if (b.source === "app") for (const f of Object.keys(b.files)) { const m = /^snippets\/(.+)\.css$/.exec(f); if (m) out.add(m[1]) }
+  return out
+}
+
 /** The list `cur` should become: the bundle's pins first, then the user's own as they were. */
 function pinsFor(cur: string[], want: string[], brings: Set<string>) {
   return [...want, ...cur.filter((p) => !want.includes(p) && !brings.has(p))]
@@ -437,12 +445,15 @@ export async function plan(b: Bundle, host: Host, n: number | null): Promise<Pla
       workspace: own && pinsFor(own, want, brings) }
   }
   // appearance, hotkeys: the keys it sets (an appearance value that's the app's default is written as no key)
-  const diff = (name: string, defaults: Item = {}) => {
+  const diff = (name: string, want: Item, defaults: Item = {}) => {
     const cur = v.config(name), eff = (k: string, x: unknown) => x ?? defaults[k] ?? null
-    return Object.entries(json(b, `${name}.json`) ?? {}).filter(([k, to]) => !same(eff(k, cur[k]), eff(k, to)))
+    return Object.entries(want).filter(([k, to]) => !same(eff(k, cur[k]), eff(k, to)))
       .map(([key, to]) => ({ key, from: cur[key] ?? null, to: Object.hasOwn(defaults, key) && same(to, defaults[key]) ? null : to }))
   }
-  const appearance = diff("appearance", LOOK_DEFAULTS), hotkeys = diff("hotkeys")
+  const look = { ...json(b, "appearance.json") }, snippets = strs(v.config("appearance").snippets), bringsCss = broughtSnippets(host)
+  const ownCss = [...strs(look.snippets), ...snippets.filter((s) => !strs(look.snippets).includes(s) && !bringsCss.has(s))]
+  if (Object.hasOwn(look, "snippets") || ownCss.length < snippets.length) look.snippets = ownCss
+  const appearance = diff("appearance", look, LOOK_DEFAULTS), hotkeys = diff("hotkeys", json(b, "hotkeys.json") ?? {})
   // The new tab's page as this vault has it (a page that isn't here: the sections stay).
   const nt = json(b, "newtab.json")
   const newtab = nt ? Object.entries({ ...nt, ...(typeof nt.page === "string" ? { page: placed(nt.page) } : {}) })

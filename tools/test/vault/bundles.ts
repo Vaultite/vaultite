@@ -84,6 +84,14 @@ export default async ($: VaultTest) => {
     check("bundles: the dashboard it added is in the trash, and nothing to restore any more", !exists("Dashboards/Home.md") && !exists(".vaultite/bundles/previous.json"))
     ;[code] = await api("POST", "bundles/restore")
     check("bundles: restore twice is a 404", code === 404, code)
+    // A snippet one of the app's bundles brings (Life OS's serif titles) goes off in another; the user's own stay.
+    const lookThen = conf("appearance")
+    setConf("appearance", { ...lookThen, snippets: ["Serif titles", "Wide lines"] })
+    const snipsTo = async (id: string) => (await api("GET", `bundles/${id}`))[1].plan.appearance.find((c: Any) => c.key === "snippets")
+    const toStandard = await snipsTo("standard"), toLife = await snipsTo("life-os")
+    check("bundles: another bundle turns off a bundle's snippet, keeping the user's", JSON.stringify(toStandard?.to) === JSON.stringify(["Wide lines"]), toStandard)
+    check("bundles: a bundle's own snippet stays on with it", !toLife, toLife)
+    setConf("appearance", lookThen)
 
     // A bundle of the user's that brings a vault plugin (runs code) and tries to set a `local` setting.
     write(".vaultite/bundles/coder/bundle.json", JSON.stringify({ name: "Coder" }))
