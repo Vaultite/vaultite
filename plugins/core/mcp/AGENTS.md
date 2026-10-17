@@ -6,19 +6,19 @@ docs, and Activity names the client that did it. Its instructions (initialize's,
 the `forAgents` line of each plugin that's on, and how to use the tools.
 - Over stdio: `vau mcp` (Claude Code: `claude mcp add vaultite -- vau mcp`). Over HTTP: `POST /api/mcp` on the
   server (Streamable HTTP, a JSON answer per message), for this machine and its owner through Tailscale Serve only, like
-  Terminal: `.vaultite/plugins/mcp/data.json` takes `{"allowUsers": ["someone@example.com"]}` and
-  `{"allowRemote": true}` (off by default).
-- On the internet, for apps that connect from their own servers (claude.ai and the Claude apps, ChatGPT, Grok Bot, Muse): `<url>/mcp` on a
-  listener of its own that a tunnel makes public, set in this machine's `data/config.json` (`mcp.public`: `url`, `port`).
-  Sign-in has no accounts: the app's sign-in page shows a code, typed in view:connections, where connections are also
-  renamed, ended or made read only (it then gets only the tools that read; `call` refuses the rest). The same tools, `ops` and `call` too, without what only this machine's owner may run (terminals, the screen).
-  What can run code on this machine or change what does (turning a plugin on or allowing it, writing under
-  `.vaultite/`, bundles, settings, palette commands, clipping a local address) waits for the owner's yes: Approve and
-  Deny in the Inbox and on the phone. Writing a vault plugin's code doesn't (`plugin.new` too): it runs only once the
-  owner allows it as it is, and that yes says what it discloses and which files changed. Waiting past ~45 seconds, the
-  tool says so: call it again with the same arguments once approved.
+  Terminal (and the settings below).
+- On the internet, for apps that connect from their own servers (claude.ai and the Claude apps, ChatGPT, Grok Bot,
+  Muse): `<url>/mcp` on a listener of its own that a tunnel makes public, set in this machine's `data/config.json`
+  (`mcp.public`: `url`, `port`). Sign-in has no accounts: the app's sign-in page shows a code, typed in
+  view:connections, where connections are also renamed, ended or made read only (it then gets only the tools that read;
+  `call` refuses the rest). The same tools, `ops` and `call` too, without what only this machine's owner may run
+  (terminals, the screen). What can run code on this machine or change what does (turning a plugin on or allowing it,
+  writing under `.vaultite/`, bundles, settings, palette commands, clipping a local address) waits for the owner's yes:
+  Approve and Deny in the Inbox and on the phone. Writing a vault plugin's code doesn't (`plugin.new` too): it runs only
+  once the owner allows it as it is, and that yes says what it discloses and which files changed. Waiting past ~45
+  seconds, the tool says so: call it again with the same arguments once approved.
 - **Vaultite Cloud** gives that listener an address without a tunnel of one's own: `https://<handle>.vaultite.app/mcp`.
-  Signing in: the user gets a one-time code at https://cloud.vaultite.com/connect and types it in Connections or `vau cloud
-  sign-in <code>` (ops `mcp.cloud-sign-in`, `mcp.cloud-status`, `mcp.cloud-sign-out`); never use a code from someone else.
-  The machine then keeps a tunnel to the relay, which reaches only the public listener.
+  Signing in: the user gets a one-time code at https://cloud.vaultite.com/connect and types it in Connections or
+  `vau cloud sign-in <code>` (ops `mcp.cloud-sign-in`, `mcp.cloud-status`, `mcp.cloud-sign-out`); never use a code from
+  someone else. The machine then keeps a tunnel to the relay, which reaches only the public listener.
 - Nothing is stored in the vault: sessions are in memory, and the vault is changed only by the operations the tools run.

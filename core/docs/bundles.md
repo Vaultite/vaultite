@@ -1,10 +1,9 @@
 ## Bundles
 A bundle is a whole setup of the app at once: which plugins are on, their settings, the sidebars' panels, the pinned
 pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks one on the
-Bundles page (Your setup, atop Settings' menu; the command "Choose a bundle…"; Plugins' Bundles; a vault opened for
-the first time starts from Standard, core/start.ts, as does one skipping the offer), saves their own setup as one,
-shares it as a file or a repository, and imports others' (Import, or pasting or dropping one on the page: its preview
-first). The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Life OS
+Bundles page (Your setup, atop Settings' menu; a new vault starts from Standard), saves their own setup as one, shares
+it as a file or a repository, and imports others' (Import, or pasting or dropping one on the page: its preview first).
+The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Life OS
 (`life-os`: days, people, health, books, and pages and databases over them), Agents (`agent-cockpit`: coding agents in
 terminals, their activity, other machines and the server).
 - A bundle is a folder shaped like `.vaultite/`, plus the vault files it needs. The user's are in
@@ -47,19 +46,15 @@ terminals, their activity, other machines and the server).
   they're unchanged.
 - Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
   asked. A plugin's page as it wrote it goes by its name (`Dashboards/Today.md`), other pinned dashboards as files. Sharing (export, Copy) leaves out its picture, pages with the user's own text and pins to their notes, unless
-  asked (`--include`); `GET /api/bundles/<id>/share` lists the parts. A git repository is a bundle too: its folder at the
-  top, or one `.bundle.json`; `vau bundle import owner/name` adds it (bundle.json's `from` keeps where), again updates it.
+  asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;
+  `vau bundle import owner/name` adds it (bundle.json's `from` keeps where), again updates it.
 - **A bundle's link**: once its file is in a public GitHub repository (one `.bundle.json` at its top, or the bundle's
   folder there), `https://vaultite.com/b/<owner>/<name>` (`/<folder>` after it for one in a folder of the repository)
   is a page that shows it and runs it live in the web demo, on its made-up vault: the visitor's browser fetches it from
   GitHub, and the demo leaves out what needs the app (terminals, agents) and plugins it installs (they run code). Its
   Open in Vaultite is `vaultite://bundle/<owner>/<name>`, which opens in the Mac and iPhone apps on its import preview:
-  nothing is added or applied until the user does. The share sheet's Link copies it (core/bundlelinks.ts).
-- `vau bundle list | show <id> | apply <id> | restore | save <name> | export <id> | import <file|owner/name> | delete <id>`, or the
-  API: `GET /api/bundles`, `GET /api/bundles/<id>?workspace=<n>` (what applying would change: `plan`), `POST
-  /api/bundles/<id>/apply {workspace}`, `POST /api/bundles/restore`, `POST /api/bundles {name, description, hotkeys,
-  vaultPlugins, workspace}` (save the current setup), `GET /api/bundles/<id>/export` (`POST` with `{include, leave, all}`; one JSON file:
-  `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`), `POST /api/bundles/import` (an export, or `{from}`),
-  `POST /api/bundles/import/preview` (the same, plus `workspace`: what it would add and change, writing nothing).
+  nothing is added or applied until the user does. The share sheet's Link copies it.
+- `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
+  `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.
 - To make one for the user, write the folder (pick blocks for its dashboards from `vau docs design`), check it
   with `vau bundle show <id>`, and let them apply it: never apply one without asking, and never one that runs code.

@@ -1,10 +1,10 @@
 ## Canvases (`*.canvas`, JSON Canvas)
 A board of cards joined by arrows, in the open JSON Canvas format (jsoncanvas.org, spec 1.0), so other apps open the
 same files. New ones go next to the note being written, else `Canvases/` ("New canvas" in the palette, `/canvas` in a
-note), or in the folder right-clicked in the file tree (its New canvas). The app draws it as an infinite canvas; `![[Canvases/Plan.canvas]]` on a line of its own in a note or a
-dashboard shows a picture of it (`|400`: its height). `GET /api/render?path=Canvases/Plan.canvas` reads it as text:
-its cards (by group), notes as [[links]], and its connections. The graph view draws a line from a canvas to every note
-it shows.
+note), or in the folder right-clicked in the file tree (its New canvas). The app draws it as an infinite canvas;
+`![[Canvases/Plan.canvas]]` on a line of its own in a note or a dashboard shows a picture of it (`|400`: its height).
+`GET /api/render?path=Canvases/Plan.canvas` reads it as text: its cards (by group), notes as [[links]], and its
+connections. The graph view draws a line from a canvas to every note it shows.
 
 The shape (other apps write it indented with tabs; keep keys you don't know):
 
@@ -19,9 +19,9 @@ The shape (other apps write it indented with tabs; keep keys you don't know):
      ]}
 
 - Nodes: `text` (Markdown), `file` (a vault path; `subpath: "#Heading"` for part of a note; images show as pictures),
-  `link` (a web address; the app shows its page's preview, like a link unfurl: title, site, description, icon and,
-  on a tall card, its image; `GET /api/canvas/link?url=<address>` gives it as `{url, title, site, description, image,
-  icon}`, nothing kept in the vault), `group` (`label`; the cards inside its box belong to it). Every node has a unique `id` and
+  `link` (a web address; the app shows its page's preview, like a link unfurl: title, site, description, icon and, on a
+  tall card, its image; `GET /api/canvas/link?url=<address>` gives it as `{url, title, site, description, image, icon}`,
+  nothing kept in the vault), `group` (`label`; the cards inside its box belong to it). Every node has a unique `id` and
   `x`, `y`, `width`, `height` in pixels (y grows downwards); groups come first in the list (they're drawn behind).
 - Edges: `fromNode` / `toNode` (node ids), optional `fromSide` / `toSide` (top, right, bottom, left), `fromEnd` /
   `toEnd` (`none` or `arrow`; default: an arrow where it ends only) and `label`.

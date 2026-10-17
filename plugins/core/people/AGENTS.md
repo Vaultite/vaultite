@@ -26,13 +26,14 @@ Durable facts about them, in short sentences.
 ````
 - Timeline lines newest first, one each: `- YYYY-MM-DD · kind[ · N min] · text`; optional `**Subject**` after the kind
   and `<https://url>` at the end. Kinds: call, hang out, meet, study, text, message, email or any other word or two
-  (being in touch), and note (a fact). Log notable exchanges, not every chat. Something that may change (a job move considered) is a dated note.
-- Never delete a timeline or "fix" the user's own lines (the app reads hand-typed ones); add yours in this form. Don't
-  rename files unless asked (add `aliases`); then `vau move`, which updates links.
+  (being in touch), and note (a fact). Log notable exchanges, not every chat. Something that may change (a job move
+  considered) is a dated note.
+- Never delete a timeline or "fix" the user's own lines (the app reads hand-typed ones); add yours in this form.
 
 More keys: `usual: call` (usual way to stay in touch), `coordinates: [30.27, -97.74]` (only when you know the exact
-spot; else the map looks `location` up and keeps the pin in its cache, never in the file), `moving_to: Baltimore, MD` (an upcoming move), `contact` (an email, URL or
-handle), `sort: 3` (the order people are listed in, lower first; don't renumber it, the app never writes it).
+spot; else the map looks `location` up and keeps the pin in its cache, never in the file), `moving_to: Baltimore, MD`
+(an upcoming move), `contact` (an email, URL or handle), `sort: 3` (the order people are listed in, lower first; don't
+renumber it, the app never writes it).
 - The app also reads lines typed by hand: ` - ` or ` | ` between parts, "Call", "1h 30m", no kind (a note). A long
   entry may continue on indented lines under it. Other sections may follow the timeline (`## Gift ideas`); leave them.
 - The user's own pin: `PUT /api/me {"location"}`. Check a place: `GET /api/geocode?q=`.

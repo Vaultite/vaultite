@@ -5,8 +5,6 @@
 - A part that fails, fails alone: every tab, panel, header item and sheet draws in a `Guard` (`Guard.tsx`); smaller
   parts use `Catch`.
 - Files a plugin draws (`FormatView.tsx`): the text is the only state, `onChange(text)` goes through autosave.
-- Canvas (`Board.tsx`) never renders React for a pan or zoom (the view lives in a ref); neither Canvas nor Excalidraw
-  writes on pan or zoom. Excalidraw's fonts come through its route, never esm.sh.
 - Sidebars hold only plugins' panels, one model (`core/sidebars.ts`, shared with the CLI and Workspaces). A panel that
   wants room opens as a view, never tabs inside a sidebar. Panel heights go straight onto the boxes, no React render.
 - Only a bounded box scrolls: `overflow-y-auto` on a box nothing bounds swallows the wheel. A component that may be

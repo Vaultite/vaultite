@@ -1,7 +1,7 @@
 ## Token count (`max_tokens`)
-Agent files have a token limit (other files only when the user sets one). Over it, the app marks the file (red in the status
-bar and the file tree, listed in the Agent context panel): it only warns, nothing stops a save. Keep the files agents
-load at startup (CLAUDE.md, AGENTS.md, ME.md, skills) short: move detail into files read when needed.
+Agent files have a token limit (other files only when the user sets one). Over it, the app marks the file (red in the
+status bar and the file tree, listed in the Agent context panel): it only warns, nothing stops a save. Keep the files
+agents load at startup (CLAUDE.md, AGENTS.md, ME.md, skills) short: move detail into files read when needed.
 - `max_tokens: 4000` in a file's frontmatter is its own limit (`0`: none). Set it only when the user asks.
 - A CLAUDE.md or AGENTS.md counts with its `@path` imports (followed 4 deep, as Claude Code does): that total is held to
   its limit too.

@@ -1,10 +1,10 @@
 ## Activity
 What was done to the vault and the app, and by whom, kept on the machine that runs the server (not in the vault) for
-`keep_days` (default 14): your edits, moves and settings in the app, files and views you opened, commands and drag and
+`keep_days`: your edits, moves and settings in the app, files and views you opened, commands and drag and
 drops; coding agents working through the API or the `vau` CLI (found from the process that called, tied to the app's
 terminal they run in; Claude Code started in the app also reports each file it edits and each command it runs);
 scripts; and changes on disk no request made (iCloud, another app, an editor). Plus timings: every API route's, the
-server's memory and event loop, and each app window's load. Nothing to write: it records itself. Its settings are below.
+server's memory and event loop, and each app window's load. Nothing to write: it records itself.
 - Read it: `vau activity` (`--actor agent`, `--action changes` (changes, opens, commands, settings, other),
   `--path Notes/Idea.md`), `vau perf`, or `GET /api/activity?limit=&actor=&action=&path=`,
   `GET /api/activity/summary?days=1`, `GET /api/activity/perf`.
@@ -12,7 +12,7 @@ server's memory and event loop, and each app window's load. Nothing to write: it
 
 ## Recaps (`Recaps/<YYYY-MM-DD>.md`)
 What the user did each day, kept in the vault for good: `type: recap`, named by its date, the body one line per thing
-done, oldest first, each line's quote (`  > `) the text it changed and its list (`  - `) the files of a session or batch:
+done, oldest first, each line's quote (` > `) the text it changed and its list (` - `) the files of a session or batch:
 ````
 ---
 type: recap

@@ -2,8 +2,8 @@
 
 ## How it's built
 - Built-in plugins are `plugins/core/<id>/`: the `alwaysOn` ones are the app itself (no switch, not on the Plugins
-  page, nor in bundles), the `essential` ones are on from the start, the rest are Vaultite plugins, `offByDefault`. Vault plugins live in the vault (installed, or the user's own); Vaultite's own are
-  in the private repo Vaultite/plugins (`../vaultite-plugins`: its `node test.ts` checks them against this checkout).
+  page, nor in bundles), the `essential` ones are on from the start, the rest are Vaultite plugins, `offByDefault`. Vault plugins live in the
+  vault (installed, or the user's own); Vaultite's own are in the private repo Vaultite/plugins (`../vaultite-plugins`: its `node test.ts` checks them against this checkout).
 - The core is generic primitives; what assumes one person's life (a job, a bank's CSV, one tool) is a vault plugin.
 - A plugin is one folder, found by glob (no registration). The backend is the `Plugin` class (`core/plugins.ts`), the
   frontend `definePlugin` (`web/src/core/define.ts`): their doc comments are the reference.
@@ -52,6 +52,7 @@
 ## Gotchas
 - Audio recorder: the transcriber's `model` is a name, never a path (whisper unpickles a path).
 - File history: a whole top-level folder missing (iCloud) isn't a delete.
-- Coding agent plugins share `core/agents.ts`, the public agents API (vault plugins' too: keep its names stable). Claude Code's value is at API list prices: add new models to its
-  `PRICES`. Their tests use made-up homes (`tools/fixtures/<id>`; Vaultite/plugins' in
-  `<id>/.test/fixtures`), pointed at by env vars (`tools/test/vault/harness.ts`).
+- Coding agent plugins share `core/agents.ts`, the public agents API (vault plugins' too: keep its names stable).
+  Claude Code's value is at API list prices: add new models to its `PRICES`.
+- Canvas (`canvas/Board.tsx`) never renders React for a pan or zoom (the view lives in a ref); neither Canvas nor
+  Excalidraw writes on pan or zoom. Excalidraw's fonts come through its route, never esm.sh.

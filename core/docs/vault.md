@@ -61,5 +61,4 @@ links resolve, but it's left out of plugins' lists and blocks, `/api/notes` and 
 graph, `vau query` (unless `--archived`), bases (only with a view's `archived: true` or `only`, for an archive folder), the sidebar and first-name or alias links another file also
 answers to; search lists it last. Writing the key by hand doesn't move the file: `vau archive tidy` does.
 
-**The CLI.** `vau --help`: `vau context` first, then `vau render`, `vau open <file>` (in the user's window), `vau
-panels`, `vau workspace`, `vau terminal`, `vau appearance`, `vau pin`, `vau log`, `vau docs`...
+**The CLI.** `vau --help` lists every command; `vau context` first.

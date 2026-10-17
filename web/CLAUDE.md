@@ -59,7 +59,7 @@
 - Counts that only go down: `counts.mjs` (components React renders per keystroke and per outside change, against
   `counts.json`); after a win, run it with `--ratchet` and commit the lowered limits. `loading.mjs` fails on any shift
   in the sidebars or the status bar, however small: one scores a few thousandths, under any CLS limit.
-- QA runs on Playwright's Chromium (`CHROME` in qa.mjs): a headless Google Chrome left running hides the user's Chrome.
+- QA runs on Playwright's Chromium (`CHROME` in `web/qa/lib/qa.mjs`): a headless Google Chrome left running hides the user's Chrome.
 - Say when a phone-facing change is untested on a phone: desktop WebKit has missed iPhone-only layout bugs.
 - Measure speed with CDP `Performance.getMetrics` per frame: headless Chrome paints every ~40 ms whatever the page does.
 - A hash set by hand is undone about 0.7 s later by the workspace's tabs: load fresh (`about:blank`, then the address).

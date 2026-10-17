@@ -6,263 +6,148 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- Enter right after typing in the palette or a picker takes the first match; typed fast, it could do nothing.
-- Desktop app: a tooltip over a web page shows above it even while several toasts are up.
-- **MCP Apps**: claude.ai and ChatGPT draw cards for the vault's tools: a note read shows the note with Open in Vaultite, a
-  task list ticks in place, a Kanban board moves its cards. The same cards draw in a note with a `block-mcp-app`.
-- Artifacts made in Claude run as saved, as `.html` files: their saved data, asking Claude (through Claude Code, once
-  you allow a page), saving themselves and downloads work as they do on claude.ai.
-- A file's menu is the same wherever it's right-clicked or held: an image or PDF in its tab, an embed in a note, an image
-  in a block's text, a canvas card, a database's result, a recent file. Plugins' items (Use as Dock icon, Open local
-  graph) show in each, not only in the tab's menu.
-- **Companion** (a new plugin, off until turned on): an always-on Claude Code or Codex session with its own cursor in the
-  app. Write `@claude` anywhere in a note's line (or ⌘⇧K) to ask it, sent at Enter or when you pause; it answers in a bubble by its cursor, comments on a line,
-  suggests changes you take with Tab, or types into the note with you. Modes: quiet, notice, pair. Its cursor shows it
-  reading what you did, and a tick when it saw it and let it pass. `vau companion timings` shows how fast it answered
-  each moment. Its comments and suggestions are threads in the Conversations panel (the right sidebar; a phone's right
-  drawer), in the note's order, open or resolved, with a dot in the agent's colour by each one's line: click one to light
-  its line, reply, accept or resolve it there; it shows when threads come, a dot on its icon if the sidebar is closed.
-  Comments in the margin instead is a setting (cards that scroll with the note). Its comments and suggestions are kept beside the note, so they survive a restart,
-  follow the note and reach your other devices; a comment whose text was removed says so. Its edits are its own in
-  Activity, Review and version history (Claude, Ada), reverted like any AI's, and a long session hands over to a fresh
-  one with a summary and its open threads. More agents join by name (`vau companion start --as Ada`), each in its
-  own colour: `@ada` asks only that one. Typing @ lists them, and a new name offers Start @name (Sonnet at medium effort by default; Tab or → picks
-  another model and effort), its ask waiting for it to start; `@name` shows as a chip in its agent's colour, lit
-  when the ask goes and while it thinks. Hover its cursor for what it's doing; click it for its last words (pin one as a
-  comment) and a box to ask it there; drag it onto text (a held finger on a phone) to say "look at this". A note's
-  top bar and the panel show each agent around in its colour (a click goes where it is). Agents on one spot sit side by
-  side, their flag fanning out into each (hover, tap, or Tab and the arrows). Long margin cards show a few lines until opened. A narrow status bar drops its counts before overlapping.
-  In a drawing (Excalidraw) each agent is one of its collaborators, clicked to follow: its words pop by an element, a
-  text with `@claude` asks it, and it draws with you (`vau companion draw`), one ⌘Z taking a drawing back. Formats draw
-  others the same way through `registerCanvas`.
-- A file's top bar items (who's here, Dispatch, its origin) move: drag one along the bar, or into a sidebar to keep it
-  there as a section for the file you're on (right-click: Move left or right, Move to sidebar, Move to top bar).
-- **Shortcodes** (a new plugin, on from the start): type `:` and a name for an emoji or one of the app's icons, as in
-  Slack or Discord (`:fir` suggests 🔥, recently used first; `:fire:` typed whole becomes it). Icons go in as
-  `:LiCalendar:`, as Obsidian's Iconize writes them, and show as the icon.
-- Highlights take Obsidian's six colours: `==🟢text==` draws green (🔴 🟠 🟡 🟢 🔵 🟣) everywhere a note is drawn, the
-  emoji hidden. Typing `==` suggests the colours, a swatch on the highlight at the cursor changes its colour, and the
-  editor's Format ▸ Highlight submenu colours what's selected.
-- Bundles: Plugins' Bundles button and the command "Choose a bundle…" open Bundles as a page of its own, not inside
-  Settings. Its cards sit three across, and importing is also a tile under Yours, where imported bundles land.
-- **Plugin API 4**: a plugin offers modules to plugins that require it (manifest `exports`), imported as
-  `@plugins/<id>/<module>` in index.tsx and plugin.ts alike, the app's plugins and vault plugins the same (was
-  `@plugins/core/<id>/...`, app plugins only); coding agent plugins get `@vaultite/core/agents.ts`; a vault plugin may
-  join a Plugins page group (`group`) and keep settings files of its own (`<name>.json`) without changing its version.
-- **Books, Today, Health, Learning, Projects, Lessons and Podcasts moved to Vaultite's plugins**: a vault that had one on
-  installs it from there once, with its settings, and asks once to allow them; Life OS and Agents install theirs and pin
-  their pages. The web demo builds Vaultite's own plugins in; the playground has Life OS's data, its pages once applied.
-- **App windows, Dock icon and Page tabs moved to Vaultite's plugins** the same way (Get plugins). A plugin's manifest
-  may say it works only in the desktop app (`desktopApp`): its sheet says so and the web demo keeps it off. A vault
-  plugin's `page-head` service writes under a page's title in `/api/render`.
-- **Muse, Dispatch and the coding agents but Claude Code and Codex (Cursor, Grok Bot, OpenCode, OpenClaw, Hermes)
-  moved to Vaultite's plugins** the same way; Agents installs the coding agents and Dispatch, and the web demo still
-  shows their made-up sessions and limits.
-- **Daily notes are their own plugin**, on from the start as in Obsidian: today's note (Open today's daily note,
-  `vau daily`, the op `daily-note.open`, was `today.daily`), its date format, template and folder are in Daily notes'
-  settings, moved there from Today's. Today keeps routines, ticked in the daily notes (`routine.check`; `POST
-  /api/checks` is gone).
-- Text sent into a terminal (`vau terminal send`) no longer leaves a stray `201~` (a paste's end marker) in tmux, and
-  ending a terminal on a Mac also ends an agent that sat on the hangup, as on Linux.
-- Web links clicked in a terminal (an agent's output, `ls --hyperlink`) open in the Web viewer like links in notes, and
-  ⌘-click sends them to the browser. Before, they always went to the browser.
-- **Plugins page: one Filter menu** in place of the row of category chips: by status (on or off), source (built in,
-  installed, in this vault) and category, each with its count. Active filters show as chips under the search, with how
-  many plugins match and Clear all. Plugins that are on come first. Built-in plugins no longer carry a "Built in" label;
-  "Yours" is now "In this vault".
-- **Get plugins rows open a sheet**, as Your plugins' do: what the plugin is, what it says it does, its version, author
-  and source, the start of its readme, and Install (an installed one opens its own sheet). Its page on GitHub is a small
-  GitHub button there; tapping a name no longer leaves the app.
-- **Get plugins has a Filter menu too**: sort by Top, New or Updated (the same three for Obsidian's plugins), source,
-  installed or not, and category, with counts and chips as on Your plugins. It replaces the two switchers over the
-  list. Which plugins update on their own is now Plugin updates in Settings > General.
-- Settings: a list of chips (Editing commands' keys over the keyboard) sits under its label, so the label no longer
-  squeezes into a narrow column.
-- On a Mac, the terminal keeper lets go of a shell's pseudo-terminal once it ends. Before, a keeper that ran for days
-  used up the machine's, and new terminals, tmux and ssh couldn't start. When none are left, a new terminal says so.
-- **Web pages and plugin pages can be pinned**: Pin in a tab's menu (or drag the tab to Pinned) pins a web page, with
-  its site's icon and title, Inbox, Graph view, a Claude chat, almost any tab; the Pinned menu's More offers each
-  plugin's main page. `vau pin <address>` pins a web page.
-- **Graph view settings, as Obsidian's**: the search box filters the graph (`type:person`, `tag:#work`, `folder:Notes`,
-  `[status:done]`, also in search now), and the Filter panel adds tags and attachments as dots, colour groups from a
-  search, links coloured or hidden by the property they're in (`project: [[X]]`, unquoted too), a local graph's
-  incoming, outgoing and neighbour links, arrows, and sliders for sizes and forces.
-- **Folders can be pinned**: right-click a folder (or drag it to Pinned) and it opens in place in the sidebar, its files
-  under it like the file tree's. Images, recordings and PDFs pinned now show in the list too.
-- The web demo no longer says it couldn't load when a blocker stops the site's analytics script.
-- The palette, the quick switcher and the pickers find words in any order: "settings graph" finds Open graph view
-  settings, with the words in the order typed ranking first. Tabs and plugins search the same way.
-- A block's **Edit source** shows its Markdown where the block was on screen, from reading a dashboard or a note and
-  from the editor's </>, on a desktop and a phone; Done draws it back in the same place. A search result opened at a
-  line puts it a third of the way down.
-- The design page shows the primitives and Markdown pages are made of; each block is listed by its plugin (`vau
-  blocks`), so a new one is never missing from it.
-- **Pinch to resize text** is off by default: a pinch, or ⌘ and scroll, over a note or terminal changes its text size
-  only with it on (Settings > Appearance). The palette finds commands by other words too: "font size" finds it.
-- **Every on/off setting is a switch everywhere**, named as Settings names it: the palette shows it with its switch
-  (Enter flips it, ⌘Enter opens it in Settings), menus and the menu bar with a check, and Settings' search flips it
-  where it's found. Plugins' settings join on their own. What isn't a setting says what it does now: Show / Hide left
-  sidebar, Pin / Unpin tab (in a tab's menu too, apart from its file's Pin for the sidebar), Stack / Unstack tabs,
-  Start / Stop recording audio; "Turn on" is only for plugins, and no command says "Toggle" any more except the
-  editor's formatting.
-- **Three bundles**: Standard (the app's defaults: notes and links, a terminal and Claude Code), Life OS (with Pages
-  and databases' home page) and Agents (with Self-hosted's machines and server page); More… is gone, and a vault set up
-  from Minimal, Pages and databases or Self-hosted is on the one it's part of now.
-- **Share a bundle as a link**: with its file in a GitHub repository, `vaultite.com/b/<owner>/<name>` shows it and runs it
-  live in the web demo, and its Open in Vaultite (`vaultite://bundle/<owner>/<name>`) opens its preview in the Mac and
-  iPhone apps; the share sheet copies the link. The web demo imports bundles from GitHub too, and its inbox works.
-- **Settings works like System Settings**: the search is at the top of the menu and what it finds takes the menu's
-  place (the arrows and Enter go through them, the page staying beside), the menu and the page scrolling on their own.
-  **Your setup** heads the menu: the bundle it's based on, opening Bundles (Choose a bundle… opens it too). Plugins is a
-  section like the others, with no menu of its own: Your plugins or Get plugins, the search above the list it looks in,
-  chips for the categories and a Bundles button; its From and On/Off filters are gone.
-- **Bases save what you change, as Obsidian does**: a table's heading sorts, renames, summarizes or hides its column,
-  drags to move it and resizes from its edge; the bar's Sort, Filter (all / any / none groups) and Properties menus
-  change the view. Each is written to the `.base` or the fence (`sort`, `order`, `columnSize`, `filters`).
-- **Live answers**: ChatGPT's Intelligent UI saved to a note (the ChatGPT app, or an imported chat) is a ```genui fence
-  drawn live with the app's own controls and colours, its script sandboxed; the values you pick are kept in the note.
-  Its follow-up buttons ask Claude chat about the note.
-- ```chart fences draw bar, line, area, pie and scatter charts from rows of data, and code in Markdown shown outside
-  the editor (embeds, sheets, previews) is coloured like the editor's.
-- **Agent blocks are one set**: `agent-limits`, `agent-sessions`, `agent-usage`, `agent-projects`, `agent-models` and
-  `agent-project` take `agent:` (claude-code, codex, cursor, grok-bot, opencode, openclaw, hermes) in place of each
-  agent's own copies (`claude-usage`, `codex-sessions`...); a block for an agent whose plugin is off is off.
-- Database views are only Obsidian's: a ```` ```base ```` fence, a `.base` file or its embed; `block-query` is gone, and
-  a base view's `groups` orders a board's columns, `archived: true` lists archive folders too, and a
-  base fence's menu lists the files it shows.
-- **A dashboard edits as it reads**: ⌘E keeps its grid, width and title, with the text between blocks typed in place
-  like a note's. Each card's bar drags it elsewhere (a held finger on a phone), sets Full width or Under the one before,
-  edits its options in the card (`</>`) or removes it; Add a block picks one to put in. Source mode is still its Markdown.
-- **Plugins' pages are your files**: turning a plugin on (Plugins, `vau plugin on`, a bundle, setup's example pages)
-  writes its pages once into your pages folder (Dashboards/ by default), pinned, and never touches them again; opening
-  a vault writes nothing. The read-only copies in `.vaultite/pages`, their bar and Copy to my vault are gone: `vau dashboard restore`
-  writes a page you deleted, and moves pins and links from the old copies once. The Design page is `vau docs design`.
-- **Page tabs is a plugin**, off by default: pages joined with `tabs:` and `tab:` get their strip only with it on.
-  People and People map, Activity, Days and Performance, Agents and each agent's page are pages of their own.
-- Pages have no subtitle any more: a line of text before the first block says what a page is, and the routines block
-  shows today's date in its heading. `vau dashboard new` drops `--subtitle`.
-- A dashboard's title is a note's: the same size and place, editable while editing (renaming it), with the file's
-  `icon` before it, as every file now shows; Properties stay hidden on a dashboard being read. Show inline title
-  (Settings, Editor) hides it in tabs. On a phone the header shows the name only once the title scrolls away.
-- **A kind's blocks are written**: a new person, project, book or log gets its blocks' fences on top of its file (so
-  does a file `vau type --apply` types), and only what a file has a fence of is drawn. `vau migrate --apply` adds them
-  to older files; `vau blocks tidy` is gone.
-- Links find a file by its name and `aliases`, no longer by `title:` or `name:`, as in Obsidian. A new file whose name
-  can't hold its title gets it as an alias, and `vau migrate --apply` adds those to older files.
-- A voice note handed to an agent says "Sent to Claude" on the watch (the agent it went to), not "Sent to the front
-  door".
-- Pin a Claude Code conversation to the sidebar (Pin in its terminal's menu, or drag its row onto Pinned): it keeps its
-  name, opens the terminal running it, or resumes it once its session has ended.
-- The file tree reveals the open file by default, however it was opened (⌘O, a link, a tab): its folders open and
-  the tree scrolls to it when it's out of sight. Off in Settings, Files.
-- Right-clicking a row in a sidebar panel (a pinned page, a tab, a recent file, a machine, a web page, a button) shows
-  only that row's actions, Unpin last on a pinned page; the panel's own (Panels, Move to the other sidebar, Hide) are
-  on its heading, and in its … (on hover, as a file's), which every sidebar panel's heading now has. A panel in the
-  phone's dock has no heading, so a held icon still ends with them (Take out of the dock).
-- Sidebar rows have a … on hover with their right-click menu, as files do: a pinned page or a recent file gets a file's
-  whole menu (Unpin last on a pinned page); a terminal's End session and a site's Sign out moved into it, while a tab
-  keeps its close button.
-- Installing a plugin from Get plugins turns it on (one not Vaultite's asks first, saying what it does), and a vault
-  plugin's sheet has Uninstall: its files go to the trash, its settings stay for when it's installed again.
-- **Sharing bundles**: Share on a bundle copies it as one file, or with a prompt for an agent, or saves it, leaving
-  out its picture, pages with your own text and pins to your notes unless you turn them on. A bundle names the plugins
-  you installed by where they come from, so applying it installs them. Import (beside Save current setup, or a bundle
-  pasted or dropped anywhere on the Bundles page) shows what it would change first, then Apply or Add; it takes a
-  bundle's JSON or file or a GitHub repository (owner/name: a bundle's folder, or one .bundle.json), and Get the newest
-  updates one from there.
-- Plugins says where each is from (built in, installed, yours) with a filter by that, and a plugin's sheet says off
-  keeps its files and settings. A bundle's preview lists the plugins you added that it leaves as they are, with an
-  option to turn those off too (restore turns them back on), and says it applies to every window and device.
-- A plugin whose default changed is no longer left in both plugins.json lists; opening the vault tidies one that is.
-- Exiting the shell left after Claude Code or another agent (exit, ⌃D) closes its tab, as a shell's does; only an
-  agent's session that died or was ended after its report keeps its tab with "Session ended" and Restart.
-- **Quick Look for Markdown**: the space bar in Finder shows a note drawn as it reads (properties, headings, lists
-  and checkboxes, callouts, code, tables), light or dark, even with the app closed.
-- On a Mac, Vaultite can be the default app for Markdown files, which then get the system's document icon made from
-  Vaultite's; `vaultite://command/<id>` and `vaultite://open/<path>` from Shortcuts, Raycast or a link in another app
-  run a command or open a file in the focused vault, as on the iPhone.
-- Checkboxes tick in callouts, `<details>`, embedded notes and dashboards' text, reading or editing, as they do in a
-  note's lines; with Vim, the cursor at the start of a list line shows its Markdown instead of drawing over its box.
-- **Tables edited cell by cell**, as in Obsidian: click a cell to edit its text in place; Tab, Enter, the arrows or a
-  click move between cells (adding a row at the end) with the columns holding still until you leave the table. A new
-  table (/table, Insert table) opens in its first cell. Grips on the row and column you point at select it, open its
-  menu (add, move, sort, align, clear, delete) and drag it elsewhere; + at the right and bottom edges adds a column or
-  a row. Drag across cells (or ⇧ and an arrow) to copy them into a spreadsheet, clear them, type over the last one
-  or paste a spreadsheet's cells over them; cells from a spreadsheet or a web page pasted into the text become a table. </> shows the
-  Markdown. Tables are drawn as a ruled grid with a header row, the same in notes, dashboards and sheets.
-- Checkboxes are rounded squares; bullets sit in a wider column, so nested lists step in as they do when read.
-- A dashboard of only text reads in a note's centred column, editing it or not, and a line break in its text is a
-  break, as in the editor; its headings are the editor's sizes and colours, and an embedded note is as wide as the text.
-- `vau perf` shows what you waited for, part by part: the app opening, a terminal opening, an agent getting ready.
-  The machines list and Claude Code's limits answer at once from their last look, and the app's own update builds
-  at a low priority.
-- The first start after an update no longer bundles every vault plugin again (seconds, with Excalidraw's): only
-  their styles follow the app's.
-- Files no longer show their kind (Idea, Log, Book, Friend) above the title: on desktop the title starts the page.
-- Allowing Activity to write its recaps writes the ones it was refused on its next run, not after another change.
-- **Settings, a list beside each section**: General, Appearance, Editor, Hotkeys, Plugins, AI apps, then the app's own
-  features with options, each shown beside the list (a sheet on a phone), no "Settings" line over its title; Plugin
-  settings, the Setup rows and the Manage plugins and Bundles rows are gone (a plugin's gear on Plugins opens its own).
-- **Fewer plugins to manage**: 41 of the app's parts (files, search, the graph, the inbox, slides, buttons, page
-  preview, Export to PDF, canvas, terminal and more) are always on and no longer listed; the coding agents are one row,
-  Coding agents, whose sheet has each one's switch (Claude Code on, Codex, Cursor, OpenCode, OpenClaw and Hermes off
-  until turned on); Activity, Dispatch, Token count and Workspaces are off until turned on (a vault that had them on
-  keeps them on), as are random note, unique note and note composer; Vim is Settings, Editor, Vim keys. Plugins has a
-  Bundles button beside Get plugins, a search there also lists the directory's plugins you don't have, and Vaultite's
-  own carry a verified mark in place of stars.
-- Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, what it
-  waits on, read only or read and write (enforced by the server), its name and Disconnect. A sign-in waiting for its
-  code leads the page, and "Another app" sets up any MCP client.
-- **Review AI changes**: what AI apps and coding agents changed that you haven't looked at, file by file like a pull
-  request (who, when, +/−, the diff against the text before), with Keep and Revert (both undoable); a count in the
-  status bar and "Claude changed this · Review" in a changed file's header lead there.
-- Loading shimmers instead of a plain "Loading…" line, only once it takes more than a moment, and lists (Inbox,
-  History, Activity, Connections, machines...) draw skeleton rows, as many as last time, so the page doesn't jump when
-  they come. The sidebars and the status bar hold still while the app loads: Outline keeps its rows' room, the status
-  bar its width and each of its items its place (a plugin's coming later no longer pushes the rest), and nothing slides
-  into place.
-- Notes open sooner and typing is lighter: a note starts loading when the pointer rests on its link, search result or
-  Links row, and each keystroke recalculates a quarter of the styles it did.
-- Buttons line up down a list: Get plugins (one width, the … menu's place kept in every row), plugins from another app
-  (Allow moves under the name), Inbox requests (Approve and Deny where the time and Dismiss are) and Connections' steps.
-- The status bar stops short of the left sidebar: what doesn't fit goes in a tray behind its more button, long items
-  (what's playing) are cut short, and its items drag to a new place or into the tray to stay there.
-- **Plugins, one list**: plugins are listed by category with a line on what each does, picked from a rail (chips on a
-  phone) and filtered to All, On or Off instead of folded; where one comes from is only a byline. AI apps (Claude Code,
-  Codex, Cursor, Muse...) and AI tools are two categories. Get plugins starts with bundles, and says what a plugin can
-  do in grey labels. A plugin that's off by default shows its preview while off.
-- **Grok Bot plugin**: Grok Bot's week, usage and conversations in its own plugin (AI apps), out of Cursor's; both share one read of your Cursor account.
-- Toasts stay small: at most 3 lines (4 on phones) with their buttons in reach, and an inbox toast shows the title and the first line, the rest in the Inbox.
-- Quitting the app (or stopping its server) stops what vault plugins run first: an agent's turn in Agents ends with it.
-- Find (⌘F, Vim's /) lights and scrolls to matches in tables, callouts and folded details, skips text that isn't shown outside source mode, finds on pages that aren't text files (a dashboard, Today), and Vim's bars sit above the status bar.
-- **Themes reach everything**: Change colour scheme lists every scheme in the palette and shows the whole app in the
-  one you're on as you move; terminals, the graph, maps, diagrams and HTML pages follow snippets and vault themes too,
-  Claude Code in the app's terminals draws in the scheme's colours, and the browser's bars take its background.
-- **A start page of your own**: a new tab can show a dashboard instead of its sections (Choose a page for new tabs…,
-  or `vau newtab page`), so it's any blocks, arranged by you or your agent.
-- Bundles carry the new tab, and a bundle saved in the desktop app shows a picture of the window on its card.
-- **Watch and listen anywhere in the app**: audio and video keep playing as you move around, in a mini player, on the
-  lock screen and with the iPhone locked, and pick up where you stopped on any device; skips, speed, captions and
-  picture in picture; a time in a note plays from there, and a transcript follows along.
-- **Queue**: one page for what the inbox holds to watch, listen to and read, with how far you got.
-- **Podcasts**: follow a show by name or feed; each new episode lands in the inbox with its artwork and transcript.
-- **On the iPhone**: audio and video download to play offline, and e-books turn pages on a tap and use the screen's width.
-- Machines can show cloud agents’ folders and files through a read-only file agent, with enrollment codes and revocable access.
-- An agent machine's files read like the app's own: Markdown with its properties, JSON as a tree, transcripts as a conversation, images, sizes and times, breadcrumbs and what changed last; a read survives its connection dropping.
-- **Muse**: a dashboard for your Muse agent from its machine: who it is and what's left to tell it, its runs and their conversations, what it learned, its dreams, its feed and its setup; a new dream, the day's facts and a feed story reach the Inbox.
+A companion agent writes beside you, AI apps draw the vault as cards, and the app is simpler to set up.
 
-- **Who may reach your terminal and MCP is this Mac's**: those settings stay on the machine, never in the vault, and
-  only its owner changes them; a plugin whose required plugin is off is off too.
-- Activity keeps the calls an agent, the CLI or a script got wrong, and why (`vau activity --action failed`); `vau`
-  names the command a stray word belongs to (`vau errors 3f9a` → `vau errors show 3f9a`).
-- A plugin's operation says what a call did in Activity (`did`; a manifest's: `"did": "Synced {account}"`), instead
-  of "Ran <id>".
-- Errors and Activity keep updating after you leave and come back; an edit in a JSON view stays on its field.
-- Cursor's limits reset when their window ends, and Hermes is named in Activity.
-- A plugin update that says it does more beyond the vault waits for you to allow it, also updated by hand; another
-  machine runs an update only from the source it allowed, and only if it says it does no more.
-- Live preview: a callout you're editing shows its `[!type]` as typed, not as a link with its brackets hidden.
-- Clear formatting takes out the marks at a selection's edges that live preview hides (a line picked with Home and Shift+End).
+- **Companion**: an always-on Claude Code or Codex agent with its own cursor in your notes and drawings; write `@claude`
+  in any line and it answers, comments, suggests changes or types with you.
+- **The vault in claude.ai and ChatGPT**: their chats draw live cards for notes, tasks and boards, and Claude's
+  artifacts and ChatGPT's Intelligent UI saved to the vault run as they did there.
+- **Review AI changes**: what AI apps and agents changed, file by file, with Keep and Revert.
+- **Simpler to set up**: most of the app is always on, Settings works like System Settings, three bundles you can share
+  as a link, and Vaultite's own plugins (Books, Today, Health, Muse, the coding agents...) install from its directory.
+- **Editing as in Obsidian**: tables cell by cell, Bases that save what you change, coloured highlights, graph filters
+  and shortcodes.
+- **Watch and listen anywhere**: a player that keeps going across the app and your devices, a Queue, Podcasts, and
+  offline media on the iPhone.
+
+### Changes
+
+- **Companion** (a new plugin, off until turned on): an always-on Claude Code or Codex session with its own cursor.
+  `@claude` anywhere in a line (or ⌘⇧K) asks it, sent at Enter or when you pause; it answers in a bubble, comments on a
+  line, suggests changes you take with Tab, or types with you (modes: quiet, notice, pair). Its comments and
+  suggestions are threads in the Conversations panel (margin cards instead is a setting), kept beside the note so they
+  survive a restart and reach your other devices. Its edits are its own in Activity, Review and version history, and a
+  long session hands over to a fresh one with a summary and its open threads.
+- More companions join by name (`vau companion start --as Ada`, or Start @name in the @ picker, with a model and
+  effort), each in its own colour; `@ada` asks only that one. Hover a cursor for what it's doing, click it for its last
+  words, drag it onto text to say "look at this"; a note's top bar shows who's here. In an Excalidraw drawing each is a
+  collaborator that draws with you (`vau companion draw`). `vau companion timings` shows how fast each answered.
+- **MCP Apps**: claude.ai and ChatGPT draw cards for the vault's tools: a note read shows the note with Open in
+  Vaultite, a task list ticks in place, a Kanban board moves its cards. The same cards draw in a note with a
+  `block-mcp-app`.
+- **Artifacts and live answers**: artifacts made in Claude run as saved `.html` files (their saved data, asking Claude,
+  saving themselves and downloads work as on claude.ai); ChatGPT's Intelligent UI saved to a note is a ```genui fence
+  drawn live with the app's controls, its script sandboxed and the values you pick kept in the note.
+- **Review AI changes**: what AI apps and coding agents changed that you haven't looked at, file by file like a pull
+  request, with Keep and Revert (both undoable); a count in the status bar and "Claude changed this · Review" in a
+  changed file's header lead there.
+- Connections lists each AI app once, and a connected one opens its own page: what it read and changed lately, read
+  only or read and write (enforced by the server), its name and Disconnect. "Another app" sets up any MCP client.
+- **Agent blocks are one set**: `agent-limits`, `agent-sessions`, `agent-usage`, `agent-projects`, `agent-models` and
+  `agent-project` take `agent:` in place of each agent's own copies (`claude-usage`, `codex-sessions`...).
+- Machines browse an agent machine's files, cloud agents' too through a read-only file agent (enrollment codes,
+  revocable access): Markdown with its properties, JSON as a tree, transcripts as a conversation.
+- Activity keeps the calls an agent, the CLI or a script got wrong, and why (`vau activity --action failed`), and says
+  what a plugin's operation did (`did`); `vau` names the command a stray word belongs to (`vau errors 3f9a` → `vau
+  errors show 3f9a`).
+
+- **Fewer plugins to manage**: 41 of the app's parts (files, search, the graph, the inbox, slides, canvas, terminal and
+  more) are always on and no longer listed; the coding agents are one row, Coding agents, with a switch for each;
+  Activity, Token count and Workspaces are off until turned on (a vault that had them on keeps them), as are random
+  note, unique note and note composer; Vim is Settings, Editor, Vim keys.
+- **Moved to Vaultite's plugins**: Books, Today, Health, Learning, Projects, Lessons, Podcasts, App windows, Dock icon,
+  Page tabs, Muse, Dispatch and the coding agents but Claude Code and Codex (Cursor, Grok Bot, OpenCode, OpenClaw,
+  Hermes). A vault that had one on installs it once with its settings, asking once to allow them; Life OS and Agents
+  install theirs. New there: Muse's dashboard (its runs, what it learned, its dreams and feed), and Grok Bot apart from
+  Cursor.
+- **Daily notes are their own plugin**, on from the start as in Obsidian (`vau daily`, the op `daily-note.open`, was
+  `today.daily`); Today keeps routines, ticked in the daily notes (`routine.check`; `POST /api/checks` is gone).
+- **Plugins page**: one Filter menu (status, source, category, with counts and chips), plugins that are on first, and a
+  search that also lists the directory's plugins you don't have. Get plugins has the same menu (sorted by Top, New or
+  Updated), its rows open a sheet with the plugin's readme and Install, and Vaultite's own carry a verified mark.
+  Installing turns a plugin on (one not Vaultite's asks first); a vault plugin's sheet has Uninstall. Plugin updates
+  moved to Settings > General.
+- An update that says it does more beyond the vault waits for you to allow it; another machine runs an update only from
+  the source it allowed. Who may reach your terminal and MCP is this Mac's, set only by its owner, and a plugin whose
+  required plugin is off is off too.
+- **Settings works like System Settings**: a list of sections beside the page (a sheet on a phone), the search atop the
+  list and its results in its place, Your setup heading it; Plugins and AI apps are sections like the others.
+- **Every on/off setting is a switch everywhere**, named as Settings names it: the palette (Enter flips it), menus and
+  the menu bar with a check, Settings' search. What isn't a setting says what it does (Show / Hide left sidebar, Pin /
+  Unpin tab); "Turn on" is only for plugins.
+- **Three bundles**: Standard, Life OS and Agents, on a Bundles page of its own (Your setup, "Choose a bundle…"). Share
+  one as a file, a prompt for an agent or a link (`vaultite.com/b/<owner>/<name>` runs it live in the web demo, and Open
+  in Vaultite opens it in the Mac and iPhone apps). Import shows what it would change first and takes JSON, a file or a
+  GitHub repository. Bundles carry the new tab and the plugins you installed.
+- **Plugin API 4**: a plugin offers modules to plugins that require it (manifest `exports`, imported as
+  `@plugins/<id>/<module>`, was `@plugins/core/<id>/...`); coding agent plugins get `@vaultite/core/agents.ts`; a vault
+  plugin may join a Plugins page group (`group`), keep settings files of its own (`<name>.json`), say it works only in
+  the desktop app (`desktopApp`) and write under a page's title in `/api/render` (`page-head`).
+- Quitting the app stops what vault plugins run first, and the first start after an update no longer bundles every
+  vault plugin again.
+
+- **Plugins' pages are your files**: turning a plugin on writes its pages once into your pages folder (Dashboards/ by
+  default), pinned, and never touches them again; the read-only copies in `.vaultite/pages` are gone (`vau dashboard
+  restore` writes back one you deleted). The Design page is `vau docs design`.
+- **The file is the page**: no subtitles (`vau dashboard new` drops `--subtitle`) and no kind above the title; a
+  dashboard's title is a note's, editable, with the file's `icon` before it. People and People map, Activity, Days and
+  Performance, Agents and each agent's page are pages of their own.
+- **A kind's blocks are written**: a new person, project, book or log gets its blocks' fences atop its file, and only
+  what a file has a fence of is drawn. Links find a file by its name and `aliases`, no longer by `title:` or `name:`.
+  `vau migrate --apply` updates older files; `vau blocks tidy` is gone.
+- **A dashboard edits as it reads**: ⌘E keeps its grid, with the text between blocks typed in place. Each card's bar
+  drags it, sets its width, edits its options or removes it; Add a block puts one in. A dashboard of only text reads in
+  a note's column, and a block's Edit source shows its Markdown where the block was.
+- **Tables edited cell by cell**, as in Obsidian: Tab, Enter and the arrows move between cells; grips select, sort,
+  move and delete a row or column; cells copy to and paste from a spreadsheet. Tables are a ruled grid everywhere.
+- **Bases save what you change**, as Obsidian does: sort, rename, summarize, hide, move and resize columns, and the
+  Sort, Filter and Properties menus, written to the `.base` or the fence. Database views are only Obsidian's now
+  (```` ```base ```` fences, `.base` files); `block-query` is gone.
+- **Graph view settings, as Obsidian's**: a search that filters the graph (`type:person`, `tag:#work`, also in search),
+  tags and attachments as dots, colour groups, links coloured by property, arrows, and sliders for sizes and forces.
+- **Shortcodes** (a new plugin, on from the start): type `:` and a name for an emoji or one of the app's icons
+  (`:fire:`, or `:LiCalendar:` as Obsidian's Iconize writes them).
+- Highlights take Obsidian's six colours (`==🟢text==`), picked after `==`, from a swatch or Format ▸ Highlight.
+- ```chart fences draw bar, line, area, pie and scatter charts, and code outside the editor is coloured like the
+  editor's.
+- Checkboxes tick in callouts, `<details>`, embeds and dashboards, and are rounded squares. Find (⌘F, Vim's /) lights
+  matches in tables, callouts and folded details and works on dashboards. A callout you're editing shows its `[!type]`
+  as typed, and Clear formatting takes out the marks live preview hides.
+
+- **Pin anything**: web pages (with their icon and title), plugin pages, folders (opening in place), images, PDFs and
+  Claude Code conversations (resumed once ended); `vau pin <address>`.
+- A file's menu is the same wherever it's right-clicked or held (a tab, an embed, a canvas card, a recent file), with
+  plugins' items in each; a tab's menu is shorter, its file's actions in a submenu. Sidebar rows and panel headings have
+  a … for their menu, and a row's menu shows only that row's actions. A file's top bar items drag along the bar or into
+  a sidebar.
+- The palette, the quick switcher and the pickers find words in any order, and Enter right after typing takes the first
+  match.
+- **Themes reach everything**: Change colour scheme previews the whole app as you move; terminals, the graph, maps,
+  diagrams, HTML pages and Claude Code follow it. A new tab can show a dashboard of your own (`vau newtab page`).
+- The file tree reveals the open file (off in Settings, Files). The status bar stops short of the left sidebar, with a
+  tray its items drag into. Toasts stay at 3 lines (4 on phones), and rows' buttons line up down a list.
+- Loading shimmers only once it takes a moment, lists draw skeleton rows, and the sidebars and status bar hold still
+  while the app loads. Notes start loading when the pointer rests on a link, and typing is lighter. `vau perf` shows
+  what you waited for, part by part.
+- **Quick Look for Markdown** in Finder, even with the app closed. Vaultite can be the default Markdown app, and
+  `vaultite://command/<id>` and `vaultite://open/<path>` run a command or open a file from Shortcuts, Raycast or a link.
+- **Pinch to resize text** is a setting, off by default (Settings > Appearance).
+- **Watch and listen anywhere**: audio and video keep playing as you move around, in a mini player and on the lock
+  screen, and pick up where you stopped on any device, with skips, speed, captions, picture in picture and a transcript
+  that follows along. **Queue** gathers what the inbox holds to watch, listen to and read; **Podcasts** puts each new
+  episode in the inbox. On the iPhone, media downloads to play offline and e-books turn pages on a tap.
+- On the watch, a voice note says Got it at once, can pause or be discarded and stops on silence; one handed to an agent
+  says "Sent to Claude".
+- The web demo builds Vaultite's own plugins in, imports bundles from GitHub, shows the Agents bundle's made-up
+  sessions, and loads with an ad blocker on.
+
+- Terminals: links open in the Web viewer (⌘-click: the browser); exiting the shell left after an agent closes its tab;
+  `vau terminal send` arrives whole, without a stray `201~`; on a Mac the keeper lets go of ended shells'
+  pseudo-terminals (a keeper running for days used them all up), and ending a terminal ends an agent sitting on the
+  hangup.
+- Fixes: web pages in a pop-out window stay there; a tooltip over a web page shows above it; Errors and Activity keep
+  updating after you come back; an edit in a JSON view stays on its field; allowed Activity writes the recaps it was
+  refused.
 
 ## 0.4.0 (2026-10-10)
 

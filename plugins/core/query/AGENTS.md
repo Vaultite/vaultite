@@ -78,7 +78,8 @@ in a property is a link; text that is a date acts as one where a date is expecte
 - Global: `if`, `now`, `today`, `date`, `duration`, `link`, `file`, `list`, `number`, `min`, `max`, `random`, `image`,
   `icon`, `html`, `escapeHTML`.
 - `file`: `name` (with its extension), `basename`, `path`, `folder`, `ext`, `size`, `ctime`, `mtime`, `tags`, `links`,
-  `embeds`, `backlinks`, `properties`; `hasTag()` (nested count), `inFolder()`, `hasLink()`, `hasProperty()`, `asLink()`.
+  `embeds`, `backlinks`, `properties`; `hasTag()` (nested count), `inFolder()`, `hasLink()`, `hasProperty()`,
+  `asLink()`.
 - Text: `length`, `contains`, `containsAll`, `containsAny`, `startsWith`, `endsWith`, `isEmpty`, `lower`, `upper`,
   `title`, `trim`, `replace` (text: every one; a regex: its flags), `repeat`, `reverse`, `slice`, `split`.
 - Numbers: `abs`, `ceil`, `floor`, `round(digits)`, `toFixed`. Dates: `year`, `month`, `day`, `hour`, `minute`,

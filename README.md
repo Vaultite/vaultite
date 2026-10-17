@@ -24,15 +24,14 @@
 
 ## What it is
 
-A folder of Markdown files (your vault) that you or your AI (Claude, ChatGPT, OpenClaw, Hermes) writes in and Vaultite
-draws as pages.
+A folder of Markdown files (your vault) that you and your AI write in, and Vaultite draws as pages.
 
-- **Plain files, no database.** Open the same vault in another Markdown app, grep it, sync it with iCloud or keep it in git.
-- **Made for agents.** Claude Code, Codex and any MCP client use one set of operations (the `vau` CLI, MCP, HTTP).
-- **Everything is a plugin.** Modular and hot-reloadable. Even the file tree is one; Vaultite's own (People, logs, notes)
-  come with it, off until a bundle or you turn them on; write your own in the vault.
-- **Also a full editor and workspace**: live preview, tabs and splits, backlinks, graph, terminals for your agents, on
-  the Mac, Linux and the web. iPhone coming soon.
+- **Plain files, no database.** Open the vault in another Markdown app, grep it, sync it with iCloud or keep it in git.
+- **Made for agents.** Claude Code, Codex and any MCP client share one set of operations (the `vau` CLI, MCP, HTTP).
+- **Everything is a plugin**, even the file tree, hot-reloaded. People, logs and notes come with it, off until a bundle
+  or you turn them on. Write your own in the vault.
+- **A full editor and workspace**: live preview, tabs and splits, backlinks, graph and terminals for your agents, on the
+  Mac, Linux and the web. iPhone coming soon.
 
 ## Get started
 
@@ -45,17 +44,12 @@ draws as pages.
 3. **Connect your AI** in Settings, Connections: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone. Claude
    Code and Codex in Vaultite's terminals already know the vault.
 
-Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". More is a bundle away: Life OS for
-your days, people and health.
+Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". Bundles add more: Life OS for your
+days, people and health; Agents for your coding agents.
 
-Agents outside Vaultite:
-
-```sh
-claude mcp add vaultite -- vau mcp
-```
-
-Skills that teach any agent the vault's rules and how to write a plugin: `npx skills add Vaultite/vaultite`, or in
-Claude Code `/plugin marketplace add Vaultite/vaultite` and `/plugin install vaultite@vaultite`.
+Agents outside Vaultite: `claude mcp add vaultite -- vau mcp`. Skills that teach any agent the vault's rules and how to
+write a plugin: `npx skills add Vaultite/vaultite`, or in Claude Code `/plugin marketplace add Vaultite/vaultite` and
+`/plugin install vaultite@vaultite`.
 
 ## Run from source
 
@@ -71,8 +65,8 @@ iPhone apps, tests and how to send a change: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Run it on a server
 
-The server runs on Linux too, on a box at home or a VPS, next to agents like Claude Code, OpenClaw or Hermes. Open it
-from the desktop app (Connect to a server), the iPhone app or a browser on your tailnet.
+On a box at home or a VPS (Linux or a Mac), next to your agents. Open it from the desktop app (Connect to a server), the
+iPhone app or a browser on your tailnet.
 
 ```sh
 git clone https://github.com/Vaultite/vaultite && cd vaultite

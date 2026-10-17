@@ -16,11 +16,10 @@ Vaultite has **no accounts and no login**: whoever can reach the server can read
   addresses (never this machine, the local network or the tailnet), checked again on every redirect and DNS answer;
   so do Canvas's link previews.
 - The desktop app's Web viewer shows pages in a session of their own (their logins kept apart from the app's, and by
-  default each workspace's apart from the others'), with no
-  preload, no Node and context isolation: a page can't reach the app, its bridge or the machine. Pages go only to http and
-  https addresses (mailto: opens the mail app, any other scheme is refused), their permission requests are refused
-  (but writing the clipboard and notifications, which come to the app's Inbox),
-  and downloads go to the Downloads folder.
+  default each workspace's apart from the others'), with no preload, no Node and context isolation: a page can't reach
+  the app, its bridge or the machine. Pages go only to http and https addresses (mailto: opens the mail app, any other
+  scheme is refused), their permission requests are refused (but writing the clipboard and notifications, which come
+  to the app's Inbox), and downloads go to the Downloads folder.
 - HTML artifacts (the core plugin HTML pages) run in a sandboxed frame (opaque origin, no network, no access to the
   API) and read the vault only through a small bridge. With the plugin off, an .html file is only its text: it's never
   served to run.

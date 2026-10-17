@@ -8,7 +8,8 @@
   `homeOf`, never by a hard-coded path like `People/...`.
 - Caches key on `vault.version` (files) and `vault.settingsVersion` (`.vaultite/`). A cache that depends on anything else
   (the clock, live data) keys on that too.
-- The server runs in a browser too (`web/demo/CLAUDE.md`): a new `node:` module or native package needs a shim there.
+- The server runs in a browser too (`web/demo/CLAUDE.md`): a new `node:` module or native package needs an alias in
+  `vite.demo.config.ts`, or the demo build breaks.
 
 ## Writes
 - Small edits, never rewrites (`textedit.ts`, shared with the editor): `Vault.save` applies only the difference

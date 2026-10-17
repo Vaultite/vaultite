@@ -29,8 +29,7 @@ write the same file. `1.json`:
 - A slot with no `name`, `pinned` or own `sidebars` and only one blank tab is unused (`state` alone doesn't count): its
   number is faint and it's never kept. To make a workspace, write tabs, panels, pins or a name; to delete one, set its
   slot to null (`DELETE /api/workspaces/<n>`).
-- Pins and tabs follow a file moved through the API. A terminal a workspace shows keeps running (a plain shell no tab
-  shows ends after 12 hours at its prompt).
+- Pins and tabs follow a file moved through the API. A terminal any workspace shows keeps running.
 
 **Moving tabs** between workspaces: `POST /api/workspaces/move` with `{"from": 1, "to": 2, "tab": "<tab id>"}` or
 `{"to": 2, "path": "Notes/Idea.md"}` (one tab), `{"from": 1, "to": 2, "group": "<group id>"}` (a whole pane), or

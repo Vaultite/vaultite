@@ -24,13 +24,14 @@ top_grade: V3               # every other key is the log's data: the area's fiel
 Notes about it.
 ````
 
-- Areas: each area's name, icon, `tint`, parent, fields, `weekly_goal`, `blocks` (their fences go under `block-log` in its
-  files) and `link: {label, url}` (on its card) are `areas` in `.vaultite/plugins/logs/data.json`; a log for an area
-  that isn't there yet adds it (use an existing one when it's the same thing). Without `areas` there, the areas are those of the plugins that are on (a vault
-  plugin brings its own with `plugin.provide("log-areas", () => [{slug, name, icon, tint, parent, fields}])`); an area
-  there without an icon or tint takes its plugin's.
+- Areas: each area's name, icon, `tint`, parent, fields, `weekly_goal`, `blocks` (their fences go under `block-log` in
+  its files) and `link: {label, url}` (on its card) are `areas` in `.vaultite/plugins/logs/data.json`; a log for an area
+  that isn't there yet adds it (use an existing one when it's the same thing). Without `areas` there, the areas are
+  those of the plugins that are on (a vault plugin brings its own with
+  `plugin.provide("log-areas", () => [{slug, name, icon, tint, parent, fields}])`); an area there without an icon or
+  tint takes its plugin's.
 - `source` is who wrote it (claude, hevy, apple-health...); with `ext_id` it identifies the log for re-imports.
-- Put the file in the area's folder (`Logs/Workouts/`, or wherever that area's logs are), named by date and title. Correct
-  a log by editing its file.
+- Put the file in the area's folder (`Logs/Workouts/`, or wherever that area's logs are), named by date and title.
+  Correct a log by editing its file.
 - A log file starts with its fences: `log`, then its area's `blocks` (the API writes them in a new one); `week-goals`
   and `area` are for pages.
