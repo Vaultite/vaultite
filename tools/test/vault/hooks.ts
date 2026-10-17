@@ -15,7 +15,7 @@ export default async ($: VaultTest) => {
     // (two more ops, for the tests: the environment, and a command that fails)
     const m = JSON.parse(read(`${WC}/manifest.json`))
     m.ops.push({ id: "wordcount.env", summary: "Its environment (a test's).", kind: "read", command: ["node", "-e",
-      "const e = process.env; let i = ''; process.stdin.on('data', (d) => i += d).on('end', () => console.log(JSON.stringify({ id: e.VAULTITE_PLUGIN_ID, dir: e.VAULTITE_PLUGIN_DIR, state: e.VAULTITE_PLUGIN_STATE, bin: e.VAULTITE_BIN, url: e.VAULTITE_URL, vault: e.VAULTITE_VAULT, op: e.VAULTITE_OP, params: e.VAULTITE_PARAMS_JSON, stdin: i, cwd: process.cwd() })))"],
+      "const e = process.env; let i = ''; process.stdin.on('data', (d) => i += d).on('end', () => console.log(JSON.stringify({ id: e.VAULTITE_PLUGIN_ID, dir: e.VAULTITE_PLUGIN_DIR, state: e.VAULTITE_PLUGIN_STATE, bin: e.VAULTITE_BIN, url: e.VAULTITE_URL, vault: e.VAULTITE_VAULT, op: e.VAULTITE_OP, params: e.VAULTITE_PARAMS_JSON, stdin: i, cwd: process.cwd(), path: e.PATH })))"],
       params: { n: { type: "integer", default: 2, description: "a number" } } })
     m.ops.push({ id: "wordcount.fail", summary: "Fails (a test's).", kind: "write", params: { why: { type: "string", description: "why" } }, did: "Failed on purpose: {why}",
       command: ["node", "-e", "console.error('first'); console.error('the reason'); process.exit(3)"] })
@@ -43,7 +43,8 @@ export default async ($: VaultTest) => {
     const local = process.env.VAULTITE_LOCAL!
     check("hooks: its environment and stdin (checked params), in its folder", st === 200 && body.id === "wordcount" && body.dir === path.join(VAULT, WC) && body.cwd === fs.realpathSync(path.join(VAULT, WC)) &&
       body.state.startsWith(path.join(local, "plugin-state")) && fs.existsSync(body.state) && fs.existsSync(body.bin) && body.bin.endsWith("bin/vau") && /^http:\/\/127\.0\.0\.1:\d+$/.test(body.url) &&
-      body.vault === VAULT && body.op === "wordcount.env" && body.params === "{\"n\":5}" && body.stdin === "{\"n\":5}", body)
+      body.vault === VAULT && body.op === "wordcount.env" && body.params === "{\"n\":5}" && body.stdin === "{\"n\":5}" &&
+      body.path.split(path.delimiter).includes(path.dirname(process.execPath)), body)
     ;[st, body] = await api("POST", "ops/wordcount.changed?as=text", {})
     check("hooks: text that isn't JSON is the answer and its text", st === 200 && typeof body === "string" && !body.includes("```"), [st, body])
     ;[st, body] = await api("POST", "ops/wordcount.fail", {})

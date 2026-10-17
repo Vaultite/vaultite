@@ -20,6 +20,9 @@ const PER_MINUTE = 30, KEEP = 50, MAX_OUT = 4 << 20
 
 // ---------- checking a manifest ----------
 
+// The server's own Node, for `node` and `vau` (#!/usr/bin/env node) in commands: launchd's PATH has no Homebrew.
+const NODE_DIR = path.basename(process.execPath) === "node" ? path.dirname(process.execPath) : ""
+
 /** What's wrong with a command: an argv array of strings, its program a name on PATH, an absolute path, or a path in
  *  the plugin's folder. */
 function commandProblems(c: unknown, dir: string, where: string): string[] {
@@ -149,7 +152,7 @@ export class Hooks {
     Object.assign(env, {
       VAULTITE: "1", VAULTITE_URL: serverUrl(), VAULTITE_VAULT: this.vault.path, VAULTITE_BIN: path.join(ROOT, "bin", "vau"),
       VAULTITE_PLUGIN_ID: p.id, VAULTITE_PLUGIN_DIR: p.dir, VAULTITE_PLUGIN_STATE: this.stateDir(p.id),
-      PATH: [path.join(ROOT, "bin"), process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
+      PATH: [path.join(ROOT, "bin"), NODE_DIR, process.env.PATH].filter(Boolean).join(path.delimiter), ...o.env,
     })
     const prog = command[0].includes("/") && !path.isAbsolute(command[0]) ? path.resolve(p.dir, command[0]) : command[0]
     return new Promise<{ exit: number | null; stdout: string; stderr: string; error?: string; timedOut: boolean }>((resolve) => {
