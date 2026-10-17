@@ -34,11 +34,12 @@ try {
   const barTabs = () => page.$$eval("[data-tab-bar] [data-tab-id]", (els) => els.map((e) => e.textContent.trim()))
   let r = await until(async () => { const x = await rows(); return x.length === (await barTabs()).length && x.length >= 2 ? x : null }, 6000)
   check("the panel lists the bar's tabs, in order", JSON.stringify(r?.map((x) => x.label)) === JSON.stringify(await barTabs()), [r, await barTabs()])
-  check("the shown tab is marked", r?.filter((x) => x.on).length === 1 && r.at(-1).on, r)
-
-  await page.click(`[data-open-tab="${r[0].id}"]`); await wait(300)
   const selected = () => page.$eval("[data-tab-bar] [role=tab][aria-selected=true]", (e) => e.textContent.trim()).catch(() => null)
-  check("a click on a row shows its tab", (await selected()) === r[0].label, await selected())
+  check("the shown tab is marked", r?.filter((x) => x.on).length === 1 && r.find((x) => x.on).label === await selected(), [r, await selected()])
+
+  const pick = r.find((x) => !x.on)
+  await page.click(`[data-open-tab="${pick.id}"]`)
+  check("a click on a row shows its tab", !!await until(async () => (await selected()) === pick.label, 3000), await selected())
 
   const n = r.length
   await page.hover(`[data-open-tab="${r[1].id}"]`)

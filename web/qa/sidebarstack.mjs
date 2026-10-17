@@ -152,9 +152,9 @@ try {
   after = await layoutOf()
   check("Pinned folded: the panels above it don't move, the tree grows by what it gave", of(after, "search:search").bottom === of(lay, "search:search").bottom &&
     Math.abs((of(after, "files:files").box - of(lay, "files:files").box) - (of(lay, "pages:pages").bottom - of(lay, "pages:pages").top - (of(after, "pages:pages").bottom - of(after, "pages:pages").top))) <= 1, [lay.panels, after.panels])
-  await clickHead("pages:pages"); await wait(500)
-  after = await layoutOf()
-  check("...opened again: every panel where it was", after.panels.every((p, i) => Math.abs(p.top - lay.panels[i].top) <= 1 && Math.abs(p.bottom - lay.panels[i].bottom) <= 1), [lay.panels, after.panels])
+  await clickHead("pages:pages")
+  const inPlace = (l) => l.panels.every((p, i) => Math.abs(p.top - lay.panels[i].top) <= 1 && Math.abs(p.bottom - lay.panels[i].bottom) <= 1)
+  check("...opened again: every panel where it was", !!(await until(async () => inPlace(after = await layoutOf()))), [lay.panels, after.panels])
   // The user's sidebar: one pinned page, one terminal row, a long tree: Pinned and Terminals whole, the tree the rest.
   const pinsBefore = await api("config/pages")
   await fetch(new URL("/api/config/pages", B), { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...pinsBefore, pinned: [pinsBefore.pinned?.[0] ?? "Dashboards/Today.md"] }) })

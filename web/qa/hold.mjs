@@ -62,7 +62,9 @@ try {
   await closeMenus()
 
   // A note's text: nothing takes the hold (the system's selection would).
-  await page.click("[data-newtab-section='core:changed'] a")
+  // (a note of the sample's: the latest changed files are dashboards the vault's plugins wrote)
+  await page.goto("about:blank")
+  await page.goto(`${B}#file/${encodeURIComponent("Notes/How this vault works.md")}`)
   const text = page.locator("main .cm-content .cm-line").filter({ hasText: /\w{4}/ })
   await text.first().waitFor({ timeout: 10000 })
   await hold("main .cm-content .cm-line >> text=/\\w{4}/")

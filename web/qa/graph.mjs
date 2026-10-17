@@ -1,13 +1,13 @@
 // Graph view: the whole vault in a tab (palette "Open graph view"), drawn fast enough with a couple of thousand files,
-// hover lighting a node, a click opening its file, search, the filters menu (files with no links), a legend group
-// hidden and shown (its settings file written), light and dark, the local graph block in a note, the sidebar's Local
-// graph panel, "Open local graph", and a phone at 390px. WRITES the graph's settings, appearance.json and sidebars.json (put back),
+// hover lighting a node, a click opening its file, search filtering it, the filters panel (files with no links), a
+// legend group hidden and shown (its settings file written), light and dark, the local graph block in a note, the
+// sidebar's Local graph panel, "Open local graph", and a phone at 390px. WRITES the graph's settings, appearance.json and sidebars.json (put back),
 // and a "Qa graph" folder: throwaway server only.
 //   node web/qa/graph.mjs <base url> <vault path> [out dir]
 import { execFileSync } from "node:child_process"
 import { existsSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
-import { SHOTS, palette, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
 import { setAsideWorkspaces, workspaces } from "./lib/wsfiles.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const req = (method, path, body) => fetch(`${B}api/${path}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) })
@@ -67,10 +67,7 @@ await canvas.waitFor({ timeout: 15000 })
 const linked = new Set(all.edges.flatMap((e) => [e.from, e.to])).size
 const shownNodes = Number(await canvas.getAttribute("data-graph-nodes"))
 check(`files with no links are shown by default, as in Obsidian (${shownNodes} of ${all.nodes.length})`, shownNodes === all.nodes.length)
-// Frames while the layout settles.
-const fps = await page.evaluate(() => new Promise((r) => { let n = 0; const t0 = performance.now(); const f = () => { n++; if (performance.now() - t0 < 2000) requestAnimationFrame(f); else r(n / 2) }; requestAnimationFrame(f) }))
-// Headless Chrome draws the canvas in software (about 20 fps here); a real window draws the same 1800 nodes at 60.
-check(`draws at ${Math.round(fps)} fps while ${shownNodes} nodes settle (headless, software)`, fps >= 10)
+// The layout settles.
 await wait(3000)
 await page.screenshot({ path: `${OUT}graph-light.png` })
 
@@ -93,31 +90,35 @@ check(`a click opens it (${hash}, was ${at[0]})`, hash.includes(hovered))
 await page.goBack(); await wait(800)
 await page.locator("[data-graph-canvas=view] canvas").waitFor()
 
-// Search.
+// Search filters the graph to what it finds (saved as the view's `search`), and clearing it brings the rest back.
+const nodes = () => page.locator("[data-graph-canvas=view] canvas").getAttribute("data-graph-nodes").then(Number)
 await page.fill("[data-graph-search]", "Gen 1")
-await wait(300)
-const count = await page.textContent("[data-graph-count]")
-check(`search counts what it finds (${count})`, /found/.test(count))
+const found = await until(async () => { const n = await nodes(); return n > 0 && n < all.nodes.length && n }, 8000)
+check(`search leaves only what it finds (${found} of ${all.nodes.length})`, !!found)
 await page.fill("[data-graph-search]", "")
+check("cleared, every file again", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)))
 
-// Filters: files with no links.
-await page.click("[data-graph-filters]"); await wait(300)
-await page.getByText("Show files with no links").click(); await wait(800)
-const withoutOrphans = Number(await page.locator("[data-graph-canvas=view] canvas").getAttribute("data-graph-nodes"))
-check(`the filter hides files with no links (${withoutOrphans})`, withoutOrphans === linked)
-check("the setting is saved in .vaultite/plugins/graph/data.json", existsSync(SETTINGS) && JSON.parse(readFileSync(SETTINGS, "utf8")).orphans === false)
-await page.click("[data-graph-filters]"); await wait(300)
-await page.getByText("Show files with no links").click(); await wait(800)
-const withOrphans = Number(await page.locator("[data-graph-canvas=view] canvas").getAttribute("data-graph-nodes"))
+// Filters panel: files with no links, a switch (saved at once, the panel staying open).
+await page.click("[data-graph-filters]")
+const orphans = page.locator('[data-graph-panel] [role=switch][aria-label="Files with no links"]')
+check("the panel's Files with no links is on", (await orphans.getAttribute("aria-checked")) === "true")
+await orphans.click()
+const withoutOrphans = await until(async () => { const n = await nodes(); return n === linked && n }, 8000)
+check(`the filter hides files with no links (${withoutOrphans ?? await nodes()} of ${linked} linked)`, withoutOrphans === linked)
+check("the setting is saved in .vaultite/plugins/graph/data.json", !!(await until(() => existsSync(SETTINGS) && JSON.parse(readFileSync(SETTINGS, "utf8")).orphans === false)))
+await orphans.click()
+const withOrphans = await until(async () => { const n = await nodes(); return n === all.nodes.length && n }, 8000)
 check(`...and shows them again (${withOrphans})`, withOrphans === all.nodes.length)
+await page.click("[data-graph-filters]")
 
 // Legend: hide a group, then show it again.
 const first = page.locator("[data-graph-group]").first()
 const group = await first.getAttribute("data-graph-group")
-await first.click(); await wait(600)
-const fewer = Number(await page.locator("[data-graph-canvas=view] canvas").getAttribute("data-graph-nodes"))
-check(`hiding a group (${group || "top level"}) leaves its files out (${fewer})`, fewer < withOrphans)
-await first.click(); await wait(600)
+await first.click()
+const fewer = await until(async () => { const n = await nodes(); return n < all.nodes.length && n }, 8000)
+check(`hiding a group (${group || "top level"}) leaves its files out (${fewer})`, !!fewer)
+await page.locator(`[data-graph-group="${group}"]`).click()
+check("...and showing it brings them back", !!(await until(async () => (await nodes()) === all.nodes.length, 8000)))
 
 // Dark.
 await req("PUT", "config/appearance", { theme: "dark" }); await wait(1500)

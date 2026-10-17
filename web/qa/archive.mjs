@@ -1,6 +1,6 @@
 // Archiving (plugins/core/archive): Archive in a file's menu moves it into its folder's hidden .archive/ (the key set,
-// links rewritten), Undo in the toast brings it back; the tree hides .archive/ until its header's "Show archived files"
-// (files.json's showArchived), then shows it dimmed; Unarchive from there; an archived file stays out of a base; the
+// links rewritten), Undo in the toast brings it back; the tree hides .archive/ until "Show archived files" in its
+// header's … menu (files.json's showArchived), then shows it dimmed; Unarchive from there; an archived file stays out of a base; the
 // palette's "Move archived files into archive folders" moves a file archived by hand, after asking; a new canvas made
 // from an archived note goes beside it, not into .archive/. WRITES "Qa archive"
 // and files.json (put back): throwaway server only.
@@ -51,9 +51,12 @@ check("Undo: the link back", !!(await until(() => body(`${D}/Links.md`) === `See
 // 2. Through the API (as an agent would), then the tree's toggle shows .archive/, dimmed.
 await api("POST", "ops/archive.add", { path: `${D}/Old.md` })
 check("a base leaves it out", !(await api("GET", `render?path=${encodeURIComponent(`${D}/List.md`)}`)).includes("Old"))
-const toggle = page.locator('aside [aria-label="Show archived files"]')
-check("the tree's header offers Show archived files", !!(await until(() => toggle.count())))
+// (the header's … menu: its switch, as Settings names it; a pressed button hides them again)
+await page.locator('aside [aria-label="More for Files"]').click()
+const toggle = page.getByRole("menuitemcheckbox", { name: "Show archived files" })
+check("the tree's … menu offers Show archived files, off", !!(await until(() => toggle.count())) && (await toggle.getAttribute("aria-checked")) === "false")
 await toggle.click()
+if (await page.locator("[role=menu]").count()) await page.keyboard.press("Escape")
 check("Show archived files: saved in files.json", !!(await until(async () => (await api("GET", "config/files")).showArchived === true)))
 check("the .archive folder shows", !!(await until(() => shown(`${D}/.archive`))))
 await row(`${D}/.archive`).locator("button").first().click(); await wait(300)

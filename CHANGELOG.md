@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Enter right after typing in the palette or a picker takes the first match; typed fast, it could do nothing.
+- Desktop app: a tooltip over a web page shows above it even while several toasts are up.
 - A file's menu is the same wherever it's right-clicked or held: an image or PDF in its tab, an embed in a note, an image
   in a block's text, a canvas card, a database's result, a recent file. Plugins' items (Use as Dock icon, Open local
   graph) show in each, not only in the tab's menu.
@@ -149,7 +151,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the tree scrolls to it when it's out of sight. Off in Settings, Files.
 - Right-clicking a row in a sidebar panel (a pinned page, a tab, a recent file, a machine, a web page, a button) shows
   only that row's actions, Unpin last on a pinned page; the panel's own (Panels, Move to the other sidebar, Hide) are
-  on its heading, and in its … (on hover, as a file's), which every sidebar panel's heading now has.
+  on its heading, and in its … (on hover, as a file's), which every sidebar panel's heading now has. A panel in the
+  phone's dock has no heading, so a held icon still ends with them (Take out of the dock).
 - Sidebar rows have a … on hover with their right-click menu, as files do: a pinned page or a recent file gets a file's
   whole menu (Unpin last on a pinned page); a terminal's End session and a site's Sign out moved into it, while a tab
   keeps its close button.
@@ -210,7 +213,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Loading shimmers instead of a plain "Loading…" line, only once it takes more than a moment, and lists (Inbox,
   History, Activity, Connections, machines...) draw skeleton rows, as many as last time, so the page doesn't jump when
   they come. The sidebars and the status bar hold still while the app loads: Outline keeps its rows' room, the status
-  bar its width, and nothing slides into place.
+  bar its width and each of its items its place (a plugin's coming later no longer pushes the rest), and nothing slides
+  into place.
 - Notes open sooner and typing is lighter: a note starts loading when the pointer rests on its link, search result or
   Links row, and each keystroke recalculates a quarter of the styles it did.
 - Buttons line up down a list: Get plugins (one width, the … menu's place kept in every row), plugins from another app

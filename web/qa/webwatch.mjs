@@ -6,7 +6,7 @@
 // "Claude Code needs you"; idle -> running and a first sighting are no news; nothing with notifications off; after a
 // restart, nothing is asked until a claude.ai page opens again (never on load alone), nor with another workspace's logins.
 // WRITES: the throwaway vault only.
-//   node web/qa/webwatch.mjs <vault copy> [port for the made-up claude.ai, default 8863]
+//   node web/qa/webwatch.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -14,10 +14,8 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
-const { args: [VAULT, PORT_ARG], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webwatch-"))
-const PORT = Number(PORT_ARG || 8863)
-const SITE = `http://127.0.0.1:${PORT}`
 
 // ---------- a made-up claude.ai ----------
 const sessions = [
@@ -35,7 +33,9 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", ...(req.url.startsWith("/code") ? { "Set-Cookie": "sessionKey=test; Path=/; Max-Age=86400" } : {}) })
   res.end(req.url.startsWith("/code") ? "<!doctype html><title>Claude Code</title><main>Signed in</main>" : `<!doctype html><title>Other ${req.url}</title><p>Another page</p>`)
 })
-await new Promise((ok, fail) => { server.once("error", fail); server.listen(PORT, "127.0.0.1", ok) })
+await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
+const PORT = server.address().port
+const SITE = `http://127.0.0.1:${PORT}`
 /** A session's status as claude.ai would say it. */
 const setState = (id, status) => { const s = sessions.find((x) => x.id === `session_${id}`); s.session_status = status; s.updated_at = new Date().toISOString() }
 // Workspaces on (off by default): pages' logins are per workspace.

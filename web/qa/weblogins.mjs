@@ -6,7 +6,7 @@
 // (one from another workspace's logins says so and links nowhere), a frame inside the page can't make one, none with
 // notifications off, and a burst is cut short.
 // WRITES: the throwaway vault only.
-//   node web/qa/weblogins.mjs <vault copy> [port for the site, default 8862]
+//   node web/qa/weblogins.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -14,10 +14,8 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
-const { args: [VAULT, PORT_ARG], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-weblogins-"))
-const PORT = Number(PORT_ARG || 8862)
-const SITE = `http://127.0.0.1:${PORT}`
 const awake = (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "600"], { stdio: "ignore" })
 process.on("exit", () => awake.kill())
 
@@ -32,7 +30,9 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, headers)
   res.end(`<!doctype html><title>Who</title><p id="who">${u.pathname === "/login" ? `signed in` : `who:${who ?? "nobody"}`}</p>${u.pathname === "/login" ? `<img src="http://localhost:${PORT}/pixel" alt="">` : ""}`)
 })
-await new Promise((ok, fail) => { server.once("error", fail); server.listen(PORT, "127.0.0.1", ok) })
+await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
+const PORT = server.address().port
+const SITE = `http://127.0.0.1:${PORT}`
 // Workspaces on (off by default): pages' logins are per workspace.
 const pluginsFile = path.join(VAULT, ".vaultite/plugins.json")
 if (fs.existsSync(pluginsFile)) {

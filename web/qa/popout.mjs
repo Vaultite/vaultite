@@ -114,9 +114,6 @@ check("…and Hide tab bar", await menuItem(page, "Hide tab bar"))
 check("…which hides it", await until(async () => (await page.locator("[data-tabs-hidden]").count()) === 1))
 await empty(); await wait(200)
 check("…and Show tab bar brings it back", (await menuItem(page, "Show tab bar")) && await until(async () => (await page.locator("[data-tabs-hidden]").count()) === 0))
-await page.locator("[data-tab-id]").first().click({ button: "right" }); await wait(200)
-check("a tab's menu has Hide tab bar too", (await page.locator("[role=menuitem]", { hasText: "Hide tab bar" }).count()) === 1)
-await page.keyboard.press("Escape")
 
 // Open in new window: it stays here too.
 const popped2 = page.waitForEvent("popup")

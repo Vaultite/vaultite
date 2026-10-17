@@ -75,7 +75,10 @@ function FloatLayer() {
       const pages = [...document.querySelectorAll<HTMLElement>("[data-web-box][data-live]")]
         .map((b) => b.getBoundingClientRect()).filter((r) => r.width > 1 && r.height > 1)
       const rects = pages.length
-        ? [...document.querySelectorAll<HTMLElement>("[data-sonner-toast], [data-floats]")].map((t) => ({ r: t.getBoundingClientRect(), through: t.hasAttribute("data-floats") }))
+        // (tooltips first and only the toasts sonner shows: past its three, the rest are drawn see-through, and the
+        // copies are capped, so they'd crowd out a tooltip)
+        ? [...document.querySelectorAll<HTMLElement>("[data-floats]"), ...document.querySelectorAll<HTMLElement>("[data-sonner-toast][data-visible=true]:not([data-removed=true])")]
+          .map((t) => ({ r: t.getBoundingClientRect(), through: t.hasAttribute("data-floats") }))
           .filter(({ r }) => r.width > 1 && r.height > 1 && pages.some((b) => meets(r, b)))
           .map(({ r, through }) => ({ x: r.left, y: r.top, width: r.width, height: r.height, through }))
         : []

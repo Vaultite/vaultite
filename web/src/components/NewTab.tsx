@@ -16,7 +16,7 @@ import { notify } from "@/core/notify"
 import { choose } from "@/components/Chooser"
 import { pickIcon } from "@/components/IconPicker"
 import { checklist, menuFor, type CheckItem, type MenuItem } from "@/components/ContextMenu"
-import { SidebarHeading, SidebarRow } from "@/components/Sidebar"
+import { panelMenu, SidebarHeading, SidebarRow } from "@/components/Sidebar"
 import { changedFiles, RecentList, useOpenedFiles } from "@/components/RecentFiles"
 import { CORE_SECTIONS, shownActions, shownSections, withIcon, withPanels, type NewTabSetup, type SectionInfo } from "../../../core/newtab.ts"
 import { anchorFor, placeKey } from "../../../core/slots.ts"
@@ -179,7 +179,8 @@ export function ActionButtons({ phone, open = true, panel, dock }: { phone?: boo
   const line = useReorder(box, "actions", dock)
   const d = useDrag()
   const dragged = d?.item.newtab?.list === "actions" ? d.item.newtab.key : null
-  const menu = (id: string) => buttonMenu(id, dock)
+  // (docked, the panel has no heading: its icons carry its menu, Take out of the dock among it)
+  const menu = (id: string) => [...buttonMenu(id, dock), ...(dock && panel ? panelMenu(panel).map((it, i) => (i ? it : { ...it, sep: true })) : [])]
   if (dock) return (
     <div ref={box} className="relative flex flex-wrap" data-newtab-actions>
       {cmds.map((c) => {

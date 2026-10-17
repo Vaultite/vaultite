@@ -60,7 +60,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
 }) {
   // Closed, the keyboard goes back where it was (or to what it opened).
   useHeldFocus()
-  const [sel, setSel] = useState(start)
+  const [sel, setSel] = useState(query ? 0 : start)
   const list = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
   // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
@@ -73,8 +73,9 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   useLayoutEffect(() => input.current?.focus({ preventScroll: true }), [])
   // On a phone, dragging the results puts the keyboard away (core/pagelock.ts).
   useEffect(() => (list.current ? dismissKeyboardOnDrag(list.current) : undefined), [])
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => setSel(query ? 0 : start), [query])
+  // Typing selects the first row in that same render: an effect left a frame where Enter picked a row no longer listed.
+  const [selFor, setSelFor] = useState(query)
+  if (selFor !== query) { setSelFor(query); setSel(query ? 0 : start) }
   useEffect(() => { list.current?.querySelector(`[data-i="${sel}"]`)?.scrollIntoView({ block: "nearest" }) }, [sel])
   const selected = items[sel] ?? null
   // eslint-disable-next-line react-hooks/exhaustive-deps

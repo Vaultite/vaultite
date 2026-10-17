@@ -4,7 +4,7 @@
 // shortcuts from the page; Save to vault, downloads, an image's menu; closing ends the page. SHOW=1 shows the window;
 // screenshots (screencapture, so the native view is in them) go to <out dir>.
 // WRITES: the throwaway vault only.
-//   node web/qa/webviewer.mjs <vault copy> <out dir> [port for the pages, default 8861]
+//   node web/qa/webviewer.mjs <vault copy> <out dir>
 import { _electron } from "playwright-core"
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
@@ -13,12 +13,10 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until, wait } from "./lib/qa.mjs"
 
-const { args: [VAULT, OUT_ARG, PORT_ARG], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT, OUT_ARG], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const OUT = path.resolve(OUT_ARG)
 fs.mkdirSync(OUT, { recursive: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webviewer-"))
-const PORT = Number(PORT_ARG || 8861)
-const SITE = `http://127.0.0.1:${PORT}`
 
 // The display stays awake (a window on a sleeping display is hidden: no frames, no screenshots).
 const awake = (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "900"], { stdio: "ignore" })
@@ -47,7 +45,9 @@ const server = http.createServer((req, res) => {
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
   res.end(html)
 })
-await new Promise((ok, fail) => { server.once("error", fail); server.listen(PORT, "127.0.0.1", ok) })
+await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
+const PORT = server.address().port
+const SITE = `http://127.0.0.1:${PORT}`
 
 // A note with a web link (the second line, so the cursor isn't on it).
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
@@ -195,11 +195,15 @@ await win.mouse.click(5, 400) // (somewhere in the sidebar, if a menu is still t
 check("the menu gone: the page is back", await until(shown, 10000), await pages())
 await win.locator("[data-web-page] button[aria-label=Back]").hover({ force: true })
 await win.locator("[data-web-page] button[aria-label='Open in the browser']").hover()
-const copies = () => app.evaluate(({ BrowserWindow }) => {
-  const w = BrowserWindow.getAllWindows()[0]
-  return w.contentView.children.filter((v) => v.webContents && v.webContents.getURL().startsWith("data:text/html") && v.getVisible()).length
-})
-check("a tooltip of the bar over the page: the page stays, a copy of the tooltip shows above it", await until(async () => (await copies()) === 1, 3000) && await shown(), [await pages(), await copies()])
+/** The copies above the page placed on the tooltip (toasts still up from before are copied too, each its own). */
+const copies = () => app.evaluate(({ BrowserWindow }, tip) => {
+  const w = BrowserWindow.getAllWindows()[0], z = w.webContents.getZoomFactor()
+  return w.contentView.children.filter((v) => v.webContents && v.webContents.getURL().startsWith("data:text/html") && v.getVisible())
+    .filter((v) => { const b = v.getBounds(); return !!tip && Math.abs(b.x - tip.x * z) <= 2 && Math.abs(b.y - tip.y * z) <= 2 }).length
+}, tip)
+let tip = null
+check("a tooltip of the bar over the page: the page stays, a copy of the tooltip shows above it",
+  await until(async () => (tip = await win.locator("[role=tooltip]").boundingBox({ timeout: 200 }).catch(() => null)) && (await copies()) === 1, 3000) && await shown(), [await pages(), tip, await over()])
 await win.mouse.move(5, 400)
 check("… and goes with it", await until(async () => (await copies()) === 0, 10000), await copies())
 
@@ -227,16 +231,20 @@ await fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "ap
 await win.waitForSelector("[data-sonner-toast]:has-text('A toast over the page')", { timeout: 5000 })
 await wait(900)
 check("a toast over the page: the page stays shown", await shown(), await pages())
-check("… and a copy of it is shown above the page", await until(async () => (await floatsNow()).length === 1, 4000), await floatsNow())
 const toastBox = await win.locator("[data-sonner-toast]:has-text('A toast over the page')").boundingBox()
 const openBox = await win.locator("[data-sonner-toast]:has-text('A toast over the page') button", { hasText: "Open" }).boundingBox()
-const [fl] = await floatsNow()
+// (its own copy: one still up from before, stacked behind it (the playground's notice), is copied too)
+const z = await zoom()
+const ofToast = async () => (await floatsNow()).filter((f) => Math.abs(f.bounds.x - toastBox.x * z) <= 2 && Math.abs(f.bounds.y - toastBox.y * z) <= 2)
+check("… and a copy of it is shown above the page", await until(async () => (await ofToast()).length === 1, 4000),
+  [await floatsNow(), toastBox, await win.locator("[data-sonner-toast]").allInnerTexts()])
+const [fl] = await ofToast()
 await app.evaluate(({ webContents }, [id, x, y]) => {
   const wc = webContents.fromId(id)
   wc.sendInputEvent({ type: "mouseMove", x, y }); wc.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 }); wc.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 })
 }, [fl?.wc, Math.round(openBox.x - toastBox.x + openBox.width / 2), Math.round(openBox.y - toastBox.y + openBox.height / 2)])
 check("a click on the copy's Open acts on the toast", await until(async () => (await tabTitles()).some((t) => t?.includes("Reading list")) && (await win.evaluate(() => decodeURIComponent(location.hash))).includes("Reading list"), 5000), await tabTitles())
-check("… and the copy goes with the toast", await until(async () => (await floatsNow()).length === 0, 6000), await floatsNow())
+check("… and the copy goes with the toast", await until(async () => (await ofToast()).length === 0, 6000), await floatsNow())
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
 await until(shown, 10000)
 await win.mouse.move(5, 400)

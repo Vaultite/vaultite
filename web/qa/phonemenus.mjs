@@ -1,5 +1,5 @@
 // Phones: a held tab card's More ▸ opens in place (Back row returns), the sheet's bar says Done, and Done on an unsaved
-// form asks first; desktop's More ▸ still flies out. Chrome's touch emulation, not an iPhone. Read-only.
+// form asks first; desktop's More file actions ▸ still flies out. Chrome's touch emulation, not an iPhone. Read-only.
 //   node web/qa/phonemenus.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
 import path from "node:path"
@@ -62,13 +62,13 @@ await page.locator("dialog[open] [data-sheet-done]").click()
 check("Done with nothing typed: closes at once", !!await until(async () => !(await page.locator("dialog[open] [data-bundle-name]").count()), 2000) && !(await page.locator("dialog[data-confirm][open]").count()))
 await page.close()
 
-// Desktop keeps its flyouts: More ▸ opens beside the menu on hover.
+// Desktop keeps its flyouts: More file actions ▸ opens beside the menu on hover.
 const desk = watch(await browser.newPage({ viewport: { width: 1400, height: 900 } }))
 await desk.goto(B)
 await desk.waitForSelector("[role=tab]", { timeout: 30000 })
 await desk.locator("[role=tab]").first().click({ button: "right" })
-await desk.locator("[role=menu] button", { hasText: /^More$/ }).hover()
-check("desktop: More ▸ opens beside, its own menu", !!await until(async () => await desk.locator("[role=menu]").count() === 2, 2000), await desk.locator("[role=menu]").count())
+await desk.locator("[role=menu] button", { hasText: /^More file actions$/ }).hover()
+check("desktop: More file actions ▸ opens beside, its own menu", !!await until(async () => await desk.locator("[role=menu]").count() === 2, 2000), await desk.locator("[role=menu]").count())
 await desk.screenshot({ path: path.join(OUT, "desktop-more.png") })
 await desk.close()
 console.log(`\nshots in ${OUT}`)

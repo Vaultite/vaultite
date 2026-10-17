@@ -1,6 +1,6 @@
 // A machine's menu: in the Machines panel a click opens what it can run (New terminal); a right-click shows the same,
-// then the panel's own menu (Open in a tab, Panels, Move, Hide) under a line. In the machines view a right-click shows
-// just the machine's. Turns Machines on and lists this server as its one machine (put back after).
+// only the machine's (the panel's own is its heading's). In the machines view a right-click shows the same. Turns
+// Machines on and lists this server as its one machine (put back after).
 //   node web/qa/machinemenu.mjs <base url> <vault path>
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -29,8 +29,7 @@ try {
 
   await row.click({ button: "right" })
   got = await menu()
-  const term = got.indexOf("New terminal"), hide = got.findIndex((t) => t.startsWith("Hide"))
-  check("a right-click: the machine's items first, then the panel's", term === 0 && hide > term && got.some((t) => t.startsWith("Open Machines")), got)
+  check("a right-click: just the machine's, New terminal first", got[0] === "New terminal" && !got.some((t) => t.startsWith("Hide") || t.startsWith("Open Machines")), got)
   check("one menu", (await page.locator("[role=menu]").count()) === 1)
   await page.keyboard.press("Escape"); await wait(200)
 

@@ -1,10 +1,13 @@
 // The desktop status bar beside the left sidebar: it never reaches it (what doesn't fit goes to the tray behind its
 // more button), its ambient items drag along it, onto the more button (tucked: appearance.json's
-// `statusBarMore`) and back out of the tray. WRITES appearance.json (put back): throwaway server only.
-//   node web/qa/statusbar.mjs <base url>
+// `statusBarMore`) and back out of the tray. WRITES appearance.json (put back) and a made-up vault plugin with a long
+// item, .vaultite/plugins/qa-long (removed): throwaway server only.
+//   node web/qa/statusbar.mjs <base url> <vault path>
+import { mkdirSync, rmSync, writeFileSync } from "node:fs"
+import path from "node:path"
 import { apiAt, qa, SHOTS, until, wait } from "./lib/qa.mjs"
 
-const { args: [B0], browser, check, watch, done } = await qa(import.meta.url)
+const { args: [B0, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const B = B0.endsWith("/") ? B0 : `${B0}/`
 const api = apiAt(B)
 const look = await api("GET", "config/appearance")
@@ -12,7 +15,14 @@ const P = "Qa status bar.md"
 await api("POST", "file", { path: P, text: "# Status bar\n\nSome words to count.\n" })
 // Every ambient item on, in a known order (the routines chip shows with a routine due, the inbox's with a new item).
 await api("POST", "ops/inbox.add", { title: "Qa status bar", body: "An item for the bar." })
-// (a vault plugin's long item joins in where one's installed: qa-long:long)
+// A vault plugin's long item, so a narrow window has more than fits whichever of the others show here.
+const LONG = path.join(VAULT, ".vaultite/plugins/qa-long")
+mkdirSync(LONG, { recursive: true })
+writeFileSync(path.join(LONG, "manifest.json"), JSON.stringify({ id: "qa-long", category: "other", name: "Qa long", icon: "ruler", description: "A made-up vault plugin with a long status bar item.", version: "1.0.0", author: "Alice Park", disclosures: {}, apiVersion: 1 }))
+writeFileSync(path.join(LONG, "index.tsx"), `import { definePlugin } from "@vaultite"
+export default definePlugin({ ambient: { long: { title: "Qa long", sort: 50, render: () => <span className="whitespace-nowrap px-1 text-[12px]">A long status item that takes room in the bar</span> } } })
+`)
+await api("POST", "ops/plugin.enable", { id: "qa-long" })
 await api("PATCH", "config/appearance", { statusBar: ["today:routines", "terminal:agents", "inbox:new", "claude-code:limits", "qa-long:long"], statusBarMore: [] })
 
 try {
@@ -21,7 +31,7 @@ try {
   const page = watch(await ctx.newPage(), { console: true })
   await page.goto(`${B}#file/${encodeURIComponent(P)}`)
   const bar = page.locator("[data-status-bar]")
-  await until(async () => (await bar.locator("[data-status-key]").count()) > 0 && /word/.test(await bar.innerText()), 8000)
+  await until(async () => (await bar.locator("[data-status-key='qa-long:long']").count()) > 0 && /word/.test(await bar.innerText()), 15000)
   const keys = () => bar.locator("[data-ambient] > [data-status-key]").evaluateAll((els) =>
     els.filter((e) => e.offsetWidth).map((e) => e.dataset.statusKey))
   const clear = () => page.evaluate(() => {
@@ -30,15 +40,16 @@ try {
   })
   const shown = await keys()
   console.log("bar:", shown.join(", "), "|", (await bar.innerText()).replace(/\n/g, " "))
-  check("wide window: every item in the bar, no more button", shown.length >= 2 && (await bar.locator("[data-status-more]").count()) === 0, shown)
+  check("wide window: every item in the bar, no more button", shown.length >= 2 && shown.includes("qa-long:long") && (await bar.locator("[data-status-more]").count()) === 0, shown)
   await page.screenshot({ path: `${SHOTS}statusbar-1-wide.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
 
   // 1. Narrow: the bar stops at the sidebar; the leftmost go to the tray.
-  await page.setViewportSize({ width: 820, height: 800 }); await wait(400)
+  await page.setViewportSize({ width: 820, height: 800 })
+  await until(async () => !(await keys()).includes("qa-long:long"))
   const narrow = await keys()
   check("narrow: the bar keeps clear of the left sidebar", (await clear()) >= 0, await clear())
   check("narrow: the more button shows, the long item left out, the short ones still in", (await bar.locator("[data-status-more]").count()) === 1
-    && narrow.length < shown.length && narrow.length > 0, narrow)
+    && !narrow.includes("qa-long:long") && narrow.length > 0, narrow)
   const gap = await page.evaluate(() => {
     const more = document.querySelector("[data-status-more]").getBoundingClientRect()
     const next = [...document.querySelectorAll("[data-status-bar] > *")].find((el) => el.getBoundingClientRect().left > more.right && el.getBoundingClientRect().width)
@@ -87,6 +98,8 @@ try {
   await page.screenshot({ path: `${SHOTS}statusbar-4-after.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
 } finally {
   await api("PATCH", "config/appearance", { statusBar: look.statusBar ?? null, statusBarMore: look.statusBarMore ?? [] })
+  await api("POST", "ops/plugin.disable", { id: "qa-long" })
+  rmSync(LONG, { recursive: true, force: true })
   for (const f of [P, "Inbox/Qa status bar.md"]) await fetch(`${B}api/file?path=${encodeURIComponent(f)}`, { method: "DELETE" })
 }
 await done()

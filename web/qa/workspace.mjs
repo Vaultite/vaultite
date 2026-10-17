@@ -1,15 +1,16 @@
-// The desktop workspace around files: the tree's header (sort menu, auto-reveal, collapse / expand all), the tab bar
+// The desktop workspace around files: the tree's header (sort menu, its … menu, collapse / expand all), the tab bar
 // (+ right after the last tab, right-click menu), the path bar (folders find themselves in the tree, click the name to
 // rename, the view button), the status bar (view, word count), hover tooltips, the File icons setting, AGENTS.md being
 // editable, and right-click never showing the browser's menu. WRITES (renames a note, makes and edits AGENTS.md): throwaway only.
 //   node web/qa/workspace.mjs <base url> <vault path> [out dir]
 import { existsSync, readFileSync, writeFileSync } from "node:fs"
-import { SHOTS, qa, wait } from "./lib/qa.mjs"
+import { SHOTS, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 
 for (const dark of [false, true]) {
   const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, colorScheme: dark ? "dark" : "light" })
-  await ctx.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
+  // (not on about:blank, which has no storage: pages load fresh through it)
+  await ctx.addInitScript(() => { if (location.protocol !== "about:" && !sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
   const page = watch(await ctx.newPage(), { console: true })
   const shot = (name) => page.screenshot({ path: `${OUT}workspace-${dark ? "dark" : "light"}-${name}.png` })
   const tree = page.locator("aside [role=tree]")
@@ -17,13 +18,16 @@ for (const dark of [false, true]) {
   await page.goto(B); await wait(1500)
 
   if (!dark) {
-    // Tree header: five buttons.
+    // Tree header: four buttons, then … (its menu has the switches: hidden, archived, reveal the open file).
     const labels = await page.locator("aside [role=tree]").locator("xpath=preceding-sibling::div[1]//button").evaluateAll((els) => els.map((e) => e.getAttribute("aria-label")))
-    check("tree header buttons", labels.join("|") === "New note|New folder|Change sort order|Auto-reveal current file|Collapse all"
-      || labels.join("|") === "New note|New folder|Change sort order|Auto-reveal current file|Expand all", labels)
+    check("tree header buttons", /^New note\|New folder\|Change sort order\|(Collapse|Expand) all\|More for Files$/.test(labels.join("|")), labels)
+    await head("More for Files").click()
+    const more = await page.locator("[role=menu] [role=menuitemcheckbox]").allInnerTexts()
+    check("the … menu: show hidden files, reveal the open file", ["Show hidden files", "Reveal the open file"].every((x) => more.some((m) => m.includes(x))), more)
+    await page.keyboard.press("Escape")
     // Tooltip on hover.
-    await head("Auto-reveal current file").hover(); await wait(700)
-    check("tooltip shows", (await page.locator("[role=tooltip]").innerText().catch(() => "")) === "Auto-reveal current file")
+    await head("Change sort order").hover(); await wait(700)
+    check("tooltip shows", (await page.locator("[role=tooltip]").innerText().catch(() => "")) === "Change sort order")
     await shot("tooltip")
     await head("New folder").hover(); await wait(80)
     check("tooltip warm: next shows at once", (await page.locator("[role=tooltip]").innerText().catch(() => "")) === "New folder")
@@ -69,14 +73,13 @@ for (const dark of [false, true]) {
 
   if (!dark) {
     // The main area scrolls by itself with room kept for its scrollbar: a short page and a long one line up exactly
-    // (two core pages: dashboards are files, drawn full width).
-    const edge = () => page.evaluate(() => { const r = document.querySelector("#main-scroll main").getBoundingClientRect(); return [Math.round(r.left), Math.round(r.right)] })
-    await page.goto(`${B}#settings`); await wait(800)
+    // (two core pages the pane scrolls: dashboards are files, drawn full width, and Settings scrolls itself).
+    const edge = () => page.evaluate(() => { const m = document.getElementById("main-scroll"), r = m.querySelector("main").getBoundingClientRect(); return { at: [Math.round(r.left), Math.round(r.right)], scrolls: m.scrollHeight > m.clientHeight } })
+    await page.goto("about:blank"); await page.goto(`${B}#bundles`); await page.locator("#main-scroll main [data-bundles-page]").waitFor()
     const short = await edge()
-    await page.goto(`${B}#plugins`); await wait(1200)
-    const long = await edge()
-    const scrolls = await page.evaluate(() => { const m = document.getElementById("main-scroll"); return m.scrollHeight > m.clientHeight })
-    check("a scrollbar appearing doesn't shift the page", JSON.stringify(short) === JSON.stringify(long), { short, long, scrolls })
+    await page.goto("about:blank"); await page.goto(`${B}#plugins`); await page.locator("#main-scroll main [data-plugin-row]").first().waitFor()
+    const long = await until(async () => { const e = await edge(); return e.scrolls && e }, 8000) || await edge()
+    check("a scrollbar appearing doesn't shift the page", !short.scrolls && long.scrolls && JSON.stringify(short.at) === JSON.stringify(long.at), { short, long })
     check("the window itself never scrolls (desktop)", await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight))
   }
 

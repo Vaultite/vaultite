@@ -2,7 +2,7 @@
 // a site's own /favicon.ico each on its tab; a site whose icon isn't an image, and one whose kept icon can't be drawn,
 // keep the globe; a broken icons file in userData changes nothing; the icons are kept for the next launch.
 // WRITES: the throwaway vault only.
-//   node web/qa/webicons.mjs <vault copy> [first port for the sites, default 8871]
+//   node web/qa/webicons.mjs <vault copy>
 import { _electron } from "playwright-core"
 import fs from "node:fs"
 import http from "node:http"
@@ -10,11 +10,8 @@ import os from "node:os"
 import path from "node:path"
 import { ROOT, qa, until } from "./lib/qa.mjs"
 
-const { args: [VAULT, PORT_ARG], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
+const { args: [VAULT], check, errs, watch, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webicons-"))
-const PORT = Number(PORT_ARG || 8871)
-// (each its own port: icons are kept by host, port and all)
-const SITES = { png: PORT, svg: PORT + 1, ico: PORT + 2, html: PORT + 3, bad: PORT + 4 }
 const at = (k) => `http://127.0.0.1:${SITES[k]}/`
 const host = (k) => `127.0.0.1:${SITES[k]}`
 
@@ -23,7 +20,8 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const ICO = Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 32, 0]), Buffer.from(new Uint32Array([PNG.length, 22]).buffer), PNG])
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#c33"/></svg>`
 const page = (title, head = "") => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${head}</head><body><h1>${title}</h1></body></html>`
-const servers = Object.entries(SITES).map(([k, port]) => {
+// (each its own free port: icons are kept by host, port and all)
+const servers = await Promise.all(["png", "svg", "ico", "html", "bad"].map(async (k) => {
   const s = http.createServer((req, res) => {
     const u = req.url ?? "/"
     if (k === "png" && u === "/icon.png") { res.writeHead(200, { "Content-Type": "image/png" }); return res.end(PNG) }
@@ -36,9 +34,10 @@ const servers = Object.entries(SITES).map(([k, port]) => {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
     res.end(page(`Site ${k}`, head))
   })
-  s.listen(port, "127.0.0.1")
-  return s
-})
+  await new Promise((ok, fail) => { s.once("error", fail); s.listen(0, "127.0.0.1", ok) })
+  return [k, s]
+}))
+const SITES = Object.fromEntries(servers.map(([k, s]) => [k, s.address().port]))
 
 // A broken icons file, and one kept icon that isn't an image (the site it's for has none of its own).
 const USER_DATA = path.join(TMP, "userData")
@@ -82,7 +81,7 @@ check("the icons are kept in userData (the broken entries gone)", kept, fs.readF
 
 // Next launch, the sites down: a tab shows its kept icon before (without) its page loading.
 await app.close()
-for (const s of servers) s.close()
+for (const [, s] of servers) s.close()
 ;({ app, win, origin } = await launch())
 await until(async () => (await win.locator("[role=tab]").count()) >= 5, 15000)
 const byHost = await win.evaluate(() => [...document.querySelectorAll("[role=tab]")].map((t) => ({ text: t.textContent?.trim(), img: !!t.querySelector("img[src^='data:image/']") })))

@@ -1,6 +1,6 @@
 // An Obsidian vault in the app: note embeds (a section, a block, one that embeds itself), heading and block links that
 // scroll there, [[#Heading]] in the same file, #tags (styled, clickable, the Tags panel, a tag's sheet, renamed), its
-// plugins' stand-ins (Obsidian settings' sheet), the Outline
+// plugins' stand-ins (its Settings section), the Outline
 // panel (click to go, the current heading lit; shown for the run: it's hidden until shown, like Tags), ==highlights==, %%comments%% and ^block ids hidden when reading,
 // ![[image.png|120]], [[photo.png]] finding the attachment, .obsidian/app.json (new notes' folder, a pasted or dropped image's
 // folder), the Design page, and a phone at 390px. WRITES a "Qa obsidian" folder, the vault's .obsidian/app.json and
@@ -174,15 +174,17 @@ check("the tag is renamed in the file, the sheet follows", fs.readFileSync(path.
   await page.locator("#sheet-title", { hasText: "#qa-renamed" }).count() === 1)
 await page.keyboard.press("Escape"); await wait(500)
 
-// ---- its plugins: what stands in for each here, in Obsidian settings' sheet ----
+// ---- its plugins: what stands in for each here, in its Settings section ----
 const community = path.join(VAULT, ".obsidian", "community-plugins.json")
 const hadCommunity = fs.existsSync(community) ? fs.readFileSync(community, "utf8") : null
 fs.mkdirSync(path.dirname(community), { recursive: true })
 fs.writeFileSync(community, JSON.stringify(["recent-files-obsidian", "tag-wrangler", "qa-made-up"]))
-await page.goto("about:blank"); await page.goto(`${B}#plugins`); await wait(2000)
-await page.locator("[data-plugin-gear=other-apps]").click(); await wait(1500)
+// (an always-on plugin: its options are a Features section of Settings)
+await page.goto("about:blank"); await page.goto(`${B}#settings`)
+await page.locator('[data-settings-nav="plugin:other-apps"]').click()
 const op = page.locator("[data-obsidian-plugins]")
-check("Obsidian's sheet lists the vault's Obsidian plugins, each with what stands in for it", await op.locator('[data-obsidian-plugin="recent-files-obsidian"]', { hasText: "Recent files" }).count() === 1 &&
+await op.locator("[data-obsidian-plugin]").first().waitFor({ timeout: 15000 })
+check("its Settings section lists the vault's Obsidian plugins, each with what stands in for it", await op.locator('[data-obsidian-plugin="recent-files-obsidian"]', { hasText: "Recent files" }).count() === 1 &&
   await op.locator('[data-obsidian-plugin="tag-wrangler"]', { hasText: "Tags" }).count() === 1 && await op.locator('[data-obsidian-plugin="qa-made-up"]', { hasText: /Off$/ }).locator("[role=switch]").count() === 1, await op.innerText().catch(() => ""))
 await op.screenshot({ path: `${OUT}obsidian-plugins.png` })
 await page.keyboard.press("Escape"); await wait(500)

@@ -11,7 +11,7 @@ import type { OpenFile } from "@/core/define"
 import { startDrag, useDrag, useDropHit, useDropTarget } from "@/core/drag"
 import { joinFm } from "@/core/files"
 import { kindOf } from "@/core/filekinds"
-import { ambientItems, statusItems, usePluginsVersion } from "@/core/plugins"
+import { ambientItems, statusItems, usePluginsVersion, vaultPluginsIn } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { cn } from "@/lib/utils"
 import { defaultOrder, keyList, placeKey } from "../../../core/slots.ts"
@@ -135,15 +135,21 @@ function useDrops(bar: RefObject<HTMLElement | null>, shown: boolean) {
   }, [bar, shown])
 }
 
-const KEPT_WIDTH = "vaultite.statusbar"
-/** The bar at least as wide as last load's while its items come in (each, arriving, pushed the rest left), until another
- *  file opens: like Steady, it doesn't narrow under the file it opened with. */
-function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string) {
+const KEPT_WIDTH = "vaultite.statusbar", KEPT_ITEMS = "vaultite.statusbar.items"
+/** The ambient items' widths at the last load, in the bar's order. */
+type Kept = [key: string, width: number][]
+/** The bar as wide as last load's, and its ambient items as wide as theirs, while they come in (each, arriving, pushed
+ *  the rest), until another file opens: like Steady. Returns the items' widths to hold, while held. */
+function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string): Kept | null {
   const first = useRef<string | null>(null)
   if (first.current === null && path) first.current = path
   const held = first.current === null || first.current === path
   const kept = useRef<number | null>(null)
   if (kept.current === null) try { kept.current = Number(localStorage.getItem(KEPT_WIDTH)) || 0 } catch { kept.current = 0 }
+  const items = useRef<Kept | null>(null)
+  if (items.current === null) {
+    try { const k = JSON.parse(localStorage.getItem(KEPT_ITEMS) ?? "[]"); items.current = Array.isArray(k) ? k : [] } catch { items.current = [] }
+  }
   // (before the paint: held from the bar's first frame)
   useLayoutEffect(() => {
     if (bar.current) bar.current.style.minWidth = held && kept.current ? `${kept.current}px` : ""
@@ -155,11 +161,19 @@ function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string) {
     const save = () => {
       clearTimeout(saving)
       saving = setTimeout(() => {
-        const min = el.style.minWidth
-        el.style.minWidth = ""
+        // (not before the vault's plugins came: their items aren't drawn yet)
+        if (!vaultPluginsIn()) return save()
+        // (as drawn without what's held: an item drawing nothing is kept as 0, holding no room)
+        const slots = [...el.querySelectorAll<HTMLElement>("[data-ambient] > [data-status-key]")]
+        const mins = [el, ...slots].map((x) => x.style.minWidth)
+        for (const x of [el, ...slots]) x.style.minWidth = ""
         const w = Math.round(el.getBoundingClientRect().width)
-        el.style.minWidth = min
-        try { if (w) localStorage.setItem(KEPT_WIDTH, String(w)) } catch { /* full */ }
+        const widths: Kept = slots.map((x) => [x.dataset.statusKey!, x.matches(":empty") ? 0 : Math.ceil(x.getBoundingClientRect().width)])
+        ;[el, ...slots].forEach((x, i) => { x.style.minWidth = mins[i] })
+        try {
+          if (w) localStorage.setItem(KEPT_WIDTH, String(w))
+          localStorage.setItem(KEPT_ITEMS, JSON.stringify(widths))
+        } catch { /* full */ }
       }, 2000)
     }
     const ro = new ResizeObserver(save)
@@ -167,6 +181,24 @@ function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string) {
     save()
     return () => { clearTimeout(saving); ro.disconnect() }
   }, [bar, path])
+  return held ? items.current : null
+}
+
+/** The bar's ambient items with the room of those still to come (a vault plugin's, before the vault's plugins came)
+ *  where they were last time. */
+function withComing<T extends { key: string }>(shown: T[], kept: Kept | null, known: string[]): (T | { key: string; coming: number })[] {
+  if (!kept?.length || vaultPluginsIn()) return shown
+  const rank = new Map(kept.map(([k], i) => [k, i]))
+  const coming = kept.filter(([k, w]) => w > 0 && !known.includes(k))
+  const out: (T | { key: string; coming: number })[] = []
+  let next = 0
+  for (const x of shown) {
+    const r = rank.get(x.key)
+    if (r !== undefined) while (next < coming.length && rank.get(coming[next][0])! < r) { const [key, w] = coming[next++]; out.push({ key, coming: w }) }
+    out.push(x)
+  }
+  for (const [key, w] of coming.slice(next)) out.push({ key, coming: w })
+  return out
 }
 
 export function StatusBar() {
@@ -194,7 +226,7 @@ export function StatusBar() {
   const barRef = useRef<HTMLDivElement>(null), fitRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
   const inBar = ambient.filter((x) => !statusBarMore.includes(x.key))
   const over = useOverflow(barRef, fitRef, inBar.map((x) => x.key))
-  useKeptWidth(barRef, path)
+  const keptItems = useKeptWidth(barRef, path)
   useDrops(barRef, !!(s && late))
   const inTray = ambient.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
   const [tray, setTray] = useState(false)
@@ -208,9 +240,10 @@ export function StatusBar() {
     addEventListener("pointerdown", down, true); addEventListener("keydown", key, true)
     return () => { removeEventListener("pointerdown", down, true); removeEventListener("keydown", key, true) }
   }, [trayOpen])
-  const slot = (key: string, item: (typeof ambient)[number]["item"], hidden = false) => (
+  const slot = (key: string, item: (typeof ambient)[number]["item"], hidden = false, hold = 0) => (
     <span key={key} data-status-key={key} onPointerDown={(e) => startDrag(e, { from: "status", status: key, label: item.title })}
-      className={cn("flex shrink-0 items-center empty:hidden", hidden && "hidden", dragged === key && "opacity-50")}>
+      style={hold ? { minWidth: hold } : undefined}
+      className={cn("flex shrink-0 items-center", !hold && "empty:hidden", hidden && "hidden", dragged === key && "opacity-50")}>
       {item_(key, () => item.render())}
     </span>
   )
@@ -225,7 +258,9 @@ export function StatusBar() {
   const own = (more || inBar.length > 0) && <>
     {more}
     <div ref={fitRef} data-ambient className="flex min-w-0 items-center gap-1 overflow-hidden">
-      {inBar.map(({ key, item }) => slot(key, item, over.includes(key)))}
+      {withComing(inBar, keptItems, ambient.map((x) => x.key)).map((x) => "coming" in x
+        ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} />
+        : slot(x.key, x.item, over.includes(x.key), keptItems?.find(([k]) => k === x.key)?.[1]))}
     </div>
     {s && <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />}
   </>

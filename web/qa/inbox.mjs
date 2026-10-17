@@ -198,7 +198,8 @@ await page.locator(`aside [data-inbox-panel] [data-result="${reading}"]`).getByR
 const hashNow = () => page.evaluate(() => decodeURIComponent(location.hash))
 check("Done on the result being read: the next one shows in its place", !!after && !!(await until(async () => (await hashNow()) === `#file/${after}.md`)) &&
   !!(await until(() => read(`Inbox/.archive/${reading.split("/").pop()}.md`).includes("archived: true"))), [ids, await hashNow()])
-await page.locator("[data-sonner-toast]", { hasText: "done" }).last().getByRole("button", { name: "Undo" }).click()
+// (the newest, first in sonner's list: an older one may still be going, behind it)
+await page.locator("[data-sonner-toast]", { hasText: /Marked “.+” done/ }).first().getByRole("button", { name: "Undo" }).click()
 check("Undo puts it back to review", !!(await until(() => read(`${reading}.md`).includes("status: new"))))
 await wait(500)
 

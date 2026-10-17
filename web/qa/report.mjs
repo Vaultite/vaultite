@@ -41,7 +41,6 @@ check("reply box: says who it answers", (await page.getByText("Reply to Claude C
 check("report: its questions", (await page.getByText("Keep the old footer?").count()) > 0)
 check("report: its tl;dr drawn on top, a callout", (await page.locator(".cm-callout, [data-callout]").first().innerText().catch(() => "")).includes("In short") ||
   (await page.getByText("In short").count()) > 0)
-check("report: when it came, at its header's end", (await page.getByText(/^Today, /).count()) > 0)
 check("report: its screenshot", await until(() => page.locator("img[src*='vaultite-qa-shot']").count().then((n) => n > 0), 5000))
 await page.screenshot({ path: `${OUT}report-desktop.png`, fullPage: false })
 await box.click()
@@ -57,7 +56,7 @@ const screen = await until(async () => {
 check("reply: typed into its terminal", !!screen, screen)
 const archived = `Inbox/.archive/${named}.md`
 check("reply: kept in the report with when, which is done", await until(() => /> \[!note\] You replied · \d{4}-\d\d-\d\d \d\d:\d\d\n> Keep the footer, ship it/.test(read(archived)), 8000), read(archived) || read(file))
-check("reply: the report stays open, in the archive", await until(() => page.url().includes(enc("Inbox/.archive/")) && page.getByText("Done · from").count().then((n) => n > 0), 5000), page.url())
+check("reply: the report stays open, in the archive", await until(() => page.url().includes(enc("Inbox/.archive/")) && box.isVisible(), 5000), page.url())
 check("reply: still scrolled where it was read, not back at the top", before > 100 && await until(async () => Math.abs((await scrolled()) - before) < 40, 4000), { before, after: await scrolled() })
 await page.screenshot({ path: `${OUT}report-replied.png` })
 

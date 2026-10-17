@@ -73,6 +73,9 @@ const pluginsChanged = signal()
 const signature = (ps: Plugin[]) => ps.map((p) => `${p.id}@${p.version ?? ""}:${(p.problems ?? []).join()}`).join("\n")
 
 const bump = pluginsChanged.notify
+let vaultIn = false
+/** Whether the vault's plugins came yet: before, what they draw is still to come, not gone. */
+export const vaultPluginsIn = () => vaultIn
 
 /** The vault's plugins now (core/vaultPlugins.ts): they replace the ones before. */
 export function setVaultPlugins(list: Plugin[]) {
@@ -81,7 +84,9 @@ export function setVaultPlugins(list: Plugin[]) {
   PLUGINS.splice(0, PLUGINS.length, ...app, ...list, ...hosted)
   setMarks(PLUGINS as unknown as Record<string, unknown>[])
   writeTints()
-  if (signature(list) !== was) bump()
+  const first = !vaultIn
+  vaultIn = true
+  if (first || signature(list) !== was) bump()
 }
 
 // Plugins other plugins run (an Obsidian plugin under plugin-compat), by host: their switches are the host's.

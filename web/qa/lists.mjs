@@ -81,13 +81,15 @@ try {
   await until(() => page.$(`${folder}, [data-tree-path="${DIR}"]`), 8000).catch(() => {})
   const row = await page.$(`[data-pane] [data-tree-path="${DIR}"] > button`) ?? await page.$(`[data-pane] [data-tree-path="${DIR}"]`)
   if (row) {
-    await row.click()
-    await wait(800)
+    // (open already when a search line opened one of its files: the tree reveals the open file)
+    if (await row.evaluate((e) => e.closest("li").getAttribute("aria-expanded") !== "true")) await row.click()
     // (the sidebar has a tree too: the tab's alone)
     const drawn = () => page.$$eval(`[data-pane] [data-tree-path^="${DIR}/"][data-select-key]`, (es) => es.length)
-    const d0 = await drawn()
-    for (let n = 0; n < 10; n++) { await page.evaluate((p) => document.querySelector(`[data-pane] [data-tree-path="${p}"]`)?.closest("ul")?.lastElementChild?.scrollIntoView(), DIR); await wait(300) }
-    const d1 = await drawn()
+    const d0 = await until(drawn, 5000)
+    const d1 = await until(async () => {
+      await page.evaluate((p) => document.querySelector(`[data-pane] [data-tree-path="${p}"]`)?.closest("ul")?.lastElementChild?.scrollIntoView(), DIR)
+      const n = await drawn(); return n === FILES && n
+    }, 8000, 300) || await drawn()
     check("a long folder draws its first rows, then every file as it's scrolled", d0 > 0 && d0 < FILES && d1 === FILES, { d0, d1 })
   } else check("the files tab shows the folder", false, null)
 
