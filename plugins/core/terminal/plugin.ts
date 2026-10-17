@@ -11,7 +11,7 @@ import {
   type Request,
 } from "../../../core/plugins.ts"
 import {
-  asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, type AgentRun, type Backend,
+  asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, type AgentRun, type Backend,
   type Link, type Listed as Shell,
 } from "./backend.ts"
 import { terminalOps } from "./ops.ts"
@@ -788,7 +788,7 @@ plugin.route("POST", "terminals/*/send", async (req) => {
   await owner(req)
   const id = localId(req)
   const b = await mustRun(id)
-  const text = typeof req.body?.text === "string" ? req.body.text : ""
+  const text = typeof req.body?.text === "string" ? unmarked(req.body.text) : ""
   const enter = req.body?.enter !== false
   if (!text && !enter) throw new HTTPError(400, "send needs a text (or enter)")
   await b.send(id, text, enter, { paste: asPaste(text) })

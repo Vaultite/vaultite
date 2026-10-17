@@ -1,5 +1,6 @@
 // The terminal's own keeper of shells: a detached Node process holding each pty and a headless xterm.js of its screen,
 // so shells outlive the server and a returning page gets a picture of the screen (newline JSON over a Unix socket).
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import net from "node:net"
 import path from "node:path"
@@ -118,10 +119,10 @@ function screen(s: Shell, lines: number) {
   return out.slice(-lines).join("\n")
 }
 
-/** Linux: the terminal's foreground process group (what runs in front in it), from /proc; 0 when unknown. */
+/** The terminal's foreground process group (what runs in front in it): Linux's /proc, else ps; 0 when unknown. */
 function foreground(pid: number) {
-  if (process.platform !== "linux") return 0
   try {
+    if (process.platform !== "linux") return Math.max(0, Number(execFileSync("ps", ["-o", "tpgid=", "-p", String(pid)], { encoding: "utf8", timeout: 2000 }).trim()) || 0)
     const st = fs.readFileSync(`/proc/${pid}/stat`, "utf8"), f = st.slice(st.lastIndexOf(")") + 2).split(" ")
     const tpgid = Number(f[5])
     return tpgid > 0 ? tpgid : 0
@@ -191,10 +192,10 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
       const s = m.id !== undefined ? shell(m.id) : c.session
       if (!s) return undefined
       s.activity = Date.now()
-      // `paste` (vau terminal send, a long text): bracketed when the program asked for that, so it takes it whole
-      // rather than in the pty's pieces. (Markers inside it are taken out: they'd end it early.)
+      // `paste` (vau terminal send, a long text, its markers taken out): bracketed when the program asked for that, so it
+      // takes it whole rather than in the pty's pieces.
       const text = Buffer.from(String(m.b64 ?? ""), "base64")
-      const data = m.paste && s.term.modes.bracketedPasteMode ? `\x1b[200~${text.toString("utf8").replace(/\x1b\[20[01]~/g, "")}\x1b[201~` : text
+      const data = m.paste && s.term.modes.bracketedPasteMode ? `\x1b[200~${text.toString("utf8")}\x1b[201~` : text
       try { s.pty.write(data as unknown as string) } catch { /* ended */ }
       return undefined
     }

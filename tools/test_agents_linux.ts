@@ -107,8 +107,8 @@ async function terminalsPart(backend: string) {
     await term.send(id, "ok", false)
     await term.send(id, long)
     const got = await waitFor(() => { try { return fs.readFileSync(out, "utf8") } catch { return null } }, 10000)
-    const want = bp ? `ok\x1b[200~${long.replace("\x1b[201~", "")}\x1b[201~\r` : `ok${long}\r`
-    check(`send (${tag}): ${long.length} characters arrive whole, ${bp ? "as one bracketed paste" : "typed (no bracketed paste asked)"}; a short text typed`,
+    const clean = long.replace("\x1b[201~", ""), want = bp ? `ok\x1b[200~${clean}\x1b[201~\r` : `ok${clean}\r`
+    check(`send (${tag}): ${long.length} characters arrive whole, ${bp ? "as one bracketed paste" : "typed (no bracketed paste asked)"}, its stray marker out; a short text typed`,
       got === want, { got: got?.length, want: want.length, start: JSON.stringify(got?.slice(0, 40)), end: JSON.stringify(got?.slice(-40)) })
     await endAndCheck(`send (${tag})`, id)
   }

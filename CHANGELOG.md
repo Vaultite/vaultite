@@ -43,6 +43,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   `vau daily`, the op `daily-note.open`, was `today.daily`), its date format, template and folder are in Daily notes'
   settings, moved there from Today's. Today keeps routines, ticked in the daily notes (`routine.check`; `POST
   /api/checks` is gone).
+- Text sent into a terminal (`vau terminal send`) no longer leaves a stray `201~` (a paste's end marker) in tmux, and
+  ending a terminal on a Mac also ends an agent that sat on the hangup, as on Linux.
 - Web links clicked in a terminal (an agent's output, `ls --hyperlink`) open in the Web viewer like links in notes, and
   ⌘-click sends them to the browser. Before, they always went to the browser.
 - **Plugins page: one Filter menu** in place of the row of category chips: by status (on or off), source (built in,

@@ -101,8 +101,9 @@ export interface Backend {
 /** A long or multi-line text goes as a paste: typed, an agent reads it in the pty's ~1 KB pieces, each a paste of its
  *  own (joined with a line break, or dropped while it's busy). A short one stays keys (a "1" answering a menu). */
 export const asPaste = (text: string) => Buffer.byteLength(text) > 256 || text.includes("\n")
-/** `text` as a bracketed paste (markers inside it taken out, so it can't end it early). */
-export const bracketed = (text: string) => `\x1b[200~${text.replace(/\x1b\[20[01]~/g, "")}\x1b[201~`
+/** Text sent into a terminal, without paste markers: one would end its paste early, or show as `201~` where none was asked. */
+export const unmarked = (text: string) => text.replace(/\x1b\[20[01]~/g, "")
+export const bracketed = (text: string) => `\x1b[200~${text}\x1b[201~`
 /** Whether output leaves bracketed paste on (`\e[?2004h`) or off, else `was`. */
 export function pasteMode(d: string, was: boolean) {
   let on = was
