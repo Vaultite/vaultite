@@ -238,6 +238,9 @@ function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) 
   )
 }
 
+/** A tint as text: mixed toward the text colour, so a yellow reads on light and a blue on dark. */
+const inked = (tint: string) => `color-mix(in srgb, ${tint} 72%, var(--foreground))`
+
 /** A margin card. Not open, a long one shows its first lines faded (a dot, where the margin's narrow); open, all of it. */
 function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: number; y: number; folded: boolean; open: boolean; cap: number
   onHeight: (h: number) => void; onOpen: (open: boolean) => void }) {
@@ -270,7 +273,7 @@ function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: nu
       {/* (its colour as a straight bar clear of the rounded corners, not a border bent around them) */}
       <span aria-hidden className="absolute inset-y-2.5 left-[3px] w-[3px] rounded-full" style={{ background: tint }} />
       <div className="flex shrink-0 items-center gap-1.5 px-2.5 pt-2 text-[11.5px] font-semibold text-muted-foreground">
-        <span className="min-w-0 flex-1 truncate">{n.agent}{n.kind === "suggestion" ? " suggests" : ""}</span>
+        <span className="min-w-0 flex-1 truncate" style={{ color: inked(tint) }}>{n.agent}{n.kind === "suggestion" ? " suggests" : ""}</span>
         <button type="button" aria-label={n.kind === "suggestion" ? "Reject" : "Dismiss"} data-tip={n.kind === "suggestion" ? `Reject (${keyHint("Escape")})` : "Dismiss"}
           className="grid size-5 cursor-pointer place-items-center rounded hover:bg-foreground/[0.07]"
           onClick={() => (folded && n.kind === "comment" ? onOpen(false) : answer(n.id, n.kind === "suggestion" ? "reject" : "dismiss"))}>
@@ -283,7 +286,7 @@ function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: nu
         {n.kind === "comment" && replies > 0 && (
           <div className="px-2.5">
             {n.replies!.map((r, i) => (
-              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><div className="text-[11.5px] font-semibold text-muted-foreground">{r.by === "user" ? "You" : n.agent}</div><Markdown text={r.text} className="companion-md" /></div>
+              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><div className="text-[11.5px] font-semibold text-muted-foreground" style={r.by === "user" ? undefined : { color: inked(tint) }}>{r.by === "user" ? "You" : n.agent}</div><Markdown text={r.text} className="companion-md" /></div>
             ))}
           </div>
         )}
