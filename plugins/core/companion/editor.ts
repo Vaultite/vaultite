@@ -4,7 +4,7 @@ import type { CompletionContext } from "@codemirror/autocomplete"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { pluginSettings, type EditorCtx } from "@vaultite"
-import { accept, answer, bump, type EditAsk, getState, hunksOf, liveAgents, MENTION_AT, mentionIn, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { accept, answer, bump, type EditAsk, getState, hunksOf, liveAgents, MENTION_AT, mentionAgent, mentionIn, mentionNames, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 
 /** Its own changes: not the user's, so not said back as theirs. */
 const own = Annotation.define<boolean>()
@@ -189,6 +189,7 @@ function watcher(path: string) {
       }
       if (!u.docChanged) return
       let typed = false
+      const asks: number[] = []
       for (const tr of u.transactions) {
         if (!tr.docChanged) continue
         if (!tr.annotation(own) && ["input", "delete", "move", "undo", "redo"].some((e) => tr.isUserEvent(e))) {
@@ -198,7 +199,9 @@ function watcher(path: string) {
             if (!inserted.toString().includes("\n")) return
             const line = tr.state.doc.lineAt(fromB)
             const ask = mentionIn(line.text)
-            if (ask && getState().mode !== "off") sendMoment({ kind: "ask", agent: ask.name, path, line: line.number, text: ask.text })
+            if (!ask || getState().mode === "off") return
+            sendMoment({ kind: "ask", agent: ask.name, path, line: line.number, text: ask.text })
+            asks.push(line.number)
           })
           continue
         }
@@ -208,6 +211,7 @@ function watcher(path: string) {
         this.pending = this.pending.map(o)
         if (this.pending.newLength !== tr.changes.newLength) this.pending = ChangeSet.of({ from: 0, to: this.baseline.length, insert: tr.state.doc }, this.baseline.length)
       }
+      if (asks.length) markSent(u.view, asks)
       if (!typed) return
       this.dirty = true
       this.later()
@@ -238,7 +242,64 @@ function watcher(path: string) {
   }, { decorations: (v) => v.decorations })
 }
 
+// ---------- @name: a chip in its agent's colour, lit when the ask goes and while that agent thinks on it
+
+const MENTION = /^(\s*(?:[-*+]\s+(?:\[.\]\s+)?)?)@([\w-]+)/
+const sent = StateEffect.define<number[]>() // lines' starts; [] when it's over
+const sentAt = StateField.define<number[]>({
+  create: () => [],
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(sent)) return e.value
+    return v.length && tr.docChanged ? v.map((p) => tr.changes.mapPos(p)) : v
+  },
+})
+/** The ask on these lines just went: their chips light up a moment (after this update: no dispatch inside one). */
+function markSent(view: EditorView, lines: number[]) {
+  queueMicrotask(() => {
+    if (!view.dom.isConnected) return
+    const doc = view.state.doc
+    view.dispatch({ effects: sent.of(lines.filter((n) => n <= doc.lines).map((n) => doc.line(n).from)) })
+    setTimeout(() => { if (view.dom.isConnected) view.dispatch({ effects: sent.of([]) }) }, 1600)
+  })
+}
+
+function chipsOf(view: EditorView, path: string): DecorationSet {
+  const st = getState()
+  if (st.mode === "off") return Decoration.none
+  const names = mentionNames(), lit = view.state.field(sentAt, false) ?? [], b = new RangeSetBuilder<Decoration>()
+  let last = -1
+  for (const r of view.visibleRanges) {
+    for (let pos = r.from; pos <= r.to;) {
+      const line = view.state.doc.lineAt(pos)
+      pos = line.to + 1
+      const m = line.number > last ? MENTION.exec(line.text) : null
+      last = line.number
+      if (!m || !names.includes(m[2].toLowerCase())) continue
+      const a = mentionAgent(m[2]), from = line.from + m[1].length
+      const asked = lit.includes(line.from) || (a?.state === "thinking" && a.path === path && a.line === line.number)
+      b.add(from, from + 1 + m[2].length, Decoration.mark({ class: asked ? "cm-companion-mention cm-companion-asked" : "cm-companion-mention",
+        attributes: { style: `--c: var(--${a?.tint ?? "orange"})`, "data-agent": a?.name ?? st.name } }))
+    }
+  }
+  return b.finish()
+}
+
+function chips(path: string) {
+  return ViewPlugin.fromClass(class {
+    decorations: DecorationSet
+    constructor(view: EditorView) { this.decorations = chipsOf(view, path) }
+    update(u: ViewUpdate) {
+      if (u.docChanged || u.viewportChanged || u.transactions.some((t) => t.effects.some((e) => e.is(refresh) || e.is(sent)))) this.decorations = chipsOf(u.view, path)
+    }
+  }, { decorations: (v) => v.decorations })
+}
+
 const theme = EditorView.baseTheme({
+  ".cm-companion-mention": { color: "var(--c)", backgroundColor: "color-mix(in srgb, var(--c) 13%, transparent)", borderRadius: "4px", padding: "1px 3px",
+    fontWeight: "550", transition: "background-color .3s" },
+  ".cm-companion-asked": { backgroundColor: "color-mix(in srgb, var(--c) 26%, transparent)", animation: "cm-companion-pulse 1.1s ease-in-out infinite" },
+  "@keyframes cm-companion-pulse": { "0%, 100%": { boxShadow: "0 0 0 0 transparent" }, "50%": { boxShadow: "0 0 0 3px color-mix(in srgb, var(--c) 28%, transparent)" } },
+  "@media (prefers-reduced-motion: reduce)": { ".cm-companion-asked": { animation: "none" } },
   ".cm-companion-hl": { backgroundColor: "color-mix(in srgb, var(--c) 32%, transparent)", borderRadius: "3px", animation: "cm-companion-in .4s ease-out" },
   ".cm-companion-hl-line": { backgroundColor: "color-mix(in srgb, var(--c) 14%, transparent)" },
   ".cm-companion-anchor": { textDecoration: "underline dotted var(--c)", textDecorationThickness: "2px", textUnderlineOffset: "4px" },
@@ -258,7 +319,8 @@ function mentions(ctx: CompletionContext) {
   if (!m || getState().mode === "off" || !MENTION_AT.test(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
   const names = liveAgents().map((a) => a.name)
   return { from: m.from + 1, validFor: /^[\w-]*$/,
-    options: (names.length ? names : [getState().name]).map((n) => ({ label: n.toLowerCase(), detail: n === getState().name ? "companion" : undefined, boost: n === getState().name ? 1 : 0, apply: `${n.toLowerCase()} ` })) }
+    options: (names.length ? names : [getState().name]).map((n) => ({ label: n.toLowerCase(), detail: n === getState().name ? "companion" : undefined,
+      boost: n === getState().name ? 1 : 0, apply: `${n.toLowerCase()} `, highlight: mentionAgent(n)?.tint ?? "orange" })) }
 }
 
 /** The extension for a note's editor (only a file's own: an embed or a field has no path). */
@@ -269,5 +331,5 @@ export function companionExtension(ctx: EditorCtx): Extension {
     { key: "Tab", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
     { key: "Escape", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
   ]))
-  return [typed, span, watcher(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions }])]
+  return [typed, span, sentAt, watcher(path), chips(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions }])]
 }

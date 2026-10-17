@@ -121,6 +121,11 @@ export function sayWhere(active = false) {
 
 /** The agents around now, the companion first. */
 export const liveAgents = () => state.agents.filter((a) => a.state !== "away").sort((a, b) => Number(b.name === state.name) - Number(a.name === state.name))
+/** The agent an @name reaches: that one while it's around, else the companion (as the server routes it). */
+export function mentionAgent(name: string): Agent | undefined {
+  const k = name.toLowerCase()
+  return state.agents.find((a) => a.name.toLowerCase() === k && a.state !== "away") ?? state.agents.find((a) => a.name === state.name)
+}
 /** The names that address an agent after @ (lower case): every agent's, and the companion's own, "claude" and "companion". */
 export const mentionNames = () => [...new Set(["companion", "claude", state.name.toLowerCase(), ...state.agents.map((a) => a.name.toLowerCase())])]
 
