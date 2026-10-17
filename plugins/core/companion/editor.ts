@@ -201,6 +201,7 @@ function watcher(path: string) {
         this.touched = this.touched.map((p) => tr.changes.mapPos(p))
         if (!tr.annotation(own) && ["input", "delete", "move", "undo", "redo"].some((e) => tr.isUserEvent(e))) {
           typed = true
+          this.typedAt = Date.now()
           this.pending = this.pending.compose(tr.changes)
           tr.changes.iterChanges((_fa, _ta, fromB, toB, inserted) => {
             this.touched = [...this.touched.slice(-100), fromB, toB]
@@ -217,7 +218,6 @@ function watcher(path: string) {
       }
       if (asks.length) markSent(u.view, asks)
       if (!typed) return
-      this.typedAt = Date.now()
       this.dirty = true
       this.later()
       this.wait(u.state)
