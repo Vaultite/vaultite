@@ -104,6 +104,37 @@ function useOverflow(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElem
   return over
 }
 
+/** Too narrow for the bar (a narrow window): its least needed parts go first, `data-drop` 1 (characters), 2 (words), 3
+ *  (plugins' labels), and come back, last gone first, once there's room. Sizes come from an observer, not each render. */
+function useDrops(bar: RefObject<HTMLElement | null>, shown: boolean) {
+  useEffect(() => {
+    const b = bar.current
+    if (!b) return
+    const widths = new WeakMap<HTMLElement, number>()
+    const fit = () => {
+      const els = [...b.querySelectorAll<HTMLElement>("[data-drop]")].sort((x, y) => Number(x.dataset.drop) - Number(y.dataset.drop))
+      for (const el of els) if (el.style.display !== "none" && el.offsetWidth) widths.set(el, el.offsetWidth)
+      const gone = els.filter((el) => el.style.display === "none")
+      if (b.scrollWidth > b.clientWidth + 1) {
+        const next = els.find((el) => el.style.display !== "none")
+        if (next) { b.dataset.cramped = ""; next.style.display = "none" }
+      } else if (gone.length) {
+        const back = gone[gone.length - 1], room = parseFloat(getComputedStyle(b).maxWidth) - b.offsetWidth
+        if (room > (widths.get(back) ?? Infinity) + 12) { back.style.display = ""; if (gone.length === 1) delete b.dataset.cramped }
+      }
+    }
+    let frame = 0
+    const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit() }) }
+    const ro = new ResizeObserver(soon), watch = () => { ro.observe(b); for (const el of b.querySelectorAll("[data-steady], [data-drop]")) ro.observe(el) }
+    // (its parts come and go with the file: each watched as it comes)
+    const mo = new MutationObserver(() => { watch(); soon() })
+    watch()
+    mo.observe(b, { childList: true, subtree: true })
+    addEventListener("resize", soon)
+    return () => { ro.disconnect(); mo.disconnect(); cancelAnimationFrame(frame); removeEventListener("resize", soon) }
+  }, [bar, shown])
+}
+
 const KEPT_WIDTH = "vaultite.statusbar"
 /** The bar at least as wide as last load's while its items come in (each, arriving, pushed the rest left), until another
  *  file opens: like Steady, it doesn't narrow under the file it opened with. */
@@ -164,6 +195,7 @@ export function StatusBar() {
   const inBar = ambient.filter((x) => !statusBarMore.includes(x.key))
   const over = useOverflow(barRef, fitRef, inBar.map((x) => x.key))
   useKeptWidth(barRef, path)
+  useDrops(barRef, !!(s && late))
   const inTray = ambient.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
   const [tray, setTray] = useState(false)
   const d = useDrag(), dragged = d?.item.status
@@ -221,7 +253,7 @@ export function StatusBar() {
   const menu = (e: MouseEvent) => menuAbove(e, s.views.map((v) => ({ label: v.label, checked: v.value === s.mode, run: () => s.setMode(v.value) })))
   const n = (x: number, one: string) => `${numberText(x)} ${one}${x === 1 ? "" : "s"}`
   return wrap(<>
-    {items.filter((x) => !x.item.after).map(({ key, item }) => item_(key, () => item.render(file)))}
+    {items.filter((x) => !x.item.after).map(({ key, item }) => <span key={key} data-drop="3" className="contents">{item_(key, () => item.render(file))}</span>)}
     {s.views.length > 1 ? (
       <button type="button" onClick={menu} onContextMenu={menu} aria-label={`${tip}. Change view`} aria-haspopup="menu" data-tip={tip} data-tip-side="top"
         className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground">
@@ -232,8 +264,8 @@ export function StatusBar() {
       {late?.info ? late.info.map((x) => <span key={x}>{x}</span>)
         : late?.says ? item_("says", () => { const said = late.says!(body); return said && <span>{said}</span> })
         : counts && nb && s.mode === "read" ? <span>{n(counts.cells, "cell")}</span>
-        : counts && (code ? <><span>{n(counts.lines, "line")}</span><span>{n(counts.chars, "character")}</span></>
-          : <><span>{n(counts.words, "word")}</span><span>{n(counts.chars, "character")}</span></>)}
+        : counts && (code ? <><span data-drop="2">{n(counts.lines, "line")}</span><span data-drop="1">{n(counts.chars, "character")}</span></>
+          : <><span data-drop="2">{n(counts.words, "word")}</span><span data-drop="1">{n(counts.chars, "character")}</span></>)}
       {items.filter((x) => x.item.after).map(({ key, item }) => item_(key, () => item.render(file)))}
     </Steady>
   </>)
@@ -305,9 +337,11 @@ function Steady({ reset, children }: { reset: string; children: ReactNode }) {
   const ref = useRef<HTMLSpanElement>(null), widest = useRef({ reset, w: 0 })
   useLayoutEffect(() => {
     const el = ref.current!
+    // (a bar too narrow drops parts of it: no keeping their room then)
+    if (el.closest("[data-cramped]")) { widest.current.w = 0; el.style.minWidth = ""; return }
     if (widest.current.reset !== reset) { widest.current = { reset, w: 0 }; el.style.minWidth = "" }
     widest.current.w = Math.max(widest.current.w, el.getBoundingClientRect().width)
     el.style.minWidth = `${widest.current.w}px`
   })
-  return <span ref={ref} className="flex items-center justify-end gap-2 empty:hidden">{children}</span>
+  return <span ref={ref} data-steady className="flex items-center justify-end gap-2 empty:hidden">{children}</span>
 }
