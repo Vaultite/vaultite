@@ -156,7 +156,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `FileHead`: The file a file bar item is drawn for, as in its editor now: `fm` (a change redraws, typing doesn't), `type`, and `setProperty` to change one key as a small edit (absent when the file can't be…
 - `FileIcon`: An icon a plugin gives a file or folder: `icon` a name (Lucide's, a plugin's, or an emoji), `tint` a colour token (`green`).
 - `FileMark`: A short mark after a file's name in the file tree (Token count's size over its limit), with its tooltip.
-- `fileMenu(file, opts?)`: A vault file's menu as its tab shows it (the tree's, but for New): change it, the plugins' groups, its path, Delete.
+- `fileMenu(file, opts?)`: A vault file's menu wherever it's shown: `top` (what's about where it is), change it, the plugins' groups, its path, Delete.
 - `FileMenuItem`: An item in a file's menu.
 - `FileRow`: What a plugin draws into a file tree row itself (`fileRows`): on the row and its name, and elements before the name (in place of the row's icon) or after it.
 - `FileRowPart`: Classes, attributes and a style for a part of a file tree row.
@@ -398,6 +398,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `rightClickBelow(e)`: For a … button: right-clicks it, so the menu under it is whatever right-clicking its row or heading shows.
 - `Ring({ value, goal, color, size })`: Progress ring for "x of goal this week".
 - `Row({ title, meta, right, lead, className, onOpen, href, wrap, … })`: A list row: title (two lines at most) and meta line; `onOpen` makes it a disclosure row, `href` a new-tab link.
+- `rowFileMenu(path)`: A file listed in a row (a recent file, a query's result): Open in new tab (to the right too, on desktop), then its menu.
 - `rowMenu(list, key, own)`: A row's menu: the list's menu for the selection when the row is in one, else its own.
 - `runCommandById(id)`: Run a registered command by its id ("switcher:open"), if it's there and available now (`when`: editor:undo only while the keyboard isn't in a text field); whether it ran.
 - `runCommandNamed(text)`: Run a command that's available now by its id ("switcher:open") or its name as the palette lists it ("Open quick switcher", any case): false if there's none (Vim's :cmd).

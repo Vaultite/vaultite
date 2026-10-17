@@ -2,6 +2,7 @@
 import { Columns2, Copy, Ellipsis, FileInput, FilePlus, FileSymlink, FolderInput, FolderSearch, FolderTree, Link, Pencil, RotateCcw, Smile, SquareArrowOutUpRight, Trash2, type LucideIcon } from "lucide-react"
 import { actionIcon, fileActions, runAction } from "@/core/actions"
 import { getStore } from "@/core/data"
+import { kindOf } from "@/core/filekinds"
 import { post } from "@/core/http"
 import { newNoteFolder, saveAttachments } from "@/core/conventions"
 import { copyFile, deleteFile, fileOf, folderList, inTrash, isHidden, isMd, isProtected, isReadOnly, openFile, openNew, restoreFile, shownName, stem } from "@/core/files"
@@ -10,7 +11,8 @@ import { setProperty } from "@/core/frontmatter"
 import { shortestLink } from "@/core/links"
 import { PLUGINS, isEnabled } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
-import { isLinux, isMac, revealLabel } from "@/core/platform"
+import { isDesktop, isLinux, isMac, revealLabel } from "@/core/platform"
+import { openInSplit } from "@/core/splits"
 import type { MenuItem } from "@/components/ContextMenu"
 import { choose } from "@/components/Chooser"
 import { confirmDialog } from "@/components/ConfirmDialog"
@@ -181,37 +183,37 @@ export function pluginFileGroups(path: string, skip?: string, folder = false): {
 export const moreItem = (items: MenuItem[]): MenuItem[] =>
   items.length > 1 ? [{ label: "More", icon: Ellipsis, run: () => {}, items: [...items].sort((x, y) => x.label.localeCompare(y.label)) }] : items
 
-/** A vault file's menu as its tab shows it (the tree's, but for New): change it, the plugins' groups, its path, Delete.
- *  `rename`: how it's renamed (else in its tab, opened first); `phone` leaves out what a phone hasn't got. */
-export function fileMenu(file: string, opts: { rename?: () => void; phone?: boolean; short?: boolean } = {}): MenuItem[] {
+/** A vault file's menu wherever it's shown: `top` (what's about where it is), change it, the plugins' groups, its path,
+ *  Delete. `inside`: shown in something else (an embed, a card), so no Duplicate and Delete names what goes. */
+export function fileMenu(file: string, opts: { rename?: () => void; phone?: boolean; short?: boolean; top?: MenuItem[][]; inside?: boolean } = {}): MenuItem[] {
   const ro = isReadOnly(file), locked = ro || isProtected(file)
   const plug = pluginFileGroups(file)
-  const rename = renameItem(file, opts.rename ?? (() => { openFile(file); askRename(file) }))
+  const rename = renameItem(file, opts.rename ?? (() => { openFile(file, { newTab: opts.inside }); askRename(file) }))
   const reveal: MenuItem = { label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(file, { scroll: true, flash: true }) }
-  const del: MenuItem[] = !isProtected(file) ? [{ label: ro ? "Delete permanently" : "Delete", icon: Trash2, danger: true, run: () => remove(file) }] : []
+  const noun = !opts.inside || ro ? "" : kindOf(file) === "image" ? " image" : isMd(file) ? " note" : " file"
+  const del: MenuItem[] = !isProtected(file) ? [{ label: ro ? "Delete permanently" : `Delete${noun}`, icon: Trash2, danger: true, run: () => remove(file) }] : []
+  const change: MenuItem[] = locked ? [] : [{ label: "Move file to…", icon: FileInput, run: () => askMove(file) }, ...(opts.inside ? [] : [duplicateItem(file)])]
   // `short` (a desktop tab's, the tree at hand): what's about the file where it is, the rest in More file actions ▸
   // (Delete too: not a misclick away from Close)
   if (opts.short) {
-    const more = grouped([
-      locked ? [] : [{ label: "Move file to…", icon: FileInput, run: () => askMove(file) }, duplicateItem(file)],
-      plug.navigate, ...plug.rest, plug.more, del,
-    ])
-    return [...(locked ? [] : [rename]), copyPathItem(file), reveal, ...revealItem(file),
-      ...(more.length ? [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: more }] : [])]
+    const more = grouped([change, plug.navigate, ...plug.rest, plug.more, del])
+    return grouped([...(opts.top ?? []), [...(locked ? [] : [rename]), copyPathItem(file), reveal, ...revealItem(file),
+      ...(more.length ? [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: more }] : [])]])
   }
   return grouped([
-    locked ? [] : [
-      // (a phone renames in its title, so Change icon is an item of its own there)
-      ...(opts.phone ? iconItem(file) : [rename]),
-      { label: "Move file to…", icon: FileInput, run: () => askMove(file) },
-      duplicateItem(file),
-    ],
+    ...(opts.top ?? []),
+    // (a phone renames in its title, so Change icon is an item of its own there)
+    locked ? [] : [...(opts.phone ? iconItem(file) : [rename]), ...change],
     plug.navigate,
     ...plug.rest,
     [copyPathItem(file), ...(opts.phone ? [] : [reveal]), ...revealItem(file), ...moreItem(plug.more)],
     del,
   ])
 }
+
+/** A file listed in a row (a recent file, a query's result): Open in new tab (to the right too, on desktop), then its menu. */
+export const rowFileMenu = (path: string): MenuItem[] => fileMenu(path, { phone: !isDesktop(), top: [[
+  openItem(() => openFile(path, { newTab: true }), isDesktop() ? () => openInSplit(`file:${path}`, "right") : undefined)]] })
 
 /** A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its
  *  path and Reveal in file tree, Delete. Renaming and New folder are the tree's, where the name is typed in place. */

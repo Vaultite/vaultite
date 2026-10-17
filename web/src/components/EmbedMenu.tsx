@@ -1,7 +1,7 @@
-// One right-click menu for whatever `![[x]]` shows, fitting its kind: copy, open, rename, move, its path, its size, the
-// embed taken out, delete. Outside the editor nothing changes the note; a file's own tab has the same (mediaItems).
+// One right-click menu for whatever `![[x]]` shows: what fits its kind (copy, its size, the embed taken out, open), then
+// its file's menu (FileActions' fileMenu, the plugins' items too). A file's own tab has the same (mediaItems).
 import type { ReactNode } from "react"
-import { AppWindow, Copy, Download, Eraser, FileInput, FolderTree, Pencil, Scaling, Trash2 } from "lucide-react"
+import { AppWindow, Copy, Download, Eraser, Scaling } from "lucide-react"
 import type { Store } from "@/core/data"
 import { openAt } from "@/core/anchors"
 import { kindOf } from "@/core/filekinds"
@@ -12,10 +12,8 @@ import { formatFor } from "@/core/plugins"
 import { getPrefs } from "@/core/prefs"
 import { openInSplit } from "@/core/splits"
 import { isDesktop } from "@/core/platform"
-import { askRename } from "@/core/workspace"
 import { openMenu, type MenuItem } from "@/components/ContextMenu"
-import { canOpenHere, copyPathItem, copyToVaultItem, grouped, openHere, openItem, remove, revealItem } from "@/components/FileActions"
-import { askMove, revealInTree } from "@/components/FileTree"
+import { canOpenHere, copyToVaultItem, fileMenu, grouped, openHere, openItem, revealItem } from "@/components/FileActions"
 import { rawUrl } from "@/components/FileViewers"
 import { noteFor } from "@/components/NoteEmbed"
 import type { EmbedEdit } from "@/editor/livePreview"
@@ -36,65 +34,39 @@ export function assetPath(store: Store, name: string, from?: string): string | n
 const embedPath = (store: Store, target: string, from = "") =>
   findEmbed(store, target, from) ?? assetPath(store, target, from) ?? noteFor(store, target, from)
 
-/** The menu for `![[target]]` (or an image's `![](target)`). `edit`: what changes it in the note it's in. */
+/** The menu for `![[target]]` (or an image's `![](target)`): what's about the embed, then its file's own menu.
+ *  `edit`: what changes it in the note it's in. */
 function embedItems(store: Store, target: string, edit?: EmbedEdit | null, from = ""): MenuItem[] {
   const path = embedPath(store, target, from)
   const image = path ? kindOf(path) === "image" : true
   const note = !!path && isMd(path) && !formatFor(path, getPrefs().disabled)
   // (an audio player or a note has no size to reset)
   const sized = image || (!!path && !note && kindOf(path) !== "audio")
-  const desk = isDesktop()
   const anchor = note ? splitAnchor(target)[1] : ""
-  const file: MenuItem[][] = !path ? [] : [
-    [
-      openItem(() => (anchor ? openAt(path, anchor, { newTab: true }) : openFile(path, { newTab: true })), desk ? () => openInSplit(`file:${path}`, "right") : undefined),
-      ...(!isMd(path) && canOpenHere() ? [{ label: "Open in default app", icon: AppWindow, run: () => openHere(path) }] : []),
-      ...(!isMd(path) ? [{ label: "Download", icon: Download, run: () => download(path) }] : []),
-    ],
-    [
-      ...(desk ? [{ label: "Rename", icon: Pencil, run: () => { openFile(path, { newTab: true }); askRename(path) } }] : []),
-      { label: "Move file to…", icon: FileInput, run: () => askMove(path) },
-    ],
-    whereItems(path),
+  const own: MenuItem[] = [
+    ...(image ? [{ label: "Copy image", icon: Copy, run: () => void copyImage(path ? rawUrl(path) : target) }] : []),
+    ...(edit?.writable ? [
+      ...(sized ? [{ label: "Reset size", icon: Scaling, disabled: !edit.size, run: () => edit.resize(null) }] : []),
+      { label: "Remove embed", icon: Eraser, run: edit.remove },
+    ] : []),
   ]
-  return grouped([
-    [
-      ...(image ? [{ label: "Copy image", icon: Copy, run: () => void copyImage(path ? rawUrl(path) : target) }] : []),
-      ...(edit?.writable ? [
-        ...(sized ? [{ label: "Reset size", icon: Scaling, disabled: !edit.size, run: () => edit.resize(null) }] : []),
-        { label: "Remove embed", icon: Eraser, run: edit.remove },
-      ] : []),
-    ],
-    ...file,
-    path ? [{ label: image ? "Delete image" : note ? "Delete note" : "Delete file", icon: Trash2, danger: true, run: () => remove(path) }] : [],
-  ])
+  if (!path) return own
+  const desk = isDesktop()
+  return fileMenu(path, { inside: true, phone: !desk, top: [own, [
+    openItem(() => (anchor ? openAt(path, anchor, { newTab: true }) : openFile(path, { newTab: true })), desk ? () => openInSplit(`file:${path}`, "right") : undefined),
+    ...(isMd(path) ? [] : [...openHereItem(path), { label: "Download", icon: Download, run: () => download(path) }]),
+  ]] })
 }
 
 /** The menu of an image, PDF or other file shown in its own tab (FileView's MediaFile): copy it, open it elsewhere,
- *  rename, move, its path, delete; one from outside the vault: copy it, Copy to vault, Reveal in Finder. */
-export function mediaItems(path: string, outside: boolean, locked: boolean): MenuItem[] {
-  const image = kindOf(path) === "image"
-  const desk = isDesktop()
-  const copy: MenuItem[] = image ? [{ label: "Copy image", icon: Copy, run: () => void copyImage(rawUrl(path)) }] : []
-  const elsewhere: MenuItem[] = canOpenHere() ? [{ label: "Open in default app", icon: AppWindow, run: () => openHere(path) }] : []
-  if (outside) return grouped([copy, [copyToVaultItem(path), ...elsewhere, ...revealItem(path)]])
-  return grouped([
-    [...copy, ...elsewhere, { label: "Download", icon: Download, run: () => download(path) }],
-    locked ? [] : [
-      ...(desk ? [{ label: "Rename", icon: Pencil, run: () => askRename(path) }] : []),
-      { label: "Move file to…", icon: FileInput, run: () => askMove(path) },
-    ],
-    whereItems(path),
-    locked ? [] : [{ label: image ? "Delete image" : "Delete file", icon: Trash2, danger: true, run: () => remove(path) }],
-  ])
+ *  then its file's own menu; one from outside the vault: copy it, Copy to vault, Reveal in Finder. */
+export function mediaItems(path: string, outside: boolean): MenuItem[] {
+  const copy: MenuItem[] = kindOf(path) === "image" ? [{ label: "Copy image", icon: Copy, run: () => void copyImage(rawUrl(path)) }] : []
+  if (outside) return grouped([copy, [copyToVaultItem(path), ...openHereItem(path), ...revealItem(path)]])
+  return fileMenu(path, { phone: !isDesktop(), top: [[...copy, ...openHereItem(path), { label: "Download", icon: Download, run: () => download(path) }]] })
 }
 
-/** Its path, and where it is: the file tree, Finder. */
-const whereItems = (path: string): MenuItem[] => [
-  copyPathItem(path),
-  ...(isDesktop() ? [{ label: "Reveal in file tree", icon: FolderTree, run: () => revealInTree(path, { scroll: true, flash: true }) }] : []),
-  ...revealItem(path),
-]
+const openHereItem = (path: string): MenuItem[] => (canOpenHere() ? [{ label: "Open in default app", icon: AppWindow, run: () => openHere(path) }] : [])
 
 export const openEmbedMenu = (store: Store, target: string, at: { x: number; y: number }, edit?: EmbedEdit | null, from = "") =>
   openMenu(at, embedItems(store, target, edit, from))

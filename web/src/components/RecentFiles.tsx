@@ -6,7 +6,7 @@ import { useRecentFiles } from "@/core/scope"
 import { isRecentable } from "@/core/search"
 import { fileIcon } from "@/components/FileTree"
 import { SidebarRow } from "@/components/Sidebar"
-import { filesMenu } from "@/components/FileActions"
+import { filesMenu, rowFileMenu } from "@/components/FileActions"
 import { menuFor } from "@/components/ContextMenu"
 import { rowMenu, selectClick, selectedAttr, useSelectable, useSelectedKeys } from "@/core/select"
 
@@ -67,7 +67,7 @@ export function RecentList({ store, files }: { store: Store; files: string[]
           // A middle-click (⌘↵ from the keyboard): a new tab here, as everywhere in the app (never the browser's); ⌘- and
           // ⇧-click select.
           <SidebarRow key={p} data-recent={p} data-select-key={p} {...selectedAttr(picks.has(p))} href={`#file/${encodeURIComponent(p)}`} icon={fileIcons ? icon : undefined} tint={tint} label={stem(p)} open
-            className="active:bg-foreground/[0.06]" onContextMenu={menuFor(rowMenu(SELECT, p, () => []))}
+            className="active:bg-foreground/[0.06]" onContextMenu={menuFor(rowMenu(SELECT, p, () => rowFileMenu(p)))}
             onClick={(e) => { if (!selectClick(e, SELECT, p)) openFile(p, { newTab: e.metaKey || e.ctrlKey || e.button === 1 }) }}>
             {folder && <span className="mr-1 max-w-[40%] truncate text-[11px] text-tertiary">{folder}</span>}
           </SidebarRow>

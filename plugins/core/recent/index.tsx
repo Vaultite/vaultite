@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react"
 import { FileClock, FilePen, History } from "lucide-react"
-import { changedFiles, cn, definePlugin, fileMenu, menuFor, openFile, openingSoon, openInSplit, openItem, openView, pluginSettings, RecentList, SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, type RecentKind, type SidebarCtx, type Store } from "@vaultite"
+import { changedFiles, cn, definePlugin, menuFor, openFile, openingSoon, openView, pluginSettings, RecentList, rowFileMenu, SidebarHeading, SidebarRow, startDrag, stem, useDrag, useFileIcon, useOpenedFiles, useScopedState, type RecentKind, type SidebarCtx, type Store } from "@vaultite"
 
 // Recent files: opened lately in this workspace, or changed lately (a toggle kept
 // per workspace). The lists are the app's (components/RecentFiles.tsx).
@@ -70,8 +70,7 @@ function RecentPanel({ store, open, file }: SidebarCtx) {
             return (
               <div key={p} onPointerDown={(e) => { openingSoon(p, true); startDrag(e, { from: "row", to: `file:${p}`, path: p, label: stem(p) }) }}
                 onPointerEnter={() => openingSoon(p)} onPointerLeave={() => openingSoon(null)}
-                onContextMenu={menuFor(() => [openItem(() => openFile(p, { newTab: true }), () => openInSplit(`file:${p}`, "right")),
-                  ...fileMenu(p).map((it, i) => (i ? it : { ...it, sep: true }))])}
+                onContextMenu={menuFor(() => rowFileMenu(p))}
                 className={cn(d?.item.from === "row" && d.item.path === p && "opacity-40")}>
                 <SidebarRow data-recent={p} href={`#file/${encodeURIComponent(p)}`} icon={icon} tint={tint} label={stem(p)} open={open} active={p === file} more
                   onClick={(e) => openFile(p, { newTab: e.metaKey || e.ctrlKey || e.button === 1 })} />

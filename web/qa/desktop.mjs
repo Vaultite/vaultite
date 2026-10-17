@@ -286,7 +286,7 @@ check("Copy to vault brings the image in", await until(() => !!inVault(), 10000)
 check("…and the tab shows the vault's copy", await until(async () => !decodeURIComponent(win.url()).includes(TMP), 10000), win.url())
 await win.locator("[data-pane] article[data-kind=image] img").first().click({ button: "right" })
 check("a vault image's right-click has its file's items", await until(async () => (await win.getByRole("menuitem", { name: "Move file to…" }).count()) > 0
-  && (await win.getByRole("menuitem", { name: "Delete image" }).count()) > 0, 10000))
+  && (await win.getByRole("menuitem", { name: "Delete", exact: true }).count()) > 0, 10000))
 await win.keyboard.press("Escape")
 const xlsxOut = path.join(TMP, "Outside budget.xlsx")
 fs.writeFileSync(xlsxOut, (await import(path.join(ROOT, "tools/fixtures/formats/make.ts"))).xlsx())

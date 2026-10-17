@@ -3,7 +3,7 @@
 import { memo, Suspense, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react"
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Ellipsis, Info } from "lucide-react"
 import {
-  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, Resizer, resolver, setProperty, startDrag,
+  addDays, Bar, cn, dateText, dow, edgeScroller, Empty, Loading, menuBelow, menuFor, numberText, openFile, parse, PinMap, range, Resizer, resolver, rowFileMenu, setProperty, startDrag,
   textKey, today, typedValue, useDrag, useDropHit, useDropTarget, useKeptCount, useLive, useRowsNear, useVaultChange, weekStart, type MapPin, type MenuItem,
 } from "@vaultite"
 import { byKeys, dayOf, groupName, monthName, propKey, summaryText, text, type Result, type Row } from "./query"
@@ -177,6 +177,13 @@ export type TableCtl = {
   rename: (key: string, name: string | null) => void
 }
 
+/** A result's right-click (every layout): its file's menu, as everywhere it's listed. */
+const rowMenu = (e: React.MouseEvent) => {
+  const row = (e.target as Element).closest<HTMLElement>("[data-query-row]")
+  if (!row || e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return
+  menuFor(() => rowFileMenu(row.dataset.queryRow!))(e)
+}
+
 /** What a database view draws, by its view: notes on what was left out, then the table, cards, list, board, calendar
  *  or map. `fill`: it has a box of its own to fill (a .base in its tab), so a map takes the height it's given. */
 export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, fill }: {
@@ -185,7 +192,7 @@ export function ResultBody({ res, groups, resolve, ctl, save, month, setMonth, f
 }) {
   const special = res.view === "board" || res.view === "calendar" || res.view === "map"
   return (
-    <div className={cn("space-y-4 [contain:inline-size]", fill && res.view === "map" && "flex h-full flex-col")} data-query={res.view} data-keylist>
+    <div className={cn("space-y-4 [contain:inline-size]", fill && res.view === "map" && "flex h-full flex-col")} data-query={res.view} data-keylist onContextMenu={rowMenu}>
       {res.notes?.length ? (
         <div className="space-y-0.5 text-[13px] text-muted-foreground" data-query-notes>
           {res.notes.map((n) => <p key={n} className="flex gap-1.5"><Info className="mt-[3px] size-3.5 shrink-0" strokeWidth={2.25} />{n}</p>)}
@@ -540,6 +547,7 @@ const Board = memo(function Board({ groups, res, resolve, save }: {
                 const menu = () => [
                   { label: "Open", run: () => openFile(r.path) },
                   ...(can ? moveItems(cols, c.key, (to) => move(r, to)).map((m, i) => (i ? m : { ...m, sep: true })) : []),
+                  ...rowFileMenu(r.path).map((m, i) => (i ? m : { ...m, sep: true })),
                 ]
                 return (
                   <div key={r.path} role="button" tabIndex={0} data-keyrow data-query-row={r.path} onContextMenu={menuFor(menu)}

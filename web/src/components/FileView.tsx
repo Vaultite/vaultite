@@ -336,7 +336,7 @@ function MediaFile({ store, path, pane, kind, note }: { store: Store; path: stri
   // Right-click it (the image, around it): its menu, unless what's drawn answered first (a plugin's own menu).
   const onMenu = (e: MouseEvent) => {
     if (e.defaultPrevented || (e.target as Element).closest("input, textarea, [contenteditable]")) return
-    menuFor(() => mediaItems(path, isOutside(path), isReadOnly(path) || isProtected(path) || inTrash(path)))(e)
+    menuFor(() => mediaItems(path, isOutside(path)))(e)
   }
   return (
     <article className={cn("file-view", pane && "mx-auto max-w-[1040px] pb-24")} data-path={path} data-kind={kind} onContextMenu={onMenu}>

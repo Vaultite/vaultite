@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- A file's menu is the same wherever it's right-clicked or held: an image or PDF in its tab, an embed in a note, an image
+  in a block's text, a canvas card, a database's result, a recent file. Plugins' items (Use as Dock icon, Open local
+  graph) show in each, not only in the tab's menu.
 - **Companion** (a new plugin, off until turned on): an always-on Claude Code or Codex session with its own cursor in the
   app. Write `@claude` in a note (or ⌘⇧K) to ask it; it answers in a bubble by its cursor, comments in the margin,
   suggests changes you take with Tab, or types into the note with you. Modes: quiet, notice, pair. Its cursor shows it

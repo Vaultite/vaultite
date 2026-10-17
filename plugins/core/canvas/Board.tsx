@@ -6,7 +6,7 @@ import {
   ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
   Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, dropHighlightEmoji, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, createFile, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -800,6 +800,8 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       items.push({ label: "Duplicate", icon: CopyPlus, run: dup })
       items.push({ label: "Delete", icon: Trash2, danger: true, sep: true, run: removeSelected })
     }
+    // A file's card: then the file's own menu, as everywhere it's shown (the plugins' items too).
+    if (!many && n.type === "file" && n.file) items.push(...fileMenu(String(n.file), { inside: true, phone: !isDesktop() }).map((it, i) => (i ? it : { ...it, sep: true })))
     return items
   }
   const edgeMenu = (id: string): MenuItem[] => (editable ? [

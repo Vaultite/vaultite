@@ -576,7 +576,8 @@ export type PluginDef = {
   openElsewhere?: () => string[]
   /** Keeps workspaces (see WorkspaceHost): one plugin at a time, the first that's on. */
   workspace?: WorkspaceHost
-  /** Items it adds to a vault file's menu (the tree, the tab, the phone's …), for that file's path; [] for none. */
+  /** Items it adds to a vault file's menu, wherever it shows (the tree, a tab, the file's view, an embed, a canvas card), for
+   *  that file's path; [] for none. */
   fileMenu?: (path: string) => FileMenuItem[]
   /** Items it adds to a view's menus (its tab's, a terminal's row), for its tab's target ("view:terminal/abc"); [] for
    *  none. */

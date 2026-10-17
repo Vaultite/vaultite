@@ -59,7 +59,7 @@ export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // database view's cards).
 export { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions } from "@/components/ConfirmDialog"
-export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups } from "@/components/FileActions"
+export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups, rowFileMenu } from "@/components/FileActions"
 export { deleteFile, restoreFile } from "@/core/files"
 // "Move file to…": the folder picker, then the move (with Undo); `before` runs once a folder is picked. Or straight
 // into a folder (a drop on it), one toast with Undo.

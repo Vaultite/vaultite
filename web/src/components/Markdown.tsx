@@ -9,7 +9,7 @@ import { hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/r
 import { isReadOnly, readFile } from "@/core/files"
 import { put } from "@/core/http"
 import { notifyError } from "@/core/notify"
-import { assetPath } from "@/components/EmbedMenu"
+import { assetPath, openEmbedMenu } from "@/components/EmbedMenu"
 import { rawUrl } from "@/components/FileViewers"
 import { EmbedView } from "@/components/NoteEmbed"
 import { cn } from "@/lib/utils"
@@ -70,9 +70,19 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     // ⌘-click or a middle-click: a new tab, as in the editor.
     followLink(s, a.dataset.tag ? { tag: a.dataset.tag } : a.dataset.url ? { url: a.dataset.url } : { wiki: a.dataset.wiki }, e.metaKey || e.ctrlKey || e.button === 1, from)
   }
+  // An image in the text: its menu, as in a note (a `![[x]]` drawn in its place answers with its own first).
+  const menu = (e: MouseEvent) => {
+    const img = (e.target as Element).closest("img")
+    if (!img || !s || e.defaultPrevented) return
+    e.preventDefault(); e.stopPropagation()
+    const src = img.getAttribute("src") ?? ""
+    let target = src
+    try { target = new URL(src, document.baseURI).searchParams.get("path") ?? src } catch { /* as written */ }
+    openEmbedMenu(s, target, { x: e.clientX, y: e.clientY }, null, from)
+  }
   const Tag = inline ? "span" : "div"
   return (
-    <Tag ref={ref as never} className={cn(!plain && "note-prose", !plain && (inline ? "inline" : !full && "compact"), className)} onClick={follow} onAuxClick={(e) => { if (e.button === 1) follow(e) }} data-markdown-from={from} dangerouslySetInnerHTML={{ __html: html }} />
+    <Tag ref={ref as never} className={cn(!plain && "note-prose", !plain && (inline ? "inline" : !full && "compact"), className)} onClick={follow} onAuxClick={(e) => { if (e.button === 1) follow(e) }} onContextMenu={menu} data-markdown-from={from} dangerouslySetInnerHTML={{ __html: html }} />
   )
 }
 
