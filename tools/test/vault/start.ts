@@ -1,7 +1,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { VaultTest } from "./harness.ts"
-import { NOW_OPT_IN } from "../../../core/migrations.ts"
+import { MOVED, NOW_OPT_IN } from "../../../core/migrations.ts"
 
 // The app's own plugins that are off until turned on: Standard (the app's defaults) turns none of them on.
 const optIn = fs.readdirSync(path.join(import.meta.dirname, "../../../plugins/core")).filter((id) => {
@@ -39,18 +39,20 @@ export default async ($: VaultTest) => {
     check("a folder of notes: Standard, and nothing added among its files", !(conf(own, "plugins")?.enabled ?? []).length && JSON.stringify(files) === '["Ideas","Ideas/One.md"]'
       && fs.readFileSync(path.join(own, "Ideas/One.md"), "utf8") === "An idea.\n", files)
     check("new vault: its settings start up to date (core/migrations.ts)", conf(fresh, "migrations")?.done?.includes("plugins-opt-in-2026-10") && conf(fresh, "migrations")?.done?.includes("daily-notes-2026-10") && !(pj?.enabled ?? []).includes("codex"), conf(fresh, "migrations"))
-    // Opened before, from when the agents' plugins were on from the start: what was on stays on, once.
+    // Opened before, from when the agents' plugins were on from the start: what was on stays on, once (but those that
+    // moved out of the app since: they'd be installed).
+    const STILL = NOW_OPT_IN.filter((id) => !Object.hasOwn(MOVED, id))
     const opened = path.join(tmp, "Opened before")
     fs.mkdirSync(path.join(opened, ".vaultite"), { recursive: true })
     await open(opened)
-    check("a vault the app opened before keeps its setup", JSON.stringify(conf(opened, "plugins")?.enabled) === JSON.stringify(NOW_OPT_IN) && !fs.existsSync(path.join(opened, "Start here.md")), conf(opened, "plugins"))
+    check("a vault the app opened before keeps its setup", JSON.stringify(conf(opened, "plugins")?.enabled) === JSON.stringify(STILL) && !fs.existsSync(path.join(opened, "Start here.md")), conf(opened, "plugins"))
     const older = path.join(tmp, "Older setup")
     fs.mkdirSync(path.join(older, ".vaultite"), { recursive: true })
     fs.writeFileSync(path.join(older, ".vaultite/plugins.json"), JSON.stringify({ disabled: ["codex", "clipper"], enabled: ["people"], order: ["people"] }))
     await open(older)
     const op = conf(older, "plugins")
     check("migrated: the ones that became opt-in and were on are in enabled, the others' lists as they were", op.disabled.join() === "clipper" && op.order.join() === "people" &&
-      op.enabled.join() === ["people", ...NOW_OPT_IN.filter((id) => id !== "codex")].join(), op)
+      op.enabled.join() === ["people", ...STILL.filter((id) => id !== "codex")].join(), op)
     fs.writeFileSync(path.join(older, ".vaultite/plugins.json"), JSON.stringify({ ...op, enabled: ["people"] }))
     await open(older)
     check("migrated once: turned off since, they stay off", conf(older, "plugins").enabled.join() === "people", conf(older, "plugins"))

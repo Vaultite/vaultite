@@ -12,10 +12,8 @@ const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-machines-test-"))
 const vault = path.join(tmp, "vault"), home = path.join(tmp, "vm")
 fs.mkdirSync(path.join(vault, ".vaultite/plugins/machines"), { recursive: true })
 fs.mkdirSync(home)
-fs.writeFileSync(path.join(vault, ".vaultite/plugins.json"), JSON.stringify({ enabled: ["machines", "mcp", "muse", "inbox"], disabled: [] }))
+fs.writeFileSync(path.join(vault, ".vaultite/plugins.json"), JSON.stringify({ enabled: ["machines", "mcp"], disabled: [] }))
 fs.writeFileSync(path.join(vault, ".vaultite/plugins/machines/data.json"), JSON.stringify({ machines: [{ id: "studio", label: "Studio", url: "http://127.0.0.1:8793" }] }))
-// (the VM's home is a Muse agent's, made up: tools/fixtures/muse)
-fs.cpSync(path.join(import.meta.dirname, "fixtures/muse"), home, { recursive: true })
 fs.writeFileSync(path.join(home, "hello.txt"), "A file from the VM.\n")
 fs.writeFileSync(path.join(home, "binary.bin"), Buffer.from([0, 1, 2]))
 fs.writeFileSync(path.join(home, "large.txt"), "x".repeat((1 << 20) + 10))
@@ -92,25 +90,6 @@ try {
   // Many reads at once, answered over the one connection (only its thread writes to the socket).
   const many = await Promise.all(Array.from({ length: 16 }, (_, i) => read(i % 2 ? "large.txt" : "hello.txt")))
   assert.ok(many.every((r, i) => (i % 2 ? r.truncated === true : r.text === "A file from the VM.\n")))
-  // A Muse agent on it: read through the file agent, its blocks drawn here (it runs no Vaultite), what's new to the Inbox.
-  const A = "1111aaaa-0000-4000-8000-000000000001"
-  assert.equal((await api("GET", "muse?machine=sandbox")).body.name, "Wren")
-  assert.equal((await api("GET", "muse")).body.machine, "sandbox", "found without being named")
-  const runs = (await api("GET", "muse/runs?machine=sandbox")).body
-  assert.deepEqual(runs.runs.map((r: { kind: string }) => r.kind).sort(), ["Conversation", "Feed"])
-  assert.equal((await api("GET", `muse/session/sandbox:${A}`)).body.entries.at(-1).text, "Two things: the press kit and the pricing page.")
-  const drawn = await app.run("GET", ["render", "block"], { name: "muse-dreams", options: JSON.stringify({ machine: "sandbox" }) }, {})
-  assert.match(String((drawn.body as { text: string }).text), /## Wren's dreams[\s\S]*A quiet day/)
-  const muse = app.plugins.find((p) => p.id === "muse")!
-  const inbox = async () => ((await api("GET", "inbox/events")).body.events as { source: string; title: string; link?: string }[]).filter((e) => e.source === "muse")
-  await (muse.exports.news as () => Promise<void>)()
-  assert.equal((await inbox()).length, 0, "the first look announces nothing old")
-  fs.writeFileSync(path.join(home, "dreams/2026-10-11.md"), "## Dream\n\n2026-10-11\n\nThe launch list got shorter.\n")
-  await (muse.exports.news as () => Promise<void>)()
-  await (muse.exports.news as () => Promise<void>)()
-  const told = await inbox()
-  assert.deepEqual(told.map((e) => e.title), ["Wren dreamt"], "a new dream, once")
-  assert.equal(told[0].link, `view:machine-files/sandbox|${home}/dreams|${home}/dreams/2026-10-11.md`)
   const fsService = app.plugins.find((p) => p.id === "machines")!.services["machines:fs"] as (id: string, rest: string, q?: Record<string, string>) => Promise<Record<string, unknown>>
   assert.equal((await fsService("sandbox", "fs/read", { path: "hello.txt" })).text, "A file from the VM.\n")
   assert.notEqual((await api("POST", "machines/sandbox/fs/read", {})).status, 200)

@@ -1,8 +1,0 @@
-version: 1
-entries:
-  google_calendar:
-    status: connected
-  notion:
-    status: available
-  linear:
-    status: available

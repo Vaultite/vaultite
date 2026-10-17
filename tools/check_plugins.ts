@@ -155,15 +155,21 @@ for (const d of [path.join(ROOT, "web", "src"), PLUGINS]) for (const f of walk(d
 
 // A block drawn for another plugin is declared with `by`, its `by` option taking those that draw it.
 for (const [b, ps] of drawers) if (!decls[b]?.by) problems.push(`plugins/core/${ps[0]}/manifest.json: draws '${b}', which no app plugin declares with \`by\``)
-for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, drawers.get(b) ?? [])
 
-// The app's Markdown may use the blocks of Vaultite's own plugins (those that moved out of it): read from their checkout
-// (VAULTITE_PLUGINS, else beside the app), else left unchecked.
+// The app's Markdown may use the blocks of Vaultite's own plugins (those that moved out of it), and name them where a
+// `by` option names who draws one: read from their checkout (VAULTITE_PLUGINS, else beside the app), else left unchecked.
 const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
 const officialDecls: BlockDecls | null = fs.existsSync(OFFICIAL) ? {} : null
+const officialDrawers = new Map<string, string[]>()
 for (const id of officialDecls ? fs.readdirSync(OFFICIAL) : []) {
-  try { const m = JSON.parse(fs.readFileSync(path.join(OFFICIAL, id, "manifest.json"), "utf8")); if (m.repo === "Vaultite/plugins") Object.assign(officialDecls!, declsOf(m)) } catch { /* not a plugin */ }
+  try {
+    const m = JSON.parse(fs.readFileSync(path.join(OFFICIAL, id, "manifest.json"), "utf8"))
+    if (m.repo !== "Vaultite/plugins") continue
+    Object.assign(officialDecls!, declsOf(m))
+    for (const b of drawsOf(m)) officialDrawers.set(b, [...(officialDrawers.get(b) ?? []), id])
+  } catch { /* not a plugin */ }
 }
+for (const [b, d] of Object.entries(decls)) if (d.by) decls[b] = drawnBy(d, [...drawers.get(b) ?? [], ...officialDecls ? officialDrawers.get(b) ?? [] : Object.keys(MOVED)])
 
 // The blocks in the app's own Markdown are declared, with options their declarations allow.
 const docs = [path.join(ROOT, "core", "AGENTS.md"), ...walk(path.join(ROOT, "core", "docs")),

@@ -24,6 +24,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **App windows, Dock icon and Page tabs moved to Vaultite's plugins** the same way (Get plugins). A plugin's manifest
   may say it works only in the desktop app (`desktopApp`): its sheet says so and the web demo keeps it off. A vault
   plugin's `page-head` service writes under a page's title in `/api/render`.
+- **Muse, Dispatch and the coding agents but Claude Code and Codex (Cursor, Grok Bot, OpenCode, OpenClaw, Hermes)
+  moved to Vaultite's plugins** the same way; Agents installs the coding agents and Dispatch, and the web demo still
+  shows their made-up sessions and limits.
 - **Daily notes are their own plugin**, on from the start as in Obsidian: today's note (Open today's daily note,
   `vau daily`, the op `daily-note.open`, was `today.daily`), its date format, template and folder are in Daily notes'
   settings, moved there from Today's. Today keeps routines, ticked in the daily notes (`routine.check`; `POST

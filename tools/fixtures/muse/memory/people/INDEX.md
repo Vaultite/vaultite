@@ -1,3 +1,0 @@
-# People Index
-
-(none yet)

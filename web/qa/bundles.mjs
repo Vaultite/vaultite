@@ -34,9 +34,10 @@ async function notNow(page) {
   }
 }
 const toastWith = (page, text) => page.locator("[data-sonner-toast]", { hasText: text }).first()
-/** Life OS installs Books, one of Vaultite's plugins: its ask (none once it's there), said yes to. */
-async function installs(page) {
-  const ask = page.locator("dialog[open][data-confirm]", { hasText: "Install Books" })
+/** A bundle installing Vaultite's own plugins (Life OS: Books; Agents: Cursor...): its ask (none once they're there),
+ *  said yes to. */
+async function installs(page, first = "Books") {
+  const ask = page.locator("dialog[open][data-confirm]", { hasText: `Install ${first}` })
   await until(async () => (await ask.count()) || (await page.locator("[data-sonner-toast]", { hasText: "Applied" }).count()), 6000)
   if (await ask.count()) await ask.locator("[data-confirm-ok]").click()
 }
@@ -119,6 +120,7 @@ for (const id of Object.keys(want)) {
   if (id === "agent-cockpit" || id === "life-os") await shot(page, `preview-${id}`)
   await page.locator("dialog[open] [data-bundle-apply]").click()
   if (id === "life-os") await installs(page)
+  if (id === "agent-cockpit") await installs(page, "Cursor")
   await until(() => page.locator("[data-sonner-toast]", { hasText: "Applied" }).count(), 6000)
   await until(() => { const s = settings(VAULT); try { return want[id](s) } catch { return false } }, 6000)
   const s = settings(VAULT)

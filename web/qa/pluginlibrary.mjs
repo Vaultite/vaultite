@@ -1,5 +1,5 @@
 // The Plugins page as one library (pages/Plugins.tsx): sections by category, the AI apps together whatever their
-// defaults (Muse; the coding agents one row, components/PluginGroup.tsx, its sheet each one's switch), each row a line
+// defaults (the coding agents one row, components/PluginGroup.tsx, its sheet each one's switch), each row a line
 // on what it does, on ones first, a built-in one with no source label or mark; the app's own (`alwaysOn`) parts and Vim
 // (in Editor) aren't rows; Filter narrows by status, source and category (chips under the search undo them), the search
 // above the list looks in all of them and in the directory; a plugin's sheet names its category; no menu: Your plugins
@@ -28,9 +28,8 @@ for (const colorScheme of ["light", "dark"]) {
   await wait(800)
   await page.screenshot({ path: `${OUT}plugins-${colorScheme}.png` })
   if (colorScheme === "light") {
-    const apps = await rows(page, "ai-apps"), tools = await rows(page, "agents")
-    check("AI apps: the outside agents, on by default or not", ["muse", "grok-bot"].every((id) => apps.includes(id)), apps)
-    check("AI tools: what the app gives agents", ["dispatch", "token-count"].every((id) => tools.includes(id)) && !tools.includes("muse"), tools)
+    const tools = await rows(page, "agents")
+    check("AI tools: what the app gives agents, on by default or not", ["ai-import", "token-count"].every((id) => tools.includes(id)) && !tools.includes("codex"), tools)
     const all = await page.locator("[data-plugin-row]").evaluateAll((els) => els.map((e) => e.dataset.pluginRow))
     check("the app's own parts aren't rows (Graph, Inbox, Page preview, MCP), nor Vim (in Editor)", !["graph", "inbox", "page-preview", "slides", "mcp", "files", "search", "vim"].some((id) => all.includes(id)), all)
     const group = page.locator('[data-plugin-category="ai-apps"] [data-plugin-group="coding-agents"]')
@@ -38,23 +37,24 @@ for (const colorScheme of ["light", "dark"]) {
       (await group.locator("..").locator("[data-plugin-group-on]").innerText()).includes("Claude Code"), all)
     await group.click()
     const agents = page.locator("dialog[open] [data-plugin-row]")
-    check("...its sheet: each one with its own switch", await until(async () => (await agents.count()) === 6, 4000) &&
-      (await page.locator("dialog[open] [role=switch]").count()) === 6, await agents.evaluateAll((els) => els.map((e) => e.dataset.pluginRow)))
+    // (the app's two, and Vaultite's own the vault installed)
+    check("...its sheet: each one with its own switch", await until(async () => (await agents.count()) >= 2, 4000) &&
+      (await page.locator("dialog[open] [role=switch]").count()) === await agents.count(), await agents.evaluateAll((els) => els.map((e) => e.dataset.pluginRow)))
     await page.screenshot({ path: `${OUT}plugins-coding-agents.png` })
     await page.keyboard.press("Escape"); await wait(500)
     await page.locator("[data-plugins-search] input").fill("codex")
     check("a search finds an agent in its group's row", await until(async () => (await page.locator('[data-plugin-members~="codex"]').count()) === 1, 4000))
     await page.locator("[data-plugins-search] input").fill("")
     check("every row says what it does", (await page.locator("[data-plugin-blurb]").count()) >= all.length - 2, [await page.locator("[data-plugin-blurb]").count(), all.length])
-    const dispatch = page.locator('[data-plugin-row="dispatch"]').locator("..")
-    check("a built-in plugin: no source label, no mark", (await dispatch.locator("[data-certified], [data-plugin-by]").count()) === 0)
+    const builtIn = page.locator('[data-plugin-row="token-count"]').locator("..")
+    check("a built-in plugin: no source label, no mark", (await builtIn.locator("[data-certified], [data-plugin-by]").count()) === 0)
     check("each section: on ones first", onFirst(await onOff(page)), await onOff(page))
     check("no menu: Filter and the search above the list, no chips under them", await page.locator("[data-plugins-filter]").isVisible() &&
       await page.locator("[data-plugins-search] input").isVisible() && !(await page.locator("[data-rail]").count()) && !(await page.locator("[data-plugins-active]").count()))
-    await pluginsFilter(page, "AI apps", { category: true })
-    check("a category shows only its plugins", await until(async () => (await page.locator("[data-plugin-row]").count()) === apps.length, 4000))
+    await pluginsFilter(page, "AI tools", { category: true })
+    check("a category shows only its plugins", await until(async () => (await page.locator("[data-plugin-row]").count()) === tools.length, 4000))
     check("...one list, on ones first", onFirst(await onOff(page)), await onOff(page))
-    await page.screenshot({ path: `${OUT}plugins-ai-apps.png` })
+    await page.screenshot({ path: `${OUT}plugins-ai-tools.png` })
     await pluginsFilter(page, "Off")
     check("Off and a category: only that category's plugins that are off", await until(async () => { const l = await onOff(page); return l.length === 1 && l[0].length > 0 && l[0].every((on) => !on) }, 4000), await onOff(page))
     check("...both as chips, with the count", (await page.locator("[data-plugins-chip]").evaluateAll((els) => els.map((e) => e.dataset.pluginsChip))).join() === "status,category" &&
@@ -71,8 +71,8 @@ for (const colorScheme of ["light", "dark"]) {
     await page.locator("[data-plugins-search] input").fill("")
     await page.locator("[data-plugins-clear]").click()
     check("Clear all: no chips, every section", await until(async () => !(await page.locator("[data-plugins-active]").count()) && (await onOff(page)).length > 1, 4000))
-    await page.locator("[data-plugins-search] input").fill("muse")
-    check("a search finds a plugin by its description too", await until(async () => (await page.locator('[data-plugin-row="muse"]').count()) === 1, 4000))
+    await page.locator("[data-plugins-search] input").fill("exports")
+    check("a search finds a plugin by its description too", await until(async () => (await page.locator('[data-plugin-row="ai-import"]').count()) === 1, 4000))
     check("...and offers to search everywhere", await page.locator("[data-plugins-search-more]").count() === 1)
     await page.locator("[data-plugins-search] input").fill("kanban")
     check("a search shows the directory's plugins that aren't installed", await until(async () =>
@@ -91,10 +91,10 @@ for (const colorScheme of ["light", "dark"]) {
     await page.locator("[data-plugins-installed]").click()
     await until(() => page.locator("[data-plugin-row]").count(), 4000)
     await page.locator("[data-plugins-search] input").fill("")
-    await page.locator('[data-plugin-row="muse"]').click()
+    await page.locator('[data-plugin-row="activity"]').click()
     await until(() => page.locator("dialog[open]").count(), 4000)
-    check("its sheet names its category", (await page.locator("dialog[open]").getByText("AI apps", { exact: true }).count()) > 0)
-    check("an opt-in plugin's preview draws its blocks while it's off", await until(async () => (await page.locator('dialog[open] [data-block="muse-runs"]').count()) === 1, 4000))
+    check("its sheet names its category", (await page.locator("dialog[open]").getByText("System", { exact: true }).count()) > 0)
+    check("an opt-in plugin's preview draws its blocks while it's off", await until(async () => (await page.locator('dialog[open] [data-block="activity"]').count()) >= 1, 4000))
     await page.keyboard.press("Escape"); await wait(500)
     await page.locator("[data-plugins-bundles]").click()
     check("Bundles: a page of its own, not Settings", await until(() => page.locator("[data-bundles-page] [data-bundles-save]").count(), 6000) &&

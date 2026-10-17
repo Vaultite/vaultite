@@ -21,7 +21,13 @@
     "workspaces"
   ],
   "install": {
+    "cursor": { "name": "Cursor", "source": "Vaultite/plugins/cursor" },
+    "dispatch": { "name": "Dispatch", "source": "Vaultite/plugins/dispatch" },
+    "grok-bot": { "name": "Grok Bot", "source": "Vaultite/plugins/grok-bot" },
+    "hermes": { "name": "Hermes", "source": "Vaultite/plugins/hermes" },
     "lessons": { "name": "Lessons", "source": "Vaultite/plugins/lessons" },
+    "openclaw": { "name": "OpenClaw", "source": "Vaultite/plugins/openclaw" },
+    "opencode": { "name": "OpenCode", "source": "Vaultite/plugins/opencode" },
     "projects": { "name": "Projects", "source": "Vaultite/plugins/projects" }
   }
 }

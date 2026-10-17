@@ -53,5 +53,5 @@
 - Audio recorder: the transcriber's `model` is a name, never a path (whisper unpickles a path).
 - File history: a whole top-level folder missing (iCloud) isn't a delete.
 - Coding agent plugins share `core/agents.ts`, the public agents API (vault plugins' too: keep its names stable). Claude Code's value is at API list prices: add new models to its
-  `PRICES`. Their tests use made-up homes (`tools/fixtures/<id>`), pointed at by env vars in
-  `tools/test/vault/harness.ts`.
+  `PRICES`. Their tests use made-up homes (`tools/fixtures/<id>`; Vaultite/plugins' in
+  `<id>/.test/fixtures`), pointed at by env vars (`tools/test/vault/harness.ts`).

@@ -4,13 +4,13 @@ export const OFFICIAL = typeof __DEMO_OFFICIAL__ === "undefined" ? [] : __DEMO_O
 
 // Plugins that need a machine (a shell, agents, other apps, the network as a server): off in the demo and refused if
 // turned on, their backends left out of its bundle (vite.demo.config.ts).
-export const MACHINE = ["terminal", "claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "dispatch", "mcp", "machines",
+export const MACHINE = ["terminal", "claude-code", "codex", "mcp", "machines",
   "activity", "agent-meters", "ai-import", "audio-recorder", "clipper", "calendar",
   ...OFFICIAL.filter((o) => o.machine).map((o) => o.id)]
 
 /** Of those, the ones the demo still draws, with the made-up data of their own preview (a plugin's `mockLive`, answered in
  *  the page: boot.ts): what agents did, their sessions and limits, other machines. Their backends are still left out, so
- *  nothing runs; a bundle turns them on or off as it says. */
+ *  nothing runs; a bundle turns them on or off as it says. By id: Vaultite's own plugins too (OFFICIAL). */
 export const SHOWN = ["claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "machines", "activity"]
 /** What needs a machine and isn't drawn with made-up data: off in the demo. */
 export const OFF = MACHINE.filter((id) => !SHOWN.includes(id))

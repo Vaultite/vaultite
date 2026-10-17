@@ -21,7 +21,7 @@ const SOURCE = { type: "string" as const, required: true, description: "owner/na
  *  app's plugins that moved to it (core/migrations.ts MOVED), said so when it asks to be allowed here. */
 export async function installFrom(app: App, source: string, tag?: string | null, { moved = false } = {}) {
   const src = parseSource(source, tag)
-  const f = await fetchSource(src, new Map(app.app.map((p) => [p.id, p.tier])), [...app.vaultPlugins.found.keys()])
+  const f = await fetchSource(src, new Map(app.app.map((p) => [p.id, p.tier])), new Map([...app.vaultPlugins.found].map(([x, vp]) => [x, vp.dir])))
   try {
     const version = String(f.manifest.version ?? "")
     const why = app.index.blockedWhy(f.id, version, [src.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
@@ -44,7 +44,8 @@ export async function installFrom(app: App, source: string, tag?: string | null,
 
 export function installOps(app: App): Op[] {
   const tiers = () => new Map(app.app.map((p) => [p.id, p.tier]))
-  const vaultIds = () => [...app.vaultPlugins.found.keys()]
+  /** The vault's plugins but `id`, by folder. */
+  const vaultDirs = (id?: string) => new Map([...app.vaultPlugins.found].filter(([x]) => x !== id).map(([x, vp]) => [x, vp.dir]))
   const blocked = (id: string, version: string, repos: (string | null)[]) => app.index.blockedWhy(id, version, repos)
 
   /** Installed plugins with a newer version and what it changes, from a fetched copy. `auto`: only self-updating ones,
@@ -63,7 +64,7 @@ export function installOps(app: App): Op[] {
       const src = { ...parseSource(l.source), tag: next.tag }
       if (auto && next.tag && l.skip && tagVersion(next.tag) === l.skip) { out.push({ id, version: l.version, current: true, skipped: l.skip }); continue }
       let f
-      try { f = await fetchSource(src, tiers(), vaultIds().filter((x) => x !== id)) } catch (e) {
+      try { f = await fetchSource(src, tiers(), vaultDirs(id)) } catch (e) {
         out.push({ id, version: l.version, to: next.tag ?? next.commit?.slice(0, 7), error: (e as Error).message, problems: (e as OpError).problems ?? [] })
         continue
       }
@@ -203,7 +204,7 @@ update by hand takes it. Allowed on this machine if it was before.
       const src = parseSource(l.source)
       const tag = await tagOf(src, last.from)
       if (!tag) throw new OpError(`${src.repo ?? l.source} has no tag for ${id} ${last.from} to go back to`, 404)
-      const f = await fetchSource({ ...src, tag }, tiers(), vaultIds().filter((x) => x !== id))
+      const f = await fetchSource({ ...src, tag }, tiers(), vaultDirs(id))
       try {
         if (f.id !== id) throw new OpError(`its version ${last.from} is '${f.id}', not '${id}'`, 422)
         await app.hold(() => place(app.vault, f, src, { how: "rollback", notes: [], skip: l.version }))

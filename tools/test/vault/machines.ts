@@ -7,19 +7,11 @@ export default async ($: VaultTest) => {
   // Machines: the list from the settings, each asked what it is; another machine's API through this one (GET only).
   {
     const seen: string[] = []
-    let peerVault: string | null = null // this vault's, else its own
     const peer = (await import("node:http")).createServer((req, res) => {
       seen.push(`${req.url} ${req.headers["x-vaultite-client"]}`)
       const json = (status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)) }
-      if (req.url === "/api/machines/self") return json(200, { instance: "peer-1", host: "box", platform: "linux", version: "0.1.0", commit: "abc1234", plugins: ["terminal", "harbor", "dispatch"],
-        vault: peerVault ?? JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
-      if (req.url === "/api/file?path=Notes%2FQa%20there.md") return json(200, { path: "Notes/Qa there.md", text: "Over there.\n" })
-      if (req.url === "/api/ops/dispatch.run" && req.method === "POST") {
-        let b = ""
-        req.on("data", (d) => { b += d })
-        req.on("end", () => { seen.push(`dispatch ${b}`); json(200, { id: "claude-qa1", action: "claude", path: "Notes/Qa there.md", shown: false }) })
-        return
-      }
+      if (req.url === "/api/machines/self") return json(200, { instance: "peer-1", host: "box", platform: "linux", version: "0.1.0", commit: "abc1234", plugins: ["terminal", "harbor"],
+        vault: JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
       if (req.url?.startsWith("/api/harbor/tides")) return json(200, [{ at: "06:10", label: "High" }])
       if (req.url === "/api/claude-code/session/a%20b?limit=2") return json(200, { id: "a b" })
       if (req.url?.startsWith("/api/render/block?")) {
@@ -57,24 +49,6 @@ export default async ($: VaultTest) => {
     check("machines: one that doesn't answer is a 502", c === 502, c)
     ;[c] = await api("POST", "machines/box/notes", {})
     check("machines: only GET goes through", c !== 200, c)
-    // Dispatch on another machine: passed on to its server once its copy matches, the terminal named with its machine.
-    write("Notes/Qa there.md", "Over there.\n")
-    ;[c, body] = await api("POST", "ops/dispatch.run", { path: "Notes/Qa there.md", machine: "box", open: false })
-    check("dispatch: on another machine, its terminal there", c === 200 && body.id === "claude-qa1@box" && body.machine === "box" &&
-      seen.includes(`dispatch ${JSON.stringify({ path: "Notes/Qa there.md", action: "claude", open: false })}`), [c, body, seen.slice(-3)])
-    const passed = await app.runOp("dispatch.run", { path: "Notes/Qa there.md", machine: "box" }, { who: { client: "machine/other", agent: null, label: "other", source: "other" } }).then(() => null, (e: Any) => e)
-    check("dispatch: one passed on from another machine isn't passed on again", passed?.status === 409, passed?.message)
-    ;[c, body] = await api("POST", "ops/dispatch.run", { path: "Notes/Qa there.md", machine: "nope" })
-    check("dispatch: an unknown machine says which there are", c === 404 && String(body.error).includes("box"), [c, body])
-    peerVault = "another"
-    app.plugins.find((p) => p.id === "machines")!.forget() // (the list is kept 20 s)
-    const t0 = Date.now()
-    ;[c, body] = await api("POST", "ops/dispatch.run", { path: "Notes/Qa there.md", machine: "box" })
-    check("dispatch: a machine with another vault is refused at once", c === 409 && String(body.error).includes("vault of its own") && Date.now() - t0 < 5000, [c, body])
-    peerVault = null
-    ;[c, body] = await api("POST", "ops/dispatch.run", { path: "Notes/Qa there.md", machine: "gone" })
-    check("dispatch: an offline machine says so", c === 502 && String(body.error).includes("offline"), [c, body])
-    fs.rmSync(path.join(VAULT, "Notes/Qa there.md"))
     write("Dashboards/Qa machines list.md", "---\ntype: dashboard\n---\n\n```block-machines\n```\n")
     const [, text] = await api("GET", "render?path=Dashboards/Qa machines list.md")
     check("machines: its block as text", String(text).includes("Box: online, box"), String(text).slice(0, 300))

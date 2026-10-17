@@ -8,7 +8,7 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { contentType, LOCAL, Plugin, ROOT } from "./plugins.ts"
 import { disclosuresOf, exportsOf, ICON_NAME, iconOf, PLUGIN_MODULE } from "./pluginmeta.ts"
 import { onItsOwn } from "./writegate.ts"
-import { blockProblems, exportFile, hashed, inside, installProblems, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
+import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems, pluginProblems, settingsFile, SHARED, SHARED_EDITOR, userFilesOf, VAULT_CORE, walk } from "./rules.ts"
 import { declsOf, drawsOf, settingsOf } from "./blocks.ts"
 import { groupOf } from "./categories.ts"
 import type { VaultEvent } from "./events.ts"
@@ -173,7 +173,8 @@ async function bundle(vp: VaultPlugin) {
   // modules it exports too (`__exports`: what plugins that require it import, the same instances as its own).
   const index = path.join(dir, "index.tsx"), ENTRY = "\0vau-entry"
   const lucide = vp.icon && ICON_NAME.test(vp.icon) ? path.join(ROOT, "node_modules", "lucide-react", "dist", "esm", "icons", `${vp.icon}.mjs`) : ""
-  const offered = exportsOf(vp.manifest).flatMap((x) => { const f = exportFile(dir, x, vp.manifest); return f ? [[x, f]] : [] })
+  // (not a backend's module: its plugins' backends import it, never the browser)
+  const offered = exportsOf(vp.manifest).flatMap((x) => { const f = exportFile(dir, x, vp.manifest); return f && !backendOnly(dir, f) ? [[x, f]] : [] })
   const entry = [fs.existsSync(index) ? `export { default } from ${JSON.stringify(index)}` : "",
     lucide && fs.existsSync(lucide) ? `export { default as icon } from ${JSON.stringify(lucide)}` : "",
     ...offered.map(([, f], i) => `import * as m${i} from ${JSON.stringify(f)}`),

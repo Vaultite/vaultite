@@ -180,7 +180,8 @@ export class App {
       void (async () => {
         let f: Fetched | null = null
         try {
-          f = await fetchSource({ ...parseSource(l.source), tag: l.tag }, new Map(this.app.map((p) => [p.id, p.tier])), [...vps.found.keys()].filter((x) => x !== vp.id))
+          f = await fetchSource({ ...parseSource(l.source), tag: l.tag }, new Map(this.app.map((p) => [p.id, p.tier])),
+            new Map([...vps.found].filter(([x]) => x !== vp.id).map(([x, o]) => [x, o.dir])))
           const d = digestOf(f.dir)
           if (d.content !== vp.digest.content || digestOf(vp.dir).content !== d.content) return
           vps.allow(vp.id, { version: l.version, digest: d })

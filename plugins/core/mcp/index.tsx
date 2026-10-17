@@ -3,7 +3,7 @@
 import { Bot, Copy, Globe, Plug } from "lucide-react"
 import { copyText, definePlugin, Group, notify, notifyError, openView, Panel, Section, SettingRow } from "@vaultite"
 import { AiApps, CONNECTION_DETAIL, ConnectionSheet, ConnectionsView, ConnectSection, connectionTitle, RemoteAccess, SETUP_DETAIL, SetupSheet, setupTitle, type AppId } from "./Connections"
-import { GrokBotIcon } from "./marks"
+import { GrokBotIcon, MuseIcon } from "./marks"
 
 function Preview() {
   return (
@@ -40,7 +40,7 @@ function Connect() {
 export default definePlugin({
   preview: () => <Preview />,
   settingsPanel: () => <Connect />,
-  icons: { "grok-bot": GrokBotIcon },
+  icons: { "grok-bot": GrokBotIcon, muse: MuseIcon },
   details: {
     [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> },
     [CONNECTION_DETAIL]: { title: (_s, [id]) => connectionTitle(id), render: (_s, [id]) => <ConnectionSheet id={id} /> },

@@ -153,7 +153,7 @@ try {
     await go(page, "plugins")
     await until(() => page.locator("[data-plugin-gear]").count(), 4000)
     check("Plugins: a gear on a plugin with settings", await page.locator("[data-plugin-gear=web-viewer]").count() === 1 && await page.locator("[data-plugin-gear=logs]").count() === 1)
-    check("...none on one that's off", await page.locator("[data-plugin-row=muse]").count() === 1 && await page.locator("[data-plugin-gear=muse]").count() === 0)
+    check("...none on one that's off", await page.locator("[data-plugin-row=ai-import]").count() === 1 && await page.locator("[data-plugin-gear=ai-import]").count() === 0)
     check("...nor Vim, whose switch is in Editor", await page.locator("[data-plugin-row=vim]").count() === 0)
     await page.locator('[data-plugin-group="coding-agents"]').click()
     check("...the coding agents' sheet: none on one with nothing to set", !!(await until(() => page.locator("dialog[open] [data-plugin-row=claude-code]").count(), 4000)) &&

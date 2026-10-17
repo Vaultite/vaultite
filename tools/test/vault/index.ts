@@ -34,11 +34,6 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "terminal", deps: ["pages","cli"] },
   { name: "machines", deps: ["pages"] },
   { name: "codex", deps: ["pages"] },
-  { name: "cursor", deps: ["pages"] },
-  { name: "grok-bot", deps: ["pages","cursor"] },
-  { name: "opencode", deps: ["pages"] },
-  { name: "openclaw", deps: ["pages"] },
-  { name: "hermes", deps: ["pages"] },
   { name: "backlinks", deps: ["pages"] },
   { name: "history", deps: ["pages"] },
   { name: "graph", deps: ["pages","vau"] },
@@ -70,6 +65,5 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "start", deps: ["pages"] },
   { name: "resilience", deps: ["pages"] },
   { name: "treewatch", deps: ["pages"] },
-  { name: "muse", deps: ["pages"] },
   { name: "companion", deps: ["pages"] },
 ]

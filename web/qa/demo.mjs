@@ -86,6 +86,17 @@ async function visit(name, browser) {
   is("?bundle= starts on that bundle, what needs a machine still off (but what draws made-up data)", bundles?.previous?.bundle === "agent-cockpit" && !plugins?.enabled?.includes("dispatch") && plugins?.enabled?.includes("machines"),
     { previous: bundles?.previous, enabled: plugins?.enabled })
 
+  // The coding agents of Vaultite's own plugins (built in here) draw their made-up sessions and limits, as the app's do.
+  const agentsOn = ["cursor", "opencode", "openclaw", "hermes"].filter((id) => plugins?.enabled?.includes(id))
+  const made = await Promise.all(agentsOn.map(async (id) => [id, (await api("GET", `${id}?days=30`)).json?.sessions?.length ?? 0]))
+  const cursorLimits = (await api("GET", "cursor?days=30")).json?.limits?.windows?.length ?? 0
+  is("the Agents bundle's coding agents of Vaultite's own are on, with made-up sessions (Cursor's limits too)", agentsOn.length === 4 && made.every(([, n]) => n > 0) && cursorLimits > 0,
+    { agentsOn, made, cursorLimits })
+  await open("Dashboards/Agents.md")
+  const titles = ["Search results page", "Retry failed uploads", "Plan the Lighthouse launch", "Map tiles flicker"]
+  const drew = await page.waitForFunction((ts) => ts.every((t) => document.querySelector("[data-pane]")?.innerText.includes(t)), titles, { timeout: 15000 }).then(() => true, () => false)
+  is("the Agents page draws them", drew, (await shown()).slice(0, 600))
+
   // Vaultite's own plugins are built in (vite.demo.config.ts): Life OS's Books, which it installs in the app, is there.
   await page.goto("about:blank")
   await page.goto(`${base}?bundle=life-os`)

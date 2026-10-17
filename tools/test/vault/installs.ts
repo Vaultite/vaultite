@@ -50,6 +50,16 @@ export default async ($: VaultTest) => {
     const NOTAGS = repo("notags", { "manifest.json": manifest({ id: "notags", version: "0.1.0" }) }, null)
     ;[ic, io] = await api("POST", "ops/plugin.install", { source: NOTAGS })
     check("install: no tags at all is the default branch, flagged, followed by commit", ic === 200 && io.untagged && lock().notags?.tag === null && lock().notags.commit, [ic, io, lock().notags])
+    // One requiring another that's installed, importing a module it exports (Grok Bot's on Cursor's account).
+    const PIER = repo("pier", { "manifest.json": manifest({ id: "pier", exports: ["lamp"] }), "lamp.ts": "export const lit = () => true\n" }, "v1.0.0")
+    const DOCK = repo("dock", { "manifest.json": manifest({ id: "dock", requires: ["pier"] }),
+      "plugin.ts": 'import { Plugin } from "@vaultite/core/plugins.ts"\nimport { lit } from "@plugins/pier/lamp"\nexport const plugin = new Plugin(import.meta.url)\nplugin.route("GET", "dock", () => ({ lit: lit() }))\n' }, "v1.0.0")
+    ;[ic, io] = await api("POST", "ops/plugin.install", { source: DOCK })
+    check("install: one requiring a plugin that isn't here says to install that first", ic === 422 && io.problems?.some((p: string) => p.includes("'pier', which isn't a plugin here (install it first)")), [ic, io])
+    await api("POST", "ops/plugin.install", { source: PIER })
+    ;[ic, io] = await api("POST", "ops/plugin.install", { source: DOCK })
+    check("install: one importing what an installed plugin it requires exports", ic === 200 && exists(".vaultite/plugins/dock/plugin.ts"), [ic, io])
+    for (const id of ["dock", "pier"]) await vau("plugin", "uninstall", id)
     const cr = await vau("plugin", "install", `${HARBOR}@v9.9.9`)
     check("install: a tag that isn't there fails, saying so", cr.code === 1 && /git clone/.test(cr.err), cr)
     check("install: plugin.install is gated on the public MCP", (await import("../../../plugins/core/mcp/public.ts")).gateOf("plugin.install", "write", { source: "a/b" }).includes("install"))

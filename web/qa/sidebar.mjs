@@ -61,7 +61,7 @@ try {
   await page.hover("aside [data-panel='terminal:sessions']")
   await page.click("aside [aria-label='New terminal or agent']")
   const offered = await page.$$eval("[role=menu] [role=menuitem]", (els) => els.map((e) => e.textContent.trim()))
-  check("the + menu offers a terminal and the agents", offered[0] === "New terminal" && offered.includes("New Claude Code") && offered.includes("New OpenClaw") && !offered.includes("New Codex"), offered)
+  check("the + menu offers a terminal and the agents", offered[0] === "New terminal" && offered.includes("New Claude Code") && !offered.includes("New Codex"), offered)
   await page.locator("[role=menu] [role=menuitem]", { hasText: "New terminal" }).click()
   const had = new Set(await page.$$eval("aside [data-session]", (els) => els.map((e) => e.getAttribute("data-session"))))
   const row = await until(async () => { for (const r of await page.$$("aside [data-session]")) if (!had.has(await r.getAttribute("data-session"))) return r })

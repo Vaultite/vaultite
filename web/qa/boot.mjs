@@ -164,7 +164,7 @@ try {
     // .vaultite/ changes but what the user did, until a plugin is allowed to write there.
     const list = await (await call("GET", "plugins")).json()
     // (Activity and the agents' plugins too, off by default)
-    const agents = ["activity", "dispatch", "token-count", "workspaces", "codex", "cursor", "opencode", "openclaw", "hermes"]
+    const agents = ["activity", "token-count", "workspaces", "codex"]
     await call("PATCH", "config/plugins", { disabled: [], enabled: [...list.filter((p) => p.optIn || p.tier === "vault").map((p) => p.id), ...agents] })
     await fetch(`${ownBase}api/state`)
     await call("PUT", "file", { path: "Notes/Plain.md", text: "Just a thought, edited.\n" }) // (the user's own: Activity's recap has a day to write)

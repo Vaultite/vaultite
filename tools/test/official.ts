@@ -8,6 +8,13 @@ import { MOVED } from "../../core/migrations.ts"
 
 const PAGES: Record<string, string> = { health: "Health", learning: "Learning", projects: "Projects", today: "Today" }
 
+/** What a stand-in says beyond its id (its name, from the id when left out): the coding agents in their row. */
+const AGENT = { category: "ai-apps", group: "coding-agents" }
+const STANDINS: Record<string, Record<string, unknown>> = {
+  cursor: AGENT, "grok-bot": { name: "Grok Bot", category: "ai-apps", requires: ["cursor"] }, hermes: AGENT, muse: { category: "ai-apps" },
+  openclaw: { name: "OpenClaw", ...AGENT }, opencode: { name: "OpenCode", ...AGENT }, dispatch: { category: "agents", requires: ["terminal"] },
+}
+
 /** Make it under `dir` (once) and answer the VAULTITE_GITHUB address owner/name sources then resolve to. */
 export function officialRepos(dir: string): string {
   const repo = path.join(dir, "Vaultite", "plugins")
@@ -18,7 +25,7 @@ export function officialRepos(dir: string): string {
     for (const id of Object.keys(MOVED)) {
       fs.mkdirSync(path.join(repo, id), { recursive: true })
       fs.writeFileSync(path.join(repo, id, "manifest.json"), JSON.stringify({ id, name: id[0].toUpperCase() + id.slice(1), description: "A stand-in for tests.",
-        version: "1.0.0", author: "Vaultite", repo: "Vaultite/plugins", disclosures: {} }, null, 2) + "\n")
+        version: "1.0.0", author: "Vaultite", repo: "Vaultite/plugins", disclosures: {}, ...STANDINS[id] }, null, 2) + "\n")
       if (PAGES[id]) {
         fs.mkdirSync(path.join(repo, id, "pages"))
         fs.writeFileSync(path.join(repo, id, "pages", `${PAGES[id]}.md`), `---\ntype: dashboard\nplugin: ${id}\n---\n\nA stand-in's page.\n`)

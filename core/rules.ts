@@ -97,7 +97,7 @@ export function manifestProblems(m: Record<string, unknown>, name: string, ids: 
     const v = m[k] ?? []
     if (!Array.isArray(v)) out.push(`${where}: ${k} must be a list of plugin ids`)
     // (it may use or need one that moved out of the app, installed from Vaultite's plugins)
-    else for (const other of v) if (!ids.has(other) && !Object.hasOwn(MOVED, other)) out.push(`${where}: ${k} '${other}', which isn't a plugin`)
+    else for (const other of v) if (!ids.has(other) && !Object.hasOwn(MOVED, other)) out.push(`${where}: ${k} '${other}', which isn't a plugin${k === "requires" ? " here (install it first)" : ""}`)
   }
   if (m.draws !== undefined && (!Array.isArray(m.draws) || m.draws.some((b) => typeof b !== "string" || !/^[\w-]+$/.test(b)))) {
     out.push(`${where}: draws lists blocks another plugin declares with \`by\` that it draws too (["agent-usage"])`)
@@ -209,8 +209,20 @@ export type ImportRules = {
 }
 
 /** The files of a plugin's own that its index.tsx imports, directly or not: what runs in the browser. */
-export function frontFiles(dir: string): Set<string> {
-  const seen = new Set<string>(), todo = [path.join(dir, "index.tsx")]
+export const frontFiles = (dir: string) => reached(dir, path.join(dir, "index.tsx"))
+
+/** Whether module `file` of a plugin (one it exports) imports the core's backend or Node's modules, directly or not: a
+ *  backend's module, never in the browser (Cursor's account, which Grok Bot's backend reads). */
+export function backendOnly(dir: string, file: string) {
+  return [...reached(dir, file)].some((f) => [...fs.readFileSync(f, "utf8").matchAll(IMPORT)].some((hit) => {
+    const spec = hit[1] ?? hit[2] ?? hit[3]
+    return VAULT_CORE.test(spec) || isBuiltin(spec)
+  }))
+}
+
+/** The files of a plugin's own that `from` imports, directly or not, `from` too. */
+function reached(dir: string, from: string): Set<string> {
+  const seen = new Set<string>(), todo = [from]
   for (let f = todo.pop(); f; f = todo.pop()) {
     if (seen.has(f) || !fs.existsSync(f)) continue
     seen.add(f)

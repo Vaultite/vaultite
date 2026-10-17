@@ -47,7 +47,8 @@ const STEPS: { id: string; run: (v: Vault) => void }[] = [
     run: (v) => {
       const conf = v.readConfig("plugins") ?? {}
       const disabled = strs(conf.disabled), enabled = strs(conf.enabled)
-      const on = NOW_OPT_IN.filter((id) => !disabled.includes(id) && !enabled.includes(id))
+      // (not one that moved out of the app since: on by default was never asking to install it)
+      const on = NOW_OPT_IN.filter((id) => !disabled.includes(id) && !enabled.includes(id) && !Object.hasOwn(MOVED, id))
       // (`disabled` no longer counts for them: off is out of `enabled`)
       v.patchConfig("plugins", { disabled: disabled.filter((id) => !NOW_OPT_IN.includes(id)), enabled: [...enabled, ...on] })
     },
@@ -82,10 +83,17 @@ const STEPS: { id: string; run: (v: Vault) => void }[] = [
 export const MOVED: Record<string, string> = {
   "app-windows": "Vaultite/plugins/app-windows",
   books: "Vaultite/plugins/books",
+  cursor: "Vaultite/plugins/cursor",
+  dispatch: "Vaultite/plugins/dispatch",
   "dock-icon": "Vaultite/plugins/dock-icon",
+  "grok-bot": "Vaultite/plugins/grok-bot",
   health: "Vaultite/plugins/health",
+  hermes: "Vaultite/plugins/hermes",
   learning: "Vaultite/plugins/learning",
   lessons: "Vaultite/plugins/lessons",
+  muse: "Vaultite/plugins/muse",
+  openclaw: "Vaultite/plugins/openclaw",
+  opencode: "Vaultite/plugins/opencode",
   "page-tabs": "Vaultite/plugins/page-tabs",
   podcasts: "Vaultite/plugins/podcasts",
   projects: "Vaultite/plugins/projects",

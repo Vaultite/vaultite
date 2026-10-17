@@ -146,7 +146,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 
 - `activity:report` (activity): The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart `report`): it sends the hook's JSON (on stdin) here, with the agent's name and its terminal. Never fails the hook.
 - `activity:changes` (activity)
-- `agent:<…>` (claude, codex, cursor, hermes, openclaw, opencode): claude-code; codex; cursor; hermes; openclaw; opencode
+- `agent:claude` (claude-code): `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none).
+- `agent:codex` (codex): `codex`, or `codex resume <id>` in the folder it ran in. Nothing more: any `-c` makes it run without its shared background server, so no context (it reads the vault's AGENTS.md itself) and no hooks.
 - `agent-meters:claude` (claude-code)
 - `agent-session:claude` (claude-code): A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes.
 - `context` (pages, workspaces): What `vau context` says of it: the pinned pages the user's window shows.

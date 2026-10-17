@@ -108,8 +108,8 @@ async function headOf(url: string) {
 export type Fetched = { dir: string; id: string; manifest: Item; tag: string | null; commit: string | null; untagged: boolean; done: () => void }
 
 /** Clone (or copy) a source at its tag (else its newest version tag, else the default branch: `untagged`), copy what
- *  the app reads to <tmp>/<id>/ and check it like an installed plugin: OpError 422 with its problems. */
-export async function fetchSource(src: Source, tiers: Map<string, string>, vaultIds: string[]): Promise<Fetched> {
+ *  the app reads to <tmp>/<id>/ and check it as installed beside `vault`'s plugins (id -> folder): 422 with its problems. */
+export async function fetchSource(src: Source, tiers: Map<string, string>, vault: Map<string, string>): Promise<Fetched> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-install-"))
   const done = () => fs.rmSync(tmp, { recursive: true, force: true })
   try {
@@ -143,9 +143,9 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
       fs.mkdirSync(path.dirname(to), { recursive: true })
       fs.copyFileSync(f, to)
     }
-    const ids = new Map([...vaultIds.map((v): [string, string] => [v, "vault"]), [id, "vault"], ...tiers])
+    const ids = new Map([...[...vault.keys()].map((v): [string, string] => [v, "vault"]), [id, "vault"], ...tiers])
     const label = `${DIR}/${id}`
-    const { problems } = checkVaultPlugin(dir, { ids, label, tag, installable: true, manifest })
+    const { problems } = checkVaultPlugin(dir, { ids, label, tag, installable: true, manifest, dirOf: (r) => vault.get(r) ?? path.join(path.dirname(dir), r) })
     if (problems.length) throw new OpError(`${src.given}${tag ? ` at ${tag}` : ""} can't be installed`, 422, problems)
     return { dir, id, manifest, tag, commit, untagged, done }
   } catch (e) {

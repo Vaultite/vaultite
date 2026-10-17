@@ -74,7 +74,10 @@ export async function allowPlugin(app: App, q: string, hash?: string, edits?: bo
  *  like a vault plugin's, its commands, and for one to install (`tag`: what its version must be) version and repo. */
 export function folderProblems(dir: string, appIds: Map<string, string>, o: { installable?: boolean; tag?: string | null; dirOf?: (id: string) => string } = {}) {
   const abs = path.resolve(dir), base = path.basename(abs)
-  const r = checkVaultPlugin(abs, { ids: new Map([[base, "vault"], ...appIds]), label: ".", ...o })
+  // (in a repository of several, the plugins beside it: one may require another)
+  let beside: string[] = []
+  try { beside = fs.readdirSync(path.dirname(abs)).filter((n) => n !== base && fs.existsSync(path.join(path.dirname(abs), n, "manifest.json"))) } catch { /* none */ }
+  const r = checkVaultPlugin(abs, { ids: new Map([...beside.map((n): [string, string] => [n, "vault"]), [base, "vault"], ...appIds]), label: ".", ...o })
   const id = typeof r.manifest?.id === "string" ? r.manifest.id : base
   // (its folder may be named after its repository: the check reads it as .vaultite/plugins/<id>/ would)
   const named = `./manifest.json: id must be '${base}' (its folder's name)`
