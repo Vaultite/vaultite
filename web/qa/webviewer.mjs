@@ -19,8 +19,9 @@ fs.mkdirSync(OUT, { recursive: true })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-webviewer-"))
 
 // The display stays awake (a window on a sleeping display is hidden: no frames, no screenshots).
-const awake = (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "900"], { stdio: "ignore" })
-process.on("exit", () => awake.kill())
+const awake = process.platform !== "darwin" ? null
+  : (await import("node:child_process")).spawn("caffeinate", ["-u", "-d", "-t", "900"], { stdio: "ignore" })
+process.on("exit", () => awake?.kill())
 
 // ---------- made-up pages ----------
 const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>

@@ -87,7 +87,18 @@ function notarize(file) {
     console.log(`sign.cjs: notarizing ${path.basename(file)} (notarytool waits for Apple's answer)`)
     execFileSync("xcrun", ["notarytool", "submit", zip ?? file, ...PROFILE, "--wait"], { stdio: "inherit" })
   } finally { if (zip) fs.rmSync(zip, { force: true }) }
-  execFileSync("xcrun", ["stapler", "staple", file], { stdio: "inherit" })
+  staple(file)
+}
+
+// Stapling asks Apple's CloudKit, whose connection drops now and then (error 68): it failed two nightlies in a row.
+function staple(file, tries = 5) {
+  for (let i = 1; ; i++) {
+    try { return execFileSync("xcrun", ["stapler", "staple", file], { stdio: "inherit" }) } catch (e) {
+      if (i >= tries) throw e
+      console.warn(`sign.cjs: stapling ${path.basename(file)} failed, trying again (${i}/${tries - 1})`)
+      execFileSync("sleep", [String(15 * i)])
+    }
+  }
 }
 
 exports.default = async function sign(context) {
