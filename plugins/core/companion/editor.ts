@@ -1,10 +1,10 @@
-// The companion in a note's editor: what the user writes said after a pause (and at once for "@claude …"), the agents'
-// highlights, comments' anchors and suggestions drawn in the text, Tab and Esc for a suggestion, and edits typed in.
+// The companion in a note's editor: what the user writes said after a pause (and a line with @claude at Enter), the
+// agents' highlights, comments' anchors and suggestions drawn in the text, Tab and Esc for a suggestion, and edits typed in.
 import type { CompletionContext } from "@codemirror/autocomplete"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
 import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
 import { pluginSettings, type EditorCtx } from "@vaultite"
-import { accept, answer, bump, type EditAsk, getState, hunksOf, liveAgents, MENTION_AT, mentionAgent, mentionIn, mentionNames, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
+import { accept, answer, asksSomething, bump, canMention, type EditAsk, getState, hunksOf, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 
 /** Its own changes: not the user's, so not said back as theirs. */
 const own = Annotation.define<boolean>()
@@ -166,6 +166,8 @@ function watcher(path: string) {
     decorations: DecorationSet
     baseline: Text
     pending: ChangeSet // what they typed since baseline
+    asked: string[] = [] // lines whose ask went, as they read then: not sent again until they change
+    touched: number[] = [] // where they typed since the last pause
     dirty = false
     timer: ReturnType<typeof setTimeout> | null = null
     whereTimer: ReturnType<typeof setTimeout> | null = null
@@ -192,16 +194,14 @@ function watcher(path: string) {
       const asks: number[] = []
       for (const tr of u.transactions) {
         if (!tr.docChanged) continue
+        this.touched = this.touched.map((p) => tr.changes.mapPos(p))
         if (!tr.annotation(own) && ["input", "delete", "move", "undo", "redo"].some((e) => tr.isUserEvent(e))) {
           typed = true
           this.pending = this.pending.compose(tr.changes)
-          tr.changes.iterChanges((_fa, _ta, fromB, _tb, inserted) => {
-            if (!inserted.toString().includes("\n")) return
-            const line = tr.state.doc.lineAt(fromB)
-            const ask = mentionIn(line.text)
-            if (!ask || getState().mode === "off") return
-            sendMoment({ kind: "ask", agent: ask.name, path, line: line.number, text: ask.text })
-            asks.push(line.number)
+          tr.changes.iterChanges((_fa, _ta, fromB, toB, inserted) => {
+            this.touched = [...this.touched.slice(-100), fromB, toB]
+            const n = tr.state.doc.lineAt(fromB).number
+            if (inserted.toString().includes("\n") && this.ask(n, tr.state.doc)) asks.push(n)
           })
           continue
         }
@@ -216,12 +216,24 @@ function watcher(path: string) {
       this.dirty = true
       this.later()
     }
+    /** Send line `n`'s ask, if it has one not sent as it reads now; `pause`: only one with words besides the @name. */
+    ask(n: number, doc: Text, pause = false) {
+      const line = doc.line(n), ask = mentionIn(line.text)
+      if (!ask || getState().mode === "off" || this.asked.includes(line.text) || (pause && !asksSomething(line.text, mentionsOf(line.text)))) return false
+      this.asked = [...this.asked.slice(-50), line.text]
+      sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text })
+      return true
+    }
     later() {
       if (this.timer) clearTimeout(this.timer)
       this.timer = setTimeout(() => (this.view.composing ? this.later() : this.report(this.view.state.doc)), pauseIn(this.view.state))
     }
     report(doc: Text) {
       if (this.timer) { clearTimeout(this.timer); this.timer = null }
+      // (an ask not ended with Enter, as "how is it going @claude?": sent at the pause)
+      const asks = [...new Set(this.touched.filter((p) => p <= doc.length).map((p) => doc.lineAt(p).number))].filter((n) => this.ask(n, doc, true))
+      this.touched = []
+      if (asks.length && this.view.dom.isConnected) markSent(this.view, asks)
       this.dirty = false
       const md = getState().mode
       if (md === "notice" || md === "pair") {
@@ -244,7 +256,6 @@ function watcher(path: string) {
 
 // ---------- @name: a chip in its agent's colour, lit when the ask goes and while that agent thinks on it
 
-const MENTION = /^(\s*(?:[-*+]\s+(?:\[.\]\s+)?)?)@([\w-]+)/
 const sent = StateEffect.define<number[]>() // lines' starts; [] when it's over
 const sentAt = StateField.define<number[]>({
   create: () => [],
@@ -266,19 +277,20 @@ function markSent(view: EditorView, lines: number[]) {
 function chipsOf(view: EditorView, path: string): DecorationSet {
   const st = getState()
   if (st.mode === "off") return Decoration.none
-  const names = mentionNames(), lit = view.state.field(sentAt, false) ?? [], b = new RangeSetBuilder<Decoration>()
+  const names = mentionNames(), mid = midNames(), lit = view.state.field(sentAt, false) ?? [], b = new RangeSetBuilder<Decoration>()
   let last = -1
   for (const r of view.visibleRanges) {
     for (let pos = r.from; pos <= r.to;) {
       const line = view.state.doc.lineAt(pos)
       pos = line.to + 1
-      const m = line.number > last ? MENTION.exec(line.text) : null
+      if (line.number <= last) continue
       last = line.number
-      if (!m || !names.includes(m[2].toLowerCase())) continue
-      const a = mentionAgent(m[2]), from = line.from + m[1].length
-      const asked = lit.includes(line.from) || (a?.state === "thinking" && a.path === path && a.line === line.number)
-      b.add(from, from + 1 + m[2].length, Decoration.mark({ class: asked ? "cm-companion-mention cm-companion-asked" : "cm-companion-mention",
-        attributes: { style: `--c: var(--${a?.tint ?? "orange"})`, "data-agent": a?.name ?? st.name } }))
+      for (const m of mentionsOf(line.text, names, mid)) {
+        const a = mentionAgent(m.name)
+        const asked = lit.includes(line.from) || (a?.state === "thinking" && a.path === path && a.line === line.number)
+        b.add(line.from + m.from, line.from + m.to, Decoration.mark({ class: asked ? "cm-companion-mention cm-companion-asked" : "cm-companion-mention",
+          attributes: { style: `--c: var(--${a?.tint ?? "orange"})`, "data-agent": a?.name ?? st.name } }))
+      }
     }
   }
   return b.finish()
@@ -313,10 +325,10 @@ const theme = EditorView.baseTheme({
   "@keyframes cm-companion-fade": { "0%, 40%": {}, "100%": { backgroundColor: "transparent" } },
 })
 
-/** @ where a line can ask an agent: the agents around now, the companion first. */
+/** @ anywhere a mention can start: the agents around now, the companion first. */
 function mentions(ctx: CompletionContext) {
   const m = ctx.matchBefore(/@[\w-]*$/)
-  if (!m || getState().mode === "off" || !MENTION_AT.test(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
+  if (!m || getState().mode === "off" || !canMention(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
   const names = liveAgents().map((a) => a.name)
   return { from: m.from + 1, validFor: /^[\w-]*$/,
     options: (names.length ? names : [getState().name]).map((n) => ({ label: n.toLowerCase(), detail: n === getState().name ? "companion" : undefined,

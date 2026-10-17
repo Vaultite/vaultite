@@ -501,7 +501,8 @@ plugin.op({
   cli: "companion next",
   summary: "Wait for what the user does next in the app (asks you, writes, opens a note, answers you), as the companion.",
   help: `Answers the moments since you last asked, or waits for one (up to timeout seconds; none by then: an empty list).
-ask: they addressed you (a line "@claude ..." in a note, or Ask companion on a selection): always answer. edit: lines
+ask: they addressed you (@claude anywhere in a line of a note, sent at Enter or a pause; or Ask companion on a
+selection): its text is what follows a leading @name, else the whole line. Always answer. edit: lines
 they changed after a pause (notice and pair modes). open: they went to a note. reply, accept, reject, dismiss: their
 answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
 text around them, numbered: no need to read it again. While you wait your cursor rests; given moments, it shows you

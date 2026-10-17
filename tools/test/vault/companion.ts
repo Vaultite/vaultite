@@ -11,6 +11,19 @@ export default async ($: VaultTest) => {
     c.editText("a\nb", { append: true, text: "x" }) === "a\nb\nx")
 
   {
+    // @name in a line: at its start any agent's name; anywhere after, only the companion's and the agents around.
+    const l = await import("../../../plugins/core/companion/live.ts")
+    const names = ["companion", "claude", "ada"], mid = ["claude"], ask = (s: string) => l.mentionIn(s, names, mid)
+    check("companion: a line starting @name asks it what follows", ask("- [ ] @ada: fix this")?.name === "ada" && ask("- [ ] @ada: fix this")?.text === "fix this" &&
+      ask("@claude")?.text === "(no words: look at this)")
+    check("companion: @name mid-line asks it the whole line", JSON.stringify(ask("Alright, hey how is it going @claude?")) === JSON.stringify({ name: "claude", text: "Alright, hey how is it going @claude?" }))
+    check("companion: mid-line, only the agents around count, and never an email or a link", !ask("ask @ada later") && !ask("mail bob@claude.com") && !ask("x.com/@claude") && !ask("@bob hi"))
+    check("companion: every @name of a line is found, where it is", JSON.stringify(l.mentionsOf("@ada and @claude, a@claude", names, mid)) === JSON.stringify([{ from: 0, to: 4, name: "ada" }, { from: 9, to: 16, name: "claude" }]))
+    check("companion: an @ can start a mention after a space or a line's start, not in a word", l.canMention("") && l.canMention("hey ") && l.canMention("(") && !l.canMention("bob") && !l.canMention("x.com/"))
+    check("companion: an ask is sent at a pause only with words besides its @names", !l.asksSomething("@claude?", l.mentionsOf("@claude?", names, mid)) &&
+      !l.asksSomething("- @claude ", l.mentionsOf("- @claude ", names, mid)) && l.asksSomething("how is it @claude?", l.mentionsOf("how is it @claude?", names, mid)))
+  }
+  {
     // Note text sent with moments: a short note whole for an ask, a few lines around an edit.
     const text = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n") + "\n"
     const ask = c.excerpt("N.md", "a\nb\n", [{ seq: 1, t: 0, kind: "ask", line: 2 }]), long = c.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "ask", line: 150 }])

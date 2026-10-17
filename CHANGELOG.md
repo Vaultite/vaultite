@@ -10,7 +10,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   in a block's text, a canvas card, a database's result, a recent file. Plugins' items (Use as Dock icon, Open local
   graph) show in each, not only in the tab's menu.
 - **Companion** (a new plugin, off until turned on): an always-on Claude Code or Codex session with its own cursor in the
-  app. Write `@claude` in a note (or ⌘⇧K) to ask it; it answers in a bubble by its cursor, comments in the margin,
+  app. Write `@claude` anywhere in a note's line (or ⌘⇧K) to ask it, sent at Enter or when you pause; it answers in a bubble by its cursor, comments in the margin,
   suggests changes you take with Tab, or types into the note with you. Modes: quiet, notice, pair. Its cursor shows it
   reading what you did, and a tick when it saw it and let it pass. `vau companion timings` shows how fast it answered
   each moment. Margin cards scroll with the note, which keeps room under its text for the lowest; a long card scrolls

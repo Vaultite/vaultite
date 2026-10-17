@@ -171,10 +171,31 @@ export function hunksOf(a: string[], b: string[]): Hunk[] {
   return removed.length || added.length ? [{ line: s + 1, removed: removed.slice(0, 40), added: added.slice(0, 40) }] : []
 }
 
-/** Where a line can address an agent: its start, after a list's marker or a task's box. */
-export const MENTION_AT = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?$/
-/** A line that addresses an agent ("@claude what's…", "- @ada: fix this"): who and what it asks, or null. */
-export function mentionIn(line: string, names = mentionNames()): { name: string; text: string } | null {
-  const m = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?@([\w-]+)[:,]?\s*(.*)$/.exec(line)
-  return m && names.includes(m[1].toLowerCase()) ? { name: m[1], text: m[2].trim() || "(no words: look at this)" } : null
+/** Where a line can address an agent with any of its names: its start, after a list's marker or a task's box. */
+const MENTION_AT = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?$/
+/** An @ that can start a mention: not after a word, a dot or a slash (an email, a link). */
+const MENTION_RE = /(?<![\w@./])@([\w-]+)/g
+/** Whether an @ typed after `before` (the line up to it) starts a mention. */
+export const canMention = (before: string) => !/[\w@./]$/.test(before)
+/** The names that address an agent mid-line (lower case): the companion's and the agents around. */
+export const midNames = () => [...new Set([state.name, ...liveAgents().map((a) => a.name)].map((n) => n.toLowerCase()))]
+export type Mention = { from: number; to: number; name: string }
+/** A line's @names that address an agent: at its start any agent's name, after that only `mid` ones. */
+export function mentionsOf(line: string, names = mentionNames(), mid = midNames()): Mention[] {
+  const out: Mention[] = [], lead = /^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/.exec(line)![0].length
+  for (const m of line.matchAll(MENTION_RE)) {
+    const k = m[1].toLowerCase()
+    if ((m.index === lead ? names : mid).includes(k)) out.push({ from: m.index, to: m.index + m[0].length, name: m[1] })
+  }
+  return out
 }
+/** A line that addresses an agent ("@claude what's…", "- @ada: fix this", "how is it going @claude?"): who, and what it
+ *  asks (after a leading @name, else the whole line), or null. */
+export function mentionIn(line: string, names = mentionNames(), mid = midNames()): { name: string; text: string } | null {
+  const [m] = mentionsOf(line, names, mid)
+  if (!m) return null
+  const text = MENTION_AT.test(line.slice(0, m.from)) ? line.slice(m.to).replace(/^[:,]/, "").trim() : line.trim()
+  return { name: m.name, text: text || "(no words: look at this)" }
+}
+/** Whether a line's ask has words of its own, besides its @names (sent after a pause only then). */
+export const asksSomething = (line: string, ms: Mention[]) => !!ms.reduceRight((s, m) => s.slice(0, m.from) + s.slice(m.to), line).replace(/^\s*(?:[-*+]\s+(?:\[.\]\s+)?)?/, "").replace(/[\s\p{P}]/gu, "")

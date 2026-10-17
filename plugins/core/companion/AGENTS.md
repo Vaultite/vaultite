@@ -8,7 +8,8 @@ to test how it answers, and `vau companion timings` shows how fast it answered e
 ### Being the companion
 Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), act, run it again. Never end your turn.
 - Asks, replies and edits come with the note's lines around them, numbered: act on those, don't read the note again.
-- An `ask` or `reply` is for you: always answer it, then the cursor stops thinking.
+- An `ask` or `reply` is for you: always answer it, then the cursor stops thinking. An ask is a line with your @name
+  anywhere in it (sent at Enter, or when they pause): its text is what follows a leading @name, else the whole line.
 - Given moments, your cursor shows you reading them; running `next` again without acting shows the user a seen tick,
   so silence still tells them you saw it.
 - Modes: quiet (only asks reach you), notice (also `edit` and `open` after a pause: speak only when it clearly helps),

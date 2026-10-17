@@ -1,7 +1,7 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
 // words pop in a bubble by it, comments sit in the margin (a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
 // and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
-// the agent hears at once; what the user writes reaches it after a pause. Driven through the ops an agent calls.
+// the agent hears at once (mid-line, at the pause); what the user writes reaches it after a pause. Driven through the ops an agent calls.
 // WRITES "QA companion/" and the plugin's data.json: throwaway server only.
 //   node web/qa/companion.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -90,6 +90,24 @@ await page.keyboard.type(" basil.")
 t0 = Date.now()
 r = await op("companion.next", { timeout: 6 })
 check("pause: a sentence's end, only the pause", r.moments?.some((m) => m.kind === "edit") && Date.now() - t0 < 1800, { ms: Date.now() - t0, r })
+
+// @claude mid-sentence: the picker, a chip, and the ask goes at the pause without Enter, the whole line, once.
+await op("companion.next", { timeout: 0 })
+await page.keyboard.type("\nAlright, how is it going @")
+const midList = await until(async () => (await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()).join(" "), 3000)
+check("@ mid-line: the picker lists the agents", /claude/.test(midList ?? ""), midList)
+await page.keyboard.type("claude?")
+const ASK = "Alright, how is it going @claude?"
+check("@claude mid-line: a chip", (await editor.locator(".cm-line", { hasText: "how is it going" }).locator(".cm-companion-mention").count()) === 1)
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
+check("@claude mid-line: the ask reaches it at the pause, the whole line", r?.moments.some((m) => m.kind === "ask" && m.text === ASK && m.line === text(NOTE).split("\n").indexOf(ASK) + 1), r)
+await page.keyboard.press("Enter")
+r = await op("companion.next", { timeout: 3 })
+check("@claude mid-line: Enter after it doesn't ask again", !r.moments?.some((m) => m.kind === "ask"), r)
+await page.keyboard.type("Mail bob@claude.com or ask @nobody.")
+r = await op("companion.next", { timeout: 4 })
+check("@ in an email or an unknown name mid-line: no chip, no ask", !r.moments?.some((m) => m.kind === "ask") &&
+  (await editor.locator(".cm-line", { hasText: "Mail bob" }).locator(".cm-companion-mention").count()) === 0, r)
 
 // A comment in the margin, a reply to it.
 r = await op("companion.comment", { path: NOTE, find: "how far apart", text: "About 60 cm: they get big." })
