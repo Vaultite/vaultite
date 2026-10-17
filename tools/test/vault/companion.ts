@@ -40,6 +40,10 @@ export default async ($: VaultTest) => {
     const [a, e, b] = c.timings(ms, acts)
     check("companion timings: per moment, its handoff, think to the first action and total", a.handoff === 100 && a.think === 2000 && a.op === "say" && a.total === 2200 &&
       e.handoff === 1700 && e.think === undefined && e.total === 2500 && b.handoff === 0 && b.total === undefined, [a, e, b])
+    const two = c.timings([{ seq: 5, t: 0, kind: "edit" }] as Any[], [{ t: 100, as: "C", op: "handed", seqs: [5] }, { t: 300, as: "Q", op: "handed", seqs: [5] },
+      { t: 900, as: "Q", op: "say" }, { t: 2000, as: "C", op: "say" }])
+    check("companion timings: a moment handed to two agents, a row each, and a summary each", two.length === 2 && two[0].as === "C" && two[0].think === 1900 &&
+      two[1].as === "Q" && two[1].think === 600 && /\nQ \(1\): pause -, handoff 0\.3/.test(c.timingsText("2026-10-16", two)), [two, c.timingsText("2026-10-16", two)])
     check("companion timings: read as a table and a summary", /asks and replies \(2\): pause -, handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(c.timingsText("2026-10-16", [a, e, b])), c.timingsText("2026-10-16", [a, e, b]))
   }
 

@@ -480,7 +480,7 @@ function hooks(state: AgentStart["state"], report: string | null): object | null
 
 /** `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile
  *  names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none). */
-plugin.provide("agent:claude", async ({ resume, context, state, report, profile, prompt, dark, allow }: AgentStart) => {
+plugin.provide("agent:claude", async ({ resume, context, state, report, profile, prompt, dark, allow, model, effort }: AgentStart) => {
   const found = resume ? sessionFile(resume, true) : null
   if (resume && !found) return notOnThisMachine("Claude Code", resume)
   const a = found?.account ?? (profile ? accounts().find((x) => x.id === profile) : undefined)
@@ -493,6 +493,7 @@ plugin.provide("agent:claude", async ({ resume, context, state, report, profile,
   return {
     command: [env, "claude", resume && `--resume ${shellQuote(resume)}`, context && `--append-system-prompt ${shellQuote(context)}`,
       settings && `--settings ${shellQuote(JSON.stringify(settings))}`, allow?.length && `--allowedTools ${allow.map((a) => shellQuote(`Bash(${a}:*)`)).join(" ")}`,
+      model && `--model ${shellQuote(model)}`, effort && `--effort ${shellQuote(effort)}`,
       prompt && `-- ${shellQuote(prompt)}`].filter(Boolean).join(" "),
     cwd,
   }

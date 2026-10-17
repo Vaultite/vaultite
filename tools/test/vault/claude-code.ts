@@ -87,6 +87,8 @@ export default async ($: VaultTest) => {
     const start = cc.plugin.services["agent:claude"]
     let run = await start({ resume: null, context: "", state: null, profile: "work" })
     check("claude accounts: a new session in an account runs with its folder", run.command.startsWith(`CLAUDE_CONFIG_DIR='${WORK}' claude`), run)
+    run = await start({ resume: null, context: "", state: null, profile: null, model: "haiku", effort: "medium" })
+    check("claude: a session can run another model, at another effort", run.command.includes("--model 'haiku' --effort 'medium'"), run)
     run = await start({ resume: sid, context: "", state: null, profile: null })
     check("claude accounts: resuming finds the session's account (a private one too) and its folder", run.command.startsWith(`CLAUDE_CONFIG_DIR='${WORK}' claude --resume`) &&
       run.cwd === "/Users/sam/acme", run)

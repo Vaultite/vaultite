@@ -471,7 +471,7 @@ function sessions(): { name: string; id: string }[] {
 const running = async (id: string | null) => !!id && !!(await plugin.ask<boolean>("terminal:runs", false, id))
 const nextCmd = (name: string) => `vau companion next --timeout 240${isMain(name) ? "" : ` --as ${name}`}`
 
-async function start(ctx: OpCtx, as?: string, agent?: string) {
+async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, effort?: string) {
   const name = as?.trim() || ownName()
   if (!/^[\w-]{1,30}$/.test(name)) throw new OpError("a name is one word (letters, digits, - or _): it's what @ calls it by")
   const was = sessionId(name)
@@ -479,11 +479,13 @@ async function start(ctx: OpCtx, as?: string, agent?: string) {
   const id = newTerminalId(agent || agentSetting())
   const prompt = isMain(name) ? setting("prompt")
     : `${setting("prompt")} Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`
-  await startAgent(ctx, id, prompt, ALLOW)
-  fs.writeFileSync(sessionFile(name), JSON.stringify({ id, name, t: Date.now() }))
+  // (a quicker model answers sooner: each moment is one of its turns)
+  model ||= setting("model"); effort ||= setting("effort")
+  await startAgent(ctx, id, prompt, { allow: ALLOW, model: model || null, effort: effort || null })
+  fs.writeFileSync(sessionFile(name), JSON.stringify({ id, name, t: Date.now(), ...(model ? { model } : {}), ...(effort ? { effort } : {}) }))
   seen.set(key(name), Date.now())
   setAgent(name, { state: "watching" })
-  return { id, running: false, name }
+  return { id, running: false, name, model, effort }
 }
 
 /** End a session (the companion's by default), or every one. */
@@ -826,19 +828,23 @@ plugin.op({
   cli: "companion start",
   owner: "a coding agent",
   summary: "Start the companion's always-on session (its agent, in a terminal on this machine), or another agent's by name.",
-  help: `With --as, another agent joins under that name, with its own cursor colour: @name in a note asks it.
+  help: `With --as, another agent joins under that name, with its own cursor colour: @name in a note asks it. --model and
+--effort pick a quicker model (each moment is one of its turns), for an agent that takes them (Claude Code does).
 
   vau companion start
-  vau companion start --as Ada --agent codex`,
+  vau companion start --as Ada --agent codex
+  vau companion start --as Quick --model haiku --effort medium`,
   kind: "write",
   lock: false,
   params: { as: { type: "string", description: "start another agent under this name (one word; default: the companion)" },
-    agent: { type: "string", description: "the coding agent it runs (claude, codex, claude_personal...; default: the setting)" } },
+    agent: { type: "string", description: "the coding agent it runs (claude, codex, claude_personal...; default: the setting)" },
+    model: { type: "string", description: "the model it runs (sonnet, haiku, a full name; default: the setting, else the agent's own)" },
+    effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], description: "its effort (default: the setting, else the agent's own)" } },
   run: async (p, ctx) => {
     if (mode() === "off") await plugin.patchSettings({ mode: "quiet" })
-    return await start(ctx, str(p.as), str(p.agent))
+    return await start(ctx, str(p.as), str(p.agent), str(p.model), str(p.effort))
   },
-  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name} in ${r.id} (vau terminal screen ${r.id}).`,
+  text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.model || r.effort ? ` (${[r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (vau terminal screen ${r.id}).`,
 })
 
 plugin.op({
@@ -887,18 +893,22 @@ came (faster with speed), so you can watch what the session makes of them.
 
 /** A moment's latency (ms): the user's pause before the app sent it, until next handed it (handoff), then to the agent's first action (think), and from the moment
  *  to its next `next` (total); undefined when it didn't happen. */
-export type Timing = { t: number; seq: number; kind: string; at: string; op?: string; pause?: number; handoff?: number; think?: number; total?: number }
+export type Timing = { t: number; seq: number; kind: string; at: string; as?: string; op?: string; pause?: number; handoff?: number; think?: number; total?: number }
 
-/** Each moment's timing, from the moments and actions logged on a day (seqs restart with the server: matched in time). */
+/** Each moment's timing per agent handed it, from the moments and actions logged on a day (seqs restart with the
+ *  server: matched in time). */
 export function timings(ms: Moment[], log: Act[]): Timing[] {
-  return ms.map((m, i) => {
+  return ms.flatMap((m, i) => {
     const until = ms.slice(i + 1).find((x) => x.seq === m.seq)?.t ?? Infinity
     const r: Timing = { t: m.t, seq: m.seq, kind: m.kind, at: m.path ? `${m.path}${m.line ? `:${m.line}` : ""}` : "", ...(m.waited !== undefined ? { pause: m.waited } : {}) }
-    const hi = log.findIndex((a) => a.op === "handed" && a.t >= m.t && a.t < until && !!a.seqs?.includes(m.seq)), h = log[hi]
-    if (!h) return r
-    const after = log.slice(hi + 1).filter((a) => a.as === h.as)
-    const done = after.find((a) => a.op === "next"), first = after.find((a) => a.op !== "next" && a.op !== "handed" && (!done || a.t <= done.t))
-    return { ...r, handoff: h.t - m.t, ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
+    const hands = log.flatMap((a, hi) => (a.op === "handed" && a.t >= m.t && a.t < until && a.seqs?.includes(m.seq) ? [hi] : []))
+      .filter((hi, k, all) => all.findIndex((x) => log[x].as === log[hi].as) === k)
+    if (!hands.length) return [r]
+    return hands.map((hi) => {
+      const h = log[hi], after = log.slice(hi + 1).filter((a) => a.as === h.as)
+      const done = after.find((a) => a.op === "next"), first = after.find((a) => a.op !== "next" && a.op !== "handed" && (!done || a.t <= done.t))
+      return { ...r, as: h.as, handoff: h.t - m.t, ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
+    })
   })
 }
 
@@ -913,8 +923,10 @@ export function timingsText(day: string, rows: Timing[]) {
   if (!rows.length) return `No moments on ${day}.`
   return [`${day}, in seconds: pause (the user's, before the app sent it), handoff (until next handed it), think (to the first action), total (to the next \`next\`).`,
     `${"time".padEnd(8)} ${"pause".padStart(7)} ${"handoff".padStart(7)}${"think".padStart(7)}  ${"total".padStart(7)}  moment`,
-    ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}  ${s(r.total)}  ${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
-    sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows)].join("\n")
+    ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}  ${s(r.total)}  ${r.as ? `${r.as}: ` : ""}${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
+    sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows),
+    // (each agent's own, to compare models)
+    ...(new Set(rows.flatMap((r) => r.as ?? [])).size > 1 ? [...new Set(rows.flatMap((r) => r.as ?? []))].map((a) => sum(a, rows.filter((r) => r.as === a))) : [])].join("\n")
 }
 
 plugin.op({

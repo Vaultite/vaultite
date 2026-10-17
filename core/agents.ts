@@ -353,12 +353,19 @@ export type AgentStart = {
   dark?: boolean | null
   /** Shell commands it may run without asking, by how they start ("vau companion"), for an agent that takes them. */
   allow?: string[] | null
+  /** The model to run ("sonnet", "haiku", a full name) and its effort ("low"…"max"), for an agent that takes them;
+   *  null: its own default. */
+  model?: string | null
+  effort?: string | null
 }
+/** How a session is started, besides its id and first prompt. */
+export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
 
 /** Start terminal `id` running its agent (Terminal's route, as `ctx`'s caller), told `prompt` first: its answer. Throws
  *  when no plugin that's on brings that agent (the terminal goes again). */
-export async function startAgent(ctx: OpCtx, id: string, prompt?: string, allow?: string[]) {
-  const r = await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, prompt || allow ? { prompt, allow } : undefined) as Record<string, unknown>
+export async function startAgent(ctx: OpCtx, id: string, prompt?: string, how: AgentHow = {}) {
+  const body = { prompt, ...how }
+  const r = await ctx.api("POST", `terminals/${encodeURIComponent(id)}`, Object.values(body).some((v) => v) ? body : undefined) as Record<string, unknown>
   if (!r.agent) {
     await ctx.api("DELETE", `terminals/${encodeURIComponent(id)}`).catch(() => {})
     throw new OpError(`no agent '${parseTerminal(id)?.agent ?? id}' here: its plugin is off, or there's none by that name`, 409)

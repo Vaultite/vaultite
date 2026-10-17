@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentMeter, type AgentStart, type AgentState, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentHow, type AgentMeter, type AgentStart, type AgentState, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request,
@@ -258,7 +258,7 @@ export function stateCommand(file: string, tell?: ((s: AgentState) => string) | 
 }
 
 /** The shell command an agent's terminal runs, and where (null: a plain shell). */
-async function agentRun(id: string, prompt: string | null = null, dark: boolean | null = null, allow: string[] | null = null): Promise<AgentRun | null> {
+async function agentRun(id: string, prompt: string | null = null, dark: boolean | null = null, how: AgentHow = {}): Promise<AgentRun | null> {
   const a = agentOf(id)
   if (!a) return null
   try { fs.mkdirSync(STATES, { recursive: true }); fs.rmSync(stateFile(id), { force: true }) } catch { /* unmarked */ }
@@ -266,7 +266,7 @@ async function agentRun(id: string, prompt: string | null = null, dark: boolean 
   try {
     const report = plugin.service("activity:report")
     const run = await plugin.service(`agent:${a.name}`)!({ resume: a.resume, context: agentContext(), state: set,
-      report: report ? report(a.name, id) : null, profile: a.profile, prompt, dark, allow } satisfies AgentStart)
+      report: report ? report(a.name, id) : null, profile: a.profile, prompt, dark, ...how } satisfies AgentStart)
     if (!run || typeof run.command !== "string" || !run.command) return null
     let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : null
     try { if (cwd && !fs.statSync(cwd).isDirectory()) cwd = null } catch { cwd = null }
@@ -343,7 +343,7 @@ async function takeSpare(b: Backend, id: string, from: From, run: AgentRun | nul
 
 /** Starts a session (in the backend new ones go to), or reattaches to its shell if one runs (`fresh` says which). */
 async function start(id: string, cols: number, rows: number, from = LOCAL, prompt: string | null = null, dark: boolean | null = null,
-  allow: string[] | null = null): Promise<{ s: Session; fresh: boolean }> {
+  how: AgentHow = {}): Promise<{ s: Session; fresh: boolean }> {
   const agent = agentOf(id), timing = span("terminal.start", { agent: agent?.name ?? "shell", how: "running" })
   let b = await backendOf(id)
   timing.mark("find")
@@ -351,7 +351,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   if (!b) {
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
-    const run = await agentRun(id, prompt, dark, allow)
+    const run = await agentRun(id, prompt, dark, how)
     if (agent) timing.mark("agent")
     const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows, scrollback: scrollback() }
     timing.tags.how = "spare"
@@ -779,7 +779,8 @@ plugin.route("POST", "terminals/*", async (req) => {
   if (await runsHere(id)) return { id, started: false }
   const prompt = typeof req.body?.prompt === "string" && req.body.prompt.trim() ? req.body.prompt : null
   const allow = Array.isArray(req.body?.allow) ? req.body.allow.filter((a: unknown): a is string => typeof a === "string" && /^[\w .:/-]+$/.test(a)) : null
-  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), allow).finally(() => starting.delete(id)))
+  const word = (v: unknown) => (typeof v === "string" && /^[\w.\[\]-]{1,60}$/.test(v) ? v : null)
+  if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort) }).finally(() => starting.delete(id)))
   await starting.get(id)!
   return { id, started: true, agent: agentOf(id)?.name ?? null }
 }, { lock: false })
