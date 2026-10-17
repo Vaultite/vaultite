@@ -63,6 +63,12 @@ export const APPEARANCE: Record<string, Setting> = {
       return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
     },
   },
+  fileBar: {
+    about: "the plugins' items in a file's top bar, in order, as <plugin>:<name> (companion:presence, provenance:origin): a JSON list or names separated by commas; ones left out follow by their default place", parse: (v) => {
+      const j = value(v)
+      return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
+    },
+  },
   lineNumbers: { about: "true or false: line numbers beside a file's text while editing it (code files always have them)", parse: bool("lineNumbers") },
 }
 

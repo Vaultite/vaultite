@@ -13,8 +13,8 @@ export type PluginDir = { id: string; tier: string; dir: string }
 export type CommandDef = { id: string; name: string; keys: string[]; note?: string }
 
 /** A sidebar panel `<plugin>:<name>`: `heading` when it differs from its title ("Pinned"), `sort` its default place,
- *  `hidden` out of the default setup, `names` other names it goes by, `dockable` a phone can dock it. */
-export type PanelDef = { key: string; title: string; heading?: string; sort: number; plugin: string; hidden: boolean; names: string[]; dockable?: true }
+ *  `hidden` out of the default setup, `side` "right" if it starts there, `names` its other names, `dockable` by a phone. */
+export type PanelDef = { key: string; title: string; heading?: string; sort: number; plugin: string; hidden: boolean; side?: "right"; names: string[]; dockable?: true }
 
 /** A plugin's section of a new tab's page: `<plugin>:<name>`, its title, default place, whether it's out of the default
  *  page (`hidden`) and where it's drawn (`only`: phones or computers). */
@@ -116,7 +116,7 @@ function walkSrc(d: string): string[] {
 
 // ---------- panels ----------
 
-/** A plugin's sidebar panels, read from its index.tsx (`sidebar: { <name>: { title, sort, hidden, heading, names, dockable } }`);
+/** A plugin's sidebar panels, read from its index.tsx (`sidebar: { <name>: { title, sort, hidden, side, heading, names, dockable } }`);
  *  an app plugin's from the build's snapshot when its source isn't here. */
 export function panelsOf(p: PluginDir): PanelDef[] {
   const found = declared(p, "sidebar")
@@ -130,6 +130,7 @@ export function panelsOf(p: PluginDir): PanelDef[] {
       ...(heading ? { heading } : {}),
       sort: Number(/\bsort\s*:\s*(-?\d+)/.exec(body)?.[1] ?? 100),
       hidden: /\bhidden\s*:\s*true\b/.test(body),
+      ...(/\bside\s*:\s*["'`]right["'`]/.test(body) ? { side: "right" as const } : {}),
       names: [...names.matchAll(/["'`]([^"'`]+)["'`]/g)].map((x) => x[1]),
       ...(/\bdockable\s*:\s*true\b/.test(body) ? { dockable: true as const } : {}),
     }

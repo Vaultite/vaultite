@@ -1,10 +1,12 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
-// words pop in a bubble by it, comments sit in the margin (a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
+// words pop in a bubble by it, comments are threads in the Conversations panel (a dot by the line; or, a setting, cards
+// in the margin, a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
 // and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
 // the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes
 // reaches it after a pause. Its cursor: hovered, its status; clicked, its last words and a box to ask it; dragged onto
-// text, a point; its flag follows it. Driven through the ops an agent calls.
-// WRITES "QA companion/" and the plugin's data.json: throwaway server only.
+// text, a point; its flag follows it; agents on one spot fan out from one flag. A file's top bar items dock in a
+// sidebar and come back. Driven through the ops an agent calls.
+// WRITES "QA companion/", the plugin's data.json and the sidebars' setup: throwaway server only.
 //   node web/qa/companion.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -14,17 +16,20 @@ mkdirSync(OUT, { recursive: true })
 const file = (rel) => `${VAULT}/${rel}`
 const text = (rel) => { try { return readFileSync(file(rel), "utf8") } catch { return "" } }
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
-const restore = [keep(".vaultite/plugins/companion/data.json"), keep(".vaultite/plugins.json")]
+const restore = [keep(".vaultite/plugins/companion/data.json"), keep(".vaultite/plugins.json"), keep(".vaultite/appearance.json"), keep(".vaultite/sidebars.json")]
 const api = (method, p, body) => fetch(`${B}/api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json())
 const op = (id, params = {}) => api("POST", `ops/${id}`, params)
 const enc = encodeURIComponent
+/** The right sidebar folded to its rail (the Conversations panel is there by default), for the margin's cards' room. */
+const foldRight = (c) => c.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: false })) } catch { /* private */ } })
 
 const plugins = JSON.parse(text(".vaultite/plugins.json") || "{}")
 if (!(plugins.enabled ?? []).includes("companion")) {
   writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []), "companion"] }, null, 2))
   await wait(1500)
 }
-await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1 })
+// (the margin's cards first; the sidebar, the default, after)
+await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1, comments: "margin" })
 const DIR = "QA companion", NOTE = `${DIR}/Garden ideas.md`
 rmSync(file(DIR), { recursive: true, force: true })
 await api("PUT", "file", { path: NOTE, text: "# Garden ideas\n\nTomatos along the fence, where it's sunny.\n\nBasil between them.\n" })
@@ -32,7 +37,8 @@ await api("PUT", "file", { path: `${DIR}/Seeds.md`, text: "# Seeds\n" })
 await op("companion.next", { timeout: 0 }) // (what came before)
 await op("companion.clear")
 
-const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } })
+await foldRight(ctx)
 const page = watch(await ctx.newPage(), { label: "desktop" })
 await page.goto(`${B}/#file/${enc(NOTE)}`)
 await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 10000 })
@@ -280,21 +286,15 @@ await page.screenshot({ path: `${OUT}card-open.png` })
 await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await wait(500)
 check("cards: clicking elsewhere folds it again", await lc.getByRole("button", { name: "More", exact: true }).isVisible())
-// Dismissed, it stays in the note's history (the button by who's here), and comes back from there.
 await lc.getByRole("button", { name: "Dismiss" }).click()
 await lc.waitFor({ state: "detached", timeout: 3000 })
-const hist = page.locator("[data-companion-presence]:visible [data-companion-history]")
-await hist.waitFor({ timeout: 3000 })
-await hist.click()
-await page.getByRole("menuitem").filter({ hasText: "Hover shows its status" }).click()
-await lc.waitFor({ timeout: 3000 })
-await wait(500)
-check("history: a dismissed comment is listed, and picked, back in the margin, open", !(await lc.getByRole("button", { name: "More", exact: true }).count()))
+check("cards: Dismiss takes it out of the margin", true)
 await op("companion.clear")
 
 // Hover its cursor: its flag says what it's doing. Click: its last words, and a box to ask it there.
 const line = (s) => text(NOTE).split("\n").findIndex((l) => l.startsWith(s)) + 1
 await op("companion.next", { timeout: 0 })
+await op("companion.look", { path: `${DIR}/Seeds.md`, as: "Ada" }) // (out of Claude's way: on one spot they'd stack)
 await op("companion.look", { path: NOTE, find: "Basil" })
 await op("companion.say", { text: "First thought." })
 await op("companion.say", { text: "Second thought." })
@@ -420,8 +420,9 @@ const LONG = `${DIR}/Long.md`, words = "Measured: a call takes a tenth of a seco
 await api("PUT", "file", { path: LONG, text: `# Long\n\n${Array.from({ length: 40 }, (_, i) => `Line ${i + 3} of a long note.`).join("\n")}\n` })
 // (a phone's page scrolls the window)
 const toEnd = () => { const s = document.querySelector("[data-pane]"); if (s) s.scrollTop = s.scrollHeight; else scrollTo(0, document.documentElement.scrollHeight) }
-for (const [label, viewport, mobile] of [["desktop", { width: 1400, height: 700 }, false], ["phone", { width: 390, height: 700 }, true]]) {
+for (const [label, viewport, mobile] of [["desktop", { width: 1500, height: 700 }, false], ["phone", { width: 390, height: 700 }, true]]) {
   const c = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile })
+  await foldRight(c)
   const p = watch(await c.newPage(), { label: `long ${label}` })
   await p.goto(`${B}/#file/${enc(LONG)}`)
   await p.locator(`.file-view[data-path="${LONG}"]:visible .cm-content`).waitFor({ timeout: 10000 })
@@ -452,6 +453,123 @@ for (const [label, viewport, mobile] of [["desktop", { width: 1400, height: 700 
   check(`${label}: with the cards gone, the note gives back the room it kept`, await p.evaluate(() => [...document.querySelectorAll(".cm-content")].every((e) => !e.style.marginBottom)))
   await c.close()
 }
+// Comments in the sidebar (the default): threads in the Conversations panel in the note's order, a dot by each line.
+await api("PATCH", "config/plugin/companion", { comments: null })
+await op("companion.clear")
+const sc = await browser.newContext({ viewport: { width: 1400, height: 900 } })
+const sp = watch(await sc.newPage(), { label: "sidebar" })
+await sp.goto(`${B}/#file/${enc(NOTE)}`)
+const sed = sp.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`)
+await sed.waitFor({ timeout: 10000 })
+await wait(1200)
+const c1 = (await op("companion.comment", { path: NOTE, find: "Basil between", text: "Basil keeps aphids off." })).id
+const s1 = (await op("companion.suggest", { path: NOTE, find: "sunny", replace: "sunniest", why: "Stronger" })).id
+const panel = sp.locator("[data-companion-panel]:visible")
+await panel.locator(`[data-companion-thread="${s1}"]`).waitFor({ timeout: 4000 })
+await wait(600) // (the sidebar opening moves the note's text)
+check("sidebar: an agent commenting shows the Conversations panel, in the right sidebar", await sp.locator('aside[data-side="right"] [data-panel="companion:conversations"]').isVisible())
+const order = await panel.locator("[data-companion-thread]").evaluateAll((els) => els.map((e) => e.dataset.companionThread))
+check("sidebar: threads in the note's order", order.join() === [s1, c1].join(), order)
+check("sidebar: no cards in the margin, a dot by each line", !(await sp.locator("[data-companion-note]").count()) && (await sp.locator("[data-companion-gutter]").count()) === 2)
+const gd = await sp.locator(`[data-companion-gutter="${c1}"]`).boundingBox(), bl = await sed.getByText("Basil between them").boundingBox()
+check("sidebar: a thread's dot is left of its line, level with it", !!gd && !!bl && gd.x + gd.width <= bl.x + 4 && Math.abs(gd.y + gd.height / 2 - (bl.y + bl.height / 2)) < 12, { gd, bl })
+await sp.screenshot({ path: `${OUT}sidebar.png` })
+await panel.locator(`[data-companion-thread="${c1}"]`).click()
+await sed.locator(".cm-companion-picked").first().waitFor({ timeout: 2000 })
+check("sidebar: a thread clicked lights its line", (await sed.locator(".cm-companion-picked").innerText()).includes("Basil between them"))
+await panel.getByPlaceholder("Reply").fill("And for the tomatoes?")
+await sp.keyboard.press("Enter")
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "reply") ? x : null }, 5000)
+check("sidebar: a reply from the panel reaches it", r?.moments.some((m) => m.kind === "reply" && m.text === "And for the tomatoes?"), r)
+await panel.locator(`[data-companion-thread="${s1}"]`).getByRole("button", { name: /Accept/ }).click()
+await until(() => text(NOTE).includes("sunniest"), 5000)
+check("sidebar: Accept in the panel takes the suggestion", text(NOTE).includes("sunniest"), text(NOTE))
+// Resolved: listed under Resolved, and Reopen brings it back.
+await panel.locator(`[data-companion-thread="${c1}"]`).getByRole("button", { name: "Resolve" }).click()
+await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ state: "detached", timeout: 3000 })
+await panel.locator('[data-filter="resolved"]').click()
+await panel.locator(`[data-companion-thread="${c1}"]`).waitFor({ timeout: 3000 })
+check("history: a resolved comment is under Resolved", true)
+await panel.locator(`[data-companion-thread="${c1}"]`).getByRole("button", { name: "Reopen" }).click()
+await until(async () => (await op("companion.status")).notes.some((n) => n.id === c1), 3000)
+await wait(300)
+check("history: Reopen brings it back, open", (await panel.locator('[data-filter="open"]').getAttribute("aria-checked")) === "true" && await panel.locator(`[data-companion-thread="${c1}"]`).isVisible())
+// The right sidebar closed: a dot on the panel's icon in its rail; a line's dot opens it at its thread.
+await sp.locator("[data-sidebar-toggle=right]").click()
+await sp.locator("[data-companion-rail]").waitFor({ timeout: 3000 })
+check("sidebar: closed, the panel's rail icon has a dot", true)
+await sp.locator(`[data-companion-gutter="${c1}"]`).click()
+await panel.locator(`[data-companion-thread="${c1}"][data-picked]`).waitFor({ timeout: 3000 })
+check("sidebar: a line's dot opens the panel at its thread", await sp.locator('aside[data-side="right"]').evaluate((e) => !e.dataset.collapsed))
+
+// Two agents on one spot: side by side, one flag fanning out into a chip each, a chip opening that one's box.
+await op("companion.next", { timeout: 0, as: "Ada" })
+await op("companion.look", { path: NOTE, find: "Basil between" })
+await op("companion.look", { path: NOTE, find: "Basil between", as: "Ada" })
+const stack = sp.locator(".companion-cursor[data-stacked]")
+await stack.waitFor({ timeout: 4000 })
+await wait(900)
+const [arrowC, arrowA] = await Promise.all(["Claude", "Ada"].map((n) => sp.locator(`.companion-cursor[data-agent="${n}"] svg`).first().boundingBox()))
+check("stacked: two agents on one spot sit side by side, each colour showing", !!arrowC && !!arrowA && Math.abs(arrowC.x - arrowA.x) >= 3 && Math.abs(arrowC.y - arrowA.y) < 4, { arrowC, arrowA })
+await stack.locator("[data-companion-grip]").hover()
+await stack.locator("[data-companion-flag]").hover()
+const chips = sp.locator("[data-companion-fan] button")
+await chips.first().waitFor({ timeout: 2000 })
+const names = (await chips.evaluateAll((els) => els.map((e) => e.dataset.agent))).sort()
+check("stacked: hovering their flag fans out a chip per agent", names.join() === "Ada,Claude", names)
+await sp.screenshot({ path: `${OUT}stacked.png` })
+await chips.and(sp.locator('[data-agent="Ada"]')).click()
+await sp.locator('[data-companion-popover="Ada"]').waitFor({ timeout: 2000 })
+check("stacked: a chip opens that agent's box", true)
+await sp.keyboard.press("Escape")
+await sp.mouse.move(700, 700)
+await wait(500)
+await stack.locator("[data-companion-flag]").focus()
+await sp.keyboard.press("ArrowDown")
+await wait(150)
+await sp.keyboard.press("ArrowDown")
+await wait(150)
+const chosen = await sp.evaluate(() => document.activeElement?.closest("[data-companion-fan]") && document.activeElement.getAttribute("data-agent"))
+await sp.keyboard.press("Enter")
+await sp.locator(`[data-companion-popover="${chosen}"]`).waitFor({ timeout: 2000 }).catch(() => {})
+check("stacked: the keyboard reaches each: Tab to the flag, arrows choose, Enter opens", !!chosen && (await sp.locator(`[data-companion-popover="${chosen}"]`).count()) === 1, chosen)
+await sp.keyboard.press("Escape")
+
+// A file's top bar items move: Move to right sidebar docks one as a section there; dragged back, it's in the bar again.
+const pres = sp.locator('[data-file-bar="bar"]:visible [data-file-bar-key="companion:presence"]')
+await pres.click({ button: "right" })
+await sp.getByRole("menuitem", { name: "Move to right sidebar" }).click()
+const docked = sp.locator('aside[data-side="right"] [data-panel="companion:presence"]')
+await docked.waitFor({ timeout: 3000 })
+check("top bar: Move to right sidebar docks it there, for the note, out of the bar", !(await pres.count()) && (await docked.locator("[data-companion-presence] button[data-agent]").count()) >= 2)
+await sp.screenshot({ path: `${OUT}docked.png` })
+const hb = await docked.locator("[data-panel-handle]").boundingBox(), fb = await sp.locator('[data-file-bar="bar"]:visible').boundingBox()
+await sp.mouse.move(hb.x + 20, hb.y + hb.height / 2)
+await sp.mouse.down()
+for (let i = 1; i <= 10; i++) { await sp.mouse.move(hb.x + 20 + (fb.x - hb.x - 20) * i / 10, hb.y + hb.height / 2 + (fb.y + fb.height / 2 - hb.y - hb.height / 2) * i / 10); await wait(30) }
+await sp.mouse.up()
+await pres.waitFor({ timeout: 3000 })
+const bar = await sp.locator('[data-file-bar="bar"]:visible > [data-file-bar-key]').evaluateAll((els) => els.filter((e) => e.offsetWidth).map((e) => e.dataset.fileBarKey))
+check("top bar: dragged back from the sidebar, first in the bar, out of the sidebar", bar[0] === "companion:presence" && !(await docked.count()), bar)
+await sc.close()
+
+// A phone: a thread's dot opens the right drawer at it; the dots step aside while it's out.
+const ph = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+const pq = watch(await ph.newPage(), { label: "sidebar 390" })
+await pq.goto(`${B}/#file/${enc(NOTE)}`)
+await pq.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 10000 })
+await wait(1200)
+const pdot = pq.locator(`[data-companion-gutter="${c1}"]`)
+await pdot.waitFor({ timeout: 3000 })
+const pdb = await pdot.boundingBox()
+check("phone: a thread's dot inside the screen, big enough for a finger", !!pdb && pdb.x >= 0 && pdb.x + pdb.width <= 390 && pdb.width >= 30, pdb)
+await pdot.tap()
+await pq.locator(`[data-companion-thread="${c1}"]:visible`).waitFor({ timeout: 3000 })
+check("phone: tapped, the right drawer opens at its thread", true)
+check("phone: the dots step aside while the drawer is out", !(await pdot.isVisible()))
+await pq.screenshot({ path: `${OUT}phone-sidebar.png` })
+await ph.close()
+
 rmSync(file(DIR), { recursive: true, force: true })
 for (const r of restore) r()
 await done()

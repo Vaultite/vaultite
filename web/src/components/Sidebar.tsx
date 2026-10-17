@@ -8,7 +8,7 @@ import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, t
 import { openView } from "@/core/files"
 import { isDesktop } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
-import { dockAtEnd, dockPanel, drawerPanels, hidePanel, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
+import { dockAtEnd, dockPanel, drawerPanels, hidePanel, isBarItem, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
 import { getPrefs, usePrefs } from "@/core/prefs"
 import { firstKeys, keyCaps, runCommandById, useCommandKeys } from "@/core/commands"
 import { useDismiss } from "@/core/focus"
@@ -278,7 +278,8 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   return [...own, ...open, ...dock,
     { label: "Panels", icon: Layers, sep: !!(own.length || open.length || dock.length), run: () => {}, items: list },
     { label: `Move to ${other} sidebar`, icon: other === "right" ? PanelRight : PanelLeft, sep: true, run: () => dockAtEnd(key, other) },
-    { label: `Hide ${me.title}`, icon: EyeOff, run: () => hidePanel(key) },
+    // (a top bar item's own menu has Move to top bar, which this would be)
+    ...(isBarItem(key) ? [] : [{ label: `Hide ${me.title}`, icon: EyeOff, run: () => hidePanel(key) }]),
   ]
 }
 

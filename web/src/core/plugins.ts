@@ -1,14 +1,15 @@
 // The plugin registry: every folder in plugins/core/ with an index.tsx (found with import.meta.glob), plus the vault's
 // own once /api/state lists them. Which are on is plugins.json (prefs.ts); a plugin is off while one it `requires` is.
+import type { ReactNode } from "react"
 import { signal } from "@/core/signal"
-import { Puzzle } from "lucide-react"
+import { PanelTop, Puzzle } from "lucide-react"
 import BUILT_IN_ICONS from "virtual:plugin-icons"
 import * as official from "virtual:official-plugins"
 import type { Extension } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
 import type { MenuItem } from "@/components/ContextMenu"
 import { editorOf } from "@/core/editors"
-import type { AgentDef, EditorCtx, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, SidebarPanel, TimelineKind, ViewDef, WebPageAction } from "@/core/define"
+import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, FileRow, HostedPlugin, Manifest, NewTabSection, Plugin, PluginDef, PluginHost, SidebarCtx, SidebarPanel, TimelineKind, ViewDef, WebPageAction } from "@/core/define"
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -26,6 +27,7 @@ import { setMarks } from "../../../core/fileprops.ts"
 import { switched } from "../../../core/pluginmeta.ts"
 import { parseTerminal } from "../../../core/terminalids.ts"
 import { drawnBy } from "../../../core/blocks.ts"
+import { placeKey } from "../../../core/slots.ts"
 
 export type { Place, Side, Sidebars } from "../../../core/sidebars.ts"
 export { readSidebars, sameSidebars } from "../../../core/sidebars.ts"
@@ -358,14 +360,38 @@ export type PanelOf = { key: string; plugin: Plugin; panel: SidebarPanel }
 /** The panels of the plugins that are on, by `sort` (then the plugins' order): the order of the Panels menu. */
 export function sidebarPanels(disabled: string[], order: string[]): PanelOf[] {
   return active(disabled, order)
-    .flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, panel]) => ({ key: `${p.id}:${name}`, plugin: p, panel })))
+    .flatMap((p) => [...Object.entries(p.sidebar ?? {}).map(([name, panel]) => ({ key: `${p.id}:${name}`, plugin: p, panel })),
+      ...Object.entries(p.fileBar ?? {}).map(([name, item]) => ({ key: `${p.id}:${name}`, plugin: p, panel: barPanel(`${p.id}:${name}`, p, item) }))])
     .map((x, i) => ({ ...x, i }))
     .sort((a, b) => (a.panel.sort ?? 100) - (b.panel.sort ?? 100) || a.i - b.i)
 }
 
 /** Every plugin's panels (on or off), for the default setup. */
 const panelInfo = (prefs = getPrefs()) =>
-  ordered(prefs.order).flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, s]) => ({ key: `${p.id}:${name}`, sort: s.sort, hidden: s.hidden })))
+  ordered(prefs.order).flatMap((p) => Object.entries(p.sidebar ?? {}).map(([name, s]) => ({ key: `${p.id}:${name}`, sort: s.sort, hidden: s.hidden, side: s.side })))
+
+// A file's top bar items (FileBarItem) are panels too, hidden until docked: in a sidebar, one is drawn there for the
+// focused file and not in the bar. FileView.tsx draws them.
+let drawBarItem: ((item: FileBarItem, ctx: SidebarCtx) => ReactNode) | null = null
+export const setBarItemDrawer = (fn: typeof drawBarItem) => { drawBarItem = fn }
+const barPanels = new WeakMap<FileBarItem, SidebarPanel>()
+function barPanel(key: string, p: Plugin, item: FileBarItem): SidebarPanel {
+  let panel = barPanels.get(item)
+  if (!panel) {
+    panel = { title: item.title ?? p.name, hidden: true, sort: 200, render: (ctx) => drawBarItem?.(item, ctx) ?? null,
+      menu: () => [{ label: "Move to top bar", icon: PanelTop, run: () => moveBarItem(key, null) }] }
+    barPanels.set(item, panel)
+  }
+  return panel
+}
+/** Whether a panel key is a file's top bar item. */
+export const isBarItem = (key: string) => { const { disabled, order } = getPrefs(); return fileBarItems(disabled, order).some((x) => x.key === key) }
+/** A top bar item put before `before` in the bar (null: last), out of a sidebar if it was docked in one. */
+export function moveBarItem(key: string, before: string | null) {
+  const { disabled, order } = getPrefs()
+  void setPrefs({ fileBar: placeKey(fileBarItems(disabled, order).map((x) => x.key), key, before) })
+  if (sideIn(sidebars(), key)) hidePanel(key)
+}
 
 const setup = signal()
 /** Tell the sidebars a plugin's setup changed (a workspace switch). */
@@ -444,6 +470,11 @@ export function dockAtEnd(key: string, side: Side) {
   changeSidebars((s) => setCollapsed(placePanel(s, key, { side, before: null }), key, false))
   if (side === "left" ? !getPrefs().sidebar : !getPrefs().rightSidebar) void setPrefs(side === "left" ? { sidebar: true } : { rightSidebar: true })
 }
+/** Bring a panel into a sidebar without opening the sidebar (a closed one shows it in its rail): unfolded, and at the
+ *  end of `side` if it's in neither. For what a plugin shows unasked; revealPanel is for what the user asked to see. */
+export function offerPanel(key: string, side: Side) {
+  changeSidebars((s) => setCollapsed(sideIn(s, key) ? s : placePanel(s, key, { side, before: null }), key, false))
+}
 /** Hide a panel (out of both sidebars; its plugin stays on). */
 export const hidePanel = (key: string) => changeSidebars((s) => withoutPanel(s, key))
 /** Give a panel a height (null: as tall as what it draws); `at`: its sidebar's height now, so other screens draw the
@@ -483,9 +514,9 @@ function showSectionsOf(p: Plugin) {
  *  setup is saved (the default lists them already). */
 function showPanelsOf(p: Plugin) {
   const s = sidebars()
-  const add = Object.entries(p.sidebar ?? {}).filter(([, x]) => !x.hidden).map(([name]) => `${p.id}:${name}`).filter((k) => !sideIn(s, k))
+  const add = Object.entries(p.sidebar ?? {}).filter(([, x]) => !x.hidden).map(([name, x]) => ({ key: `${p.id}:${name}`, side: x.side ?? "left" })).filter((x) => !sideIn(s, x.key))
   if (!add.length || (!provided() && !getPrefs().sidebars)) return
-  setSidebars(add.reduce((acc, k) => placePanel(acc, k, { side: "left", before: null }), s))
+  setSidebars(add.reduce((acc, x) => placePanel(acc, x.key, { side: x.side, before: null }), s))
 }
 
 /** What the plugins that are on draw in one place (`slot`: its items by name), left to right by their `sort`. */
@@ -498,7 +529,12 @@ function slotItems<K extends "header" | "status" | "fileBar" | "noteTop">(slot: 
 /** The sidebar's header (see HeaderItem), the status bar (StatusItem) and a file's header (FileBarItem). */
 export const headerItems = (disabled: string[], order: string[]) => slotItems("header", disabled, order)
 export const statusItems = (disabled: string[], order: string[]) => slotItems("status", disabled, order)
-export const fileBarItems = (disabled: string[], order: string[]) => slotItems("fileBar", disabled, order)
+/** A file's top bar items, in the user's order (appearance.json `fileBar`), the ones it doesn't name after by `sort`. */
+export function fileBarItems(disabled: string[], order: string[], saved = getPrefs().fileBar) {
+  const all = slotItems("fileBar", disabled, order)
+  const at = (k: string) => { const i = saved?.indexOf(k) ?? -1; return i < 0 ? Infinity : i }
+  return saved ? [...all].sort((a, b) => at(a.key) - at(b.key)) : all
+}
 export const noteTopItems = (disabled: string[], order: string[]) => slotItems("noteTop", disabled, order)
 
 /** What the plugins that are on can draw at the start of the status bar (see AmbientItem), as "<plugin>:<name>". */

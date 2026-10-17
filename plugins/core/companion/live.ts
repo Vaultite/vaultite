@@ -7,7 +7,9 @@ export type Target = { path?: string; line?: number; find?: string; x?: number; 
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
   model?: string; effort?: string }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
-  text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string }
+  text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string
+  /** A comment the user dismissed, when (companion.history's). */
+  dismissed?: number }
 export type Hunk = { line: number; added: string[]; removed: string[] }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 

@@ -99,8 +99,9 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   it (code files always have them). `statusBar`: the plugins' items at the start of the desktop status bar, in order
   (`["companion:status", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one
   to move it). `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
-  fit). No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are
-  each device's.
+  fit). `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
+  unset: their default places); one dragged into a sidebar (or Move to sidebar) is a panel there, in `sidebars.json`.
+  No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are each device's.
 - `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`). A snippet is
   CSS added after the app's; the colours are variables (`--background`, `--foreground`, `--card`, `--primary`,
   `--red`...), so `:root { --primary: #d33682; }` changes the accent; `--line-width` is a note's widest line (700px).

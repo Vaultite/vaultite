@@ -49,6 +49,8 @@ export function PhoneDrawers({ store, file, tab, vaultName, vaultMenu }: { store
   vaultMenu: (e: React.MouseEvent) => void }) {
   const side = useDrawer()
   usePageLock(!!side)
+  // (what's drawn over the page, an agent's cursor, steps aside while one is out: `html[data-drawer]`)
+  useEffect(() => { if (side) document.documentElement.dataset.drawer = side; else delete document.documentElement.dataset.drawer }, [side])
   const has = { left: useHasDrawer("left"), right: useHasDrawer("right") }
   // Which drawer is drawn: the one out, or the one a finger is pulling, until it has slid away.
   const [drawn, setDrawn] = useState<Side | null>(null)

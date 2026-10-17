@@ -618,6 +618,8 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     pins.repinList(["Projects/Lighthouse"], "Projects", "Work").join() === "Work/Lighthouse" && pins.repinList(["Projects/Lighthouse", "M"], "Projects/Lighthouse", null).join() === "M" &&
     pins.repinList(["Projects/Lighthouse2"], "Projects/Lighthouse", "X").join() === "Projects/Lighthouse2")
   check("sidebars: the default is by sort, without hidden panels", sb.defaultSidebars([{ key: "b", sort: 20 }, { key: "a", sort: 10 }, { key: "h", sort: 0, hidden: true }]).left.join() === "a,b")
+  const sided = sb.defaultSidebars([{ key: "b", sort: 20 }, { key: "c", sort: 5, side: "right" }, { key: "a", sort: 10 }])
+  check("sidebars: a panel that starts on the right is there by default", sided.left.join() === "a,b" && sided.right.join() === "c", sided)
   const up = sb.placePanel(s, "files:files", { side: "left", before: "search:search" })
   check("sidebars: moved before another", up.left.join() === "files:files,search:search,pages:pages", up)
   const right = sb.placePanel(s, "pages:pages", { side: "right", before: null })

@@ -10,8 +10,9 @@ export type Sidebars = { left: string[]; right: string[]; collapsed: string[]; h
   dock?: string[]
   /** The sidebar's height (px) when `heights` were set: drawn at heights[k] * (its height now / heightsAt). */
   heightsAt?: number }
-/** What a panel needs to be in the default setup: its key, its plugin's `sort` and whether it's `hidden` until shown. */
-export type PanelInfo = SlotInfo
+/** What a panel needs to be in the default setup: its key, its plugin's `sort`, whether it's `hidden` until shown and
+ *  the `side` it starts in (left unless "right"). */
+export type PanelInfo = SlotInfo & { side?: Side }
 /** Where a panel goes: sidebar `side`, before panel `before` (null: the end). An anchor, not a position, so taking the
  *  panel out of its old place first never shifts it. */
 export type Place = { side: Side; before: string | null }
@@ -32,9 +33,11 @@ export function readSidebars(raw: unknown): Sidebars | null {
   return { left, right, collapsed: [...new Set(keys(o.collapsed))].filter((k) => seen.has(k)), heights, ...at, ...(dock.length ? { dock } : {}) }
 }
 
-/** The sidebars where nothing's saved: every panel not marked `hidden`, on the left, by `sort` (then the order given). */
+/** The sidebars where nothing's saved: every panel not marked `hidden`, in its `side` (the left), by `sort` (then the
+ *  order given). */
 export function defaultSidebars(panels: PanelInfo[]): Sidebars {
-  return { left: defaultOrder(panels), right: [], collapsed: [], heights: {} }
+  const right = (p: PanelInfo) => p.side === "right"
+  return { left: defaultOrder(panels.filter((p) => !right(p))), right: defaultOrder(panels.filter(right)), collapsed: [], heights: {} }
 }
 
 /** The same setup (what Workspaces compares to tell an unused workspace). */

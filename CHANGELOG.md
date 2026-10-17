@@ -10,21 +10,25 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   in a block's text, a canvas card, a database's result, a recent file. Plugins' items (Use as Dock icon, Open local
   graph) show in each, not only in the tab's menu.
 - **Companion** (a new plugin, off until turned on): an always-on Claude Code or Codex session with its own cursor in the
-  app. Write `@claude` anywhere in a note's line (or ⌘⇧K) to ask it, sent at Enter or when you pause; it answers in a bubble by its cursor, comments in the margin,
+  app. Write `@claude` anywhere in a note's line (or ⌘⇧K) to ask it, sent at Enter or when you pause; it answers in a bubble by its cursor, comments on a line,
   suggests changes you take with Tab, or types into the note with you. Modes: quiet, notice, pair. Its cursor shows it
   reading what you did, and a tick when it saw it and let it pass. `vau companion timings` shows how fast it answered
-  each moment. Margin cards scroll with the note, which keeps room under its text for the lowest; a long card scrolls
-  inside, its Reply always in reach. Its comments and suggestions are kept beside the note, so they survive a restart,
+  each moment. Its comments and suggestions are threads in the Conversations panel (the right sidebar; a phone's right
+  drawer), in the note's order, open or resolved, with a dot in the agent's colour by each one's line: click one to light
+  its line, reply, accept or resolve it there; it shows when threads come, a dot on its icon if the sidebar is closed.
+  Comments in the margin instead is a setting (cards that scroll with the note). Its comments and suggestions are kept beside the note, so they survive a restart,
   follow the note and reach your other devices. More agents join by name (`vau companion start --as Ada`), each in its
   own colour: `@ada` asks only that one. Typing @ lists them, and a new name offers Start @name (Sonnet at medium effort by default; Tab or → picks
   another model and effort), its ask waiting for it to start; `@name` shows as a chip in its agent's colour, lit
   when the ask goes and while it thinks. Hover its cursor for what it's doing; click it for its last words (pin one as a
   comment) and a box to ask it there; drag it onto text (a held finger on a phone) to say "look at this". A note's
-  top bar shows each agent around in its colour (a click goes where it is) and its comments, dismissed ones too, to
-  bring back. Long margin cards show a few lines until opened. A narrow status bar drops its counts before overlapping.
+  top bar and the panel show each agent around in its colour (a click goes where it is). Agents on one spot sit side by
+  side, their flag fanning out into each (hover, tap, or Tab and the arrows). Long margin cards show a few lines until opened. A narrow status bar drops its counts before overlapping.
   In a drawing (Excalidraw) each agent is one of its collaborators, clicked to follow: its words pop by an element, a
   text with `@claude` asks it, and it draws with you (`vau companion draw`), one ⌘Z taking a drawing back. Formats draw
   others the same way through `registerCanvas`.
+- A file's top bar items (who's here, Dispatch, its origin) move: drag one along the bar, or into a sidebar to keep it
+  there as a section for the file you're on (right-click: Move left or right, Move to sidebar, Move to top bar).
 - **Shortcodes** (a new plugin, on from the start): type `:` and a name for an emoji or one of the app's icons, as in
   Slack or Discord (`:fir` suggests 🔥, recently used first; `:fire:` typed whole becomes it). Icons go in as
   `:LiCalendar:`, as Obsidian's Iconize writes them, and show as the icon.

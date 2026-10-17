@@ -1,10 +1,12 @@
 import { useEffect, useSyncExternalStore } from "react"
-import { Crosshair, MessageCirclePlus, MousePointer2, Power, SquareTerminal } from "lucide-react"
-import { choose, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
+import { Crosshair, MessageCirclePlus, MessagesSquare, MousePointer2, Power, SquareTerminal } from "lucide-react"
+import { choose, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, openView, pluginSettings, useFocusedFile, type MenuItem } from "@vaultite"
 import { askDrawing, watchCanvases } from "./canvas"
-import { connect, getState, liveAgents, type Mode, sendMoment, subscribe } from "./live"
+import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
+import { connect, getState, liveAgents, type Mode, type Note, sendMoment, subscribe, viewOf } from "./live"
 import { follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
+import { offerThreads } from "./threads"
 
 // Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
 // loads with the first note.
@@ -73,9 +75,27 @@ function Status() {
   )
 }
 
+const isThread = (n: Note) => n.kind === "comment" || n.kind === "suggestion"
+
+/** The Conversations panel shown when threads come: a note with some opened, an agent commenting on one on screen. */
+function useOffer() {
+  const { path } = useFocusedFile()
+  useEffect(() => { if (path && getState().mode !== "off" && getState().notes.some((n) => n.path === path && isThread(n))) offerThreads() }, [path])
+  useEffect(() => {
+    let known = new Set<string>()
+    return subscribe(() => {
+      const s = getState()
+      const fresh = s.mode !== "off" && s.notes.some((n) => isThread(n) && !known.has(n.id) && !!n.path && !!viewOf(n.path))
+      known = new Set(s.notes.map((n) => n.id))
+      if (fresh) offerThreads()
+    })
+  }, [])
+}
+
 function Background() {
   useEffect(() => connect(), [])
   useEffect(() => watchCanvases(), [])
+  useOffer()
   return <Overlay />
 }
 
@@ -83,7 +103,11 @@ export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
   background: () => <Background />,
   ambient: { status: { title: "Companion", sort: 25, render: () => <Status /> } },
-  fileBar: { presence: { sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
+  fileBar: { presence: { title: "Who's here", sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
+  // (its key is threads.ts' PANEL)
+  sidebar: { conversations: { title: "Conversations", sort: 20, side: "right", view: "conversations", names: ["comments", "threads"], flyout: { icon: ConversationsIcon, width: 320 },
+    render: (ctx) => <ConversationsPanel {...ctx} /> } },
+  views: { conversations: { icon: MessagesSquare, title: () => "Conversations", render: () => <ConversationsView /> } },
   commands: [
     { id: "companion:ask", name: "Ask the companion", label: "Ask", keys: ["Mod+Shift+K"], run: () => ask(), icon: MessageCirclePlus },
     ...MODES.map((m) => ({ id: `companion:${m.mode}`, name: `Companion: ${m.label}`, when: () => getState().mode !== m.mode, run: () => void setMode(m.mode) })),

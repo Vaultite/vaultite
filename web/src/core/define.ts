@@ -7,7 +7,7 @@ import type { LucideIcon } from "lucide-react"
 import type { Store, VaultMeta } from "@/core/data"
 import type { ConfirmOptions } from "@/components/ConfirmDialog"
 import type { MenuItem } from "@/components/ContextMenu"
-import type { Sidebars } from "../../../core/sidebars.ts"
+import type { Side, Sidebars } from "../../../core/sidebars.ts"
 import type { BlockDecls, SettingDecls } from "../../../core/blocks.ts"
 import type { TextSizeKind } from "@/core/textsize"
 import type { GridCard, GridEdit } from "@/editor/livePreview"
@@ -283,6 +283,8 @@ export type SidebarPanel = {
   /** Not in the sidebar until the user shows it (the sidebar's right-click menu, Panels): left out of the default
    *  setup, and not added when its plugin is turned on (Links, Local graph). */
   hidden?: boolean
+  /** The sidebar it starts in (default setup, its plugin turned on): the left one unless "right". */
+  side?: Side
   /** In the icon rail it's this one icon, opening the panel beside the rail until a click outside, Escape
    *  or the focused tab changing. Without it, the panel draws its own rail icons with `open: false`, or nothing. */
   flyout?: { icon: ComponentType<{ className?: string; strokeWidth?: number }>; width?: number }
@@ -365,10 +367,12 @@ export type AmbientItem = {
   hidden?: boolean
 }
 
-/** Drawn in a file's header: on desktop in the tab's top bar before the view button (`place: "bar"`), in a sheet and
- *  on phones above the title (`place: "line"`). Nothing when render answers null. */
+/** Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title
+ *  (`"line"`); docked in a sidebar by the user, there for the focused file. Nothing when render answers null. */
 export type FileBarItem = {
   render: (file: FileHead & { place: "bar" | "line" }) => ReactNode
+  /** Its name where it's moved (its sidebar section's heading, menus): the plugin's name unless set. */
+  title?: string
   /** Its place, left to right, when several plugins have one. */
   sort?: number
 }

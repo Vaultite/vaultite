@@ -25,6 +25,14 @@ export default async ($: VaultTest) => {
       !l.asksSomething("- @claude ", l.mentionsOf("- @claude ", names, mid)) && l.asksSomething("how is it @claude?", l.mentionsOf("how is it @claude?", names, mid)))
   }
   {
+    // Its threads are the Conversations panel's, in the right sidebar from the start (vau panels reads the source).
+    const { panelsOf } = await import("../../../core/appsource.ts")
+    const { defaultSidebars } = await import("../../../core/sidebars.ts")
+    const ps = panelsOf({ id: "companion", tier: "core", dir: new URL("../../../plugins/core/companion", import.meta.url).pathname })
+    check("companion: the Conversations panel starts in the right sidebar", ps.some((x) => x.key === "companion:conversations" && x.side === "right") &&
+      defaultSidebars(ps).right.includes("companion:conversations"), ps)
+  }
+  {
     // Note text sent with moments: a short note whole for an ask, a few lines around an edit.
     const text = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n") + "\n"
     const ask = c.excerpt("N.md", "a\nb\n", [{ seq: 1, t: 0, kind: "ask", line: 2 }]), long = c.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "ask", line: 150 }])

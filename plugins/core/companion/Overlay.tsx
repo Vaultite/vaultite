@@ -3,18 +3,20 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile } from "@vaultite"
+import { canvasOf, canvasShown, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile, snippet } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { accept, type Agent, answer, getState, type Target, nearest, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { showThread, useInMargin } from "./threads"
 
 /** low: too near the bottom of where it's drawn for its flag below it (the flag goes above); drawn: the canvas draws it. */
 type Spot = { x: number; y: number; parked?: boolean; low?: boolean; drawn?: boolean }
 const FLAG = 44 // the arrow and its flag below it
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
+export const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
 
 /** A target's position in its editor, or null when the text is gone. */
-function posIn(v: EditorView, t: { line?: number; find?: string }) {
+export function posIn(v: EditorView, t: { line?: number; find?: string }) {
   const doc = v.state.doc
   if (t.find) { const i = nearest(doc.toString(), t.find, t.line); if (i >= 0) return i }
   return t.line ? doc.line(Math.max(1, Math.min(t.line, doc.lines))).from : null
@@ -152,28 +154,65 @@ function Popover({ a, left, up, close }: { a: Agent; left: number; up: boolean; 
   )
 }
 
-function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: Note | null; others: string[]; under: boolean }) {
+/** Agents stacked on one spot (their carets side by side): hovered, focused or tapped, the top one's flag fans out into
+ *  a chip per agent, each opening that one's box; arrows go between them. */
+function Fan({ agents, up, right, pop, close, keep }: { agents: Agent[]; up: boolean; right: boolean; pop: (name: string) => void; close: (focusFlag?: boolean) => void; keep: () => void }) {
+  const box = useRef<HTMLDivElement>(null)
+  const move = (e: React.KeyboardEvent, by: number) => {
+    const chips = [...box.current!.querySelectorAll<HTMLElement>("button")], i = chips.indexOf(document.activeElement as HTMLElement)
+    e.preventDefault()
+    chips[(i + by + chips.length) % chips.length]?.focus()
+  }
+  return (
+    <div ref={box} role="menu" aria-label="Agents here" data-companion-fan onPointerEnter={keep} onPointerLeave={() => close()}
+      onKeyDown={(e) => { if (e.key === "ArrowDown") move(e, 1); else if (e.key === "ArrowUp") move(e, -1); else if (e.key === "Escape") { e.preventDefault(); close(true) } }}
+      onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null) && !(e.relatedTarget as Element | null)?.closest?.("[data-companion-flag]")) close() }}
+      className={cn("companion-pop pointer-events-auto absolute flex flex-col gap-1", right ? "right-[-6px] items-end" : "left-[13px] items-start", up ? "bottom-[22px] flex-col-reverse" : "top-[40px]")}>
+      {agents.map((x) => (
+        <button key={x.name} type="button" role="menuitem" data-agent={x.name} onClick={() => pop(x.name)}
+          className="flex h-6 cursor-pointer items-center gap-1 rounded-full px-2 text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm outline-offset-2 hover:brightness-110 max-sm:h-9 max-sm:px-3 max-sm:text-[14px]"
+          style={{ background: `var(--${x.tint})` }}>
+          {x.name}<span className="font-medium opacity-85">{STATUS[x.state]}</span>
+          {(x.state === "thinking" || x.state === "reading" || x.state === "starting") && <span className="companion-dots" aria-hidden><i /><i /><i /></span>}
+        </button>
+      ))}
+    </div>
+  )
+}
+
+function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a: Agent; spot: Spot; said: Note | null; others: Agent[]; under: boolean
+  /** Its place in a stack on one spot: drawn this many steps to the right, so each colour shows. */
+  shift: number
+  open: boolean; setOpen: (open: boolean) => void; pop: (name: string) => void }) {
   const tint = `var(--${a.tint})`
   const [hover, setHover] = useState(false)
   const [nudge, setNudge] = useState<{ x: number; y: number } | null>(null)
-  const [open, setOpen] = useState(false)
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
+  const [fan, setFan] = useState(false)
+  const shut = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
+  const flagRef = useRef<HTMLButtonElement>(null)
   const box = useRef<HTMLDivElement>(null)
-  const at = drag ?? spot
+  const at = drag ?? { ...spot, x: spot.x + shift * 4 }
+  const many = others.length > 0
+  const keepFan = () => { clearTimeout(shut.current); if (many) setFan(true) }
+  // (a moment to reach it: the chips sit a little away from the flag)
+  const closeFan = (focusFlag = false) => { clearTimeout(shut.current); if (focusFlag) { setFan(false); flagRef.current?.focus() } else shut.current = setTimeout(() => setFan(false), 350) }
+  useEffect(() => () => clearTimeout(shut.current), [])
+  useEffect(() => { if (!many) setFan(false) }, [many])
   // (what opens beside it opens toward the room: its flag needs a little, its words more)
   const right = at.x > innerWidth - 320 && at.x > innerWidth / 2, flagRight = at.x > innerWidth - 140
   // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
   const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
   const seen = a.state === "watching" && !!a.seen
   // (its name shows as it moves or acts, then fades to the bare arrow, as in a shared doc; hovered, again)
-  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || typing?.agent === a.name || hover || open || !!drag
+  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || typing?.agent === a.name || hover || open || !!drag || fan
   const low = !drag && !!spot.low, tag = flag && (!under || hover || open)
   useEffect(() => {
-    if (!open) return
-    const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    if (!open && !fan) return
+    const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) { setOpen(false); setFan(false) } }
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
-  }, [open])
+  }, [open, fan, setOpen])
   if (spot.drawn && !said) return null
   const enter = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return
@@ -214,7 +253,7 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
     const up = (ev: PointerEvent) => {
       if (ev.pointerId !== id) return
       end()
-      if (dragging) { const p = tip(ev.clientX, ev.clientY); dropAt(a.name, p.x, p.y); setDrag(null) } else if (!dead) setOpen((o) => !o)
+      if (dragging) { const p = tip(ev.clientX, ev.clientY); dropAt(a.name, p.x, p.y); setDrag(null) } else if (!dead) setOpen(!open)
     }
     const cancel = () => { end(); setDrag(null) }
     el.addEventListener("pointermove", move)
@@ -222,10 +261,10 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
     el.addEventListener("pointercancel", cancel)
   }
   return (
-    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined}
+    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined} data-stacked={many ? others.length + 1 : undefined}
       onPointerEnter={enter} onPointerLeave={() => setHover(false)}
       style={{ transform: `translate(${at.x - 3}px, ${at.y - 2}px)`, transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typing?.agent === a.name ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
-        opacity: idle && !hover && !open ? 0.55 : 1, zIndex: open || drag ? 56 : undefined }}>
+        opacity: idle && !hover && !open && !fan ? 0.55 : 1, zIndex: open || drag || fan ? 57 : many ? 56 : undefined }}>
       {!spot.drawn && <>
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")} style={{ transform: nudge ? `translate(${nudge.x}px, ${nudge.y}px)` : undefined, transition: "transform .18s ease-out" }}>
         <Arrow tint={tint} />
@@ -233,15 +272,21 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
       <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages onPointerDown={down} onContextMenu={(e) => e.preventDefault()}
         className={cn("pointer-events-auto absolute top-0 left-0 z-[1] size-5 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
           drag ? "cursor-grabbing" : "cursor-pointer")} />
-      <button type="button" tabIndex={tag ? 0 : -1} aria-label={`Go to ${a.name}`} data-under-pages data-tip={a.path ? "Go to where it is" : undefined} onClick={() => follow(a)}
+      <button ref={flagRef} type="button" tabIndex={tag || many ? 0 : -1} aria-label={many ? `${[a, ...others].map((x) => x.name).join(", ")} here` : `Go to ${a.name}`} aria-haspopup={many ? "menu" : undefined} aria-expanded={many ? fan : undefined}
+        data-companion-flag data-under-pages data-tip={many || !a.path ? undefined : "Go to where it is"}
+        onPointerEnter={(e) => { if (e.pointerType !== "touch") keepFan() }} onPointerLeave={(e) => { if (e.pointerType !== "touch") closeFan() }}
+        onFocus={keepFan} onBlur={(e) => { if (!box.current?.querySelector("[data-companion-fan]")?.contains(e.relatedTarget as Node | null)) closeFan() }}
+        onKeyDown={(e) => { if (many && e.key === "ArrowDown") { e.preventDefault(); setFan(true); requestAnimationFrame(() => box.current?.querySelector<HTMLElement>("[data-companion-fan] button")?.focus()) } else if (e.key === "Escape" && fan) { e.preventDefault(); setFan(false) } }}
+        onClick={(e) => { if (!many) return follow(a); if (e.detail === 0 || (e.nativeEvent as PointerEvent).pointerType === "touch") setFan((f) => !f); else follow(a) }}
         className={cn("absolute flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
-          flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag ? "pointer-events-auto cursor-pointer" : "opacity-0")} style={{ background: tint }}>
+          flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag || fan ? "pointer-events-auto cursor-pointer" : "opacity-0 focus-visible:opacity-100")} style={{ background: tint }}>
         {a.name}
-        {others.length > 0 && <span className="font-medium opacity-85">{hover ? `, ${others.join(", ")}` : `+${others.length}`}</span>}
-        {(hover || open || a.state === "starting") && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
+        {many && <span className="font-medium opacity-85">+{others.length}</span>}
+        {(hover || open || a.state === "starting") && !many && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
         {(a.state === "thinking" || a.state === "reading" || a.state === "starting") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
         {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
       </button>
+      {fan && many && !open && <Fan agents={[a, ...others]} up={low} right={flagRight} keep={keepFan} close={closeFan} pop={(name) => { setFan(false); pop(name) }} />}
       {/* (kept inside the window) */}
       {open && <Popover a={a} up={low || at.y > innerHeight - 360} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} />}
       </>}
@@ -280,7 +325,7 @@ function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: nu
   useEffect(() => { if (replies > had.current) body.current?.scrollTo({ top: body.current.scrollHeight }); had.current = replies }, [replies])
   if (folded && !open) {
     return (
-      <button ref={keep} type="button" aria-label={`${n.agent}'s ${n.kind}`} data-companion-dot={n.id} className="companion-pop pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full shadow"
+      <button ref={keep} type="button" aria-label={`${n.agent}'s ${n.kind}`} data-companion-dot={n.id} className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full shadow"
         style={{ transform: `translate(${x}px, ${y}px)`, background: tint }} onClick={() => onOpen(true)}>
         <span className="size-1.5 rounded-full bg-white" />
       </button>
@@ -345,6 +390,8 @@ const STYLE = `
 @keyframes companion-seen { from { opacity: 0; scale: .4; } }
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
+.companion-fade { animation: companion-fade .25s ease-out; }
+@keyframes companion-fade { from { opacity: 0; } }
 .companion-more { mask-image: linear-gradient(to bottom, #000 55%, transparent); }
 .note-prose.companion-md { font-size: inherit; line-height: inherit; }
 .note-prose.companion-md :where(p, ul, ol, pre, blockquote, table) { margin: 0 0 4px; }
@@ -352,11 +399,14 @@ const STYLE = `
 .note-prose.companion-md :where(ul, ol) { padding-left: 16px; }
 .note-prose.companion-md li + li { margin-top: 1px; }
 .note-prose.companion-md :where(.h1, .h2, .h3, h1, h2, h3) { font-size: inherit; line-height: inherit; font-weight: 650; margin: 0 0 2px; }
-@media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-dots i, .companion-seen { animation: none !important; transition: none !important; } }
+html[data-drawer] .companion-overlay { visibility: hidden; }
+@media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-fade, .companion-dots i, .companion-seen { animation: none !important; transition: none !important; } }
 `
 
 type Placed = { n: Note; v: EditorView; x: number; y: number; folded: boolean; open?: boolean }
-type Pane = { id: number; top: number; bottom: number; under: number; cards: Placed[] }
+/** A thread's dot by its line, in the agent's colour (comments in the sidebar): a click opens it in the panel. */
+type Dot = { n: Note; x: number; y: number }
+type Pane = { id: number; top: number; bottom: number; under: number; cards: Placed[]; dots: Dot[] }
 const paneIds = new WeakMap<Element, number>()
 let lastPane = 0
 let insets = new WeakMap<Element, { top: number; foot: number }>()
@@ -386,25 +436,29 @@ function topOf(v: EditorView, pos: number) {
 
 export function Overlay() {
   const s = useSyncExternalStore(subscribe, getState)
+  const margin = useInMargin()
   const [, redraw] = useReducer((x: number) => x + 1, 0)
+  const [popped, setPopped] = useState<string | null>(null)
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())
   // The card open: the one clicked, else the one whose text the user's caret is in (as in a shared doc).
   useEffect(() => {
-    const down = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.("[data-companion-note], [data-companion-dot]")) pick(null) }
+    const down = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.("[data-companion-note], [data-companion-dot], [data-companion-gutter], [data-companion-thread]")) pick(null) }
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [])
   useEffect(() => {
     let frame = 0
-    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; redraw() }) }
+    const later = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; watch(); redraw() }) }
     const off = onBump(later)
     const resized = () => { insets = new WeakMap(); later() }
     addEventListener("scroll", later, { capture: true, passive: true })
     addEventListener("resize", resized)
-    // (a tab switch or a split moves editors without telling)
-    const tick = setInterval(() => document.visibilityState === "visible" && later(), 1500)
-    return () => { off(); removeEventListener("scroll", later, { capture: true }); removeEventListener("resize", resized); clearInterval(tick); cancelAnimationFrame(frame) }
+    // (a sidebar opening moves a pane's text without resizing its editor; a tab switch or a split moves editors unsaid)
+    const ro = new ResizeObserver(later), watch = () => { for (const el of document.querySelectorAll("[data-pane], #main-scroll")) ro.observe(el) }
+    watch()
+    const tick = setInterval(() => { if (document.visibilityState === "visible") later() }, 1500)
+    return () => { off(); ro.disconnect(); removeEventListener("scroll", later, { capture: true }); removeEventListener("resize", resized); clearInterval(tick); cancelAnimationFrame(frame) }
   }, [])
   // The note's own room under its text, so scrolling reaches its lowest card.
   useLayoutEffect(() => {
@@ -420,15 +474,17 @@ export function Overlay() {
 
   const cursors = s.agents.map((a, i) => {
     const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name) ?? null
-    return { a, spot: spotOf(a, i, !!said), said, with: [] as string[], under: false }
+    return { a, spot: spotOf(a, i, !!said), said, with: [] as Agent[], under: false, shift: 0 }
   })
-  // (cursors on the same spot: one flag, "Perf +1", that names them all when hovered)
+  // (cursors on the same spot, as in a shared doc: side by side, one flag, "Perf +1", fanning out into each of them)
   for (const c of cursors) {
     const top = c.spot && cursors.find((o) => o !== c && o.spot && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
-    if (top) { c.under = true; top.with.push(c.a.name) }
+    if (top) { c.under = true; top.with.push(c.a); c.shift = top.with.length }
   }
-  // Cards beside their lines, scrolling with the note and clipped to what of its pane shows (as in a shared doc's margin).
+  // Comments beside their lines, scrolling with the note and clipped to what of its pane shows: cards in the margin (as
+  // in a shared doc), or a dot each by the text, the threads being in the Conversations panel.
   const panes = new Map<Element, Pane>()
+  const perLine = new Map<string, number>()
   let caret: string | null = null
   for (const n of s.notes) {
     if (n.kind !== "comment" && n.kind !== "suggestion") continue
@@ -441,9 +497,19 @@ export function Overlay() {
     let p = panes.get(el)
     if (!p) {
       if (!paneIds.has(el)) paneIds.set(el, ++lastPane)
-      panes.set(el, p = { id: paneIds.get(el)!, ...shownOf(el), cards: [] })
+      panes.set(el, p = { id: paneIds.get(el)!, ...shownOf(el), cards: [], dots: [] })
     }
-    const edge = el.getBoundingClientRect().right, right = v.contentDOM.getBoundingClientRect().right
+    const box = el.getBoundingClientRect(), text = v.contentDOM.getBoundingClientRect()
+    if (!margin) {
+      // (in the gutter left of the text; without room there, at the line's end. Several on one line side by side)
+      const line = v.state.doc.lineAt(pos).number, k = `${paneIds.get(el)}:${views.get(v)}:${line}`, i = perLine.get(k) ?? 0
+      perLine.set(k, i + 1)
+      const gutter = text.left - box.left >= 18
+      const x = gutter ? text.left - 15 - i * 9 : Math.min(text.right + 2 + i * 9, box.right - 22)
+      p.dots.push({ n, x, y: topOf(v, pos) + v.defaultLineHeight / 2 })
+      continue
+    }
+    const edge = box.right, right = text.right
     const folded = edge - right < MARGIN
     p.cards.push({ n, v, x: folded ? Math.min(right + 4, edge - 26) : right + 10, y: topOf(v, pos), folded })
     if (!caret && v.hasFocus) {
@@ -482,10 +548,26 @@ export function Overlay() {
         <div key={p.id} className="pointer-events-none fixed inset-x-0 z-[54] overflow-hidden" style={{ top: p.top, height: Math.max(0, p.bottom - p.top) }}>
           {p.cards.map((c) => <Card key={c.n.id} n={c.n} x={c.x} y={c.y - p.top} folded={c.folded} open={!!c.open} cap={Math.max(120, p.bottom - p.top - 16)}
             onHeight={(h) => measured(c.n.id, h)} onOpen={(o) => pick(o ? c.n.id : null)} />)}
+          {p.dots.map((d) => <Gutter key={d.n.id} n={d.n} x={d.x} y={d.y - p.top} picked={s.picked === d.n.id} />)}
         </div>
       ))}
-      {cursors.map(({ a, spot, said, with: others, under }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} others={others} under={under} />)}
+      {cursors.map(({ a, spot, said, with: others, under, shift }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} others={others} under={under} shift={shift}
+        open={popped === a.name} setOpen={(o) => setPopped((was) => (o ? a.name : was === a.name ? null : was))} pop={setPopped} />)}
     </div>,
     document.body,
+  )
+}
+
+/** A thread's dot by its line (centred on `y`): hovered, who and its first words; clicked, the thread in the panel. */
+function Gutter({ n, x, y, picked }: { n: Note; x: number; y: number; picked: boolean }) {
+  const tint = tintOf(n.agent)
+  return (
+    <button type="button" aria-label={`${n.agent}'s ${n.kind}`} data-companion-gutter={n.id} data-picked={picked || undefined} data-tip={`${n.agent}: ${cut(snippet(n.text ?? n.replace ?? ""), 80)}`}
+      onClick={() => showThread(n.id)}
+      className="companion-fade pointer-events-auto absolute top-0 left-0 grid size-5 cursor-pointer place-items-center rounded-full [@media(pointer:coarse)]:size-8"
+      style={{ transform: `translate(${x}px, ${y}px) translate(-50%, -50%)` }}>
+      <span className={cn("rounded-full transition-[width,height,box-shadow]", picked ? "size-2.5" : "size-2")}
+        style={{ background: tint, boxShadow: picked ? `0 0 0 3px color-mix(in srgb, ${tint} 30%, transparent)` : undefined }} />
+    </button>
   )
 }

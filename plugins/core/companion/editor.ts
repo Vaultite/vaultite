@@ -117,10 +117,16 @@ function decorate(view: EditorView, path: string): DecorationSet {
   const mine = getState().notes.filter((n) => n.path === path && n.kind !== "say")
   if (!mine.length) return Decoration.none
   const marks: { from: number; to: number; deco: Decoration }[] = []
+  const picked = getState().picked
   for (const n of mine) {
     const p = placeOf(view.state.doc, n)
     if (!p) continue
     const style = `--c: ${tintOf(n.agent)}`
+    // (the thread picked in the panel or the margin: its text lit, as in a shared doc)
+    if (n.id === picked) {
+      const a = view.state.doc.lineAt(p.from), b = view.state.doc.lineAt(p.to)
+      for (let l = a.number; l <= b.number; l++) marks.push({ from: view.state.doc.line(l).from, to: view.state.doc.line(l).from, deco: Decoration.line({ class: "cm-companion-picked", attributes: { style } }) })
+    }
     if (p.to === p.from) {
       const line = view.state.doc.lineAt(p.from)
       marks.push({ from: line.from, to: line.from, deco: Decoration.line({ class: n.kind === "highlight" ? "cm-companion-hl-line" : "cm-companion-line", attributes: { style } }) })
@@ -335,6 +341,7 @@ const theme = EditorView.baseTheme({
   ".cm-companion-hl-line": { backgroundColor: "color-mix(in srgb, var(--c) 14%, transparent)" },
   ".cm-companion-anchor": { textDecoration: "underline dotted var(--c)", textDecorationThickness: "2px", textUnderlineOffset: "4px" },
   ".cm-companion-line": { boxShadow: "inset 2px 0 0 color-mix(in srgb, var(--c) 70%, transparent)" },
+  ".cm-companion-picked": { backgroundColor: "color-mix(in srgb, var(--c) 13%, transparent)", transition: "background-color .3s" },
   ".cm-companion-del": { textDecoration: "line-through", textDecorationColor: "var(--c)", textDecorationThickness: "2px", opacity: ".6" },
   ".cm-companion-ins": { color: "var(--c)", backgroundColor: "color-mix(in srgb, var(--c) 12%, transparent)", borderRadius: "3px", padding: "0 2px", marginLeft: "2px",
     animation: "cm-companion-in .3s ease-out" },

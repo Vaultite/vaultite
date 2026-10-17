@@ -151,7 +151,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Empty({ children })`: Empty state.
 - `fetchMachines()`: The machines, once ([] with the plugin off or when the server doesn't answer).
 - `fileAt(files, path)`
-- `FileBarItem`: Drawn in a file's header: on desktop in the tab's top bar before the view button (`place: "bar"`), in a sheet and on phones above the title (`place: "line"`).
+- `FileBarItem`: Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title (`"line"`); docked in a sidebar by the user, there for the focused file.
 - `FileBlocks({ store, path, fm, fallback })`: Another file's blocks, as that file has them (Projects: each project's card is its file's blocks).
 - `FileCtx`: What a file view gets: the file's path, its frontmatter (parsed) and body as they are in the editor right now.
 - `FileEditor(props)`: A vault Markdown file's body, edited in place (a canvas card showing a note).
@@ -301,6 +301,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NotifyOptions`
 - `numberText(n)`: A number as text (1,234.5): n.toLocaleString(), with the formatter kept.
 - `offeredCommand(id)`: A command by its id, if it's registered and offered now (a menu made of commands: the editor's).
+- `offerPanel(key, side)`: Bring a panel into a sidebar without opening the sidebar (a closed one shows it in its rail): unfolded, and at the end of `side` if it's in neither.
 - `offPlugin(f, disabled?)`: Left out of lists of pages (the sidebar's): a page whose plugin (its `plugin:`, the one that brought it) is off.
 - `onActivity(fn)`: Hear what the user does (see noteActivity); returns how to stop.
 - `onAppError(fn)`: Hear that an error is waiting (then takeAppErrors); returns how to stop.

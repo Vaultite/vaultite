@@ -26,10 +26,11 @@ import { renderMarkdown } from "@/core/markdown"
 import { notify, notifyError } from "@/core/notify"
 import { merge3 } from "@/core/merge"
 import { draftOf, dropDraft, keepDraft, type Draft } from "@/core/drafts"
-import { blockFor, fileBarItems, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, type FileCtx, type PageCtx } from "@/core/plugins"
+import { blockFor, fileFormatFor, noteTopItems, fileViewFor, fillsPane, formatFor, timelineKinds, usePluginsVersion, type FileCtx, type PageCtx } from "@/core/plugins"
 import type { FileFormat, FileHead } from "@/core/define"
 import { FormatBox, FormatGuard } from "@/components/FormatView"
-import { Catch, Drawn, Guard } from "@/components/Guard"
+import { Drawn, Guard } from "@/components/Guard"
+import { FileBar } from "@/components/FileBar"
 import { TimelineSection } from "@/components/Timeline"
 import { usePane } from "@/core/pane"
 import { usePrefs } from "@/core/prefs"
@@ -212,17 +213,6 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, settle, locke
     </ViewBar>
   )
 })
-
-/** What plugins draw in a file's header (FileBarItem): in the desktop path bar (`bar`), or at the end of the line above
- *  the title in a sheet or on a phone (`line`). */
-function FileBar({ head, place }: { head: FileHead; place: "bar" | "line" }) {
-  const { disabled, order, enabled } = usePrefs()
-  const plugins = usePluginsVersion() // (a vault plugin's code arriving)
-  const items = useMemo(() => fileBarItems(disabled, order), [disabled, order, enabled, plugins])
-  const ctx = useMemo(() => ({ ...head, place }), [head, place])
-  // (one that throws is left out, its error in Errors: it's in every file's header)
-  return <>{items.map(({ key, item }) => <Catch key={key} reset={head.path} fallback={() => null}><Drawn draw={() => item.render(ctx)} /></Catch>)}</>
-}
 
 /** What plugins draw at the top of a note (NoteTopItem), under its properties. */
 function NoteTop({ head, place }: { head: FileHead; place: "page" | "sheet" }) {
