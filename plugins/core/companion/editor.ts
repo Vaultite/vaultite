@@ -187,6 +187,9 @@ function watcher(path: string) {
       this.view = view
       this.decorations = decorate(view, path)
       this.baseline = view.state.doc
+      // (the asks already in the note went before: Enter on one isn't asking it again)
+      // (any @name: the agents aren't known yet as it opens)
+      for (let n = 1; n <= view.state.doc.lines; n++) { const t = view.state.doc.line(n).text; if (/(?<![\w@./])@[\w-]/.test(t)) this.asked.push(t) }
       this.pending = ChangeSet.empty(view.state.doc.length)
       views.set(view, path)
       queueMicrotask(() => sayWhere())
@@ -239,7 +242,7 @@ function watcher(path: string) {
     ask(n: number, doc: Text, pause = false) {
       const line = doc.line(n), ask = mentionIn(line.text)
       if (!ask || getState().mode === "off" || this.asked.includes(line.text) || (pause && !asksSomething(line.text, mentionsOf(line.text)))) return false
-      this.asked = [...this.asked.slice(-50), line.text]
+      this.asked = [...this.asked.slice(-200), line.text]
       sendMoment({ kind: "ask", agent: ask.name, path, line: n, text: ask.text, waited: Date.now() - this.typedAt })
       return true
     }

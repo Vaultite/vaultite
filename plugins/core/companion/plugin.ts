@@ -137,6 +137,8 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   const full = { ...m, seq: ++seq, t: m.t ?? Date.now() } as Moment
   if (m.kind === "edit" || m.kind === "open") delete full.for
   else full.for = addressee(m.for)
+  // (an ask already asked, as it reads, a while ago: a line asked again by Enter on it, after a restart too)
+  if (m.kind === "ask" && log.read(localDate(full.t)).some((x) => x.kind === "ask" && x.for === full.for && x.path === full.path && x.text === full.text && full.t - x.t < 2 * 3600_000)) return null
   log.append(full.t, [full])
   // (more of the same lines before any agent saw the last: one moment)
   const last = moments[moments.length - 1]

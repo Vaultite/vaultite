@@ -76,6 +76,7 @@ export default async ($: VaultTest) => {
     c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray, and the dots too` })
     c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" })
     ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: the same ask again (Enter on its line after a restart) isn't asked twice", c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" }) === null)
     check("companion: once handed, a new ask with the whole line, that says it goes on; another ask is its own", r.moments.length === 2 && r.moments[0].more === one!.seq &&
       !r.moments[1].more && c.momentsText(r.moments, "quiet", null).includes("went on writing it"), r.moments)
     // Busy on an ask: its cursor keeps thinking after a first word, until it's back for more (no seen tick: it acted).
