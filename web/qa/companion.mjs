@@ -1,7 +1,7 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
 // words pop in a bubble by it, comments sit in the margin (a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
 // and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
-// the agent hears at once (mid-line, at the pause); what the user writes reaches it after a pause. Driven through the ops an agent calls.
+// the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes reaches it after a pause. Driven through the ops an agent calls.
 // WRITES "QA companion/" and the plugin's data.json: throwaway server only.
 //   node web/qa/companion.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -69,8 +69,11 @@ await until(async () => (await cursor.getAttribute("data-state")) === "thinking"
 check("ask: its cursor shows it thinking", (await cursor.getAttribute("data-state")) === "thinking")
 await wait(800)
 await page.screenshot({ path: `${OUT}thinking.png` })
+r = await op("companion.next", { timeout: 3 })
+check("ask: not said again as an edit", !r.moments?.some((m) => m.kind === "edit"), r)
+await page.keyboard.type("Maybe a hand apart.\n")
 r = await until(async () => { const x = await op("companion.next", { timeout: 3 }); return x.moments?.find((m) => m.kind === "edit") ? x : null }, 8000)
-check("edit: what the user wrote reaches it after a pause, as lines added", r?.moments.some((m) => m.kind === "edit" && m.hunks?.some((h) => h.added.includes("@claude how far apart should they be?"))), r)
+check("edit: what the user wrote reaches it after a pause, as lines added", r?.moments.some((m) => m.kind === "edit" && m.hunks?.some((h) => h.added.includes("Maybe a hand apart."))), r)
 
 // Handed a moment, its cursor reads it there; back for more without a word, a seen tick.
 await until(async () => (await cursor.getAttribute("data-state")) === "reading", 3000)
@@ -99,6 +102,8 @@ check("@ mid-line: the picker lists the agents", /claude/.test(midList ?? ""), m
 await page.keyboard.type("claude?")
 const ASK = "Alright, how is it going @claude?"
 check("@claude mid-line: a chip", (await editor.locator(".cm-line", { hasText: "how is it going" }).locator(".cm-companion-mention").count()) === 1)
+check("@claude mid-line: until the pause sends it, a line fills under the chip", (await editor.locator(".cm-companion-soon").count()) === 1)
+check("@claude mid-line: its cursor comes over to read along at once, before the ask goes", (await cursor.getAttribute("data-state")) === "reading")
 r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
 check("@claude mid-line: the ask reaches it at the pause, the whole line", r?.moments.some((m) => m.kind === "ask" && m.text === ASK && m.line === text(NOTE).split("\n").indexOf(ASK) + 1), r)
 await page.keyboard.press("Enter")

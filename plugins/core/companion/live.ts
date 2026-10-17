@@ -18,6 +18,29 @@ export const getState = () => state
 export const subscribe = (fn: () => void) => { subs.add(fn); return () => { subs.delete(fn) } }
 const set = (next: Partial<State>) => { state = { ...state, ...next }; changed() }
 
+/** The agents as the server last said, and what this window shows ahead of it (an ask just sent, the user writing to
+ *  one): the server's next word on an agent replaces its own. */
+let told: Agent[] = []
+const ahead = new Map<string, { a: Partial<Agent>; timer: ReturnType<typeof setTimeout> }>()
+const showAgents = () => set({ agents: told.map((a) => { const x = ahead.get(a.name); return x ? { ...a, ...x.a } : a }) })
+function heard(agents: Agent[], name?: string) {
+  told = agents
+  for (const [k, x] of ahead) if (name === undefined || k === name) { clearTimeout(x.timer); ahead.delete(k) }
+  showAgents()
+}
+/** Show agent `name` as `a` now, before the server says so (for `ms` at most). */
+export function expect(name: string, a: Partial<Agent>, ms: number) {
+  clearTimeout(ahead.get(name)?.timer)
+  ahead.set(name, { a: { ...a, seen: undefined, t: Date.now() }, timer: setTimeout(() => { ahead.delete(name); showAgents() }, ms) })
+  showAgents()
+}
+/** The user is writing an ask to @name on this line: its cursor comes over to read along, when it's free. */
+export function listen(name: string, path: string, line: number) {
+  const a = mentionAgent(name), was = a && told.find((x) => x.name === a.name)
+  if (!was || was.state !== "watching") return
+  expect(was.name, { state: "reading", path, line, find: undefined }, 8000)
+}
+
 /** An agent's colour, as a CSS value. */
 export const tintOf = (name: string) => `var(--${state.agents.find((a) => a.name === name)?.tint ?? "orange"})`
 
@@ -72,10 +95,10 @@ function open() {
   s.onmessage = (ev) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(ev.data)) } catch { return }
-    if (m.t === "state") set({ mode: m.mode as Mode, name: String(m.name), agents: m.agents as Agent[], notes: m.notes as Note[] })
+    if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[] }); heard(m.agents as Agent[]) }
     else if (m.t === "agent") {
       const a = m.agent as Agent
-      set({ agents: [...state.agents.filter((x) => x.name !== a.name), a] })
+      heard([...told.filter((x) => x.name !== a.name), a], a.name)
     } else if (m.t === "note") {
       const n = m.note as Note
       const has = state.notes.some((x) => x.id === n.id)
@@ -102,9 +125,13 @@ const edit = (e: EditAsk) => inTurn(async () => {
   }
 })
 
-/** Something the user did, for the agents (an ask: for `agent`, else the companion). */
-export const sendMoment = (m: { kind: "ask" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[] }) =>
+/** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
+ *  `waited`: ms since they last typed. */
+export function sendMoment(m: { kind: "ask" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; waited?: number }) {
   say({ t: "moment", ...m })
+  const a = m.kind === "ask" ? mentionAgent(m.agent ?? state.name) : undefined
+  if (a && a.state !== "away") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) }, 10_000)
+}
 /** The user's answer to a note: accept or reject a suggestion, dismiss a comment, reply to one. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
   if (verdict !== "reply") set({ notes: state.notes.filter((x) => x.id !== id) })

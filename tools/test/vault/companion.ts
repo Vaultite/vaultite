@@ -40,7 +40,7 @@ export default async ($: VaultTest) => {
     const [a, e, b] = c.timings(ms, acts)
     check("companion timings: per moment, its handoff, think to the first action and total", a.handoff === 100 && a.think === 2000 && a.op === "say" && a.total === 2200 &&
       e.handoff === 1700 && e.think === undefined && e.total === 2500 && b.handoff === 0 && b.total === undefined, [a, e, b])
-    check("companion timings: read as a table and a summary", /asks and replies \(2\): handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(c.timingsText("2026-10-16", [a, e, b])), c.timingsText("2026-10-16", [a, e, b]))
+    check("companion timings: read as a table and a summary", /asks and replies \(2\): pause -, handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(c.timingsText("2026-10-16", [a, e, b])), c.timingsText("2026-10-16", [a, e, b]))
   }
 
   await api("PATCH", "config/plugin/companion", { mode: "quiet" })
@@ -52,6 +52,27 @@ export default async ($: VaultTest) => {
   check("companion: next and what it handed are logged, for timings", r.rows.some((x: Any) => x.kind === "ask" && x.handoff !== undefined), r)
   ;[st, r] = await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: and not again", st === 200 && r.moments.length === 0, r)
+  {
+    // An ask they go on writing after it went (a pause mid-dictation): before it's handed, the same ask as it reads now;
+    // after, a new one with the whole line, that says so.
+    const said = "One more thing, on the margin comments, color the agent's name. The \""
+    const one = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: said, waited: 2000 })
+    const two = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray` })
+    ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: an ask written on before it's handed is one ask, as it reads now", one === two && r.moments.length === 1 && r.moments[0].text.endsWith("stay gray") && r.moments[0].waited === 2000, r.moments)
+    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: `${said}You" can stay gray, and the dots too` })
+    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 7, text: "Something else entirely" })
+    ;[, r] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: once handed, a new ask with the whole line, that says it goes on; another ask is its own", r.moments.length === 2 && r.moments[0].more === one!.seq &&
+      !r.moments[1].more && c.momentsText(r.moments, "quiet", null).includes("went on writing it"), r.moments)
+    // Busy on an ask: its cursor keeps thinking after a first word, until it's back for more (no seen tick: it acted).
+    await api("POST", "ops/companion.say", { text: "On it", path: "Notes/A.md" })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: a word while it works on an ask, and it still shows thinking", r.agents.some((a: Any) => a.name === "Claude" && a.state === "thinking"), r.agents)
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: back for more, it's done: watching, no seen tick", r.agents.some((a: Any) => a.name === "Claude" && a.state === "watching" && !a.seen), r.agents)
+  }
 
   await api("PATCH", "config/plugin/companion", { mode: "notice" })
   write("Notes/A.md", "# A\n\nCall Alice friday\n")

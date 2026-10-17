@@ -17,7 +17,11 @@ export type Hunk = { line: number; added: string[]; removed: string[] }
 export type Moment = { seq: number; t: number; kind: "ask" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
   path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
   /** The agent it's for (an ask to @name, an answer to its item); none (edit, open): the companion and agents that watch. */
-  for?: string }
+  for?: string
+  /** How long (ms) the user had stopped typing when the app sent it: the pause they waited. */
+  waited?: number
+  /** An ask whose line they went on writing after it went: the seq of the one it continues. */
+  more?: number }
 /** Where something points: a file and a line (1-based), or text found in it (the occurrence nearest `line`). */
 export type Target = { path?: string; line?: number; find?: string }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change. */
@@ -57,6 +61,7 @@ const moments: Moment[] = []
 let seq = 0
 const delivered = new Map<string, number>() // agent -> last seq it was given
 const handed = new Set<string>() // agents given moments they haven't acted on yet
+const asking = new Set<string>() // agents handed an ask or a reply, busy on it until their next `next`
 const waiters = new Map<string, (m: Moment[]) => void>() // agent -> its waiting `next`
 const agents = new Map<string, Agent>()
 const seen = new Map<string, number>() // agent -> when it last ran `next`
@@ -67,7 +72,13 @@ const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let nid = 0
 const log = plugin.dayLog<Moment>("moments")
 const acts = plugin.dayLog<Act>("actions")
-const did = (as: string, op: string, seqs?: number[]) => { const t = Date.now(); acts.append(t, [{ t, as, op, ...(seqs ? { seqs } : {}) }]) }
+const did = (as: string, op: string, seqs?: number[]) => {
+  const t = Date.now()
+  acts.append(t, [{ t, as, op, ...(seqs ? { seqs } : {}) }])
+  if (op !== "next" && op !== "handed") handed.delete(key(as))
+}
+/** An agent's state once it acted: still thinking while busy on an ask (until its next `next`), else watching. */
+const acting = (name: string): Agent["state"] => (asking.has(key(name)) ? "thinking" : "watching")
 
 /** The app's windows: which files each has open, where its user is, when they last did anything. */
 type Win = { open: string[]; focus: Target | null; at: number; was?: string }
@@ -106,11 +117,27 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   const last = moments[moments.length - 1]
   const merged = m.kind === "edit" && last?.kind === "edit" && last.path === m.path && ![...delivered.values()].some((d) => d >= last.seq) ? mergeHunks(last.hunks ?? [], m.hunks ?? []) : null
   if (merged) { Object.assign(last, { hunks: merged, t: full.t }); return last }
+  const was = m.kind === "ask" ? continues(full) : undefined
+  if (was) {
+    // (not handed yet: the same ask, as it reads now)
+    if ((delivered.get(key(was.for!)) ?? 0) < was.seq) { Object.assign(was, { text: full.text, line: full.line }); return was }
+    full.more = was.seq
+  }
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
   if (full.for && (m.kind === "ask" || m.kind === "reply")) setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) })
   return full
+}
+
+/** The ask `m` goes on from: the last to the same agent on that line of that note, a few minutes ago, which `m`'s
+ *  text begins like (dictation lands a sentence at a time, and a pause between sends the half written). */
+export function continues(m: Moment): Moment | undefined {
+  const was = moments.findLast((x) => x.kind === "ask" && x.path === m.path && x.for === m.for && x.seq !== m.seq)
+  if (!was || !was.text || !m.text || was.line !== m.line || m.t - was.t > 5 * 60_000) return undefined
+  let n = 0
+  while (n < was.text.length && was.text[n] === m.text[n]) n++
+  return n >= Math.min(40, was.text.length * 0.6) ? was : undefined
 }
 
 /** Two edits in a row as one, when the second changes only lines the first wrote (or right after them); else null. */
@@ -337,7 +364,8 @@ plugin.socket("companion/live", (ws) => {
     } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "edit"].includes(m.kind)) {
       w.at = Date.now()
       addMoment({ kind: m.kind as "ask" | "edit", for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
-        selection: str(m.selection) || undefined, hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined })
+        selection: str(m.selection) || undefined, hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
+        ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}) })
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined)
     } else if (m.t === "done" && typeof m.rid === "string") {
@@ -528,8 +556,9 @@ to the companion, or to an agent with --watch.
     did(name, "next")
     const joined = !agents.has(k), a = agentOf(name)
     // (back without acting on what it was handed: it let it pass, which the user sees as a tick)
+    asking.delete(k)
     if (handed.has(k)) setAgent(name, { state: "watching", seen: true })
-    else if (joined || a.state === "away" || a.state === "writing") setAgent(name, { state: "watching" })
+    else if (joined || a.state === "away" || a.state === "writing" || a.state === "thinking") setAgent(name, { state: "watching" })
     const after = p.after ?? delivered.get(k) ?? Math.max(0, seq - 20)
     let got = moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000 && meantFor(m, name))
     if (!got.length && p.timeout > 0) {
@@ -544,8 +573,9 @@ to the companion, or to an agent with --watch.
     if (got.length) {
       delivered.set(k, got[got.length - 1].seq)
       did(name, "handed", got.map((m) => m.seq))
-      const at = [...got].reverse().find((m) => m.path)
-      setAgent(name, { state: got.some((m) => m.kind === "ask" || m.kind === "reply") ? "thinking" : "reading",
+      const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "reply")
+      if (asked) asking.add(k)
+      setAgent(name, { state: asked ? "thinking" : "reading",
         ...(at ? { path: at.path, line: at.line, find: undefined } : {}) })
       handed.add(k)
     }
@@ -591,7 +621,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   const out = [head]
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : ""
-    if (m.kind === "ask") out.push(`- ask${at}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
+    if (m.kind === "ask") out.push(`- ask${at}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "edit") {
       out.push(`- edit${at}`)
       for (const h of m.hunks ?? []) {
@@ -621,7 +651,7 @@ plugin.op({
   run: async (p) => {
     const t = target(p)
     did(who(p), "look")
-    setAgent(who(p), { ...t, state: "watching", find: t.find })
+    setAgent(who(p), { ...t, state: acting(who(p)), find: t.find })
     return t
   },
   text: (r) => `Looking at ${r.path}${r.line ? `:${r.line}` : ""}.`,
@@ -642,7 +672,7 @@ plugin.op({
     const name = who(p)
     did(name, "say")
     const t = p.path || p.line !== undefined || p.find ? target(p) : {}
-    setAgent(name, { ...t, state: "watching" })
+    setAgent(name, { ...t, state: acting(name) })
     return putNote({ kind: "say", agent: name, text: str(p.text), ...t }, SAY_MS)
   },
   text: () => "Said.",
@@ -670,11 +700,11 @@ it: with id (the comment's), your words join its thread.
       n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text) }]
       broadcast({ t: "note", note: n })
       save(n.path!)
-      setAgent(name, { path: n.path, line: n.line, find: n.find, state: "watching" })
+      setAgent(name, { path: n.path, line: n.line, find: n.find, state: acting(name) })
       return n
     }
     const t = target(p)
-    setAgent(name, { ...t, state: "watching" })
+    setAgent(name, { ...t, state: acting(name) })
     const anchor = !t.find && t.line ? lineText(t.path!, t.line) : ""
     return putNote({ kind: "comment", agent: name, text: str(p.text), ...t, ...(anchor ? { anchor } : {}) })
   },
@@ -697,7 +727,7 @@ moment tells you what they chose.
     if (!str(p.find)) throw new OpError("give find: the text to change")
     const name = who(p), t = target(p)
     did(name, "suggest")
-    setAgent(name, { ...t, state: "watching" })
+    setAgent(name, { ...t, state: acting(name) })
     return putNote({ kind: "suggestion", agent: name, ...t, replace: str(p.replace), ...(str(p.why) ? { text: str(p.why) } : {}) })
   },
   text: (r) => `Suggested (${r.id}).`,
@@ -726,7 +756,7 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
     try {
       const how = await applyEdit(ctx, a, { path: t.path!, find: t.find, after, line: t.line, text: str(p.text), append: !!p.append })
       return { path: t.path, how }
-    } finally { setAgent(name, { state: "watching" }) }
+    } finally { setAgent(name, { state: acting(name) }) }
   },
   text: (r) => `${r.how === "typed" ? "Typed into" : "Wrote"} ${r.path}.`,
 })
@@ -742,8 +772,9 @@ plugin.op({
     path: PATH, line: LINE, as: AS },
   run: async (p, ctx) => {
     if (!str(p.find)) throw new OpError("give find: the text to highlight")
-    const name = who(p), t = target(p), a = setAgent(name, { ...t, state: "watching" })
+    const name = who(p), t = target(p)
     did(name, "highlight")
+    const a = setAgent(name, { ...t, state: acting(name) })
     if (!p.keep) return putNote({ kind: "highlight", agent: name, ...t }, HIGHLIGHT_MS)
     await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: `==${EMOJI[a.tint] ?? ""}${t.find}==` }, false)
     return { path: t.path, kept: true }
@@ -851,15 +882,15 @@ came (faster with speed), so you can watch what the session makes of them.
   text: (r) => `Replaying ${r.replaying} moments.`,
 })
 
-/** A moment's latency (ms): until next handed it (handoff), then to the agent's first action (think), and from the moment
+/** A moment's latency (ms): the user's pause before the app sent it, until next handed it (handoff), then to the agent's first action (think), and from the moment
  *  to its next `next` (total); undefined when it didn't happen. */
-export type Timing = { t: number; seq: number; kind: string; at: string; op?: string; handoff?: number; think?: number; total?: number }
+export type Timing = { t: number; seq: number; kind: string; at: string; op?: string; pause?: number; handoff?: number; think?: number; total?: number }
 
 /** Each moment's timing, from the moments and actions logged on a day (seqs restart with the server: matched in time). */
 export function timings(ms: Moment[], log: Act[]): Timing[] {
   return ms.map((m, i) => {
     const until = ms.slice(i + 1).find((x) => x.seq === m.seq)?.t ?? Infinity
-    const r: Timing = { t: m.t, seq: m.seq, kind: m.kind, at: m.path ? `${m.path}${m.line ? `:${m.line}` : ""}` : "" }
+    const r: Timing = { t: m.t, seq: m.seq, kind: m.kind, at: m.path ? `${m.path}${m.line ? `:${m.line}` : ""}` : "", ...(m.waited !== undefined ? { pause: m.waited } : {}) }
     const hi = log.findIndex((a) => a.op === "handed" && a.t >= m.t && a.t < until && !!a.seqs?.includes(m.seq)), h = log[hi]
     if (!h) return r
     const after = log.slice(hi + 1).filter((a) => a.as === h.as)
@@ -872,14 +903,14 @@ export function timingsText(day: string, rows: Timing[]) {
   const s = (ms?: number) => (ms === undefined ? "-" : (ms / 1000).toFixed(1)).padStart(7)
   const time = (t: number) => new Date(t).toTimeString().slice(0, 8)
   const pct = (xs: number[], q: number) => xs.sort((a, b) => a - b)[Math.max(0, Math.ceil(q * xs.length) - 1)]
-  const sum = (label: string, rs: Timing[]) => `${label} (${rs.length}): ${(["handoff", "think", "total"] as const).map((k) => {
+  const sum = (label: string, rs: Timing[]) => `${label} (${rs.length}): ${(["pause", "handoff", "think", "total"] as const).map((k) => {
     const xs = rs.flatMap((r) => r[k] ?? [])
     return `${k} ${xs.length ? `${s(pct(xs, 0.5)).trim()}/${s(pct(xs, 0.9)).trim()}` : "-"}`
   }).join(", ")} (median/p90, s)`
   if (!rows.length) return `No moments on ${day}.`
-  return [`${day}, in seconds: handoff (until next handed it), think (to the first action), total (to the next \`next\`).`,
-    `${"time".padEnd(8)} ${"handoff".padStart(7)}${"think".padStart(7)}  ${"total".padStart(7)}  moment`,
-    ...rows.map((r) => `${time(r.t)} ${s(r.handoff)}${s(r.think)}  ${s(r.total)}  ${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
+  return [`${day}, in seconds: pause (the user's, before the app sent it), handoff (until next handed it), think (to the first action), total (to the next \`next\`).`,
+    `${"time".padEnd(8)} ${"pause".padStart(7)} ${"handoff".padStart(7)}${"think".padStart(7)}  ${"total".padStart(7)}  moment`,
+    ...rows.map((r) => `${time(r.t)} ${s(r.pause)} ${s(r.handoff)}${s(r.think)}  ${s(r.total)}  ${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
     sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows)].join("\n")
 }
 
