@@ -1,8 +1,9 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCirclePlus, MousePointer2, Power, SquareTerminal } from "lucide-react"
-import { choose, currentEditor, definePlugin, menuAbove, notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
-import { type Agent, connect, getState, liveAgents, type Mode, sendMoment, subscribe } from "./live"
+import { choose, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, openView, pluginSettings, type MenuItem } from "@vaultite"
+import { connect, getState, liveAgents, type Mode, sendMoment, subscribe } from "./live"
 import { follow, Overlay } from "./Overlay"
+import { Presence } from "./Presence"
 
 // Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
 // loads with the first note.
@@ -50,52 +51,24 @@ function ask(agent?: string) {
   v.focus()
 }
 
-const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing" }
-const AVATARS = 4
-
-/** The status bar's presence row, as a shared doc's: each agent around in its colour (a click goes where it is), then
- *  the companion's menu. */
+/** The status bar's companion: its pointer in its colour (who's around shows on the note), and its menu. */
 function Status() {
   const s = useSyncExternalStore(subscribe, getState)
   const a = s.agents.find((x) => x.name === s.name) ?? s.agents[0]
   const tint = s.mode === "off" ? undefined : `var(--${a?.tint ?? "orange"})`
   const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "watching" ? null : a.state
-  const live = s.mode === "off" ? [] : liveAgents()
-  const shown = live.length > AVATARS ? live.slice(0, AVATARS - 1) : live, rest = live.slice(shown.length)
-  const where = (x: Agent) => `${x.name}: ${STATUS[x.state] ?? x.state}${x.path ? `, in ${x.path.split("/").pop()!.replace(/\.md$/, "")}` : ""}`
-  const goTo = (x: Agent): MenuItem => ({ label: `Go to ${x.name}`, icon: Crosshair, hint: STATUS[x.state], run: () => follow(x) })
   const items = (): MenuItem[] => [
     ...MODES.map((m) => ({ label: m.label, checked: s.mode === m.mode, run: () => void setMode(m.mode) })),
-    ...live.filter((x) => x.path).map((x, i) => ({ ...goTo(x), sep: i === 0 })),
+    ...(s.mode === "off" ? [] : liveAgents()).filter((x) => x.path).map((x, i) => ({ label: `Go to ${x.name}`, icon: Crosshair, run: () => follow(x), sep: i === 0 })),
     { label: `Ask ${s.name}`, icon: MessageCirclePlus, run: () => ask(), sep: true },
     { label: "Show its session", icon: SquareTerminal, run: () => void showSession() },
     { label: "Restart its session", icon: Power, run: () => void op("companion.stop").then(() => setMode(s.mode === "off" ? "quiet" : s.mode)) },
   ]
   return (
-    <div className="flex h-6 shrink-0 items-center" data-companion-presence>
-      {shown.length > 0 && (
-        <div className="flex items-center pl-1 [&>*+*]:-ml-1">
-          {shown.map((x) => (
-            <button key={x.name} type="button" aria-label={`Go to ${x.name}`} data-tip={where(x)} data-tip-side="top" data-agent={x.name} data-state={x.state} onClick={() => follow(x)}
-              className="relative grid size-[18px] cursor-pointer place-items-center rounded-full text-[10px] font-bold text-white ring-2 ring-background transition-transform hover:z-10 hover:scale-110"
-              style={{ background: `var(--${x.tint})` }}>
-              {x.name.charAt(0).toUpperCase()}
-              {(x.state === "thinking" || x.state === "reading" || x.state === "writing") && <span aria-hidden className="absolute -right-0.5 -bottom-0.5 size-1.5 rounded-full bg-white ring-1 ring-background" />}
-            </button>
-          ))}
-          {rest.length > 0 && (
-            <button type="button" aria-label={`${rest.length} more agents`} data-tip={rest.map(where).join(", ")} data-tip-side="top" onClick={(e) => menuAbove(e, rest.map(goTo))}
-              className="grid h-[18px] min-w-[18px] cursor-pointer place-items-center rounded-full bg-muted px-1 text-[10px] font-semibold text-muted-foreground ring-2 ring-background">+{rest.length}</button>
-          )}
-        </div>
-      )}
-      <button type="button" onClick={(e) => menuAbove(e, items())} aria-label={`${s.name}, companion`} data-tip={`${s.name}, companion${word ? `: ${word}` : ""}`} data-tip-side="top"
-        className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1.5 hover:bg-foreground/[0.06] hover:text-foreground">
-        <MousePointer2 className="size-3.5" strokeWidth={2.25} style={tint ? { color: tint, fill: tint } : undefined} />
-        {/* (with faces on the row, only what isn't seen there) */}
-        {(!shown.length || word) && <span className="max-w-56 min-w-0 truncate">{shown.length ? word : `${s.name}${word ? `, ${word}` : ""}`}</span>}
-      </button>
-    </div>
+    <button type="button" onClick={(e) => menuAbove(e, items())} aria-label={`${s.name}, companion`} data-tip={`${s.name}, companion${word ? `: ${word}` : ""}`} data-tip-side="top"
+      data-companion-status className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06]">
+      <MousePointer2 className={cn("size-3.5", a?.state === "thinking" && "animate-pulse")} strokeWidth={2.25} style={tint ? { color: tint, fill: tint } : undefined} />
+    </button>
   )
 }
 
@@ -108,6 +81,7 @@ export default definePlugin({
   editor: async (ctx) => (ctx.kind === "markdown" && ctx.path ? (await load()).companionExtension(ctx) : []),
   background: () => <Background />,
   ambient: { status: { title: "Companion", sort: 25, render: () => <Status /> } },
+  fileBar: { presence: { sort: 45, render: (file) => (file.path.endsWith(".md") ? <Presence file={file} /> : null) } },
   commands: [
     { id: "companion:ask", name: "Ask the companion", label: "Ask", keys: ["Mod+Shift+K"], run: () => ask(), icon: MessageCirclePlus },
     ...MODES.map((m) => ({ id: `companion:${m.mode}`, name: `Companion: ${m.label}`, when: () => getState().mode !== m.mode, run: () => void setMode(m.mode) })),

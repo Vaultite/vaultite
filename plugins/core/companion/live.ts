@@ -11,8 +11,9 @@ export type Hunk = { line: number; added: string[]; removed: string[] }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 
 /** said: each agent's last says (gone from the screen or not), oldest first. */
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; connected: boolean }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], connected: false }
+/** picked: the margin card the user opened (clicked, or picked from the note's history). */
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean }
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -138,6 +139,9 @@ export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; 
 export const pointAt = (agent: string, t: { path: string; line: number; find?: string; selection?: string }) => sendMoment({ kind: "point", agent, ...t })
 /** A say turned into a margin comment, same words, same place. */
 export const pin = (id: string) => say({ t: "pin", id })
+/** A dismissed comment back in the margin. */
+export const reopen = (id: string) => say({ t: "reopen", id })
+export const pick = (id: string | null) => { if (state.picked !== id) set({ picked: id }) }
 
 /** The user's answer to a note: accept or reject a suggestion, dismiss a comment, reply to one. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {

@@ -33,7 +33,9 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; anchor?: string; replies?: { by: "user" | "agent"; text: string }[]
   /** A say the user pinned: the comment it became. */
-  pinned?: string }
+  pinned?: string
+  /** A comment the user dismissed, when: kept in its note's history. */
+  dismissed?: number }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it. */
@@ -210,6 +212,9 @@ export function dropNote(id: string) {
 // ---------- comments and suggestions kept: a sidecar per note, so they outlive the server and reach other devices
 
 const KEPT = new Set(["comment", "suggestion"])
+/** Comments the user dismissed, per note, newest last: its history (kept in the sidecar too). */
+const past = new Map<string, Note[]>()
+const PAST = 30
 const DIR = ".vaultite/plugins/companion/comments"
 const sidecar = (p: string) => `${DIR}/${p}.json`
 /** Each sidecar's text as last written or read: our own writes come back from the watcher. */
@@ -220,8 +225,8 @@ const under = (p: string, dir: string) => p === dir || p.startsWith(`${dir}/`)
 
 /** Write a note's sidecar as its kept items are now; none: the file goes. */
 export function save(p: string) {
-  const rel = sidecar(p), list = kept(p)
-  const text = list.length ? `${JSON.stringify({ comments: list.map(({ path: _, ...n }) => n) }, null, 2)}\n` : ""
+  const rel = sidecar(p), list = kept(p), old = past.get(p) ?? [], bare = ({ path: _, ...n }: Note) => n
+  const text = list.length || old.length ? `${JSON.stringify({ comments: list.map(bare), ...(old.length ? { past: old.map(bare) } : {}) }, null, 2)}\n` : ""
   if (text === (written.get(rel) ?? "")) return
   const abs = plugin.vault.abs(rel)
   try {
@@ -244,10 +249,12 @@ function load(p: string) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT" || fs.existsSync(path.join(path.dirname(abs), `.${path.basename(abs)}.icloud`))) return
   }
   if (text === (written.get(rel) ?? "")) return
-  let list: unknown
-  try { list = text ? JSON.parse(text).comments : [] } catch { return }
+  let list: unknown, was: unknown
+  try { ({ comments: list, past: was } = text ? JSON.parse(text) : { comments: [] }) } catch { return }
   if (!Array.isArray(list)) return
   if (text) written.set(rel, text); else written.delete(rel)
+  const gone = Array.isArray(was) ? was.filter((n): n is Note => n && typeof n.id === "string" && n.kind === "comment").map((n) => ({ ...n, path: p })) : []
+  if (gone.length) past.set(p, gone); else past.delete(p)
   const now = new Map(list.filter((n): n is Note => n && typeof n.id === "string" && KEPT.has(n.kind)).map((n) => [n.id, { ...n, path: p }]))
   for (const n of kept(p)) if (!now.has(n.id)) { notes.delete(n.id); broadcast({ t: "drop", id: n.id }) }
   for (const n of now.values()) {
@@ -292,7 +299,7 @@ const followSoon = (p: string) => {
 
 /** Every sidecar read (as when the server starts), and its note's items found again; fresh: memory's forgotten first. */
 export function loadAll(fresh = false) {
-  if (fresh) { for (const n of notes.values()) if (KEPT.has(n.kind)) notes.delete(n.id); written.clear() }
+  if (fresh) { for (const n of notes.values()) if (KEPT.has(n.kind)) notes.delete(n.id); written.clear(); past.clear() }
   const top = plugin.vault.abs(DIR)
   let files: string[] = []
   try { files = (fs.readdirSync(top, { recursive: true }) as string[]).filter((f) => f.endsWith(".json")) } catch { /* none yet */ }
@@ -300,7 +307,7 @@ export function loadAll(fresh = false) {
     const p = f.split(path.sep).join("/").slice(0, -5)
     load(p)
     // (a trashed note's, once it's gone for good from the trash)
-    if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { for (const n of kept(p)) notes.delete(n.id); save(p) } else follow(p)
+    if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { for (const n of kept(p)) notes.delete(n.id); past.delete(p); save(p) } else follow(p)
   }
 }
 
@@ -310,8 +317,8 @@ plugin.onChange((paths) => {
   if (paths === null) return loadAll()
   for (const p of paths) {
     if (p.startsWith(`${DIR}/`) && p.endsWith(".json")) load(p.slice(DIR.length + 1, -5))
-    else if (kept(p).length) {
-      if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { for (const n of kept(p)) dropNote(n.id) } else followSoon(p)
+    else if (kept(p).length || past.has(p)) {
+      if (p.startsWith(".trash/") && !fs.existsSync(plugin.vault.abs(p))) { past.delete(p); for (const n of kept(p)) dropNote(n.id); save(p) } else followSoon(p)
     }
   }
 })
@@ -334,6 +341,12 @@ plugin.onMove((from, to, trashed) => {
     const q = there(p)
     if (q) written.set(sidecar(q), text)
   }
+  for (const [p, list] of [...past]) {
+    if (!under(p, from)) continue
+    past.delete(p)
+    const q = there(p)
+    if (q) past.set(q, list.map((n) => ({ ...n, path: q })))
+  }
   for (const n of [...notes.values()]) {
     if (!n.path || !under(n.path, from) || !KEPT.has(n.kind)) continue
     const q = there(n.path)
@@ -349,8 +362,27 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
     n.replies = [...(n.replies ?? []), { by: "user", text }]
     broadcast({ t: "note", note: n })
     if (KEPT.has(n.kind) && n.path) save(n.path)
-  } else dropNote(id)
+  } else {
+    if (verdict === "dismiss" && n.kind === "comment" && n.path) past.set(n.path, [...(past.get(n.path) ?? []).filter((x) => x.id !== id), { ...n, dismissed: Date.now() }].slice(-PAST))
+    dropNote(id)
+  }
   addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) })
+}
+
+/** A dismissed comment back in the margin, as it was. */
+export function reopen(id: string) {
+  for (const [p, list] of past) {
+    const n = list.find((x) => x.id === id)
+    if (!n) continue
+    const rest = list.filter((x) => x !== n)
+    if (rest.length) past.set(p, rest); else past.delete(p)
+    const { dismissed: _, ...back } = n
+    notes.set(id, back)
+    broadcast({ t: "note", note: back })
+    save(p)
+    return back
+  }
+  return null
 }
 
 /** A say the user pinned: a comment with its words, where it was said (else where its agent is, else the user). */
@@ -403,6 +435,8 @@ plugin.socket("companion/live", (ws) => {
         ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}) })
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
+    } else if (m.t === "reopen" && typeof m.id === "string") {
+      reopen(m.id)
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined)
     } else if (m.t === "done" && typeof m.rid === "string") {
@@ -825,6 +859,20 @@ plugin.op({
     return { path: t.path, kept: true }
   },
   text: (r) => (r.kept ? `Highlighted in ${r.path}.` : `Highlighted (${r.id}).`),
+})
+
+plugin.op({
+  id: "companion.history",
+  cli: "companion history",
+  summary: "A note's margin threads: the comments in it now, and those the user dismissed (newest last).",
+  kind: "read",
+  params: { path: PATH },
+  run: async (p) => {
+    const path = target(p).path!
+    return { path, open: kept(path).filter((n) => n.kind === "comment"), past: past.get(path) ?? [] }
+  },
+  text: (r) => [`${r.path}: ${r.open.length} open, ${r.past.length} dismissed.`,
+    ...[...r.open, ...r.past].map((n: Note) => `- ${n.id}${n.dismissed ? " (dismissed)" : ""} by ${n.agent} at line ${n.line ?? "?"}: ${cut(n.text ?? "", 80)}${n.replies?.length ? ` (${n.replies.length} replies)` : ""}`)].join("\n"),
 })
 
 plugin.op({

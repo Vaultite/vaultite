@@ -145,7 +145,7 @@ r = await op("companion.suggest", { path: NOTE, find: "Tomatos", replace: "Tomat
 await page.locator(".cm-companion-del").waitFor({ timeout: 3000 })
 check("suggest: the old text struck through, the new after it", (await page.locator(".cm-companion-del").innerText()) === "Tomatos" && (await page.locator(".cm-companion-ins").innerText()) === "Tomatoes")
 await page.screenshot({ path: `${OUT}suggest.png` })
-await editor.getByText("along the fence").click()
+await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await page.keyboard.press("Tab")
 await until(() => text(NOTE).includes("Tomatoes along"), 5000)
 check("suggest: Tab takes it, and it's saved", text(NOTE).includes("Tomatoes along the fence") && !(await page.locator(".cm-companion-del").count()), text(NOTE))
@@ -172,7 +172,7 @@ await page.screenshot({ path: `${OUT}highlight.png` })
 
 // The user typing while it types: one moment after their pause, without its words, not one a key.
 await op("companion.next", { timeout: 0 })
-await editor.getByText("along the fence").click()
+await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await page.keyboard.press("End")
 const typing = op("companion.edit", { path: NOTE, append: true, text: "- Mulch in June, before the heat comes and dries the soil out" })
 for (const ch of " or so") { await page.keyboard.type(ch); await wait(120) }
@@ -182,7 +182,7 @@ const edits = r?.moments.filter((m) => m.kind === "edit") ?? []
 check("edit: typing while it types is one moment, theirs only", edits.length === 1 && edits[0].hunks[0].added.some((l) => l.endsWith("sunny. or so")) && !JSON.stringify(edits).includes("Mulch"), r)
 
 // Three quick edits while the user types: one at a time, each whole, and their typing whole.
-await editor.getByText("along the fence").click()
+await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await page.keyboard.press("End")
 const LINES = ["- Pinch the basil flowers off", "- Harvest tomatoes from the top", "- Compost the vines in October"]
 const three = Promise.all(LINES.map((text) => op("companion.edit", { path: NOTE, append: true, text })))
@@ -238,9 +238,19 @@ await lc.getByRole("button", { name: "More", exact: true }).click()
 await wait(500)
 check("cards: clicked, it opens whole", (await lc.boundingBox()).height > shut + 20 && !(await lc.getByRole("button", { name: "More", exact: true }).count()))
 await page.screenshot({ path: `${OUT}card-open.png` })
-await editor.getByText("along the fence").click()
+await editor.getByText("along the fence").click({ position: { x: 40, y: 8 } })
 await wait(500)
 check("cards: clicking elsewhere folds it again", await lc.getByRole("button", { name: "More", exact: true }).isVisible())
+// Dismissed, it stays in the note's history (the button by who's here), and comes back from there.
+await lc.getByRole("button", { name: "Dismiss" }).click()
+await lc.waitFor({ state: "detached", timeout: 3000 })
+const hist = page.locator("[data-companion-presence]:visible [data-companion-history]")
+await hist.waitFor({ timeout: 3000 })
+await hist.click()
+await page.getByRole("menuitem").filter({ hasText: "Hover shows its status" }).click()
+await lc.waitFor({ timeout: 3000 })
+await wait(500)
+check("history: a dismissed comment is listed, and picked, back in the margin, open", !(await lc.getByRole("button", { name: "More", exact: true }).count()))
 await op("companion.clear")
 
 // Hover its cursor: its flag says what it's doing. Click: its last words, and a box to ask it there.
@@ -303,8 +313,8 @@ await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFo
 check("follow: its flag opens the note it's in", true)
 await page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first().click()
 await page.locator(`.file-view[data-path="${DIR}/Seeds.md"]:visible`).waitFor({ timeout: 5000 })
-const face = page.locator('[data-companion-presence] button[aria-label="Go to Claude"]')
-check("presence: the status bar shows each agent around in its colour", (await page.locator("[data-companion-presence] button[data-agent]").count()) >= 2)
+const face = page.locator('[data-companion-presence]:visible button[aria-label="Go to Claude"]')
+check("presence: the note's top bar shows each agent around in its colour", (await page.locator("[data-companion-presence]:visible button[data-agent]").count()) >= 2)
 await face.click()
 await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 5000 })
 check("presence: clicking one goes where it is", true)

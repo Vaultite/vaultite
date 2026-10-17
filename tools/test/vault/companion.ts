@@ -185,7 +185,20 @@ export default async ($: VaultTest) => {
     await api("POST", "file/restore", { path: del.trashed })
     check("companion: and comes back with it", kept("Kept/Moved/L.md")?.length === 3 && !exists(side(del.trashed)))
     for (const n of await status()) if (n.path === "Kept/Moved/L.md") c.answer(n.id, "dismiss")
-    check("companion: all dismissed, the sidecar and its empty folders go", !exists(side("Kept/Moved/L.md")) && !exists(".vaultite/plugins/companion/comments/Kept"))
+    const sc = JSON.parse(read(side("Kept/Moved/L.md")))
+    check("companion: dismissed comments stay in the note's history, in its sidecar", sc.comments.length === 0 && sc.past.length === 3 && sc.past.every((n: Any) => n.dismissed), sc)
+    let [, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
+    check("companion: history lists them", h.open.length === 0 && h.past.length === 3 && h.past.some((n: Any) => n.id === cm.id && n.replies?.length === 2), h)
+    c.reopen(cm.id)
+    ;[, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
+    check("companion: one reopened is back in the margin, as it was", h.open.some((n: Any) => n.id === cm.id && n.replies?.length === 2 && !n.dismissed) && h.past.length === 2, h)
+    c.loadAll(true)
+    ;[, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
+    check("companion: history is read again as the server starts", h.open.length === 1 && h.past.length === 2, h)
+    await api("POST", "ops/companion.clear", {})
+    await api("DELETE", "file", { path: "Kept/Moved/L.md" })
+    const trashed = (await status()).length === 0
+    check("companion: a note deleted takes its history to the trash", trashed && !exists(side("Kept/Moved/L.md")))
     await api("POST", "ops/companion.next", { timeout: 0 }) // (its replies and dismissals, for the replay's below)
   }
 

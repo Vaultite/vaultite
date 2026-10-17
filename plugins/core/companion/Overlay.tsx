@@ -5,9 +5,11 @@ import { createPortal } from "react-dom"
 import { Check, Pin, X } from "lucide-react"
 import { cn, fmtTime, haptic, keyHint, Markdown, notify, openFile } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
-import { accept, type Agent, answer, getState, nearest, type Note, onBump, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, getState, type Target, nearest, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
 
-type Spot = { x: number; y: number; parked?: boolean }
+/** low: too near the bottom of where it's drawn for its flag below it (the flag goes above). */
+type Spot = { x: number; y: number; parked?: boolean; low?: boolean }
+const FLAG = 44 // the arrow and its flag below it
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
 
 /** A target's position in its editor, or null when the text is gone. */
@@ -19,7 +21,10 @@ function posIn(v: EditorView, t: { line?: number; find?: string }) {
 
 /** Where on screen `pos` of `v` is, kept inside its scroller (a cursor at an edge says "up there"). */
 function coords(v: EditorView, pos: number) {
-  const box = (v.dom.closest("[data-pane]") ?? v.scrollDOM).getBoundingClientRect()
+  const r = (v.dom.closest("[data-pane]") ?? v.scrollDOM).getBoundingClientRect()
+  // (what of it shows: above the status bar or a phone's bar, drawn over its foot)
+  const bars = [...document.querySelectorAll("[data-status-bar], [data-phone-bar]")].map((el) => el.getBoundingClientRect()).filter((b) => b.height && b.left < r.right && b.right > r.left)
+  const box = { left: r.left, right: r.right, top: r.top, bottom: Math.min(r.bottom, ...bars.map((b) => b.top)) }
   let c: { left: number; top: number; bottom: number } | null = null
   try { c = v.coordsAtPos(pos) } catch { /* outside the drawn part */ }
   const y = c ? c.top : pos < v.viewport.from ? box.top : box.bottom
@@ -30,11 +35,11 @@ function coords(v: EditorView, pos: number) {
 function rowOf(path: string): Spot | null {
   const el = [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].find((e) => e.offsetParent)
   const r = el?.getBoundingClientRect()
-  return r && r.height ? { x: r.left + Math.min(r.width - 24, 120), y: r.top + 4 } : null
+  return r && r.height ? { x: r.left + Math.min(r.width - 24, 120), y: r.top + 4, low: r.top + 4 + FLAG > innerHeight - 40 } : null
 }
 
 function home(i: number): Spot {
-  return { x: window.innerWidth - 150 - i * 90, y: window.innerHeight - 70, parked: true }
+  return { x: window.innerWidth - 150 - i * 90, y: window.innerHeight - 70, parked: true, low: true }
 }
 
 /** Where an agent's cursor goes: where it types, else its target, else home. Beside the line when that's where the user
@@ -43,7 +48,7 @@ function spotOf(a: Agent, i: number, talking: boolean): Spot | null {
   if (a.state === "away") return null
   if (typing && typing.agent === a.name && typing.view.dom.isConnected) {
     const c = coords(typing.view, Math.min(typing.pos, typing.view.state.doc.length))
-    return { x: c.x, y: c.y }
+    return { x: c.x, y: c.y, low: c.y + FLAG > c.box.bottom }
   }
   const v = a.path ? viewOf(a.path) : null
   const pos = v ? posIn(v, a) : null
@@ -52,10 +57,10 @@ function spotOf(a: Agent, i: number, talking: boolean): Spot | null {
   const caret = v.state.doc.lineAt(v.state.selection.main.head).number
   if (talking || (v.hasFocus && Math.abs(caret - line.number) <= 1)) {
     const c = coords(v, line.to)
-    return { x: Math.min(c.box.right - 40, c.x + 28), y: c.y }
+    return { x: Math.min(c.box.right - 40, c.x + 28), y: c.y, low: c.y + FLAG > c.box.bottom }
   }
   const c = coords(v, pos)
-  return { x: c.x, y: c.y }
+  return { x: c.x, y: c.y, low: c.y + FLAG > c.box.bottom }
 }
 
 function Arrow({ tint }: { tint: string }) {
@@ -69,7 +74,7 @@ function Arrow({ tint }: { tint: string }) {
 // (CodeMirror's own scrolling, through the view's class: no CodeMirror in this chunk)
 const scroller = (v: EditorView, pos: number) => v.dispatch({ effects: (v.constructor as typeof EditorView).scrollIntoView(pos, { y: "center" }) })
 /** Go where an agent is (its flag, its face in the status bar): its note opened, scrolled to its line. */
-export function follow(a: Agent) {
+export function follow(a: Target & { name: string }) {
   if (!a.path) return notify(`${a.name} isn't in a note now`)
   const path = a.path, go = () => {
     const v = viewOf(path)
@@ -101,7 +106,7 @@ function dropAt(agent: string, x: number, y: number) {
 }
 
 /** Clicked: its last words (each can be pinned into a comment) above a box to ask it something, there. */
-function Popover({ a, left, close }: { a: Agent; left: number; close: () => void }) {
+function Popover({ a, left, up, close }: { a: Agent; left: number; up: boolean; close: () => void }) {
   const s = useSyncExternalStore(subscribe, getState)
   const [draft, setDraft] = useState("")
   const list = useRef<HTMLDivElement>(null)
@@ -115,7 +120,7 @@ function Popover({ a, left, close }: { a: Agent; left: number; close: () => void
     close()
   }
   return (
-    <div data-companion-popover={a.name} className="companion-pop pointer-events-auto absolute top-[42px] flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg"
+    <div data-companion-popover={a.name} className={cn("companion-pop pointer-events-auto absolute flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg", up ? "bottom-[26px]" : "top-[42px]")}
       style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
       {mine.length > 0 && (
         <div ref={list} className="max-h-[240px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:thin]">
@@ -139,7 +144,7 @@ function Popover({ a, left, close }: { a: Agent; left: number; close: () => void
   )
 }
 
-function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) {
+function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: Note | null; others: string[]; under: boolean }) {
   const tint = `var(--${a.tint})`
   const [hover, setHover] = useState(false)
   const [nudge, setNudge] = useState<{ x: number; y: number } | null>(null)
@@ -147,11 +152,14 @@ function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) 
   const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
   const box = useRef<HTMLDivElement>(null)
   const at = drag ?? spot
-  const right = at.x > window.innerWidth - 320
+  // (what opens beside it opens toward the room: its flag needs a little, its words more)
+  const right = at.x > innerWidth - 320 && at.x > innerWidth / 2, flagRight = at.x > innerWidth - 140
   // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
   const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
   const seen = a.state === "watching" && !!a.seen
-  const flag = !idle || hover || open || !!drag
+  // (its name shows as it moves or acts, then fades to the bare arrow, as in a shared doc; hovered, again)
+  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || !!said || typing?.agent === a.name || hover || open || !!drag
+  const low = !drag && !!spot.low, tag = flag && (!under || hover || open)
   useEffect(() => {
     if (!open) return
     const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
@@ -213,21 +221,22 @@ function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) 
         <Arrow tint={tint} />
       </div>
       <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip onPointerDown={down} onContextMenu={(e) => e.preventDefault()}
-        className={cn("pointer-events-auto absolute -top-1 -left-1 z-[1] size-7 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
+        className={cn("pointer-events-auto absolute top-0 left-0 z-[1] size-5 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
           drag ? "cursor-grabbing" : "cursor-pointer")} />
-      <button type="button" tabIndex={flag ? 0 : -1} aria-label={`Go to ${a.name}`} data-tip={a.path ? "Go to where it is" : undefined} onClick={() => follow(a)}
-        className={cn("absolute top-[18px] flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
-          right ? "right-[-6px]" : "left-[13px]", flag ? "pointer-events-auto cursor-pointer" : "opacity-0")} style={{ background: tint }}>
+      <button type="button" tabIndex={tag ? 0 : -1} aria-label={`Go to ${a.name}`} data-tip={a.path ? "Go to where it is" : undefined} onClick={() => follow(a)}
+        className={cn("absolute flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
+          flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag ? "pointer-events-auto cursor-pointer" : "opacity-0")} style={{ background: tint }}>
         {a.name}
+        {others.length > 0 && <span className="font-medium opacity-85">{hover ? `, ${others.join(", ")}` : `+${others.length}`}</span>}
         {(hover || open) && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
         {(a.state === "thinking" || a.state === "reading") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
         {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
       </button>
       {/* (kept inside the window) */}
-      {open && <Popover a={a} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} />}
+      {open && <Popover a={a} up={low || at.y > innerHeight - 360} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} />}
       {said && !open && !drag && (
-        <div key={said.id} className={cn("companion-pop pointer-events-auto absolute bottom-[2px] flex w-max max-w-[300px] cursor-pointer items-start gap-1 rounded-[12px] border border-border/60 bg-background py-1.5 pr-1 pl-3 text-[13.5px] leading-snug text-foreground shadow-lg",
-          right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}
+        <div key={said.id} className={cn("companion-pop pointer-events-auto absolute flex w-max cursor-pointer items-start gap-1 rounded-[12px] border border-border/60 bg-background py-1.5 pr-1 pl-3 text-[13.5px] leading-snug text-foreground shadow-lg",
+          right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")} style={{ maxWidth: Math.max(160, Math.min(300, right ? at.x - 30 : innerWidth - at.x - 34)), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}
           onClick={() => answer(said.id, "dismiss")}>
           <Markdown text={said.text ?? ""} className="companion-md min-w-0 pr-1" />
           <button type="button" aria-label="Pin as a comment" data-tip="Pin as a comment" className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-7"
@@ -370,7 +379,6 @@ export function Overlay() {
   const heights = useRef(new Map<string, number>())
   const rooms = useRef(new Map<EditorView, number>())
   // The card open: the one clicked, else the one whose text the user's caret is in (as in a shared doc).
-  const [picked, pick] = useState<string | null>(null)
   useEffect(() => {
     const down = (e: PointerEvent) => { if (!(e.target as Element | null)?.closest?.("[data-companion-note], [data-companion-dot]")) pick(null) }
     addEventListener("pointerdown", down, true)
@@ -401,8 +409,13 @@ export function Overlay() {
 
   const cursors = s.agents.map((a, i) => {
     const said = [...s.notes].reverse().find((n) => n.kind === "say" && n.agent === a.name) ?? null
-    return { a, spot: spotOf(a, i, !!said), said }
+    return { a, spot: spotOf(a, i, !!said), said, with: [] as string[], under: false }
   })
+  // (cursors on the same spot: one flag, "Perf +1", that names them all when hovered)
+  for (const c of cursors) {
+    const top = c.spot && cursors.find((o) => o !== c && o.spot && !o.under && Math.abs(o.spot.x - c.spot!.x) < 14 && Math.abs(o.spot.y - c.spot!.y) < 10 && cursors.indexOf(o) < cursors.indexOf(c))
+    if (top) { c.under = true; top.with.push(c.a.name) }
+  }
   // Cards beside their lines, scrolling with the note and clipped to what of its pane shows (as in a shared doc's margin).
   const panes = new Map<Element, Pane>()
   let caret: string | null = null
@@ -427,7 +440,7 @@ export function Overlay() {
       if (head >= doc.lineAt(pos).number && head <= doc.lineAt(Math.min(doc.length, pos + (n.find?.length ?? 0))).number) caret = n.id
     }
   }
-  const open = picked ?? caret
+  const open = s.picked ?? caret
   const hOf = (c: Placed) => heights.current.get(c.n.id) ?? (c.folded && !c.open ? 20 : 80)
   for (const p of panes.values()) {
     const lo = p.top + 8, hi = p.bottom - 8
@@ -460,7 +473,7 @@ export function Overlay() {
             onHeight={(h) => measured(c.n.id, h)} onOpen={(o) => pick(o ? c.n.id : null)} />)}
         </div>
       ))}
-      {cursors.map(({ a, spot, said }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} />)}
+      {cursors.map(({ a, spot, said, with: others, under }) => spot && <Cursor key={a.name} a={a} spot={spot} said={said} others={others} under={under} />)}
     </div>,
     document.body,
   )
