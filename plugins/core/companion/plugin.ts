@@ -1104,9 +1104,24 @@ plugin.op({
 
 // ---------- a change of settings (mode, name) reaches the windows
 
+/** The sessions still running when the server starts (a restart, an update): back in the app at once, so @name
+ *  reaches them while they finish what they were doing, before their next `next`. */
+async function rejoin() {
+  for (const x of sessions()) {
+    if (agents.has(key(x.name)) || !(await running(x.id).catch(() => false))) continue
+    seen.set(key(x.name), Date.now())
+    setAgent(x.name, { state: "watching" })
+  }
+}
+
 let lastSaid = ""
 plugin.onSync((vault) => {
-  if (loadedFor !== vault) { loadedFor = vault; loadAll(true) }
+  if (loadedFor !== vault) {
+    loadedFor = vault
+    loadAll(true)
+    // (again a moment later: Terminal may not have started yet)
+    void rejoin(); setTimeout(() => void rejoin(), 5000).unref?.()
+  }
   const now = `${mode()}\n${ownName()}`
   if (now === lastSaid) return
   // (turned off: its session ends too)
