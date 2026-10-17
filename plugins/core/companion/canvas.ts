@@ -116,7 +116,9 @@ function watch(c: OpenCanvas) {
     }
     peersOn(c)
   }
-  const stop = c.subscribe(() => {
+  const stop = c.subscribe((outside) => {
+    // (what came from elsewhere is where the user starts from, not what they did)
+    if (outside?.length) { const now = index(c.items()); for (const id of outside) { const i = now.get(id); if (i) base.set(id, i); else base.delete(id) } }
     const p = c.pointer(), sel = c.selected().join()
     if (p !== pointer || sel !== selected) {
       pointer = p; selected = sel; last = c; lastAt = Date.now()
@@ -126,7 +128,8 @@ function watch(c: OpenCanvas) {
     bump()
   })
   return {
-    stop: () => { stop(); for (const t of [tick, where]) if (t) clearTimeout(t); if (pause) report(); c.setPeers([]); if (last === c) last = null },
+    // (what's still waiting is said as it goes; not from a scene already gone, which reads empty)
+    stop: () => { stop(); for (const t of [tick, where]) if (t) clearTimeout(t); if (pause && c.items().length) report(); c.setPeers([]); if (last === c) last = null },
     // (while an agent draws: what it makes isn't the user's)
     hold: (on: boolean) => {
       held = on
@@ -156,7 +159,7 @@ export function watchCanvases() {
 /** An agent's actions made on the drawing this window shows (`m.path`), its pointer going to each. */
 async function draw(m: DrawAsk) {
   const c = canvasOf(m.path), w = c ? watched.get(c) : undefined
-  if (!c) return say({ t: "done", rid: m.rid, ok: false })
+  if (!c?.apply) return say({ t: "done", rid: m.rid, ok: false })
   w?.hold(true)
   try {
     say({ t: "done", rid: m.rid, ok: true, touched: await c.apply(m.actions, m.agent) })

@@ -26,10 +26,11 @@ export type OpenCanvas = {
   /** Others shown on it, as the canvas draws its collaborators; [] for none. */
   setPeers: (peers: CanvasPeer[]) => void
   /** Its typed actions made as one step its undo takes back (`by`: the peer whose pointer goes to each); throws when
-   *  one doesn't fit it as it is now. The items they touched, in order. */
-  apply: (actions: unknown[], by?: string) => Promise<string[]>
-  /** Called on any change: its items, the user's pointer or selection, its scroll and zoom. */
-  subscribe: (fn: () => void) => () => void
+   *  one doesn't fit it as it is now. The items they touched, in order. None while it can't be changed (read only). */
+  apply?: (actions: unknown[], by?: string) => Promise<string[]>
+  /** Called on any change: its items, the user's pointer or selection, its scroll and zoom; `outside`: the items a change
+   *  from elsewhere (the file changed by another device, an AI) just set, not the user's. */
+  subscribe: (fn: (outside?: string[]) => void) => () => void
 }
 
 const open: OpenCanvas[] = []
