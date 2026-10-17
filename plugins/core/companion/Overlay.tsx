@@ -87,7 +87,7 @@ function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) 
         <div key={said.id} className={cn("companion-pop pointer-events-auto absolute bottom-[2px] w-max max-w-[300px] cursor-pointer rounded-[12px] border border-border/60 bg-background px-3 py-1.5 text-[13.5px] leading-snug text-foreground shadow-lg",
           right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}
           onClick={() => answer(said.id, "dismiss")}>
-          <Markdown text={said.text ?? ""} inline className="companion-said" />
+          <Markdown text={said.text ?? ""} className="companion-md" />
         </div>
       )}
     </div>
@@ -129,11 +129,11 @@ function Card({ n, x, y, folded, cap, onHeight }: { n: Note; x: number; y: numbe
       </div>
       {/* (a long one scrolls inside, its buttons kept in sight) */}
       <div ref={body} className="min-h-0 overflow-y-auto overscroll-contain [scrollbar-width:thin]">
-        {n.text && <div className="px-2.5 pt-1 pb-2 text-foreground"><Markdown text={n.text} inline /></div>}
+        {n.text && <div className="px-2.5 pt-1 pb-2 text-foreground"><Markdown text={n.text} className="companion-md" /></div>}
         {n.kind === "comment" && replies > 0 && (
           <div className="px-2.5">
             {n.replies!.map((r, i) => (
-              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><span className="font-semibold text-muted-foreground">{r.by === "user" ? "You" : n.agent}</span> <Markdown text={r.text} inline /></div>
+              <div key={i} className="mt-1.5 border-t border-border/50 pt-1.5"><div className="font-semibold text-muted-foreground">{r.by === "user" ? "You" : n.agent}</div><Markdown text={r.text} className="companion-md" /></div>
             ))}
           </div>
         )}
@@ -171,7 +171,12 @@ const STYLE = `
 @keyframes companion-seen { from { opacity: 0; scale: .4; } }
 .companion-pop { animation: companion-pop .28s cubic-bezier(.2,.9,.3,1.25); transform-origin: top left; }
 @keyframes companion-pop { from { opacity: 0; scale: .9; } }
-.companion-said p { margin: 0; }
+.note-prose.companion-md { font-size: inherit; line-height: inherit; }
+.note-prose.companion-md :where(p, ul, ol, pre, blockquote, table) { margin: 0 0 4px; }
+.note-prose.companion-md > :last-child { margin-bottom: 0; }
+.note-prose.companion-md :where(ul, ol) { padding-left: 16px; }
+.note-prose.companion-md li + li { margin-top: 1px; }
+.note-prose.companion-md :where(.h1, .h2, .h3, h1, h2, h3) { font-size: inherit; line-height: inherit; font-weight: 650; margin: 0 0 2px; }
 @media (prefers-reduced-motion: reduce) { .companion-cursor, .companion-bob, .companion-pop, .companion-dots i, .companion-seen { animation: none !important; transition: none !important; } }
 `
 
