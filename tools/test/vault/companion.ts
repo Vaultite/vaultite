@@ -10,23 +10,46 @@ export default async ($: VaultTest) => {
     c.editText("a\nb\n", { line: 0, text: "x" }) === "x\na\nb\n" && c.editText("a\nb\n", { append: true, text: "x" }) === "a\nb\nx\n" &&
     c.editText("a\nb", { append: true, text: "x" }) === "a\nb\nx")
 
+  {
+    // Note text sent with moments: a short note whole for an ask, a few lines around an edit.
+    const text = Array.from({ length: 200 }, (_, i) => `line ${i + 1}`).join("\n") + "\n"
+    const ask = c.excerpt("N.md", "a\nb\n", [{ seq: 1, t: 0, kind: "ask", line: 2 }]), long = c.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "ask", line: 150 }])
+    const edit = c.excerpt("N.md", text, [{ seq: 1, t: 0, kind: "edit", line: 50, hunks: [{ line: 50, added: ["x", "y"], removed: [] }] }])
+    check("companion: an ask comes with its note, whole when short, else the lines around it",
+      ask?.from === 1 && ask.to === 2 && ask.lines.join() === "a,b" && long?.from === 110 && long.to === 190 && long.lines[0] === "line 110", [ask, long])
+    check("companion: an edit comes with a few lines around what changed", edit?.from === 44 && edit.to === 57, edit)
+    check("companion: and reads as numbered lines", c.momentsText([], "pair", null, []).includes("Nothing yet") &&
+      c.momentsText([{ seq: 1, t: 0, kind: "ask", path: "N.md", line: 2, text: "hi" }], "pair", null, [ask!]).endsWith("N.md, lines 1-2 of 2:\n   1  a\n   2  b"))
+    // Timings: handed, first action, back to next; seqs restart with the server.
+    const ms = [{ seq: 1, t: 1000, kind: "ask" }, { seq: 2, t: 1500, kind: "edit" }, { seq: 1, t: 9000, kind: "ask" }] as Any[]
+    const acts = [{ t: 0, as: "C", op: "next" }, { t: 1100, as: "C", op: "handed", seqs: [1] }, { t: 3100, as: "C", op: "say" }, { t: 3200, as: "C", op: "next" },
+      { t: 3200, as: "C", op: "handed", seqs: [2] }, { t: 4000, as: "C", op: "next" }, { t: 9000, as: "C", op: "handed", seqs: [1] }]
+    const [a, e, b] = c.timings(ms, acts)
+    check("companion timings: per moment, its handoff, think to the first action and total", a.handoff === 100 && a.think === 2000 && a.op === "say" && a.total === 2200 &&
+      e.handoff === 1700 && e.think === undefined && e.total === 2500 && b.handoff === 0 && b.total === undefined, [a, e, b])
+    check("companion timings: read as a table and a summary", /asks and replies \(2\): handoff 0\.0\/0\.1, think 2\.0\/2\.0/.test(c.timingsText("2026-10-16", [a, e, b])), c.timingsText("2026-10-16", [a, e, b]))
+  }
+
   await api("PATCH", "config/plugin/companion", { mode: "quiet" })
   check("companion: quiet hears asks, not what the user writes", c.addMoment({ kind: "edit", path: "Notes/A.md", hunks: [] }) === null &&
     c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "what's this?" })?.kind === "ask")
   let [st, r] = await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: next answers the ask waiting, as the companion (Claude)", st === 200 && r.moments.length === 1 && r.moments[0].text === "what's this?" && r.mode === "quiet", [st, r])
+  ;[, r] = await api("POST", "ops/companion.timings", {})
+  check("companion: next and what it handed are logged, for timings", r.rows.some((x: Any) => x.kind === "ask" && x.handoff !== undefined), r)
   ;[st, r] = await api("POST", "ops/companion.next", { timeout: 0 })
   check("companion: and not again", st === 200 && r.moments.length === 0, r)
 
   await api("PATCH", "config/plugin/companion", { mode: "notice" })
+  write("Notes/A.md", "# A\n\nCall Alice friday\n")
   const waiting = api("POST", "ops/companion.next", { timeout: 5 })
   await $.sleep(50)
   c.addMoment({ kind: "edit", path: "Notes/A.md", line: 2, hunks: [{ line: 2, added: ["Call Alice friday"], removed: [] }] })
   ;[st, r] = await waiting
   check("companion: a waiting next wakes on what the user writes (notice)", st === 200 && r.moments[0]?.kind === "edit" && r.moments[0].hunks[0].added[0] === "Call Alice friday", r)
+  check("companion: with the note's lines around what they wrote", r.notes[0]?.path === "Notes/A.md" && r.notes[0].lines.includes("Call Alice friday"), r.notes)
   check("companion: moments read as lines for an agent", c.momentsText(r.moments, "notice", { path: "Notes/A.md", line: 2 }).includes("+ Call Alice friday"))
 
-  write("Notes/A.md", "# A\n\nCall Alice friday\n")
   ;[st, r] = await api("POST", "ops/companion.suggest", { path: "Notes/A.md", find: "friday", replace: "Friday", why: "A day's name" })
   const id = r.id
   ;[, r] = await api("POST", "ops/companion.status", {})

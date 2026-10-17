@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import { type RawData, WebSocket } from "ws"
 import { agentName, newTerminalId, startAgent } from "../../../core/agents.ts"
-import { type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
+import { localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -21,6 +21,10 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
  *  a highlight (gone after a while). */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[] }
+/** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
+export type Act = { t: number; as: string; op: string; seqs?: number[] }
+/** A note's lines from..to (1-based, of `of`), sent with the moments in it. */
+export type Excerpt = { path: string; from: number; to: number; of: number; lines: string[] }
 
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
 export const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
@@ -52,6 +56,8 @@ const notes = new Map<string, Note>()
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let nid = 0
 const log = plugin.dayLog<Moment>("moments")
+const acts = plugin.dayLog<Act>("actions")
+const did = (as: string, op: string, seqs?: number[]) => { const t = Date.now(); acts.append(t, [{ t, as, op, ...(seqs ? { seqs } : {}) }]) }
 
 /** The app's windows: which files each has open, where its user is, when they last did anything. */
 type Win = { open: string[]; focus: Target | null; at: number; was?: string }
@@ -267,8 +273,9 @@ plugin.op({
   help: `Answers the moments since you last asked, or waits for one (up to timeout seconds; none by then: an empty list).
 ask: they addressed you (a line "@claude ..." in a note, or Ask companion on a selection): always answer. edit: lines
 they changed after a pause (notice and pair modes). open: they went to a note. reply, accept, reject, dismiss: their
-answer to your comment or suggestion. Lines count from 1 with the frontmatter. While you wait your cursor rests; after an
-ask it shows you thinking until you act. Run it again after acting, forever.
+answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
+text around them, numbered: no need to read it again. While you wait your cursor rests; after an ask it shows you
+thinking until you act. Run it again after acting, forever.
 
   vau companion next --timeout 240`,
   kind: "read",
@@ -278,9 +285,10 @@ ask it shows you thinking until you act. Run it again after acting, forever.
     after: { type: "integer", minimum: 0, description: "only moments after this one (default: after the last you were given)" },
     as: AS,
   },
-  run: async (p) => {
+  run: async (p, ctx) => {
     const name = who(p)
     lastAsk = Date.now()
+    did(name, "next")
     const a = agentOf(name)
     if (a.state === "away" || a.state === "writing") setAgent(name, { state: "watching" })
     const after = p.after ?? delivered.get(name) ?? Math.max(0, seq - 20)
@@ -294,14 +302,44 @@ ask it shows you thinking until you act. Run it again after acting, forever.
       })
       lastAsk = Date.now()
     }
-    if (got.length) delivered.set(name, got[got.length - 1].seq)
-    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(name) ?? after }
+    if (got.length) { delivered.set(name, got[got.length - 1].seq); did(name, "handed", got.map((m) => m.seq)) }
+    return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(name) ?? after, notes: await excerpts(ctx, got) }
   },
-  text: (r) => momentsText(r.moments, r.mode, r.focus),
+  text: (r) => momentsText(r.moments, r.mode, r.focus, r.notes),
 })
 
+/** The text around what the user asked or wrote, per note: all of a short note for an ask or a reply. */
+async function excerpts(ctx: OpCtx, ms: Moment[]) {
+  const by = new Map<string, Moment[]>()
+  for (const m of ms) if (m.path && (m.kind === "ask" || m.kind === "reply" || m.kind === "edit")) by.set(m.path, [...(by.get(m.path) ?? []), m])
+  const out: Excerpt[] = []
+  for (const [path, list] of by) {
+    try {
+      const f = await ctx.api("GET", `file?path=${encodeURIComponent(path)}`) as { text?: unknown }
+      const e = excerpt(path, String(f.text ?? ""), list)
+      if (e) out.push(e)
+    } catch { /* gone, or not text */ }
+  }
+  return out
+}
+const WHOLE = 120, MOST = 160
+export function excerpt(path: string, text: string, ms: Moment[]): Excerpt | null {
+  const lines = text.split("\n")
+  if (lines.at(-1) === "") lines.pop()
+  const asked = ms.some((m) => m.kind !== "edit")
+  const at = ms.flatMap((m) => [m.line ?? 0, ...(m.hunks ?? []).flatMap((h) => [h.line, h.line + h.added.length - 1])]).filter((n) => n > 0)
+  if (!lines.length || (!at.length && !asked)) return null
+  let from = 1, to = lines.length
+  if (!asked || lines.length > WHOLE) {
+    const pad = asked ? 40 : 6
+    from = Math.max(1, Math.min(...at, lines.length) - pad)
+    to = Math.min(lines.length, Math.max(...at, 1) + pad, from + MOST - 1)
+  }
+  return { path, from, to, of: lines.length, lines: lines.slice(from - 1, to).map((l) => cut(l, 400)) }
+}
+
 /** Moments as an agent reads them. */
-export function momentsText(ms: Moment[], md: Mode, f: Target | null) {
+export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Excerpt[] = []) {
   const head = `Mode: ${md}.${f?.path ? ` The user is in ${f.path} at line ${f.line ?? 1}.` : ""}`
   if (!ms.length) return `${head}\nNothing yet: run vau companion next again.`
   const out = [head]
@@ -319,6 +357,10 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null) {
     else if (m.kind === "reply") out.push(`- reply to ${m.item}${at}: ${JSON.stringify(m.text ?? "")}`)
     else out.push(`- ${m.kind} ${m.item}${at}${m.kind === "accept" && m.to !== undefined ? ` (now ${JSON.stringify(cut(m.to, 200))})` : ""}`)
   }
+  for (const e of notes) {
+    out.push(`${e.path}, lines ${e.from}-${e.to} of ${e.of}:`)
+    e.lines.forEach((l, i) => out.push(`${String(e.from + i).padStart(4)}  ${l}`))
+  }
   return out.join("\n")
 }
 
@@ -332,6 +374,7 @@ plugin.op({
   params: { path: PATH, line: LINE, find: FIND, as: AS },
   run: async (p) => {
     const t = target(p)
+    did(who(p), "look")
     setAgent(who(p), { ...t, state: "watching", find: t.find })
     return t
   },
@@ -351,6 +394,7 @@ plugin.op({
   args: ["text"],
   run: async (p) => {
     const name = who(p)
+    did(name, "say")
     const t = p.path || p.line !== undefined || p.find ? target(p) : {}
     setAgent(name, { ...t, state: "watching" })
     return putNote({ kind: "say", agent: name, text: str(p.text), ...t }, SAY_MS)
@@ -373,6 +417,7 @@ it: with id (the comment's), your words join its thread.
   args: ["text"],
   run: async (p) => {
     const name = who(p)
+    did(name, "comment")
     if (p.id) {
       const n = notes.get(p.id)
       if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id} (dismissed?)`, 404)
@@ -403,6 +448,7 @@ moment tells you what they chose.
   run: async (p) => {
     if (!str(p.find)) throw new OpError("give find: the text to change")
     const name = who(p), t = target(p)
+    did(name, "suggest")
     setAgent(name, { ...t, state: "watching" })
     return putNote({ kind: "suggestion", agent: name, ...t, replace: str(p.replace), ...(str(p.why) ? { text: str(p.why) } : {}) })
   },
@@ -425,6 +471,7 @@ after line (0: at the top), or at the end.
   args: ["text"],
   run: async (p, ctx) => {
     const name = who(p), t = target(p)
+    did(name, "edit")
     const a = setAgent(name, { ...t, state: "writing" })
     try {
       const how = await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: str(p.text), append: !!p.append })
@@ -446,6 +493,7 @@ plugin.op({
   run: async (p, ctx) => {
     if (!str(p.find)) throw new OpError("give find: the text to highlight")
     const name = who(p), t = target(p), a = setAgent(name, { ...t, state: "watching" })
+    did(name, "highlight")
     if (!p.keep) return putNote({ kind: "highlight", agent: name, ...t }, HIGHLIGHT_MS)
     await applyEdit(ctx, a, { path: t.path!, find: t.find, line: t.line, text: `==${EMOJI[a.tint] ?? ""}${t.find}==` }, false)
     return { path: t.path, kept: true }
@@ -540,6 +588,53 @@ came (faster with speed), so you can watch what the session makes of them.
     return { replaying: ms.length }
   },
   text: (r) => `Replaying ${r.replaying} moments.`,
+})
+
+/** A moment's latency (ms): until next handed it (handoff), then to the agent's first action (think), and from the moment
+ *  to its next `next` (total); undefined when it didn't happen. */
+export type Timing = { t: number; seq: number; kind: string; at: string; op?: string; handoff?: number; think?: number; total?: number }
+
+/** Each moment's timing, from the moments and actions logged on a day (seqs restart with the server: matched in time). */
+export function timings(ms: Moment[], log: Act[]): Timing[] {
+  return ms.map((m, i) => {
+    const until = ms.slice(i + 1).find((x) => x.seq === m.seq)?.t ?? Infinity
+    const r: Timing = { t: m.t, seq: m.seq, kind: m.kind, at: m.path ? `${m.path}${m.line ? `:${m.line}` : ""}` : "" }
+    const hi = log.findIndex((a) => a.op === "handed" && a.t >= m.t && a.t < until && !!a.seqs?.includes(m.seq)), h = log[hi]
+    if (!h) return r
+    const after = log.slice(hi + 1).filter((a) => a.as === h.as)
+    const done = after.find((a) => a.op === "next"), first = after.find((a) => a.op !== "next" && a.op !== "handed" && (!done || a.t <= done.t))
+    return { ...r, handoff: h.t - m.t, ...(first ? { op: first.op, think: first.t - h.t } : {}), ...(done ? { total: done.t - m.t } : {}) }
+  })
+}
+
+export function timingsText(day: string, rows: Timing[]) {
+  const s = (ms?: number) => (ms === undefined ? "-" : (ms / 1000).toFixed(1)).padStart(7)
+  const time = (t: number) => new Date(t).toTimeString().slice(0, 8)
+  const pct = (xs: number[], q: number) => xs.sort((a, b) => a - b)[Math.max(0, Math.ceil(q * xs.length) - 1)]
+  const sum = (label: string, rs: Timing[]) => `${label} (${rs.length}): ${(["handoff", "think", "total"] as const).map((k) => {
+    const xs = rs.flatMap((r) => r[k] ?? [])
+    return `${k} ${xs.length ? `${s(pct(xs, 0.5)).trim()}/${s(pct(xs, 0.9)).trim()}` : "-"}`
+  }).join(", ")} (median/p90, s)`
+  if (!rows.length) return `No moments on ${day}.`
+  return [`${day}, in seconds: handoff (until next handed it), think (to the first action), total (to the next \`next\`).`,
+    `${"time".padEnd(8)} ${"handoff".padStart(7)}${"think".padStart(7)}  ${"total".padStart(7)}  moment`,
+    ...rows.map((r) => `${time(r.t)} ${s(r.handoff)}${s(r.think)}  ${s(r.total)}  ${r.kind}${r.op ? ` -> ${r.op}` : ""} ${cut(r.at, 50)}`),
+    sum("asks and replies", rows.filter((r) => r.kind === "ask" || r.kind === "reply")), sum("all", rows)].join("\n")
+}
+
+plugin.op({
+  id: "companion.timings",
+  cli: "companion timings",
+  summary: "How fast the companion answered on a day: per moment, its wait to be handed, the think to its first action, total.",
+  help: `  vau companion timings
+  vau companion timings --day 2026-10-16`,
+  kind: "read",
+  params: { day: { type: "string", description: "a day (YYYY-MM-DD); default: today" } },
+  run: async (p) => {
+    const day = str(p.day) || localDate(Date.now())
+    return { day, rows: timings(log.read(day), acts.read(day)) }
+  },
+  text: (r) => timingsText(r.day, r.rows),
 })
 
 // ---------- a change of settings (mode, name) reaches the windows
