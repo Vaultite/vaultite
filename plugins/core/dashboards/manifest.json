@@ -4,5 +4,5 @@
   "category": "writing",
   "alwaysOn": true,
   "name": "Dashboards",
-  "description": "Files with type: dashboard (Today, People, your own) open as a page: the page's name, then its blocks as a grid of cards, edited as the same grid. Off, they're Markdown files like any other, their blocks one under another."
+  "description": "Files with type: dashboard (People, Agents, your own) open as a page: the page's name, then its blocks as a grid of cards, edited as the same grid. Off, they're Markdown files like any other, their blocks one under another."
 }

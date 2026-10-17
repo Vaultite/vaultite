@@ -4,7 +4,7 @@
   "category": "life",
   "offByDefault": true,
   "name": "Calendar",
-  "description": "Today's and tomorrow's events (a block on Today), read live from your calendars' private iCal links. Nothing is saved.",
+  "description": "Today's and tomorrow's events (a block for dashboards), read live from your calendars' private iCal links. Nothing is saved.",
   "blocks": {
     "agenda": {
       "description": "today's and tomorrow's events from the calendars",

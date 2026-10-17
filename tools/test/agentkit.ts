@@ -25,7 +25,7 @@ export const LOCAL = path.join(TMP, "local")
 export const HOME = path.join(TMP, "home")
 export const BIN = path.join(TMP, "bin")
 export const PROJECT = path.join(TMP, "Projets é", "lighthouse x")
-const FAKE_LOG = path.join(TMP, "fake.log")
+const FAKE_LOG = path.join(TMP, "fake.log"), FAKE_PIDS = path.join(TMP, "fake.pids")
 for (const d of [LOCAL, HOME, BIN, PROJECT]) fs.mkdirSync(d, { recursive: true })
 
 // ---------- the server
@@ -88,7 +88,7 @@ function processesWith(...needles: string[]): { pid: number; cmd: string }[] {
     }
     return out
   }
-  // macOS: ps shows the environment after the command line (E), for this user's processes.
+  // macOS: ps shows the environment after the command line (E), for this user's processes (not Apple's own binaries).
   const text = execFileSync("ps", ["-AwwE", "-o", "pid=,command="], { encoding: "utf8", maxBuffer: 64 << 20 })
   for (const line of text.split("\n")) {
     const m = /^\s*(\d+)\s+(.*)$/.exec(line)
@@ -97,7 +97,41 @@ function processesWith(...needles: string[]): { pid: number; cmd: string }[] {
   }
   return out
 }
-const inTerminal = (id: string) => processesWith(`VT_AGENT_MARK=${MARK}`, `VAULTITE_TERMINAL=${id}`)
+
+/** This test's own process group, never killed as a group (MCP clients it starts are in it). */
+const OWN_GROUP = Number(execFileSync("ps", ["-o", "pgid=", "-p", String(process.pid)], { encoding: "utf8" }).trim())
+
+/** Every process now: pid -> its group, start time and command. */
+function processTable() {
+  const out = new Map<number, { pgid: number; started: string; cmd: string }>()
+  const text = execFileSync("ps", ["-Aww", "-o", "pid=,pgid=,lstart=,command="], { encoding: "utf8", maxBuffer: 64 << 20 })
+  for (const line of text.split("\n")) {
+    const m = /^\s*(\d+)\s+(\d+)\s+(\S+\s+\S+\s+\S+\s+\S+\s+\S+)\s+(.*)$/.exec(line)
+    if (m) out.set(Number(m[1]), { pgid: Number(m[2]), started: m[3].replace(/\s+/g, " "), cmd: m[4].slice(0, 200) })
+  }
+  return out
+}
+
+/** This run's processes (in terminal `id`): those with its mark, the fakes it started (FAKE_PIDS: a process title or an
+ *  Apple binary hides the environment on macOS), and the rest of their process groups. */
+function ours(id?: string): { pid: number; pgid: number; cmd: string }[] {
+  const table = processTable()
+  const pids = new Set(processesWith(`VT_AGENT_MARK=${MARK}`, ...(id ? [`VAULTITE_TERMINAL=${id}`] : [])).map((p) => p.pid))
+  let noted: string[] = []
+  try { noted = fs.readFileSync(FAKE_PIDS, "utf8").split("\n") } catch { /* none started */ }
+  for (const [pid, term, started] of noted.map((l) => l.split("|"))) {
+    // (the same process, not a later one given its pid)
+    if ((!id || term === id) && table.get(Number(pid))?.started === started?.replace(/\s+/g, " ").trim()) pids.add(Number(pid))
+  }
+  const groups = new Set([...pids].map((p) => table.get(p)?.pgid).filter((g) => g && g !== OWN_GROUP))
+  return [...table].filter(([pid, p]) => pids.has(pid) || groups.has(p.pgid)).map(([pid, p]) => ({ pid, pgid: p.pgid, cmd: p.cmd }))
+}
+
+/** Kills them and their process groups. */
+function killAll(ps: { pid: number; pgid: number }[]) {
+  for (const g of new Set(ps.map((p) => p.pgid))) if (g > 1 && g !== OWN_GROUP) try { process.kill(-g, "SIGKILL") } catch { /* gone */ }
+  for (const p of ps) if (p.pid !== process.pid) try { process.kill(p.pid, "SIGKILL") } catch { /* gone */ }
+}
 
 // ---------- terminals
 
@@ -116,15 +150,15 @@ export const screenHas = (id: string, re: RegExp, ms = 20000) => waitFor(async (
 
 /** Ends a terminal and checks it's gone, with nothing it started still running. */
 export async function endAndCheck(label: string, id: string) {
-  const before = inTerminal(id)
+  const before = ours(id)
   const [c] = await term.end(id)
   const gone = await waitFor(async () => !(await term.one(id)), 10000)
   // (an agent may finish its own work first on a hangup: Hermes saves its session; 30 s at most)
   const t0 = Date.now()
-  const left = (await waitFor(() => inTerminal(id).length === 0, 30000, 250)) ? [] : inTerminal(id)
+  const left = (await waitFor(() => ours(id).length === 0, 30000, 250)) ? [] : ours(id)
   const secs = ((Date.now() - t0) / 1000).toFixed(1)
   check(`${label}: ending its terminal ends it, no process of it left (${before.length} were running, gone in ${secs} s)`, c === 200 && gone && !left.length, { c, gone, left })
-  for (const p of left) try { process.kill(p.pid, "SIGKILL") } catch { /* gone */ }
+  killAll(left)
 }
 
 /** A session the plugin lists as open now, linked to terminal `id`. */
@@ -241,8 +275,14 @@ export async function setBackend(name: "vaultite" | "tmux") {
   if (c !== 200) throw new Error(`the terminal backend wasn't set: ${c} ${JSON.stringify(b)}`)
 }
 
-/** A fake agent in BIN; what it was run with goes in the fake log (`fakeLog`), as `{bin, args, cwd}` lines. */
-export const writeFake = (name: string, text: string) => fs.writeFileSync(path.join(BIN, name), text, { mode: 0o755 })
+/** A fake agent in BIN; what it was run with goes in the fake log (`fakeLog`), as `{bin, args, cwd}` lines. It runs
+ *  through a launcher that notes its pid, terminal and start time (FAKE_PIDS) first, then becomes it. */
+export function writeFake(name: string, text: string) {
+  const real = path.join(BIN, ".fakes", name)
+  fs.mkdirSync(path.dirname(real), { recursive: true })
+  fs.writeFileSync(real, text, { mode: 0o755 })
+  fs.writeFileSync(path.join(BIN, name), `#!/bin/sh\necho "$$|\${VAULTITE_TERMINAL:-}|$(ps -o lstart= -p $$)" >> '${FAKE_PIDS}'\nexec '${real}' "$@"\n`, { mode: 0o755 })
+}
 /** A fake that says what it was run with (FAKE-<NAME> and its folder) and keeps a child running, like an MCP server,
  *  so ending its terminal must end both. */
 export const shellFake = (name: string) => writeFake(name, `#!/bin/sh\necho "FAKE-${name.toUpperCase()} $*"\necho "CWD $(pwd)"\nsleep 3600 &\nwait\n`)
@@ -296,9 +336,9 @@ async function cleanup() {
   await stopServer().catch(() => {})
   stopBackends()
   await sleep(1000)
-  const left = processesWith(`VT_AGENT_MARK=${MARK}`)
+  const left = ours()
   check("cleanup: nothing this run started is left running", !left.length, left)
-  for (const p of left) try { process.kill(p.pid, "SIGKILL") } catch { /* gone */ }
+  killAll(left)
   if (process.env.VAULTITE_AGENT_KEEP !== "1") fs.rmSync(TMP, { recursive: true, force: true })
   else console.log(`kept ${TMP}`)
 }

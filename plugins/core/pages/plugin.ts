@@ -174,7 +174,7 @@ ${FLAGS}
   vau pin view:inbox
   vau pin "view:terminal/resume-claude-0b5c9e2a-4f1d-4c4e-9a7e-2d6f1b3c8e90"
   vau pin Notes/Draft.md --workspace 2
-  vau pin Dashboards/Today.md --vault`,
+  vau pin Dashboards/People.md --vault`,
   kind: "write",
   params: {
     path: { type: "string", format: "path", required: true, description: "the file or folder (a path, or a name as the user says it), a web address, or a view (view:<name>/<arg>)" },

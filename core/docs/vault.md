@@ -9,8 +9,8 @@ only when the app makes the file or it's edited in the app. Files it can't read 
 **Layout.** A file's kind is its `type:` frontmatter wherever it lives, and only that: a file without one is a plain
 note, even in `People/` (`vau type` lists such files and gives them one). A kind kept in one file (the user's `ME.md`,
 `Work.md`) is also that file without a `type:`. Folders are the user's: moving or renaming one never changes what its
-files are. Each kind has a usual folder (`People/`, `Notes/`, `Logs/<Area>/`, `Routines/`, `Daily/`, `Books/`,
-`Projects/`; dashboards in `Dashboards/`): new files go in the folder its plugin's settings set (`.vaultite/folders.json`),
+files are. Each kind has a usual folder (`People/`, `Notes/`, `Logs/<Area>/`, `Daily/`, a plugin's
+own; dashboards in `Dashboards/`): new files go in the folder its plugin's settings set (`.vaultite/folders.json`),
 else where that kind's files already are (a new person where most people are, a log where its area's logs are), and
 only into the usual folder when there are none. Daily notes are also found by their name in their folder (`vau docs
 daily-notes`). Notes in the templates folder (`Templates/`) are never items, whatever their type. Any other Markdown file or
@@ -40,7 +40,7 @@ _(github block: unknown option `isues` (did you mean `issues`?))_): fix those wh
 `GET /api/blocks` list every block and its options; `vau docs design` shows every block and piece of Markdown the app
 draws, as a dashboard: read it before building a page.
 
-**Reading.** `GET /api/render?path=Dashboards/Today.md` (`vau render Today`) answers any file as Markdown with its
+**Reading.** `GET /api/render?path=Dashboards/People.md` (`vau render People`) answers any file as Markdown with its
 blocks filled in, and saves nothing. A path to a file that moved still reads it (the one file of that name, or the one
 dashboard). Word, Excel, PowerPoint and EPUB files read the same way, as their text (`vau render Lease.docx`), and
 search finds what's in them; they're the user's documents: read them, never write or convert them in place.

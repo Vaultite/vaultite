@@ -111,7 +111,7 @@ web address in a web tab.
 Only the window the user was in last acts. split right|down opens it in a pane beside or below; newTab keeps the
 current tab. On a phone it opens in the sheet. For something the user should look at now (a file you wrote).
 
-  vau open Dashboards/Today.md
+  vau open Dashboards/People.md
   vau open "People/Alice Park.md" --split right
   vau open Notes/Idea.md --new-tab
   vau open https://example.com`,

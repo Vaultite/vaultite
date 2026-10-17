@@ -33,8 +33,8 @@ const diff = (a: Record<string, number>, b: Record<string, number>, n = 1) =>
 const total = (d: Record<string, number>) => +Object.values(d).reduce((x, y) => x + y, 0).toFixed(1)
 const cpuMs = () => { const u = process.cpuUsage(); return (u.user + u.system) / 1000 }
 
-const ENDPOINTS = ["state", "vault", "files", "plugins", "graph", "tags", "search?q=light", "render?path=Dashboards/Today.md",
-  "render?path=Dashboards/People.md", "render?path=Dashboards/Health.md",
+const ENDPOINTS = ["state", "vault", "files", "plugins", "graph", "tags", "search?q=light", "render?path=Start%20here.md",
+  "render?path=Dashboards/People.md", "render?path=Dashboards/Agents.md",
   "query?q=" + encodeURIComponent(JSON.stringify({ from: "Notes/", type: "note", sort: ["-updated"], limit: 50 }))]
 const EDITED = ["state", "files", "graph"]
 
@@ -82,7 +82,7 @@ try {
   }
   result.endpoints = endpoints
   // What a first load asks for, all at once: the syncs they wait for (server.ts coalesces them where it can).
-  const burst = ["state", "files", "plugins", "render?path=Dashboards/Today.md", "graph", "tags", "vault", "config/plugins"]
+  const burst = ["state", "files", "plugins", "render?path=Start%20here.md", "graph", "tags", "vault", "config/plugins"]
   const c = cpuMs(), f = counts()
   for (let i = 0; i < RUNS; i++) await Promise.all(burst.map(request))
   const d = diff(f, counts(), RUNS)

@@ -53,7 +53,8 @@ const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 } })
 const page = watch(await ctx.newPage())
 const palette = async (name) => {
   await page.keyboard.press("ControlOrMeta+p"); await wait(300); await page.keyboard.type(name); await wait(300)
-  const none = await page.getByText("No command matches").count()
+  // (only one named so: a toggle is also found by its other name)
+  const none = !(await page.locator("[role=option]", { hasText: name }).count())
   await page.keyboard.press(none ? "Escape" : "Enter"); await wait(700)
   return !none
 }

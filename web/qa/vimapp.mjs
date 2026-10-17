@@ -4,7 +4,7 @@
 // reading (the cursor in sight), and j still types in a text field. WRITES a "Qa vimapp" folder and plugins.json's
 // `enabled`: throwaway only.
 //   node web/qa/vimapp.mjs <base url> [out dir]
-import { apiAt, palette, qa, SHOTS, wait } from "./lib/qa.mjs"
+import { apiAt, qa, SHOTS, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const LONG = "Qa vimapp/Long.md", TARGET = "Qa vimapp/Target.md"
 const json = { "Content-Type": "application/json" }
@@ -38,8 +38,7 @@ const top = () => page.evaluate(() => document.getElementById("main-scroll").scr
 const hash = () => page.evaluate(() => decodeURIComponent(location.hash))
 
 await page.goto(`${B}#file/${encodeURIComponent(LONG)}`); await wait(2000)
-await palette(page, "Switch to reading", 700)
-if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
+await command(page, "Switch to reading", 700)
 check("the note is in reading view", await page.locator(".cm-content[contenteditable=false]").count() > 0)
 // Where a reader would click: on the text.
 await page.locator(".cm-line", { hasText: "Paragraph 1.2" }).first().click(); await wait(200)

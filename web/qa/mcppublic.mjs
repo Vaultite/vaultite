@@ -112,7 +112,7 @@ try {
   const icon = await fetch(`${PUB}/icon.svg`), png = await fetch(`${PUB}/icon.png`)
   check("the logo is served", icon.status === 200 && (icon.headers.get("content-type") ?? "").includes("svg") && png.status === 200 && png.headers.get("content-type") === "image/png", [icon.status, png.status])
   const tools = (await rpc("tools/list", {})).body?.result?.tools?.map((t) => t.name) ?? []
-  check("the full catalog: named tools, ops and call, without the owner's", tools.includes("search") && tools.includes("write_note") && tools.includes("today") && tools.includes("call") && tools.includes("ops"), tools)
+  check("the full catalog: named tools, ops and call, without the owner's", ["search", "read", "write_note", "write_log", "inbox_add", "calendar", "call", "ops"].every((t) => tools.includes(t)), tools)
   const opsList = await rpc("tools/call", { name: "ops", arguments: {} })
   check("ops lists no owner-only operation", !opsList.body?.result?.isError && opsList.body.result.content[0].text.includes("note.create") && !opsList.body.result.content[0].text.includes("terminal.send"), opsList.body)
   const term = await rpc("tools/call", { name: "call", arguments: { id: "terminal.list" } })

@@ -51,7 +51,7 @@ export function fileOps(app: App): Op[] {
 this week's goals, a person's profile, a project's numbers). The quickest way to answer "what's on today" (render
 Today) or "how's my week". Saves nothing. A name works too ("Today", "Alice Park").
 
-  vau render Dashboards/Today.md
+  vau render Dashboards/People.md
   vau render "People/Alice Park.md"
   vau render Health --offset 200 --limit 100      lines 200 to 299`,
     kind: "read",

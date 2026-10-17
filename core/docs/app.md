@@ -97,7 +97,7 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   `fileIcons`: true | false. `tabBar`: true (default) | false: off, each pane's bar shows only the tab on screen, not
   the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard). `lineNumbers`: true | false (default), line numbers beside a file's text while editing
   it (code files always have them). `statusBar`: the plugins' items at the start of the desktop status bar, in order
-  (`["today:routines", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one
+  (`["companion:status", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one
   to move it). `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
   fit). No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are
   each device's.

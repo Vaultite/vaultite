@@ -7,7 +7,7 @@
 // (touch, no trackpad) never gets it. WRITES a "Qa vim" folder, .vaultite/plugins/vim/ and
 // plugins.json's `enabled`: throwaway only.
 //   node web/qa/vim.mjs <base url> [out dir]
-import { apiAt, palette, qa, SHOTS, wait } from "./lib/qa.mjs"
+import { apiAt, palette, qa, SHOTS, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, errs, watch, noErrors, done } = await qa(import.meta.url)
 const NOTE = "Qa vim/Note.md", CODE = "Qa vim/code.ts", OTHER = "Qa vim/Other page.md", MD = "Qa vim/Motions.md"
 const VIMRC = ".vaultite/plugins/vim/init.vim"
@@ -52,8 +52,7 @@ const cursorLine = () => page.evaluate(() => {
 })
 const tabFile = () => page.evaluate(() => decodeURIComponent(location.hash))
 const livePreview = async () => {
-  await palette(page, "Switch to live preview", 700)
-  if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
+  await command(page, "Switch to live preview", 700)
 }
 
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await wait(1500)

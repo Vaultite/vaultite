@@ -1,19 +1,16 @@
-// Pinning and dashboards are plugins (Pinned: plugins/core/pages, Dashboards: plugins/core/dashboards), each on and off,
-// on a computer and a phone. Both on: a dashboard is a page (its title, a grid of cards), a file opened from it opens
-// beside it while a file opened from a pinned note replaces it (pinned isn't a page any more), Pin / Unpin are in the
-// tree's menu, the palette and Pinned's settings. Pinned off: no list in the sidebar or the phone's drawer, no Pin anywhere, no
-// tiles on a phone's new tab, a new device starts on a new tab, dashboards still pages. Dashboards off: a dashboard
-// opens as a Markdown file (its title, its blocks one under another in the editor), files open in its place. Both off: nothing breaks. No page errors anywhere. WRITES .vaultite/plugins.json and
-// pages.json, and a note in Qa page plugins/ (removed at the end): throwaway server only.
+// Pinning and dashboards are plugins (Pinned: plugins/core/pages, Dashboards: plugins/core/dashboards), always on, on a
+// computer and a phone: a dashboard is a page (its title, a grid of cards), a file opened from it opens beside it while
+// a file opened from a pinned note replaces it (pinned isn't a page any more), Pin / Unpin are in the tree's menu, the
+// palette and Pinned's settings, a new device starts on the first pinned page, a phone's new tab shows them as tiles.
+// Switched off in plugins.json, both stay on. No page errors anywhere. WRITES .vaultite/plugins.json and a note in Qa
+// page plugins/ (removed at the end): throwaway server only.
 //   node web/qa/pageplugins.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { qa, until, wait } from "./lib/qa.mjs"
-import { pagePath } from "./subjects.mjs"
 
 const { args: [B, VAULT, OUT = "/tmp/pageplugins-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const hash = (p) => `#file/${encodeURIComponent(p)}`
-const TODAY = await pagePath(B, "Today")
 // Notes of its own, not pinned, to open from the tree (whatever notes the vault has).
 const OTHER = "Qa page plugins/A note.md", ANOTHER = "Qa page plugins/Another note.md"
 mkdirSync(`${VAULT}/Qa page plugins`, { recursive: true })
@@ -29,8 +26,7 @@ const PAGE = PINNED.find(isDashboard)
 const PAGE_NAME = PAGE.split("/").pop().replace(/\.md$/, "")
 const pluginsFile = `${VAULT}/.vaultite/plugins.json`
 const pluginsWas = (() => { try { return readFileSync(pluginsFile, "utf8") } catch { return null } })()
-/** Turn plugins off (the file the app follows live), then a fresh page load. The vault's own list stays (Today is on
- *  only by it, and its page hides while it's off). */
+/** Switch plugins off (the file the app follows live). The vault's own list stays. */
 async function setOff(ids) {
   const was = JSON.parse(pluginsWas ?? "{}")
   writeFileSync(pluginsFile, JSON.stringify({ ...was, disabled: [...was.disabled ?? [], ...ids] }) + "\n")
@@ -78,15 +74,15 @@ const noWorkspaces = async () => { for (const n of [1, 2, 3, 4, 5]) await fetch(
 const isGrid = (page) => page.locator("article.file-view .\\@container .grid").count()
 const editors = (page) => page.locator("article.file-view .cm-editor").count()
 
-// ---------- both on ----------
+// ---------- on ----------
 await setOff([])
 {
   const { ctx, page } = await desktop()
-  await page.goto(`${B}${hash(TODAY)}`)
+  await page.goto(`${B}${hash(PAGE)}`)
   check("on: a dashboard is a grid of cards", await until(async () => (await isGrid(page)) > 0 && !(await editors(page)), 8000), await isGrid(page))
-  check("on: its title is the page's name, as a note's", (await page.locator("article.file-view [data-title-row] h1").first().innerText()).trim() === "Today")
+  check("on: its title is the page's name, as a note's", (await page.locator("article.file-view [data-title-row] h1").first().innerText()).trim() === PAGE_NAME)
   check("on: read, no Properties", (await page.locator("article.file-view section[aria-label=Properties]").count()) === 0)
-  await page.screenshot({ path: `${OUT}on-today.png` })
+  await page.screenshot({ path: `${OUT}on-page.png` })
   // A file opened from the dashboard (the tree) opens beside it.
   const n0 = await tabs(page)
   await fromTree(page, OTHER)
@@ -123,76 +119,20 @@ await setOff([])
   await pc.close()
 }
 
-// ---------- Pinned off ----------
-await setOff(["pages"])
-{
-  const { ctx, page } = await desktop()
-  await page.goto(`${B}${hash(TODAY)}`)
-  check("pinned off: a dashboard is still a page", await until(async () => (await isGrid(page)) > 0, 8000))
-  check("pinned off: no pinned pages in the sidebar", !(await page.locator("nav[aria-label=Pages]").count()))
-  check("pinned off: no Pin in the tree's menu", !/(^|\|)Pin(\||$)/.test(await treeMenu(page, OTHER)), await treeMenu(page, OTHER))
-  const cmds = await palette(page, "pin current")
-  check("pinned off: no Pin in the palette", !/Pin current file/.test(cmds), cmds)
-  await page.screenshot({ path: `${OUT}pinned-off-today.png` })
-  const settings = await palette(page, "pinned settings")
-  check("pinned off: no Pinned settings in the palette", !/Pinned settings/.test(settings), settings)
-  await ctx.close()
-  await noWorkspaces()
-  const fresh = await desktop()
-  await fresh.page.goto(B); await wait(1800)
-  check("pinned off: a new device starts on a new tab", (await fresh.page.evaluate(() => location.hash)) === "#new", await fresh.page.evaluate(() => location.hash))
-  await fresh.page.screenshot({ path: `${OUT}pinned-off-first.png` })
-  await fresh.ctx.close()
-  await noWorkspaces()
-  const { ctx: pc, page: m } = await phone()
-  await m.goto(B); await wait(1500)
-  check("pinned off, phone: starts on a new tab", (await m.evaluate(() => location.hash)) === "#new", await m.evaluate(() => location.hash))
-  check("pinned off, phone: no tiles on a new tab", !(await m.locator("[data-new-tab-pages]").count()))
-  await m.screenshot({ path: `${OUT}pinned-off-phone.png`, fullPage: true })
-  await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await wait(500)
-  check("pinned off, phone: no pinned pages in the drawer", !(await m.locator("[data-phone-drawer=left] nav[aria-label=Pages]").count()))
-  await m.screenshot({ path: `${OUT}pinned-off-drawer.png` })
-  await pc.close()
-}
-
-// ---------- Dashboards off ----------
-await setOff(["dashboards"])
-{
-  const { ctx, page } = await desktop()
-  await page.goto(`${B}${hash(TODAY)}`)
-  check("dashboards off: a dashboard is a Markdown file (the editor draws it)", await until(async () => !(await isGrid(page)) && (await editors(page)) > 0, 8000), [await isGrid(page), await editors(page)])
-  check("dashboards off: its blocks are drawn one under another", (await page.locator("article.file-view .cm-editor .cm-island, article.file-view .cm-editor [data-block]").count()) > 0)
-  check("dashboards off: a pinned dashboard is still pinned", (await page.locator("nav[aria-label=Pages] a", { hasText: PAGE_NAME }).count()) === 1)
-  await page.screenshot({ path: `${OUT}dashboards-off-today.png` })
-  const n0 = await tabs(page)
-  await fromTree(page, OTHER)
-  check("dashboards off: a file opened from a dashboard takes its place", (await tabs(page)) === n0, [n0, await tabs(page)])
-  await ctx.close()
-  const { ctx: pc, page: m } = await phone()
-  await m.goto(`${B}${hash(TODAY)}`); await wait(1500)
-  check("dashboards off, phone: a dashboard opens as a file", (await m.locator("article.file-view .cm-editor").count()) > 0)
-  await m.screenshot({ path: `${OUT}dashboards-off-phone.png`, fullPage: true })
-  await pc.close()
-}
-
-// ---------- both off ----------
+// ---------- always on: switched off in plugins.json, both stay ----------
 await setOff(["dashboards", "pages"])
 {
   const { ctx, page } = await desktop()
-  await page.goto(B); await wait(1500)
-  await page.goto(`${B}${hash(TODAY)}`); await wait(1500)
-  check("both off: a dashboard opens as a file", (await editors(page)) > 0)
-  await page.screenshot({ path: `${OUT}both-off.png` })
+  await page.goto(`${B}${hash(PAGE)}`)
+  check("switched off: a dashboard is still a page", await until(async () => (await isGrid(page)) > 0 && !(await editors(page)), 8000), [await isGrid(page), await editors(page)])
+  check("switched off: the pinned pages are still in the sidebar", (await page.locator("nav[aria-label=Pages] a", { hasText: PAGE_NAME }).count()) === 1)
+  check("switched off: the tree's menu still has Pin", /(^|\|)Pin(\||$)/.test(await treeMenu(page, OTHER)), await treeMenu(page, OTHER))
+  await page.screenshot({ path: `${OUT}switched-off.png` })
   await ctx.close()
-  const { ctx: pc, page: m } = await phone()
-  await m.goto(B); await wait(1500)
-  await m.goto(`${B}${hash(TODAY)}`); await wait(1500)
-  await m.screenshot({ path: `${OUT}both-off-phone.png`, fullPage: true })
-  await pc.close()
 }
 
 if (pluginsWas === null) writeFileSync(pluginsFile, "{}\n"); else writeFileSync(pluginsFile, pluginsWas)
 rmSync(`${VAULT}/Qa page plugins`, { recursive: true, force: true })
-const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(TODAY)}`)).text()
-check("on again: /api/render has today's date in the routines' heading", /\n## Routines · \w+day \d+ \w+\n/.test(md), md.slice(0, 240))
+const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(PAGE)}`)).text()
+check("/api/render draws the page's blocks as text", md.includes(`\n# ${PAGE_NAME}\n`) && !md.includes("```block-"), md.slice(0, 240))
 await done()

@@ -1,7 +1,8 @@
 // The sidebar is plugins' panels: Search, Pages (core plugins), Terminal's sessions and Files, in that order (the
 // default: their `sort`). With no sessions the Terminals panel folds itself (nothing saved). Opens a
-// terminal from the Terminals panel and finds it listed (lit while its tab is focused), turns plugins off one by one
-// (their panels go, live, without a reload) until the sidebar is empty but for Plugins and Settings, turns them on again,
+// terminal from the Terminals panel and finds it listed (lit while its tab is focused), turns opt-in plugins off one by
+// one (their panels go, live, without a reload; the app's own are always on), empties the sidebar but for Plugins and
+// Settings, puts the panels back,
 // folds panels by their headings (and checks a drag or a heading's button doesn't), then ends the session from the
 // panel (its tab closes). In both densities, the geometry (RAIL in Sidebar.tsx): rows follow density, and the headings,
 // row icons, tree chevrons and search icon stay on one line, the rail's icons centred. Runs a shell and writes
@@ -18,11 +19,11 @@ const original = existsSync(settings) ? readFileSync(settings, "utf8") : null //
 const pagesFile = path.join(VAULT, ".vaultite/pages.json")
 const pagesBefore = readFileSync(pagesFile, "utf8")
 // Workspaces off (web/qa/workspaces.mjs checks them): the sidebar's setup is sidebars.json's, the default to start.
-const setDisabled = (ids) => { const o = JSON.parse(original ?? "{}"); writeFileSync(settings, JSON.stringify({ ...o, disabled: ids, enabled: (o.enabled ?? []).filter((x) => x !== "workspaces") }, null, 2) + "\n") }
+const setDisabled = (ids, on = [], off = []) => { const o = JSON.parse(original ?? "{}"); writeFileSync(settings, JSON.stringify({ ...o, disabled: ids, enabled: [...(o.enabled ?? []).filter((x) => x !== "workspaces" && !on.includes(x) && !off.includes(x)), ...on] }, null, 2) + "\n") }
 const sidebarsFile = path.join(VAULT, ".vaultite/sidebars.json")
 const sidebarsBefore = existsSync(sidebarsFile) ? readFileSync(sidebarsFile, "utf8") : null
 const DEFAULT = ["search:search", "pages:pages", "terminal:sessions", "files:files"]
-const setDefault = () => writeFileSync(sidebarsFile, JSON.stringify({ left: DEFAULT, right: [], collapsed: [] }, null, 2) + "\n")
+const setDefault = (left = DEFAULT) => writeFileSync(sidebarsFile, JSON.stringify({ left, right: [], collapsed: [] }, null, 2) + "\n")
 const saved = () => { try { return JSON.parse(readFileSync(sidebarsFile, "utf8")) } catch { return {} } }
 /** Saved as folded (sidebars.json's `collapsed`); in the left sidebar. */
 const folded = (k) => !!saved().collapsed?.includes(k)
@@ -72,20 +73,29 @@ try {
   await wait(800)
   await page.screenshot({ path: `${OUT}2-terminal.png` })
 
-  // Plugins off, one by one: their panels go without a reload.
-  const off = ["backlinks"]
-  for (const id of ["search", "pages", "files", "terminal"]) {
-    off.push(id)
-    setDisabled(off)
-    const left = await until(async () => { const p = await panels(); return p.every((k) => !off.includes(k.split(":")[0])) ? p : null })
-    check(`${id} off: its panel goes`, !!left, await panels())
+  // Opt-in plugins' panels, put in the sidebar: on, they show; off, one by one, they go without a reload.
+  const OPT_IN = ["activity:feed", "web-viewer:web-pages"]
+  setDefault([...DEFAULT, ...OPT_IN])
+  setDisabled(["backlinks"], OPT_IN.map((k) => k.split(":")[0]))
+  check("opt-in plugins on: their panels show", !!(await until(async () => { const p = await panels(); return OPT_IN.every((k) => p.includes(k)) })), await panels())
+  for (let i = 0; i < OPT_IN.length; i++) {
+    const id = OPT_IN[i].split(":")[0]
+    setDisabled(["backlinks"], OPT_IN.slice(i + 1).map((k) => k.split(":")[0]), OPT_IN.slice(0, i + 1).map((k) => k.split(":")[0]))
+    check(`${id} off: its panel goes`, !!(await until(async () => !(await panels()).includes(OPT_IN[i]))), await panels())
   }
-  check("empty sidebar", (await panels()).length === 0, await panels())
+  // The app's own plugins are always on: switched off in plugins.json, Search's panel stays.
+  setDisabled(["backlinks", "search"])
+  await wait(1500)
+  check("an always-on plugin's panel stays", (await panels()).includes("search:search"), await panels())
+  setDisabled(["backlinks"])
+  // A sidebar with no panels: Plugins and Settings stay.
+  setDefault([])
+  check("empty sidebar", !!(await until(async () => (await panels()).length === 0)), await panels())
   check("Plugins and Settings stay", !!(await page.$("aside nav[aria-label='App'] [aria-label='Plugins']")) && !!(await page.$("aside nav[aria-label='App'] [aria-label='Settings']")))
   await page.screenshot({ path: `${OUT}3-empty.png` })
 
-  // Back on: the session is still running (turning the panel off doesn't end shells).
-  setDisabled(["backlinks"])
+  // Back: the session is still running.
+  setDefault()
   await until(async () => (await panels()).length === 4)
   check("panels back", (await panels()).length === 4, await panels())
   check("session survived", !!(await until(() => page.$(`aside [data-session='${sid}']`))))

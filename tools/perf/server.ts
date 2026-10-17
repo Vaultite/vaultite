@@ -19,7 +19,7 @@ const BASE = `http://127.0.0.1:${PORT}`
 const CLIENT = arg("client", "app/web")
 const APP: Record<string, string> = CLIENT === "none" ? {} : { "X-Vaultite-Client": CLIENT }
 const ENDPOINTS = ["/api/state", "/api/vault", "/api/files", "/api/plugins", "/api/graph", "/api/tags", "/api/search?q=light",
-  "/api/render?path=Dashboards/Today.md", "/api/render?path=Dashboards/People.md", "/api/render?path=Dashboards/Health.md",
+  "/api/render?path=Start%20here.md", "/api/render?path=Dashboards/People.md", "/api/render?path=Dashboards/Agents.md",
   "/api/query?q=" + encodeURIComponent(JSON.stringify({ from: "Notes/", type: "note", sort: ["-updated"], limit: 50 })), "/"]
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-perf-"))
@@ -113,7 +113,7 @@ async function measure(child: ChildProcess) {
   }
   result.endpoints = endpoints
   // What a first load asks for at once (web/src/core/data.ts and the shell): all in flight together.
-  const burst = ["/api/state?since=0", "/api/files", "/api/plugins", "/api/render?path=Dashboards/Today.md", "/api/graph", "/api/tags", "/api/vault", "/api/config/plugins"]
+  const burst = ["/api/state?since=0", "/api/files", "/api/plugins", "/api/render?path=Start%20here.md", "/api/graph", "/api/tags", "/api/vault", "/api/config/plugins"]
   const bursts: number[] = []
   const c0 = cpu(child)
   for (let i = 0; i < RUNS; i++) {

@@ -223,7 +223,7 @@ try {
     await page.locator("[data-plugin-gear=logs]").click()
     await until(() => sheet(page, "logs").count(), 4000)
     check("no form: its data.json, drawn", !!(await until(async () => await sheet(page, "logs").locator("[data-settings-json] .json-view").count() >= 1 &&
-      (await sheet(page, "logs").innerText()).includes("Running"), 4000)), await sheet(page, "logs").innerText())
+      (await sheet(page, "logs").innerText()).includes(json(".vaultite/plugins/logs/data.json").areas[0].name), 4000)), await sheet(page, "logs").innerText())
     await shot(page, "6-json-logs-desktop")
     await sheet(page, "logs").locator("[data-settings-open]").click()
     check("...Open: the file in a tab, the sheet closed", !!(await until(async () => !(await page.locator("dialog[open]").count()) &&

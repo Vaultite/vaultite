@@ -1,3 +1,3 @@
 ## Calendar
-Events are read live from the user's calendars and never written to the vault. The `agenda` block is on the Today
-page.
+Events are read live from the user's calendars and never written to the vault. The `agenda` block goes on any
+dashboard (Today's, when that plugin is installed).

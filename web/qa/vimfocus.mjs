@@ -4,7 +4,7 @@
 // the pane in front; a file opened from outside (POST /api/ui, `vau open`) doesn't take the keys from a field being typed in.
 // WRITES a "Qa vimfocus" folder and plugins.json's `enabled`: throwaway only.
 //   node web/qa/vimfocus.mjs <base url> [out dir]
-import { apiAt, palette, qa, SHOTS, until, wait } from "./lib/qa.mjs"
+import { apiAt, palette, qa, SHOTS, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = SHOTS], browser, check, watch, noErrors, done } = await qa(import.meta.url)
 const LONG = "Qa vimfocus/Long.md", TARGET = "Qa vimfocus/Target.md", OTHER = "Qa vimfocus/Other.md"
 const json = { "Content-Type": "application/json" }
@@ -47,8 +47,7 @@ const keys = () => page.evaluate(() => {
 })
 
 await page.goto(`${B}#file/${encodeURIComponent(LONG)}`); await wait(2000)
-await palette(page, "Switch to reading")
-if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
+await command(page, "Switch to reading", 800)
 check("the note is in reading view", await page.locator(".cm-content[contenteditable=false]").count() > 0)
 await page.evaluate(() => document.activeElement?.blur())
 
@@ -111,8 +110,7 @@ await page.keyboard.press("Meta+e"); await wait(1200)
 ps = await panes()
 check(`⌘E again: both edit (${ps})`, ps.every((x) => x === "true"))
 await page.screenshot({ path: `${OUT}vimfocus-split.png` })
-await palette(page, "Close all other")
-if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
+await command(page, "Close all other", 800)
 
 // A file opened from outside doesn't take the keys from a field being typed in.
 await page.evaluate(() => {

@@ -33,7 +33,8 @@ try {
     const redo = async () => { await away(); await page.keyboard.press("ControlOrMeta+Shift+z"); await wait(300) }
     const palette = async (name) => {
       await page.keyboard.press("ControlOrMeta+p"); await wait(300); await page.keyboard.type(name); await wait(300)
-      const none = await page.getByText("No command matches").count()
+      // (only one named so: a toggle is also found by its other name)
+      const none = !(await page.locator("[role=option]", { hasText: name }).count())
       await page.keyboard.press(none ? "Escape" : "Enter"); await wait(600)
     }
 

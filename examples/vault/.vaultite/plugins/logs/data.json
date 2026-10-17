@@ -1,0 +1,29 @@
+{
+  "areas": [
+    { "slug": "health", "name": "Health", "icon": "heart" },
+    { "slug": "workouts", "name": "Workouts", "icon": "dumbbell", "tint": "pink", "parent": "health", "weekly_goal": 3, "blocks": ["workout"], "fields": [
+      { "key": "kind", "label": "Kind", "type": "text" },
+      { "key": "place", "label": "Place", "type": "text" },
+      { "key": "exercises", "label": "Exercises", "type": "json" },
+      { "key": "volume_kg", "label": "Volume", "type": "number", "unit": "kg" },
+      { "key": "sets", "label": "Sets", "type": "number" }] },
+    { "slug": "sleep", "name": "Sleep", "icon": "moon", "tint": "indigo", "parent": "health", "fields": [
+      { "key": "bed", "label": "Bedtime", "type": "text" },
+      { "key": "wake", "label": "Wake", "type": "text" },
+      { "key": "in_bed_min", "label": "In bed", "type": "number", "unit": "min" }] },
+    { "slug": "nutrition", "name": "Nutrition", "icon": "apple", "tint": "green", "parent": "health", "track_duration": false, "fields": [
+      { "key": "meal", "label": "Meal", "type": "text" },
+      { "key": "kcal", "label": "Calories", "type": "number", "unit": "kcal" },
+      { "key": "protein", "label": "Protein", "type": "number", "unit": "g" },
+      { "key": "carbs", "label": "Carbs", "type": "number", "unit": "g" },
+      { "key": "fat", "label": "Fat", "type": "number", "unit": "g" }] },
+    { "slug": "learning", "name": "Learning", "icon": "graduation-cap" },
+    { "slug": "reading", "name": "Reading", "icon": "book-open", "tint": "orange", "parent": "learning", "fields": [
+      { "key": "book_id", "label": "Book", "type": "book" },
+      { "key": "pages", "label": "Pages read", "type": "number" }] },
+    { "slug": "study", "name": "Study", "icon": "notebook-pen", "tint": "purple", "parent": "learning", "fields": [
+      { "key": "subject", "label": "Subject", "type": "text" },
+      { "key": "focus", "label": "Worked on", "type": "text" },
+      { "key": "link", "label": "Link", "type": "text" }] }
+  ]
+}

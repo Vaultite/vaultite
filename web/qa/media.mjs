@@ -7,7 +7,7 @@
 // 390px. WRITES a "Qa media" folder and recordings in Attachments/: throwaway only.
 //   node web/qa/media.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
-import { SHOTS, palette, qa, until, wait } from "./lib/qa.mjs"
+import { SHOTS, palette, qa, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url, {
   chrome: { args: ["--use-fake-device-for-media-stream", "--use-fake-ui-for-media-stream", "--autoplay-policy=no-user-gesture-required"] },
 })
@@ -34,8 +34,7 @@ const open = async (opts) => {
 const bar = (page) => page.locator("[data-recorder]")
 const editLine = (page, text) => page.locator(".vau-editor .cm-line", { hasText: text }).first()
 async function liveView(page) {
-  await palette(page, "Switch to live preview", 600)
-  if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
+  await command(page, "Switch to live preview", 600) // (already in it: the view switch offers reading view)
 }
 
 // ---------- recording ----------

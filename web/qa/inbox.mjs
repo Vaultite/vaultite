@@ -1,7 +1,7 @@
 // The Inbox (plugins/core/inbox): events (posted, an agent's hook about a terminal, `vau notify`) toast and count on
 // the header's button; results (a file in Inbox/, one through the API) too; the Inbox view (Done with Undo, File to…,
-// read and unread, the right-click menu); the sidebar panel (unread only; show_read); the block on Today; a phone.
-// Screenshots in the out dir. WRITES Inbox/, Notes/Filed/, sidebars.json (put back) and starts a shell: throwaway
+// read and unread, the right-click menu); the sidebar panel (unread only; show_read); the block on a page; a phone.
+// Screenshots in the out dir. WRITES Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back) and starts a shell: throwaway
 // server only (then `tmux -L vaultite-<port> kill-server`).
 //   node web/qa/inbox.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
@@ -9,7 +9,6 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync, existsSync } from "node
 import path from "node:path"
 import { devices } from "playwright-core"
 import { apiAt, qa, until, wait } from "./lib/qa.mjs"
-import { pagePath } from "./subjects.mjs"
 const { args: [B, OUT = "/tmp/inbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const VAULT = (await (await fetch(new URL("api/vault", B))).json()).path
@@ -30,11 +29,13 @@ const toasts = (p = page) => p.locator("[data-sonner-toast]")
 const toastWith = (text, p = page) => until(async () => (await toasts(p).allInnerTexts()).find((t) => t.includes(text)))
 const count = () => page.locator("aside [data-inbox-button]").getAttribute("data-count").then(Number).catch(() => -1)
 const enc = encodeURIComponent
-const TODAY = await pagePath(B, "Today")
+// A page with the Inbox's block (removed at the end).
+const PAGE = "Qa inbox.md"
+writeFileSync(path.join(VAULT, PAGE), "---\ntype: dashboard\n---\n\n```block-inbox\n```\n")
 
 // Without the Inbox panel in a sidebar, so the header has its button (8. puts the panel in).
 writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), JSON.stringify({ left: ["search:search", "pages:pages", "files:files"], right: [], collapsed: [] }))
-await page.goto(`${B}#file/${enc(TODAY)}`)
+await page.goto(`${B}#file/${enc(PAGE)}`)
 await page.waitForSelector("aside [data-inbox-button]")
 await wait(800)
 check("the Inbox button is in the sidebar's header, nothing new", (await count()) === 0, await count())
@@ -50,7 +51,7 @@ const term = `qa${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${term}`)
 await until(() => page.locator(".xterm").count())
 await wait(1500)
-await page.goto(`${B}#file/${enc(TODAY)}`)
+await page.goto(`${B}#file/${enc(PAGE)}`)
 await wait(800)
 await api("POST", `inbox/hook?agent=claude&terminal=${term}&state=waiting&prev=working`, { hook_event_name: "Notification", message: "Claude needs your permission to use Bash", session_id: "qa-session" })
 const waitingToast = await toastWith("Claude Code is waiting for you")
@@ -92,7 +93,7 @@ check("a long toast shows 3 lines at most, its button in reach", box.lines <= 3 
 await shot(page, "1b-long-toasts")
 
 // 5. Results: a file written in Inbox/, one through the API (an agent's, like MCP's inbox_add).
-await page.goto(`${B}#file/${enc(TODAY)}`)
+await page.goto(`${B}#file/${enc(PAGE)}`)
 await wait(1000)
 mkdirSync(path.join(VAULT, "Inbox"), { recursive: true })
 const now = new Date().toISOString().slice(0, 19).replace("T", " ")
@@ -182,7 +183,7 @@ await api("POST", "inbox/events", { source: "codex", kind: "done", title: "Codex
 const panel = await until(() => page.locator("aside [data-inbox-panel]").count())
 check("the panel shows", !!panel)
 check("and the header's button steps aside", !!(await until(async () => (await page.locator("aside [data-inbox-button]").count()) === 0)))
-check("with results and events", (await page.locator("aside [data-inbox-panel] [data-result]").count()) >= 1 && (await page.locator("aside [data-inbox-panel] [data-event]").count()) >= 1)
+check("with results and events", !!(await until(async () => (await page.locator("aside [data-inbox-panel] [data-result]").count()) >= 1 && (await page.locator("aside [data-inbox-panel] [data-event]").count()) >= 1)))
 await wait(400)
 await page.locator("aside[data-side=left]").screenshot({ path: `${OUT}4-sidebar-panel.png` })
 
@@ -227,19 +228,19 @@ check("which folds them again", !!(await until(async () => (await prow().count()
 await api("PATCH", "config/plugin/inbox", { show_read: null })
 check("show_read off again: only the unread one", !!(await until(async () => (await prow().count()) === 1 && (await fold.count()) === 0)), await prow().count())
 
-// 9. The block on Today.
-await page.goto(`${B}#file/${enc(TODAY)}`)
+// 9. The block on a page.
+await page.goto(`${B}#file/${enc(PAGE)}`)
 const block = page.locator("[data-inbox-results]").first()
-check("the block on Today lists what's new", await until(async () => (await block.count()) === 1, 8000), await block.count())
-await page.locator("section", { has: page.locator("[data-inbox-results]") }).first().screenshot({ path: `${OUT}5-today-block.png` }).catch(() => {})
-const text = await api("GET", `render?path=${enc(TODAY)}`)
+check("the block on a page lists what's new", await until(async () => (await block.count()) === 1, 8000), await block.count())
+await page.locator("section", { has: page.locator("[data-inbox-results]") }).first().screenshot({ path: `${OUT}5-page-block.png` }).catch(() => {})
+const text = await api("GET", `render?path=${enc(PAGE)}`)
 check("as text too", text.includes("## Inbox") && text.includes("Plant care apps compared"), text.slice(text.indexOf("## Inbox"), text.indexOf("## Inbox") + 300))
 
 // 10. A phone: the block, and the button at the top of the tab list.
 const phone = await browser.newContext({ ...devices["iPhone 13"], viewport: { width: 390, height: 844 } })
 await phone.addInitScript(() => { if (!sessionStorage.getItem("qa")) { localStorage.clear(); sessionStorage.setItem("qa", "1") } })
 const ph = watch(await phone.newPage(), { label: "phone" })
-await ph.goto(`${B}#file/${enc(TODAY)}`)
+await ph.goto(`${B}#file/${enc(PAGE)}`)
 await ph.waitForSelector("[data-phone-bar]")
 await wait(1500)
 const pblock = ph.locator("[data-inbox-results]").first()
@@ -247,7 +248,7 @@ await pblock.scrollIntoViewIfNeeded().catch(() => {})
 check("phone: the block", await until(async () => (await pblock.count()) === 1, 8000))
 const wide = await ph.evaluate(() => document.documentElement.scrollWidth <= 390)
 check("phone: no sideways scroll", wide)
-await shot(ph, "6-phone-today")
+await shot(ph, "6-phone-page")
 await ph.locator("[data-tabs-button]").tap()
 const pbutton = await until(() => ph.locator("[data-sheet-bar] [data-inbox-button]").count())
 check("phone: the Inbox button in the tab list's bottom bar", !!pbutton)
@@ -260,6 +261,7 @@ if (pbutton) {
   await shot(ph, "8-phone-inbox")
 }
 
+rmSync(path.join(VAULT, PAGE), { force: true })
 if (sidebars) writeFileSync(path.join(VAULT, ".vaultite/sidebars.json"), sidebars); else rmSync(path.join(VAULT, ".vaultite/sidebars.json"), { force: true })
 await browser.close()
 await done()

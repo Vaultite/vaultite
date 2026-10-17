@@ -1,7 +1,7 @@
 // The command palette's plugin rows (components/CommandPalette.tsx): a plugin that's off, its name typed, is offered
 // after the commands to turn on, with what it needs (People map brings People), and says so with Undo; a plugin
 // that's on is offered to turn off only after "turn off" or "disable"; "turn on" alone lists the ones that are off;
-// a vault plugin is never offered to turn on; one letter offers none. WRITES plugins.json (put back) and a vault
+// a vault plugin too (turned on there, it's allowed here, as its switch does); one letter offers none. WRITES plugins.json (put back) and a vault
 // plugin (.vaultite/plugins/qa-lamp, removed): throwaway server only.
 //   node web/qa/paletteplugins.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
@@ -67,12 +67,11 @@ check("the toast says what goes with it", await toastWith(/^People is off, and P
 r = await search("disable clip")
 check("\"disable\" works too", r.rows.includes("Turn off Web clipper"), r.rows)
 
-// 4. "turn on" alone lists what's off (Dock icon is off until asked for); never a vault plugin.
+// 4. "turn on" alone lists what's off (Workspaces is off until asked for), a vault plugin too.
 r = await search("turn on")
-check("\"turn on\" lists the off plugins", r.rows.includes("Turn on Dock icon") && r.rows.includes("Turn on Workspaces"), r.rows)
-check("not a vault plugin", !r.rows.includes("Turn on Qa lamp"), r.rows)
+check("\"turn on\" lists the off plugins", r.rows.includes("Turn on Workspaces") && r.rows.includes("Turn on Qa lamp"), r.rows)
 r = await search("qa lamp")
-check("a vault plugin's name offers nothing", !r.rows.some((x) => x.includes("Qa lamp")), r.rows)
+check("a vault plugin's name offers it", r.rows.includes("Turn on Qa lamp"), r.rows)
 
 // 5. One letter offers no plugins.
 r = await search("w")

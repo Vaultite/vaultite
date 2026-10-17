@@ -5,7 +5,7 @@
 // WRITES a "Qa photo" folder and images in Attachments/: throwaway only.
 //   node web/qa/photo.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { palette, qa, until, wait } from "./lib/qa.mjs"
+import { qa, until, wait, command } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/photo-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const json = { "Content-Type": "application/json" }
@@ -44,8 +44,7 @@ const editLine = (page, text) => page.locator(".vau-editor .cm-line", { hasText:
 // ---------- desktop ----------
 let page = await open({ viewport: { width: 1280, height: 860 } })
 await page.goto(`${B}#file/${enc(DESK)}`); await wait(1500)
-await palette(page, "Switch to live preview", 0); await wait(400)
-if (await page.getByText("No command matches").count()) { await page.keyboard.press("Escape"); await wait(300) }
+await command(page, "Switch to live preview", 400) // (already in it: the view switch offers reading view)
 
 await editLine(page, "Before.").click(); await page.keyboard.press("End"); await wait(150)
 const asked = await choose(page, () => addPhoto(page), [img("qa-photo-one.png")])

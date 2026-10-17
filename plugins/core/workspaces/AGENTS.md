@@ -10,7 +10,7 @@ write the same file. `1.json`:
 ```
 {"name": "Writing", "sidebars": {"left": ["search:search", "files:files"], "right": [], "collapsed": []},
  "layout": {"root": {"id": "g0", "tabs": [{"id": "t1", "to": "file:Notes/Idea.md"}], "active": "t1"}, "focus": "g0"},
- "pinned": ["Dashboards/Today.md", "Notes/Draft.md"], "state": {"files:open": ["Notes"]}}
+ "pinned": ["Dashboards/People.md", "Notes/Draft.md"], "state": {"files:open": ["Notes"]}}
 ```
 - `name`: optional (the number's tooltip).
 - `sidebars`: shaped like `.vaultite/sidebars.json`; left out, it shows that file's (also what new workspaces start
