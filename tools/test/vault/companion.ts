@@ -236,6 +236,27 @@ export default async ($: VaultTest) => {
     check("companion: each agent's colour is kept, for after a restart", kept.ada === r.agents.find((a: Any) => a.name === "Ada")?.tint && kept.claude === "orange", kept)
     check("companion: an agent's name is one word", (await api("POST", "ops/companion.start", { as: "two words" }))[0] >= 400)
   }
+  {
+    // The cursor: dropped on a line, a point (an ask without words); its says kept, a few per agent; one pinned, a comment.
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    write("Notes/P.md", "# P\n\nPlant the basil\nWater it\n")
+    c.addMoment({ kind: "point", path: "Notes/P.md", line: 3, find: "basil", selection: "the basil" })
+    let [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: a dropped cursor is a point for it, with the note's lines, and it thinks there", got.moments.some((m: Any) => m.kind === "point" && m.line === 3 && m.selection === "the basil") &&
+      got.notes[0]?.lines.includes("Plant the basil") && r.agents.some((a: Any) => a.name === "Claude" && a.state === "thinking" && a.find === "basil"), [got, r.agents])
+    check("companion: and reads as look at this", /- point Notes\/P\.md:3: .*look at this[^\n]*\n  on the selection: "the basil"/.test(c.momentsText(got.moments, "pair", null)), c.momentsText(got.moments, "pair", null))
+    for (let i = 1; i <= 12; i++) await api("POST", "ops/companion.say", { text: `Say ${i}`, path: "Notes/P.md", find: "Water" })
+    const mine = c.recentSays().filter((n: Any) => n.agent === "Claude")
+    check("companion: an agent's last ten says are kept", mine.length === 10 && mine[0].text === "Say 3" && mine[9].text === "Say 12", mine.map((n: Any) => n.text))
+    const pinned = c.pin(mine[9].id)
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: a say pinned is a comment, same words, same line, and no longer a bubble", pinned?.kind === "comment" && pinned.text === "Say 12" && pinned.line === 4 &&
+      !r.notes.some((n: Any) => n.id === mine[9].id) && c.recentSays().find((n: Any) => n.id === mine[9].id)?.pinned === pinned.id && c.pin(mine[9].id) === null, [pinned, r.notes])
+    const old = c.pin(mine[0].id)
+    check("companion: an old say, gone from the screen, can be pinned too", old?.kind === "comment" && old.text === "Say 3", old)
+    await api("POST", "ops/companion.clear", {})
+  }
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)
 }

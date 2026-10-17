@@ -12,10 +12,12 @@ export const plugin = new Plugin(import.meta.url)
 export type Mode = "off" | "quiet" | "notice" | "pair"
 /** Lines changed together: from `line` (1-based, in the file's text, frontmatter too), `removed` replaced by `added`. */
 export type Hunk = { line: number; added: string[]; removed: string[] }
-/** What the user did, as an agent sees it. ask: they addressed it (@claude in a note, Ask companion); edit and open only in
- *  notice and pair; reply, accept, reject, dismiss: their answer to one of its items. */
-export type Moment = { seq: number; t: number; kind: "ask" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
+/** What the user did, as an agent sees it. ask: they addressed it; point: they dropped its cursor on a line ("look at
+ *  this"); edit and open only in notice and pair; reply, accept, reject, dismiss: their answer to one of its items. */
+export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | "open" | "reply" | "accept" | "reject" | "dismiss"
   path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; item?: string; to?: string
+  /** A point's word or selection, where its cursor stays. */
+  find?: string
   /** The agent it's for (an ask to @name, an answer to its item); none (edit, open): the companion and agents that watch. */
   for?: string
   /** How long (ms) the user had stopped typing when the app sent it: the pause they waited. */
@@ -29,7 +31,9 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
  *  a highlight (gone after a while). `anchor`: a comment's line as it read, to find it again without `find`. */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
-  text?: string; replace?: string; anchor?: string; replies?: { by: "user" | "agent"; text: string }[] }
+  text?: string; replace?: string; anchor?: string; replies?: { by: "user" | "agent"; text: string }[]
+  /** A say the user pinned: the comment it became. */
+  pinned?: string }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it. */
@@ -68,6 +72,10 @@ const seen = new Map<string, number>() // agent -> when it last ran `next`
 const watching = new Set<string>() // agents besides the companion that asked for edit and open moments
 const loaded = Date.now(), LIVE_MS = 10 * 60_000
 const notes = new Map<string, Note>()
+/** Each agent's last says, gone from the screen or not: the cursor's popover shows them. */
+let said: Note[] = []
+export const recentSays = () => said
+const SAID = 10
 const timers = new Map<string, ReturnType<typeof setTimeout>>()
 let nid = 0
 const log = plugin.dayLog<Moment>("moments")
@@ -87,7 +95,7 @@ const asked = new Map<string, { done: (ok: boolean, error?: string) => void }>()
 
 const send = (ws: WebSocket, m: object) => { if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(m)) }
 const broadcast = (m: object) => { const text = JSON.stringify(m); for (const ws of windows.keys()) if (ws.readyState === ws.OPEN) ws.send(text) }
-const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()] })
+const snapshot = () => ({ t: "state", mode: mode(), name: ownName(), agents: [...agents.values()], notes: [...notes.values()], said })
 
 const key = (name: string) => name.trim().toLowerCase()
 const isMain = (name: string) => key(name) === key(ownName())
@@ -129,7 +137,7 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
   moments.push(full)
   if (moments.length > KEEP) moments.splice(0, moments.length - KEEP)
   for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
-  if (full.for && (m.kind === "ask" || m.kind === "reply")) setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) })
+  if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply")) setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) })
   return full
 }
 
@@ -345,6 +353,23 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
   addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) })
 }
 
+/** A say the user pinned: a comment with its words, where it was said (else where its agent is, else the user). */
+export function pin(id: string) {
+  const s = said.find((n) => n.id === id) ?? notes.get(id)
+  if (!s || s.kind !== "say" || s.pinned) return null
+  const a = agents.get(key(s.agent))
+  const t: Target = s.path ? s : a?.path ? a : focus() ?? {}
+  if (!t.path) return null
+  if (notes.has(id)) dropNote(id)
+  let line = t.line ?? 1
+  if (t.find) try { line = anchorLine(readText(plugin.vault.abs(t.path)), t) ?? line } catch { /* as it was said */ }
+  const anchor = t.find ? "" : lineText(t.path, line)
+  const c = putNote({ kind: "comment", agent: s.agent, text: s.text, path: t.path, line, ...(t.find ? { find: t.find } : {}), ...(anchor ? { anchor } : {}) })
+  s.pinned = c.id
+  broadcast({ t: "said", said })
+  return c
+}
+
 plugin.onUnload(() => {
   for (const t of [...timers.values(), ...following.values()]) clearTimeout(t)
   for (const ws of windows.keys()) ws.close()
@@ -370,11 +395,14 @@ plugin.socket("companion/live", (ws) => {
       if (m.active) w.at = Date.now()
       // (another note, not the same one focused again)
       if (w.focus && m.active && w.focus.path !== w.was) { w.was = w.focus.path; addMoment({ kind: "open", ...w.focus }) }
-    } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "edit"].includes(m.kind)) {
+    } else if (m.t === "moment" && typeof m.kind === "string" && ["ask", "point", "edit"].includes(m.kind)) {
       w.at = Date.now()
-      addMoment({ kind: m.kind as "ask" | "edit", for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
-        selection: str(m.selection) || undefined, hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
+      addMoment({ kind: m.kind as Moment["kind"], for: str(m.agent) || undefined, path: str(m.path) || undefined, line: Number(m.line) || undefined, text: str(m.text) || undefined,
+        selection: str(m.selection) || undefined, find: m.kind === "point" ? str(m.find).slice(0, 200) || undefined : undefined,
+        hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
         ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}) })
+    } else if (m.t === "pin" && typeof m.id === "string") {
+      pin(m.id)
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
       answer(m.id, m.verdict as "accept", str(m.text) || undefined)
     } else if (m.t === "done" && typeof m.rid === "string") {
@@ -543,7 +571,8 @@ plugin.op({
   help: `Answers the moments since you last asked, or waits for one (up to timeout seconds; none by then: an empty list).
 ask: they addressed you (@claude anywhere in a line of a note, sent at Enter or a pause; or Ask companion on a
 selection): its text is what follows a leading @name, else the whole line. Always answer. edit: lines
-they changed after a pause (notice and pair modes). open: they went to a note. reply, accept, reject, dismiss: their
+they changed after a pause (notice and pair modes). point: they dropped your cursor on a line (and a selection):
+look there and answer, as for an ask. open: they went to a note. reply, accept, reject, dismiss: their
 answer to your comment or suggestion. Lines count from 1 with the frontmatter. Asks, replies and edits come with the note's
 text around them, numbered: no need to read it again. While you wait your cursor rests; given moments, it shows you
 reading (thinking, for an ask) there until you act, or run this again: the user sees a seen tick. Run it again after
@@ -584,10 +613,10 @@ to the companion, or to an agent with --watch.
     if (got.length) {
       delivered.set(k, got[got.length - 1].seq)
       did(name, "handed", got.map((m) => m.seq))
-      const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "reply")
+      const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
       if (asked) asking.add(k)
       setAgent(name, { state: asked ? "thinking" : "reading",
-        ...(at ? { path: at.path, line: at.line, find: undefined } : {}) })
+        ...(at ? { path: at.path, line: at.line, find: at.find } : {}) })
       handed.add(k)
     }
     return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got) }
@@ -598,7 +627,7 @@ to the companion, or to an agent with --watch.
 /** The text around what the user asked or wrote, per note: all of a short note for an ask or a reply. */
 async function excerpts(ctx: OpCtx, ms: Moment[]) {
   const by = new Map<string, Moment[]>()
-  for (const m of ms) if (m.path && (m.kind === "ask" || m.kind === "reply" || m.kind === "edit")) by.set(m.path, [...(by.get(m.path) ?? []), m])
+  for (const m of ms) if (m.path && (m.kind === "ask" || m.kind === "point" || m.kind === "reply" || m.kind === "edit")) by.set(m.path, [...(by.get(m.path) ?? []), m])
   const out: Excerpt[] = []
   for (const [path, list] of by) {
     try {
@@ -633,6 +662,7 @@ export function momentsText(ms: Moment[], md: Mode, f: Target | null, notes: Exc
   for (const m of ms) {
     const at = m.path ? ` ${m.path}${m.line ? `:${m.line}` : ""}` : ""
     if (m.kind === "ask") out.push(`- ask${at}${m.more ? " (they went on writing it: the whole line now)" : ""}: ${JSON.stringify(m.text ?? "")}${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
+    else if (m.kind === "point") out.push(`- point${at}: they pointed you here (look at this, as an ask)${m.selection ? `\n  on the selection: ${JSON.stringify(cut(m.selection, 2000))}` : ""}`)
     else if (m.kind === "edit") {
       out.push(`- edit${at}`)
       for (const h of m.hunks ?? []) {
@@ -684,7 +714,11 @@ plugin.op({
     did(name, "say")
     const t = p.path || p.line !== undefined || p.find ? target(p) : {}
     setAgent(name, { ...t, state: acting(name) })
-    return putNote({ kind: "say", agent: name, text: str(p.text), ...t }, SAY_MS)
+    const n = putNote({ kind: "say", agent: name, text: str(p.text), ...t }, SAY_MS)
+    const mine = said.filter((x) => key(x.agent) === key(name))
+    said = [...said.filter((x) => !mine.slice(0, -(SAID - 1)).includes(x)), { ...n }]
+    broadcast({ t: "said", said })
+    return n
   },
   text: () => "Said.",
 })

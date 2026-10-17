@@ -1,7 +1,9 @@
 // Companion: an agent's cursor glides to where it looks (reading what it's handed, a tick when it lets that pass), its
 // words pop in a bubble by it, comments sit in the margin (a dot on a phone, opened by a tap) and take a reply, a suggestion is struck through with its replacement after it
 // and Tab takes it, an edit is typed in before the user's eyes and lit in its colour, and "@claude …" + Enter is an ask
-// the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes reaches it after a pause. Driven through the ops an agent calls.
+// the agent hears at once (mid-line, at the pause, its cursor reading along as it's written); what the user writes
+// reaches it after a pause. Its cursor: hovered, its status; clicked, its last words and a box to ask it; dragged onto
+// text, a point; its flag follows it. Driven through the ops an agent calls.
 // WRITES "QA companion/" and the plugin's data.json: throwaway server only.
 //   node web/qa/companion.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -222,6 +224,91 @@ await page.keyboard.press("End")
 await page.keyboard.press("Meta+Shift+K")
 await wait(300)
 check("Ask the companion (⌘⇧K): a new @claude line under the cursor", (await editor.innerText()).includes("Basil between them.\n@claude "), await editor.innerText())
+
+// A long card shows its first lines and More; clicked, all of it; clicking elsewhere folds it again. Lists are lists.
+await op("companion.clear")
+r = await op("companion.comment", { path: NOTE, find: "Basil", text: "- **Hover** shows its status\n- **Click** asks it\n- **Drag** points it\n- Follow it\n- Pin a bubble\n- One more" })
+const lc = page.locator(`[data-companion-note="${r.id}"]`)
+await lc.waitFor({ timeout: 3000 })
+await wait(500)
+check("cards: a list in a comment is drawn as a list", (await lc.locator("li").count()) === 6)
+check("cards: a long one shows its first lines and More", await lc.getByRole("button", { name: "More", exact: true }).isVisible())
+const shut = (await lc.boundingBox()).height
+await lc.getByRole("button", { name: "More", exact: true }).click()
+await wait(500)
+check("cards: clicked, it opens whole", (await lc.boundingBox()).height > shut + 20 && !(await lc.getByRole("button", { name: "More", exact: true }).count()))
+await page.screenshot({ path: `${OUT}card-open.png` })
+await editor.getByText("along the fence").click()
+await wait(500)
+check("cards: clicking elsewhere folds it again", await lc.getByRole("button", { name: "More", exact: true }).isVisible())
+await op("companion.clear")
+
+// Hover its cursor: its flag says what it's doing. Click: its last words, and a box to ask it there.
+const line = (s) => text(NOTE).split("\n").findIndex((l) => l.startsWith(s)) + 1
+await op("companion.next", { timeout: 0 })
+await op("companion.look", { path: NOTE, find: "Basil" })
+await op("companion.say", { text: "First thought." })
+await op("companion.say", { text: "Second thought." })
+await wait(900)
+const grip = cursor.locator("[data-companion-grip]"), flag = cursor.locator('button[aria-label="Go to Claude"]')
+await grip.hover()
+await wait(300)
+check("hover: its flag says what it's doing", /idle|thinking|reading/.test(await flag.innerText()), await flag.innerText())
+await grip.click()
+const pop = page.locator('[data-companion-popover="Claude"]')
+await pop.waitFor({ timeout: 2000 })
+const said = await pop.locator("[data-said]").allInnerTexts()
+check("click: its last words, newest at the bottom", said.length >= 2 && said.at(-1).includes("Second thought.") && said.at(-2).includes("First thought."), said)
+await page.screenshot({ path: `${OUT}popover.png` })
+await page.keyboard.type("what about the basil?")
+await page.keyboard.press("Enter")
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 5000)
+check("click: Enter asks it, with where its cursor is", r?.moments.some((m) => m.kind === "ask" && m.text === "what about the basil?" && m.path === NOTE && m.line === line("Basil")), r?.moments)
+check("click: and the box closes", !(await pop.count()))
+await page.keyboard.press("Escape")
+
+// Pin a bubble: a margin comment with its words, by its line.
+await op("companion.say", { text: "Pin me, please.", path: NOTE, find: "Tomatoes" })
+await cursor.getByText("Pin me, please.").waitFor({ timeout: 3000 })
+await cursor.getByRole("button", { name: "Pin as a comment" }).click()
+await page.locator("[data-companion-note]").filter({ hasText: "Pin me, please." }).waitFor({ timeout: 3000 })
+r = await op("companion.status")
+check("pin: the bubble becomes a comment, same words, same line", r.notes.some((n) => n.kind === "comment" && n.text === "Pin me, please." && n.line === line("Tomatoes")) && !r.notes.some((n) => n.kind === "say" && n.text === "Pin me, please."), r.notes)
+await op("companion.clear")
+
+// Drag its cursor onto text: "look at this", there; it stays.
+await op("companion.next", { timeout: 0 })
+await op("companion.look", { path: NOTE, find: "Basil" })
+await wait(900)
+const dest = await editor.getByText("Tomatoes along").boundingBox(), g = await grip.boundingBox()
+await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2)
+await page.mouse.down()
+for (let i = 1; i <= 8; i++) { await page.mouse.move(g.x + (dest.x + 40 - g.x) * i / 8, g.y + (dest.y + dest.height / 2 - g.y) * i / 8); await wait(30) }
+await page.mouse.up()
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "point") ? x : null }, 5000)
+check("drag: dropped on a line, a point moment there", r?.moments.some((m) => m.kind === "point" && m.path === NOTE && m.line === line("Tomatoes")), r)
+check("drag: it comes with the note's lines", r?.notes?.some((e) => e.path === NOTE), r?.notes)
+await wait(900)
+const stays = await cursor.boundingBox()
+check("drag: its cursor stays where it was dropped", Math.abs(stays.y - dest.y) < 24, { stays, dest })
+await page.screenshot({ path: `${OUT}point.png` })
+
+// Follow: from another note, its flag (or the status bar's menu) goes where it is.
+await page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first().click()
+await page.locator(`.file-view[data-path="${DIR}/Seeds.md"]:visible`).waitFor({ timeout: 5000 })
+await wait(900)
+await grip.hover()
+await flag.click()
+await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 5000 })
+check("follow: its flag opens the note it's in", true)
+await page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first().click()
+await page.locator(`.file-view[data-path="${DIR}/Seeds.md"]:visible`).waitFor({ timeout: 5000 })
+const face = page.locator('[data-companion-presence] button[aria-label="Go to Claude"]')
+check("presence: the status bar shows each agent around in its colour", (await page.locator("[data-companion-presence] button[data-agent]").count()) >= 2)
+await face.click()
+await page.locator(`.file-view[data-path="${NOTE}"]:visible .cm-content`).waitFor({ timeout: 5000 })
+check("presence: clicking one goes where it is", true)
+await page.screenshot({ path: `${OUT}presence.png` })
 await ctx.close()
 
 await op("companion.clear")
@@ -255,6 +342,27 @@ await until(async () => (await pc.getAttribute("data-seen")) !== null, 3000)
 await wait(600)
 check("phone: and a seen tick", await pc.getByLabel("seen").isVisible())
 await pp.screenshot({ path: `${OUT}phone-seen.png` })
+// A tap on its cursor: the box to ask it; a held finger drags it onto text.
+await pp.locator('.companion-cursor[data-agent="Claude"] [data-companion-grip]').tap()
+const ppop = pp.locator('[data-companion-popover="Claude"]')
+await ppop.waitFor({ timeout: 2000 })
+const pb = await ppop.boundingBox()
+check("phone: a tap opens its box, inside the screen", !!pb && pb.x >= 0 && pb.x + pb.width <= 390, pb)
+await pp.screenshot({ path: `${OUT}phone-popover.png` })
+await pp.locator(".cm-content").first().tap({ position: { x: 10, y: 10 } })
+await wait(300)
+await op("companion.next", { timeout: 0 })
+const cdp = await phone.newCDPSession(pp)
+const pg = await pp.locator('.companion-cursor[data-agent="Claude"] [data-companion-grip]').boundingBox()
+const pt = await pp.locator(".cm-line").filter({ hasText: "Tomatoes along" }).first().boundingBox()
+const touch = (type, x, y) => cdp.send("Input.dispatchTouchEvent", { type, touchPoints: type === "touchEnd" ? [] : [{ x, y }] })
+const [sx, sy, ex, ey] = [pg.x + pg.width / 2, pg.y + pg.height / 2, pt.x + 60, pt.y + pt.height / 2 + 40]
+await touch("touchStart", sx, sy)
+await wait(500)
+for (let i = 1; i <= 8; i++) { await touch("touchMove", sx + (ex - sx) * i / 8, sy + (ey - sy) * i / 8); await wait(30) }
+await touch("touchEnd")
+r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "point") ? x : null }, 5000)
+check("phone: held and dragged onto a line, a point there", r?.moments.some((m) => m.kind === "point" && m.path === NOTE && m.line === text(NOTE).split("\n").findIndex((l) => l.startsWith("Tomatoes")) + 1), r)
 await phone.close()
 
 await op("companion.clear")

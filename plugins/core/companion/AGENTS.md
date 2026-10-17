@@ -11,6 +11,8 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - An `ask` or `reply` is for you: always answer it. One that takes work: a few words first (`say`), then the work; your
   cursor shows you thinking until your next `next`. An ask is a line with your @name anywhere in it (sent at Enter, or
   when they pause): its text is what follows a leading @name, else the whole line; written on after it went, it comes again.
+- A `point` is an ask without words: they dragged your cursor onto a line (or a selection) to say "look at this".
+- They can click your cursor to see your last `say`s and ask you there, and pin a `say` into a comment.
 - Given moments, your cursor shows you reading them; running `next` again without acting shows the user a seen tick,
   so silence still tells them you saw it.
 - Modes: quiet (only asks reach you), notice (also `edit` and `open` after a pause: speak only when it clearly helps),

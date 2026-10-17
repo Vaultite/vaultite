@@ -6,12 +6,13 @@ export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string }
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
-  text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[] }
+  text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string }
 export type Hunk = { line: number; added: string[]; removed: string[] }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; connected: boolean }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], connected: false }
+/** said: each agent's last says (gone from the screen or not), oldest first. */
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; connected: boolean }
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], connected: false }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -95,7 +96,8 @@ function open() {
   s.onmessage = (ev) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(ev.data)) } catch { return }
-    if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[] }); heard(m.agents as Agent[]) }
+    if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [] }); heard(m.agents as Agent[]) }
+    else if (m.t === "said") set({ said: m.said as Note[] })
     else if (m.t === "agent") {
       const a = m.agent as Agent
       heard([...told.filter((x) => x.name !== a.name), a], a.name)
@@ -127,11 +129,16 @@ const edit = (e: EditAsk) => inTurn(async () => {
 
 /** Something the user did, for the agents (an ask: for `agent`, else the companion, who shows it thinking at once).
  *  `waited`: ms since they last typed. */
-export function sendMoment(m: { kind: "ask" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; hunks?: Hunk[]; waited?: number }) {
+export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; path?: string; line?: number; text?: string; selection?: string; find?: string; hunks?: Hunk[]; waited?: number }) {
   say({ t: "moment", ...m })
-  const a = m.kind === "ask" ? mentionAgent(m.agent ?? state.name) : undefined
-  if (a && a.state !== "away") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: undefined } : {}) }, 10_000)
+  const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
+  if (a && a.state !== "away") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
 }
+/** The user dropped an agent's cursor here: "look at this". It stays there (the server says so too, a moment later). */
+export const pointAt = (agent: string, t: { path: string; line: number; find?: string; selection?: string }) => sendMoment({ kind: "point", agent, ...t })
+/** A say turned into a margin comment, same words, same place. */
+export const pin = (id: string) => say({ t: "pin", id })
+
 /** The user's answer to a note: accept or reject a suggestion, dismiss a comment, reply to one. */
 export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
   if (verdict !== "reply") set({ notes: state.notes.filter((x) => x.id !== id) })

@@ -17,7 +17,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   inside, its Reply always in reach. Its comments and suggestions are kept beside the note, so they survive a restart,
   follow the note and reach your other devices. More agents join by name (`vau companion start --as Ada`), each in its
   own colour: `@ada` asks only that one. Typing @ lists them; `@name` shows as a chip in its agent's colour, lit
-  when the ask goes and while it thinks.
+  when the ask goes and while it thinks. Hover its cursor for what it's doing; click it for its last words (pin one as a
+  comment) and a box to ask it there; drag it onto text (a held finger on a phone) to say "look at this". The status
+  bar shows each agent around in its colour: a click goes where it is. Long margin cards show a few lines until opened.
 - **Shortcodes** (a new plugin, on from the start): type `:` and a name for an emoji or one of the app's icons, as in
   Slack or Discord (`:fir` suggests 🔥, recently used first; `:fire:` typed whole becomes it). Icons go in as
   `:LiCalendar:`, as Obsidian's Iconize writes them, and show as the icon.

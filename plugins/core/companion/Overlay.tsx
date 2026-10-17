@@ -2,10 +2,10 @@
 // it's nowhere), its words in a bubble by the cursor, and its comments and suggestions in the margin of the note.
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
-import { Check, X } from "lucide-react"
-import { cn, keyHint, Markdown } from "@vaultite"
+import { Check, Pin, X } from "lucide-react"
+import { cn, fmtTime, haptic, keyHint, Markdown, notify, openFile } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
-import { accept, type Agent, answer, getState, nearest, type Note, onBump, subscribe, typing, viewOf } from "./live"
+import { accept, type Agent, answer, getState, nearest, type Note, onBump, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
 
 type Spot = { x: number; y: number; parked?: boolean }
 const MARGIN = 228 // a card's width and its gaps: less room than this beside the text and it folds to a dot
@@ -66,28 +66,172 @@ function Arrow({ tint }: { tint: string }) {
   )
 }
 
+// (CodeMirror's own scrolling, through the view's class: no CodeMirror in this chunk)
+const scroller = (v: EditorView, pos: number) => v.dispatch({ effects: (v.constructor as typeof EditorView).scrollIntoView(pos, { y: "center" }) })
+/** Go where an agent is (its flag, its face in the status bar): its note opened, scrolled to its line. */
+export function follow(a: Agent) {
+  if (!a.path) return notify(`${a.name} isn't in a note now`)
+  const path = a.path, go = () => {
+    const v = viewOf(path)
+    if (!v) return false
+    const doc = v.state.doc, i = a.find ? nearest(doc.toString(), a.find, a.line) : -1
+    scroller(v, i >= 0 ? i : doc.line(Math.max(1, Math.min(a.line ?? 1, doc.lines))).from)
+    return true
+  }
+  if (go()) return
+  openFile(path)
+  let n = 0
+  const t = setInterval(() => { if (go() || ++n > 40) clearInterval(t) }, 100)
+}
+
+const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", away: "away" }
+const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
+
+/** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
+function dropAt(agent: string, x: number, y: number) {
+  const el = document.elementsFromPoint(x, y).find((e) => !e.closest(".companion-overlay") && e.closest(".cm-editor"))
+  const v = el ? [...views.keys()].find((x) => x.dom === el.closest(".cm-editor")) : undefined
+  const pos = v?.posAtCoords({ x, y })
+  if (!v || pos === null || pos === undefined) return false
+  const st = v.state, sel = st.selection.main, on = !sel.empty && pos >= sel.from && pos <= sel.to
+  const word = on ? null : st.wordAt(pos), selection = on ? st.sliceDoc(sel.from, sel.to) : undefined
+  const find = on ? selection!.split("\n")[0].slice(0, 200) : word ? st.sliceDoc(word.from, word.to) : undefined
+  pointAt(agent, { path: views.get(v)!, line: st.doc.lineAt(on ? sel.from : pos).number, find: find || undefined, selection })
+  return true
+}
+
+/** Clicked: its last words (each can be pinned into a comment) above a box to ask it something, there. */
+function Popover({ a, left, close }: { a: Agent; left: number; close: () => void }) {
+  const s = useSyncExternalStore(subscribe, getState)
+  const [draft, setDraft] = useState("")
+  const list = useRef<HTMLDivElement>(null)
+  const mine = s.said.filter((n) => n.agent === a.name)
+  useLayoutEffect(() => { list.current?.scrollTo({ top: list.current.scrollHeight }) }, [mine.length])
+  const send = () => {
+    const text = draft.trim()
+    if (!text) return
+    const v = a.path ? viewOf(a.path) : null, pos = v ? posIn(v, a) : null
+    sendMoment({ kind: "ask", agent: a.name, path: a.path, line: v && pos !== null ? v.state.doc.lineAt(pos).number : a.line, text })
+    close()
+  }
+  return (
+    <div data-companion-popover={a.name} className="companion-pop pointer-events-auto absolute top-[42px] flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg"
+      style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
+      {mine.length > 0 && (
+        <div ref={list} className="max-h-[240px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:thin]">
+          {mine.map((n) => (
+            <div key={n.id} data-said={n.id} className="group flex items-start gap-1.5 pb-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-[11px] text-muted-foreground">{fmtTime(new Date(n.t).toISOString())}</div>
+                <Markdown text={n.text ?? ""} className="companion-md" />
+              </div>
+              {n.pinned ? <Pin className="mt-3 size-3.5 shrink-0 text-muted-foreground" aria-label="Pinned" />
+                : <button type="button" aria-label="Pin as a comment" data-tip="Pin as a comment" className="mt-2 grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground"
+                  onClick={() => pin(n.id)}><Pin className="size-3.5" /></button>}
+            </div>
+          ))}
+        </div>
+      )}
+      <input autoFocus value={draft} onChange={(e) => setDraft(e.target.value)} placeholder={`Ask ${a.name}`} enterKeyHint="send"
+        onKeyDown={(e) => { if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); send() } else if (e.key === "Escape") { e.preventDefault(); close() } }}
+        className={cn("h-9 w-full bg-transparent px-3 text-[13.5px] outline-none max-sm:h-11 max-sm:text-[17px]", mine.length > 0 && "border-t border-border/60")} />
+    </div>
+  )
+}
+
 function Cursor({ a, spot, said }: { a: Agent; spot: Spot; said: Note | null }) {
   const tint = `var(--${a.tint})`
-  const right = spot.x > window.innerWidth - 320
+  const [hover, setHover] = useState(false)
+  const [nudge, setNudge] = useState<{ x: number; y: number } | null>(null)
+  const [open, setOpen] = useState(false)
+  const [drag, setDrag] = useState<{ x: number; y: number } | null>(null)
+  const box = useRef<HTMLDivElement>(null)
+  const at = drag ?? spot
+  const right = at.x > window.innerWidth - 320
   // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
   const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
   const seen = a.state === "watching" && !!a.seen
+  const flag = !idle || hover || open || !!drag
+  useEffect(() => {
+    if (!open) return
+    const down = (e: PointerEvent) => { if (!box.current?.contains(e.target as Node)) setOpen(false) }
+    addEventListener("pointerdown", down, true)
+    return () => removeEventListener("pointerdown", down, true)
+  }, [open])
+  const enter = (e: React.PointerEvent) => {
+    if (e.pointerType === "touch") return
+    setHover(true)
+    // (a small nod toward the pointer: it noticed you)
+    if (nudge || still()) return
+    const dx = e.clientX - spot.x, dy = e.clientY - spot.y, d = Math.hypot(dx, dy) || 1
+    setNudge({ x: (dx / d) * 3, y: (dy / d) * 3 })
+    setTimeout(() => setNudge(null), 180)
+  }
+  // Click: the popover. Drag (a finger: hold first), then drop on text: "look at this".
+  const down = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return
+    e.preventDefault()
+    const el = e.currentTarget, id = e.pointerId, x0 = e.clientX, y0 = e.clientY, touch = e.pointerType === "touch"
+    el.setPointerCapture(id)
+    // (a finger hides what's under it: the arrow's tip goes above it)
+    const tip = (x: number, y: number) => ({ x, y: touch ? y - 40 : y })
+    let dragging = false, dead = false
+    const timer = touch ? setTimeout(() => { dragging = true; haptic(); setOpen(false); setDrag(tip(x0, y0)) }, 350) : null
+    const move = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      if (!dragging) {
+        const d = Math.hypot(ev.clientX - x0, ev.clientY - y0)
+        if (touch) { if (d > 10) { dead = true; end() } return }
+        if (d < 4) return
+        dragging = true
+        setOpen(false)
+      }
+      setDrag(tip(ev.clientX, ev.clientY))
+    }
+    const end = () => {
+      if (timer) clearTimeout(timer)
+      el.removeEventListener("pointermove", move)
+      el.removeEventListener("pointerup", up)
+      el.removeEventListener("pointercancel", cancel)
+    }
+    const up = (ev: PointerEvent) => {
+      if (ev.pointerId !== id) return
+      end()
+      if (dragging) { const p = tip(ev.clientX, ev.clientY); dropAt(a.name, p.x, p.y); setDrag(null) } else if (!dead) setOpen((o) => !o)
+    }
+    const cancel = () => { end(); setDrag(null) }
+    el.addEventListener("pointermove", move)
+    el.addEventListener("pointerup", up)
+    el.addEventListener("pointercancel", cancel)
+  }
   return (
-    <div className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined}
-      style={{ transform: `translate(${spot.x - 3}px, ${spot.y - 2}px)`, transition: `transform ${a.state === "writing" || typing?.agent === a.name ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
-        opacity: idle ? 0.55 : 1 }}>
-      <div className={cn(a.state === "thinking" && "companion-bob")}><Arrow tint={tint} /></div>
-      <div className={cn("absolute top-[18px] flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
-        right ? "right-[-6px]" : "left-[13px]", idle && "opacity-0")} style={{ background: tint }}>
+    <div ref={box} className="companion-cursor pointer-events-none fixed top-0 left-0 z-[55]" data-agent={a.name} data-state={a.state} data-seen={seen || undefined} data-open={open || undefined}
+      onPointerEnter={enter} onPointerLeave={() => setHover(false)}
+      style={{ transform: `translate(${at.x - 3}px, ${at.y - 2}px)`, transition: drag ? "opacity .3s" : `transform ${a.state === "writing" || typing?.agent === a.name ? 90 : 650}ms cubic-bezier(.2,.85,.25,1), opacity .3s`,
+        opacity: idle && !hover && !open ? 0.55 : 1, zIndex: open || drag ? 56 : undefined }}>
+      <div className={cn(a.state === "thinking" && !drag && "companion-bob")} style={{ transform: nudge ? `translate(${nudge.x}px, ${nudge.y}px)` : undefined, transition: "transform .18s ease-out" }}>
+        <Arrow tint={tint} />
+      </div>
+      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip onPointerDown={down} onContextMenu={(e) => e.preventDefault()}
+        className={cn("pointer-events-auto absolute -top-1 -left-1 z-[1] size-7 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
+          drag ? "cursor-grabbing" : "cursor-pointer")} />
+      <button type="button" tabIndex={flag ? 0 : -1} aria-label={`Go to ${a.name}`} data-tip={a.path ? "Go to where it is" : undefined} onClick={() => follow(a)}
+        className={cn("absolute top-[18px] flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
+          right ? "right-[-6px]" : "left-[13px]", flag ? "pointer-events-auto cursor-pointer" : "opacity-0")} style={{ background: tint }}>
         {a.name}
+        {(hover || open) && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
         {(a.state === "thinking" || a.state === "reading") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
         {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
-      </div>
-      {said && (
-        <div key={said.id} className={cn("companion-pop pointer-events-auto absolute bottom-[2px] w-max max-w-[300px] cursor-pointer rounded-[12px] border border-border/60 bg-background px-3 py-1.5 text-[13.5px] leading-snug text-foreground shadow-lg",
+      </button>
+      {/* (kept inside the window) */}
+      {open && <Popover a={a} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} />}
+      {said && !open && !drag && (
+        <div key={said.id} className={cn("companion-pop pointer-events-auto absolute bottom-[2px] flex w-max max-w-[300px] cursor-pointer items-start gap-1 rounded-[12px] border border-border/60 bg-background py-1.5 pr-1 pl-3 text-[13.5px] leading-snug text-foreground shadow-lg",
           right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]")} style={{ boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}
           onClick={() => answer(said.id, "dismiss")}>
-          <Markdown text={said.text ?? ""} className="companion-md" />
+          <Markdown text={said.text ?? ""} className="companion-md min-w-0 pr-1" />
+          <button type="button" aria-label="Pin as a comment" data-tip="Pin as a comment" className="grid size-5 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-7"
+            onClick={(e) => { e.stopPropagation(); pin(said.id) }}><Pin className="size-3" /></button>
         </div>
       )}
     </div>
