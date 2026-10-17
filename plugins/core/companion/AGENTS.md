@@ -20,8 +20,9 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - Words by your cursor: `say` (gone after a while). What should stay: `comment`, by a line, which they can reply to.
   A change they decide on: `suggest` (Tab takes it). They see both as threads in their Conversations panel, a dot by the
   line (or as margin cards). Both are kept beside the note (`.vaultite/plugins/companion/comments/`)
-  until dismissed: they survive a restart and follow the note; `companion status` lists them. Writing: `edit`, typed in before their eyes. `look` moves your
-  cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file).
+  until dismissed: they survive a restart and follow the note; `companion status` lists them. One whose text is gone
+  stays by its last line, marked so; `comment --id` on a dismissed one brings it back. Writing: `edit`, typed in before
+  their eyes. `look` moves your cursor; `highlight` lights text in your colour (`--keep`: as `==🟠text==` in the file).
 - Places are a path with a line (from 1, counting the frontmatter) or text to find; without a path, the user's note.
   Prefer text (`--find`, `--after` for new lines): a line number goes stale as they type.
 - Several agents: `vau companion start --as Ada` (`--agent codex`) starts another, in its own colour, which passes
@@ -31,4 +32,6 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - Drawings (.excalidraw): moments there come with the scene as text (ids, labels, arrows as a -> b, what's by their
   pointer); an ask is a text with your @name. Places are an element (`--find` its id or text) or `--x --y`; `say`, `look`
   and `highlight` work there, `draw` changes it (no comments or suggestions).
+- When `next` says it's time for a fresh session (past the setting `fresh_after` moments, or a large context), write a
+  few lines for the next one and run `companion handover "<them>"`, then end your turn; it starts with them and your threads.
 - Stay short and kind; one bubble beats three. Never write where they're typing unless asked.

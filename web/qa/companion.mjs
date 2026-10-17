@@ -22,18 +22,24 @@ const op = (id, params = {}) => api("POST", `ops/${id}`, params)
 const enc = encodeURIComponent
 /** The right sidebar folded to its rail (the Conversations panel is there by default), for the margin's cards' room. */
 const foldRight = (c) => c.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: false })) } catch { /* private */ } })
+/** An op as the user calls it in the app (Review's keep and revert are theirs only). */
+const asUser = (id, params) => fetch(`${B}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "app/web" }, body: JSON.stringify(params) }).then((r) => r.json())
 
 const plugins = JSON.parse(text(".vaultite/plugins.json") || "{}")
-if (!(plugins.enabled ?? []).includes("companion")) {
-  writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []), "companion"] }, null, 2))
+// (Activity too: Review reads who changed what from it)
+const want = ["companion", "activity"].filter((id) => !(plugins.enabled ?? []).includes(id))
+if (want.length) {
+  writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []), ...want] }, null, 2))
   await wait(1500)
 }
 // (the margin's cards first; the sidebar, the default, after)
 await api("PATCH", "config/plugin/companion", { mode: "pair", pause: 1, comments: "margin" })
+await op("plugin.grant", { id: "activity", allow: false }) // (its recaps' ask would cover the page)
 const DIR = "QA companion", NOTE = `${DIR}/Garden ideas.md`
 rmSync(file(DIR), { recursive: true, force: true })
 await api("PUT", "file", { path: NOTE, text: "# Garden ideas\n\nTomatos along the fence, where it's sunny.\n\nBasil between them.\n" })
 await api("PUT", "file", { path: `${DIR}/Seeds.md`, text: "# Seeds\n" })
+await asUser("review.keep", { all: true }) // (an earlier run's AI changes reviewed)
 await op("companion.next", { timeout: 0 }) // (what came before)
 await op("companion.clear")
 
@@ -176,6 +182,16 @@ await page.keyboard.press("Meta+z")
 await wait(400)
 check("edit: the user can undo it", !(await editor.innerText()).includes("Water them every morning"))
 await page.keyboard.press("Meta+Shift+z")
+
+// What it typed is its own in Review (the app's save of it is Claude's, not the user's), and reverts like any AI's.
+const rev = await until(async () => (await api("GET", "review")).files?.find((f) => f.path === NOTE && f.by.includes("Claude")), 8000)
+check("edit: in Review as Claude's, against the text before it", !!rev && rev.added >= 1, rev)
+await until(() => text(NOTE).includes("Water them every morning"), 5000) // (its redo saved)
+await wait(1200)
+const reverted = await asUser("review.revert", { path: NOTE })
+await until(() => !text(NOTE).includes("Water them every morning"), 5000)
+check("edit: reverted from Review, gone from the note and its editor", !text(NOTE).includes("Water them every morning") && text(NOTE).includes("Basil between them.") &&
+  !!(await until(async () => !(await editor.innerText()).includes("Water them every morning"), 5000)), { reverted: reverted.reverted?.length, text: text(NOTE), editor: await editor.innerText() })
 
 // A highlight in its colour.
 await op("companion.highlight", { path: NOTE, find: "sunny" })

@@ -334,8 +334,20 @@ plugin.route("GET", "history", async (req) => {
     return out.sort((a, b) => b.latest - a.latest)
   }
   const rel = relOf(req.query.path)
-  return { path: rel, versions: versions(s, rel), others: await others(rel) }
+  return { path: rel, versions: await byAgents(rel, versions(s, rel)), others: await others(rel) }
 })
+
+type Change = { t: number; last?: number; actor: { kind: string; name: string }; paths?: string[] }
+/** Each version an agent wrote, with its name (Activity's: Claude, Ada): the change it was written in. */
+async function byAgents(rel: string, vs: { t: number; size: number }[]): Promise<{ t: number; size: number; by?: string }[]> {
+  if (!vs.length) return vs
+  const changes = (await plugin.ask<Change[]>("activity:changes", [], vs.at(-1)!.t - 60_000)).filter((e) => e.paths?.includes(rel))
+  return vs.map((v) => {
+    // (a write's file time falls in its request, or just after a run of them)
+    const e = changes.findLast((c) => c.t - 1000 <= v.t && v.t <= (c.last ?? c.t) + 5000)
+    return e?.actor.kind === "agent" ? { ...v, by: e.actor.name } : v
+  })
+}
 
 plugin.route("GET", "history/version", async (req) => {
   await following

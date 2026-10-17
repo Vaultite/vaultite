@@ -226,7 +226,7 @@ function withCaller(a: Actor, c: Caller | null): Actor {
 
 // ---------- what a request did
 
-type Did = { action: Action; text: string; paths: string[] } | null
+type Did = { action: Action; text: string; paths: string[]; by?: string } | null
 const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : "")
 const strip = (p: string) => p.replace(/\.md$/, "")
 
@@ -323,7 +323,7 @@ function describeOp(id: string, b: Record<string, unknown>, byApp: boolean): Did
     return { action: "read", text: `Read ${id}${p ? ` for ${p}` : ""}`, paths: p ? [p] : [] }
   }
   const own = plugin.host.did(id, b)
-  if (own) return { action: own.action ?? (kind === "destructive" ? "delete" : "request"), text: own.text, paths: own.paths ?? [] }
+  if (own) return { action: own.action ?? (kind === "destructive" ? "delete" : "request"), text: own.text, paths: own.paths ?? [], ...(own.by ? { by: own.by } : {}) }
   // Any other op: its id, and what it was about.
   const p = str(b.path)
   const about = str(b.path) || str(b.title) || str(b.name) || str(b.person) || str(b.url) || str(b.id) || str(b.key)
@@ -352,15 +352,40 @@ plugin.onRequest((s) => {
     const did = end.status >= 400 && !byApp && !route.startsWith("activity") ? failed(s.method, route, end)
       : describe(s.method, route, s.query, end.body, byApp || actor.kind === "you")
     if (!did) return
-    const finish = (who: Actor) => {
-      if (late) late.who = who.name
+    const finish = (as: Actor) => {
       const paths = [...new Set([...did.paths, ...(w?.paths ?? [])])]
+      const who = actingAs(as, did.by, s, paths)
+      if (late) late.who = who.name
       const ev = record({ t: s.t, actor: who, action: did.action, text: did.text, paths, method: s.method, route, status: end.status, ms: Math.round(end.ms) })
       if (w) w.event = ev
     }
-    if (caller) void caller.then((c) => finish(withCaller(actor, c)))
+    if (caller) {
+      const done = caller.then((c) => finish(withCaller(actor, c)))
+      naming.add(done)
+      void done.finally(() => naming.delete(done))
+    }
     else finish(actor)
   }
+})
+
+/** Events waiting to be recorded until their caller is named (its process asked): `activity:changes` waits for them. */
+const naming = new Set<Promise<void>>()
+
+/** Notes an agent is typing into in the app (Companion): path -> its name and until when the app's saves of it are its. */
+const typing = new Map<string, { name: string; until: number }>()
+/** Who a request's change was by: an agent's under the name it acts as (an op's `by`), the app's save of a note an agent
+ *  is typing into that agent's. */
+function actingAs(a: Actor, by: string | undefined, s: RequestStart, paths: string[]): Actor {
+  if (by && a.kind === "agent") return { ...a, name: by }
+  if (a.kind !== "you" || s.method !== "PUT" || s.route !== "file") return a
+  const t = paths.length === 1 ? typing.get(paths[0]) : undefined
+  return t && t.until > s.t ? { kind: "agent", name: t.name } : a
+}
+/** An agent types into `path` in the app for `ms` from now (0: it's done): the app's saves of it meanwhile are its. */
+plugin.provide("activity:typing", (path: string, name: string, ms: number) => {
+  for (const [p, t] of typing) if (t.until <= Date.now()) typing.delete(p)
+  if (ms > 0) typing.set(path, { name, until: Date.now() + ms }); else typing.delete(path)
+  return true
 })
 
 /** Changed on disk and not yet claimed by a request: waits CLAIM ms for an agent's hook to say it made them. */
@@ -529,7 +554,9 @@ function keptChange(e: ActivityEvent) {
   changesKept.has.add(e)
   changesKept.list.push(e)
 }
-plugin.provide("activity:changes", (since: number) => {
+plugin.provide("activity:changes", async (since: number) => {
+  // (a write just answered is recorded once its caller is named: Review keeping "everything" must see it)
+  if (naming.size) await Promise.race([Promise.all(naming), new Promise((r) => setTimeout(r, 3000))])
   if (!changesKept) {
     const list = between(Date.now() - settings().keep * DAY).filter(isChange)
     changesKept = { list, has: new Set(list) }

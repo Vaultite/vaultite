@@ -107,7 +107,7 @@ export function HistoryView({ path }: { path: string }) {
                   className={cn(option, "cursor-pointer", keyOf(x) === sel ? "bg-foreground/[0.08]" : "hover:bg-foreground/[0.04]")}>
                   <span className={when}>{capitalize(fmtAgo(x.t))}</span>
                   <span className={what}>
-                    {x.source ? `${x.label}: ${x.title || "(no message)"}${x.by ? ` · ${x.by}` : ""}` : `${fmtStamp(x.t)} · ${kb(x.size ?? 0)}`}
+                    {x.source ? `${x.label}: ${x.title || "(no message)"}${x.by ? ` · ${x.by}` : ""}` : `${fmtStamp(x.t)} · ${x.by ?? kb(x.size ?? 0)}`}
                   </span>
                 </button>
               </li>

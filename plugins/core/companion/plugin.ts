@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { agentName, newTerminalId, startAgent } from "../../../core/agents.ts"
+import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
 import { localDate, type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
 import { readText, type Vault, writeAtomic } from "../../../core/vault.ts"
 
@@ -40,7 +40,9 @@ export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion"
   /** A say the user pinned: the comment it became. */
   pinned?: string
   /** A comment the user dismissed, when: kept in its note's history. */
-  dismissed?: number }
+  dismissed?: number
+  /** The text it was on is gone: shown by its last line, found again if the text comes back. */
+  orphaned?: boolean }
 /** What an agent did when (logged, for timings): called next, was handed moments (seqs), or acted (say, edit...). */
 export type Act = { t: number; as: string; op: string; seqs?: number[] }
 /** A note's lines from..to (1-based, of `of`), sent with the moments in it; a drawing's scene as text. */
@@ -48,7 +50,7 @@ export type Excerpt = { path: string; from: number; to: number; of: number; line
 
 const TINTS = ["orange", "blue", "purple", "green", "red", "yellow"]
 export const EMOJI: Record<string, string> = { red: "🔴", orange: "🟠", yellow: "🟡", green: "🟢", blue: "🔵", purple: "🟣" }
-const KEEP = 300, SAY_MS = 12_000, HIGHLIGHT_MS = 10_000, EDIT_WAIT = 10_000
+const KEEP = 300, SAY_MS = 12_000, HIGHLIGHT_MS = 10_000, EDIT_WAIT = 10_000, SAVED_MS = 3000
 
 const str = (v: unknown) => (typeof v === "string" ? v : "")
 /** A setting, else its manifest's default. */
@@ -308,15 +310,21 @@ export function anchorLine(text: string, n: Pick<Note, "find" | "anchor" | "line
   return best
 }
 
-/** A note's kept items found again in its text: a comment whose text is gone stays by its last line, a suggestion goes. */
+/** A note's kept items found again in its text: a comment whose text is gone stays by its last line, orphaned, a
+ *  suggestion goes. */
 function follow(p: string) {
   const list = kept(p)
   let text: string
   try { text = readText(plugin.vault.abs(p)) } catch { return }
   let changed = false
   for (const n of list) {
-    const line = anchorLine(text, n) ?? (n.kind === "comment" ? Math.max(1, Math.min(n.line ?? 1, lineCount(text))) : null)
-    if (line === null) { notes.delete(n.id); broadcast({ t: "drop", id: n.id }) } else if (line !== n.line) { n.line = line; broadcast({ t: "note", note: n }) } else continue
+    const found = anchorLine(text, n)
+    if (found === null && n.kind !== "comment") { notes.delete(n.id); broadcast({ t: "drop", id: n.id }); changed = true; continue }
+    const line = found ?? Math.max(1, Math.min(n.line ?? 1, lineCount(text)))
+    if (line === n.line && !n.orphaned === (found !== null)) continue
+    n.line = line
+    if (found === null) n.orphaned = true; else delete n.orphaned
+    broadcast({ t: "note", note: n })
     changed = true
   }
   if (changed) save(p)
@@ -509,9 +517,21 @@ async function askWindow(ws: WebSocket, m: object, wait: number, reply: Record<s
   return ok
 }
 
+// Its edits are its in History and Review: the text before is kept as a version, and the app's save of what it typed
+// is Activity's as that agent's (the op's own event names it too: `did`'s by).
 const applyEdit = (ctx: OpCtx, agent: Agent, e: Edit, animate = true) => inTurn(e.path, async (): Promise<"typed" | "written"> => {
+  await plugin.ask("history:keep", false, e.path)
   const ws = editorFor(e.path)
-  if (ws && await askWindow(ws, { t: "edit", agent: agent.name, animate, ...e }, EDIT_WAIT + e.text.length * 20)) return "typed"
+  if (ws) {
+    const wait = EDIT_WAIT + e.text.length * 20
+    await plugin.ask("activity:typing", false, e.path, agent.name, wait + SAVED_MS)
+    let typed = false, late = false
+    try { typed = await askWindow(ws, { t: "edit", agent: agent.name, animate, ...e }, wait) } catch (err) { late = (err as OpError).status === 504; throw err } finally {
+      // (typed, or maybe still typing: its save lands within a moment of the window's autosave)
+      await plugin.ask("activity:typing", false, e.path, agent.name, typed || late ? SAVED_MS : 0)
+    }
+    if (typed) return "typed"
+  }
   const f = await ctx.api("GET", `file?path=${encodeURIComponent(e.path)}`)
   const cur = String(f.text ?? "")
   await ctx.api("PUT", "file", { path: f.path, text: editText(cur, e), base: cur })
@@ -559,7 +579,13 @@ const lineText = (p: string, n: number) => { try { return readText(plugin.vault.
 const ALLOW = ["vau companion", "vau docs", "vau read", "vau search", "vau render", "vau links", "vau context", "vau tasks", "vau dataview"]
 // The companion's session is session.json; another agent started by name (start --as Ada) is session-ada.json.
 const sessionFile = (name?: string | null) => `${plugin.localDir()}/${name && !isMain(name) ? `session-${key(name)}` : "session"}.json`
-const session = (name?: string | null): { id?: string; model?: string; effort?: string } | null => { try { return JSON.parse(fs.readFileSync(sessionFile(name), "utf8")) } catch { return null } }
+/** A session as kept: its terminal, its model, and how many moments it was handed (a fresh one takes over past
+ *  fresh_after). */
+type Session = { id: string; name: string; t: number; model?: string; effort?: string; handed?: number }
+const session = (name?: string | null): Session | null => {
+  try { const s = JSON.parse(fs.readFileSync(sessionFile(name), "utf8")); return typeof s.id === "string" ? s : null } catch { return null }
+}
+const writeSession = (s: Session) => fs.writeFileSync(sessionFile(s.name), JSON.stringify(s))
 const sessionId = (name?: string | null): string | null => session(name)?.id ?? null
 /** Every session started here: the companion's (its name) and the others'. */
 function sessions(): { name: string; id: string }[] {
@@ -581,15 +607,14 @@ async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, ef
   const was = sessionId(name)
   if (await running(was)) return { id: was!, running: true, name }
   const runs = agent || agentSetting(), id = newTerminalId(runs)
-  const prompt = isMain(name) ? setting("prompt")
-    : `${setting("prompt")} Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`
+  const prompt = promptFor(name)
   // (a quicker model answers sooner: each moment is one of its turns)
   const how = howOf(runs, model, effort)
   starting(name, { ...at, model: how.model || undefined, effort: how.effort || undefined })
   try {
     await startAgent(ctx, id, prompt, { allow: ALLOW, model: how.model || null, effort: how.effort || null })
   } catch (e) { setAgent(name, { state: isMain(name) ? "watching" : "away" }); throw e }
-  fs.writeFileSync(sessionFile(name), JSON.stringify({ id, name, t: Date.now(), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}) }))
+  writeSession({ id, name, t: Date.now(), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}), handed: 0 })
   return { id, running: false, name, ...how }
 }
 
@@ -598,6 +623,58 @@ export function starting(name: string, a: Partial<Agent> = {}) {
   const k = key(name)
   seen.set(k, Date.now()); delivered.set(k, seq); handed.delete(k); asking.delete(k)
   return setAgent(name, { ...a, state: "starting" })
+}
+
+const promptFor = (name: string) => (isMain(name) ? setting("prompt")
+  : `${setting("prompt")} Your name here is ${name}: add \`--as ${name}\` to every vau companion command (\`${nextCmd(name)}\`); asks to @${key(name)} are yours.`)
+
+// ---------- a fresh session: one that has handled many moments (or read much context) hands over to a new one
+
+const FRESH_TOKENS = 150_000, FRESH_SHARE = 0.6, ASK_AGAIN = 60_000, HANDOVER_WAIT = 3 * 60_000, OLD_ENDS = 15_000, METER_EVERY = 5 * 60_000
+const freshAfter = () => Number(plugin.settings().fresh_after) || Number(plugin.manifest.settings?.fresh_after?.default) || 150
+/** When each agent was asked to hand over (it summarizes, then `handover`). */
+const handing = new Map<string, number>()
+const metered = new Map<string, number>() // session -> when its context was last read (its agent scans processes)
+
+/** Whether a session is due for a fresh one: past fresh_after moments, or its context (when its agent says) past
+ *  FRESH_TOKENS or FRESH_SHARE of its window. */
+async function due(s: Session) {
+  if ((s.handed ?? 0) >= freshAfter()) return true
+  if (Date.now() - (metered.get(s.id) ?? 0) < METER_EVERY) return false
+  metered.set(s.id, Date.now())
+  const agent = parseTerminal(s.id)?.agent
+  const meters = agent ? await plugin.ask<AgentMeter[]>(`agent-meters:${agent}`, [], true).catch(() => []) : []
+  const m = Array.isArray(meters) ? meters.find((x) => x.terminal === s.id) : undefined
+  return !!m?.tokens && m.tokens >= Math.min(FRESH_TOKENS, (m.window || Infinity) * FRESH_SHARE)
+}
+
+/** What a fresh session is told after its prompt: the last one's summary, its open threads and the user's last asks. */
+export function handoverText(name: string, summary: string, items: Note[], asks: Moment[]) {
+  const open = items.filter((n) => key(n.agent) === key(name) && KEPT.has(n.kind)).slice(-20)
+  const last = (n: Note) => n.replies?.at(-1)
+  return [`This session continues an earlier one of yours that grew long. The user sees no change: don't greet them or say you're new. Read \`vau docs companion\`, then run \`${nextCmd(name)}\` at once (ME.md when a moment needs it).`,
+    summary.trim() ? `What your last session handed over:\n${summary.trim()}` : "",
+    open.length ? `Your open threads (reply with \`vau companion comment --id <id>\`):\n${open.map((n) => `- ${n.id} ${n.kind} in ${n.path}${n.line ? `:${n.line}` : ""}${n.orphaned ? " (its text is gone)" : ""}: ${JSON.stringify(cut(n.text ?? n.replace ?? "", 160))}${last(n) ? `; last, ${last(n)!.by === "user" ? "the user" : "you"}: ${JSON.stringify(cut(last(n)!.text, 160))}` : ""}`).join("\n")}` : "",
+    asks.length ? `The user's last asks:\n${asks.map((m) => `- ${m.path ?? ""}${m.line ? `:${m.line}` : ""} ${JSON.stringify(cut(m.text ?? "", 160))}`).join("\n")}` : ""].filter(Boolean).join("\n\n")
+}
+
+/** Start the fresh session (the same agent and account) with the handover, then end the old one once it has answered. */
+async function handOver(ctx: OpCtx, name: string, summary: string) {
+  const old = session(name)
+  if (!old) throw new OpError(`${name} has no session to hand over`, 404)
+  const t = parseTerminal(old.id), k = key(name)
+  const id = newTerminalId(t ? agentIn(t.agent, t.profile) : agentSetting())
+  const asks = [...new Map(moments.filter((m) => m.kind === "ask" && key(m.for ?? "") === k).map((m) => [m.text, m])).values()].slice(-5)
+  // (the same model; its cursor stays as it is: moments wait for the new one's first next, as for any start)
+  await startAgent(ctx, id, `${promptFor(name)}\n\n${handoverText(name, summary, [...notes.values()], asks)}`,
+    { allow: ALLOW, model: old.model || null, effort: old.effort || null })
+  writeSession({ ...old, id, t: Date.now(), handed: 0 })
+  handing.delete(k); handed.delete(k)
+  seen.set(k, Date.now())
+  did(name, "handover")
+  // (after its handover call has answered, so it isn't cut off mid-command)
+  setTimeout(() => { void (async () => { if (await running(old.id)) await plugin.runOp("terminal.end", { id: old.id }) })().catch(() => {}) }, OLD_ENDS).unref?.()
+  return { id, from: old.id, name }
 }
 
 /** End a session (the companion's by default), or every one. */
@@ -618,6 +695,13 @@ const watchdog: ReturnType<typeof setInterval> | null = setInterval(async () => 
   if (plugin.isOff() || mode() === "off") return
   // (the companion stays, but not starting forever)
   for (const a of agents.values()) if (a.state !== "away" && !live(a.name) && (!isMain(a.name) || a.state === "starting")) setAgent(a.name, { state: isMain(a.name) ? "watching" : "away" })
+  // (asked to hand over and it didn't: a fresh one without its summary)
+  for (const [k, t] of handing) {
+    if (Date.now() - t < HANDOVER_WAIT) continue
+    handing.delete(k)
+    const s = sessions().find((x) => key(x.name) === k)
+    if (s) await plugin.runOp("companion.handover", { as: s.name }).catch((e) => console.error(`companion: handover failed: ${(e as Error).message}`))
+  }
   for (const s of sessions()) {
     const k = key(s.name)
     if (waiters.has(k) || Date.now() - (seen.get(k) ?? loaded) < NUDGE || !(await running(s.id))) continue
@@ -687,6 +771,13 @@ to the companion, or to an agent with --watch.
     const after = p.after ?? delivered.get(k) ?? Math.max(0, seq - 20)
     const pending = () => moments.filter((m) => m.seq > after && Date.now() - m.t < 30 * 60_000 && meantFor(m, name))
     let got = pending()
+    // (nothing but opens waiting: the moment to hand over, if it's due)
+    const sess = got.every((m) => m.kind === "open") ? session(name) : null
+    if (sess && Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(sess)) {
+      handing.set(k, Date.now())
+      did(name, "asked to hand over")
+      return { mode: mode(), focus: focus(), moments: [], cursor: after, notes: [], handover: true, as: isMain(name) ? "" : name }
+    }
     // (opens alone wait for the next moment, which they come with)
     if (got.every((m) => m.kind === "open") && p.timeout > 0) {
       waiters.get(k)?.([])
@@ -702,6 +793,8 @@ to the companion, or to an agent with --watch.
       delivered.set(k, got[got.length - 1].seq)
       // (of the notes they went to, the last one)
       got = got.filter((m, i) => m.kind !== "open" || !got.slice(i + 1).some((x) => x.kind === "open"))
+      const s = session(name)
+      if (s) { try { writeSession({ ...s, handed: (s.handed ?? 0) + got.length }) } catch { /* as it was */ } }
       did(name, "handed", got.map((m) => m.seq))
       const at = [...got].reverse().find((m) => m.path), asked = got.some((m) => m.kind === "ask" || m.kind === "point" || m.kind === "reply")
       if (asked) asking.add(k)
@@ -711,7 +804,22 @@ to the companion, or to an agent with --watch.
     }
     return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got) }
   },
-  text: (r) => momentsText(r.moments, r.mode, r.focus, r.notes),
+  text: (r) => (r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes)),
+})
+
+const handoverAsk = (as: string) => `Time for a fresh session: this one has grown long. In a few lines, write what the next one should know (what the user is working on, what they asked you to keep in mind, anything you promised), then run \`vau companion handover${as ? ` --as ${as}` : ""} "<those lines>"\`. It starts the new session, which takes over your cursor and threads; then end your turn.`
+
+plugin.op({
+  id: "companion.handover",
+  cli: "companion handover",
+  summary: "Hand over to a fresh session (when next asks you to): it starts with your summary and open threads; then end your turn.",
+  help: `  vau companion handover "Alice is planning the Lisbon trip; I promised to check the budget note tomorrow."`,
+  kind: "write",
+  lock: false,
+  params: { summary: { type: "string", description: "what the next session should know, in a few lines" }, as: AS },
+  args: ["summary"],
+  run: async (p, ctx) => await handOver(ctx, who(p), str(p.summary)),
+  text: (r) => `Handed over to ${r.id}: end your turn now.`,
 })
 
 /** The text around what the user asked or wrote, per note: all of a short note for an ask or a reply. */
@@ -836,8 +944,9 @@ it: with id (the comment's), your words join its thread.
     const name = who(p)
     did(name, "comment")
     if (p.id) {
-      const n = notes.get(p.id)
-      if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id} (dismissed?)`, 404)
+      // (a word in a dismissed thread brings it back to the margin)
+      const n = notes.get(p.id) ?? reopen(p.id)
+      if (!n || n.kind !== "comment") throw new OpError(`there's no comment ${p.id}`, 404)
       n.replies = [...(n.replies ?? []), { by: "agent", text: str(p.text) }]
       broadcast({ t: "note", note: n })
       save(n.path!)
@@ -903,7 +1012,14 @@ goes stale as they type. Edits of a note go one at a time; each returns once it'
     } finally { setAgent(name, { state: acting(name) }) }
   },
   text: (r) => `${r.how === "typed" ? "Typed into" : "Wrote"} ${r.path}.`,
+  did: (p) => edited(p),
 })
+
+/** An edit as Activity lists it: by the agent's name in the app (Ada), not the coding agent it runs on. */
+function edited(p: Record<string, unknown>) {
+  const path = str(p.path) || focus()?.path || ""
+  return { action: "edit" as const, text: path ? `Edited ${path}` : "Edited a note", paths: path ? [path] : [], by: who(p) }
+}
 
 plugin.op({
   id: "companion.highlight",
@@ -911,7 +1027,8 @@ plugin.op({
   summary: "Highlight text in a note in your colour: for a while, or kept in the file (==🟠text==) with keep; on a drawing, an element.",
   help: `  vau companion highlight --find "the budget is due Friday"
   vau companion highlight --path Notes/Idea.md --find "key insight" --keep`,
-  kind: "read",
+  kind: "write",
+  lock: false,
   params: { find: { ...FIND, description: "the text to highlight, exactly as in the file" }, keep: { type: "boolean", description: "keep it in the file, as a highlight of your colour" },
     path: PATH, line: LINE, as: AS },
   run: async (p, ctx) => {
@@ -925,6 +1042,7 @@ plugin.op({
     return { path: t.path, kept: true }
   },
   text: (r) => (r.kept ? `Highlighted in ${r.path}.` : `Highlighted (${r.id}).`),
+  did: (p) => (p.keep ? edited(p) : { action: "ui", text: `Highlighted text in ${str(p.path) || focus()?.path || "a note"}`, paths: [] }),
 })
 
 plugin.op({
@@ -975,6 +1093,7 @@ drawing's text (next, vau render). Only in pair mode or when they asked you to.
     } finally { setAgent(name, { state: acting(name) }) }
   },
   text: (r) => `${r.how === "drawn" ? "Drew on" : "Wrote"} ${r.path}${r.touched.length ? ` (${r.touched.join(", ")})` : ""}.`,
+  did: (p) => edited(p),
 })
 
 plugin.op({

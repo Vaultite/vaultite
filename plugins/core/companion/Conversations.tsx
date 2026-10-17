@@ -103,7 +103,7 @@ function Thread({ n, picked, resolved }: { n: Note; picked: boolean; resolved: b
       <div className="flex min-h-6 items-center gap-1.5">
         <span className="min-w-0 flex-1 truncate text-[12px] font-semibold" style={{ color: inked(tint) }}>
           {n.agent}{suggestion ? " suggests" : ""}
-          <span className="ml-1.5 font-normal text-tertiary">{resolved && n.dismissed ? fmtAgo(new Date(n.dismissed).toISOString()) : n.line ? `line ${n.line}` : ""}</span>
+          <span className="ml-1.5 font-normal text-tertiary">{resolved && n.dismissed ? fmtAgo(new Date(n.dismissed).toISOString()) : n.line ? `line ${n.line}${n.orphaned ? ", its text was removed" : ""}` : ""}</span>
         </span>
         {resolved ? <button type="button" aria-label="Reopen" data-tip="Reopen" className={btn} onClick={() => { reopen(n.id); pick(n.id) }}><RotateCcw className="size-3.5" /></button>
           : <button type="button" aria-label={suggestion ? "Reject" : "Resolve"} data-tip={suggestion ? "Reject" : "Resolve"} className={btn} onClick={() => answer(n.id, suggestion ? "reject" : "dismiss")}>

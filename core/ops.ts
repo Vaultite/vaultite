@@ -102,8 +102,8 @@ export type Op = {
 }
 
 /** A call as Activity lists it: what kind of change (default request, delete for a destructive op), a sentence in the
- *  past tense, and the files it was about. */
-export type OpDid = { action?: "create" | "edit" | "save" | "delete" | "move" | "run" | "ui" | "settings"; text: string; paths?: string[] }
+ *  past tense, and the files it was about. `by`: the name an agent calling did it under (Companion's Ada), for its writes. */
+export type OpDid = { action?: "create" | "edit" | "save" | "delete" | "move" | "run" | "ui" | "settings"; text: string; paths?: string[]; by?: string }
 
 /** A call's description (Op.did) from what it was given; null when the op has none or it can't say. */
 export function didOf(op: Op, given: unknown): OpDid | null {

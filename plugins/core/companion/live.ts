@@ -9,7 +9,9 @@ export type Agent = Target & { name: string; tint: string; state: "watching" | "
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string
   /** A comment the user dismissed, when (companion.history's). */
-  dismissed?: number }
+  dismissed?: number
+  /** The text it was on is gone: shown by its last line. */
+  orphaned?: boolean }
 export type Hunk = { line: number; added: string[]; removed: string[] }
 export type EditAsk = Target & { rid: string; agent: string; text: string; after?: string; append?: boolean; animate?: boolean }
 

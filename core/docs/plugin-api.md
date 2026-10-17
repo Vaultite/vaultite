@@ -145,6 +145,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 ### Services the app's plugins offer
 `plugin.ask("<name>", ...args)` (`plugin.provide` to offer one): by name, never by plugin.
 
+- `activity:typing` (activity): An agent types into `path` in the app for `ms` from now (0: it's done): the app's saves of it meanwhile are its.
 - `activity:report` (activity): The command for a coding agent's hook to report what it did (Terminal passes it to the agent it starts: AgentStart `report`): it sends the hook's JSON (on stdin) here, with the agent's name and its terminal. Never fails the hook.
 - `activity:changes` (activity)
 - `agent:claude` (claude-code): `claude`, or `claude --resume <id>` in the folder it ran in (sessions are per folder), in the account the profile names or the session is in (CLAUDE_CONFIG_DIR, unless that's the default and the server has none).
@@ -156,8 +157,17 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `file-props` (provenance): Other files' `origin` for database views over every file (a .base): the list's, else what the bytes say.
 - `geocode` (people): A place's pin, [lat, lon] or null: looked up once (Nominatim), then cached. Me uses it for ME.md's place.
 - `geocode:known` (people): A place's cached pin without looking it up: [lat, lon], null (not found) or undefined (not looked up yet).
-- `history:<…>` (versions, text, keep, changed): history
-- `inbox:<…>` (folder, hook, handed, event, drop, ask, answer): inbox
+- `history:versions` (history)
+- `history:text` (history)
+- `history:keep` (history): Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's review compares with it). Sync, so it runs before the write.
+- `history:changed` (history): The files followed whose text was last written at or after `since` (ms).
+- `inbox:folder` (inbox): Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this plugin is on.
+- `inbox:hook` (inbox): For Terminal's state command: the shell command that tells the inbox a terminal's new state (hook JSON on stdin, $prev). Never fails the hook (2 s at most).
+- `inbox:handed` (inbox): Dispatch marks the terminals it starts.
+- `inbox:event` (inbox): Add an event from another plugin's backend (what it would POST): the service "inbox:event".
+- `inbox:drop` (inbox)
+- `inbox:ask` (inbox): Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer.
+- `inbox:answer` (inbox): A gate's answer (approve, deny), or "waiting" once `ms` passed without one; "gone" when the event isn't kept.
 - `links:canvas` (canvas)
 - `log-areas` (logs)
 - `logs:areas` (logs): The areas as the app has them (Today's routines take their icon and weekly goal).

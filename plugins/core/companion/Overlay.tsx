@@ -347,6 +347,7 @@ function Card({ n, x, y, folded, open, cap, onHeight, onOpen }: { n: Note; x: nu
       </div>
       {/* (open, one taller than the pane scrolls inside, its buttons kept in sight) */}
       <div ref={body} className={cn("min-h-0", open ? "overflow-y-auto overscroll-contain [scrollbar-width:thin]" : "max-h-[84px] overflow-hidden", more && "companion-more")}>
+        {n.orphaned && <div className="px-2.5 pt-1 text-[12px] text-muted-foreground">Its text was removed</div>}
         {n.text && <div className="px-2.5 pt-1 pb-2 text-foreground"><Markdown text={n.text} className="companion-md" /></div>}
         {n.kind === "comment" && replies > 0 && (
           <div className="px-2.5">

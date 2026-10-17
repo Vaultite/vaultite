@@ -203,8 +203,15 @@ export default async ($: VaultTest) => {
     write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet\n")
     c.loadAll()
     k = kept("Kept/K.md")
-    check("companion: their text gone, a comment stays by its last line, a suggestion goes", k.length === 2 && k.find((n: Any) => n.id === cm.id).line === 5 &&
-      k.find((n: Any) => n.id === ln.id).line === 5 && !(await status()).some((n) => n.id === sg.id), k)
+    check("companion: their text gone, a comment stays by its last line, orphaned, a suggestion goes", k.length === 2 && k.find((n: Any) => n.id === cm.id).line === 5 &&
+      k.find((n: Any) => n.id === cm.id).orphaned && k.find((n: Any) => n.id === ln.id).line === 5 && !(await status()).some((n) => n.id === sg.id), k)
+    write("Kept/K.md", "# K\n\nNew line\nMeet Bob\n")
+    c.loadAll()
+    k = kept("Kept/K.md")
+    check("companion: its text back (an undo), it's found again", k.find((n: Any) => n.id === cm.id).line === 4 && !k.find((n: Any) => n.id === cm.id).orphaned, k)
+    write("Kept/K.md", "# K\n\nNew line\nAnother\nMeet\n")
+    c.loadAll()
+    k = kept("Kept/K.md")
 
     write(side("Kept/K.md"), JSON.stringify({ comments: [...k, { id: "nzz1", kind: "comment", agent: "Claude", t: 1, text: "From the phone", line: 1 }] }))
     $.app.changed([side("Kept/K.md")])
@@ -230,6 +237,10 @@ export default async ($: VaultTest) => {
     c.loadAll(true)
     ;[, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
     check("companion: history is read again as the server starts", h.open.length === 1 && h.past.length === 2, h)
+    const back = h.past[0].id
+    await api("POST", "ops/companion.comment", { id: back, text: "One more thing" })
+    ;[, h] = await api("POST", "ops/companion.history", { path: "Kept/Moved/L.md" })
+    check("companion: its agent's word in a dismissed thread brings it back", h.open.some((n: Any) => n.id === back && n.replies?.at(-1)?.text === "One more thing") && h.past.length === 1, h)
     await api("POST", "ops/companion.clear", {})
     await api("DELETE", "file", { path: "Kept/Moved/L.md" })
     const trashed = (await status()).length === 0
@@ -321,6 +332,68 @@ export default async ($: VaultTest) => {
     const old = c.pin(mine[0].id)
     check("companion: an old say, gone from the screen, can be pinned too", old?.kind === "comment" && old.text === "Say 3", old)
     await api("POST", "ops/companion.clear", {})
+  }
+  {
+    // Its edits are its own in Activity, History and Review (by its name, not Claude Code's), and the user reverts them.
+    const { whoOf } = await import("../../../core/ops.ts")
+    const { service } = await import("../../../core/plugins.ts")
+    const code = whoOf("cli", "claude-code"), user = whoOf("app/desktop", null)
+    const call = async (id: string, params: Any, who = code) => { await $.sleep(3); return (await $.app.callOp(id, params, who, { report: `cli ${id}` })).result as Any }
+    const R = "Rev/Companion.md"
+    await api("PUT", "file", { path: R, text: "# Plans\n\nCall Alice friday\n" })
+    await $.sleep(20)
+    await call("companion.edit", { path: R, find: "friday", text: "on Friday", as: "Ada" })
+    const f = (await call("review.list", {}, user)).files.find((x: Any) => x.path === R)
+    check("companion: its edit is in Review by its name, against the text just before", f?.by.join() === "Ada" && f.added === 1 && f.removed === 1, f)
+    const [, acts] = await api("GET", "activity?actor=agent&limit=10")
+    check("companion: and in Activity as Ada", acts.events.some((e: Any) => e.actor.name === "Ada" && e.paths?.includes(R)), acts.events.slice(0, 3))
+    await $.sleep(20)
+    await call("companion.edit", { path: R, find: "Alice", text: "Alice Park", as: "Ada" })
+    const [, h] = await api("GET", `history?path=${R}`)
+    check("companion: a version it wrote names it in History", h.versions.some((v: Any) => v.by === "Ada"), h.versions)
+    await call("review.revert", { path: R }, user)
+    check("companion: the user reverts its edits like any AI's", read(R) === "# Plans\n\nCall Alice friday\n", read(R))
+    // Typed into a window: the app's save of that note is the agent's while it types, and the user's again after.
+    const typing = service($.app.plugins, "activity:typing") as (p: string, name: string, ms: number) => boolean
+    const save = async (text: string) => {
+      await $.sleep(3)
+      const end = $.app.requestStarted({ t: Date.now(), method: "PUT", route: "file", query: {}, client: "app/desktop", agent: null, command: null, ua: "", remote: "", port: 1, forwarded: false })
+      const r = await api("PUT", "file", { path: R, text, base: read(R) }, $.sentBy("app/desktop"))
+      end({ status: r[0], ms: 1, body: { path: R } })
+    }
+    typing(R, "Ada", 3000)
+    await save("# Plans\n\nCall Alice Friday\n")
+    typing(R, "Ada", 0)
+    await save("# Plans\n\nCall Alice Friday!\n")
+    const [, ev] = await api("GET", `activity?path=${R}&limit=5`)
+    check("companion: the app's save of what it typed is Ada's, the user's next one theirs",
+      ev.events[0]?.actor.name === "You" && ev.events.find((e: Any) => e.actor.kind === "agent")?.actor.name === "Ada", ev.events.slice(0, 3).map((e: Any) => [e.actor.name, e.text]))
+  }
+  {
+    // A fresh session: past fresh_after moments, an idle next asks the session to hand over (once a minute), and the
+    // new one is told its summary, its open threads and the last asks. (Starting one is the QA's: it runs an agent.)
+    const fs = await import("node:fs")
+    const file = `${c.plugin.localDir()}/session.json`
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    fs.writeFileSync(file, JSON.stringify({ id: "claude-test0001", name: "Claude", t: Date.now(), handed: 5 }))
+    c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "one" })
+    let [, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: moments handed are counted on its session", got.moments.length === 1 && JSON.parse(fs.readFileSync(file, "utf8")).handed === 6, got)
+    let [st, txt] = await api("POST", "ops/companion.next?as=text", { timeout: 0 })
+    check("companion: under fresh_after, next is as ever", st === 200 && !/fresh session/.test(String(txt)), txt)
+    fs.writeFileSync(file, JSON.stringify({ id: "claude-test0001", name: "Claude", t: Date.now(), handed: 150 }))
+    ;[st, txt] = await api("POST", "ops/companion.next?as=text", { timeout: 0 })
+    check("companion: past it, an idle next asks for a handover", st === 200 && /Time for a fresh session/.test(String(txt)) && /vau companion handover "/.test(String(txt)), txt)
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: and only once a minute", !got.handover, got)
+    fs.rmSync(file)
+    check("companion: no session, no handover", (await api("POST", "ops/companion.handover", { summary: "x", as: "Nobody" }))[0] === 404)
+    const items = [{ id: "n1", kind: "comment", agent: "Claude", t: 0, path: "A.md", line: 3, text: "Alice is away", replies: [{ by: "user", text: "Then Tuesday" }] },
+      { id: "n2", kind: "say", agent: "Claude", t: 0, path: "A.md", line: 4, text: "Done" },
+      { id: "n3", kind: "suggestion", agent: "Ada", t: 0, path: "A.md", find: "x", replace: "y" }] as Any[]
+    const h = c.handoverText("Claude", "Working on the Lisbon trip.", items, [{ seq: 1, t: 0, kind: "ask", path: "A.md", line: 2, text: "budget?" }])
+    check("companion: the fresh one is told the summary, its own open threads and the last asks", h.includes("Working on the Lisbon trip.") &&
+      h.includes("- n1 comment in A.md:3") && h.includes("the user: \"Then Tuesday\"") && !h.includes("n2") && !h.includes("n3") && h.includes("budget?") && /don't greet/.test(h), h)
   }
   await api("PATCH", "config/plugin/companion", { mode: "off" })
   check("companion: off hears nothing", c.addMoment({ kind: "ask", text: "hello?" }) === null)

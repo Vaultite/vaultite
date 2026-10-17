@@ -134,11 +134,11 @@ function services() {
       found.set(m[1], s)
     }
   }
-  // (families, one line each: text:csv, text:docx... are text:<ext>)
+  // (families, one line each: text:csv, text:docx... are text:<ext>; one plugin's own services keep their docs)
   const byFamily = new Map<string, string[]>()
   for (const name of found.keys()) { const f = name.includes(":") ? name.slice(0, name.indexOf(":")) : name; byFamily.set(f, [...byFamily.get(f) ?? [], name]) }
   return [...byFamily].sort(([a], [b]) => a.localeCompare(b)).map(([f, names]) => {
-    if (names.length >= 3 && names.every((n) => n.startsWith(`${f}:`))) return `- \`${f}:<…>\` (${names.map((n) => n.slice(f.length + 1)).join(", ")}): ${[...new Set(names.map((n) => [...found.get(n)!.plugins].join(", ")))].join("; ")}`
+    if (names.length >= 3 && names.every((n) => n.startsWith(`${f}:`)) && new Set(names.flatMap((n) => [...found.get(n)!.plugins])).size > 1) return `- \`${f}:<…>\` (${names.map((n) => n.slice(f.length + 1)).join(", ")}): ${[...new Set(names.map((n) => [...found.get(n)!.plugins].join(", ")))].join("; ")}`
     return names.map((n) => `- \`${n}\` (${[...found.get(n)!.plugins].join(", ")})${found.get(n)!.doc ? `: ${found.get(n)!.doc}` : ""}`).join("\n")
   })
 }

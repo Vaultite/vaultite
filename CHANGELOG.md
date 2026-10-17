@@ -23,7 +23,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   drawer), in the note's order, open or resolved, with a dot in the agent's colour by each one's line: click one to light
   its line, reply, accept or resolve it there; it shows when threads come, a dot on its icon if the sidebar is closed.
   Comments in the margin instead is a setting (cards that scroll with the note). Its comments and suggestions are kept beside the note, so they survive a restart,
-  follow the note and reach your other devices. More agents join by name (`vau companion start --as Ada`), each in its
+  follow the note and reach your other devices; a comment whose text was removed says so. Its edits are its own in
+  Activity, Review and version history (Claude, Ada), reverted like any AI's, and a long session hands over to a fresh
+  one with a summary and its open threads. More agents join by name (`vau companion start --as Ada`), each in its
   own colour: `@ada` asks only that one. Typing @ lists them, and a new name offers Start @name (Sonnet at medium effort by default; Tab or → picks
   another model and effort), its ask waiting for it to start; `@name` shows as a chip in its agent's colour, lit
   when the ask goes and while it thinks. Hover its cursor for what it's doing; click it for its last words (pin one as a
