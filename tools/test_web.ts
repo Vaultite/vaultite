@@ -19,8 +19,12 @@ const STUBS: Record<string, string> = {
   "@/core/appearance": "export const onLook = () => () => {}",
   "@/core/desktop": "export const webPages = null; export const keyboardTakes = () => 0; export const pageTakenSince = () => null",
 }
+// (plugins import the app as "@vaultite": here, only what their editing commands use)
+const shim = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vau-shim-")), "vaultite.ts")
+fs.writeFileSync(shim, `export { blockPieces } from ${JSON.stringify(pathToFileURL(path.join(WEB, "core", "highlights.ts")).href)}`)
 registerHooks({
   resolve(spec, context, next) {
+    if (spec === "@vaultite") return { url: pathToFileURL(shim).href, shortCircuit: true }
     if (spec in STUBS) return { url: `data:text/javascript,${encodeURIComponent(STUBS[spec])}`, shortCircuit: true }
     if (spec.startsWith("@/")) {
       const base = path.join(WEB, spec.slice(2))
@@ -366,6 +370,42 @@ check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"),
   check("highlights: a colour's class", hl.highlightClass("red") === "hl-red" && hl.highlightClass(null) === "" && hl.HIGHLIGHT_COLORS.map((c) => c.name).join() === "red,orange,yellow,green,blue,purple")
   const tt2: typeof import("../web/src/editor/tableText.ts") = await web("editor/tableText.ts")
   check("highlights: a table sorts a coloured highlight by its text", tt2.compareCells("==🔴b==", "a") > 0 && tt2.compareCells("==🟢a==", "b") < 0)
+}
+{
+  // A highlight runs over a paragraph's soft line breaks (as ~~strike~~ does), never over blocks.
+  const { EditorState, EditorSelection } = await import("@codemirror/state")
+  const hl: typeof import("../web/src/core/highlights.ts") = await web("core/highlights.ts")
+  const ed: typeof import("../plugins/core/editing/edit.ts") = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "editing", "edit.ts")).href)
+  const soft = md.renderMarkdown("A ==two\nlines== here\n\n- ==a\n- b==\n\n%%a\nb%% c\n\nz == y == x")
+  check("markdown: a highlight runs over a soft line break, not over list items or a blank line",
+    soft.includes("<mark>two<br>lines</mark>") && !soft.includes("<mark>a") && soft.includes("==a") && soft.includes("<p> c</p>") && soft.includes("z == y == x"), soft)
+  const doc = (text: string) => EditorState.create({ doc: text }).doc
+  const para = (text: string, at: number) => { const d = doc(text), p = hl.paragraphAt(d, at); return d.sliceString(p.from, p.to) }
+  check("paragraphs: soft-wrapped lines are one, a blank line, list item, heading or table row ends it",
+    para("a\nb\n\nc", 0) === "a\nb" && para("a\nb\n- c\n- d", 0) === "a\nb" && para("a\nb\n- c\n  e\n- d", 6) === "- c\n  e" &&
+    para("# T\na\nb", 6) === "a\nb" && para("a\n| x | y |\n| 1 | 2 |", 0) === "a" && para("> a\n> b\nc", 0) === "> a\n> b\nc" && para("p\n> q", 0) === "p")
+  const at = (text: string, from: number, to = from) => hl.highlightAt(EditorState.create({ doc: text }), from, to)
+  check("highlights: one found over a soft break, from any line of it; none across blocks",
+    at("==a\nb==", 5)?.to === 7 && at("x ==a\nb\nc== y", 6)?.from === 2 && at("==a\n\nb==", 1) === null && at("- ==a\n- b==", 3) === null)
+  const run = (text: string, sel: [number, number], f: (v: any) => unknown) => {
+    let state = EditorState.create({ doc: text, selection: EditorSelection.single(...sel), extensions: [EditorState.allowMultipleSelections.of(true)] })
+    const v = { get state() { return state }, dispatch: (tr: any) => { state = state.update(tr).state } }
+    f(v)
+    return state.doc.toString()
+  }
+  const all = (t: string) => [0, t.length] as [number, number]
+  const t1 = "one\ntwo\n\nthree\n- four\n- five"
+  check("highlight toolbar: a selection over blocks is wrapped block by block", run(t1, all(t1), hl.colorHighlight(null)) === "==one\ntwo==\n\n==three==\n- ==four==\n- ==five==")
+  check("highlight toolbar: inside a soft-wrapped paragraph one highlight spans its lines", run("one\ntwo", all("one\ntwo"), hl.colorHighlight(null)) === "==one\ntwo==")
+  check("highlight toolbar: a colour changes a highlight over a soft break", run("==a\nb==", [1, 2], hl.colorHighlight("green")) === "==🟢a\nb==")
+  check("mark toggle: a selection over blocks, bold and comment, block by block", run(t1, all(t1), ed.toggleMark("**")) === "**one\ntwo**\n\n**three**\n- **four**\n- **five**" &&
+    run("a\n\nb", all("a\n\nb"), ed.toggleMark("%%")) === "%%a%%\n\n%%b%%")
+  const marked = "==one\ntwo==\n\n==three==\n- ==four==\n- ==five=="
+  check("mark toggle: off again over blocks; the selection stays on the text", run(marked, all(marked), ed.toggleMark("==")) === t1)
+  check("mark toggle: only the unmarked blocks get marks when some are", run("==a==\n\nb", all("==a==\n\nb"), ed.toggleMark("==")) === "==a==\n\n==b==")
+  check("mark toggle: a selection inside one paragraph is one mark", run("one\ntwo", all("one\ntwo"), ed.toggleMark("==")) === "==one\ntwo==")
+  check("clear formatting: strips a mark over a soft break, not across a blank line",
+    run("==a\nb==", all("==a\nb=="), ed.clearFormatting) === "a\nb")
 }
 check("markdown: #tags are clickable, not in code", html.includes('<a class="tag" data-tag="idea/new">#idea/new</a>') && html.includes("<code>#code</code>"), html)
 check("markdown: comments and block ids are hidden", !html.includes("hidden") && !html.includes("not shown") && !html.includes("^b1") && !html.includes("alone"), html)

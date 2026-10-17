@@ -10,7 +10,7 @@ mkdirSync(OUT, { recursive: true })
 const DIR = "Qa highlights", NOTE = `${VAULT}/${DIR}/Colours.md`, enc = encodeURIComponent
 rmSync(`${VAULT}/${DIR}`, { recursive: true, force: true })
 mkdirSync(`${VAULT}/${DIR}`, { recursive: true })
-const START = "Plain ==default== and ==🔴red== ==🟠orange== ==🟡yellow== ==🟢green== ==🔵blue== ==🟣purple==. ^cols\n\nswatch ==🟢here== end\n\nword\n\n![[Colours#^cols]]\n"
+const START = "Plain ==default== and ==🔴red== ==🟠orange== ==🟡yellow== ==🟢green== ==🔵blue== ==🟣purple==. ^cols\n\nswatch ==🟢here== end\n\nword\n\n![[Colours#^cols]]\n\nsoft ==one\ntwo== end\n\n- ==x\n- y== list\n"
 writeFileSync(NOTE, START)
 const disk = () => readFileSync(NOTE, "utf8")
 const saved = (want) => until(() => disk().includes(want), 4000)
@@ -35,6 +35,10 @@ try {
   check("live: six different tints", new Set(live.map((x) => x?.bg)).size === 6, live.map((x) => x?.bg))
   check("live: no emoji shown off the cursor", !EMOJI.test(await line(0).innerText()), await line(0).innerText())
   check("live: plain ==default== has no colour class", await ed.locator(".cm-highlight", { hasText: "default" }).evaluate((el) => !/hl-/.test(el.className)))
+  // a highlight runs over a soft line break (like ~~strike~~), never over list items
+  const soft = await ed.locator(".cm-line").evaluateAll((ls) => ls.filter((l) => /^soft|^two/.test(l.textContent)).map((l) => [...l.querySelectorAll(".cm-highlight")].map((h) => h.textContent)))
+  check("live: ==a\\nb== marks both lines of one paragraph, hides its marks", JSON.stringify(soft) === '[["one"],["two"]]', soft)
+  check("live: ==x and y== in two list items are not a highlight", await ed.locator(".cm-line", { hasText: "list" }).locator(".cm-highlight").count() === 0)
   const embed = page.locator("[data-pane] .note-embed").first()
   check("embed (Markdown to HTML): coloured marks, no emoji", await until(async () => (await embed.locator("mark.hl-green").count()) === 1)
     && !EMOJI.test(await embed.innerText()), await embed.innerText().catch(() => ""))

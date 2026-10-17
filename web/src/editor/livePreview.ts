@@ -19,7 +19,7 @@ import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, r
 import { capitalize } from "@/lib/utils"
 import { drawTable as drawCells, enterTable } from "./tables"
 import { cellAt } from "./tableText"
-import { HIGHLIGHT, highlightClass, highlightColor, type HighlightColor } from "@/core/highlights"
+import { HIGHLIGHT_SPAN, highlightClass, highlightColor, paragraphAt, type HighlightColor } from "@/core/highlights"
 import { highlightItems } from "@/core/highlightMenu"
 import { openMenu } from "@/components/ContextMenu"
 
@@ -822,6 +822,7 @@ function inline(view: EditorView): DecorationSet {
   // Inline HTML drawn in its place (`H<sub>2</sub>O`): what's inside is the widget's, not the passes below.
   const htmls: [number, number][] = []
   const inHtml = (a: number, b: number) => htmls.some(([f, t]) => a < t && b > f)
+  const pcache: { p?: Para } = {}
   for (const r of view.visibleRanges) {
     const from = Math.max(r.from, body), to = r.to
     if (from > to) continue
@@ -1074,7 +1075,7 @@ function inline(view: EditorView): DecorationSet {
           out.push(Decoration.replace({ widget: new FootnoteRef(m[1], notes.num.get(m[1]) ?? 0, def?.text.slice(0, 300) ?? "", def ? def.at : -1) }).range(a, b))
         }
       }
-      if (live) inlineMarks(state, l, tree, out)
+      if (live) inlineMarks(state, l, tree, out, pcache)
       pos = l.to + 1
     }
   }
@@ -1082,7 +1083,42 @@ function inline(view: EditorView): DecorationSet {
 }
 
 const inCode = (tree: ReturnType<typeof syntaxTree>, at: number) => /Code|URL|LinkMark|HTML|Comment/.test(tree.resolveInner(at, 1).name)
-const COMMENT = /%%(.*?)%%/g
+const COMMENT_SPAN = /%%[^]*?%%/g
+
+/** The ==highlights== and %%comments%% of the paragraph a line is in: they run on over its soft line breaks (and never
+ *  over a blank line or another block), so they're read once for the whole paragraph. Kept for the lines that follow. */
+type Para = { from: number; to: number; comments: [number, number][]; marks: { a: number; b: number; inner: string }[] }
+function paragraphMarks(state: EditorState, l: { from: number; to: number }, tree: ReturnType<typeof syntaxTree>, cache: { p?: Para }): Para {
+  if (cache.p && l.from >= cache.p.from && l.to <= cache.p.to) return cache.p
+  const r = paragraphAt(state.doc, l.from)
+  const text = state.sliceDoc(r.from, r.to)
+  const p: Para = { ...r, comments: [], marks: [] }
+  if (text.includes("%%")) {
+    for (const m of text.matchAll(COMMENT_SPAN)) {
+      const a = r.from + m.index, b = a + m[0].length
+      if (inCode(tree, a)) continue
+      // (%% lines of their own, over several lines, are a block: blockField)
+      const first = state.doc.lineAt(a), last = state.doc.lineAt(b)
+      if (first.number !== last.number && !state.sliceDoc(first.from, a).trim() && !state.sliceDoc(b, last.to).trim()) continue
+      p.comments.push([a, b])
+    }
+  }
+  if (text.includes("==")) {
+    for (const m of text.matchAll(HIGHLIGHT_SPAN)) {
+      const a = r.from + m.index, b = a + m[0].length
+      if (inCode(tree, a) || p.comments.some(([x, y]) => a >= x && a < y)) continue
+      p.marks.push({ a, b, inner: m[1] })
+    }
+  }
+  return cache.p = p
+}
+/** The part of a..b on line `l`, past the quote marks and indent a paragraph's later lines carry; null if none. */
+function onLine(l: { from: number; to: number; text: string }, a: number, b: number): [number, number] | null {
+  let s = Math.max(a, l.from)
+  const e = Math.min(b, l.to)
+  if (a < l.from) s += /^[ \t>]*/.exec(l.text)![0].length
+  return s < e ? [s, e] : null
+}
 
 /** The swatch before the highlight at the cursor: a click shows its colours. */
 class HighlightSwatch extends WidgetType {
@@ -1107,21 +1143,17 @@ class HighlightSwatch extends WidgetType {
   ignoreEvent() { return true }
 }
 
-/** One line's #tags, ==highlights==, %%comments%% and block id (live preview and reading). */
-function inlineMarks(state: EditorState, l: { from: number; to: number; text: string }, tree: ReturnType<typeof syntaxTree>, out: Range<Decoration>[]) {
+/** One line's #tags, ==highlights==, %%comments%% and block id (live preview and reading); the highlights and comments
+ *  are its paragraph's (above). */
+function inlineMarks(state: EditorState, l: { from: number; to: number; text: string }, tree: ReturnType<typeof syntaxTree>, out: Range<Decoration>[], cache: { p?: Para }) {
   const t = l.text
-  // Comments on one line: faint while editing, gone when reading (a %% block over lines: the block pass).
-  const comments: [number, number][] = []
-  if (t.includes("%%")) {
-    COMMENT.lastIndex = 0
-    for (let m; (m = COMMENT.exec(t));) {
-      const a = l.from + m.index, b = a + m[0].length
-      if (inCode(tree, a)) continue
-      comments.push([a, b])
-      out.push(reading(state) ? hide.range(a, b) : mark("cm-comment").range(a, b))
-    }
+  const para = paragraphMarks(state, l, tree, cache)
+  // Comments: faint while editing, gone when reading.
+  for (const [a, b] of para.comments) {
+    const seg = onLine(l, a, b)
+    if (seg) out.push(reading(state) ? hide.range(...seg) : mark("cm-comment").range(...seg))
   }
-  const inComment = (a: number) => comments.some(([x, y]) => a >= x && a < y)
+  const inComment = (a: number) => para.comments.some(([x, y]) => a >= x && a < y)
   if (t.includes("#")) {
     TAG.lastIndex = 0
     for (let m; (m = TAG.exec(t));) {
@@ -1131,19 +1163,19 @@ function inlineMarks(state: EditorState, l: { from: number; to: number; text: st
       out.push(mark("cm-tag", { "data-tag": m[1] }).range(a, b))
     }
   }
-  if (t.includes("==")) {
-    HIGHLIGHT.lastIndex = 0
-    for (let m; (m = HIGHLIGHT.exec(t));) {
-      const a = l.from + m.index, b = a + m[0].length
-      if (inCode(tree, a) || inComment(a)) continue
-      // (a colour emoji after the opening ==, ==🟢text==, goes with it; at the cursor, a swatch to change it)
-      const c = highlightColor(m[1]), e = a + 2 + (c?.len ?? 0)
-      if (e < b - 2) out.push(mark(c ? `cm-highlight ${highlightClass(c.color)}` : "cm-highlight").range(e, b - 2))
-      if (!touched(state, a, b)) out.push(hide.range(a, e), hide.range(b - 2, b))
-      else {
-        out.push(Decoration.widget({ widget: new HighlightSwatch(c?.color ?? null), side: -1 }).range(a))
-        out.push(mark("cm-hmark").range(a, e), mark("cm-hmark").range(b - 2, b))
-      }
+  for (const { a, b, inner } of para.marks) {
+    if (b < l.from || a > l.to) continue
+    // (a colour emoji after the opening ==, ==🟢text==, goes with it; at the cursor, a swatch to change it)
+    const c = highlightColor(inner), e = a + 2 + (c?.len ?? 0)
+    const body = e < b - 2 ? onLine(l, e, b - 2) : null
+    if (body) out.push(mark(c ? `cm-highlight ${highlightClass(c.color)}` : "cm-highlight").range(...body))
+    const opens = a >= l.from && a <= l.to, closes = b - 2 >= l.from && b - 2 <= l.to
+    if (!touched(state, a, b)) {
+      if (opens) out.push(hide.range(a, e))
+      if (closes) out.push(hide.range(b - 2, b))
+    } else {
+      if (opens) out.push(Decoration.widget({ widget: new HighlightSwatch(c?.color ?? null), side: -1 }).range(a), mark("cm-hmark").range(a, e))
+      if (closes) out.push(mark("cm-hmark").range(b - 2, b))
     }
   }
   const id = t.includes("^") ? BLOCK_ID.exec(t) : null
@@ -1314,6 +1346,8 @@ function candidates(state: EditorState): Cands {
     let end = k + 1
     while (end <= lines.length && commentMarks(lines[end - 1]) % 2 === 0) end++
     if (end > lines.length) break
+    // (a comment that shares its lines with text, in one paragraph: the paragraph's marks, inlineMarks)
+    if (paragraphAt(doc, row(k).from).to >= row(end).to && (lines[k - 1].slice(0, lines[k - 1].indexOf("%%")).trim() || lines[end - 1].slice(lines[end - 1].lastIndexOf("%%") + 2).trim())) { k = end; continue }
     if (read) add(k, end, null)
     else {
       const decos: Range<Decoration>[] = []
@@ -1529,7 +1563,14 @@ export function findable(state: EditorState, from: number, to: number): boolean 
     return over(a, alias ? a + 3 + target.length : a + 2) || over(b - 2, b)
   })) return false
   if (t.includes("$") && each(MATH, (m) => over(m.index, m.index + m[0].length))) return false
-  if (t.includes("==") && each(HIGHLIGHT, (m) => over(m.index, m.index + 2 + (highlightColor(m[1])?.len ?? 0)) || over(m.index + m[0].length - 2, m.index + m[0].length))) return false
+  // (==marks== and %%comments%% run over a paragraph's soft line breaks)
+  const para = paragraphAt(state.doc, from), ptext = state.sliceDoc(para.from, para.to)
+  const overAt = (a: number, b: number) => para.from + a < to && para.from + b > from
+  if (ptext.includes("==")) {
+    for (const m of ptext.matchAll(HIGHLIGHT_SPAN)) {
+      if (overAt(m.index, m.index + 2 + (highlightColor(m[1])?.len ?? 0)) || overAt(m.index + m[0].length - 2, m.index + m[0].length)) return false
+    }
+  }
   if (t.includes("[^")) {
     const d = FN_DEF.exec(t)
     if (d && over(0, d[0].length)) return false
@@ -1538,7 +1579,7 @@ export function findable(state: EditorState, from: number, to: number): boolean 
   const callout = CALLOUT_HEAD.exec(t)
   if (callout && over(0, callout[1].length)) return false
   if (read) {
-    if (t.includes("%%") && each(COMMENT, (m) => over(m.index, m.index + m[0].length))) return false
+    if (ptext.includes("%%") && [...ptext.matchAll(COMMENT_SPAN)].some((m) => overAt(m.index, m.index + m[0].length))) return false
     const id = t.includes("^") ? BLOCK_ID.exec(t) : null
     if (id && over(id.index, t.length)) return false
   }

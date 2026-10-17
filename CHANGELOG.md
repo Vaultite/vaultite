@@ -28,6 +28,8 @@ A companion agent writes beside you, AI apps draw the vault as cards, and the ap
   suggestions are threads in the Conversations panel (margin cards instead is a setting), kept beside the note so they
   survive a restart and reach your other devices. Its edits are its own in Activity, Review and version history, and a
   long session hands over to a fresh one with a summary and its open threads.
+- ==Highlights== and %%comments%% run over a paragraph's soft line breaks, as Obsidian's do; a mark on a selection over
+  several blocks wraps each block. A companion's cursor for a file scrolled out of the file list stays at the list's edge.
 - More companions join by name (`vau companion start --as Ada`, or Start @name in the @ picker, with a model and
   effort), each in its own colour; `@ada` asks only that one. Hover a cursor for what it's doing, click it for its last
   words, drag it onto text to say "look at this"; a note's top bar shows who's here. In an Excalidraw drawing each is a

@@ -65,6 +65,33 @@ await wait(900)
 const row = await page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first().boundingBox(), there = await cursor.boundingBox()
 check("look: a note that isn't open, its row in the file tree", !!row && !!there && Math.abs(there.y - row.y) < 20 && there.x < row.x + row.width, { row, there })
 
+// (the row scrolled out of its list: the cursor stays at the list's edge, not over what's above or below it)
+{
+  const rowEl = page.locator(`[data-tree-path="${DIR}/Seeds.md"]`).first()
+  const size = page.viewportSize()
+  await page.setViewportSize({ width: size.width, height: 360 }); await wait(400)
+  const scrolled = await rowEl.evaluate((el) => {
+    let s = el.parentElement
+    while (s && !(s.scrollHeight > s.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(s).overflowY))) s = s.parentElement
+    if (!s) return null
+    const r0 = el.getBoundingClientRect()
+    s.scrollTop = r0.top - s.getBoundingClientRect().top > s.clientHeight / 2 ? 0 : s.scrollHeight
+    return true
+  })
+  await wait(700)
+  if (scrolled) {
+    const out = await rowEl.evaluate((el) => {
+      let s = el.parentElement
+      while (s && !(s.scrollHeight > s.clientHeight + 4 && /auto|scroll/.test(getComputedStyle(s).overflowY))) s = s.parentElement
+      const box = s.getBoundingClientRect(), r = el.getBoundingClientRect()
+      return { hidden: r.bottom <= box.top || r.top >= box.bottom, top: box.top, bottom: box.bottom }
+    })
+    const c = await cursor.boundingBox()
+    check("look: a row scrolled out of its list, the cursor sits at the list's edge", !out.hidden || (!!c && c.y >= out.top - 2 && c.y <= out.bottom), { out, c })
+  }
+  await page.setViewportSize(size); await wait(400)
+}
+
 // Words by its cursor.
 await op("companion.say", { text: "Basil keeps aphids off tomatoes.", path: NOTE, find: "Basil" })
 await page.getByText("Basil keeps aphids off tomatoes.").waitFor({ timeout: 3000 })

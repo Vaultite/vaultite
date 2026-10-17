@@ -68,6 +68,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `blockFor(name, disabled, options?)`: Who draws ```block-<name> (the enabled plugin that has it, else the one that would, off; with `by`, the one its option names, else `unnamed` says why) and its declaration.
 - `blockHeightKey(where, path, name, text, n?)`: A ```block-<name>'s key in a file: the same in a dashboard's grid (`where`: page, sheet) and in the editor (editor), so one can guess the other's size.
 - `blockOptions(text)`: A block's text read as options ({} when it's empty or isn't YAML), the way the server reads them (core/blocks.ts).
+- `blockPieces(doc, from, to)`: from..to cut into one piece per block it touches (a mark never runs across blocks), each without its list marker, quote marks and edge spaces; none empty.
 - `BlockView(props)`: ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`: nothing).
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
@@ -214,7 +215,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `headingsOf(text)`: Every `# heading` of a text (ATX), in order, with its line (0-based).
 - `HIGHLIGHT_COLORS`: The six colours, in Obsidian's order: each one's name (drawn as `hl-<name>`) and emoji.
 - `HIGHLIGHT_EMOJI`: A colour emoji (with the variation selector some keyboards add after it).
-- `highlightAt(state, from, to?)`: The highlight from..to is in (its marks too), on that line.
+- `highlightAt(state, from, to?)`: The highlight from..to is in (its marks too), in that paragraph.
 - `highlightClass(color)`: The class a highlight of that colour is drawn with (none for the default).
 - `highlightColor(text)`: The colour a highlight's text starts with, and how long its emoji is (UTF-16 units); null: the default.
 - `HighlightColor`

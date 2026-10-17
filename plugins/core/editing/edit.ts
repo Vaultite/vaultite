@@ -5,6 +5,7 @@ import { deleteLine, moveLineDown, moveLineUp } from "@codemirror/commands"
 export { indentLess, indentMore } from "@codemirror/commands"
 import { EditorSelection, type EditorState, type Line } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
+import { blockPieces } from "@vaultite"
 
 /** How many of `c` run back from `pos` (or on from it, `dir` 1). */
 function run(state: EditorState, pos: number, c: string, dir: -1 | 1) {
@@ -22,13 +23,33 @@ function holds(m: string, before: number, after: number) {
   return before >= m.length && after >= m.length
 }
 
-/** Bold, italic, ==highlight==, ~~strike~~, `code`, %%comment%%: on what's selected (with nothing selected, the word
- *  at the cursor; between words, the marks with the cursor between them), or off where it's already marked. */
+/** The edits that take mark `m` off from..to (selected with it, or around it), or null when it isn't marked. */
+function unmarkOf(state: EditorState, from: number, to: number, m: string) {
+  const c = m[0], text = state.sliceDoc(from, to)
+  if (text.length > 2 * m.length && text.startsWith(m) && text.endsWith(m) && holds(m, run(state, from, c, 1), run(state, to, c, -1))) {
+    return [{ from, to: from + m.length }, { from: to - m.length, to }]
+  }
+  if (holds(m, run(state, from, c, -1), run(state, to, c, 1))) return [{ from: from - m.length, to: from }, { from: to, to: to + m.length }]
+  return null
+}
+
+/** Bold, italic, ==highlight==, ~~strike~~, `code`, %%comment%%: on the selection (nothing selected: the word at the
+ *  cursor, else the marks with the cursor between), or off where marked. Over several blocks, block by block. */
 export const toggleMark = (m: string) => (view: EditorView) => {
   const { state } = view
   const c = m[0]
   view.dispatch(state.changeByRange((r) => {
     let { from, to } = r
+    if (!r.empty) {
+      const pieces = blockPieces(state.doc, from, to)
+      if (pieces.length > 1) {
+        const offs = pieces.map((p) => unmarkOf(state, p.from, p.to, m))
+        const changes = offs.every((o) => o) ? offs.flat() as { from: number; to: number; insert?: string }[]
+          : pieces.flatMap((p, i) => offs[i] ? [] : [{ from: p.from, insert: m }, { from: p.to, insert: m }])
+        const cs = state.changes(changes)
+        return { changes: cs, range: EditorSelection.range(cs.mapPos(pieces[0].from, 1), cs.mapPos(pieces[pieces.length - 1].to, -1)) }
+      }
+    }
     if (r.empty) {
       const w = state.wordAt(r.head)
       if (w) ({ from, to } = w)
@@ -53,7 +74,7 @@ export const toggleMark = (m: string) => (view: EditorView) => {
 // Inline marks, longest first (so ** is taken before *).
 const MARKS = ["**", "__", "==", "~~", "%%", "*", "_", "`", "$"]
 const MARK_CHAR = /[*_=~%`$]/
-const STRIP = [/(\*\*|__|==|~~|%%)(?=\S)(.*?\S)\1/g, /(?<![\w*])([*_])(?=\S)(.*?\S)\1(?![\w*])/g, /(`)([^`\n]+)`/g, /(\$)(?=\S)([^$\n]*?\S)\$/g]
+const STRIP = [/(\*\*|__|==|~~|%%)(?=\S)((?:(?!\n[ \t]*\n)[^])*?\S)\1/g, /(?<![\w*])([*_])(?=\S)(.*?\S)\1(?![\w*])/g, /(`)([^`\n]+)`/g, /(\$)(?=\S)([^$\n]*?\S)\$/g]
 
 /** Clear formatting: the marks in what's selected (with nothing selected, the word at the cursor), and those around
  *  it, taken out; the text stays selected. `colors`: a highlight's colour emoji (HIGHLIGHT_EMOJI), taken with its ==. */

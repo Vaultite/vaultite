@@ -28,18 +28,37 @@ function coords(v: EditorView, pos: number) {
   const r = (v.dom.closest("[data-pane]") ?? v.scrollDOM).getBoundingClientRect()
   // (what of it shows: above the status bar or a phone's bar, drawn over its foot)
   const bars = [...document.querySelectorAll("[data-status-bar], [data-phone-bar]")].map((el) => el.getBoundingClientRect()).filter((b) => b.height && b.left < r.right && b.right > r.left)
-  const box = { left: r.left, right: r.right, top: r.top, bottom: Math.min(r.bottom, ...bars.map((b) => b.top)) }
+  const k = clipOf(v.dom)
+  const box = { left: Math.max(r.left, k.left), right: Math.min(r.right, k.right), top: Math.max(r.top, k.top), bottom: Math.min(r.bottom, k.bottom, ...bars.map((b) => b.top)) }
   let c: { left: number; top: number; bottom: number } | null = null
   try { c = v.coordsAtPos(pos) } catch { /* outside the drawn part */ }
   const y = c ? c.top : pos < v.viewport.from ? box.top : box.bottom
   return { x: c ? c.left : box.left + 24, y: Math.max(box.top + 2, Math.min(box.bottom - 30, y)), shown: !!c && c.top >= box.top - 4 && c.bottom <= box.bottom + 4, box }
 }
 
-/** A file that isn't open: its row in the file tree, when one shows it. */
+/** What of `el` its scrollers and clippers (and the screen) let show: a rect, empty when `el` is wholly outside. */
+export function clipOf(el: Element) {
+  let c = { left: 0, top: 0, right: innerWidth, bottom: innerHeight }
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const s = getComputedStyle(p)
+    if (s.overflowX === "visible" && s.overflowY === "visible") continue
+    const r = p.getBoundingClientRect()
+    c = { left: Math.max(c.left, r.left), top: Math.max(c.top, r.top), right: Math.min(c.right, r.right), bottom: Math.min(c.bottom, r.bottom) }
+  }
+  return c
+}
+
+/** A file that isn't open: its row in the file tree, when one shows it. Scrolled out of its list, the cursor sits at the
+ *  list's edge on that side ("up there"), never over what's beside the list. */
 function rowOf(path: string): Spot | null {
   const el = [...document.querySelectorAll<HTMLElement>(`[data-tree-path="${CSS.escape(path)}"]`)].find((e) => e.offsetParent)
   const r = el?.getBoundingClientRect()
-  return r && r.height ? { x: r.left + Math.min(r.width - 24, 120), y: r.top + 4, low: r.top + 4 + FLAG > innerHeight - 40 } : null
+  if (!el || !r || !r.height) return null
+  const c = clipOf(el)
+  if (c.bottom - c.top < 12 || c.right - c.left < 12) return null
+  const x = Math.max(c.left + 4, Math.min(c.right - 24, r.left + Math.min(r.width - 24, 120)))
+  const y = Math.max(c.top + 2, Math.min(c.bottom - 24, r.top + 4))
+  return { x, y, low: y + FLAG > Math.min(c.bottom, innerHeight - 40) }
 }
 
 function home(i: number): Spot {
