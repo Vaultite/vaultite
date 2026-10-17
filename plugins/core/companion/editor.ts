@@ -1,9 +1,9 @@
 // The companion in a note's editor: what the user writes said after a pause (and a line with @claude at Enter), the
 // agents' highlights, comments' anchors and suggestions drawn in the text, Tab and Esc for a suggestion, and edits typed in.
-import type { CompletionContext } from "@codemirror/autocomplete"
+import { closeCompletion, type Completion, type CompletionContext, completionStatus, selectedCompletion, startCompletion } from "@codemirror/autocomplete"
 import { Annotation, ChangeSet, EditorState, type Extension, Prec, RangeSetBuilder, StateEffect, StateField, type Text, Transaction } from "@codemirror/state"
-import { Decoration, type DecorationSet, EditorView, keymap, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
-import { pluginSettings, type EditorCtx } from "@vaultite"
+import { Decoration, type DecorationSet, EditorView, keymap, showTooltip, type Tooltip, ViewPlugin, type ViewUpdate, WidgetType } from "@codemirror/view"
+import { keyHint, notifyError, op, pluginSettings, type EditorCtx } from "@vaultite"
 import { accept, answer, asksSomething, bump, canMention, type EditAsk, getState, hunksOf, listen, liveAgents, mentionAgent, mentionIn, mentionNames, mentionsOf, midNames, nearest, type Note, sayWhere, sendMoment, setTyper, setTyping, subscribe, tintOf, views } from "./live"
 
 /** Its own changes: not the user's, so not said back as theirs. */
@@ -152,9 +152,8 @@ function suggestionAt(view: EditorView, path: string): Note | null {
 
 // ---------- what the user does, said to the agents
 
-/** How long without typing before what they wrote is said: longer mid-sentence, anything but a sentence's end
- *  (dictation lands in bursts, with thinking between, and a burst is often half a thought); not for an ask, which,
- *  written on, comes again. */
+/** How long without typing before what they wrote is said: longer mid-sentence (dictation lands in bursts, a burst
+ *  often half a thought); not for an ask, which, written on, comes again. */
 function pauseIn(state: EditorState) {
   const ms = (Number(pluginSettings("companion").get().pause) || 2) * 1000
   const head = state.selection.main.head, line = state.doc.lineAt(head)
@@ -340,19 +339,132 @@ const theme = EditorView.baseTheme({
   ".cm-companion-ins": { color: "var(--c)", backgroundColor: "color-mix(in srgb, var(--c) 12%, transparent)", borderRadius: "3px", padding: "0 2px", marginLeft: "2px",
     animation: "cm-companion-in .3s ease-out" },
   ".cm-companion-veiled, .cm-companion-veiled *": { color: "transparent !important" },
+  // (the Start row's chooser, drawn as the suggestion list is)
+  ".cm-tooltip.cm-companion-start": { background: "var(--card)", border: "0.5px solid var(--border)", borderRadius: "10px", padding: "4px", boxShadow: "0 10px 30px rgb(0 0 0 / 0.18)",
+    fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--foreground)", minWidth: "260px" },
+  ".cm-companion-start-row": { display: "flex", alignItems: "center", gap: "4px", padding: "3px 6px", borderRadius: "6px" },
+  ".cm-companion-start-on": { background: "color-mix(in srgb, var(--primary) 9%, transparent)" },
+  ".cm-companion-start-row > span": { width: "48px", fontSize: "12px", color: "var(--muted-foreground)" },
+  ".cm-companion-start-row > button": { padding: "1px 8px", borderRadius: "999px", border: "0.5px solid var(--border)", cursor: "pointer", lineHeight: "20px" },
+  ".cm-companion-start-row > button[aria-pressed]": { background: "color-mix(in srgb, var(--primary) 18%, transparent)", borderColor: "color-mix(in srgb, var(--primary) 45%, transparent)", fontWeight: "600" },
+  ".cm-companion-start-go": { display: "flex", width: "100%", alignItems: "center", gap: "6px", marginTop: "2px", padding: "4px 6px", borderRadius: "6px", cursor: "pointer", fontWeight: "550" },
+  ".cm-companion-start-go:hover": { background: "color-mix(in srgb, var(--foreground) 6%, transparent)" },
+  ".cm-companion-start-go > kbd": { marginLeft: "auto", fontFamily: "inherit", fontSize: "12px", color: "var(--muted-foreground)" },
   ".cm-companion-typed": { backgroundColor: "color-mix(in srgb, var(--c) 24%, transparent)", borderRadius: "2px", animation: "cm-companion-fade 4s ease-in forwards" },
   "@keyframes cm-companion-in": { from: { backgroundColor: "transparent" } },
   "@keyframes cm-companion-fade": { "0%, 40%": {}, "100%": { backgroundColor: "transparent" } },
 })
 
-/** @ anywhere a mention can start: the agents around now, the companion first. */
-function mentions(ctx: CompletionContext) {
+// ---------- @ and a new name: Start @name, at the model and effort a new one runs, or others picked (Tab or →)
+
+type How = { model: string; effort: string }
+const MODELS = ["sonnet", "opus", "haiku"], EFFORTS = ["low", "medium", "high"]
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+/** The Start row's name (as typed) on its option. */
+const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string }) | null)?.startAs
+
+/** Start the agent called `name` ("bob": Bob), its @name put in place of from..to; asks to it wait while it starts. */
+function begin(view: EditorView, path: string, name: string, from: number, to: number, how: How) {
+  const insert = `${name.toLowerCase()} `
+  view.dispatch({ changes: { from, to, insert }, selection: { anchor: from + insert.length }, userEvent: "input.complete" })
+  void op("companion.start", { as: cap(name), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}),
+    path, line: view.state.doc.lineAt(from).number }).catch((e) => notifyError(e, `Couldn't start ${cap(name)}`))
+}
+
+/** @ anywhere a mention can start: the agents around now, the companion first; a name none has, a Start row last. */
+const mentions = (path: string) => (ctx: CompletionContext) => {
   const m = ctx.matchBefore(/@[\w-]*$/)
   if (!m || getState().mode === "off" || !canMention(ctx.state.sliceDoc(ctx.state.doc.lineAt(m.from).from, m.from))) return null
-  const names = liveAgents().map((a) => a.name)
-  return { from: m.from + 1, validFor: /^[\w-]*$/,
-    options: (names.length ? names : [getState().name]).map((n) => ({ label: n.toLowerCase(), detail: n === getState().name ? "companion" : undefined,
-      boost: n === getState().name ? 1 : 0, apply: `${n.toLowerCase()} `, highlight: mentionAgent(n)?.tint ?? "orange" })) }
+  const st = getState(), names = liveAgents().map((a) => a.name), typed = m.text.slice(1)
+  const known = [...new Set(["companion", "claude", st.name, ...names].map((n) => n.toLowerCase()))]
+  const some = (t: string) => known.some((n) => n.startsWith(t.toLowerCase()))
+  const options: (Completion & { highlight?: string; startAs?: string })[] = (names.length ? names : [st.name]).map((n) => ({ label: n.toLowerCase(), detail: n === st.name ? "companion" : undefined,
+    boost: n === st.name ? 1 : 0, apply: `${n.toLowerCase()} `, highlight: mentionAgent(n)?.tint ?? "orange" }))
+  // (one word, as companion.start takes)
+  const fresh = !!typed && typed.length <= 30 && !some(typed)
+  if (fresh) {
+    const how = st.fresh
+    options.push({ label: typed, displayLabel: `Start @${typed}`, boost: -99, startAs: typed,
+      detail: ["new companion", how.model && cap(how.model), how.effort].filter(Boolean).join(" · "),
+      apply: (view: EditorView, _c: Completion, from: number, to: number) => begin(view, path, typed, from, to, how) })
+  }
+  // (asked again as they type once no agent's name fits, for the Start row to name what they typed)
+  return { from: m.from + 1, options, ...(fresh ? {} : { validFor: (t: string) => /^[\w-]*$/.test(t) && (!t || some(t)) }) }
+}
+
+/** The chooser under a Start row: its name and where it was typed (from: after the @), what's picked, the row on. */
+type Choice = How & { name: string; from: number; row: 0 | 1; tip: Tooltip }
+const choose = StateEffect.define<Choice | null>()
+const chooser = StateField.define<Choice | null>({
+  create: () => null,
+  update(v, tr) {
+    for (const e of tr.effects) if (e.is(choose)) return e.value
+    // (typing on, or moving off it, takes it away)
+    return v && (tr.docChanged || tr.selection) ? null : v
+  },
+  provide: (f) => showTooltip.from(f, (v) => v?.tip ?? null),
+})
+
+/** The Start row selected in the list: its chooser opens, set to what a new one runs (none when its agent takes no model). */
+function openChooser(view: EditorView) {
+  const name = completionStatus(view.state) === "active" ? startOf(selectedCompletion(view.state)) : undefined, how = getState().fresh
+  if (!name || !how.model) return false
+  const from = view.state.selection.main.head - name.length
+  closeCompletion(view)
+  view.dispatch({ effects: choose.of({ ...how, name, from, row: 0, tip: { pos: from - 1, above: false, create: (v) => chooserView(v) } }) })
+  return true
+}
+
+/** The chooser's keys: ← → pick, ↑ ↓ (or Tab) the row, Enter starts, Escape goes back to the list. */
+function chooserKey(key: string) {
+  return (view: EditorView) => {
+    const c = view.state.field(chooser, false)
+    if (!c) return key === "Tab" || key === "ArrowRight" ? openChooser(view) : false
+    const set = (next: Partial<Choice>) => view.dispatch({ effects: choose.of({ ...c, ...next }) })
+    const list = c.row ? EFFORTS : MODELS, at = list.indexOf(c.row ? c.effort : c.model)
+    if (key === "ArrowLeft" || key === "ArrowRight") {
+      const pick = list[(Math.max(0, at) + (key === "ArrowLeft" ? list.length - 1 : 1)) % list.length]
+      set(c.row ? { effort: pick } : { model: pick })
+    } else if (key === "ArrowUp" || key === "ArrowDown" || key === "Tab" || key === "Shift-Tab") set({ row: c.row ? 0 : 1 })
+    else if (key === "Enter") { view.dispatch({ effects: choose.of(null) }); begin(view, pathOf(view), c.name, c.from, c.from + c.name.length, c) }
+    else if (key === "Escape") { view.dispatch({ effects: choose.of(null) }); startCompletion(view) }
+    return true
+  }
+}
+const pathOf = (view: EditorView) => views.get(view) ?? ""
+
+function chooserView(view: EditorView) {
+  const dom = document.createElement("div")
+  dom.className = "cm-companion-start"
+  dom.setAttribute("data-companion-start", "")
+  // (clicks keep the editor's focus, so its keys still work)
+  dom.addEventListener("mousedown", (e) => e.preventDefault())
+  const draw = (c: Choice | null) => {
+    if (!c) return
+    dom.replaceChildren()
+    const row = (i: 0 | 1, label: string, list: string[], on: string) => {
+      const r = dom.appendChild(document.createElement("div"))
+      r.className = `cm-companion-start-row${c.row === i ? " cm-companion-start-on" : ""}`
+      r.appendChild(document.createElement("span")).textContent = label
+      for (const x of list.includes(on) ? list : [on, ...list]) {
+        const b = r.appendChild(document.createElement("button"))
+        b.type = "button"
+        b.textContent = cap(x)
+        if (x === on) b.setAttribute("aria-pressed", "true")
+        b.onclick = () => view.dispatch({ effects: choose.of({ ...c, row: i, ...(i ? { effort: x } : { model: x }) }) })
+      }
+    }
+    row(0, "Model", MODELS, c.model)
+    row(1, "Effort", EFFORTS, c.effort)
+    const go = dom.appendChild(document.createElement("button"))
+    go.type = "button"
+    go.className = "cm-companion-start-go"
+    go.textContent = `Start @${c.name}`
+    go.appendChild(document.createElement("kbd")).textContent = keyHint("Enter")
+    go.onclick = () => chooserKey("Enter")(view)
+  }
+  draw(view.state.field(chooser, false) ?? null)
+  return { dom, update: (u: ViewUpdate) => { const c = u.state.field(chooser, false); if (c !== u.startState.field(chooser, false)) draw(c ?? null) } }
 }
 
 /** The extension for a note's editor (only a file's own: an embed or a field has no path). */
@@ -360,8 +472,9 @@ export function companionExtension(ctx: EditorCtx): Extension {
   if (ctx.kind !== "markdown" || !ctx.path) return []
   const path = ctx.path
   const keys = Prec.highest(keymap.of([
-    { key: "Tab", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
-    { key: "Escape", run: (v) => { const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
+    ...["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", "Enter", "Shift-Tab"].map((key) => ({ key, run: chooserKey(key) })),
+    { key: "Tab", run: (v) => { if (chooserKey("Tab")(v)) return true; const n = suggestionAt(v, path); if (!n) return false; void accept(n); return true } },
+    { key: "Escape", run: (v) => { if (chooserKey("Escape")(v)) return true; const n = suggestionAt(v, path); if (!n) return false; answer(n.id, "reject"); return true } },
   ]))
-  return [typed, span, sentAt, watcher(path), chips(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions }])]
+  return [typed, span, sentAt, chooser, watcher(path), chips(path), keys, theme, EditorState.languageData.of(() => [{ suggest: mentions(path) }])]
 }

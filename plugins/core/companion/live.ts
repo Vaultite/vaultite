@@ -4,7 +4,8 @@ import type { EditorView } from "@codemirror/view"
 
 export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
-export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "away"; t: number; seen?: boolean }
+export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
+  model?: string; effort?: string }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string }
 export type Hunk = { line: number; added: string[]; removed: string[] }
@@ -12,8 +13,8 @@ export type EditAsk = Target & { rid: string; agent: string; text: string; after
 
 /** said: each agent's last says (gone from the screen or not), oldest first. */
 /** picked: the margin card the user opened (clicked, or picked from the note's history). */
-type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean }
-let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false }
+type State = { mode: Mode; name: string; agents: Agent[]; notes: Note[]; said: Note[]; picked: string | null; connected: boolean; fresh: { model: string; effort: string } }
+let state: State = { mode: "quiet", name: "Claude", agents: [], notes: [], said: [], picked: null, connected: false, fresh: { model: "", effort: "" } }
 const subs = new Set<() => void>()
 const changed = () => { for (const fn of [...subs]) fn() }
 export const getState = () => state
@@ -101,7 +102,9 @@ function open() {
   s.onmessage = (ev) => {
     let m: Record<string, unknown>
     try { m = JSON.parse(String(ev.data)) } catch { return }
-    if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [] }); heard(m.agents as Agent[]) }
+    if (m.t === "state") { set({ mode: m.mode as Mode, name: String(m.name), notes: m.notes as Note[], said: (m.said as Note[] | undefined) ?? [],
+      // (what an agent started from here runs; no model: its agent takes none)
+      fresh: (m.fresh as State["fresh"] | undefined) ?? { model: "", effort: "" } }); heard(m.agents as Agent[]) }
     else if (m.t === "said") set({ said: m.said as Note[] })
     else if (m.t === "agent") {
       const a = m.agent as Agent
@@ -139,7 +142,7 @@ export function sendMoment(m: { kind: "ask" | "point" | "edit"; agent?: string; 
   x?: number; y?: number; changes?: string[]; scene?: string }) {
   say({ t: "moment", ...m })
   const a = m.kind === "ask" || m.kind === "point" ? mentionAgent(m.agent ?? state.name) : undefined
-  if (a && a.state !== "away") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
+  if (a && a.state !== "away" && a.state !== "starting") expect(a.name, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find } : {}) }, 10_000)
 }
 /** The user dropped an agent's cursor here: "look at this". It stays there (the server says so too, a moment later). */
 export const pointAt = (agent: string, t: { path: string; line: number; find?: string; selection?: string }) => sendMoment({ kind: "point", agent, ...t })

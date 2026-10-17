@@ -24,7 +24,8 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - Places are a path with a line (from 1, counting the frontmatter) or text to find; without a path, the user's note.
   Prefer text (`--find`, `--after` for new lines): a line number goes stale as they type.
 - Several agents: `vau companion start --as Ada` (`--agent codex`) starts another, in its own colour, which passes
-  `--as Ada` to every command. Asks to @ada and answers to its items reach only it; edit and open only the companion
+  `--as Ada` to every command; in a note, @ and a new name offers Start @name. Claude Code runs Sonnet at medium effort
+  (the settings `model` and `effort`, or `--model`, `--effort`); asks sent while it starts wait for its first `next`. Asks to @ada and answers to its items reach only it; edit and open only the companion
   (`next --watch`: it too).
 - Drawings (.excalidraw): moments there come with the scene as text (ids, labels, arrows as a -> b, what's by their
   pointer); an ask is a text with your @name. Places are an element (`--find` its id or text) or `--x --y`; `say`, `look`

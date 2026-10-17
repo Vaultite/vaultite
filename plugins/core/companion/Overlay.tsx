@@ -95,7 +95,8 @@ export function follow(a: Target & { name: string }) {
   const t = setInterval(() => { if (go() || ++n > 40) clearInterval(t) }, 100)
 }
 
-const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", away: "away" }
+const STATUS: Record<Agent["state"], string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting", away: "away" }
+const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 const still = () => matchMedia("(prefers-reduced-motion: reduce)").matches
 
 /** Where a cursor dropped at x, y lands: a note's line (and the selection, dropped on one), or null off the text. */
@@ -128,6 +129,7 @@ function Popover({ a, left, up, close }: { a: Agent; left: number; up: boolean; 
   return (
     <div data-companion-popover={a.name} className={cn("companion-pop pointer-events-auto absolute flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg", up ? "bottom-[26px]" : "top-[42px]")}
       style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
+      {(a.model || a.effort) && <div data-companion-how className="px-3 pt-2 text-[11.5px] font-medium text-muted-foreground">{[a.model && cap(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")}</div>}
       {mine.length > 0 && (
         <div ref={list} className="max-h-[240px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:thin]">
           {mine.map((n) => (
@@ -164,7 +166,7 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
   const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
   const seen = a.state === "watching" && !!a.seen
   // (its name shows as it moves or acts, then fades to the bare arrow, as in a shared doc; hovered, again)
-  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || !!said || typing?.agent === a.name || hover || open || !!drag
+  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || typing?.agent === a.name || hover || open || !!drag
   const low = !drag && !!spot.low, tag = flag && (!under || hover || open)
   useEffect(() => {
     if (!open) return
@@ -236,8 +238,8 @@ function Cursor({ a, spot, said, others, under }: { a: Agent; spot: Spot; said: 
           flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag ? "pointer-events-auto cursor-pointer" : "opacity-0")} style={{ background: tint }}>
         {a.name}
         {others.length > 0 && <span className="font-medium opacity-85">{hover ? `, ${others.join(", ")}` : `+${others.length}`}</span>}
-        {(hover || open) && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
-        {(a.state === "thinking" || a.state === "reading") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
+        {(hover || open || a.state === "starting") && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
+        {(a.state === "thinking" || a.state === "reading" || a.state === "starting") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
         {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
       </button>
       {/* (kept inside the window) */}

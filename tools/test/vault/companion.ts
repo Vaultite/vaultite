@@ -258,6 +258,23 @@ export default async ($: VaultTest) => {
     const kept = JSON.parse(fs.readFileSync(`${c.plugin.localDir()}/tints.json`, "utf8"))
     check("companion: each agent's colour is kept, for after a restart", kept.ada === r.agents.find((a: Any) => a.name === "Ada")?.tint && kept.claude === "orange", kept)
     check("companion: an agent's name is one word", (await api("POST", "ops/companion.start", { as: "two words" }))[0] >= 400)
+    // Started from the @ picker: Claude Code runs Sonnet at medium unless told; an ask while it boots waits for its first next.
+    check("companion: a new Claude Code session runs Sonnet at medium, Codex its own, either what it's given",
+      JSON.stringify([c.howOf("claude"), c.howOf("claude_work"), c.howOf("codex"), c.howOf("codex", "gpt-5", "high"), c.howOf("claude", "opus")]) ===
+      JSON.stringify([{ model: "sonnet", effort: "medium" }, { model: "sonnet", effort: "medium" }, { model: "", effort: "" }, { model: "gpt-5", effort: "high" }, { model: "opus", effort: "medium" }]))
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    c.starting("Bob", { path: "Notes/A.md", line: 3, model: "opus", effort: "high" })
+    c.addMoment({ kind: "ask", for: "bob", path: "Notes/A.md", line: 3, text: "for Bob" })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    const bob = r.agents.find((a: Any) => a.name === "Bob")
+    check("companion: an agent starting shows so, where it was called, with its model, and an ask to it is its own", bob?.state === "starting" && bob.path === "Notes/A.md" &&
+      bob.model === "opus" && bob.effort === "high" && r.moments.some((m: Any) => m.text === "for Bob" && m.for === "Bob"), [bob, r.moments])
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: the companion doesn't get it meanwhile", !got.moments.some((m: Any) => m.text === "for Bob"), got)
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0, as: "Bob" })
+    ;[, r] = await api("POST", "ops/companion.status", {})
+    check("companion: up, its first next gets the ask that waited, and it thinks on it", got.moments.length === 1 && got.moments[0].text === "for Bob" &&
+      r.agents.find((a: Any) => a.name === "Bob")?.state === "thinking", [got, r.agents])
   }
   {
     // The cursor: dropped on a line, a point (an ask without words); its says kept, a few per agent; one pinned, a comment.

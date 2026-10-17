@@ -16,7 +16,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   each moment. Margin cards scroll with the note, which keeps room under its text for the lowest; a long card scrolls
   inside, its Reply always in reach. Its comments and suggestions are kept beside the note, so they survive a restart,
   follow the note and reach your other devices. More agents join by name (`vau companion start --as Ada`), each in its
-  own colour: `@ada` asks only that one. Typing @ lists them; `@name` shows as a chip in its agent's colour, lit
+  own colour: `@ada` asks only that one. Typing @ lists them, and a new name offers Start @name (Sonnet at medium effort by default; Tab or → picks
+  another model and effort), its ask waiting for it to start; `@name` shows as a chip in its agent's colour, lit
   when the ask goes and while it thinks. Hover its cursor for what it's doing; click it for its last words (pin one as a
   comment) and a box to ask it there; drag it onto text (a held finger on a phone) to say "look at this". A note's
   top bar shows each agent around in its colour (a click goes where it is) and its comments, dismissed ones too, to

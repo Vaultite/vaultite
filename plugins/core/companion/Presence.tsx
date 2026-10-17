@@ -6,7 +6,7 @@ import { cn, type FileHead, menuBelow, type MenuItem, op, snippet } from "@vault
 import { type Agent, getState, liveAgents, type Note, pick, reopen, subscribe } from "./live"
 import { follow } from "./Overlay"
 
-const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing" }
+const STATUS: Record<string, string> = { watching: "idle", reading: "reading", thinking: "thinking", writing: "writing", starting: "starting" }
 const FACES = 4
 const fileOf = (p: string) => p.split("/").pop()!.replace(/\.md$/, "")
 const cut = (s: string, n = 60) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
