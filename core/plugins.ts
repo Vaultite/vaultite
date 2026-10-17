@@ -773,6 +773,11 @@ export class Plugin {
     const skip = this.loaded ? this.vault.switchedOff() : new Set<string>()
     return service(LOADED.filter((p) => !skip.has(p.id)), name)
   }
+  /** Every plugin that's on's service `name`, in plugin order: what many may offer at once (MCP's cards, "mcp:apps"). */
+  allServices(name: string) {
+    const skip = this.loaded ? this.vault.switchedOff() : new Set<string>()
+    return LOADED.filter((p) => !skip.has(p.id) && Object.hasOwn(p.services, name)).map((p) => p.services[name])
+  }
   /** The service `name`'s answer (`args` passed), or `fallback` when no plugin that's on provides it or it fails. */
   async ask<T>(name: string, fallback: T, ...args: unknown[]): Promise<T> {
     const fn = this.service(name)

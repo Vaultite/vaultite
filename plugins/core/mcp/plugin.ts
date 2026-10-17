@@ -2,15 +2,16 @@
 // Vaultite Cloud: cloud.ts). Owner only, like a shell; the route is `lock: false`: each tool call holds the vault for a write.
 import crypto from "node:crypto"
 import { agentLines, APP_VERSION, HTTPError, OpError, Plugin, reply, type Request, Text, type Who } from "../../../core/plugins.ts"
+import { appsFrom, contents, cspOf } from "./apps.ts"
 import { toolsOf } from "./catalog.ts"
 import { Cloud, type CloudStatus } from "./cloud.ts"
 import { PublicMcp } from "./public.ts"
-import { type Client, handleBody, initializes, instructionsOf, type Session, type ToolCtx, ToolError } from "./protocol.ts"
+import { callTool, type Client, declared, handleBody, initializes, instructionsOf, type Session, type ToolCtx, ToolError, toolsWithApps } from "./protocol.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
 /** Sessions by Mcp-Session-Id: who the client said it was. In memory; the newest 200. */
-const sessions = new Map<string, Client | null>()
+const sessions = new Map<string, Session>()
 
 
 async function allowed(req: Request) {
@@ -21,8 +22,12 @@ async function allowed(req: Request) {
 /** A tool's context: ops in-process, as the client, for the request it came in (its owner checks apply: an op's
  *  `owner`, the routes an op calls), each call told to Activity as `mcp <tool>`. */
 function ctxFor(client: Who, tool: string, http: Request["http"]): ToolCtx {
-  return { client, op: async (id, params) => (await plugin.host.call(id, params, client, { report: `mcp ${tool}`, http })).text }
+  return { client, op: async (id, params) => plugin.host.call(id, params, client, { report: `mcp ${tool}`, http }) }
 }
+
+/** The cards of the plugins that are on (apps.ts), and the app's address on the internet for their links. */
+const apps = () => appsFrom(plugin.allServices("mcp:apps"))
+const appUrl = () => cloud.status().app
 
 /** What initialize tells a client: composed from the plugins that are on now (protocol.ts instructionsOf). */
 const instructions = () => instructionsOf(agentLines(plugin.vault).map((l) => l.text), plugin.host.catalog())
@@ -42,18 +47,20 @@ const serverFor = (http: Request["http"]) => ({
   instructions,
   ctx: (client: Client, tool: string) => ctxFor({ ...client, client: client.client ?? "mcp" }, tool, http),
   tools: () => toolsOf(plugin.host.catalog()),
+  apps,
+  appUrl,
 })
 
 plugin.route("POST", "mcp", async (req) => {
   await allowed(req)
   const sid = String(req.http?.headers["mcp-session-id"] ?? "")
-  const session: Session = { client: sessions.get(sid) ?? null }
+  const session: Session = { ...sessions.get(sid) ?? { client: null } }
   const body = req.body as unknown
   const out = await handleBody(body, session, serverFor(req.http))
   const headers: Record<string, string> = {}
   if (initializes(body)) {
     const id = crypto.randomUUID()
-    sessions.set(id, session.client)
+    sessions.set(id, session)
     while (sessions.size > 200) sessions.delete(sessions.keys().next().value!)
     headers["Mcp-Session-Id"] = id
   }
@@ -78,8 +85,27 @@ plugin.provide("mcp:tool", async (req: Request | null, name: string, args: Recor
   const who: Who = { client: "mcp", agent: client.agent, label: client.label, source: client.source }
   const tool = toolsOf(plugin.host.catalog()).find((t) => t.name === name)
   if (!tool) throw new ToolError(`no tool ${name}`)
-  return tool.run(args, ctxFor(who, name, req?.http))
+  const out = await tool.run(args, ctxFor(who, name, req?.http))
+  return typeof out === "string" ? out : out.text
 })
+
+/** For a host drawing cards in the app (a plugin's block): a tool as tools/list declares it, its CallToolResult run as
+ *  the request's caller (an in-app op's checks), and a card's resources/read with its page's CSP. */
+plugin.provide("mcp:app-host", () => ({
+  tool: async (name: string) => {
+    const t = (await toolsWithApps({ tools: () => toolsOf(plugin.host.catalog()), apps })).find((x) => x.name === name)
+    return t ? { declared: declared(t), kind: plugin.host.catalog().find((e) => e.mcp === name)?.kind ?? null } : null
+  },
+  call: async (req: Request, name: string, args: Record<string, unknown>) => {
+    const t = (await toolsWithApps({ tools: () => toolsOf(plugin.host.catalog()), apps })).find((x) => x.name === name)
+    if (!t) throw new OpError(`no tool ${name}`, 404)
+    return callTool(t, args, { client: { agent: null, label: "", source: "" }, op: (id, params) => plugin.host.call(id, params, undefined, { http: req.http }) }, appUrl())
+  },
+  read: async (uri: string) => {
+    const a = (await apps()).find((x) => x.uri === uri)
+    return a ? { ...(await contents(a)), csp: cspOf(a.meta) } : null
+  },
+}))
 
 /** MCP on the internet (public.ts): its own listener when this machine's data/config.json has its address, or for Vaultite
  *  Cloud (cloud.ts) once signed in, on any free port. */
@@ -89,6 +115,7 @@ function publicMcp() {
   if (!pub) {
     pub = new PublicMcp(plugin, settings ?? PublicMcp.cloudOnly())
     pub.cloudUrl = () => cloud.stored()?.url.replace(/\/+$/, "") ?? null
+    pub.appUrl = appUrl
     pub.connect = { key: () => cloud.connectKey, handle: () => cloud.stored()?.handle ?? null, ownerTools }
     pub.start()
   }

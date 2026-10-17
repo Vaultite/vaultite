@@ -1,0 +1,50 @@
+:root {
+  color-scheme: light dark;
+  --color-background-primary: light-dark(#ffffff, #1f1f1e);
+  --color-background-secondary: light-dark(#f5f5f4, #2a2a28);
+  --color-background-tertiary: light-dark(#ececea, #333331);
+  --color-text-primary: light-dark(#1c1c1b, #f2f2f0);
+  --color-text-secondary: light-dark(#5f5f5b, #b4b4ae);
+  --color-text-tertiary: light-dark(#8a8a85, #8a8a85);
+  --color-text-info: light-dark(#2563eb, #6ea0ff);
+  --color-text-danger: light-dark(#c2332b, #ff7a70);
+  --color-text-success: light-dark(#1f8a4c, #5fd08f);
+  --color-border-primary: light-dark(#dededa, #3b3b38);
+  --color-border-secondary: light-dark(#e8e8e5, #34342f);
+  --color-ring-primary: light-dark(#2563eb, #6ea0ff);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-text-sm-size: 13px;
+  --font-text-md-size: 15px;
+  --font-heading-sm-size: 16px;
+  --border-radius-sm: 6px;
+  --border-radius-md: 8px;
+  --border-width-regular: 1px;
+}
+:root[data-theme="light"] { color-scheme: light }
+:root[data-theme="dark"] { color-scheme: dark }
+* { box-sizing: border-box }
+html, body { margin: 0; background: transparent }
+body {
+  font: var(--font-text-md-size)/1.5 var(--font-sans); color: var(--color-text-primary);
+  padding: 14px 16px; -webkit-font-smoothing: antialiased; overflow-wrap: anywhere;
+}
+a { color: var(--color-text-info); text-decoration: none; cursor: pointer }
+a:hover { text-decoration: underline }
+.head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px }
+.title { font-size: var(--font-heading-sm-size); font-weight: var(--font-weight-semibold); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }
+.muted { color: var(--color-text-secondary); font-size: var(--font-text-sm-size) }
+button.btn {
+  font: inherit; font-size: var(--font-text-sm-size); font-weight: var(--font-weight-medium); color: var(--color-text-primary);
+  background: var(--color-background-secondary); border: var(--border-width-regular) solid var(--color-border-primary);
+  border-radius: var(--border-radius-sm); padding: 3px 10px; cursor: pointer; white-space: nowrap;
+}
+button.btn:hover { background: var(--color-background-tertiary) }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--color-ring-primary); outline-offset: 1px }
+.chip { font-size: 12px; color: var(--color-text-secondary); background: var(--color-background-secondary); border-radius: 999px; padding: 0 7px; white-space: nowrap }
+.chip.late { color: var(--color-text-danger) }
+.error { color: var(--color-text-danger); font-size: var(--font-text-sm-size); margin-top: 6px }
+.empty { color: var(--color-text-secondary); padding: 6px 0 }
+pre.text { white-space: pre-wrap; font: var(--font-text-sm-size)/1.5 var(--font-mono); margin: 0 }

@@ -1,0 +1,20 @@
+{
+  "id": "mcp-apps",
+  "icon": "layout-panel-top",
+  "category": "agents",
+  "essential": true,
+  "requires": ["mcp"],
+  "name": "MCP Apps",
+  "description": "Cards for AI apps that draw MCP Apps (claude.ai, ChatGPT): a note read is drawn with Open in Vaultite, a task list ticks in place, a Kanban board moves its cards. The same cards draw in your notes, with a block naming a tool.",
+  "forAgents": "A tool's card in a note: ```block-mcp-app with `tool:` (one that reads, like tasks_list) and `arguments:` (`vau docs mcp-apps`).",
+  "blocks": {
+    "mcp-app": {
+      "description": "an MCP tool's card (MCP Apps), drawn as AI apps draw it: the tool runs when the note is shown, and the card can act (tick a task, move a card)",
+      "options": {
+        "tool": { "type": "string", "required": true, "description": "the tool, by its MCP name (tasks_list, kanban_read, read): one that only reads" },
+        "arguments": { "type": "map", "description": "its arguments, as its schema names them (query: not done)" },
+        "height": { "type": "number", "min": 80, "max": 2000, "description": "a fixed height in pixels; otherwise as tall as the card" }
+      }
+    }
+  }
+}

@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tasks</title>
+<style>
+/*card.css*/
+.group { font-size: var(--font-text-sm-size); font-weight: var(--font-weight-semibold); color: var(--color-text-secondary); margin: 10px 0 2px }
+ul { list-style: none; margin: 0; padding: 0 }
+li { display: flex; align-items: flex-start; gap: 10px; padding: 6px 0; border-top: 1px solid var(--color-border-secondary) }
+li:first-child { border-top: 0 }
+input[type=checkbox] { width: 17px; height: 17px; margin: 2px 0 0; flex: none; accent-color: var(--color-text-success); cursor: pointer }
+.desc { flex: 1; min-width: 0 }
+.done .what { text-decoration: line-through; color: var(--color-text-tertiary) }
+.meta { display: flex; flex-wrap: wrap; gap: 4px 6px; margin-top: 2px; align-items: center }
+.meta a { font-size: 12px; color: var(--color-text-secondary) }
+.busy { opacity: .55; pointer-events: none }
+</style>
+</head>
+<body>
+<div id="root"><div class="empty">Loading…</div></div>
+<script>
+/*bridge.js*/
+const root = document.getElementById("root")
+let data = null
+const done = (t) => t.status === "DONE" || t.status === "CANCELLED"
+const name = (p) => String(p).split("/").pop().replace(/\.md$/, "")
+
+function row(t, gi, ti) {
+  const due = t.dates?.due, late = due && data.today && due < data.today && !done(t)
+  return `<li class="${done(t) ? "done" : ""}" data-g="${gi}" data-t="${ti}">
+    <input type="checkbox" ${done(t) ? "checked" : ""} aria-label="Done">
+    <div class="desc"><div class="what">${esc(plain(t.description))}</div>
+    <div class="meta">${due ? `<span class="chip ${late ? "late" : ""}">Due ${esc(due)}</span>` : ""}${t.dates?.scheduled ? `<span class="chip">Scheduled ${esc(t.dates.scheduled)}</span>` : ""}${t.recurrence ? `<span class="chip">${esc(t.recurrence)}</span>` : ""}<a data-g="${gi}" data-t="${ti}">${esc(name(t.path))}</a></div></div></li>`
+}
+
+function draw(r) {
+  const d = r.structuredContent
+  if (!d?.groups) { root.innerHTML = r.isError ? `<div class="error">${esc(mcp.text(r))}</div>` : `<pre class="text">${esc(mcp.text(r))}</pre>`; return }
+  data = d
+  if (d.problems?.length) { root.innerHTML = `<div class="error">${d.problems.map(esc).join("<br>")}</div>`; return }
+  const n = d.groups.reduce((a, g) => a + g.tasks.length, 0)
+  root.innerHTML = `<div class="head"><div class="title">Tasks</div><span class="muted">${d.shown === d.total ? d.total : `${d.shown} of ${d.total}`}</span></div>` +
+    (n ? d.groups.map((g, gi) => `${g.names.length ? `<div class="group">${g.names.map((x) => esc(plain(x))).join(" · ")}</div>` : ""}<ul>${g.tasks.map((t, ti) => row(t, gi, ti)).join("")}</ul>`).join("")
+      : `<div class="empty">No tasks match.</div>`) + `<div class="error" id="err" hidden></div>`
+}
+
+root.addEventListener("click", async (e) => {
+  const a = e.target.closest("a")
+  if (a) { const t = data.groups[a.dataset.g].tasks[a.dataset.t]; return mcp.open(t.web, t.open) }
+  const box = e.target.closest("input[type=checkbox]")
+  if (!box) return
+  const li = box.closest("li"), t = data.groups[li.dataset.g].tasks[li.dataset.t], err = document.getElementById("err")
+  e.preventDefault()
+  li.classList.add("busy"); err.hidden = true
+  try {
+    const r = await mcp.call("tasks_complete", { path: t.path, line: t.line, expect: t.text, status: done(t) ? "todo" : "done" })
+    const s = r.structuredContent
+    // The line as written now (a recurring task's next one goes above it): what the next tick checks against.
+    if (s?.now?.length) { t.text = s.now[s.now.length - 1]; t.line = s.line + s.now.length - 1 }
+    t.status = done(t) ? "TODO" : "DONE"
+    li.classList.toggle("done", done(t)); box.checked = done(t)
+  } catch (x) { err.textContent = x.message; err.hidden = false }
+  li.classList.remove("busy")
+})
+
+mcp.on("ui/notifications/tool-result", draw)
+mcp.start("Vaultite tasks")
+</script>
+</body>
+</html>

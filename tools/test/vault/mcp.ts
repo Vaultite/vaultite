@@ -175,7 +175,7 @@ export default async ($: VaultTest) => {
       const ctx = { client: who, op: ro.opFor(["g1", g], who as Any, "call") }
       const refused = await callTool.run({ id: "note.create", params: { title: "Sneaky" } }, ctx).then(() => "", (e: Error) => e.message)
       const listId = app.catalog().find((e) => e.mcp === "list")!.id
-      const listed = await callTool.run({ id: listId, params: { folder: "People" } }, ctx).catch((e: Error) => e.message)
+      const listed = await callTool.run({ id: listId, params: { folder: "People" } }, ctx).then((r: Any) => String(r.text ?? r), (e: Error) => e.message)
       check("public mcp read-only: call refuses an op that writes, saying how the user changes it, and runs one that reads",
         refused === "Lighthouse bot has read-only access to this vault: the user can change it in Connections." && !exists("Notes/Sneaky.md") && listed.includes("People/Sam Park.md"), [refused, listed])
       check("public mcp read-only: an unknown op is unknown, a write grant isn't refused", accessRefusal("A", "read", null, "nope.x").startsWith("No operation")

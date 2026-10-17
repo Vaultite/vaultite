@@ -54,6 +54,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.propertyTypes()`: The vault's property types (propertyTypes, below).
 - `plugin.isOff()`: Whether this plugin is off (Vault.switchedOff, what it requires too): its routes still answer, so one that mustn't checks.
 - `plugin.service(name)`: The service `name` of a plugin that's on (plugin.provide), or null: what this plugin asks of others without naming them (Terminal runs a coding agent through "agent:<name>", whoever brings it).
+- `plugin.allServices(name)`: Every plugin that's on's service `name`, in plugin order: what many may offer at once (MCP's cards, "mcp:apps").
 - `plugin.ask(name, fallback, ...args)`: The service `name`'s answer (`args` passed), or `fallback` when no plugin that's on provides it or it fails.
 - `plugin.docs()`: Its docs (core/docs.ts): its AGENTS.md, then settings, blocks and operations generated from the manifest and ops, so what AIs read is what the app checks. null when it has none.
 
@@ -167,8 +168,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `machines:vault` (machines)
 - `machines:ids` (machines)
 - `machines:fs` (machines)
-- `mcp:tool` (mcp): A tool by name for another plugin's route (one that doesn't hold the vault), as `client`, for request `req`: its Markdown answer, or an OpError/ToolError saying why not.
-- `mcp:upload-link` (mcp): A one-time link an internet app's sandbox PUTs a file's bytes to (file.upload without the file), or null when the vault isn't on the internet.
+- `mcp:<…>` (tool, app-host, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)
 - `obsidian:stand-ins` (other-apps)
 - `pages:installed` (pages)

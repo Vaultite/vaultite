@@ -12,9 +12,10 @@ import type { Item } from "../../../core/vault.ts"
 import { agentName } from "../../../core/agents.ts"
 import { blockedHost } from "../../../core/web.ts"
 import { byUser } from "../../../core/writegate.ts"
+import { appsFrom } from "./apps.ts"
 import { toolsOf } from "./catalog.ts"
 import { type ConnectOptions, MCP_PATHS, serveApp, SIGNED_HEADER, upgradeApp, verifyConnect } from "./connect.ts"
-import { type Client, handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
+import { handleBody, initializes, instructionsOf, type Session, ToolError } from "./protocol.ts"
 
 /** Operations that can run code on this machine, or change what does: why each waits for the owner's yes. */
 const GATED: Record<string, string> = {
@@ -90,7 +91,7 @@ export class PublicMcp {
   server: http.Server | null = null
   signIns = new Map<string, SignIn>()
   codes = new Map<string, AuthCode>()
-  sessions = new Map<string, Client | null>()
+  sessions = new Map<string, Session>()
   hits = new Map<string, { n: number; until: number }>()
   /** Requests that came with this process's relay mark (cloud.ts). */
   viaRelay = new WeakSet<IncomingMessage>()
@@ -103,6 +104,8 @@ export class PublicMcp {
   lastNotice = 0
   /** Vaultite Cloud's address while this machine is signed in (cloud.ts). */
   cloudUrl: () => string | null = () => null
+  /** Where the owner opens the app from anywhere (Vaultite Connect), for cards' links. */
+  appUrl: () => string | null = () => null
   /** Connect (connect.ts): the key Vaultite Cloud signs the owner's requests with, its handle, whether owner tools are on. */
   connect: { key: () => string | null; handle: () => string | null; ownerTools: () => boolean } = { key: () => null, handle: () => null, ownerTools: () => false }
   /** The port it listens on, once it does (mcp.public.port, or any free one for Vaultite Cloud alone). */
@@ -569,7 +572,7 @@ export class PublicMcp {
     // Marked as come through
     // a proxy, whatever the tunnel sends: an op or route only this machine's owner may use refuses it (core/owner.ts).
     req.headers["x-forwarded-for"] = this.from(req) || "public"
-    const session: Session = { client: this.sessions.get(sid) ?? null }
+    const session: Session = { ...this.sessions.get(sid) ?? { client: null } }
     const out = await handleBody(body, session, {
       version: APP_VERSION,
       instructions: () => instructionsOf(agentLines(this.plugin.vault).map((l) => l.text), this.plugin.host.catalog(), grant[1].access === "read" ? [READ_ONLY] : [WAITS]),
@@ -581,11 +584,13 @@ export class PublicMcp {
         return { client, op: this.opFor(grant, who, tool, req) }
       },
       tools: () => this.toolsFor(grant[1]),
+      apps: () => appsFrom(this.plugin.allServices("mcp:apps")),
+      appUrl: () => this.appUrl(),
     })
     const headers: Record<string, string> = {}
     if (initializes(body)) {
       const id = crypto.randomUUID()
-      this.sessions.set(id, session.client)
+      this.sessions.set(id, session)
       while (this.sessions.size > 200) this.sessions.delete(this.sessions.keys().next().value!)
       headers["Mcp-Session-Id"] = id
     }
@@ -611,7 +616,7 @@ export class PublicMcp {
       const id = entry?.id ?? name
       await this.approved(grantId, g.name, id, params)
       // An owner's op they just said yes to runs as theirs: the request's owner checks would refuse it.
-      return (await this.plugin.host.call(id, params, who, { report: `mcp ${tool}`, http: entry?.owner ? undefined : req })).text
+      return this.plugin.host.call(id, params, who, { report: `mcp ${tool}`, http: entry?.owner ? undefined : req })
     }
   }
 

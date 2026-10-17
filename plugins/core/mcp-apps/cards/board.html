@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Board</title>
+<style>
+/*card.css*/
+.lanes { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 4px; align-items: flex-start }
+.lane { flex: 0 0 220px; background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 8px }
+.lane.over { outline: 2px solid var(--color-ring-primary) }
+.lane h3 { margin: 0 2px 6px; font-size: var(--font-text-sm-size); font-weight: var(--font-weight-semibold); display: flex; gap: 6px }
+.lane h3 .muted { font-weight: normal }
+.card {
+  background: var(--color-background-primary); border: 1px solid var(--color-border-secondary); border-radius: var(--border-radius-sm);
+  padding: 6px 8px; margin-top: 6px; font-size: var(--font-text-sm-size); display: flex; gap: 6px; align-items: flex-start; cursor: grab;
+}
+.card.done .what { text-decoration: line-through; color: var(--color-text-tertiary) }
+.card .what { flex: 1; min-width: 0 }
+.card input { margin: 2px 0 0; accent-color: var(--color-text-success); cursor: pointer }
+.card .moves { display: flex; gap: 2px; opacity: 0 }
+.card:hover .moves, .card:focus-within .moves { opacity: 1 }
+@media (hover: none) { .card .moves { opacity: 1 } }
+.moves button { font: inherit; font-size: 12px; border: 0; background: none; color: var(--color-text-secondary); cursor: pointer; padding: 0 3px; border-radius: 4px }
+.moves button:hover { background: var(--color-background-tertiary) }
+.busy { opacity: .55; pointer-events: none }
+</style>
+</head>
+<body>
+<div id="root"><div class="empty">Loading…</div></div>
+<script>
+/*bridge.js*/
+const root = document.getElementById("root")
+let data = null
+
+function draw(r) {
+  const d = r.structuredContent
+  if (!d?.board) { root.innerHTML = r.isError ? `<div class="error">${esc(mcp.text(r))}</div>` : `<pre class="text">${esc(mcp.text(r))}</pre>`; return }
+  data = d
+  const b = d.board, last = b.lanes.length - 1
+  root.innerHTML = `<div class="head"><div class="title">${esc(b.name)}</div><button class="btn" id="open">Open in Vaultite</button></div>
+    <div class="lanes">${b.lanes.map((l, li) => `<div class="lane" data-l="${li}"><h3>${esc(plain(l.title))}<span class="muted">${l.cards.length}${l.limit ? `/${l.limit}` : ""}</span></h3>
+      ${l.cards.map((c, ci) => `<div class="card ${c.done ? "done" : ""}" draggable="true" data-l="${li}" data-c="${ci}">
+        <input type="checkbox" ${c.done ? "checked" : ""} aria-label="Done"><div class="what">${esc(plain(c.text))}</div>
+        <div class="moves">${li > 0 ? `<button data-to="${li - 1}" aria-label="Move left">←</button>` : ""}${li < last ? `<button data-to="${li + 1}" aria-label="Move right">→</button>` : ""}</div></div>`).join("")}
+      ${l.cards.length ? "" : `<div class="empty muted">No cards</div>`}</div>`).join("")}</div><div class="error" id="err" hidden></div>`
+  document.getElementById("open").onclick = () => mcp.open(d.web, d.open)
+}
+
+// A change through the board's tools: the board as it is after it comes back and is drawn.
+async function act(el, tool, args) {
+  el.classList.add("busy")
+  try { draw(await mcp.call(tool, { path: data.path, ...args })) } catch (x) {
+    el.classList.remove("busy")
+    const err = document.getElementById("err"); err.textContent = x.message; err.hidden = false
+  }
+}
+const ref = (card) => ({ card: String(Number(card.dataset.c) + 1), from: String(Number(card.dataset.l) + 1) })
+
+root.addEventListener("click", (e) => {
+  const card = e.target.closest(".card")
+  if (!card) return
+  const to = e.target.closest("button[data-to]")
+  if (to) return act(card, "kanban_move", { ...ref(card), to: String(Number(to.dataset.to) + 1) })
+  if (e.target.matches("input[type=checkbox]")) { e.preventDefault(); return act(card, "kanban_done", { ...ref(card), done: !card.classList.contains("done") }) }
+})
+let dragged = null
+root.addEventListener("dragstart", (e) => { dragged = e.target.closest(".card"); e.dataTransfer.effectAllowed = "move"; e.dataTransfer.setData("text/plain", "") })
+root.addEventListener("dragover", (e) => { const l = e.target.closest(".lane"); if (!dragged || !l) return; e.preventDefault(); for (const x of root.querySelectorAll(".over")) x.classList.toggle("over", x === l); l.classList.add("over") })
+root.addEventListener("dragend", () => { dragged = null; for (const x of root.querySelectorAll(".over")) x.classList.remove("over") })
+root.addEventListener("drop", (e) => {
+  const l = e.target.closest(".lane"), card = dragged
+  if (!l || !card) return
+  e.preventDefault()
+  if (l.dataset.l !== card.dataset.l) act(card, "kanban_move", { ...ref(card), to: String(Number(l.dataset.l) + 1) })
+})
+
+mcp.on("ui/notifications/tool-result", draw)
+mcp.start("Vaultite board")
+</script>
+</body>
+</html>

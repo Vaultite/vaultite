@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Note</title>
+<style>
+/*card.css*/
+.body { max-height: 420px; overflow: hidden; position: relative }
+.body.all { max-height: none }
+.body.cut::after { content: ""; position: absolute; inset: auto 0 0; height: 48px; background: linear-gradient(transparent, var(--color-background-primary)) }
+.body > :first-child { margin-top: 0 }
+.body h1, .body h2, .body h3, .body h4 { font-weight: var(--font-weight-semibold); line-height: 1.3; margin: 1em 0 .4em }
+.body h1 { font-size: 1.35em } .body h2 { font-size: 1.2em } .body h3, .body h4 { font-size: 1.05em }
+.body p, .body ul, .body ol, .body blockquote, .body pre, .body table { margin: .5em 0 }
+.body ul, .body ol { padding-left: 1.4em }
+.body li:has(> input[type=checkbox]) { list-style: none; margin-left: -1.3em }
+.body blockquote { border-left: 3px solid var(--color-border-primary); padding-left: 12px; color: var(--color-text-secondary) }
+.body code { font: .9em var(--font-mono); background: var(--color-background-secondary); border-radius: 4px; padding: 1px 4px }
+.body pre { background: var(--color-background-secondary); border-radius: var(--border-radius-md); padding: 10px 12px; overflow-x: auto }
+.body pre code { background: none; padding: 0 }
+.body table { border-collapse: collapse; font-size: var(--font-text-sm-size) }
+.body th, .body td { border: 1px solid var(--color-border-primary); padding: 4px 8px; text-align: left }
+.body hr { border: 0; border-top: 1px solid var(--color-border-primary) }
+.body .img { color: var(--color-text-secondary); font-style: italic }
+.more { margin-top: 6px }
+</style>
+</head>
+<body>
+<div id="root"><div class="empty">Loading…</div></div>
+<script>
+/*bridge.js*/
+const root = document.getElementById("root")
+let note = null
+
+function draw(r) {
+  const d = r.structuredContent
+  if (!d?.html) {
+    // A host without our data, or a file that isn't a note: its text as it is.
+    root.innerHTML = r.isError ? `<div class="error">${esc(mcp.text(r))}</div>` : `<pre class="text">${esc(mcp.text(r))}</pre>`
+    return
+  }
+  note = d
+  root.innerHTML = `<div class="head"><div class="title">${esc(d.title)}</div><button class="btn" id="open">Open in Vaultite</button></div>
+    <div class="muted" style="margin:-6px 0 8px">${esc(d.path)}${d.partial ? " · part of it" : ""}</div>
+    <div class="body" id="body">${d.html}</div><div class="more" hidden><button class="btn" id="more">Show all</button></div>`
+  const body = document.getElementById("body"), more = document.querySelector(".more")
+  requestAnimationFrame(() => { if (body.scrollHeight > body.clientHeight + 4) { body.classList.add("cut"); more.hidden = false } })
+  document.getElementById("more").onclick = () => { body.classList.add("all"); body.classList.remove("cut"); more.hidden = true }
+  document.getElementById("open").onclick = () => mcp.open(d.web, d.open)
+  for (const i of body.querySelectorAll("input")) i.disabled = true
+}
+
+document.addEventListener("click", (e) => {
+  const a = e.target.closest?.("a")
+  if (!a) return
+  e.preventDefault()
+  if (a.dataset.url) return mcp.open(a.dataset.url)
+  // A [[link]] (a vault path) opens in the app.
+  const p = a.dataset.open
+  if (!p || !note) return
+  mcp.open(note.web && note.web.replace(/#file\/.*/, `#file/${encodeURIComponent(p)}`), `vaultite://open/${p.split("/").map(encodeURIComponent).join("/")}`)
+})
+
+mcp.on("ui/notifications/tool-result", draw)
+mcp.start("Vaultite note")
+</script>
+</body>
+</html>
