@@ -144,10 +144,23 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
 const FOLDER = ".vaultite/plugins"
 
 /** Vault plugins on in the vault that this machine hasn't allowed yet (another machine's, a synced vault's): all at once,
- *  after a dialog saying what each does beyond the vault. */
+ *  after a dialog saying what each does beyond the vault; one alone is reviewed on its page, as its row's Review does. */
 function Waiting({ list }: { list: Plugin[] }) {
   const [busy, setBusy] = useState(false)
-  if (list.length < 2) return null
+  if (!list.length) return null
+  const button = "h-8 shrink-0 cursor-pointer rounded-[8px] bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 max-md:h-9 max-md:text-[15px]"
+  const text = "min-w-0 flex-1 text-[15px] leading-[20px] md:text-[13px] md:leading-[18px]"
+  if (list.length === 1) {
+    const p = list[0]
+    return (
+      <div className="mb-4 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5" data-plugins-waiting>
+        <span className={text}>
+          {p.name} {p.meta?.approval?.state === "changed" ? "changed and waits for you to allow it again" : "waits for you to allow it on this machine"}
+        </span>
+        <button type="button" onClick={() => openDetail(`plugin/${p.id}`)} data-plugins-review={p.id} className={button}>Review</button>
+      </div>
+    )
+  }
   const allowAll = async () => {
     const says = list.map((p) => { const d = disclosed(p.meta?.disclosures ?? {}); return `${p.name}: ${d.length ? d.join("; ") : "nothing beyond the vault"}` })
     if (!await confirmDialog({ title: `Allow ${list.length} plugins on this machine?`, body: `They run code here. What each says it does:\n${says.join("\n")}`, confirm: "Allow all" })) return
@@ -157,11 +170,10 @@ function Waiting({ list }: { list: Plugin[] }) {
   }
   return (
     <div className="mb-4 flex items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2.5" data-plugins-waiting>
-      <span className="min-w-0 flex-1 text-[15px] leading-[20px] md:text-[13px] md:leading-[18px]">
+      <span className={text}>
         {list.length} plugins wait for you to allow them on this machine: {list.map((p) => p.name).join(", ")}
       </span>
-      <button type="button" disabled={busy} onClick={() => void allowAll()} data-plugins-allow-all
-        className="h-8 shrink-0 cursor-pointer rounded-[8px] bg-primary px-3 text-[13px] font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50 max-md:h-9 max-md:text-[15px]">
+      <button type="button" disabled={busy} onClick={() => void allowAll()} data-plugins-allow-all className={button}>
         {busy ? "Allowing…" : "Allow all"}
       </button>
     </div>
