@@ -180,6 +180,43 @@ await pp.screenshot({ path: `${OUT}phone-seen.png` })
 await phone.close()
 
 await op("companion.clear")
+// Long cards at a note's end, stacked: each stays reachable, scrolled to, over neither the status bar nor the phone's bar.
+const LONG = `${DIR}/Long.md`, words = "Measured: a call takes a tenth of a second, so tools aren't it. ".repeat(12)
+await api("PUT", "file", { path: LONG, text: `# Long\n\n${Array.from({ length: 40 }, (_, i) => `Line ${i + 3} of a long note.`).join("\n")}\n` })
+// (a phone's page scrolls the window)
+const toEnd = () => { const s = document.querySelector("[data-pane]"); if (s) s.scrollTop = s.scrollHeight; else scrollTo(0, document.documentElement.scrollHeight) }
+for (const [label, viewport, mobile] of [["desktop", { width: 1400, height: 700 }, false], ["phone", { width: 390, height: 700 }, true]]) {
+  const c = await browser.newContext({ viewport, isMobile: mobile, hasTouch: mobile })
+  const p = watch(await c.newPage(), { label: `long ${label}` })
+  await p.goto(`${B}/#file/${enc(LONG)}`)
+  await p.locator(`.file-view[data-path="${LONG}"]:visible .cm-content`).waitFor({ timeout: 10000 })
+  await wait(1200)
+  const ids = []
+  for (const line of [38, 40, 42]) ids.push((await op("companion.comment", { path: LONG, line, text: words })).id)
+  if (mobile) {
+    await p.locator('button[aria-label="Claude\'s comment"]').last().waitFor({ timeout: 3000 })
+    await p.evaluate(toEnd)
+    await wait(600)
+    await p.locator('button[aria-label="Claude\'s comment"]').last().tap()
+  } else await p.locator(`[data-companion-note="${ids[2]}"]`).waitFor({ timeout: 3000 })
+  await wait(600)
+  await p.evaluate(toEnd)
+  await wait(800)
+  const shown = mobile ? [ids[2]] : ids
+  const [top, floor] = await p.evaluate(() => {
+    const at = (q, side) => [...document.querySelectorAll(q)].map((e) => e.getBoundingClientRect()).filter((r) => r.height).map((r) => r[side])
+    return [Math.max(0, ...at("[data-pane]", "top"), ...at("[data-phone-header]", "bottom")), Math.min(innerHeight, ...at("[data-status-bar], [data-phone-bar]", "top"))]
+  })
+  const last = p.locator(`[data-companion-note="${ids[2]}"]`), box = await last.boundingBox(), reply = await last.getByText("Reply").boundingBox()
+  check(`${label}: the lowest of long cards fits on screen and, at the note's end, its Reply is above the bar`, !!box && !!reply && box.height <= floor - top && reply.y + reply.height <= floor, { box, reply, top, floor })
+  const boxes = await Promise.all(shown.map((id) => p.locator(`[data-companion-note="${id}"]`).boundingBox()))
+  check(`${label}: stacked cards don't cover each other`, boxes.every((b, i) => !i || b.y >= boxes[i - 1].y + boxes[i - 1].height), boxes)
+  await p.screenshot({ path: `${OUT}long-${label}.png` })
+  await op("companion.clear")
+  await wait(600)
+  check(`${label}: with the cards gone, the note gives back the room it kept`, await p.evaluate(() => [...document.querySelectorAll(".cm-content")].every((e) => !e.style.marginBottom)))
+  await c.close()
+}
 rmSync(file(DIR), { recursive: true, force: true })
 for (const r of restore) r()
 await done()
