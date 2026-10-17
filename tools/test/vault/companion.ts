@@ -311,6 +311,12 @@ export default async ($: VaultTest) => {
     ;[, r] = await api("POST", "ops/companion.status", {})
     check("companion: up, its first next gets the ask that waited, and it thinks on it", got.moments.length === 1 && got.moments[0].text === "for Bob" &&
       r.agents.find((a: Any) => a.name === "Bob")?.state === "thinking", [got, r.agents])
+    // An ask that finds the companion's session not running starts it: the ask waits for its first next.
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    const woke = c.addMoment({ kind: "ask", path: "Notes/A.md", line: 3, text: "are you there" })!
+    c.starting("Claude", { path: "Notes/A.md", line: 3 }, woke.seq - 1)
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
+    check("companion: started by an ask, its first next gets that ask", got.moments.some((m: Any) => m.text === "are you there"), got)
   }
   {
     // The cursor: dropped on a line, a point (an ask without words); its says kept, a few per agent; one pinned, a comment.

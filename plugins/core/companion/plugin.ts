@@ -1,6 +1,7 @@
 // Companion: one always-on agent session that watches the user write and answers in the app (its cursor, bubbles,
 // margin comments, suggestions, edits typed in). Comments and suggestions are kept in a sidecar per note; the rest is live.
 import fs from "node:fs"
+import type { IncomingMessage } from "node:http"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { type AgentMeter, agentIn, agentName, newTerminalId, parseTerminal, startAgent } from "../../../core/agents.ts"
@@ -128,8 +129,9 @@ const meantFor = (m: Moment, name: string) => (m.for ? key(m.for) === key(name) 
 /** Where the user is: the window they used last that has a note (`next`, and the ops' default place, both say this). */
 export const focus = () => [...windows.values()].sort((a, b) => b.at - a.at).find((w) => w.focus)?.focus ?? null
 
-/** Take in a moment from the app: kept (and logged), and given to the agents waiting. */
-export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
+/** Take in a moment from the app: kept (and logged), and given to the agents waiting. `from`: the window's request, which
+ *  starts the companion's session when an ask finds it not running. */
+export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }, from?: IncomingMessage) {
   const md = mode()
   if (md === "off") return null
   if ((m.kind === "edit" || m.kind === "open") && md === "quiet") return null
@@ -160,8 +162,25 @@ export function addMoment(m: Omit<Moment, "seq" | "t"> & { t?: number }) {
       setAgent(a.name, { path: full.path, line: full.line, x: full.x, y: full.y, find: undefined, state: "watching" })
   } else for (const [k, wake] of waiters) if (meantFor(full, k)) { waiters.delete(k); wake([full]) }
   // (one starting shows that until its first `next` takes it)
-  if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}) })
+  if (full.for && (m.kind === "ask" || m.kind === "point" || m.kind === "reply") && agents.get(key(full.for))?.state !== "starting") {
+    setAgent(full.for, { state: "thinking", ...(m.path ? { path: m.path, line: m.line, find: m.find, x: undefined, y: undefined } : {}) })
+    if (from) void wake(full, from)
+  }
   return full
+}
+
+const waking = new Set<string>()
+/** An ask to the companion while its session isn't running (it ended, or never started): it starts, and the ask waits
+ *  for its first `next`. As the window's request, so only this machine's owner starts it. */
+async function wake(m: Moment, from: IncomingMessage) {
+  const name = m.for!, k = key(name)
+  if (!isMain(name) || waiters.has(k) || waking.has(k) || await running(sessionId(name))) return
+  waking.add(k)
+  try { await plugin.runOp("companion.start", { ...(m.path ? { path: m.path, line: m.line } : {}), after: m.seq - 1 }, undefined, from) }
+  catch (e) {
+    setAgent(name, { state: "watching" })
+    putNote({ kind: "say", agent: name, text: `I couldn't start: ${(e as Error).message}`, ...(m.path ? { path: m.path, line: m.line } : {}) }, SAY_MS)
+  } finally { waking.delete(k) }
 }
 
 /** The ask `m` goes on from: the last to the same agent on that line of that note, a few minutes ago, which `m`'s
@@ -394,7 +413,7 @@ plugin.onMove((from, to, trashed) => {
 })
 
 /** The user's answer to an item from the app: a moment for its agent; a suggestion or a dismissed comment goes away. */
-export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string) {
+export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "reply", text?: string, from?: IncomingMessage) {
   const n = notes.get(id)
   if (!n) return
   if (verdict === "reply" && text) {
@@ -405,7 +424,7 @@ export function answer(id: string, verdict: "accept" | "reject" | "dismiss" | "r
     if (verdict === "dismiss" && n.kind === "comment" && n.path) past.set(n.path, [...(past.get(n.path) ?? []).filter((x) => x.id !== id), { ...n, dismissed: Date.now() }].slice(-PAST))
     dropNote(id)
   }
-  addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) })
+  addMoment({ kind: verdict, for: n.agent, item: id, path: n.path, line: n.line, text: verdict === "reply" ? text : n.text, ...(n.kind === "suggestion" ? { selection: n.find, to: n.replace } : {}) }, from)
 }
 
 /** A dismissed comment back in the margin, as it was. */
@@ -450,7 +469,7 @@ plugin.onUnload(() => {
 
 // ---------- the app's windows: /api/companion/live
 
-plugin.socket("companion/live", (ws) => {
+plugin.socket("companion/live", (ws, req) => {
   windows.set(ws, { open: [], focus: null, at: 0 })
   send(ws, snapshot())
   ws.on("message", (data: RawData) => {
@@ -472,13 +491,13 @@ plugin.socket("companion/live", (ws) => {
         selection: str(m.selection) || undefined, find: m.kind === "point" || str(m.scene) ? str(m.find).slice(0, 200) || undefined : undefined,
         hunks: Array.isArray(m.hunks) ? (m.hunks as Hunk[]).slice(0, 40) : undefined,
         ...(Number(m.waited) >= 0 ? { waited: Math.min(600_000, Math.round(Number(m.waited))) } : {}), ...point(m),
-        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}) })
+        ...(Array.isArray(m.changes) ? { changes: m.changes.map(String).slice(0, 40) } : {}), ...(str(m.scene) ? { scene: str(m.scene).slice(0, 20_000) } : {}) }, req)
     } else if (m.t === "pin" && typeof m.id === "string") {
       pin(m.id)
     } else if (m.t === "reopen" && typeof m.id === "string") {
       reopen(m.id)
     } else if (m.t === "answer" && typeof m.id === "string" && ["accept", "reject", "dismiss", "reply"].includes(String(m.verdict))) {
-      answer(m.id, m.verdict as "accept", str(m.text) || undefined)
+      answer(m.id, m.verdict as "accept", str(m.text) || undefined, req)
     } else if (m.t === "done" && typeof m.rid === "string") {
       asked.get(m.rid)?.done(m.ok === true, str(m.error) || undefined, m)
     }
@@ -591,7 +610,7 @@ function sessions(): { name: string; id: string }[] {
 const running = async (id: string | null) => !!id && !!(await plugin.ask<boolean>("terminal:runs", false, id))
 const nextCmd = (name: string) => `vau companion next --timeout 240${isMain(name) ? "" : ` --as ${name}`}`
 
-async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, effort?: string, at: Target = {}) {
+async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, effort?: string, at: Target = {}, after?: number) {
   const name = as?.trim() || ownName()
   if (!/^[\w-]{1,30}$/.test(name)) throw new OpError("a name is one word (letters, digits, - or _): it's what @ calls it by")
   const was = sessionId(name)
@@ -600,7 +619,7 @@ async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, ef
   const prompt = promptFor(name)
   // (a quicker model answers sooner: each moment is one of its turns)
   const how = howOf(runs, model, effort)
-  starting(name, { ...at, model: how.model || undefined, effort: how.effort || undefined })
+  starting(name, { ...at, model: how.model || undefined, effort: how.effort || undefined }, after)
   try {
     await startAgent(ctx, id, prompt, { allow: ALLOW, model: how.model || null, effort: how.effort || null })
   } catch (e) { setAgent(name, { state: isMain(name) ? "watching" : "away" }); throw e }
@@ -608,10 +627,11 @@ async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, ef
   return { id, running: false, name, ...how }
 }
 
-/** Agent `name`'s session boots: asks to it from now on wait for its first `next`, its cursor showing it starting. */
-export function starting(name: string, a: Partial<Agent> = {}) {
+/** Agent `name`'s session boots: asks to it from now on (or after moment `after`) wait for its first `next`, its cursor
+ *  showing it starting. */
+export function starting(name: string, a: Partial<Agent> = {}, after = seq) {
   const k = key(name)
-  seen.set(k, Date.now()); delivered.set(k, seq); handed.delete(k); asking.delete(k)
+  seen.set(k, Date.now()); delivered.set(k, Math.min(after, seq)); handed.delete(k); asking.delete(k)
   return setAgent(name, { ...a, state: "starting" })
 }
 
@@ -685,6 +705,9 @@ const watchdog = setInterval(async () => {
   if (plugin.isOff() || mode() === "off") return
   // (the companion stays, but not starting forever)
   for (const a of agents.values()) if (a.state !== "away" && !live(a.name) && (!isMain(a.name) || a.state === "starting")) setAgent(a.name, { state: isMain(a.name) ? "watching" : "away" })
+  // (nor thinking with no session to think: it ended mid-ask)
+  const main = agents.get(key(ownName()))
+  if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId()))) setAgent(main.name, { state: "watching" })
   // (asked to hand over and it didn't: a fresh one without its summary)
   for (const [k, t] of handing) {
     if (Date.now() - t < HANDOVER_WAIT) continue
@@ -1140,11 +1163,12 @@ them: Claude Code runs Sonnet at medium effort unless the settings say otherwise
     agent: { type: "string", description: "the coding agent it runs (claude, codex, claude_personal...; default: the setting)" },
     model: { type: "string", description: "the model it runs (sonnet, haiku, a full name; default: the setting, else the agent's own)" },
     effort: { type: "string", enum: ["low", "medium", "high", "xhigh", "max"], description: "its effort (default: the setting, else the agent's own)" },
-    path: { type: "string", format: "path", description: "the note it was called from: its cursor waits there while it starts" }, line: LINE },
+    path: { type: "string", format: "path", description: "the note it was called from: its cursor waits there while it starts" }, line: LINE,
+    after: { type: "integer", minimum: 0, description: "the moments after this one wait for it (the ask that started it); default: those from now" } },
   run: async (p, ctx) => {
     if (mode() === "off") await plugin.patchSettings({ mode: "quiet" })
     const at = str(p.path) ? { path: str(p.path), ...(p.line ? { line: Number(p.line) } : {}) } : {}
-    return await start(ctx, str(p.as), str(p.agent), str(p.model), str(p.effort), at)
+    return await start(ctx, str(p.as), str(p.agent), str(p.model), str(p.effort), at, p.after)
   },
   text: (r) => `${r.running ? "Already running" : "Started"}: ${r.name}${r.model || r.effort ? ` (${[r.model, r.effort].filter(Boolean).join(", ")})` : ""} in ${r.id} (vau terminal screen ${r.id}).`,
 })

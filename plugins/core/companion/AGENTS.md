@@ -1,7 +1,7 @@
 ## Companion
 One always-on agent session keeps the user company in the app: its cursor shows where its attention is, and it answers
 in the app itself. `vau companion start` runs it (the setting `agent`: Claude Code, Codex...) in a terminal on this
-machine; Claude Code may run `vau companion`, `vau read`, `vau search` and the other reading commands unasked. Its
+machine, as does an ask to it while it isn't running; Claude Code may run `vau companion`, `vau read`, `vau search` and the other reading commands unasked. Its
 moments and its actions are logged on this machine a day at a time; `vau companion replay` sends a day's moments again,
 to test how it answers, and `vau companion timings` shows how fast it answered each.
 

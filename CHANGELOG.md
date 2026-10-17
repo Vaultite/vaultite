@@ -9,7 +9,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 A companion agent writes beside you, AI apps draw the vault as cards, and the app is simpler to set up.
 
 - **Companion**: an always-on Claude Code or Codex agent with its own cursor in your notes and drawings; write `@claude`
-  in any line and it answers, comments, suggests changes or types with you.
+  in any line and it answers (starting if it isn't running), comments, suggests changes or types with you.
 - **The vault in claude.ai and ChatGPT**: their chats draw live cards for notes, tasks and boards, and Claude's
   artifacts and ChatGPT's Intelligent UI saved to the vault run as they did there.
 - **Review AI changes**: what AI apps and agents changed, file by file, with Keep and Revert.
