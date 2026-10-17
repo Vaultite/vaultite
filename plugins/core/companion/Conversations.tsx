@@ -55,7 +55,7 @@ function Conversations({ path, big }: { path: string; big?: boolean }) {
   return (
     <div data-companion-panel className="flex flex-col gap-1.5 pb-1">
       <div className="flex min-h-7 items-center gap-2 pl-1">
-        <div className="min-w-0 flex-1"><Faces path={path} big={big} /></div>
+        <div className="min-w-0 flex-1"><Faces path={path} big={big} fit /></div>
         {md && <Filters filter={filter} setFilter={setFilter} open={threads.length} resolved={past.length} />}
       </div>
       {!md ? <p className="px-1.5 text-[13px] text-tertiary">Open a note to see its conversations.</p>

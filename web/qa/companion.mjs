@@ -615,6 +615,14 @@ await pq.locator(`[data-companion-thread="${c1}"]:visible`).waitFor({ timeout: 3
 check("phone: tapped, the right drawer opens at its thread", true)
 check("phone: the dots step aside while the drawer is out", !(await pdot.isVisible()))
 await pq.screenshot({ path: `${OUT}phone-sidebar.png` })
+// Many agents: as many faces as fit, the rest behind +N, clear of Open / Resolved.
+for (const as of ["Bob", "Cy", "Dee", "Eve"]) await op("companion.next", { timeout: 0, as })
+const pqp = pq.locator("[data-companion-panel]:visible")
+await pqp.getByRole("button", { name: /more agents/ }).waitFor({ timeout: 3000 }).catch(() => {})
+await until(async () => { const b = await pqp.locator('[role="radiogroup"]').boundingBox(); return b && b.x + b.width <= 390 }, 3000) // (the drawer done sliding in)
+const fcb = await pqp.locator("[data-companion-presence]").boundingBox(), rgb = await pqp.locator('[role="radiogroup"]').boundingBox()
+check("phone: many agents' faces fit beside Open / Resolved, the rest behind +N", !!fcb && !!rgb && fcb.x + fcb.width <= rgb.x + 1 && await pqp.getByRole("button", { name: /more agents/ }).isVisible(), { fcb, rgb })
+await pq.screenshot({ path: `${OUT}phone-faces.png` })
 await ph.close()
 
 rmSync(file(DIR), { recursive: true, force: true })
