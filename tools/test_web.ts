@@ -45,6 +45,8 @@ type Any = any
 type Props = Record<string, unknown>
 // The web modules are loaded through the hook above (tsconfig.app.json type-checks them), so they're typed here by hand.
 const web = (rel: string) => import(pathToFileURL(path.join(WEB, rel)).href)
+// By URL, untyped: plugin modules import "@vaultite", which only the hook above resolves (the backend's tsc can't)
+const plugin = (rel: string) => import(pathToFileURL(path.join(ROOT, "plugins", "core", rel)).href)
 const fm: {
   readProps(block: string): { props: Props; error: string | null }
   setProp(block: string, key: string, value: unknown): string
@@ -375,7 +377,7 @@ check("markdown: ==highlight== is a mark", html.includes("<mark>bright</mark>"),
   // A highlight runs over a paragraph's soft line breaks (as ~~strike~~ does), never over blocks.
   const { EditorState, EditorSelection } = await import("@codemirror/state")
   const hl: typeof import("../web/src/core/highlights.ts") = await web("core/highlights.ts")
-  const ed: typeof import("../plugins/core/editing/edit.ts") = await import(pathToFileURL(path.join(ROOT, "plugins", "core", "editing", "edit.ts")).href)
+  const ed = await plugin("editing/edit.ts")
   const soft = md.renderMarkdown("A ==two\nlines== here\n\n- ==a\n- b==\n\n%%a\nb%% c\n\nz == y == x")
   check("markdown: a highlight runs over a soft line break, not over list items or a blank line",
     soft.includes("<mark>two<br>lines</mark>") && !soft.includes("<mark>a") && soft.includes("==a") && soft.includes("<p> c</p>") && soft.includes("z == y == x"), soft)
@@ -1100,7 +1102,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 // ---------- Clear formatting (plugins/core/editing/edit.ts) ----------
 {
   const { EditorState, EditorSelection } = await import("@codemirror/state")
-  const { clearFormatting } = await import("../plugins/core/editing/edit.ts")
+  const { clearFormatting } = await plugin("editing/edit.ts")
   const clear = (doc: string, from: number, to: number) => {
     const view = { state: EditorState.create({ doc, selection: EditorSelection.range(from, to) }), dispatch(tr: import("@codemirror/state").TransactionSpec) { this.state = this.state.update(tr).state } }
     clearFormatting(view as never)
@@ -1117,7 +1119,7 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
 {
   const { EditorState, EditorSelection } = await import("@codemirror/state")
   const hl: typeof import("../web/src/core/highlights.ts") = await web("core/highlights.ts")
-  const { clearFormatting } = await import("../plugins/core/editing/edit.ts")
+  const { clearFormatting } = await plugin("editing/edit.ts")
   type View = { state: import("@codemirror/state").EditorState; dispatch(tr: import("@codemirror/state").TransactionSpec): void; focus(): void }
   // "|" is the cursor, "[...]" a selection.
   const view = (doc: string): View => {
