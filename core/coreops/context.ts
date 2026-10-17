@@ -2,7 +2,8 @@
 // plugins, appearance, and what plugins add (the service "context").
 import type { App } from "../app.ts"
 import type { Op } from "../ops.ts"
-import { type Any, servicesOn, strings, windowCount, windowWorkspace } from "./common.ts"
+import { type Any, servicesOn, windowCount, windowWorkspace } from "./common.ts"
+import { strings } from "../values.ts"
 import { panelList, showPanels, sidebarsTarget } from "./panels.ts"
 import { onOff, pluginList } from "./plugins.ts"
 import { serverUrl } from "../plugins.ts"

@@ -6,7 +6,6 @@ import type { Readable } from "node:stream"
 import { KNOWN_AGENTS } from "./terminalids.ts"
 import type { Item, Vault } from "./vault.ts"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
 
 /** A parameter's or a result's schema: the JSON Schema words the catalog uses. */
@@ -304,8 +303,10 @@ export function checkParams(op: Op, given: unknown): Item {
   return out
 }
 
-/** A parameter as a CLI flag: `newTab` is `--new-tab`. */
-export const flagOf = (k: string) => `--${k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`)}`
+/** A parameter as a CLI flag: `newTab` is `--new-tab`, and back. */
+export const kebab = (k: string) => k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`)
+export const camel = (k: string) => k.replace(/-([a-z])/g, (_, x: string) => x.toUpperCase())
+export const flagOf = (k: string) => `--${kebab(k)}`
 
 /** How to call an op, in a line: `vau note <title> [--body <body>] ...` */
 export function usage(e: OpEntry): string {

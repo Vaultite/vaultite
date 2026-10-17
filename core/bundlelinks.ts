@@ -1,6 +1,6 @@
 // A bundle shared as a link (core/docs/bundles.md), its file in a GitHub repository: owner/name[/folder]. No Node: the
 // app, the demo and the desktop app's main process read these.
-export const SITE = "https://vaultite.com"
+const SITE = "https://vaultite.com"
 
 export type Repo = { owner: string; name: string; dir: string | null; tag: string | null }
 
@@ -30,6 +30,3 @@ export const repoText = (r: Repo, withTag = true) => `${r.owner}/${r.name}${r.di
 
 /** The page that shows a bundle and tries it live: vaultite.com/b/owner/name[/folder]. */
 export const webLink = (r: Repo) => `${SITE}/b/${repoText(r, false)}`
-
-/** The address that opens its preview in the app (the Mac's, the iPhone's): vaultite://bundle/owner/name[/folder]. */
-export const appLink = (r: Repo) => `vaultite://bundle/${repoText(r, false)}`

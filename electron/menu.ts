@@ -73,7 +73,7 @@ const KEY: Record<string, string> = {
 }
 /** A command's keys ("Mod+Shift+\\") as an Electron accelerator ("Cmd+Shift+\\", "Ctrl+Shift+\\" off a Mac), or null: a sequence, a plain key,
  *  or a key Electron can't name. */
-export function accelerator(keys: string): string | null {
+function accelerator(keys: string): string | null {
   const k = keys.trim()
   if (!k || /\s/.test(k)) return null
   const parts = k.split(/\+(?!$)/)

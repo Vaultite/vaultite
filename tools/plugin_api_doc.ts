@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url"
 import { parseAst } from "rolldown/parseAst"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-export const OUT = path.join(ROOT, "core", "docs", "plugin-api.md")
+const OUT = path.join(ROOT, "core", "docs", "plugin-api.md")
 const NAMES = path.join(ROOT, "core", "docs", "plugin-api-names.md")
 type Node = { type: string; start: number; end: number; [k: string]: any }
 

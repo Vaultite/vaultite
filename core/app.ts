@@ -40,6 +40,7 @@ import { disclosuresOf, saysMore } from "./pluginmeta.ts"
 import { PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault } from "./vault.ts"
+import { strings } from "./values.ts"
 
 /** How many recent states the server keeps as pieces (a device that last loaded before them gets the whole state).
  *  Pieces that stayed the same are shared, so each one past the first costs little more than what changed. */
@@ -132,8 +133,7 @@ export class App {
    *  (written only then). The app's are opt-in when `offByDefault`, the vault's always. */
   tidyPluginLists() {
     const conf = this.vault.config("plugins")
-    const list = (k: string) => (Array.isArray(conf[k]) ? (conf[k] as unknown[]).filter((x): x is string => typeof x === "string") : [])
-    const disabled = list("disabled"), enabled = list("enabled"), both = disabled.filter((id) => enabled.includes(id))
+    const disabled = strings(conf.disabled), enabled = strings(conf.enabled), both = disabled.filter((id) => enabled.includes(id))
     if (!both.length) return
     const optIn = (id: string) => { const p = this.app.find((x) => x.id === id); return !p || !!p.manifest.offByDefault }
     this.vault.patchConfig("plugins", { disabled: disabled.filter((id) => !both.includes(id) || !optIn(id)), enabled: enabled.filter((id) => !both.includes(id) || optIn(id)) })

@@ -22,13 +22,13 @@ const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even w
 const STAMP = / \d{4}-\d{2}-\d{2} \d{6}$/ // what trashing adds to a name
 const CODE = /(`+)(?:(?!\1).)+?\1/g // an inline code span
 
-export function showHidden(vault: Vault | null) {
+function showHidden(vault: Vault | null) {
   return !!(vault && vault.config("files").showHidden)
 }
 
 /** Read-only: the trash and the app's generated copies. Not .vaultite/AGENTS.md: the user's own rules go in it, under
  *  Agent files. */
-export function locked(rel: string) {
+function locked(rel: string) {
   return rel.startsWith(".trash/") || rel === ".vaultite/generated" || rel.startsWith(".vaultite/generated/")
 }
 
@@ -229,7 +229,7 @@ function textOf(data: Buffer) {
   }
 }
 
-export function read(vault: Vault, rel: string) {
+function read(vault: Vault, rel: string) {
   let data: Buffer, st: fs.BigIntStats
   try {
     st = fs.statSync(vault.abs(rel), { bigint: true })
@@ -310,7 +310,7 @@ function forget(vault: Vault, rel: string) {
 
 /** `rel`, or "Name 1", "Name 2"... when that's taken: Obsidian's rule, everywhere the app names a new file or folder
  *  (a dropped one, a restored one, "Untitled"). */
-export function freeName(vault: Vault, rel: string) {
+function freeName(vault: Vault, rel: string) {
   const [stem, ext] = splitext(rel)
   let n = 1, out = rel
   while (fs.existsSync(vault.abs(out))) out = `${stem} ${n++}${ext}`
@@ -354,7 +354,7 @@ function restore(vault: Vault, rel: string) {
 }
 
 /** How long things stay in .trash, like Recently deleted. */
-export const TRASH_DAYS = 30
+const TRASH_DAYS = 30
 const TRASHED_AT = / (\d{4})-(\d{2})-(\d{2}) (\d{2})(\d{2})(\d{2})(?: \d+)?$/
 
 /** Delete for good what went to .trash over TRASH_DAYS ago: by the time in its name, else (put there by another app)
@@ -392,7 +392,7 @@ export async function emptyTrash(vault: Vault, now = Date.now()) {
 
 
 /** Where a duplicate of a file goes: next to it, "Name 1", "Name 2"... (the number after an existing one's). */
-export function copyName(vault: Vault, rel: string) {
+function copyName(vault: Vault, rel: string) {
   const [stem, ext] = splitext(rel)
   const m = / (\d+)$/.exec(stem)
   const base = m ? stem.slice(0, -m[0].length) : stem
@@ -495,7 +495,7 @@ function refresh(vault: Vault): Promise<void> {
 }
 
 /** Read the index ahead (the file tree was asked for: a search may follow), off any request. */
-export function warmSearch(vault: Vault) {
+function warmSearch(vault: Vault) {
   refresh(vault).catch((e) => console.error(`search index: ${(e as Error).message}`))
 }
 
@@ -541,13 +541,8 @@ const SORTS: Record<string, [key: (r: Item) => unknown, reverse: boolean]> = {
 type SearchOpts = { lines?: number; folder?: string; path?: string; matchCase?: boolean; sort?: string; context?: number; offset?: number }
 
 /** Files matching a query (core/searchquery.ts: words, "phrases", -not, OR, file:, path:, tag:, line:(), [property]...),
- *  with the first line that matched, and with `lines` every such line (and `context` lines around each). */
-export async function search(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}) {
-  return (await searchAll(vault, q, limit, opts)).results
-}
-
-/** search's page of results (from `offset`), and how many files and lines (with `lines`) matched in all. */
-export async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<{ results: Item[]; files: number; lines: number }> {
+ *  from `offset`, with the first line that matched (`lines`: each, `context` around), and how many matched in all. */
+async function searchAll(vault: Vault, q: string, limit = 60, opts: SearchOpts = {}): Promise<{ results: Item[]; files: number; lines: number }> {
   if (!q.trim()) return { results: [], files: 0, lines: 0 }
   let node: Node
   try { node = parse(q, { matchCase: opts.matchCase }) } catch (e) {

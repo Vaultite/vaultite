@@ -37,7 +37,6 @@ registerHooks({
   },
 })
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
 type Props = Record<string, unknown>
 // The web modules are loaded through the hook above (tsconfig.app.json type-checks them), so they're typed here by hand.

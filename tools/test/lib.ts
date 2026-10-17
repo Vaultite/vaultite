@@ -1,20 +1,24 @@
 // The tests' shared kit: check, skip, sections (timed; one that throws ends there, not the run), the summary, the
 // record of runs (tools/.runs/test-runs.jsonl).
 import fs from "node:fs"
+import net from "node:net"
 import path from "node:path"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any
 export type Status = "ok" | "FAIL" | "skip"
 export type Result = { name: string; status: Status; note: string; section: string }
-export type SectionRun = { name: string; ms: number; ok: boolean; fails: string[]; threw?: string }
+type SectionRun = { name: string; ms: number; ok: boolean; fails: string[]; threw?: string }
 
 export const results: Result[] = []
-export const sections: SectionRun[] = []
+const sections: SectionRun[] = []
 let current: SectionRun | null = null
 let started = 0
 
 export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms))
+/** A port nothing listens on now, on 127.0.0.1. */
+export const freePort = () => new Promise<number>((resolve) => {
+  const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address() as net.AddressInfo; s.close(() => resolve(port)) })
+})
 
 export function check(name: string, ok: unknown, got?: unknown) {
   const note = ok ? "" : JSON.stringify(got)?.slice(0, 400) ?? ""
@@ -73,10 +77,10 @@ export async function waitFor<T>(fn: () => Promise<T> | T, ms = 15000, step = 50
 
 const REPO = path.resolve(import.meta.dirname, "..", "..")
 /** Where runs are kept: tools/.runs/ (ignored by its own .gitignore), or $VAULTITE_RUNS_DIR. */
-export function runsFile() {
+function runsFile() {
   return path.join(process.env.VAULTITE_RUNS_DIR ?? path.join(REPO, "tools", ".runs"), "test-runs.jsonl")
 }
-export type RunRecord = { suite: string; at: string; ms: number; ok: boolean; sections: { name: string; ms: number; ok: boolean; fails: string[] }[] }
+type RunRecord = { suite: string; at: string; ms: number; ok: boolean; sections: { name: string; ms: number; ok: boolean; fails: string[] }[] }
 
 export function record(suite: string, rows: { name: string; ms: number; ok: boolean; fails: string[] }[], ms: number) {
   const rec: RunRecord = { suite, at: new Date().toISOString(), ms, ok: rows.every((r) => r.ok), sections: rows }

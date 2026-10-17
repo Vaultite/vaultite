@@ -42,7 +42,7 @@ export default async ($: VaultTest) => {
       moved[1].type === "file.trashed" && moved[1].path === "Evts/Two.md", moved)
     const l = new Live(vault)
     l.add("Evts/Three.md")
-    await sleep(250)
+    for (let i = 0; i < 300 && !bus.since(c1, { types: ["file.changed"] }).events.length; i++) await sleep(10)
     l.close()
     const changed = bus.since(c1, { types: ["file.changed"] }).events
     check("events: a change on disk is file.changed (core/live.ts)", changed.length === 1 && same(changed[0].paths, ["Evts/Three.md"]), changed)

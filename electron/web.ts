@@ -550,7 +550,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
  *  cookies by site, so an unknown suffix just shows one more label than it might. */
 const TWO_PART = /\.(co|com|net|org|gov|ac|edu)\.[a-z]{2}$/
 /** "chat.example.co.uk" → "example.co.uk", "auth.claude.ai" → "claude.ai". */
-export function siteOf(host: string) {
+function siteOf(host: string) {
   const h = host.toLowerCase().replace(/^\./, "").replace(/\.$/, "")
   if (!h || /^[\d.]+$/.test(h) || !h.includes(".")) return h
   const parts = h.split(".")

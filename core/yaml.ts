@@ -134,7 +134,7 @@ export function loadPlain(text: string): Record<string, unknown> | undefined {
 // ---------- writing ----------
 
 /** A date written plain (`date: 2026-09-29`), not quoted like a string that looks like one. */
-export class YDate {
+class YDate {
   value: string
   constructor(value: string) { this.value = value }
 }

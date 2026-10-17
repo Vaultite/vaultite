@@ -2,11 +2,10 @@
 // .vaultite/migrations.json when it has run (a synced vault's other machine skips it); a new vault starts with all done.
 import fs from "node:fs"
 import type { Item, Vault } from "./vault.ts"
+import { isObj, strings as strs } from "./values.ts"
 
 const FILE = "migrations"
 
-const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [])
-const isObj = (v: unknown): v is Item => !!v && typeof v === "object" && !Array.isArray(v)
 
 /** Daily notes' settings and command, once Today's (daily-notes-2026-10). */
 const DAILY_KEYS = ["format", "template"], OLD_CMD = "today:daily-note", NEW_CMD = "daily-notes:today"
@@ -68,7 +67,7 @@ const STEPS: { id: string; run: (v: Vault) => void }[] = [
       for (const b of saved) inVault(`bundles/${b}/`)
       // (the setup before the last bundle applied: a restore puts back Daily notes' keys, not Today's)
       const prev = v.readConfig("bundles/previous")
-      if (prev && isObj(prev.config)) {
+      if (prev && isObj<Item>(prev.config)) {
         const config: Record<string, Item> = { ...prev.config }, absent = strs(prev.absent)
         dailyNotesOut((n) => config[n] ?? null, (n, value) => { config[n] = value })
         if (absent.includes("plugins/today/data") && config["plugins/daily-notes/data"] && !absent.includes("plugins/daily-notes/data")) absent.push("plugins/daily-notes/data")

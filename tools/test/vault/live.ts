@@ -13,8 +13,12 @@ export default async ($: VaultTest) => {
     for (const t = Date.now(); Date.now() - t < ms && !ok();) await new Promise((r) => setTimeout(r, 25))
     return ok()
   }
-  await new Promise((r) => setTimeout(r, 300)) // FSEvents starts a moment after the watch
   const touched = (p: string) => heard.some((c) => c.paths === null || c.paths.includes(p))
+  // FSEvents starts a moment after the watch: a probe is written until it's heard.
+  for (let i = 0; i < 25 && !touched("Notes/Live probe.md"); i++) { write("Notes/Live probe.md", `probe ${i}\n`); await wait(() => touched("Notes/Live probe.md"), 200) }
+  fs.rmSync(path.join(VAULT, "Notes/Live probe.md"))
+  await wait(() => !vault.entries.has("Notes/Live probe.md"))
+  heard.length = 0
   write("Notes/Live one.md", "---\ntype: note\ntitle: Live one\n---\n\nFrom disk.\n")
   check("live: a file written on disk is heard", await wait(() => touched("Notes/Live one.md")), heard)
   check("live: and indexed before the event goes out", vault.entries.has("Notes/Live one.md"))

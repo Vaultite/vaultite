@@ -8,13 +8,14 @@ import { MOVED } from "./migrations.ts"
 import { CATEGORIES, GROUPS, groupOf, SWITCH_SECTIONS } from "./categories.ts"
 import { API_VERSION, APP_VERSION, compareVersions, MIN_API_VERSION, parseVersion, tagVersion } from "./version.ts"
 import { DISCLOSURES, EXPORT_NAME, exportsOf, HOST, ICON_FILE, ICON_MAX, ICON_NAME, PLUGIN_MODULE, REPO as REPO_NAME, svgIcon, VERSION } from "./pluginmeta.ts"
+import { isObj as isMap } from "./values.ts"
 
-export const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
-export const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
+const IMPORT = /(?:^|\n)\s*(?:import|export)\s[^'"]*?from\s+["']([^"']+)["']|import\(\s*["']([^"']+)["']\s*\)|(?:^|\n)\s*import\s+["']([^"']+)["']/g
+const BACKEND = new Set(["plugin.ts", "import.ts", "cli.ts"])
 /** A file that runs in Node: a backend's, or a test (test.ts, *.test.ts: never bundled into the app). */
 export const nodeSide = (file: string) => BACKEND.has(path.basename(file)) || /(^|\.)test\.ts$/.test(path.basename(file))
 /** The core's modules a plugin's backend may import: the plugin API (built-in plugins by path, vault plugins as VAULT_CORE). */
-export const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts"])
+const CORE_FOR_PLUGINS = new Set(["plugins.ts", "vault.ts", "client.ts", "timeline.ts", "agents.ts"])
 /** What a vault plugin's backend imports the core as: "@vaultite/core/plugins.ts" (".ts" optional). */
 export const VAULT_CORE = /^@vaultite\/core\/(plugins|vault|client|timeline|agents)(?:\.ts)?$/
 
@@ -68,8 +69,7 @@ const userFileOk = (f: string) => /^[\w.-]+(\/[\w.-]+)*$/.test(f) && !f.split("/
 const packageOf = (spec: string) => spec.split("/").slice(0, spec.startsWith("@") ? 2 : 1).join("/")
 
 /** How long a manifest's `forAgents` line may be: every agent session reads every one that's on. */
-export const FOR_AGENTS_MAX = 240
-const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
+const FOR_AGENTS_MAX = 240
 
 /** What's wrong with a manifest (`name`: its folder's name; `ids`: every plugin there is). */
 export function manifestProblems(m: Record<string, unknown>, name: string, ids: Set<string>, where = "manifest.json") {
@@ -195,8 +195,7 @@ export function ignoreOf(dir: string): (rel: string) => boolean {
   return (rel) => res.some((r) => r.test(rel.split(path.sep).join("/")))
 }
 
-export type ImportRules = {
-  /** The plugin's folder. */
+type ImportRules = {
   dir: string
   /** The app's folder (for the core and node_modules). */
   root: string
@@ -209,7 +208,7 @@ export type ImportRules = {
 }
 
 /** The files of a plugin's own that its index.tsx imports, directly or not: what runs in the browser. */
-export const frontFiles = (dir: string) => reached(dir, path.join(dir, "index.tsx"))
+const frontFiles = (dir: string) => reached(dir, path.join(dir, "index.tsx"))
 
 /** Whether module `file` of a plugin (one it exports) imports the core's backend or Node's modules, directly or not: a
  *  backend's module, never in the browser (Cursor's account, which Grok Bot's backend reads). */
@@ -238,7 +237,7 @@ function reached(dir: string, from: string): Set<string> {
 }
 
 /** What's wrong with one file's imports. `where`: how to name the file in a message. */
-export function importProblems(file: string, src: string, where: string, rules: ImportRules): string[] {
+function importProblems(file: string, src: string, where: string, rules: ImportRules): string[] {
   const out: string[] = []
   const backend = nodeSide(file) || (!!rules.front && !rules.front.has(file))
   const say = (spec: string, why: string) => out.push(`${where}: imports ${spec}: ${why}`)
@@ -354,12 +353,12 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
 
 /** The keys of `<key>: { ... }` in a plugin's definePlugin (index.tsx's source; depth 1 only, strings and comments
  *  skipped): "blocks", the blocks it draws in the app; "icons", the icons it adds by name; "sidebar", its panels. */
-export function defKeys(src: string, key: "blocks" | "icons" | "sidebar"): string[] {
+function defKeys(src: string, key: "blocks" | "icons" | "sidebar"): string[] {
   return defEntries(src, key).map((e) => e.key)
 }
 
 /** defKeys with each key's value as source text. */
-export function defEntries(src: string, key: "blocks" | "icons" | "sidebar"): { key: string; value: string }[] {
+function defEntries(src: string, key: "blocks" | "icons" | "sidebar"): { key: string; value: string }[] {
   const at = src.search(new RegExp(`\\b${key}:\\s*\\{`))
   if (at < 0) return []
   const out: { key: string; value: string; from: number }[] = []
@@ -402,7 +401,7 @@ export function iconNames(root: string): Set<string> {
 export const USAGE_BLOCKS = ["agent-sessions", "agent-usage", "agent-projects", "agent-models", "agent-project"]
 
 /** The blocks a plugin's backend gives a text side (`plugin.block("<name>", ...)` in its .ts files, or codingAgent). */
-export function textBlockNames(dir: string): string[] {
+function textBlockNames(dir: string): string[] {
   const out = new Set<string>()
   for (const f of walk(dir)) {
     if (!f.endsWith(".ts") || f.endsWith(".d.ts")) continue

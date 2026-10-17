@@ -119,7 +119,7 @@ export function headingsOf(text: string): Heading[] {
 }
 
 /** A heading by name (`Heading`, or `Parent#Child` for one under another), or null. */
-export function findHeading(text: string, name: string): Heading | null {
+function findHeading(text: string, name: string): Heading | null {
   const parts = name.split("#").map(anchorKey).filter(Boolean)
   if (!parts.length) return null
   const hs = headingsOf(text)
@@ -135,7 +135,7 @@ export function findHeading(text: string, name: string): Heading | null {
 }
 
 /** A heading's section: its line up to the next heading of the same or a higher level (lines, end exclusive). */
-export function sectionOf(text: string, h: Heading): [number, number] {
+function sectionOf(text: string, h: Heading): [number, number] {
   const hs = headingsOf(text)
   const next = hs.find((x) => x.line > h.line && x.level <= h.level)
   const lines = text.split("\n")
@@ -145,7 +145,7 @@ export function sectionOf(text: string, h: Heading): [number, number] {
 }
 
 /** Where a block id is: the paragraph or list item it ends (lines, end exclusive), and the line it's written on. */
-export function findBlock(text: string, id: string): { from: number; to: number; line: number } | null {
+function findBlock(text: string, id: string): { from: number; to: number; line: number } | null {
   const want = id.replace(/^\^/, "").toLowerCase()
   const { lines, prose } = scan(text)
   const blank = (i: number) => !lines[i].trim()
@@ -221,7 +221,7 @@ export const TAG = /(?<=^|[ \t])#([\p{L}\p{N}_\-/]*[\p{L}_\-/][\p{L}\p{N}_\-/]*)
 export const tagName = (t: string) => t.trim().replace(/^#/, "").replace(/^\/+|\/+$/g, "")
 
 /** The inline #tags in a body, each once (the first spelling kept): not in code, comments, links or URLs. */
-export function tagsIn(body: string): string[] {
+function tagsIn(body: string): string[] {
   if (!body.includes("#")) return []
   const { lines, prose } = scan(body)
   const out = new Map<string, string>()

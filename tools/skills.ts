@@ -6,7 +6,7 @@ import path from "node:path"
 import { fileURLToPath } from "node:url"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
-export const SKILLS = path.join(ROOT, "skills")
+const SKILLS = path.join(ROOT, "skills")
 /** Bytes a SKILL.md may have: an agent reads all of it once the skill is picked. */
 const SKILL_MAX = 4_000
 const START = /<!-- generated: [^\n]*-->\n/, END = "<!-- end generated -->"
@@ -60,7 +60,6 @@ async function unknown(words: string[], c: Catalog) {
   return `no command 'vau ${words.join(" ")}'`
 }
 
-/** What's wrong with the skills. */
 export async function skillProblems(c: Catalog) {
   const problems: string[] = []
   for (const [name, file] of skillFiles()) {
@@ -87,7 +86,7 @@ export async function skillProblems(c: Catalog) {
 }
 
 /** Write each skill's generated part. */
-export async function writeSkills() {
+async function writeSkills() {
   for (const [name, file] of skillFiles()) {
     if (!GENERATED[name]) continue
     const text = fs.readFileSync(file, "utf8"), want = withPart(text, await GENERATED[name]())

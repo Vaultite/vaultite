@@ -1,4 +1,4 @@
-import { appLink, parseRepo, repoText, webLink } from "../../../core/bundlelinks.ts"
+import { parseRepo, repoText, webLink } from "../../../core/bundlelinks.ts"
 import { fromGitHub } from "../../../web/demo/github.ts"
 import { fitForDemo } from "../../../web/demo/machine.ts"
 import type { Any, VaultTest } from "./harness.ts"
@@ -19,7 +19,7 @@ export default async ($: VaultTest) => {
     const wrong = cases.filter(([s, want]) => named(s) !== want).map(([s, want]) => ({ s, want, got: named(s) }))
     check("bundle links: owner/name, gh:, github.com, vaultite.com/b and vaultite://bundle all name the repository; nothing else does", !wrong.length, wrong)
     const r = parseRepo("alice/kit/writing@v2.0.0")!
-    check("bundle links: the page and the app's address, without the tag", webLink(r) === "https://vaultite.com/b/alice/kit/writing" && appLink(r) === "vaultite://bundle/alice/kit/writing", [webLink(r), appLink(r)])
+    check("bundle links: the page, without the tag", webLink(r) === "https://vaultite.com/b/alice/kit/writing", webLink(r))
   }
 
   // The demo's import from GitHub (web/demo/github.ts), over a made-up GitHub: the same files the app's clone takes.

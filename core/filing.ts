@@ -2,6 +2,7 @@
 // each kind's folder, from the vault's settings (another app's under them: Vault.configWithDefaults).
 import type { Home } from "./fileprops.ts"
 import type { Vault } from "./vault.ts"
+import { strings } from "./values.ts"
 
 /** Where things go, as the settings show and the app follows them: the attachment folder (Obsidian's way of writing
  *  it), the excluded files (both files.json's, else another app's) and each kind's folder (Vault.home). */
@@ -13,5 +14,5 @@ export function filing(vault: Vault): { attachments: string; excluded: string[];
     folder: vault.home(k.collection) ?? k.folder ?? "", set: typeof own[k.collection] === "string",
   }))
   homes.push({ key: "dashboards", type: "dashboard", plugin: "dashboards", label: "Dashboards", folder: vault.pagesHome(), set: typeof own.dashboards === "string" })
-  return { attachments: at || "Attachments", excluded: Array.isArray(files.excluded) ? files.excluded.filter((f): f is string => typeof f === "string") : [], homes }
+  return { attachments: at || "Attachments", excluded: strings(files.excluded), homes }
 }

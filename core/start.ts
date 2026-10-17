@@ -3,10 +3,10 @@
 import fs from "node:fs"
 import * as B from "./bundles.ts"
 
-export const START_HERE = "Start here.md"
+const START_HERE = "Start here.md"
 
 /** The note a new vault starts with: what to try first, and where the rest is. */
-export const startHere = () => `This vault is a folder of Markdown files. Vaultite shows them, any other editor opens them too, and an AI can work on them.
+const startHere = () => `This vault is a folder of Markdown files. Vaultite shows them, any other editor opens them too, and an AI can work on them.
 
 ## Try this
 

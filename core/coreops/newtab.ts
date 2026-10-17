@@ -8,17 +8,17 @@ import { anchorFor, placeKey } from "../slots.ts"
 import { type Any, lines } from "./common.ts"
 import { onOff, pluginList } from "./plugins.ts"
 
-export type Section = SectionInfo & { plugin: string; on: boolean
+type Section = SectionInfo & { plugin: string; on: boolean
   /** Its place on the page (from 1), or null: hidden. */
   place: number | null }
-export type Button = { id: string; name: string; place: number
+type Button = { id: string; name: string; place: number
   /** In the app's source (`vau hotkeys --all`): one that isn't (a made-up id, a plugin's gone) isn't drawn. */
   known: boolean
   /** The icon newtab.json gives it, over its command's. */
   icon?: string }
 
 /** Every section there is (the app's, then the plugins', on or off), the shown ones first in their order. */
-export function sectionList(app: App): { setup: ReturnType<typeof readNewTab>; sections: Section[]; buttons: Button[] } {
+function sectionList(app: App): { setup: ReturnType<typeof readNewTab>; sections: Section[]; buttons: Button[] } {
   const plugins = pluginList(app)
   const { on } = onOff(plugins, app.vault.config("plugins"))
   const defs: Section[] = withPanels([

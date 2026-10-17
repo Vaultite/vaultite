@@ -11,7 +11,7 @@ export const onItsOwn = <T>(id: string, fn: () => T): T => acting.run(id, fn)
 /** fn as the user's own action (a request): never gated. */
 export const byUser = <T>(fn: () => T): T => acting.run(null, fn)
 /** The plugin acting on its own now, or null. */
-export const actor = () => acting.getStore() ?? null
+const actor = () => acting.getStore() ?? null
 
 /** A write the gate refused: a 403 for the API. */
 export class WriteRefused extends Error {

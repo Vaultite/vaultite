@@ -15,9 +15,10 @@ import { HTTPError, type Plugin, ROOT, Text } from "./plugins.ts"
 import { blockName, scan } from "./sections.ts"
 import { readSidebars, type Sidebars } from "./sidebars.ts"
 import { type Item, readText, type Vault, writeAtomic } from "./vault.ts"
+import { isObj } from "./values.ts"
 
 export const APP_BUNDLES = path.join(ROOT, "bundles")
-export const VAULT_BUNDLES = ".vaultite/bundles"
+const VAULT_BUNDLES = ".vaultite/bundles"
 const PREVIOUS = `${VAULT_BUNDLES}/previous.json`
 const ONBOARDING = `${VAULT_BUNDLES}/onboarding.json`
 /** The setup a vault opened for the first time starts from (core/start.ts), and one that skips the offer gets. */
@@ -62,12 +63,13 @@ export type Host = {
 }
 
 const isPng = (f: string | Buffer | undefined) => Buffer.isBuffer(f) && f.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))
-const isObj = (v: unknown): v is Item => !!v && typeof v === "object" && !Array.isArray(v)
 const strs = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [])
 const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null)
 const hash = (data: string | Buffer) => crypto.createHash("sha256").update(data).digest("hex").slice(0, 16)
 /** A bundle file's text ("" for bytes that aren't). */
 const textOf = (f: string | Buffer | undefined) => (typeof f === "string" ? f : "")
+/** A dashboard's Markdown: a `type: dashboard` line after an opening `---`. */
+const DASHBOARD = /^---\n[\s\S]*?^type:\s*dashboard\s*$/m
 export const slug = (name: string) => name.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 48)
 const ID = /^[a-z0-9][a-z0-9-]*$/
 /** The plugins' pages as bundles name them (Dashboards/Today.md), with their text. */
@@ -78,7 +80,7 @@ const homed = (v: Vault, p: string) => (p.startsWith("Dashboards/") ? pageAt(v, 
 // ---------- reading bundles ----------
 
 /** A path a bundle may hold: relative, no `..`, no hidden segment. */
-export const safePath = (p: string) => !!p && !p.startsWith("/") && p.split("/").every((s) => !!s && s !== ".." && !s.startsWith("."))
+const safePath = (p: string) => !!p && !p.startsWith("/") && p.split("/").every((s) => !!s && s !== ".." && !s.startsWith("."))
 
 const tooBig = () => new HTTPError(413, `a bundle holds at most ${MAX_BYTES / 1024 / 1024} MB`)
 
@@ -102,7 +104,7 @@ function readFolder(dir: string): Files {
 }
 
 /** Every bundle there is: the app's, then the user's (each with its id, the folder's name). */
-export function list(vault: Vault): Bundle[] {
+function list(vault: Vault): Bundle[] {
   const out: Bundle[] = []
   for (const [source, dir] of [["app", APP_BUNDLES], ["vault", vault.abs(VAULT_BUNDLES)]] as const) {
     let names: string[] = []
@@ -136,7 +138,7 @@ function json(b: Bundle | Files, rel: string): Item | null {
 
 /** A vault plugin a bundle installs from where it comes from (plugins.json `install`), rather than bringing its files;
  *  one it turns on that moved out of the app (core/migrations.ts MOVED) too. Not one the app (`host`) has itself. */
-export type Install = { id: string; name: string; source: string; tag: string | null }
+type Install = { id: string; name: string; source: string; tag: string | null }
 function installsOf(files: Files, host?: Host): Install[] {
   let pj: Item | null = null
   try { pj = json(files, "plugins.json") } catch { return [] }
@@ -188,7 +190,7 @@ export type Info = {
   preview: string | null
   problems: string[]
 }
-export type HomeBlock = { block: string; view: string | null; wide: boolean }
+type HomeBlock = { block: string; view: string | null; wide: boolean }
 
 /** The blocks of the first page a bundle pins (the vault's copy, wherever it moved, else the bundle's, else the
  *  template a plugin ships), at most 6. */
@@ -214,7 +216,7 @@ function homeOf(b: Bundle, host: Host, pinned: string[] | null): HomeBlock[] | n
   return out
 }
 
-export function info(b: Bundle, host: Host): Info {
+function info(b: Bundle, host: Host): Info {
   const m = (() => { try { return json(b, "bundle.json") ?? {} } catch { return {} } })()
   const str = (v: unknown, d = "") => (typeof v === "string" && v.trim() ? v.trim() : d)
   let look: Item = {}
@@ -314,7 +316,7 @@ function pinsFor(cur: string[], want: string[], brings: Set<string>) {
 
 /** The edits that turn list `cur` into `want` (same pages, new order, some in or out), one pin at a time: unpin the
  *  ones leaving, then place each from the last (at the end) to the first (before the one placed after it). */
-export function pinOps(cur: string[], want: string[]): { path: string; pinned: boolean; before?: string | null }[] {
+function pinOps(cur: string[], want: string[]): { path: string; pinned: boolean; before?: string | null }[] {
   const ops: { path: string; pinned: boolean; before?: string | null }[] = cur.filter((p) => !want.includes(p)).map((p) => ({ path: p, pinned: false }))
   const left = cur.filter((p) => want.includes(p))
   if (left.join("\n") === want.join("\n")) return ops
@@ -542,11 +544,11 @@ async function pinTo(host: Host, cur: string[], want: string[], n: number | null
  *  anything else (an image) at its own path. */
 const placeOf = (b: Bundle, v: Vault) => (f: string) => {
   const data = b.files[f]
-  return f.endsWith(".md") && typeof data === "string" && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(data) ? homed(v, f) : f
+  return f.endsWith(".md") && typeof data === "string" && DASHBOARD.test(data) ? homed(v, f) : f
 }
 
 /** Applying it puts code in the vault or turns a vault plugin on: it asks first, like turning one on does. */
-export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
+const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
 /** `remember: false`: no previous setup to restore (a new vault's first, or the offer skipped). `offAdded`: the plugins
  *  the user added that it doesn't name go off too. `pages: false`: its plugins write no pages (a vault opening). */
@@ -655,7 +657,7 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
 }
 
 /** Put back the setup from before the last apply, and forget it. Changes made since to other keys stay. */
-export async function restore(host: Host) {
+async function restore(host: Host) {
   const v = host.vault
   const prev = readPrevious(v)
   if (!prev) throw new HTTPError(404, "there's no previous setup to restore")
@@ -730,13 +732,13 @@ function pruneDirs(v: Vault, rel: string) {
 
 // ---------- saving the current setup, export, import ----------
 
-export type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean
+type SaveOptions = { name: string; description?: string; icon?: string; tint?: string; hotkeys?: boolean; vaultPlugins?: boolean; workspace?: number | null; replace?: boolean
   /** A screenshot of the app it makes, a PNG as base64: its card's picture. */
   preview?: string }
 
 /** The current setup as a bundle's files: plugins, non-default settings (never `local` ones), panels and pins, look,
  *  hotkeys and vault plugins if asked, and the pinned dashboards (a plugin's unchanged by its name). */
-export async function current(host: Host, o: SaveOptions): Promise<Files> {
+async function current(host: Host, o: SaveOptions): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = {}
   const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
@@ -758,7 +760,7 @@ export async function current(host: Host, o: SaveOptions): Promise<Files> {
     if (files[at] !== undefined || asBundle(host, at) !== at || !safePath(at)) return
     let text: string
     try { text = readText(v.abs(at)) } catch { return }
-    if (at.endsWith(".base") || (at.endsWith(".md") && /^---\n[\s\S]*?^type:\s*dashboard\s*$/m.test(text))) files[at] = text
+    if (at.endsWith(".base") || (at.endsWith(".md") && DASHBOARD.test(text))) files[at] = text
   }
   for (const p of pinned) add(p)
   if (typeof tab.page === "string") add(tab.page)
@@ -845,7 +847,7 @@ function freeId(v: Vault, name: string, replace: boolean) {
   return id
 }
 
-export async function save(host: Host, o: SaveOptions) {
+async function save(host: Host, o: SaveOptions) {
   if (typeof o.name !== "string" || !o.name.trim()) throw new HTTPError(400, "a bundle needs a name")
   const files = await current(host, o)
   const id = freeId(host.vault, o.name, !!o.replace)
@@ -855,14 +857,14 @@ export async function save(host: Host, o: SaveOptions) {
 
 /** One part of a bundle to share or leave out: `on` what's sent unless the user says; `own` a page with text of the
  *  user's own (outside its blocks and headings). */
-export type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
+type ShareItem = { path: string; kind: "picture" | "page" | "file" | "settings" | "hotkeys" | "code"; label: string; on: boolean; own?: boolean; keys?: string[] }
 
 const ownText = (t: string) => t.replace(/^---\n[\s\S]*?\n---\n?/, "").replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[ \t]*$/gm, "")
   .split("\n").some((l) => !!l.trim() && !/^#{1,6}\s/.test(l.trim()))
 
 /** The parts sharing sends, the user's own off (the picture, a page with their text); `dropped`: pins to their notes,
  *  never sent. */
-export function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[] } {
+function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[] } {
   const { code, settings, vaultFiles } = parts(b.files)
   const items: ShareItem[] = []
   if (b.files[PREVIEW] !== undefined) items.push({ path: PREVIEW, kind: "picture", label: "Picture", on: false })
@@ -899,7 +901,7 @@ function dropped(b: Bundle, host: Host) {
 
 /** A bundle as shared: its parts as shareOf chose them, `include` and `leave` (paths: a plugin's code as plugins/<id>/)
  *  changing that; pins to what isn't sent are taken out. `all`: every file as it is (a copy kept to undo a delete). */
-export function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; leave?: string[] } = {}): Bundle {
+function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; leave?: string[] } = {}): Bundle {
   if (o.all || b.error) return b
   const { items, dropped: gone } = shareOf(b, host)
   const out = items.filter((x) => !(x.on || o.include?.includes(x.path)) || !!o.leave?.includes(x.path)).map((x) => x.path)
@@ -914,7 +916,7 @@ export function shared(b: Bundle, host: Host, o: { all?: boolean; include?: stri
 }
 
 /** A bundle as one JSON file: a JSON file as its JSON, text as a string, other bytes as `{"base64": ...}`. */
-export function exportOf(b: Bundle) {
+function exportOf(b: Bundle) {
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const files: Record<string, unknown> = {}
   for (const [f, data] of Object.entries(b.files)) {
@@ -997,7 +999,7 @@ function idFor(v: Vault, files: Files, want: string | null) {
 }
 
 /** A bundle into the user's bundles (from an export or a repository). Never applied here. */
-export async function importOf(v: Vault, body: unknown, host: Host) {
+async function importOf(v: Vault, body: unknown, host: Host) {
   const { files, id: want } = await incomingFiles(body)
   const { id, replaces } = idFor(v, files, want)
   writeBundle(v, id, files, !!replaces)
@@ -1006,7 +1008,7 @@ export async function importOf(v: Vault, body: unknown, host: Host) {
 
 /** What importing a bundle would add, and what applying it then would change here, without writing anything: the
  *  import's preview. `file`: it as an export, to import as previewed (a repository isn't fetched again). */
-export async function incoming(host: Host, body: Item) {
+async function incoming(host: Host, body: Item) {
   const { files, id: want } = await incomingFiles(body)
   const { id, replaces } = idFor(host.vault, files, want)
   const b: Bundle = { id, source: "vault", files }

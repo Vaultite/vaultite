@@ -26,7 +26,7 @@ function tailscale() {
 }
 
 /** The tailnet login of this machine's owner ("" if Tailscale isn't there or doesn't say). */
-export async function ownerLogin(): Promise<string> {
+async function ownerLogin(): Promise<string> {
   const st = await tailscale()
   return String(st?.User?.[String(st.Self?.UserID)]?.LoginName ?? "").toLowerCase()
 }

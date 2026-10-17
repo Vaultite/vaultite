@@ -54,7 +54,6 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@excalidraw/excalidraw": "^0.18.1",
-    "@fontsource-variable/geist": "^5.3.0",
     "@lezer/highlight": "^1.2.5",
     "@lezer/markdown": "^1.7.2",
     "@novnc/novnc": "1.7.0",

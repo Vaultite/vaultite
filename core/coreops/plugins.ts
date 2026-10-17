@@ -12,7 +12,8 @@ import { placePanel, readSidebars, sideOf } from "../sidebars.ts"
 import { API_VERSION } from "../version.ts"
 import { writeAtomic } from "../vault.ts"
 import * as G from "../grants.ts"
-import { type Any, strings } from "./common.ts"
+import { type Any } from "./common.ts"
+import { strings } from "../values.ts"
 
 export type PluginInfo = PluginDir & { name: string; description: string; requires: string[]
   /** Off until turned on (`enabled`), like a vault plugin: the vault's, and the app's with `offByDefault`. */
@@ -57,7 +58,7 @@ function findPlugin(list: PluginInfo[], q: string) {
 const ID = { type: "string" as const, required: true, description: "the plugin's id (reddit) or name (Reddit)" }
 
 /** Let a vault plugin run on this machine as its files are now (`hash`: only if they're still what the caller was shown). */
-export async function allowPlugin(app: App, q: string, hash?: string, edits?: boolean) {
+async function allowPlugin(app: App, q: string, hash?: string, edits?: boolean) {
   const p = findPlugin(pluginList(app), q)
   if (p.tier !== "vault") throw new OpError(`${p.name} is one of the app's plugins: only the vault's own are allowed one by one`)
   let d

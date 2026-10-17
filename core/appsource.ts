@@ -30,14 +30,14 @@ function snapshot(): Snapshot | null {
 }
 
 /** The app's source is here (a checkout), not only its build. */
-export const hasSource = () => fs.existsSync(path.join(ROOT, "web", "src", "App.tsx"))
+const hasSource = () => fs.existsSync(path.join(ROOT, "web", "src", "App.tsx"))
 
 const subdirs = (d: string) => {
   try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => e.isDirectory() && !e.name.startsWith(".")).map((e) => path.join(d, e.name)).sort() } catch { return [] }
 }
 
 /** The app's built-in plugin folders (plugins/core/). */
-export const appPluginDirs = (): PluginDir[] =>
+const appPluginDirs = (): PluginDir[] =>
   subdirs(path.join(ROOT, "plugins", "core")).filter((d) => fs.existsSync(path.join(d, "manifest.json"))).map((dir) => ({ id: path.basename(dir), tier: "core", dir }))
 
 /** The snapshot of this checkout's source (electron/stamp.ts writes it into electron/cli.json). */

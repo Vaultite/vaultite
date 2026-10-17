@@ -3,10 +3,7 @@ import type { App } from "../app.ts"
 import type { OpCtx } from "../ops.ts"
 import { enabled } from "../plugins.ts"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any
-
-export const strings = (v: unknown): string[] => (Array.isArray(v) ? v.filter((x) => typeof x === "string") : [])
 
 /** Rows as lines, or what to say when there are none. */
 export const lines = (rows: string[], empty = "(none)") => (rows.length ? rows.join("\n") : empty)

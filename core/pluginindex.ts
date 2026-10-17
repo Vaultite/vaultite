@@ -7,8 +7,9 @@ import { fileURLToPath } from "node:url"
 import { git, parseSource } from "./installs.ts"
 import { type Disclosures, disclosuresOf, iconOf, REPO } from "./pluginmeta.ts"
 import { compareVersions, parseVersion } from "./version.ts"
-import { type Item, type Vault, writeAtomic } from "./vault.ts"
+import { type Vault, writeAtomic } from "./vault.ts"
 import { fetchPublic } from "./web.ts"
+import { isObj } from "./values.ts"
 
 export const DEFAULT_INDEX = "https://raw.githubusercontent.com/Vaultite/plugins/main/directory/index.json"
 /** An index in a GitHub repository, read with git (so a private one works where git is signed in): owner/name/path.json */
@@ -31,7 +32,6 @@ export type Index = { generated: string | null; plugins: Entry[]; blocked: Recor
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
 
 const EMPTY: Index = { generated: null, plugins: [], blocked: {} }
-const isObj = (v: unknown): v is Item => !!v && typeof v === "object" && !Array.isArray(v)
 const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) : "")
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0)
 const date = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null)

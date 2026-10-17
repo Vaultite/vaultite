@@ -85,7 +85,6 @@ const { open } = await import("../core/app.ts")
 const { Text } = await import("../core/plugins.ts")
 const { publicOf } = await import("../core/vault.ts")
 const app = await open(C, { start: false })
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
 async function api(method: string, p: string, body?: unknown): Promise<[number, Any]> {
   const [route, qs] = p.split("?")

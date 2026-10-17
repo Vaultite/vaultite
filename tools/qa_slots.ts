@@ -6,7 +6,7 @@ import path from "node:path"
 
 const DIR = path.join(os.tmpdir(), "vaultite-qa-slots")
 /** How many at once: VAULTITE_QA_SLOTS, else one per 4 GB of memory. */
-export const SLOTS = Number(process.env.VAULTITE_QA_SLOTS) || Math.max(1, Math.floor(os.totalmem() / 2 ** 32))
+const SLOTS = Number(process.env.VAULTITE_QA_SLOTS) || Math.max(1, Math.floor(os.totalmem() / 2 ** 32))
 
 const alive = (pid: number) => { try { process.kill(pid, 0); return true } catch (e) { return (e as NodeJS.ErrnoException).code === "EPERM" } }
 const mine = new Set<string>()

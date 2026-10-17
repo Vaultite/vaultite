@@ -2,10 +2,9 @@
 // server still answers and reads the rest of the vault. `node tools/test_stall.ts` (npm test)
 import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
-import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { check, results, summary } from "./test/lib.ts"
+import { check, freePort, results, sleep, summary } from "./test/lib.ts"
 const began = Date.now()
 
 const ROOT = path.dirname(import.meta.dirname)
@@ -24,7 +23,7 @@ fifo("Attachments/data.txt")
 fifo("Attachments/photo.png")
 fifo(".trash/Old.md")
 
-const port = await new Promise<number>((ok) => { const s = net.createServer().listen(0, "127.0.0.1", () => { const p = (s.address() as net.AddressInfo).port; s.close(() => ok(p)) }) })
+const port = await freePort()
 const server = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
   env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(tmp, "local"), PORT: String(port), HOST: "127.0.0.1", VAULTITE_DESKTOP: "" },
   stdio: ["ignore", "pipe", "pipe"],
@@ -42,7 +41,6 @@ async function get(p: string, wait = 8000) {
     return { status: 0, body: String(e) }
   }
 }
-const sleep = (ms: number) => new Promise((ok) => setTimeout(ok, ms))
 const t0 = Date.now()
 
 try {

@@ -4,11 +4,9 @@ import fs from "node:fs"
 import path from "node:path"
 import readline from "node:readline"
 import { commands, Ctx, CliError, execute, parseArgs, print, userData, type Obj } from "./cli.ts"
-import type { OpEntry, Schema } from "./ops.ts"
+import { camel, flagOf, type OpEntry, type Schema } from "./ops.ts"
 
 const GLOBAL_FLAGS = ["--json", "--copy", "--count", "--paths", "--help"]
-const kebab = (k: string) => k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`)
-const camel = (k: string) => k.replace(/-([a-z])/g, (_, x: string) => x.toUpperCase())
 
 /** A line split like a shell does (quotes, backslashes): its words, and the last one as typed so far (`partial`, from
  *  `start`; "" after a space) with the quote it's open in. */
@@ -109,7 +107,7 @@ export async function complete(line: string, src: Source): Promise<string[]> {
   const props = op.params.properties ?? {}
   const rest = said.slice(used)
   if (help) return rest.length ? [] : starts(next)
-  if (partial.startsWith("-")) return starts([...Object.keys(props).map((k) => `--${kebab(k)}`), ...GLOBAL_FLAGS])
+  if (partial.startsWith("-")) return starts([...Object.keys(props).map(flagOf), ...GLOBAL_FLAGS])
   // The flag before this word takes a value: its values; else the next positional parameter's.
   const prev = rest.at(-1)
   const flagged = prev?.startsWith("--") ? camel(prev.slice(2)) : null

@@ -5,7 +5,8 @@ import type { App } from "../app.ts"
 import { commandList, pageIcons, schemes } from "../appsource.ts"
 import { closest, COMMON, optionText } from "../blocks.ts"
 import { jsonBlock, type Op, OpError } from "../ops.ts"
-import { type Any, lines, strings } from "./common.ts"
+import { type Any, lines } from "./common.ts"
+import { strings } from "../values.ts"
 import { pluginList } from "./plugins.ts"
 
 
@@ -25,8 +26,13 @@ const bool = (key: string) => (v: string) => {
   if (!["true", "false", "on", "off"].includes(v)) throw new OpError(`${key} is true or false`)
   return v === "true" || v === "on"
 }
+/** A JSON list, or names separated by commas. */
+const names = (v: string) => {
+  const j = value(v)
+  return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
+}
 /** appearance.json's keys (web/src/core/prefs.ts reads them), what each takes, and how a value given as text reads. */
-export const APPEARANCE: Record<string, Setting> = {
+const APPEARANCE: Record<string, Setting> = {
   theme: { about: "light, dark or system (follows the device)", parse: oneOf("light", "dark", "system") },
   scheme: {
     about: "colour scheme: gruvbox (the default), default (Classic, Apple's colours), one in web/src/themes (nord, catppuccin...), or theme:<Name> for a downloaded theme in .vaultite/themes",
@@ -44,31 +50,15 @@ export const APPEARANCE: Record<string, Setting> = {
   textFont: { about: "the font of notes' text", parse: (v) => v },
   monoFont: { about: "the font of code and source mode", parse: (v) => v },
   snippets: {
-    about: "CSS snippets turned on, by name (a JSON list, or names separated by commas)", parse: (v) => {
-      const j = value(v)
-      return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
-    },
-  },
+    about: "CSS snippets turned on, by name (a JSON list, or names separated by commas)", parse: names },
   fileIcons: { about: "true or false: icons before file names: the tree, tabs, search and the quick switcher", parse: bool("fileIcons") },
   tabBar: { about: "true (default) or false: the tabs above each pane on desktop; off, each pane's bar shows only the tab on screen (switch with the Tabs panel or the keyboard)", parse: bool("tabBar") },
   statusBar: {
-    about: "the plugins' items at the start of the desktop status bar, in order, as <plugin>:<name> (today:routines, inbox:new, terminal:agents, claude-code:limits): a JSON list or names separated by commas; [] for none", parse: (v) => {
-      const j = value(v)
-      return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
-    },
-  },
+    about: "the plugins' items at the start of the desktop status bar, in order, as <plugin>:<name> (today:routines, inbox:new, terminal:agents, claude-code:limits): a JSON list or names separated by commas; [] for none", parse: names },
   statusBarMore: {
-    about: "those of statusBar's items kept in the status bar's tray (its more button) whatever room there is: a JSON list or names separated by commas", parse: (v) => {
-      const j = value(v)
-      return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
-    },
-  },
+    about: "those of statusBar's items kept in the status bar's tray (its more button) whatever room there is: a JSON list or names separated by commas", parse: names },
   fileBar: {
-    about: "the plugins' items in a file's top bar, in order, as <plugin>:<name> (companion:presence, provenance:origin): a JSON list or names separated by commas; ones left out follow by their default place", parse: (v) => {
-      const j = value(v)
-      return Array.isArray(j) ? j : v.split(",").map((s) => s.trim()).filter(Boolean)
-    },
-  },
+    about: "the plugins' items in a file's top bar, in order, as <plugin>:<name> (companion:presence, provenance:origin): a JSON list or names separated by commas; ones left out follow by their default place", parse: names },
   lineNumbers: { about: "true or false: line numbers beside a file's text while editing it (code files always have them)", parse: bool("lineNumbers") },
 }
 

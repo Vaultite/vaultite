@@ -40,7 +40,6 @@ function daysOf(v: unknown) {
   return days
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
 /** A JSON text's value (its bytes too), or null. */
 export function parseJson(v: unknown): Any {

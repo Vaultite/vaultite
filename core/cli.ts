@@ -4,13 +4,12 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
-import { flagOf, opDoc, type OpEntry, pathAsSaid, usage as opUsage } from "./ops.ts"
+import { camel, flagOf, kebab, opDoc, type OpEntry, usage as opUsage } from "./ops.ts"
 import { EVENT_TYPES } from "./events.ts"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 const DEFAULT_URL = "http://127.0.0.1:8793"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Any = any
 export type Obj = Record<string, Any>
 export type Args = { _: string[]; flags: Record<string, string | true>
@@ -48,7 +47,7 @@ export const need = (v: string | undefined, what: string, usage: string) => {
   return v
 }
 
-export function parseJson(s: string): Any {
+function parseJson(s: string): Any {
   try {
     return JSON.parse(s)
   } catch (e) {
@@ -186,7 +185,6 @@ export class Ctx {
     return r.body
   }
 
-  /** Is the server up? */
   async up() {
     try {
       await this.api("GET", "ui")
@@ -204,7 +202,7 @@ const UNASKED_MS = 250
 
 /** stdin's text, read once. Asked for (`-`), it's waited for until it ends; unasked, nothing from a terminal, and a socket
  *  that says nothing at first (an agent's process with stdin left open) isn't waited for. */
-export function readStdin(implicit = false): Promise<string> {
+function readStdin(implicit = false): Promise<string> {
   if (process.stdin.isTTY) {
     if (implicit) return Promise.resolve("")
     return Promise.reject(new CliError("give the text with --from <file> or as an argument, or pipe it in: `echo text | vau ...`"))
@@ -219,12 +217,6 @@ export function readStdin(implicit = false): Promise<string> {
     process.stdin.on("error", (e: NodeJS.ErrnoException) => (e.code === "EBADF" || e.code === "EPIPE" ? resolve("") : reject(e)))
   })
   return piped
-}
-
-/** A path as the user would say it ("Today", "Notes/Idea") made a vault path, when the server knows the files (ops
- *  do this themselves for their `format: "path"` parameters: core/ops.ts pathAsSaid). */
-export async function resolvePath(c: Ctx, p: string) {
-  try { return pathAsSaid(await c.call("GET", "files"), p) } catch { return p.trim().replace(/^\/+/, "") }
 }
 
 // ---------- what only vau does ----------
@@ -444,7 +436,7 @@ function leadingWords(argv: string[]) {
   return out
 }
 
-export function usage(cmds: Command[], ops: OpEntry[] | null = null) {
+function usage(cmds: Command[], ops: OpEntry[] | null = null) {
   // Ops with a CLI name, one row each (a group of several words under its first: `inbox`), then the local commands.
   const rows: [string, string][] = []
   for (const e of ops ?? []) {
@@ -476,7 +468,7 @@ Settings and data both go through the server (settings key by key, the rest of e
 every change live. File formats: vau docs.`
 }
 
-export const commandHelp = (c: Command) => `${c.usage}\n\n${c.summary}\n\n${c.help}`
+const commandHelp = (c: Command) => `${c.usage}\n\n${c.summary}\n\n${c.help}`
 
 // ---------- operations (core/ops.ts): every op is a command ----------
 
@@ -491,8 +483,6 @@ async function catalog(c: Ctx): Promise<OpEntry[] | null> {
   }
 }
 
-const camel = (k: string) => k.replace(/-([a-z])/g, (_, x: string) => x.toUpperCase())
-const kebab = (k: string) => k.replace(/[A-Z]/g, (x) => `-${x.toLowerCase()}`)
 
 /** An op's parameters from a command line: `args` by position, the rest as --flags (kebab or camel), `--params <json>`,
  *  `-` for stdin. Values stay text (the server reads the schema); extra words are `extra`, up to `allow`. */
@@ -539,7 +529,7 @@ async function opParams(e: OpEntry, argv: string[], c: Ctx, allow = 0): Promise<
 type Shape = { json?: boolean; count?: boolean; paths?: boolean }
 
 /** The list an answer is: itself, or its first list (file.list's files, tag.list's tags); null when it has none. */
-export function listOf(r: unknown): unknown[] | null {
+function listOf(r: unknown): unknown[] | null {
   if (Array.isArray(r)) return r
   if (r && typeof r === "object") for (const v of Object.values(r)) if (Array.isArray(v)) return v
   return null

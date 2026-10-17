@@ -131,7 +131,7 @@ export async function buildIndex({ get, listed = [], blocked = {}, now = Date.no
 }
 
 /** GitHub over fetch (GITHUB_TOKEN when set). */
-export function githubGet(token = process.env.GITHUB_TOKEN): Get {
+function githubGet(token = process.env.GITHUB_TOKEN): Get {
   return async (url, accept = "application/vnd.github+json") => {
     const r = await fetch(url, { headers: { Accept: accept, "User-Agent": "vaultite-plugin-index", ...(token && (url.startsWith(API) || url.startsWith(RAW)) ? { Authorization: `Bearer ${token}` } : {}) } })
     const text = await r.text()

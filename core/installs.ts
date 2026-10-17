@@ -25,8 +25,8 @@ export type Locked = { source: string; repo: string | null; tag: string | null; 
   skip?: string
   /** It was one of the app's own plugins, installed by the app when it moved here (core/migrations.ts MOVED). */
   moved?: true }
-export const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
-export const HISTORY_MAX = 30
+const LOCK = "plugins-lock" // .vaultite/plugins-lock.json
+const HISTORY_MAX = 30
 
 /** What a source names: a git address or folder, its GitHub repo, `dir` the plugin's folder in a repo of several (tags
  *  `<dir>/v1.2.0`), a tag; or `archive`, a zip's address and the sha256 it must have. */
@@ -36,7 +36,7 @@ export type Source = { given: string; url: string | null; folder: string | null;
 /** A zip's address: https (http only to this machine), its path ending in .zip, `#sha256=<64 hex>` after it. */
 const ARCHIVE = /^(https?):\/\/([^/?#]+)(\/[^?#]*\.zip)(\?[^#]*)?(?:#sha256=([0-9a-fA-F]{64}))?$/i
 const LOOPBACK = /^(localhost|127\.0\.0\.1|\[::1\])(:\d+)?$/i
-export const ZIP_MAX = 64 << 20, UNZIPPED_MAX = 256 << 20, ENTRIES_MAX = 5000
+const ZIP_MAX = 64 << 20, UNZIPPED_MAX = 256 << 20, ENTRIES_MAX = 5000
 
 const STABLE = /^v?\d+\.\d+\.\d+$/
 const GIT_TIMEOUT = 120_000

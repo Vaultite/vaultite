@@ -19,7 +19,7 @@ export type Panel = { key: string; title: string; plugin: string; on: boolean
 export type SidebarsTarget = { label: string; setup: Sidebars | null; save: (next: Sidebars) => unknown }
 
 /** Every plugin's panels (on or off), as their source declares them (core/appsource.ts). */
-export const panelDefs = (app: App): PanelDef[] => pluginList(app).flatMap(panelsOf)
+const panelDefs = (app: App): PanelDef[] => pluginList(app).flatMap(panelsOf)
 
 /** The sidebars' setup (`own`: a workspace's; else .vaultite/sidebars.json, or the default while it's unset) and
  *  every panel, the shown ones in their sidebars' order, then the hidden ones by `sort`. */
@@ -122,6 +122,7 @@ export function panelOps(app: App): Op[] {
   })
   /** To the end of one sidebar, unfolded. */
   const dock = (side: Side) => (s: Sidebars, p: Panel) => setCollapsed(placePanel(s, p.key, { side, before: null }), p.key, false)
+  const shown = (s: Sidebars, p: Panel) => { if (!sideOf(s, p.key)) throw new OpError(`${p.title} is hidden: vau panels show ${p.key}`) }
 
   return [{
     id: "panel.list",
@@ -152,15 +153,15 @@ export function panelOps(app: App): Op[] {
   change("panel.left", "panels left", "Put a panel at the end of the left sidebar.", [], {}, dock("left")),
   change("panel.right", "panels right", "Put a panel at the end of the right sidebar.", [], {}, dock("right")),
   change("panel.collapse", "panels collapse", "Fold a panel to its heading.", [], {}, (s, p) => {
-    if (!sideOf(s, p.key)) throw new OpError(`${p.title} is hidden: vau panels show ${p.key}`)
+    shown(s, p)
     return setCollapsed(s, p.key, true)
   }),
   change("panel.expand", "panels expand", "Unfold a panel folded to its heading.", [], {}, (s, p) => {
-    if (!sideOf(s, p.key)) throw new OpError(`${p.title} is hidden: vau panels show ${p.key}`)
+    shown(s, p)
     return setCollapsed(s, p.key, false)
   }),
   change("panel.dock", "panels dock", "On phones, draw a panel as icons in the drawer's dock, not in its drawer (Buttons).", [], {}, (s, p) => {
-    if (!sideOf(s, p.key)) throw new OpError(`${p.title} is hidden: vau panels show ${p.key}`)
+    shown(s, p)
     if (!panelDefs(app).find((d) => d.key === p.key)?.dockable) throw new OpError(`${p.title} has no dock form: ${panelDefs(app).filter((d) => d.dockable).map((d) => d.key).join(", ") || "no panel"} can be docked`)
     return setDocked(s, p.key, true)
   }),

@@ -7,7 +7,7 @@ export type Update = { from: string; to: string; at: string; how: "auto" | "manu
 
 /** Which installed plugins update on their own: Vaultite's (the default), all of them, or none. */
 export type UpdatePolicy = "vaultite" | "all" | "off"
-export const POLICIES: UpdatePolicy[] = ["vaultite", "all", "off"]
+const POLICIES: UpdatePolicy[] = ["vaultite", "all", "off"]
 
 /** Whether a source is Vaultite's own (its GitHub organisation): what updates on its own unless the user says otherwise. */
 export function official(source: string) {
@@ -35,7 +35,7 @@ export function autoUpdates(c: UpdateConfig, id: string, source: string) {
 }
 
 const QUIET = new Set(["chore", "test", "tests", "ci", "build", "docs", "style"])
-export const NOTES_MAX = 8
+const NOTES_MAX = 8
 
 /** Commit subjects as release notes, oldest first: a conventional prefix taken off ("feat(x): every app" is "Every app"),
  *  upkeep left out (chore, test, ci, build, docs), repeats once. */

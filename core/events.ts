@@ -44,7 +44,7 @@ export function matching(ev: VaultEvent, f: EventFilter): VaultEvent | null {
 }
 
 /** A filter from text (a query string, CLI flags): types as "a,b". */
-export function filterOf(types: unknown, path: unknown): EventFilter {
+function filterOf(types: unknown, path: unknown): EventFilter {
   const t = Array.isArray(types) ? types.map(String) : typeof types === "string" ? types.split(",") : []
   return { types: t.map((x) => x.trim()).filter(Boolean), ...(typeof path === "string" && path.trim() ? { path: path.trim() } : {}) }
 }

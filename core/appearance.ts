@@ -306,7 +306,7 @@ function resolve(value: string, vars: Vars, seen: Set<string> = new Set()): stri
 const COLOR = /^(#[0-9a-f]{3,8}|(rgba?|hsla?|hwb|lab|lch|oklab|oklch|color|color-mix)\(.*\)|[a-z]+)$/i
 const NOT_COLOR = /^(inherit|initial|unset|revert|none|currentcolor|auto|normal)$/i
 
-export function convert(text: string): Converted {
+function convert(text: string): Converted {
   const css = stripComments(text)
   const { classes, vars: settings } = styleSettings(text)
   const found: { modes: Mode[]; spec: number; order: number; decls: [string, string][] }[] = []
@@ -375,7 +375,7 @@ function tokens(v: Vars, mode: Mode): Vars {
 }
 
 /** The tokens as a scheme stylesheet, like web/src/themes/*.css (a Settings tile shows it too: .scheme-preview). */
-export function schemeCSS(id: string, t: Converted) {
+function schemeCSS(id: string, t: Converted) {
   const sel = `:is(:root, .scheme-preview)[data-scheme="${id.replace(/["\\]/g, "\\$&")}"]`
   const block = (s: string, vars: Vars, dark: boolean) =>
     `${s} {\n  color-scheme: ${dark ? "dark" : "light"};\n${Object.entries(vars).map(([k, v]) => `  --${k}: ${v};`).join("\n")}\n}\n`

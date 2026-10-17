@@ -13,7 +13,8 @@ import { compareVersions, tagVersion } from "../version.ts"
 import { settingsFile } from "../rules.ts"
 import { DIR, digestOf } from "../vaultplugins.ts"
 import { notHereYet } from "../writegate.ts"
-import { type Any, strings } from "./common.ts"
+import { type Any } from "./common.ts"
+import { strings } from "../values.ts"
 
 const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" }
 

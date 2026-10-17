@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
+import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
   const { CLAUDE_DIR, VAULT, api, app, check, exists, read, sleep, tmp, write } = $
@@ -183,8 +184,9 @@ export default async ($: VaultTest) => {
     ;[, list] = await api("GET", "inbox/events")
     one = list.events.find((e: Any) => e.id === id)
     check("inbox events: read again, no longer kept", one?.read === true && !("kept" in one), one)
-    await sleep(300)
-    const kept = fs.readdirSync(path.join(tmp, "local", "inbox"))
+    const keptAt = path.join(tmp, "local", "inbox")
+    await waitFor(() => fs.readdirSync(keptAt).some((d) => fs.existsSync(path.join(keptAt, d, "events.json"))), 3000, 50)
+    const kept = fs.readdirSync(keptAt)
     check("inbox events: kept on this machine, not in the vault", kept.length === 1 && fs.existsSync(path.join(tmp, "local", "inbox", kept[0], "events.json")) && !exists("Inbox/events.json"), kept)
     write("Dashboards/Qa inbox.md", "---\ntype: dashboard\n---\n\n```block-inbox\nevents: 3\n```\n")
     let [, r] = await api("GET", "render?path=Dashboards/Qa inbox.md")
@@ -366,7 +368,7 @@ export default async ($: VaultTest) => {
         l.events.find((e: Any) => e.id === "p1@box")?.read === true, [st2, b2, seen])
       theirs = [{ ...theirs[0], read: true }, { id: "p3", t: Date.now(), source: "claude", kind: "waiting", title: "Claude Code is waiting for you" }, theirs[1]]
       for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
-      await sleep(100)
+      await waitFor(async () => (await api("GET", "inbox/events"))[1].events[0]?.id === "p3@box", 3000, 50)
       ;[, l] = await api("GET", "inbox/events")
       check("inbox machines: its changes arrive live", l.events[0]?.id === "p3@box" && l.events[0].read !== true, l.events.slice(0, 2))
       {
@@ -384,6 +386,7 @@ export default async ($: VaultTest) => {
         there.got.length = here.got.length = 0
         theirs = [...theirs, { id: "p4", t: Date.now() - 100, source: "vau", kind: "info", title: "Another there" }]
         for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
+        await waitFor(() => here.got.length > 0, 3000, 25)
         await sleep(150)
         const after = here.got.length
         for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
@@ -391,7 +394,7 @@ export default async ($: VaultTest) => {
         check("inbox machines: their changes go to this machine's apps, not back to the machines (no echo); the same list again is nothing",
           !there.got.length && after === 1 && here.got.length === 1, [there.got.length, after, here.got.length])
         await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Mine, for the machines" })
-        await sleep(100)
+        await waitFor(() => there.got.length > 0, 3000, 25)
         check("inbox machines: this machine's own changes still go to the machines", there.got.length === 1, there.got.length)
         there.emit("close"); here.emit("close")
       }

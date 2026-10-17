@@ -19,6 +19,9 @@ export default async ($: VaultTest) => {
     pr.entries[1].items[0] === "item" && rc.renderRecap(pr.entries, pr) === md.replace("- 9:30", "- 09:30"), rc.renderRecap(pr.entries, pr))
 
   const HOUR = 3_600_000
+  // Its days are today and yesterday: one run spanning midnight would split them, so a run just before it waits.
+  const toMidnight = new Date().setHours(24, 0, 0, 0) - Date.now()
+  if (toMidnight < 60_000) await new Promise((r) => setTimeout(r, toMidnight + 1000))
   const localDay = (t = Date.now()) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}` }
   const midnight = new Date(); midnight.setHours(0, 0, 0, 0)
   const Y = +midnight - 2 * HOUR, Y2 = +midnight - 26 * HOUR // yesterday 22:00, the day before's

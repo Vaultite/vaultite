@@ -3,7 +3,6 @@
 import { defaultOrder, placeKey, type SlotInfo } from "./slots.ts"
 
 export type Side = "left" | "right"
-export const SIDES: Side[] = ["left", "right"]
 /** Panel keys are "<plugin id>:<name>" ("files:files"). */
 export type Sidebars = { left: string[]; right: string[]; collapsed: string[]; heights: Record<string, number>
   /** Shown panels a phone draws in its drawer's dock (icons only, at the thumb) instead of in their drawer. */

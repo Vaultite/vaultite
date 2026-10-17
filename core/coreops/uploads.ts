@@ -31,7 +31,7 @@ function sniff(b: Buffer): string {
 const saved = new Map<string, { path: string; until: number }>()
 
 /** The parameters an internet app's upload link carries until the bytes come (plugins/core/mcp/public.ts). */
-export type Pending = { name?: string; folder?: string; note?: string }
+type Pending = { name?: string; folder?: string; note?: string }
 
 export function uploadOps(app: App): Op[] {
   return [{
@@ -130,7 +130,7 @@ function headOf(p: string) {
 
 /** Write the bytes (in memory, or a stream of any size) as a new attachment (a taken name gets a number) and embed it at
  *  the end of `note`. */
-export async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named: string, mime: string, folder?: string, note?: string) {
+async function save(app: App, ctx: OpCtx, bytes: Buffer | Readable, named: string, mime: string, folder?: string, note?: string) {
   const ext = EXT[mime] ?? ""
   // A nameless image (a phone's "image.jpg") is named as Obsidian names a pasted one.
   const pasted = (!named || /^image\.\w+$/i.test(named)) && (/^image\//.test(mime) || /^image\./i.test(named))

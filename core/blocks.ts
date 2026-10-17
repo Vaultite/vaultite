@@ -2,8 +2,9 @@
 // core/docs/vault-plugins.md), read by server and app alike (no Node). Bad options still pass, with a note to fix them.
 import { blocksIn } from "./sections.ts"
 import { load } from "./yaml.ts"
+import { isObj as isMap, strings } from "./values.ts"
 
-export type OptionType = "string" | "number" | "boolean" | "list" | "map" | "enum"
+type OptionType = "string" | "number" | "boolean" | "list" | "map" | "enum"
 export type OptionDecl = {
   type: OptionType | OptionType[]
   description: string
@@ -53,7 +54,6 @@ export function withKindBlocks(view: string[] | undefined, body: string): string
   return rest.trim() ? `${fences}\n\n${rest}` : `${fences}\n`
 }
 
-const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 const types = (d: OptionDecl) => (Array.isArray(d.type) ? d.type : [d.type])
 
 /** A manifest's `blocks` as declarations ({} when it has none, or they aren't an object). Entries that aren't objects
@@ -66,7 +66,7 @@ export function declsOf(manifest: unknown): BlockDecls {
 /** A manifest's `draws`: blocks other plugins declare that it draws (their declaration's `by` names it). */
 export function drawsOf(manifest: unknown): string[] {
   const d = isMap(manifest) ? manifest.draws : null
-  return Array.isArray(d) ? d.filter((x): x is string => typeof x === "string") : []
+  return strings(d)
 }
 
 /** A declaration with its `by` option taking only `ids`: the plugins that draw it and are on. */

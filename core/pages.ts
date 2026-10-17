@@ -45,7 +45,7 @@ export function writePages(vault: Vault, plugins: Plugin[], ids: Iterable<string
 }
 
 /** What "pages:installed" (Pinned) is told: the pages just written. */
-export type Installed = { made: string[] }
+type Installed = { made: string[] }
 
 function installed(vault: Vault, plugins: Plugin[], made: string[]) {
   const on = enabled(vault, plugins)

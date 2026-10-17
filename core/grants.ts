@@ -3,6 +3,7 @@
 import type { Plugin } from "./plugins.ts"
 import { enabled } from "./plugins.ts"
 import type { Item, Vault } from "./vault.ts"
+import { isObj } from "./values.ts"
 
 /** One place a plugin writes on its own: a folder (and what's in it) or one file, and why, said to the user. */
 export type WriteDecl = { folder?: string; file?: string; why: string }
@@ -12,14 +13,13 @@ export type Grant = { plugin: string; name: string; on: boolean; place: string; 
   /** Where it writes now: the declared folder, or where the user keeps that kind's files (Inbox/Recaps). */
   at: string }
 
-export const GRANTS = "grants"
+const GRANTS = "grants"
 const ANSWERS: Answer[] = ["allowed", "not now", "ask"]
 
-const isObj = (x: unknown): x is Item => !!x && typeof x === "object" && !Array.isArray(x)
 const cleanPath = (s: string) => s.trim().replace(/^\/+|\/+$/g, "")
 
 /** A plugin's declared writes (the ones that read). */
-export function writesOf(p: Plugin): WriteDecl[] {
+function writesOf(p: Plugin): WriteDecl[] {
   return (Array.isArray(p.manifest.writes) ? p.manifest.writes as unknown[] : []).flatMap((w): WriteDecl[] => {
     if (!isObj(w) || typeof w.why !== "string") return []
     if (typeof w.folder === "string" && cleanPath(w.folder)) return [{ folder: cleanPath(w.folder), why: w.why.trim() }]
@@ -32,7 +32,7 @@ export function writesOf(p: Plugin): WriteDecl[] {
 const keyOf = (w: WriteDecl) => (w.folder ?? w.file)!
 
 /** The user's answers, by plugin and declared place. */
-export function answers(vault: Vault): Record<string, Record<string, Answer>> {
+function answers(vault: Vault): Record<string, Record<string, Answer>> {
   let raw: Item = {}
   try { raw = vault.config(GRANTS) } catch { /* unreadable for now: nothing granted */ }
   const out: Record<string, Record<string, Answer>> = {}

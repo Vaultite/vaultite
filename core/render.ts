@@ -115,7 +115,7 @@ export async function blockOn(vault: Vault, plugins: Plugin[], query: Record<str
 
 /** One place a block's data comes from: a file (it shows it, or read it), every file of a kind (`files`: the paths),
  *  a plugin's settings or cache (a hidden file to open), or live data (in words: nothing in the vault). */
-export type BlockSource =
+type BlockSource =
   | { kind: "file"; path: string }
   | { kind: "files"; collection: string; type: string; paths: string[] }
   | { kind: "settings" | "cache"; plugin: string; label: string; path: string }
@@ -216,7 +216,7 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
 
 /** A block's `file:`: a link to a note (written in `from`, so the closest of its name), or a folder ending in / for its
  *  newest file. */
-export function otherFile(vault: Vault, target: string, from?: string): string | null {
+function otherFile(vault: Vault, target: string, from?: string): string | null {
   const t = target.trim().replace(/^\[\[|\]\]$/g, "").split("|")[0].trim()
   if (t.endsWith("/")) {
     const dir = t.toLowerCase().replace(/^\/+/, "")

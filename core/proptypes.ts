@@ -73,7 +73,7 @@ export function typeNotes(types: PropTypes | null | undefined, fm: Record<string
 }
 
 /** A date or a date and time as ms (this machine's time; ISO, `YYYY/MM/DD`, or what Date reads), or null. */
-export function timeOf(v: unknown): number | null {
+function timeOf(v: unknown): number | null {
   if (typeof v !== "string" || !v.trim()) return null
   const s = v.trim()
   const m = /^(\d{4})[-/](\d\d?)[-/](\d\d?)(?:[ T](\d\d?):(\d\d)(?::(\d\d))?)?$/.exec(s)

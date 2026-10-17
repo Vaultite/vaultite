@@ -5,7 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 
-export const LABEL = "app.vaultite.server"
+const LABEL = "app.vaultite.server"
 export type ServiceOptions = { root: string; node: string; vault: string; port?: number; host?: string; home?: string }
 export type ServicePlan = { platform: "darwin" | "linux"; file: string; text: string; log: string; start: string[][]; stop: string[][] }
 

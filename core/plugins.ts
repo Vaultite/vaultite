@@ -296,10 +296,8 @@ export class Plugin {
   foldersFn: (() => string[]) | null = null
   textBlocks = new Map<string, TextBlock>() // block name -> fn(ctx) -> Markdown (core/render.ts)
   /** What it offers plugins that require it: plugin.peer("logs").exports.areaSummary(...) */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   exports: Record<string, any> = {}
   /** What it offers the core and any plugin by name, without either naming it (plugin.provide; service()). */
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   services: Record<string, (...args: any[]) => any> = {}
   /** What to undo when it's unloaded (a vault plugin turned off or changed): plugin.onUnload(() => clearInterval(t)). */
   private cleanups: (() => void)[] = []

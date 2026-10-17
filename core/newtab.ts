@@ -1,6 +1,7 @@
 // A new tab's page (`.vaultite/newtab.json`: `sections` top to bottom, `actions` the buttons, each a command id, `icons`
 // a button's icon other than its command's, `page` a file drawn instead), one shape for app and vau; each key written on its own. Pure functions, no Node: both sides use them.
 import { defaultOrder, keyList, type SlotInfo } from "./slots.ts"
+import { isObj as isMap } from "./values.ts"
 
 export type NewTabSetup = {
   /** The sections shown, top to bottom; null: unset (the default). */
@@ -35,7 +36,6 @@ export function withPanels<S extends SectionInfo, P extends { key: string; title
 /** The buttons while `actions` is unset. */
 export const DEFAULT_ACTIONS = ["file:new", "switcher:open", "palette:open"]
 
-const isMap = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 /** newtab.json as it's saved, checked: a key that isn't a list (`icons`: an object) is unset. */
 export function readNewTab(raw: unknown): NewTabSetup {

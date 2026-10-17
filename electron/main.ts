@@ -595,7 +595,7 @@ setupHandle("setup:choose", async (c: { kind: "new"; parent: string; name: strin
   if (!c) return null
   let p: string, made = false
   if (c.kind === "new") {
-    const clean = str(c.name).replace(/[/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
+    const clean = folderName(c.name)
     if (!clean || clean.startsWith(".")) throw new Error("The vault needs a name")
     p = path.join(str(c.parent), clean)
     if (fs.existsSync(p) && fs.readdirSync(p).some((f) => f !== ".DS_Store")) throw new Error(`${p} already exists and isn't empty`)
@@ -735,6 +735,8 @@ function handle(name: string, fn: (w: Win | null, ...args: never[]) => unknown) 
   })
 }
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
+/** A new vault folder's name as typed, without the characters a file name can't have. */
+const folderName = (x: unknown) => str(x).replace(/[/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
 /** A list's text items (anything else left out, never the whole list refused). */
 const strings = (x: unknown) => (Array.isArray(x) ? x.filter((v): v is string => typeof v === "string") : [])
 
@@ -750,7 +752,7 @@ handle("vaults:open", async (_w, p: string) => {
   for (const f of waiting.splice(0)) await openFiles([f], null)
 })
 handle("vaults:create", async (_w, parent: string, name: string) => {
-  const clean = str(name).replace(/[/\\:*?"<>|]/g, " ").replace(/\s+/g, " ").trim()
+  const clean = folderName(name)
   if (!clean || clean.startsWith(".")) throw new Error("the vault needs a name")
   const p = path.join(str(parent), clean)
   if (fs.existsSync(p) && fs.readdirSync(p).length) throw new Error(`${p} already exists and isn't empty`)

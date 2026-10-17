@@ -25,7 +25,6 @@ export { ARCHIVE_DIR, archiveTwin, effectiveType, inArchive, isArchived, isHidde
 export { bodyLine, FM, frontmatter, keepBlocks, loadFm, parseText, prose, renameProperty, renameTagText, setPropertyText } from "./frontmatter.ts"
 
 // Items are plain records: what a plugin's parse makes of a file. Keys starting with _ are private (the API drops them).
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type Item = Record<string, any>
 
 

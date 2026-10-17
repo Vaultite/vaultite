@@ -25,7 +25,7 @@ export function untyped(app: App, folder = "", kind: Kind | null = null): Group[
   for (const e of v.entries.values()) {
     const rel = e.rel
     if (e.kind || e.broken || !rel.endsWith(".md") || (typeof e.fm.type === "string" && e.fm.type.trim())) continue
-    if (rel.split("/").some((p) => p.startsWith(".") && p !== ".archive") || plain.some((d) => rel.startsWith(d + "/"))) continue
+    if (inHidden(rel) || plain.some((d) => rel.startsWith(d + "/"))) continue
     if (under && !rel.startsWith(under + "/")) continue
     const dir = dirOf(rel), k = kind ?? kindNamed(v.kinds, dir)
     if (!k || k.file) continue
@@ -38,12 +38,14 @@ export function untyped(app: App, folder = "", kind: Kind | null = null): Group[
 }
 
 /** A file's text with the fences of its kind's blocks it doesn't place on its body's top, or null when it has them. */
-export function fenced(text: string, view: string[]): string | null {
+function fenced(text: string, view: string[]): string | null {
   const head = FM.exec(text)?.[0] ?? ""
   const body = withKindBlocks(view, text.slice(head.length))
   return body === null ? null : head + (head ? (head.endsWith("\n") ? "\n" : "\n\n") : "") + body
 }
 
+/** In a hidden folder, .archive apart (archived files are still the user's). */
+const inHidden = (rel: string) => rel.split("/").some((p) => p.startsWith(".") && p !== ".archive")
 const listOf = (v: unknown) => (Array.isArray(v) ? v : v === null || v === undefined || v === "" ? [] : [v]).map(String)
 
 /** A file's `title:` and `name:` that its name doesn't say nor its aliases have: links found it by them before, now only
@@ -143,7 +145,7 @@ It only lists them until --apply; with a folder, only the files under it.
       const under = String(folder ?? "").replace(/^\/+|\/+$/g, "")
       const files: { path: string; blocks: string[]; aliases: string[] }[] = [], failed: { path: string; why: string }[] = []
       for (const e of [...app.vault.entries.values()].sort((a, b) => (a.rel < b.rel ? -1 : 1))) {
-        if (e.broken || e.rel.split("/").some((p) => p.startsWith(".") && p !== ".archive") || (under && !e.rel.startsWith(under + "/"))) continue
+        if (e.broken || inHidden(e.rel) || (under && !e.rel.startsWith(under + "/"))) continue
         let raw: string
         try { raw = readText(app.vault.abs(e.rel)) } catch { continue }
         const view = e.kind?.blocksFor(e.fm) ?? [], lost = lostNames(e)

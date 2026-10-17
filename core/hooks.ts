@@ -32,7 +32,7 @@ function commandProblems(c: unknown, dir: string, where: string): string[] {
   if (unhashed) return [`${where}: '${unhashed}' is hidden or in node_modules (not part of the plugin's version, so this machine couldn't approve it)`]
   if (path.isAbsolute(prog) || !prog.includes("/")) return []
   const abs = path.resolve(dir, prog)
-  if (abs !== dir && !abs.startsWith(dir + path.sep)) return [`${where}: '${prog}' is outside the plugin's folder`]
+  if (!inside(dir, abs)) return [`${where}: '${prog}' is outside the plugin's folder`]
   if (!hashed(dir, abs)) return [`${where}: '${prog}' is hidden or in node_modules (not part of the plugin's version, so this machine couldn't approve it)`]
   if (!fs.existsSync(abs)) return [`${where}: '${prog}' isn't in the plugin's folder`]
   return []

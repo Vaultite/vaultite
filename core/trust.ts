@@ -6,6 +6,7 @@ import path from "node:path"
 import { LOCAL, vaultHere } from "./plugins.ts"
 import type { Disclosures } from "./pluginmeta.ts"
 import { writeAtomic } from "./vault.ts"
+import { isObj } from "./values.ts"
 
 /** An approved version: content hash, each file's, when, version; `edits`: later edits run without asking too; `source`,
  *  `says`: where it came from and what it said it does (an update synced from elsewhere must match both: App.adopt). */
@@ -16,7 +17,6 @@ type Store = { plugins: Record<string, Approval>; allowed: Record<string, string
 export type Digest = { content: string; files: Record<string, string> }
 
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("hex")
-const isObj = (v: unknown): v is Record<string, unknown> => !!v && typeof v === "object" && !Array.isArray(v)
 
 export class Trust {
   file: string

@@ -2,10 +2,9 @@
 // node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
 import { spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
-import net from "node:net"
 import os from "node:os"
 import path from "node:path"
-import { record } from "./test/lib.ts"
+import { freePort, record, sleep } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
 import { officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
@@ -48,10 +47,6 @@ const repeat = opt("repeat", 1), jobs = opt("jobs", 3)
 const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
   : fs.readdirSync(QA).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).filter((n) => !SKIP.has(n))
 
-const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
-const freePort = () => new Promise<number>((resolve) => {
-  const s = net.createServer(); s.listen(0, "127.0.0.1", () => { const { port } = s.address() as net.AddressInfo; s.close(() => resolve(port)) })
-})
 
 /** The usage line's arguments, after `node web/qa/<name>.mjs`. */
 function usage(name: string) {
@@ -67,7 +62,7 @@ async function serve(vault: string, local: string, env: Record<string, string>):
     cwd: ROOT, stdio: "ignore", env: { ...process.env, VAULTITE_HOSTS: "home-mac.example.ts.net", ...env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local },
   })
   const base = `http://127.0.0.1:${port}/`
-  for (let i = 0; i < 160; i++) { try { if ((await fetch(`${base}api/state`)).ok) return { base, port, proc } } catch { await wait(250) } }
+  for (let i = 0; i < 160; i++) { try { if ((await fetch(`${base}api/state`)).ok) return { base, port, proc } } catch { await sleep(250) } }
   throw new Error(`the server on ${vault} didn't start`)
 }
 function stop(s: Server) {
@@ -152,7 +147,7 @@ const runs = new Map<string, boolean[]>(), times = new Map<string, number>(), t0
 await Promise.all(Array.from({ length: jobs }, async () => {
   while (queue.length) {
     const name = next()
-    if (!name) { await wait(1000); continue }
+    if (!name) { await sleep(1000); continue }
     running.add(name)
     // (this machine's QA slot, shared with other agents' runs, held for the script and its servers)
     const release = await slot(name)

@@ -6,7 +6,6 @@ import { writeAtomic } from "./vault.ts"
 import { errorContext } from "./serverlog.ts"
 import { logFailure, onItsOwn } from "./writegate.ts"
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Item = Record<string, any>
 
 /** When a job runs: `every` "15m", "2h", "1d", "1w"; `at` "07:00" (this machine's time) with whole days; `machine` the
@@ -22,7 +21,7 @@ const UNIT: Record<string, number> = { m: 60_000, h: 3_600_000, d: 86_400_000, w
 const DAY = UNIT.d, TICK = 30_000, SLACK = 3 * 3_600_000 // (a day's slot may move an hour with summer time)
 
 /** `every` in ms, or null. */
-export function periodOf(every: unknown): number | null {
+function periodOf(every: unknown): number | null {
   const m = typeof every === "string" ? /^(\d+)\s*([mhdw])$/.exec(every.trim()) : null
   return m && Number(m[1]) > 0 ? Number(m[1]) * UNIT[m[2]] : null
 }
@@ -155,7 +154,6 @@ export class Scheduler {
   }
 }
 
-/** The scheduler's operations. */
 export function scheduleOps(scheduler: () => Scheduler): Op[] {
   const when = (r: Row) => `every ${r.every}${r.at ? ` at ${r.at}` : ""}`
   return [{

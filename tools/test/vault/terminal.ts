@@ -156,12 +156,15 @@ export default async ($: VaultTest) => {
         await keeper.create(id, spec, { spare: id === "leak-spare" })
         const pid = Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8"))
         const open = ptys(pid)
+        // Ended only once its prompt is up: a hangup sent while the shell still starts could be lost on a slow machine.
+        const ready = await waitFor(async () => (await keeper.screen(id, 5)).trim() !== "", 10_000, 50)
         await end(id)
-        const ended = await waitFor(async () => (await keeper.list()).length === 0, 10_000, 100)
-        seen.push({ id, open, ended, left: ptys(pid) })
+        const ended = await waitFor(async () => (await keeper.list()).length === 0, 15_000, 100)
+        const left = (await waitFor(() => ptys(pid) === 0, 5_000, 100)) ? 0 : ptys(pid)
+        seen.push({ id, open, ready, ended, left })
       }
     } finally { stop() }
-    check("terminal: the keeper lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ended && s.left === 0), seen)
+    check("terminal: the keeper lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ready && s.ended && s.left === 0), seen)
   }
 
   // Routes: * is one segment, a last ** the rest.

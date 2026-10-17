@@ -13,15 +13,13 @@ import { newTabOps } from "./coreops/newtab.ts"
 import { pageOps } from "./coreops/pages.ts"
 import { panelOps } from "./coreops/panels.ts"
 import { pluginList, pluginOps } from "./coreops/plugins.ts"
+import type { Any } from "./coreops/common.ts"
 import { settingsOps } from "./coreops/settings.ts"
 import { typeOps } from "./coreops/types.ts"
 import { commandList } from "./appsource.ts"
 import { propTypeOps } from "./coreops/proptypes.ts"
 import { topic, topics } from "./docs.ts"
 import { type Op, OpError, quoted } from "./ops.ts"
-
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-type Any = any
 
 /** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
 export function coreOps(app: App): Op[] {
@@ -244,7 +242,7 @@ id, or nothing.
 
 type ChoiceItem = { id: string; label: string; detail?: string; icon?: string }
 /** ui.choose's items as given (lines, strings, objects), each with a label and an id (its label when not given). */
-export function chooseItems(items: unknown[]): ChoiceItem[] {
+function chooseItems(items: unknown[]): ChoiceItem[] {
   const text = (v: unknown, most: number) => (typeof v === "string" || typeof v === "number" ? String(v).trim().slice(0, most) : "")
   return items.flatMap((e): ChoiceItem[] => {
     if (typeof e === "string") return e.split(/\r?\n/).map((l) => l.trim()).filter(Boolean).map((l) => ({ id: l, label: l.slice(0, 300) }))
