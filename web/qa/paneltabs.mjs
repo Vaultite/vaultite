@@ -11,6 +11,7 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
+import { runtimeDir } from "../../core/runtime.ts" // (where the server keeps terminal states: $TMPDIR on a Mac, not on Linux)
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/paneltabs-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -151,7 +152,7 @@ try {
   check("a plain terminal's tab: Terminal", (await tabs()).includes("Terminal"), await tabs())
   // The stand-in for Claude Code, with a pane title and the hooks' state: what an agent's hooks write (the terminal's
   // state file, whatever its backend: plugins/core/terminal/plugin.ts, stateCommand).
-  const stateFile = path.join(tmpdir(), "vaultite-terminal", "states", sid)
+  const stateFile = path.join(runtimeDir(), "vaultite-terminal", "states", sid)
   await page.click(".xterm-screen")
   await page.keyboard.type(`printf '\\033]2;Refactor the parser\\033\\\\' && printf working > '${stateFile}' && ${stand} 120\n`)
   const named = await until(async () => (await tabs()).includes("Refactor the parser"), 8000)

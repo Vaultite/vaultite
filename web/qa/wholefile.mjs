@@ -65,7 +65,7 @@ await page.screenshot({ path: `${OUT}/wholefile-live-props.png` })
 // The cursor never goes into the frontmatter: top of the document, select all, Backspace at the body's top.
 const start = text0.indexOf("# Title line")
 await clickLine("First body line")
-await page.keyboard.press("ControlOrMeta+ArrowUp"); await wait(150)
+await page.keyboard.press("ControlOrMeta+Home"); await wait(150)
 check(`top of the document: the body's start (${await head()} = ${start})`, await head() === start)
 for (let i = 0; i < 5; i++) await page.keyboard.press("ArrowUp")
 await page.keyboard.press("Home")
@@ -158,7 +158,7 @@ await fetch(`${B}api/config/appearance`, { method: "PATCH", headers: json, body:
 // --- no frontmatter: adding the first property, then removing it
 await open(PLAIN)
 check("no frontmatter: the editor holds the file", await docText() === await read(PLAIN))
-await clickLine("First line"); await page.keyboard.press("ControlOrMeta+ArrowUp"); await page.keyboard.type("Top: "); await saved()
+await clickLine("First line"); await page.keyboard.press("ControlOrMeta+Home"); await page.keyboard.type("Top: "); await saved()
 check("typed at the top", bodyOf(await read(PLAIN)).startsWith("Top: First line"))
 await openProps()
 await props.getByText("Add property").click(); await wait(200)

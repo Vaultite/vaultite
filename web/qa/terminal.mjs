@@ -8,7 +8,7 @@ import http from "node:http"
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
 import path from "node:path"
-import { apiAt, qa, terminalText, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, qa, terminalText, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/term-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 // The shell starts in the vault: its folder's name, as the server reports it.
 const vaultPath = (await (await fetch(new URL("api/vault", B.endsWith("/") ? B : `${B}/`))).json()).path
@@ -145,7 +145,7 @@ for (const dark of [false, true]) {
   await page.locator(`[data-session="${sid}"]`).first().click()
   check("its tab comes back as it was", await until(async () => (await text()).includes("parked-21"), 3000), (await text()).slice(-200))
   check("without a new socket", (await socks(sid)).length === 1, await socks(sid))
-  await page.keyboard.press("ControlOrMeta+p")
+  await openPalette(page)
   await page.locator('input[placeholder^="Select a command"]').fill("Close current tab") // (into the palette, not the terminal)
   await wait(300)
   await page.keyboard.press("Enter")
@@ -209,7 +209,7 @@ for (const dark of [false, true]) {
   // by its address only attaches, and a session that isn't there is "gone").
   await page.goto(B)
   await page.locator("[data-agent]").first().waitFor() // the app is up
-  await page.keyboard.press("ControlOrMeta+p")
+  await openPalette(page)
   await page.locator('input[placeholder^="Select a command"]').fill("Open Codex") // (into the palette, not the terminal)
   await wait(300)
   await page.keyboard.press("Enter")

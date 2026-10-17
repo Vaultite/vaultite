@@ -41,8 +41,8 @@ check("a PDF", fs.existsSync(pdf) && fs.readFileSync(pdf).subarray(0, 5).toStrin
 check("then the window is as it was", await until(async () => (await win.locator("#vau-print").count()) === 0, 10000) && await win.title() !== "Printed")
 check("a toast says where it went", await until(async () => (await win.getByText("Saved Printed.pdf").count()) > 0, 10000))
 
-// Recording, when macOS already answered for the microphone.
-const mic = await app.evaluate(({ systemPreferences }) => systemPreferences.getMediaAccessStatus("microphone"))
+// Recording, when macOS already answered for the microphone (Linux has no such permission: the fake one is there).
+const mic = await app.evaluate(({ systemPreferences }) => systemPreferences.getMediaAccessStatus?.("microphone") ?? "granted")
 if (mic !== "granted") console.log(`skip recording: macOS's microphone permission for Electron is "${mic}" (a prompt would wait for a click)`)
 else {
   fs.writeFileSync(path.join(VAULT, "Qa media", "Memo.md"), "Before\n")

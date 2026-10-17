@@ -208,7 +208,7 @@ check(`the note has the card's text (${made})`, existsSync(`${VAULT}/${made}`) &
 // A note's card edited in place.
 await node("f").dblclick({ position: { x: 100, y: 120 } })
 await page.waitForSelector('[data-canvas-node="f"][data-editing] .cm-content')
-await page.keyboard.press("ControlOrMeta+ArrowDown")
+await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\nWritten on the canvas.")
 await page.keyboard.press("Escape")
 check("a note's card edits the note in place", await until((t) => t.includes("Written on the canvas."), TARGET))

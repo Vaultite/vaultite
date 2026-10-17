@@ -50,14 +50,15 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   const status = page.locator("[role=status] [data-chip=origin]")
   check("desktop: the header says AI", (await head.getAttribute("data-value")) === "ai" && (await head.innerText()).trim() === "AI", await head.innerText())
   check("desktop: so does the status bar", (await status.getAttribute("data-value")) === "ai", await status.count())
-  // Right before the view button, in the same bar.
+  // Right before the view button, in the same bar (the file bar's items, each in its slot, then the view button).
   const order = await page.evaluate(() => {
-    const chip = [...document.querySelectorAll(".file-view [data-chip=origin]")].find((e) => e.checkVisibility()), bar = chip?.parentElement
-    const kids = [...(bar?.children ?? [])]
+    const chip = [...document.querySelectorAll(".file-view [data-chip=origin]")].find((e) => e.checkVisibility())
+    const slot = chip?.closest("[data-file-bar-key]"), items = slot?.closest("[data-file-bar]")
+    const kids = [...(items?.parentElement?.children ?? [])]
     const view = kids.find((k) => k.getAttribute("aria-label") === "Read" || k.getAttribute("aria-label") === "Edit")
     // (Dispatch's buttons, when it's on, sit between it and the view button)
-    const a = chip.getBoundingClientRect(), b = chip.nextElementSibling?.getBoundingClientRect()
-    return { before: !!view && kids.indexOf(chip) < kids.indexOf(view), gap: b ? Math.round(b.left - a.right) : null, mid: b ? Math.abs((a.top + a.height / 2) - (b.top + b.height / 2)) : null }
+    const a = chip.getBoundingClientRect(), b = (slot?.nextElementSibling ?? items?.nextElementSibling)?.getBoundingClientRect()
+    return { before: !!view && kids.indexOf(items) < kids.indexOf(view), gap: b ? Math.round(b.left - a.right) : null, mid: b ? Math.abs((a.top + a.height / 2) - (b.top + b.height / 2)) : null }
   })
   check("desktop: the label sits before the view button, centred with it, the next item close by", order.before && order.gap !== null && order.gap >= 0 && order.gap <= 12 && order.mid < 1, order)
   check("desktop: no token count while Token count is off", (await page.locator("[data-tokens]").count()) === 0)

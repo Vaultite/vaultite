@@ -9,7 +9,7 @@
 //   node web/qa/resilience.mjs <base url> <vault path>
 import { mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import { dirname } from "node:path"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { openPalette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, done } = await qa(import.meta.url)
 const abs = (p) => `${VAULT}/${p}`
 const read = (p) => { try { return readFileSync(abs(p), "utf8") } catch { return "" } }
@@ -58,7 +58,7 @@ try {
   check("its view's tab, its title throwing: the view draws", await until(() => page.$("[data-brittle-view]"), 8000))
   check("…the tab named after the view", await until(async () => (await page.$$eval("[role=tab]", (ts) => ts.map((t) => t.textContent.trim()))).includes("brittle"), 5000),
     await page.$$eval("[role=tab]", (ts) => ts.map((t) => t.textContent.trim())))
-  await page.keyboard.press("Meta+p")
+  await openPalette(page)
   await page.keyboard.type("Break the brittle")
   await wait(300)
   await page.keyboard.press("Enter")

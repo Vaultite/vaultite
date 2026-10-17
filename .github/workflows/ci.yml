@@ -1,11 +1,15 @@
 # Every push to main and every pull request: build, check and the tests, on Linux and macOS. Nightly (and by hand):
-# every UI QA script too, so they don't rot.
+# every UI QA script too, so they don't rot (by hand, `-f scripts="a b"` runs only those).
 name: CI
 on:
   push:
     branches: [main]
   pull_request:
   workflow_dispatch:
+    inputs:
+      scripts:
+        description: QA scripts to run (all when empty)
+        required: false
   schedule:
     - cron: "0 5 * * *"
 concurrency:
@@ -43,8 +47,10 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright-core install --with-deps chromium
-      - run: sudo apt-get install -y tmux xvfb
+      - run: sudo apt-get install -y tmux xvfb ffmpeg
       - run: npm run build
       - run: node tools/qa.ts --lint
       # The desktop scripts run Electron, which needs a display
-      - run: xvfb-run -a npm run qa
+      - run: xvfb-run -a npm run qa -- $SCRIPTS
+        env:
+          SCRIPTS: ${{ inputs.scripts }}

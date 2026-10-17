@@ -128,7 +128,7 @@ export function Presentation({ path, onClose }: { path: string; onClose: () => v
     <div ref={root} tabIndex={-1} role="dialog" aria-modal="true" aria-label={`${stem(path)}, slide ${i + 1} of ${n}`} onKeyDown={key}
       className="group/slides fixed inset-0 z-[70] flex flex-col bg-background text-foreground outline-none select-none" data-presentation={path} data-keeps-keys>
       <div ref={stage} onClick={click} onTouchStart={touchStart} onTouchEnd={touchEnd}
-        className="flex min-h-0 flex-1 cursor-default overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
+        className="flex min-h-0 flex-1 cursor-default touch-pan-y overflow-auto px-6 pt-[max(env(safe-area-inset-top),2rem)] pb-16 md:px-16 md:pt-12">
         <div style={{ width: fit.w * fit.scale, height: fit.h * fit.scale }} className="relative m-auto shrink-0">
           <div ref={inner} key={i} data-slide={i + 1}
             className={cn("absolute top-0 left-0 origin-top-left select-text", title && "text-center [&_.note-prose]:text-[22px] [&_.note-prose]:leading-[30px]")}

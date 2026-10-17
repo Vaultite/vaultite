@@ -4,7 +4,7 @@
 // WRITES a "Qa highlights" folder: throwaway server only.
 //   node web/qa/highlights.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { qa, SHOTS, until, wait } from "./lib/qa.mjs"
+import { qa, SELECT_WORD, SHOTS, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const DIR = "Qa highlights", NOTE = `${VAULT}/${DIR}/Colours.md`, enc = encodeURIComponent
@@ -81,7 +81,9 @@ try {
     && (await list.locator("li").allTextContents()).join() === "Red,Orange,Yellow,Green,Blue,Purple" && await list.locator(".hl-dot").count() === 6,
   await list.locator("li").allTextContents().catch(() => []))
   await page.screenshot({ path: `${OUT}highlights-suggest.png` })
-  await page.keyboard.type("gr"); await wait(150)
+  await page.keyboard.type("gr")
+  // (Enter once the list has narrowed to it: before, Enter is a new line)
+  await until(async () => (await list.locator("li[aria-selected=true]").textContent().catch(() => "")) === "Green")
   await page.keyboard.press("Enter"); await page.keyboard.type("go")
   check("==: a pick puts the emoji in, the cursor before the closing ==", await saved("word ==🟢go=="), disk().split("\n")[4])
   await page.keyboard.press("End"); await page.keyboard.type(" a == b")
@@ -89,7 +91,7 @@ try {
   check("==: not offered for a closing == or after a space", await list.count() === 0)
 
   // ---- Format ▸ Highlight ▸ ----
-  await line(4).click(); await page.keyboard.press("Home"); await page.keyboard.press("Shift+Alt+ArrowRight")
+  await line(4).click(); await page.keyboard.press("Home"); await page.keyboard.press(SELECT_WORD)
   await line(4).click({ button: "right", position: { x: 12, y: 10 } }); await wait(200)
   await page.getByRole("menuitem", { name: "Format" }).hover(); await wait(300)
   await page.locator("[role=menu]").nth(1).getByRole("menuitem", { name: "Highlight" }).hover(); await wait(400)

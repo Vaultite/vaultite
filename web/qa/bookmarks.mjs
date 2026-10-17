@@ -16,7 +16,7 @@ const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await page.waitForSelector("[data-pane] .cm-content", { timeout: 30000 }); await wait(600)
 // The cursor under "Deep heading".
-await page.click("[data-pane] .cm-content"); await page.keyboard.press("ControlOrMeta+ArrowDown"); await wait(200)
+await page.click("[data-pane] .cm-content"); await page.keyboard.press("ControlOrMeta+End"); await wait(200)
 check("Pin current heading to the sidebar", await command(page, "Pin current heading to the sidebar"))
 check("pinned as the note's heading", await until(() => pins().includes(`${NOTE}#Deep heading`)), pins())
 const row = page.locator(`aside [data-pin="${NOTE}#Deep heading"]`)

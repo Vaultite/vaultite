@@ -9,6 +9,7 @@
 import { execFileSync } from "node:child_process"
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs"
 import { tmpdir } from "node:os"
+import { runtimeDir } from "../../core/runtime.ts" // (where the server keeps terminal states: $TMPDIR on a Mac, not on Linux)
 import path from "node:path"
 import { qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, CLAUDE, OUT = "/tmp/agentmeters-shots/"], browser, check, watch, done } = await qa(import.meta.url)
@@ -34,7 +35,7 @@ const request = (ago, pad = "") => {
 const settings = path.join(VAULT, ".vaultite/plugins/agent-meters/data.json")
 const pluginsBefore = await api("config/plugins"), sidebarsBefore = await api("config/sidebars")
 const term = `qa${Date.now().toString(36)}`
-const stateFile = path.join(tmpdir(), "vaultite-terminal", "states", term)
+const stateFile = path.join(runtimeDir(), "vaultite-terminal", "states", term)
 let fakeFile = ""
 
 const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 } }))

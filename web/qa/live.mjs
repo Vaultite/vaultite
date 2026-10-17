@@ -5,7 +5,7 @@
 // disk: the unsaved edits are offered back), a dashboard (its text, a block drawn from the store, a table embed), an artifact (its data, and
 // its own file) and a file deleted while open. Also that the page never reloaded, the socket reconnects, and the store
 // (refreshed by patches) is the server's state after all that.
-// WRITES to the vault (everything under "Qa live/", plus Dashboards/Qa live.md and Books/Qa live book.md, removed at
+// WRITES to the vault (everything under "Qa live/", plus Dashboards/Qa live.md and People/Qa Livesey.md, removed at
 // the end): throwaway server only.
 //   node web/qa/live.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs"
@@ -23,7 +23,7 @@ async function until(fn, ms = 4000) {
   return null
 }
 const cleanup = () => {
-  for (const p of ["Qa live", "Qa live 2", "Dashboards/Qa live.md", "Books/Qa live book.md"]) rmSync(abs(p), { recursive: true, force: true })
+  for (const p of ["Qa live", "Qa live 2", "Dashboards/Qa live.md", "People/Qa Livesey.md"]) rmSync(abs(p), { recursive: true, force: true })
 }
 cleanup()
 write("Qa live/Note.md", "First line.\n\nSecond line.\n\nThird line.\n")
@@ -33,7 +33,7 @@ write("Qa live/Page.html", `<!doctype html><html><head><title>Qa live page</titl
 async function draw() { const rows = await vau.csv("Table.csv"); document.getElementById("n").textContent = "Rows: " + rows.length }
 draw(); vau.on("change", draw)
 </script></body></html>\n`)
-write("Dashboards/Qa live.md", "---\ntype: dashboard\nicon: book\ntint: learning\n---\n\nLive count one.\n\n```block-books\n```\n\n![[Qa live/Table.csv]]\n")
+write("Dashboards/Qa live.md", "---\ntype: dashboard\nicon: users\ntint: people\n---\n\nLive count one.\n\n```block-people-group\ntitle: Qa live friends\nrelations: [friend]\n```\n\n![[Qa live/Table.csv]]\n")
 await wait(800)
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 })
@@ -113,9 +113,9 @@ check("dashboard: drawn", await main.locator("text=Live count one.").count() > 0
 write("Dashboards/Qa live.md", read("Dashboards/Qa live.md").replace("Live count one.", "Live count two."))
 out.ms.dashText = await until(async () => await main.locator("text=Live count two.").count() > 0)
 check("dashboard: its text follows the file", out.ms.dashText !== null)
-write("Books/Qa live book.md", "---\ntype: book\nauthor: Bob Lee\nstatus: reading\n---\n\n```block-book\n```\n")
-out.ms.dashBlock = await until(async () => await main.locator("text=Qa live book").count() > 0)
-check("dashboard: a block drawn from the store follows (a book made on disk)", out.ms.dashBlock !== null)
+write("People/Qa Livesey.md", "---\ntype: person\nrelation: friend\n---\n\n```block-person\n```\n")
+out.ms.dashBlock = await until(async () => await main.locator("text=Qa Livesey").count() > 0)
+check("dashboard: a block drawn from the store follows (a person made on disk)", out.ms.dashBlock !== null)
 write("Qa live/Table.csv", read("Qa live/Table.csv") + "zeta row,3\n")
 out.ms.dashTable = await until(async () => await main.locator("text=zeta row").count() > 0)
 check("dashboard: a table embed follows its CSV", out.ms.dashTable !== null)
@@ -187,9 +187,9 @@ await wait(1500)
 const [mine, theirs] = [await store(), await serverStore()]
 const differ = Object.keys(theirs).filter((k) => JSON.stringify(mine[k]) !== JSON.stringify(theirs[k]))
 check("the store is the server's state", !differ.length && Object.keys(mine).length === Object.keys(theirs).length, differ)
-await page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].mutate((s) => ({ ...s, books: [] })))
+await page.evaluate(() => globalThis.__vaultite.modules["@vaultite"].mutate((s) => ({ ...s, people: [] })))
 write("Qa live/Note.md", "Back again.\n\nAfter the optimistic change.\n")
-out.ms.undone = await until(async () => (await store()).books.length === theirs.books.length)
+out.ms.undone = await until(async () => (await store()).people.length === theirs.people.length)
 check("an optimistic change the server didn't make is gone after the next refresh", out.ms.undone !== null)
 check("the page never reloaded", await marker())
 

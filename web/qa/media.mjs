@@ -4,7 +4,7 @@
 // with a transcriber on the server (QA_TRANSCRIBE=1: real whisper takes a while) the transcript lands under it.
 // Slides: Start presentation, the counter, keys, clicks, a swipe on a phone, Escape. Print: the note alone in light
 // colours under print media, whatever the theme, as a PDF (Chrome's page.pdf). Screenshots light and dark, desktop and
-// 390px. WRITES a "Qa media" folder and recordings in Attachments/: throwaway only.
+// 390px. WRITES a "Qa media" folder and recordings in Attachments/, and turns Slides on (put back): throwaway only.
 //   node web/qa/media.mjs <base url> <vault path> [out dir]
 import fs from "node:fs"
 import { SHOTS, palette, qa, until, wait, command } from "./lib/qa.mjs"
@@ -21,6 +21,10 @@ const del = (path) => fetch(`${B}api/file?path=${enc(path)}`, { method: "DELETE"
 const MEMO = "Qa media/Memo.md", SLASH = "Qa media/Slash.md", DECK = "Qa media/Deck.md"
 
 for (const p of [MEMO, SLASH, DECK, "Qa media/pic.png"]) await del(p)
+// (Slides is off until turned on)
+const plugins = async (method, body) => (await fetch(`${B}api/config/plugins`, { method, headers: json, body: body && JSON.stringify(body) })).json()
+const pluginsBefore = await plugins("GET")
+await plugins("PATCH", { enabled: [...new Set([...(pluginsBefore.enabled ?? []), "slides"])] })
 await put(MEMO, "---\ntype: note\n---\n\nBefore the recording.\n\nAfter it.\n")
 await put(SLASH, "Say something:\n")
 // Transcripts only when asked (QA_TRANSCRIBE=1): whisper takes a while for each recording.
@@ -184,4 +188,5 @@ for (const scheme of ["dark", "light"]) {
   await page.close()
 }
 
+await plugins("PATCH", { enabled: pluginsBefore.enabled ?? [] })
 await done()

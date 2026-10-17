@@ -92,6 +92,8 @@ try {
   // 4. Out of the tray onto the bar: back.
   await bar.locator("[data-status-more]").click(); await wait(200)
   const t = await box(`[data-status-tray] > [data-status-key="${moved[0]}"]`), b = await box(`[data-ambient] > [data-status-key="${(await keys())[0]}"]`)
+  // (the last drop's toast may sit over the tray, bottom right, until it goes: the item held, not the toast)
+  await until(() => page.evaluate(([x, y]) => !!document.elementFromPoint(x, y)?.closest("[data-status-tray]"), [t.x + t.width / 2, t.y + t.height / 2]), 10000)
   await drag({ x: t.x + t.width / 2, y: t.y + t.height / 2 }, { x: b.x + 2, y: b.y + b.height / 2 })
   check("out of the tray: back at the bar's start", (await keys())[0] === moved[0] && !!(await until(async () => !(await api("GET", "config/appearance")).statusBarMore?.includes(moved[0]))),
     { bar: await keys(), more: (await api("GET", "config/appearance")).statusBarMore })

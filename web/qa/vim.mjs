@@ -185,6 +185,31 @@ const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, 
 const pp = watch(await phone.newPage())
 await pp.goto(`${B}#file/${encodeURIComponent(NOTE)}`); await wait(2500)
 check("phone: no Vim even when it's on", await pp.locator(".vau-editor").count() >= 1 && await pp.locator(".cm-fat-cursor").count() === 0)
+
+// The app as on Linux (its platform; any machine): Ctrl is the app's Mod, and in normal mode its shortcuts win over
+// Vim's (Ctrl+P the palette, Ctrl+E reading), not Vim's own (Ctrl+V a visual block).
+const linux = await browser.newContext({ viewport: { width: 1280, height: 900 }, userAgent: "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36" })
+await linux.addInitScript(() => Object.defineProperty(navigator, "platform", { get: () => "Linux x86_64" }))
+const lp = watch(await linux.newPage(), { label: "linux" })
+const LINUX = "Qa vim/Linux keys.md"
+await put(LINUX, "first line\nsecond line\nthird line\n")
+const lpMode = () => lp.locator("[data-vim-mode]").first().getAttribute("data-vim-mode").catch(() => null)
+const normal = async () => { await lp.locator(".vau-editor .cm-line", { hasText: "second line" }).first().click(); await lp.keyboard.press("Escape"); await wait(200) }
+await lp.goto(`${B}#file/${encodeURIComponent(LINUX)}`); await wait(2000)
+if (!(await lp.locator(".vau-editor .cm-content[contenteditable=true]").count())) { await lp.keyboard.press("Control+e"); await wait(800) }
+await normal()
+check("Linux, normal mode: Vim's", (await lpMode()) === "normal", await lpMode())
+await lp.keyboard.press("Control+p")
+check("Linux, normal mode: Ctrl+P opens the palette, not Vim's line up", await until(() => lp.locator("[role=dialog] input").count(), 3000))
+await lp.keyboard.press("Escape"); await wait(300)
+await normal()
+await lp.keyboard.press("Control+v")
+check("Linux, normal mode: Ctrl+V is still Vim's visual block", await until(async () => /block/.test((await lpMode()) ?? ""), 3000), await lpMode())
+await lp.keyboard.press("Escape"); await wait(200)
+await lp.keyboard.press("Control+e")
+check("Linux, normal mode: Ctrl+E switches to reading", await until(async () => (await lp.locator(".vau-editor .cm-content[contenteditable=false]").count()) > 0, 3000))
+await linux.close()
+await fetch(`${B}api/file?path=${encodeURIComponent(LINUX)}`, { method: "DELETE" })
 await vim(false)
 noErrors()
 

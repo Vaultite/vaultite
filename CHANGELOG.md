@@ -148,9 +148,11 @@ A companion agent writes beside you, AI apps draw the vault as cards, and the ap
   `vau terminal send` arrives whole, without a stray `201~`; on a Mac the keeper lets go of ended shells'
   pseudo-terminals (a keeper running for days used them all up), and ending a terminal ends an agent sitting on the
   hangup.
-- Fixes: web pages in a pop-out window stay there; a tooltip over a web page shows above it; Errors and Activity keep
-  updating after you come back; an edit in a JSON view stays on its field; allowed Activity writes the recaps it was
-  refused.
+- Vim on Linux and Windows: in normal mode the app's Ctrl shortcuts (palette, quick switcher, reading) win over Vim's,
+  as in Obsidian; Vim keeps its own (Ctrl+W, D, U, F, B, V, R, A, X).
+- Fixes: swiping through slides on a touch screen no longer takes the browser back a page; web pages in a pop-out window
+  stay there; a tooltip over a web page shows above it; Errors and Activity keep updating after you come back; an edit
+  in a JSON view stays on its field; allowed Activity writes the recaps it was refused.
 
 ## 0.4.0 (2026-10-10)
 

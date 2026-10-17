@@ -27,7 +27,7 @@ async function open(ctx, phone = false) {
   else if (!(await page.locator(".vau-editor .cm-content[contenteditable=true]").count())) { await page.keyboard.press("ControlOrMeta+e"); await wait(500) }
   const first = page.locator(".vau-editor .cm-line", { hasText: "First line." }).first()
   await (phone ? first.tap() : first.click())
-  await page.keyboard.press("ControlOrMeta+ArrowDown"); await page.keyboard.press("Enter")
+  await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.press("Enter")
   return page
 }
 const menuOf = (page) => page.locator(".cm-tooltip-autocomplete")
@@ -104,7 +104,7 @@ await page.goto(`${B}#file/${encodeURIComponent(BOARD)}`); await wait(1800)
 const card = page.locator('[data-canvas-node="a"]')
 await card.dblclick()
 await page.waitForSelector('[data-canvas-node="a"][data-editing] .cm-content')
-await page.keyboard.press("ControlOrMeta+ArrowDown")
+await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type(" [[Kick"); await ready(page, "Kick-off plan")
 await page.keyboard.press("Enter"); await page.keyboard.type(" here")
 await page.keyboard.type(" [[Kick"); await ready(page, "Kick-off plan")

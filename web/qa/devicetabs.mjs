@@ -40,7 +40,8 @@ try {
     name: d.firstElementChild.textContent, rows: [...d.querySelectorAll("a")].map((a) => a.textContent.trim()) })))
   const seen = await until(async () => { const x = await theirs(P); return x.length && x[0].rows.length === 2 ? x : null }, 8000)
   check("the phone lists the desktop's tabs", JSON.stringify(seen?.[0]?.rows) === JSON.stringify(notes.map(stem)), seen)
-  check("named by its browser", /Chrome on Mac/.test(seen?.[0]?.name ?? ""), seen?.[0]?.name)
+  const os = { darwin: "Mac", win32: "Windows" }[process.platform] ?? "Linux"
+  check("named by its browser", new RegExp(`Chrome on ${os}`).test(seen?.[0]?.name ?? ""), seen?.[0]?.name)
   await P.screenshot({ path: `${OUT}phone.png` })
 
   // The desktop never lists itself.

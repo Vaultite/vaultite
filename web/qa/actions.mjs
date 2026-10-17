@@ -1,6 +1,6 @@
 // A file's actions (core/actions.ts) and the status bar's ambient items: a person's tree menu has Add to timeline,
 // which asks its kind and text in the palette and writes the line; ⌘. lists the open file's actions; the status bar
-// shows today's routines on a page and on a blank tab, and its right-click turns one off (appearance.json's
+// shows the inbox's new items on a page and on a blank tab, and its right-click turns one off (appearance.json's
 // `statusBar`, put back). WRITES "Qa actions" and appearance.json: throwaway server only.
 //   node web/qa/actions.mjs <base url> [out dir]
 import { chromium } from "playwright-core"
@@ -20,11 +20,12 @@ const api = async (method, p, body) => {
 const VAULT = (await api("GET", "vault")).path
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
 
-const D = "Qa actions", P = `${D}/Zoe Quinn.md`, R = `${D}/Water plants.md`
+const D = "Qa actions", P = `${D}/Zoe Quinn.md`
 await fetch(`${B}api/file?path=${encodeURIComponent(D)}`, { method: "DELETE" })
 await api("POST", "folder", { path: D })
 await api("POST", "file", { path: P, text: "---\ntype: person\n---\n\n## Timeline\n" })
-await api("POST", "file", { path: R, text: "---\ntype: routine\ndays: '0123456'\n---\n" })
+// (one new in the inbox, for its status bar item; in the test's folder, removed with it)
+await api("POST", "file", { path: `${D}/Research.md`, text: "---\ntype: inbox\nstatus: new\n---\n\nSomething to read.\n" })
 const look = await api("GET", "config/appearance")
 await api("PATCH", "config/appearance", { statusBar: null })
 
@@ -64,17 +65,17 @@ try {
   await page.screenshot({ path: `${OUT}actions-2-palette.png` })
   await page.keyboard.press("Escape"); await wait(200)
 
-  // 3. The status bar's ambient items: today's routines, on a page and on a blank tab.
+  // 3. The status bar's ambient items: the inbox's new items, on a page and on a blank tab.
   const bar = page.locator("[role=status]").filter({ has: page.locator("[data-ambient]") })
-  const chip = () => bar.locator("[data-ambient] button[data-tip*='routines done today']")
-  check("status bar: today's routines on a file", !!(await until(async () => (await chip().count()) === 1)), await page.locator("[role=status]").allInnerTexts())
+  const chip = () => bar.locator("[data-ambient] button[data-tip^='Inbox, ']")
+  check("status bar: the inbox's new items on a file", !!(await until(async () => (await chip().count()) === 1)), await page.locator("[role=status]").allInnerTexts())
   await page.goto(`${B}#new`); await wait(1500)
   check("status bar: still there on a blank tab", !!(await until(async () => (await chip().count()) === 1)))
   await page.screenshot({ path: `${OUT}actions-3-bar.png` })
   await bar.click({ button: "right" }); await wait(300)
-  await page.getByRole("menuitemcheckbox", { name: "Routines today" }).click(); await wait(300)
+  await page.getByRole("menuitemcheckbox", { name: "Inbox", exact: true }).click(); await wait(300)
   await page.keyboard.press("Escape")
-  check("right-click: turned off, saved in appearance.json", !!(await until(async () => { const a = await api("GET", "config/appearance"); return Array.isArray(a.statusBar) && !a.statusBar.includes("today:routines") })) && (await chip().count()) === 0,
+  check("right-click: turned off, saved in appearance.json", !!(await until(async () => { const a = await api("GET", "config/appearance"); return Array.isArray(a.statusBar) && !a.statusBar.includes("inbox:new") })) && (await chip().count()) === 0,
     await api("GET", "config/appearance"))
   check("no errors in the page", !errs.length, errs)
 } finally {

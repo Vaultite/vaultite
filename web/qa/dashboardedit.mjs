@@ -9,7 +9,7 @@ const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.
 const enc = encodeURIComponent
 const PAGE = "Qa dashboard edit/Grid.md"
 const FM = "---\ntype: dashboard\n---\n\n"
-const START = `${FM}A line about the page.\n\n\`\`\`block-agenda\n\`\`\`\n\n\`\`\`block-week-goals\n\`\`\`\n\n\`\`\`block-books\nstack: true\n\`\`\`\n\n## Notes\n\n| Thing | Value |\n| --- | --- |\n| One | 1 |\n\n\`\`\`block-inbox\n\`\`\`\n`
+const START = `${FM}A line about the page.\n\n\`\`\`block-agenda\n\`\`\`\n\n\`\`\`block-week-goals\n\`\`\`\n\n\`\`\`block-people-wants\nstack: true\n\`\`\`\n\n## Notes\n\n| Thing | Value |\n| --- | --- |\n| One | 1 |\n\n\`\`\`block-inbox\n\`\`\`\n`
 const disk = async () => (await (await fetch(`${B}api/file?path=${enc(PAGE)}`)).json()).text
 const write = (text) => fetch(`${B}api/file`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: PAGE, text }) })
 /** The file once it's what `want` says (a string, or a test of the text), within a few seconds. */
@@ -36,7 +36,7 @@ check("into editing", await editing())
 const editWidth = (await box(".file-view")).width, editTitle = await box(".file-view textarea[aria-label='File name']")
 check(`editing is as wide as reading (${readWidth} / ${editWidth})`, Math.abs(readWidth - editWidth) < 2)
 check(`the title doesn't move (${readTitle.x},${readTitle.y} / ${editTitle.x},${editTitle.y})`, Math.abs(readTitle.x - editTitle.x) < 2 && Math.abs(readTitle.y - editTitle.y) < 2)
-const a = await box('[data-card="agenda"]'), w = await box('[data-card="week-goals"]'), bk = await box('[data-card="books"]')
+const a = await box('[data-card="agenda"]'), w = await box('[data-card="week-goals"]'), bk = await box('[data-card="people-wants"]')
 check("blocks side by side while editing", Math.abs(a.y - w.y) < 2 && w.x > a.x + 200 && Math.abs(a.width - readAgenda.width) < 40)
 check("a stacked block goes under the one before", Math.abs(bk.x - w.x) < 2 && bk.y > w.y + 20)
 check("the text between blocks is the editor's", (await page.locator(".cm-content > .cm-line", { hasText: "A line about the page." }).count()) === 1)
@@ -77,10 +77,10 @@ for (let i = 1; i <= 12; i++) { await page.mouse.move(grip.x + (target.x + 20 - 
 await page.screenshot({ path: `${OUT}dashboardedit-drag.png` })
 await page.mouse.up()
 t = await saved((x) => fences(x).startsWith("inbox"))
-check(`a card dragged moves its fence (${fences(t)})`, fences(t) === "inbox,agenda,week-goals,books" && t.replace(/\s+/g, "") === base.replace("```block-inbox\n```\n", "").replace("```block-agenda", "```block-inbox\n```\n\n```block-agenda").replace(/\s+/g, ""), t)
+check(`a card dragged moves its fence (${fences(t)})`, fences(t) === "inbox,agenda,week-goals,people-wants" && t.replace(/\s+/g, "") === base.replace("```block-inbox\n```\n", "").replace("```block-agenda", "```block-inbox\n```\n\n```block-agenda").replace(/\s+/g, ""), t)
 await page.mouse.move(10, 10)
 const moved = t
-// …and back after week-goals' cell: books (stacked under it) stays with it.
+// …and back after week-goals' cell: people-wants (stacked under it) stays with it.
 const grip2 = await card("inbox").getByRole("button", { name: "Move", exact: true }).boundingBox().catch(() => null)
 await card("inbox").hover()
 const g = await card("inbox").getByRole("button", { name: "Move", exact: true }).boundingBox(), wk = await box('[data-card="week-goals"]')
@@ -88,25 +88,25 @@ await page.mouse.move(g.x + g.width / 2, g.y + g.height / 2); await page.mouse.d
 for (let i = 1; i <= 12; i++) { await page.mouse.move(g.x + (wk.x + wk.width - 20 - g.x) * i / 12, g.y + (wk.y + 30 - g.y) * i / 12); await wait(30) }
 await page.mouse.up()
 t = await saved((x) => fences(x).startsWith("agenda"))
-check(`dropped beside a cell, it goes after the blocks stacked in it (${fences(t)})`, !!grip2 && fences(t) === "agenda,week-goals,books,inbox" && t !== moved, t)
+check(`dropped beside a cell, it goes after the blocks stacked in it (${fences(t)})`, !!grip2 && fences(t) === "agenda,week-goals,people-wants,inbox" && t !== moved, t)
 await page.mouse.move(10, 10)
 
 // Add a block: picked from the list, its fence goes after the run.
 const before = await disk()
 await page.locator("[data-add-block]").first().click(); await wait(400)
-await page.keyboard.type("sleep"); await wait(300)
-check("Add a block lists the blocks", await page.locator("[role=option]", { hasText: "Sleep" }).count() > 0)
+await page.keyboard.type("errors"); await wait(300)
+check("Add a block lists the blocks", await page.locator("[role=option]", { hasText: "Errors" }).count() > 0)
 await page.keyboard.press("Enter")
-t = await saved((x) => x.includes("```block-sleep"))
-check(`the block picked is put after the run (${fences(t)})`, t === before.replace("```block-inbox\n```", "```block-inbox\n```\n\n```block-sleep\n```"), t)
+t = await saved((x) => x.includes("```block-errors"))
+check(`the block picked is put after the run (${fences(t)})`, t === before.replace("```block-inbox\n```", "```block-inbox\n```\n\n```block-errors\n```"), t)
 
 // Remove, and its Undo; Full width.
-await card("sleep").hover(); await card("sleep").getByRole("button", { name: "Remove" }).click()
-t = await saved((x) => !x.includes("block-sleep"))
+await card("errors").hover(); await card("errors").getByRole("button", { name: "Remove" }).click()
+t = await saved((x) => !x.includes("block-errors"))
 check("Remove takes its fence out", t === before, t)
 await page.locator("[data-sonner-toast] button", { hasText: "Undo" }).first().click().catch(() => {})
-t = await saved((x) => x.includes("block-sleep"))
-check("its Undo puts it back", t.includes("```block-sleep"))
+t = await saved((x) => x.includes("block-errors"))
+check("its Undo puts it back", t.includes("```block-errors"))
 await card("agenda").hover(); await card("agenda").getByRole("button", { name: "Full width" }).click()
 t = await saved((x) => x.includes("```block-agenda\nwide: true\n```"))
 check("Full width writes wide: true", t.includes("```block-agenda\nwide: true\n```"), t)
@@ -141,10 +141,10 @@ await pp.locator(".cm-content > .cm-line", { hasText: "A line about the page." }
 await pp.keyboard.press("End"); await pp.keyboard.type(" Phone.")
 t = await saved((x) => x.includes("Phone."))
 check("phone: text typed in its row is saved", t === START.replace("the page.", "the page. Phone."), t)
-// (books, stacked under week-goals, held by its grip and dragged onto agenda's upper half: its own cell before it)
+// (people-wants, stacked under week-goals, held by its grip and dragged onto agenda's upper half: its own cell before it)
 const { touch } = await fingers(pp)
 await pp.evaluate(() => document.querySelector('[data-card="week-goals"]')?.scrollIntoView({ block: "center" })); await wait(400)
-const from = await pp.locator('[data-card="books"] button[aria-label="Move"]').boundingBox(), to = await pp.locator('[data-cell] [data-card="agenda"]').boundingBox()
+const from = await pp.locator('[data-card="people-wants"] button[aria-label="Move"]').boundingBox(), to = await pp.locator('[data-cell] [data-card="agenda"]').boundingBox()
 if (from && to) {
   const x = from.x + 22, y0 = from.y + 22, y1 = Math.max(to.y + to.height * 0.3, 120)
   await touch("touchStart", x, y0); await wait(700)
@@ -152,9 +152,9 @@ if (from && to) {
   await pp.screenshot({ path: `${OUT}dashboardedit-phone-drag.png` })
   await touch("touchEnd")
 }
-t = await saved((x) => fences(x).startsWith("books"))
-check(`phone: a card held and dragged moves its fence, no longer stacked (${fences(t)})`, fences(t) === "books,agenda,week-goals,inbox"
-  && t.includes("```block-books\n```\n\n```block-agenda") && t.includes("A line about the page. Phone."), t)
+t = await saved((x) => fences(x).startsWith("people-wants"))
+check(`phone: a card held and dragged moves its fence, no longer stacked (${fences(t)})`, fences(t) === "people-wants,agenda,week-goals,inbox"
+  && t.includes("```block-people-wants\n```\n\n```block-agenda") && t.includes("A line about the page. Phone."), t)
 check("phone: holding the grip opens no menu", !(await pp.locator("[role=menu]").count()))
 await phone.close()
 await fetch(`${B}api/file?path=${enc(PAGE)}`, { method: "DELETE" })

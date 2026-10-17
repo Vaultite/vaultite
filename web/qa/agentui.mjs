@@ -174,8 +174,12 @@ check("VAULTITE_REMOTE=tailscale through Serve", /VAULTITE_REMOTE=tailscale/.tes
 const cid = `claude-qa${Date.now().toString(36)}`
 const ws = new WebSocket(new URL(`/api/terminal/${cid}`, B).href.replace(/^http/, "ws"), { headers: { Origin: new URL(B).origin } })
 await new Promise((r) => ws.on("open", r))
-const args = await until(() => { try { return execFileSync("/bin/ps", ["-axww", "-o", "args="], { encoding: "utf8" }).split("\n").find((l) => /^claude --append-system-prompt .*inside Vaultite/.test(l.trim()) || /-c claude --append-system-prompt/.test(l)) } catch { return "" } }, 10000)
-check("Claude Code runs with --append-system-prompt", !!args, args)
+// (it needs Claude Code itself, as a terminal's login shell finds it: a machine without it, as CI, says so)
+const installed = (() => { try { return /claude/.test(execFileSync(process.env.SHELL || "/bin/sh", ["-ilc", "command -v claude"], { encoding: "utf8", timeout: 10000, stdio: ["ignore", "pipe", "ignore"] })) } catch { return false } })()
+if (installed) {
+  const args = await until(() => { try { return execFileSync("/bin/ps", ["-axww", "-o", "args="], { encoding: "utf8" }).split("\n").find((l) => /^claude --append-system-prompt .*inside Vaultite/.test(l.trim()) || /-c claude --append-system-prompt/.test(l)) } catch { return "" } }, 10000)
+  check("Claude Code runs with --append-system-prompt", !!args, args)
+} else console.log("skip Claude Code runs with --append-system-prompt: no claude on this machine")
 ws.send(JSON.stringify({ t: "close" }))
 await wait(500)
 ws.close()

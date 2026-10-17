@@ -16,20 +16,20 @@ const pinnedBefore = (await (await fetch(`${B}api/config/pages`)).json()).pinned
 const pluginsBefore = await (await fetch(`${B}api/config/plugins`)).json()
 // What it tests, whatever the vault turned off or pinned (the sandbox starts calm: two pins): the plugins whose pages
 // it opens on (a page arrives with its plugin), and those five pages pinned. Both put back at the end.
-const PAGES = ["Today", "People", "Health", "Learning", "Projects"]
+const PAGES = ["People", "Claude", "Agents", "Queue", "People map"]
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a], { encoding: "utf8" })
-for (const id of ["today", "people", "health", "learning", "projects"]) vau("plugin", "on", id)
+for (const id of ["people", "claude-code", "terminal", "player", "people-map"]) vau("plugin", "on", id)
 for (const name of PAGES) {
   const p = await pagePath(B, name)
   await fetch(`${B}api/pins`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path: p, pinned: true }) })
 }
 // (where the vault keeps its pages: Dashboards/, or a folder of the user's)
-const DIR = (await pagePath(B, "Today")).split("/").slice(0, -1).join("/")
+const DIR = (await pagePath(B, "People")).split("/").slice(0, -1).join("/")
 const hashOf = (name) => `#file/${encodeURIComponent(`${DIR}/${name}.md`)}`
 
 const ctx = await browser.newContext({ viewport: { width: 1440, height: 900 } })
 const page = watch(await ctx.newPage())
-for (const [id, name] of [["today", "Today"], ["people", "People"], ["health", "Health"], ["learning", "Learning"], ["projects", "Projects"]]) {
+for (const [id, name] of [["people", "People"], ["claude-code", "Claude"], ["terminal", "Agents"], ["player", "Queue"], ["people-map", "People map"]]) {
   await page.goto(`${B}${hashOf(name)}`); await page.waitForTimeout(1500)
   const hash = await page.evaluate(() => location.hash)
   check(`${name}'s address shows it`, hash === hashOf(name), hash)
@@ -44,26 +44,26 @@ await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().cli
 // The panel heading's menu: the pages are a submenu, Pinned pages ▸.
 await page.locator("[role=menu] button", { hasText: /^Pinned pages$/ }).first().hover(); await page.waitForTimeout(300)
 const items = await page.locator("[role=menu] [role=menuitemcheckbox]").allInnerTexts()
-// The Learning page's own row (by its whole name)
-const row = page.locator("[role=menu]").getByRole("menuitemcheckbox", { name: "Learning", exact: true })
-check("right-click lists the pages with checks", items.includes("Learning") && items.includes("Today"), items)
+// The Queue page's own row (by its whole name)
+const row = page.locator("[role=menu]").getByRole("menuitemcheckbox", { name: "Queue", exact: true })
+check("right-click lists the pages with checks", items.includes("Queue") && items.includes("People"), items)
 const order = () => page.locator("[role=menu] [role=menuitemcheckbox]").allInnerTexts()
 const sideBefore = await side()
 await row.click(); await page.waitForTimeout(300)
-check("unticking hides the page, the menu stays", !(await side()).includes("Learning") && await page.locator("[role=menu]").first().isVisible(), await side())
+check("unticking hides the page, the menu stays", !(await side()).includes("Queue") && await page.locator("[role=menu]").first().isVisible(), await side())
 check("its row stays where it was, unticked", await row.getAttribute("aria-checked") === "false" && same(await order(), items), await order())
 await page.screenshot({ path: `${OUT}desktop-menu.png` })
 await row.click(); await page.waitForTimeout(300)
 check("ticking brings it back, ticked, in its place", same(await side(), sideBefore) && await row.getAttribute("aria-checked") === "true", [await side(), sideBefore])
 await page.keyboard.press("Escape"); await page.keyboard.press("Escape") // the submenu, then the menu
 // Right-clicked on a page's row: only its own items, Unpin last (the panel's menu is its heading's).
-await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).click({ button: "right" }); await page.waitForTimeout(200)
+await page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).click({ button: "right" }); await page.waitForTimeout(200)
 const rowItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
 check("a page's row: its own items, a file's (Copy path), Unpin last, no panel items", rowItems.at(-1) === "Unpin" && rowItems.filter((t) => t === "Unpin").length === 1 && rowItems.includes("Copy path") && !rowItems.some((t) => /^(Pinned pages|Panels|Hide |Move to )/.test(t)), rowItems)
 await page.keyboard.press("Escape")
 // Its … (on hover): the same menu.
-await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).hover()
-await page.locator("nav[aria-label=Pages] a", { hasText: /^Today$/ }).locator("[data-row-more]").click(); await page.waitForTimeout(200)
+await page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).hover()
+await page.locator("nav[aria-label=Pages] a", { hasText: /^People$/ }).locator("[data-row-more]").click(); await page.waitForTimeout(200)
 const dotItems = await page.locator("[role=menu] [role^=menuitem]").allInnerTexts()
 check("a page's …: the same menu as right-click", JSON.stringify(dotItems) === JSON.stringify(rowItems), [dotItems, rowItems])
 await page.keyboard.press("Escape")
@@ -85,7 +85,7 @@ if (more.length > 1) {
   check("...and unticking them there unpins them", !(await side()).includes(a) && !(await side()).includes(b), await side())
 }
 for (let i = 0; i < 3 && await page.$("[role=menu]"); i++) { await page.keyboard.press("Escape"); await page.waitForTimeout(100) }
-await page.goto(`${B}${hashOf("Today")}`); await page.waitForTimeout(1200)
+await page.goto(`${B}${hashOf("People")}`); await page.waitForTimeout(1200)
 await page.keyboard.press("ControlOrMeta+e"); await page.waitForTimeout(1200)
 check("⌘E edits the dashboard's text", (await page.locator("article.file-view .cm-editor").count()) > 0)
 
@@ -118,8 +118,8 @@ check("Pinned's settings: the pages, saying how many are pinned", (await m.locat
   (await m.locator("dialog[open] [data-pages-count]").innerText()).includes(`${drawer.length} pinned`), await m.locator("dialog[open] [data-pages-count]").innerText().catch(() => ""))
 await m.screenshot({ path: `${OUT}phone-settings.png`, fullPage: true })
 
-const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(`${DIR}/Today.md`)}`)).text()
-check("/api/render reads a dashboard as text", md.includes("## Routines") && !md.includes("```block-"), md.slice(0, 200))
+const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(`${DIR}/People.md`)}`)).text()
+check("/api/render reads a dashboard as text", md.includes("## Want to reach out") && !md.includes("```block-"), md.slice(0, 200))
 await fetch(`${B}api/config/pages`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ pinned: pinnedBefore }) })
 await fetch(`${B}api/config/plugins`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ disabled: pluginsBefore.disabled ?? [], enabled: pluginsBefore.enabled ?? [] }) })
 await done()

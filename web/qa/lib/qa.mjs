@@ -95,16 +95,23 @@ export const apiAt = (base, headers = {}) => async (method, p, body) => {
   return r.headers.get("content-type")?.includes("json") ? r.json() : r.text()
 }
 
+/** Opens the command palette: ⌘P, or Ctrl+P off a Mac, where a focused terminal keeps Ctrl+letters for its shell
+ *  (plugins/core/terminal/Terminal.tsx), so it's left first, as a user there clicks out of it. */
+export async function openPalette(page) {
+  if (!MAC) await page.evaluate(() => { const a = document.activeElement; if (a instanceof HTMLElement && a.closest(".xterm")) a.blur() })
+  await page.keyboard.press("ControlOrMeta+p")
+}
+
 /** Runs a command from the command palette (⌘P), once it lists it, then waits `settle` ms for it. */
 export async function palette(page, name, settle = 800) {
-  await page.keyboard.press("ControlOrMeta+p"); await until(() => page.locator("[role=option]").count(), 3000)
+  await openPalette(page); await until(() => page.locator("[role=option]").count(), 3000)
   await page.keyboard.type(name); await until(() => page.locator("[role=option]", { hasText: name }).count(), 3000)
   await page.keyboard.press("Enter"); await wait(settle)
 }
 
 /** Runs a command from the palette if it's listed (else closes the palette): whether it was. */
 export async function command(page, name, settle = 300) {
-  await page.keyboard.press("ControlOrMeta+P"); await page.waitForSelector("[role=option]"); await page.keyboard.type(name); await wait(150)
+  await openPalette(page); await page.waitForSelector("[role=option]"); await page.keyboard.type(name); await wait(150)
   const hit = await page.locator("[role=option]", { hasText: name }).count()
   await page.keyboard.press(hit ? "Enter" : "Escape"); await wait(settle)
   return hit > 0
@@ -147,3 +154,5 @@ export const workspaceKey = (n) => `${MAC ? "Control" : "Alt"}+${n}`
 export const BACK_KEY = MAC ? "Meta+Alt+ArrowLeft" : "Alt+ArrowLeft"
 /** A file's menu item showing it where it is. */
 export const REVEAL = MAC ? "Reveal in Finder" : "Show in folder"
+/** Selects the word after the cursor: ⌥⇧→ on a Mac, Ctrl+Shift+→ elsewhere. */
+export const SELECT_WORD = MAC ? "Shift+Alt+ArrowRight" : "Shift+Control+ArrowRight"

@@ -108,7 +108,7 @@ try {
       const long = (await read(NOTE)) + Array.from({ length: 120 }, (_, i) => `\nLine ${i}.\n`).join("")
       await fetch(`${B}/api/file`, { method: "PUT", headers: json, body: JSON.stringify({ path: NOTE, text: long, base: await read(NOTE) }) })
       await until(() => view.locator(".cm-line", { hasText: "Line 0." }).count())
-      await view.locator(".cm-line", { hasText: "Line 0." }).click(); await page.keyboard.press("ControlOrMeta+ArrowDown"); await wait(300)
+      await view.locator(".cm-line", { hasText: "Line 0." }).click(); await page.keyboard.press("ControlOrMeta+End"); await wait(300)
       await page.evaluate(() => { document.getElementById("main-scroll").scrollTop = 0 }); await wait(300)
       await props.locator("[role=row]").filter({ has: page.locator("input[value=rating]") }).hover()
       await props.getByRole("button", { name: "Remove rating" }).click(); await wait(200)

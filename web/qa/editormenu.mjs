@@ -6,7 +6,7 @@
 // menu. The new commands are in the palette. WRITES a "Qa editor menu" folder: throwaway server only.
 //   node web/qa/editormenu.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
-import { qa, until, wait } from "./lib/qa.mjs"
+import { qa, SELECT_WORD, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/editormenu-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const DIR = "Qa editor menu", NOTE = `${VAULT}/${DIR}/Menu.md`, enc = encodeURIComponent
@@ -28,7 +28,7 @@ try {
   /** Select line n's text (or `from`..`to` of it: the keyboard). */
   const select = async (n, word) => {
     await line(n).click(); await page.keyboard.press("Home")
-    if (word) { await page.keyboard.press("Shift+Alt+ArrowRight") } else await page.keyboard.press("Shift+End")
+    if (word) { await page.keyboard.press(SELECT_WORD) } else await page.keyboard.press("Shift+End")
     await wait(100)
   }
   const items = () => page.locator("[role=menu]").first().locator(":scope > [role=menuitem]").allTextContents()

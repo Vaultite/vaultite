@@ -18,7 +18,9 @@ const text = (rel) => { try { return readFileSync(file(rel), "utf8") } catch { r
 const keep = (rel) => { const was = existsSync(file(rel)) ? readFileSync(file(rel), "utf8") : null; return () => { if (was === null) rmSync(file(rel), { force: true }); else writeFileSync(file(rel), was) } }
 const restore = [keep(".vaultite/plugins/companion/data.json"), keep(".vaultite/plugins.json"), keep(".vaultite/appearance.json"), keep(".vaultite/sidebars.json")]
 const api = (method, p, body) => fetch(`${B}/api/${p}`, { method, headers: { "Content-Type": "application/json" }, body: body && JSON.stringify(body) }).then((r) => r.json())
-const op = (id, params = {}) => api("POST", `ops/${id}`, params)
+/** An op as the companion's agent calls it: `vau` run by Claude Code (not this script, which only a machine where it runs
+ *  under Claude Code would take for it). */
+const op = (id, params = {}) => fetch(`${B}/api/ops/${id}`, { method: "POST", headers: { "Content-Type": "application/json", "X-Vaultite-Client": "cli", "X-Vaultite-Agent": "claude-code" }, body: JSON.stringify(params) }).then((r) => r.json())
 const enc = encodeURIComponent
 /** The right sidebar folded to its rail (the Conversations panel is there by default), for the margin's cards' room. */
 const foldRight = (c) => c.addInitScript(() => { try { localStorage.setItem("vaultite.prefs", JSON.stringify({ ...JSON.parse(localStorage.getItem("vaultite.prefs") || "{}"), rightSidebar: false })) } catch { /* private */ } })
@@ -103,7 +105,7 @@ await page.screenshot({ path: `${OUT}say.png` })
 
 // "@claude …" then Enter: an ask, at once; it shows thinking.
 await editor.click()
-await page.keyboard.press("Meta+End")
+await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n@claude how far apart should they be?\n")
 let r = await until(async () => { const x = await op("companion.next", { timeout: 2 }); return x.moments?.find((m) => m.kind === "ask") ? x : null }, 6000)
 await until(() => text(NOTE).includes("@claude how far apart"), 5000)
@@ -207,10 +209,10 @@ check("edit: what it typed is lit in its colour", (await page.locator(".cm-compa
 await page.screenshot({ path: `${OUT}edit.png` })
 await until(() => text(NOTE).includes("Basil between them.\n- Water them every morning"), 5000)
 check("edit: and saved", text(NOTE).includes("Basil between them.\n- Water them every morning"), text(NOTE))
-await page.keyboard.press("Meta+z")
+await page.keyboard.press("ControlOrMeta+z")
 await wait(400)
 check("edit: the user can undo it", !(await editor.innerText()).includes("Water them every morning"))
-await page.keyboard.press("Meta+Shift+z")
+await page.keyboard.press("ControlOrMeta+Shift+z")
 
 // What it typed is its own in Review (the app's save of it is Claude's, not the user's), and reverts like any AI's.
 const rev = await until(async () => (await api("GET", "review")).files?.find((f) => f.path === NOTE && f.by.includes("Claude")), 8000)
@@ -256,7 +258,7 @@ await op("companion.next", { timeout: 0 })
 await op("companion.next", { timeout: 0, as: "Ada" })
 await op("companion.next", { timeout: 0 })
 await editor.getByText("Basil between them").click()
-await page.keyboard.press("Meta+End")
+await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n@")
 const listed = await until(async () => (await page.locator(".cm-tooltip-autocomplete li").allInnerTexts()).join(" "), 3000)
 check("@: the agents around are listed, the companion first", /^claude.*ada/s.test(listed ?? ""), listed)
@@ -281,7 +283,7 @@ await page.screenshot({ path: `${OUT}two.png` })
 const started = []
 await page.route("**/api/ops/companion.start", (route) => { started.push(route.request().postDataJSON()); return route.fulfill({ json: { id: "t", running: false, name: "Bob" } }) })
 await editor.getByText("Basil between them").click()
-await page.keyboard.press("Meta+End")
+await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n@bob")
 const rows = await until(async () => { const t = await page.locator(".cm-tooltip-autocomplete li").allInnerTexts(); return t.some((x) => x.includes("Start @bob")) ? t : null }, 3000)
 check("@bob: a name no agent has, Start @bob last, with what it runs", /Start @bob\s*new companion · Sonnet · medium/.test(rows?.at(-1) ?? ""), rows)
@@ -311,7 +313,7 @@ await page.unroute("**/api/ops/companion.start")
 // Ask command: starts an @claude line.
 await editor.getByText("Basil between them").click()
 await page.keyboard.press("End")
-await page.keyboard.press("Meta+Shift+K")
+await page.keyboard.press("ControlOrMeta+Shift+K")
 await wait(300)
 check("Ask the companion (⌘⇧K): a new @claude line under the cursor", (await editor.innerText()).includes("Basil between them.\n@claude "), await editor.innerText())
 

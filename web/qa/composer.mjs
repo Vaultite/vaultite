@@ -16,7 +16,7 @@ const page = watch(await browser.newPage({ viewport: { width: 1280, height: 800 
 const open = async (f) => { await page.evaluate((h) => { location.hash = h }, `#file/${encodeURIComponent(f)}`); await page.waitForSelector("[data-pane] .cm-content"); await wait(600) }
 const pick = async (text) => { await page.waitForSelector("[role=option]"); await page.keyboard.type(text); await wait(300); await page.keyboard.press("Enter") }
 const selectLine = async (n) => {
-  await page.click("[data-pane] .cm-content"); await page.keyboard.press("ControlOrMeta+ArrowUp")
+  await page.click("[data-pane] .cm-content"); await page.keyboard.press("ControlOrMeta+Home")
   for (let i = 1; i < n; i++) await page.keyboard.press("ArrowDown")
   await page.keyboard.press("Home"); await page.keyboard.press("Shift+End")
 }

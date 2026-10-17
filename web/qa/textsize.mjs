@@ -7,7 +7,7 @@
 // WRITES "Qa text size/", appearance's quickTextSize (put back) and runs a shell on the server's machine: throwaway server only.
 //   node web/qa/textsize.mjs <base url> [out dir]
 import fs from "node:fs"
-import { apiAt, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, qa, terminalText, until, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/textsize-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 fs.mkdirSync(OUT, { recursive: true })
 const api = apiAt(B)
@@ -155,7 +155,7 @@ check("the shell gets fewer columns", c0 > 0 && c1 > 0 && c1 < c0 * 0.85, [c0, c
 const h1 = await cell()
 check("the terminal's cells are 130% as tall (13px to 17px)", h0 > 0 && Math.abs(h1 / h0 - 17 / 13) < 0.08, [h0, h1])
 await page.screenshot({ path: `${OUT}terminal-130.png` })
-await page.keyboard.press("ControlOrMeta+p")
+await openPalette(page)
 await page.keyboard.type("Reset terminal text size")
 await wait(300)
 await page.keyboard.press("Enter")

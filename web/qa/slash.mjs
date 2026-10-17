@@ -28,7 +28,7 @@ const ready = async (name) => { await menu.locator("li[aria-selected]", { hasTex
 await page.goto(`${B}#file/${encodeURIComponent("Qa slash/Slash note.md")}`); await wait(1500)
 // Editing: live preview.
 if (!(await page.locator(".vau-editor .cm-content[contenteditable=true]").count())) { await page.keyboard.press("ControlOrMeta+e"); await wait(500) }
-const toEnd = async () => { await page.locator(".vau-editor .cm-line", { hasText: "First line." }).first().click(); await page.keyboard.press("ControlOrMeta+ArrowDown"); await page.keyboard.press("Enter") }
+const toEnd = async () => { await page.locator(".vau-editor .cm-line", { hasText: "First line." }).first().click(); await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.press("Enter") }
 await toEnd()
 await page.keyboard.type("/"); await wait(400)
 check("/ at a line's start opens the menu", await menu.isVisible())
@@ -79,7 +79,7 @@ await palette(page, "Insert template", 600)
 await page.keyboard.type("Meeting"); await wait(200); await page.keyboard.press("Enter"); await wait(1800)
 let t = read("Qa slash/Slash note.md")
 check("Insert template: body at the cursor, new frontmatter keys added, own keys kept", /## Next steps/.test(t) && /tags: \[Meeting\]/.test(t) && /kind: note/.test(t) && !/kind: note\n[\s\S]*kind: note\n---/.test(t))
-await page.keyboard.press("ControlOrMeta+ArrowDown"); await page.keyboard.press("Enter")
+await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.press("Enter")
 await page.keyboard.type("/journ"); await wait(400)
 check("the slash menu lists templates", (await menu.locator("li[aria-selected]").innerText()).startsWith("Journal"))
 await page.keyboard.press("Enter"); await wait(1800)

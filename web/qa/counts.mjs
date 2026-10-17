@@ -58,7 +58,7 @@ const busiest = (c) => Object.entries(c.byName).sort((a, b) => b[1] - a[1]).slic
 await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
 await until(() => page.evaluate(() => document.querySelectorAll(".cm-content .cm-line").length > 2), 15000)
 await page.click(".cm-content")
-await page.keyboard.press("ControlOrMeta+ArrowDown")
+await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.press("End")
 await quiet()
 

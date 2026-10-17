@@ -3,7 +3,7 @@
 // a canvas pans with h/j/k/l; in a terminal Ctrl+W stays the shell's and Ctrl+\ Ctrl+N leaves it. Installs the plugin;
 // WRITES plugins.json's `enabled` (Vim on, then off again): throwaway only.
 //   node web/qa/vimlists.mjs <base url> [out dir]
-import { apiAt, qa, wait } from "./lib/qa.mjs"
+import { apiAt, openPalette, qa, wait } from "./lib/qa.mjs"
 const { args: [B], browser, check, watch, done } = await qa(import.meta.url)
 // Vim is built in, off until in plugins.json's `enabled`: switched there, the rest of the list kept.
 const vim = async (on) => {
@@ -86,9 +86,12 @@ await page.keyboard.type("echo abc def"); await page.keyboard.press("Control+w")
 const hint = await page.locator('[aria-label="Keys"]').count()
 check("in a terminal Ctrl+W stays the shell's", !(await page.evaluate(() => window.__takenCtrlW)) && hint === 0 && (await where()).xterm)
 await page.keyboard.press("Control+c"); await wait(200)
-await page.keyboard.press("Control+\\"); await page.keyboard.press("Control+n"); await wait(300)
-check("Ctrl+\\ Ctrl+N leaves the terminal", !(await where()).xterm)
-await page.keyboard.press("Meta+p"); await wait(300); await page.keyboard.type("End terminal session"); await wait(200)
+// (a Mac's keys only: elsewhere Ctrl is the app's Mod and Ctrl+\ toggles the sidebar, so Leave the terminal has none)
+if (process.platform === "darwin") {
+  await page.keyboard.press("Control+\\"); await page.keyboard.press("Control+n"); await wait(300)
+  check("Ctrl+\\ Ctrl+N leaves the terminal", !(await where()).xterm)
+} else console.log("skip Ctrl+\\ Ctrl+N leaves the terminal: a Mac's keys only")
+await openPalette(page); await wait(300); await page.keyboard.type("End terminal session"); await wait(200)
 await page.keyboard.press("Escape")
 
 await vim(false)

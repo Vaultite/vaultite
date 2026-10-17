@@ -5,12 +5,19 @@
 // note), so run it against a throwaway server on a copy of the vault:
 //   node web/qa/touch.mjs <base url>   (a server on a copy: cp -R <vault> /tmp/v; VAULTITE_VAULT=/tmp/v PORT=<port> npm start)
 // Its subjects come from the vault (subjects.mjs): two routines you tick by hand, the latest workout log,
-// the first person with a timeline, and a note that links to another note and to a person.
+// the first person with a timeline, and a note that links to another note and to a person. The routine grid and the
+// workout are Today's and Health's (Vaultite plugins): checked in a vault that has them, else said to be skipped.
 import { SHOTS, qa } from "./lib/qa.mjs"
 import { pageHash, subjects } from "./subjects.mjs"
 const { args: [B], browser, check, done } = await qa(import.meta.url)
 let v = await subjects(B)
 const today = `#${await pageHash(B, "Today")}`, health = `#${await pageHash(B, "Health")}`, people = `#${await pageHash(B, "People")}`
+const hasPage = (name) => v.tree.files.some((f) => f.type === "dashboard" && f.path.split("/").pop() === `${name}.md`)
+const ROUTINES = hasPage("Today") && Array.isArray(v.state.routines), HEALTH = hasPage("Health") && !!v.state.logs?.some((l) => l.area === "workouts")
+if (!ROUTINES) console.log("skip the routine grid's taps and its day's sheet: no Today in this vault (a Vaultite plugin)")
+if (!HEALTH) console.log("skip a workout's log from Health: no Health in this vault (a Vaultite plugin)")
+// (a long page to scroll: Health, else People)
+const scrolledPage = HEALTH ? health : people, scrolledTitle = HEALTH ? "Health" : "People"
 const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true })
 const page = await ctx.newPage()
 const errs = []; page.on("pageerror", (e) => errs.push(String(e)))
@@ -29,22 +36,24 @@ const free = (date, wd, not) => v.state.routines.find((r) => !r.archived && !r.a
 // hand-ticked routine is ticked most days): made for the run, removed at the end.
 const enough = () => { const t = free(TUE, "1"); return !!t && !!free(WED, "2", t) }
 const made = []
-for (const name of ["Qa touch one", "Qa touch two"]) {
+for (const name of ROUTINES ? ["Qa touch one", "Qa touch two"] : []) {
   if (enough()) break
   const path = `${v.state.routines[0]?.id?.replace(/\/[^/]*$/, "") ?? "Routines"}/${name}.md`
   await fetch(`${B}api/file`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ path, text: "---\ntype: routine\nsort: 9\n---\n" }) })
   made.push(path); v = await subjects(B)
 }
-const tueRoutine = v.need(free(TUE, "1"), `a routine to tick by hand, not ticked on ${TUE}`).name
-const wedRoutine = v.need(free(WED, "2", v.state.routines.find((r) => r.name === tueRoutine)), `a second routine to tick by hand, not ticked on ${WED}`).name
-const workout = v.need(v.state.logs.find((l) => l.area === "workouts"), "a workout log").title
-  .replace(/[^\p{L}\p{N}\s'-]/gu, "").trim() // the app leaves emoji out of titles
+const tueRoutine = ROUTINES ? v.need(free(TUE, "1"), `a routine to tick by hand, not ticked on ${TUE}`).name : null
+const wedRoutine = ROUTINES ? v.need(free(WED, "2", v.state.routines.find((r) => r.name === tueRoutine)), `a second routine to tick by hand, not ticked on ${WED}`).name : null
+const workout = HEALTH ? v.need(v.state.logs.find((l) => l.area === "workouts"), "a workout log").title
+  .replace(/[^\p{L}\p{N}\s'-]/gu, "").trim() : null // the app leaves emoji out of titles
 const person = v.need(v.timeline[0], "a person with a timeline").name
 v.need(v.linked, "a note that links to another note and to a person")
+const cells = page.locator(`button[aria-label^=${JSON.stringify(`${tueRoutine}, ${TUE}`)}]`)
+const cdp = await ctx.newCDPSession(page)
+if (ROUTINES) {
 await page.goto(B + today); await page.waitForTimeout(1500)
 await page.locator('button[aria-label="Previous week"]').tap(); await page.waitForTimeout(300)
 // 1. tap an empty, past cell (last Tuesday, a routine not ticked then) -> should toggle, not open sheet
-const cells = page.locator(`button[aria-label^=${JSON.stringify(`${tueRoutine}, ${TUE}`)}]`)
 out.cellFound = await cells.count()
 await cells.first().tap(); await page.waitForTimeout(500)
 out.afterTapPressed = await cells.first().getAttribute("aria-pressed"); out.sheetAfterTapEmpty = await sheetOpen()
@@ -58,7 +67,6 @@ out.sheetAfterBack = await sheetOpen(); out.hashAfterBack = await page.evaluate(
 // 4. long-press an empty cell (Wed) -> opens sheet, does not tick
 const wed = page.locator(`button[aria-label^=${JSON.stringify(`${wedRoutine}, ${WED}`)}]`).first()
 const b = await wed.boundingBox()
-const cdp = await ctx.newCDPSession(page)
 const pt = { x: b.x + b.width / 2, y: b.y + b.height / 2 }
 await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [pt] })
 await page.waitForTimeout(700)
@@ -75,15 +83,20 @@ if (await sheetOpen()) {
   await page.waitForTimeout(700)
   out.sheetAfterSwipe = await sheetOpen()
 }
+}
 // 6. health: open a workout row. A log is a file: on a phone it opens in a tab (Back returns), like a computer's.
+let healthHash = null
+if (HEALTH) {
 await page.goto(B + health); await page.waitForTimeout(1500)
-const healthHash = await page.evaluate(() => location.hash)
+healthHash = await page.evaluate(() => location.hash)
 await page.locator("main button", { hasText: workout }).first().tap(); await page.waitForTimeout(900)
 out.gymTab = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]"), document.querySelector("[data-phone-title]")?.textContent])
 await shot("gym")
 await page.goBack(); await page.waitForTimeout(700)
 out.gymBack = await page.evaluate(() => location.hash)
+}
 // A sheet that isn't a file (a routine's day) scrolls inside, locks the page, and Done (its bottom bar: no backdrop, it fills the screen) closes it.
+if (ROUTINES) {
 await page.goto(B + today); await page.waitForTimeout(1500)
 await page.locator('button[aria-label="Previous week"]').tap(); await page.waitForTimeout(300)
 await cells.first().tap(); await page.waitForTimeout(700)
@@ -93,8 +106,9 @@ out.locked = await page.evaluate(() => document.documentElement.style.overflow =
 await shot("day-sheet")
 await page.locator("dialog [data-sheet-done]").tap(); await page.waitForTimeout(600)
 out.sheetAfterBackdrop = await sheetOpen()
+}
 // 7. the header while the page scrolls: it stays at the top, naming the page (the old compact title bar's job)
-await page.goto(B + health); await page.waitForTimeout(1500)
+await page.goto(B + scrolledPage); await page.waitForTimeout(1500)
 await page.evaluate(() => window.scrollTo(0, 600)); await page.waitForTimeout(500)
 out.scrolled = await page.evaluate(() => {
   const h = document.querySelector("[data-phone-header]"), r = h?.getBoundingClientRect()
@@ -147,7 +161,7 @@ out.backToNote = await page.evaluate(() => [location.hash, !!document.querySelec
 await page.locator("main .cm-wikilink", { hasText: v.linked.ideaText }).first().tap(); await page.waitForTimeout(800)
 out.wikiNote = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]")])
 await shot("note")
-await page.goto(`${B}${today}/file/${encodeURIComponent(`${v.linked.note.id}.md`)}`); await page.waitForTimeout(1500)
+await page.goto(`${B}${ROUTINES ? today : people}/file/${encodeURIComponent(`${v.linked.note.id}.md`)}`); await page.waitForTimeout(1500)
 out.noteSheet = await sheetOpen()
 await page.locator("dialog .cm-wikilink", { hasText: v.linked.personText }).first().tap(); await page.waitForTimeout(1000)
 out.sheetLink = await page.evaluate(() => [decodeURIComponent(location.hash), !!document.querySelector("dialog[open]")])
@@ -157,16 +171,20 @@ await browser.close()
 for (const path of made) await fetch(`${B}api/file?path=${encodeURIComponent(path)}`, { method: "DELETE" })
 
 const filePath = (p) => `#file/${p}`
-check("a tap on an empty past cell ticks it, no sheet", out.cellFound > 0 && out.afterTapPressed === "true" && !out.sheetAfterTapEmpty, out)
-check("a tap on a ticked cell opens its day's sheet", out.sheetAfterTapDone && /\/routine\//.test(out.hashDone), out.hashDone)
-check("Back closes the sheet", !out.sheetAfterBack && !/\/routine\//.test(out.hashAfterBack), out.hashAfterBack)
-check("a long press opens the sheet without ticking", out.sheetAfterLongPress && out.wedPressed !== "true", [out.sheetAfterLongPress, out.wedPressed])
-check("a swipe down on the sheet closes it", out.sheetAfterSwipe === false, out.sheetAfterSwipe)
-check("a workout opens its log in a tab, not a sheet", out.gymTab[0].startsWith(filePath("Logs/")) && !out.gymTab[1] && !!out.gymTab[2], out.gymTab)
-check("Back from it: Health again", out.gymBack === healthHash, [out.gymBack, healthHash])
-check("a day's sheet fits the screen and locks the page", out.daySheet && out.dialogBox && out.dialogBox.y >= 0 && out.dialogBox.y + out.dialogBox.height <= 845 && out.locked, [out.dialogBox, out.locked])
-check("Done closes it", out.sheetAfterBackdrop === false)
-check("scrolled: the header stays at the top, naming the page", out.scrolled.y > 0 && out.scrolled.top === 0 && out.scrolled.height <= 50 && out.scrolled.title === "Health" && out.scrolled.opacity === "1", out.scrolled)
+if (ROUTINES) {
+  check("a tap on an empty past cell ticks it, no sheet", out.cellFound > 0 && out.afterTapPressed === "true" && !out.sheetAfterTapEmpty, out)
+  check("a tap on a ticked cell opens its day's sheet", out.sheetAfterTapDone && /\/routine\//.test(out.hashDone), out.hashDone)
+  check("Back closes the sheet", !out.sheetAfterBack && !/\/routine\//.test(out.hashAfterBack), out.hashAfterBack)
+  check("a long press opens the sheet without ticking", out.sheetAfterLongPress && out.wedPressed !== "true", [out.sheetAfterLongPress, out.wedPressed])
+  check("a swipe down on the sheet closes it", out.sheetAfterSwipe === false, out.sheetAfterSwipe)
+  check("a day's sheet fits the screen and locks the page", out.daySheet && out.dialogBox && out.dialogBox.y >= 0 && out.dialogBox.y + out.dialogBox.height <= 845 && out.locked, [out.dialogBox, out.locked])
+  check("Done closes it", out.sheetAfterBackdrop === false)
+}
+if (HEALTH) {
+  check("a workout opens its log in a tab, not a sheet", out.gymTab[0].startsWith(filePath("Logs/")) && !out.gymTab[1] && !!out.gymTab[2], out.gymTab)
+  check("Back from it: Health again", out.gymBack === healthHash, [out.gymBack, healthHash])
+}
+check("scrolled: the header stays at the top, naming the page", out.scrolled.y > 0 && out.scrolled.top === 0 && out.scrolled.height <= 50 && out.scrolled.title === scrolledTitle && out.scrolled.opacity === "1", out.scrolled)
 check("drawer: lists the pinned pages", out.drawerPages === v.state.pinned.length && out.drawerPages > 0, { drawn: out.drawerPages, pinned: v.state.pinned })
 check("drawer: a pinned page shows at its top, and the drawer closes", out.tabHash[0] === out.tabHash[1] && out.scrollAfterTab === 0 && out.drawerClosed, [out.tabHash, out.scrollAfterTab, out.drawerClosed])
 check("the bar's menu opens above the bar", out.menuOpen && out.menuAbove, [out.menuOpen, out.menuAbove])

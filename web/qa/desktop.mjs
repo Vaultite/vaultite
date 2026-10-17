@@ -10,7 +10,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { ROOT, qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { ROOT, SELECT_WORD, qa, terminalText, until, wait } from "./lib/qa.mjs"
 
 const { args: [VAULT, BIN], check, errs, watch, noErrors, done } = await qa(import.meta.url, { chrome: false })
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), "vau-desktop-"))
@@ -114,7 +114,7 @@ await win.keyboard.press("Escape")
   const said = []
   await app.evaluate(({ BrowserWindow }) => { globalThis.__said = 0; BrowserWindow.getAllWindows()[0].webContents.on("context-menu", () => { globalThis.__said++ }) })
   const first = win.locator("[data-pane] .cm-line").first()
-  await first.click(); await win.keyboard.press("Home"); await win.keyboard.press("Shift+Alt+ArrowRight")
+  await first.click(); await win.keyboard.press("Home"); await win.keyboard.press(SELECT_WORD)
   const b = await first.boundingBox()
   await win.mouse.click(b.x + 8, b.y + b.height / 2, { button: "right" })
   const items = await until(async () => (await win.locator("[role=menu] [role=menuitem]").count()) > 0, 2000) ? await win.locator("[role=menu] [role=menuitem]").allTextContents() : []
@@ -249,7 +249,7 @@ check("a file dropped on the editor opens in a tab", await until(async () => dec
 check("its text shows", await until(async () => (await win.locator(".cm-content").first().textContent()).includes("Written outside the vault."), 10000))
 check("it isn't added to the vault", !fs.readdirSync(VAULT).includes("Outside note.md"))
 await win.locator(".cm-content").first().click()
-await win.keyboard.press("ControlOrMeta+ArrowDown")
+await win.keyboard.press("ControlOrMeta+End")
 await win.keyboard.type("Edited in the app.")
 check("editing saves it in place", await until(() => fs.readFileSync(outside, "utf8").includes("Edited in the app."), 5000), fs.readFileSync(outside, "utf8"))
 check("the server refuses outside files nobody allowed", (await fetch(`${origin}/api/file?path=${encodeURIComponent("/etc/hosts")}`)).status === 404)
@@ -336,7 +336,7 @@ check("opening a vault closes the manager", await until(() => !app.windows().som
 fs.writeFileSync(path.join(VAULT, "Notes", "Cross vault.md"), "In the first vault.\n")
 // (A new vault opens on a pinned page, which may take a drop as an attachment: dropped on a blank tab.)
 await second.waitForSelector("#main-scroll")
-await second.keyboard.press("Meta+t")
+await second.keyboard.press("ControlOrMeta+t")
 await second.locator("#main-scroll [data-newtab-section]").first().waitFor()
 await second.locator("#main-scroll [data-file-drop]").waitFor({ state: "detached" })
 const m2 = await second.locator("#main-scroll").boundingBox()

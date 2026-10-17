@@ -170,7 +170,7 @@ await page.keyboard.type("q"); await page.keyboard.press("Enter"); await wait(10
 check(":q closes the tab", !(await hash()).includes("Long"))
 
 // In a text field j types.
-await page.keyboard.press("Meta+o"); await wait(400)
+await page.keyboard.press("ControlOrMeta+o"); await wait(400)
 await page.keyboard.type("jk"); await wait(200)
 const typed = await page.evaluate(() => document.activeElement?.value)
 check(`j and k type in the quick switcher (${typed})`, typed === "jk")

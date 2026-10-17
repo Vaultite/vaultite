@@ -235,7 +235,7 @@ await wait(2500)
 check("a file dropped beside the text is embedded too", fs.readFileSync(path.join(VAULT, DIR, "Qa A.md"), "utf8").includes("![[qa-beside.png]]"))
 // ![[ suggests attachments (any file, by its name with the extension), not only notes.
 await ed.locator(".cm-content").click()
-await page.keyboard.press("Control+End"); await page.keyboard.press("ControlOrMeta+ArrowDown")
+await page.keyboard.press("Control+End"); await page.keyboard.press("ControlOrMeta+End")
 await page.keyboard.type("\n![[qa-besi")
 await wait(800)
 check("![[ suggests an attachment by its file name", (await page.locator(".cm-tooltip-autocomplete").innerText().catch(() => "")).includes("qa-beside.png"))

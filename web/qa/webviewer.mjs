@@ -101,7 +101,8 @@ const inPage = (code) => app.evaluate(({ BrowserWindow }, code) => {
 const clickInPage = (sel) => app.evaluate(async ({ BrowserWindow }, sel) => {
   const w = BrowserWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
-  const r = await v.webContents.executeJavaScript(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2] })()`)
+  // (its first line's box: a link that wraps, as with another platform's fonts, has its middle between its lines)
+  const r = await v.webContents.executeJavaScript(`(() => { const r = document.querySelector(${JSON.stringify(sel)}).getClientRects()[0]; return [r.left + r.width / 2, r.top + r.height / 2] })()`)
   const [x, y] = r.map(Math.round)
   v.webContents.sendInputEvent({ type: "mouseMove", x, y })
   v.webContents.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 })
@@ -329,26 +330,27 @@ await clickInPage("#blank")
 check("a link to a new tab opens a web tab", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/three`), 10000), await pages())
 await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click()
 await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/article`), 10000)
-await app.evaluate(({ BrowserWindow }) => {
+// (⌘ on a Mac, Ctrl elsewhere: the app's Mod)
+await app.evaluate(({ BrowserWindow }, mod) => {
   const w = BrowserWindow.getAllWindows()[0]
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
   v.webContents.focus()
-  v.webContents.sendInputEvent({ type: "keyDown", keyCode: "O", modifiers: ["meta"] })
-})
+  v.webContents.sendInputEvent({ type: "keyDown", keyCode: "O", modifiers: [mod] })
+}, process.platform === "darwin" ? "meta" : "control")
 check("⌘O pressed in the page opens the app's quick switcher", await until(async () => !(await shown()) && (await win.locator("[role=dialog] input, [role=combobox]").count()) > 0, 4000), await pages())
 // The keyboard goes where the app focuses (web/src/core/desktop.ts), not left with the page: ⌘O's search has it, Escape
 // gives it back to the page, ⌘L's address has it, and a note picked in ⌘O, its editor. (SHOW=1 only, like the above.)
 const appHasKeyboard = async (sel) => await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.isFocused())
   && await win.evaluate((sel) => !!document.activeElement?.matches(sel), sel)
 // (in front first, the page with the keyboard: whoever runs this may have clicked elsewhere meanwhile)
-const pressInPage = (key) => app.evaluate(async ({ app: a, BrowserWindow }, key) => {
+const pressInPage = (key) => app.evaluate(async ({ app: a, BrowserWindow }, [key, mod]) => {
   const w = BrowserWindow.getAllWindows()[0]
   a.focus({ steal: true }); w.focus()
   const v = w.contentView.children.find((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && !x.webContents.getURL().startsWith("data:"))
   v.webContents.focus()
   await new Promise((r) => setTimeout(r, 200))
-  v.webContents.sendInputEvent({ type: "keyDown", keyCode: key, modifiers: ["meta"] })
-}, key)
+  v.webContents.sendInputEvent({ type: "keyDown", keyCode: key, modifiers: [mod] })
+}, [key, process.platform === "darwin" ? "meta" : "control"])
 if (process.env.SHOW) {
   await win.keyboard.press("Escape")
   await until(shown, 10000)

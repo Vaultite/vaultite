@@ -21,7 +21,7 @@ const pageFile = (name) => v.tree.files.find((f) => f.type === "dashboard" && f.
 const at = (name, sheet = "") => { const p = pageFile(name); return p && sheet !== null ? `file/${enc(p)}${sheet && `/${sheet}`}` : null }
 // [name (for the report and screenshots: one with a / is a sheet or a file in a tab), address]
 const people = [...new Set([linked.person, ...v.timeline, ...v.people])].slice(0, 4).map((p) => [`person/${enc(p.id)}`, at("People", file(p.id))])
-const check = state.checks[0], routine = enc(check?.routine ?? state.routines[0]?.id ?? "")
+const check = state.checks?.[0], routine = enc(check?.routine ?? state.routines?.[0]?.id ?? "")
 const day = check?.date ?? new Date().toISOString().slice(0, 10)
 const same = (...rs) => rs.map((r) => [r, r])
 const all = [["today", at("Today")], ["health", at("Health")], ["learning", at("Learning")], ["people", at("People")], ["people-map", at("People")],
@@ -29,8 +29,10 @@ const all = [["today", at("Today")], ["health", at("Health")], ["learning", at("
   people[0], ["projects", at("Projects")], ...people.slice(1, 3),
   ["health/workout", at("Health", log("workouts"))], ["learning/study", at("Learning", log("study"))],
   [`today/routine/${routine}`, at("Today", `routine/${routine}`)], [`today/routine/${routine}/${day}`, at("Today", `routine/${routine}/${day}`)],
-  ["learning/book", at("Learning", state.books[0] ? file(state.books[0].id) : null)], ...people.slice(3),
-  ...same("plugins", `plugins/plugin/today`, "settings", "settings/plugin-settings/page-preview", "settings/plugin-settings/pages", "settings/plugin-settings/search",
+  ["learning/book", at("Learning", state.books?.[0] ? file(state.books[0].id) : null)], ...people.slice(3),
+  // (the app's own pages: the life ones above are Vaultite plugins, in a vault that has them)
+  ["agents", at("Agents")], ["errors", at("Errors")], ["queue", at("Queue")],
+  ...same("plugins", `plugins/plugin/people`, "settings", "settings/plugin-settings/page-preview", "settings/plugin-settings/pages", "settings/plugin-settings/search",
     "bundles", "bundles/bundle/life-os", "bundles/bundle-save")]
 const routes = all.filter(([r, hash]) => hash || console.log(`skip ${r} (no such page in this vault)`))
 const report = []

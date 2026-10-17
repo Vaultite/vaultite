@@ -61,11 +61,11 @@ const pluginsFile = path.join(VAULT, ".vaultite/plugins.json")
 const pluginsBefore = (() => { try { return readFileSync(pluginsFile, "utf8") } catch { return null } })()
 const vau = (...a) => execFileSync(process.execPath, [path.resolve(import.meta.dirname, "../../bin/vau"), "--url", B, ...a],
   { encoding: "utf8", env: { ...process.env, VAULTITE_URL: B, VAULTITE_VAULT: VAULT } })
-for (const id of ["workspaces", "today", "people", "projects"]) vau("plugin", "on", id)
+for (const id of ["workspaces", "people", "activity", "errors"]) vau("plugin", "on", id)
 // Three pages pinned (the drawer's steps open one, then another): its own list, pages.json put back at the end.
 const pagesFile = path.join(VAULT, ".vaultite/pages.json")
 const pagesBefore = (() => { try { return readFileSync(pagesFile, "utf8") } catch { return null } })()
-const PINNED = [await pagePath(B, "Today"), await pagePath(B, "People"), await pagePath(B, "Projects")]
+const PINNED = [await pagePath(B, "People"), await pagePath(B, "Activity"), await pagePath(B, "Errors")]
 await api("PUT", "config/pages", { pinned: PINNED, pinNew: false })
 
 try {
@@ -170,10 +170,10 @@ try {
   // A dashboard: drawn while reading, its Markdown while editing.
   await P.evaluate((h) => { location.hash = h }, hash("Board")); await toggle.waitFor({ timeout: 10000 }).catch(() => {})
   check("dashboard: a pencil on the drawn page", (await toggle.getAttribute("aria-label")) === "Edit" && (await P.locator("article [data-block]").count()) > 0 && !(await P.locator("article .cm-content").count()), await toggle.count())
-  await P.screenshot({ path: `${OUT}today-read.png` })
+  await P.screenshot({ path: `${OUT}dashboard-read.png` })
   await toggle.click(); await wait(800)
   check("dashboard: editing shows its Markdown in the editor, a book to read", (await toggle.getAttribute("aria-label")) === "Read" && (await P.locator("article .cm-content[contenteditable=true]").count()) > 0, await toggle.count())
-  await P.screenshot({ path: `${OUT}today-edit.png` })
+  await P.screenshot({ path: `${OUT}dashboard-edit.png` })
   await toggle.click(); await wait(600)
   check("dashboard: reading again, drawn", (await toggle.getAttribute("aria-label")) === "Edit" && !(await P.locator("article .cm-content").count()))
   await P.evaluate((h) => { location.hash = h }, hash("Three"))

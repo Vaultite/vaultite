@@ -6,7 +6,7 @@
 // open notes): throwaway server only.
 //   node web/qa/splits.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readdirSync } from "node:fs"
-import { qa, terminalText, until, wait } from "./lib/qa.mjs"
+import { openPalette, qa, terminalText, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT, OUT = "/tmp/splits-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 const notes = readdirSync(`${VAULT}/Notes`).filter((f) => f.endsWith(".md")).sort().slice(0, 3)
@@ -31,7 +31,7 @@ const panes = () => page.evaluate(() => [...document.querySelectorAll("section[a
 }).sort((a, b) => a.x - b.x || a.y - b.y))
 const focusedPane = async () => (await panes()).find((p) => p.focused)
 const cmd = async (name) => {
-  await page.keyboard.press("ControlOrMeta+p"); await wait(250)
+  await openPalette(page); await wait(250)
   await page.keyboard.type(name); await wait(250)
   await page.keyboard.press("Enter"); await wait(500)
 }

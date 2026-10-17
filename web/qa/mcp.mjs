@@ -9,6 +9,7 @@ import { execFileSync, spawn } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { qa, until } from "./lib/qa.mjs"
+import { pagePath } from "./subjects.mjs"
 
 const { args: [B, VAULT], check, done } = await qa(import.meta.url, { chrome: false })
 const BASE = B.replace(/\/+$/, "")
@@ -16,6 +17,8 @@ const read = (rel) => { try { return fs.readFileSync(path.join(VAULT, rel), "utf
 /** The vault's files (hidden folders left out), and one by its name wherever the vault keeps it (People/, Personal/People/). */
 const files = () => (fs.readdirSync(VAULT, { recursive: true })).map(String).filter((f) => !f.split("/").some((x) => x.startsWith(".")))
 const at = (name) => files().find((f) => f === name || f.endsWith(`/${name}`)) ?? name
+/** A page of a plugin in the app (People's), wherever the vault keeps its pages. */
+const PAGE = await pagePath(B, "People")
 
 // What it uses, whatever the vault turned off (the sandbox starts calm: Activity is off). vau tells the served vault, not
 // the one this shell may name (VAULTITE_VAULT in a Vaultite terminal is the user's).
@@ -71,7 +74,7 @@ async function session(label, c) {
   await c.notify("notifications/initialized")
   const tools = (await c.request("tools/list")).result?.tools ?? []
   const names = tools.map((t) => t.name)
-  check(`${label}: tools/list`, ["search", "read", "render", "docs", "list", "query", "write_note", "write_log", "add_timeline", "remember", "clip", "inbox_add", "open", "events_wait", "today", "calendar", "routines", "check_routine", "write_file", "links", "tags", "history", "read_version", "book_progress", "inbox"].every((n) => names.includes(n))
+  check(`${label}: tools/list`, ["search", "read", "render", "docs", "list", "query", "write_note", "write_log", "add_timeline", "remember", "clip", "inbox_add", "open", "events_wait", "calendar", "write_file", "links", "tags", "history", "read_version", "inbox"].every((n) => names.includes(n))
     && names.slice(-2).join() === "ops,call" && new Set(names).size === names.length, names)
   const call = async (name, args) => {
     const r = await c.request("tools/call", { name, arguments: args })
@@ -81,8 +84,8 @@ async function session(label, c) {
   check(`${label} search`, !t.error && t.text.includes("Lighthouse"), t)
   t = await call("read", { path: "Me" })
   check(`${label} read`, !t.error && t.text.startsWith("ME.md") && t.text.includes("## About me"), t)
-  t = await call("render", { path: "Today" })
-  check(`${label} render`, !t.error && t.text.includes("# Today") && !t.text.includes("```block-"), t.text.slice(0, 200))
+  t = await call("render", { path: PAGE })
+  check(`${label} render`, !t.error && t.text.includes("# People") && !t.text.includes("```block-"), t.text.slice(0, 200))
   t = await call("docs", { topic: "query" })
   check(`${label} docs`, !t.error && t.text.includes("```base"), t.text?.slice(0, 200))
   const alice = at("Alice Martin.md") // (People/, or wherever the vault keeps people)
@@ -107,12 +110,8 @@ async function session(label, c) {
   check(`${label} inbox_add`, !t.error && read(`Inbox/Research ${label}.md`).includes("status: new") && read(`Inbox/Research ${label}.md`).includes("## Findings"), t)
   t = await call("clip", { url: `https://lighthouse.example.com/inbox-${label}`, html: page(`A page to review ${label}`), inbox: true })
   check(`${label} clip into the inbox`, !t.error && read(`Inbox/A page to review ${label}.md`).includes("type: inbox"), t)
-  t = await call("open", { path: "Today" })
-  check(`${label} open (an answer either way: opened, or no window)`, /Opened \S*Today\.md/.test(t.text) || /no (Vaultite|app) window/i.test(t.text), t)
-  t = await call("today", {})
-  check(`${label} today`, !t.error && t.text.includes("Today"), t.text?.slice(0, 200))
-  t = await call("routines", {})
-  check(`${label} routines`, !t.error, t)
+  t = await call("open", { path: PAGE })
+  check(`${label} open (an answer either way: opened, or no window)`, /Opened \S*People\.md/.test(t.text) || /no (Vaultite|app) window/i.test(t.text), t)
   t = await call("calendar", {})
   check(`${label} calendar (events, or none set up)`, t.text.length > 0, t)
   t = await call("links", { path: "Alice Martin" })
@@ -123,8 +122,6 @@ async function session(label, c) {
   check(`${label} history`, !t.error, t)
   t = await call("inbox", {})
   check(`${label} inbox`, !t.error && t.text.includes(`Research ${label}`), t.text?.slice(0, 300))
-  t = await call("book_progress", { book: "Piranesi", page: 42 })
-  check(`${label} book_progress`, !t.error && read("Notes/Books/Piranesi.md").includes("42"), t)
   const scratch = `Notes/QA file ${label}.md`
   t = await call("write_file", { path: scratch, text: "# QA file\n\nOne line.\n" })
   check(`${label} write_file`, !t.error && read(scratch).includes("One line."), t)

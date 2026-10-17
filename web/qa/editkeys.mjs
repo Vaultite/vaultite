@@ -18,7 +18,7 @@ await page.waitForSelector("[data-pane] .cm-content", { timeout: 30000 })
 await wait(800)
 await page.click("[data-pane] .cm-content")
 /** The cursor to the start of line n (1-based). */
-const line = async (n) => { await page.keyboard.press("ControlOrMeta+ArrowUp"); for (let i = 1; i < n; i++) await page.keyboard.press("ArrowDown"); await page.keyboard.press("Home") }
+const line = async (n) => { await page.keyboard.press("ControlOrMeta+Home"); for (let i = 1; i < n; i++) await page.keyboard.press("ArrowDown"); await page.keyboard.press("Home") }
 const lines = () => disk().split("\n")
 const saved = (n, want) => until(() => lines()[n - 1] === want, 4000)
 

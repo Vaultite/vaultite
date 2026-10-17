@@ -136,7 +136,7 @@ check("the others in blocks are lit too", await page.evaluate(() => CSS.highligh
 await page.keyboard.press("Escape"); await wait(300)
 check("closing the bar puts the highlights away", await page.evaluate(() => !CSS.highlights.has("vau-find") && !CSS.highlights.has("vau-find-current")))
 await palette("Switch to source mode")
-await ed.locator(".cm-content").focus(); await page.keyboard.press("ControlOrMeta+ArrowUp"); await wait(200)
+await ed.locator(".cm-content").focus(); await page.keyboard.press("ControlOrMeta+Home"); await wait(200)
 await page.keyboard.press("ControlOrMeta+f"); await wait(400)
 await page.keyboard.type("zebra"); await wait(400)
 check(`source mode finds it all (${await count()})`, await total() === 6)

@@ -301,7 +301,7 @@ async function interactions(B, page, cdp, net, phone, subjects) {
     () => page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, note),
     () => document.querySelectorAll(".cm-content .cm-line").length > 2)
   await page.click(".cm-content")
-  await page.keyboard.press(phone ? "ControlOrMeta+ArrowDown" : "ControlOrMeta+ArrowDown")
+  await page.keyboard.press("ControlOrMeta+End")
   await page.keyboard.press("End")
   await settle(page, net, 300)
   const text = " the quick brown fox jumps over the lazy dog again"

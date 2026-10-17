@@ -3,7 +3,7 @@
 import { Compartment, EditorState, Prec, type Extension } from "@codemirror/state"
 import { EditorView, ViewPlugin, drawSelection } from "@codemirror/view"
 import { foldAll, foldCode, toggleFold, unfoldAll, unfoldCode } from "@codemirror/language"
-import { beginKeys, followLink, getStore, runCommandById, type EditorCtx } from "@vaultite"
+import { beginKeys, followLink, getStore, isMac, runCommandById, runShortcut, type EditorCtx } from "@vaultite"
 import { EX } from "./ex"
 import { applyVimrc, editorOpen } from "./vimrc"
 import { deviceOn, leaderOn, onState, peekPath, setEditorMode, setPeek, settings } from "./state"
@@ -272,13 +272,29 @@ function peekBack(view: EditorView, e: KeyboardEvent) {
   return true
 }
 
+/** Vim's Ctrl keys nothing else does (windows, scrolling, visual block, redo, numbers, insert's keys), kept off a Mac. */
+const VIM_CTRL = new Set(["KeyW", "KeyD", "KeyU", "KeyF", "KeyB", "KeyV", "KeyR", "KeyA", "KeyX", "KeyI", "KeyC"])
+
+/** Off a Mac Ctrl is the app's Mod: in normal mode its Ctrl shortcuts (palette, switcher, read) win over Vim's, as in
+ *  Obsidian, but for VIM_CTRL. On a Mac they're ⌘ and never meet. */
+function appKey(view: EditorView, e: KeyboardEvent) {
+  if (isMac || !e.ctrlKey || e.metaKey || e.altKey || !/^Key[A-Z]$/.test(e.code) || VIM_CTRL.has(e.code)) return false
+  const v = (view as unknown as { cm?: CM }).cm?.state.vim
+  if (!v || v.insertMode || v.visualMode || v.inputState?.keyBuffer.length || v.inputState?.operator) return false
+  return runShortcut(e)
+}
+
 let parts: Extension | null = null
 async function vimParts(): Promise<Extension> {
   if (parts) return parts
   const { vim, getCM } = await loadVim()
   parts = [
-    // Ahead of Vim's own keys: Escape back to reading.
-    Prec.highest(EditorView.domEventHandlers({ keydown: (e, view) => { if (!peekBack(view, e)) return false; e.preventDefault(); return true } })),
+    // Ahead of Vim's own keys: Escape back to reading, and the app's Ctrl keys off a Mac.
+    Prec.highest(EditorView.domEventHandlers({ keydown: (e, view) => {
+      if (appKey(view, e)) return true
+      if (!peekBack(view, e)) return false
+      e.preventDefault(); return true
+    } })),
     vim({ status: false }),
     // Visual block (Ctrl+V, then I or A) edits every line through a cursor on each.
     EditorState.allowMultipleSelections.of(true),
