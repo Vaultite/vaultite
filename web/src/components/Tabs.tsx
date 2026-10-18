@@ -1,6 +1,6 @@
 // Tabs (desktop): a bar per group; drag a tab to reorder, onto another bar, or onto a pane (an edge
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
-import { useEffect, useRef } from "react"
+import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import { AppWindow, Blocks, Columns2, Columns3, Files, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -174,7 +174,9 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
   startDrag(e, ids && ids.length > 1 ? { ...item, tabs: ids, label: `${ids.length} tabs` } : item, { touch: opts?.touch })
 }
 
-function TabItem({ tab, info, active, focused, only, icons, menu }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean; menu: () => MenuItem[] }) {
+function TabItem({ tab, info, active, focused, only, icons, menu, width, settling, close }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean; menu: () => MenuItem[]
+  /** Held at this width after a close (TabBar). */
+  width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void }) {
   const d = useDrag()
   const picked = useSelected(TABS, tab.id)
   const dragging = d?.item.tab === tab.id || (picked && !!d?.item.tabs)
@@ -183,9 +185,10 @@ function TabItem({ tab, info, active, focused, only, icons, menu }: { tab: Tab; 
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
-        "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", dragging && "opacity-50")}>
+        "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", dragging && "opacity-50")}
+      style={width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex 160ms ease-out" } : undefined}>
       <button type="button" role="tab" aria-selected={active}
-        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) closeTab(tab.id) } }}
+        onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
         data-tip={d ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
         {icons && <Badged on={info.badge}><info.icon className={cn("size-3.5 shrink-0", !info.tint && "text-muted-foreground", info.iconClassName)} strokeWidth={2.25} style={info.tint ? { color: info.tint } : undefined} /></Badged>}
         {/* Too narrow for more than a letter or two: only the icon (the tooltip has the name). */}
@@ -198,7 +201,7 @@ function TabItem({ tab, info, active, focused, only, icons, menu }: { tab: Tab; 
           <Pin className="size-3.5" strokeWidth={2} />
         </button>
       ) : !only && (
-        <button type="button" data-tab-close data-no-drag aria-label={`Close ${info.label}`} onClick={(e) => { e.stopPropagation(); closeTab(tab.id) }}
+        <button type="button" data-tab-close data-no-drag aria-label={`Close ${info.label}`} onClick={(e) => { e.stopPropagation(); close(e) }}
           className={cn("absolute right-1 grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground",
             active ? "opacity-100" : "opacity-0 group-hover/tab:opacity-100 focus-visible:opacity-100")}>
           <X className="size-3.5" strokeWidth={2} />
@@ -288,6 +291,36 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
     let frame = requestAnimationFrame(function step() { r.scrollLeft += speed; frame = requestAnimationFrame(step) })
     return () => cancelAnimationFrame(frame)
   }, [dx, dy])
+  // Closed with the mouse, the tabs keep their width so the next one's X comes under the pointer, as browsers do; they
+  // fill the bar again once it leaves (or a tab opens, or one closes another way).
+  const [held, setHeld] = useState<{ width: number; count: number } | null>(null)
+  const [settling, setSettling] = useState(false)
+  const pointer = useRef("")
+  const settle = useRef(0)
+  const release = () => {
+    setHeld(null)
+    setSettling(true)
+    clearTimeout(settle.current)
+    settle.current = window.setTimeout(() => setSettling(false), 200)
+  }
+  useEffect(() => { if (held && held.count !== tabs.length) release() }, [held, tabs.length])
+  useEffect(() => () => clearTimeout(settle.current), [])
+  const closeHeld = (tab: Tab, e: React.MouseEvent<HTMLElement>) => {
+    const el = e.currentTarget.closest<HTMLElement>("[data-tab-id]"), r = row.current
+    const mouse = e.detail > 0 && pointer.current === "mouse" && !!el && !!r
+    let width = 0
+    if (mouse) {
+      width = el.getBoundingClientRect().width
+      // The last one closed: the rest widen to end where it did, so the new last one's X comes under the pointer.
+      const n = tabs.length - 1, first = r.querySelector<HTMLElement>("[data-tab-id]")
+      if (tab.id === tabs.at(-1)?.id && n > 0 && first && r.scrollWidth <= r.clientWidth) {
+        const gap = parseFloat(getComputedStyle(r).columnGap) || 0
+        width = Math.min(parseFloat(getComputedStyle(el).maxWidth) || Infinity, (el.getBoundingClientRect().right - first.getBoundingClientRect().left - gap * (n - 1)) / n)
+      }
+    }
+    closeTab(tab.id)
+    if (mouse) setHeld({ width, count: tabs.length - 1 })
+  }
   const handle = (
     <button type="button" data-pane-handle={group.id} aria-label="Move this pane" data-tip={d ? undefined : "Drag to move this pane"}
       onPointerDown={(e) => startDrag(e, { from: "group", group: group.id, label })}
@@ -315,13 +348,14 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   }
   return (
     <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} onContextMenu={menuFor(() => barMenu(group))}
+      onPointerDownCapture={(e) => { pointer.current = e.pointerType }} onPointerLeave={() => { if (held) release() }}
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", d?.item.group === group.id && "opacity-50")}>
         {tabs.map((t, i) => <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons}
-          menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} />)}
+          menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)} />)}
         {/* Right after the last tab (not pinned to the bar's end). */}
         <button type="button" onClick={() => newTab(group.id)} aria-label="New tab" data-tip="New tab"
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
