@@ -9,8 +9,8 @@ type: inbox
 status: new                 # new | done
 from: Claude                # who put it here
 source: https://example.com/a-page   # optional: the page it's about (the same address again updates it)
-created: '2026-10-01 18:00:00'      # UTC, set by the app
-updated: '2026-10-01 19:30:00'      # UTC, set by the app: its thread's latest report (an agent's, after a reply)
+created: '2026-10-01 18:00:00'      # local time, set by the app
+updated: '2026-10-01 19:30:00'      # local time, set by the app: its thread's latest report (an agent's, after a reply)
 ---
 
 What it says, as Markdown.

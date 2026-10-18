@@ -6,10 +6,10 @@ import path from "node:path"
 import { type RawData, WebSocket } from "ws"
 import { startAgent, TERMINAL_AGENT, agentIn, agentName, newTerminalId, parseTerminal, resumeTerminalId } from "../../../core/agents.ts"
 import {
-  bullets, fmtAgo, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
+  bullets, fmtAgo, stampMs, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, type OpCtx, type Request,
 } from "../../../core/plugins.ts"
-import { isArchived, type Item, Kind, localStamp, nowUtc, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
+import { isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import * as push from "./push.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -40,7 +40,7 @@ plugin.kind(new Kind({
   // Done is archived and archived is done: one state, the file in Inbox/.archive/ (out of the way), whichever key said
   // so. Taking either back (Back to review, Undo, the same page added again) makes it new, out of the archive.
   prepare(r, old) {
-    r.created = r.created || nowUtc()
+    r.created = r.created || nowStamp()
     r.status = r.status || "new"
     const reopened = old && ((old.status === "done" && r.status === "new") || (isArchived(old) && !isArchived(r)))
     const done = !reopened && (r.status === "done" || isArchived(r))
@@ -822,7 +822,9 @@ two or three plain sentences, no jargon; the push says it too.
       }
       let data: Buffer
       try { data = fs.readFileSync(f) } catch { throw new OpError(`can't read ${f}`) }
-      const up = await ctx.op("file.upload", { data: data.toString("base64"), name: path.basename(f) }) as { path: string }
+      // (named for the day and the report: agents' "after.png" from different tasks never take each other's place)
+      const name = `${localDate(Date.now())} ${safeName(str(p.title).trim()).slice(0, 50).trim()} - ${path.basename(f)}`
+      const up = await ctx.op("file.upload", { data: data.toString("base64"), name }) as { path: string }
       images.push(up.path)
     }
     const terminal = TERMINAL.test(str(p.terminal).trim()) ? str(p.terminal).trim() : ""
@@ -845,7 +847,7 @@ two or three plain sentences, no jargon; the push says it too.
         const at = body.lastIndexOf(REPLY_BLOCK)
         return at < 0 ? `${body.replace(/\n*$/, "")}\n\n${next}${REPLY_BLOCK}\n` : body.slice(0, at) + next + body.slice(at)
       })
-      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: "new", updated: nowUtc(), title: reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), subjectOf(str(prior.title))), ...who }) as Item
+      r = await ctx.api("PUT", `inbox/${encodeURIComponent(prior.id)}`, { status: "new", updated: nowStamp(), title: reportTitle(str(p.work), str(p.state) || (questions.length ? "waiting" : "done"), subjectOf(str(prior.title))), ...who }) as Item
     } else {
       r = await ctx.api("POST", "inbox", { title, body: [round, terminal || session ? REPLY_BLOCK : ""].filter(Boolean).join("\n\n"), from: agent ? agentLabel(agent) : ctx.who.label, ...who }) as Item
     }
@@ -1201,8 +1203,12 @@ const gates = new Map<string, Set<(answer: "approve" | "deny") => void>>()
 
 /** Ask the user's permission for something the server would do: a waiting event with Approve and Deny (phone and
  *  watch too), answered by the owner only. Returns its id; "inbox:answer" waits for the answer. */
-plugin.provide("inbox:ask", (b: Item) =>
-  addEvent({ ...eventOf({ ...b, kind: "waiting", ask: "permission" }), session: `gate-${crypto.randomBytes(6).toString("hex")}`, gate: true }).id)
+plugin.provide("inbox:ask", (b: Item) => {
+  const e = eventOf({ ...b, kind: "waiting", ask: "permission" })
+  // (the same ask, by its key, is the one already waiting: answered there, it stays so until inbox:drop)
+  const asked = e.key ? list().find((x) => x.gate && sameKey(x, e.source, e.key!)) : null
+  return asked?.id ?? addEvent({ ...e, session: `gate-${crypto.randomBytes(6).toString("hex")}`, gate: true }).id
+})
 
 /** A gate's answer (approve, deny), or "waiting" once `ms` passed without one; "gone" when the event isn't kept. */
 plugin.provide("inbox:answer", (id: string, ms = 0): Promise<"approve" | "deny" | "waiting" | "gone"> => {
@@ -1225,7 +1231,7 @@ plugin.provide("inbox:answer", (id: string, ms = 0): Promise<"approve" | "deny" 
 
 // ---------- the block as text (GET /api/render)
 
-const utcMs = (s: unknown) => { const t = Date.parse(`${str(s).replace(" ", "T")}Z`); return Number.isNaN(t) ? 0 : t }
+const stampAt = (s: unknown) => stampMs(str(s)) || 0
 
 plugin.block("inbox", (ctx) => {
   const o = ctx.options
@@ -1235,7 +1241,7 @@ plugin.block("inbox", (ctx) => {
   ctx.source(nr > 0 ? results : [])
   const parts: string[] = []
   if (nr > 0 && results.length) {
-    parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(utcMs(latest(r)))].filter(Boolean).join(" · ")))}`)
+    parts.push(`To review:\n${bullets(results.map((r) => [`[[${r.id}|${r.title}]]`, r.from && `from ${r.from}`, latest(r) && fmtAgo(stampAt(latest(r)))].filter(Boolean).join(" · ")))}`)
   }
   if (ne > 0 && es.length) {
     parts.push(`Events:\n${bullets(es.map((e) => [fmtAgo(e.t), `${e.title}${e.body ? `: ${e.body}` : ""}`, !e.read && "unread"].filter(Boolean).join(" · ")))}`)

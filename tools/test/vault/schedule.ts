@@ -52,7 +52,8 @@ export default async ($: VaultTest) => {
     m.ops = m.ops.filter((o: Any) => o.id !== "wordcount.bad")
     m.schedule = [{ name: "tick", every: "1h", command: ["node", "-e", "require('fs').writeFileSync(process.env.VAULTITE_PLUGIN_STATE + '/tick.txt', process.env.VAULTITE_SCHEDULE)"] },
       { every: "1d", at: "07:00", op: "note.create", params: { title: "Morning" } },
-      { name: "now", every: "1m", op: "note.create", params: { title: "Scheduled note", body: "From a schedule." } }]
+      { name: "now", every: "1m", op: "note.create", params: { title: "Scheduled note", body: "From a schedule." } },
+      { name: "typo", every: "1w", at: "21:00", op: "note.create", params: { titel: "Weekly" } }]
     m.writes = [{ folder: "Notes", why: "notes on a schedule" }]
     write(`${WC}/manifest.json`, JSON.stringify(m, null, 2))
     write(".vaultite/plugins/guard/manifest.json", JSON.stringify({ id: "guard", name: "Guard", description: "A test's middleware.", apiVersion: 1 }))
@@ -72,6 +73,8 @@ plugin.every("gone", null)
     await api("POST", "ops/plugin.allow", { id: "guard" })
     const [, plugins] = await api("GET", "plugins")
     check("schedule: the plugins load", ["wordcount", "guard"].every((id) => (plugins as Any[]).find((p) => p.id === id)?.loaded), (plugins as Any[]).filter((p) => ["wordcount", "guard"].includes(p.id)))
+    const [, checked] = await api("POST", "ops/plugin.check", { path: "wordcount" })
+    check("schedule: plugins check names a job's op parameter it doesn't take", (checked as Any[])[0]?.warnings?.some((w: string) => w.includes("schedule[3]") && w.includes("titel")), checked)
     await app.scheduler.tick()
     const state = path.join(process.env.VAULTITE_LOCAL!, "plugin-state", fs.readdirSync(path.join(process.env.VAULTITE_LOCAL!, "plugin-state"))[0], "wordcount")
     check("schedule: a manifest's command ran, told which", fs.existsSync(path.join(state, "tick.txt")) && fs.readFileSync(path.join(state, "tick.txt"), "utf8") === "tick")

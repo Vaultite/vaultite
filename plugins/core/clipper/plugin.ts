@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fetchPublic, HTTPError, OpError, pageText, Plugin, publicUrl, reply, vaultPath } from "../../../core/plugins.ts"
-import { FM, frontmatter, type Item, nowUtc, readText, safeName, setPropertyText, str, writeAtomic } from "../../../core/vault.ts"
+import { FM, frontmatter, type Item, nowStamp, readText, safeName, setPropertyText, str, writeAtomic } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -41,7 +41,7 @@ export function dateOf(s: string) {
 const sameUrl = (u: string) => u.replace(/#.*$/, "")
 
 /** The note's text: frontmatter (the vault's note format, Obsidian Web Clipper's keys) and the content. */
-export function noteText(c: Clipped, url: string, tags: string[], title: string, now = nowUtc(), inbox: string | null = null) {
+export function noteText(c: Clipped, url: string, tags: string[], title: string, now = nowStamp(), inbox: string | null = null) {
   // A note, or a result to review in the inbox (`inbox`: who clipped it).
   const fm: Item = inbox === null ? { type: "note", kind: "note" } : { type: "inbox", status: "new", from: inbox }
   if (safeName(title) !== title) { fm.title = title; fm.aliases = [title] }
@@ -76,7 +76,7 @@ type Clip = { path: string; title: string; url: string; words?: number; existing
 
 /** A note clipped before, with the page as it is now: its content and what the page says about itself (author,
  *  published, description), `updated` now; the user's own keys (tags, a title) stay as they are. */
-export function updatedText(text: string, c: Clipped, now = nowUtc()): string {
+export function updatedText(text: string, c: Clipped, now = nowStamp()): string {
   let out: string | null = text
   const set = (k: string, v: unknown) => { if (out !== null) out = setPropertyText(out, k, v) }
   if (c.author) set("author", [c.author])
@@ -148,7 +148,7 @@ async function clip(b: Item): Promise<Clip> {
       return { ...was, words: c.words, updated: true }
     }
     const rel = freePath(folder, title)
-    writeAtomic(plugin.vault.abs(rel), noteText(c, url, tags, title, nowUtc(), inboxFolder ? str(b.from).trim().slice(0, 60) || "Web clipper" : null))
+    writeAtomic(plugin.vault.abs(rel), noteText(c, url, tags, title, nowStamp(), inboxFolder ? str(b.from).trim().slice(0, 60) || "Web clipper" : null))
     await plugin.vault.sync()
     await plugin.vault.fillIn(rel, null) // (its id and dates, as the notes plugin gives a new note)
     return { path: rel, title, url, words: c.words, existing: false }

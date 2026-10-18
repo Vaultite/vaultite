@@ -5,7 +5,7 @@ import path from "node:path"
 import type { App } from "../app.ts"
 import { panelsOf, sectionsOf, type PluginDir } from "../appsource.ts"
 import { readNewTab } from "../newtab.ts"
-import { type Op, type OpCtx, OpError } from "../ops.ts"
+import { checkParams, type Op, type OpCtx, OpError } from "../ops.ts"
 import { switched } from "../pluginmeta.ts"
 import { checkVaultPlugin, digestOf } from "../vaultplugins.ts"
 import { placePanel, readSidebars, sideOf } from "../sidebars.ts"
@@ -27,6 +27,23 @@ export type PluginInfo = PluginDir & { name: string; description: string; requir
 
 
 /** Every plugin: the app's built-in ones, then the vault's own (loaded or not). */
+
+/** A vault plugin's listing with its schedule's ops checked against the catalog: a job that would fail at 05:00 says so
+ *  now (an op that isn't there, a parameter it doesn't take). */
+function scheduledOf(app: App) {
+  return (p: Any) => {
+    const jobs = app.vaultPlugins.found.get(String(p.id))?.manifest.schedule
+    const out: string[] = []
+    for (const [i, j] of (Array.isArray(jobs) ? jobs : []).entries()) {
+      if (typeof j?.op !== "string") continue
+      const hit = app.opNamed(j.op)
+      if (!hit) { out.push(`schedule[${i}]: no operation '${j.op}' (vau ops lists them)`); continue }
+      try { checkParams(hit.op, j.params ?? {}) } catch (e) { out.push(`schedule[${i}]: ${(e as Error).message}`) }
+    }
+    return out.length ? { ...p, warnings: [...p.warnings ?? [], ...out] } : p
+  }
+}
+
 export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
     description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits }))
@@ -86,6 +103,7 @@ export function folderProblems(dir: string, appIds: Map<string, string>, o: { in
 }
 
 export function pluginOps(app: App): Op[] {
+  const scheduled = scheduledOf(app)
   /** Switch one on or off (app plugins listed in `disabled` when off, opt-in ones in `enabled` when on); turned on, its
    *  panels join the left sidebar and its new tab sections the page, where those are saved. */
   const turn = async (q: string, want: boolean, ctx?: OpCtx) => {
@@ -162,8 +180,8 @@ with a vault plugin's id, that one.
     },
     args: ["path"],
     run: async ({ path: dir, tag, installable }, ctx) => {
-      if (!dir) return app.vaultPlugins.list()
-      if (app.vaultPlugins.found.has(dir)) return app.vaultPlugins.list().filter((p) => p.id === dir)
+      if (!dir) return app.vaultPlugins.list().map(scheduled)
+      if (app.vaultPlugins.found.has(dir)) return app.vaultPlugins.list().filter((p) => p.id === dir).map(scheduled)
       const why = await ctx.refusal?.("checking a folder on this machine")
       if (why) throw new OpError(why, 403)
       if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) throw new OpError(`there's no folder ${dir}`, 404)

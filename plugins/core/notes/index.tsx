@@ -1,7 +1,7 @@
 // Notes: what a note is (kind, status, id and dates filled by the server).
 // Notes themselves are core: every Markdown file is one.
 import { NotebookText } from "lucide-react"
-import { definePlugin, detailPath, plainText } from "@vaultite"
+import { definePlugin, detailPath, plainText, stampMs } from "@vaultite"
 import { lookOf } from "./format"
 import { NotePreview } from "./NotePreview"
 import { mockNotes } from "./mock"
@@ -24,7 +24,7 @@ export default definePlugin({
     return {
       id: `note-${n.id}`, title: n.title || "Untitled", meta: body.slice(0, 120), kind: lookOf(n.kind, n.journal).label, icon: lookOf(n.kind, n.journal).icon,
       tint: "var(--notes)", detail: detailPath("note", n.id), file: `${n.id}.md`, text: `${n.tags} ${body}`,
-      recent: Date.parse(`${n.updated_at.replace(" ", "T")}Z`) || 0, weight: 8,
+      recent: stampMs(n.updated_at) || 0, weight: 8,
     }
   }),
   preview: () => <NotePreview />,

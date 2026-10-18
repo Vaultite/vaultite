@@ -4,7 +4,7 @@ import fs from "node:fs"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { isTextKind, kindOf } from "../../../core/plugins.ts"
-import { FM, frontmatter, nowUtc, safeName, setPropertyText, str, type Vault, writeAtomic } from "../../../core/vault.ts"
+import { FM, frontmatter, nowStamp, safeName, setPropertyText, str, type Vault, writeAtomic } from "../../../core/vault.ts"
 import { aboutOf, type Chat, isObj, type Job, type Memory, type Project } from "./chat.ts"
 export type { Job } from "./chat.ts"
 import * as chatgpt from "./chatgpt.ts"
@@ -246,7 +246,7 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
       const existing = fs.existsSync(abs) ? fs.readFileSync(abs, "utf8") : null
       const knownText = [...vault.entries.values()].filter((e) => e.kind?.collection === "me" || e.kind?.collection === "people")
         .map((e) => { try { return fs.readFileSync(vault.abs(e.rel), "utf8") } catch { return "" } }).join("\n")
-      const { text, added } = reviewText(LABELS[source], memories, existing, knownText, nowUtc())
+      const { text, added } = reviewText(LABELS[source], memories, existing, knownText, nowStamp())
       job.memories = added
       if (added) { writeAtomic(abs, text); await vault.sync() }
       if (added || existing !== null) job.review = rel

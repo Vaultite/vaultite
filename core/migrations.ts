@@ -1,7 +1,9 @@
-// A vault's settings brought up to date when the app's defaults change under them, once: a step's id goes in
-// .vaultite/migrations.json when it has run (a synced vault's other machine skips it); a new vault starts with all done.
+// A vault brought up to date when the app's defaults change under it (settings, the app's keys in files), once: a
+// step's id goes in .vaultite/migrations.json when it has run (a synced vault's other machine skips it); a new vault starts with all done.
 import fs from "node:fs"
-import type { Item, Vault } from "./vault.ts"
+import path from "node:path"
+import { FM, loadFm, setPropertyText } from "./frontmatter.ts"
+import { type Item, stamp, type Vault, writeAtomic } from "./vault.ts"
 import { isObj, strings as strs } from "./values.ts"
 
 const FILE = "migrations"
@@ -40,7 +42,34 @@ function dailyNotesOut(get: (name: string) => Item | null, set: (name: string, v
 /** Built-ins that were on from the start (`essential`) and became `offByDefault`: on where they weren't switched off. */
 export const NOW_OPT_IN = ["activity", "dispatch", "token-count", "workspaces", "codex", "cursor", "opencode", "openclaw", "hermes"]
 
+/** Every Markdown file of the vault's own, archived ones too (not .vaultite/, .trash or .git), relative paths. */
+function markdownFiles(root: string, rel = ""): string[] {
+  let names: fs.Dirent[]
+  try { names = fs.readdirSync(path.join(root, rel), { withFileTypes: true }) } catch { return [] }
+  return names.filter((e) => ![".vaultite", ".trash", ".git", "node_modules"].includes(e.name)).flatMap((e) => {
+    const r = rel ? `${rel}/${e.name}` : e.name
+    return e.isDirectory() ? markdownFiles(root, r) : e.name.endsWith(".md") ? [r] : []
+  })
+}
+
+/** The kinds' stamps (a note's created) were UTC; they're the vault's local time now, as the user reads them. */
+function stampsToLocal(v: Vault) {
+  const UTC = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/
+  for (const rel of markdownFiles(v.abs(""))) {
+    const abs = v.abs(rel)
+    let text: string, fm: Item
+    try { text = fs.readFileSync(abs, "utf8"); fm = loadFm(FM.exec(text)?.[1] ?? "") } catch { continue }
+    const keys = v.kindFor(rel, fm)?.spec.stamps ?? []
+    let out: string | null = text
+    for (const k of keys) {
+      if (out && typeof fm[k] === "string" && UTC.test(fm[k])) out = setPropertyText(out, k, stamp(new Date(`${fm[k].replace(" ", "T")}Z`)))
+    }
+    if (out && out !== text) writeAtomic(abs, out)
+  }
+}
+
 const STEPS: { id: string; run: (v: Vault) => void }[] = [
+  { id: "stamps-local-2026-10", run: stampsToLocal },
   {
     id: "plugins-opt-in-2026-10",
     run: (v) => {

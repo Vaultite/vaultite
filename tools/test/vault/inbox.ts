@@ -219,6 +219,11 @@ export default async ($: VaultTest) => {
     check("report: the state said", b.path === "Inbox/Research stuck · Half the docs.md", b)
     ;[st, b] = await api("POST", "ops/inbox.report", { title: "Bad shot", work: "fix", tldr: "x", summary: "x", images: ["/tmp/notes.txt"] })
     check("report: screenshots are images", st === 400 && /png, jpg/.test(b.error), [st, b])
+    const shot = path.join(tmp, "after.png")
+    fs.writeFileSync(shot, Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==", "base64"))
+    ;[st, b] = await api("POST", "ops/inbox.report", { title: "Shot named", work: "fix", tldr: "x", summary: "x", images: [shot] })
+    const shotText = st === 200 ? read(`${b.path}`) : ""
+    check("report: a screenshot is saved under the day and the report's name", /!\[\[\d{4}-\d\d-\d\d Shot named - after\.png\]\]/.test(shotText), [st, b, shotText])
     const cliOut = await vau("inbox", "report", "From the command line", "--work", "feature", "--tldr", "Did it", "--summary", "Did it", "--questions", "First?", "Second?", "--session", "sess-cli")
     rep = read("Inbox/Feature needs you · From the command line.md")
     check("report: vau takes a list's values after its flag", cliOut.code === 0 && rep.includes("- First?\n- Second?") && rep.includes("session: sess-cli"), [cliOut, rep])

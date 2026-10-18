@@ -8,11 +8,8 @@ const pad = (n: number) => String(n).padStart(2, "0")
 /** The local date, YYYY-MM-DD (the vault's dates are the user's local ones). */
 export const localDate = (t: number) => { const d = new Date(t); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` }
 const localTime = (t: number) => { const d = new Date(t); return `${pad(d.getHours())}:${pad(d.getMinutes())}` }
-/** "YYYY-MM-DD HH:MM:SS" in UTC, like notes' created and updated. */
-export const utc = (t: number) => {
-  const d = new Date(t)
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
-}
+/** "YYYY-MM-DD HH:MM:SS" in local time, like notes' created and updated. */
+export const stampOf = (t: number) => `${localDate(t)} ${localTime(t)}:${pad(new Date(t).getSeconds())}`
 
 const FENCE = /^\s*(`{3,}|~{3,})/
 
@@ -82,8 +79,8 @@ export function chatNote(c: Chat, images: Map<string, string> = new Map(), proje
   fm.url = c.url
   const created = c.created ?? c.messages.find((m) => m.at)?.at
   const updated = c.updated ?? [...c.messages].reverse().find((m) => m.at)?.at ?? created
-  fm.created = created ? utc(created) : undefined
-  fm.updated = updated ? utc(updated) : undefined
+  fm.created = created ? stampOf(created) : undefined
+  fm.updated = updated ? stampOf(updated) : undefined
   const out: string[] = []
   let day = ""
   let turn: "user" | "ai" | null = null
@@ -119,7 +116,7 @@ export function splitBody(body: string) {
 /** A Claude project's note: what it's about, its instructions and its files. */
 export function projectNote(p: Project): { fm: Record<string, unknown>; body: string } {
   const fm: Record<string, unknown> = { type: "chat-project", source: "claude", ext_id: `claude-project-${p.id}`,
-    created: p.created ? utc(p.created) : undefined, updated: p.updated ? utc(p.updated) : undefined }
+    created: p.created ? stampOf(p.created) : undefined, updated: p.updated ? stampOf(p.updated) : undefined }
   const out: string[] = []
   if (p.description) out.push(`## About\n\n${shiftHeadings(p.description).trim()}`)
   if (p.instructions) out.push(`## Instructions\n\n${shiftHeadings(p.instructions).trim()}`)

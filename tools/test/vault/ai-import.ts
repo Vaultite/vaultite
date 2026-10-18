@@ -1,5 +1,6 @@
 import fs from "node:fs"
 import path from "node:path"
+import { stamp } from "../../../core/vault.ts"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
@@ -108,7 +109,7 @@ export default async ($: VaultTest) => {
     j = await runJob({ path: "Imports/chatgpt-export.zip" })
     const after = read(tripRel)
     check("ai-import update: in place, the user's text and keys kept, updated changed", j.updated === 1 && j.unchanged === 2 && after.includes("My notes: book the train.\n\n## You") &&
-      after.includes("rating: 5") && after.includes("updated: '2026-09-20 16:12:00'") && after.split("## You").length === 3, [j, after])
+      after.includes("rating: 5") && after.includes(`updated: '${stamp(new Date("2026-09-20T16:12:00Z"))}'`) && after.split("## You").length === 3, [j, after])
 
     // Claude's (named .dms), with a project and memories.
     j = await runJob({ path: "Imports/claude-export.dms" }, "?minMessages=1")

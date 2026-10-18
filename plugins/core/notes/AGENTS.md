@@ -8,7 +8,7 @@ kind: idea                  # idea | note
 status: seed                # ideas only: seed | exploring | parked | done
 tags: [Product]
 id: idea-voice-journal      # stable, unique, lowercase with dashes; never change it
-created: '2026-09-28 18:00:00'   # UTC; bump updated when you edit
+created: '2026-09-28 18:00:00'   # local time; bump updated when you edit
 updated: '2026-09-28 18:00:00'
 ---
 

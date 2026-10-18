@@ -47,12 +47,12 @@ const pad = (n: number) => String(n).padStart(2, "0")
 /** The vault's settings folder. */
 export const SETTINGS_DIR = ".vaultite"
 
-/** "YYYY-MM-DD HH:MM:SS" in UTC. */
+/** "YYYY-MM-DD HH:MM:SS" in this machine's time (the vault's times are the user's local ones, as they read them). */
 export function stamp(d: Date) {
-  return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}:${pad(d.getUTCSeconds())}`
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
 }
 
-export const nowUtc = () => stamp(new Date())
+export const nowStamp = () => stamp(new Date())
 
 /** Local "YYYY-MM-DD HHMMSS", for names of trashed files. */
 export function localStamp(d = new Date()) {
@@ -324,7 +324,7 @@ export type KindSpec = {
   file?: string | (() => string)
   recursive?: boolean
   titleKey?: string
-  /** file -> [item, problems] (the vault adds `id` and `modified`, UTC) */
+  /** file -> [item, problems] (the vault adds `id` and `modified`, a local stamp) */
   parse: (fm: Item, body: string, stem: string) => [Item | null, string[]]
   /** item -> [owned frontmatter, body]; keys the file has beyond `owned` are kept */
   render: (item: Item) => [Item, string]
@@ -347,7 +347,7 @@ export type KindSpec = {
   blocks?: string[] | ((fm: Item) => string[])
   /** `## ` headings its files' view draws instead of their text (["timeline"]): only in its files, never in any note */
   sections?: string[]
-  /** frontmatter keys the app keeps as UTC times ("YYYY-MM-DD HH:MM:SS"): shown in local time, not edited by hand */
+  /** frontmatter keys the app keeps as local times (stamp: "YYYY-MM-DD HH:MM:SS"): shown, not edited by hand */
   stamps?: string[]
 }
 
@@ -1223,7 +1223,8 @@ export class Vault {
    *  same item. Blocks stay: the patch goes around them. */
   private patchBody(k: Kind, e: Entry, baseBody: string, neu: string) {
     const conflict = () => new ConflictError(`${e.rel} changed where this edit goes; reload it and try again`)
-    const merged = merge3(stripNl(baseBody), stripNl(neu), stripNl(e.body), true)
+    // (nothing of the item's in the body yet, only blocks maybe: what it adds goes after them, the card stays first)
+    const merged = !baseBody.trim() && e.body.trim() ? `${stripNl(e.body).trimEnd()}\n\n${stripNl(neu).trim()}` : merge3(stripNl(baseBody), stripNl(neu), stripNl(e.body), true)
     if (merged === null) throw conflict()
     const stem = stemOf(e.rel)
     let ok: boolean

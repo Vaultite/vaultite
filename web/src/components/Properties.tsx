@@ -3,6 +3,7 @@
 import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from "react"
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
+import { stampMs } from "@/core/data"
 import { op } from "@/core/http"
 import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumber, type PropKind } from "@/core/frontmatter"
 import { notifyError } from "@/core/notify"
@@ -71,9 +72,9 @@ function summary(v: unknown): string {
   return String(v ?? "")
 }
 
-/** A UTC time the file's kind keeps (its `stamps`: a note's created), shown in local time with what's stored in the
- *  tooltip; the app keeps it, so it isn't edited here. Any other key's value is the user's, whatever its name. */
-const utc = (stamps: string[], k: string, v: unknown) => stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
+/** A time the file's kind keeps (its `stamps`: a note's created), shown as a date with what's stored in the tooltip;
+ *  the app keeps it, so it isn't edited here. Any other key's value is the user's, whatever its name. */
+const kept = (stamps: string[], k: string, v: unknown) => stamps.includes(k) && typeof v === "string" && /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/.test(v)
 
 /** Each type's icon, and a value's own when the key has none. */
 const ICONS: Record<PropType | PropKind, LucideIcon> = {
@@ -121,10 +122,10 @@ function TypeButton({ k, v, types, readOnly }: { k: string; v: unknown; types?: 
 function Value({ k, v, set, readOnly, autoFocus, type, stamps }: {
   k: string; v: unknown; set: (v: unknown) => void; readOnly: boolean; autoFocus?: boolean; type: PropType | null; stamps: string[]
 }) {
-  if (utc(stamps, k, v)) {
-    const d = new Date(`${(v as string).replace(" ", "T")}Z`)
+  if (kept(stamps, k, v)) {
+    const d = new Date(stampMs(v as string))
     return (
-      <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground tabular-nums" data-tip={`${v as string} UTC`}>
+      <div className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground tabular-nums" data-tip={v as string}>
         {d.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" })}
       </div>
     )
@@ -162,7 +163,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
   extra?: ReactNode
   /** The vault's property types (the store's `propertyTypes`). */
   types?: { types: PropTypes; own: string[] }
-  /** The UTC times its kind keeps (KindSpec stamps): shown in local time, not edited. */
+  /** The times its kind keeps (KindSpec stamps): shown, not edited. */
   stamps?: string[]
 }) {
   const { props, error } = readProps(block)

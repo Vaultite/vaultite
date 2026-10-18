@@ -4,10 +4,10 @@ import type { Note } from "./types"
 
 export function mockNotes(): Partial<Store> {
   const d = (n: number) => addDays(today(), -n)
-  const utc = (day: string) => `${day} 12:00:00`
+  const at = (day: string) => `${day} 12:00:00`
   const N = (title: string, kind: string, body: string, ago: number, extra: Partial<Note> = {}): Note => ({
     id: `Notes/${title}`, title, kind, body, tags: "", status: null, journal: false, source: "claude", ext_id: null,
-    created_at: utc(d(ago)), updated_at: utc(d(ago)), aliases: [], ...extra,
+    created_at: at(d(ago)), updated_at: at(d(ago)), aliases: [], ...extra,
   })
   const notes = [
     N("Weekend trip ideas", "idea", "## Options\n- The coast with [[Alice Rivera]]\n- **A cabin weekend** if it snows early\n\nSee [[Packing list]].", 0,

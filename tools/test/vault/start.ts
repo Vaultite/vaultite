@@ -77,6 +77,17 @@ export default async ($: VaultTest) => {
     const prev = conf(daily, "bundles/previous")
     check("migrated: a restore puts back Daily notes' keys", JSON.stringify(prev?.config) === '{"hotkeys":{"daily-notes:today":null},"plugins/today/data":{},"plugins/daily-notes/data":{"format":null}}'
       && prev.absent.includes("plugins/daily-notes/data") && conf(daily, "migrations")?.done?.includes("daily-notes-2026-10"), prev)
+    // Kinds' stamps were UTC: now the vault's local time, a user's own time keys left as they were.
+    const stamped = path.join(tmp, "Stamped before")
+    fs.mkdirSync(path.join(stamped, ".vaultite"), { recursive: true })
+    fs.mkdirSync(path.join(stamped, "Notes/.archive"), { recursive: true })
+    const note = "---\ntype: note\ncreated: '2026-10-18 05:11:09'\nupdated: 2026-10-18 05:12:00\nmet: '2026-10-18 05:11:09'\n---\nBody.\n"
+    fs.writeFileSync(path.join(stamped, "Notes/.archive/Old.md"), note)
+    await open(stamped)
+    const local = (s: string) => { const d = new Date(`${s}Z`), p = (n: number) => String(n).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}` }
+    const got = fs.readFileSync(path.join(stamped, "Notes/.archive/Old.md"), "utf8")
+    check("migrated: a note's created and updated in local time, other keys and the body as they were", got.includes(`created: '${local("2026-10-18T05:11:09")}'`)
+      && got.includes(local("2026-10-18T05:12:00")) && got.includes("met: '2026-10-18 05:11:09'") && got.endsWith("---\nBody.\n"), got)
     // A new vault still being offered the bundles writes no page; given one that pins nothing, its plugins write theirs,
     // none pinned.
     const offered = path.join(tmp, "Offered")

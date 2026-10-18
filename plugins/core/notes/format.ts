@@ -1,6 +1,6 @@
 // Notes helpers shared by the list and the reader: kinds, previews, dates.
 import { BookOpen, FileText, Lightbulb, type LucideIcon } from "lucide-react"
-import { dateText, iso, plainText, today } from "@vaultite"
+import { dateText, iso, plainText, stampMs, today } from "@vaultite"
 import type { Note } from "./types"
 
 export const TINT = "var(--notes)"
@@ -18,14 +18,14 @@ export const lookOf = (kind: unknown, journal: boolean) => (journal ? KINDS.jour
 
 export const tagList = (n: Note) => (n.tags || "").split(",").map((t) => t.trim()).filter(Boolean)
 
-// ---------- dates (the server stores UTC) ----------
-export const utc = (s: string) => new Date(s.includes("T") ? s : `${s.replace(" ", "T")}Z`)
+// ---------- dates (stamps, the vault's local time) ----------
+export const stampDate = (s: string) => new Date(stampMs(s))
 const dayDiff = (d: Date) => Math.round((new Date(today()).getTime() - new Date(iso(d)).getTime()) / 864e5)
 
 
 /** List sections by last edit: Today, Yesterday, Previous 7 days, Previous 30 days, then months. */
 export function groupOf(n: Note) {
-  const d = utc(n.updated_at), diff = dayDiff(d)
+  const d = stampDate(n.updated_at), diff = dayDiff(d)
   if (diff <= 0) return "Today"
   if (diff === 1) return "Yesterday"
   if (diff < 7) return "Previous 7 days"

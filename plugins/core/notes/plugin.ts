@@ -2,7 +2,7 @@
 // tagged journal.
 import fs from "node:fs"
 import { OpError, Plugin } from "../../../core/plugins.ts"
-import { hasTag, isArchived, type Item, Kind, nowUtc, safeName, slug, sortBy, splitTags, str, tagsOf, truthy } from "../../../core/vault.ts"
+import { hasTag, isArchived, type Item, Kind, nowStamp, safeName, slug, sortBy, splitTags, str, tagsOf, truthy } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -87,13 +87,13 @@ plugin.kind(new Kind({
     }
     if (before !== null && n.ext_id === before.ext_id && copied(before)) { // a copy's first edit: a new note, its own id and dates
       n.ext_id = newId(before.id.split("/").pop(), ids(before.id))
-      n.created_at = n.updated_at = nowUtc()
+      n.created_at = n.updated_at = nowStamp()
       return n
     }
     n.ext_id = n.ext_id || before?.ext_id || newId(n.title, ids())
-    n.created_at = n.created_at || nowUtc()
+    n.created_at = n.created_at || nowStamp()
     if (before === null) n.updated_at = n.updated_at || n.created_at
-    else if (changed(n, before) && (n.updated_at ?? null) === (before.updated_at ?? null)) n.updated_at = nowUtc() // content changed
+    else if (changed(n, before) && (n.updated_at ?? null) === (before.updated_at ?? null)) n.updated_at = nowStamp() // content changed
     return n
   },
   /** A file edited in the app: give it an id and times, bumping `updated` if its content changed without it. A copy of
@@ -103,13 +103,13 @@ plugin.kind(new Kind({
     const out = { ...n }
     if (copied(n)) { // a copy: a new note, with its own id and dates
       out.ext_id = newId(n.id.split("/").pop(), ids(n.id))
-      out.created_at = out.updated_at = nowUtc()
+      out.created_at = out.updated_at = nowStamp()
       return out
     }
     if (!n.ext_id) out.ext_id = newId(n.id.split("/").pop(), ids(n.id))
-    if (!n.created_at) out.created_at = nowUtc()
+    if (!n.created_at) out.created_at = nowStamp()
     if (!n.updated_at) out.updated_at = out.created_at
-    else if (before && n.updated_at === before.updated_at && changed(n, before, true)) out.updated_at = nowUtc()
+    else if (before && n.updated_at === before.updated_at && changed(n, before, true)) out.updated_at = nowStamp()
     return CONTENT.concat(["ext_id", "created_at", "updated_at"]).some((k) => out[k] !== n[k]) ? out : null
   },
   key: keyOf,

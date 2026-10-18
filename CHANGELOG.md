@@ -6,6 +6,15 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Times in your local time**: notes' and inbox items' `created` and `updated` are written in your time, not UTC
+  (existing ones are converted once), so an evening's item no longer reads as tomorrow.
+- **Approvals wait for you**: an app's request for your yes stays in the Inbox until you answer, however long, and
+  survives a restart.
+- `vau plugins check` names a schedule's op parameter it doesn't take, instead of the job failing when it's due.
+- Report screenshots are named for their day and report, so two agents' `after.png` no longer collide.
+- A person's profile card stays first when a timeline or a fact is added to a profile that had only the card.
+- Electron 44.9 and patch updates.
+
 - **Links to archived files keep working**: a link to a file's old place (a recap, a report written before it was
   archived) still opens it, and the file's next move rewrites it; recaps link files where they are now.
 - Moving or archiving a drawing (`.excalidraw`) or any file with a long extension no longer doubles it.

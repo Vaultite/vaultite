@@ -1,5 +1,5 @@
 // What Note kinds keeps in the store (/api/state's `notes`: the vault's Notes folder).
-/** kind: idea | note; status (ideas): seed | exploring | parked | done. Times are UTC ("YYYY-MM-DD HH:MM:SS"). */
+/** kind: idea | note; status (ideas): seed | exploring | parked | done. Times are local stamps ("YYYY-MM-DD HH:MM:SS"). */
 export type Note = {
   id: string; title: string; body: string; tags: string; kind: string; status: string | null
   /** A journal entry: tagged `journal` (frontmatter or inline). */

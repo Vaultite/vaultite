@@ -86,10 +86,13 @@ export function parseDate(text: string, fmt: string, opts: DateOptions = {}): Da
   return opts.loose || formatDate(d, fmt, w) === text ? d : null
 }
 
-/** How long ago `t` was (ms, or an ISO date; SQLite's "2026-10-01 12:00:00" is UTC): "just now", "5 min ago", "3 h ago",
+/** A stamp ("2026-10-01 12:00:00", the vault's local time; or an ISO date with its zone) as ms, NaN when unreadable. */
+export const stampMs = (s: string) => Date.parse(/^\d{4}-\d\d-\d\d \d/.test(s) ? s.replace(" ", "T") : s)
+
+/** How long ago `t` was (ms, or a stamp: stampMs): "just now", "5 min ago", "3 h ago",
  *  "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo". */
 export function fmtAgo(t: number | string, { short = false } = {}) {
-  const ms = typeof t === "number" ? t : Date.parse(/^\d{4}-\d\d-\d\d \d/.test(t) ? `${t.replace(" ", "T")}Z` : t)
+  const ms = typeof t === "number" ? t : stampMs(t)
   const s = Math.max(0, (Date.now() - ms) / 1000)
   if (s < 60) return short ? "now" : "just now"
   const [n, unit] = s < 3600 ? [s / 60, "min"] : s < 86400 ? [s / 3600, "h"] : s < 45 * 86400 ? [s / 86400, "d"] : [s / (30.4 * 86400), "mo"]

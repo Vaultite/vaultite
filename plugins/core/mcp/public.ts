@@ -57,7 +57,7 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
   return ""
 }
 
-const APPROVAL_TTL = 10 * 60_000, UPLOAD_TTL = 15 * 60_000
+const UPLOAD_TTL = 15 * 60_000
 /** The most a request's body may be read into memory here: this server is on the internet, so it's kept, and a file's
  *  bytes go through an upload link instead (streamed, any size). */
 const BODY_MAX = 4 << 20
@@ -99,8 +99,6 @@ export class PublicMcp {
   uploads = new Map<string, { pending: Record<string, unknown>; who: Who; until: number }>()
   /** The address each tool call's app reached (base), for links it's given: an app may know only one of them. */
   bases = new WeakMap<Who, string>()
-  /** Gated calls asked about (gateOf), by app, operation and parameters: the inbox event that asks, until when. */
-  asked = new Map<string, { event: string; until: number }>()
   lastNotice = 0
   /** Vaultite Cloud's address while this machine is signed in (cloud.ts). */
   cloudUrl: () => string | null = () => null
@@ -628,19 +626,14 @@ export class PublicMcp {
     if (!why) return
     const ask = this.plugin.service("inbox:ask"), answerOf = this.plugin.service("inbox:answer")
     if (!ask || !answerOf) throw new ToolError(`This needs the user's yes (to ${why}), asked through Vaultite's Inbox, which is off: they can turn it on, or do it on their machine.`)
-    const now = Date.now()
-    for (const [k, a] of this.asked) if (a.until < now) this.asked.delete(k)
-    const key = sha(JSON.stringify([grant, id, params]))
-    let asked = this.asked.get(key)
-    if (!asked) {
-      const event = await ask({ source: "mcp", title: `${app} asks to ${why}`, body: await this.askBody(id, params) })
-      asked = { event, until: now + APPROVAL_TTL }
-      this.asked.set(key, asked)
-    }
-    const answer = await answerOf(asked.event, this.settings.approvalWait * 1000)
-    if (answer === "approve") { this.asked.delete(key); return }
-    if (answer === "deny") { this.asked.delete(key); throw new ToolError(`The user said no to this (${id}): don't do it.`) }
-    if (answer === "gone") { this.asked.delete(key); throw new ToolError("The request for the user's yes is gone: call again to ask again.") }
+    // (asked once per app, op and parameters, kept in the Inbox until answered: a restart or a slow yes doesn't lose it)
+    const key = sha(JSON.stringify([grant, id, params])).slice(0, 40)
+    const event = await ask({ source: "mcp", key, title: `${app} asks to ${why}`, body: await this.askBody(id, params) })
+    const answer = await answerOf(event, this.settings.approvalWait * 1000)
+    if (answer === "approve" || answer === "deny") this.plugin.service("inbox:drop")?.("mcp", key)
+    if (answer === "approve") return
+    if (answer === "deny") throw new ToolError(`The user said no to this (${id}): don't do it.`)
+    if (answer === "gone") throw new ToolError("The request for the user's yes is gone: call again to ask again.")
     throw new ToolError(`Waiting for the user's yes: Vaultite asked them on their phone (and in its Inbox) whether you may ${why}. Tell them, and once they approve, call this again with exactly the same arguments: it then runs at once.`)
   }
 

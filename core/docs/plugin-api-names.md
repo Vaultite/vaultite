@@ -471,6 +471,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `spelling`: The spell checker sees a right-click only once the page leaves it to the system (not prevented): `at` answers what it said of the word under it (null: nothing came), `learn` adds a word to its…
 - `splitFm(text)`: Split a file into its frontmatter block ("---\n...\n---\n", plus the blank line after it, or "") and its body.
 - `splitMachine(id)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
+- `stampMs`
 - `standingIn(app, id)`: The opt-in plugins on that stand in for another app's plugin (`standingIn("obsidian", "dataview")`): its original stays off while one is.
 - `startDrag(e, item, { touch }?)`: Press on something draggable: a mouse or pen, or a finger where `touch` says a phone has somewhere to drop it (else a finger scrolls or taps).
 - `startedFresh`: Asked to start on a new tab (the crash screen's "Reload with a new tab"): the tabs come back in one pane with a new tab shown, so the one that stopped the app isn't drawn.
@@ -610,7 +611,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `discover()`: Every built-in plugin folder (plugins/core/): [tier, id, dir], by name.
 - `enabled(vault, plugins)`: Ids of the plugins that are on (Vault.switchedOff: not off, nor anything they require).
 - `fetchPublic(raw, options?)`: GET a public page (publicUrl: else it throws, saying why), following redirects to public addresses too.
-- `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or an ISO date; SQLite's "2026-10-01 12:00:00" is UTC): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
+- `fmtAgo(t, { short }?)`: How long ago `t` was (ms, or a stamp: stampMs): "just now", "5 min ago", "3 h ago", "2 d ago", "4 mo ago"; `short` for a one-line row: "now", "5m", "3h", "2d", "4mo".
 - `fmtMin(m)`: 90 -> "1 h 30 min".
 - `formatDate(d, fmt?, opts?)`: `d` in a moment.js format (`YYYY-MM-DD`, `dddd, MMMM Do`, `gggg-[W]ww`, `h:mm A`, `LL`); text in [brackets] as it is.
 - `fromInternet(req)`
@@ -686,6 +687,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `span(name, tags?, t0?)`: A span starting now (or at `t0`, a performance.now()): `mark` ends a part, `end` records it all.
 - `spans()`
 - `splitMachine(full)`: "claude-k3j2@studio" -> ["claude-k3j2", "studio"]; an id of this machine's -> [id, ""].
+- `stampMs(s)`: A stamp ("2026-10-01 12:00:00", the vault's local time; or an ISO date with its zone) as ms, NaN when unreadable.
 - `Text`: A route's answer sent as it is (text/markdown, or another type; bytes too: a font), not as JSON.
 - `TextBlock`
 - `today()`: Today on this machine, YYYY-MM-DD.
@@ -741,7 +743,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NewFile`: A new file as onCreateFile's hooks see it, read-only: its size, and its first or last `n` bytes, read only when asked (an upload can be any size).
 - `newFileAt(p)`: A file on disk as a NewFile (an upload streamed there).
 - `NotFound`: Something that isn't there (the API answers 404).
-- `nowUtc()`
+- `nowStamp()`
 - `num(v)`: A number from YAML, or null.
 - `parseText(text)`: [frontmatter, body].
 - `prose(body)`: The body without its blocks and ```base fences: what a kind parses.
@@ -760,7 +762,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `slug(s)`: A title as an id's words, accents off their letters: "Café: idea #2" -> "cafe-idea-2" (notes' and logs' ids).
 - `sortBy(xs, key, reverse?)`: Sort by a key, like Python's sorted(key=..., reverse=...): stable either way.
 - `splitTags(s)`
-- `stamp(d)`: "YYYY-MM-DD HH:MM:SS" in UTC.
+- `stamp(d)`: "YYYY-MM-DD HH:MM:SS" in this machine's time (the vault's times are the user's local ones, as they read them).
 - `statFrom(st)`: What the index keeps of a file's stat.
 - `stemOf(rel)`
 - `str(v)`: A value as text, the way the app always showed it (null is "", booleans True/False as YAML read them).

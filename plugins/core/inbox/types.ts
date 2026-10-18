@@ -9,7 +9,7 @@ export type InboxItem = {
   /** Where it came from (a page's address), or "". */
   source: string
   created: string | null; body: string
-  /** Its thread's latest report (an agent's reply in the same file), UTC like created. */
+  /** Its thread's latest report (an agent's reply in the same file), a local stamp like created. */
   updated?: string | null
   archived?: boolean
   /** An agent's report (inbox.report): who wrote it, its session, the app terminal and the machine it ran on, for the reply. */

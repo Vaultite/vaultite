@@ -1,5 +1,5 @@
 // The vault as the web app sees it (GET /api/state), plus date helpers. Every item has a string id (its vault path
-// without .md) and `modified` (UTC "YYYY-MM-DD HH:MM:SS").
+// without .md) and `modified` (a local stamp, "YYYY-MM-DD HH:MM:SS").
 import { createContext, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react"
 import { editCount, edited, onVaultChange, settled, startLive, type Paths } from "@/core/live"
 import { get, send } from "@/core/http"
@@ -47,7 +47,7 @@ export type State = PluginState & {
   /** Property types (core/proptypes.ts): every declared one (Obsidian's too), and the keys .vaultite/types.json has. */
   propertyTypes?: { types: PropTypes; own: string[] }
   /** What the app draws or keeps itself in a kind's files, by collection: `## ` sections its view draws (a person's
-   *  Timeline) and the UTC times it keeps (a note's created). */
+   *  Timeline) and the times it keeps (a note's created). */
   kinds?: Record<string, KindInfo>
 }
 export type KindInfo = { sections: string[]; stamps: string[] }
@@ -363,7 +363,7 @@ export function fmtDay(s: string) {
   return dateText(parse(s), diff > 300 ? DAY_YEAR : DAY)
 }
 export const fmtMin = (m: number) => (m >= 60 ? `${Math.floor(m / 60)}h${m % 60 ? ` ${m % 60}m` : ""}` : `${Math.round(m || 0)}m`)
-export { fmtAgo } from "../../../core/dates.ts"
+export { fmtAgo, stampMs } from "../../../core/dates.ts"
 export const fmtTime = (isoStr: string) => dateText(new Date(isoStr), TIME)
 const STAMP = { weekday: "short", month: "short", day: "numeric", ...TIME } as const
 /** A moment in full, for a tooltip: "Sat, Oct 10, 4:05 PM" (`seconds`: 4:05:09 PM). */

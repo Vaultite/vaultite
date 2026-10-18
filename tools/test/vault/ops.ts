@@ -45,6 +45,16 @@ export default async ($: VaultTest) => {
     t = await run("person.timeline-add", { person: "Sammy", kind: "call", text: "Talked about ops", date: "2026-09-27", duration_min: 15 })
     check("person.timeline-add: by an alias, placed by date, said like add_timeline", !t.error && t.text === "Added to Sam Reyes's timeline: 2026-09-27 · call · Talked about ops" &&
       read("People/Sam Reyes.md").includes("- 2026-09-27 · call · 15 min · Talked about ops"), [t, read("People/Sam Reyes.md")])
+    // A profile with only its card: what's added goes under the card, never above it.
+    write("People/Card Only.md", "---\ntype: person\n---\n\n```block-person\n```\n")
+    t = await run("person.timeline-add", { person: "Card Only", kind: "call", text: "First call", date: "2026-09-27" })
+    const cardTl = read("People/Card Only.md")
+    check("person.timeline-add: a card-only profile keeps its card first", !t.error && cardTl.indexOf("```block-person") >= 0 && cardTl.indexOf("```block-person") < cardTl.indexOf("## Timeline"), cardTl)
+    write("People/Card Two.md", "---\ntype: person\n---\n\n```block-person\n```\n")
+    t = await run("people.remember", { fact: "Plays chess.", about: "Card Two" })
+    t = await run("person.timeline-add", { person: "Card Two", kind: "call", text: "Hi", date: "2026-09-27" })
+    const cardFact = read("People/Card Two.md")
+    check("people.remember, then a timeline: card, fact, timeline, in that order", !t.error && cardFact.indexOf("```block-person") < cardFact.indexOf("Plays chess.") && cardFact.indexOf("Plays chess.") < cardFact.indexOf("## Timeline"), cardFact)
     t = await run("person.timeline-add", { person: "Sam", kind: "call", text: "x" })
     check("person.timeline-add: a first name two people have is asked about", t.error && t.text.includes("Sam Park") && t.text.includes("Sam Reyes"), t)
     t = await run("person.timeline-add", { person: "Sam Park", kind: "chat", text: "x" })

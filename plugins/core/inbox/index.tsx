@@ -2,7 +2,7 @@
 // about what the user is looking at; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef } from "react"
 import { Check, CheckCheck, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
-import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, systemNotify, useStore, type Store } from "@vaultite"
+import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, type Store } from "@vaultite"
 import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, subscribeEvents, targetOf } from "./events"
 import { ReplyBlock } from "./Reply"
 import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
@@ -34,10 +34,10 @@ function announce(e: InboxEvent, s: Settings) {
   if (s.notifications !== false && !document.hasFocus()) systemNotify(e.title, e.body ?? "")?.then((clicked) => { if (clicked) openEvent(e) })
 }
 
-/** When a result last had news (its thread's latest report, else when it came: UTC, "2026-10-01 18:00:00") as ms. */
+/** When a result last had news (its thread's latest report, else when it came) as ms. */
 const latestAt = (r: InboxItem) => {
   const at = r.updated || r.created
-  return at ? Date.parse(`${at.replace(" ", "T")}${/Z|[+-]\d\d:?\d\d$/.test(at) ? "" : "Z"}`) : 0
+  return at ? stampMs(at) || 0 : 0
 }
 
 function Background({ store }: { store: Store }) {

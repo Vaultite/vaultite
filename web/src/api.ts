@@ -5,7 +5,7 @@ import { getPrefs } from "@/core/prefs"
 // The plugin API: everything a plugin may import ("@vaultite"). Plugins use this, their own folder, and the plugins
 // they `require`; never the core's internals (web/src/core, components), so the core can change underneath them.
 export {
-  addDays, dateText, dow, fmtAgo, fmtDay, fmtLongDay, fmtMin, fmtStamp, fmtTime, getStore, iso, mutate, numberText, optimistic, parse, plain,
+  addDays, dateText, dow, fmtAgo, fmtDay, fmtLongDay, fmtMin, fmtStamp, fmtTime, getStore, stampMs, iso, mutate, numberText, optimistic, parse, plain,
   range, reload, today, useLive, usePreview, useStore, useTick, weekStart,
 } from "@/core/data"
 export { appDevice, del, get, op, patch, post, put } from "@/core/http"
