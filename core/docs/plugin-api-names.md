@@ -249,6 +249,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `keyboardUp()`: The on-screen keyboard is up: the visible part of the page is well short of the window.
 - `keyCaps(keys)`: A shortcut as the keycaps to draw: "Mod+Shift+F" -> ["⌘", "⇧", "F"].
 - `keyHint(keys)`: Keys as text: ⌘⇧F on a Mac, Ctrl+Shift+F elsewhere (caps run together would read "CtrlO"); a sequence's steps apart ("g g").
+- `keysInEditor(ed?)`: Keys pressed now are meant for this editor: the keyboard is in it, or nowhere else (nothing focused, something in its file's view, or what holds it: a sheet).
 - `keysOf(c)`: A command's keys in effect: the vault's hotkeys.json if it names the command, else its own defaults and the keys plugins add to it (`addKeys`).
 - `kindFolder(folder, disabled?)`: Whether a plain Markdown file in `folder` would be a kind's (People/, Logs/Gym/): such a folder holds only that kind, so another sort of note goes where new notes go instead.
 - `kindIcon(path)`: The icon for a file that isn't a note (notes take their plugin's).

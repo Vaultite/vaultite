@@ -2,6 +2,7 @@
 // else the focused pane's. Types only from CodeMirror: the editor is its own chunk.
 import type { EditorState } from "@codemirror/state"
 import type { EditorView } from "@codemirror/view"
+import { typingIn } from "@/core/commands"
 
 export type OpenEditor = {
   view: EditorView
@@ -52,6 +53,14 @@ export function currentEditor(): OpenEditor | null {
   }
   if (sheets.length) return null
   return shown.find((e) => e.view.dom.closest("#main-scroll .file-view")) ?? null
+}
+
+/** Keys pressed now are meant for this editor: the keyboard is in it, or nowhere else (nothing focused, something in
+ *  its file's view, or what holds it: a sheet). Not while a sidebar's row or another field has it. */
+export function keysInEditor(ed: Pick<OpenEditor, "view"> | null = currentEditor()) {
+  if (!ed) return false
+  const a = document.activeElement
+  return a === ed.view.contentDOM || !typingIn(a) && (!a || a.contains(ed.view.dom) || !!a.closest(".file-view")?.contains(ed.view.dom))
 }
 
 /** The text selected in an editor (the one the user means by default): its selections, or in reading view the page's

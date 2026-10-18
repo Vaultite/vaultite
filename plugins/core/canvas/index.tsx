@@ -55,7 +55,9 @@ export default definePlugin({
     })),
     { id: "canvas:zoom-in", name: "Zoom in on the canvas", keys: ["Shift+=", "="], when: () => !!focusedBoard(), run: () => focusedBoard()?.zoom(1.25), icon: ZoomIn },
     { id: "canvas:zoom-out", name: "Zoom out of the canvas", keys: ["-"], when: () => !!focusedBoard(), run: () => focusedBoard()?.zoom(0.8), icon: ZoomOut },
-    { id: "canvas:fit", name: "Zoom the canvas to fit", when: () => !!focusedBoard(), run: () => focusedBoard()?.fit(), icon: Scan },
+    { id: "canvas:fit", name: "Zoom the canvas to fit", keys: ["Shift+1"], when: () => !!focusedBoard(), run: () => focusedBoard()?.fit(), icon: Scan },
+    { id: "canvas:fit-selection", name: "Zoom the canvas to the selection", keys: ["Shift+2"], when: () => !!focusedBoard(), run: () => focusedBoard()?.fitSelection(), icon: Scan },
+    { id: "canvas:zoom-100", name: "Zoom the canvas to 100%", keys: ["Shift+0"], when: () => !!focusedBoard(), run: () => focusedBoard()?.zoom100() },
   ],
   slash: () => [{
     id: "canvas:new", title: "Canvas", section: "Canvas", keywords: "canvas board cards whiteboard json", detail: "New canvas",

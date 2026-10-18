@@ -24,7 +24,9 @@ import type { FileIcon, FileMark, FileRow, FileRowPart, NewFile } from "@/core/d
 import { fileIcons, fileMarks, fileViewFor, formatFor, pluginNewFiles, revealPanel, useFileRows } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs, type FileSort } from "@/core/prefs"
 import { commandItems, menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
-import { copyPathItem, duplicateItem, filesMenu, grouped, moreItem, openItem, pluginFileGroups, remove, renameItem, revealItem, topmost } from "@/components/FileActions"
+import { copyPathItem, duplicate, duplicateItem, filesMenu, grouped, moreItem, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
+import { registerCommands } from "@/core/commands"
+import { currentRow } from "@/core/keylist"
 import { pickFolder } from "@/components/FolderPicker"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 import { capitalize, cn, scrollingBox, space } from "@/lib/utils"
@@ -200,6 +202,37 @@ async function moveInto(from: string, folder: string) {
 
 /** The tree's selection (core/select.ts): files and folders by path, one list wherever a tree is drawn. */
 const SELECT = "files"
+
+// ---------- keys on a row, Finder's: F2 renames, ⌘D duplicates, ⌘⌫ deletes (the selected rows together) ----------
+// Each tree drawn, and how it starts renaming one of its rows (the name becomes a field in that tree).
+const renamers = new Map<HTMLElement, (path: string) => void>()
+/** The tree row with the keyboard, or null. */
+function keyedRow() {
+  const at = currentRow()?.closest<HTMLElement>("[data-tree-path]")
+  const tree = at && [...renamers.keys()].find((b) => b.contains(at))
+  return at && tree ? { at, path: at.dataset.treePath!, folder: "treeFolder" in at.dataset, rename: renamers.get(tree)!, tree } : null
+}
+/** Its row's menu has Rename, Move and Duplicate (not the app's own folders, nor in the trash). */
+const changeable = (p: string) => !!p && p !== ".trash" && !inTrash(p) && !isProtected(p)
+function deleteRow() {
+  const r = keyedRow()
+  if (!r) return
+  const many = selectionFor(SELECT, r.path, false)
+  // The keyboard goes on to the row below (above, at the end), as Finder's does.
+  const gone = r.at.closest("[role=treeitem]") ?? r.at
+  const rows = [...r.tree.querySelectorAll<HTMLElement>("[data-keyrow]")].filter((x) => x.getClientRects().length > 0)
+  const i = rows.indexOf(currentRow()!)
+  const next = many ? null : rows.slice(i + 1).find((x) => !gone.contains(x)) ?? rows.slice(0, i).reverse().find((x) => !gone.contains(x))
+  void (many ? removeMany(many) : remove(r.path)).then(() => { if (next?.isConnected && !document.activeElement?.closest("dialog")) next.focus({ preventScroll: true }) })
+}
+registerCommands([
+  { id: "files:rename-row", name: "Rename the row", keys: ["F2"], when: () => { const r = keyedRow(); return !!r && changeable(r.path) },
+    run: () => { const r = keyedRow(); if (r) r.rename(r.path) }, icon: "pencil" },
+  { id: "files:duplicate-row", name: "Duplicate the row", keys: ["Mod+D"], when: () => { const r = keyedRow(); return !!r && !r.folder && changeable(r.path) },
+    run: () => { const r = keyedRow(); if (r) void duplicate(r.path) }, icon: "copy" },
+  { id: "files:delete-row", name: "Delete the row, or the selected rows", keys: isMac ? ["Mod+Backspace"] : ["Delete"],
+    when: () => { const r = keyedRow(); return !!r && !!r.path && !isProtected(r.path) }, run: deleteRow, icon: "trash-2" },
+])
 
 /** Move several files and folders into a folder, then one toast with Undo for all of them. `before` runs before each
  *  moves (if it throws, that one doesn't); `reveal: false` leaves the tree as it is (a drop elsewhere shows where). */
@@ -507,6 +540,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
   const [edge] = useState(edgeScroller)
   const box = useRef<HTMLDivElement>(null)
   const list = useRef<HTMLUListElement>(null)
+  useEffect(() => { const b = box.current; if (!b) return; renamers.set(b, setRenaming); return () => { renamers.delete(b) } })
   const stopTimers = () => {
     if (hover.current) clearTimeout(hover.current.timer)
     hover.current = null

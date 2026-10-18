@@ -259,6 +259,14 @@ async function deleteManyForGood(paths: string[]) {
   if (!ok) return
   for (const p of topmost(paths)) { try { await deleteFile(p) } catch (e) { notifyError(e) } }
 }
+/** Delete several, the right way for where they are (`remove`'s): from the trash for good, asking once, else to it with
+ *  one Undo; nothing while the app's own folders are among them. */
+export function removeMany(paths: string[]) {
+  const roots = topmost(paths)
+  if (roots.every(inTrash)) return deleteManyForGood(roots)
+  if (roots.some((p) => p === ".trash" || inTrash(p) || isProtected(p))) return Promise.resolve()
+  return trashMany(roots)
+}
 async function restoreMany(paths: string[]) {
   for (const p of topmost(paths)) { try { await restoreFile(p) } catch (e) { notifyError(e, "Couldn't restore") } }
 }

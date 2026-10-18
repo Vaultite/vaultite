@@ -92,9 +92,9 @@ function accelerator(keys: string): string | null {
 /** The system's own items' keys (Edit's, the App menu's, zoom, full screen, reload, dev tools): never a command's. */
 const SYSTEM_KEYS = new Set(MAC
   ? ["Cmd+Q", "Cmd+H", "Cmd+Alt+H", "Cmd+M", "Cmd+Z", "Cmd+Shift+Z", "Cmd+X", "Cmd+C", "Cmd+V", "Cmd+Alt+Shift+V", "Cmd+A",
-    "Cmd+0", "Cmd+=", "Cmd+Plus", "Cmd+-", "Cmd+Ctrl+F", "Cmd+R", "Cmd+Shift+R", "Cmd+Alt+I", "Cmd+Shift+W", "Cmd+,"]
+    "Cmd+0", "Cmd+=", "Cmd+Plus", "Cmd+-", "Cmd+Ctrl+F", "Cmd+R", "Cmd+Shift+R", "Cmd+Alt+I", "Cmd+Shift+W"]
   : ["Ctrl+Q", "Ctrl+Z", "Ctrl+Shift+Z", "Ctrl+Y", "Ctrl+X", "Ctrl+C", "Ctrl+V", "Ctrl+Shift+V", "Ctrl+A", "Ctrl+0", "Ctrl+=",
-    "Ctrl+Plus", "Ctrl+-", "F11", "Ctrl+R", "Ctrl+Shift+R", "Ctrl+Shift+I", "Ctrl+Shift+W", "Ctrl+,"])
+    "Ctrl+Plus", "Ctrl+-", "F11", "Ctrl+R", "Ctrl+Shift+R", "Ctrl+Shift+I", "Ctrl+Shift+W"])
 
 // ---------- the menu ----------
 export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {

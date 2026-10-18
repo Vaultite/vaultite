@@ -6,6 +6,9 @@ export type BoardKeys = {
   pan: (dx: number, dy: number) => void
   zoom: (factor: number) => void
   fit: () => void
+  /** Fit the selected cards (none: all of them). */
+  fitSelection: () => void
+  zoom100: () => void
   /** Cards or a connection are selected (the arrow keys nudge them instead). */
   selected: () => boolean
 }

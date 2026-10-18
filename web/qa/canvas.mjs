@@ -285,7 +285,7 @@ const pass = async (dx, dy) => {
 const panMs = Math.min(await pass(40, 25), await pass(-40, -25))
 // (3 to 11 ms here, as new cards come near the screen; restyling the whole page each frame was 15+)
 check(`scrolling a big board is light work (${panMs.toFixed(1)} ms of the main thread a frame)`, panMs < 12)
-await page.click("[data-canvas-tool='Zoom to fit (Shift+1)']")
+await page.click("[data-canvas-tool='Zoom to fit']")
 await page.waitForFunction(() => !document.querySelector("[data-canvas-board=page] [data-canvas-node] .canvas-md"), null, { timeout: 4000 })
   .then(() => check("zoomed far out, cards are drawn as their names", true), () => check("zoomed far out, cards are drawn as their names", false))
 await page.screenshot({ path: `${OUT}canvas-big.png` })

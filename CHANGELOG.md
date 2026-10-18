@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **More default hotkeys**, as Google Docs and Finder have them: ⌘⇧X strikethrough, ⌘⇧H highlight, ⌘⇧C code, ⌘⌥1–6
+  headings (⌘⌥0 none), ⌘⇧7 / 8 / 9 numbered, bullet and task lists, ⌘⇧V paste as plain text, ⌥↑ / ⌥↓ move a line;
+  ⌘[ / ⌘] back and forward, ⌘⌥W close other tabs, ⌘, Settings (in the browser too), ⌘⇧D today's daily note, `?` the
+  hotkeys; on a file tree row F2 renames, ⌘D duplicates and ⌘⌫ deletes; on a canvas ⇧1 / ⇧2 / ⇧0 fit, fit the
+  selection and 100% (rebindable now). A note's keys (⌘D, ⌘B...) no longer change it while the keyboard is elsewhere.
+
 ## 0.5.0 (2026-10-17)
 
 A companion agent writes beside you, AI apps draw the vault as cards, and the app is simpler to set up.

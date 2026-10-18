@@ -482,6 +482,8 @@ export type NewFile = { label: string; icon: LucideIcon; make: (folder: string) 
 
 /** Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T"). */
 export type PluginCommand = { id: string; name: string; keys?: string[]; when?: () => boolean; run: () => void
+  /** Its keys act only while this holds too: where the keyboard is (`keysInEditor`: a note's keys only in that note). */
+  keysWhen?: () => boolean
   /** Only on computers (a split, the sidebar: phones have neither). */
   desktop?: boolean
   /** Its icon (a component, or a Lucide name: `mic`; its plugin's when left out) and a shorter name where it's a button

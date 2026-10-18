@@ -1,9 +1,10 @@
 // The editing keys and commands (plugins/core/editing, Templates' Insert current date): ⌘L makes a task and
 // ticks it, ⌘B / ⌘I / highlight toggle on the selection or the word at the cursor, ⌘K makes a Markdown link (not the
 // quick switcher: that's ⌘O), ⌘D deletes the line, headings, lists, a block put in, the date typed, and ⌘G opens the
-// graph from inside the editor (the app's keys win over the editor's). WRITES a note: throwaway only.
+// graph from inside the editor (the app's keys win over the editor's); Google Docs' marks, headings and lists, ⌥↑ / ⌥↓,
+// and from a file tree row F2, ⌘D (the file, not the note) and ?. WRITES a note: throwaway only.
 //   node web/qa/editkeys.mjs <base url> <vault path>
-import { readFileSync, writeFileSync } from "node:fs"
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs"
 import path from "node:path"
 import { command, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
@@ -76,6 +77,53 @@ await page.keyboard.press("Enter"); await page.keyboard.press("Enter"); await pa
 await command(page, "Insert current date")
 const today = new Date(); const ymd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
 check("Insert current date", await until(() => disk().includes(ymd)), disk())
+
+// Google Docs' keys: a mark on the word at the cursor, a heading, the lists; ⌥↑ / ⌥↓ move the line.
+await page.click("[data-pane] .cm-content")
+await line(3); await page.keyboard.press("ArrowRight")
+for (const [keys, want, what] of [["Shift+X", "~~delta~~", "strikethrough"], ["Shift+H", "==delta==", "highlight"], ["Shift+C", "`delta`", "code"]]) {
+  await page.keyboard.press(`ControlOrMeta+${keys}`)
+  check(`⌘${keys.replace("Shift+", "⇧")}: ${what}`, await saved(3, want), lines()[2])
+  await page.keyboard.press(`ControlOrMeta+${keys}`)
+  await saved(3, "delta")
+}
+await page.keyboard.press("ControlOrMeta+Alt+2")
+check("⌘⌥2: heading 2", await saved(3, "## delta"), lines()[2])
+await page.keyboard.press("ControlOrMeta+Alt+0")
+check("⌘⌥0: no heading", await saved(3, "delta"), lines()[2])
+for (const [n, want, what] of [["8", "- delta", "bullet"], ["7", "1. delta", "numbered"], ["9", "- [ ] delta", "task"]]) {
+  await page.keyboard.press(`ControlOrMeta+Shift+${n}`)
+  check(`⌘⇧${n}: ${what} list`, await saved(3, want), lines()[2])
+  await page.keyboard.press(`ControlOrMeta+Shift+${n}`)
+  await saved(3, "delta")
+}
+const second = lines()[1]
+await page.keyboard.press("Alt+ArrowUp")
+check("⌥↑: the line moves up", await saved(2, "delta") && lines()[2] === second, lines())
+await page.keyboard.press("Alt+ArrowDown")
+check("⌥↓: and back down", await saved(3, "delta"), lines())
+
+// A note's keys stay in the note: ⌘D on its file tree row duplicates the file, F2 renames it there, ? the hotkeys.
+const before = disk()
+const row = `[data-sidebar-body] [data-tree-path="${NOTE}"] > button`
+await until(() => page.$(row))
+await page.focus(row)
+await page.keyboard.press("F2")
+check("F2 on a tree row: its name to type", !!(await until(() => page.$('[data-sidebar-body] input[aria-label="New name"]'))))
+await page.keyboard.press("Escape")
+await until(() => page.evaluate((r) => document.activeElement === document.querySelector(r), row))
+await page.keyboard.press("ControlOrMeta+D")
+const copy = file.replace(/\.md$/, " 1.md")
+check("⌘D on a tree row: the file duplicated", await until(() => existsSync(copy)), copy)
+check("⌘D on a tree row: the note left alone", disk() === before, disk())
+if (existsSync(copy)) unlinkSync(copy)
+await page.focus(row)
+await page.keyboard.press("Shift+/")
+check("? opens the hotkeys", !!(await until(() => page.$("[data-hotkeys]"))))
+await page.keyboard.press("Escape"); await wait(300)
+// (Duplicate opened the copy, gone now: back to the note)
+await page.goto(`${B}#file/${encodeURIComponent(NOTE)}`)
+await page.waitForSelector("[data-pane] .cm-content", { timeout: 30000 })
 
 await page.keyboard.press("ControlOrMeta+O")
 check("⌘O opens the quick switcher", !!(await until(() => page.$('[role="dialog"][aria-label="Search"]'))))

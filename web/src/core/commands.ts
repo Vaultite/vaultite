@@ -17,6 +17,9 @@ export type Command = {
   run: () => unknown
   /** Offered only while this holds (a file is open...). */
   when?: () => boolean
+  /** Its keys act only while this holds too: where the keyboard is (a note's keys only in that note), which the
+   *  palette's own field would fail. */
+  keysWhen?: () => boolean
   /** Only on computers (splits, the sidebar: phones have neither). */
   desktop?: boolean
   /** Its icon: a component or a name (`mic`); else its plugin's. Keep `icon` and `label` after `run`: the server reads
@@ -115,14 +118,13 @@ export const available = (cs: Command[]) => cs.filter((c) => {
 const GLYPH: Record<string, string> = MAC
   ? { Mod: "⌘", Shift: "⇧", Alt: "⌥", Ctrl: "⌃", Enter: "↵", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "esc" }
   : { Mod: "Ctrl", Shift: "Shift", Alt: "Alt", Ctrl: "Ctrl", Enter: "↵", ArrowUp: "↑", ArrowDown: "↓", ArrowLeft: "←", ArrowRight: "→", Escape: "esc" }
-/** A shortcut as the keycaps to draw: "Mod+Shift+F" -> ["⌘", "⇧", "F"]. */
-// What ⇧ types on the keys a shortcut names by their place (a US layout), for a step drawn as what it types.
+// What ⇧ types on the keys a shortcut names by their place (a US layout), for a step drawn as what it types; a digit
+// stays ⇧1, as drawing tools write it.
 const SHIFTED: Record<string, string> = {
   "/": "?", ";": ":", "'": "\"", ",": "<", ".": ">", "[": "{", "]": "}", "\\": "|", "`": "~", "-": "_", "=": "+",
-  "1": "!", "2": "@", "3": "#", "4": "$", "5": "%", "6": "^", "7": "&", "8": "*", "9": "(", "0": ")",
 }
 /** A shortcut as the keycaps to draw: "Mod+Shift+F" -> ["⌘", "⇧", "F"]. A step without ⌘, ⌃ or ⌥ is drawn as what it
- *  types, like Vim writes it: "G G" -> ["g", "g"], "Shift+G" -> ["G"], "Shift+/" -> ["?"], "Space" -> ["Space"]. */
+ *  types, like Vim writes it: "G G" -> ["g", "g"], "Shift+G" -> ["G"], "Shift+/" -> ["?"]; "Shift+1" -> ["⇧", "1"]. */
 export const keyCaps = (keys: string) => stepsOf(canonical(keys)).flatMap((step) => {
   const parts = step.split(/\+(?!$)/)
   const key = parts[parts.length - 1]
@@ -237,7 +239,8 @@ export const sameKeys = (a: string, b: string) => canonical(a).toLowerCase() ===
 /** The shortcut a keydown is ("Mod+Shift+T"), or "" while only modifiers are down. */
 export function shortcutOf(e: KeyboardEvent) {
   const key = keyName(e)
-  if (!key) return ""
+  // AltGr types (⌃⌥7 is "{" on a German layout): never a shortcut.
+  if (!key || (!MAC && e.getModifierState?.("AltGraph"))) return ""
   const mods = [(MAC ? e.metaKey : e.ctrlKey) && "Mod", MAC && e.ctrlKey && "Ctrl", e.altKey && "Alt", e.shiftKey && "Shift"].filter(Boolean)
   return [...mods, key].join("+")
 }
@@ -268,15 +271,19 @@ function standIn(id: string): Command {
   return c
 }
 
+const keysReach = (c: Command) => { try { return !c.keysWhen || c.keysWhen() } catch { return false } }
+
 /** The commands available now whose keys are these steps (`exact`) or start with them (`longer`). */
 function matching(steps: string[]) {
   const exact: Command[] = [], longer: { c: Command; steps: string[] }[] = []
   for (const b of table().get(steps[0]) ?? []) {
     if (b.steps.length < steps.length || steps.some((s, i) => b.steps[i] !== s)) continue
-    if (!available([b.c]).length) continue
+    if (!available([b.c]).length || !keysReach(b.c)) continue
     if (b.steps.length === steps.length) exact.push(b.c)
     else longer.push(b)
   }
+  // The same keys on two: the one offered only sometimes is the more particular (Vim's ? over Open hotkeys).
+  exact.sort((a, b) => Number(!a.when) - Number(!b.when))
   return { exact, longer }
 }
 

@@ -6,7 +6,7 @@ import {
   ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
   Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -46,6 +46,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const box = useRef<HTMLDivElement>(null)
   const stage = useRef<HTMLDivElement>(null)
   const zoomLabel = useRef<HTMLSpanElement>(null)
+  const fitKeys = useCommandKeys("canvas:fit", true), zoom100Keys = useCommandKeys("canvas:zoom-100", true)
   const [doc, setDoc] = useState<CanvasDoc>(() => { try { return parseCanvas(text) } catch { return { nodes: [], edges: [] } } })
   const [error, setError] = useState<string | null>(() => { try { parseCanvas(text); return null } catch (e) { return (e as Error).message } })
   const docRef = useRef(doc)
@@ -235,7 +236,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   keyed.current = {
     box: box.current,
     pan: (dx, dy) => { const v = viewRef.current; setView({ ...v, x: v.x - dx, y: v.y - dy }) },
-    zoom: zoomBy, fit: fitAll, selected: () => sel.size > 0 || !!selEdge,
+    zoom: zoomBy, fit: fitAll, fitSelection, zoom100: zoomTo100, selected: () => sel.size > 0 || !!selEdge,
   }
   useEffect(() => registerBoard(() => ({ ...keyed.current!, box: box.current })), [])
 
@@ -745,9 +746,6 @@ export default function Board({ store, text, editable, onChange, place, path }: 
     if (typing(e.target)) return
     const mod = e.metaKey || e.ctrlKey
     if (e.key === " " && !mod) { e.preventDefault(); if (!spacePan) setSpacePan(true); return }
-    if (e.shiftKey && !mod && e.code === "Digit1") { e.preventDefault(); fitAll(); return }
-    if (e.shiftKey && !mod && e.code === "Digit2") { e.preventDefault(); fitSelection(); return }
-    if (e.shiftKey && !mod && e.code === "Digit0") { e.preventDefault(); zoomTo100(); return }
     if (e.key === "Escape") { setSel(new Set()); setSelEdge(null); return }
     if (!editable) return
     const k = e.key.toLowerCase()
@@ -985,12 +983,12 @@ export default function Board({ store, text, editable, onChange, place, path }: 
         <div className="glass absolute top-3 right-3 flex flex-col items-center gap-0.5 rounded-[12px] p-1 max-md:top-2 max-md:right-2" data-canvas-toolbar="view"
           onPointerDown={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
           <Tool icon={Plus} label="Zoom in" onClick={() => zoomBy(1.25)} />
-          <button type="button" onClick={zoomTo100} data-tip="Zoom to 100% (Shift+0)" data-canvas-tool="Zoom to 100%"
+          <button type="button" onClick={zoomTo100} data-tip={`Zoom to 100%${zoom100Keys}`} data-canvas-tool="Zoom to 100%"
             className="h-6 w-8 cursor-pointer rounded-[6px] text-[11px] font-medium text-muted-foreground tabular-nums hover:bg-foreground/[0.06] hover:text-foreground max-md:w-10">
             <span ref={zoomLabel}>100%</span>
           </button>
           <Tool icon={Minus} label="Zoom out" onClick={() => zoomBy(0.8)} />
-          <Tool icon={Maximize} label="Zoom to fit (Shift+1)" onClick={fitAll} />
+          <Tool icon={Maximize} label="Zoom to fit" keys={fitKeys} onClick={fitAll} />
           {editable && <>
             <span className="my-0.5 h-px w-5 shrink-0 bg-border" />
             <Tool icon={Undo2} label="Undo" onClick={() => step(true)} disabled={!undo.current.length} />
@@ -1030,9 +1028,9 @@ function Preview({ pa, sa, pb, sb }: { pa: Pt; sa: Side; pb: Pt; sb: Side | null
     <polygon points={`${pb.x},${pb.y} ${h(0.45)} ${h(-0.45)}`} fill="var(--primary)" /></g>
 }
 
-function Tool({ icon: Icon, label, onClick, disabled, swatch }: { icon: typeof StickyNote; label: string; onClick: (e: MouseEvent) => void; disabled?: boolean; swatch?: string | null }) {
+function Tool({ icon: Icon, label, keys = "", onClick, disabled, swatch }: { icon: typeof StickyNote; label: string; keys?: string; onClick: (e: MouseEvent) => void; disabled?: boolean; swatch?: string | null }) {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} data-tip={label} data-canvas-tool={label}
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} data-tip={label + keys} data-canvas-tool={label}
       className="relative grid size-8 shrink-0 cursor-pointer place-items-center rounded-[8px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-35 disabled:hover:bg-transparent max-md:size-10">
       <Icon className="size-4" strokeWidth={2.25} />
       {swatch && <span className="absolute right-1 bottom-1 size-2 rounded-full" style={{ background: swatch }} />}

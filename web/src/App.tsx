@@ -1,10 +1,10 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { FoldVertical, AppWindow, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, Settings as SettingsIcon, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
-import { runCommandId, typingIn, useCommands } from "@/core/commands"
+import { runCommandId, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
-import { currentEditor } from "@/core/editors"
+import { currentEditor, keysInEditor } from "@/core/editors"
 import { desktop as desktopApp, otherVaults } from "@/core/desktop"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
@@ -84,6 +84,8 @@ const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ defau
 // The core app's own pages (Plugins, Settings), beside the vault's name at the sidebar's bottom. Every
 // other page is a file.
 type Page = { id: string; label: string; icon: LucideIcon; tint: string
+  /** Opening it from the keyboard. */
+  keys?: string[]
   /** It lays out and scrolls itself in a pane, its root stretched to the pane's box (Workspace's TabContent); else the
    *  pane scrolls it. */
   full?: boolean
@@ -91,7 +93,7 @@ type Page = { id: string; label: string; icon: LucideIcon; tint: string
   render: (store: Store) => React.ReactNode }
 const SYSTEM_PAGES: Page[] = [
   { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--primary)", render: (store) => <Suspense><Plugins store={store} /></Suspense> },
-  { id: "settings", label: "Settings", icon: SettingsIcon, tint: "var(--muted-foreground)", full: true, render: (store) => <Suspense><Settings store={store} /></Suspense> },
+  { id: "settings", label: "Settings", keys: ["Mod+,"], icon: SettingsIcon, tint: "var(--muted-foreground)", full: true, render: (store) => <Suspense><Settings store={store} /></Suspense> },
 ]
 /** The app's pages without a button of their own: Bundles (pages/Bundles.tsx), reached from the command "Choose a
  *  bundle…", Settings and Plugins, and opened by itself on a new vault. */
@@ -307,11 +309,7 @@ export default function App() {
     const s = getStore(), p = vaultPath(to)
     return !!s && p !== null && !inVault(s, p)
   }
-  const besideText = () => {
-    const a = document.activeElement, ed = currentEditor()
-    // (the editor itself, for the phone's keys; nothing focused, something in the file's view, or what holds it: a sheet)
-    return !!ed?.undo && (a === ed.view.contentDOM || !typingIn(a) && (!a || a.contains(ed.view.dom) || !!a.closest(".file-view")?.contains(ed.view.dom)))
-  }
+  const besideText = () => { const ed = currentEditor(); return !!ed?.undo && keysInEditor(ed) }
   const pageKey = pages.map((p) => `${p.id}:${p.label}`).join("|")
   useCommands(() => [
     // (`label` and `icon`: as a blank tab's buttons, core/newtab.ts' default ones.)
@@ -336,8 +334,8 @@ export default function App() {
       // Past the last pane on a side: into that side's sidebar, and from a sidebar back to the pane (core/keylist.ts).
       { id: `split:focus-${side}`, name: `Focus on the pane ${where}`, when: () => isDesktop() && canGoSide(side), run: () => goSide(side), icon: Focus })),
     // Off a Mac, ⌃⌥← switches workspaces (GNOME, Xfce): ⌥← there, as browsers have it.
-    { id: "nav:back", name: "Navigate back", keys: [isMac ? "Mod+Alt+ArrowLeft" : "Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
-    { id: "nav:forward", name: "Navigate forward", keys: [isMac ? "Mod+Alt+ArrowRight" : "Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
+    { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
+    { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
     // (A pinned tab stays open: closed from its menu, or unpinned first.)
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, when: isDesktop, run: () => { if (!activeTab().pinned) closeTab(activeTab().id) }, icon: X },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
@@ -352,7 +350,7 @@ export default function App() {
     { id: "tab:goto-last", name: "Go to last tab", keys: desktopApp ? ["Mod+9"] : undefined, when: isDesktop, run: () => selectTabAt(-1), icon: ArrowRightToLine },
     // (⌘⇧T is the browser's too.)
     { id: "tab:reopen", name: "Reopen closed tab", keys: desktopApp ? ["Mod+Shift+T"] : undefined, when: () => isDesktop() && canReopenTab(), run: () => reopenTab(fileGone), icon: RotateCcw },
-    { id: "tab:close-others", name: "Close all other tabs", when: isDesktop, run: () => closeTabs("others", activeTab().id), icon: CopyX },
+    { id: "tab:close-others", name: "Close all other tabs", keys: ["Mod+Alt+W"], when: isDesktop, run: () => closeTabs("others", activeTab().id), icon: CopyX },
     // (⌃Tab is the browser's: the desktop app has it, the web none by default.)
     { id: "tab:next", name: "Go to next tab", keys: desktopApp ? ["Ctrl+Tab"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(1), icon: ChevronRight },
     { id: "tab:previous", name: "Go to previous tab", keys: desktopApp ? ["Ctrl+Shift+Tab"] : undefined, when: () => isDesktop() && tabsHere() > 1, run: () => cycleTab(-1), icon: ChevronLeft },
@@ -369,7 +367,7 @@ export default function App() {
     // (The name stays a literal for core/appsource.ts; off a Mac it's the file manager's.)
     { id: "file:reveal-finder", name: "Reveal current file in Finder", when: () => !!tabFile() && canReveal(), run: () => revealInFinder(tabFile()), icon: FolderOpen,
       ...(isMac ? {} : { name: "Show current file in folder" }) },
-    ...SYSTEM_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`,
+    ...SYSTEM_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys,
       run: () => { if (isDesktop()) go(targetOf(p.id)); else location.hash = `#${p.id}` }, icon: p.icon })),
     // Bundles (core/bundles.ts): setups of the app to start from, save and share.
     { id: "bundles:choose", name: "Choose a bundle…", run: openBundles, icon: Package },
@@ -384,7 +382,7 @@ export default function App() {
     { id: "scheme:choose", name: "Change colour scheme", run: chooseScheme, icon: PaletteIcon },
     { id: "newtab:page", name: "Choose a page for new tabs…", run: chooseNewTabPage, icon: LayoutDashboard },
     { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
-    { id: "hotkeys:open", name: "Open hotkeys", run: () => openDetail("hotkeys"), icon: Keyboard },
+    { id: "hotkeys:open", name: "Open hotkeys", keys: ["Shift+/"], run: () => openDetail("hotkeys"), icon: Keyboard },
     // A choice of two, like the theme: the one not in use is offered (the menu bar's radio items).
     { id: "density:compact", name: "Use compact density", when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },
     { id: "density:comfortable", name: "Use comfortable density", when: () => getPrefs().density !== "comfortable", run: () => setPrefs({ density: "comfortable" }), icon: UnfoldVertical },

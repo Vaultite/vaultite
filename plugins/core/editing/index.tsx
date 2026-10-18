@@ -1,5 +1,5 @@
 import { ArrowDown, ArrowUp, ClipboardPaste, Delete, Heading1, Heading2, Heading3, Heading4, Heading5, Heading6, ImagePlus, Link, Link2, List, ListIndentDecrease, ListIndentIncrease, ListOrdered, ListTodo, Pilcrow, RemoveFormatting, SquareCheck, Superscript, TextQuote } from "lucide-react"
-import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, notifyError, unhighlight } from "@vaultite"
+import { activeFile, currentEditor, definePlugin, HIGHLIGHT_EMOJI, keysInEditor, notifyError, unhighlight, type PluginCommand } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { NoteKeys } from "./keys"
 import { addPhotos } from "./photo"
@@ -21,8 +21,8 @@ const when = () => !!note()
 const coarse = () => matchMedia("(pointer: coarse)").matches
 
 const marks: [string, string, string, string[]?][] = [
-  ["bold", "Toggle bold", "**", ["Mod+B"]], ["italics", "Toggle italics", "*", ["Mod+I"]], ["highlight", "Toggle highlight", "=="],
-  ["strikethrough", "Toggle strikethrough", "~~"], ["code", "Toggle code", "`"], ["inline-math", "Toggle inline math", "$"],
+  ["bold", "Toggle bold", "**", ["Mod+B"]], ["italics", "Toggle italics", "*", ["Mod+I"]], ["highlight", "Toggle highlight", "==", ["Mod+Shift+H"]],
+  ["strikethrough", "Toggle strikethrough", "~~", ["Mod+Shift+X"]], ["code", "Toggle code", "`", ["Mod+Shift+C"]], ["inline-math", "Toggle inline math", "$"],
   ["comment", "Toggle comment", "%%", ["Mod+/"]],
 ]
 // (‸ is where the cursor goes.)
@@ -35,30 +35,31 @@ const blocks: [string, string, string][] = [
 ]
 
 export default definePlugin({
-  commands: [
+  // Their keys only while the keyboard is in the note: ⌘D on a sidebar's row isn't the note's (the palette still offers them).
+  commands: ([
     // (a coloured highlight, ==🟢text==, goes with its colour)
     ...marks.map(([id, name, m, keys]) => ({ id: `editor:toggle-${id}`, name, keys, when, run: run((e) => (m === "==" ? (v) => unhighlight(v) || e.toggleMark(m)(v) : e.toggleMark(m))) })),
     { id: "editor:clear-formatting", name: "Clear formatting", when, run: run((e) => (v) => e.clearFormatting(v, HIGHLIGHT_EMOJI)), icon: RemoveFormatting },
     { id: "editor:insert-link", name: "Insert Markdown link", keys: ["Mod+K"], when, run: run((e) => e.insertLink), icon: Link },
     { id: "editor:insert-wikilink", name: "Add internal link", when, run: run((e) => e.insertWikilink), icon: Link2 },
     { id: "editor:toggle-checklist-status", name: "Toggle checkbox status", keys: ["Mod+L"], when, run: run((e) => e.toggleChecklist), icon: SquareCheck },
-    { id: "editor:toggle-bullet-list", name: "Toggle bullet list", when, run: run((e) => e.toggleBullets), icon: List },
-    { id: "editor:toggle-numbered-list", name: "Toggle numbered list", when, run: run((e) => e.toggleNumbers), icon: ListOrdered },
-    { id: "editor:toggle-task-list", name: "Toggle task list", when, run: run((e) => e.toggleTasks), icon: ListTodo },
+    { id: "editor:toggle-bullet-list", name: "Toggle bullet list", keys: ["Mod+Shift+8"], when, run: run((e) => e.toggleBullets), icon: List },
+    { id: "editor:toggle-numbered-list", name: "Toggle numbered list", keys: ["Mod+Shift+7"], when, run: run((e) => e.toggleNumbers), icon: ListOrdered },
+    { id: "editor:toggle-task-list", name: "Toggle task list", keys: ["Mod+Shift+9"], when, run: run((e) => e.toggleTasks), icon: ListTodo },
     { id: "editor:indent-list", name: "Indent list", when, run: run((e) => e.indentMore), icon: ListIndentIncrease },
     { id: "editor:unindent-list", name: "Unindent list", when, run: run((e) => e.indentLess), icon: ListIndentDecrease },
     { id: "editor:toggle-blockquote", name: "Toggle blockquote", when, run: run((e) => e.toggleQuote), icon: TextQuote },
-    ...[1, 2, 3, 4, 5, 6].map((n) => ({ id: `editor:set-heading-${n}`, name: `Set as heading ${n}`, when, run: run((e) => e.setHeading(n)), icon: [Heading1, Heading2, Heading3, Heading4, Heading5, Heading6][n - 1] })),
-    { id: "editor:set-heading-0", name: "Remove heading", when, run: run((e) => e.setHeading(0)), icon: Pilcrow },
+    ...[1, 2, 3, 4, 5, 6].map((n) => ({ id: `editor:set-heading-${n}`, name: `Set as heading ${n}`, keys: [`Mod+Alt+${n}`], when, run: run((e) => e.setHeading(n)), icon: [Heading1, Heading2, Heading3, Heading4, Heading5, Heading6][n - 1] })),
+    { id: "editor:set-heading-0", name: "Remove heading", keys: ["Mod+Alt+0"], when, run: run((e) => e.setHeading(0)), icon: Pilcrow },
     { id: "editor:delete-paragraph", name: "Delete paragraph", keys: ["Mod+D"], when, run: run((e) => e.deleteParagraph), icon: Delete },
-    { id: "editor:swap-line-up", name: "Move line up", when, run: run((e) => e.lineUp), icon: ArrowUp },
-    { id: "editor:swap-line-down", name: "Move line down", when, run: run((e) => e.lineDown), icon: ArrowDown },
+    { id: "editor:swap-line-up", name: "Move line up", keys: ["Alt+ArrowUp"], when, run: run((e) => e.lineUp), icon: ArrowUp },
+    { id: "editor:swap-line-down", name: "Move line down", keys: ["Alt+ArrowDown"], when, run: run((e) => e.lineDown), icon: ArrowDown },
     ...blocks.map(([id, name, text]) => ({ id: `editor:${id}`, name, when, run: run((e) => e.insertBlock(text)) })),
     { id: "editor:insert-footnote", name: "Insert footnote", when, run: run((e) => e.insertFootnote), icon: Superscript },
     // (not through `run`: the picker opens only while the tap or key is being handled)
     { id: "editor:add-photo", name: "Add photo", when: () => !!activeFile(), run: () => { const f = activeFile(); if (f) void addPhotos(f.path) }, icon: ImagePlus },
-    { id: "editor:paste-plain-text", name: "Paste as plain text", when, run: () => { const v = note(); if (v) void load().then((m) => m.pastePlain(v)).catch((e) => notifyError(e, "Couldn't read the clipboard")) }, icon: ClipboardPaste },
-  ],
+    { id: "editor:paste-plain-text", name: "Paste as plain text", keys: ["Mod+Shift+V"], when, run: () => { const v = note(); if (v) void load().then((m) => m.pastePlain(v)).catch((e) => notifyError(e, "Couldn't read the clipboard")) }, icon: ClipboardPaste },
+  ] as PluginCommand[]).map((c) => ({ ...c, keysWhen: () => keysInEditor() })),
   slash: () => (!activeFile() ? [] : [{
     id: "editor:add-photo", title: "Photo", section: "Media", keywords: "photo image picture camera library attachment upload",
     detail: coarse() ? "Library or camera" : "Image file", line: true,
