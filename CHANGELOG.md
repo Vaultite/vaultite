@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Links to archived files keep working**: a link to a file's old place (a recap, a report written before it was
+  archived) still opens it, and the file's next move rewrites it; recaps link files where they are now.
+- Moving or archiving a drawing (`.excalidraw`) or any file with a long extension no longer doubles it.
 - **One copy name**: imported attachments and trashed files that share a name get " 1", " 2"..., as new files do.
 - **Sample folders** (Settings > Files): folders of examples, not your data. Their notes are no one's people, books or
   logs, and tasks, Dataview and database views made outside them leave them out.

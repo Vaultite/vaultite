@@ -653,7 +653,7 @@ export class Vault {
     const fwd = new Map(moves), back = new Map(moves.map(([f, t]) => [t, f]))
     const now = this.linkFiles()
     const before = linkResolver(now.map((f) => (back.has(f.path) ? { ...f, path: back.get(f.path)! } : f)))
-    const after = linkResolver(now)
+    const after = linkResolver(now, { twins: false }) // (a path left pointing at a file's old place is rewritten)
     const was = new Set(now.map((f) => back.get(f.path) ?? f.path)), is = new Set(now.map((f) => f.path))
     const base = (p: string) => p.slice(p.lastIndexOf("/") + 1)
     // (each link as seen from its file, where it was and where it is: the closest file of a name wins)

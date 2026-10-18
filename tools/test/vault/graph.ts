@@ -50,6 +50,7 @@ export default async ($: VaultTest) => {
   ;[, graph] = await api("GET", "graph")
   check("graph: a first name alone links to nobody, an alias does", gedge("Graph test/Met.md", "People/Theo Park.md") && graph.edges.filter((e: Any) => e.from === "Graph test/Met.md").length === 1, graph.edges.filter((e: Any) => e.from === "Graph test/Met.md"))
   const { linkResolver } = await import("../../../core/links.ts")
+  const { keepExt } = await import("../../../core/filetypes.ts")
   const lr = linkResolver([{ path: "Notes/Idea.md", aliases: ["Big idea"] }, { path: "People/Bob Lee.md" }, { path: "Idea.md" }, { path: "Work/Idea.md" },
     { path: "Work/Deep/Plan.md" }, { path: "files/a.pdf" }, { path: "Books/Dune Part One.md", aliases: ["Dune: Part One"] }, { path: "Dune: Part One.md" }])
   check("links: path, name, alias and heading resolve (a name before an alias); a first name or a part of a path doesn't",
@@ -241,6 +242,27 @@ export default async ($: VaultTest) => {
   ;[, aop] = await api("POST", "ops/archive.restore", { path: "Arch/.archive/Plain.md" })
   check("archive.restore: back, key gone, a free name when taken", aop.path === "Arch/Plain 1.md" && read("Arch/Plain 1.md") === "Plain text.\n" && read("Arch/See.md").startsWith("[[Arch/Plain 1]]"), aop)
   check("archive.add: a hidden file or a folder is refused", (await api("POST", "ops/archive.add", { path: "Arch" }))[0] === 400)
+  // A path written before a file was archived (a recap, an agent's report) still finds it; its next move rewrites it.
+  const ltw = linkResolver([{ path: "Inbox/.archive/Done.md" }, { path: "Inbox/Back.md" }])
+  check("links: a path finds its archive twin, both ways", ltw("Inbox/Done") === "Inbox/.archive/Done.md" && ltw("Inbox/.archive/Back") === "Inbox/Back.md" &&
+    linkResolver([{ path: "Inbox/.archive/Done.md" }], { twins: false })("Inbox/Done") === null)
+  write("Arch/.archive/Stale.md", "Done.\n")
+  write("Arch/Old ref.md", "[[Arch/Stale]]\n")
+  ;[, graph] = await api("GET", "graph?archived=true")
+  check("archive: a path to its old place resolves", gedge("Arch/Old ref.md", "Arch/.archive/Stale.md"), graph.edges.filter((e: Any) => e.from === "Arch/Old ref.md"))
+  await api("POST", "ops/file.move", { from: "Arch/.archive/Stale.md", to: "Arch/.archive/Stale two.md" })
+  check("archive: moving it rewrites the old path", read("Arch/Old ref.md") === "[[Arch/.archive/Stale two]]\n", read("Arch/Old ref.md"))
+  // Moves keep a file's own extension, however long, and never add a second (Board.excalidraw.excalidraw).
+  write("Arch/Board.excalidraw", "{}\n"); write("Arch/Sketch.excalidraw.md", "---\nexcalidraw-plugin: parsed\n---\n")
+  write("Arch/Draws.md", "![[Arch/Board.excalidraw]] [[Arch/Sketch.excalidraw]]\n")
+  ;[, aop] = await api("POST", "ops/archive.add", { path: "Arch/Board.excalidraw" })
+  check("archive.add: a long extension isn't doubled", aop.path === "Arch/.archive/Board.excalidraw" && exists("Arch/.archive/Board.excalidraw") &&
+    read("Arch/Draws.md").startsWith("![[Arch/.archive/Board.excalidraw]]"), [aop, read("Arch/Draws.md")])
+  const mv = async (from: string, to: string) => (await api("POST", "ops/file.move", { from, to }))[1].path
+  check("file.move: keeps the extension it has, adds one it lacks", await mv("Arch/Sketch.excalidraw.md", "Arch/Sketch two.excalidraw") === "Arch/Sketch two.excalidraw.md" &&
+    await mv("Arch/Old ref.md", "Arch/v1.2") === "Arch/v1.2.md" && await mv("Arch/v1.2.md", "Arch/Ref.txt") === "Arch/Ref.txt" &&
+    keepExt("A/Map.canvas", "A/.archive/Map.canvas") === "A/.archive/Map.canvas" && keepExt("A/Books.base", "A/Shelf") === "A/Shelf.base" &&
+    keepExt("A/Photo.jpeg", "A/Cat.jpeg") === "A/Cat.jpeg")
   // By hand, the key alone doesn't move a file; archive.tidy moves those, once.
   write("Arch/By hand.md", "---\narchived: true\n---\n\nTyped.\n")
   ;[, aop] = await api("POST", "ops/archive.tidy", { dry: true })

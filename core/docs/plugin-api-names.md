@@ -622,7 +622,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `HTTPError`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
-- `linkResolver(files)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
+- `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.
 - `load(vault)`: Import every plugin.ts and register its kinds, in discover() order (manifest-only plugins too, for their AGENTS.md).
 - `LOADED`
 - `LOCAL`: This machine's own files: secrets.

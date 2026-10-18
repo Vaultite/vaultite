@@ -54,9 +54,16 @@ function whoOf(s: Sources, rel: string, t0: number, t1: number): Who | "skip" {
   return { agent: a.name, ...(a.session || a.terminal ? { session: a.session ?? a.terminal } : {}) }
 }
 
-const link = (rel: string) => {
-  const p = rel.replace(/\.md$/i, ""), name = p.split("/").pop()!
-  return p.includes("/") ? `[[${p}|${name}]]` : `[[${p}]]`
+/** Links to where files are now: a path an event names may have moved since (renamed that day, or archived). */
+function linker(s: Sources) {
+  const moved = new Map(s.events.flatMap((e) => (e.action === "move" && e.paths?.length === 2 ? [[e.paths[0], e.paths[1]] as const] : [])))
+  return (rel: string) => {
+    let at = rel
+    for (let n = 0; moved.has(at) && n < 20; n++) at = moved.get(at)!
+    if (!s.exists(at) && s.exists(archiveTwin(at))) at = archiveTwin(at)
+    const p = at.replace(/\.md$/i, ""), name = p.split("/").pop()!
+    return p.includes("/") ? `[[${p}|${name}]]` : `[[${p}]]`
+  }
 }
 const plainName = (rel: string) => rel.split("/").pop()!.replace(/\.md$/i, "")
 const IMAGE = /\.(png|jpe?g|gif|webp|svg|avif|heic)$/i
@@ -194,7 +201,7 @@ async function stretchesOf(s: Sources, rel: string): Promise<Stretch[]> {
 
 /** The day's entries, oldest first. */
 export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
-  const inDay = (t: number) => t >= s.from && t < s.to
+  const inDay = (t: number) => t >= s.from && t < s.to, link = linker(s)
   const paths = new Set(s.changed.filter(followed))
   for (const e of s.events) if (CHANGES.has(e.action) && inDay(e.t)) for (const p of e.paths ?? []) if (followed(p)) paths.add(p)
   const stretches: Stretch[] = []
@@ -308,12 +315,12 @@ export async function buildRecap(s: Sources): Promise<RecapEntry[]> {
     if (!m.agent) continue
     const g = sessions.get(`${m.agent.name}\0${m.agent.session ?? ""}`)!
     m.e.text = `${m.agent.name} changed ${g.files.length} file${g.files.length === 1 ? "" : "s"}${m.agent.session ? ` · ${m.agent.session}` : ""}`
-    m.e.items = listed(g.files)
+    m.e.items = listed(g.files, link)
   }
   return batched(rest).map((m) => m.e)
 }
 
-function listed(files: string[]) {
+function listed(files: string[], link: (rel: string) => string) {
   const shown = files.slice(0, ITEMS).map((f) => (followed(f) ? link(f) : f))
   return files.length > ITEMS ? [...shown, `and ${files.length - ITEMS} more`] : shown
 }

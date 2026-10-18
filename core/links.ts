@@ -1,5 +1,6 @@
 // [[Links]] resolved as Obsidian does, on server and app (web/src/core/links.ts): a path, a file name, then aliases
 // and plugins' names; of several, the closest to the linking file wins, an archived one last. No Node.
+import { archiveTwin } from "./fileprops.ts"
 
 /** A file as links see it. `names` are what plugins add (a person's name); `archived`: it loses ties. */
 export type LinkFile = { path: string; aliases?: string[]; names?: string[]; archived?: boolean }
@@ -60,9 +61,9 @@ function distance(dir: string, p: string) {
   return a.length - i + (b.length - i)
 }
 
-/** An index of what links can go to, and how they resolve: `resolve`, and what a link to nothing may have meant
- *  (`suggest`: a name that starts with it, "Alice" for Alice Park; a file of that name in another folder). */
-export function linkIndex<T>(entries: LinkEntry<T>[]): { resolve: Resolve<T>; suggest: (target: string, from?: string, max?: number) => T[] } {
+/** What links can go to: `resolve`, and what a link to nothing may have meant (`suggest`: "Alice" for Alice Park, a
+ *  file of that name elsewhere). `twins` false: a path doesn't find its archive twin (what relinking needs). */
+export function linkIndex<T>(entries: LinkEntry<T>[], { twins = true } = {}): { resolve: Resolve<T>; suggest: (target: string, from?: string, max?: number) => T[] } {
   const paths = new Map<string, LinkEntry<T>[]>(), names = new Map<string, LinkEntry<T>[]>(), labels = new Map<string, LinkEntry<T>[]>()
   const put = (m: Map<string, LinkEntry<T>[]>, k: string, e: LinkEntry<T>) => {
     if (!k) return
@@ -102,7 +103,8 @@ export function linkIndex<T>(entries: LinkEntry<T>[]): { resolve: Resolve<T>; su
     // A path from the vault's top: a bare name is a name, so the closest file of that name wins over one at the top.
     // (a relative one that isn't there is taken as written from the top: `../Media/a.png` as Media/a.png)
     const k = t.replace(/^(\.\.?\/)+/, "").replace(/^\/+/, "").toLowerCase()
-    const exact = k.includes("/") || t.startsWith("/") ? paths.get(k) : undefined
+    // (a path to a file since archived, or unarchived, finds it in its twin: Inbox/X is Inbox/.archive/X now)
+    const exact = k.includes("/") || t.startsWith("/") ? paths.get(k) ?? (twins ? paths.get(archiveTwin(k)) : undefined) : undefined
     if (exact) return rank(exact, from)[0].value
     // A file name; a folder in front of it must be the end of the file's path (`[[Work/Idea]]`: any …/Work/Idea.md).
     const base = baseOf(k)
@@ -130,9 +132,9 @@ export function linkIndex<T>(entries: LinkEntry<T>[]): { resolve: Resolve<T>; su
 }
 
 /** A resolver over these files: a link target (written in `from`) to a file's path, or null. */
-export function linkResolver(files: LinkFile[]): Resolve<string> {
+export function linkResolver(files: LinkFile[], opts?: { twins?: boolean }): Resolve<string> {
   return linkIndex(files.map((f) => ({ value: f.path, path: f.path, archived: f.archived,
-    labels: [...(f.aliases ?? []), ...(f.names ?? [])] }))).resolve
+    labels: [...(f.aliases ?? []), ...(f.names ?? [])] })), opts).resolve
 }
 
 const LINK = () => /(!?\[\[)([^[\]\n|#^]+)([#^][^[\]\n|]*)?(\|[^[\]\n]*)?\]\]|(!?\[[^\]\n]*\]\()(<[^>\n]+>|[^)\s]+)((?:\s+"[^"\n]*")?\))/g

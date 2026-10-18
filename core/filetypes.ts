@@ -33,6 +33,15 @@ export function extOf(path: string) {
   return dot > 0 ? name.slice(dot + 1).toLowerCase() : ""
 }
 
+/** A file's new path with its extension when `to` has none the app knows ("Notes/Better idea" keeps the .md). A
+ *  double one's first part isn't one: "A.excalidraw.md" to "B.excalidraw" is B.excalidraw.md. */
+export function keepExt(from: string, to: string) {
+  const ext = extOf(from), want = extOf(to)
+  if (!ext || want === ext) return to
+  const inner = extOf(from.slice(0, -ext.length - 1))
+  return want && kindOf(to) !== "other" && want !== inner ? to : to + from.slice(-ext.length - 1)
+}
+
 export function kindOf(path: string): FileKind {
   const name = path.slice(path.lastIndexOf("/") + 1).toLowerCase()
   if (NAMES[name]) return NAMES[name]

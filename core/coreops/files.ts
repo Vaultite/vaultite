@@ -1,5 +1,6 @@
 // The vault as files: read, write, list, search, render. What agents do most, so each is also an MCP tool.
 import { actionsFor } from "../actions.ts"
+import { keepExt } from "../filetypes.ts"
 import type { App } from "../app.ts"
 import { type Op, OpError, type Who } from "../ops.ts"
 import { type Any, enc } from "./common.ts"
@@ -228,10 +229,9 @@ Markdown link to what moved is pointed at its new path, and open tabs follow it.
     },
     args: ["from", "to"],
     run: async ({ from, to }, ctx) => {
-      const f = String(from).replace(/^\/+/, ""), ext = /\.[^./]+$/.exec(f)?.[0] ?? ""
-      let t = String(to).replace(/^\/+|\/+$/g, "")
-      if (ext && !/\.[a-z0-9]{1,8}$/i.test(t)) t += ext // "Notes/Better idea" keeps the .md
-      return await ctx.api("POST", "file/move", { from: f, to: t })
+      const f = String(from).replace(/^\/+/, ""), t = String(to).replace(/^\/+|\/+$/g, "")
+      const file = ctx.vault.entries.has(f) || ctx.vault.others.has(f) // (a folder's name has no extension)
+      return await ctx.api("POST", "file/move", { from: f, to: file ? keepExt(f, t) : t })
     },
     text: (r) => `Moved to ${r.path}${r.updated?.length ? `; links updated in ${r.updated.join(", ")}` : ""}.`,
   }, {
