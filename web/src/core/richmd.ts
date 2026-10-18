@@ -3,6 +3,7 @@
 import { isDark } from "@/lib/utils"
 import { onLook } from "@/core/appearance"
 import { haptic } from "@/core/haptics"
+import type { Mounted } from "pele/lazy"
 
 type Katex = typeof import("katex").default
 let katex: Promise<Katex> | null = null
@@ -17,92 +18,73 @@ export function renderMath(tex: string, el: HTMLElement, display: boolean) {
   }).catch(() => { el.textContent = tex })
 }
 
+type Pele = typeof import("pele/lazy")
+let pele: Promise<Pele> | null = null
+const loadPele = () => (pele ??= import("pele/lazy"))
 type Mermaid = typeof import("mermaid").default
 let mermaid: Promise<Mermaid> | null = null
-let mermaidTheme = ""
 const loadMermaid = () => (mermaid ??= import("mermaid").then((m) => m.default))
 let seq = 0
-// Diagrams on screen, drawn again when the app switches between light and dark.
-const diagrams = new Map<HTMLElement, string>()
+// Diagrams on screen: Pele draws them in the scheme's tokens (index.css), so they follow it with no redraw. `mounted` is
+// Pele's, until Mermaid drew one Pele couldn't (then `dark`: the look it was drawn in).
+type Diagram = { src: string; mounted?: Mounted; dark?: boolean }
+const diagrams = new Map<HTMLElement, Diagram>()
 let watching = false
 
-/** The scheme's colours for mermaid's "base" theme, so diagrams follow every scheme: tokens read back as hex (painted
- *  over the background first, since a token may be oklch() or see-through). */
-function mermaidVars() { return vars ??= readVars() }
-/** The colours above, read once per theme: reading them makes the browser work out the page's styles and paints a
- *  canvas, too slow to do for every diagram (a page with several). Forgotten when the theme or scheme changes. */
-let vars: ReturnType<typeof readVars> | null = null
-function readVars() {
-  const cs = getComputedStyle(document.documentElement)
-  const cv = document.createElement("canvas")
-  cv.width = cv.height = 1
-  const x = cv.getContext("2d", { willReadFrequently: true })
-  const token = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback
-  const bg = token("--background", "#fff")
-  const rgb = (css: string) => {
-    if (!x) return [128, 128, 128]
-    for (const f of ["#fff", bg, css]) { x.fillStyle = f; x.fillRect(0, 0, 1, 1) }
-    const d = x.getImageData(0, 0, 1, 1).data
-    return [d[0], d[1], d[2]]
-  }
-  const hex = (v: number[]) => `#${v.map((n) => Math.round(n).toString(16).padStart(2, "0")).join("")}`
-  const mix = (a: number[], b: number[], t: number) => hex(a.map((n, i) => n * t + b[i] * (1 - t)))
-  const card = rgb(token("--card", bg)), fg = rgb(token("--foreground", "#000")), primary = rgb(token("--primary", "#36c"))
-  const muted = rgb(token("--muted-foreground", "#888")), note = rgb(token("--yellow", "#fc0"))
-  return {
-    darkMode: isDark(), background: hex(rgb(bg)), fontFamily: "var(--font-sans)", fontSize: "14px",
-    primaryColor: mix(primary, card, 0.14), primaryBorderColor: mix(primary, card, 0.55), primaryTextColor: hex(fg),
-    secondaryColor: mix(muted, card, 0.14), secondaryBorderColor: mix(muted, card, 0.5), secondaryTextColor: hex(fg),
-    tertiaryColor: mix(muted, card, 0.07), tertiaryBorderColor: mix(muted, card, 0.4), tertiaryTextColor: hex(fg),
-    lineColor: hex(muted), textColor: hex(fg), titleColor: hex(fg), edgeLabelBackground: hex(card),
-    clusterBkg: mix(muted, card, 0.07), clusterBorder: mix(muted, card, 0.4),
-    noteBkgColor: mix(note, card, 0.18), noteBorderColor: mix(note, card, 0.55), noteTextColor: hex(fg),
-  }
+async function drawPele(el: HTMLElement, d: Diagram) {
+  const p = await loadPele()
+  const src = d.src
+  try { await p.load(p.detectType(src)) } catch { /* mount shows why */ }
+  if (diagrams.get(el) !== d || d.src !== src) return // redrawn with newer text meanwhile
+  if (d.mounted) { d.mounted.update(src); return }
+  el.textContent = ""
+  d.mounted = p.mount(el, src, { fontSize: 14, onError: () => void drawMermaid(el, d) })
 }
 
-async function drawMermaid(src: string, el: HTMLElement) {
+/** What Pele can't draw, drawn by Mermaid (loaded only then); if Mermaid can't either, Pele's error stays. */
+async function drawMermaid(el: HTMLElement, d: Diagram) {
+  const src = d.src
   const m = await loadMermaid()
-  const vars = mermaidVars()
-  const theme = JSON.stringify(vars)
-  if (theme !== mermaidTheme) {
-    m.initialize({ startOnLoad: false, securityLevel: "strict", theme: "base", themeVariables: vars, fontFamily: "var(--font-sans)" })
-    mermaidTheme = theme
-  }
+  const dark = isDark()
+  m.initialize({ startOnLoad: false, securityLevel: "strict", theme: dark ? "dark" : "default", fontFamily: "var(--font-sans)" })
   const id = `vau-mermaid-${++seq}`
   try {
     const { svg } = await m.render(id, src)
-    if (diagrams.get(el) !== src) return // redrawn with newer text meanwhile
+    if (diagrams.get(el) !== d || d.src !== src) return
+    d.mounted?.destroy()
+    d.mounted = undefined
+    d.dark = dark
     el.innerHTML = svg
-    el.classList.remove("is-error")
-  } catch (e) {
+  } catch {
     document.getElementById(id)?.remove()
     document.getElementById(`d${id}`)?.remove()
-    if (diagrams.get(el) !== src) return
-    el.classList.add("is-error")
-    el.textContent = `Mermaid: ${e instanceof Error ? e.message.split("\n")[0] : String(e)}`
   }
 }
 
 /** A mermaid diagram into `el` (its source shows until it's drawn), in the colour scheme's colours, light or dark. */
 export function renderMermaid(src: string, el: HTMLElement) {
   el.classList.add("mermaid-diagram")
-  if (diagrams.get(el) === src && el.querySelector("svg")) return
-  diagrams.set(el, src)
+  let d = diagrams.get(el)
+  if (d?.src === src && el.querySelector("svg")) return
+  if (d) d.src = src
+  else diagrams.set(el, d = { src })
   if (!el.firstChild) { const pre = document.createElement("pre"); pre.textContent = src; el.append(pre) }
   if (!watching) {
     watching = true
-    // Light or dark, or another colour scheme: drawn again in its colours.
+    // Another font measures labels again; Mermaid's few are drawn again for light or dark.
     onLook(() => {
-      vars = null
-      if (JSON.stringify(mermaidVars()) === mermaidTheme) return
-      for (const [d, s] of diagrams) { if (d.isConnected) void drawMermaid(s, d); else diagrams.delete(d) }
+      for (const [e, x] of diagrams) {
+        if (!e.isConnected) { x.mounted?.destroy(); diagrams.delete(e) }
+        else if (x.mounted) x.mounted.refresh()
+        else if (x.dark !== undefined && x.dark !== isDark()) void drawMermaid(e, x)
+      }
     })
   }
-  void drawMermaid(src, el)
+  void drawPele(el, d)
 }
 
 /** Forget a diagram whose element went away (the editor's widget destroyed). */
-export const dropMermaid = (el: HTMLElement) => { diagrams.delete(el) }
+export const dropMermaid = (el: HTMLElement) => { diagrams.get(el)?.mounted?.destroy(); diagrams.delete(el) }
 
 /** Draw what core/markdown.ts left for later inside `root`: math, code's colours and mermaid diagrams. */
 export function hydrate(root: HTMLElement) {

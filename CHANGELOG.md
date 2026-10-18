@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Faster diagrams**: Mermaid diagrams are drawn by Pele, a fraction of the download and time; they follow light,
+  dark and the colour scheme as they change, fit narrow panes and zoom when they don't fit.
 - **Birthdays** in People: a person's `birthday` (YYYY-MM-DD, or MM-DD) shows on their profile with their age, and the
   `people-birthdays` block lists the next ones, red under a week away and orange under a month.
 - **Closing tabs one after another**, as browsers do: tabs closed with the mouse keep their width, so the next

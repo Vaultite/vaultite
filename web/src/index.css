@@ -774,10 +774,20 @@ dialog { --vau-panel-bottom: 0px; }
 .math-display { display: block; overflow-x: auto; overflow-y: hidden; text-align: center; padding: 4px 0; }
 .math-inline { font-size: 1em; }
 .math .katex-display { margin: 0; }
-.mermaid-diagram, .md-mermaid { display: flex; justify-content: center; overflow-x: auto; padding: 4px 0; }
-.mermaid-diagram svg { max-width: 100%; height: auto; }
+.mermaid-diagram, .md-mermaid { padding: 4px 0; }
+.mermaid-diagram > svg { display: block; margin-inline: auto; max-width: 100%; height: auto; }
 .mermaid-diagram pre { font-family: var(--font-code); font-size: 13px; color: var(--muted-foreground); white-space: pre-wrap; }
-.mermaid-diagram.is-error { justify-content: flex-start; color: var(--red); font-size: 13px; font-family: var(--font-code); }
+/* Pele draws diagrams in these, so they follow the scheme and light or dark as they change. */
+.mermaid-diagram {
+  --pele-bg: var(--background); --pele-fg: var(--foreground); --pele-muted: var(--muted-foreground);
+  --pele-line: var(--muted-foreground); --pele-accent: var(--primary); --pele-critical: var(--red); --pele-error: var(--red);
+  --pele-surface: color-mix(in oklab, var(--primary) 14%, var(--card));
+  --pele-surface-alt: color-mix(in oklab, var(--muted-foreground) 7%, var(--card));
+  --pele-border: color-mix(in oklab, var(--primary) 55%, var(--card));
+  --pele-font: var(--font-sans); --pele-font-mono: var(--font-code); --pele-radius: 6px;
+  --pele-series-1: var(--blue); --pele-series-2: var(--orange); --pele-series-3: var(--green); --pele-series-4: var(--red);
+  --pele-series-5: var(--teal); --pele-series-6: var(--yellow); --pele-series-7: var(--purple); --pele-series-8: var(--pink);
+}
 .vau-editor .cm-block-math, .vau-editor .cm-block-mermaid { padding: 8px 0; }
 /* Callouts: > [!type] Title (core/markdown.ts); each type's colour from the scheme */
 /* The bar is drawn inside the box, so the rounded corners don't bend it. */
