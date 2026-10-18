@@ -15,6 +15,7 @@ import { kindOf } from "./filetypes.ts"
 import { type LinkFile, linkResolver, mapLinks, relativePath, type Resolve, resolvePath } from "./links.ts"
 import { errorContext } from "./serverlog.ts"
 import { noteRead, noteSource } from "./sources.ts"
+import { strings } from "./values.ts"
 import { guard, setGate } from "./writegate.ts"
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
 export { hasTag, tagName, tagsOf } from "./sections.ts"
@@ -102,7 +103,8 @@ export function writeNew(p: string, data: string | Buffer): boolean {
   const tmp = `${p}.tmp-${process.pid}-${++tmpN}`
   try {
     fs.writeFileSync(tmp, data, { flag: "wx" })
-    if (fs.existsSync(p)) { fs.rmSync(tmp, { force: true }); return false }
+    // (iCloud's placeholder of it counts: another Mac's copy, not here yet; a second would be iCloud's "Name 2")
+    if (fs.existsSync(p) || !gone(p, { code: "ENOENT" })) { fs.rmSync(tmp, { force: true }); return false }
     fs.renameSync(tmp, p)
     return true
   } catch (e) {
@@ -529,7 +531,7 @@ export class Vault {
   private types: Map<string, Kind> | null = null // each kind by its type, until kinds change
   private plainDirs: string[] = []         // plain(), asked at each sync
   /** The folders whose files are patterns, never items (the Templates plugin's, through the service
-   *  `templates:folder`: core/app.ts): a `type: person` template there isn't a person. */
+   *  `templates:folder`, and the sample folders: core/app.ts): a `type: person` template there isn't a person. */
   plain: () => string[] = () => []
   /** Defaults another app's settings give the vault's settings files, by file (`files`, `plugins/<id>/data`): what
    *  applies to a key a file doesn't set, never written (the plugins' `setting-defaults`: core/app.ts). */
@@ -1283,12 +1285,12 @@ export class Vault {
     this.moved(rel, null, to)
   }
 
-  /** Move a file or folder to .trash, named with the time (" 2", " 3"... when taken); returns where it went. Index untouched. */
+  /** Move a file or folder to .trash, named with the time (" 1", " 2"... when taken); returns where it went. Index untouched. */
   toTrash(rel: string) {
     guard(this.abs(rel))
     const ext = fs.statSync(this.abs(rel)).isDirectory() ? "" : path.extname(rel), stem = `.trash/${rel.slice(0, rel.length - ext.length)} ${localStamp()}`
     let to = stem + ext
-    for (let n = 2; fs.existsSync(this.abs(to)); n++) to = `${stem} ${n}${ext}`
+    for (let n = 1; fs.existsSync(this.abs(to)); n++) to = `${stem} ${n}${ext}`
     fs.mkdirSync(path.dirname(this.abs(to)), { recursive: true })
     fs.renameSync(this.abs(rel), this.abs(to))
     return to
@@ -1325,6 +1327,16 @@ export class Vault {
     return this.exclusions.test(rel)
   }
   private exclusions: { version: number; test: (rel: string) => boolean } | null = null
+
+  /** The sample folders (files.json `samples`): examples, not the user's data. Their files have no kind, and queries
+   *  (tasks, Dataview, bases) leave them out unless asked from a file in that folder. */
+  samples(): string[] {
+    return strings(this.config("files").samples).map((d) => d.replace(/^\/+|\/+$/g, "")).filter(Boolean)
+  }
+  /** The sample folder `rel` is in, or null. */
+  sampleOf(rel: string): string | null {
+    return this.samples().find((d) => rel.startsWith(`${d}/`)) ?? null
+  }
 
   /** A settings file with another app's defaults (`defaults`) under its own keys: what applies, never to write back. */
   configWithDefaults(name: string): Item {

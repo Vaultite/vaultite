@@ -19,7 +19,7 @@ import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, re
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
-const STAMP = / \d{4}-\d{2}-\d{2} \d{6}$/ // what trashing adds to a name
+const STAMP = / \d{4}-\d{2}-\d{2} \d{6}(?: \d+)?$/ // what trashing adds to a name (" 1" when two went at once)
 const CODE = /(`+)(?:(?!\1).)+?\1/g // an inline code span
 
 function showHidden(vault: Vault | null) {

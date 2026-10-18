@@ -94,7 +94,24 @@ export default async ($: VaultTest) => {
       check("daily-note.open: a day's note made in Daily/, typed (no folder set finds them)", !t.error && t.result.path === "Daily/2026-09-22.md" && t.result.made && read("Daily/2026-09-22.md").startsWith("---\ntype: day\n---"), t)
       t = await run("daily-note.open", { date: "2026-09-22" })
       check("daily-note.open: there already, it's the same note", !t.error && t.result.path === "Daily/2026-09-22.md" && !t.result.made, t)
+      // iCloud's copies of it (two Macs made it at once): one with nothing of its own merges in, one with text stays.
+      write("Daily/2026-09-22.md", "---\ntype: day\ndone: [Gym]\n---\n\nPlan the week.\n")
+      write("Daily/2026-09-22 2.md", "---\ntype: day\ndone: [Stretch]\nmood: good\n---\n")
+      write("Daily/2026-09-22 3.md", "---\ntype: day\n---\n\nA thought only here.\n")
+      await vault.sync()
+      t = await run("daily-note.open", { date: "2026-09-22" })
+      check("daily-note.open: iCloud's copy merges in and is archived; one with its own text is left",
+        !t.error && read("Daily/2026-09-22.md") === "---\ntype: day\ndone: [Gym, Stretch]\nmood: good\n---\n\nPlan the week.\n" &&
+        !exists("Daily/2026-09-22 2.md") && exists("Daily/.archive/2026-09-22 2.md") && exists("Daily/2026-09-22 3.md"), [t, read("Daily/2026-09-22.md")])
+      // There on disk but not read yet (iCloud bringing it): no second one.
       fs.rmSync(path.join(VAULT, "Daily/2026-09-22.md"))
+      await vault.sync()
+      write(".Daily-placeholder", "")
+      fs.renameSync(path.join(VAULT, ".Daily-placeholder"), path.join(VAULT, "Daily/.2026-09-22.md.icloud"))
+      t = await run("daily-note.open", { date: "2026-09-22" })
+      check("daily-note.open: a note iCloud is still bringing isn't made again", t.error && !exists("Daily/2026-09-22.md"), t)
+      for (const f of ["Daily/.2026-09-22.md.icloud", "Daily/2026-09-22 3.md", "Daily/.archive"]) fs.rmSync(path.join(VAULT, f), { recursive: true })
+      await vault.sync()
       write(".obsidian/daily-notes.json", JSON.stringify({ folder: "Journal/", format: "YYYY/MM/DD-MM-YYYY", template: "Tpl/Day.md" }))
       write("Tpl/Day.md", "---\nmood: \n---\n# {{date:dddd}}\n")
       write("Journal/2026/09/24-09-2026.md", "Rain.\n")

@@ -107,8 +107,8 @@ export class App {
     this.app = await loadPlugins(this.vault)
     timing?.mark("plugins")
     this.plugins = this.app
-    // Templates' notes are patterns, not people or logs, whatever their `type` (Vault.kindFor).
-    this.vault.plain = () => { const f = service(this.plugins, "templates:folder")?.(); return typeof f === "string" && f ? [f] : [] }
+    // Templates' notes are patterns, and samples examples, not people or logs, whatever their `type` (Vault.kindFor).
+    this.vault.plain = () => { const f = service(this.plugins, "templates:folder")?.(); return [...typeof f === "string" && f ? [f] : [], ...this.vault.samples()] }
     this.vault.defaults = () => settingDefaults(this.vault, this.plugins)
     // The write gate (core/writegate.ts): a plugin acting on its own writes outside .vaultite/ only where it's granted.
     this.vault.mayWrite = (id, rel) => G.may(this.vault, this.plugins, id, rel)

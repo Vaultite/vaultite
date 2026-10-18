@@ -1,7 +1,7 @@
 // Daily notes, as Obsidian's: a note per day named by a date format (YYYY-MM-DD), in their folder (Daily/, or where
 // Obsidian's daily-notes.json says), made from a template. Other plugins may keep keys of their own in them.
 import { formatDate, OpError, parseDate, Plugin, today } from "../../../core/plugins.ts"
-import { joinPath, Kind, readText, stemOf, str, writeNew } from "../../../core/vault.ts"
+import { type Entry, fetchFromICloud, joinPath, Kind, readText, setPropertyText, stemOf, str, writeNew } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -61,7 +61,7 @@ function dayPath(date: string) {
  *  there's none yet. Its path, and whether it was made. */
 async function dailyNote(date: string): Promise<{ path: string; made: boolean }> {
   const rel = dayPath(date)
-  if (plugin.vault.get("days", date)) return { path: rel, made: false }
+  if (plugin.vault.get("days", date)) { await mergeCopies(rel); return { path: rel, made: false } }
   const { template, folder } = dailySpec()
   const name = dailyName(date)
   const own = folder === null ? "---\ntype: day\n---\n" : ""
@@ -74,7 +74,42 @@ async function dailyNote(date: string): Promise<{ path: string; made: boolean }>
   }
   const made = writeNew(plugin.vault.abs(rel), text)
   await plugin.vault.sync()
+  if (!made && !plugin.vault.get("days", date)) {
+    // Another file there: a second one would be iCloud's "2026-10-08 2" when it's this note still on its way.
+    if (plugin.vault.entries.has(rel)) throw new OpError(`${rel} is there but isn't a daily note (its type: ${plugin.vault.entries.get(rel)!.fm.type})`, 409)
+    fetchFromICloud(plugin.vault.abs(rel), { errno: 11 })
+    throw new OpError(`${rel} is still coming from iCloud: try again in a moment`, 503)
+  }
   return { path: rel, made }
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
+/** iCloud's copies of a day's note two Macs made at once ("2026-10-08 2.md" beside it): merged into it and archived
+ *  when nothing would be lost (no text of their own, properties that agree or are lists), else left for the user. */
+async function mergeCopies(rel: string) {
+  const v = plugin.vault, stem = rel.slice(0, -3)
+  for (let n = 1; n < 10; n++) {
+    const copy = v.entries.get(`${stem} ${n}.md`), e = v.entries.get(rel)
+    if (!copy || !e || (copy.kind ? copy.kind.collection !== "days" : !!copy.fm.type)) continue
+    const text = readText(v.abs(rel)), next = merged(text, e, copy)
+    if (next === null) continue
+    if (next !== text) await plugin.host.api("PUT", "file", { path: rel, text: next, base: text })
+    await plugin.runOp("archive.add", { path: copy.rel })
+  }
+}
+/** The note's text with a copy's properties added in, or null when the copy holds what the note doesn't. */
+function merged(text: string, e: Entry, copy: Entry): string | null {
+  const body = copy.body.trim()
+  if (body && !e.body.includes(body)) return null
+  let out: string | null = text
+  for (const [k, val] of Object.entries(copy.fm)) {
+    const cur = e.fm[k]
+    if (same(cur, val) || k === "archived") continue
+    const next = cur === undefined || cur === null || cur === "" ? val
+      : Array.isArray(cur) && Array.isArray(val) ? [...cur, ...val.filter((x) => !cur.some((y) => same(x, y)))] : undefined
+    if (next === undefined || (out = setPropertyText(out, k, next)) === null) return null
+  }
+  return out
 }
 
 // For plugins that require this one (to write in a day's note).

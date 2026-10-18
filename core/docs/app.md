@@ -57,7 +57,8 @@ user first). What the user or their agent asks for is never gated.
 go (a folder, `/` the top, `./` beside the note, `./name` a folder beside it; unset: Obsidian's `attachmentFolderPath`,
 else `Attachments`); `excluded`, files left out of search, the graph and unlinked mentions and listed last in the quick
 switcher, still files you open (each a path they start with, `Archive/`, or a `/regex/`; unset: Obsidian's
-`userIgnoreFilters`; `[]` none).
+`userIgnoreFilters`; `[]` none); `samples`, folders of examples, not the user's data (`["Examples"]`): their files
+have no kind, and tasks, Dataview and query blocks leave them out unless the query is in a file in that folder.
 
 **Folders**, `.vaultite/folders.json`: where new files of a kind go, by its name in the API (`{"people": "Personal/People",
 "days": "Journal", "dashboards": "Pages"}`); one unset goes where most of that kind's files are (daily notes: Obsidian's

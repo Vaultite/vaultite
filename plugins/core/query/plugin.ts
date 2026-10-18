@@ -42,21 +42,23 @@ const otherRec = (rel: string, st: Stat, props?: FileProps | null): Rec => ({
 type FileProps = { version: string | number; of: (rel: string) => Item }
 const fileProps = () => (plugin.service("file-props")?.() ?? null) as FileProps | null
 
-/** Every Markdown file as something to query (a base: every file, templates too, but none in a hidden folder like
- *  .archive/, as in Obsidian, unless a view's `archived` lets archive folders in), but `self`: the file the view is in. */
+/** Every Markdown file as something to query (a base: every file, templates too, none in a hidden folder like .archive/
+ *  unless a view's `archived` lets them in), but `self`, the view's file; samples only for a view in their folder. */
 const HIDDEN = /(^|\/)\./
 function* records(vault: Vault, o: Opts, self?: string, base = false): Generator<Rec> {
   const skip = `${templatesFolder()}/`.toLowerCase()
   const from = (Array.isArray(o?.from) ? o.from : [o?.from]).map((f) => String(f ?? "").replace(/^\/+/, "").toLowerCase())
   const keep = base || from.some((f) => f && (f.startsWith(skip) || `${f}/` === skip))
   const hidden = (rel: string) => base && HIDDEN.test(o.archiveFolders ? rel.replace(/(^|\/)\.archive\//g, "$1") : rel)
+  const here = self ? vault.sampleOf(self) : null, samples = vault.samples().filter((d) => d !== here).map((d) => `${d}/`)
+  const sample = (rel: string) => samples.length > 0 && samples.some((d) => rel.startsWith(d))
   for (const [rel, e] of vault.entries) {
-    if (rel === self || (!keep && rel.toLowerCase().startsWith(skip)) || hidden(rel)) continue
+    if (rel === self || (!keep && rel.toLowerCase().startsWith(skip)) || hidden(rel) || sample(rel)) continue
     yield recOf(rel, e)
   }
   if (!base) return
   const props = fileProps()
-  for (const [rel, st] of vault.others) if (rel !== self && !hidden(rel)) yield otherRec(rel, st, props)
+  for (const [rel, st] of vault.others) if (rel !== self && !hidden(rel) && !sample(rel)) yield otherRec(rel, st, props)
 }
 
 /** The file a base's `this` is, by path. */
@@ -108,13 +110,13 @@ function runOpts(vault: Vault, o: Opts, self?: string, thisPath?: string, now = 
   return { ...res, views: b.views, current: b.index, ...(notes.length ? { notes } : {}) }
 }
 
-// Answers kept by query until the vault's files change, the Templates folder does, the day does (a calendar's month)
+// Answers kept by query until the vault's files change, the Templates or sample folders do, the day does (a calendar's month)
 // or other files' properties do: the same object, frozen, so the server serializes it once.
 const answers = new WeakMap<Vault, { when: string; byQuery: Map<string, unknown> }>()
 
 export function query(vault: Vault, o: Opts, self?: string, thisPath?: string) {
   const types = plugin.propertyTypes()
-  const when = `${vault.version} ${templatesFolder()} ${new Date().toDateString()} ${fileProps()?.version ?? ""} ${JSON.stringify(types)}`, q = JSON.stringify([o, self ?? null, thisPath ?? null])
+  const when = `${vault.version} ${templatesFolder()} ${vault.samples().join("|")} ${new Date().toDateString()} ${fileProps()?.version ?? ""} ${JSON.stringify(types)}`, q = JSON.stringify([o, self ?? null, thisPath ?? null])
   let kept = answers.get(vault)
   if (kept?.when !== when) answers.set(vault, kept = { when, byQuery: new Map() })
   const hit = kept.byQuery.get(q)

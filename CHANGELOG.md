@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **One copy name**: imported attachments and trashed files that share a name get " 1", " 2"..., as new files do.
+- **Sample folders** (Settings > Files): folders of examples, not your data. Their notes are no one's people, books or
+  logs, and tasks, Dataview and database views made outside them leave them out.
+- **No more duplicate daily notes**: a day's note iCloud is still bringing from another Mac isn't made a second time,
+  and iCloud's copy of one ("2026-10-08 2") with nothing of its own merges into it and is archived when it's opened.
 - **Companion cursor menu**: right-click an agent's cursor (or … in its box) to show its session, switch the mode,
   start a fresh session or stop it. A session that ends, however it ends, takes its cursor with it.
 - **Faster diagrams**: Mermaid diagrams are drawn by Pele, a fraction of the download and time; they follow light,

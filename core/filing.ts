@@ -1,4 +1,4 @@
-// Where things go, one answer for the app, the API and the settings: the attachment folder, the excluded files and
+// Where things go, one answer for the app, the API and the settings: the attachment folder, the excluded files, samples and
 // each kind's folder, from the vault's settings (another app's under them: Vault.configWithDefaults).
 import type { Home } from "./fileprops.ts"
 import type { Vault } from "./vault.ts"
@@ -6,7 +6,7 @@ import { strings } from "./values.ts"
 
 /** Where things go, as the settings show and the app follows them: the attachment folder (Obsidian's way of writing
  *  it), the excluded files (both files.json's, else another app's) and each kind's folder (Vault.home). */
-export function filing(vault: Vault): { attachments: string; excluded: string[]; homes: Home[] } {
+export function filing(vault: Vault): { attachments: string; excluded: string[]; samples: string[]; homes: Home[] } {
   const files = vault.configWithDefaults("files"), own = vault.config("folders")
   const at = typeof files.attachmentFolder === "string" ? files.attachmentFolder.trim() : ""
   const homes: Home[] = vault.kinds.filter((k) => !k.file && k.plugin).map((k) => ({
@@ -14,5 +14,5 @@ export function filing(vault: Vault): { attachments: string; excluded: string[];
     folder: vault.home(k.collection) ?? k.folder ?? "", set: typeof own[k.collection] === "string",
   }))
   homes.push({ key: "dashboards", type: "dashboard", plugin: "dashboards", label: "Dashboards", folder: vault.pagesHome(), set: typeof own.dashboards === "string" })
-  return { attachments: at || "Attachments", excluded: strings(files.excluded), homes }
+  return { attachments: at || "Attachments", excluded: strings(files.excluded), samples: vault.samples(), homes }
 }

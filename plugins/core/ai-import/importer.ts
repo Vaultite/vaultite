@@ -139,8 +139,8 @@ export async function runImport(vault: Vault, file: string, opts: Options, job: 
     const full = isTextKind(kindOf(base)) ? base : `${base}.txt`
     const dot = full.lastIndexOf("."), stem = dot > 0 ? full.slice(0, dot) : full, ext = dot > 0 ? full.slice(dot) : ""
     const data = Buffer.from(text)
-    for (let n = 1; ; n++) {
-      const file = n === 1 ? full : `${stem} ${n}${ext}`, rel = `${dir}/${file}`
+    for (let n = 0; ; n++) {
+      const file = n ? `${stem} ${n}${ext}` : full, rel = `${dir}/${file}`
       const queued = pending.find((w): w is Write & { kind: "file" } => w.kind === "file" && w.rel === rel)
       const there = queued?.data ?? (fs.existsSync(vault.abs(rel)) ? fs.readFileSync(vault.abs(rel)) : null)
       if (there?.equals(data)) return file

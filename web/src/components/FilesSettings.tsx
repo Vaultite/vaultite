@@ -14,7 +14,7 @@ import type { SettingDecl } from "../../../core/blocks.ts"
 const sorts = SORTS.flat()
 // (its switches are core/switches.ts', which Settings' search finds by themselves; read late: that module imports this)
 const switchOf = (row: string) => coreSwitch(`setting:${row}`)
-const DECLS: Record<"fileSort" | "folderLimit" | "attachmentFolder" | "excluded", SettingDecl> = {
+const DECLS: Record<"fileSort" | "folderLimit" | "attachmentFolder" | "excluded" | "samples", SettingDecl> = {
   fileSort: { type: "enum", default: "name", label: "Sort order", values: sorts.map((s) => s.value),
     labels: Object.fromEntries(sorts.map((s) => [s.value, s.label])), description: "folders stay first, by name" },
   folderLimit: { type: "number", default: 0, min: 0, label: "Files per folder",
@@ -23,6 +23,8 @@ const DECLS: Record<"fileSort" | "folderLimit" | "attachmentFolder" | "excluded"
     description: "where pasted and dropped files go: a folder, / for the top, ./ beside the note, ./name in a folder beside it" },
   excluded: { type: "list", default: [], lines: true, label: "Excluded files",
     description: "paths they start with (Archive/) or /regular expressions/: out of search, the graph and unlinked mentions, last in the quick switcher" },
+  samples: { type: "list", default: [], lines: true, label: "Sample folders",
+    description: "folders of examples, not your data: out of tasks, Dataview and database views made outside them, and never people, books or logs" },
 }
 
 /** What the sheet has, for the Settings page's search (the plugin's `settingsSearch`). */
@@ -55,6 +57,7 @@ export function FilesSettings() {
       {filing && <Field k="attachmentFolder" d={at} value={own(filing.attachments, at.default)} set={(v) => saveFiles("attachmentFolder", v, seeds.attachmentFolder)} />}
       {/* (the list as it applies, another app's included, so it's edited rather than typed again) */}
       {filing && <Field k="excluded" d={ex} value={filing.excluded} set={(v) => saveFiles("excluded", v, seeds.excluded)} />}
+      {filing && <Field k="samples" d={DECLS.samples} value={filing.samples ?? []} set={(v) => saveFiles("samples", v, undefined)} />}
     </Group>
   )
 }
