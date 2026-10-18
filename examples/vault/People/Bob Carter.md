@@ -5,6 +5,7 @@ every_days: 7
 usual: hang out
 context: Roommate for two years after university
 location: Denver, CO
+birthday: 11-02
 coordinates: [39.7294, -104.9536]
 tags: [Neighbours]
 aliases: [Bob]

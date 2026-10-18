@@ -1,12 +1,13 @@
 // People: who's due a check-in (the People dashboard's blocks) and a profile per person (```block-person) with their
 // timeline of contact and facts.
 import {
-  BookOpen, Flag, Handshake, Mail, MapPin, MessageCircle, MessageSquare, Phone, StickyNote, Users, type LucideIcon,
+  BookOpen, Cake, Flag, Handshake, Mail, MapPin, MessageCircle, MessageSquare, Phone, StickyNote, Users, type LucideIcon,
 } from "lucide-react"
 import {
-  addDays, AddToTimeline, capitalize, cn, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
+  addDays, AddToTimeline, capitalize, cn, dateText, Editable, Empty, fmtDay, isArchived, KV, List, openFile, Panel, parse, range, Row, Section, Stat, timelineOf,
   today, WeeksGrid, type BlockCtx, type Store, type TimelineEntry, type TimelineKind,
 } from "@vaultite"
+import { ageOn, birthdayText, bornOn, nearness, nextBirthday, parseBirthday, until, upcoming } from "./birthdays"
 import { often } from "./often"
 import type { Interaction, Person } from "./types"
 
@@ -115,6 +116,59 @@ export function PeopleWants({ store }: BlockCtx) {
   )
 }
 
+/** A birthday's colour by how near it is: red under a week, orange under a month. */
+const NEAR = { soon: "var(--red)", near: "var(--orange)" } as const
+const nearTint = (days: number) => { const n = nearness(days); return n ? NEAR[n] : undefined }
+const MONTH = { month: "short" } as const, WEEKDAY = { weekday: "long" } as const, MONTH_DAY = { month: "short", day: "numeric" } as const
+const MONTH_DAY_YEAR = { ...MONTH_DAY, year: "numeric" } as const
+
+/** The day as a calendar page, month over day, tinted when it's near (the row's meta says the weekday). */
+function DayTile({ date, tint }: { date: string; tint?: string }) {
+  return (
+    <span role="img" aria-label={dateText(parse(date), MONTH_DAY)} className={cn("flex size-10 shrink-0 flex-col items-center justify-center rounded-[8px]", !tint && "bg-muted")}
+      style={tint ? { background: `color-mix(in srgb, ${tint} 14%, transparent)`, color: tint } : undefined}>
+      <span className={cn("text-[10px] leading-[12px] font-semibold", !tint && "text-muted-foreground")}>{dateText(parse(date), MONTH)}</span>
+      <span className="num text-[16px] leading-[18px] font-semibold">{Number(date.slice(8, 10))}</span>
+    </span>
+  )
+}
+
+/** ```block-people-birthdays: the next `count` birthdays (default 10), soonest first. */
+export function PeopleBirthdays({ store, options }: BlockCtx) {
+  const next = upcoming(store.people.filter((p) => !isArchived(p)), today(), Number(options.count) || 10)
+  return (
+    <Panel title="Birthdays" icon={Cake} tint={TINT}>
+      {!next.length ? (
+        <Empty>No birthdays yet. Add one to a person's file, or tell Claude.</Empty>
+      ) : (
+        <List>
+          {next.map(({ person: p, date, days, turns }) => {
+            const tint = nearTint(days)
+            return (
+              <Row key={p.id} title={p.name} onOpen={open(p)} lead={<DayTile date={date} tint={tint} />} data-birthday={days}
+                meta={[dateText(parse(date), WEEKDAY), turns !== null && `turns ${turns}`].filter(Boolean).join(" · ")}
+                right={<span className={cn(tint && "font-medium")} style={tint ? { color: tint } : undefined}>{capitalize(until(days))}</span>} />
+            )
+          })}
+        </List>
+      )}
+    </Panel>
+  )
+}
+
+/** A profile's birthday: "Oct 21, 1990 · age 35", and "in 4 days" when it's under a month away. */
+function BirthdayValue({ value }: { value: string }) {
+  const b = parseBirthday(value)
+  if (!b) return <>{value}</>
+  const now = today(), n = nextBirthday(b, now), age = ageOn(b, now), tint = nearTint(n.days)
+  return (
+    <>
+      {[dateText(parse(bornOn(b)), b.year !== null ? MONTH_DAY_YEAR : MONTH_DAY), n.days && age !== null && `age ${age}`].filter(Boolean).join(" · ")}
+      {tint && <> · <span className="font-medium whitespace-nowrap" style={{ color: tint }}>{until(n.days)}</span></>}
+    </>
+  )
+}
+
 const strs = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(",") : []).map((x) => x.trim().toLowerCase()).filter(Boolean)
 
 /** ```block-people-group: everyone with one of the `relations` (all when it's left out), with when you were last in
@@ -167,6 +221,7 @@ export function PersonBlock({ fm, body, path, setProperty }: BlockCtx) {
   const tags = list(fm.tags)
   const location = str(fm.location), moving = str(fm.moving_to), want = str(fm.want_to), contact = str(fm.contact)
   const usual = str(fm.usual), relation = str(fm.relation), context = str(fm.context)
+  const birthday = birthdayText(fm.birthday) || str(fm.birthday)
   const edit = (key: string) => setProperty && ((v: string | undefined) => setProperty(key, v))
   const byDate = new Map<string, TimelineEntry[]>()
   for (const i of touch) byDate.set(i.date, [...(byDate.get(i.date) ?? []), i])
@@ -203,9 +258,10 @@ export function PersonBlock({ fm, body, path, setProperty }: BlockCtx) {
           hint={last ? kindOf(last.kind).label : relation === "contact" ? "Never talked" : "Nothing logged yet"} />
         <Stat label="Last 30 days" value={last30} hint={last30 === 1 ? "contact" : "contacts"} />
       </div>
-      {(keep || contact) && (
+      {(keep || contact || birthday) && (
         <div className="rounded-[10px] bg-foreground/[0.04] px-3">
           <List>
+            {birthday && <KV label="Birthday"><Editable value={birthday} set={edit("birthday")} placeholder="Add a birthday"><BirthdayValue value={birthday} /></Editable></KV>}
             {keep && <KV label="Keep in touch">{keep}</KV>}
             {contact && <KV label="Contact"><Editable value={contact} set={edit("contact")} placeholder="Add a contact"><ContactValue v={contact} /></Editable></KV>}
           </List>

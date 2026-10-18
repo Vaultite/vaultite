@@ -3,6 +3,7 @@
 import { bullets, daysBetween, HTTPError, Plugin, reply, section } from "../../../core/plugins.ts"
 import { entryLine, entryProblem, parseEntry, timelineKind } from "../../../core/timeline.ts"
 import { cmp, isArchived, type Item, Kind, num, safeName, sortBy, splitTags, str, truthy } from "../../../core/vault.ts"
+import { ageOn, birthdayText, bornOn, monthDay, nextBirthday, parseBirthday, until, upcoming } from "./birthdays.ts"
 import { geocoder, type Places } from "./geocode.ts"
 import { often } from "./often.ts"
 import { peopleOps } from "./ops.ts"
@@ -86,12 +87,13 @@ function parse(fm: Item, body: string, stem: string): [Item, string[]] {
     problems.push("coordinates must be [lat, lon]")
     coords = null
   }
+  if (truthy(fm.birthday) && !parseBirthday(fm.birthday)) problems.push("birthday must be YYYY-MM-DD, or MM-DD when the year isn't known")
   const [notes, heading, sec, after] = splitBody(body)
   const [timeline, bad] = parseTimeline(sec)
   const text = (k: string) => (truthy(fm[k]) ? str(fm[k]) : "")
   const p: Item = {
     name: truthy(fm.name) ? str(fm.name) : stem, relation: rel, every_days: num(every),
-    usual: text("usual"), context: text("context"), location: text("location"),
+    usual: text("usual"), context: text("context"), location: text("location"), birthday: birthdayText(fm.birthday) || text("birthday"),
     lat: truthy(coords) ? coords[0] : null, lon: truthy(coords) ? coords[1] : null, moving_to: text("moving_to"),
     tags: splitTags(fm.tags).join(", "), want_to: text("want_to"), contact: text("contact"), aliases: splitTags(fm.aliases),
     sort: num(fm.sort),
@@ -109,7 +111,7 @@ function render(p: Item): [Item, string] {
   const owned: Item = {
     name: safeName(p.name) !== p.name ? p.name : null,
     relation: p.relation, every_days: p.every_days, usual: p.usual,
-    context: p.context, location: p.location,
+    context: p.context, location: p.location, birthday: p.birthday,
     coordinates: p.lat !== null && p.lat !== undefined ? [p.lat, p.lon] : null,
     moving_to: p.moving_to, tags: splitTags(p.tags), want_to: p.want_to,
     contact: p.contact, aliases: splitTags(p.aliases), sort: p.sort,
@@ -286,6 +288,15 @@ function since(p: Item, today: string) {
 const ago = (n: number | null) => (n === null ? "never" : n === 0 ? "today" : n === 1 ? "yesterday" : `${n} days ago`)
 const active = () => plugin.vault.items("people").filter((p) => !isArchived(p))
 
+/** "Birthday: Oct 21, 1990 (age 35, turns 36 in 4 days)", or "" without a valid one. */
+function birthdayLine(p: Item, today: string) {
+  const b = parseBirthday(str(p.birthday))
+  if (!b) return ""
+  const n = nextBirthday(b, today), age = ageOn(b, today)
+  const when = [n.days && age !== null && `age ${age}`, (n.turns !== null ? `turns ${n.turns} ` : "") + until(n.days)].filter(Boolean).join(", ")
+  return `Birthday: ${monthDay(bornOn(b))}${b.year !== null ? `, ${b.year}` : ""} (${when})`
+}
+
 plugin.block("person", (ctx) => {
   const p = plugin.vault.items("people").find((x) => x.id + ".md" === ctx.path)
   if (!p) return ""
@@ -293,7 +304,7 @@ plugin.block("person", (ctx) => {
   return bullets([
     p.context,
     p.location && `Lives in ${p.location}` + (p.moving_to ? `, moving to ${p.moving_to}` : ""),
-    p.want_to && `To do: ${p.want_to}`, p.tags && `Tags: ${p.tags}`,
+    p.want_to && `To do: ${p.want_to}`, p.tags && `Tags: ${p.tags}`, birthdayLine(p, ctx.today),
     `Last in touch: ${ago(since(p, ctx.today))}` + (last ? ` (${last.kind}, ${last.date})` : ""),
     p.every_days && `Keep in touch every ${p.every_days} days`, p.contact && `Contact: ${p.contact}`,
   ])
@@ -321,6 +332,14 @@ plugin.block("people-wants", (ctx) =>
     const last = n !== null ? `last in touch ${ago(n)}` : p.relation === "contact" ? "never talked" : ""
     return `${p.name}: ${[p.want_to, p.location].filter(Boolean).join(" · ")}${last ? ` (${last})` : ""}`
   }), "Nobody on the list.")))
+
+plugin.block("people-birthdays", (ctx) => {
+  const next = upcoming(active(), ctx.today, Number(ctx.options.count) || 10)
+  ctx.source(next.map((x) => x.person))
+  return section("Birthdays", bullets(next.map(({ person: p, date, days, turns }) =>
+    `${p.name}: ${monthDay(date)}, ${until(days)}${turns !== null ? `, turns ${turns}` : ""}`),
+  "No birthdays yet: add `birthday:` to a person's file (YYYY-MM-DD, or MM-DD)."))
+})
 
 plugin.block("people-group", (ctx) => {
   const o = ctx.options

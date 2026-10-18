@@ -11,6 +11,9 @@ tint: people
 ```block-people-wants
 ```
 
+```block-people-birthdays
+```
+
 ```block-people-group
 title: Partner and family
 relations: [partner, family]

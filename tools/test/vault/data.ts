@@ -35,6 +35,42 @@ export default async ($: VaultTest) => {
   await api("DELETE", "people/People/Tess Person")
   check("delete moves it to .trash", fs.readdirSync(path.join(VAULT, ".trash/People")).some((f) => f.startsWith("Tess Person")))
 
+  // Birthdays: YYYY-MM-DD or MM-DD; the next ones soonest first, Feb 29 kept on Feb 28 in a common year.
+  {
+    const { nextBirthday, parseBirthday, upcoming } = await import("../../../plugins/core/people/birthdays.ts")
+    const leap = parseBirthday("2000-02-29")!
+    check("birthdays: Feb 29 falls on Feb 28 in a common year, on itself in a leap year",
+      JSON.stringify(nextBirthday(leap, "2027-01-10")) === '{"date":"2027-02-28","days":49,"turns":27}' && nextBirthday(leap, "2028-02-29").days === 0, nextBirthday(leap, "2027-01-10"))
+    check("birthdays: a past one is next year's, today's is today", nextBirthday(parseBirthday("10-16")!, "2026-10-17").date === "2027-10-16" &&
+      nextBirthday(parseBirthday("1990-10-17")!, "2026-10-17").turns === 36)
+    check("birthdays: only real dates", ["2001-02-29", "13-01", "10-32", "Oct 21", "1990-1-2"].every((v) => parseBirthday(v) === null) && parseBirthday("02-29") !== null)
+    const order = upcoming([{ name: "B", birthday: "01-01" }, { name: "A", birthday: "12-31" }, { name: "C", birthday: "nope" }], "2026-12-30", 10)
+    check("birthdays: soonest first, invalid ones left out", order.map((x) => x.person.name).join() === "A,B", order)
+    check("birthdays: a YAML Date reads as its day", parseBirthday(new Date("2004-01-28T00:00:00Z"))?.year === 2004 && parseBirthday(new Date("2004-01-28"))?.day === 28)
+    const { addDays, today } = await import("../../../core/plugins.ts")
+    const soon = (n: number, year = "") => (year ? `${year}-` : "") + addDays(today(), n).slice(5)
+    write("People/Bday Soon.md", `---\ntype: person\nbirthday: ${soon(2, "1990")}\n---\n\n\`\`\`block-person\n\`\`\`\n`)
+    write("People/Bday Later.md", `---\ntype: person\nbirthday: ${soon(40)}\n---\n`)
+    write("People/Bday Bad.md", "---\ntype: person\nbirthday: someday\n---\n")
+    write("Notes/Birthdays.md", "```block-people-birthdays\ncount: 2\n```\n")
+    const [, out] = await api("GET", "render?path=Notes/Birthdays.md")
+    check("render: people-birthdays lists the next ones with how far and the age they turn", out.includes("## Birthdays") &&
+      /- Bday Soon: \w{3} \d+, in 2 days, turns \d+\n- Bday Later: \w{3} \d+, in 40 days/.test(out) && !out.includes("Bday Bad"), out)
+    const [, prof] = await api("GET", "render?path=People/Bday Soon.md")
+    check("render: a profile says the birthday and age", /Birthday: \w{3} \d+, 1990 \(age \d+, turns \d+ in 2 days\)/.test(prof), prof)
+    const [, st] = await api("GET", "state")
+    check("a birthday that isn't a date is flagged on its file", st.vault.problems.some((x: Any) => x.file === "People/Bday Bad.md" && JSON.stringify(x).includes("birthday must be")), st.vault.problems)
+    write("People/Bday Mix.md", "---\ntype: person\nbirthday: 03-06\n---\n")
+    await api("POST", "interactions", { person: "Bday Mix", date: "2026-09-29", kind: "call", notes: "Hi" })
+    await api("PUT", "people/Bday Mix", { birthday: "2004-01-28" })
+    check("an API save writes a birthday unquoted, either form", read("People/Bday Mix.md").includes("\nbirthday: 2004-01-28\n"), read("People/Bday Mix.md"))
+    write("People/Bday Mix.md", "---\ntype: person\nbirthday: 03-06\n---\n")
+    await api("POST", "interactions", { person: "Bday Mix", date: "2026-09-29", kind: "call", notes: "Hi" })
+    check("a save keeps MM-DD as written", read("People/Bday Mix.md").includes("\nbirthday: 03-06\n"), read("People/Bday Mix.md"))
+    fs.rmSync(path.join(VAULT, "People/Bday Mix.md"))
+    for (const f of ["People/Bday Soon.md", "People/Bday Later.md", "People/Bday Bad.md", "Notes/Birthdays.md"]) fs.rmSync(path.join(VAULT, f))
+  }
+
   // Notes: upsert by id, updated bumps only on content
   const n1 = (await api("POST", "notes", { ext_id: "idea-test", title: "Test: idea", body: "Hello [[Alice Park]]", kind: "idea", status: "seed" }))[1]
   check("note file name drops the colon", n1.id === "Notes/Test - idea" && read("Notes/Test - idea.md").includes("aliases: ['Test: idea']"), n1)

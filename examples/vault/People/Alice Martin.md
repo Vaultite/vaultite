@@ -5,6 +5,7 @@ every_days: 21
 usual: call
 context: Met at a design course at university
 location: Lisbon, Portugal
+birthday: 1994-03-12
 coordinates: [38.7078, -9.1366]
 tags: [University, Design]
 want_to: Send the Lighthouse beta

@@ -8,6 +8,8 @@ export type Person = {
   location: string; context: string; tags: string; want_to: string; contact: string; aliases: string[]
   /** Map position: the file's `coordinates`, else the cached lookup of `location` (never written to the file). */
   lat: number | null; lon: number | null
+  /** YYYY-MM-DD, or MM-DD when the year isn't known (birthdays.ts); "" when there's none. */
+  birthday: string
   /** An upcoming move ("Baltimore, MD"); cleared once `location` is updated. */
   moving_to: string
   /** Sections of their file after the timeline (## Gift ideas...), as Markdown. */

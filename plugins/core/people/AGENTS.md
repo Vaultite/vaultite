@@ -8,6 +8,7 @@ relation: friend            # partner, family, roommate, friend, mentor, contact
 every_days: 30              # how often the user wants to be in touch; leave out if no target
 context: Met at a design course at university    # how the user knows them, one line
 location: Austin, TX      # a place name; the app finds its pin
+birthday: 1994-10-21      # or 10-21 when the year isn't known
 tags: [University]
 want_to: Catch up about the move   # optional to-do about them; remove the line when done
 aliases: [Alice]              # optional other names, so [[Alice]] resolves
@@ -38,4 +39,5 @@ renumber it, the app never writes it).
   entry may continue on indented lines under it. Other sections may follow the timeline (`## Gift ideas`); leave them.
 - The user's own pin: `PUT /api/me {"location"}`. Check a place: `GET /api/geocode?q=`.
 - A person's file starts with its ```` ```block-person ```` fence (the API writes it in a new one; leave it where the
-  user put it); `people-due`, `people-wants` and `people-group` are for the People page.
+  user put it); `people-due`, `people-wants`, `people-birthdays` (the next ones; `count`, default 10) and
+  `people-group` are for the People page.

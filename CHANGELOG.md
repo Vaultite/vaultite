@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Birthdays** in People: a person's `birthday` (YYYY-MM-DD, or MM-DD) shows on their profile with their age, and the
+  `people-birthdays` block lists the next ones, red under a week away and orange under a month.
 - **More default hotkeys**, as Google Docs and Finder have them: ⌘⇧X strikethrough, ⌘⇧H highlight, ⌘⇧C code, ⌘⌥1–6
   headings (⌘⌥0 none), ⌘⇧7 / 8 / 9 numbered, bullet and task lists, ⌘⇧V paste as plain text, ⌥↑ / ⌥↓ move a line;
   ⌘[ / ⌘] back and forward, ⌘⌥W close other tabs, ⌘, Settings (in the browser too), ⌘⇧D today's daily note, `?` the
