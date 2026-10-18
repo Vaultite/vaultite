@@ -402,6 +402,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     // agent's session that died keeps its tabs, saying so, with Restart.
     if (!code && !signal) markEnded(id)
     try { fs.rmSync(stateFile(id), { force: true }) } catch { /* none */ }
+    plugin.emit("terminal.ended", { id, code, signal })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
       ws.send(JSON.stringify({ t: "exit", code, signal, ...(s.ended && !s.kept ? { ended: true } : {}) }))

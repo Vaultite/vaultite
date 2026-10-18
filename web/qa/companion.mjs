@@ -363,6 +363,22 @@ check("click: Enter asks it, with where its cursor is", r?.moments.some((m) => m
 check("click: and the box closes", !(await pop.count()))
 await page.keyboard.press("Escape")
 
+// Right-click its cursor: its menu (its session, the mode, Start fresh, Stop); … in its box opens the same.
+const menu = page.locator('[role="menu"]').filter({ hasText: "Start fresh" })
+const menuRows = ["Show its session", "Quiet: only when asked", "Start fresh", "Stop"]
+await grip.click({ button: "right" })
+await menu.waitFor({ timeout: 2000 })
+let menuText = await menu.innerText()
+check("right-click: its menu, its session, the mode, Start fresh and Stop", menuRows.every((x) => menuText.includes(x)), menuText)
+await page.screenshot({ path: `${OUT}cursor-menu.png` })
+await page.keyboard.press("Escape")
+await grip.click()
+await pop.getByRole("button", { name: "More for Claude" }).click()
+await menu.waitFor({ timeout: 2000 })
+menuText = await menu.innerText()
+check("…: the same menu from its box, which closes", menuRows.every((x) => menuText.includes(x)) && !(await pop.count()), menuText)
+await page.keyboard.press("Escape")
+
 // Pin a bubble: a margin comment with its words, by its line.
 await op("companion.say", { text: "Pin me, please.", path: NOTE, find: "Tomatoes" })
 await cursor.getByText("Pin me, please.").waitFor({ timeout: 3000 })

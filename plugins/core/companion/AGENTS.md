@@ -13,7 +13,8 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
   when they pause): its text is what follows a leading @name, else the whole line; written on after it went, it comes
   again.
 - A `point` is an ask without words: they dragged your cursor onto a line (or a selection) to say "look at this".
-- They can click your cursor to see your last `say`s and ask you there, and pin a `say` into a comment.
+- They can click your cursor to see your last `say`s and ask you there, and pin a `say` into a comment; right-clicking it shows
+  your session, the mode, Start fresh and Stop. A session that ends (stopped, its tab closed) takes its cursor away.
 - Given moments, your cursor shows you reading them; running `next` again without acting shows the user a seen tick,
   so silence still tells them you saw it.
 - Modes: quiet (only asks reach you), notice (also `edit` and `open` after a pause: speak only when it clearly helps),
@@ -33,7 +34,8 @@ Loop forever: `vau companion next --timeout 240` (a Bash timeout above that), ac
 - Drawings (.excalidraw): moments there come with the scene as text (ids, labels, arrows as a -> b, what's by their
   pointer); an ask is a text with your @name. Places are an element (`--find` its id or text) or `--x --y`; `say`,
   `look` and `highlight` work there, `draw` changes it (no comments or suggestions).
-- When `next` says it's time for a fresh session (past the setting `fresh_after` moments, or a large context), write a
+- When `next` says it's time for a fresh session (past the setting `fresh_after` moments, a large context, or the user
+  chose Start fresh), write a
   few lines for the next one and run `companion handover "<them>"`, then end your turn; it starts with them and your
   threads.
 - Stay short and kind; one bubble beats three. Never write where they're typing unless asked.

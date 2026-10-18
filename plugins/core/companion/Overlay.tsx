@@ -2,11 +2,12 @@
 // it's nowhere), its words in a bubble by it (on a drawing, only those: canvas.ts), its comments in the note's margin.
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
-import { Check, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, capitalize, cn, fmtTime, haptic, keyHint, Markdown, notify, openFile, seenArea, snippet } from "@vaultite"
+import { Check, Ellipsis, Pin, X } from "lucide-react"
+import { canvasOf, canvasShown, capitalize, cn, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, openFile, seenArea, snippet } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
 import { accept, type Agent, answer, getState, type Target, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { agentMenu } from "./session"
 import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
 
@@ -138,7 +139,11 @@ function Popover({ a, left, up, close }: { a: Agent; left: number; up: boolean; 
   return (
     <div data-companion-popover={a.name} className={cn("companion-pop pointer-events-auto absolute flex w-[280px] flex-col overflow-hidden rounded-[12px] border border-border/60 bg-background text-[13px] leading-snug text-foreground shadow-lg", up ? "bottom-[26px]" : "top-[42px]")}
       style={{ left, boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tintOf(a.name)} 45%, transparent), 0 8px 24px rgba(0,0,0,.14)` }}>
-      {(a.model || a.effort) && <div data-companion-how className="px-3 pt-2 text-[11.5px] font-medium text-muted-foreground">{[a.model && capitalize(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")}</div>}
+      <div className="flex items-center gap-1 pt-1 pr-1 pl-3">
+        <div data-companion-how className="min-w-0 flex-1 truncate text-[11.5px] font-medium text-muted-foreground">{[a.model && capitalize(a.model), a.effort && `${a.effort} effort`].filter(Boolean).join(" · ")}</div>
+        <button type="button" aria-label={`More for ${a.name}`} data-tip="More" className="grid size-6 shrink-0 cursor-pointer place-items-center rounded text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground max-sm:size-9"
+          onClick={(e) => { close(); menuBelow(e, agentMenu(a)) }}><Ellipsis className="size-3.5 max-sm:size-4.5" /></button>
+      </div>
       {mine.length > 0 && (
         <div ref={list} className="max-h-[240px] overflow-y-auto overscroll-contain px-2.5 pt-2 [scrollbar-width:thin]">
           {mine.map((n) => (
@@ -276,7 +281,7 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
       <div className={cn(a.state === "thinking" && !drag && "companion-bob")} style={{ transform: nudge ? `translate(${nudge.x}px, ${nudge.y}px)` : undefined, transition: "transform .18s ease-out" }}>
         <Arrow tint={tint} />
       </div>
-      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages onPointerDown={down} onContextMenu={(e) => e.preventDefault()}
+      <div role="button" aria-label={`${a.name}: ask, or drag onto text`} data-companion-grip data-under-pages data-own-hold onPointerDown={down} onContextMenu={menuFor(() => agentMenu(a))}
         className={cn("pointer-events-auto absolute top-0 left-0 z-[1] size-5 touch-none select-none [-webkit-touch-callout:none] [@media(pointer:coarse)]:-top-3 [@media(pointer:coarse)]:-left-3 [@media(pointer:coarse)]:size-11",
           drag ? "cursor-grabbing" : "cursor-pointer")} />
       <button ref={flagRef} type="button" tabIndex={tag || many ? 0 : -1} aria-label={many ? `${[a, ...others].map((x) => x.name).join(", ")} here` : `Go to ${a.name}`} aria-haspopup={many ? "menu" : undefined} aria-expanded={many ? fan : undefined}
@@ -284,6 +289,7 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
         onPointerEnter={(e) => { if (e.pointerType !== "touch") keepFan() }} onPointerLeave={(e) => { if (e.pointerType !== "touch") closeFan() }}
         onFocus={keepFan} onBlur={(e) => { if (!box.current?.querySelector("[data-companion-fan]")?.contains(e.relatedTarget as Node | null)) closeFan() }}
         onKeyDown={(e) => { if (many && e.key === "ArrowDown") { e.preventDefault(); setFan(true); requestAnimationFrame(() => box.current?.querySelector<HTMLElement>("[data-companion-fan] button")?.focus()) } else if (e.key === "Escape" && fan) { e.preventDefault(); setFan(false) } }}
+        onContextMenu={menuFor(() => agentMenu(a))}
         onClick={(e) => { if (!many) return follow(a); if (e.detail === 0 || (e.nativeEvent as PointerEvent).pointerType === "touch") setFan((f) => !f); else follow(a) }}
         className={cn("absolute flex items-center gap-1 rounded-full px-2 py-[2px] text-[11.5px] font-semibold whitespace-nowrap text-white shadow-sm transition-opacity duration-300",
           flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag || fan ? "pointer-events-auto cursor-pointer" : "opacity-0 focus-visible:opacity-100")} style={{ background: tint }}>

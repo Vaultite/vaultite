@@ -644,6 +644,8 @@ const FRESH_TOKENS = 150_000, FRESH_SHARE = 0.6, ASK_AGAIN = 60_000, HANDOVER_WA
 const freshAfter = () => Number(plugin.settings().fresh_after) || Number(plugin.manifest.settings?.fresh_after?.default) || 150
 /** When each agent was asked to hand over (it summarizes, then `handover`). */
 const handing = new Map<string, number>()
+/** Agents the user asked for a fresh session (Start fresh): asked to hand over at their next `next`. */
+const fresh = new Set<string>()
 const metered = new Map<string, number>() // session -> when its context was last read (its agent scans processes)
 
 /** Whether a session is due for a fresh one: past fresh_after moments, or its context (when its agent says) past
@@ -694,17 +696,34 @@ async function stop(as?: string, all = false) {
     try { fs.rmSync(sessionFile(s.name)) } catch { /* none */ }
     if (await running(s.id)) await plugin.runOp("terminal.end", { id: s.id })
   }
-  for (const a of agents.values()) if (all || gone.some((s) => key(s.name) === key(a.name))) setAgent(a.name, { state: "away" })
+  for (const a of agents.values()) if (all || gone.some((s) => key(s.name) === key(a.name))) ended(a.name)
   return { id: gone[0]?.id || null }
 }
+
+/** Agent `name`'s session ended (stopped, its tab closed, killed): its cursor goes until it starts again (an ask to
+ *  the companion wakes it). */
+function ended(name: string) {
+  const k = key(name)
+  asking.delete(k); handing.delete(k); fresh.delete(k)
+  setAgent(name, { state: "away" })
+}
+plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
+  const s = sessions().find((x) => x.id === ev.id)
+  if (s) ended(s.name)
+})
 
 // A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. Another agent
 // quiet that long is away (asks to it go to the companion).
 const NUDGE = 5 * 60_000
 const watchdog = setInterval(async () => {
   if (plugin.isOff() || mode() === "off") return
-  // (the companion stays, but not starting forever)
+  // (the companion stays while its session runs, but not starting forever)
   for (const a of agents.values()) if (a.state !== "away" && !live(a.name) && (!isMain(a.name) || a.state === "starting")) setAgent(a.name, { state: isMain(a.name) ? "watching" : "away" })
+  // (a session that ended without telling us, as terminal.ended does: its cursor goes too)
+  for (const s of sessions()) {
+    const a = agents.get(key(s.name))
+    if (a && a.state !== "away" && a.state !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id))) ended(s.name)
+  }
   // (nor thinking with no session to think: it ended mid-ask)
   const main = agents.get(key(ownName()))
   if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId()))) setAgent(main.name, { state: "watching" })
@@ -786,11 +805,12 @@ to the companion, or to an agent with --watch.
     let got = pending()
     // (nothing but opens waiting: the moment to hand over, if it's due)
     const sess = got.every((m) => m.kind === "open") ? session(name) : null
-    if (sess && Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(sess)) {
-      handing.set(k, Date.now())
+    const handover = () => {
+      fresh.delete(k); handing.set(k, Date.now())
       did(name, "asked to hand over")
       return { mode: mode(), focus: focus(), moments: [], cursor: after, notes: [], handover: true, as: isMain(name) ? "" : name }
     }
+    if (sess && (fresh.has(k) || (Date.now() - (handing.get(k) ?? 0) > ASK_AGAIN && await due(sess)))) return handover()
     // (opens alone wait for the next moment, which they come with)
     if (got.every((m) => m.kind === "open") && p.timeout > 0) {
       waiters.get(k)?.([])
@@ -801,6 +821,8 @@ to the companion, or to an agent with --watch.
       })
       got = woken ? pending() : []
       seen.set(k, Date.now())
+      // (woken to start fresh)
+      if (!got.length && fresh.has(k) && session(name)) return handover()
     }
     if (got.length) {
       delivered.set(k, got[got.length - 1].seq)
@@ -1183,6 +1205,26 @@ plugin.op({
   params: { as: { type: "string", description: "the agent started with start --as (default: the companion)" }, all: { type: "boolean", description: "every session" } },
   run: async (p) => await stop(str(p.as), !!p.all),
   text: (r) => (r.id ? `Ended ${r.id}.` : "It wasn't running."),
+})
+
+plugin.op({
+  id: "companion.fresh",
+  cli: "companion fresh",
+  owner: "the terminal",
+  summary: "Have the companion (or another agent, by name) hand over to a fresh session: once it's free, it writes what the next should know, which starts with that and its threads.",
+  kind: "write",
+  lock: false,
+  params: { as: { type: "string", description: "the agent started with start --as (default: the companion)" } },
+  run: async (p) => {
+    const name = str(p.as).trim() || ownName(), k = key(name), s = session(name)
+    if (!s || !(await running(s.id))) throw new OpError(`${name} isn't running`, 404)
+    // (asked when it's next free, not cut off mid-work; waiting now, at once)
+    fresh.add(k)
+    const wait = waiters.get(k)
+    if (wait) { waiters.delete(k); wait([]) }
+    return { name, id: s.id }
+  },
+  text: (r) => `${r.name} hands over to a fresh session once it's free.`,
 })
 
 plugin.op({

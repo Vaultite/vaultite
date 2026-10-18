@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Companion cursor menu**: right-click an agent's cursor (or … in its box) to show its session, switch the mode,
+  start a fresh session or stop it. A session that ends, however it ends, takes its cursor with it.
 - **Faster diagrams**: Mermaid diagrams are drawn by Pele, a fraction of the download and time; they follow light,
   dark and the colour scheme as they change, fit narrow panes and zoom when they don't fit.
 - **Birthdays** in People: a person's `birthday` (YYYY-MM-DD, or MM-DD) shows on their profile with their age, and the

@@ -392,6 +392,16 @@ export default async ($: VaultTest) => {
     check("companion: past it, an idle next asks for a handover", st === 200 && /Time for a fresh session/.test(String(txt)) && /vau companion handover "/.test(String(txt)), txt)
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: and only once a minute", !got.handover, got)
+    check("companion: Start fresh needs a running session", (await api("POST", "ops/companion.fresh", {}))[0] === 404)
+    // Its terminal ended (closed, killed): its cursor goes, the companion's too.
+    const t = await import("../../../plugins/core/terminal/plugin.ts")
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    t.plugin.emit("terminal.ended", { id: "claude-test0001", code: 0, signal: 1 })
+    let [, s2] = await api("POST", "ops/companion.status", {})
+    check("companion: a session that ended takes its cursor away", s2.agents.find((a: Any) => a.name === "Claude")?.state === "away", s2.agents)
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    ;[, s2] = await api("POST", "ops/companion.status", {})
+    check("companion: and it's back at its next", s2.agents.find((a: Any) => a.name === "Claude")?.state === "watching", s2.agents)
     fs.rmSync(file)
     check("companion: no session, no handover", (await api("POST", "ops/companion.handover", { summary: "x", as: "Nobody" }))[0] === 404)
     const items = [{ id: "n1", kind: "comment", agent: "Claude", t: 0, path: "A.md", line: 3, text: "Alice is away", replies: [{ by: "user", text: "Then Tuesday" }] },

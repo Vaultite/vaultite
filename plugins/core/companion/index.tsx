@@ -1,40 +1,18 @@
 import { useEffect, useSyncExternalStore } from "react"
 import { Crosshair, MessageCirclePlus, MessagesSquare, MousePointer2, Power, SquareTerminal } from "lucide-react"
-import { choose, cn, currentEditor, definePlugin, menuAbove, notify, notifyError, op, openView, pluginSettings, useFocusedFile, type MenuItem } from "@vaultite"
+import { choose, cn, currentEditor, definePlugin, menuAbove, notify, op, useFocusedFile, type MenuItem } from "@vaultite"
 import { askDrawing, watchCanvases } from "./canvas"
 import { ConversationsIcon, ConversationsPanel, ConversationsView } from "./Conversations"
-import { connect, getState, liveAgents, type Mode, type Note, sendMoment, subscribe, viewOf } from "./live"
+import { connect, getState, liveAgents, type Note, sendMoment, subscribe, viewOf } from "./live"
 import { follow, Overlay } from "./Overlay"
 import { Presence } from "./Presence"
+import { MODES, setMode, showSession } from "./session"
 import { offerThreads } from "./threads"
 
 // Companion: an always-on agent session in the app, with a cursor of its own (plugin.ts says how it's fed). editor.ts
 // loads with the first note.
 let loading: Promise<typeof import("./editor")> | null = null
 const load = () => (loading ??= import("./editor"))
-const settings = pluginSettings<{ mode?: Mode; agent?: string }>("companion")
-
-const MODES: { mode: Mode; label: string }[] = [
-  { mode: "off", label: "Off" },
-  { mode: "quiet", label: "Quiet: only when asked" },
-  { mode: "notice", label: "Notice: speaks up when useful" },
-  { mode: "pair", label: "Pair: writes with you" },
-]
-
-async function setMode(mode: Mode) {
-  await settings.set({ mode })
-  if (mode === "off") return
-  try {
-    const r = await op<{ id: string; running: boolean }>("companion.start")
-    if (!r.running) notify(`${getState().name} is starting`, { action: { label: "Show", run: () => openView(`terminal/${r.id}`) } })
-  } catch (e) { notifyError(e) }
-}
-
-async function showSession() {
-  const r = await op<{ session: string | null }>("companion.status")
-  if (r.session) openView(`terminal/${r.session}`, { newTab: true })
-  else notify(`${getState().name} isn't running`, { action: { label: "Start", run: () => void setMode(getState().mode === "off" ? "quiet" : getState().mode) } })
-}
 
 /** Ask the companion (or `agent`): about the selection (which agent, when several are around), or start an "@claude "
  *  line below the cursor to write the question on. In a drawing, about what's selected there. */
