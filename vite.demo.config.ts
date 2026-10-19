@@ -112,16 +112,30 @@ function demoServer(): Plugin {
 const demoEntry = (): Plugin => ({
   name: 'vaultite-demo-entry',
   transform: (code, id) => (id === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
-  // ?theme=light (or dark) pins the look whatever the system's (the site embeds the demo in a light page). Before any of
-  // the app's code: its chunks read the system's look as they load.
+  // ?theme=light (or dark) pins the look whatever the system's (the site embeds the demo in a light page), and the page
+  // can switch it (vaultite-demo:theme: the Agents bundle is shown dark). Before any of the app's code: its chunks read
+  // the system's look as they load.
   transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <script>${PIN_THEME}</script>`),
 })
 
 const PIN_THEME = `(() => {
-  const pin = new URLSearchParams(location.search).get("theme")
+  let pin = new URLSearchParams(location.search).get("theme")
   if (pin !== "light" && pin !== "dark") return
-  const real = matchMedia.bind(window)
-  window.matchMedia = (q) => real(q.includes("prefers-color-scheme") ? (pin === "dark" ? "all" : "not all") : q)
+  const real = matchMedia.bind(window), heard = new Set()
+  class Pinned extends EventTarget {
+    constructor(media) { super(); this.media = media; this.onchange = null }
+    get matches() { return this.media.includes("dark") === (pin === "dark") }
+    addEventListener(type, fn, o) { heard.add(this); super.addEventListener(type, fn, o) }
+    addListener(fn) { this.addEventListener("change", fn) }
+    removeListener(fn) { this.removeEventListener("change", fn) }
+  }
+  window.matchMedia = (q) => (q.includes("prefers-color-scheme") ? new Pinned(q) : real(q))
+  addEventListener("message", (e) => {
+    const to = e.data?.theme
+    if (e.origin !== location.origin || e.data?.type !== "vaultite-demo:theme" || (to !== "light" && to !== "dark") || to === pin) return
+    pin = to
+    for (const m of heard) { const ev = new MediaQueryListEvent("change", { media: m.media, matches: m.matches }); m.dispatchEvent(ev); m.onchange?.(ev) }
+  })
 })()`
 
 // (the base's resolvers know only the app's own plugins)
