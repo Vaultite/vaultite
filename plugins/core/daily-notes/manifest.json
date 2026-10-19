@@ -4,7 +4,7 @@
   "category": "writing",
   "essential": true,
   "name": "Daily notes",
-  "description": "A note for each day, named by its date, in its folder, made from a template: open today's or tomorrow's from the command palette, or edit one on a dashboard.",
+  "description": "A note for each day, named by its date, in its folder, made from a template: open today's or tomorrow's from the command palette, or edit one on a dashboard or in a sidebar panel.",
   "settings": {
     "format": {
       "type": "string",

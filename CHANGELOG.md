@@ -7,11 +7,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - **Menus filter as you type**: type while any menu is open and only the matching rows stay, those in its submenus
-  too (Panels ▸ More ▸ a panel), the best one ready for Enter; long menus say so at the top. The Panels menu shows each
+  too (Panels ▸ More ▸ a panel), the best one ready for Enter; a long list (More) says so at the top. The Panels menu shows each
   panel's icon beside its check.
 - **Customize sidebars**: a sheet with both sidebars side by side and the hidden panels below, to drag panels between
   them or move one from its menu, with a filter and Restore defaults. Open it from Panels ▸ Customize sidebars…,
   Settings > Appearance > Sidebars, or the palette.
+- **Today's note in the sidebar**: a Daily note panel (the sidebar's right-click menu, Panels) edits the day's note in
+  place beside whatever is open, as a scratchpad; its heading steps to other days and back to today, and a day without
+  a note is started from the template only when you ask. It also opens as a tab, to keep in a split.
 - **A day's plan on a dashboard**: ```` ```block-day ```` draws a daily note, or one section of it (`section: Plan`), to
   check off and edit in place; it steps to tomorrow and back, opens the note, and starts a missing one from the
   template. "Open tomorrow's daily note" joins today's in the palette.

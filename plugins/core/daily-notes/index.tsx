@@ -1,15 +1,7 @@
-import { useEffect, useRef, useState } from "react"
-import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
-import { addDays, Button, definePlugin, Empty, FileEditor, fmtDay, Loading, notifyError, op, openFile, Panel, today, useLive, type BlockCtx } from "@vaultite"
-
-/** A day's note, made when there's none yet where daily notes go, named and filled as the settings say (daily-note.open). */
-async function openDay(date: string, what: string) {
-  try { openFile((await op<{ path: string }>("daily-note.open", { date })).path) } catch (e) { notifyError(e, `Couldn't open ${what} daily note`) }
-}
-
-const ISO = /^\d{4}-\d\d-\d\d$/
-const dayName = (date: string) => (date === addDays(today(), 1) ? "Tomorrow" : fmtDay(date))
-const nav = "grid size-9 cursor-pointer place-items-center rounded-[7px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground md:size-7"
+import { useEffect, useState } from "react"
+import { CalendarDays, ChevronLeft, ChevronRight, FileText } from "lucide-react"
+import { addDays, Button, definePlugin, Empty, FileEditor, Loading, openFile, Panel, today, type BlockCtx } from "@vaultite"
+import { DailyPanel, DailyView, dayName, inSentence, ISO, nav, openDay, shownDay, useDay, whose } from "./Day"
 
 /** ```block-day: a day's note (or its `section`) edited in place, stepping to other days; a missing one is started
  *  only when asked (reading never makes it). */
@@ -18,16 +10,8 @@ function DayBlock({ store, options }: BlockCtx) {
   const base = typeof options.date === "string" && ISO.test(options.date) ? options.date : today()
   const [date, setDate] = useState(base)
   useEffect(() => setDate(base), [base])
-  const at = useRef<string | null>(null)
-  const { data, error } = useLive<{ date: string; path: string; exists: boolean }>(`daily-notes/day?date=${date}`, undefined, (p) => p === at.current)
-  const day = data?.date === date ? data : null
-  at.current = day?.path ?? null
-  // (focused once it's started here, to write in at once)
-  const [started, setStarted] = useState<string | null>(null)
+  const { day, error, start, started } = useDay(date)
   const name = dayName(date)
-  const start = async () => {
-    try { await op("daily-note.open", { date }); setStarted(date) } catch (e) { notifyError(e, `Couldn't start ${name.toLowerCase()}'s note`) }
-  }
   return (
     <Panel title={heading || "Daily note"} icon={CalendarDays}
       action={
@@ -41,11 +25,11 @@ function DayBlock({ store, options }: BlockCtx) {
       {!day ? <Loading error={error && "Couldn't find the daily note."} />
         : !day.exists ? (
           <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-            <Empty>No note for {name === "Today" || name === "Tomorrow" || name === "Yesterday" ? name.toLowerCase() : name} yet.</Empty>
+            <Empty>No note for {inSentence(name)} yet.</Empty>
             <Button look="quiet" size="small" className="-mr-2" onClick={start}>Start it</Button>
           </div>
         )
-        : <FileEditor key={day.path} path={day.path} store={store} section={heading || undefined} autoFocus={started === date}
+        : <FileEditor key={day.path} path={day.path} store={store} section={heading || undefined} autoFocus={started}
             noSection={<Empty>No {heading} section in this note.</Empty>} />}
     </Panel>
   )
@@ -53,8 +37,19 @@ function DayBlock({ store, options }: BlockCtx) {
 
 export default definePlugin({
   commands: [
-    { id: "daily-notes:today", name: "Open today's daily note", keys: ["Mod+Shift+D"], run: () => openDay(today(), "today's"), label: "Daily note" },
-    { id: "daily-notes:tomorrow", name: "Open tomorrow's daily note", run: () => openDay(addDays(today(), 1), "tomorrow's"), label: "Daily note" },
+    { id: "daily-notes:today", name: "Open today's daily note", keys: ["Mod+Shift+D"], run: () => openDay(today()), label: "Daily note" },
+    { id: "daily-notes:tomorrow", name: "Open tomorrow's daily note", run: () => openDay(addDays(today(), 1)), label: "Daily note" },
   ],
   blocks: { day: (ctx) => <DayBlock {...ctx} /> },
+  // Hidden until shown (the sidebar's right-click menu): a scratchpad beside the open note. Not in the rail: a flyout
+  // closes on a click outside it, which the editor's suggestions are.
+  sidebar: {
+    daily: {
+      title: "Daily note", names: ["daily note", "journal", "today's note", "scratchpad"], heading: false, sort: 38, hidden: true, view: "daily-note",
+      // (opening the note makes it, as the commands do)
+      menu: () => { const date = shownDay(); return [{ label: `Open ${whose(date)} note in a tab`, icon: FileText, run: () => openDay(date, true) }] },
+      render: (ctx) => <DailyPanel {...ctx} />,
+    },
+  },
+  views: { "daily-note": { icon: CalendarDays, title: () => "Daily note", render: ({ store }) => <DailyView store={store} /> } },
 })
