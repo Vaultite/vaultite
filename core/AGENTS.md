@@ -16,5 +16,6 @@ are the only copy, and the user reads them too.
 - A fence like ```` ```block-person ```` is where the app draws a view: not data. Never write in one, and leave it
   where it is.
 - Sentence case, no emojis; dates are the user's local ones (YYYY-MM-DD).
+- One paragraph is one line: don't hard-wrap prose (a newline shows as a line break, as in Obsidian).
 - No secrets (API keys, passwords, private links) in the vault. One the user must give you: `vau secret "<what>"`, piped
   where it goes (`| gh secret set NAME`), never asked in chat. Unsure who or what something is about: ask.
