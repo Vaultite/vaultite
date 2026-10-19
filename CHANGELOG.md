@@ -54,6 +54,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Electron 44.9 and patch updates.
 - **Links to archived files keep working**: a link to a file's old place (a recap, a report written before it was
   archived) still opens it, and the file's next move rewrites it; recaps link files where they are now.
+- Fixes: a save both sides made alike no longer stalls unsaved; a plugin's page no longer crashes while it updates;
+  a menu filter with no match keeps taking keys; an iCloud copy of a daily note that can't merge no longer blocks the
+  day; undoing a Keep no longer drops what you typed since.
 - Moving or archiving a drawing (`.excalidraw`) or any file with a long extension no longer doubles it.
 - **One copy name**: imported attachments and trashed files that share a name get " 1", " 2"..., as new files do.
 - **Sample folders** (Settings > Files): folders of examples, not your data. Their notes are no one's people, books or
