@@ -229,7 +229,7 @@ export function joinSection(p: SectionParts, part: string): string {
   return before + part + (!p.after ? "\n" : p.after.startsWith("\n") ? `\n${p.after}` : `\n\n${p.after}`)
 }
 
-/** `Note#Heading` -> ["Note", "Heading"];`#Heading` -> ["", "Heading"]; `Note#^id` -> ["Note", "^id"]. */
+/** `Note#Heading` -> ["Note", "Heading"]; `#Heading` -> ["", "Heading"]; `Note#^id` -> ["Note", "^id"]. */
 export function splitAnchor(target: string): [string, string] {
   const i = target.indexOf("#")
   return i < 0 ? [target.trim(), ""] : [target.slice(0, i).trim(), target.slice(i + 1).trim()]

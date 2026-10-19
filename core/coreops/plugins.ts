@@ -25,9 +25,6 @@ export type PluginInfo = PluginDir & { name: string; description: string; requir
   /** A vault plugin whose edits run without asking on this machine (core/trust.ts). */
   edits?: boolean }
 
-
-/** Every plugin: the app's built-in ones, then the vault's own (loaded or not). */
-
 /** A vault plugin's listing with its schedule's ops checked against the catalog: a job that would fail at 05:00 says so
  *  now (an op that isn't there, a parameter it doesn't take). */
 function scheduledOf(app: App) {
@@ -44,6 +41,7 @@ function scheduledOf(app: App) {
   }
 }
 
+/** Every plugin: the app's built-in ones, then the vault's own (loaded or not). */
 export function pluginList(app: App): PluginInfo[] {
   const own = app.vaultPlugins.list().map((v): PluginInfo => ({ id: String(v.id), tier: "vault", dir: app.vault.abs(String(v.folder)), name: String(v.name),
     description: String(v.description ?? ""), requires: strings(v.requires), optIn: true, waiting: !!v.approval, edits: !!v.edits }))

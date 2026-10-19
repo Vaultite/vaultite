@@ -4,7 +4,9 @@ import { invertedEffects, undo } from "@codemirror/commands"
 import { StateEffect, StateField, type ChangeSpec, type EditorState, type Extension, type Text } from "@codemirror/state"
 import { Decoration, EditorView, WidgetType, type DecorationSet } from "@codemirror/view"
 import type { Clash } from "@/core/merge"
+import { theirName } from "@/core/autosave"
 import { notify } from "@/core/notify"
+import { capitalize } from "@/lib/utils"
 import { frontmatter } from "./frontmatter"
 
 /** One clash in the doc: the user's lines are `from`..`to` (whole lines, no break after; empty if they deleted them). */
@@ -54,9 +56,6 @@ function decorate(state: EditorState): DecorationSet {
   return Decoration.set(ranges, true)
 }
 
-/** "Claude Code's", or "the other". */
-const theirName = (who?: string) => (who ? `${who}'s` : "the other")
-
 class Bar extends WidgetType {
   c: Chunk; who: string | undefined; side: "mine" | "theirs"; empty: boolean; lines: number
   constructor(c: Chunk, who: string | undefined, side: "mine" | "theirs", empty: boolean, lines: number) {
@@ -92,7 +91,7 @@ class Bar extends WidgetType {
       const note = document.createElement("div")
       note.className = "cm-clash-note"
       const what = this.lines > 1 ? "these lines" : "this line"
-      note.textContent = this.who ? `${this.who} edited ${what} while you typed` : `${capital(what)} changed elsewhere while you typed`
+      note.textContent = this.who ? `${this.who} edited ${what} while you typed` : `${capitalize(what)} changed elsewhere while you typed`
       box.append(note, bar(this.empty ? "Yours (deleted)" : "Yours", "mine", "Keep yours"))
     } else {
       const text = document.createElement("div")
@@ -107,7 +106,6 @@ class Bar extends WidgetType {
     return box
   }
 }
-const capital = (s: string) => s[0].toUpperCase() + s.slice(1)
 
 type Which = "mine" | "theirs" | "both"
 

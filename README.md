@@ -65,8 +65,8 @@ iPhone apps, tests and how to send a change: [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Run it on a server
 
-On a box at home or a VPS (Linux or a Mac), next to your agents. Open it from the desktop app (Connect to a server), the
-iPhone app or a browser on your tailnet.
+On a box at home or a VPS (Linux or a Mac), next to your agents. Open it from the desktop app (Connect to a server) or
+a browser on your tailnet.
 
 ```sh
 git clone https://github.com/Vaultite/vaultite && cd vaultite

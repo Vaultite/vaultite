@@ -112,9 +112,8 @@ function demoServer(): Plugin {
 const demoEntry = (): Plugin => ({
   name: 'vaultite-demo-entry',
   transform: (code, id) => (id === path.join(ROOT, 'web/src/main.tsx') ? `import ${JSON.stringify(path.join(ROOT, 'web/demo/boot.ts'))}\n${code}` : undefined),
-  // ?theme=light (or dark) pins the look whatever the system's (the site embeds the demo in a light page), and the page
-  // can switch it (vaultite-demo:theme: the Agents bundle is shown dark). Before any of the app's code: its chunks read
-  // the system's look as they load.
+  // ?theme=light (or dark) pins the look for the site's embed, and the page can switch it (vaultite-demo:theme). Before
+  // any of the app's code: its chunks read the system's look as they load.
   transformIndexHtml: (html) => html.replace('<head>', `<head>\n    <script>${PIN_THEME}</script>`),
 })
 

@@ -13,7 +13,7 @@ author: [Alice Park]
 published: 2026-09-20
 description: What the page says it's about
 tags: [Clipping]
-created: '2026-10-01 18:00:00'      # UTC, like notes
+created: '2026-10-01 18:00:00'      # local time, like notes
 updated: '2026-10-01 18:00:00'
 ---
 

@@ -8,8 +8,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - The Agents bundle turns on Muse, and the web demo shows its page with sample data.
 - **Menus filter as you type**: type while any menu is open and only the matching rows stay, those in its submenus
-  too (Panels ▸ More ▸ a panel), the best one ready for Enter; a long list (More) says so at the top. The Panels menu shows each
-  panel's icon beside its check.
+  too (Panels ▸ More ▸ a panel), the best one ready for Enter; a long list (More) says so at the top. The Panels menu
+  shows each panel's icon beside its check.
 - **Customize sidebars**: a sheet with both sidebars side by side and the hidden panels below, to drag panels between
   them or move one from its menu, with a filter and Restore defaults. Open it from Panels ▸ Customize sidebars…,
   Settings > Appearance > Sidebars, or the palette.
@@ -50,7 +50,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Move the mini player**: drag it to any corner of the window, like picture in picture; it stays there, keeps clear
   of the right sidebar and the pane's back and forward, and its video no longer shows controls it can't use.
 - Electron 44.9 and patch updates.
-
 - **Links to archived files keep working**: a link to a file's old place (a recap, a report written before it was
   archived) still opens it, and the file's next move rewrites it; recaps link files where they are now.
 - Moving or archiving a drawing (`.excalidraw`) or any file with a long extension no longer doubles it.
@@ -72,6 +71,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   ⌘[ / ⌘] back and forward, ⌘⌥W close other tabs, ⌘, Settings (in the browser too), ⌘⇧D today's daily note, `?` the
   hotkeys; on a file tree row F2 renames, ⌘D duplicates and ⌘⌫ deletes; on a canvas ⇧1 / ⇧2 / ⇧0 fit, fit the
   selection and 100% (rebindable now). A note's keys (⌘D, ⌘B...) no longer change it while the keyboard is elsewhere.
+- Agents' faces overlap as in a shared doc and fit the Conversations panel, the rest behind +N.
+- Plugins' commands find `node` and `vau` when the server runs under launchd.
+- Plugins installed by an older version no longer read as edited when an update is offered.
+- A single plugin waiting for your yes gets its own Review button on Plugins.
+- Applying a bundle turns off the CSS snippets another bundle brought (Life OS's serif titles); your own stay on.
 
 ## 0.5.0 (2026-10-17)
 

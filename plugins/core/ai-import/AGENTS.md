@@ -13,8 +13,8 @@ models: [gpt-4o, o3]
 project: '[[Chats/Claude/Projects/Garden planning|Garden planning]]'   # Claude, when it's in a project
 messages: 6
 url: https://chatgpt.com/c/6700aaaa-...
-created: '2026-09-20 16:00:00'  # UTC
-updated: '2026-09-20 16:10:00'
+created: '2026-09-20 09:00:00'  # local time
+updated: '2026-09-20 09:10:00'
 ---
 
 Your own notes about it go here, above the transcript.
