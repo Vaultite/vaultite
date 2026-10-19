@@ -112,11 +112,11 @@ check("source: nothing drawn", !(await ed.locator(".callout, .katex, .cm-fence-h
 check("source: code still highlighted", await ed.locator(".cm-codeblock span[class]").count() > 3)
 await palette(page, "Switch to reading view", 700); await wait(800)
 
-// Dark mode: the diagram is drawn again in dark colours.
-const fill = () => ed.locator(".cm-block-mermaid svg").evaluate((s) => s.innerHTML.length + ":" + (s.querySelector(".node rect, rect")?.getAttribute("style") ?? getComputedStyle(s.querySelector("rect") ?? s).fill))
+// Dark mode: the diagram takes dark colours (Pele's are the scheme's tokens, so its painted fill is what changes).
+const fill = () => ed.locator(".cm-block-mermaid svg").evaluate((s) => { const r = s.querySelector(".node rect, rect") ?? s; return getComputedStyle(r).fill + ":" + getComputedStyle(r).stroke })
 const before = await fill()
 await page.evaluate(() => document.documentElement.classList.add("dark")); await wait(2000)
-check("the diagram redraws for dark mode", await fill() !== before)
+check("the diagram redraws for dark mode", await fill() !== before, { before, now: await fill() })
 await page.screenshot({ path: `${OUT}markdown-dark.png`, fullPage: true })
 await page.evaluate(() => document.documentElement.classList.remove("dark")); await wait(500)
 
