@@ -42,6 +42,21 @@ for (const [label, viewport] of [["desktop", { width: 1280, height: 820 }], ["ph
   const b = await el()
   check(`${label}: elsewhere it keeps playing, in the mini player`, b && !b.paused && b.mini && b.t > a.t, b)
   await page.screenshot({ path: `${OUT}player-mini-${label}.png` })
+  if (label === "desktop") {
+    const mini = page.locator("[data-mini-player]")
+    if (await page.locator("[data-sidebar-toggle=right]").getAttribute("aria-expanded") !== "true") { await page.locator("[data-sidebar-toggle=right]").click(); await wait(500) }
+    const side = await page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--right-sidebar")) || 0)
+    const r0 = await mini.boundingBox()
+    check("desktop: the mini player keeps clear of the right sidebar", side > 100 && r0 && r0.x + r0.width <= viewport.width - side - 8, { r0, side })
+    await page.screenshot({ path: `${OUT}player-mini-sidebar-${label}.png` })
+    check("desktop: its picture has no browser controls", await page.evaluate(() => document.querySelector("[data-mini-player] video")?.controls === false))
+    await page.mouse.move(r0.x + 100, r0.y + 60); await page.mouse.down()
+    for (let i = 1; i <= 10; i++) { await page.mouse.move(r0.x + 100 - i * 80, r0.y + 60 - i * 50); await wait(16) }
+    await page.mouse.up(); await wait(600)
+    const r1 = await mini.boundingBox()
+    check("desktop: dragged, it lands in the top left corner", r1 && r1.y < 140 && r1.x < viewport.width / 2, r1)
+    check("desktop: a drag doesn't open the note", page.url().includes("Other"), page.url())
+  }
   await page.getByRole("button", { name: "Pause" }).first().click(); await wait(800)
   const kept = await (await fetch(`${B}api/player/places`)).json()
   check(`${label}: where it stopped is kept`, Math.abs((kept.places?.["Qa player/Qa talk.webm"]?.t ?? 0) - (await el()).t) < 2, kept.places?.["Qa player/Qa talk.webm"])

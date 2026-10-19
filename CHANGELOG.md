@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - `vau plugins check` names a schedule's op parameter it doesn't take, instead of the job failing when it's due.
 - Report screenshots are named for their day and report, so two agents' `after.png` no longer collide.
 - A person's profile card stays first when a timeline or a fact is added to a profile that had only the card.
+- **Move the mini player**: drag it to any corner of the window, like picture in picture; it stays there, keeps clear
+  of the right sidebar and the pane's back and forward, and its video no longer shows controls it can't use.
 - Electron 44.9 and patch updates.
 
 - **Links to archived files keep working**: a link to a file's old place (a recap, a report written before it was

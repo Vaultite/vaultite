@@ -6,6 +6,8 @@ import { cn, kindIcon, menuBelow, phoneFiles, rawUrl, type PlayerProps } from "@
 import { keep, keptOf, unkeep, useKept } from "./phone"
 import { BACK, captionsOf, FORWARD, getNow, homeOf, pictureOf, presenting, release, setSlot, speed, SPEEDS, take, titleOf, useTick } from "./now"
 
+// A view shows the browser's own controls on it (the mini player hides them).
+const hold = (div: HTMLElement, m: HTMLMediaElement) => { m.controls = true; div.append(m) }
 const captionsOn = { get: () => localStorage.getItem("vau:player:captions") === "1", set: (on: boolean) => localStorage.setItem("vau:player:captions", on ? "1" : "0") }
 
 export function Player({ path, video, place, height, v, onDuration, onFail }: PlayerProps) {
@@ -19,7 +21,7 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
   useLayoutEffect(() => {
     const div = slot.current!
     const m = take(path, video, v)
-    if (!presenting(m)) div.append(m)
+    if (!presenting(m)) hold(div, m)
     setEl(m)
     const meta = () => {
       dur.current?.(m.duration)
@@ -33,7 +35,7 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
     // On screen or not: the mini player shows while it's playing and no view of it is in sight.
     const io = new IntersectionObserver(([e]) => {
       setSlot(div, m, e.isIntersecting)
-      if (e.isIntersecting && !div.contains(m) && !presenting(m)) div.append(m) // back from the mini player
+      if (e.isIntersecting && !div.contains(m) && !presenting(m)) hold(div, m) // back from the mini player
     }, { threshold: 0.2 })
     io.observe(div)
     setSlot(div, m)
@@ -44,7 +46,7 @@ export function Player({ path, video, place, height, v, onDuration, onFail }: Pl
       m.removeEventListener("error", error)
       if (!div.contains(m)) return // (another view, or the mini player, has it now)
       const other = homeOf(m)
-      if (other) other.append(m); else release(m)
+      if (other) hold(other, m); else release(m)
     }
   }, [path, video, v])
 
