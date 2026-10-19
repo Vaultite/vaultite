@@ -16,6 +16,7 @@ The primitives that arrange a page, and the options every block takes.
 | Editing | A dashboard edits as it reads: the same grid, its text typed in place between the blocks; a card's bar (on hover, always on a phone) drags it elsewhere, sets Full width and Under the one before, shows its source (`</>`) and removes it; Add a block puts one in. Source mode is the file's Markdown |
 | `wide: true` | The block takes the whole row |
 | `stack: true` | The block goes under the one before it, in the same column |
+| ```` ```tasks wide ```` | A fence a plugin draws (```` ```tasks ````, ```` ```base ````) keeps `wide` and `stack` after its language, as its text is the plugin's own |
 | `file: <name>` | Any block, drawn for another file: a name or path like a `[[link]]`, or a folder ending in `/` for its newest file |
 | Options | Each block's own are declared by its plugin (`vau blocks <name>`); typing in a block suggests them. One it doesn't take, or of the wrong type, gets a quiet line under the block while editing, and the block is drawn anyway |
 | Markdown | Any text between blocks takes a row of its own, like this one |
@@ -132,9 +133,9 @@ In a file whose kind draws one (a person's), a `## Timeline` section is drawn as
 
 ## Database views
 
-A ```` ```base ```` fence is a database view: Obsidian's Bases, written as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's views). `filters` pick the files (`file.inFolder("People")`, `file.hasTag("book")`, `type == "person" && status != "done"`; `and`, `or` and `not` lists), `formulas` add computed columns (`formula.left`), `properties` label them, and each of its `views` (tabs) has a `type` (`table`, `cards`, `list`, `kanban`, `calendar`, `map`), a `name` (its title), `order` (the columns), `sort`, `groupBy`, `limit` and `summaries` (`{pages: Sum}`: under the column). Click a row to open it, double-click a value to change it (Tab goes on to the next). A heading's menu sorts, renames, summarizes or hides its column; drag a heading to move it and its edge to resize it (`columnSize`); the bar's Sort, Filter and Properties menus change the view's `sort`, `filters` and columns. Each is written to the base's YAML, as Obsidian writes it. A `kanban` is a column per value of `groupBy` (and No value; `groups: [idea, building]` puts those first, even empty): drag a card to another column, or use its … menu, to change that key in the file. A `calendar` is a month by `date` (a date key; default `date`, else `created`; `month: 2026-09` to start on another month): arrows change the month, drag an item to another day to move its date; narrow, it's a list of the days. A base lists every file outside hidden folders, templates and attachments too (a view's `archived: true` adds archive folders, `only` lists only them); on a dashboard, `wide: true` takes the whole row.
+A ```` ```base ```` fence is a database view: Obsidian's Bases, written as a `.base` file has it (`![[Books.base]]` and `![[Books.base#View]]` embed a file's views). `filters` pick the files (`file.inFolder("People")`, `file.hasTag("book")`, `type == "person" && status != "done"`; `and`, `or` and `not` lists), `formulas` add computed columns (`formula.left`), `properties` label them, and each of its `views` (tabs) has a `type` (`table`, `cards`, `list`, `kanban`, `calendar`, `map`), a `name` (its title), `order` (the columns), `sort`, `groupBy`, `limit` and `summaries` (`{pages: Sum}`: under the column). Click a row to open it, double-click a value to change it (Tab goes on to the next). A heading's menu sorts, renames, summarizes or hides its column; drag a heading to move it and its edge to resize it (`columnSize`); the bar's Sort, Filter and Properties menus change the view's `sort`, `filters` and columns. Each is written to the base's YAML, as Obsidian writes it. A `kanban` is a column per value of `groupBy` (and No value; `groups: [idea, building]` puts those first, even empty): drag a card to another column, or use its … menu, to change that key in the file. A `calendar` is a month by `date` (a date key; default `date`, else `created`; `month: 2026-09` to start on another month): arrows change the month, drag an item to another day to move its date; narrow, it's a list of the days. A base lists every file outside hidden folders, templates and attachments too (a view's `archived: true` adds archive folders, `only` lists only them); on a dashboard, ```` ```base wide ```` takes the whole row.
 
-```base
+```base wide
 filters: 'type == "person"'
 views:
   - type: table
@@ -143,7 +144,6 @@ views:
     groupBy:
       property: relation
       direction: ASC
-wide: true
 ```
 
 ```base
@@ -161,7 +161,7 @@ views:
     limit: 6
 ```
 
-```base
+```base wide
 filters: 'type == "project"'
 views:
   - type: kanban
@@ -171,26 +171,23 @@ views:
       property: status
       direction: ASC
     groups: [idea, building, live, paused]
-wide: true
 ```
 
-```base
+```base wide
 filters: 'type == "log"'
 views:
   - type: calendar
     name: Logs this month
     date: date
     order: [file.name, area]
-wide: true
 ```
 
-```base
+```base wide
 filters: 'type == "person"'
 views:
   - type: map
     name: People on a map
     order: [file.name, location]
-wide: true
 ```
 
 A `map` puts a pin per file where its `coordinates` say (`[lat, lon]`; `coordinates: note.place` for another key), coloured by `markerColor` and with `markerIcon`. Several views are tabs:

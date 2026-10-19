@@ -2,7 +2,9 @@
 // step's id goes in .vaultite/migrations.json when it has run (a synced vault's other machine skips it); a new vault starts with all done.
 import fs from "node:fs"
 import path from "node:path"
+import { infoWithLayout, type LayoutKey } from "./blocks.ts"
 import { FM, loadFm, setPropertyText } from "./frontmatter.ts"
+import { FENCE, scan } from "./sections.ts"
 import { type Item, stamp, type Vault, writeAtomic } from "./vault.ts"
 import { isObj, strings as strs } from "./values.ts"
 
@@ -68,8 +70,39 @@ function stampsToLocal(v: Vault) {
   }
 }
 
+/** A text's ```base fences with their `wide: true` / `stack: true` (keys of its YAML, where the grid read them) moved to
+ *  its info line, ```base wide, where a fence a plugin draws keeps its layout now (core/blocks.ts fenceLayout). */
+export function baseLayoutOut(text: string): string {
+  if (!/(`{3,}|~{3,})\s*base/i.test(text)) return text
+  const s = scan(text), lines = [...s.lines], drop = new Set<number>()
+  for (const f of s.fences) {
+    if (f.close === null || f.info.split(/\s/)[0].toLowerCase() !== "base") continue
+    let info = f.info
+    for (let i = f.open + 1; i < f.close; i++) {
+      const m = /^(wide|stack):\s*(true|false)\s*$/.exec(lines[i])
+      if (!m) continue
+      drop.add(i)
+      if (m[2] === "true") info = infoWithLayout(info, m[1] as LayoutKey, true)
+    }
+    if (info !== f.info) lines[f.open] = FENCE.exec(lines[f.open])![0] + info
+  }
+  return drop.size ? lines.filter((_, i) => !drop.has(i)).join("\n") : text
+}
+
 const STEPS: { id: string; run: (v: Vault) => void }[] = [
   { id: "stamps-local-2026-10", run: stampsToLocal },
+  {
+    id: "base-layout-2026-10",
+    run: (v) => {
+      for (const rel of markdownFiles(v.abs(""))) {
+        const abs = v.abs(rel)
+        let text: string
+        try { text = fs.readFileSync(abs, "utf8") } catch { continue }
+        const out = baseLayoutOut(text)
+        if (out !== text) writeAtomic(abs, out)
+      }
+    },
+  },
   {
     id: "plugins-opt-in-2026-10",
     run: (v) => {

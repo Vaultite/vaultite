@@ -114,6 +114,26 @@ await wait(400)
 const wa = await box('[data-card="agenda"]'), ww = await box('[data-card="week-goals"]')
 check("…and it takes the row", wa.width > ww.width * 1.6 && ww.y > wa.y + 20)
 
+// A fence a plugin draws (its body the plugin's own, a chart's JSON): Full width and Under the one before go in its info
+// line, its body untouched.
+const CHART = '{"type": "bar", "data": [{"week": "W1", "pages": 120}, {"week": "W2", "pages": 80}]}'
+const withChart = (await disk()).replace("```block-inbox\n```", `\`\`\`block-inbox\n\`\`\`\n\n\`\`\`chart\n${CHART}\n\`\`\``)
+await write(withChart); await wait(1200)
+const chart = card("```chart")
+await chart.hover(); await chart.getByRole("button", { name: "Full width" }).click()
+t = await saved((x) => x.includes("```chart wide\n"))
+check("a chart's Full width: ```chart wide, its body as it was", t === withChart.replace("```chart\n", "```chart wide\n"), t)
+await wait(400)
+const wc = await box('[data-card="```chart"]'), wi = await box('[data-card="inbox"]')
+check("…and it takes the row", wc.width > wi.width * 1.6 && wc.y > wi.y + 20)
+await chart.hover(); await chart.getByRole("button", { name: "Stacked" }).click()
+t = await saved((x) => x.includes("```chart wide stack\n"))
+await chart.hover(); await chart.getByRole("button", { name: "Full width" }).click()
+t = await saved((x) => x.includes("```chart stack\n"))
+check("Stacked, then not wide: ```chart stack, its body as it was", t === withChart.replace("```chart\n", "```chart stack\n"), t)
+await chart.hover(); await chart.getByRole("button", { name: "Remove" }).click()
+t = await saved((x) => !x.includes("```chart"))
+
 // Source mode is the file's Markdown; back to the grid.
 const was = await disk()
 await palette(page, "Switch to source mode", 1200)

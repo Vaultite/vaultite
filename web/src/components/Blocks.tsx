@@ -43,8 +43,8 @@ export function kindStamps(store: Store, path: string): string[] {
 }
 
 /** A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped). `line`: its 0-based start, so a
- *  drawn page and the editor find the same place. */
-export type Segment = ({ block: string; text: string } | { md: string } | { embed: string; height?: number }) & { line: number }
+ *  drawn page and the editor find the same place; a block's `info`, its fence's info line (its layout: fenceLayout). */
+export type Segment = ({ block: string; text: string; info: string } | { md: string } | { embed: string; height?: number }) & { line: number }
 export function segments(body: string): Segment[] {
   const out: Segment[] = []
   const { lines, prose, fences } = scan(body)
@@ -61,7 +61,7 @@ export function segments(body: string): Segment[] {
     const name = f && f.close !== null ? blockName(f.info) ?? fenceBlock(f.info) : null
     if (f && name) {
       flush()
-      out.push({ block: name, text: lines.slice(i + 1, f.close!).join("\n"), line: i })
+      out.push({ block: name, text: lines.slice(i + 1, f.close!).join("\n"), info: f.info, line: i })
       i = f.close!
       continue
     }

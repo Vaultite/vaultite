@@ -1,7 +1,7 @@
-// A dashboard read: its blocks as a grid of cards (`wide`, `stack`), off plugins' blocks left out. Cards come back at
+// A dashboard read: its blocks as a grid of cards (`wide`, `stack`: fenceLayout), off plugins' blocks left out. Cards come back at
 // their last height and carry `data-line`, so the page keeps its shape and editing shows the same part.
 import { useEffect, useMemo, useRef, type ReactNode } from "react"
-import { blockFor, blockOptions, BlockView, cn, EmbedView, Markdown, blockHeightKey, keepAnchored, segments, textKey, useHeldHeight, type PageCtx } from "@vaultite"
+import { blockFor, blockOptions, BlockView, cn, EmbedView, fenceLayout, Markdown, blockHeightKey, keepAnchored, segments, textKey, useHeldHeight, type PageCtx } from "@vaultite"
 
 type Cell = ({ md: string } | { embed: string; height?: number } | { wide: boolean; blocks: { name: string; text: string; nth: number }[] }) & { line: number }
 
@@ -18,12 +18,12 @@ function layout(body: string): Cell[] {
   for (const s of segments(body)) {
     if ("md" in s) { cells.push({ md: s.md, line: s.line }); continue }
     if ("embed" in s) { cells.push(s); continue }
-    const o = blockOptions(s.text)
+    const o = fenceLayout(s.info, s.text)
     const nth = seen.get(s.block) ?? 0
     seen.set(s.block, nth + 1)
     const last = cells[cells.length - 1]
-    if (o.stack === true && last && "blocks" in last) last.blocks.push({ name: s.block, text: s.text, nth })
-    else cells.push({ wide: o.wide === true, blocks: [{ name: s.block, text: s.text, nth }], line: s.line })
+    if (o.stack && last && "blocks" in last) last.blocks.push({ name: s.block, text: s.text, nth })
+    else cells.push({ wide: o.wide, blocks: [{ name: s.block, text: s.text, nth }], line: s.line })
   }
   return cells
 }

@@ -151,6 +151,7 @@ export const PinMap = lazy(() => import("@/components/PinMap"))
 // Blocks: a body in pieces (its blocks, embeds and the Markdown between them), a block's options, a block drawn on its
 // own, and who draws one (Dashboards lays a file's blocks out as a grid).
 export { BlockView, blockOptions, chooseBlock, FileBlocks, segments, type Segment } from "@/components/Blocks"
+export { fenceLayout, type Layout } from "../../core/blocks.ts"
 // A dashboard edited as it's read (PageView.editGrid): a run of its blocks, and what moves, adds and removes them.
 export type { GridCard, GridEdit } from "@/editor/livePreview"
 export { EmbedView } from "@/components/NoteEmbed"

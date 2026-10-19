@@ -4,7 +4,7 @@ icon: house
 tint: primary
 ---
 
-```base
+```base wide
 filters:
   and:
     - file.inFolder("Projects")
@@ -17,10 +17,9 @@ views:
       property: status
       direction: ASC
     groups: [idea, building, live, paused]
-wide: true
 ```
 
-```base
+```base wide
 filters:
   and:
     - file.inFolder("Notes")
@@ -32,7 +31,6 @@ views:
       property: status
       direction: ASC
     groups: [seed, exploring, parked, done]
-wide: true
 ```
 
 ```base
@@ -61,7 +59,7 @@ views:
     order: [author, status]
 ```
 
-```base
+```base wide
 filters:
   and:
     - file.ext == "md"
@@ -70,5 +68,4 @@ views:
   - type: calendar
     name: This month
     date: updated
-wide: true
 ```

@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- A dashboard card of a ```tasks, ```dataview or ```base fence goes full width or under the one before without its
+  query being erased: it's written after the fence's language (```tasks wide), and bases' `wide: true` moves there once.
 - **Note dates**: a note made in the app, by you or an agent, gets `created` and `updated` in its properties (your local
   time, shown as dates), and `updated` moves when its text is edited in the app, in the same save. Notes you already
   have are left as they are; the property names are its settings, and it can be turned off.

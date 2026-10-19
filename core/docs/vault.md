@@ -32,8 +32,8 @@ is where the app draws something: a profile, a project's GitHub numbers, today's
 file's fields or live data, so never write your text or numbers in one. Only what a file has a fence of is drawn: a
 kind's own blocks (a person's profile, a log's fields) are fences on top of its files, which the API writes in a new
 one (and `vau type --apply`, `vau migrate` in older ones). Leave fences where they are (the user arranges the page with
-them); API writes never touch them. Every block also
-takes `wide` and `stack` (a dashboard's grid) and `file: <name>` (drawn for another file: a name or path like a
+them); API writes never touch them. Every block also takes `wide` and `stack` (a dashboard's grid; a fence a plugin
+draws has them after its language, ```tasks wide) and `file: <name>` (drawn for another file: a name or path like a
 `[[link]]`, or a folder ending in `/` for its newest file, `file: Logs/Gym/`). An option a block doesn't take, or of
 the wrong type, is still drawn with a note (under it while editing; in `/api/render` an italic line after its text,
 _(github block: unknown option `isues` (did you mean `issues`?))_): fix those when you see them. `vau blocks` and

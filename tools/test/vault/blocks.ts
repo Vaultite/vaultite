@@ -19,6 +19,44 @@ export default async ($: VaultTest) => {
       && withKindBlocks(["log", "workout"], "Notes\n\n```block-workout\nwide: true\n```\n") === "```block-log\n```\n\nNotes\n\n```block-workout\nwide: true\n```\n"
       && withKindBlocks(["person"], "") === "```block-person\n```\n" && withKindBlocks(["person"], "Text\n\n```block-person\n```\n") === null && withKindBlocks([], "x") === null)
   }
+  // A block's place on a dashboard: a ```block-<name>'s options say it; a fence a plugin draws (a ```tasks query) keeps it
+  // in its info line, so making it wide or stacked never touches its body.
+  {
+    const { fenceLayout, infoWithLayout } = await import("../../../core/blocks.ts")
+    const { baseLayoutOut } = await import("../../../core/migrations.ts")
+    const query = "not done\n(scheduled on or before today) OR (due on or before today)\nsort by priority"
+    const show = (x: unknown) => JSON.stringify(x)
+    check("fenceLayout: a block's from its options, its info line's words ignored",
+      show(fenceLayout("block-agenda", "wide: true\nstack: true")) === '{"wide":true,"stack":true}' && show(fenceLayout("block-agenda wide", "")) === '{"wide":false,"stack":false}')
+    check("fenceLayout: a plugin's fence's from the words after its language, never its body",
+      show(fenceLayout("tasks wide stack", query)) === '{"wide":true,"stack":true}' && show(fenceLayout("tasks", "wide: true")) === '{"wide":false,"stack":false}'
+      && show(fenceLayout("base stack", "views: []")) === '{"wide":false,"stack":true}')
+    check("infoWithLayout: words put in and taken out after the language, in order, other words kept",
+      infoWithLayout("tasks", "wide", true) === "tasks wide" && infoWithLayout("tasks wide", "stack", true) === "tasks wide stack"
+      && infoWithLayout("tasks stack", "wide", true) === "tasks wide stack" && infoWithLayout("tasks wide stack", "wide", false) === "tasks stack"
+      && infoWithLayout(" ad-note  Title stack ", "stack", false) === "ad-note Title" && infoWithLayout("tasks wide", "wide", true) === "tasks wide")
+    const before = "Top\n\n```base\nfilters: 'type == \"book\"'\nviews:\n  - type: table\n    wide: true\nwide: true\nstack: false\n```\n\n```tasks\nwide: true\n```\n\n~~~base stack\nviews: []\nwide: true\n~~~\n"
+    const after = baseLayoutOut(before)
+    check("migration: a base's wide and stack move to its info line, a nested key and other fences left as they are",
+      after === "Top\n\n```base wide\nfilters: 'type == \"book\"'\nviews:\n  - type: table\n    wide: true\n```\n\n```tasks\nwide: true\n```\n\n~~~base wide stack\nviews: []\n~~~\n"
+      && baseLayoutOut(after) === after && baseLayoutOut(query) === query, after)
+  }
+  // A dashboard's ```tasks card made wide, then stacked, then neither, through the file as the editor writes it: its
+  // query stays as it was.
+  {
+    const { fenceLayout, infoWithLayout } = await import("../../../core/blocks.ts")
+    const { scan } = await import("../../../core/sections.ts")
+    const text = "---\ntype: dashboard\n---\n\n```block-agenda\n```\n\n```tasks\nnot done\n(scheduled on or before today) OR (due on or before today)\nsort by priority\n```\n"
+    const toggle = (t: string, key: "wide" | "stack", on: boolean) => {
+      const s = scan(t), f = s.fences.find((x) => x.info.startsWith("tasks"))!
+      s.lines[f.open] = "```" + infoWithLayout(f.info, key, on)
+      return s.lines.join("\n")
+    }
+    const read = (t: string) => { const s = scan(t), f = s.fences.find((x) => x.info.startsWith("tasks"))!; return { ...fenceLayout(f.info, s.lines.slice(f.open + 1, f.close!).join("\n")), body: s.lines.slice(f.open + 1, f.close!).join("\n") } }
+    const wide = toggle(text, "wide", true), both = toggle(wide, "stack", true), off = toggle(toggle(both, "wide", false), "stack", false)
+    check("a ```tasks card toggled wide and stacked keeps its query", read(wide).wide && !read(wide).stack && read(both).wide && read(both).stack
+      && read(both).body === read(text).body && wide.includes("```tasks wide\nnot done\n") && off === text, [wide, both, off])
+  }
   let [code, p] = await api("POST", "people", { name: "Block Person", relation: "friend", notes: "Likes tea." })
   let t = read("People/Block Person.md")
   check("a new file has its kind's blocks as fences, on top", t === "---\ntype: person\nrelation: friend\n---\n\n```block-person\n```\n\nLikes tea.\n", t)

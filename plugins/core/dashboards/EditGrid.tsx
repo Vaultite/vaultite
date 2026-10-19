@@ -127,24 +127,26 @@ const Card = memo(function Card({ id, k, card, edit, ctx, writable, first, sourc
   )
 })
 
-/** A block's options as its fence has them, edited in its card: each change is the file's (its undo too). */
+/** A block's text as its fence has it (its options; a ```tasks fence's query), edited in its card: each change is the
+ *  file's (its undo too). */
 function Source({ name, text, edit, set, close }: { name: string; text: string; edit: GridEdit; set: ((t: string, typed?: boolean) => void) | null; close: () => void }) {
   const [v, setV] = useState(text)
+  const fence = name.startsWith("```")
   // (what the file has now, unless it's what's typed: a trailing new line isn't written until something follows it)
   useEffect(() => setV((was) => (was.replace(/\s+$/, "") === text ? was : text)), [text])
   const ref = useRef<HTMLTextAreaElement>(null)
   useEffect(() => { const t = ref.current; if (t) { t.focus(); t.setSelectionRange(t.value.length, t.value.length) } }, [])
   return (
     <div className="cm-card-source" data-no-edit>
-      <div className="font-mono text-[12px] text-muted-foreground">{name.startsWith("```") ? name : `\`\`\`block-${name}`}</div>
-      <textarea ref={ref} value={v} rows={Math.max(1, v.split("\n").length)} spellCheck={false} readOnly={!set} aria-label={`The ${name} block's options`}
+      <div className="font-mono text-[12px] text-muted-foreground">{fence ? name : `\`\`\`block-${name}`}</div>
+      <textarea ref={ref} value={v} rows={Math.max(1, v.split("\n").length)} spellCheck={false} readOnly={!set} aria-label={fence ? `The ${name.slice(3)} fence's text` : `The ${name} block's options`}
         onChange={(e) => { setV(e.target.value); set?.(e.target.value, true) }}
         onKeyDown={(e) => {
           if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") { e.preventDefault(); e.stopPropagation(); edit.history(e.shiftKey) }
           else if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); close() }
           else if (!e.metaKey && !e.ctrlKey) e.stopPropagation()
         }}
-        className="block w-full resize-none bg-transparent font-mono text-[15px] leading-[22px] outline-none placeholder:text-muted-foreground md:text-[13px] md:leading-[20px]" placeholder="Its options, as YAML" />
+        className="block w-full resize-none bg-transparent font-mono text-[15px] leading-[22px] outline-none placeholder:text-muted-foreground md:text-[13px] md:leading-[20px]" placeholder={fence ? undefined : "Its options, as YAML"} />
       <div className="flex items-baseline gap-3">
         <span className="flex-1 font-mono text-[12px] text-muted-foreground">```</span>
         <button type="button" className="cursor-pointer text-[13px] font-semibold text-primary" onClick={close}>Done</button>

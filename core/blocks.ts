@@ -1,6 +1,6 @@
 // The block contract: what a ```block-<name> fence may say, declared in each plugin's manifest (format:
 // core/docs/vault-plugins.md), read by server and app alike (no Node). Bad options still pass, with a note to fix them.
-import { blocksIn } from "./sections.ts"
+import { blockName, blocksIn } from "./sections.ts"
 import { load } from "./yaml.ts"
 import { isObj as isMap, strings } from "./values.ts"
 
@@ -36,6 +36,31 @@ export const COMMON: Record<string, OptionDecl> = {
   wide: { type: "boolean", description: "on a dashboard, the block takes the whole row" },
   stack: { type: "boolean", description: "on a dashboard, the block goes under the one before it, in the same column" },
   file: { type: "string", description: "draws it for another file: a name or path like a [[link]], or a folder ending in / for its newest file" },
+}
+
+/** A block's place on a dashboard's grid: COMMON's `wide` and `stack`. */
+export type Layout = { wide: boolean; stack: boolean }
+export type LayoutKey = keyof Layout
+const LAYOUT: LayoutKey[] = ["wide", "stack"]
+
+/** Where a fence sits on a dashboard's grid: a ```block-<name>'s options say (`wide: true`); any other fence a plugin
+ *  draws (its body the plugin's own: a ```tasks query) has it after its language, ```tasks wide stack. */
+export function fenceLayout(info: string, body: string): Layout {
+  if (blockName(info)) {
+    const o = parseOptions(body).options
+    return { wide: o.wide === true, stack: o.stack === true }
+  }
+  const words = info.trim().split(/\s+/).slice(1)
+  return { wide: words.includes("wide"), stack: words.includes("stack") }
+}
+
+/** The info line of a fence that isn't a ```block-<name> with one layout word put in or taken out (`tasks` -> `tasks
+ *  wide`): its language first, its other words kept, then the layout's in order. */
+export function infoWithLayout(info: string, key: LayoutKey, on: boolean): string {
+  const [lang = "", ...rest] = info.trim().split(/\s+/)
+  const set = new Set(rest.filter((w) => w !== key && (LAYOUT as string[]).includes(w)))
+  if (on) set.add(key)
+  return [lang, ...rest.filter((w) => !(LAYOUT as string[]).includes(w)), ...LAYOUT.filter((k) => set.has(k))].join(" ")
 }
 
 /** Which of a file's kind's blocks (`Kind.blocksFor`) its body has no fence of. One drawn for another file (`file:`)

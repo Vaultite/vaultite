@@ -249,9 +249,9 @@ Ids: vau hotkeys --all.
     help: `Lists the blocks, by plugin, as each plugin declares them (its manifest.json; GET /api/blocks), plugins that
 are off marked. With a name: that block's options, what each takes and does. Put one in any file as a fence,
 \`\`\`block-<name>, options inside as YAML. Every block also takes \`wide: true\` (the whole row), \`stack: true\`
-(under the one before) and \`file: <name>\` (drawn for another file). An option a block doesn't take, or of the wrong
-type, shows as a note under it while editing and after its text in vau render. See them all, written as a page: vau
-docs design.
+(under the one before; a fence a plugin draws keeps them after its language, \`\`\`tasks wide) and \`file: <name>\`
+(drawn for another file). An option a block doesn't take, or of the wrong type, shows as a note under it while editing
+and after its text in vau render. See them all, written as a page: vau docs design.
 
   vau blocks
   vau blocks query`,

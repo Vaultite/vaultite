@@ -150,6 +150,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `editorOf(view)`: The editor drawn by this view, if it's one of the app's.
 - `EmbedView({ store, target, height, from, seen, edit })`: Whatever `![[target]]` names, drawn: a file's view, or a note's text; with its menu (`edit`: in the editor, what changes it in the note).
 - `Empty({ children })`: Empty state.
+- `fenceLayout(info, body)`: Where a fence sits on a dashboard's grid: a ```block-<name>'s options say (`wide: true`); any other fence a plugin draws (its body the plugin's own: a ```tasks query) has it after its language,…
 - `fetchMachines()`: The machines, once ([] with the plugin off or when the server doesn't answer).
 - `fileAt(files, path)`
 - `FileBarItem`: Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title (`"line"`); docked in a sidebar by the user, there for the focused file.
@@ -200,7 +201,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `getTabLayout()`
 - `GitHubIcon`: GitHub's mark: a project's repository, a plugin's on GitHub.
 - `goHere(to)`: Show `to` in the active tab whatever it held (a page's tabs, List -> Map: the same place, its own history).
-- `GridCard`: A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its options).
+- `GridCard`: A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its fence's layout: core/blocks.ts fenceLayout).
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
 - `grouped(groups)`: A menu made of groups, a line between each two (empty groups left out): the file menus' one shape.
@@ -254,6 +255,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `kindFolder(folder, disabled?)`: Whether a plain Markdown file in `folder` would be a kind's (People/, Logs/Gym/): such a folder holds only that kind, so another sort of note goes where new notes go instead.
 - `kindIcon(path)`: The icon for a file that isn't a note (notes take their plugin's).
 - `KV({ label, children })`: A label and its value, in a Group.
+- `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
 - `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.

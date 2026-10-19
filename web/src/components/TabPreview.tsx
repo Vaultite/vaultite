@@ -15,6 +15,7 @@ import { rawUrl } from "@/components/FileViewers"
 import type { TabInfo } from "@/components/Tabs"
 import { cn } from "@/lib/utils"
 import { blockName } from "../../../core/sections.ts"
+import { fenceLayout } from "../../../core/blocks.ts"
 
 // ---------- the text, read lazily ----------
 
@@ -63,16 +64,16 @@ function excerpt(body: string, max: number): Part[] {
   const flush = () => { if (md.some((l) => l.trim())) out.push({ md: md.join("\n") }); md = [] }
   for (let i = 0; i < lines.length && n < max; i++) {
     const line = lines[i]
-    const fence = /^\s*(`{3,}|~{3,})\s*(\S*)/.exec(line)
+    const fence = /^\s*(`{3,}|~{3,})\s*(.*)$/.exec(line)
     const embed = /^\s*!\[\[([^\]|#]+)/.exec(line)
     if (fence) {
       const close = lines.findIndex((l, j) => j > i && l.trim().startsWith(fence[1]))
       const end = close < 0 ? lines.length - 1 : close
-      const name = blockName(fence[2]) ?? (fence[2] === "mermaid" ? "diagram" : null)
+      const name = blockName(fence[2]) ?? (fence[2].split(/\s/)[0] === "mermaid" ? "diagram" : null)
       if (name) {
-        // Blocks and diagrams draw themselves in the app: here, a bar (a block's `wide: true` takes the whole row).
+        // Blocks and diagrams draw themselves in the app: here, a bar (a wide block takes the whole row).
         flush()
-        out.push({ block: name, wide: lines.slice(i + 1, end).some((l) => /^\s*wide:\s*true\b/.test(l)) })
+        out.push({ block: name, wide: fenceLayout(fence[2], lines.slice(i + 1, end).join("\n")).wide })
       } else md.push(...lines.slice(i, end + 1).slice(0, 8), ...(end - i > 7 ? [fence[1]] : []))
       i = end
       n++

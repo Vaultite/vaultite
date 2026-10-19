@@ -4,7 +4,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { settingsOf, type SettingDecls } from "./blocks.ts"
+import { fenceLayout, settingsOf, type SettingDecls } from "./blocks.ts"
 import { pageAt, templates } from "./pages.ts"
 import { asLocked, git, parseSource, readLock, tagsOf } from "./installs.ts"
 import { MOVED } from "./migrations.ts"
@@ -209,7 +209,7 @@ function homeOf(b: Bundle, host: Host, pinned: string[] | null): HomeBlock[] | n
     if (!name) continue
     const body = s.lines.slice(f.open + 1, f.close!).join("\n")
     const view = (name === "base" ? /^\s*-?\s*type:\s*['"]?(\w+)/m : /^view:\s*['"]?(\w+)/m).exec(body)?.[1] ?? null
-    out.push({ block: name, view: view === "kanban" ? "board" : view, wide: /^wide:\s*true\s*$/m.test(body) })
+    out.push({ block: name, view: view === "kanban" ? "board" : view, wide: fenceLayout(f.info, body).wide })
     if (out.length >= 6) break
   }
   return out

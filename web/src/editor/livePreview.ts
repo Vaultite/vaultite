@@ -12,8 +12,8 @@ import { haptic } from "@/core/haptics"
 import { isMac } from "@/core/platform"
 import { keepOnScreen } from "@/core/anchor"
 import { blockHeightKey, heightOf, holdHeight, textKey } from "@/core/heights"
-import { BLOCK_ID, blockName, scan, TAG } from "../../../core/sections.ts"
-import { parseOptions } from "../../../core/blocks.ts"
+import { BLOCK_ID, blockName, FENCE, scan, TAG } from "../../../core/sections.ts"
+import { fenceLayout, infoWithLayout, type LayoutKey } from "../../../core/blocks.ts"
 import { frontmatter } from "./frontmatter"
 import { COPY_ICON, copyCode, dropMermaid, hydrate, markdownDrawn, renderMath, renderMermaid, richClick, taskMarks, wireTasks } from "@/core/richmd"
 import { capitalize } from "@/lib/utils"
@@ -79,7 +79,8 @@ export type BlockEdit = {
   /** Its Markdown is showing (the cursor is in it): Done puts the cursor after it. */
   done: () => void
 }
-/** A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its options). */
+/** A block of a run drawn as a grid: `wide` takes the row, `stack` goes under the one before (its fence's layout:
+ *  core/blocks.ts fenceLayout). */
 export type GridCard = { name: string; text: string; wide: boolean; stack: boolean }
 /** What changes a run of blocks in the file, each block by its index in the run (found where it is now). */
 export type GridEdit = {
@@ -94,8 +95,8 @@ export type GridEdit = {
   add: (fence: string) => void
   /** Block k taken out; stacked under it, the next one takes its place. */
   remove: (k: number) => void
-  /** One of block k's options set (undefined takes it out). */
-  set: (k: number, key: string, value: unknown) => void
+  /** Block k made wide or stacked (true) or no longer (undefined), where its fence keeps that (fenceLayout). */
+  set: (k: number, key: LayoutKey, value: true | undefined) => void
   /** Undo (or redo) in the file's history: a card's source field has the editor's. */
   history: (redo?: boolean) => void
 }
@@ -596,8 +597,8 @@ function gridEdit(view: EditorView, el: HTMLElement): GridEdit {
       const A = ms[s].a, B = ms[e].b
       let text = doc.sliceString(doc.line(A).from, doc.line(B).to)
       if (!lead) {
-        const body = withOption(ms[k].text, "stack", undefined).replace(/\s+$/, "")
-        text = [doc.line(A).text, ...(body ? [body] : []), doc.line(B).text].join("\n")
+        const c = layoutChange(doc, ms[k], "stack", false), at = doc.line(A).from
+        text = text.slice(0, c.from - at) + c.insert + text.slice(c.to - at)
       }
       let ins: { from: number; insert: string }
       if (!dst.length) ins = atEnd(doc, text)
@@ -621,17 +622,25 @@ function gridEdit(view: EditorView, el: HTMLElement): GridEdit {
       const doc = view.state.doc, changes: { from: number; to?: number; insert?: string }[] = [cut(doc, ms[k].a, ms[k].b)]
       const next = ms[k + 1]
       // (the next one stacked under it is no longer: it takes its place)
-      if ((k === 0 || !ms[k].stack) && next?.stack) changes.push(fenceBody(doc, next, withOption(next.text, "stack", undefined)))
+      if ((k === 0 || !ms[k].stack) && next?.stack) changes.push(layoutChange(doc, next, "stack", false))
       put(changes, "delete.block")
     },
     set: (k, key, value) => {
       const m = member(k)
-      if (m) put([fenceBody(view.state.doc, m, withOption(m.text, key, value))], "input.block")
+      if (m) put([layoutChange(view.state.doc, m, key, value === true)], "input.block")
     },
     history: (again) => { (again ? redo : undo)(view) },
   }
   runs.set(edit, { view, run })
   return edit
+}
+/** Block m made wide or stacked (or no longer) where its fence keeps it: a ```block-<name>'s options, another fence's
+ *  info line (```tasks wide), as its body is its plugin's own (core/blocks.ts fenceLayout). */
+function layoutChange(doc: Text, m: { a: number; b: number; text: string }, key: LayoutKey, on: boolean) {
+  const open = doc.line(m.a), f = FENCE.exec(open.text)!, info = open.text.slice(f[0].length)
+  if (blockName(info)) return fenceBody(doc, m, withOption(m.text, key, on || undefined))
+  const from = open.from + f[0].length + /^\s*/.exec(info)![0].length
+  return { from, to: open.to, insert: infoWithLayout(info, key, on) }
 }
 /** A fence's lines between its ``` replaced with `text`: only what differs, so the rest keeps its place in the history
  *  and in a merge. */
@@ -1261,10 +1270,9 @@ function candidates(state: EditorState): Cands {
       // (or a fence a plugin draws: ```base)
       const name = blockName(f.info) ?? fenceBlock(f.info)
       if (name) {
-        // (side by side, its options say where: read once per version of the text)
-        const o = cfg.renderGrid ? parseOptions(inner).options : null
+        // (side by side, its layout says where: read once per version of the text)
         add(k, end, new Block(`block:${name}`, inner, cfg.version, (el, t, _, edit) => cfg.renderBlock(name, t, el, edit), cfg.place), false,
-          { name, text: inner, ...(o && { wide: o.wide === true, stack: o.stack === true }) })
+          { name, text: inner, ...(cfg.renderGrid && fenceLayout(f.info, inner)) })
       } else if (f.info.split(/\s/)[0].toLowerCase() === "mermaid") add(k, end, new Block("mermaid", inner, 0, drawMermaid, cfg.place))
       k = end
       continue
