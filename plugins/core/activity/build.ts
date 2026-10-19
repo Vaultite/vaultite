@@ -59,7 +59,8 @@ function linker(s: Sources) {
   const moved = new Map(s.events.flatMap((e) => (e.action === "move" && e.paths?.length === 2 ? [[e.paths[0], e.paths[1]] as const] : [])))
   return (rel: string) => {
     let at = rel
-    for (let n = 0; moved.has(at) && n < 20; n++) at = moved.get(at)!
+    // (only while it isn't there: a path made again after a move is that new file)
+    for (let n = 0; !s.exists(at) && moved.has(at) && n < 20; n++) at = moved.get(at)!
     if (!s.exists(at) && s.exists(archiveTwin(at))) at = archiveTwin(at)
     const p = at.replace(/\.md$/i, ""), name = p.split("/").pop()!
     return p.includes("/") ? `[[${p}|${name}]]` : `[[${p}]]`

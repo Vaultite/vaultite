@@ -21,14 +21,16 @@ export default async ($: VaultTest) => {
   const HOUR = 3_600_000
   {
     // Links go where files are now: an agent's report archived since, a file renamed twice that day.
-    const d0 = new Date(2026, 9, 5).getTime(), t = d0 + 9 * HOUR, here = new Set(["Inbox/.archive/Rep.md", "Rc2/C.md"])
+    const d0 = new Date(2026, 9, 5).getTime(), t = d0 + 9 * HOUR, here = new Set(["Inbox/.archive/Rep.md", "Rc2/C.md", "Rc2/D.md", "Rc2/Old D.md"])
     const ev = (n: number, action: string, kind: string, paths: string[]) => ({ id: `e${n}`, t: t + n * 60_000, action, text: "", paths, actor: { kind, name: kind === "agent" ? "Claude Code" : "You" } })
-    const got = await bq.buildRecap({ from: d0, to: d0 + 24 * HOUR, changed: ["Inbox/Rep.md"], captureFolders: [],
-      events: [ev(0, "create", "agent", ["Inbox/Rep.md"]), ev(5, "move", "you", ["Rc2/A.md", "Rc2/B.md"]), ev(6, "move", "you", ["Rc2/B.md", "Rc2/C.md"])] as Any,
-      versions: async (rel) => ({ gone: false, versions: rel === "Inbox/Rep.md" ? [{ t }] : [] }), text: async () => "A report\n",
+    const got = await bq.buildRecap({ from: d0, to: d0 + 24 * HOUR, changed: ["Inbox/Rep.md", "Rc2/D.md"], captureFolders: [],
+      events: [ev(0, "create", "agent", ["Inbox/Rep.md"]), ev(5, "move", "you", ["Rc2/A.md", "Rc2/B.md"]), ev(6, "move", "you", ["Rc2/B.md", "Rc2/C.md"]),
+        ev(7, "move", "you", ["Rc2/D.md", "Rc2/Old D.md"]), ev(8, "create", "agent", ["Rc2/D.md"])] as Any,
+      versions: async (rel) => ({ gone: false, versions: rel === "Inbox/Rep.md" ? [{ t }] : rel === "Rc2/D.md" ? [{ t: t + 8 * 60_000 }] : [] }), text: async () => "A report\n",
       exists: (rel) => here.has(rel), kindOf: () => ({ life: false, log: false }) })
     const lines = got.flatMap((e) => [e.text, ...e.items])
     check("recap: links go to where files are now (archived, renamed)", lines.includes("[[Inbox/.archive/Rep|Rep]]") && lines.filter((l) => l.startsWith("Moved [[Rc2/C|C]]")).length === 2, lines)
+    check("recap: a path made again after its file moved links to the new file", lines.some((l) => l.includes("[[Rc2/D|D]]")) && !lines.some((l) => /Created.*Old D/.test(l)), lines)
   }
   // Its days are today and yesterday: one run spanning midnight would split them, so a run just before it waits.
   const toMidnight = new Date().setHours(24, 0, 0, 0) - Date.now()
