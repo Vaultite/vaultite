@@ -3,6 +3,7 @@
 import { AsyncLocalStorage } from "node:async_hooks"
 import { execFile } from "node:child_process"
 import fs from "node:fs"
+import os from "node:os"
 import path from "node:path"
 import { setImmediate as turn } from "node:timers/promises"
 import { withKindBlocks } from "./blocks.ts"
@@ -151,35 +152,64 @@ function gone(file: string, e: unknown) {
 
 const decoder = new TextDecoder("utf-8", { fatal: true, ignoreBOM: true })
 
-/** A text file, line endings as \n. Throws ENOENT, a TypeError when it isn't UTF-8, or EAGAIN while a read of it has
- *  been under way for a while (readSoon: reading it here too would hold the server until iCloud gives it). */
+/** A text file, line endings as \n. Throws ENOENT, a TypeError when it isn't UTF-8, or a read iCloud hasn't given yet
+ *  (notHereYet: the API answers 503): a placeholder (asked for, there at a later sync) or one readSoon waits on. */
 export function readText(p: string) {
-  if (Date.now() - (reading.get(p)?.since ?? Infinity) >= SLOW) throw Object.assign(new Error(`iCloud is still downloading ${path.basename(p)}`), { code: "EAGAIN" })
-  let buf: Buffer
-  try { buf = fs.readFileSync(p) } catch (e) { fetchFromICloud(p, e); throw e }
-  return textOf(buf)
+  return textOf(readBytes(p))
 }
 const textOf = (buf: Buffer) => decoder.decode(buf).replace(/\r\n?/g, "\n")
+
+/** A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says. */
+export function readBytes(p: string): Buffer {
+  if (Date.now() - (reading.get(p)?.since ?? Infinity) >= SLOW) throw stillDownloading(p)
+  try { const b = fs.readFileSync(p); if (fetching.size) fetching.delete(p); return b } catch (e) {
+    if (!placeholder(e)) throw e
+    fetchFromICloud(p, e)
+    throw stillDownloading(p, e)
+  }
+}
+
+/** A read iCloud hasn't given yet, as notHereYet knows it (errno 11, EDEADLK). */
+const stillDownloading = (p: string, cause?: unknown) =>
+  Object.assign(new Error(`iCloud is still downloading ${path.basename(p)}; try again in a moment`), { code: "EDEADLK", errno: -11, cause })
 
 /** How long a sync waits for a file before going on without it; a read going on SLOW ms is held (iCloud). */
 export const READ_WAIT = 2000
 const SLOW = 1000
+/** How long a read waits for iCloud to bring down a placeholder before failing (the next sync asks again). */
+const ARRIVAL = 60_000
 /** The last read of each file (readSoon) while it's under way, by absolute path, and when it began. */
 const reading = new Map<string, { since: number; data: Promise<Buffer> }>()
 
-/** A file's bytes read off the main thread, so a file iCloud is slow to give never holds the server; null when that
- *  takes over `wait` ms, or at once while an earlier read of it is held (the read goes on: no second thread on it). */
-export function readSoon(p: string, wait = READ_WAIT): Promise<Buffer | null> {
+/** A file's bytes off the main thread (a placeholder iCloud left: once down), so iCloud never holds the server; null
+ *  after `wait` ms, or at once while an earlier read of it is held (no second thread on it), unless `join`ing it. */
+export function readSoon(p: string, wait = READ_WAIT, { join = false } = {}): Promise<Buffer | null> {
   const was = reading.get(p)
-  if (was && Date.now() - was.since >= SLOW) return Promise.resolve(null)
-  const data = fs.promises.readFile(p).catch((e) => { fetchFromICloud(p, e); throw e })
-    .finally(() => { if (reading.get(p) === r) reading.delete(p) })
-  data.catch(() => {}) // (heard by whoever waits on it)
-  const r = { since: Date.now(), data }
-  reading.set(p, r)
+  let data: Promise<Buffer>
+  if (was && Date.now() - was.since >= SLOW) {
+    if (!join) return Promise.resolve(null)
+    data = was.data
+  } else {
+    data = arrived(p).finally(() => { if (reading.get(p) === r) reading.delete(p) })
+    data.catch(() => {}) // (heard by whoever waits on it)
+    const r = { since: Date.now(), data }
+    reading.set(p, r)
+  }
   let timer: ReturnType<typeof setTimeout> | undefined
   const late = new Promise<null>((ok) => { timer = setTimeout(ok, wait, null) })
   return Promise.race([data, late]).finally(() => clearTimeout(timer))
+}
+
+/** A file's bytes once iCloud has brought it down: a placeholder is asked for, then read again, a little less often
+ *  each time (many evicted files while offline stay cheap). */
+async function arrived(p: string): Promise<Buffer> {
+  for (let t0 = Date.now(), pause = 250; ; pause = Math.min(pause * 2, 2000)) {
+    try { const b = await fs.promises.readFile(p); fetching.delete(p); return b } catch (e) {
+      if (!placeholder(e) || Date.now() - t0 > ARRIVAL) throw e
+      fetchFromICloud(p, e)
+      await new Promise((ok) => setTimeout(ok, pause))
+    }
+  }
 }
 
 /** When a read under way (readSoon) ends, however it ends; null when none is. */
@@ -191,25 +221,63 @@ export function slowReads(after = SLOW) {
   return [...reading].filter(([, r]) => now - r.since >= after).map(([p]) => p).sort()
 }
 
-/** iCloud may leave a file another device changed as a placeholder that a read here can't materialize (errno 11,
- *  EDEADLK): ask iCloud for it (`brctl download`, once a minute per file) so the next sync reads it. */
+/** iCloud Drive (macOS): a file it evicted (Optimize Mac Storage) or another device changed can be a placeholder a
+ *  read can't bring down (errno 11, EDEADLK), asked for with `brctl download`. Tests stand in for it. */
+export const iCloud = {
+  on: process.platform === "darwin",
+  /** Whether a stat is of a placeholder: a size, nothing on disk. Cheap: from a stat the scan takes anyway. */
+  evicted: (_abs: string, st: { blocks: number | bigint; size: number | bigint }) => Number(st.blocks) === 0 && Number(st.size) > 0,
+  download(p: string, done: (err: Error | null) => void) { execFile("/usr/bin/brctl", ["download", p], { timeout: 60_000 }, done) },
+}
+/** A read failed on a placeholder iCloud hasn't brought down. */
+const placeholder = (e: unknown) => iCloud.on && Math.abs((e as NodeJS.ErrnoException)?.errno ?? 0) === 11
+/** A file the scan saw as a placeholder (iCloud.evicted). */
+const evicted = (abs: string, st: fs.BigIntStats | fs.Stats) => iCloud.on && iCloud.evicted(abs, st)
+
+/** Ask iCloud for a placeholder (`brctl download`, once a minute per file till it's read); `e`: the read's error, if it
+ *  isn't one. */
 const fetching = new Map<string, number>()
 export function fetchFromICloud(p: string, e: unknown) {
-  if (process.platform !== "darwin" || Math.abs((e as NodeJS.ErrnoException)?.errno ?? 0) !== 11) return
+  if (!placeholder(e)) return
   const now = Date.now()
   if (now - (fetching.get(p) ?? 0) < 60_000) return
   fetching.set(p, now)
   // A file moved or archived meanwhile (an inbox item marked done) has nothing left to fetch: not an error.
-  execFile("/usr/bin/brctl", ["download", p], { timeout: 60_000 }, (err) => {
+  iCloud.download(p, (err) => {
     // (a warning: the next read asks again, a minute on)
     if (err && fs.existsSync(p)) console.warn(`couldn't ask iCloud for ${p}: ${err.message}`)
   })
 }
 
+/** Keep a vault in iCloud Drive downloaded on this Mac (Finder's Keep Downloaded, macOS 15), so iCloud stops evicting
+ *  the files the server reads. Once per vault (`done` lists those): turned off in Finder, it stays off. */
+export function keepDownloaded(vault: string, done: string) {
+  if (!iCloud.on) return
+  let real: string
+  try { real = fs.realpathSync(vault) } catch { return }
+  if (!real.startsWith(path.join(os.homedir(), "Library", "Mobile Documents") + path.sep)) return
+  let kept: string[] = []
+  try { const d = JSON.parse(fs.readFileSync(done, "utf8")).keptDownloaded; if (Array.isArray(d)) kept = d } catch { /* none yet */ }
+  if (kept.includes(real)) return
+  const mark = () => {
+    try { writeAtomic(done, JSON.stringify({ keptDownloaded: [...kept, real] }, null, 2) + "\n") } catch (e) { console.warn(`keep downloaded: ${(e as Error).message}`) }
+  }
+  // (the xattr Finder's Keep Downloaded sets; `xattr -d` with that name, or Finder, undoes it)
+  execFile("/usr/bin/xattr", ["-p", PINNED, real], (no) => {
+    if (!no) return mark()
+    execFile("/usr/bin/xattr", ["-w", PINNED, "1", real], (err) => {
+      if (err) return console.warn(`couldn't keep ${real} downloaded: ${err.message}`)
+      console.log(`vault: iCloud keeps ${real} downloaded on this Mac (Keep Downloaded; Finder turns it off)`)
+      mark()
+    })
+  })
+}
+const PINNED = "com.apple.fileprovider.pinned#PX"
+
 /** A file as a plugin's reader of its format gets it (the services `text:<ext>`): its text, or for a file that isn't
  *  text (a workbook, a Word document, a book: core/filetypes.ts's "binary") its bytes. */
 export function formatInput(abs: string, rel: string): string | Buffer {
-  return kindOf(rel) === "binary" ? fs.readFileSync(abs) : readText(abs)
+  return kindOf(rel) === "binary" ? readBytes(abs) : readText(abs)
 }
 
 export function blank(v: unknown) {
@@ -556,6 +624,8 @@ export class Vault {
   private off: { conf: string | null | undefined; list: unknown; off: Set<string> } | null = null
   /** Files a sync went on without, still being read (iCloud downloading them): as last read, or not indexed yet. */
   downloading: string[] = []
+  /** Files the last scan saw iCloud has evicted (placeholders): Markdown files and settings. */
+  private evicted: string[] = []
   private arrivals = new Set<(rel: string) => void>()
 
   /** May the plugin acting on its own write `rel` (outside .vaultite/)? The App asks the grants (core/grants.ts);
@@ -623,12 +693,34 @@ export class Vault {
           late.push(rel)
           if (!was.has(rel)) readEnd(abs)?.then(() => { for (const fn of this.arrivals) fn(rel) })
         } catch (e) {
-          texts.set(rel, e as Error)
+          // (a placeholder iCloud hasn't given in all this time: as it was, asked for again next sync)
+          if (placeholder(e)) late.push(rel)
+          else texts.set(rel, e as Error)
         }
       }
     }
     await Promise.all(Array.from({ length: Math.min(64, queue.length) }, next))
     return { texts, late: late.sort() }
+  }
+
+  /** Bring down the settings iCloud evicted, before the plugins first read them (a sync does it after). */
+  async fetchSettings() {
+    this.evicted = []
+    this.settingsStats()
+    await this.fetchEvicted(this.evicted)
+  }
+
+  /** Bring down files iCloud evicted since they were read (indexed, or settings) for what reads them now, READ_WAIT
+   *  at most, off the main thread. Returns those still coming; each is heard of (onArrive) once down. */
+  private async fetchEvicted(rels: string[]) {
+    const late: string[] = [], was = new Set(this.downloading)
+    await Promise.all(rels.map(async (rel) => {
+      const abs = path.join(this.path, rel)
+      if (await readSoon(abs).catch(() => true) !== null) return
+      late.push(rel)
+      if (!was.has(rel)) readEnd(abs)?.then(() => { for (const fn of this.arrivals) fn(rel) })
+    }))
+    return late
   }
 
   private movers = new Set<MoveHook>()
@@ -909,6 +1001,7 @@ export class Vault {
   /** Every Markdown file with its kind (hidden folders and CACHES left out, not .archive), and the other files and
    *  folders, for the file tree. */
   private scan() {
+    this.evicted = []
     const found = new Map<string, Stat>()
     const others = new Map<string, Stat>()
     const folders: string[] = []
@@ -946,7 +1039,7 @@ export class Vault {
           continue
         }
         const stat = statFrom(st)
-        if (name.endsWith(".md") && !name.includes(".tmp-")) found.set(rel, stat)
+        if (name.endsWith(".md") && !name.includes(".tmp-")) { found.set(rel, stat); if (evicted(root + rel, st)) this.evicted.push(rel) }
         else others.set(rel, stat)
       }
     }
@@ -985,8 +1078,11 @@ export class Vault {
         } catch {
           continue
         }
-        if (st.isDirectory()) stack.push(rel)
-        else out.push(`${rel}:${st.mtimeNs}:${st.size}`)
+        if (st.isDirectory()) { stack.push(rel); continue }
+        // (one iCloud evicted: brought down by the sync, and its arrival is a change, so what was read without it is again)
+        const away = evicted(this.abs(rel), st)
+        if (away) this.evicted.push(rel)
+        out.push(`${rel}:${st.mtimeNs}:${st.size}${away ? ":evicted" : ""}`)
       }
     }
     for (const name of ["app.json", "types.json", "daily-notes.json", "templates.json"]) {
@@ -1015,8 +1111,11 @@ export class Vault {
       const e = this.entries.get(r)
       return !e || !sameStat(e.stat, st) || e.broken || e.kind !== this.kindFor(r, e.fm)
     }).map(([r]) => r)
-    // Read before the index changes; one iCloud is slow to give is left as it was until it arrives.
-    const { texts, late } = await this.readAll(changed)
+    // Read before the index changes; one iCloud is slow to give is left as it was until it arrives. Files iCloud evicted
+    // since they were read are brought down meanwhile, for what reads them in this request.
+    const reread = new Set(changed)
+    const [{ texts, late: unread }, away] = await Promise.all([this.readAll(changed), this.fetchEvicted(this.evicted.filter((r) => !reread.has(r)))])
+    const late = [...unread, ...away].sort()
     if (late.join("\n") !== this.downloading.join("\n")) { this.downloading = late; this.version++ }
     changed = changed.filter((r) => texts.has(r))
     // A whole folder missing (vault unmounted, mid-move) is not "everything was deleted" at once; still missing a few

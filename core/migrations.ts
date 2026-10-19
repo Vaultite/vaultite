@@ -5,7 +5,7 @@ import path from "node:path"
 import { infoWithLayout, type LayoutKey } from "./blocks.ts"
 import { FM, loadFm, setPropertyText } from "./frontmatter.ts"
 import { FENCE, scan } from "./sections.ts"
-import { type Item, stamp, type Vault, writeAtomic } from "./vault.ts"
+import { type Item, readSoon, stamp, type Vault, writeAtomic } from "./vault.ts"
 import { isObj, strings as strs } from "./values.ts"
 
 const FILE = "migrations"
@@ -54,20 +54,37 @@ function markdownFiles(root: string, rel = ""): string[] {
   })
 }
 
+/** Change the vault's Markdown files (`only` those, else all) by `change`, each read off the main thread as a sync reads
+ *  it: a file iCloud is slow to give never holds the start. Returns those not read yet (iCloud bringing them): later. */
+async function eachMarkdown(v: Vault, only: string[] | undefined, change: (rel: string, text: string) => string) {
+  const queue = [...only ?? markdownFiles(v.abs(""))], later: string[] = []
+  const next = async () => {
+    for (let rel = queue.shift(); rel !== undefined; rel = queue.shift()) {
+      const abs = v.abs(rel)
+      let data: Buffer | null
+      try { data = await readSoon(abs) } catch { continue } // (gone meanwhile, or not a file)
+      if (data === null) { later.push(rel); continue }
+      const text = data.toString("utf8"), out = change(rel, text)
+      if (out !== text) writeAtomic(abs, out)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(64, queue.length) }, next))
+  return later.sort()
+}
+
 /** The kinds' stamps (a note's created) were UTC; they're the vault's local time now, as the user reads them. */
-function stampsToLocal(v: Vault) {
+function stampsToLocal(v: Vault, only?: string[]) {
   const UTC = /^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d$/
-  for (const rel of markdownFiles(v.abs(""))) {
-    const abs = v.abs(rel)
-    let text: string, fm: Item
-    try { text = fs.readFileSync(abs, "utf8"); fm = loadFm(FM.exec(text)?.[1] ?? "") } catch { continue }
+  return eachMarkdown(v, only, (rel, text) => {
+    let fm: Item
+    try { fm = loadFm(FM.exec(text)?.[1] ?? "") } catch { return text }
     const keys = v.kindFor(rel, fm)?.spec.stamps ?? []
     let out: string | null = text
     for (const k of keys) {
       if (out && typeof fm[k] === "string" && UTC.test(fm[k])) out = setPropertyText(out, k, stamp(new Date(`${fm[k].replace(" ", "T")}Z`)))
     }
-    if (out && out !== text) writeAtomic(abs, out)
-  }
+    return out ?? text
+  })
 }
 
 /** A text's ```base fences with their `wide: true` / `stack: true` (keys of its YAML, where the grid read them) moved to
@@ -89,20 +106,11 @@ export function baseLayoutOut(text: string): string {
   return drop.size ? lines.filter((_, i) => !drop.has(i)).join("\n") : text
 }
 
-const STEPS: { id: string; run: (v: Vault) => void }[] = [
+/** A step: what it changes in the vault. One that changes files (`only` those, when some were left) returns the files it
+ *  couldn't read yet, to change at a later start. */
+const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<string[]> }[] = [
   { id: "stamps-local-2026-10", run: stampsToLocal },
-  {
-    id: "base-layout-2026-10",
-    run: (v) => {
-      for (const rel of markdownFiles(v.abs(""))) {
-        const abs = v.abs(rel)
-        let text: string
-        try { text = fs.readFileSync(abs, "utf8") } catch { continue }
-        const out = baseLayoutOut(text)
-        if (out !== text) writeAtomic(abs, out)
-      }
-    },
-  },
+  { id: "base-layout-2026-10", run: (v, only) => eachMarkdown(v, only, (_, text) => baseLayoutOut(text)) },
   {
     id: "plugins-opt-in-2026-10",
     run: (v) => {
@@ -166,19 +174,27 @@ const movedStep = (id: string) => `moved:${id}`
 export const DONE = [...STEPS.map((s) => s.id), ...Object.keys(MOVED).map(movedStep)]
 
 /** Run the steps this vault hasn't had; a new vault (`fresh`) has them marked done. One that can't run now (a settings
- *  file iCloud holds) runs at the next start. */
-export function migrate(v: Vault, fresh: boolean) {
-  let done: string[]
-  try { done = strs(v.readConfig(FILE)?.done) } catch { return }
-  const todo = STEPS.filter((s) => !done.includes(s.id))
+ *  file iCloud holds) runs at the next start, and so do a step's files iCloud hadn't brought yet (`later`), alone. */
+export async function migrate(v: Vault, fresh: boolean) {
+  let done: string[], later: Record<string, string[]>
+  try {
+    const conf = v.readConfig(FILE)
+    done = strs(conf?.done)
+    later = Object.fromEntries(Object.entries(isObj<Item>(conf?.later) ? conf!.later : {}).map(([id, rels]) => [id, strs(rels)]))
+  } catch { return }
+  const todo = STEPS.filter((s) => !done.includes(s.id) || later[s.id]?.length)
   if (!todo.length) return
   for (const s of todo) {
     if (!fresh) {
-      try { s.run(v) } catch (e) { console.error(`bringing the vault's settings up to date (${s.id}):`, e); break }
+      try {
+        const left = await s.run(v, done.includes(s.id) ? later[s.id] : undefined)
+        if (left?.length) later[s.id] = left
+        else delete later[s.id]
+      } catch (e) { console.error(`bringing the vault's settings up to date (${s.id}):`, e); break }
     }
-    done = [...done, s.id]
+    if (!done.includes(s.id)) done = [...done, s.id]
   }
-  v.patchConfig(FILE, { done })
+  v.patchConfig(FILE, { done, later: Object.keys(later).length ? later : null })
 }
 
 /** What installing a moved plugin needs of the app (core/coreops/installs.ts installFrom). */

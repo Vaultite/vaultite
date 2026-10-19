@@ -33,7 +33,7 @@ import { hookOps } from "./hooks.ts"
 import { type Listed, Scheduler, scheduleOps } from "./schedule.ts"
 import { digestOf, VaultPlugins } from "./vaultplugins.ts"
 import * as G from "./grants.ts"
-import { byUser, onItsOwn, runHook, WriteRefused } from "./writegate.ts"
+import { byUser, notHereYet, onItsOwn, runHook, WriteRefused } from "./writegate.ts"
 import { asLocked, type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
 import { autoUpdates } from "./updates.ts"
 import { disclosuresOf, saysMore } from "./pluginmeta.ts"
@@ -104,6 +104,7 @@ export class App {
 
   /** Load the plugins (they register the kinds: the core owns none). */
   async init(timing?: { mark(part: string): void }) {
+    await this.vault.fetchSettings()
     this.app = await loadPlugins(this.vault)
     timing?.mark("plugins")
     this.plugins = this.app
@@ -791,6 +792,7 @@ function errorReply(e: unknown): Reply | null {
   if (e instanceof NotFound) return reply(404, { error: e.message })
   if (e instanceof WriteRefused) return reply(403, { error: e.message })
   if (e instanceof ConflictError) return reply(409, { error: e.message })
+  if (notHereYet(e)) return reply(503, { error: (e as Error).message }) // (iCloud hasn't brought a file down yet)
   return null
 }
 
@@ -825,7 +827,7 @@ export async function open(vaultPath: string, { start = true, timing }: { start?
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)
   if (start) {
-    migrate(app.vault, fresh)
+    await migrate(app.vault, fresh)
     app.tidyPluginLists()
     B.tidy(app.vault)
     await turn()

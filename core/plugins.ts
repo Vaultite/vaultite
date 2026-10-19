@@ -22,7 +22,7 @@ import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
 import { type PropTypes, readTypes } from "./proptypes.ts"
 import { trustOf } from "./trust.ts"
-import { onItsOwn, runHook } from "./writegate.ts"
+import { notHereYet, onItsOwn, runHook } from "./writegate.ts"
 /** A write the core refused: a plugin acting on its own wrote outside .vaultite/ where the user hasn't allowed it
  *  (its manifest's `writes`, core/writegate.ts). Keep the data in .vaultite/, or wait for the user's yes. */
 export { WriteRefused } from "./writegate.ts"
@@ -747,8 +747,11 @@ export class Plugin {
   editLine(rel: string, n: number, was: string, now: string | string[] | null) {
     const abs = this.vault.abs(rel)
     let text: string
-    // (readText waits out iCloud's download; then the file as it is, CRLF kept)
-    try { readText(abs); text = fs.readFileSync(abs, "utf8") } catch { throw new HTTPError(404, `no file '${rel}' to read now`) }
+    // (readText asks iCloud for a placeholder, a 503 until it's down; then the file as it is, CRLF kept)
+    try { readText(abs); text = fs.readFileSync(abs, "utf8") } catch (e) {
+      if (notHereYet(e)) throw e
+      throw new HTTPError(404, `no file '${rel}' to read now`)
+    }
     const eol = text.includes("\r\n") ? "\r\n" : "\n", lines = text.split(/\r?\n/)
     if (!Number.isInteger(n) || n < 0 || n >= lines.length || lines[n] !== was) throw new HTTPError(409, `line ${n + 1} of ${rel} changed since it was read`)
     lines.splice(n, 1, ...(now === null ? [] : Array.isArray(now) ? now : [now]))

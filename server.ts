@@ -36,8 +36,8 @@ const { clean } = await import("./core/files.ts")
 const { allow, allowedPath, isOutside } = await import("./core/outside.ts")
 const { isHeic, jpegOf } = await import("./core/heic.ts")
 const { tooBig } = await import("./core/filetypes.ts")
-const { contentType, enabled, HTTPError, LOADED, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
-const { fetchFromICloud, slowReads } = await import("./core/vault.ts")
+const { contentType, enabled, HTTPError, LOADED, LOCAL, matchSocket, ROOT, Text, VAULT_PATH } = await import("./core/plugins.ts")
+const { fetchFromICloud, keepDownloaded, slowReads } = await import("./core/vault.ts")
 const vaults = await import("./core/vaults.ts")
 starting.mark("imports")
 
@@ -57,6 +57,7 @@ const ready = open(VAULT_AT, { timing: starting }).then((a) => {
   vault = a.vault
   live = watch(new Live(vault).start())
   a.scheduler.start()
+  keepDownloaded(VAULT_AT, path.join(LOCAL, "icloud.json")) // (a vault in iCloud Drive: so iCloud stops evicting its files)
   for (const p of vault.problemList()) console.log(`vault: ${p.file}: ${p.problem}`)
   console.log(`vaultite: vault read, plugins: ${app.plugins.map((p) => p.id).join(", ")}`)
   starting.end()
@@ -111,6 +112,7 @@ async function switchTo(p: string) {
     live = watch(new Live(vault).start())
     app.scheduler.start()
   })
+  keepDownloaded(p, path.join(LOCAL, "icloud.json"))
   console.log(`vaultite: now serving ${p}`)
 }
 

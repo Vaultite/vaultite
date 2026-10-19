@@ -728,12 +728,14 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `formatInput(abs, rel)`: A file as a plugin's reader of its format gets it (the services `text:<ext>`): its text, or for a file that isn't text (a workbook, a Word document, a book: core/filetypes.ts's "binary") its bytes.
 - `frontmatter(data, body?)`
 - `hasTag(tags, want)`: Whether a file's tags have this one, or one nested under it (`project` matches `project/lighthouse`).
+- `iCloud`: iCloud Drive (macOS): a file it evicted (Optimize Mac Storage) or another device changed can be a placeholder a read can't bring down (errno 11, EDEADLK), asked for with `brctl download`.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
 - `isHiddenPath(rel)`: A dot folder or file somewhere in the path, other than an archive folder: hidden unless hidden files are shown.
 - `Item`
 - `joinPath(folder, name)`: A folder and a name in it ("" is the vault's top).
 - `keepBlocks(old, neu)`: `neu` (a body written whole) with the views `old` placed (blocks, ```base fences): those above all of its text on top, the rest at the end.
+- `keepDownloaded(vault, done)`: Keep a vault in iCloud Drive downloaded on this Mac (Finder's Keep Downloaded, macOS 15), so iCloud stops evicting the files the server reads.
 - `Kind`
 - `KindSpec`
 - `loadFm(raw)`: Frontmatter text -> a record.
@@ -752,7 +754,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `prose(body)`: The body without its blocks and ```base fences: what a kind parses.
 - `publicOf(x)`: An item without its private `_` keys and empty records.
 - `READ_WAIT`: How long a sync waits for a file before going on without it; a read going on SLOW ms is held (iCloud).
-- `readSoon(p, wait?)`: A file's bytes read off the main thread, so a file iCloud is slow to give never holds the server; null when that takes over `wait` ms, or at once while an earlier read of it is held (the read goes…
+- `readBytes(p)`: A file's bytes, read now; a placeholder iCloud left is asked for and throws as readText says.
+- `readSoon(p, wait?, { join }?)`: A file's bytes off the main thread (a placeholder iCloud left: once down), so iCloud never holds the server; null after `wait` ms, or at once while an earlier read of it is held (no second thread…
 - `readText(p)`: A text file, line endings as \n.
 - `renameProperty(text, from, to)`: A file's text with its frontmatter key `from` renamed `to`, nothing else changed (core/textedit.ts renameKey); null when it has no such key, already has `to`, or its header can't be changed line…
 - `renameTagText(text, from, to)`: A file's text with tag `from`, and those nested under it, renamed `to`: in its frontmatter `tags` (a list or text, as it was written; a tag twice once) and its #tags.

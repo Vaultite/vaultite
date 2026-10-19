@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Vaults in iCloud Drive stay readable**: a note or setting iCloud moved to the cloud to save space (Optimize Mac
+  Storage), or that another device just changed, is brought down and read instead of showing as missing or empty, and
+  the server keeps the vault folder downloaded on its Mac (Finder's Keep Downloaded, which turns it off again). The
+  server no longer stalls at start on a file iCloud is slow to give while it updates the vault's notes.
 - A dashboard card of a ```tasks, ```dataview or ```base fence goes full width or under the one before without its
   query being erased: it's written after the fence's language (```tasks wide), and bases' `wide: true` moves there once.
 - **Note dates**: a note made in the app, by you or an agent, gets `created` and `updated` in its properties (your local

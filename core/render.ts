@@ -9,6 +9,7 @@ import { typeNotes } from "./proptypes.ts"
 import { noteHere, source, traced } from "./sources.ts"
 import { formatInput, type Item, readText, sortBy, stemOf, type Vault } from "./vault.ts"
 import { FM, prose } from "./frontmatter.ts"
+import { notHereYet } from "./writegate.ts"
 
 /** Who draws block `name`: the plugin that's on and declares it or has its text (plugin.block), else one that's off; one
  *  declared with `by`, the plugin its option names (core/blocks.ts), or `unnamed` says it names none. */
@@ -138,7 +139,7 @@ export async function blockSources(vault: Vault, plugins: Plugin[], query: Recor
   const e = rel ? vault.entries.get(rel) : undefined
   if (rel && !e) throw new HTTPError(404, `no file '${rel}'`)
   let raw = ""
-  try { raw = e ? readText(vault.abs(rel)) : "" } catch { /* gone meanwhile: no lines */ }
+  try { raw = e ? readText(vault.abs(rel)) : "" } catch (ex) { if (notHereYet(ex)) throw ex /* else gone meanwhile: no lines */ }
   const on = enabled(vault, plugins)
   // Its blocks as they are in the file (```block-<name> fences, and ```<lang> ones a plugin reads): name, text, line.
   const reader = (name: string) => name.startsWith("```") ? plugins.find((x) => on.has(x.id) && Object.hasOwn(x.services, `fence:${name.slice(3)}`)) ?? null : null
@@ -352,7 +353,7 @@ async function expand(vault: Vault, plugins: Plugin[], on: Set<string>, rel: str
     if (seen.length > DEPTH) { parts.push(`_(${link} is embedded too deep: left out)_`); continue }
     const other = vault.entries.get(note)!
     let raw: string
-    try { raw = readText(vault.abs(note)) } catch { parts.push(m[0]); continue }
+    try { raw = readText(vault.abs(note)) } catch (ex) { parts.push(notHereYet(ex) ? `_(${link} is still coming from iCloud)_` : m[0]); continue }
     const fmm = FM.exec(raw)
     const part = extract(fmm ? raw.slice(fmm[0].length) : raw, anchor)
     if (part === null) { parts.push(`_(no ${anchor.startsWith("^") ? "block" : "heading"} ${anchor} in ${link.replace(/#.*\]\]$/, "]]")})_`); continue }
@@ -381,7 +382,8 @@ export async function render(vault: Vault, plugins: Plugin[], relPath: unknown) 
   let raw: string
   try {
     raw = readText(vault.abs(rel))
-  } catch {
+  } catch (ex) {
+    if (notHereYet(ex)) throw ex
     throw new HTTPError(404, `no file '${rel}'`)
   }
   const m = FM.exec(raw)

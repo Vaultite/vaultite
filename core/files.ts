@@ -14,8 +14,8 @@ import { merge3 } from "./textedit.ts"
 import { textHash } from "./texthash.ts"
 import { blocksIn } from "./sections.ts"
 import { addEntry, entryLine, entryProblem, type NewEntry, timelineKind } from "./timeline.ts"
-import { guard } from "./writegate.ts"
-import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
+import { guard, notHereYet } from "./writegate.ts"
+import { cmp, type Entry, fetchFromICloud, type Item, ms, newFile, newFileAt, readBytes, readSoon, readText, sameFile, sortBy, statFrom, stemOf, type Vault, writeAtomic, writeNew, writeText } from "./vault.ts"
 
 const WIKI = () => /\[\[([^[\]\n|#^]+)((?:#[^[\]\n|]*)?)((?:\|[^[\]\n]*)?)\]\]/g
 const SKIP = new Set([".DS_Store", ".git", ".localized"]) // never shown, even with hidden files on
@@ -234,9 +234,9 @@ function read(vault: Vault, rel: string) {
   try {
     st = fs.statSync(vault.abs(rel), { bigint: true })
     if (st.isDirectory()) throw new HTTPError(400, `'${rel}' is a folder`)
-    data = fs.readFileSync(vault.abs(rel))
+    data = readBytes(vault.abs(rel))
   } catch (e) {
-    if (e instanceof HTTPError) throw e
+    if (e instanceof HTTPError || notHereYet(e)) throw e
     if (tooBig(e)) throw new HTTPError(413, `'${rel}' is too big to open as text`)
     throw new HTTPError(404, `no file '${rel}'`)
   }
@@ -252,7 +252,7 @@ async function downloaded(vault: Vault, rel: string, wait = 10_000) {
   let st: fs.Stats
   try { st = fs.statSync(vault.abs(rel)) } catch { return }
   if (st.isDirectory()) return
-  if (await readSoon(vault.abs(rel), wait).catch(() => true) === null) throw new HTTPError(503, `iCloud is still downloading ${rel}; try again in a moment`)
+  if (await readSoon(vault.abs(rel), wait, { join: true }).catch(() => true) === null) throw new HTTPError(503, `iCloud is still downloading ${rel}; try again in a moment`)
 }
 
 /** Whether the editor may write this file as text: a kind that's text, or a file that reads as text now. */
@@ -711,7 +711,8 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
       let cur: string | null
       try {
         cur = readText(vault.abs(rel))
-      } catch {
+      } catch (e) {
+        if (notHereYet(e)) throw e // (there, not down yet: never written over as a new file)
         cur = null
       }
       const base = body.base ?? null, baseHash = typeof body.baseHash === "string" ? body.baseHash : null, sent = text
