@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **A day's plan on a dashboard**: ```` ```block-day ```` draws a daily note, or one section of it (`section: Plan`), to
+  check off and edit in place; it steps to tomorrow and back, opens the note, and starts a missing one from the
+  template. "Open tomorrow's daily note" joins today's in the palette.
 - **Vaults in iCloud Drive stay readable**: a note or setting iCloud moved to the cloud to save space (Optimize Mac
   Storage), or that another device just changed, is brought down and read instead of showing as missing or empty, and
   the server keeps the vault folder downloaded on its Mac (Finder's Keep Downloaded, which turns it off again). The

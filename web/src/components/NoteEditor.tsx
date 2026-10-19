@@ -1,9 +1,9 @@
 // The note editor for plugins outside a file's view: NoteEditor edits Markdown the caller keeps, FileEditor a vault
 // file's body in place (saving and merging like a tab). Suggestions float in <body> so clipping or scaling can't cut them.
-import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
+import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import { useStore, type Store } from "@/core/data"
 import type { FileCtx } from "@/core/define"
-import { conflictText, useAutosave } from "@/core/autosave"
+import { conflictText, useAutosave, type Autosave, type SaveStatus } from "@/core/autosave"
 import { fmLines } from "@/components/filePlace"
 import { gone, isReadOnly, joinFm, readFile, splitFm, stem, type FileText } from "@/core/files"
 import { readProps } from "@/core/frontmatter"
@@ -20,6 +20,7 @@ import { Editor } from "@/editor/lazy"
 import type { EditorApi } from "@/editor/Editor"
 import type { PreviewConfig } from "@/editor/livePreview"
 import { capitalize, cn } from "@/lib/utils"
+import { joinSection, sectionParts } from "../../../core/sections.ts"
 
 type Shared = {
   /** Focus it with the cursor at the end once it's drawn. */
@@ -125,14 +126,18 @@ export type FileEditorProps = Shared & {
   store: Store
   /** false: drawn like reading (default true; the trash and the app's copies never are). */
   editable?: boolean
+  /** Only this heading's section (`Plan`, `Week#Plan`): its lines, edited in place, the rest of the file kept as is. */
+  section?: string
+  /** Drawn instead when the file has no such heading. */
+  noSection?: ReactNode
 }
 
-/** A vault Markdown file's body, edited in place (a canvas card showing a note). */
+/** A vault Markdown file's body, or one of its sections, edited in place (a canvas card showing a note). */
 export function FileEditor(props: FileEditorProps) {
-  return <FileLoad key={props.path} {...props} />
+  return <FileLoad key={`${props.path}#${props.section ?? ""}`} {...props} />
 }
 
-function FileLoad({ path, store, editable = true, autoFocus, onEscape, className }: FileEditorProps) {
+function FileLoad({ path, store, editable = true, autoFocus, onEscape, className, section, noSection }: FileEditorProps) {
   const [file, setFile] = useState<FileText | "missing" | "failed" | null>(null)
   const [tries, setTries] = useState(0)
   useEffect(() => {
@@ -147,8 +152,24 @@ function FileLoad({ path, store, editable = true, autoFocus, onEscape, className
     return <p className={cn("text-[13px] text-muted-foreground", className)}>{file === "missing" ? `No file ${stem(path)} in the vault.` : `Couldn't read ${stem(path)}.`}</p>
   }
   if (!file) return <div className={cn("min-h-6", className)} aria-busy />
+  if (section) {
+    return <SectionBody store={store} initial={file} section={section} noSection={noSection} editable={editable && !isReadOnly(path)} autoFocus={autoFocus}
+      onEscape={onEscape} className={className} onGone={() => setFile("missing")} />
+  }
   return <FileBody store={store} initial={file} editable={editable && !isReadOnly(path)} autoFocus={autoFocus} onEscape={onEscape}
     className={className} onGone={() => setFile("missing")} />
+}
+
+/** No banner here: a conflict not shown in the text or a failed save is a toast, saved again from it. `above`: the
+ *  file's lines the editor doesn't show above its own. */
+function saveToast(s: SaveStatus, path: string, above: number, saver: Autosave) {
+  if (s.kind === "conflict" && s.inline === false) {
+    notify(`${stem(path)}: ${conflictText(s, above)} Both versions are kept in its history.`, {
+      kind: "error", duration: 15_000, id: `unsaved:${path}`, action: { label: "Keep yours", run: () => saver.keep("mine") },
+    })
+  } else if (s.kind === "error") {
+    notify(`Couldn't save ${stem(path)}: ${s.message}`, { kind: "error", id: `unsaved:${path}`, action: { label: "Try again", run: () => saver.save(true) } })
+  }
 }
 
 function FileBody({ store, initial, editable, autoFocus, onEscape, className, onGone }: {
@@ -166,16 +187,7 @@ function FileBody({ store, initial, editable, autoFocus, onEscape, className, on
       if (ok) { const s = splitFm(text); cur.current = s; setFm(s.fm) }
       return ok
     },
-    // No banner here: a conflict not shown in the text or a failed save is a toast, saved again from it.
-    onStatus: (s) => {
-      if (s.kind === "conflict" && s.inline === false) {
-        notify(`${stem(path)}: ${conflictText(s, fmLines(cur.current))} Both versions are kept in its history.`, {
-          kind: "error", duration: 15_000, id: `unsaved:${path}`, action: { label: "Keep yours", run: () => saver.keep("mine") },
-        })
-      } else if (s.kind === "error") {
-        notify(`Couldn't save ${stem(path)}: ${s.message}`, { kind: "error", id: `unsaved:${path}`, action: { label: "Try again", run: () => saver.save(true) } })
-      }
-    },
+    onStatus: (s) => saveToast(s, path, fmLines(cur.current), saver),
     onGone, readOnly: !editable,
   })
 
@@ -186,5 +198,39 @@ function FileBody({ store, initial, editable, autoFocus, onEscape, className, on
       className={className} ctx={ctx} text={() => cur.current.body}
       onReady={(a) => { api.current = a }}
       onChange={(t, start) => { cur.current = { fm: t.slice(0, start), body: t.slice(start) }; setFm(cur.current.fm); saver.changed() }} />
+  )
+}
+
+/** One section of a file, edited alone: its lines spliced back into the file as it is on disk. A conflict is a toast
+ *  (its clashes are the file's lines, not the section's). */
+function SectionBody({ store, initial, section, noSection, editable, autoFocus, onEscape, className, onGone }: {
+  store: Store; initial: FileText; section: string; noSection?: ReactNode; editable: boolean; autoFocus?: boolean; onEscape?: () => void
+  className?: string; onGone: () => void }) {
+  const path = initial.path
+  const split = (text: string) => ({ text, parts: sectionParts(text, section) })
+  const [shown, setShown] = useState(() => split(initial.text))
+  const cur = useRef({ ...shown, part: shown.parts?.part ?? "" })
+  const api = useRef<EditorApi | null>(null)
+  const whole = useCallback(() => (cur.current.parts ? joinSection(cur.current.parts, cur.current.part) : cur.current.text), [])
+  const saver = useAutosave(path, initial.text, {
+    text: whole,
+    apply: (text) => {
+      const next = split(text)
+      cur.current = { ...next, part: next.parts?.part ?? "" }
+      setShown(next)
+      if (next.parts) api.current?.replace(next.parts.part)
+    },
+    conflict: () => false,
+    onStatus: (s) => saveToast(s, path, cur.current.parts ? cur.current.parts.before.split("\n").length - 1 : 0, saver),
+    onGone, readOnly: !editable,
+  })
+  const body = useCallback(() => splitFm(whole()).body, [whole])
+  const ctx = useCallback((): FileCtx => ({ store, path, fm: readProps(splitFm(whole()).fm).props, body: body() }), [store, path, whole, body])
+  if (!shown.parts) return <>{noSection ?? <p className={cn("text-[13px] text-muted-foreground", className)}>No heading {section} in {stem(path)}.</p>}</>
+  return (
+    <Wired store={store} from={path} doc={cur.current.part} editable={editable} autoFocus={autoFocus} onEscape={onEscape}
+      className={className} ctx={ctx} text={body}
+      onReady={(a) => { api.current = a }}
+      onChange={(t) => { cur.current.part = t; saver.changed() }} />
   )
 }

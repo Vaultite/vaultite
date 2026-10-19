@@ -104,6 +104,18 @@ export default async ($: VaultTest) => {
       check("daily-note.open: a day's note made in Daily/, typed (no folder set finds them)", !t.error && t.result.path === "Daily/2026-09-22.md" && t.result.made && read("Daily/2026-09-22.md").startsWith("---\ntype: day\n---"), t)
       t = await run("daily-note.open", { date: "2026-09-22" })
       check("daily-note.open: there already, it's the same note", !t.error && t.result.path === "Daily/2026-09-22.md" && !t.result.made, t)
+      // ```block-day: a day's note, or a section of it, as text; reading never makes one.
+      write("Daily/2026-09-22.md", "---\ntype: day\n---\n\n## Plan\n\n- [ ] Ship the plan\n- [x] Run\n\n## Notes\n\nQuiet day.\n")
+      write("Dashboards/Qa day.md", "---\ntype: dashboard\n---\n\n```block-day\nsection: Plan\ndate: 2026-09-22\n```\n\n```block-day\nsection: \"## Plan\"\ndate: 2026-09-30\n```\n\n```block-day\nsection: Lunch\ndate: 2026-09-22\n```\n")
+      await vault.sync()
+      let [, dayText] = await api("GET", "render?path=Dashboards/Qa day.md")
+      check("block-day: a section's lines under the day and the note's path; a missing note or heading says so", dayText.includes("## Plan · 2026-09-22 (Daily/2026-09-22.md)\n\n- [ ] Ship the plan\n- [x] Run\n") &&
+        !dayText.includes("Quiet day") && dayText.includes("No daily note for 2026-09-30 yet") && dayText.includes("No heading Lunch in it"), dayText)
+      let [, dayAt] = await api("GET", "daily-notes/day?date=2026-09-30")
+      check("block-day: the app finds where a missing day's note goes, without making it", dayAt.path === "Daily/2026-09-30.md" && !dayAt.exists && !exists("Daily/2026-09-30.md"), dayAt)
+      ;[, dayAt] = await api("GET", "daily-notes/day?date=2026-09-22")
+      check("block-day: an existing day's note", dayAt.path === "Daily/2026-09-22.md" && dayAt.exists, dayAt)
+      fs.rmSync(path.join(VAULT, "Dashboards/Qa day.md"))
       // iCloud's copies of it (two Macs made it at once): one with nothing of its own merges in, one with text stays.
       write("Daily/2026-09-22.md", "---\ntype: day\ndone: [Gym]\n---\n\nPlan the week.\n")
       write("Daily/2026-09-22 2.md", "---\ntype: day\ndone: [Stretch]\nmood: good\n---\n")

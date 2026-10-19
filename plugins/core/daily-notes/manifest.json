@@ -4,7 +4,7 @@
   "category": "writing",
   "essential": true,
   "name": "Daily notes",
-  "description": "A note for each day, named by its date, in its folder, made from a template: open today's from the command palette.",
+  "description": "A note for each day, named by its date, in its folder, made from a template: open today's or tomorrow's from the command palette, or edit one on a dashboard.",
   "settings": {
     "format": {
       "type": "string",
@@ -17,6 +17,15 @@
       "default": "",
       "label": "Template",
       "description": "a note new daily notes start from, its path without .md (Templates/Daily); none: they start empty"
+    }
+  },
+  "blocks": {
+    "day": {
+      "description": "a day's daily note, edited in place; steps to other days, opens the note, starts a missing one from the template",
+      "options": {
+        "section": { "type": "string", "description": "a heading (Plan): only its section; left out: the whole note" },
+        "date": { "type": "string", "description": "the day (YYYY-MM-DD); left out: today" }
+      }
     }
   }
 }

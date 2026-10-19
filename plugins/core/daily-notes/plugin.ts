@@ -1,7 +1,7 @@
 // Daily notes, as Obsidian's: a note per day named by a date format (YYYY-MM-DD), in their folder (Daily/, or where
 // Obsidian's daily-notes.json says), made from a template. Other plugins may keep keys of their own in them.
-import { formatDate, OpError, parseDate, Plugin, today } from "../../../core/plugins.ts"
-import { type Entry, fetchFromICloud, joinPath, Kind, readText, setPropertyText, stemOf, str, writeNew } from "../../../core/vault.ts"
+import { formatDate, OpError, parseDate, Plugin, section, today } from "../../../core/plugins.ts"
+import { type Entry, extract, fetchFromICloud, joinPath, Kind, readText, setPropertyText, stemOf, str, writeNew } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -129,4 +129,27 @@ or without \`type: day\`.
   params: { date: { type: "string", format: "date", description: "YYYY-MM-DD, the user's local date (default today)" } },
   run: async ({ date }) => dailyNote(date || today()),
   text: (r) => `${r.made ? "Made" : "There's"} ${r.path}.`,
+})
+
+/** A day's note as the `day` block finds it: its path, and whether it's there. Never makes one. */
+plugin.route("GET", "daily-notes/day", (req) => {
+  const date = ISO.test(req.query.date ?? "") ? req.query.date : today()
+  return { date, path: dayPath(date), exists: !!plugin.vault.get("days", date) }
+})
+
+/** "Plan" or "## Plan": the heading a `day` block shows. */
+const headingOf = (v: unknown) => (typeof v === "string" ? v.trim().replace(/^#+\s*/, "") : "")
+
+plugin.block("day", (ctx) => {
+  const date = typeof ctx.options.date === "string" && ISO.test(ctx.options.date) ? ctx.options.date : ctx.today
+  const heading = headingOf(ctx.options.section), d = plugin.vault.get("days", date)
+  const title = `${heading || "Daily note"} · ${date}`
+  if (!d) return section(title, `_No daily note for ${date} yet (\`vau daily --date ${date}\` makes it)._`)
+  const rel = `${d.id}.md`
+  ctx.source(rel)
+  const part = extract(str(d.body), heading)
+  if (part === null) return section(`${title} (${rel})`, `_No heading ${heading} in it._`)
+  // (a section's own heading is the title already)
+  const lines = (heading ? part.split("\n").slice(1).join("\n") : part).trim()
+  return section(`${title} (${rel})`, lines || "_Empty._")
 })

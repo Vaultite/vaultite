@@ -206,7 +206,30 @@ export function extract(text: string, anchor: string): string | null {
   return lines.slice(from, to).join("\n")
 }
 
-/** `Note#Heading` -> ["Note", "Heading"]; `#Heading` -> ["", "Heading"]; `Note#^id` -> ["Note", "^id"]. */
+/** A heading's section split to edit it alone: the text before its lines, its lines (without the heading and the blank
+ *  lines around them) and the text after; `gap`: it had none. null without that heading. */
+export type SectionParts = { before: string; part: string; after: string; gap: boolean }
+export function sectionParts(text: string, heading: string): SectionParts | null {
+  const h = findHeading(text, heading)
+  if (!h) return null
+  const [, end] = sectionOf(text, h)
+  const lines = text.split("\n")
+  let a = h.line + 1
+  while (a < end && !lines[a].trim()) a++
+  const startOf = (i: number) => (i >= lines.length ? text.length : lines.slice(0, i).join("\n").length + (i > 0 ? 1 : 0))
+  if (a >= end) { const at = startOf(h.line + 1); return { before: text.slice(0, at), part: "", after: text.slice(at), gap: true } }
+  const from = startOf(a), to = startOf(end - 1) + lines[end - 1].length
+  return { before: text.slice(0, from), part: text.slice(from, to), after: text.slice(to), gap: false }
+}
+
+/** The text with a section's lines now `part`; one written where there were none gets its own lines. */
+export function joinSection(p: SectionParts, part: string): string {
+  if (!p.gap || !part) return p.before + part + p.after
+  const before = !p.before || p.before.endsWith("\n") ? p.before : `${p.before}\n`
+  return before + part + (!p.after ? "\n" : p.after.startsWith("\n") ? `\n${p.after}` : `\n\n${p.after}`)
+}
+
+/** `Note#Heading` -> ["Note", "Heading"];`#Heading` -> ["", "Heading"]; `Note#^id` -> ["Note", "^id"]. */
 export function splitAnchor(target: string): [string, string] {
   const i = target.indexOf("#")
   return i < 0 ? [target.trim(), ""] : [target.slice(0, i).trim(), target.slice(i + 1).trim()]

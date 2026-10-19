@@ -551,6 +551,16 @@ check("sections: fences close with their own character, at least as long", JSON.
 check("sections: a heading's section", sec.extract(note, "Plans") === "## Plans\n\n- one ^li\n  - under\n- two\n\n```\n# not a heading #no\n```", sec.extract(note, "plans"))
 check("sections: a block (its id taken off), a list item with what's under it", sec.extract(note, "^p1") === "Intro #intro and `#no` [[X#y]]" && sec.extract(note, "^li") === "- one\n  - under",
   [sec.extract(note, "^p1"), sec.extract(note, "^li")])
+{
+  // A section edited alone (FileEditor's `section`): its lines out and back in, the file around them as it was.
+  const day = "---\ntype: day\n---\n## Plan\n\n- [ ] a\n### Later\nb\n\n## Notes\nhi\n"
+  const p = sec.sectionParts(day, "plan")
+  check("sections: a section's lines to edit alone, back in unchanged", p.part === "- [ ] a\n### Later\nb" && sec.joinSection(p, p.part) === day &&
+    sec.joinSection(p, "- [x] a") === "---\ntype: day\n---\n## Plan\n\n- [x] a\n\n## Notes\nhi\n", [p, sec.joinSection(p, "- [x] a")])
+  const empty = ["## Plan\n\n## Notes\n", "## Plan\n## Notes", "## Plan"].map((t) => { const q = sec.sectionParts(t, "Plan"); return [q.gap && sec.joinSection(q, "") === t, sec.joinSection(q, "- [ ] x")] })
+  check("sections: lines written in an empty section get lines of their own", same(empty, [[true, "## Plan\n- [ ] x\n\n## Notes\n"], [true, "## Plan\n- [ ] x\n\n## Notes"], [true, "## Plan\n- [ ] x\n"]]) &&
+    sec.sectionParts(day, "Lunch") === null, empty)
+}
 check("sections: tags from the frontmatter and the text", same(sec.tagsOf({ tags: ["a"] }, note), ["a", "intro"]), sec.tagsOf({ tags: ["a"] }, note))
 check("sections: nested tags count for their parents", sec.hasTag(["project/lighthouse"], "project") && !sec.hasTag(["projects"], "project"))
 check("sections: reading hides comments and ids", sec.stripHidden("a %%x%% b ^id\n%%\ngone\n%%\nc") === "a  b\nc", sec.stripHidden("a %%x%% b ^id\n%%\ngone\n%%\nc"))

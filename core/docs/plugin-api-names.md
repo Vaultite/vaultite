@@ -156,7 +156,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `FileBarItem`: Drawn in a file's header: on desktop in the tab's top bar (`place: "bar"`), in a sheet and on phones above the title (`"line"`); docked in a sidebar by the user, there for the focused file.
 - `FileBlocks({ store, path, fm, fallback })`: Another file's blocks, as that file has them (Projects: each project's card is its file's blocks).
 - `FileCtx`: What a file view gets: the file's path, its frontmatter (parsed) and body as they are in the editor right now.
-- `FileEditor(props)`: A vault Markdown file's body, edited in place (a canvas card showing a note).
+- `FileEditor(props)`: A vault Markdown file's body, or one of its sections, edited in place (a canvas card showing a note).
 - `FileEditorProps`
 - `FileEmbed({ store, path, from, height, fill })`
 - `FileFormat`: A non-Markdown kind of file it draws by extension (.excalidraw).
@@ -722,6 +722,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dirOf(rel)`: The folder a path is in ("" at the top).
 - `effectiveType(kindType, fm)`: A file's type: its kind's (`kindType`, when a kind owns the file), else its frontmatter `type` when that's text, else a plugin's mark on it.
 - `Entry`
+- `extract(text, anchor)`: What an embed shows: the whole text, a heading's section (`Heading`) or a block (`^id`, its id taken off); null if the anchor isn't there.
 - `fetchFromICloud(p, e)`
 - `FileCreateHook`: onCreateFile's hooks (Vault.onCreateFile): told of a new file that isn't Markdown; they never change its bytes.
 - `FM`

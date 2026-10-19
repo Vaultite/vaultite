@@ -19,7 +19,7 @@ import { noteRead, noteSource } from "./sources.ts"
 import { strings } from "./values.ts"
 import { guard, setGate } from "./writegate.ts"
 // A file's tags (frontmatter `tags` and inline #tags) and whether a list has one (nested ones too), for plugins.
-export { hasTag, tagName, tagsOf } from "./sections.ts"
+export { extract, hasTag, tagName, tagsOf } from "./sections.ts"
 // A file's type (its kind's, else its frontmatter's), whether it's archived (`archived: true`) and archive folders:
 // core/fileprops.ts.
 export { ARCHIVE_DIR, archiveTwin, effectiveType, inArchive, isArchived, isHiddenPath, unarchived } from "./fileprops.ts"
