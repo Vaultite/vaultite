@@ -32,6 +32,8 @@ async function clash(page, more = " More") {
   return until(() => page.locator(".cm-clash").count(), 9000)
 }
 
+// (who wrote it is Activity's, off in a new vault: on, so the agent is named)
+await fetch(`${B}api/ops/plugin.enable`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ id: "activity" }) })
 const page = await browser.newPage({ viewport: { width: 1200, height: 800 } })
 const errs = []
 // (a plugin asking to write on its own, on a fresh server: not now)
