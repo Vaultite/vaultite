@@ -284,8 +284,11 @@ function makeAutosave(path: string, initial: string, options: Options) {
       tell({ kind: "ok" })
       const saved = text === c.theirs.text ? Promise.resolve() : s.save(true)
       if (text === c.theirs.text) dropDraft(path)
+      // (the file as this choice saved it: anything typed after it, saved or not, would be lost to an undo)
+      const kept = saved.then(() => s.disk)
       const undo = async () => {
-        await saved
+        const disk = await kept
+        if (s.disk !== disk || o.current.text() !== disk) throw new Error("Couldn't undo: the text changed since. Both versions are in the note's history.")
         // (the file back as it was, the text as typed, and the choice again)
         if (side === "mine" && s.disk !== c.theirs.text) await putJson("file", { path: where(), text: c.theirs.text, base: s.disk })
         s.disk = c.base
