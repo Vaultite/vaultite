@@ -86,7 +86,7 @@ await wait(1200)
 const disk = read("Qa live/Note.md"), shown = await content()
 check("editor: typing during a disk change keeps both, on disk", disk.includes("First line. Typed here.") && disk.includes("Third line, edited on disk.") && disk.includes("Added on disk."), disk)
 check("editor: and on screen", shown.includes("First line. Typed here.") && shown.includes("Third line, edited on disk."), shown)
-check("editor: no conflict banner", await page.locator("text=/changed on disk|Keep mine|Keep theirs/i").count() === 0)
+check("editor: no conflict banner", await page.locator("text=/changed on disk|while you typed|Keep yours/i").count() === 0)
 // changed in two places at once, above and below the cursor: the cursor stays in its line and the next letter lands there
 await page.locator(".cm-line", { hasText: "Second line." }).first().click(); await page.keyboard.press("End"); await wait(900)
 write("Qa live/Note.md", read("Qa live/Note.md").replace("First line.", "First line, above.").replace("Added on disk.", "Added on disk, below."))

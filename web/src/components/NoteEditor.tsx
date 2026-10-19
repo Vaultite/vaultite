@@ -3,7 +3,8 @@
 import { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react"
 import { useStore, type Store } from "@/core/data"
 import type { FileCtx } from "@/core/define"
-import { useAutosave } from "@/core/autosave"
+import { conflictText, useAutosave } from "@/core/autosave"
+import { fmLines } from "@/components/filePlace"
 import { gone, isReadOnly, joinFm, readFile, splitFm, stem, type FileText } from "@/core/files"
 import { readProps } from "@/core/frontmatter"
 import { useVaultChange } from "@/core/live"
@@ -160,11 +161,16 @@ function FileBody({ store, initial, editable, autoFocus, onEscape, className, on
   const saver = useAutosave(path, initial.text, {
     text: () => joinFm(cur.current.fm, cur.current.body),
     apply: (text) => { const s = splitFm(text); cur.current = s; setFm(s.fm); api.current?.replace(text) },
-    // No banner here: a conflict or a failed save is a toast, saved again from it.
+    conflict: (text, clashes, who, left) => {
+      const ok = !!api.current?.view.dom.isConnected && editable && api.current.conflict(text, clashes, who, left)
+      if (ok) { const s = splitFm(text); cur.current = s; setFm(s.fm) }
+      return ok
+    },
+    // No banner here: a conflict not shown in the text or a failed save is a toast, saved again from it.
     onStatus: (s) => {
-      if (s.kind === "conflict") {
-        notify(`${stem(path)} changed elsewhere in the same lines, so your edits aren't saved yet`, {
-          kind: "error", duration: 15_000, id: `unsaved:${path}`, action: { label: "Keep mine", run: () => saver.keepMine() },
+      if (s.kind === "conflict" && s.inline === false) {
+        notify(`${stem(path)}: ${conflictText(s, fmLines(cur.current))} Both versions are kept in its history.`, {
+          kind: "error", duration: 15_000, id: `unsaved:${path}`, action: { label: "Keep yours", run: () => saver.keep("mine") },
         })
       } else if (s.kind === "error") {
         notify(`Couldn't save ${stem(path)}: ${s.message}`, { kind: "error", id: `unsaved:${path}`, action: { label: "Try again", run: () => saver.save(true) } })

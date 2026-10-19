@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Conflicts shown in place**: when a note changes elsewhere in the lines you're typing, both versions appear right
+  there, named ("Claude Code edited line 6 while you typed"), each with Keep, plus Keep both; the rest merges, both
+  sides are kept in File history, and each choice can be undone. A save whose answer was lost (a phone going to sleep)
+  no longer conflicts with itself, and starting a companion on a note no longer reads as an AI changing it.
 - **Pick a model before starting @name**: the Start @name row's chip (Sonnet · medium) opens its model and effort
   choices with a tap or click, on a phone too, now up to extra high and max; the row itself still starts at once. A
   stopped agent's Start runs it as it ran before.

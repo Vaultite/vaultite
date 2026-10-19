@@ -47,7 +47,7 @@ import { usePortalHost } from "@/components/kit"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { useHeldFocus } from "@/core/focus"
 import { useEditAt, type DrawnLine } from "@/core/anchors"
-import { useAutosave, type SaveStatus } from "@/core/autosave"
+import { conflictText, theirName, useAutosave, type SaveStatus } from "@/core/autosave"
 import { trace } from "@/core/trace"
 import { addRestore, afterPlaced, cancelRestores, cursorOf, hideUntilPlaced, keepCursor, offerPlace, readPlace, takeRestore } from "@/core/viewstate"
 import { capitalize, cn, plural } from "@/lib/utils"
@@ -644,6 +644,11 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
 
   const saver = useAutosave(path, initial.text, {
     text: full, apply, onStatus: setStatus, readOnly: ro,
+    // (in the editor when it's the one drawn: a plugin's drawing, a notebook or the reading view gets the banner's choice)
+    conflict: (text, clashes, who, left) => {
+      const ed = editor.current
+      return !!ed?.api.view.dom.isConnected && !ed.api.view.state.readOnly && ed.api.conflict(text, clashes, who, left) && (apply(text), true)
+    },
     onDisk: (f) => { seen.set(path, f); setProblems(f.problems ?? []) },
     onGone: () => { seen.delete(path); onGone() },
   })
@@ -853,8 +858,10 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   const notices = <>
     {inTrash(path) && <InTrash path={path} note=" Restore it to edit it." />}
     {isReadOnly(path) && !inTrash(path) && <Banner tone="info">The app's copy of what it last wrote, kept to merge its updates into your edits. Read-only.</Banner>}
-    {status.kind === "conflict" && <Banner tone="warn" actions={[["Use theirs", saver.takeTheirs], ["Keep mine", saver.keepMine]]}>
-      This file changed somewhere else, in the same lines you edited.</Banner>}
+    {status.kind === "conflict" && status.inline !== undefined && <Banner tone="warn" actions={status.inline ? [["Show", () => editor.current?.api.revealConflict()]]
+      : [["Keep yours", () => saver.keep("mine")], [`Keep ${theirName(status.who).replace(/^the other$/, "theirs")}`, () => saver.keep("theirs")]]}>
+      {conflictText(status, editor.current && !editor.current.source ? fmLines(cur.current) : 0)}{" "}
+      {status.inline ? "Your edits save once you choose what to keep." : "Both versions are kept in the note's history."}</Banner>}
     {clashes.map(({ alias, other }) => (
       <Banner key={alias} tone="warn" actions={[["Open it", () => openFile(other)],
         changeable && ["Remove the alias", () => { const rest = aliasesOf(props).filter((a) => a !== alias); setProperty("aliases", rest.length ? rest : undefined) }]]}>
@@ -919,7 +926,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
                 {...(source ? { editable: !ro, source: true, numbered: true, code: strict ? "json" : format?.code, language: code ? path : format?.source ? `source.${format.source}` : undefined }
                   : { frontmatter: !fmText, editable: shown === "live" && !ro, placeholderText: shown === "read" ? "" : "Start writing", numbered: shown !== "read",
                     onUndoFrontmatter: () => revealProps(article.current) })}
-                onReady={(api) => { editor.current = { api, source }; ready(api, source); if (kept?.write) toText() }}
+                onReady={(api) => { editor.current = { api, source }; ready(api, source); saver.reshow(); if (kept?.write) toText() }}
                 onChange={(text, start) => typed(text, source || fmText ? null : start)} />
             )}
           </Suspense>}

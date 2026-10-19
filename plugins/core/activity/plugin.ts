@@ -75,6 +75,7 @@ function record(e: Omit<ActivityEvent, "id">): ActivityEvent {
     if (e.ms !== undefined) was.ms = Math.max(was.ms ?? 0, e.ms)
     if (e.status !== undefined && e.status >= 400) was.status = e.status
     for (const p of e.paths ?? []) if (!was.paths?.includes(p)) (was.paths ??= []).push(p)
+    for (const p of e.wrote ?? []) if (!was.wrote?.includes(p)) (was.wrote ??= []).push(p)
     changed(was)
     return was
   }
@@ -255,6 +256,7 @@ function describe(method: string, route: string, query: Record<string, string>, 
   }
   // Writes.
   if (route === "artifact/state") return null // an artifact's own storage, written as it runs
+  if (route === "history/keep") return null // a version kept (File history), the vault unchanged
   if (route === "file") {
     if (method === "PUT") return { action: "edit", text: `Edited ${p}`, paths: p ? [p] : [] }
     if (method === "POST") return { action: "create", text: `Created ${p}`, paths: p ? [p] : [] }
@@ -356,7 +358,8 @@ plugin.onRequest((s) => {
       const paths = [...new Set([...did.paths, ...(w?.paths ?? [])])]
       const who = actingAs(as, did.by, s, paths)
       if (late) late.who = who.name
-      const ev = record({ t: s.t, actor: who, action: did.action, text: did.text, paths, method: s.method, route, status: end.status, ms: Math.round(end.ms) })
+      const ev = record({ t: s.t, actor: who, action: did.action, text: did.text, paths, ...(did.action === "request" ? { wrote: [...(w?.paths ?? [])] } : {}),
+        method: s.method, route, status: end.status, ms: Math.round(end.ms) })
       if (w) w.event = ev
     }
     if (caller) {
@@ -407,7 +410,9 @@ plugin.onChange((paths) => {
       : writes.findLast((x) => x.t1 === Infinity || now - x.t1 < 1500)
     if (w) {
       if (!w.paths.includes(p)) w.paths.push(p)
-      if (w.event && !w.event.paths?.includes(p)) { (w.event.paths ??= []).push(p); changed(w.event) }
+      if (w.event && !w.event.paths?.includes(p)) (w.event.paths ??= []).push(p)
+      if (w.event?.wrote && !w.event.wrote.includes(p)) w.event.wrote.push(p)
+      if (w.event) changed(w.event)
       continue
     }
     if (mtime !== null && now - mtime > 10 * MINUTE) continue // an old file coming back (iCloud downloading it): nothing done now
@@ -547,7 +552,9 @@ function between(since: number): ActivityEvent[] {
 /** What another plugin reads of who changed which files (Provenance's review): the events since `since` (ms) that changed
  *  files, oldest first. Read from the files once, then kept up as events come (changed). */
 const CHANGES = new Set<string>([...ACTION_KINDS.find((k) => k.id === "changes")!.actions, "request"])
-const isChange = (e: ActivityEvent) => !!e.paths?.length && CHANGES.has(e.action)
+// (a request's are the files it wrote: one only naming a note, a companion started on it, changed nothing)
+const changedPaths = (e: ActivityEvent) => (e.action === "request" ? e.wrote ?? e.paths : e.paths) ?? []
+const isChange = (e: ActivityEvent) => !!changedPaths(e).length && CHANGES.has(e.action)
 let changesKept: { list: ActivityEvent[]; has: Set<ActivityEvent> } | null = null
 function keptChange(e: ActivityEvent) {
   if (!changesKept || changesKept.has.has(e) || !isChange(e)) return
@@ -566,7 +573,8 @@ plugin.provide("activity:changes", async (since: number) => {
     changesKept.list = changesKept.list.filter((e) => e.t >= from)
     changesKept.has = new Set(changesKept.list)
   }
-  return changesKept.list.filter((e) => e.t >= since).sort((a, b) => a.t - b.t)
+  return changesKept.list.filter((e) => e.t >= since && isChange(e)).sort((a, b) => a.t - b.t)
+    .map((e) => (e.action === "request" && e.wrote ? { ...e, paths: e.wrote } : e))
 })
 
 function query(q: Record<string, string>): ActivityList {
@@ -584,7 +592,11 @@ function query(q: Record<string, string>): ActivityList {
   return { events: all.slice(-limit).reverse(), total: all.length }
 }
 
-plugin.route("GET", "activity", (req) => query(req.query))
+// (`settled`: after the writes just answered are recorded, their callers named: who wrote what the app just read)
+plugin.route("GET", "activity", async (req) => {
+  if (req.query.settled && naming.size) await Promise.race([Promise.all(naming), new Promise((r) => setTimeout(r, 3000))])
+  return query(req.query)
+})
 
 function summary(days: number): ActivitySummary {
   const now = Date.now()

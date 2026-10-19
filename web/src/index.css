@@ -757,6 +757,29 @@ dialog { --vau-panel-bottom: 0px; }
   font-size: 12px; line-height: 20px; color: var(--muted-foreground); }
 .vau-editor .cm-fence-head { display: inline-flex; width: 100%; vertical-align: top; }
 .cm-fence-lang, .md-code-lang { text-transform: lowercase; user-select: none; }
+/* A conflict in place (editor/conflicts.ts): the user's lines tinted blue under "Yours", the other version below in
+   purple, each with Keep. Big enough for a finger. */
+.cm-clash { --clash: var(--blue); border-left: 3px solid var(--clash); background: color-mix(in srgb, var(--clash) 7%, transparent); padding: 6px 8px 6px 10px; }
+.cm-clash-mine { margin-top: 8px; border-radius: 6px 6px 0 0; padding-bottom: 2px; }
+.cm-clash-theirs { --clash: var(--purple); margin-bottom: 8px; border-radius: 0 0 6px 6px; }
+.cm-line.cm-clash-line { box-shadow: inset 3px 0 0 var(--blue); background: color-mix(in srgb, var(--blue) 7%, transparent); padding-left: 13px; }
+.cm-clash-note, .cm-clash-bar, .cm-clash button { font-family: var(--font-sans); font-size: 13px; line-height: 18px; }
+.cm-clash-note { margin-bottom: 4px; color: var(--muted-foreground); }
+.cm-clash-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 28px; }
+.cm-clash-label { font-weight: 600; color: var(--clash); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cm-clash-text { white-space: pre-wrap; overflow-wrap: anywhere; padding: 2px 0 4px; }
+.cm-clash-text.is-empty { font-family: var(--font-sans); font-size: 13px; color: var(--muted-foreground); }
+.cm-clash-both:empty { display: none; }
+.cm-clash-both { display: flex; justify-content: flex-end; padding-top: 4px; }
+.cm-clash button { height: 26px; padding: 0 10px; border-radius: 6px; font-weight: 500; color: var(--foreground); cursor: pointer;
+  background: var(--background); border: 0.5px solid var(--border); }
+.cm-clash button:hover { background: color-mix(in srgb, var(--foreground) 6%, var(--background)); }
+@media (pointer: coarse) {
+  .cm-clash-note, .cm-clash-bar { font-size: 15px; line-height: 20px; }
+  .cm-clash-bar { min-height: 44px; }
+  .cm-clash button { height: 44px; min-width: 64px; padding: 0 16px; font-size: 17px; border-radius: 10px; }
+  .cm-clash button:active { opacity: 0.5; }
+}
 .cm-fence-copy, .md-copy { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 20px; border-radius: 5px;
   color: var(--muted-foreground); cursor: pointer; transition: opacity 0.12s; }
 .cm-fence-copy:hover, .md-copy:hover { color: var(--foreground); background: color-mix(in srgb, var(--foreground) 8%, transparent); }

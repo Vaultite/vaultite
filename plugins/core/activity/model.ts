@@ -52,6 +52,8 @@ export type ActivityEvent = {
   text: string
   /** Vault paths it touched (from the request, or the files that changed on disk while it ran). */
   paths?: string[]
+  /** A request that names no kind of change (an op run on a note): which of its paths it wrote, not only named. */
+  wrote?: string[]
   /** For API requests: method, route (under /api/), status, duration (ms). */
   method?: string
   route?: string

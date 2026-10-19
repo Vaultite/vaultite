@@ -29,3 +29,43 @@ export function textChanges(a: string, b: string): { from: number; to: number; i
   }
   return out
 }
+
+/** Where both sides changed the same lines: `at`, the first of `mine`'s lines in the merged text. */
+export type Clash = { at: number; mine: string[]; theirs: string[] }
+
+/** A three-way merge that keeps going past conflicts (diff3): every change one side made is applied, and lines both
+ *  changed differently keep mine, listed as clashes. Adjacent edits clash when one is an insertion, as in merge3. */
+export function mergeClashes(base: string, mine: string, theirs: string): { text: string; clashes: Clash[] } {
+  const B = base.split("\n")
+  type Hunk = { i1: number; i2: number; lines: string[]; side: 0 | 1 }
+  const hunks = (other: string, side: 0 | 1): Hunk[] => {
+    const O = other.split("\n")
+    return opcodes(B, O).filter((o) => o[0] !== "equal").map(([, i1, i2, j1, j2]) => ({ i1, i2, lines: O.slice(j1, j2), side }))
+  }
+  const all = [...hunks(mine, 0), ...hunks(theirs, 1)].sort((x, y) => x.i1 - y.i1 || x.i2 - y.i2)
+  const touch = (lo: number, hi: number, h: Hunk) => (lo < h.i2 && h.i1 < hi) || ((lo === hi || h.i1 === h.i2) && h.i1 <= hi && lo <= h.i2)
+  const groups: { lo: number; hi: number; hunks: Hunk[] }[] = []
+  for (const h of all) {
+    const g = groups.at(-1)
+    if (g && touch(g.lo, g.hi, h)) { g.hunks.push(h); g.hi = Math.max(g.hi, h.i2); continue }
+    groups.push({ lo: h.i1, hi: h.i2, hunks: [h] })
+  }
+  const sideText = (g: { lo: number; hi: number; hunks: Hunk[] }, side: 0 | 1) => {
+    const out: string[] = []
+    let pos = g.lo
+    for (const h of g.hunks) if (h.side === side) { out.push(...B.slice(pos, h.i1), ...h.lines); pos = h.i2 }
+    return [...out, ...B.slice(pos, g.hi)]
+  }
+  const out: string[] = [], clashes: Clash[] = []
+  let pos = 0
+  for (const g of groups) {
+    out.push(...B.slice(pos, g.lo))
+    const sides = new Set(g.hunks.map((h) => h.side))
+    const m = sideText(g, 0), t = sideText(g, 1)
+    if (sides.size === 2 && m.join("\n") !== t.join("\n")) clashes.push({ at: out.length, mine: m, theirs: t })
+    out.push(...(sides.has(0) ? m : t))
+    pos = g.hi
+  }
+  out.push(...B.slice(pos))
+  return { text: out.join("\n"), clashes }
+}

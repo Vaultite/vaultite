@@ -298,11 +298,10 @@ plugin.provide("history:text", async (rel: string, t: number) => {
   }
   return null
 })
-/** Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's
- *  review compares with it). Sync, so it runs before the write. */
-plugin.provide("history:keep", (rel: string) => {
+const followed = (vault: Vault, rel: string) => !isOff(vault) && (vault.entries.has(rel) || (vault.others.has(rel) && isTextKind(kindOf(rel))))
+function keepDisk(rel: string) {
   const vault = plugin.vault
-  if (isOff(vault) || !(vault.entries.has(rel) || (vault.others.has(rel) && isTextKind(kindOf(rel))))) return false
+  if (!followed(vault, rel)) return false
   try {
     const st = fs.statSync(vault.abs(rel), { bigint: true })
     const file = path.join(dirOf(state(vault), rel), `${Number(st.mtimeNs / 1000000n)}.snap`)
@@ -313,7 +312,29 @@ plugin.provide("history:keep", (rel: string) => {
     fs.utimesSync(file, now, now) // (pruned by when it was kept)
     return true
   } catch { return false }
+}
+/** Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's
+ *  review compares with it). Sync, so it runs before the write. */
+plugin.provide("history:keep", keepDisk)
+/** Keep `text` (an editor's unsaved text) as a version of a vault file, dated now: what the app is about to drop. */
+function keepText(rel: string, text: string) {
+  const vault = plugin.vault
+  if (!followed(vault, rel)) return false
+  const dir = dirOf(state(vault), rel)
+  fs.mkdirSync(dir, { recursive: true })
+  let t = Date.now()
+  while (fs.existsSync(path.join(dir, `${t}.snap`))) t++
+  writeAtomic(path.join(dir, `${t}.snap`), text)
+  return true
+}
+
+// Before the app settles a conflict: both sides kept (the file as it is, the editor's text), so either can be undone.
+plugin.route("POST", "history/keep", (req) => {
+  const b = (req.body ?? {}) as { path?: unknown; text?: unknown }
+  const rel = relOf(b.path)
+  return { kept: typeof b.text === "string" ? keepText(rel, b.text) : keepDisk(rel) }
 })
+
 /** The files followed whose text was last written at or after `since` (ms). */
 plugin.provide("history:changed", async (since: number) => {
   await following

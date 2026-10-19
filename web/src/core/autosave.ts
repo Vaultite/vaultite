@@ -1,26 +1,32 @@
 // A file's autosave (the file view, a canvas's note cards): saved 600 ms after typing stops, on top of a save on its
 // way; changes on disk merged in (3-way); what's pending sent when the view goes, and kept on the device until saved.
 import { useEffect, useLayoutEffect, useState } from "react"
-import { get, request } from "@/core/http"
+import { get, post, put as putJson, request } from "@/core/http"
 import { deletedHere, gone, moveMark, readFile, stem, whereNow, type FileText } from "@/core/files"
 import { useVaultChange } from "@/core/live"
-import { merge3 } from "@/core/merge"
+import { merge3, mergeClashes, type Clash } from "@/core/merge"
 import { notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
 import { LEAN_PAST, textHash } from "../../../core/texthash.ts"
 
-export type SaveStatus = { kind: "ok" } | { kind: "error"; message: string } | { kind: "conflict"; theirs: FileText }
+/** A conflict: `base` the text both sides started from, `lines` where they clash (the file's, 1-based), `who` the agent
+ *  that wrote theirs when known, `inline` when the editor shows it in place (undefined while that's found out). */
+export type Conflict = { kind: "conflict"; base: string; theirs: FileText; lines: number[]; who?: string; inline?: boolean }
+export type SaveStatus = { kind: "ok" } | { kind: "error"; message: string } | Conflict
 
 type Options = {
   /** The whole file as typed now. */
   text: () => string
   /** Show text from the server (merged or filled in), keeping the cursor. */
   apply: (text: string) => void
-  /** Where saving is; a conflict holds every save until `keepMine` or `takeTheirs`. */
+  /** Where saving is; a conflict holds every save until it's settled (in the editor, or `keep`). */
   onStatus: (s: SaveStatus) => void
   /** The server's copy, after a save or a read. */
   onDisk?: (f: FileText) => void
+  /** Show the merged `text` with its clashes in place to settle there (editor/conflicts.ts); false if it can't. `left`
+   *  hears how many are left. */
+  conflict?: (text: string, clashes: Clash[], who: string | undefined, left: (n: number, rest?: Clash[]) => void) => boolean
   /** Deleted or moved on disk (a move through the API is followed by its tab instead). */
   onGone: () => void
   readOnly?: boolean
@@ -36,6 +42,38 @@ export function useAutosave(path: string, initial: string, options: Options): Au
   return saver
 }
 
+/** The agent that wrote `path` at `mtime` (Activity's), for "Claude Code edited line 6"; undefined if not known. */
+async function whoWrote(path: string, mtime: number): Promise<string | undefined> {
+  type Ev = { t: number; last?: number; actor: { kind: string; name: string }; action: string; paths?: string[]; wrote?: string[] }
+  const ask = get<{ events: Ev[] }>(`activity?path=${encodeURIComponent(path)}&action=changes,request&limit=10&settled=1&since=${mtime - 15 * 60_000}`)
+  const r = await Promise.race([ask.catch(() => null), new Promise<null>((ok) => setTimeout(() => ok(null), 3000))])
+  // (a write's file time falls in its request, or just after a run of them: as File history matches them)
+  // (the user's own saves run around it too: an agent's or the CLI's)
+  const e = r?.events.find((x) => (x.actor.kind === "agent" || x.actor.kind === "cli") && x.t - 1000 <= mtime && mtime <= (x.last ?? x.t) + 5000
+    && (x.action !== "request" || (x.wrote ?? x.paths)?.includes(path)))
+  return e?.actor.name
+}
+
+/** "Claude Code's", or "the other". */
+export const theirName = (who?: string) => (who ? `${who}'s` : "the other")
+
+/** "Claude Code edited line 6 while you typed." (`above`: lines not shown, a hidden frontmatter's). */
+export function conflictText(c: Conflict, above = 0) {
+  const ns = [...new Set(c.lines.map((n) => n - above).filter((n) => n > 0))]
+  const lines = !ns.length ? "" : ns.length === 1 ? `line ${ns[0]}` : `lines ${ns.slice(0, -1).join(", ")} and ${ns.at(-1)}`
+  const where = c.lines.some((n) => n <= above) ? (lines ? `the properties and ${lines}` : "the properties") : lines
+  return c.who ? `${c.who} edited ${where} while you typed.` : `${where[0].toUpperCase()}${where.slice(1)} changed elsewhere while you typed.`
+}
+
+const lower = (s: string) => s.replace(/^(Lines?|The) /, (w) => w.toLowerCase())
+
+/** The text with theirs in each clash instead of mine. */
+function withTheirs(text: string, clashes: Clash[]) {
+  const lines = text.split("\n")
+  for (const k of [...clashes].reverse()) lines.splice(k.at, k.mine.length, ...k.theirs)
+  return lines.join("\n")
+}
+
 function makeAutosave(path: string, initial: string, options: Options) {
   const o = { current: options }
   const opened = moveMark()
@@ -43,6 +81,13 @@ function makeAutosave(path: string, initial: string, options: Options) {
   let timer: ReturnType<typeof setTimeout> | null = null
   let saving = false, again = false, recheck = false
   let status: SaveStatus = { kind: "ok" }
+  /** The last conflict, to go back to (Undo); and what's left of it when its editor went (a switch to source mode). */
+  let last: Conflict | null = null
+  let parked: Clash[] | null = null
+  /** Texts sent whose answer never came (the network dropped, the page went): the server may have them, so finding
+   *  one on disk is this editor's own save, not a change elsewhere. */
+  let unconfirmed: string[] = []
+  const sentMaybe = (text: string) => { unconfirmed = [...unconfirmed.filter((t) => t !== text), text].slice(-5) }
   const tell = (s: SaveStatus) => { status = s; o.current.onStatus(s) }
   /** A save: a big file's sends its base's fingerprint, the base only if the server asks (it changed on disk), and gets
    *  back no copy of its own text. */
@@ -93,6 +138,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
 
     async save(force = false): Promise<void> {
       s.stopTimer()
+      if (s.conflict && !force) return
       if (saving) { again = true; return s.inflight?.done }
       const sent = o.current.text(), base = s.disk
       if (sent === base && !force) { dropDraft(path); return }
@@ -100,10 +146,15 @@ function makeAutosave(path: string, initial: string, options: Options) {
       saving = true
       let finish = () => {}
       s.inflight = { text: sent, done: new Promise<void>((r) => { finish = r }) }
+      let r: Response | null = null
       try {
-        const r = await put(sent, base)
+        r = await put(sent, base)
         const j = await answer(r, sent)
-        if (r.status === 409) return tell({ kind: "conflict", theirs: j })
+        if (r.status === 409) {
+          // On disk is a save of ours whose answer was lost: that's the base, and saving again merges onto it.
+          if (unconfirmed.includes(j.text)) { s.disk = j.text; s.mtime = j.mtime; unconfirmed = []; again = true; return }
+          return void s.clash(base, j)
+        }
         if (!r.ok) throw new Error(j.error || r.statusText)
         o.current.onDisk?.(j)
         s.mtime = j.mtime
@@ -118,8 +169,10 @@ function makeAutosave(path: string, initial: string, options: Options) {
           s.changed()
         }
         if (o.current.text() === s.disk) dropDraft(path)
+        unconfirmed = []
         tell({ kind: "ok" })
       } catch (e) {
+        if (!r) sentMaybe(sent)
         tell({ kind: "error", message: String((e as Error).message ?? e) })
       } finally {
         saving = false
@@ -149,8 +202,10 @@ function makeAutosave(path: string, initial: string, options: Options) {
         // Anything saved meanwhile makes this answer old: the save brought the new text.
         if (!s.alive || s.disk !== before || saving || timer || s.conflict || r.text === before) return
         const now = o.current.text()
-        const merged = now === before ? r.text : merge3(before, now, r.text)
-        if (merged === null) return tell({ kind: "conflict", theirs: r })
+        const own = unconfirmed.includes(r.text)
+        if (own) unconfirmed = []
+        const merged = now === before || own ? (own ? now : r.text) : merge3(before, now, r.text)
+        if (merged === null) return void s.clash(before, r)
         s.disk = r.text
         s.mtime = r.mtime
         o.current.onDisk?.(r)
@@ -161,18 +216,60 @@ function makeAutosave(path: string, initial: string, options: Options) {
       }
     },
 
-    keepMine() {
-      if (status.kind !== "conflict") return
-      s.disk = status.theirs.text ?? s.disk
-      tell({ kind: "ok" })
-      void s.save(true)
+    /** The file changed elsewhere in lines typed here: both sides kept as versions in File history, the rest merged,
+     *  and the clashing lines shown to settle (in the editor when it can, else `keep`). Saving waits till then. */
+    async clash(base: string, theirs: FileText) {
+      const first = mergeClashes(base, o.current.text(), theirs.text)
+      if (!first.clashes.length) return s.check(theirs)
+      const lines = (cs: Clash[]) => cs.map((k) => k.at + 1)
+      tell({ kind: "conflict", base, theirs, lines: lines(first.clashes) })
+      void post("history/keep", { path: where() }).catch(() => {})
+      void post("history/keep", { path: where(), text: o.current.text() }).catch(() => {})
+      const who = await whoWrote(where(), theirs.mtime)
+      if (!s.alive || status.kind !== "conflict" || status.theirs !== theirs) return
+      // (typed on meanwhile: merged again)
+      const { text, clashes } = mergeClashes(base, o.current.text(), theirs.text)
+      const inline = !!clashes.length && !!o.current.conflict?.(text, clashes, who, s.left)
+      if (inline) { s.disk = theirs.text; s.mtime = theirs.mtime; o.current.onDisk?.(theirs) }
+      last = { kind: "conflict", base, theirs, lines: lines(clashes), who, inline }
+      tell(last)
     },
-    takeTheirs() {
+    /** Conflicts left in the editor: none, saved; one back (undone), held again; `rest`, its editor went with them. */
+    left(n: number, rest?: Clash[]) {
+      if (rest) { if (s.conflict) parked = rest; return }
+      if (!n && s.conflict) { parked = null; tell({ kind: "ok" }); void s.save() }
+      else if (n && !s.conflict && last) tell(last)
+    },
+    /** A new editor drawn: the conflicts its last one left, shown again (else settled with `keep`). */
+    reshow() {
+      const c = status, rest = parked
+      if (c.kind !== "conflict" || !c.inline || !rest) return
+      parked = null
+      if (!o.current.conflict?.(o.current.text(), rest, c.who, s.left)) tell({ ...c, inline: false })
+    },
+    /** Settle a conflict not shown in place: the clashing lines as typed here (`mine`) or as on disk, the rest merged;
+     *  a toast says where the other side is, and Undo brings the choice back. */
+    keep(side: "mine" | "theirs") {
       if (status.kind !== "conflict") return
-      s.disk = status.theirs.text
-      o.current.apply(s.disk)
-      dropDraft(path)
+      const c = status, typed = o.current.text()
+      const { text: merged, clashes } = mergeClashes(c.base, typed, c.theirs.text)
+      const text = side === "mine" ? merged : withTheirs(merged, clashes)
+      s.disk = c.theirs.text
+      s.mtime = c.theirs.mtime
+      o.current.apply(text)
       tell({ kind: "ok" })
+      const saved = text === c.theirs.text ? Promise.resolve() : s.save(true)
+      if (text === c.theirs.text) dropDraft(path)
+      const undo = async () => {
+        await saved
+        // (the file back as it was, the text as typed, and the choice again)
+        if (side === "mine" && s.disk !== c.theirs.text) await putJson("file", { path: where(), text: c.theirs.text, base: s.disk })
+        s.disk = c.base
+        o.current.apply(typed)
+        tell(c)
+      }
+      notify(side === "mine" ? `Kept yours; ${theirName(c.who)} version is in the note's history` : `Kept ${theirName(c.who)} version; yours is in the note's history`,
+        { id: `unsaved:${path}`, action: { label: "Undo", run: undo } })
     },
 
     /** Send what's pending without the view (it's going); a failure is a toast holding the edits. */
@@ -182,18 +279,25 @@ function makeAutosave(path: string, initial: string, options: Options) {
       // (kept here first: keepalive takes 64 KB at most, so a bigger save is a plain one, which a closed window may cut short)
       keepDraft(path, text, base)
       const send = async (base: string | null) => {
+        sentMaybe(text)
         const r = await put(text, base, { keepalive: text.length < 60_000 })
-        if (r.status === 409) throw Object.assign(new Error("it changed elsewhere in the same lines"), { conflict: true })
+        if (r.status === 409) throw Object.assign(new Error(changedText()), { conflict: true })
         if (!r.ok) throw Object.assign(new Error((await r.json().catch(() => ({}))).error ?? r.statusText), { gone: r.status === 404 })
         dropDraft(path)
       }
+      const changedText = () => (status.kind === "conflict" ? conflictText(status).replace(/\.$/, "") : "it changed elsewhere in the same lines")
       const id = `unsaved:${path}`, saved = () => notify(`Saved ${stem(path)}`, { id })
       const unsaved = (e: unknown) => {
         const mine = !!(e as { conflict?: boolean }).conflict
-        notify(`Couldn't save ${stem(path)}: ${(e as Error).message ?? e}`, { kind: "error", duration: 15_000, id,
-          action: { label: mine ? "Keep mine" : "Try again", run: async () => { await send(mine ? null : base); saved() } } })
+        notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower((e as Error).message)}` : `Couldn't save ${stem(path)}: ${(e as Error).message ?? e}`, { kind: "error", duration: 15_000, id,
+          action: { label: mine ? "Keep yours" : "Try again", run: async () => {
+            // (theirs is kept in File history first: nothing is lost)
+            if (mine) await post("history/keep", { path: where() }).catch(() => {})
+            await send(mine ? null : base)
+            notify(mine ? `Saved yours; ${theirName(status.kind === "conflict" ? status.who : undefined)} version is in the note's history` : `Saved ${stem(path)}`, { id })
+          } } })
       }
-      if (s.conflict) { if (say) unsaved({ message: "it changed elsewhere in the same lines", conflict: true }); return }
+      if (s.conflict) { if (say) unsaved({ message: changedText(), conflict: true }); return }
       send(base).catch((e) => {
         if (!say) return
         if (!(e as { gone?: boolean }).gone) unsaved(e)

@@ -11,7 +11,13 @@ export default async ($: VaultTest) => {
   write(histData, JSON.stringify({ interval_min: 5 }))
   const user = whoOf("app/desktop", null)
   /** An op as an MCP app or the app calls it: Activity hears it as a request (as MCP's tools report theirs). */
-  const call = async (id: string, params: Any, who = user) => { await sleep(3); return (await app.callOp(id, params, who, { report: `mcp ${id}` })).result as Any }
+  // (then the watcher's news of the files it wrote, which ties them to the call: a request's changes are what it wrote)
+  const call = async (id: string, params: Any, who = user) => {
+    await sleep(3)
+    const r = (await app.callOp(id, params, who, { report: `mcp ${id}` })).result as Any
+    if (id.startsWith("file.")) app.changed([params.path, params.to].filter((p) => typeof p === "string"))
+    return r
+  }
   const fails = async (id: string, params: Any, who = user) => { try { await call(id, params, who); return "" } catch (e) { return (e as Error).message } }
   /** A request from the app, as server.ts reports it to Activity. */
   async function heard(method: string, p: string, body: Any) {

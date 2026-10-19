@@ -153,7 +153,7 @@ const out = { errs: [] }
   const n = await page.locator("[role=tablist] [role=tab]").count()
   await page.locator("[role=tablist] button[aria-label^=Close]").first().click(); await wait(500)
   out.closedTab = n >= 2 && (await page.locator("[role=tablist] [role=tab]").count()) === n - 1
-  // the same line changed on disk and in the editor: a banner asks, nothing is overwritten
+  // the same line changed on disk and in the editor: shown in place, nothing is overwritten (web/qa/conflicts.mjs)
   await page.goto(`${B}#file/${encodeURIComponent(third.path)}`); await wait(1500)
   await page.locator("#main-scroll .cm-content").click(); await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.type("Mine.")
   await wait(1500)
@@ -161,9 +161,9 @@ const out = { errs: [] }
   writeFileSync(`${VAULT}/${third.path}`, m.replace("Mine.", "Theirs."))
   await page.keyboard.type(" More")
   await wait(7000)
-  out.conflictBanner = await page.locator("[role=alert]", { hasText: "changed somewhere else" }).count()
+  out.conflictBanner = await page.locator("[role=alert]", { hasText: "changed elsewhere while you typed" }).count()
   out.diskKept = read(third.path).includes("Theirs.") && !read(third.path).includes("Mine. More")
-  await page.locator("[role=alert] button", { hasText: "Keep mine" }).click(); await wait(1500)
+  await page.locator(".cm-clash-mine button", { hasText: "Keep" }).click(); await wait(1500)
   out.keepMine = read(third.path).includes("Mine. More") && !read(third.path).includes("Theirs.")
   // source mode shows the frontmatter
   await page.goto(`${B}#file/${encodeURIComponent(person.path)}`); await wait(1500)
@@ -237,7 +237,7 @@ check("a property edit changes its line only, the header follows", out.propertyL
 check("renaming from the title: the tab follows", out.renameHash === hash(`${rename} (maybe).md`) && out.renameTabs.includes(`${name(rename)} (maybe)`), [out.renameHash, out.renameTabs])
 check("a phone's sheet address opens the file's tab", out.sheetLinkHash === out.sheetLinkWant && !out.sheetLinkSheet, out.sheetLinkHash)
 check("a tab closes", out.closedTab)
-check("the same line changed on disk and here: a banner, the disk's kept until Keep mine", out.conflictBanner >= 1 && out.diskKept && out.keepMine)
+check("the same line changed on disk and here: shown, the disk's kept until Keep yours", out.conflictBanner >= 1 && out.diskKept && out.keepMine)
 check("source mode shows the frontmatter", out.sourceShowsFm >= 1)
 check("phone: a file from the tree opens in a tab, Back returns", out.phoneTreeOk && out.phoneTreeBackOk, out.phoneTree)
 check("phone: a person from People opens in a tab", out.phonePeopleOk, out.phonePeople)

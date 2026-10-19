@@ -27,7 +27,8 @@ import type { SlashItem } from "@/core/define"
 import { docChanged, registerDoc } from "@/core/anchors"
 import { registerEditor } from "@/core/editors"
 import { runShortcut } from "@/core/commands"
-import { textChanges } from "@/core/merge"
+import { textChanges, type Clash } from "@/core/merge"
+import { conflicts, leaveConflicts, revealConflict, showConflicts, type Open } from "./conflicts"
 import { pastedFiles } from "@/core/files"
 import { pasteTable } from "./tables"
 import { editorExtensions, usePluginsVersion } from "@/core/plugins"
@@ -49,6 +50,11 @@ export type EditorApi = {
   reveal: (line: number) => void
   /** Where the app can put the cursor near `pos` without opening a drawn block (livePreview's offBlocks). */
   offBlocks: (pos: number) => number | null
+  /** Put in `text` with its clashes shown in place (editor/conflicts.ts); false if one can't be shown, and nothing changed.
+   *  `open` hears how many are left as the user settles them. */
+  conflict: (text: string, clashes: Clash[], who: string | undefined, open: Open) => boolean
+  /** Scroll to the first conflict left. */
+  revealConflict: () => void
   /** It came back as its tab's editor was left (editor/kept.ts), selection included: that's where its cursor goes. */
   restored: boolean
   view: EditorView
@@ -333,7 +339,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         selection: hides ? EditorSelection.cursor(bodyStart(Text.of(fill(doc).split(/\r\n?|\n/)))) : undefined,
         extensions: language !== undefined ? [
           Prec.highest(plugged.current.of([])),
-          leaving, history(), indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
+          leaving, history(), conflicts, indentUnit.of(indentOf(doc)), EditorView.lineWrapping, numberGutter(),
           lang.current.of([]), syntaxHighlighting(codeStyle),
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
@@ -343,7 +349,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
         ] : code ? [
           Prec.highest(plugged.current.of([])),
-          leaving, history(), indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
+          leaving, history(), conflicts, indentUnit.of("  "), EditorView.lineWrapping, nums.current.of(showNumbers ? numberGutter() : []),
           code === "json" ? [jsonLang(), syntaxHighlighting(jsonStyle)] : code === "html" ? [htmlLang(), syntaxHighlighting(htmlStyle)] : [],
           edit.current.of([EditorView.editable.of(editable), EditorState.readOnly.of(!editable)]),
           keymap.of([{ key: "Tab", run: indentMore }, { key: "Shift-Tab", run: indentLess }, ...defaultKeymap, ...historyKeymap]),
@@ -353,7 +359,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           }),
         ] : [
           Prec.highest(fenceMenu), Prec.highest(plugged.current.of([])),
-          leaving, history(),
+          leaving, history(), conflicts,
           EditorView.updateListener.of((u) => { if (u.docChanged && docPath) docChanged() }),
           fencedCode(!!source), source ? syntaxHighlighting(fmStyle) : [],
           prose.current.of(writing(settings, doc)),
@@ -394,7 +400,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     })
     view.current = v
     if (language) languageFor(language).then((l) => { if (l && view.current === v) v.dispatch({ effects: lang.current.reconfigure(l) }) })
-    onReady?.({
+    const api: EditorApi = {
       view: v,
       restored,
       replace: (text) => {
@@ -414,6 +420,13 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
           write: (moved) => { if (Math.abs(moved) >= 1) { if (sc) sc.scrollTop += moved; else window.scrollBy(0, moved) } },
         })
       },
+      conflict: (text, clashes, who, open) => {
+        const at = v.state.field(frontmatter, false) ?? 0
+        if (at && clashes.some((k) => k.at < v.state.doc.lineAt(at).number - 1)) return false
+        api.replace(text)
+        return showConflicts(v, clashes, who, open)
+      },
+      revealConflict: () => revealConflict(v),
       reveal: (line) => {
         const n = Math.min(Math.max(line + 1, 1), v.state.doc.lines)
         v.dispatch({ effects: EditorView.scrollIntoView(v.state.doc.line(n).from, { y: "start", yMargin: 0 }) })
@@ -429,7 +442,8 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
         if (pos !== null) v.dispatch({ selection: EditorSelection.cursor(pos) })
         v.focus()
       },
-    })
+    }
+    onReady?.(api)
     // A Markdown file: others find its headings and blocks here (links to them, the Outline panel).
     const unregister = docPath && language === undefined && !code ? registerDoc({
       path: docPath,
@@ -449,7 +463,7 @@ export default function Editor({ doc, editable, config, onChange, onOpen, names,
     const unlist = registerEditor({ view: v, kind: language !== undefined ? "code" : code ? "text" : "markdown", path: docPath ?? (language || undefined), source: !!source,
       start: (s) => s.field(frontmatter, false) ?? 0, undo: () => undo(v), redo: () => redo(v), findable, blocks: () => drawnBlocks(v) })
     trace("editor", { ev: "mount", path: docPath ?? label, head: v.state.selection.main.head, editable, source: !!source })
-    return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
+    return () => { trace("editor", { ev: "destroy", path: docPath ?? label, head: v.state.selection.main.head }); leaveConflicts(v); unregister?.(); unlist(); if (keepAs) keepState(keepAs, v.state, !!source); v.destroy(); view.current = null }
     // One editor per file: the parent keys this component by path.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])

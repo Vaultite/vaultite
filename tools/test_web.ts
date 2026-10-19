@@ -57,7 +57,8 @@ const fm: {
   fromLocal(s: string, was: string): string
 } = await web("core/frontmatter.ts")
 const merge: { merge3(base: string, mine: string, actual: string): string | null; opcodes<T>(a: T[], b: T[]): [string, number, number, number, number][]
-  textChanges(a: string, b: string): { from: number; to: number; insert: string }[] } =
+  textChanges(a: string, b: string): { from: number; to: number; insert: string }[]
+  mergeClashes(base: string, mine: string, theirs: string): { text: string; clashes: { at: number; mine: string[]; theirs: string[] }[] } } =
   await web("core/merge.ts")
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b)
@@ -229,6 +230,18 @@ check("merge: changes on both sides in different lines are both kept", merge.mer
 check("merge: the same line changed on both sides is a conflict", merge.merge3(base, "a\nX\nc\nd\n", "a\nY\nc\nd\n") === null)
 check("merge: the same change on both sides is kept once", merge.merge3(base, "a\nX\nc\nd\n", "a\nX\nc\nd\n") === "a\nX\nc\nd\n")
 check("merge: nothing changed on disk gives mine", merge.merge3(base, "a\nb\nnew\nc\nd\n", base) === "a\nb\nnew\nc\nd\n")
+// Past a conflict: the rest merged, the clashing lines kept as mine and listed with theirs.
+{
+  const base6 = "one\ntwo\nthree\nfour\nfive\nsix with a long line"
+  const r = merge.mergeClashes(base6, "ONE\ntwo\nthree\nfour\nfive\nsix with a long line I kept typing", "one\ntwo\nthree\nFOUR\nfive\nsix with a lo")
+  check("merge: clashes keep mine and merge the rest", r.text === "ONE\ntwo\nthree\nFOUR\nfive\nsix with a long line I kept typing"
+    && same(r.clashes, [{ at: 5, mine: ["six with a long line I kept typing"], theirs: ["six with a lo"] }]), r)
+  const ins = merge.mergeClashes("a\nb", "a\nmine\nb", "a\ntheirs\nb")
+  check("merge: two insertions at one place clash", same(ins.clashes, [{ at: 1, mine: ["mine"], theirs: ["theirs"] }]) && ins.text === "a\nmine\nb", ins)
+  const del = merge.mergeClashes("a\nb\nc", "a\nc", "a\nB\nc")
+  check("merge: a line deleted here and changed there clashes", same(del.clashes, [{ at: 1, mine: [], theirs: ["B"] }]) && del.text === "a\nc", del)
+  check("merge: no clash where merge3 merges", same(merge.mergeClashes(base, "A\nb\nc\nd\n", "a\nb\nc\nD\n"), { text: "A\nb\nc\nD\n", clashes: [] }))
+}
 check("merge: opcodes", same(merge.opcodes(["a", "b", "c"], ["a", "x", "c"]), [["equal", 0, 1, 0, 1], ["replace", 1, 2, 1, 2], ["equal", 2, 3, 2, 3]]),
   merge.opcodes(["a", "b", "c"], ["a", "x", "c"]))
 
