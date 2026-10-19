@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client"
 import { getStore, type Store } from "@/core/data"
 import { followLink, resolver } from "@/core/links"
 import { type MarkdownOpts, renderInline, renderMarkdown } from "@/core/markdown"
-import { hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
+import { dropMermaid, hydrate, markdownDrawn, richClick, tickTask, wireTasks } from "@/core/richmd"
 import { isReadOnly, readFile } from "@/core/files"
 import { put } from "@/core/http"
 import { notifyError } from "@/core/notify"
@@ -61,6 +61,11 @@ export function Markdown({ text, store, inline, full, className, from, plain, se
     })
     return () => { if (roots.length) setTimeout(() => { for (const r of roots) r.unmount() }, 0) }
   }, [html, s, from, seenKey, tasks, text])
+  // Its diagrams let go when its HTML does (each holds a live drawing: observers, zoom).
+  useEffect(() => {
+    const drawn = [...ref.current?.querySelectorAll<HTMLElement>("[data-mermaid]") ?? []]
+    return () => { for (const el of drawn) dropMermaid(el) }
+  }, [html])
   const follow = (e: MouseEvent) => {
     if (e.button === 0 && ref.current && richClick(e, ref.current)) return
     const a = (e.target as Element).closest<HTMLElement>("[data-wiki], [data-tag], [data-url]")
