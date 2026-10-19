@@ -337,10 +337,10 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   useLayoutEffect(() => {
     if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")?.focus({ preventScroll: true })
   }, [placed, focus, trail])
-  // Each key typed: the best match takes the focus, so Enter picks it.
+  // Each key typed: the best match takes the focus, so Enter picks it; no match, the menu keeps it (to type on).
   const typed = useRef(false)
   useLayoutEffect(() => {
-    if (typed.current) ref.current?.querySelector<HTMLElement>(":scope > button[data-index]:not(:disabled)")?.focus({ preventScroll: true })
+    if (typed.current) (ref.current?.querySelector<HTMLElement>(":scope > button[data-index]:not(:disabled)") ?? ref.current)?.focus({ preventScroll: true })
   }, [query])
   useEffect(() => () => clearTimeout(timer.current), [])
   const open = (i: number, el: HTMLElement, focusFirst: boolean) => { clearTimeout(timer.current); setSub({ label: rows[i].label, rect: el.getBoundingClientRect(), focus: focusFirst }) }

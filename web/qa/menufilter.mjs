@@ -55,6 +55,11 @@ try {
   check("Escape clears the query first, the menu stays", (await menus().count()) === 2 && !(await menus().nth(1).locator("[data-menu-filter]").count()))
   await page.keyboard.type("zzzq"); await wait(100)
   check("nothing matches: says so", (await menus().nth(1).innerText()).includes("No matches"))
+  await page.keyboard.press("Backspace"); await wait(100)
+  check("...and still takes keys: Backspace edits the query", (await menus().nth(1).locator("[data-menu-filter]").innerText()).includes("zzz")
+    && !(await menus().nth(1).locator("[data-menu-filter]").innerText()).includes("zzzq"))
+  await page.keyboard.type("q"); await page.keyboard.press("Escape"); await wait(100)
+  check("...Escape clears it, the menu stays", (await menus().count()) === 2 && !(await menus().nth(1).locator("[data-menu-filter]").count()))
   await closeMenus()
 
   // ---------- a long menu says so ----------
