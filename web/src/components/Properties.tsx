@@ -99,9 +99,9 @@ function typedKind(type: PropType | null, v: unknown): PropKind | "datetime" | n
 }
 
 /** The icon before a key: its type (declared, else its value's); editable, a click sets the key's type for the vault. */
-function TypeButton({ k, v, types, readOnly }: { k: string; v: unknown; types?: { types: PropTypes; own: string[] }; readOnly: boolean }) {
+function TypeButton({ k, v, types, readOnly, stamp }: { k: string; v: unknown; types?: { types: PropTypes; own: string[] }; readOnly: boolean; stamp?: boolean }) {
   const declared = typeOf(types?.types, k)
-  const Icon = ICONS[declared ?? propKind(v)]
+  const Icon = ICONS[declared ?? (stamp ? "datetime" : propKind(v))]
   const label = declared ? `${k}: ${LABELS[declared].toLowerCase()}` : `${k}: no type set`
   if (readOnly) return <span className="grid size-8 shrink-0 place-items-center text-tertiary" aria-hidden><Icon className="size-4" strokeWidth={2} /></span>
   const set = (type: PropType | "none") => op("property.type", { key: k, type }).catch((e) => notifyError(e, "Couldn't set its type"))
@@ -216,7 +216,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
                 return (
                 <div role="row" key={k} className="group contents">
                   <div role="rowheader" className="flex min-w-0 items-start">
-                    <TypeButton k={k} v={props[k]} types={types} readOnly={readOnly} />
+                    <TypeButton k={k} v={props[k]} types={types} readOnly={readOnly} stamp={kept(stamps, k, props[k])} />
                     {readOnly ? (
                       <span className="truncate px-1.5 py-1.5 text-[15px] leading-5 text-muted-foreground">{k}</span>
                     ) : (

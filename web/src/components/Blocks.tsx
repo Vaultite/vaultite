@@ -36,10 +36,10 @@ export function useKindSections(store: Store, path: string): string[] {
   return useMemo(() => (key ? key.split(",") : NONE), [key])
 }
 
-/** The times a file's kind keeps (a note's created): shown, not edited. */
+/** The times a file's kind keeps (a note's created), or a plain note's the app keeps: shown, not edited. */
 export function kindStamps(store: Store, path: string): string[] {
   const kind = store.files.files.find((f) => f.path === path)?.kind
-  return (kind && store.kinds?.[kind]?.stamps) || NONE
+  return (kind ? store.kinds?.[kind]?.stamps : /\.md$/i.test(path) && store.noteStamps) || NONE
 }
 
 /** A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped). `line`: its 0-based start, so a

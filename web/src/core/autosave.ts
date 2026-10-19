@@ -2,7 +2,7 @@
 // way; changes on disk merged in (3-way); what's pending sent when the view goes, and kept on the device until saved.
 import { useEffect, useLayoutEffect, useState } from "react"
 import { get, post, put as putJson, request } from "@/core/http"
-import { deletedHere, gone, moveMark, readFile, stem, whereNow, type FileText } from "@/core/files"
+import { deletedHere, gone, moveMark, readFile, splitFm, stem, whereNow, type FileText } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { merge3, mergeClashes, type Clash } from "@/core/merge"
 import { notify } from "@/core/notify"
@@ -88,6 +88,17 @@ function makeAutosave(path: string, initial: string, options: Options) {
    *  one on disk is this editor's own save, not a change elsewhere. */
   let unconfirmed: string[] = []
   const sentMaybe = (text: string) => { unconfirmed = [...unconfirmed.filter((t) => t !== text), text].slice(-5) }
+  /** The unconfirmed save that `disk` is, if one is: the same text, or its new body with properties the server set as it
+   *  saved (Note dates' updated). `base`: what that save was made on. */
+  const ownSave = (disk: string, base: string) => {
+    const body = splitFm(disk).body
+    return unconfirmed.find((t) => t === disk || (splitFm(t).body === body && body !== splitFm(base).body))
+  }
+  /** Take `disk`, our own save (`own`) as the server wrote it: what it set merged into the text as typed now. */
+  const adopt = (own: string, disk: string) => {
+    const now = o.current.text(), merged = own === disk ? now : merge3(own, now, disk) ?? now
+    if (merged !== now && s.alive) o.current.apply(merged)
+  }
   const tell = (s: SaveStatus) => { status = s; o.current.onStatus(s) }
   /** A save: a big file's sends its base's fingerprint, the base only if the server asks (it changed on disk), and gets
    *  back no copy of its own text. */
@@ -152,7 +163,8 @@ function makeAutosave(path: string, initial: string, options: Options) {
         const j = await answer(r, sent)
         if (r.status === 409) {
           // On disk is a save of ours whose answer was lost: that's the base, and saving again merges onto it.
-          if (unconfirmed.includes(j.text)) { s.disk = j.text; s.mtime = j.mtime; unconfirmed = []; again = true; return }
+          const own = ownSave(j.text, base)
+          if (own !== undefined) { s.disk = j.text; s.mtime = j.mtime; unconfirmed = []; adopt(own, j.text); again = true; return }
           return void s.clash(base, j)
         }
         if (!r.ok) throw new Error(j.error || r.statusText)
@@ -202,9 +214,9 @@ function makeAutosave(path: string, initial: string, options: Options) {
         // Anything saved meanwhile makes this answer old: the save brought the new text.
         if (!s.alive || s.disk !== before || saving || timer || s.conflict || r.text === before) return
         const now = o.current.text()
-        const own = unconfirmed.includes(r.text)
-        if (own) unconfirmed = []
-        const merged = now === before || own ? (own ? now : r.text) : merge3(before, now, r.text)
+        const own = ownSave(r.text, before)
+        if (own !== undefined) unconfirmed = []
+        const merged = own !== undefined ? (own === r.text ? now : merge3(own, now, r.text) ?? now) : now === before ? r.text : merge3(before, now, r.text)
         if (merged === null) return void s.clash(before, r)
         s.disk = r.text
         s.mtime = r.mtime

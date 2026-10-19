@@ -1,0 +1,12 @@
+{
+  "id": "note-dates",
+  "icon": "calendar-clock",
+  "category": "writing",
+  "essential": true,
+  "name": "Note dates",
+  "description": "A note made in the app, by you or an agent, gets the time it was made (created) and the time its text last changed (updated) in its properties, in local time. Its updated changes when its text is edited in the app; notes you already have are left as they are.",
+  "settings": {
+    "created": { "type": "string", "default": "created", "label": "Created property", "description": "the property a new note's time goes in (empty: none)" },
+    "updated": { "type": "string", "default": "updated", "label": "Updated property", "description": "the property that says when a note's text last changed in the app (empty: none)" }
+  }
+}

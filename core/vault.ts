@@ -243,6 +243,16 @@ function stable(v: unknown): string {
 /** A value as it would be read back from YAML, blank ones as null: for comparing old and new values. */
 const norm = (v: unknown) => (blank(v) ? null : stable(v))
 
+/** `text` (its header `m`, read as `fm`) with the keys in `set` written as a small edit: its other header lines as they
+ *  are, a header made when it has none. The text as it was when there are none, or its header can't be patched. */
+function withKeys(text: string, m: RegExpExecArray | null, fm: Item, set: Item): string {
+  if (!Object.keys(set).length) return text
+  if (!m) return `${frontmatter(set)}${text && !text.startsWith("\n") ? "\n" : ""}${text}`
+  const inner = patchFrontmatter(m[1] ?? "", fm, Object.fromEntries(Object.entries(set).map(([k, v]) => [k, dates(v)])), [],
+    [...Object.keys(fm), ...Object.keys(set).filter((k) => !(k in fm))], (key, value) => dump({ [key]: value }), loadFm)
+  return inner === null ? text : `---\n${inner}\n---\n${text.slice(m[0].length)}`
+}
+
 const isEmpty = (y: unknown) => y !== null && typeof y === "object" && !Array.isArray(y) && !Object.keys(y).length
 
 /** An item without its private `_` keys and empty records. Copies only what changes, since /api/state is megabytes
@@ -280,6 +290,10 @@ export type Writer = { client: string | null; agent: string | null }
 export const requestWriter = new AsyncLocalStorage<Writer>()
 /** onCreate's hooks (Vault.onCreate): the keys to add to a new file. `writer` is null outside a request over HTTP. */
 export type CreateHook = (path: string, fm: Item, writer: Writer | null) => Item | void
+/** A Markdown file's text as onSave's hooks see it: its frontmatter, read, and the rest after it. */
+export type NoteText = { fm: Item; body: string }
+/** onSave's hooks (Vault.onSave): the keys to set in a file the app saves over its older text (`was`). */
+export type SaveHook = (path: string, now: NoteText, was: NoteText, writer: Writer | null) => Item | void
 /** A new file as onCreateFile's hooks see it, read-only: its size, and its first or last `n` bytes, read only when asked
  *  (an upload can be any size). */
 export type NewFile = { size: number; head: (n: number) => Buffer; tail: (n: number) => Buffer }
@@ -760,12 +774,33 @@ export class Vault {
     const m = FM.exec(text)
     let fm: Item
     try { fm = m ? loadFm(m[1] ?? "") : {} } catch { return text }
-    const add = this.creating(rel, fm)
-    if (!Object.keys(add).length) return text
-    if (!m) return `${frontmatter(add)}${text && !text.startsWith("\n") ? "\n" : ""}${text}`
-    const inner = patchFrontmatter(m[1] ?? "", fm, Object.fromEntries(Object.entries(add).map(([k, v]) => [k, dates(v)])), [],
-      [...Object.keys(fm), ...Object.keys(add)], (key, value) => dump({ [key]: value }), loadFm)
-    return inner === null ? text : `---\n${inner}\n---\n${text.slice(m[0].length)}`
+    return withKeys(text, m, fm, this.creating(rel, fm))
+  }
+
+  private savers = new Set<{ plugin: string; fn: SaveHook }>()
+  /** fn(path, now, was, writer) when the API saves new text over a Markdown file: the keys it answers are set in that
+   *  text, so they go in the same write. Only while `plugin` is on. Returns the function that removes it. */
+  onSave(plugin: string, fn: SaveHook) {
+    return added(this.savers, { plugin, fn })
+  }
+  /** A Markdown file's new `text` as the API writes it over `was`: with the keys the onSave hooks set, as a small edit.
+   *  The text as it was when they set none, or a header doesn't read. */
+  saving(rel: string, was: string, text: string): string {
+    if (!rel.toLowerCase().endsWith(".md") || !this.savers.size || was === text) return text
+    const m = FM.exec(text), w = FM.exec(was)
+    let now: NoteText, before: NoteText
+    try {
+      now = { fm: m ? loadFm(m[1] ?? "") : {}, body: m ? text.slice(m[0].length) : text }
+      before = { fm: w ? loadFm(w[1] ?? "") : {}, body: w ? was.slice(w[0].length) : was }
+    } catch { return text }
+    const who = requestWriter.getStore() ?? null
+    const set: Item = {}
+    for (const fn of this.on(this.savers)) {
+      try {
+        for (const [k, v] of Object.entries(fn(rel, now, before, who) ?? {})) if (!(k in set) && !blank(v) && norm(v) !== norm(now.fm[k])) set[k] = v
+      } catch (e) { console.error(e) }
+    }
+    return withKeys(text, m, now.fm, set)
   }
 
   private fileCreators = new Set<{ plugin: string; fn: FileCreateHook }>()

@@ -28,6 +28,9 @@ export async function vaultHarness(from?: string) {
       !JSON.parse(fs.readFileSync(path.join(root, id, "manifest.json"), "utf8")).essential)
     fs.mkdirSync(path.join(VAULT, ".vaultite"), { recursive: true })
     fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins.json"), JSON.stringify({ disabled: [], enabled }, null, 2) + "\n")
+    // Note dates on, but writing no dates: tests compare new files' exact text (its own area turns them on).
+    fs.mkdirSync(path.join(VAULT, ".vaultite", "plugins", "note-dates"), { recursive: true })
+    fs.writeFileSync(path.join(VAULT, ".vaultite", "plugins", "note-dates", "data.json"), JSON.stringify({ created: "", updated: "" }) + "\n")
   }
   fs.writeFileSync(path.join(VAULT, "CLAUDE.md"), "@AGENTS.md\n") // the user's own
   // The People map's lookups so far (its cache), so no test asks the network for a pin.

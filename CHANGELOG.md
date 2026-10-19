@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Note dates**: a note made in the app, by you or an agent, gets `created` and `updated` in its properties (your local
+  time, shown as dates), and `updated` moves when its text is edited in the app, in the same save. Notes you already
+  have are left as they are; the property names are its settings, and it can be turned off.
 - **Conflicts shown in place**: when a note changes elsewhere in the lines you're typing, both versions appear right
   there, named ("Claude Code edited line 6 while you typed"), each with Keep, plus Keep both; the rest merges, both
   sides are kept in File history, and each choice can be undone. A save whose answer was lost (a phone going to sleep)

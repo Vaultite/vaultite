@@ -727,6 +727,7 @@ export async function handle(vault: Vault, method: string, parts: string[], quer
         text = merged
       }
       if (cur === null) text = newText(vault, rel, text)
+      else text = vault.saving(rel, cur, text) // (what plugins set in the same write: plugin.onSave)
       const before = vault.entries.get(rel) ?? null
       if (cur !== text) writeText(vault.abs(rel), text)
       await vault.sync()

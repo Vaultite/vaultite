@@ -49,6 +49,8 @@ export type State = PluginState & {
   /** What the app draws or keeps itself in a kind's files, by collection: `## ` sections its view draws (a person's
    *  Timeline) and the times it keeps (a note's created). */
   kinds?: Record<string, KindInfo>
+  /** The times the app keeps in plain notes, no kind's (a plugin's plugin.state: Note dates' created, updated). */
+  noteStamps?: string[]
 }
 export type KindInfo = { sections: string[]; stamps: string[] }
 /** A vault plugin as the server lists it (core/vaultplugins.ts on the server). */

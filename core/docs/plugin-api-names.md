@@ -742,6 +742,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `newFile(b)`: Bytes in memory as a NewFile.
 - `NewFile`: A new file as onCreateFile's hooks see it, read-only: its size, and its first or last `n` bytes, read only when asked (an upload can be any size).
 - `newFileAt(p)`: A file on disk as a NewFile (an upload streamed there).
+- `NoteText`: A Markdown file's text as onSave's hooks see it: its frontmatter, read, and the rest after it.
 - `NotFound`: Something that isn't there (the API answers 404).
 - `nowStamp()`
 - `num(v)`: A number from YAML, or null.
@@ -756,6 +757,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `requestWriter`: Set by the API around each request that came over HTTP (core/app.ts), read by the hooks that run on its writes.
 - `safeName(title)`: File name for a title: other Markdown apps forbid * " \ / < > : | ? # ^ [ ] in names.
 - `sameFile(a, b)`
+- `SaveHook`: onSave's hooks (Vault.onSave): the keys to set in a file the app saves over its older text (`was`).
 - `setPropertyText(text, key, value)`: A file's text with one frontmatter key set to `value` (undefined: removed), only that key's lines rewritten; null when the header can't be patched line by line (it's left alone then).
 - `SETTINGS_DIR`: The vault's settings folder.
 - `slowReads(after?)`: Files read for over `after` ms and still being read (iCloud downloading them), absolute paths.
