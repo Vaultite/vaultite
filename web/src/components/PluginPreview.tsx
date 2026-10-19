@@ -102,8 +102,12 @@ function Updating({ plugin }: { plugin: Plugin }) {
 
 /** On in the vault but not allowed on this machine at this version: why, what changed, what it says it does, and Allow. */
 function Approval({ plugin }: { plugin: Plugin }) {
+  // its own component: the state can turn to or from updating while shown, and Waiting's hooks must not come and go
+  return plugin.meta!.approval!.state === "updating" ? <Updating plugin={plugin} /> : <Waiting plugin={plugin} />
+}
+
+function Waiting({ plugin }: { plugin: Plugin }) {
   const a = plugin.meta!.approval!
-  if (a.state === "updating") return <Updating plugin={plugin} />
   const says = disclosed(plugin.meta!.disclosures)
   const [all, setAll] = useState(false)
   const shown = all ? a.changed : a.changed.slice(0, 8)
