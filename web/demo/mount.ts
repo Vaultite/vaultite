@@ -8,8 +8,11 @@ const FILES = {
   ...import.meta.glob(["../../{core,plugins/core,bundles}/**/*.{md,json,css}", "../../package.json", "../../web/src/index.css"], { query: "?raw", import: "default", eager: true }),
   ...import.meta.glob("../../examples/vault/**/*", { query: "?raw", import: "default", eager: true, exhaustive: true }), // (its .vaultite/ too)
 } as Record<string, string>
+// Fonts bundles bring beside their snippets (Life OS's Instrument Serif), as data URLs: ?raw would mangle the bytes.
+const FONTS = import.meta.glob("../../bundles/**/*.{woff2,woff,ttf,otf}", { query: "?inline", import: "default", eager: true }) as Record<string, string>
 const appPath = (key: string) => decodeURIComponent(new URL(key, "file:///app/web/demo/").pathname)
 for (const [k, text] of Object.entries(FILES)) { fs.mkdirSync(appPath(k).replace(/\/[^/]+$/, ""), { recursive: true }); fs.writeFileSync(appPath(k), text) }
+for (const [k, url] of Object.entries(FONTS)) fs.writeFileSync(appPath(k), url.slice(url.indexOf(",") + 1), "base64")
 // (Vaultite's own plugins, built in here as the app's: vite.demo.config.ts)
 for (const [file, text] of Object.entries(official)) { fs.mkdirSync(file.replace(/\/[^/]+$/, ""), { recursive: true }); fs.writeFileSync(file, text) }
 for (const file of plugins) fs.writeFileSync(file, "") // (core/plugins.ts loads a plugin.ts that's there)
