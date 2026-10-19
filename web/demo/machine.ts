@@ -11,7 +11,7 @@ export const MACHINE = ["terminal", "claude-code", "codex", "mcp", "machines",
 /** Of those, the ones the demo still draws, with the made-up data of their own preview (a plugin's `mockLive`, answered in
  *  the page: boot.ts): what agents did, their sessions and limits, other machines. Their backends are still left out, so
  *  nothing runs; a bundle turns them on or off as it says. By id: Vaultite's own plugins too (OFFICIAL). */
-export const SHOWN = ["claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "machines", "activity"]
+export const SHOWN = ["claude-code", "codex", "cursor", "opencode", "openclaw", "hermes", "muse", "machines", "activity"]
 /** What needs a machine and isn't drawn with made-up data: off in the demo. */
 export const OFF = MACHINE.filter((id) => !SHOWN.includes(id))
 

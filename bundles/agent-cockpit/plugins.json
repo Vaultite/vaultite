@@ -12,6 +12,7 @@
     "hermes",
     "lessons",
     "machines",
+    "muse",
     "notes",
     "openclaw",
     "opencode",
@@ -26,6 +27,7 @@
     "grok-bot": { "name": "Grok Bot", "source": "Vaultite/plugins/grok-bot" },
     "hermes": { "name": "Hermes", "source": "Vaultite/plugins/hermes" },
     "lessons": { "name": "Lessons", "source": "Vaultite/plugins/lessons" },
+    "muse": { "name": "Muse", "source": "Vaultite/plugins/muse" },
     "openclaw": { "name": "OpenClaw", "source": "Vaultite/plugins/openclaw" },
     "opencode": { "name": "OpenCode", "source": "Vaultite/plugins/opencode" },
     "projects": { "name": "Projects", "source": "Vaultite/plugins/projects" }

@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The Agents bundle turns on Muse, and the web demo shows its page with sample data.
 - **Menus filter as you type**: type while any menu is open and only the matching rows stay, those in its submenus
   too (Panels ▸ More ▸ a panel), the best one ready for Enter; a long list (More) says so at the top. The Panels menu shows each
   panel's icon beside its check.
