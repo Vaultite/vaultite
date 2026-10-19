@@ -35,7 +35,7 @@ function ask(agent?: string) {
 /** The status bar's companion: its pointer in its colour (who's around shows on the note), and its menu. */
 function Status() {
   const s = useSyncExternalStore(subscribe, getState)
-  const a = s.agents.find((x) => x.name === s.name) ?? s.agents[0]
+  const a = s.agents.find((x) => x.name.toLowerCase() === s.name.toLowerCase())
   const tint = s.mode === "off" ? undefined : `var(--${a?.tint ?? "orange"})`
   const word = s.mode === "off" ? "off" : !a || a.state === "away" ? "asleep" : a.state === "watching" ? null : a.state
   const items = (): MenuItem[] => [

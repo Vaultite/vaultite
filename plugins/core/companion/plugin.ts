@@ -85,6 +85,8 @@ const asking = new Set<string>() // agents handed an ask or a reply, busy on it 
 const waiters = new Map<string, (m: Moment[]) => void>() // agent -> its waiting `next`
 const agents = new Map<string, Agent>()
 const seen = new Map<string, number>() // agent -> when it last ran `next`
+const ends = new Map<string, number>() // agent -> how many times its session ended (a `next` waiting through one returns)
+const dead = new Set<string>() // terminals whose session ended: a call still on its way from one brings no one back
 const watching = new Set<string>() // agents besides the companion that asked for edit and open moments
 const loaded = Date.now(), LIVE_MS = 10 * 60_000
 const notes = new Map<string, Note>()
@@ -622,7 +624,7 @@ async function start(ctx: OpCtx, as?: string, agent?: string, model?: string, ef
   starting(name, { ...at, model: how.model || undefined, effort: how.effort || undefined }, after)
   try {
     await startAgent(ctx, id, prompt, { allow: ALLOW, model: how.model || null, effort: how.effort || null })
-  } catch (e) { setAgent(name, { state: isMain(name) ? "watching" : "away" }); throw e }
+  } catch (e) { seen.delete(key(name)); setAgent(name, { state: isMain(name) ? "watching" : "away" }); throw e }
   writeSession({ id, name, t: Date.now(), ...(how.model ? { model: how.model } : {}), ...(how.effort ? { effort: how.effort } : {}), handed: 0 })
   return { id, running: false, name, ...how }
 }
@@ -696,37 +698,47 @@ async function stop(as?: string, all = false) {
     try { fs.rmSync(sessionFile(s.name)) } catch { /* none */ }
     if (await running(s.id)) await plugin.runOp("terminal.end", { id: s.id })
   }
+  for (const s of gone) if (s.id) dead.add(s.id)
   for (const a of agents.values()) if (all || gone.some((s) => key(s.name) === key(a.name))) ended(a.name)
   return { id: gone[0]?.id || null }
 }
 
 /** Agent `name`'s session ended (stopped, its tab closed, killed): its cursor goes until it starts again (an ask to
- *  the companion wakes it). */
-function ended(name: string) {
+ *  the companion wakes it), its waiting `next` answered. `id`: its terminal, whose late calls are let go. */
+function ended(name: string, id?: string) {
   const k = key(name)
-  asking.delete(k); handing.delete(k); fresh.delete(k)
+  asking.delete(k); handing.delete(k); fresh.delete(k); seen.delete(k); watching.delete(k)
+  ends.set(k, (ends.get(k) ?? 0) + 1)
+  if (id) dead.add(id)
+  const wait = waiters.get(k)
+  if (wait) { waiters.delete(k); wait([]) }
   setAgent(name, { state: "away" })
 }
 plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
   const s = sessions().find((x) => x.id === ev.id)
-  if (s) ended(s.name)
+  if (s) ended(s.name, s.id)
 })
 
-// A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. Another agent
-// quiet that long is away (asks to it go to the companion).
+// A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. An agent quiet
+// that long is away (asks to it go to the companion), the companion too once its session isn't running.
 const NUDGE = 5 * 60_000
-const watchdog = setInterval(async () => {
+/** The watchdog's round, each minute (and the tests'). */
+export async function tend() {
   if (plugin.isOff() || mode() === "off") return
   // (the companion stays while its session runs, but not starting forever)
-  for (const a of agents.values()) if (a.state !== "away" && !live(a.name) && (!isMain(a.name) || a.state === "starting")) setAgent(a.name, { state: isMain(a.name) ? "watching" : "away" })
+  for (const a of [...agents.values()]) {
+    if (a.state === "away" || live(a.name) || waking.has(key(a.name))) continue
+    const runs = isMain(a.name) && await running(sessionId())
+    if (!runs || a.state === "starting") setAgent(a.name, { state: runs ? "watching" : "away" })
+  }
   // (a session that ended without telling us, as terminal.ended does: its cursor goes too)
   for (const s of sessions()) {
     const a = agents.get(key(s.name))
-    if (a && a.state !== "away" && a.state !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id))) ended(s.name)
+    if (a && a.state !== "away" && a.state !== "starting" && !waiters.has(key(s.name)) && !waking.has(key(s.name)) && !(await running(s.id))) ended(s.name, s.id)
   }
   // (nor thinking with no session to think: it ended mid-ask)
   const main = agents.get(key(ownName()))
-  if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId()))) setAgent(main.name, { state: "watching" })
+  if (main && (main.state === "thinking" || main.state === "reading") && !waking.has(key(main.name)) && !(await running(sessionId()))) setAgent(main.name, { state: live(main.name) ? "watching" : "away" })
   // (asked to hand over and it didn't: a fresh one without its summary)
   for (const [k, t] of handing) {
     if (Date.now() - t < HANDOVER_WAIT) continue
@@ -740,7 +752,8 @@ const watchdog = setInterval(async () => {
     seen.set(k, Date.now())
     await plugin.runOp("terminal.send", { id: s.id, text: `Keep watching: run \`${nextCmd(s.name)}\` again, and never end your turn.` }).catch(() => {})
   }
-}, 60_000)
+}
+const watchdog = setInterval(tend, 60_000)
 watchdog.unref?.()
 
 // ---------- ops
@@ -788,9 +801,13 @@ to the companion, or to an agent with --watch.
     after: { type: "integer", minimum: 0, description: "only moments after this one (default: after the last you were given)" },
     as: AS,
     watch: { type: "boolean", description: "also get edit and open moments (notice, pair), which only the companion gets otherwise" },
+    terminal: { type: "string", env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL)" },
   },
   run: async (p, ctx) => {
-    const name = who(p), k = key(name)
+    const name = who(p), k = key(name), era = ends.get(k)
+    const over = () => ({ mode: mode(), focus: null, moments: [], cursor: delivered.get(k) ?? 0, notes: [], ended: true })
+    // (from a session that ended, sent before it did: no cursor comes back for it)
+    if (p.terminal && dead.has(p.terminal)) return over()
     seen.set(k, Date.now())
     if (p.watch) watching.add(k)
     else watching.delete(k)
@@ -819,6 +836,8 @@ to the companion, or to an agent with --watch.
         const wake = (m: Moment[]) => { clearTimeout(timer); resolve(m.length > 0) }
         waiters.set(k, wake)
       })
+      // (its session ended while it waited)
+      if (ends.get(k) !== era) return over()
       got = woken ? pending() : []
       seen.set(k, Date.now())
       // (woken to start fresh)
@@ -839,7 +858,7 @@ to the companion, or to an agent with --watch.
     }
     return { mode: mode(), focus: focus(), moments: got, cursor: delivered.get(k) ?? after, notes: await excerpts(ctx, got) }
   },
-  text: (r) => (r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes)),
+  text: (r) => (r.ended ? "Your session has ended: stop here, without running next again." : r.handover ? handoverAsk(r.as) : momentsText(r.moments, r.mode, r.focus, r.notes)),
 })
 
 const handoverAsk = (as: string) => `Time for a fresh session: this one has grown long. In a few lines, write what the next one should know (what the user is working on, what they asked you to keep in mind, anything you promised), then run \`vau companion handover${as ? ` --as ${as}` : ""} "<those lines>"\`. It starts the new session, which takes over your cursor and threads; then end your turn.`

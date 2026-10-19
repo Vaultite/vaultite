@@ -402,7 +402,31 @@ export default async ($: VaultTest) => {
     await api("POST", "ops/companion.next", { timeout: 0 })
     ;[, s2] = await api("POST", "ops/companion.status", {})
     check("companion: and it's back at its next", s2.agents.find((a: Any) => a.name === "Claude")?.state === "watching", s2.agents)
-    fs.rmSync(file)
+    // Stopped while its next waits (the bug: an edit then woke the dead session's next, and the cursor came back for good).
+    const claude = () => api("POST", "ops/companion.status", {}).then(([, r]) => r.agents.find((a: Any) => a.name === "Claude"))
+    fs.writeFileSync(file, JSON.stringify({ id: "claude-test0002", name: "Claude", t: Date.now() }))
+    const dying = api("POST", "ops/companion.next", { timeout: 5, terminal: "claude-test0002" })
+    await $.sleep(50)
+    const t0 = Date.now()
+    await api("POST", "ops/companion.stop", {})
+    c.addMoment({ kind: "edit", path: "Notes/A.md", line: 8, hunks: [{ line: 8, removed: [], added: ["More on this"] }] })
+    c.addMoment({ kind: "open", path: "Notes/B.md", line: 1 })
+    ;[, got] = await dying
+    check("companion: stopped, its waiting next is answered at once, as ended", got.ended && !got.moments.length && Date.now() - t0 < 2000, got)
+    check("companion: and no edit or open brings its cursor back", (await claude())?.state === "away", await claude())
+    ;[, got] = await api("POST", "ops/companion.next", { timeout: 0, terminal: "claude-test0002" })
+    check("companion: a next still on its way from the ended session brings no one back", got.ended && (await claude())?.state === "away", [got, await claude()])
+    // Back by any other way (a word sent before it ended): not live, no session, the watchdog takes it away, companion or not.
+    await api("POST", "ops/companion.say", { text: "Late" })
+    await api("POST", "ops/companion.say", { text: "Late", as: "Zed" })
+    await c.tend()
+    ;[, s2] = await api("POST", "ops/companion.status", {})
+    check("companion: the watchdog takes a cursor with no session away, the companion's too", ["Claude", "Zed"].every((n) => s2.agents.find((a: Any) => a.name === n)?.state === "away"), s2.agents)
+    await api("POST", "ops/companion.next", { timeout: 0, terminal: "claude-hand0001" })
+    await c.tend()
+    check("companion: one started by hand (another terminal, or none) is back at its next, and stays", (await claude())?.state === "watching", await claude())
+    await api("POST", "ops/companion.next", { timeout: 0 })
+    fs.rmSync(file, { force: true })
     check("companion: no session, no handover", (await api("POST", "ops/companion.handover", { summary: "x", as: "Nobody" }))[0] === 404)
     const items = [{ id: "n1", kind: "comment", agent: "Claude", t: 0, path: "A.md", line: 3, text: "Alice is away", replies: [{ by: "user", text: "Then Tuesday" }] },
       { id: "n2", kind: "say", agent: "Claude", t: 0, path: "A.md", line: 4, text: "Done" },
