@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Pick a model before starting @name**: the Start @name row's chip (Sonnet · medium) opens its model and effort
+  choices with a tap or click, on a phone too, now up to extra high and max; the row itself still starts at once. A
+  stopped agent's Start runs it as it ran before.
 - A file's header row stays one tidy row on phones: Review is a short chip (who changed it in its tip), the folder
   keeps its name and nothing runs off the edge.
 - **Times in your local time**: notes' and inbox items' `created` and `updated` are written in your time, not UTC

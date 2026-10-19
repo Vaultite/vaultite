@@ -24,8 +24,10 @@ export async function setMode(mode: Mode) {
   } catch (e) { notifyError(e) }
 }
 
+/** Start agent `name` again: another at the model and effort it ran (Start @name's picks), the companion as set. */
 async function start(name: string) {
-  try { await op("companion.start", as(name)) } catch (e) { notifyError(e) }
+  const a = main(name) ? undefined : getState().agents.find((x) => x.name.toLowerCase() === name.toLowerCase())
+  try { await op("companion.start", { ...as(name), ...(a?.model ? { model: a.model } : {}), ...(a?.effort ? { effort: a.effort } : {}) }) } catch (e) { notifyError(e) }
 }
 
 /** Agent `name`'s terminal (the companion's by default), in a new tab. */

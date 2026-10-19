@@ -1,7 +1,7 @@
 // What every suggestion list in the editor does the same way: Enter, Tab or a click picks (the cursor after what went
 // in, past a link's `]]`), Escape closes the list, and it stays closed while typing on in what it was suggesting for.
 import { acceptCompletion, closeCompletion, completionStatus, type Completion, type CompletionContext, type CompletionResult, type CompletionSource } from "@codemirror/autocomplete"
-import { Prec, StateEffect, StateField } from "@codemirror/state"
+import { type EditorState, Prec, StateEffect, StateField } from "@codemirror/state"
 import { keymap, type EditorView } from "@codemirror/view"
 
 /** Puts `text` and the link's `]]` in place of from..to (and of the `]]` already after it, as auto-pair typed it). */
@@ -64,3 +64,6 @@ export const suggestKeys = [dismissed, Prec.highest(keymap.of([{ key: "Escape", 
 
 /** A suggestion's picture before its label (an emoji, an icon): its option's `glyph` (autocompletion's addToOptions). */
 export const optionGlyph = (c: Completion) => (c as Completion & { glyph?: () => Node }).glyph?.() ?? null
+/** A control at a suggestion's end, its own tap target (a split button's other half): its option's `trail`, which takes
+ *  its own clicks (addToOptions). */
+export const optionTrail = (c: Completion, _s: EditorState, view: EditorView) => (c as Completion & { trail?: (view: EditorView) => Node | null }).trail?.(view) ?? null

@@ -352,24 +352,40 @@ const theme = EditorView.baseTheme({
   ".cm-companion-veiled, .cm-companion-veiled *": { color: "transparent !important" },
   // (the Start row's chooser, drawn as the suggestion list is)
   ".cm-tooltip.cm-companion-start": { background: "var(--card)", border: "0.5px solid var(--border)", borderRadius: "10px", padding: "4px", boxShadow: "0 10px 30px rgb(0 0 0 / 0.18)",
-    fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--foreground)", minWidth: "260px" },
-  ".cm-companion-start-row": { display: "flex", alignItems: "center", gap: "4px", padding: "3px 6px", borderRadius: "6px" },
+    fontFamily: "var(--font-sans)", fontSize: "13px", color: "var(--foreground)", minWidth: "260px", maxWidth: "min(420px, calc(100vw - 24px))" },
+  ".cm-companion-start-row": { display: "flex", alignItems: "baseline", gap: "4px", padding: "3px 6px", borderRadius: "6px" },
   ".cm-companion-start-on": { background: "color-mix(in srgb, var(--primary) 9%, transparent)" },
-  ".cm-companion-start-row > span": { width: "48px", fontSize: "12px", color: "var(--muted-foreground)" },
-  ".cm-companion-start-row > button": { padding: "1px 8px", borderRadius: "999px", border: "0.5px solid var(--border)", cursor: "pointer", lineHeight: "20px" },
-  ".cm-companion-start-row > button[aria-pressed]": { background: "color-mix(in srgb, var(--primary) 18%, transparent)", borderColor: "color-mix(in srgb, var(--primary) 45%, transparent)", fontWeight: "600" },
+  ".cm-companion-start-row > span": { flex: "none", width: "48px", fontSize: "12px", color: "var(--muted-foreground)" },
+  // (five efforts wrap on a phone)
+  ".cm-companion-start-row > div": { display: "flex", flexWrap: "wrap", gap: "4px", minWidth: "0" },
+  ".cm-companion-start-row button": { padding: "1px 8px", borderRadius: "999px", border: "0.5px solid var(--border)", cursor: "pointer", lineHeight: "20px", whiteSpace: "nowrap" },
+  ".cm-companion-start-row button[aria-pressed]": { background: "color-mix(in srgb, var(--primary) 18%, transparent)", borderColor: "color-mix(in srgb, var(--primary) 45%, transparent)", fontWeight: "600" },
   ".cm-companion-start-go": { display: "flex", width: "100%", alignItems: "center", gap: "6px", marginTop: "2px", padding: "4px 6px", borderRadius: "6px", cursor: "pointer", fontWeight: "550" },
   ".cm-companion-start-go:hover": { background: "color-mix(in srgb, var(--foreground) 6%, transparent)" },
   ".cm-companion-start-go > kbd": { marginLeft: "auto", fontFamily: "inherit", fontSize: "12px", color: "var(--muted-foreground)" },
+  ".cm-companion-chip": { flex: "none", alignSelf: "center", marginLeft: "8px", padding: "0 8px", borderRadius: "999px", border: "0.5px solid var(--border)",
+    fontSize: "12px", lineHeight: "20px", color: "var(--muted-foreground)", whiteSpace: "nowrap", cursor: "pointer" },
+  ".cm-companion-chip:hover": { color: "var(--foreground)", background: "color-mix(in srgb, var(--foreground) 6%, transparent)" },
+  // (phones: room for the chip in place of the detail, and fingers' sizes)
+  "@media (max-width: 767px)": {
+    "li:has(.cm-companion-chip) .cm-completionDetail": { display: "none" },
+    ".cm-companion-chip": { marginLeft: "auto", padding: "0 12px", fontSize: "14px", lineHeight: "32px" },
+    ".cm-tooltip.cm-companion-start": { fontSize: "15px", borderRadius: "12px" },
+    ".cm-companion-start-row": { padding: "6px 8px" },
+    ".cm-companion-start-row button": { padding: "0 12px", lineHeight: "32px" },
+    ".cm-companion-start-go": { minHeight: "44px", padding: "0 8px" },
+    ".cm-companion-start-go > kbd": { display: "none" },
+  },
   ".cm-companion-typed": { backgroundColor: "color-mix(in srgb, var(--c) 24%, transparent)", borderRadius: "2px", animation: "cm-companion-fade 4s ease-in forwards" },
   "@keyframes cm-companion-in": { from: { backgroundColor: "transparent" } },
   "@keyframes cm-companion-fade": { "0%, 40%": {}, "100%": { backgroundColor: "transparent" } },
 })
 
-// ---------- @ and a new name: Start @name, at the model and effort a new one runs, or others picked (Tab or →)
+// ---------- @ and a new name: Start @name, at the model and effort a new one runs, or others picked (its chip, Tab or →)
 
 type How = { model: string; effort: string }
-const MODELS = ["sonnet", "opus", "haiku"], EFFORTS = ["low", "medium", "high"]
+const MODELS = ["sonnet", "opus", "haiku"], EFFORTS = ["low", "medium", "high", "xhigh", "max"]
+const effortName = (e: string) => (e === "xhigh" ? "extra high" : e)
 /** The Start row's name (as typed) on its option. */
 const startOf = (c: Completion | null) => (c as (Completion & { startAs?: string }) | null)?.startAs
 
@@ -388,14 +404,16 @@ const mentions = (path: string) => (ctx: CompletionContext) => {
   const st = getState(), names = liveAgents().map((a) => a.name), typed = m.text.slice(1)
   const known = [...new Set(["companion", "claude", st.name, ...names].map((n) => n.toLowerCase()))]
   const some = (t: string) => known.some((n) => n.startsWith(t.toLowerCase()))
-  const options: (Completion & { highlight?: string; startAs?: string })[] = (names.length ? names : [st.name]).map((n) => ({ label: n.toLowerCase(), detail: n === st.name ? "companion" : undefined,
+  const options: (Completion & { highlight?: string; startAs?: string; trail?: (view: EditorView) => Node })[] = (names.length ? names : [st.name]).map((n) => ({ label: n.toLowerCase(), detail: n === st.name ? "companion" : undefined,
     boost: n === st.name ? 1 : 0, apply: `${n.toLowerCase()} `, highlight: mentionAgent(n)?.tint ?? "orange" }))
   // (one word, as companion.start takes)
   const fresh = !!typed && typed.length <= 30 && !some(typed)
   if (fresh) {
     const how = st.fresh
+    // (a split button: the row starts as is, its chip opens the chooser; an agent that takes no model has none)
     options.push({ label: typed, displayLabel: `Start @${typed}`, boost: -99, startAs: typed,
-      detail: ["new companion", how.model && capitalize(how.model), how.effort].filter(Boolean).join(" · "),
+      detail: how.model ? "new companion" : ["new companion", effortName(how.effort)].filter(Boolean).join(" · "),
+      ...(how.model ? { trail: (view: EditorView) => startChip(view, typed, how) } : {}),
       apply: (view: EditorView, _c: Completion, from: number, to: number) => begin(view, path, typed, from, to, how) })
   }
   // (asked again as they type once no agent's name fits, for the Start row to name what they typed)
@@ -415,9 +433,10 @@ const chooser = StateField.define<Choice | null>({
   provide: (f) => showTooltip.from(f, (v) => v?.tip ?? null),
 })
 
-/** The Start row selected in the list: its chooser opens, set to what a new one runs (none when its agent takes no model). */
-function openChooser(view: EditorView) {
-  const name = completionStatus(view.state) === "active" ? startOf(selectedCompletion(view.state)) : undefined, how = getState().fresh
+/** The Start row selected in the list (or `name`'s, its chip tapped): its chooser opens, set to what a new one runs
+ *  (none when its agent takes no model). */
+function openChooser(view: EditorView, name = completionStatus(view.state) === "active" ? startOf(selectedCompletion(view.state)) : undefined) {
+  const how = getState().fresh
   if (!name || !how.model) return false
   const from = view.state.selection.main.head - name.length
   closeCompletion(view)
@@ -443,6 +462,17 @@ function chooserKey(key: string) {
 }
 const pathOf = (view: EditorView) => views.get(view) ?? ""
 
+/** The Start row's chip: the model and effort it would run, a tap or click on it opens the chooser instead of starting. */
+function startChip(view: EditorView, name: string, how: How) {
+  const chip = document.createElement("span")
+  chip.className = "cm-companion-chip"
+  chip.setAttribute("role", "button")
+  chip.textContent = `${[capitalize(how.model), how.effort && effortName(how.effort)].filter(Boolean).join(" · ")} ›`
+  // (the list applies its row on mousedown, a tap's too: this one comes first and keeps it from bubbling there)
+  chip.addEventListener("mousedown", (e) => { e.preventDefault(); e.stopPropagation(); openChooser(view, name) })
+  return chip
+}
+
 function chooserView(view: EditorView) {
   const dom = document.createElement("div")
   dom.className = "cm-companion-start"
@@ -456,10 +486,11 @@ function chooserView(view: EditorView) {
       const r = dom.appendChild(document.createElement("div"))
       r.className = `cm-companion-start-row${c.row === i ? " cm-companion-start-on" : ""}`
       r.appendChild(document.createElement("span")).textContent = label
+      const picks = r.appendChild(document.createElement("div"))
       for (const x of list.includes(on) ? list : [on, ...list]) {
-        const b = r.appendChild(document.createElement("button"))
+        const b = picks.appendChild(document.createElement("button"))
         b.type = "button"
-        b.textContent = capitalize(x)
+        b.textContent = capitalize(i ? effortName(x) : x)
         if (x === on) b.setAttribute("aria-pressed", "true")
         b.onclick = () => view.dispatch({ effects: choose.of({ ...c, row: i, ...(i ? { effort: x } : { model: x }) }) })
       }
