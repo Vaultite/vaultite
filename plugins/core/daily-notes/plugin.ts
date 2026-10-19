@@ -91,10 +91,13 @@ async function mergeCopies(rel: string) {
   for (let n = 1; n < 10; n++) {
     const copy = v.entries.get(`${stem} ${n}.md`), e = v.entries.get(rel)
     if (!copy || !e || (copy.kind ? copy.kind.collection !== "days" : !!copy.fm.type)) continue
-    const text = readText(v.abs(rel)), next = merged(text, e, copy)
-    if (next === null) continue
-    if (next !== text) await plugin.host.api("PUT", "file", { path: rel, text: next, base: text })
-    await plugin.runOp("archive.add", { path: copy.rel })
+    // (a tidy-up: one that can't happen now, the note still on its way or changed meanwhile, never stops it opening)
+    try {
+      const text = readText(v.abs(rel)), next = merged(text, e, copy)
+      if (next === null) continue
+      if (next !== text) await plugin.host.api("PUT", "file", { path: rel, text: next, base: text })
+      await plugin.runOp("archive.add", { path: copy.rel })
+    } catch (err) { console.error(`daily-notes: couldn't merge ${copy.rel} into ${rel}: ${(err as Error).message}`) }
   }
 }
 /** The note's text with a copy's properties added in, or null when the copy holds what the note doesn't. */
