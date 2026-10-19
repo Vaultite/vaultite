@@ -218,7 +218,9 @@ export function AppearancePanel() {
           <Segmented<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })} className="w-full shrink-0 sm:w-[220px]"
             options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
         </SettingRow>
-        {["file-icons", "tab-bar", "line-numbers", "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        {["file-icons", "tab-bar", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        <SettingRow label="Sidebars" sub="Which panels are in each, and in what order" onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
+        {["sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <Fonts />
         {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (
           <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />

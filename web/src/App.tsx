@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { FoldVertical, AppWindow, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, Settings as SettingsIcon, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
+import { FoldVertical, AppWindow, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, Settings as SettingsIcon, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandId, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
@@ -72,6 +72,7 @@ const GetPluginSheet = lazy(() => import("@/components/PluginBrowse").then((m) =
 const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.Settings })))
 const SchemeGallery = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.SchemeGallery })))
 const HotkeysSheet = lazy(() => import("@/pages/Hotkeys").then((m) => ({ default: m.HotkeysSheet })))
+const SidebarsSheet = lazy(() => import("@/pages/Sidebars").then((m) => ({ default: m.SidebarsSheet })))
 const FontsSheet = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.FontsSheet })))
 const SettingsSection = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.SettingsSection })))
 const BundlesPage = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.Bundles })))
@@ -135,6 +136,7 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
   fonts: ["Fonts", () => <FontsSheet />], // Settings' Fonts row
   "settings-section/": ["Settings", (store, id) => <SettingsSection store={store} id={id} />], // a Settings section, where the pane is narrow
   hotkeys: ["Hotkeys", () => <HotkeysSheet />], // Settings' Hotkeys row, the command "Open hotkeys"
+  sidebars: ["Sidebars", () => <SidebarsSheet />], // Panels ▸ Customize sidebars…, Settings' Sidebars row, the command
   "bundle/": ["Bundle", (_, id) => <BundlePreview id={id} />], // a bundle's preview (pages/Bundles.tsx)
   "plugin-group/": ["Plugins", (store, id) => <PluginGroupSheet store={store} id={id} />], // a group's row on Plugins (the coding agents)
   "plugin-get/": ["Get plugins", (_, id) => <GetPluginSheet id={id} />], // a row of Get plugins: one not installed yet
@@ -382,6 +384,7 @@ export default function App() {
     { id: "scheme:choose", name: "Change colour scheme", run: chooseScheme, icon: PaletteIcon },
     { id: "newtab:page", name: "Choose a page for new tabs…", run: chooseNewTabPage, icon: LayoutDashboard },
     { id: "newtab:sections", name: "Show sections on new tabs", when: () => !!getPrefs().newTab.page, run: showNewTabSections, icon: Layers },
+    { id: "sidebars:customize", name: "Customize sidebars", run: () => openDetail("sidebars"), icon: SlidersHorizontal },
     { id: "hotkeys:open", name: "Open hotkeys", keys: ["Shift+/"], run: () => openDetail("hotkeys"), icon: Keyboard },
     // A choice of two, like the theme: the one not in use is offered (the menu bar's radio items).
     { id: "density:compact", name: "Use compact density", when: () => getPrefs().density === "comfortable", run: () => setPrefs({ density: "compact" }), icon: FoldVertical },

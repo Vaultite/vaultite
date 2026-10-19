@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Menus filter as you type**: type while any menu is open and only the matching rows stay, those in its submenus
+  too (Panels ▸ More ▸ a panel), the best one ready for Enter; long menus say so at the top. The Panels menu shows each
+  panel's icon beside its check.
+- **Customize sidebars**: a sheet with both sidebars side by side and the hidden panels below, to drag panels between
+  them or move one from its menu, with a filter and Restore defaults. Open it from Panels ▸ Customize sidebars…,
+  Settings > Appearance > Sidebars, or the palette.
 - **A day's plan on a dashboard**: ```` ```block-day ```` draws a daily note, or one section of it (`section: Plan`), to
   check off and edit in place; it steps to tomorrow and back, opens the note, and starts a missing one from the
   template. "Open tomorrow's daily note" joins today's in the palette.

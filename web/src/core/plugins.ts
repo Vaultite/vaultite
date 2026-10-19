@@ -480,6 +480,17 @@ export function dockAtEnd(key: string, side: Side) {
 export function offerPanel(key: string, side: Side) {
   changeSidebars((s) => setCollapsed(sideIn(s, key) ? s : placePanel(s, key, { side, before: null }), key, false))
 }
+/** The sidebars as they come, each panel where its plugin puts it (folds and heights kept). Returns its undo. */
+export function restoreSidebars() {
+  const was = sidebars(), d = defaultSidebars(panelInfo())
+  setSidebars({ ...was, left: d.left, right: d.right })
+  return () => setSidebars(was)
+}
+/** Every panel is where it comes (restoreSidebars would change nothing). */
+export function defaultPanels(s: Sidebars) {
+  const d = defaultSidebars(panelInfo())
+  return d.left.join() === s.left.join() && d.right.join() === s.right.join()
+}
 /** Hide a panel (out of both sidebars; its plugin stays on). */
 export const hidePanel = (key: string) => changeSidebars((s) => withoutPanel(s, key))
 /** Give a panel a height (null: as tall as what it draws); `at`: its sidebar's height now, so other screens draw the

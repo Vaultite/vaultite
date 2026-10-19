@@ -2,10 +2,11 @@
 // turning them off empties it). The components here are exported to plugins.
 import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SquareArrowOutUpRight } from "lucide-react"
+import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel } from "@/core/define"
 import { edgeScroller, getDrag, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 import { openView } from "@/core/files"
+import { openDetail } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
 import { closeTab } from "@/core/workspace"
 import { dockAtEnd, dockPanel, drawerPanels, hidePanel, isBarItem, panelOfView, panelsIn, setPanelDocked, setPanelHeight, sideOf, sidebarPanels, sidebars, togglePanelCollapsed, useSidebars, type PanelOf, type Side } from "@/core/plugins"
@@ -253,6 +254,9 @@ function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: S
   )
 }
 
+/** A panel's icon: its rail icon, else its plugin's. */
+export const panelIcon = ({ panel, plugin }: PanelOf) => (panel.flyout?.icon ?? plugin.icon) as LucideIcon
+
 /** Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`). In a
  *  panel (`key`): its own `menu`, Open in a tab, a Panels submenu, Move to the other sidebar and Hide. */
 export function panelMenu(key?: string, side?: Side): MenuItem[] {
@@ -261,12 +265,13 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   const here: Side = side ?? (key ? sideOf(key, s) : null) ?? "left"
   const other: Side = here === "left" ? "right" : "left"
   const all = sidebarPanels(disabled, order)
-  const choice = ({ key: k, panel }: PanelOf, hint?: string): CheckItem => ({ key: k, label: panel.title, hint })
+  const choice = (p: PanelOf, hint?: string): CheckItem => ({ key: p.key, label: p.panel.title, icon: panelIcon(p), hint })
   const list = checklist(`panels:${here}`, {
     on: panelsIn(here, s, disabled, order).map((p) => choice(p)),
     off: [all.filter((p) => !sideOf(p.key, s)).map((p) => choice(p)), panelsIn(other, s, disabled, order).map((p) => choice(p, `${other === "left" ? "Left" : "Right"} sidebar`))],
     set: (k, on, before) => (!on ? hidePanel(k) : before ? dockPanel(k, { side: here, before }) : dockAtEnd(k, here)),
   })
+  list.push({ label: "Customize sidebars…", icon: SlidersHorizontal, sep: true, run: () => openDetail("sidebars") })
   if (!key || !all.some((p) => p.key === key)) return list
   // Right-clicked in a panel that is also a view: open it as a tab (the focused pane; the tab it has already, if any).
   const me = all.find((p) => p.key === key)!.panel, view = me.view

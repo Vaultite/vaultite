@@ -2,9 +2,10 @@
 // and spelling. On touch a finger held still is the right-click (watchHolds), so every menu works on phones.
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type MouseEvent } from "react"
 import { createPortal } from "react-dom"
-import { Check, ChevronLeft, ChevronRight, Ellipsis, type LucideIcon } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Ellipsis, Search, type LucideIcon } from "lucide-react"
 import { commandName, isOn, isSetting, keyHint, keysOf, offeredCommand, runOrSay } from "@/core/commands"
 import { fingerHolding, useDragging } from "@/core/drag"
+import { fuzzy } from "@/core/fuzzy"
 import { holdFocus } from "@/core/focus"
 import { haptic } from "@/core/haptics"
 import { usePageLock } from "@/core/pagelock"
@@ -89,8 +90,8 @@ const redraw = (items: () => MenuItem[]) => { redrawing = true; try { return ite
 
 // ---------- checklists ----------
 
-/** One thing a checklist turns on or off. */
-export type CheckItem = { key: string; label: string; hint?: string; disabled?: boolean }
+/** One thing a checklist turns on or off; `icon`: what it is (a panel's, as the rail shows it), beside its check. */
+export type CheckItem = { key: string; label: string; hint?: string; disabled?: boolean; icon?: LucideIcon }
 /** The rows each checklist of the open menu showed when it opened (its ticked ones, More's groups), by its id. */
 const listed = new Map<string, { rows: CheckItem[]; more: CheckItem[][] }>()
 
@@ -108,7 +109,7 @@ export function checklist(id: string, { on, off = [], set }: {
   listed.set(id, { rows, more })
   const isOn = (k: string) => on.some((o) => o.key === k)
   const row = (c: CheckItem, before: () => string | null, sep?: boolean): MenuItem => ({
-    label: c.label, hint: c.hint, disabled: c.disabled, checked: isOn(c.key), keep: true, sep,
+    label: c.label, hint: c.hint, icon: c.icon, disabled: c.disabled, checked: isOn(c.key), keep: true, sep,
     run: () => (isOn(c.key) ? set(c.key, false, null) : set(c.key, true, before())),
   })
   // Ticked again: before the next of the menu's rows that's still on.
@@ -254,6 +255,30 @@ function Menu({ at, items, up, again }: { at: { x: number; y: number }; items: M
   )
 }
 
+// ---------- typing to filter ----------
+
+/** A long list of like rows (no groups: Panels ▸ More) says it can be typed into, on a computer (a phone has no keys).
+ *  A grouped menu of commands doesn't: it's read, not searched. */
+const LONG = 10
+/** A row found by typing, and where it is: its indices down from the level typed in (a phone drills in through them). */
+type Found = { it: MenuItem; at: number[] }
+/** The rows whose label matches `q`, best first, those of submenus too (Panels ▸ More ▸ Daily note). Two that read the
+ *  same say which submenu each is in. */
+function found(items: MenuItem[], q: string): Found[] {
+  const out: (Found & { score: number; where: string })[] = []
+  // (a split row's submenu repeats its choice first: found once)
+  const walk = (its: MenuItem[], at: number[], where: string, skip?: string) => its.forEach((it, i) => {
+    if (it.caption || it.label === skip) return
+    const m = fuzzy(q, it.label)
+    if (m) out.push({ it, at: [...at, i], score: m.score, where })
+    if (it.items) walk(it.items, [...at, i], it.label, it.split ? it.label : undefined)
+  })
+  walk(items, [], "")
+  const twice = (label: string) => out.filter((f) => f.it.label === label).length > 1
+  return out.sort((a, b) => b.score - a.score)
+    .map(({ it, at, where }) => ({ at, it: { ...it, sep: false, hint: it.hint ?? (where && twice(it.label) ? where : undefined) } }))
+}
+
 /** One level of a menu, at a point or beside the item that opened it. Phones have no room beside: a submenu takes the
  *  menu's place, with a Back row. Arrows move; → opens a submenu, ← or Escape closes one. */
 function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
@@ -272,16 +297,26 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
 }) {
   const ref = useRef<HTMLDivElement>(null)
   const [pos, setPos] = useState<{ x: number; y: number } | null>(null)
-  // The open submenu, by its row's label: a menu drawn again (a `keep` click) can have rows come and go above it.
-  const [sub, setSub] = useState<{ label: string; rect: DOMRect; focus: boolean } | null>(null)
-  const subAt = sub ? items.findIndex((it) => it.label === sub.label) : -1
   const timer = useRef(0)
   const [drill] = useState(() => !beside && !isDesktop())
   // Phones: the submenus opened in place, outermost first.
   const [trail, setTrail] = useState<number[]>([])
   const shown = trail.reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)
   const parent = trail.length ? trail.slice(0, -1).reduce<MenuItem[]>((its, i) => its[i]?.items ?? its, items)[trail[trail.length - 1]] : null
-  const lead = shown.some((it) => it.icon || it.items)
+  // Typed while it's open: only the rows that match, its submenus' too. Its width stays as it was (the rows don't jump).
+  const [query, setQuery] = useState("")
+  const [width, setWidth] = useState<number>()
+  const hits = query ? found(shown, query) : null
+  const rows = hits ? hits.map((f) => f.it) : shown
+  const lead = rows.some((it) => it.icon || it.items)
+  // A check and an icon each (a panel's): the rows without one keep their place for it.
+  const twin = rows.some((it) => it.checked !== undefined && it.icon)
+  // The open submenu, by its row's label: a menu drawn again (a `keep` click) can have rows come and go above it.
+  const [sub, setSub] = useState<{ label: string; rect: DOMRect; focus: boolean } | null>(null)
+  const subAt = sub ? rows.findIndex((it) => it.label === sub.label) : -1
+  /** A phone opens a submenu in place: a found one through the submenus it's in. */
+  const into = (i: number) => { setTrail([...trail, ...(hits ? hits[i].at : [i])]); setQuery("") }
+  const back = () => { setTrail(trail.slice(0, -1)); setQuery("") }
   // Placed (kept on screen) before the first paint, and no animation: it's there at once, like a native menu.
   useLayoutEffect(() => {
     const el = ref.current
@@ -302,23 +337,35 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
   useLayoutEffect(() => {
     if (placed && (focus || trail.length)) ref.current?.querySelector<HTMLElement>(":scope > button:not(:disabled)")?.focus({ preventScroll: true })
   }, [placed, focus, trail])
+  // Each key typed: the best match takes the focus, so Enter picks it.
+  const typed = useRef(false)
+  useLayoutEffect(() => {
+    if (typed.current) ref.current?.querySelector<HTMLElement>(":scope > button[data-index]:not(:disabled)")?.focus({ preventScroll: true })
+  }, [query])
   useEffect(() => () => clearTimeout(timer.current), [])
-  const open = (i: number, el: HTMLElement, focusFirst: boolean) => { clearTimeout(timer.current); setSub({ label: shown[i].label, rect: el.getBoundingClientRect(), focus: focusFirst }) }
+  const open = (i: number, el: HTMLElement, focusFirst: boolean) => { clearTimeout(timer.current); setSub({ label: rows[i].label, rect: el.getBoundingClientRect(), focus: focusFirst }) }
+  const type = (q: string) => {
+    if (!query) setWidth(ref.current?.offsetWidth)
+    typed.current = true
+    setQuery(q)
+  }
   const later = (fn: () => void) => { clearTimeout(timer.current); timer.current = window.setTimeout(fn, 120) }
   const onKey = (e: React.KeyboardEvent) => {
     const all = [...(ref.current?.querySelectorAll<HTMLElement>(":scope > button:not(:disabled)") ?? [])]
     const cur = document.activeElement as HTMLElement
     if (!all.includes(cur) && e.target !== ref.current) return  // a key inside a submenu: it handles its own
     e.stopPropagation()
+    if (e.key.length === 1 && !e.metaKey && !e.ctrlKey && !e.altKey && (e.key !== " " || query)) { e.preventDefault(); type(query + e.key); return }
+    if ((e.key === "Backspace" || e.key === "Escape") && query) { e.preventDefault(); type(e.key === "Escape" ? "" : query.slice(0, -1)); return }
     if (e.key === "ArrowDown" || e.key === "ArrowUp") {
       e.preventDefault()
       const i = all.indexOf(cur)
       all[(i + (e.key === "ArrowDown" ? 1 : -1) + all.length) % all.length]?.focus()
     } else if (e.key === "ArrowRight") {
       const i = Number(cur?.dataset.index)
-      if (shown[i]?.items?.length) { e.preventDefault(); if (drill) setTrail([...trail, i]); else open(i, cur, true) }
+      if (rows[i]?.items?.length) { e.preventDefault(); if (drill) into(i); else open(i, cur, true) }
     } else if ((e.key === "ArrowLeft" || e.key === "Escape") && trail.length) {
-      e.preventDefault(); setTrail(trail.slice(0, -1))
+      e.preventDefault(); back()
     } else if ((e.key === "ArrowLeft" || e.key === "Escape") && onBack) {
       e.preventDefault(); onBack(true)
     } else if (e.key === "Home" || e.key === "End") {
@@ -326,19 +373,29 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
     } else if (e.key === "Escape" || e.key === "Tab") { e.preventDefault(); closeMenu() }
   }
   return (
-    <div ref={ref} role="menu" tabIndex={-1} onKeyDown={onKey} style={pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, visibility: "hidden" }}
+    <div ref={ref} role="menu" tabIndex={-1} onKeyDown={onKey} style={{ ...(pos ? { left: pos.x, top: pos.y } : { left: 0, top: 0, visibility: "hidden" }), minWidth: width }}
       onPointerEnter={() => { clearTimeout(timer.current); onHover?.() }}
       className="glass-strong fixed z-[61] max-h-[calc(100dvh-1rem)] min-w-56 overflow-y-auto overscroll-contain rounded-[12px] p-1 shadow-xl outline-none md:min-w-48 md:rounded-[10px]">
       {parent && (
-        <button type="button" onClick={() => setTrail(trail.slice(0, -1))}
+        <button type="button" onClick={back}
           className="flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] font-medium whitespace-nowrap text-muted-foreground hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none">
           <ChevronLeft className={icon} strokeWidth={2} />
           <span className="flex-1">{parent.label}</span>
         </button>
       )}
       {parent && <div role="separator" className="mx-2.5 my-1 h-px bg-border" />}
-      {shown.map((it, i) => (
-        <Fragment key={it.label}>
+      {(query || (!drill && shown.length >= LONG && !shown.some((it) => it.sep))) && <>
+        <div data-menu-filter className="flex h-11 items-center gap-3 px-3 text-[17px] whitespace-nowrap md:h-7 md:gap-2.5 md:px-2.5 md:text-[13px]">
+          <Search className={cn(icon, "text-muted-foreground")} strokeWidth={2} />
+          {query
+            ? <span className="flex flex-1 items-center truncate">{query}<span aria-hidden className="ml-px h-[1.1em] w-px bg-foreground" /></span>
+            : <span className="flex-1 text-muted-foreground">Type to filter</span>}
+        </div>
+        <div role="separator" className="mx-2.5 my-1 h-px bg-border" />
+      </>}
+      {hits && !hits.length && <p className="px-3 py-2 text-[17px] text-muted-foreground md:px-2.5 md:py-1 md:text-[13px]">No matches</p>}
+      {rows.map((it, i) => (
+        <Fragment key={hits ? hits[i].at.join() : it.label}>
           {it.sep && <div role="separator" className="mx-2.5 my-1 h-px bg-border" />}
           {it.caption ? (
             <p className="flex max-w-80 gap-3 px-3 py-2 text-[15px] leading-5 text-muted-foreground md:max-w-72 md:gap-2.5 md:px-2.5 md:py-1.5 md:text-[12px] md:leading-4">
@@ -359,16 +416,15 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
             onClick={(e) => {
               // A split row runs its own choice unless the click was on its chevron (the keyboard's Enter runs it too).
               const more = it.items && (!it.split || !!(e.target as Element).closest("[data-menu-more]"))
-              if (it.items && more && drill) { setTrail([...trail, i]); return }
+              if (it.items && more && drill) { into(i); return }
               if (more) { if (subAt === i) setSub(null); else open(i, e.currentTarget, e.detail === 0); return }
               if (it.keep && again) { runOrSay(it.run, it.label); if (openState()) set({ ...openState()!, items: redraw(again) }); return }
               closeMenu(); runOrSay(it.run, it.label)
             }}
             className={cn("flex h-11 w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 text-left text-[17px] whitespace-nowrap hover:bg-foreground/[0.07] focus-visible:bg-foreground/[0.07] focus-visible:outline-none disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent md:h-7 md:gap-2.5 md:rounded-[4px] md:px-2.5 md:text-[13px]",
               it.danger && "text-destructive", subAt === i && "bg-foreground/[0.07]")}>
-            {it.checked !== undefined
-              ? <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />
-              : it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />}
+            {(twin || it.checked !== undefined) && <Check className={cn(icon, !it.checked && "invisible")} strokeWidth={2.5} />}
+            {(twin || it.checked === undefined) && (it.icon ? <it.icon className={icon} strokeWidth={2} /> : lead && <span className={icon} />)}
             <span className="flex-1">{it.label}</span>
             {it.hint && <span className="pl-4 text-muted-foreground">{it.hint}</span>}
             {it.items && (it.split
@@ -382,8 +438,8 @@ function MenuList({ items, at, up, beside, again, focus, onBack, onHover }: {
       ))}
       {/* Beside it, not in it: its backdrop blur would make it the submenu's containing block (and a long menu scrolls).
           In its layer: over a sheet that's the menu's own modal dialog, and anything outside it is inert. */}
-      {sub && !drill && items[subAt]?.items && createPortal(
-        <MenuList key={sub.label} items={items[subAt].items!} beside={sub.rect} focus={sub.focus} again={again} onHover={() => clearTimeout(timer.current)}
+      {sub && !drill && rows[subAt]?.items && createPortal(
+        <MenuList key={sub.label} items={rows[subAt].items!} beside={sub.rect} focus={sub.focus} again={again} onHover={() => clearTimeout(timer.current)}
           onBack={(refocus) => {
             const i = subAt
             setSub(null)
