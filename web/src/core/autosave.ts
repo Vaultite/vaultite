@@ -62,6 +62,7 @@ export function conflictText(c: Conflict, above = 0) {
   const ns = [...new Set(c.lines.map((n) => n - above).filter((n) => n > 0))]
   const lines = !ns.length ? "" : ns.length === 1 ? `line ${ns[0]}` : `lines ${ns.slice(0, -1).join(", ")} and ${ns.at(-1)}`
   const where = c.lines.some((n) => n <= above) ? (lines ? `the properties and ${lines}` : "the properties") : lines
+  if (!where) return c.who ? `${c.who} edited it while you typed.` : "It changed elsewhere while you typed."
   return c.who ? `${c.who} edited ${where} while you typed.` : `${where[0].toUpperCase()}${where.slice(1)} changed elsewhere while you typed.`
 }
 
@@ -231,8 +232,18 @@ function makeAutosave(path: string, initial: string, options: Options) {
     /** The file changed elsewhere in lines typed here: both sides kept as versions in File history, the rest merged,
      *  and the clashing lines shown to settle (in the editor when it can, else `keep`). Saving waits till then. */
     async clash(base: string, theirs: FileText) {
+      // No clash after all (both sides made the same edit, which merge3 refuses): the merge taken, as a check takes one.
+      const merged = (text: string) => {
+        s.disk = theirs.text
+        s.mtime = theirs.mtime
+        o.current.onDisk?.(theirs)
+        tell({ kind: "ok" })
+        if (s.alive) o.current.apply(text)
+        if (text !== theirs.text) s.changed()
+        else dropDraft(path)
+      }
       const first = mergeClashes(base, o.current.text(), theirs.text)
-      if (!first.clashes.length) return s.check(theirs)
+      if (!first.clashes.length) return merged(first.text)
       const lines = (cs: Clash[]) => cs.map((k) => k.at + 1)
       tell({ kind: "conflict", base, theirs, lines: lines(first.clashes) })
       void post("history/keep", { path: where() }).catch(() => {})
@@ -241,7 +252,8 @@ function makeAutosave(path: string, initial: string, options: Options) {
       if (!s.alive || status.kind !== "conflict" || status.theirs !== theirs) return
       // (typed on meanwhile: merged again)
       const { text, clashes } = mergeClashes(base, o.current.text(), theirs.text)
-      const inline = !!clashes.length && !!o.current.conflict?.(text, clashes, who, s.left)
+      if (!clashes.length) return merged(text) // typed away meanwhile
+      const inline = !!o.current.conflict?.(text, clashes, who, s.left)
       if (inline) { s.disk = theirs.text; s.mtime = theirs.mtime; o.current.onDisk?.(theirs) }
       last = { kind: "conflict", base, theirs, lines: lines(clashes), who, inline }
       tell(last)
