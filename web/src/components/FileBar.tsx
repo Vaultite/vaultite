@@ -49,7 +49,9 @@ export function FileBar({ head, place }: { head: FileHead; place: "bar" | "line"
   ])
   // (one that throws is left out, its error in Errors: it's in every file's header)
   return (
-    <div ref={box} data-file-bar={place} className={cn("relative flex shrink-0 items-center gap-2 empty:hidden", dragging && "min-h-6 min-w-6 empty:flex")}>
+    <div ref={box} data-file-bar={place} className={cn("relative flex items-center empty:hidden", dragging && "min-h-6 min-w-6 empty:flex",
+      // (a line's items are 44px targets, their room the gap between them)
+      place === "bar" ? "shrink-0 gap-2" : "ml-auto min-w-0 flex-wrap justify-end md:gap-1")}>
       {items.map(({ key, plugin, item }, i) => (
         <span key={key} data-file-bar-key={key} onContextMenu={menu(key, i)} className={cn("flex shrink-0 items-center empty:hidden", d?.item.panel === key && "opacity-50")}
           onPointerDown={(e) => startDrag(e, { from: "panel", panel: key, label: item.title ?? plugin.name })}>

@@ -230,8 +230,9 @@ const folderLine = (path: string) => (folderOf(path) ? folderOf(path).split("/")
 function TitleLine({ icon: Icon, tint = "var(--muted-foreground)", text, head, pane, toggle }: {
   icon: LucideIcon; tint?: string; text: ReactNode; head: FileHead; pane: boolean; toggle?: ReactNode }) {
   return (
-    <div className={cn("mb-1 flex min-h-8 items-center gap-2", !pane && (toggle ? "pr-[75px]" : "pr-[31px]"))}>
-      <span className="flex min-w-0 flex-1 items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
+    <div className={cn("mb-1 flex min-h-8 flex-wrap items-center gap-x-2", !pane && (toggle ? "pr-[75px]" : "pr-[31px]"))}>
+      {/* (its folder gives way to the items down to a few letters; past that they wrap, never cut off) */}
+      <span className="flex min-w-16 flex-[1_1_0] items-center gap-1.5 text-[15px] font-semibold" style={{ color: tint }}>
         <Icon className="size-[18px] shrink-0" strokeWidth={2.25} />
         <span className="truncate">{text}</span>
       </span>

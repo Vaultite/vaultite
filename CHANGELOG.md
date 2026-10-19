@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- A file's header row stays one tidy row on phones: Review is a short chip (who changed it in its tip), the folder
+  keeps its name and nothing runs off the edge.
 - **Times in your local time**: notes' and inbox items' `created` and `updated` are written in your time, not UTC
   (existing ones are converted once), so an evening's item no longer reads as tomorrow.
 - **Approvals wait for you**: an app's request for your yes stays in the Inbox until you answer, however long, and

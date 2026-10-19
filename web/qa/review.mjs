@@ -95,7 +95,7 @@ const card = (page, p) => page.locator(`[data-review-view] [data-review-file="${
   // A changed file's header: who changed it, opening its review.
   await go(page, `file/${enc(BOB)}`)
   const chip = page.locator(`.file-view[data-path="${BOB}"]:visible [data-review-chip]`)
-  check("desktop: the header says who changed it", await until(async () => (await chip.count()) === 1 && /Grok Bot changed this\s*· Review/.test(await chip.innerText())), await chip.count())
+  check("desktop: the header's Review says who changed it in its tip", await until(async () => (await chip.count()) === 1 && (await chip.innerText()).trim() === "Review" && /^Grok Bot (edited|created) this/.test(await chip.getAttribute("data-tip"))), await chip.count())
   for (const t of ["light", "dark"]) {
     await theme(t); await wait(700)
     const box = await chip.boundingBox()
@@ -135,6 +135,11 @@ const card = (page, p) => page.locator(`[data-review-view] [data-review-file="${
   check("390: the line above the title says who changed it", await until(async () => (await chip.count()) === 1))
   const box = await chip.boundingBox()
   check("390: a 44px target, on screen", box && box.height >= 44 && box.x + box.width <= 390, box)
+  const line = await chip.evaluate((c) => {
+    const row = c.closest("[data-file-bar]").parentElement, folder = row.firstElementChild.getBoundingClientRect()
+    return { rows: new Set([...row.querySelectorAll("[data-file-bar-key]")].filter((e) => e.offsetWidth).map((e) => Math.round(e.getBoundingClientRect().top))).size, folder: folder.width, right: row.getBoundingClientRect().right }
+  })
+  check("390: one row, its folder still named, nothing past the edge", line.rows === 1 && line.folder >= 40 && line.right <= 390, line)
   for (const t of ["light", "dark"]) { await theme(t); await wait(700); await page.screenshot({ path: `${OUT}phone-${t}-header.png`, clip: { x: 0, y: 0, width: 390, height: 300 } }) }
   await theme("light")
   await chip.click()
