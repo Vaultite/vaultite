@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react"
-import { CalendarDays, ChevronLeft, ChevronRight, FileText } from "lucide-react"
+import { CalendarDays, ChevronLeft, ChevronRight } from "lucide-react"
 import { addDays, Button, definePlugin, Empty, FileEditor, Loading, openFile, Panel, today, type BlockCtx } from "@vaultite"
 import { DailyPanel, DailyView, dayName, inSentence, ISO, nav, openDay, shownDay, useDay, whose } from "./Day"
 
@@ -41,13 +41,14 @@ export default definePlugin({
     { id: "daily-notes:tomorrow", name: "Open tomorrow's daily note", run: () => openDay(addDays(today(), 1)), label: "Daily note" },
   ],
   blocks: { day: (ctx) => <DayBlock {...ctx} /> },
-  // Hidden until shown (the sidebar's right-click menu): a scratchpad beside the open note. Not in the rail: a flyout
-  // closes on a click outside it, which the editor's suggestions are.
+  // Hidden until shown (the sidebar's right-click menu): a scratchpad beside the open note; in the rail, a flyout to
+  // jot in.
   sidebar: {
     daily: {
       title: "Daily note", names: ["daily note", "journal", "today's note", "scratchpad"], heading: false, sort: 38, hidden: true, view: "daily-note",
+      flyout: { icon: CalendarDays, width: 320 },
       // (opening the note makes it, as the commands do)
-      menu: () => { const date = shownDay(); return [{ label: `Open ${whose(date)} note in a tab`, icon: FileText, run: () => openDay(date, true) }] },
+      tab: () => { const date = shownDay(); return { name: `${whose(date)} note`, open: () => openDay(date, true) } },
       render: (ctx) => <DailyPanel {...ctx} />,
     },
   },

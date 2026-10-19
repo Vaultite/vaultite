@@ -197,8 +197,11 @@ export function SidebarToggle({ side, open, empty, onClick, className }: { side:
   )
 }
 
-/** Clicks that belong to what the flyout opened (its menus, a toast's Undo, a dialog), not outside it. */
-const OWNED = "[role=menu], [aria-label='Close menu'], [data-sonner-toaster], dialog, [data-flyout]"
+/** Clicks that belong to what the flyout opened (its menus, a toast's Undo, a dialog, its editor's suggestions), not
+ *  outside it. */
+const OWNED = "[role=menu], [aria-label='Close menu'], [data-sonner-toaster], dialog, [data-flyout], .vau-tooltips"
+/** Escape is the editor's while the focus is in one (its suggestions, Vim's normal mode), not the flyout's to close. */
+const editing = (e: KeyboardEvent) => !!(e.target as Element | null)?.closest?.(".cm-editor")
 
 /** A `flyout` panel's rail icon, opening the panel beside the rail,
  *  kept on screen. It closes on Escape, a click outside (not in its own menus), the icon again, or any navigation. */
@@ -221,7 +224,7 @@ function RailFlyout({ panel, ctx, open, setOpen }: { panel: SidebarPanel; ctx: S
     return () => { ro.disconnect(); removeEventListener("resize", place) }
   }, [open])
   // (Escape during a drag out of it cancels the drag: core/drag.ts.)
-  useDismiss(open, () => setOpen(false), { inside: OWNED, anchor: icon, hash: true, escape: () => !getDrag() })
+  useDismiss(open, () => setOpen(false), { inside: OWNED, anchor: icon, hash: true, escape: (e) => !getDrag() && !editing(e) })
   const Icon = panel.flyout!.icon
   const side = useContext(SidebarSide)
   // Something dragged out of it onto the panes: the flyout steps aside for the rest of the drag so the panes take the
@@ -276,7 +279,8 @@ export function panelMenu(key?: string, side?: Side): MenuItem[] {
   // Right-clicked in a panel that is also a view: open it as a tab (the focused pane; the tab it has already, if any).
   const me = all.find((p) => p.key === key)!.panel, view = me.view
   const own: MenuItem[] = me.menu?.() ?? []
-  const open: MenuItem[] = view ? [{ label: `Open ${me.title} in a tab`, icon: SquareArrowOutUpRight, sep: !!own.length, run: () => openView(view, { newTab: true }) }] : []
+  const tab = me.tab?.() ?? (view ? { name: me.title, open: () => openView(view, { newTab: true }) } : null)
+  const open: MenuItem[] = tab ? [{ label: `Open ${tab.name} in a tab`, icon: SquareArrowOutUpRight, sep: !!own.length, run: tab.open }] : []
   // A phone's drawer: a `dockable` panel goes to its dock and back.
   const docked = !!s.dock?.includes(key)
   const dock: MenuItem[] = me.dockable && !isDesktop() ? [{ label: docked ? "Take out of the dock" : "Put in the dock", icon: docked ? PanelBottomClose : PanelBottom, sep: !!(own.length || open.length), run: () => setPanelDocked(key, !docked) }] : []

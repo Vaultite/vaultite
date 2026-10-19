@@ -307,6 +307,9 @@ export type SidebarPanel = {
   /** The view that shows this panel in a tab, so its heading drags onto a pane and its menu has "Open in a tab". Give
    *  every panel one: without it, it reads as a panel that can't be dragged (`npm run check` says so). */
   view?: string
+  /** What its menu's "Open … in a tab" opens when that isn't its view (Daily note: the day's note itself), asked as the
+   *  menu opens: the name the row says and how it opens. */
+  tab?: () => { name: string; open: () => void }
 }
 export type SidebarCtx = { store: Store
   /** The sidebar is open; false: it's the icon rail (44px), where a panel shows icons in line with the others, or nothing. */

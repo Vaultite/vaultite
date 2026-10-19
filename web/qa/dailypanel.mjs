@@ -1,6 +1,7 @@
 // The Daily note panel (plugins/core/daily-notes/Day.tsx): shown from the sidebar's More ▸, today's note edited in it
 // beside an open note and saved, ‹ › and Today stepping days, a missing day shown without making it and started from
-// it, the menu's "Open … note in a tab". WRITES today's note, makes the first missing day after it and shows the panel
+// it, the menu's "Open … note in a tab"; in the rail, a flyout to type in at once, kept open through the editor's
+// suggestions and Escape. WRITES today's note, makes the first missing day after it and shows the panel
 // (sidebars.json): throwaway only.
 //   node web/qa/dailypanel.mjs <base url> [screenshot]
 import { qa, until, wait } from "./lib/qa.mjs"
@@ -16,6 +17,7 @@ const P = "aside[data-side=left] [data-panel='daily-notes:daily']"
 const shownDay = () => page.$eval(`${P} [data-daily-panel]`, (e) => e.dataset.dailyPanel).catch(() => null)
 const heading = () => page.$eval(`${P} [data-heading]`, (e) => e.dataset.heading).catch(() => null)
 const button = async (label) => { await page.hover(`${P} [data-panel-handle]`); await page.click(`${P} [aria-label='${label}']`); await wait(300) }
+const toToday = async () => { if (await page.$(`${P} [aria-label='Today']`)) await button("Today") }
 const menuItems = () => page.$$eval("[role=menu] [role^=menuitem]", (els) => els.map((e) => e.textContent.trim()))
 const closeMenus = async () => { while (await page.$("[role=menu]")) { await page.keyboard.press("Escape"); await wait(100) } }
 
@@ -81,13 +83,33 @@ try {
   // ---------- the menu ----------
   await page.click(`${P} [data-panel-handle]`, { button: "right", position: { x: 12, y: 14 } })
   const items = await menuItems()
-  check("its menu: the shown day's note in a tab, the panel in a tab", items.some((t) => /^Open .*'s note in a tab$/.test(t)) && items.includes("Open Daily note in a tab"), items)
+  check("its menu: one Open … in a tab, the shown day's note", items.filter((t) => /^Open .* in a tab$/.test(t)).length === 1 && items.some((t) => /^Open .*'s note in a tab$/.test(t)), items)
   await page.getByRole("menuitem", { name: /'s note in a tab$/ }).click()
   check("...which opens that note's file", !!(await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(missingPath))), await page.evaluate(() => location.hash))
 
+  // ---------- the rail: a flyout to jot in ----------
+  await toToday()
+  await page.click("[data-sidebar-toggle='']"); await wait(400)
+  const F = "[data-flyout='daily-notes:daily']"
+  await page.click("[data-flyout-icon='daily-notes:daily']")
+  check("folded to the rail: its icon opens it beside the rail, today's note focused",
+    !!(await until(() => page.$(`${F} .cm-focused`))) && (await page.$eval(`${F} [data-daily-panel]`, (e) => e.dataset.dailyPanel)) === today)
+  await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.press("Enter"); await page.keyboard.type("From the rail [[")
+  const suggesting = await until(() => page.$(".vau-tooltips .cm-tooltip-autocomplete li"))
+  check("...the editor's suggestions show", !!suggesting)
+  if (suggesting) await suggesting.click()
+  await wait(300)
+  check("...a suggestion clicked: the flyout stays open", !!(await page.$(F)))
+  await page.keyboard.press("Escape"); await wait(200)
+  check("...Escape in its editor: still open", !!(await page.$(F)))
+  check("...what's typed saves", !!(await until(async () => (await text(todayPath)).includes("From the rail"), 6000)))
+  await page.mouse.click(900, 450); await wait(300)
+  check("...a click outside closes it", !(await page.$(F)))
+  await page.click("[data-sidebar-toggle='']"); await wait(400)
+
   // ---------- the look, beside the open note ----------
   await page.goto(`${B}#file/${encodeURIComponent(note)}`); await page.waitForSelector(P); await wait(300)
-  await button("Today"); await page.mouse.move(700, 400); await wait(800)
+  await toToday(); await page.mouse.move(700, 400); await wait(800)
   await page.screenshot({ path: SHOT })
   console.log(`shot: ${SHOT}`)
 } catch (e) {

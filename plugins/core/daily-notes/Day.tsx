@@ -57,9 +57,10 @@ function useShownDay() {
 }
 
 /** The sidebar panel: the shown day's note, edited in place beside whatever is open; ‹ › step days. */
-export const DailyPanel = ({ store, open }: SidebarCtx) => (open ? <DayPanel store={store} /> : null)
+export const DailyPanel = ({ store, open, flyout }: SidebarCtx) => (open ? <DayPanel store={store} jot={flyout} /> : null)
 
-function DayPanel({ store }: { store: Store }) {
+/** `jot`: opened from the rail, to write in at once. */
+function DayPanel({ store, jot }: { store: Store; jot?: boolean }) {
   const { date, now, show } = useShownDay()
   const { day, error, start, started } = useDay(date)
   return (
@@ -77,7 +78,7 @@ function DayPanel({ store }: { store: Store }) {
             No note for {inSentence(dayName(date))} yet. Start it
           </button>
         )
-        : <FileEditor key={day.path} path={day.path} store={store} autoFocus={started} className="pr-1 pl-1.5 text-[13px] leading-[1.5]" />}
+        : <FileEditor key={day.path} path={day.path} store={store} autoFocus={started || jot} className="pr-1 pl-1.5 text-[13px] leading-[1.5]" />}
     </div>
   )
 }
