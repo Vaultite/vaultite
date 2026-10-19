@@ -3,7 +3,7 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { ON, VAULT, api, app, check, read, vault, write, TOOLS } = $
+  const { ON, VAULT, api, app, check, read, sleep, vault, write, TOOLS } = $
   // Vault plugins (core/vaultplugins.ts): the made-up Lighthouse (tools/fixtures/lighthouse) in .vaultite/plugins/.
   const LH = ".vaultite/plugins/lighthouse"
   fs.cpSync(path.join(TOOLS, "fixtures", "lighthouse"), path.join(VAULT, LH), { recursive: true })
@@ -66,8 +66,23 @@ export default async ($: VaultTest) => {
   lh = await vplugin()
   check("trust: its code changed (a sync), it's unloaded and waits again, saying which files changed", !lh.loaded && lh.approval?.state === "changed" &&
     JSON.stringify(lh.approval.changed) === '["beam.ts"]' && (await api("GET", "lighthouse"))[0] === 404, lh.approval)
+  {
+    // It stopped after being allowed: the user is told once, in the inbox, as waiting on them (App.tellPaused).
+    const paused = async () => { await sleep(150); return ((await api("GET", "inbox/events"))[1].events as Any[]).filter((e) => e.key === "paused:lighthouse") }
+    let told = await paused()
+    check("trust: a plugin that changed after it was allowed tells the user it's paused, waiting on them", told.length === 1 && told[0].kind === "waiting" &&
+      told[0].title.startsWith("Lighthouse changed and is paused") && told[0].body.includes("beam.ts") && told[0].link === "detail:plugin/lighthouse" && !told[0].read, told)
+    const first = told[0]?.id
+    write(`${LH}/beam.ts`, read(`${LH}/beam.ts`) + "\n")
+    await vplugin()
+    told = await paused()
+    check("trust: ...once, not again for each later edit", told.length === 1 && told[0].id === first && !!app.vaultPlugins.trust.approval("lighthouse")?.paused, told)
+  }
   ;[acode, aout] = await api("POST", "ops/plugin.allow", { id: "lighthouse", edits: true })
   check("trust: allowed with edits, it loads, and later edits run (a plugin written here)", acode === 200 && aout.loaded && aout.edits, aout)
+  await vplugin()
+  await sleep(150)
+  check("trust: allowed again, its paused notice is read", ((await api("GET", "inbox/events"))[1].events as Any[]).find((e) => e.key === "paused:lighthouse")?.read === true)
   let [lcode, lout] = await api("GET", "lighthouse")
   check("vault plugins: turned on, its route answers", lcode === 200 && ["on", "off"].includes(lout.beam) && lout.keepers === 1, [lcode, lout])
   let [, out] = await api("GET", "keepers")

@@ -12,7 +12,7 @@ import { backendOnly, blockProblems, exportFile, hashed, inside, installProblems
 import { declsOf, drawsOf, settingsOf } from "./blocks.ts"
 import { groupOf } from "./categories.ts"
 import type { VaultEvent } from "./events.ts"
-import { hookProblems, Hooks } from "./hooks.ts"
+import { hookProblems, Hooks, scheduleOf } from "./hooks.ts"
 import type { Op } from "./ops.ts"
 import { type Digest, trustOf, type Trust } from "./trust.ts"
 import { official } from "./updates.ts"
@@ -506,6 +506,21 @@ export class VaultPlugins {
     return file === "bundle.js" ? vp.bundle.code : Object.hasOwn(vp.bundle.chunks, file) ? vp.bundle.chunks[file] : null
   }
 
+  /** On in the vault, but not allowed on this machine at this version. */
+  private waits(vp: VaultPlugin, on = this.enabled()) {
+    return on.has(vp.id) && !vp.problems.length && !vp.blocked && !this.trust.approved(vp.id, vp.digest.content)
+  }
+
+  /** The ones this machine allowed that changed since, so they stopped until it allows them again (not one being
+   *  updated: App.adopt allows it): what changed, and their schedule, which doesn't run meanwhile. */
+  paused() {
+    const on = this.enabled()
+    return [...this.found.values()].filter((vp) => this.trust.approval(vp.id) && !this.adopting.has(vp.id) && this.waits(vp, on)).map((vp) => ({
+      id: vp.id, name: typeof vp.manifest.name === "string" && vp.manifest.name ? vp.manifest.name : vp.id,
+      changed: this.trust.changes(vp.id, vp.digest).files, jobs: scheduleOf(vp.manifest).map(({ entry: _, ...j }) => j),
+    }))
+  }
+
   /** What the web app shows (/api/state's `vaultPlugins`, GET /api/plugins): every vault plugin, on or off; `problems`
    *  keep it from loading, `warnings` don't (a block without its declaration or its text side). */
   list(): Item[] {
@@ -516,9 +531,8 @@ export class VaultPlugins {
       const failed = Object.values(vp.failed).filter((f) => f && f[0] === vp.hash).map((f) => f![1])
       const pages = path.join(vp.dir, "pages")
       const str = (k: string) => (typeof m[k] === "string" && m[k] ? m[k] as string : null)
-      // On in the vault, but not allowed on this machine at this version: what changed since it was (all of it when never).
-      const waiting = on.has(vp.id) && !vp.problems.length && !vp.blocked && !this.trust.approved(vp.id, vp.digest.content)
-      const changes = waiting ? this.trust.changes(vp.id, vp.digest) : null
+      // Waiting: what changed since it was allowed here (all of it when never).
+      const changes = this.waits(vp, on) ? this.trust.changes(vp.id, vp.digest) : null
       return {
         id: vp.id, name: typeof m.name === "string" && m.name ? m.name : vp.id, description: typeof m.description === "string" ? m.description : "",
         requires: Array.isArray(m.requires) ? m.requires : [], enhances: Array.isArray(m.enhances) ? m.enhances : [], runsOnServer: !!m.runsOnServer,

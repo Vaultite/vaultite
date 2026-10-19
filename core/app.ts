@@ -88,6 +88,8 @@ export class App {
       },
       here: (machine) => this.runsHere(machine),
       before: () => this.syncPlugins(),
+      paused: () => this.vaultPlugins.paused().flatMap((p) => p.jobs.map((job) => ({ plugin: p.id, job,
+        why: `${p.name} changed and waits for you to allow it again (vau plugin allow ${p.id})` }))),
     })
   }
 
@@ -145,6 +147,7 @@ export class App {
   async syncPlugins({ pages: write = true } = {}) {
     const changed = await this.loadPlugins()
     this.adopt()
+    this.tellPaused()
     this.followPlugins(write)
     return changed
   }
@@ -211,6 +214,33 @@ export class App {
       if (r.status < 300) return
     } catch { /* no Inbox: a toast */ }
     try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "What's new", open: link } }) } catch { /* no window */ }
+  }
+
+  private pausedNotices = new Map<string, string>() // plugin id -> its inbox event, read once it's allowed again
+
+  /** A plugin that changed after this machine allowed it stops until allowed again, its schedule too: say so once, in
+   *  the inbox as waiting on the user, since a toast nobody saw lets a morning job go quiet for days. */
+  private tellPaused() {
+    const vps = this.vaultPlugins
+    const paused = vps.paused()
+    for (const [id, event] of this.pausedNotices) {
+      if (paused.some((p) => p.id === id)) continue
+      this.pausedNotices.delete(id)
+      void this.respond("POST", ["inbox", "events", "read"], {}, { ids: [event] }).catch(() => {})
+    }
+    for (const p of paused) {
+      if (!vps.trust.tellPaused(p.id)) continue
+      const jobs = p.jobs.map((j) => `${j.name} (every ${j.every}${j.at ? ` at ${j.at}` : ""})`)
+      const title = `${p.name} changed and is paused until you allow it again${jobs.length ? `: ${jobs.join(", ")} won't run` : ""}`
+      const body = `Changed: ${p.changed.join(", ")}. Allow it: vau plugin allow ${p.id}`
+      void (async () => {
+        try {
+          const r = await this.respond("POST", ["inbox", "events"], {}, { source: "plugins", kind: "waiting", title, body, link: `detail:plugin/${p.id}`, key: `paused:${p.id}` })
+          if (r.status < 300) { this.pausedNotices.set(p.id, (r.body as { event: { id: string } }).event.id); return }
+        } catch { /* no Inbox: a toast */ }
+        try { await this.ui?.({ action: "notify", text: title, kind: null, button: { label: "Review", open: `detail:plugin/${p.id}` } }) } catch { /* no window */ }
+      })()
+    }
   }
 
   /** Which plugins are on, as one string; "offering" while a new vault is being offered the bundles (none yet). */

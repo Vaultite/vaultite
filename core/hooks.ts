@@ -7,7 +7,7 @@ import { matching, typeMatches, type VaultEvent } from "./events.ts"
 import { ID, type Op, OpError, opProblems, type Param, whoOf } from "./ops.ts"
 import { LOCAL, type Plugin, ROOT, serverUrl, vaultHere } from "./plugins.ts"
 import { hashed, inside } from "./rules.ts"
-import { type Job, whenProblems } from "./schedule.ts"
+import { type Job, type When, whenProblems } from "./schedule.ts"
 import type { Item, Vault } from "./vault.ts"
 
 export type Command = string[]
@@ -53,6 +53,12 @@ export function inArea(opId: string, pluginId: string, kinds: string[] = []) {
 
 /** A manifest's `schedule` entry's name: its own, else its op's, else its place. */
 const jobName = (s: Item, i: number) => (typeof s.name === "string" ? s.name : typeof s.op === "string" ? s.op : `schedule-${i}`)
+
+/** A manifest's `schedule`: each entry's name and when it runs. */
+export function scheduleOf(manifest: Item): (When & { name: string; entry: Item })[] {
+  const list = Array.isArray(manifest.schedule) ? manifest.schedule as Item[] : []
+  return list.map((s, i) => ({ name: jobName(s, i), every: s.every, ...(s.at ? { at: s.at } : {}), ...(s.machine ? { machine: s.machine } : {}), entry: s }))
+}
 
 /** What's wrong with a manifest's `ops`, `events`, `startup` and `schedule` (core/vaultplugins.ts refuses to load it; `node
  *  tools/check_plugins.ts <vault>` prints them). */
@@ -214,10 +220,7 @@ export class Hooks {
 
   /** A manifest's `schedule` as jobs of `plugin` (core/schedule.ts): a command, or an op run as "schedule". */
   jobsOf(p: Declared, plugin: Plugin): Job[] {
-    const list = Array.isArray(p.manifest.schedule) ? p.manifest.schedule as Item[] : []
-    return list.map((s, i): Job => {
-      const name = jobName(s, i)
-      const when = { every: s.every, ...(s.at ? { at: s.at } : {}), ...(s.machine ? { machine: s.machine } : {}) }
+    return scheduleOf(p.manifest).map(({ name, entry: s, ...when }): Job => {
       if (s.op) return { ...when, name, run: () => plugin.runOp(s.op, s.params ?? {}, whoOf("schedule", null)) }
       return { ...when, name, run: async () => {
         const timeout = typeof s.timeout === "number" ? s.timeout : HOOK_TIMEOUT

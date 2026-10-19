@@ -10,7 +10,8 @@ import { isObj } from "./values.ts"
 
 /** An approved version: content hash, each file's, when, version; `edits`: later edits run without asking too; `source`,
  *  `says`: where it came from and what it said it does (an update synced from elsewhere must match both: App.adopt). */
-export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean; source?: string; says?: Disclosures }
+export type Approval = { hash: string; files: Record<string, string>; at: string; version?: string; edits?: boolean; source?: string; says?: Disclosures
+  paused?: string } // (when the user was told it changed and stopped: once per approval)
 type More = { version?: string; edits?: boolean; source?: string; says?: Disclosures }
 type Store = { plugins: Record<string, Approval>; allowed: Record<string, string>; local: Record<string, Record<string, unknown>> }
 /** What's hashed of a plugin's folder (core/vaultplugins.ts digestOf). */
@@ -81,6 +82,15 @@ export class Trust {
     if (!a?.edits) return
     delete a.edits
     this.save()
+  }
+
+  /** Note that the user was told plugin `id` changed and stopped: false if they already were since it was approved. */
+  tellPaused(id: string) {
+    const a = this.read().plugins[id]
+    if (!a || a.paused) return false
+    a.paused = new Date().toISOString()
+    this.save()
+    return true
   }
 
   forget(id: string) {

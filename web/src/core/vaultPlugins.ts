@@ -155,8 +155,9 @@ function tell(on: Plugin[]) {
       // (updated on its own elsewhere and being checked against its source: allowed in a moment, the server says so)
       if (p.meta.approval.state === "updating") { next[p.id] = said[p.id] ?? ""; continue }
       next[p.id] = `approval:${p.meta.hash}`
-      if (said[p.id] !== next[p.id]) {
-        notify(`${p.name} ${p.meta.approval.state === "new" ? "is on in this vault" : "changed"}: it waits for you to allow it on this machine`, { id: `plugin:${p.id}`,
+      // (one that changed after it was allowed here: the server says so, kept in the inbox: App.tellPaused)
+      if (said[p.id] !== next[p.id] && p.meta.approval.state !== "changed") {
+        notify(`${p.name} is on in this vault: it waits for you to allow it on this machine`, { id: `plugin:${p.id}`,
           action: { label: "Review", run: () => openDetail(`plugin/${p.id}`) } })
       }
       continue

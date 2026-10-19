@@ -43,6 +43,11 @@ export default async ($: VaultTest) => {
     check("schedule: and not again before they're due", ran.join() === "slow", ran)
     const rows = await new Scheduler({ file, jobs: () => jobs, here: async (m) => !m }).list(at("2026-03-05T12:31"))
     const row = (n: string) => rows.find((r) => r.name === n)!
+    const why = "Daily changed and waits for you to allow it again"
+    const held = await new Scheduler({ file, jobs: () => jobs.filter((j) => j.job.name !== "daily"), here: async (m) => !m,
+      paused: () => [{ plugin: "p", job: { name: "daily", every: "1d", at: "07:00" }, why }] }).list(at("2026-03-05T12:31"))
+    const daily = held.find((r) => r.name === "daily")!
+    check("schedule: a paused plugin's job is listed, saying why, with no next run", daily.paused === why && daily.next === null && daily.ran !== null && row("fast").paused === null, held)
     check("schedule: last runs are kept on this machine (a new scheduler reads them), with errors", row("broken").error === "no network" && row("daily").next === new Date(at("2026-03-06T07:00")).toISOString() &&
       row("elsewhere").next === null && row("elsewhere").here === false, rows)
 

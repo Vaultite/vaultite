@@ -160,7 +160,9 @@ machine, its manifest's commands too): tell them to. Turning it on from their ma
 (a hash kept on that machine, never in the vault); one turned on elsewhere (another machine, a shared vault, a bundle) or
 whose files changed since waits for them to allow it (Plugins page's Review, `vau plugin allow <id>`). One made with
 `vau plugin new` on their machine is allowed with its edits, so editing it reloads it; another's edits wait, unless they
-let them run while it's written (`vau plugin allow <id> --edits`). Check it: `GET /api/plugins`
+let them run while it's written (`vau plugin allow <id> --edits`). So editing a plugin the user allowed (its notes for an
+agent too) pauses it, its schedule with it, until they allow it again: they're told in the inbox; say so in your report.
+Check it: `GET /api/plugins`
 lists every vault plugin with `problems` (why it didn't load or build: its manifest's commands and ops too) and
 `warnings` (fix them: a block without its declaration or text side); then call its routes and ops (`vau ops <id>`) and
 `vau render Dashboards/<Name>.md`.

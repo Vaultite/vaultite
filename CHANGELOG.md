@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- A vault plugin that changed after you allowed it says it's paused, once, in the inbox as waiting on you, naming the
+  jobs that won't run until you allow it again; `vau schedule list` shows them as paused.
 - The Agents bundle turns on Muse, and the web demo shows its page with sample data.
 - **Menus filter as you type**: type while any menu is open and only the matching rows stay, those in its submenus
   too (Panels ▸ More ▸ a panel), the best one ready for Enter; a long list (More) says so at the top. The Panels menu

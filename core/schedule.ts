@@ -14,6 +14,8 @@ export type When = { every: string; at?: string; machine?: string }
 export type Job = When & { name: string; run: () => unknown }
 /** A job as the scheduler sees it: its plugin's id with it. */
 export type Listed = { plugin: string; job: Job }
+/** A job that doesn't run now, and why (its plugin changed and waits to be allowed again). */
+export type Paused = { plugin: string; job: When & { name: string }; why: string }
 /** What the last run did, kept on this machine (`for`: the time it was due, an `at` job's slot). */
 type Last = { seen: number; ran?: number; for?: number; ms?: number; error?: string }
 
@@ -62,11 +64,12 @@ export function nextRun(w: When, last: Last) {
 }
 
 export type Row = { id: string; plugin: string; name: string; every: string; at: string | null; machine: string | null
-  here: boolean; next: string | null; ran: string | null; ms: number | null; error: string | null; running: boolean }
+  here: boolean; next: string | null; ran: string | null; ms: number | null; error: string | null; running: boolean; paused: string | null }
 
 export class Scheduler {
   private file: string
   private jobs: () => Listed[]
+  private paused: () => Paused[]
   private here: (machine?: string) => Promise<boolean>
   private before: () => Promise<unknown>
   private state: Record<string, Last> = {}
@@ -74,9 +77,9 @@ export class Scheduler {
   private timer: ReturnType<typeof setInterval> | null = null
 
   /** `file`: where last runs are kept on this machine; `jobs`: the ones of the plugins that are on; `here`: whether this
-   *  machine runs a job naming `machine`; `before`: run before each tick (load the vault's plugins). */
-  constructor(o: { file: string; jobs: () => Listed[]; here: (machine?: string) => Promise<boolean>; before?: () => Promise<unknown> }) {
-    this.file = o.file; this.jobs = o.jobs; this.here = o.here; this.before = o.before ?? (async () => {})
+   *  machine runs a job naming `machine`; `before`: run before each tick (load the vault's plugins); `paused`: listed only. */
+  constructor(o: { file: string; jobs: () => Listed[]; here: (machine?: string) => Promise<boolean>; before?: () => Promise<unknown>; paused?: () => Paused[] }) {
+    this.file = o.file; this.jobs = o.jobs; this.here = o.here; this.before = o.before ?? (async () => {}); this.paused = o.paused ?? (() => [])
     try { this.state = JSON.parse(fs.readFileSync(this.file, "utf8")) } catch { /* none yet */ }
   }
 
@@ -137,11 +140,13 @@ export class Scheduler {
 
   async list(now = Date.now()): Promise<Row[]> {
     const iso = (t: number | undefined) => (t === undefined ? null : new Date(t).toISOString())
-    return Promise.all(this.jobs().map(async ({ plugin, job }) => {
+    const rows: { plugin: string; job: When & { name: string }; why: string | null }[] = [...this.jobs().map((l) => ({ ...l, why: null })), ...this.paused()]
+    return Promise.all(rows.map(async ({ plugin, job, why }) => {
       const key = `${plugin}/${job.name}`, last = this.state[key] ?? { seen: now }
       const here = await this.here(job.machine)
       return { id: key, plugin, name: job.name, every: job.every, at: job.at ?? null, machine: job.machine ?? null, here,
-        next: here ? iso(Math.max(now, nextRun(job, last))) : null, ran: iso(last.ran), ms: last.ms ?? null, error: last.error ?? null, running: this.running.has(key) }
+        next: here && !why ? iso(Math.max(now, nextRun(job, last))) : null, ran: iso(last.ran), ms: last.ms ?? null, error: last.error ?? null,
+        running: this.running.has(key), paused: why }
     }))
   }
 
@@ -159,11 +164,11 @@ export function scheduleOps(scheduler: () => Scheduler): Op[] {
   return [{
     id: "schedule.list",
     cli: "schedule list",
-    summary: "The jobs on a timer (plugins' schedules): when each runs, on which machine, when it last ran and how.",
+    summary: "The jobs on a timer (plugins' schedules): when each runs, on which machine, when it last ran and how, and why one is paused.",
     kind: "read",
     run: () => scheduler().list(),
     text: (rows: Row[]) => rows.length ? rows.map((r) => `- ${r.id}: ${when(r)}${r.machine ? ` on ${r.machine}` : ""}; ${r.running ? "running"
-      : r.here ? `next ${r.next}` : "another machine runs it"}${r.ran ? `; last ${r.ran} (${r.error ? `failed: ${r.error}` : `${r.ms} ms`})` : ""}`).join("\n")
+      : r.paused ? `paused: ${r.paused}` : r.here ? `next ${r.next}` : "another machine runs it"}${r.ran ? `; last ${r.ran} (${r.error ? `failed: ${r.error}` : `${r.ms} ms`})` : ""}`).join("\n")
       : "No plugin has a schedule.",
   }, {
     id: "schedule.run",
