@@ -6,15 +6,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- What you type is kept on the device a moment after you stop, not only as it saves: a window closed right after
-  typing, with the server out of reach, offers those edits back the next time instead of losing them.
-- Review leaves out the dates the app keeps in a note (its `updated`, moved by any edit): an AI's change shows and
-  counts only its own lines.
-
 ## 0.6.0 (2026-10-19)
 
 Conflicts show in place, menus filter as you type, sidebars are yours to arrange, and vaults in iCloud Drive stay readable.
 
+- What you type is kept on the device a moment after you stop, not only as it saves: a window closed right after
+  typing, with the server out of reach, offers those edits back the next time instead of losing them.
+- Review leaves out the dates the app keeps in a note (its `updated`, moved by any edit): an AI's change shows and
+  counts only its own lines.
 - A vault plugin that changed after you allowed it says it's paused, once, in the inbox as waiting on you, naming the
   jobs that won't run until you allow it again; `vau schedule list` shows them as paused.
 - The Agents bundle turns on Muse, and the web demo shows its page with sample data.
