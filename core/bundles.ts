@@ -561,8 +561,8 @@ const placeOf = (b: Bundle, v: Vault) => (f: string) => {
 const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
 /** `remember: false`: no previous setup to restore (a new vault's first, or the offer skipped). `offAdded`: the plugins
- *  the user added that it doesn't name go off too. `pages: false`: its plugins write no pages (a vault opening). */
-export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false, pages = true } = {}) {
+ *  the user added that it doesn't name go off too. */
+export async function apply(b: Bundle, host: Host, n: number | null, allowCode: boolean, { remember = true, offAdded = false } = {}) {
   const v = host.vault
   if (b.error) throw new HTTPError(400, `${b.id}: ${b.error}`)
   const p = await plan(b, host, n)
@@ -619,8 +619,9 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   if (allowCode && brought.length) await host.allow?.(brought)
   await patch("plugins", patchOf({ disabled: strs(conf.disabled), enabled: strs(conf.enabled) }, { disabled, enabled }))
   await host.syncPlugins()
-  // (pinned here, the pins below make the list the bundle's)
-  if (pages && json(b, "plugins.json")) host.writePages?.()
+  // The plugins it turns on write their pages, as turning one on does (pinned here, the pins below make the list the
+  // bundle's); the ones already on wrote theirs then, or chose not to: Standard over a new vault adds none.
+  if (p.plugins.on.length) host.writePages?.({ only: p.plugins.on })
   // 3. Settings, appearance, hotkeys: the keys that change.
   const byPlugin = new Map<string, Item>()
   for (const s of p.settings) byPlugin.set(s.plugin, { ...byPlugin.get(s.plugin), [s.key]: s.to })

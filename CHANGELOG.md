@@ -11,6 +11,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - An agent that isn't installed (Claude Code, Codex...) says so in a toast instead of the companion staying on
   starting; its terminal's tip says not installed.
 - New vaults: Start here tries the companion first (@claude in the note), and the Buttons panel is in the left sidebar.
+- Applying Standard sets up what a new vault has: it no longer adds the pages of plugins already on (Activity, People,
+  Agents...); a bundle writes the pages of the plugins it turns on.
 
 ## 0.6.2 (2026-10-20)
 

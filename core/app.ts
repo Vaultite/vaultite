@@ -243,9 +243,10 @@ export class App {
     }
   }
 
-  /** Which plugins are on, as one string; "offering" while a new vault is being offered the bundles (none yet). */
+  /** Which plugins are on, as one string; "offering:" before it while a new vault is being offered the bundles. */
   private onKey() {
-    return B.offering(this.vault) ? "offering" : [...enabled(this.vault, this.plugins)].sort().join(",")
+    const on = [...enabled(this.vault, this.plugins)].sort().join(",")
+    return B.offering(this.vault) ? `offering:${on}` : on
   }
 
   /** GET /api/blocks: every plugin's blocks as declared in its manifest, with whether it's on and has a text side (an
@@ -274,14 +275,14 @@ export class App {
     return { common: COMMON, blocks: rows }
   }
 
-  /** Plugins a request turned on (in a hold: the app, vau, a bundle) write their pages (core/pages.ts; unpinned just as a
-   *  new vault picks its setup). Turned on elsewhere (by hand, another machine) or found on opening: nothing. */
+  /** Plugins a request turned on (in a hold: the app, vau, a bundle) write their pages (core/pages.ts; a new vault's pick:
+   *  those it turned on, unpinned, so Standard adds none). Turned on elsewhere (by hand, another machine) or on opening: none. */
   private followPlugins(write = true) {
     const key = this.onKey(), was = this.pagesOf
     this.pagesOf = key
-    if (!write || key === was || key === "offering" || !this.holding.getStore()?.on) return []
-    const before = new Set(was === "offering" ? [] : was.split(","))
-    return pages.writePages(this.vault, this.plugins, key.split(",").filter((id) => id && !before.has(id)), { pin: was !== "offering" })
+    if (!write || key === was || key.startsWith("offering:") || !this.holding.getStore()?.on) return []
+    const offered = was.startsWith("offering:"), before = new Set((offered ? was.slice("offering:".length) : was).split(","))
+    return pages.writePages(this.vault, this.plugins, key.split(",").filter((id) => id && !before.has(id)), { pin: !offered })
   }
 
   /** Everything the web app shows, worked out again only when the vault, its settings or its plugins changed, frozen
@@ -851,8 +852,8 @@ export function jsonOf(body: unknown): string | Buffer {
  *  steps, so a starting server answers its web app's files meanwhile. */
 export async function open(vaultPath: string, { start = true, timing }: { start?: boolean; timing?: { mark(part: string): void } } = {}) {
   fs.mkdirSync(vaultPath, { recursive: true })
-  // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the plugins' pages
-  // come when it picks its setup (core/bundles.ts offering).
+  // A vault the app has never opened (no .vaultite/ yet): it starts from Standard (core/start.ts); the pages of the
+  // plugins its pick turns on come when it picks its setup (core/bundles.ts offering).
   const fresh = start && !fs.existsSync(path.join(vaultPath, ".vaultite"))
   const app = await new App(vaultPath).init(timing)
   if (fresh) B.markNew(app.vault)

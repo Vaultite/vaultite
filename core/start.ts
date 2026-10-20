@@ -76,12 +76,12 @@ A footnote goes after a word[^1]. ==Highlights==, ~~strikethrough~~ and \`%%comm
 [^1]: Footnotes are numbered and listed at the end.
 `
 
-/** Set up a vault opened for the first time: Standard's setup, all of it in .vaultite/ (its plugins' pages come with
- *  the starter content, or a setup picked). */
+/** Set up a vault opened for the first time: Standard's setup, all of it in .vaultite/ (no plugin page: they come with
+ *  the starter content, or with a bundle turning their plugin on). */
 export async function setUpNew(host: B.Host) {
   // (a list of pins first: the pages of the plugins Standard turns on aren't all pinned, as a vault without one would be)
   await host.call("PATCH", "config/pages", { pinned: [] })
-  await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false, pages: false })
+  await B.apply(B.find(host.vault, B.DEFAULT_BUNDLE), host, null, false, { remember: false })
 }
 
 /** The starter content, chosen in setup: a pinned Start here, How this vault works, the agent's page, and a line in

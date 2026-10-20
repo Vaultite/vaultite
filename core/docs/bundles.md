@@ -36,7 +36,8 @@ terminals, their activity, other machines and the server).
   (`.vaultite/themes/<Name>/`), its fonts, and a snippet for the rest (`vau docs app`, Appearance).
 - Applying makes small edits: the plugin switches that change, the keys its files set (an appearance value that is the
   default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
-  deleted). A plugin's page it pins (`Dashboards/Today.md`) is written if the pages folder has none. Pins become the
+  deleted). A plugin it turns on writes its pages, as turning it on does (those already on don't: Standard over a new
+  vault adds none); a plugin's page it pins (`Dashboards/Today.md`) is written if the pages folder has none. Pins become the
   bundle's pages, then the user's own as they were; dashboards the app brings (plugins' and its own bundles') that it
   doesn't pin are unpinned, the files kept. Panels and pins become the vault's defaults
   (sidebars.json, pages.json) and the workspace the user is on follows them (its own panels go; its own pins get the

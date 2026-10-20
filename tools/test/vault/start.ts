@@ -34,6 +34,10 @@ export default async ($: VaultTest) => {
     await freshApp.vault.sync()
     check("new vault, starter content chosen: agents started in it find its rules", fs.existsSync(path.join(fresh, "CLAUDE.md")) && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(fresh, "CLAUDE.md"), "utf8")), fs.readdirSync(fresh))
     check("new vault: nothing to restore, nothing offered", !fs.existsSync(path.join(fresh, ".vaultite/bundles/previous.json")) && !fs.existsSync(path.join(fresh, ".vaultite/bundles/onboarding.json")))
+    await freshApp.host().call("POST", "bundles/standard/apply", {})
+    await freshApp.state()
+    check("new vault, Standard applied: what it had, no plugin's page added (Errors, People)", JSON.stringify(fs.readdirSync(path.join(fresh, "Dashboards"))) === '["Claude.md"]',
+      fs.readdirSync(path.join(fresh, "Dashboards")))
     const own = path.join(tmp, "Own notes")
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")
@@ -94,8 +98,8 @@ export default async ($: VaultTest) => {
     const got = fs.readFileSync(path.join(stamped, "Notes/.archive/Old.md"), "utf8")
     check("migrated: a note's created and updated in local time, other keys and the body as they were", got.includes(`created: '${local("2026-10-18T05:11:09")}'`)
       && got.includes(local("2026-10-18T05:12:00")) && got.includes("met: '2026-10-18 05:11:09'") && got.endsWith("---\nBody.\n"), got)
-    // A new vault still being offered the bundles writes no page; given one that pins nothing, its plugins write theirs,
-    // none pinned.
+    // A new vault still being offered the bundles writes no page; given Standard (the plugins already on), still none:
+    // as a new vault, no dashboards.
     const offered = path.join(tmp, "Offered")
     fs.mkdirSync(path.join(offered, ".vaultite/bundles"), { recursive: true })
     fs.writeFileSync(path.join(offered, ".vaultite/bundles/onboarding.json"), "{}\n")
@@ -104,7 +108,7 @@ export default async ($: VaultTest) => {
     const none = !fs.existsSync(path.join(offered, "Dashboards"))
     await o.host().call("POST", "bundles/standard/apply", {})
     await o.state()
-    check("a setup picked: its plugins write their pages (not Design)", none && fs.existsSync(path.join(offered, "Dashboards/Errors.md")) && !fs.existsSync(path.join(offered, "Dashboards/Design.md")))
+    check("Standard picked: as a new vault, no plugin's page", none && !fs.existsSync(path.join(offered, "Dashboards")), fs.existsSync(path.join(offered, "Dashboards")) && fs.readdirSync(path.join(offered, "Dashboards")))
     check("a bundle pinning nothing pins nothing (not Errors)", JSON.stringify(conf(offered, "pages")?.pinned) === "[]", conf(offered, "pages"))
     // Skipping the offer starts from Standard, with nothing to restore.
     const skipped = path.join(tmp, "Skipped")
