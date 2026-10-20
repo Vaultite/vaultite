@@ -79,7 +79,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
   const o = { current: options }
   const opened = moveMark()
   const where = () => whereNow(path, opened)
-  let timer: ReturnType<typeof setTimeout> | null = null
+  let timer: ReturnType<typeof setTimeout> | null = null, drafting: ReturnType<typeof setTimeout> | null = null
   let saving = false, again = false, recheck = false
   let status: SaveStatus = { kind: "ok" }
   /** The last conflict, to go back to (Undo); and what's left of it when its editor went (a switch to source mode). */
@@ -139,13 +139,20 @@ function makeAutosave(path: string, initial: string, options: Options) {
       }
     },
     get conflict() { return status.kind === "conflict" },
-    stopTimer() { if (timer) { clearTimeout(timer); timer = null } },
+    stopTimer() {
+      if (timer) { clearTimeout(timer); timer = null }
+      if (drafting) { clearTimeout(drafting); drafting = null }
+    },
 
     /** Typed: saved 600 ms after the last change (during a conflict, only said again). */
     changed() {
       if (s.conflict) return tell(status)
       if (timer) clearTimeout(timer)
       timer = setTimeout(() => s.save(), 600)
+      // (kept on the device as typing pauses, not only as it saves: what a window closed before then wrote at pagehide
+      // doesn't get to IndexedDB)
+      if (drafting) clearTimeout(drafting)
+      drafting = setTimeout(() => { drafting = null; const text = o.current.text(); if (text !== s.disk) keepDraft(path, text, s.disk) }, 100)
     },
 
     async save(force = false): Promise<void> {

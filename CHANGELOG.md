@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- What you type is kept on the device a moment after you stop, not only as it saves: a window closed right after
+  typing, with the server out of reach, offers those edits back the next time instead of losing them.
 - Review leaves out the dates the app keeps in a note (its `updated`, moved by any edit): an AI's change shows and
   counts only its own lines.
 

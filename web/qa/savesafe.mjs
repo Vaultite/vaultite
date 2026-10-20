@@ -3,7 +3,7 @@
 // characters a name can't have makes a note that it then finds, "/" in a link makes folders, and a rename to such a
 // name is refused saying why. WRITES a "Qa safe" folder: throwaway server only.
 //   node web/qa/savesafe.mjs <base url> <vault path>
-import { existsSync, readFileSync, readdirSync, rmSync } from "node:fs"
+import { chmodSync, existsSync, readFileSync, readdirSync, rmSync } from "node:fs"
 import { palette, qa, until, wait } from "./lib/qa.mjs"
 const { args: [B, VAULT], browser, check, watch, done } = await qa(import.meta.url)
 const read = (p) => { try { return readFileSync(`${VAULT}/${p}`, "utf8") } catch { return null } }
@@ -29,19 +29,29 @@ const typeAtEnd = async (page, text) => {
   await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.type(text)
 }
 
-// Edits whose save never got out (the server unreachable, then the window closed) come back the next time.
+// Edits whose save never got through (the server couldn't write them, then the window closed) come back the next time.
 {
   const page = watch(await ctx.newPage(), { label: "unsaved" })
   await open(page, "Qa safe/Big.md")
-  await page.route("**/api/file", (r) => (r.request().method() === "PUT" ? r.abort() : r.continue()))
+  // (its folder read-only: a route that aborts the saves lets go of the one a closing page sends)
+  chmodSync(`${VAULT}/Qa safe`, 0o555)
   await typeAtEnd(page, " Typed offline.")
-  await wait(1500)
+  // (kept on the device within a moment of typing, IndexedDB's write done: a window closed before then can't keep it)
+  const kept = (p = page) => p.evaluate(() => new Promise((ok) => {
+    const r = indexedDB.open("vaultite-drafts", 1)
+    r.onupgradeneeded = () => r.result.createObjectStore("drafts") // (as the app makes it, if it hasn't yet)
+    r.onsuccess = () => { const q = r.result.transaction("drafts").objectStore("drafts").getAllKeys(); q.onsuccess = () => { r.result.close(); ok(q.result.some((k) => k.endsWith(":Qa safe/Big.md"))) } }
+    r.onerror = () => ok(false)
+  }))
+  check("unsaved: kept on the device", !!(await until(() => kept(), 10_000)))
   await page.close({ runBeforeUnload: true })
-  check("unsaved: not on disk (the save never got out)", !read("Qa safe/Big.md").includes("Typed offline."))
+  check("unsaved: not on disk (the save never got through)", !read("Qa safe/Big.md").includes("Typed offline."))
   const again = watch(await ctx.newPage(), { label: "restore" })
   await open(again, "Qa safe/Big.md")
   const banner = again.locator("[role=alert]", { hasText: "weren't saved" })
-  check("unsaved: opened again, it offers them back", await banner.count() === 1)
+  check("unsaved: opened again, it offers them back", !!(await until(async () => (await banner.count()) === 1, 10_000)),
+    { saved: read("Qa safe/Big.md").includes("Typed offline."), kept: await kept(again) })
+  chmodSync(`${VAULT}/Qa safe`, 0o755)
   await banner.locator("button", { hasText: "Restore them" }).click()
   check("unsaved: restored and saved", !!(await until(() => read("Qa safe/Big.md")?.includes("End.\n Typed offline."), 5000)), read("Qa safe/Big.md")?.slice(-60))
   await again.goto("about:blank"); await open(again, "Qa safe/Big.md")
