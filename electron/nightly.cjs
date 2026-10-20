@@ -10,7 +10,7 @@ module.exports = {
   // (Electron names the Linux window class after `name`, and the .deb is the package `name`.)
   extraMetadata: { productName: "Vaultite Nightly", name: "vaultite-nightly" },
   publish: [{ provider: "generic", url: "https://vaultite.com/updates/nightly" }],
-  mac: { ...build.mac, icon, artifactName: "Vaultite-Nightly-${version}-${arch}-mac.${ext}" },
+  mac: { ...build.mac, icon: "electron/mac/icon-nightly.png", artifactName: "Vaultite-Nightly-${version}-${arch}-mac.${ext}" },
   dmg: { ...build.dmg, artifactName: "Vaultite-Nightly-${arch}.${ext}" },
   linux: {
     ...build.linux, icon, executableName: "vaultite-nightly",

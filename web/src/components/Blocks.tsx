@@ -11,7 +11,7 @@ import { readFile } from "@/core/files"
 import { embedOf, fenceBlock } from "@/core/formats"
 import { blockName, scan } from "../../../core/sections.ts"
 import { innerOf, noteParts, setBlockText, setProp } from "@/core/frontmatter"
-import { notifyError } from "@/core/notify"
+import { errorText, notifyError } from "@/core/notify"
 import { resolver } from "@/core/links"
 import { blockFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
@@ -280,7 +280,7 @@ function Island({ children, name, editing, retry }: { children: ReactNode; name?
   const what = name ? `This ${name} block` : "This block"
   const failed = (e: unknown) => (
     <p className="text-[15px] text-muted-foreground" data-block-failed={name ?? ""}>
-      {editing ? `${what} couldn't be drawn: ${(e instanceof Error ? e.message : String(e)) || "error"}` : `${what} couldn't be drawn. Edit the file to see its text.`}
+      {editing ? errorText(e, `${what} couldn't be drawn`) : `${what} couldn't be drawn. Edit the file to see its text.`}
     </p>
   )
   return <Catch fallback={failed} reset={retry} onError={(e) => console.error(`block${name ? `-${name}` : ""}:`, e)}>{children}</Catch>

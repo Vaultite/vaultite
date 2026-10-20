@@ -45,6 +45,9 @@ function monospaced(family: string) {
   return Math.abs(ctx.measureText("iiiiiiiiii").width - ctx.measureText("WWWWWWWWWW").width) < 0.5
 }
 
+const MONO_NAMES = new Set(MONO.map((f) => f.toLowerCase()))
+const MONO_WORD = /mono|code|courier|consol|menlo|monaco|terminal/i
+
 let common: Font[] | null = null
 let local: Font[] | null = null
 
@@ -84,17 +87,17 @@ export async function loadAll(): Promise<boolean> {
   if (!q) return false
   try {
     const data = await q.call(window)
-    if (!ctx) ctx = document.createElement("canvas").getContext("2d")
     const families = [...new Set(data.map((d) => d.family).filter((f) => f && !f.startsWith(".")))]
-    local = families.map((family) => ({ family, mono: monospaced(family) }))
+    // By name, not measured: measuring loads each font, half a second for a Mac's few hundred.
+    local = families.map((family) => ({ family, mono: MONO_NAMES.has(family.toLowerCase()) || MONO_WORD.test(family) }))
     return true
   } catch { return false }
 }
 
-/** The fonts to offer: the common ones this device has, and every installed one once listed, by name. */
+/** The fonts to offer: every installed one once listed, else the common ones this device has (measured), by name. */
 export function fonts(): Font[] {
   const byName = new Map<string, Font>()
-  for (const f of [...commonFonts(), ...(local ?? [])]) if (!byName.has(f.family.toLowerCase())) byName.set(f.family.toLowerCase(), f)
+  for (const f of local ?? commonFonts()) if (!byName.has(f.family.toLowerCase())) byName.set(f.family.toLowerCase(), f)
   return [...byName.values()].sort((a, b) => a.family.localeCompare(b.family))
 }
 

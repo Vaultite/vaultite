@@ -367,7 +367,7 @@ export function SidebarSearch({ open }: SidebarCtx) {
       {/* Shortcut keycaps, only on hover or keyboard focus. */}
       {open && first && <span aria-hidden className="flex gap-1 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-visible:opacity-100">
         {keyCaps(first).map((k, i) => (
-          <kbd key={i} className="grid h-5 min-w-5 place-items-center rounded-[4px] border-[0.5px] border-border bg-foreground/[0.06] px-1 font-sans text-[11px] leading-none text-muted-foreground">{k}</kbd>
+          <kbd key={i} className="grid h-5 min-w-5 place-items-center rounded-[4px] border-[0.5px] border-border bg-foreground/[0.06] px-1 font-keys text-[11px] leading-none text-muted-foreground">{k}</kbd>
         ))}
       </span>}
     </button>

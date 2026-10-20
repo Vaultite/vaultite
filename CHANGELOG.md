@@ -6,8 +6,24 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The command palette, the quick switcher and the font picker open sooner and keep up with the pointer and the arrow
+  keys: the font picker no longer loads every font before it shows.
 - The app built from source (`npm run app:build`, `app:install`) is Vaultite Main, an app of its own: a release
   installs beside it instead of over it.
+- The Mac app's icon has the shape and margin of a Mac app's, and its disk image opens to a laid-out window (Vaultite,
+  an arrow, Applications) named just Vaultite.
+- Opened from its disk image, the Mac app offers to move itself to Applications, then reopens from there and ejects the
+  disk image.
+- Set up Vaultite says less: New vault and Open folder without a line under them, and Start with example notes.
+- The plugin directory ends with its list, without a note under it (installing one still says it runs code).
+- In the plugins list, "needs" shows only when what a plugin needs is off, as small as its byline.
+- Companion is on by default: its session starts only when you first @ it or ask it something.
+- A new vault's example notes are Start here, How this vault works (a tour of what a note holds) and the Claude page,
+  not every plugin's page.
+- A vault plugin using the app's CodeMirror starts in a new vault: Obsidian plugins no longer fail with "Class
+  extends value undefined".
+- Errors say what failed in plain words, never a program's text: a plugin that can't start says so with Turn off, and
+  the exact error waits behind Details (Copy details, the Errors page).
 
 ## 0.6.0 (2026-10-19)
 

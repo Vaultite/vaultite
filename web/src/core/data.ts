@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef, useState, useSyncExternal
 import { editCount, edited, onVaultChange, settled, startLive, type Paths } from "@/core/live"
 import { get, send } from "@/core/http"
 import { getPrefs, hydratePrefs } from "@/core/prefs"
-import { notifyError } from "@/core/notify"
+import { errorText, notifyError } from "@/core/notify"
 import { span } from "@/core/spans"
 import { setVaultAppearance, type VaultAppearance } from "@/core/appearance"
 import { hydrateHotkeys } from "@/core/commands"
@@ -189,7 +189,7 @@ export function useLive<T>(path: string | null, version?: string | number, files
       remember(path, d, json)
       if (json !== last.current) { last.current = json; setData(d) }
       setError(null)
-    }).catch((e) => on && setError(String(e)))
+    }).catch((e) => on && setError(errorText(e)))
     load()
     const off = onVaultChange((paths) => {
       const f = follow.current
@@ -282,7 +282,7 @@ function load(): Promise<void> {
         publish({ store, error: null })
         if (loading) { const l = loading; loading = null; requestAnimationFrame(() => { l.mark("draw"); l.end() }) }
       } catch (e) {
-        publish({ error: String(e) })
+        publish({ error: errorText(e, "Couldn't load the vault") })
       }
     } while (again)
   }

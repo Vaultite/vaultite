@@ -1,6 +1,6 @@
 // The vimrc (.vaultite/plugins/vim/init.vim; Obsidian's .obsidian.vimrc works): map/noremap and friends, unmap, set,
 // let mapleader, exmap, run in every editor before you type and again when it changes; a bad line is reported once.
-import { notify, openFile, post, readFile } from "@vaultite"
+import { notify, openFile, post, readFile, notifyError } from "@vaultite"
 import type { CM, Vim } from "./editor"
 import { installKeys, loadVim } from "./editor"
 import { VIMRC } from "./state"
@@ -85,7 +85,7 @@ export async function reloadVimrc() {
 /** Open the vimrc, making it first (with examples) when there's none. */
 export async function openVimrc() {
   try { await readFile(VIMRC) } catch {
-    try { await post("file", { path: VIMRC, text: TEMPLATE }) } catch (e) { notify(`Couldn't make ${VIMRC}: ${e instanceof Error ? e.message : String(e)}`, { kind: "error" }); return }
+    try { await post("file", { path: VIMRC, text: TEMPLATE }) } catch (e) { notifyError(e, `Couldn't make ${VIMRC}`); return }
   }
   openFile(VIMRC)
 }

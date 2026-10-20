@@ -135,6 +135,7 @@
       "output": "dist-app"
     },
     "asar": false,
+    "electronLanguages": ["en"],
     "npmRebuild": false,
     "afterPack": "electron/sign.cjs",
     "artifactBuildCompleted": "electron/dmg.cjs",
@@ -162,12 +163,16 @@
       "web/src/shadcn.css",
       "web/src/themes/**",
       "!plugins/**/*.tsx",
+      "!electron/mac/**",
+      "!**/node_modules/@excalidraw/excalidraw/dist/dev/**",
+      "!**/node_modules/mermaid/dist/{mermaid.js,mermaid.min.js,mermaid.esm.mjs,mermaid.esm.min.mjs}",
+      "!**/node_modules/mermaid/dist/chunks/{mermaid.esm,mermaid.esm.min}/**",
       "!**/node_modules/**/*.map",
       "!**/node_modules/**/*.d.{mts,cts}"
     ],
     "mac": {
       "category": "public.app-category.productivity",
-      "icon": "web/public/icon-512.png",
+      "icon": "electron/mac/icon.png",
       "identity": null,
       "target": [
         {
@@ -198,6 +203,15 @@
     },
     "dmg": {
       "artifactName": "${productName}-${arch}.${ext}",
+      "title": "${productName}",
+      "background": "electron/mac/dmg-background.png",
+      "window": { "width": 660, "height": 400 },
+      "iconSize": 128,
+      "iconTextSize": 13,
+      "contents": [
+        { "x": 170, "y": 180, "type": "file" },
+        { "x": 490, "y": 180, "type": "link", "path": "/Applications" }
+      ],
       "writeUpdateInfo": false
     },
     "linux": {

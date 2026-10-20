@@ -150,6 +150,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `editorOf(view)`: The editor drawn by this view, if it's one of the app's.
 - `EmbedView({ store, target, height, from, seen, edit })`: Whatever `![[target]]` names, drawn: a file's view, or a note's text; with its menu (`edit`: in the editor, what changes it in the note).
 - `Empty({ children })`: Empty state.
+- `errorText(e, what?)`: An error as a line of a page or a form (plainText), a bug kept in Errors.
 - `fenceLayout(info, body)`: Where a fence sits on a dashboard's grid: a ```block-<name>'s options say (`wide: true`); any other fence a plugin draws (its body the plugin's own: a ```tasks query) has it after its language,…
 - `fetchMachines()`: The machines, once ([] with the plugin off or when the server doesn't answer).
 - `fileAt(files, path)`
@@ -301,7 +302,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `NotePreview({ store, target, from })`: A note drawn whole for a glance (Page preview's popover), scrolled to the heading `target` names; a block target shows only that block.
 - `NoteTopItem`: Drawn in a note's page under its properties, above its text (a toolbar, a banner): every Markdown file, dashboards too, in every mode but source; `place`: in a tab or a sheet.
 - `notify(text, opts?)`: Show a toast.
-- `notifyError(e, what?)`: An error as a toast: `notify(message, {kind: "error"})` for a caught exception, with what was being done.
+- `notifyError(e, what?, opts?)`: An error as a toast, `what` saying what failed ("Couldn't rename it"): "Couldn't rename it: the disk is full", or, for a bug, just `what` with Details (Errors, where its text is kept).
 - `NotifyOptions`
 - `numberText(n)`: A number as text (1,234.5): n.toLocaleString(), with the formatter kept.
 - `offeredCommand(id)`: A command by its id, if it's registered and offered now (a menu made of commands: the editor's).
@@ -373,6 +374,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
+- `plainError(e)`: An error, a rejection's reason or a message, as it should reach a person.
 - `plainText(md)`: Markdown to plain text, for previews and search snippets: no marks, code fences, rules or table pipes.
 - `PlayerProps`: What a `player` gets: the file, how it's shown ("page": its own tab, "embed": in a note, "fill": its parent's box), an embed's height, and what to tell the core: its length, or that it can't be…
 - `pluginById(id)`

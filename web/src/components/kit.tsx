@@ -4,6 +4,7 @@ import { ChevronRight, RotateCcw, Search, X, type LucideIcon } from "lucide-reac
 import { cn } from "@/lib/utils"
 import { plain } from "@/core/data"
 import { haptic } from "@/core/haptics"
+import { copyText } from "@/core/richmd"
 
 /** The element with id `id` (a bar left for a portal: #sheet-bar), found as it renders so the portal is there in the
  *  same frame (a view transition's picture takes it at once); one more render if it isn't in the page yet. */
@@ -101,6 +102,23 @@ export function Stat({ label, value, unit, hint }: { label: string; value: React
 /** Empty state. Data arrives by talking to Claude, so say what to ask for. */
 export function Empty({ children }: { children: ReactNode }) {
   return <p className="text-[15px] leading-[20px] text-muted-foreground">{children}</p>
+}
+
+/** The exact text of an error, for whoever fixes it: shut behind Show details, with Copy details. The page says what
+ *  happened in plain words; this is never the headline. */
+export function ErrorDetails({ text, className }: { text: string; className?: string }) {
+  const [open, setOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const link = "rounded-[6px] px-2 py-1 text-[13px] text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground max-md:min-h-11 max-md:text-[15px]"
+  return (
+    <div className={className} data-error-details>
+      <div className="-ml-2 flex gap-1">
+        <button type="button" className={link} aria-expanded={open} onClick={() => setOpen((o) => !o)}>{open ? "Hide details" : "Show details"}</button>
+        <button type="button" className={link} onClick={() => void copyText(text).then((ok) => setCopied(ok))}>{copied ? "Copied" : "Copy details"}</button>
+      </div>
+      {open && <pre className="mt-1 max-h-[40vh] overflow-auto rounded-[6px] border border-border px-3 py-2 font-mono text-[12px] leading-normal break-words whitespace-pre-wrap select-text">{text}</pre>}
+    </div>
+  )
 }
 
 /** A block's data on its way: "Loading…", shimmering, or what went wrong getting it (`error`: "Couldn't ask Tailscale.").

@@ -11,6 +11,7 @@ import { allowPlugin, setVaultPlugins } from "@/core/plugins"
 import { pluginIcon } from "@/core/pages"
 import { openDetail } from "@/core/nav"
 import { notify } from "@/core/notify"
+import { noteAppError } from "@/core/errors"
 
 // The modules the app's plugins export (their manifests' `exports`), for vault plugins that require them
 // (@plugins/logs/sections): loaded when asked.
@@ -99,6 +100,7 @@ async function importBundle(info: VaultPluginInfo, version: string, retry: boole
   } catch (e) {
     // (it may have changed again meanwhile: a newer state brings it, or tries this one again)
     console.warn(`vault plugin ${info.id}:`, e)
+    noteAppError("plugin", Object.assign(new Error(`${info.name}: ${(e as Error)?.message ?? e}`), { stack: (e as Error)?.stack }))
     return { version, def: null, error: `index.tsx couldn't run in the app: ${(e as Error).message ?? e}`, at: Date.now() }
   }
 }
@@ -165,8 +167,8 @@ function tell(on: Plugin[]) {
     if (!problems.length) continue
     next[p.id] = problems.join("\n")
     if (said[p.id] === next[p.id]) continue
-    const first = problems[0].split("\n")[0]
-    notify(`${p.name} couldn't load: ${first.length > 140 ? `${first.slice(0, 140)}…` : first}`, { kind: "error", id: `plugin:${p.id}`,
+    // (what its code said is for its author: the sheet's details and Errors)
+    notify(`${p.name} couldn't start`, { kind: "error", id: `plugin:${p.id}`,
       action: { label: "Details", run: () => openDetail(`plugin/${p.id}`) } })
   }
   try { localStorage.setItem(SAID, JSON.stringify(next)) } catch { /* private mode */ }

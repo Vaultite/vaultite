@@ -5,7 +5,7 @@ import { get, post, put as putJson, request } from "@/core/http"
 import { deletedHere, gone, moveMark, readFile, splitFm, stem, whereNow, type FileText } from "@/core/files"
 import { useVaultChange } from "@/core/live"
 import { merge3, mergeClashes, type Clash } from "@/core/merge"
-import { notify } from "@/core/notify"
+import { errorReason, notify } from "@/core/notify"
 import { dropDraft, keepDraft } from "@/core/drafts"
 import { trackUnsaved } from "@/core/unsaved"
 import { LEAN_PAST, textHash } from "../../../core/texthash.ts"
@@ -193,7 +193,7 @@ function makeAutosave(path: string, initial: string, options: Options) {
         tell({ kind: "ok" })
       } catch (e) {
         if (!r) sentMaybe(sent)
-        tell({ kind: "error", message: String((e as Error).message ?? e) })
+        tell({ kind: "error", message: errorReason(e) ?? "" })
       } finally {
         saving = false
         s.inflight = null
@@ -322,8 +322,8 @@ function makeAutosave(path: string, initial: string, options: Options) {
       const changedText = () => (status.kind === "conflict" ? conflictText(status).replace(/\.$/, "") : "it changed elsewhere in the same lines")
       const id = `unsaved:${path}`, saved = () => notify(`Saved ${stem(path)}`, { id })
       const unsaved = (e: unknown) => {
-        const mine = !!(e as { conflict?: boolean }).conflict
-        notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower((e as Error).message)}` : `Couldn't save ${stem(path)}: ${(e as Error).message ?? e}`, { kind: "error", duration: 15_000, id,
+        const mine = !!(e as { conflict?: boolean }).conflict, why = mine ? null : errorReason(e)
+        notify(mine ? `Your edits to ${stem(path)} aren't saved: ${lower((e as Error).message)}` : `Couldn't save ${stem(path)}${why ? `: ${why}` : ""}`, { kind: "error", duration: 15_000, id,
           action: { label: mine ? "Keep yours" : "Try again", run: async () => {
             // (theirs is kept in File history first: nothing is lost)
             if (mine) await post("history/keep", { path: where() }).catch(() => {})

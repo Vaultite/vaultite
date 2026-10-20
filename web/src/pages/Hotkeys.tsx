@@ -17,7 +17,7 @@ const icon = "grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5p
 function Caps({ keys, onRemove }: { keys: string; onRemove: () => void }) {
   return (
     <span className="group/key flex items-center gap-0.5 rounded-[6px] border-[0.5px] border-border bg-foreground/[0.06] py-0.5 pr-0.5 pl-1.5 text-[12px] text-muted-foreground">
-      {keyCaps(keys).map((k, i) => <kbd key={i} className="font-sans">{k}</kbd>)}
+      {keyCaps(keys).map((k, i) => <kbd key={i} className="font-keys">{k}</kbd>)}
       <button type="button" aria-label={`Remove ${keys}`} data-tip="Remove" onClick={onRemove}
         className="ml-0.5 grid size-4 cursor-pointer place-items-center rounded-[3px] opacity-50 hover:bg-foreground/[0.1] hover:opacity-100">
         <X className="size-3" strokeWidth={2.5} />

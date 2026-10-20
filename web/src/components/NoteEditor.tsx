@@ -168,7 +168,7 @@ function saveToast(s: SaveStatus, path: string, above: number, saver: Autosave) 
       kind: "error", duration: 15_000, id: `unsaved:${path}`, action: { label: "Keep yours", run: () => saver.keep("mine") },
     })
   } else if (s.kind === "error") {
-    notify(`Couldn't save ${stem(path)}: ${s.message}`, { kind: "error", id: `unsaved:${path}`, action: { label: "Try again", run: () => saver.save(true) } })
+    notify(`Couldn't save ${stem(path)}${s.message ? `: ${s.message}` : ""}`, { kind: "error", id: `unsaved:${path}`, action: { label: "Try again", run: () => saver.save(true) } })
   }
 }
 

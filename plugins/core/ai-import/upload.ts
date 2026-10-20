@@ -1,6 +1,6 @@
 // Sending an export from the app: pick the file, send it (a small one whole, a big one 8 MB at a time, so no request runs
 // for minutes and a phone shows how far it got), then follow the import job, all in one toast that updates itself.
-import { notify, openFile, plural, post } from "@vaultite"
+import { notify, openFile, plural, post, notifyError } from "@vaultite"
 import type { Job } from "./chat"
 
 const CHUNK = 8 << 20
@@ -59,7 +59,7 @@ export async function importFile(file: File): Promise<Job | null> {
     finished(job)
     return job
   } catch (e) {
-    notify(`Couldn't import ${file.name}: ${(e as Error).message}`, { id: TOAST, kind: "error" })
+    notifyError(e, `Couldn't import ${file.name}`, { id: TOAST })
     return null
   }
 }
@@ -90,6 +90,6 @@ export async function applyReview(path: string) {
     else if (!r.failed) notify(`Added ${plural(r.added, "memory", "memories")}`)
     else notify(`Added ${r.added}; ${r.failed} couldn't be (why is under each)`, { kind: "error" })
   } catch (e) {
-    notify(`Couldn't add them: ${(e as Error).message}`, { kind: "error" })
+    notifyError(e, "Couldn't add them")
   }
 }

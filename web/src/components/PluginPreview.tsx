@@ -21,7 +21,8 @@ import { Catch } from "@/components/Guard"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { notify, notifyError } from "@/core/notify"
 import { closeDetail } from "@/core/nav"
-import { List, Row, Section, SheetHead, Switch } from "@/components/kit"
+import { ErrorDetails, List, Row, Section, SheetHead, Switch } from "@/components/kit"
+import { plainError } from "../../../core/plainerror.ts"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { capitalize, cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -261,6 +262,28 @@ async function uninstall(p: Plugin) {
   } catch (e) { notifyError(e, `Couldn't remove ${p.name}`) }
 }
 
+/** Why a plugin couldn't start: in plain words, with what to do (turn it off, tell its author); what its code or
+ *  manifest said, for whoever fixes it, behind Show details. */
+function Problems({ plugin }: { plugin: Plugin }) {
+  const problems = plugin.problems ?? []
+  // (a line written for people, like a manifest's or a block's, is said; an exception's text is only in the details)
+  const plain = problems.map((p) => plainError(p).reason)
+  const said = plain.filter((r): r is string => !!r)
+  const mine = plugin.tier === "vault" && !plugin.meta?.source
+  const author = plugin.meta?.author && plugin.meta.author !== "Vaultite" ? plugin.meta.author : "its author"
+  return (
+    <div className="mb-5 rounded-[10px] bg-muted px-3.5 py-3" data-plugin-problems>
+      <p className="text-[15px] font-medium">{plugin.name} couldn't start</p>
+      <p className="mt-0.5 text-[13px] leading-[18px] text-muted-foreground">
+        {mine ? "Its code or manifest has a problem: fix it and it starts again." : `The rest of the app works without it. Turn it off, or send the details to ${author}.`}
+      </p>
+      {!!said.length && <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-[18px]">{said.map((r, i) => <li key={i}>{r}</li>)}</ul>}
+      {/* (Turn off is its switch, above) */}
+      {plain.includes(null) && <ErrorDetails className="mt-2" text={problems.join("\n\n")} />}
+    </div>
+  )
+}
+
 // (what it is, not where it came from: its Author row says who made a vault plugin)
 const kickerOf = (p: Plugin) => categoryOf(p.category).label
 
@@ -271,6 +294,8 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
   const prefs = usePrefs(), { disabled } = prefs
   const waiting = switchedOn(plugin, prefs) && !plugin.problems?.length && !!plugin.meta?.approval
   const on = switchedOn(plugin, prefs) && !plugin.problems?.length && !waiting
+  // (one that couldn't start is still switched on: its switch says so, and turns it off)
+  const switched = switchedOn(plugin, prefs) && !waiting
   const mock = useMemo(() => mockStore(store), [store])
   const live = useMemo(mockLive, [])
   const blocked = (plugin.requires ?? []).filter((r) => !isEnabled(r, disabled))
@@ -282,11 +307,11 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
       {waiting ? <Approval plugin={plugin} /> : !plugin.alwaysOn && (
         <div className="mb-5 flex min-h-11 items-center gap-3 rounded-[10px] bg-muted px-3.5 py-2" data-plugin-switch>
           <span className="min-w-0 flex-1">
-            <span className="block text-[15px]">{on && !blocked.length ? "On" : "Off"}</span>
+            <span className="block text-[15px]">{switched && !blocked.length ? "On" : "Off"}</span>
             {/* (removing it is Uninstall, below: off is only a switch) */}
             <span className="block text-[13px] leading-[18px] text-muted-foreground">Off keeps its files and settings: turn it on again any time.</span>
           </span>
-          <Switch on={on && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
+          <Switch on={switched && !blocked.length} onChange={toggle} label={`${plugin.name} plugin`} disabled={!!blocked.length} />
         </div>
       )}
       {/* A plugin its owner writes here: its edits may run without asking each time (never one installed from elsewhere). */}
@@ -322,15 +347,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
           </List>
         </Section>
       )}
-      {!!plugin.problems?.length && (
-        <Section title="Problems" className="mb-5">
-          <div className="space-y-2" data-plugin-problems>
-            {plugin.problems.map((p, i) => (
-              <p key={i} className="rounded-[10px] bg-muted px-3.5 py-2.5 font-mono text-[12px] leading-[18px] break-words whitespace-pre-wrap text-[var(--red)]">{p}</p>
-            ))}
-          </div>
-        </Section>
-      )}
+      {!!plugin.problems?.length && <Problems plugin={plugin} />}
       {/* A vault plugin's blocks without a declaration or a text side (core/rules.ts blockProblems): it runs anyway. */}
       {!!plugin.warnings?.length && (
         <Section title="To fix" className="mb-5">
@@ -341,7 +358,7 @@ export function PluginPreview({ store, plugin: given }: { store: Store; plugin: 
           </div>
         </Section>
       )}
-      {plugin.tier === "vault" && !on ? (
+      {plugin.tier === "vault" && !on ? !switched && (
         <p className="px-1 text-[15px] text-muted-foreground">
           A vault plugin runs code on the machine that serves this app, so nothing of it runs, not even its preview, until you turn it on.
           Turn on only plugins you trust.

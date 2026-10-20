@@ -7,6 +7,7 @@ import "./index.css"
 import { ContextMenus, menuBelow } from "@/components/ContextMenu"
 import { phoneApp, type PhoneDownload, type Server } from "@/core/phoneapp"
 import { cn } from "@/lib/utils"
+import { plainText } from "../../core/plainerror.ts"
 
 // Light or dark like the system (the vaults' own settings are theirs).
 const dark = matchMedia("(prefers-color-scheme: dark)")
@@ -110,7 +111,7 @@ function Phone() {
     if (r.ok) {
       // (opened, this page is gone; still here a while later, its load failed: the buttons come back)
       setTimeout(() => { setOpening(null); setError({ url, text: "It answered, but its page didn't load" }) }, 15_000)
-      return phoneApp!.open({ url }).catch((e: Error) => { setOpening(null); setError({ url, text: e.message }) })
+      return phoneApp!.open({ url }).catch((e: Error) => { setOpening(null); setError({ url, text: plainText(e) }) })
     }
     setOpening(null)
     setError({ url, text: r.error || "It didn't answer" })

@@ -6,9 +6,9 @@ import { safeToReload } from "@/core/unsaved"
 
 export type AppError = {
   t: number
-  /** How it was heard: uncaught, rejection, boundary (one block or view failed), stopped (it unmounted the app), boot
-   *  (before the app started), stale (a file of the app didn't load: reloaded once the server answered). */
-  kind: "uncaught" | "rejection" | "boundary" | "stopped" | "boot" | "stale"
+  /** uncaught, rejection, boundary (a block or view failed), stopped (the app unmounted), boot (before it started), stale
+   *  (an old build's file: reloaded), shown (told in plain words: notifyError), plugin (a vault plugin couldn't start). */
+  kind: "uncaught" | "rejection" | "boundary" | "stopped" | "boot" | "stale" | "shown" | "plugin"
   message: string
   stack?: string
   /** React's component stack (a boundary's error, one that stopped the app). */

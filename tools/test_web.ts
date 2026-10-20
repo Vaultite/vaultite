@@ -1295,5 +1295,22 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("styles: no :has() on the whole page (:root, html, body)", !pagewide.length, pagewide)
 }
 
+{
+  const { plainError } = await import("../core/plainerror.ts")
+  const said = (e: unknown) => plainError(e).reason
+  const http = (status: number, message: string) => Object.assign(new Error(message), { status })
+  check("errors: an exception's text is never the reason, and is a bug kept in Errors",
+    [new TypeError("Class extends value undefined is not a constructor or null"), new Error("Cannot read properties of undefined (reading 'x')"),
+      http(500, "x.map is not a function"), http(400, "Cannot read properties of undefined (reading 'enabled')"), new Error("the server stopped (exit 1)\nat start (server.ts:3:1)"), "", null]
+      .every((e) => said(e) === null && plainError(e).bug))
+  check("errors: the details keep the exact text", plainError(new TypeError("Class extends value undefined")).detail.includes("TypeError: Class extends value undefined"))
+  check("errors: a system call's code and a lost connection read as what to do, not bugs",
+    said(new Error("EACCES: permission denied, open '/a/b'")) === "Vaultite isn't allowed to open it" && said(Object.assign(new Error("x"), { code: "ENOSPC" })) === "the disk is full" &&
+    said(new TypeError("Failed to fetch")) === "the server didn't answer" && !plainError(new TypeError("Load failed")).bug)
+  check("errors: the server's refusals and the app's own messages are shown as written",
+    said(http(409, "A file called Plan already exists.")) === "A file called Plan already exists" && said(http(400, "path: a vault file, like {folder}/{name}.md")) !== null && said(new Error("That isn't a web address")) === "That isn't a web address" &&
+    said("Error invoking remote method 'setup:create': Error: The vault needs a name") === "The vault needs a name")
+}
+
 fs.rmSync(tmp, { recursive: true, force: true })
 process.exit(summary("web", t0))

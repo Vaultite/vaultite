@@ -6,7 +6,7 @@ import {
   ArrowRight, ArrowUpRight, ClipboardPaste, Copy, CopyPlus, FilePlus2, FileText, Globe, Group as GroupIcon, Magnet, Maximize, Minus, MoveRight,
   Palette, Pencil, Plus, Redo2, Scan, Scissors, StickyNote, Trash2, Type, Undo2, Ungroup,
 } from "lucide-react"
-import { choose, cn, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
+import { choose, cn, plainError, createFile, useCommandKeys, dropHighlightEmoji, fileMenu, isDesktop, menuBelow, newNoteFolder, openFile, openMenu, pastedFiles, pluginSettings, saveAttachments, useDropTarget, type FormatCtx, type MenuItem } from "@vaultite"
 import { colorOf, newId, parseCanvas, PRESET_NAMES, type CanvasDoc, type CanvasEdge, type CanvasNode, type Side, writeCanvas } from "./codec"
 import { align, copyText, directionOf, duplicate, insert, nameFromText, pastedCanvas, remove, reverse, setDirection, slice, ungroup, withContents, type Align, type Direction } from "./edit"
 import { anchor, bounds, fitView, GRID, nearestSide, overlaps, placeFrom, resizeBox, snapMove, within, zoomAbout, type Box, type Dir, type Guide, type Pt, type View } from "./geometry"
@@ -48,7 +48,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const zoomLabel = useRef<HTMLSpanElement>(null)
   const fitKeys = useCommandKeys("canvas:fit", true), zoom100Keys = useCommandKeys("canvas:zoom-100", true)
   const [doc, setDoc] = useState<CanvasDoc>(() => { try { return parseCanvas(text) } catch { return { nodes: [], edges: [] } } })
-  const [error, setError] = useState<string | null>(() => { try { parseCanvas(text); return null } catch (e) { return (e as Error).message } })
+  const [error, setError] = useState<string | null>(() => { try { parseCanvas(text); return null } catch (e) { return plainError(e).reason ?? "" } })
   const docRef = useRef(doc)
   docRef.current = doc
   const last = useRef(text)
@@ -87,7 +87,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
       setError(null)
       setSel((s) => new Set([...s].filter((id) => next.nodes.some((n) => n.id === id))))
       if (embed) fitted.current = false
-    } catch (e) { setError((e as Error).message) }
+    } catch (e) { setError(plainError(e).reason ?? "") }
   }, [text, embed])
 
   const flush = useRef<() => void>(() => {})
@@ -860,7 +860,7 @@ export default function Board({ store, text, editable, onChange, place, path }: 
   const byId = useMemo(() => new Map(doc.nodes.map((n) => [n.id, n])), [doc.nodes])
   const one = sel.size === 1 ? doc.nodes.find((n) => sel.has(n.id)) : undefined
 
-  if (error && !doc.nodes.length) return <p className="p-4 text-[15px] text-muted-foreground">This canvas couldn't be read: {error}. Source mode shows its text.</p>
+  if (error !== null && !doc.nodes.length) return <p className="p-4 text-[15px] text-muted-foreground">This canvas couldn't be read{error ? `: ${error}` : ""}. Source mode shows its text.</p>
 
   const far = !!win?.far
   const shown = (n: CanvasNode) => !win || overlaps(n, win) || sel.has(n.id) || editing?.id === n.id

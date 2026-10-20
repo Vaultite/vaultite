@@ -871,7 +871,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
     {leftover && <Banner tone="warn" actions={[["Restore them", () => restoreUnsaved(leftover)], ["Discard", () => discardUnsaved(leftover)]]}>
       Edits from {fmtAgo(leftover.t)} weren't saved before the app closed.</Banner>}
     {strict && badJson && <Banner tone="warn">Invalid JSON (saved as it is): {badJson}</Banner>}
-    {status.kind === "error" && <Banner tone="warn" actions={[["Try again", () => save(true)]]}>Couldn't save: {status.message}</Banner>}
+    {status.kind === "error" && <Banner tone="warn" actions={[["Try again", () => save(true)]]}>Couldn't save{status.message ? `: ${status.message}` : ""}</Banner>}
     {!!problems.length && <Banner tone="info">
       {problems.length === 1 ? problems[0] : `${problems.length} things in this file couldn't be read: ${problems.slice(0, 3).join("; ")}`}</Banner>}
   </>

@@ -93,7 +93,7 @@ export function SearchPalette({ store, onClose }: { store: Store; onClose: () =>
   }
 
   return (
-    <Palette label="Search" placeholder="Find or create a note…" query={q} setQuery={setQ} items={hits} onClose={onClose}
+    <Palette label="Search" placeholder="Find or create a note…" query={q} setQuery={setQ} items={hits} onClose={onClose} look={fileIcons}
       onEnd={more ? () => setLimit((n) => n + PAGE) : undefined}
       onPick={(h, { mod, shift }) => (shift || !h ? create(mod) : go(h, mod))}
       heading={!q.trim() ? "Recent files and pages" : node && !plain ? explain(node) : undefined}

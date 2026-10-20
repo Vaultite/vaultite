@@ -9,13 +9,21 @@ function trackViewport() {
   const vv = visualViewport
   if (!vv) return () => {}
   const st = document.documentElement.style
-  const put = () => { st.setProperty("--vvh", `${vv.height}px`); st.setProperty("--vvtop", `${vv.offsetTop}px`) }
+  // Set only while the visual viewport differs (overlays fall back to 100dvh and 0): a custom property changed on the
+  // root restyles every element, which was most of what opening the palette cost on a desktop.
+  let set = false
+  const put = () => {
+    const differs = Math.abs(vv.height - innerHeight) > 1 || Math.abs(vv.offsetTop) > 1
+    if (differs) { st.setProperty("--vvh", `${vv.height}px`); st.setProperty("--vvtop", `${vv.offsetTop}px`) }
+    else if (set) { st.removeProperty("--vvh"); st.removeProperty("--vvtop") }
+    set = differs
+  }
   put()
   vv.addEventListener("resize", put)
   vv.addEventListener("scroll", put)
   return () => {
     vv.removeEventListener("resize", put); vv.removeEventListener("scroll", put)
-    st.removeProperty("--vvh"); st.removeProperty("--vvtop")
+    if (set) { st.removeProperty("--vvh"); st.removeProperty("--vvtop") }
   }
 }
 

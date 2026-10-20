@@ -7,6 +7,7 @@ import { api } from "@/core/http"
 import { revealLabel } from "@/core/platform"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
+import { plainText } from "../../../core/plainerror.ts"
 
 export type KnownVault = { path: string; name: string; open?: boolean
   /** The playground (desktop; the sandbox in code): made up, made afresh each time it opens. */
@@ -59,13 +60,12 @@ export function VaultManager({ backend, wide }: { backend: VaultBackend
   const [parent, setParent] = useState("")
   const [busy, setBusy] = useState(false)
   const [home, setHome] = useState<string | undefined>()
-  const load = () => backend.list().then((l) => { setList(l); if (l.home) setHome(l.home) }, (e) => setError(String(e.message ?? e)))
+  const load = () => backend.list().then((l) => { setList(l); if (l.home) setHome(l.home) }, (e) => setError(plainText(e)))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { load() }, [])
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setError("")
-    // (without Electron's "Error invoking remote method '…':")
-    try { await fn(); await load() } catch (e) { setError(String((e as Error).message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")) } finally { setBusy(false) }
+    try { await fn(); await load() } catch (e) { setError(plainText(e)) } finally { setBusy(false) }
   }
   const openFolder = async () => {
     if (!backend.pick) return setStep("browse-open")
@@ -207,7 +207,7 @@ function FolderBrowser({ backend, label, onPick, onCancel, onHome }: { backend: 
   onPick: (path: string) => void; onCancel: () => void; onHome: (home: string) => void }) {
   const [at, setAt] = useState<FolderList | null>(null)
   const [error, setError] = useState("")
-  const go = (p?: string) => backend.folders!(p).then((l) => { setAt(l); onHome(l.home); setError("") }, (e) => setError(String(e.message ?? e)))
+  const go = (p?: string) => backend.folders!(p).then((l) => { setAt(l); onHome(l.home); setError("") }, (e) => setError(plainText(e)))
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { go() }, [])
   return (

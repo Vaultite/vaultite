@@ -152,8 +152,8 @@ function taken() {
 }
 
 /** Never lose a recording: offer it as a download. */
-const keep = (why: unknown, blob: Blob, file: File) => notify(`Couldn't save the recording: ${String((why as Error)?.message ?? why)}`, {
-  kind: "error", duration: Infinity,
+const keep = (why: unknown, blob: Blob, file: File) => notifyError(why, "Couldn't save the recording", {
+  duration: Infinity,
   action: { label: "Download", run: () => { const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = file.name; a.click() } },
 })
 

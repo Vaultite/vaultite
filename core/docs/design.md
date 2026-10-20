@@ -28,7 +28,7 @@ Right-click any block (hold a finger on it on a phone) for where its data comes 
 
 Every block shows the same states, drawn by the app: "Loading…" while its data comes (shimmering, after a moment so a fast load just appears; a list draws skeleton rows instead, as many as it had last time, so nothing jumps when the data comes), a line in its place if it can't be drawn (the rest of the page stays), and, outside a dashboard, a line saying its plugin is off (a dashboard being read leaves it out).
 
-Toasts are the one thing the app draws outside pages: a short line at the bottom of the window that goes away by itself, with one button at most ("Moved to Notes · Undo"; an error has a red icon). A plugin shows one with `notify(text)`, an agent with `vau notify "text"`.
+Toasts are the one thing the app draws outside pages: a short line at the bottom of the window that goes away by itself, with one button at most ("Moved to Notes · Undo"; an error has a red icon). A plugin shows one with `notify(text)`, an agent with `vau notify "text"`. An error says what failed in plain words, never a program's text: `notifyError(e, "Couldn't rename it")` adds the reason a person can act on ("the disk is full"), or, for a bug, Details, which opens Errors where its exact text is kept.
 
 ## Markdown
 

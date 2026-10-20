@@ -21,6 +21,7 @@ import { usePane } from "@/core/pane"
 import { cn } from "@/lib/utils"
 import { excerpt, explain, highlighter, isPlain, marksOf, parse, type Node } from "../../../core/searchquery.ts"
 import { pluginSettings } from "@/core/pluginSettings"
+import { errorText } from "@/core/notify"
 
 type Match = { line: number; text: string; ctx?: true }
 type Result = { path: string; title: string; context: string; mtime: number; matches?: Match[]; count?: number }
@@ -138,7 +139,7 @@ export function SearchPage({ store, query, setQuery }: { store: Store; query: st
           setFound(f); setFailed(""); setBusy(false)
           if (open.length) setWhole(Object.fromEntries(lines))
         })
-        .catch((e) => { if (on) { setFound({ results: [], files: 0, lines: 0 }); setFailed(e instanceof Error ? e.message : String(e)); setBusy(false) } })
+        .catch((e) => { if (on) { setFound({ results: [], files: 0, lines: 0 }); setFailed(errorText(e)); setBusy(false) } })
     }, 200)
     return () => { on = false; clearTimeout(t) }
   }, [params, wholeOf, store])

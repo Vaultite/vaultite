@@ -1,7 +1,7 @@
 // A ```genui fence: its program run in the sandbox, what it draws shown with the app's components, and its values
 // (the key picked, a box ticked) kept in the fence's {@state} line, so the note opens as it was left, on any device.
 import { useEffect, useMemo, useRef, useState } from "react"
-import { askAbout, copyText, Markdown, notify, onLook, openWebLink, type BlockCtx } from "@vaultite"
+import { askAbout, copyText, Markdown, notify, onLook, openWebLink, type BlockCtx, errorText } from "@vaultite"
 import { dilText, parse, savedData, savedState, stateNames, withState } from "./dil"
 import { sandboxDoc, type FromSandbox, type Tree } from "./sandbox"
 import { Drawn, type Host } from "./parts"
@@ -72,7 +72,7 @@ export function GenUiFence(ctx: BlockCtx) {
       const d = e.data as FromSandbox
       if (d.type === "ready") { ready.current = true; run.current() }
       else if (d.type === "tree" && Array.isArray(d.tree)) { setTree(d.tree); setError(null) }
-      else if (d.type === "error") setError(String(d.message))
+      else if (d.type === "error") setError(errorText(String(d.message), "This live answer couldn't run"))
       else if (d.type === "state" && d.state && typeof d.state === "object") {
         current.current = d.state
         clearTimeout(timer.current)
@@ -87,7 +87,7 @@ export function GenUiFence(ctx: BlockCtx) {
     <div ref={box} className="genui-block" data-genui>
       <iframe ref={frame} srcDoc={sandboxDoc()} sandbox="allow-scripts" aria-hidden tabIndex={-1} title="" className="hidden" />
       {tree ? <Drawn tree={tree} host={host} /> : error ? <Fallback source={source} from={ctx.path} /> : <div className="min-h-24" />}
-      {error && <p className="mt-2 text-[13px] text-muted-foreground">This live answer couldn't run: {error}</p>}
+      {error && <p className="mt-2 text-[13px] text-muted-foreground">{error}</p>}
     </div>
   )
 }

@@ -70,7 +70,8 @@ writeTints()
 // The vault's plugins arrive after the app's (and change while it runs): whatever reads the plugin list in a hook or
 // caches what it got (commands, panels, agents) follows this counter.
 const pluginsChanged = signal()
-const signature = (ps: Plugin[]) => ps.map((p) => `${p.id}@${p.version ?? ""}:${(p.problems ?? []).join()}`).join("\n")
+// (its meta too: one waiting to be allowed again changes only that, and usePlugins hands out the same list until this moves)
+const signature = (ps: Plugin[]) => ps.map((p) => `${p.id}@${p.version ?? ""}:${(p.problems ?? []).join()}:${JSON.stringify(p.meta ?? null)}`).join("\n")
 
 const bump = pluginsChanged.notify
 let vaultIn = false
@@ -305,9 +306,13 @@ function ordered(order: string[]) {
   return [...PLUGINS].sort((a, b) => ids.indexOf(a.id) - ids.indexOf(b.id))
 }
 
+// The same list until the plugins or their order change: a new one each render made what keys a memo on it (the
+// command palette's rows) redo its work every time it drew.
+let orderedFor: { v: number; order: string[]; list: Plugin[] } | null = null
 export function usePlugins() {
-  usePluginsVersion()
-  return ordered(usePrefs().order)
+  const v = usePluginsVersion(), { order } = usePrefs()
+  if (orderedFor?.v !== v || orderedFor.order !== order) orderedFor = { v, order, list: ordered(order) }
+  return orderedFor.list
 }
 
 /** The enabled plugins, in order. */

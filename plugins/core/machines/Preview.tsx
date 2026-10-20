@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 import { Wrench } from "lucide-react"
-import { get, machinePath, fmtAgo, dateText, Markdown, Loading, Empty, Bar } from "@vaultite"
+import { get, machinePath, fmtAgo, dateText, Markdown, Loading, Empty, Bar, errorText } from "@vaultite"
 
 type Contents = { path: string; text?: string; base64?: string; truncated: boolean; size: number; mtime?: number | null }
 type Obj = Record<string, unknown>
@@ -32,7 +32,7 @@ export function FilePreview({ id, path, tick }: { id: string; path: string; tick
     const read = (max?: number) => get<Contents>(machinePath(id, `fs/read?path=${encodeURIComponent(path)}${max ? `&max=${max}` : ""}`))
     // An image cut at the 1 MB preview is unreadable: ask once more for up to 8 MB.
     read().then((d) => d.truncated && isImage(path) && d.base64 !== undefined ? read(BIG) : d)
-      .then((d) => { if (on) setFile(d) }, (e) => { if (on) setError(e.message) })
+      .then((d) => { if (on) setFile(d) }, (e) => { if (on) setError(errorText(e)) })
     return () => { on = false }
   }, [id, path, tick])
   const name = path.slice(path.lastIndexOf("/") + 1)

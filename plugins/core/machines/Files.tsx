@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react"
 import { ArrowUp, Eye, EyeOff, File, Folder, PenLine, RefreshCw, Server } from "lucide-react"
-import { fmtAgo, get, post, machinePath, notify, notifyError, op, Panel, Loading, Empty, Bar, FilterField, Segmented, useKeptCount, useMachines, type ViewCtx } from "@vaultite"
+import { fmtAgo, get, post, machinePath, notify, notifyError, op, Panel, Loading, Empty, Bar, FilterField, Segmented, useKeptCount, useMachines, type ViewCtx, errorText } from "@vaultite"
 import { FilePreview, fmtSize } from "./Preview"
 
 type Entry = { name: string; dir: boolean; link: boolean; size: number | null; mtime?: number | null }
@@ -35,7 +35,7 @@ export function MachineFiles({ arg, setArg }: ViewCtx) {
   useEffect(() => {
     let on = true
     setBusy(true); setError("")
-    get<Listing>(machinePath(id, `fs/list?path=${encodeURIComponent(folder)}`)).then((d) => { if (on) setData(d) }, (e) => { if (on) setError(e.message) }).finally(() => { if (on) setBusy(false) })
+    get<Listing>(machinePath(id, `fs/list?path=${encodeURIComponent(folder)}`)).then((d) => { if (on) setData(d) }, (e) => { if (on) setError(errorText(e)) }).finally(() => { if (on) setBusy(false) })
     return () => { on = false }
   }, [id, folder, tick, online])
   useEffect(() => setFilter(""), [id, folder])

@@ -90,17 +90,24 @@ export default async ($: VaultTest) => {
   lh = await vplugin()
   check("vault plugins: loaded and built", lh.on && lh.loaded && typeof lh.bundle === "string" && !lh.problems.length, lh)
   check("vault plugins: an app id clash stays refused even when on", !(await vplugin("people")).loaded && app.plugins.filter((p) => p.id === "people").length === 1)
-  let [bcode, bundle] = await api("GET", `plugins/lighthouse/${lh.bundle}/bundle.js`)
+  const [bcode, entry] = await api("GET", `plugins/lighthouse/${lh.bundle}/bundle.js`)
+  // (it preloads CodeMirror: bundle.js imports its module only then, a static import would run first)
+  const [, main] = await api("GET", `plugins/lighthouse/${lh.bundle}/main.js`)
+  const shared = [...String(main).matchAll(/from\s*["']\.\/([\w-]+\.js)["']/g)].map((m) => m[1]) // (its code, in a chunk its import() shares)
+  let bundle = String(main)
+  for (const f of shared) bundle += (await api("GET", `plugins/lighthouse/${lh.bundle}/${f}`))[1]
+  check("vault plugins: its module is imported after what it preloads, never statically", typeof entry === "string" && shared.length > 0 &&
+    !/\bfrom\s*["']/.test(entry.split("\n").slice(1).join("\n")) /* (after its styles' line) */ && /preload\(\["@codemirror\/view"\]\);\nconst m = await import\("\.\/main\.js"\)/.test(entry), [entry.slice(-300), String(main).slice(0, 200)])
   check("vault plugins: its bundle is one module sharing the app's React and API", bcode === 200 && bundle.includes("__vaultite.modules[`react/jsx-runtime`]")
     && bundle.includes("__vaultite.modules[`@vaultite`]") && !bundle.includes("useState=") && bundle.includes("Lighting the lamp"), bundle.slice(0, 300))
   const chunk = /import\(["`']\.\/(logbook-[\w-]+\.js)["`']\)/.exec(bundle)?.[1]
   check("vault plugins: what it imports when needed is a chunk of its own, beside its bundle", !!chunk && !bundle.includes("calm seas") &&
     (await api("GET", `plugins/lighthouse/${lh.bundle}/${chunk}`))[1]?.includes?.("calm seas") && (await api("GET", `plugins/lighthouse/0/${chunk}`))[0] === 404, bundle.slice(-300))
-  check("vault plugins: CodeMirror is the app's, loaded with it, not bundled", bundle.includes('preload(["@codemirror/view"])')
+  check("vault plugins: CodeMirror is the app's, loaded with it, not bundled", entry.includes('preload(["@codemirror/view"])')
     && bundle.includes("__vaultite.modules[`@codemirror/view`]") && !bundle.includes("cm-scroller"), bundle.slice(0, 300))
-  check("vault plugins: with its Tailwind classes, under the app's", bundle.includes("@layer plugins") && bundle.includes("tracking-\\\\[0\\\\.0625em\\\\]"), bundle.slice(0, 400))
-  check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(bundle) &&
-    !/@layer plugin-variants[^]*md\\\\:hidden/.test(bundle), bundle.slice(0, 600))
+  check("vault plugins: with its Tailwind classes, under the app's", entry.includes("@layer plugins") && entry.includes("tracking-\\\\[0\\\\.0625em\\\\]"), bundle.slice(0, 400))
+  check("vault plugins: its variants the app hasn't over the app's classes, the app's own under them", /@layer plugin-variants[^]*md\\\\:tracking-/.test(entry) &&
+    !/@layer plugin-variants[^]*md\\\\:hidden/.test(entry), bundle.slice(0, 600))
   check("vault plugins: its docs join the topics", (await api("GET", "docs"))[1].some((t: Any) => t.id === "lighthouse"))
   check("vault plugins: allowed and on, it writes its page, pinned", read("Dashboards/Lighthouse.md").includes("block-lighthouse")
     && vault.config("pages").pinned.includes("Dashboards/Lighthouse.md"))

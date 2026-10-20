@@ -10,6 +10,7 @@ import { formatFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { EmbedHead, rawUrl, useFill } from "@/components/FileViewers"
 import { cn } from "@/lib/utils"
+import { errorText } from "@/core/notify"
 
 /** Where a drawn file goes: in a tab on desktop, the rest of the pane's height; on phones (a tab or the sheet), most of
  *  the screen, clear of the tab bar. */
@@ -55,7 +56,7 @@ export function FormatEmbed({ store, path, height, fill, sub, from }: { store: S
 
 /** A drawing that fails (a file it can't read) says so instead of breaking the page. */
 export const FormatGuard = ({ children }: { children: ReactNode }) => (
-  <Catch fallback={(e) => <p className="p-4 text-[15px] text-muted-foreground">This file couldn't be drawn: {String((e as Error)?.message ?? e)}. Source mode shows its text.</p>}>
+  <Catch fallback={(e) => <p className="p-4 text-[15px] text-muted-foreground">{errorText(e, "This file couldn't be drawn")} Source mode shows its text.</p>}>
     {children}
   </Catch>
 )

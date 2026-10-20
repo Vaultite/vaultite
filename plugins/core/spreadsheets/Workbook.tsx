@@ -2,7 +2,7 @@
 // in its own app. Embedded, the grid's first rows only.
 import { useEffect, useMemo, useState } from "react"
 import * as XLSX from "xlsx"
-import { cn, FilterField, Loading, numberText } from "@vaultite"
+import { cn, FilterField, Loading, numberText, errorText } from "@vaultite"
 
 /** Rows drawn until the user asks for all of them (and in an embed, ever). */
 const PAGE = 500, EMBED_ROWS = 60
@@ -43,14 +43,14 @@ export default function Workbook({ url, embed, sheet: only }: { url: string; emb
     setError(null)
     fetch(url).then((r) => (r.ok ? r.arrayBuffer() : Promise.reject(new Error(r.statusText))))
       .then((buf) => { if (on) setBook(XLSX.read(buf, { type: "array", dense: true, cellDates: true })) })
-      .catch((e) => { if (on) setError(String(e?.message ?? e)) })
+      .catch((e) => { if (on) setError(errorText(e, "This workbook couldn't be read")) })
     return () => { on = false }
   }, [url])
   const sheets = useMemo<Sheet[]>(() => !book ? [] : book.SheetNames
     .filter((_, i) => !book.Workbook?.Sheets?.[i]?.Hidden)
     .map((name) => ({ name, ws: book.Sheets[name] })), [book])
   const [pick, setPick] = useState(0)
-  if (error) return <p className="p-4 text-[15px] text-muted-foreground">This workbook couldn't be read: {error}.</p>
+  if (error) return <p className="p-4 text-[15px] text-muted-foreground">{error}</p>
   if (!book) return <Loading />
   const at = only ? Math.max(0, sheets.findIndex((s) => s.name.toLowerCase() === only.toLowerCase())) : Math.min(pick, sheets.length - 1)
   const sheet = sheets[at]

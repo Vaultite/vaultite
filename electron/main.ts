@@ -1,7 +1,7 @@
 // Vaultite as a Mac app (Electron): each vault a window with its own server.ts child; electron/CLAUDE.md says how.
 // Env: VAULTITE_USER_DATA, _DEBUG_PORT, _LOCAL, _QUIET, _UPDATE_URL, _SETUP_HOME (tests); `--vault <path>` opens one.
 import { app, autoUpdater, type BaseWindow, BrowserWindow, clipboard, dialog, ipcMain, Menu, nativeImage, nativeTheme, Notification, shell, systemPreferences, type IpcMainInvokeEvent, type Rectangle, type WebContents } from "electron"
-import { execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
+import { execFile, execFileSync, fork, spawn, type ChildProcess } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
@@ -10,6 +10,7 @@ import { revive, webHandlers, webWindow } from "./web.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
+import { plainError, sentence } from "../core/plainerror.ts"
 import * as Setup from "./setup.ts"
 import type { AppUpdater } from "electron-updater"
 
@@ -71,6 +72,22 @@ function uncaught(kind: "uncaught" | "rejection", e: unknown) {
     for (const w of wins.values()) void fetch(`http://127.0.0.1:${w.port}/api/errors`, { method: "POST", headers: { "Content-Type": "application/json" }, body }).catch(() => {})
   } catch { /* before the windows exist */ }
 }
+const told = new WeakSet<object>()
+/** A failure told in a box: what happened in plain words (core/plainerror.ts), `why` when the error has none to give;
+ *  the exact text behind Copy details, and a log when there is one. */
+function failedBox(title: string, e: unknown, o: { win?: BrowserWindow; why?: string; log?: string } = {}) {
+  // (once: openVault tells its own and rethrows to its caller)
+  if (typeof e === "object" && e) { if (told.has(e)) return; told.add(e) }
+  const { reason, detail } = plainError(e)
+  const box = { type: "warning" as const, message: title, detail: reason ? sentence(reason) : o.why ?? "Something went wrong.",
+    buttons: ["OK", "Copy details", ...(o.log ? ["Show log"] : [])], defaultId: 0, cancelId: 0 }
+  console.error(`vaultite: ${title}:`, detail)
+  void (o.win && !o.win.isDestroyed() ? dialog.showMessageBox(o.win, box) : dialog.showMessageBox(box)).then((r) => {
+    if (r.response === 1) clipboard.writeText(`${title}\n${detail}`)
+    if (r.response === 2 && o.log) void shell.openPath(o.log)
+  })
+}
+const serverLog = (p: string) => path.join(app.getPath("logs"), `server-${nameOf(p)}.log`)
 process.on("uncaughtException", (e) => uncaught("uncaught", e))
 process.on("unhandledRejection", (e) => uncaught("rejection", e))
 const LOCAL = process.env.VAULTITE_LOCAL || (app.isPackaged ? path.join(app.getPath("userData"), "local") : path.join(ROOT, "data"))
@@ -198,7 +215,7 @@ function serverFor(v: Known) {
 function startServer(v: Known, port: number): Promise<ChildProcess> {
   const logDir = app.getPath("logs")
   fs.mkdirSync(logDir, { recursive: true })
-  const log = fs.createWriteStream(path.join(logDir, `server-${nameOf(v.path)}.log`), { flags: "a" })
+  const log = fs.createWriteStream(serverLog(v.path), { flags: "a" })
   const child = fork(path.join(ROOT, "server.ts"), [], {
     cwd: ROOT, stdio: ["ignore", "pipe", "pipe", "ipc"],
     env: {
@@ -286,7 +303,7 @@ async function openVault(p: string, file?: string) {
     [server, port] = await starting
   } catch (e) {
     win.destroy()
-    dialog.showErrorBox(`Couldn't open ${nameOf(p)}`, String((e as Error).message ?? e))
+    failedBox(`Couldn't open ${nameOf(p)}`, e, { why: "Its server didn't start.", log: serverLog(p) })
     throw e
   }
   const w: Win = { vault: v, win, server, port, ready: false, queue: file ? [file] : [] }
@@ -330,7 +347,9 @@ async function openVault(p: string, file?: string) {
       restarts = restarts.filter((t) => now - t < 60_000)
       const fail = (why: string) => {
         if (win.isDestroyed()) return
-        dialog.showErrorBox(`Couldn't ${now - since < 10_000 && !restarts.length ? "open" : "keep running"} ${nameOf(p)}`, why)
+        const starting = now - since < 10_000 && !restarts.length
+        failedBox(`Couldn't ${starting ? "open" : "keep running"} ${nameOf(p)}`, new Error(why),
+          { why: starting ? "Its server stopped as it started." : "Its server stopped three times in a minute.", log: serverLog(p) })
         win.close()
       }
       if (now - since < 10_000 || restarts.length >= 3) return fail(`the server stopped (exit ${code})\n${said}`)
@@ -705,7 +724,7 @@ function copyIn(w: Win, paths: string[], folder: string, move: boolean) {
       } else fs.cpSync(src, dst, { recursive: true, errorOnExist: true, force: false })
       made.push([...parts, name].join("/"))
     } catch (e) {
-      failed.push(`${path.basename(src)}: ${(e as Error).message ?? e}`)
+      failed.push(`${path.basename(src)}: ${plainError(e).reason ?? "it couldn't be copied"}`)
     }
   }
   if (failed.length && !made.length) throw new Error(failed[0])
@@ -1164,7 +1183,7 @@ async function checkRelease(byHand: boolean) {
     }
     else if (byHand) dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${app.getVersion()}, the newest ${BUILD?.channel === "nightly" ? "nightly" : "release"}.` })
   } catch (e) {
-    if (byHand && !quitting) updateFailed(String((e as Error).message ?? e).split("\n")[0].slice(0, 200).replace(/\.?$/, "."))
+    if (byHand && !quitting) updateFailed(sentence(plainError(e).reason ?? "something went wrong while getting it"))
   } finally {
     fetching = false
     setStatus(null)
@@ -1226,7 +1245,7 @@ function buildMenu() {
       ? { label: "Restart to update", click: restartToUpdate }
       : { label: checking || fetching ? "Checking for updates…" : "Check for updates…", enabled: !checking && !fetching, click: () => checkForUpdate(true) }) : null,
     vaults: [...recent.map((v) => ({ label: nameOf(v.path), sublabel: v.path, type: "checkbox" as const, checked: wins.has(v.path),
-      click: () => openVault(v.path).catch((e) => dialog.showErrorBox(`Couldn't open ${nameOf(v.path)}`, String(e.message ?? e))) })),
+      click: () => openVault(v.path).catch((e) => failedBox(`Couldn't open ${nameOf(v.path)}`, e)) })),
       ...remotes.map((r) => ({ label: r.name, sublabel: r.url, type: "checkbox" as const, checked: remoteWins.has(r.url), click: () => openRemote(r.url) }))],
     manageVaults: showManager,
     setup: showSetup,
@@ -1360,7 +1379,7 @@ app.on("second-instance", (_e, argv, cwd) => {
   const files = MAC ? [] : argFiles(argv, cwd)
   if (i > 0 && argv[i + 1]) {
     const p = path.resolve(cwd, argv[i + 1])
-    void madeIfAsked(p).then(async (go) => { if (go) await openVault(p) }).catch((e) => dialog.showErrorBox("Couldn't open the vault", String(e.message ?? e)))
+    void madeIfAsked(p).then(async (go) => { if (go) await openVault(p) }).catch((e) => failedBox("Couldn't open the vault", e))
   }
   else if (files.length) void openFiles(files, null)
   else {
@@ -1380,7 +1399,53 @@ app.on("window-all-closed", () => {
 })
 app.on("activate", () => { if (!wins.size && !manager && !setupWin && !remoteWins.size) showManager() })
 
+/** Opened from its disk image (or Downloads): offer to move into Applications, as Finder's drag would. True: it moved,
+ *  and relaunches from there. The relaunched app ejects the image it came from. */
+async function offerMove(): Promise<boolean> {
+  const moved = path.join(app.getPath("userData"), "moved-from-dmg")
+  if (fs.existsSync(moved)) {
+    fs.rmSync(moved, { force: true })
+    ejectImages()
+  }
+  const never = path.join(app.getPath("userData"), "never-move")
+  if (!MAC || !RELEASE || app.isInApplicationsFolder() || fs.existsSync(never)) return false
+  const r = await dialog.showMessageBox({ message: `Move ${app.getName()} to Applications?`,
+    detail: "It runs from there, so it's still there after you eject the disk image, and it can update itself.",
+    buttons: ["Move to Applications", "Not now"], defaultId: 0, cancelId: 1, checkboxLabel: "Don't ask again" })
+  if (r.response !== 0) {
+    if (r.checkboxChecked) fs.writeFileSync(never, "")
+    return false
+  }
+  fs.mkdirSync(app.getPath("userData"), { recursive: true })
+  fs.writeFileSync(moved, "")
+  try {
+    if (app.moveToApplicationsFolder({ conflictHandler: () => true })) return true
+    fs.rmSync(moved, { force: true })
+    return false
+  } catch (e) {
+    fs.rmSync(moved, { force: true })
+    void dialog.showMessageBox({ type: "warning", message: `Couldn't move ${app.getName()} to Applications`, detail: String((e as Error).message) })
+    return false
+  }
+}
+
+/** The disk images still holding a copy of this app (the one it was moved out of), ejected. */
+function ejectImages() {
+  try {
+    const info = JSON.parse(execFileSync("/bin/sh", ["-c", "hdiutil info -plist | plutil -convert json -o - -"], { encoding: "utf8", timeout: 10_000 }))
+    for (const image of info.images ?? []) {
+      for (const e of image["system-entities"] ?? []) {
+        const at = e["mount-point"]
+        if (at && fs.existsSync(path.join(at, `${app.getName()}.app`))) execFile("hdiutil", ["detach", "-quiet", at], () => {})
+      }
+    }
+  } catch (e) {
+    console.error("eject:", e)
+  }
+}
+
 app.whenReady().then(async () => {
+  if (await offerMove()) return
   if (fs.existsSync(DOCK_ICON()) || !app.isPackaged) applyDockIcon()
   app.setAboutPanelOptions({ applicationName: app.getName(), applicationVersion: app.getVersion() })
   if (DEV) app.dock?.setBadge("dev")

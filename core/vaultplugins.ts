@@ -22,10 +22,10 @@ export const DIR = ".vaultite/plugins"
 const CACHE = path.join(LOCAL, "cache", "plugins")
 const CSS = path.join(ROOT, "web", "src", "index.css") // the app's Tailwind setup: a plugin's classes compile against it
 // Part of every plugin's version: a new way of building (bump it), or a new app stylesheet, builds bundles again.
-const BUILD = "4:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8)
+const BUILD = "5:" + crypto.createHash("sha256").update(readText(CSS)).digest("hex").slice(0, 8)
 // What its code bundles against: the app's packages. A new stylesheet alone only redoes its styles (an update that
 // bundled Excalidraw again took seconds off the app's start).
-const CODE = "5:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
+const CODE = "6:" + crypto.createHash("sha256").update(JSON.stringify(JSON.parse(readText(path.join(ROOT, "package.json"))).dependencies ?? {})).digest("hex").slice(0, 8)
 
 export type VaultPlugin = {
   id: string; dir: string; manifest: Item
@@ -219,7 +219,8 @@ async function bundle(vp: VaultPlugin) {
     }],
   })
   try {
-    const out = await build.generate({ format: "esm", minify: true, entryFileNames: "bundle.js", chunkFileNames: "[name]-[hash].js" })
+    // (with modules to preload, the module is a chunk that bundle.js imports after them: withStyles)
+    const out = await build.generate({ format: "esm", minify: true, entryFileNames: preload.size ? MAIN : "bundle.js", chunkFileNames: "[name]-[hash].js" })
     const chunks: Record<string, string> = {}
     let entry = ""
     for (const o of out.output) if (o.type === "chunk") { if (o.isEntry) entry = o.code; else chunks[o.fileName] = o.code }
@@ -230,11 +231,17 @@ async function bundle(vp: VaultPlugin) {
 }
 type Code = Awaited<ReturnType<typeof bundle>>
 
+const MAIN = "main.js" // (not a chunk's name: theirs have a hash)
+
 /** The bundle as the app loads it: its code with its styles (its Tailwind classes, compiled against the app's). */
 async function withStyles(vp: VaultPlugin, c: Code) {
   const css = c.sheets.join("\n") + await styles(fs.realpathSync(vp.dir), new Set(c.used))
-  return { code: `globalThis.__vaultite.style(${JSON.stringify(vp.id)}, ${JSON.stringify(css)});\n` +
-    `await globalThis.__vaultite.preload(${JSON.stringify(c.preload)});\n${c.entry}`, chunks: c.chunks }
+  const style = `globalThis.__vaultite.style(${JSON.stringify(vp.id)}, ${JSON.stringify(css)});\n`
+  if (!c.preload.length) return { code: style + c.entry, chunks: c.chunks }
+  // Imported only once they're there: a static import (a chunk the module shares with its import()s) runs before
+  // any line of bundle.js, so a class extending one of them would find it undefined.
+  return { code: style + `await globalThis.__vaultite.preload(${JSON.stringify(c.preload)});\n` +
+    `const m = await import("./${MAIN}");\nexport default m.default;\nexport const { icon, __exports } = m;\n`, chunks: { ...c.chunks, [MAIN]: c.entry } }
 }
 
 // --- the folder

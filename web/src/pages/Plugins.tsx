@@ -100,19 +100,15 @@ export function PluginRow({ p: own, on: ownOn, blocked: ownBlocked, files, origi
           {/* (the mark only where it tells something: installed, and from Vaultite) */}
           {sourceOf(p) === "installed" && certified(p) && <Certified className="pointer-events-auto ml-1" />}
           {by && <span className="pointer-events-auto ml-1.5 text-[13px] font-normal text-muted-foreground md:text-[12px]" data-plugin-by={own.id} data-plugin-source={sourceOf(p)} data-tip={by.tip}>{by.text}</span>}
-          {/* Something it needs is off: that's underlined, dashed (no extra line, so nothing shifts). */}
-          {p.requires && (
-            <span className="font-normal text-muted-foreground">
-              {" · "}
-              {/* Tap to find what it needs in the list. */}
-              <button type="button" onClick={(e) => { e.stopPropagation(); reveal(blocked[0] ?? p.requires![0]) }}
-                className={cn("pointer-events-auto cursor-pointer hover:text-foreground", !!blocked.length && "dashed-under")}
-                data-tip={blocked.length ? `Turn on ${names(blocked)} to use this` : `Show ${names(p.requires)}`}>needs {names(p.requires)}</button>
-            </span>
+          {/* Only when something it needs is off (what it needs, on, tells nothing): tap to find it in the list. */}
+          {!!blocked.length && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); reveal(blocked[0]) }} data-plugin-needs={own.id}
+              className="pointer-events-auto ml-1.5 cursor-pointer text-[13px] font-normal text-muted-foreground dashed-under hover:text-foreground md:text-[12px]"
+              data-tip={`Turn on ${names(blocked)} to use this`}>needs {names(blocked)}</button>
           )}
         </div>
         {/* A vault plugin that can't run says why (the sheet has the rest). */}
-        {problem ? <div className={cn(line, "text-[var(--red)]")}>{problem.split("\n")[0].replace(`${p.folder}/`, "")}</div>
+        {problem ? <div className={cn(line, "text-[var(--red)]")}>Couldn't start</div>
           // On in the vault, but this machine hasn't allowed it (as it is now): the sheet shows what changed and Allow.
           : waiting ? <div className={cn(line, "text-muted-foreground")} data-plugin-waiting={p.id}>
             {p.meta!.approval!.state === "changed" ? "Changed: waiting for you to allow it again" : "Waiting for you to allow it on this machine"}</div>

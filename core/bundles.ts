@@ -53,7 +53,7 @@ export type Host = {
    *  with `pages: false` (a restore: they were on before). */
   syncPlugins: (opts?: { pages?: boolean }) => Promise<unknown>
   /** Write the pages of the plugins that are on that the pages folder has no file for (core/pages.ts). */
-  writePages?: (opts?: { pin?: boolean }) => string[]
+  writePages?: (opts?: { pin?: boolean; only?: string[] }) => string[]
   /** Allow vault plugins to run on this machine as their files are now (core/trust.ts), when this machine's owner asked. */
   allow?: (ids: string[]) => Promise<void>
   /** Install a vault plugin from its source (plugin.install, off), and uninstall one (plugin.uninstall). */

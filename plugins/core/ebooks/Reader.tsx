@@ -2,7 +2,7 @@
 // so every page is cleaned first (`safe`: no scripts, frames, handlers or javascript: links; a blocking CSP).
 import { useEffect, useRef, useState } from "react"
 import { ChevronLeft, ChevronRight, List } from "lucide-react"
-import { Bar, cn, Loading, menuBelow, openWebLink } from "@vaultite"
+import { Bar, cn, Loading, menuBelow, openWebLink, errorText } from "@vaultite"
 
 type TocItem = { label: string; href: string; subitems?: TocItem[] }
 type Book = { metadata?: { title?: unknown; author?: unknown }; toc?: TocItem[]; dir?: string
@@ -211,10 +211,10 @@ function Card({ url, path }: { url: string; path: string }) {
       const blob = await book.getCover?.().catch(() => null)
       cover = blob ? URL.createObjectURL(blob) : null
       if (on) setInfo({ title: named(book.metadata?.title) || path.split("/").pop()!.replace(/\.[^.]+$/, ""), author: named(book.metadata?.author), cover })
-    })().catch((e) => { if (on) setError(String(e?.message ?? e)) })
+    })().catch((e) => { if (on) setError(errorText(e, "This book couldn't be opened")) })
     return () => { on = false; if (cover) URL.revokeObjectURL(cover) }
   }, [url, path])
-  if (error) return <p className="p-3 text-[15px] text-muted-foreground">This book couldn't be opened: {error}.</p>
+  if (error) return <p className="p-3 text-[15px] text-muted-foreground">{error}</p>
   if (!info) return (
     <div className="loading-in flex items-center gap-4 p-3" aria-busy>
       <div className="skeleton h-28 w-20 shrink-0" />

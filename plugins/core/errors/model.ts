@@ -9,8 +9,8 @@ export type ErrorEvent = {
   id: string
   t: number
   source: Source
-  /** The app: uncaught, rejection, boundary, stopped, boot, stale (web/src/core/errors.ts). The server: error (logged),
-   *  fatal (it ended the server). */
+  /** The app: uncaught, rejection, boundary, stopped, boot, stale, shown, plugin (web/src/core/errors.ts). The server:
+   *  error (logged), fatal (it ended the server). */
   kind: string
   message: string
   stack?: string

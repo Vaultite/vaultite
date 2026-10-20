@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="660" height="400" viewBox="0 0 660 400">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fbfbfa"/><stop offset="1" stop-color="#eff1ef"/></linearGradient>
+  </defs>
+  <rect width="660" height="400" fill="url(#bg)"/>
+  <g fill="none" stroke="#1ead9d" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M276 180 H 380"/>
+    <path d="M368 168 L 382 180 L 368 192"/>
+  </g>
+  <text x="330" y="338" text-anchor="middle" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="13" fill="#7d8482">Drag Vaultite into Applications</text>
+</svg>

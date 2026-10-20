@@ -2,7 +2,7 @@
   "id": "companion",
   "icon": "mouse-pointer-2",
   "category": "agents",
-  "offByDefault": true,
+  "essential": true,
   "name": "Companion",
   "description": "A coding agent that stays with you in the app: its cursor follows what you write, and it answers in bubbles, comments on lines (threads in the sidebar), suggests changes you take with Tab, or writes with you. Write @claude in a note to ask it something, or @ and a new name to start another. One always-on session of Claude Code or Codex, in a terminal on this machine.",
   "runsOnServer": true,

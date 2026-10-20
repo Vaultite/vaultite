@@ -1,6 +1,6 @@
 // The overlay the quick switcher (⌘O) and command palette (⌘P) share: arrows or ⌃N/⌃P move, Enter
 // picks (⌘ or ⇧ when the caller says), Esc closes.
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
+import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { X } from "lucide-react"
 import { keyCaps, keyHint } from "@/core/commands"
 import { isMac } from "@/core/platform"
@@ -30,13 +30,30 @@ export function Keys({ keys }: { keys: string }) {
   return (
     <span className="hidden shrink-0 gap-1 md:flex">
       {keyCaps(keys).map((k, i) => (
-        <kbd key={i} className="grid h-[22px] min-w-[22px] place-items-center rounded-[5px] border-[0.5px] border-border bg-foreground/[0.06] px-1.5 font-sans text-[12px] leading-none text-muted-foreground">{k}</kbd>
+        <kbd key={i} className="grid h-[22px] min-w-[22px] place-items-center rounded-[5px] border-[0.5px] border-border bg-foreground/[0.06] px-1.5 font-keys text-[12px] leading-none text-muted-foreground">{k}</kbd>
       ))}
     </span>
   )
 }
 
-export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect }: {
+type Pointer = { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }
+type RowProps<T> = {
+  id: string; item: T; i: number; selected: boolean; look: unknown; draw: (item: T, selected: boolean) => ReactNode
+  onHover: (i: number) => void; onPick: (i: number, e: Pointer) => void
+}
+/** A row, redrawn only when its item, place, selection or `look` changes (a pointer move redrew hundreds), so it
+ *  draws from its item alone. Off screen it isn't laid out: a font picker's row loads its font once scrolled to. */
+const PaletteRow = memo(function PaletteRow({ id, item, i, selected, draw, onHover, onPick }: RowProps<unknown>) {
+  return (
+    <button id={`palette-${id}`} data-i={i} type="button" role="option" aria-selected={selected} tabIndex={-1}
+      onMouseMove={() => onHover(i)} onClick={(e) => onPick(i, e)}
+      className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left [contain-intrinsic-size:auto_37px] [content-visibility:auto]", selected && "bg-foreground/[0.07]")}>
+      {draw(item, selected)}
+    </button>
+  )
+}, (a, b) => a.id === b.id && a.i === b.i && a.selected === b.selected && a.look === b.look && a.item === b.item) as <T>(p: RowProps<T>) => ReactNode
+
+export function Palette<T extends { id: string }>({ label, placeholder, query, setQuery, items, row, onPick, onClose, hints, heading, section, empty, start = 0, onEnd, onSelect, look }: {
   label: string; placeholder: string
   query: string; setQuery: (q: string) => void
   items: T[]
@@ -57,6 +74,8 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   start?: number
   /** The list was scrolled (or arrowed) near its end: the caller lists more, if it has them. */
   onEnd?: () => void
+  /** What rows are drawn with besides their item (a setting): a change redraws them. */
+  look?: unknown
 }) {
   // Closed, the keyboard goes back where it was (or to what it opened).
   useHeldFocus()
@@ -82,8 +101,12 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   useEffect(() => onSelect?.(selected), [selected?.id])
   const end = useRef<HTMLDivElement>(null)
   useNearEnd(end, () => onEnd?.(), items.length, "200px")
-  const pick = (i: number, e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean }) =>
-    onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })
+  const pick = (i: number, e: Pointer) => onPick(items[i] ?? null, { mod: e.metaKey || e.ctrlKey, shift: e.shiftKey })
+  // The rows' handlers stay the same (so a row's memo holds), calling the latest.
+  const picks = useRef(pick)
+  useLayoutEffect(() => { picks.current = pick })
+  const [rowPick] = useState(() => (i: number, e: Pointer) => picks.current(i, e))
+  const [rowHover] = useState(() => (i: number) => setSel(i))
   const onKey = (e: KeyboardEvent) => {
     // ⌃J/⌃K (Vim's) move too, and on a Mac ⌃N/⌃P (Emacs'); elsewhere those are the app's Mod+N and Mod+P.
     if (e.key === "ArrowDown" || (e.ctrlKey && (e.key === "j" || (isMac && e.key === "n")))) { e.preventDefault(); setSel((s) => Math.min(s + 1, items.length - 1)) }
@@ -126,11 +149,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
             {section && section(it) && section(it) !== (i ? section(items[i - 1]) : undefined) && (
               <div role="presentation" className="px-3 pt-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{section(it)}</div>
             )}
-            <button id={`palette-${it.id}`} data-i={i} type="button" role="option" aria-selected={i === sel} tabIndex={-1}
-              onMouseMove={() => sel !== i && setSel(i)} onClick={(e) => pick(i, e)}
-              className={cn("flex w-full cursor-pointer items-center gap-3 rounded-[8px] px-3 py-2 text-left", i === sel && "bg-foreground/[0.07]")}>
-              {row(it, i === sel)}
-            </button>
+            <PaletteRow id={it.id} item={it} i={i} selected={i === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
             </Fragment>
           ))}
           {onEnd && <div ref={end} aria-hidden className="h-px" />}
@@ -138,7 +157,7 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
         <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t-[0.5px] border-border px-5 py-2.5 text-[13px] text-muted-foreground md:flex">
           {hints.map(([k, what]) => (
             <span key={k} className="whitespace-nowrap">
-              <span className="font-semibold text-foreground/80">{k.split(" ").map(keyHint).join("")}</span> {what}
+              <span className="font-keys font-semibold text-foreground/80">{k.split(" ").map(keyHint).join("")}</span> {what}
             </span>
           ))}
         </div>

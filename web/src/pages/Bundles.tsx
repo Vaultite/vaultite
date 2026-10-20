@@ -15,7 +15,7 @@ import {
 } from "@/core/bundles"
 import { copyText } from "@/core/richmd"
 import { closeDetail, openDetail, replaceDetail } from "@/core/nav"
-import { notify, notifyError } from "@/core/notify"
+import { errorText, notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
 import { PLUGINS, pluginById, switchedOn, tintOfPlugin, usePlugins } from "@/core/plugins"
 import { currentWorkspace } from "@/core/scope"
@@ -462,7 +462,7 @@ export function BundlePreview({ id }: { id: string }) {
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [offAdded, setOffAdded] = useState(false)
-  useEffect(() => { previewOf(id).then((x) => setP(x as Preview), (e) => setError(String(e?.message ?? e))) }, [id])
+  useEffect(() => { previewOf(id).then((x) => setP(x as Preview), (e) => setError(errorText(e))) }, [id])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
@@ -499,7 +499,7 @@ export function IncomingBundle({ id }: { id: string }) {
   const [busy, setBusy] = useState(false)
   const [offAdded, setOffAdded] = useState(false)
   const l = useBundles()
-  useEffect(() => { if (source) incomingOf(source).then(setInc, (e) => setError(String(e?.message ?? e))) }, [source])
+  useEffect(() => { if (source) incomingOf(source).then(setInc, (e) => setError(errorText(e))) }, [source])
   if (!source) return <ImportBundle />
   const repo = typeof source === "string" && !source.trim().startsWith("{") && !source.includes("\n") ? source.trim() : null
   if (error) return (
@@ -746,7 +746,7 @@ export function ShareBundle({ id }: { id: string }) {
   const [text, setText] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   useEffect(() => {
-    shareOf(id).then((p) => { setParts(p); setOn(Object.fromEntries(p.items.map((x) => [x.path, x.on]))) }, (e) => setError(String(e?.message ?? e)))
+    shareOf(id).then((p) => { setParts(p); setOn(Object.fromEntries(p.items.map((x) => [x.path, x.on]))) }, (e) => setError(errorText(e)))
   }, [id])
   // (made before a button is pressed: Safari copies only in the press itself)
   useEffect(() => {
@@ -754,7 +754,7 @@ export function ShareBundle({ id }: { id: string }) {
     let live = true
     setText(null)
     const include = parts.items.filter((x) => !x.on && on[x.path]).map((x) => x.path), leave = parts.items.filter((x) => x.on && !on[x.path]).map((x) => x.path)
-    bundleText(b, { include, leave }).then((t) => { if (live) setText(t) }, (e) => { if (live) setError(String(e?.message ?? e)) })
+    bundleText(b, { include, leave }).then((t) => { if (live) setText(t) }, (e) => { if (live) setError(errorText(e)) })
     return () => { live = false }
   }, [parts, on, b?.id]) // eslint-disable-line react-hooks/exhaustive-deps
   if (error) return <SheetHead icon={Share} tint="var(--muted-foreground)" kicker="Share" title="Can't share this bundle" sub={error} />

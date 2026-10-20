@@ -358,7 +358,7 @@ export class App {
       vaultPlugins: () => this.vaultPlugins.list(),
       call: (method, route, body) => this.apiAs(method, route, body, this.who(), { http }),
       syncPlugins: (opts) => this.syncPlugins(opts),
-      writePages: (opts) => pages.writePages(this.vault, this.plugins, enabled(this.vault, this.plugins), opts),
+      writePages: (opts) => pages.writePages(this.vault, this.plugins, [...enabled(this.vault, this.plugins)].filter((id) => !opts?.only || opts.only.includes(id)), opts),
       allow: async (ids) => {
         if (http && await this.ownerWhy(http, "allowing vault plugins")) return
         for (const id of ids) {

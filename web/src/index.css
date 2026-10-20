@@ -244,6 +244,9 @@
 
 /* Metrics use SF Pro Rounded, like Health and Fitness. */
 .num { font-family: var(--font-rounded); font-variant-numeric: tabular-nums; }
+/* Key symbols: macOS's system font has no ↵, and finding a font that does stalled the palette's first open by ~100 ms;
+   Lucida Grande is the one it found, named so it isn't looked for. */
+.font-keys { font-family: var(--font-sans), 'Lucida Grande'; }
 /* 0.5px hairlines on retina, like UIKit separators. Drawn as a background, not a border: a rounded row's border bends
    at its corners, while this stays a straight line (its ends inside the corners clipped, like an inset separator). */
 .hairline > * + * {

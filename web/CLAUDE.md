@@ -13,7 +13,10 @@
 - One sheet system: every detail view is `components/DetailSheet.tsx` via `openDetail(path)`; no other modals, sheets
   or bottom sheets. An unsaved form asks before closing (`useSheetGuard`).
 - The app draws its own dialogs, tooltips and menus, never the browser's (`alert`, `confirm`, `prompt`, `title=`,
-  context menu). Feedback: `notify()` / `notifyError()`, one line, one action at most, nothing on autosave. What can be
+  context menu). Feedback: `notify()` / `notifyError()`, one line, one action at most, nothing on autosave.
+- An error never shows its exception's text (`e.message`, `String(e)`): `notifyError(e, "Couldn't …")` or
+  `errorText(e, …)` say what failed and the reason a person can act on (`core/plainerror.ts`); a bug's text goes to
+  Errors, behind Details or `ErrorDetails`. What can be
   undone acts and offers Undo; only the irreversible asks (`confirmDialog()`).
 - Tooltips (`data-tip`) say only what can't be seen: an icon's name, a cut-off label, what a row shows as colour.
 - Menus: `menuFor` / `menuBelow`. A held finger is the right-click (`watchHolds`), so a menu is always an

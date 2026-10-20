@@ -181,7 +181,7 @@ export function GraphView({ arg }: { arg: string }) {
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-background" data-graph-view={arg || "vault"}>
-      {error ? <p className="p-6 text-[15px] text-muted-foreground">The graph couldn't be read: {error}</p>
+      {error ? <p className="p-6 text-[15px] text-muted-foreground">{error}</p>
         : !shown ? <Loading /> : (
           <Suspense fallback={<Loading />}>
             <GraphCanvas graph={shown} colorOf={colorOf} edgeColor={links.edgeColor} arrows={!!settings.arrows} look={lookOf(settings)} focus={arg || undefined} search={asked} onOpen={openNode} scope={arg ? "local" : "view"} refit={refit} />

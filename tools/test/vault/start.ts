@@ -26,8 +26,11 @@ export default async ($: VaultTest) => {
     const fp = conf(fresh, "pages")
     check("new vault, starter content chosen: Start here, the only pin", JSON.stringify(fp?.pinned) === '["Start here.md"]'
       && fs.readFileSync(path.join(fresh, "Start here.md"), "utf8").includes("claude"), [fp, fs.readdirSync(fresh)])
-    check("new vault, starter content chosen: its plugins' pages (Errors, Claude), not pinned", fs.existsSync(path.join(fresh, "Dashboards/Errors.md")) &&
+    check("new vault, starter content chosen: the agent's page (Claude), not pinned, not the others' (Errors)", !fs.existsSync(path.join(fresh, "Dashboards/Errors.md")) &&
       fs.existsSync(path.join(fresh, "Dashboards/Claude.md")) && !fs.existsSync(path.join(fresh, "Dashboards/People.md")), fs.readdirSync(path.join(fresh, "Dashboards")))
+    const how = fs.readFileSync(path.join(fresh, "How this vault works.md"), "utf8")
+    check("new vault, starter content chosen: How this vault works, linked from Start here", how.includes("\\text{notes a year}") && how.includes("```mermaid") &&
+      fs.readFileSync(path.join(fresh, "Start here.md"), "utf8").includes("[[How this vault works]]"), how.slice(0, 400))
     await freshApp.vault.sync()
     check("new vault, starter content chosen: agents started in it find its rules", fs.existsSync(path.join(fresh, "CLAUDE.md")) && /\.vaultite\/AGENTS\.md/.test(fs.readFileSync(path.join(fresh, "CLAUDE.md"), "utf8")), fs.readdirSync(fresh))
     check("new vault: nothing to restore, nothing offered", !fs.existsSync(path.join(fresh, ".vaultite/bundles/previous.json")) && !fs.existsSync(path.join(fresh, ".vaultite/bundles/onboarding.json")))

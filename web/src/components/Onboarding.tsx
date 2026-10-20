@@ -4,6 +4,7 @@ import { useEffect, useState, type ReactNode } from "react"
 import { CircleAlert, FlaskConical, FolderOpen, FolderPlus, LoaderCircle, type LucideIcon } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
+import { plainText } from "../../../core/plainerror.ts"
 
 type Vau = { path: string | null; onPath: boolean; system: boolean; other: string | null }
 type Chosen = { path?: string; made?: boolean; added?: boolean } | null
@@ -26,7 +27,6 @@ const short = (p: string, home: string) => {
   return p === icloud || p.startsWith(icloud + "/") ? `iCloud Drive${p.slice(icloud.length)}` : p.startsWith(home + "/") ? `~${p.slice(home.length)}` : p
 }
 const base = (p: string) => p.split("/").filter(Boolean).pop() ?? p
-const message = (e: unknown) => String((e as Error)?.message ?? e).replace(/^Error invoking remote method '[^']+': (Error: )?/, "")
 
 export function Onboarding({ setup }: { setup: SetupApi }) {
   const [info, setInfo] = useState<Info | null>(null)
@@ -44,7 +44,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
       setParent(i.places.icloud ?? i.places.documents)
       // vau comes installed, like Obsidian's CLI: in ~/.local/bin, no password (what agents in the terminal use).
       if (!i.vau.path) setup.vau(false).catch((e) => console.error("vau:", e))
-    }, (e) => setError(message(e)))
+    }, (e) => setError(plainText(e)))
   }, [setup])
 
   if (!info) {
@@ -54,7 +54,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
   const ready = kind === "new" ? !!name.trim() && !!parent : !!folder
   const run = async (fn: () => Promise<unknown>) => {
     setBusy(true); setError("")
-    try { await fn() } catch (e) { setError(message(e)) } finally { setBusy(false) }
+    try { await fn() } catch (e) { setError(plainText(e)) } finally { setBusy(false) }
   }
   const go = () => run(async () => {
     await setup.choose(kind === "new" ? { kind, name: name.trim(), parent, starter } : { kind, path: folder })
@@ -73,8 +73,8 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
           <p className="text-muted-foreground">Your vault is a folder where you and your agents work together.</p>
         </div>
         <Options name="vault" value={kind} onChange={(v) => setKind(v as "new" | "open")} options={[
-          { value: "new", icon: FolderPlus, title: "New vault", sub: "An empty folder for your notes." },
-          { value: "open", icon: FolderOpen, title: "Open folder", sub: "Notes you already have, from any Markdown app." },
+          { value: "new", icon: FolderPlus, title: "New vault" },
+          { value: "open", icon: FolderOpen, title: "Open folder" },
         ]} />
         <div className="mt-4 min-h-0 flex-1 overflow-y-auto">
           {kind === "new" ? (
@@ -92,7 +92,7 @@ export function Onboarding({ setup }: { setup: SetupApi }) {
               <label className="flex items-start gap-3"><span className="w-16 shrink-0" />
                 <span className="flex flex-1 items-start gap-2">
                   <input type="checkbox" checked={starter} onChange={(e) => setStarter(e.target.checked)} data-starter className="mt-0.5 size-3.5 accent-[var(--primary)]" />
-                  <span>Start with example pages<span className="block text-muted-foreground">A Start here note, the plugins' pages (Agents, Activity...), and AGENTS.md and CLAUDE.md pointing agents at the vault's rules.</span></span>
+                  <span>Start with example notes</span>
                 </span>
               </label>
             </div>
@@ -141,7 +141,7 @@ function Chip({ on, children, onClick, ...p }: { on: boolean; children: ReactNod
 
 /** Cards to pick one of: radio buttons, so the arrows move between them. */
 function Options({ name, value, options, onChange }: { name: string; value: string; onChange: (v: string) => void
-  options: { value: string; icon: LucideIcon; title: string; sub: string }[] }) {
+  options: { value: string; icon: LucideIcon; title: string }[] }) {
   return (
     <div role="radiogroup" className="grid grid-cols-2 gap-2">
       {options.map((o) => (
@@ -152,7 +152,6 @@ function Options({ name, value, options, onChange }: { name: string; value: stri
           <span className="absolute top-3 right-3"><Dot on={value === o.value} /></span>
           <o.icon className="size-5 shrink-0" style={{ color: value === o.value ? "var(--primary)" : undefined }} strokeWidth={2} />
           <span className="font-medium">{o.title}</span>
-          <span className="text-[12px] leading-[16px] text-muted-foreground">{o.sub}</span>
         </label>
       ))}
     </div>

@@ -15,6 +15,7 @@ import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { Panel, ResetButton, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
+import { errorText } from "@/core/notify"
 
 
 /** A scheme's swatches drawn in its own colours (the tile carries its data-scheme, so its CSS gives the tokens), in the
@@ -244,7 +245,7 @@ function Snippets() {
     const n = name.trim()
     if (!n) return
     let out: { name: string; path: string }
-    try { out = await post("snippets", { name: n }) } catch (e) { return setError((e as Error).message) }
+    try { out = await post("snippets", { name: n }) } catch (e) { return setError(errorText(e)) }
     setName(""); setError("")
     await setPrefs({ snippets: [...getPrefs().snippets.filter((x) => x !== out.name), out.name] })
     openFile(out.path)

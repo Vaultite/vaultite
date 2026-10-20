@@ -108,17 +108,18 @@ const flusher = setInterval(() => {
 flusher.unref()
 plugin.onUnload(() => { clearInterval(flusher); for (const id of held.keys()) flushHeld(id); held.clear() })
 
-/** A new error: a toast, kept in the inbox, once per kind while the server runs; not for an older build's file (the
- *  app reloaded: nothing to do) or one that ended the server (nobody left to tell). */
+/** A new error: a toast saying only where (its text stays here), kept in the inbox, once per kind while the server runs;
+ *  not for an older build's file, one the user was already told of, or one that ended the server. */
+const TOLD = new Set(["stale", "shown", "plugin"])
 function tell(g: ErrorGroup) {
-  if (!settings().notify || g.kind === "stale" || g.latest.fatal && g.source === "server") return
-  const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Error in the app") : "Error in the server"
+  if (!settings().notify || TOLD.has(g.kind) || g.latest.fatal && g.source === "server") return
+  const where = g.source === "app" ? (g.kind === "stopped" ? "The app stopped" : "Something went wrong in the app") : "Something went wrong in the server"
   if (toldOf.has(where)) return
   toldOf.add(where)
   // After this turn: the error may have come from inside a write that holds the vault.
   setImmediate(() => {
     try {
-      void plugin.runOp("ui.notify", { text: `${where}: ${g.message.slice(0, 160)}`, error: true, actionOpen: "view:errors" }).catch(() => { /* no window, no inbox */ })
+      void plugin.runOp("ui.notify", { text: `${where}. It's kept in Errors`, error: true, actionOpen: "view:errors" }).catch(() => { /* no window, no inbox */ })
     } catch { /* unloaded meanwhile */ }
   })
 }
@@ -131,7 +132,7 @@ plugin.onServerError((e: ServerError) => {
 
 // ---------- the app's
 
-const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale"])
+const KINDS = new Set(["uncaught", "rejection", "boundary", "stopped", "boot", "stale", "shown", "plugin"])
 const str = (v: unknown, max: number) => (typeof v === "string" ? v.slice(0, max) : "")
 
 plugin.route("POST", "errors", (req) => {

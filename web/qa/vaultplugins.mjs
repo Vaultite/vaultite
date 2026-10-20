@@ -160,8 +160,11 @@ write(`${DIR}/index.tsx`, `import "@/core/data"\n${read(`${DIR}/index.tsx`)}`)
 check("a file breaking the rules unloads it", await until(async () => !(await listed())?.loaded, 8000))
 check("and the server says why", ((await listed())?.problems ?? []).some((p) => p.includes("@/core/data")), (await listed())?.problems)
 await page.goto(`${B}#plugins`)
-check("the Plugins page shows the reason", await until(async () => (await row.innerText()).includes("@/core/data"), 8000), await row.innerText().catch(() => ""))
+check("its row says it couldn't start", await until(async () => (await row.innerText()).includes("Couldn't start"), 8000), await row.innerText().catch(() => ""))
+await row.locator('[data-plugin-row="lighthouse"]').click()
+check("its sheet says why", await until(async () => (await page.locator("[data-plugin-problems]").innerText().catch(() => "")).includes("@/core/data"), 8000))
 await shot("problem")
+await page.keyboard.press("Escape")
 write(`${DIR}/index.tsx`, read(`${DIR}/index.tsx`).replace('import "@/core/data"\n', ""))
 check("fixed, it loads again", await until(async () => { const p = await listed(); return p?.loaded && p?.bundle }, 8000))
 
@@ -169,6 +172,27 @@ check("fixed, it loads again", await until(async () => { const p = await listed(
 write(`${DIR}/label.ts`, "export const label = (\n")
 check("a frontend that doesn't build says so", await until(async () => ((await listed())?.problems ?? []).some((p) => p.includes("index.tsx couldn't be built")), 8000), (await listed())?.problems)
 cpSync(`${FIXTURE}label.ts`, abs(`${DIR}/label.ts`))
+check("fixed, it builds again", await until(async () => { const p = await listed(); return p?.loaded && !p.problems.length }, 8000), (await listed())?.problems)
+
+// ---------- code that throws as it starts: said in plain words; what it threw behind Show details, and in Errors ----------
+write(`${DIR}/label.ts`, `${read(`${DIR}/label.ts`)}\nconst Base = (globalThis as { NoSuchBase?: new () => object }).NoSuchBase as new () => object\nexport const broken = new (class extends Base {})()\n`)
+check("its toast says it couldn't start, not what it threw", await until(async () => (await toast("Lighthouse couldn't start").count()) > 0, 12000) &&
+  (await page.getByText("Class extends value").count()) === 0)
+await page.goto("about:blank"); await page.goto(`${B}#plugins`)
+check("its row says it couldn't start", await until(async () => (await row.innerText()).includes("Couldn't start"), 8000), await row.innerText().catch(() => ""))
+await row.locator('[data-plugin-row="lighthouse"]').click()
+const problems = page.locator("[data-plugin-problems]")
+check("its sheet says it couldn't start and hides what it threw; its switch says it's on (to turn it off)",
+  await until(async () => (await problems.innerText().catch(() => "")).includes("Lighthouse couldn't start"), 8000) &&
+  !(await problems.innerText()).includes("Class extends") && await page.locator("[data-plugin-switch] [role=switch]").getAttribute("aria-checked") === "true",
+  await problems.innerText().catch(() => ""))
+await problems.getByRole("button", { name: "Show details" }).click()
+check("Show details shows what it threw", (await problems.innerText()).includes("Class extends value"), await problems.innerText())
+await shot("threw")
+check("and Errors keeps it", await until(async () => ((await api("errors?source=app"))[1].groups ?? []).some((g) => g.kind === "plugin" && /Lighthouse: Class extends/.test(g.message)), 8000))
+await page.keyboard.press("Escape")
+cpSync(`${FIXTURE}label.ts`, abs(`${DIR}/label.ts`))
+check("fixed, it starts again", await until(async () => (await row.innerText()).includes("Couldn't start") === false, 12000), await row.innerText().catch(() => ""))
 
 // ---------- turned off ----------
 await page.goto(`${B}#plugins`)

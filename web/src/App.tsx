@@ -523,7 +523,7 @@ export default function App() {
         <div id="main-scroll" className="overflow-x-clip">
           {store && <PhoneHeader title={tabInfo(activeTab()).label} tab={activeTab()} />}
           <main className="pb-safe mx-auto max-w-5xl px-4 pt-[calc(env(safe-area-inset-top)+3.5rem)]">
-            {error && !store && <p className="mt-10 text-muted-foreground">Couldn't reach the server: {error}</p>}
+            {error && !store && <p className="mt-10 text-muted-foreground">{error}</p>}
             {!error && !store && <VaultLoading />}
             {store && <Guard what="This tab" size="tab" reset={tab} close={() => closeTab(activeTab().id)}>
               {isFileTab && <FileView key={filePath} store={store} path={filePath} pane />}

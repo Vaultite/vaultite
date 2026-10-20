@@ -89,7 +89,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const plugins = usePlugins()
   const { disabled } = usePrefs()
   const [q, setQ] = useState("")
-  const [sel, setSel] = useState<Row | null>(null)
+  // (only whether it's a setting: the hints change with it, and keeping the row itself redrew every row each move)
+  const [setting, setSetting] = useState(false)
   const switched = useSwitches()
   const rows = useMemo((): Row[] => {
     // Named as they are now ("Hide left sidebar"), found by either name.
@@ -107,7 +108,6 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
     return [...found, ...pluginRows(plugins, disabled, q.trim())]
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [all, q, plugins, disabled, switched])
-  const setting = !!sel && isSetting(sel)
 
   return (
     <Palette label="Command palette" placeholder="Select a command…" query={q} setQuery={setQ} items={rows} onClose={onClose}
@@ -117,7 +117,7 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         onClose()
         setTimeout(() => (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)), 0)
       }}
-      onSelect={setSel}
+      onSelect={(c) => setSetting(!!c && isSetting(c))}
       section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : undefined)}
       empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No command matches "{q.trim()}".</p>}
       hints={setting

@@ -374,16 +374,11 @@ function Directory({ query, filters = GET_NONE, showInstalled, onListed, compact
       ) : !shown.length ? (
         <p className="py-6 text-center text-[15px] text-muted-foreground md:text-[13px]" data-browse-empty>{emptyText(query, found.plugins.length > 0, "No plugins in the directory yet.")}</p>
       ) : (
-        <>
-          <Panel className="py-0.5">
-            <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
-              {shown.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
-            </div>
-          </Panel>
-          <p className="mt-2 px-1 text-[13px] leading-[18px] text-muted-foreground md:text-[12px] md:leading-[16px]">
-            Plugins from GitHub run code on this machine: what each says it does is above, unchecked.
-          </p>
-        </>
+        <Panel className="py-0.5">
+          <div className="flex flex-col [&>*+*]:border-t-[0.5px] [&>*+*]:border-border">
+            {shown.map((e) => <EntryRow key={e.id} e={e} busy={busy === e.id} act={act} />)}
+          </div>
+        </Panel>
       )}
     </div>
   )
