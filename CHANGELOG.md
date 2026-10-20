@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.6.1 (2026-10-20)
+
+A first run that feels finished: the Mac app installs like one, errors say what happened in plain words, and the palette and font picker open faster.
+
 - The command palette, the quick switcher and the font picker open sooner and keep up with the pointer and the arrow
   keys: the font picker no longer loads every font before it shows.
 - The app built from source (`npm run app:build`, `app:install`) is Vaultite Main, an app of its own: a release
