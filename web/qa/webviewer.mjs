@@ -305,6 +305,9 @@ check("the window resized: still over its pane", await until(isAligned, 10000), 
 
 // ---------- navigating ----------
 const wcBefore = (await pages()).find((p) => p.visible)?.wc
+// (its pane focused, as a real click in the page does through the page's focus; a synthetic one in a window that isn't
+// focused doesn't, and the divider dragged above may have focused the other pane)
+await win.locator("section[data-group]:has([data-web-box]) [role=tab][aria-selected=true]").first().click(); await wait(300)
 await clickInPage("#next")
 check("a link in the page: the address and the tab follow", await until(async () => (await win.locator("[data-web-address]").inputValue()) === `${SITE}/two`
   && (await win.evaluate(() => decodeURIComponent(location.hash))).includes(`${SITE}/two`), 10000), await win.locator("[data-web-address]").inputValue())

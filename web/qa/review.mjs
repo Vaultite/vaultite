@@ -81,7 +81,8 @@ const card = (page, p) => page.locator(`[data-review-view] [data-review-file="${
   check("desktop: Undo brings it back", await until(async () => (await list()).some((f) => f.path === MAYA), 6000))
   // Revert: the text before is back.
   await until(async () => (await card(page, MAYA).count()) === 1)
-  if (!(await card(page, MAYA).locator("[data-review-revert]").count())) await card(page, MAYA).locator("button[aria-expanded]").click()
+  // (unfolded unless it's folded: its diff may still be loading, and a click would fold it)
+  if (await card(page, MAYA).locator("button[aria-expanded=false]").count()) await card(page, MAYA).locator("button[aria-expanded]").click()
   await card(page, MAYA).locator("[data-review-revert]").click()
   check("desktop: Revert writes the text before back", await until(() => text(MAYA)?.includes("Likes tea.\n") && !text(MAYA).includes("cello")), text(MAYA))
   // A new file: Archive.

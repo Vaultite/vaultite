@@ -29,7 +29,9 @@ rmSync(file(DIR), { recursive: true, force: true })
 await api("PUT", "file", { path: AI, text: "## Beds\n\n- Tomatoes along the fence\n- Basil between them\n" })
 await api("PUT", "file", { path: PLAIN, text: "---\ntags: [Books]\n---\n\nThe books Alice Park lent me.\n" }, { "X-Vaultite-Client": "app/desktop" })
 check("an agent's new note through the API is origin: ai", origin(AI) === "ai", text(AI))
-check("the app's stays unlabelled: no label is the user's", text(PLAIN) === "---\ntags: [Books]\n---\n\nThe books Alice Park lent me.\n", text(PLAIN))
+// (with Note dates' created and updated after its own keys)
+const plain = text(PLAIN)
+check("the app's stays unlabelled: no label is the user's", origin(PLAIN) === null && /^---\ntags: \[Books\]\n(.+\n)*---\n\nThe books Alice Park lent me\.\n$/.test(plain), plain)
 await plugins((c) => ({ enabled: (c.enabled ?? []).filter((x) => x !== "token-count") }))
 
 async function open(w, h, mobile = false) {
@@ -91,7 +93,7 @@ const choose = async (page, label) => { await page.locator("[role=menu] [role=me
   check("label_user on: the app's new note is labelled the first value (human)", origin(MINE) === "human", text(MINE))
   await go(page, PLAIN)
   await shown(page, PLAIN, "[data-chip=origin]").click(); await wait(200); await choose(page, "AI")
-  check("desktop: labelling keeps the other keys and the text", await until(() => text(PLAIN) === "---\ntags: [Books]\norigin: ai\n---\n\nThe books Alice Park lent me.\n"), text(PLAIN))
+  check("desktop: labelling keeps the other keys and the text", await until(() => text(PLAIN) === plain.replace("\n---\n\n", "\norigin: ai\n---\n\n")), text(PLAIN))
 
   // Asked of every kind of file, a person too.
   const person = (await api("GET", "state")).people?.[0]

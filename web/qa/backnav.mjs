@@ -5,7 +5,7 @@
 // timeline" on their profile. WRITES (timeline lines, tabs): throwaway server only.
 //   node web/qa/backnav.mjs <base url> <vault path> [out dir]
 import { mkdirSync, readFileSync } from "node:fs"
-import { BACK_KEY, qa, wait } from "./lib/qa.mjs"
+import { BACK_KEY, qa, until, wait } from "./lib/qa.mjs"
 import { pagePath, subjects } from "./subjects.mjs"
 const { args: [B, VAULT, OUT = "/tmp/backnav-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
@@ -54,7 +54,8 @@ const open = async (w, h, mobile = false) => {
   check("...and its Back can go somewhere", await back.isEnabled())
   await back.click(); await wait(800)
   check("Back closes it and shows People", (await active()) === "People" && !(await tabs()).some((t) => t.name === person.name), await tabs())
-  check("...where it was scrolled", (await scrollTop()) === y, { y, now: await scrollTop() })
+  // (restored as People draws again: up to 1.5 s on a loaded machine)
+  check("...where it was scrolled", !!(await until(async () => (await scrollTop()) === y, 4000)), { y, now: await scrollTop() })
   check("...and the address follows", await page.evaluate(() => location.hash) === `#file/${enc(PEOPLE)}`, await page.evaluate(() => location.hash))
   // Open already (left by switching tabs): the same.
   await row().click(); await wait(800)

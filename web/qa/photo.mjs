@@ -12,6 +12,8 @@ const json = { "Content-Type": "application/json" }
 const enc = encodeURIComponent
 const put = (path, text) => fetch(`${B}api/file`, { method: "PUT", headers: { ...json, "X-Vaultite-Client": "app/qa" }, body: JSON.stringify({ path, text }) })
 const read = async (path) => (await (await fetch(`${B}api/file?path=${enc(path)}`)).json()).text
+// (from the body on: Note dates' created and updated come first)
+const body = async (path) => (await read(path)).replace(/^---\n[\s\S]*?\n---\n\n?/, "")
 const others = async () => (await (await fetch(`${B}api/files`)).json()).others.map((o) => o.path)
 const del = (path) => fetch(`${B}api/file?path=${enc(path)}`, { method: "DELETE" })
 const DESK = "Qa photo/Desk.md", PHONE = "Qa photo/Phone.md"
@@ -49,7 +51,7 @@ await command(page, "Switch to live preview", 400) // (already in it: the view s
 await editLine(page, "Before.").click(); await page.keyboard.press("End"); await wait(150)
 const asked = await choose(page, () => addPhoto(page), [img("qa-photo-one.png")])
 check("Add photo (palette): an image picker, several at once", asked.accept === "image/*" && asked.multiple, asked)
-check("embedded at the cursor, on a line of its own", await until(async () => (await read(DESK)).startsWith("Before.\n![[qa-photo-one.png]]\n\nAfter."), 6000), await read(DESK))
+check("embedded at the cursor, on a line of its own", await until(async () => (await body(DESK)).startsWith("Before.\n![[qa-photo-one.png]]\n\nAfter."), 6000), await read(DESK))
 check("saved in Attachments/", (await others()).includes("Attachments/qa-photo-one.png"))
 check("the picker's input is gone once used", await until(async () => (await inputsLeft(page)) === 0, 6000))
 
@@ -59,7 +61,7 @@ await choose(page, async () => {
   await page.getByRole("menuitem", { name: "Insert" }).click(); await wait(200)
   await page.getByRole("menuitem", { name: "Photo" }).click()
 }, [img("image.jpg", "image/jpeg")])
-const named = await until(async () => /After\.\n!\[\[(Pasted image \d{14}\.jpg)\]\]\n/.exec(await read(DESK)), 6000)
+const named = await until(async () => /After\.\n!\[\[(Pasted image \d{14}\.jpg)\]\]\n/.exec(await body(DESK)), 6000)
 check("Insert ▸ Photo: the camera's image.jpg is named Pasted image <YYYYMMDDHHmmss>.jpg", !!named, await read(DESK))
 if (named) check("  and saved under that name", (await others()).includes(`Attachments/${named[1]}`))
 await page.screenshot({ path: `${OUT}photo-desktop.png` })
@@ -69,7 +71,7 @@ await editLine(page, "Slash here:").click(); await page.keyboard.press("End"); a
 await page.keyboard.type("/photo"); await wait(500)
 check("/photo is in the slash menu", await page.locator(".cm-tooltip-autocomplete li", { hasText: "Photo" }).count() > 0)
 await choose(page, () => page.keyboard.press("Enter"), [img("qa-photo-a.png"), img("qa-photo-b.png")])
-check("/photo: two photos, one embed per line", await until(async () => (await read(DESK)).includes("Slash here:\n![[qa-photo-a.png]]\n![[qa-photo-b.png]]"), 6000), await read(DESK))
+check("/photo: two photos, one embed per line", await until(async () => (await body(DESK)).includes("Slash here:\n![[qa-photo-a.png]]\n![[qa-photo-b.png]]"), 6000), await read(DESK))
 
 const before = await read(DESK)
 await choose(page, () => addPhoto(page), [])
@@ -86,7 +88,7 @@ const top = await page.locator("[role=menu]").first().locator(":scope > [role=me
 check("phone: Add photo at the top of the note's … menu", top.some((t) => t.trim() === "Add photo"), top)
 await page.screenshot({ path: `${OUT}photo-phone-menu.png` })
 await choose(page, () => page.getByRole("menuitem", { name: "Add photo" }).click(), [img("image.jpg", "image/jpeg")])
-check("  reading: the photo goes at the note's end", await until(async () => /^A note read on a phone\.\n!\[\[Pasted image \d{14}[^\]]*\.jpg\]\]\n$/.test(await read(PHONE)), 6000), await read(PHONE))
+check("  reading: the photo goes at the note's end", await until(async () => /^A note read on a phone\.\n!\[\[Pasted image \d{14}[^\]]*\.jpg\]\]\n$/.test(await body(PHONE)), 6000), await read(PHONE))
 await wait(800)
 await page.screenshot({ path: `${OUT}photo-phone-note.png` })
 await page.context().close()

@@ -15,6 +15,8 @@ const { args: [B, VAULT, OUT = SHOTS], browser, check, watch, done } = await qa(
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 const has = (p) => existsSync(`${VAULT}/${p}`)
 const read = (p) => readFileSync(`${VAULT}/${p}`, "utf8")
+// (Note dates' created and updated in what the API makes: compare from the body on)
+const body = (p) => read(p).replace(/^---\n[\s\S]*?\n---\n\n?/, "")
 
 // A fresh "Qa menu" folder, a note to duplicate, history kept on every change.
 for (const p of ["Qa menu", "Notes/Qa dup.md", "Notes/Qa dup 1.md"]) await fetch(`${B}api/file?path=${encodeURIComponent(p)}`, { method: "DELETE" })
@@ -163,6 +165,7 @@ const origin = new URL(B).origin
   check("edited, the copy has its own id, the original keeps its", await until(() => { const [a, b] = ids(); return a === "note-qa-dup" && b && b !== a }, 8000), ids())
 
   // Delete: to the trash at once, Undo in a toast.
+  const alpha = read("Qa menu/Alpha.md")
   await row("Qa menu/Alpha.md").click({ button: "right" }); await wait(200)
   await menu.locator("button", { hasText: /^Delete$/ }).click(); await wait(800)
   check("delete: gone at once, no browser dialog", !has("Qa menu/Alpha.md") && !browserDialogs.length, browserDialogs)
@@ -173,7 +176,7 @@ const origin = new URL(B).origin
   check("the toast is at the bottom", tb.y > 900 - 120, tb)
   await shot("toast")
   await t.locator("[data-button]", { hasText: "Undo" }).click()
-  check("undo puts it back where it was", await until(async () => has("Qa menu/Alpha.md") && read("Qa menu/Alpha.md") === "Alpha text.\n"))
+  check("undo puts it back where it was", await until(async () => has("Qa menu/Alpha.md") && read("Qa menu/Alpha.md") === alpha))
 
   // Delete permanently (in the trash): the app's dialog. Escape cancels, the button confirms.
   await row("Qa menu/Alpha.md").click({ button: "right" }); await wait(200)
@@ -222,7 +225,7 @@ const origin = new URL(B).origin
   check("the diff: the version's lines added, the file's removed", adds.some((l) => l.includes("First line")) && dels.some((l) => l.includes("Rewritten by a bad edit")), [adds, dels])
   await shot("history")
   await view.locator("button", { hasText: "Restore" }).click()
-  check("restore writes the version back", await until(() => read("Qa menu/Hist.md") === "First line\nSecond line\n"), read("Qa menu/Hist.md"))
+  check("restore writes the version back", await until(() => body("Qa menu/Hist.md") === "First line\nSecond line\n"), read("Qa menu/Hist.md"))
   check("restore offers Undo", await until(() => page.locator("[data-sonner-toast]", { hasText: "Restored" }).locator("[data-button]", { hasText: "Undo" }).isVisible()))
   await wait(800)
   check("the restore is in the history too", await opts.count() === histBefore + 1, await opts.count())

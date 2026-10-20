@@ -12,7 +12,7 @@ const { args: [B, OUT = SHOTS], browser, check, watch, done } = await qa(import.
 const api = apiAt(B, { "X-Vaultite-Client": "app/qa" })
 const VAULT = (await api("GET", "vault")).path
 const read = (rel) => { try { return readFileSync(path.join(VAULT, rel), "utf8") } catch { return "" } }
-// (Provenance may add `origin` to what the API makes: compare from the body on)
+// (Provenance's `origin` and Note dates' created and updated in what the API makes: compare from the body on)
 const body = (rel) => read(rel).replace(/^---\n[\s\S]*?\n---\n\n?/, "")
 
 const D = "Qa archive"
@@ -37,6 +37,7 @@ await page.locator('aside [aria-label="Collapse all"]').click().catch(() => {});
 await row(D).locator("button").first().click(); await wait(300)
 
 // 1. Archive from the tree's menu: moved into .archive/ with the key, links follow, the tree doesn't show it.
+const old = read(`${D}/Old.md`)
 await row(`${D}/Old.md`).click({ button: "right" }); await wait(200)
 await menuItem("Archive").click()
 check("Archive: moved into .archive/, archived: true", !!(await until(() => read(`${D}/.archive/Old.md`).includes("archived: true"))) && !read(`${D}/Old.md`), read(`${D}/.archive/Old.md`))
@@ -45,7 +46,7 @@ check("Archive: gone from the tree (.archive hidden)", !!(await until(async () =
 await page.screenshot({ path: `${OUT}archive-1-archived.png` })
 // Undo in the toast: back where it was, key removed, the link back.
 await page.locator("[data-sonner-toast]", { hasText: "Archived" }).getByRole("button", { name: "Undo" }).click()
-check("Undo: back, key removed", !!(await until(() => read(`${D}/Old.md`) === "An old note.\n" && !read(`${D}/Old.md`).includes("archived"))) && !read(`${D}/.archive/Old.md`), read(`${D}/Old.md`))
+check("Undo: back as it was, key removed", !!(await until(() => read(`${D}/Old.md`) === old)) && !read(`${D}/.archive/Old.md`), read(`${D}/Old.md`))
 check("Undo: the link back", !!(await until(() => body(`${D}/Links.md`) === `See [[${D}/Old]].\n`)), read(`${D}/Links.md`))
 
 // 2. Through the API (as an agent would), then the tree's toggle shows .archive/, dimmed.
@@ -65,7 +66,7 @@ await page.screenshot({ path: `${OUT}archive-2-shown.png` })
 // 3. Unarchive from its menu.
 await row(`${D}/.archive/Old.md`).click({ button: "right" }); await wait(200)
 await menuItem("Unarchive").click()
-check("Unarchive: back, key removed", !!(await until(() => read(`${D}/Old.md`) === "An old note.\n" && !read(`${D}/Old.md`).includes("archived"))), read(`${D}/Old.md`))
+check("Unarchive: back as it was, key removed", !!(await until(() => read(`${D}/Old.md`) === old)), read(`${D}/Old.md`))
 check("Unarchive: in the tree again, not dimmed", !!(await until(async () => (await shown(`${D}/Old.md`)) && (await row(`${D}/Old.md`).locator("button[data-archived]").count()) === 0)))
 await page.locator('aside [aria-label="Hide archived files"]').click()
 check("Hide archived files: off again", !!(await until(async () => (await api("GET", "config/files")).showArchived === false)))

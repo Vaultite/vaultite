@@ -87,7 +87,8 @@ for (const scheme of ["light", "dark"]) {
   await page.goBack(); await wait()
   t = await tb()
   check(`${s}A Back returns to the list`, inTab(t) && t.hash === PEOPLE, t)
-  check(`${s}A ...where it was scrolled`, t.y === y, { y, now: t.y })
+  // (to the pixel restoreScroll settles for: the page can come back a fraction shorter)
+  check(`${s}A ...where it was scrolled`, Math.abs(t.y - y) <= 1, { y, now: t.y })
 
   // B. Files -> note in a tab, read down, person wikilink -> their file in the tab (at the top) -> Back to the same
   // spot -> note link -> the idea -> system back -> Forward.
