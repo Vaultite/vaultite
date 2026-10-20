@@ -181,6 +181,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `machines:fs` (machines)
 - `mcp:<…>` (tool, app-host, upload-link, apps): mcp; mcp-apps
 - `me:file` (me)
+- `note-dates:stamps` (note-dates): The dates it keeps in a file (path, fm): any edit moves them, so they're no one's change (Review leaves them out).
 - `obsidian:stand-ins` (other-apps)
 - `pages:installed` (pages)
 - `pins:installed` (workspaces): Pages just pinned in the vault's list because their plugin wrote them, turned on (Pinned): a workspace with a list of its own gets them too, at its end, so a plugin turned on shows its pages wherever you are.

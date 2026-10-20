@@ -1,7 +1,7 @@
 // Review: the files AI apps and coding agents changed that the user hasn't looked at yet. Who changed what is Activity's
 // (asked as a service), the text before is File history's; what's reviewed is a mark per file (its data.json).
 import { diffLines, fmtAgo, HTTPError, type OpCtx, OpError, Plugin, type Who, whoOf } from "../../../core/plugins.ts"
-import { isHiddenPath, readText, type Vault } from "../../../core/vault.ts"
+import { isHiddenPath, type Item, parseText, readText, setPropertyText, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -11,7 +11,7 @@ type Change = { t: number; last?: number; actor: { kind: string; name: string };
 export type Pending = { path: string; by: string[]; first: number; last: number; added?: number; removed?: number; created?: boolean }
 /** And what the app's diff needs: the text before (null: not kept), whether it's the text just before (`exact`), and
  *  whether the user changed it too since (`yours`). */
-type Found = Pending & { start: number; base: { t: number; text: string } | null; exact: boolean; yours: boolean }
+type Found = Pending & { start: number; base: { t: number; text: string; shown: string } | null; exact: boolean; yours: boolean }
 
 const DAY = 86_400_000
 /** A hook's event (no request: Claude Code's own edit) is told after the write: the text before is older than this. */
@@ -78,6 +78,17 @@ function size(key: string, before: string, now: string) {
   return s
 }
 
+/** `before` with the times the app keeps in the file (its kind's stamps, Note dates') as they are `now`: any edit moves
+ *  them, so they aren't the AI's change to show or count. */
+async function asNow(vault: Vault, rel: string, before: string, now: string) {
+  let fm: Item, had: Item
+  try { fm = parseText(now)[0]; had = parseText(before)[0] } catch { return before }
+  const keys = [...(vault.kindFor(rel, fm)?.spec.stamps ?? []), ...await plugin.ask<string[]>("note-dates:stamps", [], rel, fm)]
+  let out = before
+  for (const k of new Set(keys)) if (k in had && fm[k] != null && had[k] !== fm[k]) out = setPropertyText(out, k, fm[k]) ?? out
+  return out
+}
+
 /** Every file an AI changed since it was last reviewed, newest first; `only` keeps those one writer changed; `path`
  *  just that file. With the text before when `texts`. */
 async function find(vault: Vault, opts: { by?: string; path?: string; texts?: boolean } = {}): Promise<Found[]> {
@@ -121,9 +132,10 @@ async function find(vault: Vault, opts: { by?: string; path?: string; texts?: bo
         let cur: string
         try { cur = readText(vault.abs(p)) } catch { continue }
         const st = (vault.entries.get(p)?.stat ?? vault.others.get(p))?.ns
-        ;({ added, removed } = size(`${p}\0${created ? "new" : before!.t}\0${st}`, text, cur))
+        const shown = created ? text : await asNow(vault, p, text, cur)
+        ;({ added, removed } = size(`${p}\0${created ? "new" : before!.t}\0${st}`, shown, cur))
         if (!added && !removed && !created) continue // (back as it was: nothing to review)
-        base = { t: created ? f.first : before!.t, text: opts.texts ? text : "" }
+        base = { t: created ? f.first : before!.t, text: opts.texts ? text : "", shown: opts.texts ? shown : "" }
       }
     }
     out.push({ path: p, by: f.by, first: f.first, last: f.last, ...(base ? { added, removed } : {}), ...(created ? { created: true } : {}),
@@ -262,7 +274,8 @@ plugin.route("GET", "review/file", async (req) => {
   if (!rel) throw new HTTPError(400, "which file? ?path=")
   const f = (await find(plugin.vault, { path: rel, texts: true }))[0]
   if (!f) return { path: rel, pending: false }
-  return { ...listed(f), pending: true, base: f.base, exact: f.exact, yours: f.yours }
+  // (the diff's base as shown: the app's own times as they are now)
+  return { ...listed(f), pending: true, base: f.base && { t: f.base.t, text: f.base.shown }, exact: f.exact, yours: f.yours }
 })
 plugin.route("POST", "review/marks", (req) => {
   const h = (k: string) => { const v = req.http?.headers[k]; return typeof v === "string" ? v : null }

@@ -26,6 +26,8 @@ function ours(path: string, fm: Item, keys: string[]): string[] {
 
 /** The properties the app keeps in plain notes, shown as dates, not edited (Properties); none while it's off. */
 plugin.state(() => (plugin.isOff() ? {} : { noteStamps: [keyOf("created"), keyOf("updated")].filter(Boolean) }))
+/** The dates it keeps in a file (path, fm): any edit moves them, so they're no one's change (Review leaves them out). */
+plugin.provide("note-dates:stamps", (path: string, fm: Item) => ours(path, fm, [keyOf("created"), keyOf("updated")]))
 
 plugin.onCreate((path, fm) => {
   const keys = ours(path, fm, [keyOf("created"), keyOf("updated")])

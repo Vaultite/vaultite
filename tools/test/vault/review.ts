@@ -3,7 +3,7 @@ import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
 
 export default async ($: VaultTest) => {
-  const { VAULT, api, app, check, exists, read, sentBy, sleep, write } = $
+  const { VAULT, api, app, check, exists, read, sentBy, sleep, vault, write } = $
   // ---------- Review: what AIs changed (Activity) against the text before (File history), kept or reverted ----------
   const { whoOf } = await import("../../../core/ops.ts")
   const histData = ".vaultite/plugins/history/data.json"
@@ -117,6 +117,23 @@ export default async ($: VaultTest) => {
   await call("review.keep", { path: MAYA })
   await call("file.move", { from: MAYA, to: "Rev/Maya Silva.md" })
   check("review: a mark follows its file", typeof JSON.parse(read(".vaultite/plugins/review/data.json")).files["Rev/Maya Silva.md"] === "number")
+
+  // With Note dates on (the harness turns its dates off): the updated an AI's edit moves is the app's, not shown or
+  // counted as its change; Revert brings the text before back as it was, its updated too.
+  vault.setConfig("plugins/note-dates/data", {})
+  const DATED = "Rev/Dated.md"
+  await heard("PUT", "file", { path: DATED, text: "# Dated\n\nLine one.\n" })
+  const made = read(DATED)
+  await sleep(1100) // (so the edit's updated is another second's)
+  await call("file.edit", { path: DATED, old: "Line one.", new: "Line one, edited.\nLine two." }, chatgpt)
+  f = await pending(DATED)
+  d = await detail(DATED)
+  const moved = /^updated: (.+)$/m.exec(read(DATED))?.[1] !== /^updated: (.+)$/m.exec(made)?.[1]
+  check("review: Note dates' updated, moved by an AI's edit, isn't counted or shown as its change",
+    moved && f?.added === 2 && f.removed === 1 && d.base?.text === read(DATED).replace("Line one, edited.\nLine two.\n", "Line one.\n"), [f, d.base?.text, read(DATED)])
+  await call("review.revert", { path: DATED })
+  check("review: revert brings the text before back as it was, its updated too", read(DATED) === made, [made, read(DATED)])
+  vault.setConfig("plugins/note-dates/data", { created: "", updated: "" })
 
   fs.rmSync(path.join(VAULT, "Rev"), { recursive: true, force: true })
   if (histWas === null) fs.rmSync(path.join(VAULT, histData), { force: true }); else write(histData, histWas)

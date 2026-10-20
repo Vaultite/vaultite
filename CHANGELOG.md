@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Review leaves out the dates the app keeps in a note (its `updated`, moved by any edit): an AI's change shows and
+  counts only its own lines.
+
 ## 0.6.0 (2026-10-19)
 
 Conflicts show in place, menus filter as you type, sidebars are yours to arrange, and vaults in iCloud Drive stay readable.
