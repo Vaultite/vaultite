@@ -8,7 +8,7 @@ import { activeTab, go } from "@/core/workspace"
 import { captureWindow } from "@/core/desktop"
 import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
-import { notify, notifyError } from "@/core/notify"
+import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace } from "@/core/scope"
 import type { Sidebars } from "../../../core/sidebars.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
@@ -85,15 +85,23 @@ export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
 }
 
-/** Apply a bundle (the caller asked first when it runs code), then show its first page, with Undo in a toast. `offAdded`:
- *  the plugins the user added that it doesn't name go off too. */
+/** Apply a bundle (the caller asked first when it runs code), then show its first page, with Undo in a toast that said
+ *  it was on its way meanwhile (installing takes seconds). `offAdded`: the user's added plugins it doesn't name go off. */
 export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false, offAdded = false) {
-  const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded })
-  await reload()
-  void refreshBundles()
-  const first = r.plan.pins?.list[0] ?? plan.pins?.list[0]
-  if (first) openFile(first)
-  notify(`Applied ${b.name}`, { action: { label: "Undo", run: () => restoreSetup() } })
+  const id = `bundle-apply-${b.id}`
+  const installs = allowCode ? plan.code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
+  notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `Applying ${b.name}…`, { id, duration: Infinity })
+  try {
+    const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded })
+    await reload()
+    void refreshBundles()
+    const first = r.plan.pins?.list[0] ?? plan.pins?.list[0]
+    if (first) openFile(first)
+  } catch (e) {
+    dismissNotice(id)
+    throw e
+  }
+  notify(`Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
 }
 
 /** Put back the setup from before the last bundle applied. */
