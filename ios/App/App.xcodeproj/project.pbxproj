@@ -23,6 +23,7 @@
 		A1B2C3D40000000000000051 /* Complications.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000050 /* Complications.swift */; };
 		A1B2C3D40000000000000054 /* WatchWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000053 /* WatchWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		A1B2C3D40000000000000031 /* Push.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000030 /* Push.swift */; };
+		A1B2C3D40000000000000091 /* Health.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000090 /* Health.swift */; };
 		A1B2C3D40000000000000033 /* WatchLink.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000032 /* WatchLink.swift */; };
 		A1B2C3D40000000000000036 /* WatchApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000035 /* WatchApp.swift */; };
 		A1B2C3D40000000000000038 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1B2C3D40000000000000037 /* ContentView.swift */; };
@@ -133,6 +134,7 @@
 		A1B2C3D40000000000000052 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		A1B2C3D40000000000000053 /* WatchWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = WatchWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D40000000000000030 /* Push.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Push.swift; sourceTree = "<group>"; };
+		A1B2C3D40000000000000090 /* Health.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Health.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000032 /* WatchLink.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchLink.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000035 /* WatchApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WatchApp.swift; sourceTree = "<group>"; };
 		A1B2C3D40000000000000037 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
@@ -274,6 +276,7 @@
 				A1B2C3D40000000000000001 /* AppViewController.swift */,
 				A1B2C3D40000000000000003 /* ShellPlugin.swift */,
 				A1B2C3D40000000000000030 /* Push.swift */,
+				A1B2C3D40000000000000090 /* Health.swift */,
 				A1B2C3D40000000000000032 /* WatchLink.swift */,
 				A1B2C3D40000000000000073 /* VoiceNote.swift */,
 				A1B2C3D40000000000000081 /* Downloads.swift */,
@@ -535,6 +538,7 @@
 				A1B2C3D40000000000000004 /* ShellPlugin.swift in Sources */,
 				A1B2C3D40000000000000006 /* Servers.swift in Sources */,
 				A1B2C3D40000000000000031 /* Push.swift in Sources */,
+				A1B2C3D40000000000000091 /* Health.swift in Sources */,
 				A1B2C3D40000000000000033 /* WatchLink.swift in Sources */,
 				A1B2C3D40000000000000070 /* Links.swift in Sources */,
 				A1B2C3D40000000000000074 /* VoiceNote.swift in Sources */,

@@ -209,8 +209,9 @@ export { ChipValuesEditor, chipLabel, chipMenu, chipValues, CHIP_TINTS, Property
 // The desktop app's own: a PDF of the window as it prints (Export to PDF), and the Mac's microphone permission (Audio
 // recorder). In a browser savePdf answers undefined (print instead) and askMicrophone true.
 export { askMicrophone, captureWindow, savePdf } from "@/core/desktop"
-// The iPhone app's voice note, as its widgets open it (Audio recorder's "Record a voice note"); false in a browser.
-export { phoneFiles, phoneVoiceNote, type PhoneDownload } from "@/core/phoneapp"
+// The iPhone app's voice note, as its widgets open it (Audio recorder's "Record a voice note"; false in a browser), its
+// kept files and its Apple Health (null in a browser).
+export { phoneFiles, phoneHealth, phoneVoiceNote, type PhoneDownload, type PhoneHealth } from "@/core/phoneapp"
 /** Is this plugin on now (and what it requires)? For a `when` that needs another plugin's API (Inbox's ops). */
 export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.

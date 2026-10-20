@@ -27,6 +27,9 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "removeDownload", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "setPlace", returnType: CAPPluginReturnPromise),
         CAPPluginMethod(name: "takePlaces", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "health", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "setHealth", returnType: CAPPluginReturnPromise),
+        CAPPluginMethod(name: "resendHealth", returnType: CAPPluginReturnPromise),
     ]
 
     /// What a widget or a shortcut asked for (AppViewController): `command` or `open`, until the page takes it.
@@ -168,6 +171,38 @@ public class ShellPlugin: CAPPlugin, CAPBridgedPlugin {
 
     @objc func takePlaces(_ call: CAPPluginCall) {
         call.resolve(["places": Downloads.shared.takePlaces()])
+    }
+
+    /// Apple Health for the server this page is on (Health.swift): what it's doing, and its switch. `route`: where the
+    /// server takes what it reads (after /api/).
+    @objc func health(_ call: CAPPluginCall) {
+        guard let url = pageServer() else { return call.reject("not a server in the list") }
+        Task { call.resolve(await Health.shared.status(url)) }
+    }
+
+    @objc func setHealth(_ call: CAPPluginCall) {
+        guard let url = pageServer() else { return call.reject("not a server in the list") }
+        let on = call.getBool("on") ?? false, route = call.getString("route") ?? ""
+        if on && route.isEmpty { return call.reject("no route") }
+        Task {
+            do {
+                try await Health.shared.set(url, on: on, route: route)
+                call.resolve(await Health.shared.status(url))
+            } catch { call.reject(Servers.say(error)) }
+        }
+    }
+
+    @objc func resendHealth(_ call: CAPPluginCall) {
+        guard let url = pageServer() else { return call.reject("not a server in the list") }
+        Health.shared.resend(url)
+        call.resolve()
+    }
+
+    /// The server of the list whose page asks.
+    private func pageServer() -> String? {
+        var url: URL?
+        if Thread.isMainThread { url = webView?.url } else { DispatchQueue.main.sync { url = self.webView?.url } }
+        return url.flatMap(Servers.of)?.url
     }
 
     override public func shouldOverrideLoad(_ navigationAction: WKNavigationAction) -> NSNumber? {

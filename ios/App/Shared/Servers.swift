@@ -36,6 +36,12 @@ enum Servers {
         return list.contains { URL(string: $0.url).flatMap(origin) == o }
     }
 
+    /// The server of the list an address is on.
+    static func of(_ url: URL) -> Server? {
+        guard let o = origin(url) else { return nil }
+        return list.first { URL(string: $0.url).flatMap(origin) == o }
+    }
+
     private static func origin(_ url: URL) -> String? {
         guard let scheme = url.scheme?.lowercased(), let host = url.host?.lowercased() else { return nil }
         return "\(scheme)://\(host):\(url.port ?? (scheme == "https" ? 443 : 80))"
@@ -49,9 +55,9 @@ enum Servers {
     }
 
     /// A request to the current server's API (`route` after /api/), its JSON answer; a 4xx or 5xx throws the server's
-    /// error. `from`: what asks, as the server's activity names it (X-Vaultite-Client); `timeout`: longer for an upload.
-    static func call(_ method: String, _ route: String, _ body: [String: Any]? = nil, from client: String = "iphone", timeout: TimeInterval = 30) async throws -> [String: Any] {
-        guard let server = current, let url = URL(string: server.url + "/api/" + route) else {
+    /// error. `from`: what asks, as the server's activity names it (X-Vaultite-Client); `to`: another server of the list.
+    static func call(_ method: String, _ route: String, _ body: [String: Any]? = nil, from client: String = "iphone", to: Server? = nil, timeout: TimeInterval = 30) async throws -> [String: Any] {
+        guard let server = to ?? current, let url = URL(string: server.url + "/api/" + route) else {
             throw Failure("Open Vaultite and add your server first")
         }
         var request = URLRequest(url: url, timeoutInterval: timeout)

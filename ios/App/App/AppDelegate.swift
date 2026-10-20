@@ -6,6 +6,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         Push.shared.start(application)
         WatchLink.shared.start()
+        Task { await Health.shared.start() } // (a background launch is HealthKit delivering)
         Downloads.playback()
         _ = Downloads.shared
         return true

@@ -363,6 +363,8 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `patch(path, body)`
 - `PhoneDownload`: A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile.
 - `phoneFiles`: The phone's kept files, for a player (null outside the iPhone app).
+- `phoneHealth`: The phone's Apple Health, for a plugin that takes it (null outside the iPhone app): `route` is where the server takes what it reads (after /api/).
+- `PhoneHealth`: What the phone's Apple Health sync is doing: `sent` counts what it posted (sleep samples, workouts, days); `phase` and `progress` (0-1) while it goes through the history; `done` once the history…
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
 - `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji.
 - `PIN_SEARCH`: A search pinned: "search:<query>".

@@ -29,7 +29,16 @@ export type ShellPlugin = {
   /** Where playback of a kept file stopped on the first screen, kept until the server's page takes it (once). */
   setPlace: (o: { path: string; t: number; d: number; at: number }) => Promise<void>
   takePlaces: () => Promise<{ places: { path: string; t: number; d?: number; at: number }[] }>
+  /** Apple Health for this page's server (App/Health.swift); setHealth asks Health for access the first time. The
+   *  three reject in an app built before it had them. */
+  health: () => Promise<PhoneHealth>
+  setHealth: (o: { on: boolean; route?: string }) => Promise<PhoneHealth>
+  resendHealth: () => Promise<void>
 }
+/** What the phone's Apple Health sync is doing: `sent` counts what it posted (sleep samples, workouts, days); `phase`
+ *  and `progress` (0-1) while it goes through the history; `done` once the history is in. */
+export type PhoneHealth = { available: boolean; asked: boolean; on: boolean; syncing: boolean; done?: boolean; phase?: string; progress?: number;
+  last?: string; error?: string; sent?: { sleep?: number; workouts?: number; days?: number } }
 /** A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile. */
 export type PhoneDownload = { path: string; title: string; server: string; size: number; got: number; done: boolean; file?: string; error?: string }
 
@@ -43,7 +52,8 @@ const cap = (globalThis as { Capacitor?: CapacitorGlobal }).Capacitor
 const call = (method: string) => (options?: object) => cap!.nativePromise("Shell", method, options ?? {}) as Promise<never>
 export const phoneApp: ShellPlugin | null = cap?.isNativePlatform?.() && cap.isPluginAvailable?.("Shell")
   ? { servers: call("servers"), setServers: call("setServers"), probe: call("probe"), open: call("open"), launcher: call("launcher"), snapshot: call("snapshot"), haptic: call("haptic"), pending: call("pending"),
-    download: call("download"), downloads: call("downloads"), removeDownload: call("removeDownload"), setPlace: call("setPlace"), takePlaces: call("takePlaces") }
+    download: call("download"), downloads: call("downloads"), removeDownload: call("removeDownload"), setPlace: call("setPlace"), takePlaces: call("takePlaces"),
+    health: call("health"), setHealth: call("setHealth"), resendHealth: call("resendHealth") }
   : null
 /** Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an
  *  address it doesn't serve to the system, which gives it back to the app. False in a browser. */
@@ -74,4 +84,10 @@ export function takeLinks(run: { command: (id: string) => boolean; open: (path: 
 /** The phone's kept files, for a player (null outside the iPhone app). */
 export const phoneFiles = phoneApp
   ? { download: phoneApp.download, list: phoneApp.downloads, remove: phoneApp.removeDownload, takePlaces: phoneApp.takePlaces }
+  : null
+
+/** The phone's Apple Health, for a plugin that takes it (null outside the iPhone app): `route` is where the server
+ *  takes what it reads (after /api/). */
+export const phoneHealth = phoneApp
+  ? { status: phoneApp.health, set: (on: boolean, route?: string) => phoneApp!.setHealth({ on, route }), resend: phoneApp.resendHealth }
   : null

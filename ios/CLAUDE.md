@@ -10,3 +10,6 @@
 - Push: `aps-environment` is development in Xcode builds, production in an archive.
 - The watch can't reach the tailnet: everything goes through the phone over WatchConnectivity. On simulators the speech
   model can't download and file transfers don't arrive, so test with a short clip.
+- HealthKit (`App/Health.swift`) reads for a plugin's route, anchors kept per server. Its entitlements need Xcode signed in
+  (Settings, Accounts) once, so the team's profile gets HealthKit; observer queries start at launch, as a background
+  delivery launches the app.

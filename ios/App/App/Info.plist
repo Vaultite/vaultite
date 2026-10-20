@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Vaultite takes the photos you add to your notes.</string>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Vaultite keeps your sleep, workouts and daily activity from Apple Health as logs in your vault.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Vaultite records your voice notes for your inbox.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>
