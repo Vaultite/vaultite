@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentHow, type AgentMeter, type AgentStart, type AgentState, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request,
@@ -238,14 +238,31 @@ function stateOf(id: string) {
 }
 
 /** Times agent terminal `id` from its start to its agent's first hook (its state file written: it's ready), a minute
- *  at most: the span "agent.ready". */
+ *  at most: the span "agent.ready". Its shell finding no such program instead (MISSING) is told to the user. */
 function agentReady(id: string, agent: string) {
   const timing = span("agent.ready", { agent }), until = Date.now() + 60_000
   const look = () => {
+    if (stateOf(id) === MISSING) return void agentMissing(id, agent)
     if (fs.existsSync(stateFile(id))) return void timing.end()
     if (Date.now() < until) setTimeout(look, 50).unref?.()
   }
   look()
+}
+
+/** What an agent's state file says when its shell had no such command (exit 127): it isn't installed here. */
+const MISSING = "missing"
+/** The agent's command, then its state file marked MISSING when the shell found no such program. */
+export function markMissing(command: string, file: string, sh = shell()) {
+  const mark = `printf %s ${MISSING} > ${shellQuote(file)} 2>/dev/null`
+  return path.basename(sh) === "fish" ? `${command}; if test $status -eq 127; ${mark}; end` : `${command}; if [ $? -eq 127 ]; then ${mark}; fi`
+}
+
+/** Agent terminal `id`'s program isn't installed: the user is told (its terminal shows the shell's error), and the
+ *  plugin that started it hears "terminal.agent-missing". */
+function agentMissing(id: string, agent: string) {
+  const name = agentName(agent) ?? agent
+  plugin.emit("terminal.agent-missing", { id, agent })
+  void plugin.runOp("ui.notify", { text: `${name} isn't installed on this machine: install it, then start it again`, error: true, terminal: id }).catch(() => {})
 }
 
 /** The shell command a hook runs to mark a terminal's state (its state `file`), and `tell` (Inbox) when the change is
@@ -270,7 +287,7 @@ async function agentRun(id: string, prompt: string | null = null, dark: boolean 
     if (!run || typeof run.command !== "string" || !run.command) return null
     let cwd = typeof run.cwd === "string" && run.cwd ? run.cwd : null
     try { if (cwd && !fs.statSync(cwd).isDirectory()) cwd = null } catch { cwd = null }
-    return { command: run.command, cwd }
+    return { command: markMissing(run.command, stateFile(id)), cwd }
   } catch {
     return null
   }

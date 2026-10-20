@@ -13,6 +13,7 @@ Every event is one JSON object: `{"type", "seq", "t" (ms since 1970), "cursor", 
   finished (`done`) or is waiting for an answer (`waiting`), or a message (`info`, `error`: `vau notify`). How to
   wait for another agent: `vau events.wait --types inbox.event --timeout 600`, then check its `terminal`.
 - `terminal.ended` `{id, code, signal}`: a terminal's shell ended on this machine (closed, ended, or it died).
+- `terminal.agent-missing` `{id, agent}`: an agent's terminal found no such program (it isn't installed here).
 - `<plugin>.<name>`: a plugin's own (`plugin.emit`), named after the plugin.
 
 Filters, the same everywhere: `types`, a list of types or areas (`file` is every file event, `file.*` too); `path`, a

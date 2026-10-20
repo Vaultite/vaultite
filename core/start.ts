@@ -12,13 +12,19 @@ const startHere = () => `This vault is a folder of Markdown files. Vaultite show
 
 ## Try this
 
-Open a terminal (⌘P, or Ctrl+P off a Mac, then Open terminal) and run \`claude\`, or another coding agent. It starts in this folder and reads the vault's rules. Ask it: "Make a note with three ideas for this weekend." The note shows up in Files.
+With Claude Code installed, write this on a new line and press Enter:
+
+\`@claude what can I do with this vault?\`
+
+Its cursor shows up in this note and answers here. With Codex, set the agent in Settings > Plugins > Companion, then write \`@codex\`.
 
 ## Next
 
-- ⌘O (Ctrl+O) finds any file, ⌘P (Ctrl+P) runs any command.
-- Settings, Bundles turns on a whole setup at once: Life OS for your days, people and health. Settings, Plugins turns on one feature at a time.
-- Settings, Connections puts Claude, ChatGPT, Muse and Grok Bot in this vault, on the web and on your phone.
+- ⌘O finds any file, ⌘P runs any command (Ctrl+O and Ctrl+P on Windows and Linux).
+- Open terminal (⌘P) runs a coding agent in this folder: \`claude\`, \`codex\` or another. It reads the vault's rules.
+- Settings > Bundles turns on a whole setup at once.
+- Settings > Plugins turns on one feature at a time.
+- Settings > Connections puts Claude, ChatGPT, Muse and Grok Bot in this vault, on the web and on your phone.
 - [[How this vault works]]: what a file is, and what a note can hold.
 - Delete this note when you're done with it.
 `

@@ -718,6 +718,13 @@ plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
   const s = sessions().find((x) => x.id === ev.id)
   if (s) ended(s.name, s.id)
 })
+// (its agent isn't installed: forgotten, so an ask starts it again; its terminal stays, showing the shell's error)
+plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
+  const s = sessions().find((x) => x.id === ev.id)
+  if (!s) return
+  try { fs.rmSync(sessionFile(s.name)) } catch { /* none */ }
+  ended(s.name, s.id)
+})
 
 // A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. An agent quiet
 // that long is away (asks to it go to the companion), the companion too once its session isn't running.

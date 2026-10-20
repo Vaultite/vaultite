@@ -1,7 +1,7 @@
 import { MousePointerClick } from "lucide-react"
 import { ActionButtons, AddButton, definePlugin } from "@vaultite"
 
-// Buttons: the new tab's buttons (newtab.json's `actions`, one list) as a sidebar panel, out of the default; icons in the
+// Buttons: the new tab's buttons (newtab.json's `actions`, one list) as a sidebar panel, under Pinned by default; icons in the
 // rail, and in a phone drawer's dock when docked. Its tab is the same list a size up.
 function ButtonsView() {
   return (
@@ -16,7 +16,7 @@ function ButtonsView() {
 
 export default definePlugin({
   sidebar: {
-    buttons: { title: "Buttons", sort: 12, hidden: true, dockable: true, view: "buttons",
+    buttons: { title: "Buttons", sort: 12, dockable: true, view: "buttons",
       render: ({ open, phone, panel, dock }) => <ActionButtons open={open} phone={phone} panel={panel} dock={dock} />, actions: () => <AddButton /> },
   },
   views: { buttons: { icon: MousePointerClick, title: () => "Buttons", render: () => <ButtonsView /> } },

@@ -250,4 +250,4 @@ export function meterText(s: Session) {
     cache && s.state === "idle" && (left ? `cache ${left} min left` : "cache expired")].filter(Boolean).join(", ")
 }
 export const waiting = (s: Session, a = agentIn(s)) => !!a && s.state === "waiting"
-export const stateTip = (s: Session) => (s.state === "working" ? " (working)" : s.state === "waiting" ? " (waiting for you)" : "")
+export const stateTip = (s: Session) => (s.state === "working" ? " (working)" : s.state === "waiting" ? " (waiting for you)" : s.state === "missing" ? " (not installed)" : "")

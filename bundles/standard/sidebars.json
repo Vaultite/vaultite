@@ -2,6 +2,7 @@
   "left": [
     "search:search",
     "pages:pages",
+    "buttons:buttons",
     "files:files"
   ],
   "right": [

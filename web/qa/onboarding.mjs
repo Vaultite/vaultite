@@ -103,7 +103,7 @@ try {
   const pjFile = path.join(VAULT, ".vaultite/plugins.json"), pj = fs.existsSync(pjFile) ? JSON.parse(fs.readFileSync(pjFile, "utf8")) : {}, pages = JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/pages.json"), "utf8"))
   check("it starts from Standard: a terminal, no Life OS", !(pj.enabled ?? []).includes("people") && !(pj.enabled ?? []).includes("today") && !(pj.disabled ?? []).includes("terminal"), pj)
   check("Start here is written and the only pin", fs.existsSync(path.join(VAULT, "Start here.md")) && JSON.stringify(pages.pinned) === '["Start here.md"]', pages)
-  check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate(() => decodeURIComponent(location.hash).includes("Start here") && /run claude/.test(document.querySelector("[data-pane]")?.textContent ?? "")), 20000),
+  check("Start here opens in a tab, its text drawn", await until(() => vw.evaluate(() => decodeURIComponent(location.hash).includes("Start here") && /@claude what can I do/.test(document.querySelector("[data-pane]")?.textContent ?? "")), 20000),
     await vw.evaluate(() => location.hash))
   check("no AI app's config is touched", fs.readFileSync(CLAUDE_JSON, "utf8") === claudeBefore)
   await vw.screenshot({ path: path.join(SHOTS, "3-vault.png") })

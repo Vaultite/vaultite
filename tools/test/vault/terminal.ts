@@ -128,6 +128,17 @@ export default async ($: VaultTest) => {
       try { out = execFileSync(sh, shellArgs(sh, { command: `${print}; exit` }), { cwd: home, env: { ...env, ...(zsh ? { ZDOTDIR: SHELL_DIR, VAULTITE_ZDOTDIR: SHELL_DIR } : {}) }, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { out = String((e as Any).stdout) }
       check(`terminal: ${path.basename(sh)} runs the user's startup files, then puts Vaultite's vau first`, out === `${path.join(ours, "vau")}|1|unset`, out)
     }
+    // An agent's program not installed: its shell's exit 127 marks the state file, which the server tells the user.
+    for (const sh of ["/bin/zsh", "/bin/bash", "/opt/homebrew/bin/fish", "/usr/bin/fish"].filter((f) => fs.existsSync(f))) {
+      const marked = (cmd: string) => {
+        const file = path.join(home, `state-${path.basename(sh)}`)
+        fs.rmSync(file, { force: true })
+        try { execFileSync(sh, ["-c", term.markMissing(cmd, file, sh)], { cwd: home, env, stdio: "ignore", timeout: 10_000 }) } catch { /* its status */ }
+        return fs.existsSync(file) ? fs.readFileSync(file, "utf8") : ""
+      }
+      check(`terminal: ${path.basename(sh)} marks an agent that isn't installed, not one that ran`, marked("no-such-agent-x1 --flag") === "missing" &&
+        marked("FOO=1 no-such-agent-x1") === "missing" && marked("true") === "" && marked("false") === "", [marked("no-such-agent-x1"), marked("true")])
+    }
     fs.rmSync(home, { recursive: true, force: true })
   }
 

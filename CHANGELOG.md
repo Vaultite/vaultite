@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Phones: a page pulled down offers New note, Open a file (straight down) and Close tab; choose its three commands in
   Settings > Appearance.
+- An agent that isn't installed (Claude Code, Codex...) says so in a toast instead of the companion staying on
+  starting; its terminal's tip says not installed.
+- New vaults: Start here tries the companion first (@claude in the note), and the Buttons panel is in the left sidebar.
 
 ## 0.6.2 (2026-10-20)
 
