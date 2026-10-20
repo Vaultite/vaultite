@@ -4,10 +4,11 @@ import { memo, useEffect, useRef, useState, type KeyboardEvent, type MouseEvent,
 import { Braces, Calendar, CalendarClock, ChevronRight, Forward, Hash, Link, List, Plus, SquareCheck, Tags, Text, X, type LucideIcon } from "lucide-react"
 import { PROP_TYPES, typeOf, typeProblem, type PropType, type PropTypes } from "../../../core/proptypes.ts"
 import { stampMs } from "@/core/data"
+import { editorSettings, PROPERTIES_SHOWN, showPropertiesAs } from "@/core/editorPrefs"
 import { op } from "@/core/http"
 import { fromLocal, propKind, readProps, renameProp, setProp, toLocal, typedNumber, type PropKind } from "@/core/frontmatter"
 import { notifyError } from "@/core/notify"
-import { menuBelow } from "@/components/ContextMenu"
+import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { Switch } from "@/components/kit"
 import { keepPropsOpen, propsOpen } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
@@ -154,6 +155,15 @@ function Value({ k, v, set, readOnly, autoFocus, type, stamps }: {
     onCommit={(s) => set(s)} />
 }
 
+// The header's menu: how every note shows its properties (Settings' "Properties in document"), from where they show.
+const shownMenu = (): MenuItem[] => {
+  const now = editorSettings().propertiesInDocument
+  return [
+    { label: "Properties in every note", caption: true, run: () => {} },
+    ...PROPERTIES_SHOWN.map(({ value, label }) => ({ label: value === "source" ? "As text while editing" : label, checked: now === value, run: () => showPropertiesAs(value) })),
+  ]
+}
+
 export const Properties = memo(function Properties({ path, block, onChange, readOnly, extra, types, stamps = [] }: {
   /** The file they're of: whether they're open is remembered for it (core/viewstate.ts). */
   path: string
@@ -198,7 +208,7 @@ export const Properties = memo(function Properties({ path, block, onChange, read
   }
   return (
     <section ref={box} aria-label="Properties" className="mb-4">
-      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open}
+      <button type="button" onClick={() => setOpen(!open)} onContextMenu={menuFor(shownMenu)} aria-expanded={open}
         className="-ml-1.5 flex h-8 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] font-semibold text-muted-foreground hover:bg-foreground/[0.04] hover:text-foreground">
         <ChevronRight className={cn("size-3.5 transition-transform", open && "rotate-90")} strokeWidth={2.5} />
         Properties{keys.length ? <span className="font-normal">{keys.length}</span> : null}

@@ -1,7 +1,7 @@
 // Settings > Editor: how notes are written and laid out (.vaultite/editor.json; core/editorPrefs.ts), Obsidian's settings
 // of the same names. A setting the file doesn't have follows the vault's .obsidian/app.json, else Obsidian's default.
 import type { Store } from "@/core/data"
-import { editorSet, setEditor, useEditorSettings, type EditorSettings, type PropertiesShown } from "@/core/editorPrefs"
+import { editorSet, PROPERTIES_SHOWN, setEditor, useEditorSettings, type EditorSettings, type PropertiesShown } from "@/core/editorPrefs"
 import { coreSwitch } from "@/core/switches"
 import { Panel, ResetButton, Segmented, SettingRow } from "@/components/kit"
 import { SwitchRow } from "@/components/SwitchRow"
@@ -20,12 +20,12 @@ export function EditorPanel({ store }: { store: Store }) {
       <div className="hairline">
         <FlagRow row="readable-line-length" />
         <FlagRow row="show-inline-title" />
-        <SettingRow stack label="Properties in document" data-settings-row="properties-in-document">
+        <SettingRow stack label="Properties in document" sub="As text: their YAML at the top of the note while editing" data-settings-row="properties-in-document">
           <div className="flex w-full min-w-0 items-center gap-1 sm:w-auto sm:shrink-0">
             <ResetButton on={editorSet("propertiesInDocument")} onClick={() => setEditor({ propertiesInDocument: null })} label="Reset properties in document" />
             <Segmented<PropertiesShown> label="Properties in document" value={e.propertiesInDocument} onChange={(v) => setEditor({ propertiesInDocument: v })}
               className="min-w-0 flex-1 sm:w-[240px] sm:flex-none"
-              options={[{ value: "visible", label: "Visible" }, { value: "hidden", label: "Hidden" }, { value: "source", label: "Source" }]} />
+              options={PROPERTIES_SHOWN} />
           </div>
         </SettingRow>
         <FlagRow row="spellcheck" />

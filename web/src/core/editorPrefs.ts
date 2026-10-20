@@ -2,6 +2,7 @@
 // says (`conventions.editor`: .obsidian/app.json), else Obsidian's default. Defaults are never written.
 import { getStore, type Store } from "@/core/data"
 import { vaultEditor } from "@/core/conventions"
+import { notify } from "@/core/notify"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 
 export type PropertiesShown = "visible" | "hidden" | "source"
@@ -62,6 +63,20 @@ export function setEditor(changes: { [K in keyof EditorSettings]?: EditorSetting
   const next = { ...getPrefs().editor }
   for (const [k, v] of Object.entries(changes)) if (v === null) delete next[k]; else next[k] = v
   return setPrefs({ editor: next })
+}
+
+/** "Properties in document" as Settings, the palette and the Properties menu name its choices. */
+export const PROPERTIES_SHOWN: { value: PropertiesShown; label: string }[] = [
+  { value: "visible", label: "Visible" }, { value: "hidden", label: "Hidden" }, { value: "source", label: "As text" },
+]
+
+/** Set "Properties in document"; hiding them takes away the panel it was chosen from, so it offers Undo. */
+export function showPropertiesAs(v: PropertiesShown) {
+  if (v === editorSettings().propertiesInDocument) return
+  // (Undo puts back editor.json's own value, or none: a default is never written)
+  const was = editorSet("propertiesInDocument") ? editorSettings().propertiesInDocument : null
+  void setEditor({ propertiesInDocument: v })
+  if (v === "hidden") notify("Properties hidden in every note", { id: "properties-shown", action: { label: "Undo", run: () => void setEditor({ propertiesInDocument: was }) } })
 }
 
 /** The settings, redrawn when they change (editor.json, or the vault's other app's). */

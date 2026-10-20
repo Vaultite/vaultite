@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Right-click the Properties header to show every note's properties, hide them or show them as text while editing;
+  the palette has the same, so hidden properties come back from anywhere. Settings calls the third choice As text.
+
 ## 0.6.1 (2026-10-20)
 
 A first run that feels finished: the Mac app installs like one, errors say what happened in plain words, and the palette and font picker open faster.
