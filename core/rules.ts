@@ -236,6 +236,12 @@ function reached(dir: string, from: string): Set<string> {
   return seen
 }
 
+/** A module an app plugin exports, for a frontend: the app's own bundle has it (a packaged app ships no .tsx). */
+function appExport(root: string, dir: string, name: string) {
+  if (path.dirname(dir) !== path.join(root, "plugins", "core")) return false
+  try { return exportsOf(JSON.parse(fs.readFileSync(path.join(dir, "manifest.json"), "utf8"))).includes(name) } catch { return false }
+}
+
 /** What's wrong with one file's imports. `where`: how to name the file in a message. */
 function importProblems(file: string, src: string, where: string, rules: ImportRules): string[] {
   const out: string[] = []
@@ -260,7 +266,7 @@ function importProblems(file: string, src: string, where: string, rules: ImportR
       const m = PLUGIN_MODULE.exec(spec), dir = m ? rules.requires.get(m[1]) : undefined
       if (!m) say(spec, "another plugin's module is @plugins/<id>/<module>")
       else if (dir === undefined) say(spec, `a plugin imports only from plugins it \`requires\` (not ${m[1]})`)
-      else if (!exportFile(dir, m[2])) say(spec, `${m[1]} doesn't export '${m[2]}' (its manifest's \`exports\`)`)
+      else if (!exportFile(dir, m[2]) && (backend || !appExport(rules.root, dir, m[2]))) say(spec, `${m[1]} doesn't export '${m[2]}' (its manifest's \`exports\`)`)
       continue
     }
     if (backend) {

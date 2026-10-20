@@ -53,6 +53,15 @@ export default async ($: VaultTest) => {
   app.vaultPlugins.allow("skiff")
   const skiff = await vp("skiff"), [, sb] = await api("GET", `plugins/skiff/${skiff.bundle}/bundle.js`)
   check("modules: a vault plugin imports an app plugin's", !skiff.problems.length && String(sb).includes('preload(["@plugins/logs/types"])'), [skiff.problems, String(sb).slice(0, 300)])
+  // The packaged app ships no .tsx: a frontend's import of an app plugin's module is still fine (the app's bundle has it).
+  const packaged = fs.mkdtempSync(path.join(VAULT, "..", "packaged-")), logs = path.join(packaged, "plugins/core/logs")
+  fs.mkdirSync(logs, { recursive: true })
+  fs.writeFileSync(path.join(logs, "manifest.json"), JSON.stringify({ id: "logs", exports: ["types", "sections"] }))
+  fs.writeFileSync(path.join(logs, "types.ts"), "export const minutes = () => 0\n")
+  write(".vaultite/plugins/skiff/index.tsx", 'import { definePlugin } from "@vaultite"\nimport { AreaPanel } from "@plugins/logs/sections"\nexport default definePlugin({ blocks: { x: () => null } })\nvoid AreaPanel\n')
+  const shipped = rules.pluginProblems(path.join(VAULT, ".vaultite/plugins/skiff"), packaged, new Map([["logs", "core"], ["skiff", "vault"]]), true, "skiff")
+  check("modules: in a packaged app, a frontend imports an app plugin's .tsx module", !shipped.some((p: string) => p.includes("doesn't export")), shipped)
+  fs.rmSync(packaged, { recursive: true, force: true })
   await api("PUT", "config/plugins", { ...vault.config("plugins"), enabled: ON })
   for (const id of [...all, "skiff"]) { fs.rmSync(path.join(VAULT, ".vaultite/plugins", id), { recursive: true }); app.vaultPlugins.trust.forget(id) }
   await app.syncPlugins()

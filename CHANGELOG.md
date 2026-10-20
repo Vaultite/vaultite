@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Health and other plugins built on Logs start in the Mac app again (it ships no .tsx, which its check wanted).
 - Right-click the Properties header to show every note's properties, hide them or show them as text while editing;
   the palette has the same, so hidden properties come back from anywhere. Settings calls the third choice As text.
 - The iPhone app reads Apple Health for a plugin that asks (Apple Health's Settings page): its whole history once, then
