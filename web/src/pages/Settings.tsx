@@ -176,6 +176,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     { ...row("scheme", "Colour scheme", "Appearance", '[data-settings-row="scheme"]'), words: "color colors colours obsidian themes" },
     { ...row("density", "Density", "Appearance", '[data-settings-row="density"]', "Compact or comfortable"), words: "spacing" },
     { id: "sidebars", label: "Sidebars", sub: "Which panels are in each, and in what order", where: "Appearance", words: "panels customize arrange left right hide show", run: () => openDetail("sidebars") },
+    { ...row("pull-actions", "Pull-down actions", "Appearance", '[data-settings-row="pull-0"]', "What a page pulled down on a phone offers"), words: "pull down gesture phone swipe new note search close tab" },
     { id: "fonts", label: "Fonts", sub: "Interface, text and code", where: "Appearance", words: "font typeface monospace", run: () => openDetail("fonts") },
     ...textSizeKinds(disabled, order).map(([kind, k]) =>
       ({ ...row(`text-size-${kind}`, `${k.label} text size`, "Appearance", `[data-settings-row="text-size-${kind}"]`, "This device only"), words: "font size zoom bigger smaller" })),

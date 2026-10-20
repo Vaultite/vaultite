@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Phones: a page pulled down offers New note, Open a file (straight down) and Close tab; choose its three commands in
+  Settings > Appearance.
+
 ## 0.6.2 (2026-10-20)
 
 Apple Health in the iPhone app, and Health starting again in the Mac app.

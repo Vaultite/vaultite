@@ -3,10 +3,11 @@
 // +, Back and Forward sliding (Forward lit only after Back), and the edge swipes never going back or forward (they're
 // the drawers'). Each runs to its end, leaves nothing behind (no data-motion, no transform, no copy of the list) and
 // lands where it should. Frames mid-way go to the out dir.
-// Opens files and tabs only (the workspace's tabs, device-local): run it against a throwaway server.
+// Opens files and tabs (the workspace's tabs, device-local) and sets appearance.json's pullActions, then unsets it: run it
+// against a throwaway server.
 //   node web/qa/tabmotion.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
-import { qa, wait } from "./lib/qa.mjs"
+import { apiAt, qa, wait } from "./lib/qa.mjs"
 const { args: [B, OUT = "/tmp/tabmotion-shots/"], browser, check, watch, done } = await qa(import.meta.url)
 mkdirSync(OUT, { recursive: true })
 // Frames mid-way only when asked (QA_FRAMES=1): a screenshot during a transition can hold up headless Chrome's next
@@ -159,16 +160,25 @@ await drag(195, H - 25, 195, H - 55)
 s = await settled()
 check("bar dragged a little: springs back, no tab list", (await zooms()) === n && !(await P.isVisible("[data-tab-card]")) && clean(s), s)
 
-// The page pulled down from its top: New note, Commands, Close tab, picked by going sideways.
+// The page pulled down from its top: New note, Open a file, Close tab (the default pullActions), picked by going sideways.
 const t0 = await title(), c0 = await count()
 const pulled = await drag(195, 300, 195, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
 await wait(400)
-check("pull down: Commands picked in the middle opens the palette, the tab stays", pulled.join() === "commands" && (await P.locator("[role=dialog][aria-label=\"Command palette\"]").count()) > 0 && (await title()) === t0 && (await count()) === c0, { pulled, t: await title() })
+check("pull down: Open a file picked in the middle opens the quick switcher, the tab stays", pulled.join() === "switcher:open" && (await P.locator("[role=dialog][aria-label=\"Search\"]").count()) > 0 && (await title()) === t0 && (await count()) === c0, { pulled, t: await title() })
 await P.keyboard.press("Escape"); await wait(300)
 check("pull down: the page back in place", !(await P.evaluate(() => document.querySelector("#main-scroll > main")?.style.transform)) && !(await P.locator("[data-pull-actions]").count()))
 const right = await drag(195, 300, 300, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull][data-on]")].map((e) => e.dataset.pull)))
 await wait(600)
-check("pull down and right: Close tab", right.join() === "close" && (await count()) === c0 - 1, { right, n: await count() })
+check("pull down and right: Close tab", right.join() === "tab:close" && (await count()) === c0 - 1, { right, n: await count() })
+// Its commands are appearance.json's pullActions: the app follows a change at once.
+const api = apiAt(B)
+await api("PATCH", "config/appearance", { pullActions: ["palette:open", "file:new", "tab:close"] })
+await wait(1200)
+const offered = await drag(195, 300, 90, 470, () => P.evaluate(() => [...document.querySelectorAll("[data-pull]")].map((e) => `${e.dataset.pull}${e.dataset.on ? "*" : ""}`)))
+await wait(400)
+check("pull down and left: the commands pullActions names, its left one run", offered.join() === "palette:open*,file:new,tab:close" && (await P.locator("[role=dialog][aria-label=\"Command palette\"]").count()) > 0, offered)
+await P.keyboard.press("Escape"); await wait(300)
+await api("PATCH", "config/appearance", { pullActions: null })
 
 // A new tab from the bar's +.
 await P.click("[data-bar=new]")

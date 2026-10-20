@@ -102,6 +102,9 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   to move it). `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't
   fit). `fileBar`: the plugins' items in a file's top bar, in order (`["dispatch:dispatch", "companion:presence"]`;
   unset: their default places); one dragged into a sidebar (or Move to sidebar) is a panel there, in `sidebars.json`.
+  `pullActions`: the three commands a page pulled down past its top offers on a phone, by palette command id: left,
+  straight down (what a plain pull runs), right (`["file:new", "switcher:open", "tab:close"]`, the default; one left
+  out or empty keeps its default).
   No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are each device's.
 - `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`). A snippet is
   CSS added after the app's; the colours are variables (`--background`, `--foreground`, `--card`, `--primary`,

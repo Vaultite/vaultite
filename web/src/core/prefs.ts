@@ -55,6 +55,9 @@ export type Prefs = {
   /** The plugins' items in a file's top bar, in order ("companion:presence"); null: by their `sort`. One docked in a
    *  sidebar is a panel there (sidebars.json) instead. */
   fileBar: string[] | null
+  /** The commands a page pulled down on a phone offers, left, straight down, right (components/PullActions.tsx); null:
+   *  the default ones. */
+  pullActions: string[] | null
   fileSort: FileSort
   /** Files a folder shows in the tree before a "Show N more" row (its folders always show); 0: all of them. */
   folderLimit: number
@@ -80,20 +83,20 @@ export type Prefs = {
 const KEY = "vaultite.prefs"
 // (the appearance ones are core/bundles.ts' LOOK_DEFAULTS too: keep them the same)
 const DEFAULTS: Prefs = {
-  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, statusBarMore: [], fileBar: null, fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, statusBarMore: [], fileBar: null, pullActions: null, fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
-  appearance: ["theme", "scheme", "density", "sidebarScroll", "panelDividers", "quickTextSize", "interfaceFont", "textFont", "monoFont", "snippets", "fileIcons", "tabBar", "lineNumbers", "statusBar", "statusBarMore", "fileBar"], plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
+  appearance: ["theme", "scheme", "density", "sidebarScroll", "panelDividers", "quickTextSize", "interfaceFont", "textFont", "monoFont", "snippets", "fileIcons", "tabBar", "lineNumbers", "statusBar", "statusBarMore", "fileBar", "pullActions"], plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
 /** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */
 const WHOLE = { sidebars: "sidebars" } as const
 
 /** Whether a saved value has its default's shape (a list of names, a number, a flag): a settings file edited by hand to
- *  `"disabled": null` would otherwise stop the app on every load. `statusBar` and `fileBar` may be null. */
+ *  `"disabled": null` would otherwise stop the app on every load. `statusBar`, `fileBar` and `pullActions` may be null. */
 function fits(k: keyof Prefs, v: unknown) {
-  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "fileBar"
+  const d = DEFAULTS[k], nullable = k === "statusBar" || k === "fileBar" || k === "pullActions"
   if (Array.isArray(d) || nullable) return (v === null && nullable) || (Array.isArray(v) && v.every((x) => typeof x === "string"))
   if (d === null) return v === null || (typeof v === "object" && !Array.isArray(v))
   if (typeof d === "number") return typeof v === "number" && Number.isFinite(v)

@@ -340,7 +340,7 @@ export default function App() {
     { id: "nav:back", name: "Navigate back", keys: isMac ? ["Mod+Alt+ArrowLeft", "Mod+["] : ["Alt+ArrowLeft"], when: isDesktop, run: () => navigate(-1), icon: ArrowLeft },
     { id: "nav:forward", name: "Navigate forward", keys: isMac ? ["Mod+Alt+ArrowRight", "Mod+]"] : ["Alt+ArrowRight"], when: isDesktop, run: () => navigate(1), icon: ArrowRight },
     // (A pinned tab stays open: closed from its menu, or unpinned first.)
-    { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, when: isDesktop, run: () => { if (!activeTab().pinned) closeTab(activeTab().id) }, icon: X },
+    { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, run: () => { if (!activeTab().pinned) closeTab(activeTab().id) }, label: "Close tab", icon: X },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
     { id: "tab:toggle-stacked", name: "Stack tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers, nameWhenOn: "Unstack tabs", on: isStacked },
     // A window of its own (a pop-out): no sidebars, its own tabs.
@@ -574,7 +574,7 @@ export default function App() {
           onSearch={() => setSearching(true)} onCommands={() => setPalette("commands")} onNewNote={() => void newNote()} />
       )}
       {/* Phones: a page pulled down from its top: New note, Commands, Close tab. */}
-      {!desktop && store && <PullActions run={(w) => (w === "new" ? void newNote() : w === "commands" ? setPalette("commands") : closeTab(activeTab().id))} />}
+      {!desktop && store && <PullActions />}
       {!desktop && store && <PhoneDrawers store={store} file={filePath} tab={targetOf(tab)} vaultName={vaultName} vaultMenu={vaultMenu} />}
     </>
   )

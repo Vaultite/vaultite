@@ -1,5 +1,5 @@
 // Settings > Appearance: theme, colour scheme (gallery under More…), density, icons, line numbers, sidebar
-// scroll, fonts, text sizes (this device's), snippets. Saved in appearance.json; rows off their default show a reset.
+// scroll, a phone's pull-down actions, fonts, text sizes (this device's), snippets. Saved in appearance.json; rows off their default show a reset.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
 import { DEFAULT_FONTS, onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
@@ -16,6 +16,9 @@ import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
 import { Panel, ResetButton, Segmented, SettingRow, SheetHead, Switch } from "@/components/kit"
 import { errorText } from "@/core/notify"
+import { available, commandList, useCommandList } from "@/core/commands"
+import { choose } from "@/components/Chooser"
+import { DEFAULT_PULL, PULL_SLOTS, pullActions, pullLabel } from "@/components/PullActions"
 
 
 /** A scheme's swatches drawn in its own colours (the tile carries its data-scheme, so its CSS gives the tokens), in the
@@ -222,6 +225,7 @@ export function AppearancePanel() {
         {["file-icons", "tab-bar", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <SettingRow label="Sidebars" sub="Which panels are in each, and in what order" onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
         {["sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        <PullRows />
         <Fonts />
         {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (
           <TextSizeRow key={kind} kind={kind} label={k.label} sub="This device only" />
@@ -231,6 +235,28 @@ export function AppearancePanel() {
       <Snippets />
     </Panel>
   )
+}
+
+/** The commands a page pulled down on a phone offers (appearance.json's `pullActions`): a row for each way, its command
+ *  picked from the palette's. */
+function PullRows() {
+  const prefs = usePrefs()
+  const byId = new Map(useCommandList().map((c) => [c.id, c]))
+  const ids = pullActions(prefs)
+  const pick = (i: number) => choose({
+    title: PULL_SLOTS[i], placeholder: "A command to run…", current: ids[i],
+    items: available(commandList()).sort((a, b) => a.name.localeCompare(b.name)).map((c) => ({ id: c.id, label: c.name })),
+    onPick: (it) => {
+      const next = pullActions(getPrefs())
+      next[i] = it.id
+      void setPrefs({ pullActions: next.join() === DEFAULT_PULL.join() ? null : next })
+    },
+  })
+  return PULL_SLOTS.map((label, i) => {
+    const c = byId.get(ids[i])
+    return <SettingRow key={label} label={label} sub={i === 0 ? "On a phone, from a page's top" : undefined} value={c ? pullLabel(c) : ids[i]}
+      onClick={() => pick(i)} data-settings-row={`pull-${i}`} />
+  })
 }
 
 /** CSS snippets, the end of Appearance: the vault's .vaultite/snippets/*.css, a switch each, and New snippet. */
