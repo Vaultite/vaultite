@@ -26,10 +26,10 @@ final class Health {
         var sent: [String: Int] = [:]
         var last: Date?
         var error: String?
-        /// What it sends has grown since (2: nights' timelines, the rings): below that, sleep and days go again once.
+        /// What it sends has grown since (2: nights' timelines, the rings; 3: sleep's sources): below that, sleep and days go again once.
         var version: Int?
     }
-    private static let version = 2
+    private static let version = 3
 
     /// What it's doing now, for Settings.
     private(set) var phase: String?
@@ -279,7 +279,7 @@ final class Health {
         let rows = samples.compactMap { s -> [String]? in
             guard let v = Self.sleepValues[s.value] else { return nil }
             let z = Self.zone(s)
-            return [Self.stamp(s.startDate, z), Self.stamp(s.endDate, z), "HKCategoryValueSleepAnalysis" + v]
+            return [Self.stamp(s.startDate, z), Self.stamp(s.endDate, z), "HKCategoryValueSleepAnalysis" + v, s.sourceRevision.source.name]
         }
         try await post(url, ["sleep": ["samples": rows, "from": Self.stamp(from, .current), "to": Self.stamp(to, .current)]])
         count(url, "sleep", rows.count)
