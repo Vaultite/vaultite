@@ -48,7 +48,7 @@ final class Health {
         (.exercise, .appleExerciseTime, .cumulativeSum, .minute(), "exercise_min"),
         (.resting, .restingHeartRate, .discreteAverage, .count().unitDivided(by: .minute()), "resting_hr"),
         (.hrv, .heartRateVariabilitySDNN, .discreteAverage, .secondUnit(with: .milli), "hrv_ms"),
-        (.vo2, .vo2Max, .discreteAverage, HKUnit(from: "ml/kg*min"), "vo2max"),
+        (.vo2, .vo2Max, .discreteAverage, .literUnit(with: .milli).unitDivided(by: .gramUnit(with: .kilo).unitMultiplied(by: .minute())), "vo2max"),
         (.weight, .bodyMass, .mostRecent, .gramUnit(with: .kilo), "weight_kg"),
     ]
     private static let distances: [HKQuantityTypeIdentifier] = [.distanceWalkingRunning, .distanceCycling, .distanceSwimming,
@@ -150,6 +150,11 @@ final class Health {
                 task = .invalid
             }
             self.syncing = true
+            // Types added since access was given (the rings) were never asked: ask in the app, not in a background launch.
+            if await UIApplication.shared.applicationState == .active,
+               (try? await self.store.statusForAuthorizationRequest(toShare: [], read: self.readTypes)) == .shouldRequest {
+                try? await self.store.requestAuthorization(toShare: [], read: self.readTypes)
+            }
             for t in self.targets where t.on {
                 do {
                     try await self.send(t.url)
@@ -192,7 +197,7 @@ final class Health {
         // The last week first, so Today has last night at once.
         if !t.recent {
             phase = "Last week"
-            let from = cal.date(byAdding: .day, value: -8, to: now)!
+            let from = now.addingTimeInterval(-8 * 86400)
             try await sendSleep(url, from: from, to: now.addingTimeInterval(4 * 3600)) // (past the plugin's 3 h edge)
             let workouts = try await HKSampleQueryDescriptor(predicates: [.workout(HKQuery.predicateForSamples(withStart: from, end: nil))], sortDescriptors: []).result(for: store)
             try await sendWorkouts(url, workouts)
@@ -254,14 +259,15 @@ final class Health {
                 if let d = try await q.result(for: store).first?.startDate { first = min(first, d) }
             }
             update(url) { $0.historyAt = Date(); $0.daysStart = Self.day.string(from: cal.startOfDay(for: first)); $0.daysFrom = Self.day.string(from: cal.startOfDay(for: Date()).addingTimeInterval(86400 * 1.5)) }
-            t = target(url)!
+            guard let kept = target(url) else { return }
+            t = kept
         }
-        guard let start = Self.day.date(from: t.daysStart!) else { return }
-        var to = Self.day.date(from: t.daysFrom!) ?? Date()
+        guard let start = t.daysStart.flatMap(Self.day.date(from:)) else { return }
+        var to = t.daysFrom.flatMap(Self.day.date(from:)) ?? Date()
         let span = max(1, to.timeIntervalSince(start))
         let end = to
         while to > start {
-            let from = max(start, cal.date(byAdding: .day, value: -90, to: to)!)
+            let from = max(start, to.addingTimeInterval(-90 * 86400))
             phase = "Activity back to \(Self.month.string(from: from))"
             progress = end.timeIntervalSince(from) / span
             try await sendDays(url, from: from, to: to.addingTimeInterval(-1))
@@ -298,18 +304,18 @@ final class Health {
         let items: [[String: Any]] = workouts.map { w in
             let z = Self.zone(w)
             var stats: [[String: Any]] = []
-            if let e = w.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity() {
-                stats.append(["type": HKQuantityTypeIdentifier.activeEnergyBurned.rawValue, "sum": e.doubleValue(for: .kilocalorie()), "unit": "kcal"])
+            if let e = Self.value(w.statistics(for: HKQuantityType(.activeEnergyBurned))?.sumQuantity(), .kilocalorie()) {
+                stats.append(["type": HKQuantityTypeIdentifier.activeEnergyBurned.rawValue, "sum": e, "unit": "kcal"])
             }
             if let hr = w.statistics(for: HKQuantityType(.heartRate)) {
                 var o: [String: Any] = ["type": HKQuantityTypeIdentifier.heartRate.rawValue, "unit": "count/min"]
-                if let a = hr.averageQuantity() { o["average"] = a.doubleValue(for: bpm) }
-                if let m = hr.maximumQuantity() { o["maximum"] = m.doubleValue(for: bpm) }
+                if let a = Self.value(hr.averageQuantity(), bpm) { o["average"] = a }
+                if let m = Self.value(hr.maximumQuantity(), bpm) { o["maximum"] = m }
                 stats.append(o)
             }
             for d in Self.distances {
-                if let q = w.statistics(for: HKQuantityType(d))?.sumQuantity() {
-                    stats.append(["type": d.rawValue, "sum": q.doubleValue(for: .meterUnit(with: .kilo)), "unit": "km"])
+                if let q = Self.value(w.statistics(for: HKQuantityType(d))?.sumQuantity(), .meterUnit(with: .kilo)) {
+                    stats.append(["type": d.rawValue, "sum": q, "unit": "km"])
                     break
                 }
             }
@@ -327,8 +333,8 @@ final class Health {
     /// charts), 200 days a post.
     private func sendDays(_ url: String, from: Date, to: Date) async throws {
         let cal = Calendar.current
-        let a = cal.startOfDay(for: from), b = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: to))!
-        guard a < b else { return }
+        let a = cal.startOfDay(for: from)
+        guard let b = cal.date(byAdding: .day, value: 1, to: cal.startOfDay(for: to)), a < b else { return }
         var days: [String: [String: Any]] = [:]
         for m in Self.metrics {
             let q = HKStatisticsCollectionQueryDescriptor(predicate: .quantitySample(type: HKQuantityType(m.1), predicate: HKQuery.predicateForSamples(withStart: a, end: b)),
@@ -336,22 +342,25 @@ final class Health {
             let stats = try await q.result(for: store)
             stats.enumerateStatistics(from: a, to: b) { s, _ in
                 let quantity = m.2 == .cumulativeSum ? s.sumQuantity() : m.2 == .mostRecent ? s.mostRecentQuantity() : s.averageQuantity()
-                guard let v = quantity?.doubleValue(for: m.3), v > 0 else { return }
+                guard let v = Self.value(quantity, m.3), v > 0 else { return }
                 days[Self.day.string(from: s.startDate), default: [:]][m.4] = v
             }
         }
-        // The rings, as the Activity app shows them: what was done and each one's goal.
-        let range = HKQuery.predicate(forActivitySummariesBetweenStart: cal.dateComponents([.year, .month, .day, .era], from: a),
-                                      end: cal.dateComponents([.year, .month, .day, .era], from: b.addingTimeInterval(-1)))
-        for r in try await HKActivitySummaryQueryDescriptor(predicate: range).result(for: store) {
+        // The rings, as the Activity app shows them: what was done and each one's goal. HealthKit raises (ends the app)
+        // on components without their calendar.
+        let parts: Set<Calendar.Component> = [.calendar, .era, .year, .month, .day]
+        let range = HKQuery.predicate(forActivitySummariesBetweenStart: cal.dateComponents(parts, from: a),
+                                      end: cal.dateComponents(parts, from: b.addingTimeInterval(-1)))
+        var summaries: [HKActivitySummary] = []
+        do { summaries = try await HKActivitySummaryQueryDescriptor(predicate: range).result(for: store) }
+        catch let e as HKError where e.code == .errorAuthorizationNotDetermined || e.code == .errorAuthorizationDenied {}
+        for r in summaries {
             guard let d = cal.date(from: r.dateComponents(for: cal)) else { continue }
             var o: [String: Any] = [:]
-            let stand = r.appleStandHours.doubleValue(for: .count())
-            if stand > 0 { o["stand_h"] = stand }
-            let move = r.activeEnergyBurnedGoal.doubleValue(for: .kilocalorie())
-            if move > 0 { o["move_goal"] = move }
-            if let g = r.exerciseTimeGoal?.doubleValue(for: .minute()), g > 0 { o["exercise_goal"] = g }
-            if let g = r.standHoursGoal?.doubleValue(for: .count()), g > 0 { o["stand_goal"] = g }
+            if let v = Self.value(r.appleStandHours, .count()), v > 0 { o["stand_h"] = v }
+            if let v = Self.value(r.activeEnergyBurnedGoal, .kilocalorie()), v > 0 { o["move_goal"] = v }
+            if let v = Self.value(r.exerciseTimeGoal, .minute()), v > 0 { o["exercise_goal"] = v }
+            if let v = Self.value(r.standHoursGoal, .count()), v > 0 { o["stand_goal"] = v }
             if !o.isEmpty { days[Self.day.string(from: d), default: [:]].merge(o) { x, _ in x } }
         }
         let rows = days.sorted { $0.key > $1.key }.map { d, v in v.merging(["date": d]) { x, _ in x } }
@@ -359,6 +368,13 @@ final class Health {
             try await post(url, ["days": Array(rows[i..<min(i + 200, rows.count)])])
             count(url, "days", min(200, rows.count - i))
         }
+    }
+
+    /// A quantity in a unit, or nil if it can't be one: HealthKit raises (ends the app) on an incompatible unit.
+    private static func value(_ q: HKQuantity?, _ unit: HKUnit) -> Double? {
+        guard let q, q.is(compatibleWith: unit) else { return nil }
+        let v = q.doubleValue(for: unit)
+        return v.isFinite ? v : nil
     }
 
     // MARK: times and names
