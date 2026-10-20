@@ -9,7 +9,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Right-click the Properties header to show every note's properties, hide them or show them as text while editing;
   the palette has the same, so hidden properties come back from anywhere. Settings calls the third choice As text.
 - The iPhone app reads Apple Health for a plugin that asks (Apple Health's Settings page): its whole history once, then
-  what's new as the Watch syncs, in the background (`phoneHealth` in the plugin API).
+  what's new as the Watch syncs, in the background, with the Activity rings (`phoneHealth` in the plugin API).
 
 ## 0.6.1 (2026-10-20)
 

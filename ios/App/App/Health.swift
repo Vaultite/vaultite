@@ -26,7 +26,10 @@ final class Health {
         var sent: [String: Int] = [:]
         var last: Date?
         var error: String?
+        /// What it sends has grown since (2: nights' timelines, the rings): below that, sleep and days go again once.
+        var version: Int?
     }
+    private static let version = 2
 
     /// What it's doing now, for Settings.
     private(set) var phase: String?
@@ -60,7 +63,7 @@ final class Health {
     }
 
     private var readTypes: Set<HKObjectType> {
-        Set(Stream.allCases.map(type) + [HKQuantityType(.heartRate)] + Self.distances.map { HKQuantityType($0) })
+        Set(Stream.allCases.map(type) + [HKQuantityType(.heartRate), HKObjectType.activitySummaryType()] + Self.distances.map { HKQuantityType($0) })
     }
 
     // MARK: settings
@@ -176,6 +179,14 @@ final class Health {
     private func count(_ url: String, _ key: String, _ n: Int) { update(url) { $0.sent[key, default: 0] += n } }
 
     private func send(_ url: String) async throws {
+        if let t = target(url), (t.version ?? 1) < Self.version {
+            update(url) { t in
+                t.anchors[Stream.sleep.rawValue] = nil
+                t.drained.removeAll { $0 == Stream.sleep.rawValue }
+                t.daysFrom = nil; t.daysStart = nil; t.historyAt = nil; t.recent = false
+                t.version = Self.version
+            }
+        }
         guard let t = target(url) else { return }
         let cal = Calendar.current, now = Date()
         // The last week first, so Today has last night at once.
@@ -328,6 +339,20 @@ final class Health {
                 guard let v = quantity?.doubleValue(for: m.3), v > 0 else { return }
                 days[Self.day.string(from: s.startDate), default: [:]][m.4] = v
             }
+        }
+        // The rings, as the Activity app shows them: what was done and each one's goal.
+        let range = HKQuery.predicate(forActivitySummariesBetweenStart: cal.dateComponents([.year, .month, .day, .era], from: a),
+                                      end: cal.dateComponents([.year, .month, .day, .era], from: b.addingTimeInterval(-1)))
+        for r in try await HKActivitySummaryQueryDescriptor(predicate: range).result(for: store) {
+            guard let d = cal.date(from: r.dateComponents(for: cal)) else { continue }
+            var o: [String: Any] = [:]
+            let stand = r.appleStandHours.doubleValue(for: .count())
+            if stand > 0 { o["stand_h"] = stand }
+            let move = r.activeEnergyBurnedGoal.doubleValue(for: .kilocalorie())
+            if move > 0 { o["move_goal"] = move }
+            if let g = r.exerciseTimeGoal?.doubleValue(for: .minute()), g > 0 { o["exercise_goal"] = g }
+            if let g = r.standHoursGoal?.doubleValue(for: .count()), g > 0 { o["stand_goal"] = g }
+            if !o.isEmpty { days[Self.day.string(from: d), default: [:]].merge(o) { x, _ in x } }
         }
         let rows = days.sorted { $0.key > $1.key }.map { d, v in v.merging(["date": d]) { x, _ in x } }
         for i in stride(from: 0, to: rows.count, by: 200) {
