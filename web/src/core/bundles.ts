@@ -31,6 +31,8 @@ export type BundleInfo = {
   /** Its preview.png's version (the card's picture), or null: the card draws a sketch. */
   preview: string | null
   problems: string[]
+  /** The setup is this bundle's: applying it would change nothing. */
+  inUse?: boolean
 }
 type Change = { key: string; from: unknown; to: unknown }
 export type Plan = {
@@ -57,9 +59,9 @@ let loading: Promise<void> | null = null
 const subs = signal()
 const emit = () => subs.notify()
 
-/** Fetch the list again (after a save, an import, a delete, an apply). */
+/** Fetch the list again (after a save, an import, a delete, an apply; the page shown: what's in use may have changed). */
 export function refreshBundles() {
-  loading = get<Listing>("bundles").then((l) => { listing = l; emit() }, (e) => { notifyError(e, "Couldn't list the bundles") }).finally(() => { loading = null })
+  loading = get<Listing>(`bundles${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`).then((l) => { listing = l; emit() }, (e) => { notifyError(e, "Couldn't list the bundles") }).finally(() => { loading = null })
   return loading
 }
 

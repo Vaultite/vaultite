@@ -188,6 +188,8 @@ export type Info = {
   /** Its preview.png's version (GET /api/bundles/<id>/preview.png), or null when it has none. */
   preview: string | null
   problems: string[]
+  /** The setup is this bundle's (the list's, for the workspace it's asked for): applying it would change nothing. */
+  inUse?: boolean
 }
 type HomeBlock = { block: string; view: string | null; wide: boolean }
 
@@ -1060,7 +1062,11 @@ export async function handle(host: Host, method: string, parts: string[], query:
   const v = host.vault
   const [id, action] = parts
   if (parts.length === 0 && method === "GET") {
-    const all = list(v).map((b) => info(b, host))
+    const n = workspaceOf(query.workspace)
+    const all = await Promise.all(list(v).map(async (b): Promise<Info> => {
+      const inUse = !b.error && await plan(b, host, n).then((p) => p.empty, () => false)
+      return { ...info(b, host), inUse }
+    }))
     all.sort((a, b) => (a.source === b.source ? 0 : a.source === "app" ? -1 : 1) || a.sort - b.sort || a.name.localeCompare(b.name))
     return { bundles: all, default: DEFAULT_BUNDLE, ...status(v) }
   }

@@ -13,6 +13,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - New vaults: Start here tries the companion first (@claude in the note), and the Buttons panel is in the left sidebar.
 - Applying Standard sets up what a new vault has: it no longer adds the pages of plugins already on (Activity, People,
   Agents...); a bundle writes the pages of the plugins it turns on.
+- Bundles: the card of the bundle your setup matches says In use (a new vault's Standard), in place of the last one
+  applied.
 - Settings and Get plugins are quieter: fewer explanation lines under rows, and each plugin in Get plugins is one line
   of description, its version and date beside its name.
 

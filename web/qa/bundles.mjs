@@ -62,6 +62,8 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await until(() => page.locator("[data-bundle]").count(), 6000)
   const ids = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => e.dataset.bundle))
   check("three built-in bundles, Standard first", ids.join() === "standard,life-os,agent-cockpit", ids)
+  const inUse = await page.locator("[data-bundle]:has([data-bundle-in-use])").evaluateAll((els) => els.map((e) => e.dataset.bundle))
+  check("a new vault: Standard's card says In use, the others don't", inUse.join() === "standard", inUse)
   await page.locator('[data-bundle="life-os"]').click()
   await until(() => page.locator('dialog[open] [data-bundle-preview="life-os"]').count(), 6000)
   await shot(page, "preview-life-os-new-vault")

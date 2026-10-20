@@ -45,6 +45,8 @@ terminals, their activity, other machines and the server).
 - What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous setup" (the
   toast's Undo, Settings, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
   they're unchanged.
+- A bundle is in use (`inUse` in `GET /api/bundles`, "In use" on its card) while applying it would change nothing: a
+  new vault's Standard, until a setting it sets changes.
 - Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
   asked. A plugin's page as it wrote it goes by its name (`Dashboards/Today.md`), other pinned dashboards as files. Sharing (export, Copy) leaves out its picture, pages with the user's own text and pins to their notes, unless
   asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;

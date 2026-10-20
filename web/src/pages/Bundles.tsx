@@ -207,7 +207,7 @@ function Sketch({ b }: { b: BundleInfo }) {
 
 /** A bundle: its picture and name, nothing to read (what it changes is in its preview); only a warning when it runs
  *  code or can't be read. */
-function BundleCard({ b, applied, picked }: { b: BundleInfo; applied?: boolean; picked?: boolean }) {
+function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
   const Icon = iconOfBundle(b)
   return (
     <div className="group/card relative flex min-w-0 flex-col">
@@ -220,7 +220,7 @@ function BundleCard({ b, applied, picked }: { b: BundleInfo; applied?: boolean; 
               <Icon className="size-4" strokeWidth={2.25} />
             </span>
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{b.name}</span>
-            {applied && !picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-tip="The last bundle applied">Applied</span>}
+            {b.inUse && !picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-in-use data-tip="Your setup is this one: applying it changes nothing">In use</span>}
             {picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-picked>Picked</span>}
           </div>
           {(!!b.code.length || !!b.problems.length) && (
@@ -354,7 +354,7 @@ export function Bundles({ store, section }: { store: Store; section?: boolean })
       <div className="@container" data-keylist>
         {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
         <div className={cn(GRID, "mb-7")} data-bundles-app>
-          {app.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} picked={welcome && b.id === start?.id} />)}
+          {app.map((b) => <BundleCard key={b.id} b={b} picked={welcome && b.id === start?.id} />)}
         </div>
         {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
         {welcome && (
@@ -365,7 +365,7 @@ export function Bundles({ store, section }: { store: Store; section?: boolean })
         {(!welcome || mine.length > 0) && <>
           <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
           <div className={cn(GRID, "mb-6")} data-bundles-mine>
-            {mine.map((b) => <BundleCard key={b.id} b={b} applied={prev?.bundle === b.id} />)}
+            {mine.map((b) => <BundleCard key={b.id} b={b} />)}
             <ImportCard over={over} />
           </div>
         </>}

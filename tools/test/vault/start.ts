@@ -38,6 +38,12 @@ export default async ($: VaultTest) => {
     await freshApp.state()
     check("new vault, Standard applied: what it had, no plugin's page added (Errors, People)", JSON.stringify(fs.readdirSync(path.join(fresh, "Dashboards"))) === '["Claude.md"]',
       fs.readdirSync(path.join(fresh, "Dashboards")))
+    const inUse = async () => ((await freshApp.host().call("GET", "bundles")) as { bundles: { id: string; inUse?: boolean }[] }).bundles.filter((b) => b.inUse).map((b) => b.id)
+    const was = await inUse()
+    await freshApp.host().call("PATCH", "config/appearance", { scheme: "nord" })
+    const changed = await inUse()
+    await freshApp.host().call("PATCH", "config/appearance", { scheme: null })
+    check("new vault: Standard is in use, until the setup changes", JSON.stringify(was) === '["standard"]' && !changed.length && JSON.stringify(await inUse()) === '["standard"]', [was, changed])
     const own = path.join(tmp, "Own notes")
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")
