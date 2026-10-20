@@ -49,6 +49,9 @@ for (const scheme of ["light", "dark"]) {
   const s = scheme === "light" ? "" : `${scheme} `
   const shot = (n) => page.screenshot({ path: `${OUT}sheet-${scheme}-${n}.png` })
   const wait = (ms = 600) => page.waitForTimeout(ms)
+  /** The open sheet done sliding up (measured on its way, it reaches below the screen). */
+  const sheetIn = () => page.waitForFunction(() => { const d = document.querySelector("dialog[open]"); return !!d && d.getAnimations().every((a) => a.playState !== "running") },
+    null, { timeout: 5000 }).catch(() => {})
   const st = () => page.evaluate(() => {
     const d = document.querySelector("dialog"), sc = d?.querySelector(".overflow-y-auto"), r = d?.getBoundingClientRect()
     const back = d?.querySelector("header button[aria-label^=Back]")
@@ -87,8 +90,7 @@ for (const scheme of ["light", "dark"]) {
   await page.goBack(); await wait()
   t = await tb()
   check(`${s}A Back returns to the list`, inTab(t) && t.hash === PEOPLE, t)
-  // (to the pixel restoreScroll settles for: the page can come back a fraction shorter)
-  check(`${s}A ...where it was scrolled`, Math.abs(t.y - y) <= 1, { y, now: t.y })
+  check(`${s}A ...where it was scrolled`, t.y === Math.round(y), { y, now: t.y })
 
   // B. Files -> note in a tab, read down, person wikilink -> their file in the tab (at the top) -> Back to the same
   // spot -> note link -> the idea -> system back -> Forward.
@@ -252,7 +254,7 @@ for (const scheme of ["light", "dark"]) {
     await page.evaluate(() => scrollTo(0, 99999)); await wait(150)
     t = await tb()
     check(`${s}H note ${n.id} fits in a tab`, inTab(t), t)
-    await page.goto(`${B}#view/files/${file(n.id)}`); await wait(1000)
+    await page.goto(`${B}#view/files/${file(n.id)}`); await wait(1000); await sheetIn()
     await scrollSheet(99999); await wait(150)
     x = await st()
     check(`${s}H note ${n.id} fits in a sheet`, fits(x), x)

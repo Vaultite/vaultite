@@ -152,7 +152,9 @@ try {
   check("update: its new code doesn't run until allowed", await until(async () => !(await listed("harbor"))?.loaded && (await listed("harbor"))?.approval?.state === "changed", 8000) && (await api("harbor"))[0] === 404, [(await listed("harbor"))?.approval, await api("harbor")])
   await page.locator("[data-plugins-installed]").click()
   const waiting = page.locator('[data-plugin-waiting="harbor"]')
-  check("update: its row says it changed and waits", await until(async () => (await waiting.innerText()).includes("Changed"), 8000), await waiting.innerText().catch(() => ""))
+  check("update: its row says it changed and waits", await until(async () => (await waiting.innerText({ timeout: 500 })).includes("Changed"), 8000),
+    // (what its row says, and what the server says: the app not following it shows here)
+    { row: await page.locator('[data-plugin-row="harbor"]').locator("xpath=..").innerText({ timeout: 500 }).catch(() => ""), server: (await listed("harbor"))?.approval?.state })
   await page.locator('[data-plugin-review="harbor"]').click()
   const approval = page.locator('dialog[open] [data-plugin-approval="harbor"]')
   check("update: its sheet shows what changed and what it says it does now", await until(async () => (await approval.locator("[data-plugin-changed]").innerText()).includes("plugin.ts") &&

@@ -18,6 +18,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Settings and Get plugins are quieter: fewer explanation lines under rows, and each plugin in Get plugins is one line
   of description, its version and date beside its name.
 - Inbox: a result marked done is first under Done, and the agent's event about it is read and opens it in the archive.
+- In the desktop app, a web page in a pane the status bar reaches over stays live: it stops above the bar instead of
+  freezing as a picture of itself.
+- Typing in a note no longer redraws the status bar's items: a keystroke draws less than half of what it did.
+- Back to a page lands exactly where it was scrolled: its blocks come back at the height they had, not rounded up, so
+  the page no longer settles a few pixels as they load.
 
 ## 0.6.2 (2026-10-20)
 

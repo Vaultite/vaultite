@@ -31,9 +31,11 @@ addEventListener("pagehide", () => { if (saving) save() })
 function remember(key: string, w: number, h: number) {
   const m = all()
   const was = m.get(key) ?? []
-  if (was[0] && Math.abs(was[0].w - w) < 1 && Math.abs(was[0].h - h) < 1) return
+  // (the height as laid out, fractions too: held a rounded half pixel taller, a page of blocks shifts as they let go)
+  const exact = Math.round(h * 100) / 100
+  if (was[0] && Math.abs(was[0].w - w) < 1 && was[0].h === exact) return
   // The latest first, three widths at most (a pane or two; a sheet).
-  const next = [{ w: Math.round(w), h: Math.round(h) }, ...was.filter((s) => Math.abs(s.w - w) >= NEAR)].slice(0, 3)
+  const next = [{ w: Math.round(w), h: exact }, ...was.filter((s) => Math.abs(s.w - w) >= NEAR)].slice(0, 3)
   m.delete(key)
   m.set(key, next)
   while (m.size > MAX) m.delete(m.keys().next().value!)

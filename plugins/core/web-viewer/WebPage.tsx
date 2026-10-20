@@ -43,6 +43,14 @@ function covered(box: HTMLElement, r: DOMRect) {
   return false
 }
 
+/** Where in the box the page goes: above the status bar where that's drawn over the pane's foot (laid over it, the page
+ *  would hide the bar, and the bar over the page would freeze it as a picture). */
+function pageArea(r: DOMRect) {
+  const bar = document.querySelector("[data-status-bar]")?.getBoundingClientRect()
+  if (!bar?.height || bar.left >= r.right || bar.right <= r.left || bar.top >= r.bottom || bar.bottom <= r.top) return r
+  return new DOMRect(r.left, r.top, r.width, Math.max(0, bar.top - r.top))
+}
+
 const http = (u: string) => /^https?:\/\//i.test(u)
 
 function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
@@ -142,7 +150,8 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
     const sync = async () => {
       raf = 0
       if (busy || gone) return
-      const r = el.getBoundingClientRect()
+      const whole = el.getBoundingClientRect(), r = pageArea(whole)
+      el.style.setProperty("--page-foot", `${whole.bottom - r.bottom}px`)
       const show = !live.current.error && r.width >= 2 && r.height >= 2 && !covered(el, r)
       if (!show) {
         if (hidden) return
@@ -165,6 +174,7 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
       last = key
       const placed = await web.place(id, rect).catch(() => undefined)
       el.dataset.live = "" // (the page is over the box: what the toasts' copies look for, index.tsx)
+      if (shot.current) shot.current.hidden = true // (under the page now, but where the status bar leaves the foot bare)
       // Back from under an overlay, in the focused pane with the keyboard nowhere in particular: give it back to the page.
       // (or it had the keyboard when it was hidden, and nothing else took it meanwhile)
       const free = !document.activeElement || document.activeElement === document.body
@@ -231,7 +241,7 @@ function Page({ web, arg, focused, setArg }: Props & { web: WebPages }) {
         </button>
       </div>
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
-        <img ref={shot} alt="" hidden draggable={false} className="pointer-events-none absolute inset-0 size-full object-fill select-none" />
+        <img ref={shot} alt="" hidden draggable={false} className="pointer-events-none absolute inset-x-0 top-0 h-[calc(100%_-_var(--page-foot,0px))] w-full object-fill select-none" />
         {state.error && <Problem error={state.error} url={state.url || arg} onRetry={() => void web.go(id, "reload")} />}
       </div>
     </div>

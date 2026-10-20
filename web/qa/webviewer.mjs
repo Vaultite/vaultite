@@ -108,18 +108,20 @@ const clickInPage = (sel) => app.evaluate(async ({ BrowserWindow }, sel) => {
   v.webContents.sendInputEvent({ type: "mouseDown", x, y, button: "left", clickCount: 1 })
   v.webContents.sendInputEvent({ type: "mouseUp", x, y, button: "left", clickCount: 1 })
 }, sel)
+/** Where the page goes: its box, above the status bar where that reaches over the box's foot. */
 const box = () => win.evaluate(() => {
   const el = [...document.querySelectorAll("[data-web-box]")].find((e) => e.getBoundingClientRect().width > 0)
   if (!el) return null
-  const r = el.getBoundingClientRect()
-  return { x: r.left, y: r.top, width: r.width, height: r.height }
+  const r = el.getBoundingClientRect(), bar = document.querySelector("[data-status-bar]")?.getBoundingClientRect()
+  const over = bar?.height && bar.left < r.right && bar.right > r.left && bar.top < r.bottom && bar.bottom > r.top
+  return { x: r.left, y: r.top, width: r.width, height: over ? bar.top - r.top : r.height }
 })
 const zoom = () => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].webContents.getZoomFactor())
 /** The visible page sits exactly on its box (in the window's pixels: the box's times the zoom). */
 async function aligned() {
   const [ps, b, z] = [await pages(), await box(), await zoom()]
   const v = ps.find((p) => p.visible)
-  if (!v || !b) return { v, b }
+  if (!v || !b) return { v, b, over: await over() }
   const want = { x: Math.round(b.x * z), y: Math.round(b.y * z), width: Math.round(b.width * z), height: Math.round(b.height * z) }
   return ["x", "y", "width", "height"].every((k) => Math.abs(v.bounds[k] - want[k]) <= 1) ? true : { got: v.bounds, want }
 }
@@ -307,10 +309,12 @@ check("the window resized: still over its pane", await until(isAligned, 10000), 
 const wcBefore = (await pages()).find((p) => p.visible)?.wc
 // (its pane focused, as a real click in the page does through the page's focus; a synthetic one in a window that isn't
 // focused doesn't, and the divider dragged above may have focused the other pane)
-await win.locator("section[data-group]:has([data-web-box]) [role=tab][aria-selected=true]").first().click(); await wait(300)
+await win.locator("section[data-group]:has([data-web-box]) [role=tab][aria-selected=true]").first().click()
+await until(async () => (await win.evaluate(() => decodeURIComponent(location.hash))).includes(`${SITE}/article`), 5000)
 await clickInPage("#next")
 check("a link in the page: the address and the tab follow", await until(async () => (await win.locator("[data-web-address]").inputValue()) === `${SITE}/two`
-  && (await win.evaluate(() => decodeURIComponent(location.hash))).includes(`${SITE}/two`), 10000), await win.locator("[data-web-address]").inputValue())
+  && (await win.evaluate(() => decodeURIComponent(location.hash))).includes(`${SITE}/two`), 10000),
+  { address: await win.locator("[data-web-address]").inputValue(), hash: await win.evaluate(() => decodeURIComponent(location.hash)) })
 await win.locator("[data-web-page] button[aria-label=Back]").click()
 check("Back", await until(async () => (await win.locator("[data-web-address]").inputValue()) === `${SITE}/article`, 10000), await win.locator("[data-web-address]").inputValue())
 await win.locator("[data-web-address]").click()

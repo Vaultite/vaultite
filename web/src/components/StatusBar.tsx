@@ -224,7 +224,7 @@ export function StatusBar() {
   // The ambient items: the tucked ones in the tray, the rest in the bar, but those that don't fit (from the left), which
   // the tray shows too.
   const barRef = useRef<HTMLDivElement>(null), fitRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
-  const inBar = ambient.filter((x) => !statusBarMore.includes(x.key))
+  const inBar = useMemo(() => ambient.filter((x) => !statusBarMore.includes(x.key)), [ambient, statusBarMore])
   const over = useOverflow(barRef, fitRef, inBar.map((x) => x.key))
   const keptItems = useKeptWidth(barRef, path)
   useDrops(barRef, !!(s && late))
@@ -247,6 +247,11 @@ export function StatusBar() {
       {item_(key, () => item.render())}
     </span>
   )
+  // Drawn again only when the bar's own layout changes: none of them takes the file, so a keystroke redraws none.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const inBarSlots = useMemo(() => withComing(inBar, keptItems, ambient.map((x) => x.key)).map((x) => "coming" in x
+    ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} />
+    : slot(x.key, x.item, over.includes(x.key), keptItems?.find(([k]) => k === x.key)?.[1])), [inBar, keptItems, ambient, over, dragged, path])
   const line = (g: Gap | null) => g?.x !== undefined && <div aria-hidden className="pointer-events-none absolute h-4 w-0.5 rounded-full bg-primary" style={{ left: g.x - 1, top: g.y! - 8 }} />
   const more = (inTray.length > 0 || !!dragged) && (
     <button type="button" data-status-more onClick={() => setTray((t) => !t)} aria-label="More status items" aria-expanded={trayOpen} data-tip="More" data-tip-side="top"
@@ -258,9 +263,7 @@ export function StatusBar() {
   const own = (more || inBar.length > 0) && <>
     {more}
     <div ref={fitRef} data-ambient className="flex min-w-0 items-center gap-1 overflow-hidden">
-      {withComing(inBar, keptItems, ambient.map((x) => x.key)).map((x) => "coming" in x
-        ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} />
-        : slot(x.key, x.item, over.includes(x.key), keptItems?.find(([k]) => k === x.key)?.[1]))}
+      {inBarSlots}
     </div>
     {s && <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />}
   </>
@@ -280,6 +283,12 @@ export function StatusBar() {
       {trayBox}
     </div>
   )
+  // The plugins' items for the file, drawn again only when it changes (the keystroke's own render has the old one).
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const fileItems = useMemo(() => ({
+    before: items.filter((x) => !x.item.after).map(({ key, item }) => <span key={key} data-drop="3" className="contents">{item_(key, () => item.render(file))}</span>),
+    after: items.filter((x) => x.item.after).map(({ key, item }) => item_(key, () => item.render(file))),
+  }), [items, file, path])
   // (the file's part all at once: its view button drawn a frame before the items late brings moved when they came)
   if (!s || !late) return own ? wrap(null) : null
   const cur = MODES[s.mode]
@@ -288,7 +297,7 @@ export function StatusBar() {
   const menu = (e: MouseEvent) => menuAbove(e, s.views.map((v) => ({ label: v.label, checked: v.value === s.mode, run: () => s.setMode(v.value) })))
   const n = (x: number, one: string) => `${numberText(x)} ${one}${x === 1 ? "" : "s"}`
   return wrap(<>
-    {items.filter((x) => !x.item.after).map(({ key, item }) => <span key={key} data-drop="3" className="contents">{item_(key, () => item.render(file))}</span>)}
+    {fileItems.before}
     {s.views.length > 1 ? (
       <button type="button" onClick={menu} onContextMenu={menu} aria-label={`${tip}. Change view`} aria-haspopup="menu" data-tip={tip} data-tip-side="top"
         className="grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground">
@@ -301,7 +310,7 @@ export function StatusBar() {
         : counts && nb && s.mode === "read" ? <span>{n(counts.cells, "cell")}</span>
         : counts && (code ? <><span data-drop="2">{n(counts.lines, "line")}</span><span data-drop="1">{n(counts.chars, "character")}</span></>
           : <><span data-drop="2">{n(counts.words, "word")}</span><span data-drop="1">{n(counts.chars, "character")}</span></>)}
-      {items.filter((x) => x.item.after).map(({ key, item }) => item_(key, () => item.render(file)))}
+      {fileItems.after}
     </Steady>
   </>)
 }

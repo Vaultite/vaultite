@@ -65,12 +65,18 @@ await quiet()
 const now = {}, why = {}
 // Typing: per keystroke, the commits and components rendered (before the autosave: its own after a pause). Keys 200 ms
 // apart, so each one's deferred renders are done before the next (at typing speed they merge, by timing).
+// (its saves held till the keys are counted: a key late on a busy machine leaves the 600 ms pause that saves, and the
+// store's refresh after it is what elsewhere.rendered counts)
+const saves = []
+await page.route("**/api/file", (r) => (r.request().method() === "PUT" ? saves.push(r) : r.continue()))
 const typed = " the quick brown fox jumps"
 await reset()
 await page.keyboard.type(typed, { delay: 200 })
 let c = await read()
 now["typing.renderedPerKey"] = c.rendered / typed.length
-why.typing = busiest(c)
+why.typing = `${busiest(c)}${saves.length ? `; ${saves.length} saves held` : ""}`
+await page.unroute("**/api/file")
+for (const r of saves) await r.continue()
 await wait(1500)
 await quiet()
 
