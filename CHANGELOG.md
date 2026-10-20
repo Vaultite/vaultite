@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.6.2 (2026-10-20)
+
+Apple Health in the iPhone app, and Health starting again in the Mac app.
+
 - Health and other plugins built on Logs start in the Mac app again (it ships no .tsx, which its check wanted).
 - Right-click the Properties header to show every note's properties, hide them or show them as text while editing;
   the palette has the same, so hidden properties come back from anywhere. Settings calls the third choice As text.
