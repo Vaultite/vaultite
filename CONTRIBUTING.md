@@ -17,8 +17,8 @@ Run against a copy of a vault: the server writes into the vault it serves. Needs
 TypeScript directly) and, for the QA scripts, Playwright's Chromium (`npx playwright-core install chromium`).
 
 - Desktop app: `npm run app` (`-- --vault <path>` opens one). `npm run release` builds the signed, notarized dmgs and
-  zips (Apple silicon and Intel) and latest-mac.yml in `dist-app/`; `npm run app:build` an unsigned app for this Mac
-  (`dist-app/mac-arm64/Vaultite.app`).
+  zips (Apple silicon and Intel) and latest-mac.yml in `dist-app/`; `npm run app:build` an unsigned app for this Mac,
+  Vaultite Main (`dist-app/mac-arm64/Vaultite Main.app`): an app of its own beside a release, updating itself from main.
 - Desktop app on Linux: `npm run release:linux` for the AppImage, .deb and latest-linux.yml (built on Linux, for its
   architecture: node-pty is compiled there), or `npm run app:install` to install this checkout for your user, updating
   itself from main. On Ubuntu 24.04+, `npm run app` needs an AppArmor profile for `node_modules/electron/dist/electron`

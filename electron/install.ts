@@ -4,17 +4,20 @@ import { execFileSync, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
+import { createRequire } from "node:module"
 import { fileURLToPath } from "node:url"
 
 const ROOT = path.dirname(path.dirname(fileURLToPath(import.meta.url)))
 if (process.platform !== "linux") {
-  console.log("npm run app:install is Linux's. On a Mac, npm run app:build makes Vaultite.app in dist-app/.")
+  console.log("npm run app:install is Linux's. On a Mac, npm run app:build makes Vaultite Main.app in dist-app/.")
   process.exit(1)
 }
 
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"))
-const NAME: string = pkg.build.productName
-const EXE: string = pkg.build.linux.executableName
+// Vaultite Main, as npm run app:build names it
+const config = createRequire(import.meta.url)("./source.cjs")
+const NAME: string = config.productName
+const EXE: string = config.linux.executableName
 const DATA = process.env.XDG_DATA_HOME || path.join(os.homedir(), ".local", "share")
 const DEST = path.join(DATA, "vaultite", NAME)
 const BIN = path.join(os.homedir(), ".local", "bin")
@@ -51,7 +54,7 @@ fs.writeFileSync(path.join(apps, `${EXE}.desktop`), [
   "Terminal=false",
   `Categories=${pkg.build.linux.category};`,
   `MimeType=${mimes.join(";")};`,
-  `StartupWMClass=${pkg.name}`, // (Electron names the window class after package.json's name)
+  `StartupWMClass=${config.extraMetadata.name}`, // (Electron names the window class after package.json's name)
   "",
 ].join("\n"))
 for (const tool of [["update-desktop-database", apps], ["gtk-update-icon-cache", "-q", "-t", path.join(DATA, "icons", "hicolor")]]) {

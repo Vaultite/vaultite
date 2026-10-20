@@ -7,6 +7,8 @@
 - Signing (`sign.cjs`): with a real identity macOS keeps the app's privacy grants across builds; signed ad hoc, each
   build is a new app and its terminals get "Operation not permitted" on an iCloud Drive vault. A new native need is an
   entitlement (`entitlements.plist`) or an Info.plist usage string (package.json's `build`).
+- Four apps, each its own id, name and userData, so any of them install side by side: Vaultite (releases), Vaultite
+  Nightly (`nightly.cjs`), Vaultite Main (`source.cjs`: built from source, `app:build`) and Vaultite Dev (a branch).
 - Test a release under another `appId` and `productName`: one sharing the installed app's bundle id makes macOS re-check
   its privacy grants. Uploading the update feed is by hand, never part of a build.
 - Debugging the real window: `debugPort` in `vaults.json` (or `VAULTITE_DEBUG_PORT`) serves Chromium's DevTools

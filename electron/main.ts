@@ -949,7 +949,7 @@ async function pickOutside(w: Win | null) {
 const BUILD = (() => {
   try {
     const b = JSON.parse(fs.readFileSync(path.join(ROOT, "electron", "build.json"), "utf8"))
-    return typeof b.commit === "string" && typeof b.repo === "string" ? b as { commit: string; repo: string; release?: boolean; channel?: "dev" | "nightly"; branch?: string } : null
+    return typeof b.commit === "string" && typeof b.repo === "string" ? b as { commit: string; repo: string; release?: boolean; channel?: "dev" | "nightly" | "main"; branch?: string } : null
   } catch {
     return null
   }
@@ -960,10 +960,10 @@ const RELEASE = app.isPackaged && BUILD?.release === true
 /** Vaultite Dev (see the head of this file); the branch it updates from. */
 const DEV = BUILD?.channel === "dev"
 const BRANCH = (DEV && BUILD?.branch) || "main"
-/** The clone update.sh builds in, and the finished build it leaves next to it (Vaultite.app, and its commit). */
+/** The clone update.sh builds in, and the finished build it leaves next to it (Vaultite Main.app, and its commit). */
 const SOURCE = () => path.join(app.getPath("userData"), "source")
 const NEXT = () => path.join(app.getPath("userData"), "update")
-/** This app's bundle (…/Vaultite.app), which an update replaces; on Linux its folder (npm run app:install's). */
+/** This app's bundle (…/Vaultite Main.app), which an update replaces; on Linux its folder (npm run app:install's). */
 const BUNDLE = MAC ? path.resolve(app.getPath("exe"), "..", "..", "..") : path.dirname(app.getPath("exe"))
 /** What update.sh build leaves in NEXT: the .app, or (Linux) the unpacked app's folder. */
 const BUILT = () => path.join(NEXT(), MAC ? `${app.getName()}.app` : app.getName())

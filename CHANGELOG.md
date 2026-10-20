@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The app built from source (`npm run app:build`, `app:install`) is Vaultite Main, an app of its own: a release
+  installs beside it instead of over it.
+
 ## 0.6.0 (2026-10-19)
 
 Conflicts show in place, menus filter as you type, sidebars are yours to arrange, and vaults in iCloud Drive stay readable.

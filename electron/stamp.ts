@@ -12,5 +12,5 @@ fs.writeFileSync(path.join(ROOT, "electron", "build.json"),
   JSON.stringify({ commit: git("rev-parse", "HEAD"), repo: git("remote", "get-url", "origin"),
     ...(process.env.VAULTITE_RELEASE ? { release: true } : {}),
     ...(process.env.VAULTITE_CHANNEL === "dev" ? { channel: "dev", branch: git("rev-parse", "--abbrev-ref", "HEAD") } : {}),
-    ...(process.env.VAULTITE_CHANNEL === "nightly" ? { channel: "nightly" } : {}) }, null, 2) + "\n")
+    ...(process.env.VAULTITE_CHANNEL === "nightly" || process.env.VAULTITE_CHANNEL === "main" ? { channel: process.env.VAULTITE_CHANNEL } : {}) }, null, 2) + "\n")
 fs.writeFileSync(path.join(ROOT, "electron", "cli.json"), JSON.stringify(sourceSnapshot()) + "\n")
