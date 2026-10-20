@@ -1,5 +1,5 @@
 // Settings > Appearance: theme, colour scheme (gallery under More…), density, icons, line numbers, sidebar
-// scroll, a phone's pull-down actions, fonts, text sizes (this device's), snippets. Saved in appearance.json; rows off their default show a reset.
+// scroll, a phone's pull-down actions (on phones), fonts, text sizes (this device's), snippets. Saved in appearance.json; rows off their default show a reset.
 import { useState, type ReactNode } from "react"
 import { Check, FolderOpen, Minus, Palette, Plus, Type } from "lucide-react"
 import { DEFAULT_FONTS, onlyMode, SNIPPETS_FOLDER, THEMES_FOLDER, useVaultAppearance } from "@/core/appearance"
@@ -11,6 +11,7 @@ import { STEPS, stepTextSize, textSizeKinds, useTextSize } from "@/core/textsize
 import { coreSwitch } from "@/core/switches"
 import { SwitchRow } from "@/components/SwitchRow"
 import { cn, isDark } from "@/lib/utils"
+import { useDesktop } from "@/core/platform"
 import { canOpenHere, openOnComputer } from "@/components/FileActions"
 import { post } from "@/core/http"
 import { FontPicker } from "@/components/FontPicker"
@@ -223,7 +224,7 @@ export function AppearancePanel() {
             options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
         </SettingRow>
         {["file-icons", "tab-bar", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
-        <SettingRow label="Sidebars" sub="Which panels are in each, and in what order" onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
+        <SettingRow label="Sidebars" onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
         {["sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
         <PullRows />
         <Fonts />
@@ -238,9 +239,10 @@ export function AppearancePanel() {
 }
 
 /** The commands a page pulled down on a phone offers (appearance.json's `pullActions`): a row for each way, its command
- *  picked from the palette's. */
+ *  picked from the palette's. Only at a phone's width, where pulling does it. */
 function PullRows() {
   const prefs = usePrefs()
+  const desktop = useDesktop()
   const byId = new Map(useCommandList().map((c) => [c.id, c]))
   const ids = pullActions(prefs)
   const pick = (i: number) => choose({
@@ -252,9 +254,10 @@ function PullRows() {
       void setPrefs({ pullActions: next.join() === DEFAULT_PULL.join() ? null : next })
     },
   })
+  if (desktop) return null
   return PULL_SLOTS.map((label, i) => {
     const c = byId.get(ids[i])
-    return <SettingRow key={label} label={label} sub={i === 0 ? "On a phone, from a page's top" : undefined} value={c ? pullLabel(c) : ids[i]}
+    return <SettingRow key={label} label={label} value={c ? pullLabel(c) : ids[i]}
       onClick={() => pick(i)} data-settings-row={`pull-${i}`} />
   })
 }

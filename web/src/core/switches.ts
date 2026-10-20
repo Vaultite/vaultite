@@ -54,10 +54,10 @@ const CORE: SwitchDef[] = [
   { id: "setting:panel-dividers", name: "Lines between sidebar panels", section: "appearance", icon: SeparatorHorizontal, words: "dividers sidebars", ...pref("panelDividers") },
   { id: "setting:quick-text-size", name: "Pinch to resize text", section: "appearance", icon: MousePointer2, sub: quickTextSizeSub,
     words: "font size text size zoom scroll wheel bigger smaller", ...pref("quickTextSize") },
-  { id: "setting:readable-line-length", name: "Readable line length", icon: WrapText, sub: () => "Lines stop at a comfortable width", words: "width wide column", ...editor("readableLineLength") },
-  { id: "setting:show-inline-title", name: "Show inline title", icon: Heading, sub: () => "The file's name at the top of the page", words: "title", ...editor("showInlineTitle") },
+  { id: "setting:readable-line-length", name: "Readable line length", icon: WrapText, words: "width wide column", ...editor("readableLineLength") },
+  { id: "setting:show-inline-title", name: "Show inline title", icon: Heading, words: "title", ...editor("showInlineTitle") },
   { id: "setting:spellcheck", name: "Spellcheck", icon: SpellCheck, words: "spelling spell check", ...editor("spellcheck") },
-  { id: "setting:auto-pair-brackets", name: "Auto-pair brackets", icon: Brackets, sub: () => "Brackets and quotes close themselves", words: "close brackets quotes autopair", ...editor("autoPairBrackets") },
+  { id: "setting:auto-pair-brackets", name: "Auto-pair brackets", icon: Brackets, words: "close brackets quotes autopair", ...editor("autoPairBrackets") },
   { id: "setting:auto-pair-markdown", name: "Auto-pair Markdown", icon: BookOpenText, sub: () => "Typing * _ ~ = or ` over a selection wraps it", words: "wrap selection bold italic autopair", ...editor("autoPairMarkdown") },
   // Hidden folders are out of the server's reach while it's off: the vault again once it's on.
   { id: "setting:show-hidden", name: "Show hidden files", icon: Eye, words: "dotfiles trash",

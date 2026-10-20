@@ -80,6 +80,23 @@ function Tappable({ id, name, open, children }: { id: string; name: string; open
   )
 }
 
+/** A row's first line: its name (and Vaultite's mark), then the small facts (author, version, date, Installed); they go
+ *  under it together on a phone, or where the line is too narrow. */
+function TitleLine({ name, mark, children }: { name: string; mark?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2">
+      <span className="flex min-w-0 items-baseline gap-x-1.5">
+        <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium md:text-[14px]" data-browse-name>{name}</span>{mark}
+      </span>
+      <span className="flex min-w-0 items-baseline gap-x-2.5 overflow-hidden text-[13px] whitespace-nowrap text-muted-foreground tabular-nums max-md:basis-full md:text-[12px]">{children}</span>
+    </div>
+  )
+}
+
+/** What it does, in one line (two on a phone), as Your plugins' rows. */
+const Description = ({ text }: { text?: string }) =>
+  text ? <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-2 md:truncate md:text-[13px] md:leading-[18px]">{text}</p> : null
+
 function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) => void }) {
   const updated = e.released ?? e.pushed
   // (Vaultite's mark, from its GitHub organisation, says enough; another's says what it does beyond the vault)
@@ -94,16 +111,13 @@ function EntryRow({ e, busy, act }: { e: Entry; busy: boolean; act: (e: Entry) =
         <Icon className="size-[20px] md:size-[18px]" strokeWidth={2} />
       </span>
       <div className="pointer-events-none min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium md:text-[14px]" data-browse-name>{e.name}</span>
-          {ours ? <Certified className="pointer-events-auto self-center" /> : <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>}
-        </div>
-        {e.description && <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-3 md:line-clamp-2 md:text-[13px] md:leading-[18px]">{e.description}</p>}
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground tabular-nums md:text-[12px]">
+        <TitleLine name={e.name} mark={ours && <Certified className="pointer-events-auto shrink-0 self-center" />}>
+          {!ours && e.author && <span>{e.author}</span>}
           <span>{e.version}</span>
           {updated && <span className="pointer-events-auto" data-tip={dateText(new Date(updated), { day: "numeric", month: "long", year: "numeric" })}>updated {fmtAgo(updated)}</span>}
           {e.installed !== null && <span className="text-foreground/80" data-browse-installed>{e.update ? `${e.installed} installed` : "Installed"}</span>}
-        </div>
+        </TitleLine>
+        <Description text={e.description} />
         {says.length > 0 && (
           <div className="mt-1 flex flex-wrap gap-1" data-browse-discloses>
             {says.map((s) => <span key={s} className="rounded-[5px] bg-muted px-1.5 py-px text-[12px] leading-[17px] text-muted-foreground md:text-[11px] md:leading-[16px]">{capitalize(s)}</span>)}
@@ -132,8 +146,7 @@ function RowSkeletons({ count, tile }: { count: number; tile?: boolean }) {
             {tile && <span className="mt-0.5 size-9 shrink-0 rounded-[9px] bg-muted md:size-8 md:rounded-[8px]" />}
             <div className="min-w-0 flex-1">
               <div className="text-[15px] leading-[20px] md:text-[14px]"><Bar w={i % 2 ? "30%" : "38%"} /></div>
-              <p className="text-[14px] leading-[19px] md:text-[13px] md:leading-[18px]"><Bar w="92%" /><br /><Bar w={i % 2 ? "48%" : "60%"} /></p>
-              <div className="mt-0.5 text-[13px] md:text-[12px]"><Bar w="28%" /></div>
+              <p className="text-[14px] leading-[19px] md:text-[13px] md:leading-[18px]"><Bar w={i % 2 ? "78%" : "88%"} /></p>
             </div>
             <span className="mt-0.5 h-9 w-20 shrink-0 rounded-[8px] bg-muted md:h-8" />
           </div>
@@ -158,18 +171,15 @@ function HostRow({ host, e, busy, install, use, show, more }: { host: string; e:
   return (
     <Tappable id={e.id} name={e.name} open={open}>
       <div className="pointer-events-none min-w-0 flex-1">
-        <div className="flex items-baseline gap-2">
-          <span className="min-w-0 truncate text-[15px] leading-[20px] font-medium md:text-[14px]" data-browse-name>{e.name}</span>
-          {e.author && <span className="shrink-0 truncate text-[13px] text-muted-foreground md:text-[12px]">{e.author}</span>}
-        </div>
-        {e.description && <p className="text-[14px] leading-[19px] text-muted-foreground max-md:line-clamp-3 md:line-clamp-2 md:text-[13px] md:leading-[18px]">{e.description}</p>}
-        <div className="mt-0.5 flex flex-wrap items-center gap-x-2.5 gap-y-0.5 text-[13px] text-muted-foreground tabular-nums md:text-[12px]">
+        <TitleLine name={e.name}>
+          {e.author && <span>{e.author}</span>}
           {e.stat && <span>{e.stat}</span>}
           {e.badges?.map((b) => <span key={b.text} className={cn("pointer-events-auto", b.tone && TONES[b.tone])} data-tip={b.tip} data-browse-badge>{b.text}</span>)}
           {e.standIn && (e.standIn.on ? <span className="text-foreground/80" data-browse-stand-in>Vaultite's {e.standIn.name} is on</span>
             : <span className="pointer-events-auto" data-tip="A plugin of Vaultite's does its job, and agents can read what it draws" data-browse-stand-in>Vaultite has {e.standIn.name}</span>)}
           {e.installed && <span className="text-foreground/80" data-browse-installed>Installed</span>}
-        </div>
+        </TitleLine>
+        <Description text={e.description} />
       </div>
       {e.installed ? e.plugin && <Button className="mt-0.5 min-w-20 px-3" onClick={() => show(e.plugin!)}>Show</Button>
         : alt?.on ? <Button className="mt-0.5 min-w-20 px-3" onClick={() => show(alt.id)} data-browse-action="show-stand-in">Show</Button>

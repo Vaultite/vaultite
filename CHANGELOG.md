@@ -7,12 +7,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 ## Unreleased
 
 - Phones: a page pulled down offers New note, Open a file (straight down) and Close tab; choose its three commands in
-  Settings > Appearance.
+  Settings > Appearance on the phone.
 - An agent that isn't installed (Claude Code, Codex...) says so in a toast instead of the companion staying on
   starting; its terminal's tip says not installed.
 - New vaults: Start here tries the companion first (@claude in the note), and the Buttons panel is in the left sidebar.
 - Applying Standard sets up what a new vault has: it no longer adds the pages of plugins already on (Activity, People,
   Agents...); a bundle writes the pages of the plugins it turns on.
+- Settings and Get plugins are quieter: fewer explanation lines under rows, and each plugin in Get plugins is one line
+  of description, its version and date beside its name.
 
 ## 0.6.2 (2026-10-20)
 
