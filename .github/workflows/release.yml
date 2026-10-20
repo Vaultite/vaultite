@@ -47,9 +47,14 @@ jobs:
           echo "version=$major.$minor.$((patch + 1))-nightly.$(date -u +%Y%m%d%H%M)" >> "$GITHUB_OUTPUT"
           echo "build=true" >> "$GITHUB_OUTPUT"
 
+  # Each architecture on a runner of its own: most of a build is waiting on Apple's notarization (an app's, then its
+  # dmg's), and the two don't wait on each other. Publish merges their update lists (tools/mac_feed.ts).
   mac:
     needs: plan
     if: needs.plan.outputs.build == 'true'
+    strategy:
+      matrix:
+        arch: [arm64, x64]
     runs-on: macos-15
     timeout-minutes: 120
     steps:
@@ -92,16 +97,19 @@ jobs:
       - run: npx playwright-core install chromium
       - if: env.STABLE != 'true'
         run: npm pkg set version=${{ needs.plan.outputs.version }}
+      - run: npm pkg set --json 'build.mac.target[0].arch=["${{ matrix.arch }}"]' 'build.mac.target[1].arch=["${{ matrix.arch }}"]'
       - run: npm run ${{ env.STABLE == 'true' && 'release' || 'release:nightly' }}
+      # (its update list names only its zip: kept under its arch, for publish to merge with the other's)
+      - run: for f in dist-app/*-mac.yml; do mv "$f" "${f%.yml}.${{ matrix.arch }}.yml"; done
       - uses: actions/upload-artifact@v4
         with:
-          name: mac
+          name: mac-${{ matrix.arch }}
           if-no-files-found: error
           path: |
             dist-app/*.dmg
             dist-app/*-mac.zip
             dist-app/*-mac.zip.blockmap
-            dist-app/*-mac.yml
+            dist-app/*-mac.*.yml
 
   linux:
     needs: plan
@@ -136,10 +144,14 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 26
       - uses: actions/download-artifact@v4
         with:
           path: out
           merge-multiple: true
+      - run: node tools/mac_feed.ts out
       - name: The GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
