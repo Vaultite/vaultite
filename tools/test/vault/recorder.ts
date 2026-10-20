@@ -57,6 +57,19 @@ export default async ($: VaultTest) => {
     local(`${path.join(VAULT, "fake.sh")} {file}`)
     ;[, tr] = await api("GET", "audio-recorder/transcriber")
     check("audio: a program inside the vault is never run", !tr.available && /inside the vault/.test(tr.why), tr)
+    // A transcriber that fails says why, not its progress bar (redrawn with \r, all one line).
+    const failing = path.join(tmp, "failing-transcriber.sh")
+    fs.writeFileSync(failing, '#!/bin/sh\nprintf " 10%%|#  | 1/10 [00:01<00:09]\\r 20%%|##  | 2/10 [00:02<00:08]\\rout of memory\\n" >&2\nexit 1\n', { mode: 0o755 })
+    local(`${failing} {file}`)
+    {
+      const [, fj] = await api("POST", "audio-recorder/voice?ext=m4a&from=Computer", {}, sent(Buffer.from("not really audio")))
+      let f = fj
+      for (let i = 0; i < 50 && (f.state === "queued" || f.state === "running"); i++) { await sleep(100); [, f] = await api("GET", `audio-recorder/jobs/${fj.id}`) }
+      check("audio: a transcriber's failure is its reason, not its progress bar", /out of memory/.test(f.kept ?? "") && !/%\|/.test(f.kept ?? ""), f)
+      const audio = f.note ? /!\[\[(Voice note [^\]]+\.m4a)\]\]/.exec(read(f.note))?.[1] : null
+      if (f.note) fs.rmSync(path.join(VAULT, f.note))
+      if (audio) fs.rmSync(path.join(VAULT, "Attachments", audio))
+    }
     if (configWas === null) fs.rmSync(config); else fs.writeFileSync(config, configWas)
     write(settings, JSON.stringify({ model: "../Attachments/model.pt", engine: "whisper" }))
     ;[, tr] = await api("GET", "audio-recorder/transcriber")
@@ -94,6 +107,19 @@ export default async ($: VaultTest) => {
       check("audio: Apple's transcript under the embed", sd.state === "done" && /water the plants on sunday/i.test(read("Notes/Said.md")), [sd, read("Notes/Said.md")])
       for (const f of ["Attachments/said.m4a", "Notes/Said.md"]) fs.rmSync(path.join(VAULT, f))
     } else check("audio: Apple's needs macOS 26, and says so", !tr.available && /macOS 26/.test(tr.why), tr)
+    // whisper.cpp, where it's installed with a model (~/.cache/whisper.cpp): before openai-whisper, on the GPU.
+    write(settings, JSON.stringify({ engine: "whisper", language: "en" }))
+    ;[, tr] = await api("GET", "audio-recorder/transcriber")
+    if (process.platform === "darwin" && /^whisper\.cpp /.test(tr.name ?? "")) {
+      const { execFileSync } = await import("node:child_process")
+      execFileSync("/usr/bin/say", ["-o", path.join(VAULT, "Attachments", "said.m4a"), "--file-format=m4af", "--data-format=aac", "Water the plants on Sunday."])
+      write("Notes/Said.md", "---\ntype: note\n---\n\n![[said.m4a]]\n")
+      const [, wj] = await api("POST", "audio-recorder/transcribe", { path: "Attachments/said.m4a" })
+      let wd = wj
+      for (let i = 0; i < 1200 && (wd.state === "queued" || wd.state === "running"); i++) { await sleep(100); [, wd] = await api("GET", `audio-recorder/jobs/${wj.id}`) }
+      check("audio: whisper.cpp's transcript under the embed", wd.state === "done" && /water the plants on sunday/i.test(read("Notes/Said.md")), [wd, read("Notes/Said.md")])
+      for (const f of ["Attachments/said.m4a", "Notes/Said.md"]) fs.rmSync(path.join(VAULT, f))
+    }
     if (process.platform !== "darwin") {
       write(settings, "{}")
       ;[, tr] = await api("GET", "audio-recorder/transcriber")

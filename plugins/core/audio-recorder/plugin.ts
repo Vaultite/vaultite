@@ -1,5 +1,5 @@
-// Transcribing audio on this machine as jobs, a small edit into the note: Apple's speech recognition, else whisper. A program
-// is data/config.json's, never the vault's (it syncs, AIs write it); a model is a name, never a path (whisper unpickles).
+// Transcribing audio here as jobs, a small edit into the note: Apple's speech recognition, else whisper.cpp, else openai-whisper.
+// A program is data/config.json's, never the vault's (it syncs, AIs write it); a model is a name, never a path (whisper unpickles).
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -20,6 +20,7 @@ type Transcriber =
   | { kind: "command"; name: string; argv: string[] }
   | { kind: "apple"; name: string; bin: string; language: string }
   | { kind: "whisper"; name: string; bin: string; ffmpeg: string; model: string; language: string }
+  | { kind: "whispercpp"; name: string; bin: string; ffmpeg: string; model: string; language: string }
 type Found = { available: boolean; name?: string; why?: string; t?: Transcriber }
 
 /** Where programs are looked for: PATH (launchd's is short), then the usual places. */
@@ -47,6 +48,16 @@ const MODELS = ["small", "base", "tiny"]
 function defaultModel() {
   const dir = path.join(process.env.XDG_CACHE_HOME || path.join(HOME, ".cache"), "whisper")
   return MODELS.find((m) => fs.existsSync(path.join(dir, `${m}.pt`))) ?? "base"
+}
+
+// ---------- whisper.cpp (brew install whisper.cpp): the same models on the GPU, minutes faster than openai-whisper's CPU
+
+const GGML = () => path.join(process.env.XDG_CACHE_HOME || path.join(HOME, ".cache"), "whisper.cpp")
+/** The downloaded model file for a model's name (turbo is large-v3-turbo; a quantized one does too), else the best one there. */
+function ggml(model: string | null) {
+  const names = (m: string) => { const b = m === "turbo" ? "large-v3-turbo" : m; return [b, `${b}-q8_0`, `${b}-q5_0`, `${b}-q5_1`] }
+  return (model ? [model] : ["turbo", "medium", "small", "base", "tiny"]).flatMap(names).map((n) => path.join(GGML(), `ggml-${n}.bin`))
+    .find((f) => fs.existsSync(f)) ?? null
 }
 
 // ---------- Apple's speech recognition: transcribe.swift, built the first time (the desktop app ships it built)
@@ -120,18 +131,24 @@ async function find(_key: string): Promise<Found> {
     why = a.why
     if (engine === "apple") return { available: false, why }
   }
+  const model = typeof s.model === "string" && s.model.trim() ? s.model.trim() : null
+  if (model && !/^[a-z0-9][a-z0-9.-]*$/i.test(model)) return { available: false, why: `"${model}" isn't a whisper model's name.` }
+  const ffmpeg = which("ffmpeg")
+  // whisper.cpp with one of its models downloaded, unless a whisper program is named
+  const cpp = named ? null : which("whisper-cli"), file = cpp && ffmpeg ? ggml(model) : null
+  if (cpp && ffmpeg && file && outsideVault(cpp)) {
+    const name = `whisper.cpp ${path.basename(file).replace(/^ggml-|\.bin$/g, "")}`
+    return { available: true, name, t: { kind: "whispercpp", name, bin: cpp, ffmpeg, model: file, language } }
+  }
   const bin = named ?? which("whisper")
   if (!bin || !runnable(bin)) {
-    const how = process.platform === "darwin" ? why || "no transcriber." : "install ffmpeg and whisper (pipx install openai-whisper), or set its command to another transcriber."
+    const how = process.platform === "darwin" ? why || "no transcriber." : "install ffmpeg and whisper (pipx install openai-whisper, or whisper.cpp with a model in ~/.cache/whisper.cpp), or set its command to another transcriber."
     return { available: false, why: bin ? `Can't run ${bin} (its whisper setting).` : `This machine can't transcribe: ${how}` }
   }
   if (!outsideVault(bin)) return { available: false, why: "A transcriber inside the vault isn't run." }
-  const ffmpeg = which("ffmpeg")
   if (!ffmpeg) return { available: false, why: `Whisper needs ffmpeg, which isn't installed${process.platform === "linux" ? " (sudo apt install ffmpeg)" : ""}.` }
-  const model = typeof s.model === "string" && s.model.trim() ? s.model.trim() : defaultModel()
-  if (!/^[a-z0-9][a-z0-9.-]*$/i.test(model)) return { available: false, why: `"${model}" isn't a whisper model's name.` }
-  const name = `whisper ${model}`
-  return { available: true, name, t: { kind: "whisper", name, bin, ffmpeg, model, language } }
+  const name = `whisper ${model ?? defaultModel()}`
+  return { available: true, name, t: { kind: "whisper", name, bin, ffmpeg, model: model ?? defaultModel(), language } }
 }
 /** (Looked up again when its settings change, else at most every 30 s.) */
 const transcriber = () => plugin.memo(30, find, JSON.stringify([plugin.settings(), plugin.secrets()[plugin.id] ?? null]))
@@ -140,7 +157,8 @@ const run = (bin: string, args: string[], env: NodeJS.ProcessEnv, timeout: numbe
   new Promise<string>((ok, fail) => {
     execFile(bin, args, { env, timeout, maxBuffer: 64 << 20, killSignal: "SIGKILL" }, (err, stdout, stderr) => {
       if (!err) return ok(stdout)
-      const said = String(stderr || "").trim().split("\n").filter((l) => !/^\s*\d+%\|/.test(l)).slice(-3).join(" ")
+      // (a progress bar redraws itself with \r: its lines are never the reason)
+      const said = String(stderr || "").trim().split(/[\r\n]+/).filter((l) => !/^\s*\d+%\|/.test(l)).slice(-3).join(" ")
       fail(new Error((err as { killed?: boolean }).killed ? "it took too long" : said || err.message))
     })
   })
@@ -159,10 +177,25 @@ async function transcribe(t: Transcriber, abs: string): Promise<{ paras: string[
     return { paras: textParagraphs(await run(t.argv[0], argv, process.env, timeout)) }
   }
   const out = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-transcribe-"))
+  const lang = /^[a-z]{2,3}[-_]/i.test(t.language) ? t.language.split(/[-_]/)[0] : t.language
+  if (t.kind === "whispercpp") {
+    try {
+      // (it reads 16 kHz WAV: ffmpeg makes one of whatever came; left out, its language is English, so "auto")
+      const wav = path.join(out, "audio.wav")
+      await run(t.ffmpeg, ["-nostdin", "-loglevel", "error", "-i", abs, "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le", wav], process.env, timeout)
+      await run(t.bin, ["-m", t.model, "-f", wav, "-l", lang || "auto", "-oj", "-of", path.join(out, "transcript"), "-np"], process.env, timeout)
+      const j = JSON.parse(fs.readFileSync(path.join(out, "transcript.json"), "utf8")) as
+        { result?: { language?: string }; transcription?: { offsets: { from: number; to: number }; text: string }[] }
+      const segments = (j.transcription ?? []).map((x) => ({ start: x.offsets.from / 1000, end: x.offsets.to / 1000, text: x.text }))
+      return { paras: paragraphs(segments), language: j.result?.language }
+    } finally {
+      fs.rmSync(out, { recursive: true, force: true })
+    }
+  }
   try {
     const env = { ...process.env, PATH: [path.dirname(t.ffmpeg), path.dirname(t.bin), process.env.PATH].filter(Boolean).join(":"), PYTHONWARNINGS: "ignore" }
     const args = [abs, "--model", t.model, "--output_format", "json", "--output_dir", out, "--verbose", "False",
-      ...(t.language ? ["--language", /^[a-z]{2,3}[-_]/i.test(t.language) ? t.language.split(/[-_]/)[0] : t.language] : [])]
+      ...(lang ? ["--language", lang] : [])]
     await run(t.bin, args, env, timeout)
     const file = fs.readdirSync(out).find((f) => f.endsWith(".json"))
     if (!file) throw new Error("whisper wrote no transcript")

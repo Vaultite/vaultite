@@ -26,8 +26,10 @@ written under the embed as a folded callout, paragraphs split at pauses:
   as the recording alone: an inbox result embedding it, saying why (the job's `kept`). A recording under 0.7 s is a tap
   by mistake: not saved, and the app says so.
 - Apple's needs no install: a small helper (`transcribe.swift`, built the first time, shipped built in the desktop app)
-  downloads a language's model the first time, and hears one language per recording. Whisper
-  (`pip install openai-whisper`, with ffmpeg) is optional, found on its own; `model` is its model's name, never a path.
+  downloads a language's model the first time, and hears one language per recording. Whisper is optional, found on its
+  own, with ffmpeg: whisper.cpp first (`brew install whisper.cpp`, a `ggml-<model>.bin` in `~/.cache/whisper.cpp`; on
+  the GPU, many times faster), else openai-whisper (`pip install openai-whisper`). `model` is a model's name, never a
+  path (`turbo` is large-v3-turbo; whisper.cpp's quantized `-q5_0`/`-q8_0` files count as theirs).
 - Which program runs is the machine's, never the vault's: in the app's `data/config.json`, under `"audio-recorder"`,
   `whisper: "/path/to/whisper"` names it, and `command: "my-transcriber {file}"` uses any other program instead (what
   it prints is the transcript). A program inside the vault is never run.
