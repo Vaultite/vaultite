@@ -9,7 +9,7 @@ import {
   bullets, fmtAgo, stampMs, hookCommand, HTTPError, LOADED, localDate, localTime, MACHINE_CLIENT, machineSocket, OpError, Plugin, quoted, reply, splitMachine,
   type Machine, type OpCtx, type Request,
 } from "../../../core/plugins.ts"
-import { isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
+import { archiveTwin, inArchive, isArchived, type Item, Kind, localStamp, nowStamp, safeName, sortBy, str, truthy, writeAtomic } from "../../../core/vault.ts"
 import * as push from "./push.ts"
 const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
 
@@ -49,8 +49,12 @@ plugin.kind(new Kind({
     r.archived = done
     return r
   },
-  // New first, the latest first within each (a thread by its last report).
-  order: (rs) => sortBy(sortBy(rs, latest, true), (r) => (r.status === "new" ? 0 : 1)),
+  // To review first, the latest first (a thread by its last report); then what's dealt with, the last done first. An
+  // archived one is dealt with whatever its status says (archived by hand), so it can't bury what was just done.
+  order: (rs) => {
+    const open = (r: Item) => r.status === "new" && !isArchived(r)
+    return [...sortBy(rs.filter(open), latest, true), ...sortBy(rs.filter((r) => !open(r)), (r) => str(r.modified || latest(r)), true)]
+  },
   // Where it came from (a page's address): adding the same page again updates it.
   key: (r) => (truthy(r.source) ? str(r.source) : null),
   stamps: ["created", "updated"],
@@ -136,7 +140,38 @@ function save() {
 plugin.onUnload(() => { if (saveTimer) { clearTimeout(saveTimer); saveTimer = null } })
 
 /** This machine's events and the other machines' (newest first), or only this one's (`local`: what another machine follows). */
-const shown = (local = false) => local || !remotes.size ? list() : [...list(), ...[...remotes.values()].flatMap((r) => r.events)].sort((a, b) => b.t - a.t)
+const shown = (local = false) => current(local || !remotes.size ? list() : [...list(), ...[...remotes.values()].flatMap((r) => r.events)].sort((a, b) => b.t - a.t))
+
+// ---------- an event about a result goes where the result went: Done archives it, Back to review brings it back
+
+const fileOf = (link?: string) => (link && !/^(view:|detail:|https?:)/.test(link) ? link.replace(/^file:/, "") : null)
+
+/** Events whose link is a result that's been archived or brought back since (one another machine keeps, or one from
+ *  before its move here), linking where it is now. */
+function current(es: InboxEvent[]): InboxEvent[] {
+  if (!plugin.loaded || !es.some((e) => fileOf(e.link)?.startsWith(`${FOLDER}/`))) return es
+  const ids = new Set(plugin.vault.items("inbox").map((r) => `${r.id}.md`))
+  return es.map((e) => {
+    const f = fileOf(e.link)
+    return f && !ids.has(f) && ids.has(archiveTwin(f)) ? { ...e, link: archiveTwin(f) } : e
+  })
+}
+
+/** A file moved here (a result done, filed or renamed): this machine's events about it follow it, and once it's
+ *  archived (done) they're read, here and on the machine that keeps them, since it's dealt with. */
+plugin.onMove((from, to) => {
+  if (!to) return
+  const at = (link?: string) => { const f = fileOf(link); return f === from ? to : f?.startsWith(`${from}/`) ? to + f.slice(from.length) : null }
+  const done = inArchive(to) && !inArchive(from)
+  let n = 0
+  const next = list().map((e) => { const l = at(e.link); return l ? (n++, done ? { ...readThere(e), link: l } : { ...e, link: l }) : e })
+  if (n) changed(next)
+  if (!done) return
+  const theirs = [...remotes.values()].flatMap((r) => r.events).filter((e) => !e.read && at(e.link)).map((e) => e.id)
+  for (const [m, some] of byMachine(theirs)) {
+    if (m) void onMachine(m, "POST", "inbox/events/read?local=1", { ids: some }, (e) => (isOne(e, some) && !e.read ? readThere(e) : e)).catch(() => {})
+  }
+})
 const unread = (local = false) => shown(local).filter((e) => !e.read).length
 
 function changed(next: InboxEvent[]) {

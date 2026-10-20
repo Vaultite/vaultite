@@ -17,6 +17,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   applied.
 - Settings and Get plugins are quieter: fewer explanation lines under rows, and each plugin in Get plugins is one line
   of description, its version and date beside its name.
+- Inbox: a result marked done is first under Done, and the agent's event about it is read and opens it in the archive.
 
 ## 0.6.2 (2026-10-20)
 

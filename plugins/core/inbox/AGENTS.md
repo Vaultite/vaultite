@@ -16,7 +16,7 @@ updated: '2026-10-01 19:30:00'      # local time, set by the app: its thread's l
 What it says, as Markdown.
 ````
 - Mark it done with `vau inbox done <path>`, not by editing `status` (that leaves the file in place): done is archived,
-  into `Inbox/.archive/`. A clip lands here with `inbox: true`.
+  into `Inbox/.archive/`, and its events are read and link it there. A clip lands here with `inbox: true`.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
   three plain sentences.
 - **A report** ends a task you were handed to do alone (a voice note, a dispatch):

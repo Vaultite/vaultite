@@ -211,6 +211,34 @@ export default async ($: VaultTest) => {
     ;[, list] = await api("GET", "inbox/events")
     const merged = list.events.filter((e: Any) => e.session === "sess-report-1")
     check("report: the turn ending after it keeps its words", merged.length === 1 && merged[0].title === "Claude Code: Change needs you · Lighthouse docs updated", merged)
+    {
+      // Its event goes where the result goes: Done archives it (and reads the event, it's dealt with), Back to review
+      // brings it back; one linking where a result was before it was archived links where it is now.
+      await api("POST", "ops/inbox.report", { title: "Moves along", work: "fix", tldr: "x", summary: "x", session: "sess-moves" })
+      const ev = async () => (await api("GET", "inbox/events"))[1].events.find((e: Any) => e.session === "sess-moves")
+      await api("PUT", "inbox/Inbox/Fix done · Moves along", { status: "done" })
+      let e = await ev()
+      check("report done: its event links the archived file, read", e?.link === "Inbox/.archive/Fix done · Moves along.md" && e.read === true, e)
+      await api("PUT", "inbox/Inbox/.archive/Fix done · Moves along", { status: "new" })
+      e = await ev()
+      check("report back to review: its event follows it back", e?.link === "Inbox/Fix done · Moves along.md", e)
+      await api("PUT", "inbox/Inbox/Fix done · Moves along", { status: "done" })
+      const [, old] = await api("POST", "inbox/events", { source: "vau", kind: "done", title: "Before the move", link: "Inbox/Fix done · Moves along.md" })
+      e = (await api("GET", "inbox/events"))[1].events.find((x: Any) => x.id === old.event.id)
+      check("an event from before a result was archived links where it is now", e?.link === "Inbox/.archive/Fix done · Moves along.md", e)
+      await api("DELETE", `inbox/events/${old.event.id}`)
+      // What's dealt with: the last done first, an archived one whatever its status says (archived by hand) included.
+      write("Inbox/.archive/Archived by hand.md", `---\ntype: inbox\nstatus: new\ncreated: '2999-01-01 00:00:00'\n---\n\nOld.\n`)
+      fs.utimesSync(path.join(VAULT, "Inbox/.archive/Archived by hand.md"), new Date(2000, 0, 1), new Date(2000, 0, 1))
+      await api("PUT", "inbox/Inbox/.archive/Fix done · Moves along", { status: "new" })
+      await api("PUT", "inbox/Inbox/Fix done · Moves along", { status: "done" })
+      const [, all] = await api("GET", "inbox")
+      const ids = all.map((r: Any) => r.id), at = (id: string) => ids.indexOf(id)
+      check("dealt with: after what's to review, the last done first, one archived by hand not before it",
+        at("Inbox/.archive/Fix done · Moves along") > -1 && at("Inbox/.archive/Fix done · Moves along") < at("Inbox/.archive/Archived by hand") &&
+        all.findIndex((r: Any) => r.archived) > all.findLastIndex((r: Any) => !r.archived), ids)
+      fs.rmSync(path.join(VAULT, "Inbox/.archive/Archived by hand.md"))
+    }
     ;[st, b] = await api("POST", "ops/inbox.report", { title: "No summary", work: "fix", tldr: "x", summary: " " })
     check("report: needs a summary", st === 400, [st, b])
     ;[st, b] = await api("POST", "ops/inbox.report", { title: "No tldr", work: "fix", summary: "x" })
@@ -376,6 +404,22 @@ export default async ($: VaultTest) => {
       await waitFor(async () => (await api("GET", "inbox/events"))[1].events[0]?.id === "p3@box", 3000, 50)
       ;[, l] = await api("GET", "inbox/events")
       check("inbox machines: its changes arrive live", l.events[0]?.id === "p3@box" && l.events[0].read !== true, l.events.slice(0, 2))
+      {
+        // A result it reported, done here: its event there is read there (it's dealt with), and links the archived file.
+        await api("POST", "inbox", { title: "Reported from the box", body: "x" })
+        theirs = [{ id: "p5", t: Date.now() - 50, source: "claude", kind: "done", title: "Reported", link: "Inbox/Reported from the box.md" }, ...theirs]
+        for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
+        await waitFor(async () => (await api("GET", "inbox/events"))[1].events.some((e: Any) => e.id === "p5@box"), 3000, 50)
+        await api("PUT", "inbox/Inbox/Reported from the box", { status: "done" })
+        await waitFor(() => seen.includes(`POST /api/inbox/events/read?local=1 {"ids":["p5"]}`), 3000, 50)
+        ;[, l] = await api("GET", "inbox/events")
+        const p5 = l.events.find((e: Any) => e.id === "p5@box")
+        check("inbox machines: a result done here reads its event there, which links where it is now",
+          seen.includes(`POST /api/inbox/events/read?local=1 {"ids":["p5"]}`) && p5?.read === true && p5.link === "Inbox/.archive/Reported from the box.md", [p5, seen.slice(-3)])
+        theirs = theirs.filter((e) => e.id !== "p5")
+        for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
+        await waitFor(async () => !(await api("GET", "inbox/events"))[1].events.some((e: Any) => e.id === "p5@box"), 3000, 50)
+      }
       {
         // Another machine following this one (local=1) isn't told of the followed machines' changes: two machines that
         // follow each other would echo forever (the M1 and M4 sent 17 lists a second, and ran out of memory).
