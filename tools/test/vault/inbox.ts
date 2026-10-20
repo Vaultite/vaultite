@@ -44,7 +44,12 @@ export default async ($: VaultTest) => {
     }
     ;[st, b] = await api("POST", "inbox/events", { source: "backup", kind: "done", title: "Backup finished", body: "13 GB" })
     let [, list] = await api("GET", "inbox/events")
-    check("inbox events: the same thing again soon after is one event, updated", list.events.length === 1 && list.events[0].body === "13 GB" && list.events[0].link === "Notes/Backup.md" && list.unread === 1, list)
+    {
+      // Only the backup's: an area run before this one (vault-plugins) can leave an event of its own.
+      const backups = list.events.filter((e: Any) => e.source === "backup")
+      check("inbox events: the same thing again soon after is one event, updated", backups.length === 1 && backups[0].body === "13 GB" &&
+        backups[0].link === "Notes/Backup.md" && backups[0].read !== true, list)
+    }
     {
       // Messages (vau notify) from one terminal in a row: each different one is its own event; the same words again merge.
       const msg = (title: string) => api("POST", "inbox/events", { source: "vau", kind: "info", title, terminal: "claude-m3ss4ges" })
@@ -422,7 +427,7 @@ export default async ($: VaultTest) => {
       }
       {
         // Another machine following this one (local=1) isn't told of the followed machines' changes: two machines that
-        // follow each other would echo forever (the M1 and M4 sent 17 lists a second, and ran out of memory).
+        // follow each other would echo forever (two Macs once sent 17 lists a second, and ran out of memory).
         const { EventEmitter } = await import("node:events")
         const { matchSocket } = await import("../../../core/plugins.ts")
         const watcher = (local: boolean) => {

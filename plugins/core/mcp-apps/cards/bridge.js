@@ -1,4 +1,6 @@
 // The view's side of MCP Apps (2026-01-26): JSON-RPC over postMessage with the host, its theme, and its size.
+// Inlined into each card page, whose own script uses these globals.
+/* eslint-disable no-unused-vars */
 const mcp = (() => {
   let next = 1
   const waiting = new Map(), handlers = {}

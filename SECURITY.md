@@ -7,14 +7,18 @@ Vaultite has **no accounts and no login**: whoever can reach the server can read
 - Terminal tabs run a real shell on the server's machine. The terminal socket only accepts this machine (loopback, no
   proxy headers) or, through Tailscale Serve, the machine owner's Tailscale login and logins listed in
   `.vaultite/plugins/terminal/data.json` (`allowUsers`). Other origins are always refused. Another machine's shell
-  (Machines) is checked on the machine you asked, then again on the one that runs it. The Screen sharing plugin's socket
-  (Vaultite/plugins: another computer's screen, relayed to its VNC port) answers the same way.
+  (Machines) is checked on the machine you asked, then again on the one that runs it.
 - The MCP server (`POST /api/mcp`) reads and writes the whole vault, so it answers like the terminal: this machine,
   or the owner's tailnet login through Tailscale Serve (`allowUsers` in `.vaultite/plugins/mcp/data.json`), never
   another site's page. `vau mcp` reaches the server like any `vau` command. The Inbox's events (which become toasts
   and notifications) are posted the same way: this machine or its owner only. The Web clipper fetches only public
   addresses (never this machine, the local network or the tailnet), checked again on every redirect and DNS answer;
   so do Canvas's link previews.
+- AI apps that connect from their own servers (claude.ai, ChatGPT) reach the vault's tools on a separate MCP listener,
+  made public by a tunnel of your own (`mcp.public` in `data/config.json`) or by Vaultite Cloud's relay, which reaches
+  only that listener, never the app's port. Each connection signs in with a code you type in Connections, where you can
+  make it read only or end it. It never gets what only the owner may run (terminals, the screen), and what can run code
+  on the machine (turning on or allowing a plugin, writing under `.vaultite/`, settings) waits for your yes in the Inbox.
 - The desktop app's Web viewer shows pages in a session of their own (their logins kept apart from the app's, and by
   default each workspace's apart from the others'), with no preload, no Node and context isolation: a page can't reach
   the app, its bridge or the machine. Pages go only to http and https addresses (mailto: opens the mail app, any other

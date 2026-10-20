@@ -2,10 +2,9 @@
 // or the open sheet, lit with CSS highlights, in a bar at the top of it. A note's editor has its own (FindBar).
 import { useEffect, useRef, useState, type KeyboardEvent } from "react"
 import { createRoot, type Root } from "react-dom/client"
-import { CaseSensitive, ChevronDown, ChevronUp, Regex, WholeWord, X } from "lucide-react"
 import { SearchQuery } from "@codemirror/search"
 import { cn, numberText, onTabLayoutChange, textRanges, useHeldFocus } from "@vaultite"
-import { field, lit, MAX, paintLit, pattern, reveal, scroller, Toggle, tool } from "./FindBar"
+import { field, FindTools, lit, MAX, paintLit, pattern, reveal, scroller } from "./FindBar"
 
 type Spec = { search: string; caseSensitive: boolean; regexp: boolean; wholeWord: boolean }
 
@@ -143,19 +142,7 @@ function PageBar({ find, focus }: { find: PageFind; focus: number }) {
           className={cn(field, "pr-24", bad ? "ring-[color-mix(in_srgb,var(--red)_55%,transparent)] focus:ring-[color-mix(in_srgb,var(--red)_70%,transparent)]" : "")} />
         <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
       </div>
-      <Toggle on={spec.caseSensitive} label="Match case" onClick={() => find.set({ caseSensitive: !spec.caseSensitive })}><CaseSensitive className="size-4" strokeWidth={2} /></Toggle>
-      <Toggle on={spec.wholeWord} label="Whole word" onClick={() => find.set({ wholeWord: !spec.wholeWord })}><WholeWord className="size-4" strokeWidth={2} /></Toggle>
-      <Toggle on={spec.regexp} label="Regular expression" onClick={() => find.set({ regexp: !spec.regexp })}><Regex className="size-4" strokeWidth={2} /></Toggle>
-      <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border max-md:invisible max-md:ml-auto" />
-      <button type="button" aria-label="Previous match" data-tip="Previous match (⇧↵)" disabled={!total} onClick={() => find.step(-1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
-        <ChevronUp className="size-4" strokeWidth={2} />
-      </button>
-      <button type="button" aria-label="Next match" data-tip="Next match (↵)" disabled={!total} onClick={() => find.step(1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
-        <ChevronDown className="size-4" strokeWidth={2} />
-      </button>
-      <button type="button" aria-label="Close" data-tip="Close (esc)" onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool}>
-        <X className="size-4" strokeWidth={2} />
-      </button>
+      <FindTools spec={spec} set={(o) => find.set(o)} total={total} step={(by) => find.step(by)} close={close} />
     </div>
   )
 }

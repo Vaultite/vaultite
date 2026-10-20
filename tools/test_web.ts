@@ -459,8 +459,8 @@ check("markdown: a link with no extension, a relative file and any app's scheme 
   links.includes('data-wiki="Note">a</a>') && links.includes('data-wiki="files/a.pdf">b</a>') && links.includes('data-url="obsidian://open?vault=x">c</a>') &&
   links.includes('data-url="zotero://select/items/1">d</a>') && links.includes('data-url="tel:+15551234">e</a>') && links.includes('data-url="file:///Users/x/a.pdf">f</a>') &&
   !links.includes("javascript") && links.includes('href="https://example.com" target="_blank"'), links)
-const broken = md.renderMarkdown("Vaultite\nOlimpicos\n\nNext")
-check("markdown: a line break is a break, as the editor shows it", broken.includes("Vaultite<br>Olimpicos") && broken.includes("<p>Next</p>"), broken)
+const broken = md.renderMarkdown("Vaultite\nLighthouse\n\nNext")
+check("markdown: a line break is a break, as the editor shows it", broken.includes("Vaultite<br>Lighthouse") && broken.includes("<p>Next</p>"), broken)
 
 // Tables edited cell by cell (editor/tables.ts) rewrite only what changed, in the table's own style.
 const tt: typeof import("../web/src/editor/tableText.ts") = await web("editor/tableText.ts")

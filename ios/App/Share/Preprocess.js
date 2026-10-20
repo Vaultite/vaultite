@@ -7,4 +7,5 @@ Preprocess.prototype = {
   },
   finalize: function () {},
 }
+// eslint-disable-next-line no-unused-vars -- Safari reads this global by name
 var ExtensionPreprocessingJS = new Preprocess()

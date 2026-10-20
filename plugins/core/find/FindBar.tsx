@@ -128,6 +128,29 @@ export function Toggle({ on, label, keys, onClick, children }: { on: boolean; la
   )
 }
 
+type Options = { caseSensitive: boolean; wholeWord: boolean; regexp: boolean }
+
+/** The options and the buttons after a find field: in a note's bar and the page's. */
+export function FindTools({ spec, set, total, step, close }: { spec: Options; set: (o: Partial<Options>) => void; total: number; step: (by: 1 | -1) => void; close: () => void }) {
+  return (
+    <>
+      <Toggle on={spec.caseSensitive} label="Match case" onClick={() => set({ caseSensitive: !spec.caseSensitive })}><CaseSensitive className="size-4" strokeWidth={2} /></Toggle>
+      <Toggle on={spec.wholeWord} label="Whole word" onClick={() => set({ wholeWord: !spec.wholeWord })}><WholeWord className="size-4" strokeWidth={2} /></Toggle>
+      <Toggle on={spec.regexp} label="Regular expression" onClick={() => set({ regexp: !spec.regexp })}><Regex className="size-4" strokeWidth={2} /></Toggle>
+      <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border max-md:invisible max-md:ml-auto" />
+      <button type="button" aria-label="Previous match" data-tip="Previous match (⇧↵)" disabled={!total} onClick={() => step(-1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
+        <ChevronUp className="size-4" strokeWidth={2} />
+      </button>
+      <button type="button" aria-label="Next match" data-tip="Next match (↵)" disabled={!total} onClick={() => step(1)} onMouseDown={(e) => e.preventDefault()} className={tool}>
+        <ChevronDown className="size-4" strokeWidth={2} />
+      </button>
+      <button type="button" aria-label="Close" data-tip="Close (esc)" onClick={close} onMouseDown={(e) => e.preventDefault()} className={tool}>
+        <X className="size-4" strokeWidth={2} />
+      </button>
+    </>
+  )
+}
+
 type BarProps = { view: EditorView; query: SearchQuery; count: Count; readOnly: boolean; replacing: boolean; setReplacing: (on: boolean) => void
   /** Bumped to put the keyboard in a field (find, or replace when it's asked for with text to find). */
   focus: { n: number; field: "find" | "replace" } }
@@ -174,19 +197,8 @@ function Bar({ view, query, count, readOnly, replacing, setReplacing, focus }: B
             className={cn(field, "pr-28 max-md:pr-24", bad ? "ring-[color-mix(in_srgb,var(--red)_55%,transparent)] focus:ring-[color-mix(in_srgb,var(--red)_70%,transparent)]" : "")} />
           <span aria-live="polite" data-find-count className={cn("pointer-events-none absolute inset-y-0 right-2 flex items-center text-[12px] tabular-nums max-md:text-[13px]", bad ? "text-[var(--red)]" : "text-muted-foreground")}>{status}</span>
         </div>
-        <Toggle on={query.caseSensitive} label="Match case" onClick={() => set({ caseSensitive: !query.caseSensitive })}><CaseSensitive className="size-4" strokeWidth={2} /></Toggle>
-        <Toggle on={query.wholeWord} label="Whole word" onClick={() => set({ wholeWord: !query.wholeWord })}><WholeWord className="size-4" strokeWidth={2} /></Toggle>
-        <Toggle on={query.regexp} label="Regular expression" onClick={() => set({ regexp: !query.regexp })}><Regex className="size-4" strokeWidth={2} /></Toggle>
-        <span aria-hidden className="mx-0.5 h-4 w-px shrink-0 bg-border max-md:invisible max-md:ml-auto" />
-        <button type="button" aria-label="Previous match" data-tip="Previous match (⇧↵)" disabled={!count.total} onClick={() => findPrevious(view)} onMouseDown={(e) => e.preventDefault()} className={tool}>
-          <ChevronUp className="size-4" strokeWidth={2} />
-        </button>
-        <button type="button" aria-label="Next match" data-tip="Next match (↵)" disabled={!count.total} onClick={() => findNext(view)} onMouseDown={(e) => e.preventDefault()} className={tool}>
-          <ChevronDown className="size-4" strokeWidth={2} />
-        </button>
-        <button type="button" aria-label="Close" data-tip="Close (esc)" onClick={() => { closeSearchPanel(view); view.focus() }} onMouseDown={(e) => e.preventDefault()} className={tool}>
-          <X className="size-4" strokeWidth={2} />
-        </button>
+        <FindTools spec={query} set={set} total={count.total} step={(by) => (by < 0 ? findPrevious(view) : findNext(view))}
+          close={() => { closeSearchPanel(view); view.focus() }} />
       </div>
       {replacing && canReplace && (
         <div className="flex min-w-0 items-center gap-1">

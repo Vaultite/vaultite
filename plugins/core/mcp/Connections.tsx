@@ -200,7 +200,7 @@ const GUIDES: Record<AppId, { name: string; icon: string; tint?: string; sub: st
     name: "Grok Bot", icon: "grok-bot", match: /grok/i, sub: "Every bot on your account gets it.",
     steps: (address) => [
       { text: <>Open the Grok Bot app and send this in a chat</>, copy: { label: "Copy message", value: `Add a custom MCP server called ${NAME} at ${address}` } },
-      { text: <>Choose <B>Authorize</B> on the Vaultite card it posts, then <B>Continue</B>: Vaultite's sign-in page opens in your browser with a code (it says Cursor, Grok Bot's maker). Type it below.</> },
+      { text: <>Choose <B>Authorize</B> on the Vaultite card it posts, then <B>Continue</B>: Vaultite's sign-in page opens in your browser with a code. Type it below.</> },
       { text: <>It's connected when the card says <B>Added</B></> },
       { text: <>For what it finds to land in your inbox, send this too</>, copy: { label: "Copy message", value: RESULTS } },
     ],

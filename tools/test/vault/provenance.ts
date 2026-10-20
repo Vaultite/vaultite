@@ -38,7 +38,7 @@ export default async ($: VaultTest) => {
     vault.setConfig("plugins/provenance/data", { values: [{ value: "mine" }, { value: "bot", label: "Bot" }], agent: "bot" })
     await as("mcp", null, "PUT", "file", { path: "Prov/Own.md", text: "Own.\n" })
     const [, st2] = await api("GET", "state")
-    check("provenance: a vault's own values, and the label agents get", origin("Prov/Own.md") === "bot" && (st2.provenance?.values as Any[]).length === 2, [read("Prov/Own.md"), st2.provenance])
+    check("provenance: a vault's own values, and the label agents get", origin("Prov/Own.md") === "bot" && (st2.provenance?.values as Any[] | undefined)?.length === 2, [read("Prov/Own.md"), st2.provenance])
     vault.setConfig("plugins/provenance/data", { label_agents: false, label_user: false })
     await as("mcp", null, "PUT", "file", { path: "Prov/Unasked.md", text: "Unasked.\n" })
     await as("app/desktop", null, "PUT", "file", { path: "Prov/Unasked mine.md", text: "Mine.\n" })

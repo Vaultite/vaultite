@@ -12,7 +12,7 @@ type Cell = { cell_type: string; source: string | string[]; execution_count?: nu
 type Nb = { cells?: Cell[]; metadata?: { kernelspec?: { language?: string }; language_info?: { name?: string } } }
 
 const join = (s: string | string[] | undefined) => (Array.isArray(s) ? s.join("") : s ?? "")
-const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g // eslint-disable-line no-control-regex
+const ANSI = /\x1b\[[0-9;]*[A-Za-z]/g
 
 function Code({ code, lang }: { code: string; lang: LanguageSupport | null }) {
   const html = useMemo(() => {

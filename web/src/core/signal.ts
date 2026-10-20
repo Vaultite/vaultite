@@ -1,7 +1,6 @@
 // What hooks redraw on when module state changes: who to tell and a counter, the useSyncExternalStore wiring once.
 import { useSyncExternalStore } from "react"
 
-export type Signal = ReturnType<typeof signal>
 export function signal() {
   let version = 0
   const subs = new Set<() => void>()

@@ -264,7 +264,8 @@ function bridge(cfg: Cfg, parseCsv: (text: string) => string[][], runtime: typeo
     if (d.type === "reply") {
       const wt = waits.get(d.id)
       waits.delete(d.id)
-      if (wt) (d.error ? wt.fail(Object.assign(new Error(d.error), d.code ? { code: d.code, ...d.more } : {})) : wt.ok(d.value))
+      if (wt && d.error) wt.fail(Object.assign(new Error(d.error), d.code ? { code: d.code, ...d.more } : {}))
+      else wt?.ok(d.value)
     } else if (d.type === "event") waits.get(d.id)?.event?.(d.value)
     else if (d.type === "theme") {
       applyTheme(d)

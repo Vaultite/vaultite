@@ -8,7 +8,6 @@ plugins/core/audio-recorder/bin/
 electron/build.json
 electron/cli.json
 .obsidian/
-http:/
 CLAUDE.local.md
 web/dist-demo/
 

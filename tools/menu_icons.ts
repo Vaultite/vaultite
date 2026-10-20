@@ -11,7 +11,7 @@ const LUCIDE = path.join(ROOT, "node_modules", "lucide-react", "dist", "esm", "i
 
 const src = fs.readFileSync(path.join(ROOT, "electron", "menu.ts"), "utf8")
 const names = new Set<string>()
-for (const re of [/icon\("([a-z0-9-]+)"\)/g, /cmd\("[^"]+", "[^"]+", "([a-z0-9-]+)"/g, /sub\("[^"]+", "([a-z0-9-]+)"/g, /files\([^,]+, "([a-z0-9-]+)"\)/g])
+for (const re of [/icon\("([a-z0-9-]+)"\)/g, /cmd\("[^"]+", (?:"[^"]+"|MAC \? "[^"]+" : "[^"]+"), "([a-z0-9-]+)"/g, /sub\("[^"]+", "([a-z0-9-]+)"/g, /files\([^,]+, "([a-z0-9-]+)"\)/g])
   for (const m of src.matchAll(re)) names.add(m[1])
 
 type Node = [string, Record<string, string>]

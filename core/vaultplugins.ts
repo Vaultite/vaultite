@@ -49,7 +49,7 @@ export type VaultPlugin = {
   failed: { load?: [string, string]; build?: [string, string] }
 }
 
-const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").trim() // eslint-disable-line no-control-regex
+const plain = (s: string) => s.replace(/\x1b\[[0-9;]*m/g, "").trim()
 const message = (e: unknown) => plain(String((e as Error)?.message ?? e)).split("\n").slice(0, 6).join("\n")
 
 // --- plugin.ts: what it may import

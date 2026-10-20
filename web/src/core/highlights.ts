@@ -13,8 +13,6 @@ export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number]["name"]
 
 /** A colour emoji (with the variation selector some keyboards add after it). */
 export const HIGHLIGHT_EMOJI = `(?:${HIGHLIGHT_COLORS.map((c) => c.emoji).join("|")})\\uFE0F?`
-/** ==a highlight== on one line. */
-export const HIGHLIGHT = /(?<!=)==(?=[^\s=])(.+?)(?<=[^\s=])==(?!=)/g
 const LEADING = new RegExp(`^${HIGHLIGHT_EMOJI}`, "u")
 
 /** The colour a highlight's text starts with, and how long its emoji is (UTF-16 units); null: the default. */

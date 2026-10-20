@@ -198,7 +198,6 @@ export async function loadPty() {
   return ptyLib
 }
 
-// eslint-disable-next-line no-control-regex
 export const plain = (s: string) => s.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[@-_]/g, "").replace(/\r(?!\n)/g, "")
 
 /** A Link around a pseudo-terminal this process holds (the plain backend's, tmux's client). */

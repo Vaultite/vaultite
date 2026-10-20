@@ -67,7 +67,7 @@ export const plugin = new Plugin(import.meta.url)
 plugin.around("*", () => { throw new Error("a bug") })
 plugin.around("note.create", async ({ params, who }, next) => {
   if (params.title === "Forbidden") throw new OpError("not that one")
-  return next({ ...params, title: params.title.replace("Olympicos", "Olimpicos"), body: \`\${params.body ?? ""} (\${who.source})\` })
+  return next({ ...params, title: params.title.replace("Lighthose", "Lighthouse"), body: \`\${params.body ?? ""} (\${who.source})\` })
 })
 plugin.around(["ops.list"], async (_call, next) => ((await next()) as unknown[]).slice(0, 1))
 plugin.every("beat", { every: "2h" }, () => { plugin.saveSettings({ beat: true }) })
@@ -110,8 +110,8 @@ plugin.every("gone", null)
     check("schedule: a manifest's schedule is checked", has("schedule[0]: every is") && has("schedule[1]: give it a command or an op") && has("op is an operation's id") && has("'extra' isn't a key") && has("'a.b' is there twice"), probs)
 
     // Middleware over ops (plugin.around): rewrite, refuse, answer; one that throws by mistake is skipped.
-    ;[st, body] = await api("POST", "ops/note.create", { title: "Olympicos trip", body: "Plans." })
-    check("around: rewrites an op's params (checked again), the op runs with them", st === 200 && fs.existsSync(path.join(VAULT, "Notes/Olimpicos trip.md")) && read("Notes/Olimpicos trip.md").includes("Plans. (api)"), [st, body])
+    ;[st, body] = await api("POST", "ops/note.create", { title: "Lighthose trip", body: "Plans." })
+    check("around: rewrites an op's params (checked again), the op runs with them", st === 200 && fs.existsSync(path.join(VAULT, "Notes/Lighthouse trip.md")) && read("Notes/Lighthouse trip.md").includes("Plans. (api)"), [st, body])
     ;[st, body] = await api("POST", "ops/note.create", { title: "Forbidden" })
     check("around: refuses with an OpError", st === 400 && body.error === "not that one" && !fs.existsSync(path.join(VAULT, "Notes/Forbidden.md")), [st, body])
     ;[st, body] = await api("POST", "ops/ops.list", {})
@@ -120,6 +120,6 @@ plugin.every("gone", null)
     ;[st, body] = await api("POST", "ops/ops.list", {})
     check("around: only while its plugin is on; jobs too", Array.isArray(body) && body.length > 1 && !(await app.scheduler.list()).some((r) => r.plugin === "guard"), body)
     fs.rmSync(path.join(VAULT, ".vaultite/plugins/guard"), { recursive: true })
-    for (const n of ["Scheduled note", "Morning", "Olimpicos trip"]) fs.rmSync(path.join(VAULT, `Notes/${n}.md`), { force: true })
+    for (const n of ["Scheduled note", "Morning", "Lighthouse trip"]) fs.rmSync(path.join(VAULT, `Notes/${n}.md`), { force: true })
   }
 }

@@ -798,7 +798,7 @@ plugin.route("POST", "terminals/*", async (req) => {
   if (await runsHere(id)) return { id, started: false }
   const prompt = typeof req.body?.prompt === "string" && req.body.prompt.trim() ? req.body.prompt : null
   const allow = Array.isArray(req.body?.allow) ? req.body.allow.filter((a: unknown): a is string => typeof a === "string" && /^[\w .:/-]+$/.test(a)) : null
-  const word = (v: unknown) => (typeof v === "string" && /^[\w.\[\]-]{1,60}$/.test(v) ? v : null)
+  const word = (v: unknown) => (typeof v === "string" && /^[\w.[\]-]{1,60}$/.test(v) ? v : null)
   if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort) }).finally(() => starting.delete(id)))
   await starting.get(id)!
   return { id, started: true, agent: agentOf(id)?.name ?? null }

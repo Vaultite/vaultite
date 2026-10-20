@@ -8,6 +8,7 @@
   <br>
   <a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-arm64.dmg">Download</a>
   (<a href="https://github.com/Vaultite/vaultite/releases/latest/download/Vaultite-x64.dmg">Intel</a>)
+  · <a href="https://vaultite.com/demo">Try it in your browser</a>
 </p>
 
 <p align="center">
@@ -41,8 +42,9 @@ A folder of Markdown files (your vault) that you and your AI write in, and Vault
    (`sudo apt install ./vaultite_*.deb` also sets up Chromium's sandbox on Ubuntu 24.04+).
 2. **Make a vault**, or open a folder of Markdown you already have: Vaultite changes none of it. Or try the playground,
    a made-up vault, first.
-3. **Connect your AI** in Settings, Connections: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone. Claude
-   Code and Codex in Vaultite's terminals already know the vault.
+3. **Connect your AI** in Settings, Connections: Claude, ChatGPT, Muse or Grok Bot, on the web and your phone (they
+   reach Vaultite through Vaultite Cloud's relay or a tunnel of your own: [SECURITY.md](SECURITY.md)). Claude Code and
+   Codex in Vaultite's terminals already know the vault.
 
 Then try "log a 30 minute run this morning" or "what did I tell you about Alice?". Bundles add more: Life OS for your
 days, people and health; Agents for your coding agents.
