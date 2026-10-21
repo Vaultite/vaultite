@@ -19,7 +19,7 @@ export { definePlugin, detailPath } from "@/core/define"
 /** The app's version and the plugin API's: a manifest's `minAppVersion` and `apiVersion` are checked against them. */
 export { API_VERSION, APP_VERSION } from "../../core/version.ts"
 /** What a pinned entry is: a file, a heading in a note ("Notes/Idea.md#Plan"), a search ("search:<query>"). */
-export { pinKind, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
+export { pinKind, placePin, SEARCH as PIN_SEARCH, VIEW as PIN_VIEW } from "../../core/pins.ts"
 export type { AgentDef, AmbientItem, BlockCtx, BrowseEntry, BrowseSource, Conventions, DetailDef, EditorCtx, EditorExtension, FileBarItem, FileCtx, FileHead, FileFormat, FileIcon, FileMark, FileMenuItem, FileRow, FileRowPart, FileView, FormatCtx, NoteTopItem, HeaderItem, HostedPlugin, LinkTarget, NewFile, NewTabCtx, NewTabSection, OpenFile, PageCtx, PageView, PlayerProps, PluginCommand, PluginDef, PluginHost, SearchDoc, SettingsSearchEntry, SidebarCtx, SidebarPanel, SidebarSetup, SlashItem, StatusItem, TimelineKind, ViewCtx, ViewDef, WebPageAction, WorkspaceHost, WorkspaceInfo } from "@/core/define"
 export { parseTimeline, timelineOf, type Entry as TimelineEntry } from "../../core/timeline.ts"
 /** A button opening the form that adds a line to a file's `## Timeline` (made when it has none). */
@@ -64,7 +64,7 @@ export { diffLines } from "@/core/diff"
 export { DiffRows, textDiff, type DiffLine } from "@/components/DiffLines"
 // The one drag primitive: plugins' drop targets (Workspaces' switcher rows take a dragged tab) and things they drag (a
 // database view's cards).
-export { edgeScroller, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
+export { edgeScroller, pastEnd, startDrag, useDrag, useDropHit, useDropTarget, type DragItem } from "@/core/drag"
 export { confirmDialog, type ConfirmOptions } from "@/components/ConfirmDialog"
 export { copyText, fileMenu, filesMenu, folderMenu, grouped, linkTo, openItem, pluginFileGroups, rowFileMenu } from "@/components/FileActions"
 export { deleteFile, restoreFile } from "@/core/files"

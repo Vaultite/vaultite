@@ -94,6 +94,15 @@ export function useDropTarget<H>(id: string, at: (item: DragItem, x: number, y: 
   }, [id])
 }
 
+/** Whether a drag at (x, y) over `el` is just past a list's `last` row, where a drop puts it at the end: under it, down
+ *  to its panel's bottom or a row's height (a panel often ends right under it), and not on another list's row. */
+export function pastEnd(list: Element, last: Element, x: number, y: number, el: Element | null) {
+  const box = list.getBoundingClientRect(), row = last.getBoundingClientRect()
+  const panel = list.closest("[data-panel]")?.getBoundingClientRect()
+  const bottom = Math.max(row.bottom + row.height, panel?.bottom ?? 0)
+  return x >= box.left && x <= box.right && y >= row.bottom && y < bottom && (!el || list.contains(el) || !el.closest("[data-keyrow]"))
+}
+
 /** Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the
  *  pointer leaves or the drag ends. One per box. `alive`: whether to go on (default: while something is dragged). */
 export function edgeScroller(axis: "x" | "y" = "y") {

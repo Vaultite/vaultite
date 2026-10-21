@@ -2,7 +2,7 @@
 // shown at once. With Workspaces, the current workspace's list (the vault's until its first change).
 import { Pin, PinOff, type LucideIcon } from "lucide-react"
 import {
-  currentWorkspace, fileAt, getStore, isDoc, isFolder, isHidden, mutate, notify, offPlugin, PIN_SEARCH, pinInWorkspace, pinKind, pinOfView, plural, post, shownName, stem, viewInfo,
+  currentWorkspace, fileAt, getStore, isDoc, isFolder, isHidden, mutate, notify, offPlugin, PIN_SEARCH, pinInWorkspace, pinKind, pinOfView, placePin, plural, post, shownName, stem, viewInfo,
   viewShown, workspacePins, type Store,
 } from "@vaultite"
 
@@ -72,11 +72,7 @@ export function shownEntries(store: Store, list = currentPins(store)): PinEntry[
 /** Pin in the vault's list (pages.json), at the end, or before the entry `before` (null = the end: moved there if it's
  *  pinned already), or unpin there. */
 export function pinVault(path: string, on = true, before?: string | null) {
-  const was = pinnedOf(getStore())
-  const rest = was.filter((p) => p !== path)
-  const i = before ? rest.indexOf(before) : -1
-  const at = was.indexOf(path)
-  const next = !on ? rest : at >= 0 && before === undefined ? was : i < 0 ? [...rest, path] : [...rest.slice(0, i), path, ...rest.slice(i)]
+  const next = placePin(pinnedOf(getStore()), path, on, before)
   mutate((s) => ({ ...s, pinned: next }))
   return post<{ pinned: string[] }>("pins", { path, pinned: on, ...(before !== undefined ? { before } : {}) })
     .then(() => {}, () => { /* offline: the local copy still applies */ })

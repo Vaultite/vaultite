@@ -19,11 +19,11 @@ export const pinFile = (entry: string) => { const k = pinKind(entry); return "fi
 export const withPinFile = (entry: string, file: string) => { const k = pinKind(entry); return "file" in k ? (k.heading ? `${file}#${k.heading}` : file) : entry }
 
 /** `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is
- *  given; null or a page not in the list: the end) or unpinned (`on` false). */
+ *  given; null or a page not in the list: the end; itself: where it is) or unpinned (`on` false). */
 export function placePin(list: string[], path: string, on: boolean, before?: string | null): string[] {
   const rest = list.filter((p) => p !== path)
   if (!on) return rest
-  if (list.includes(path) && before === undefined) return list
+  if (list.includes(path) && (before === undefined || before === path)) return list
   const i = before ? rest.indexOf(before) : -1
   return i < 0 ? [...rest, path] : [...rest.slice(0, i), path, ...rest.slice(i)]
 }

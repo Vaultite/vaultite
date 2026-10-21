@@ -2,7 +2,7 @@
 // into it and following the file (see index.tsx). No components here: they're in Numbers.tsx.
 import { Copy, LayoutPanelLeft, Pencil, Plus, Settings2, Trash2 } from "lucide-react"
 import {
-  cell, del, devicePref, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, post, put, readSidebars,
+  cell, del, devicePref, getStore, getTabLayout, isViewOpen, notify, notifyError, openFile, openPluginSettings, openView, placePin, post, put, readSidebars,
   replaceHash, sameSidebars, savedSidebars, setDefaultSidebars, setTabLayout, sidebarsChanged, startedFresh, workspaceChanged, type MenuItem,
   type Sidebars, type TabLayout, type WorkspaceHost, type WorkspaceInfo,
 } from "@vaultite"
@@ -133,9 +133,7 @@ function pinHere(path: string, on: boolean, before: string | null | undefined, b
   const n = current()
   if (!n) return Promise.resolve()
   const cur = pinnedHere() ?? base
-  const rest = cur.filter((p) => p !== path)
-  const i = before ? rest.indexOf(before) : -1
-  const next = !on ? rest : cur.includes(path) && before === undefined ? cur : i < 0 ? [...rest, path] : [...rest.slice(0, i), path, ...rest.slice(i)]
+  const next = placePin(cur, path, on, before)
   if (next.join("\n") === cur.join("\n")) return Promise.resolve()
   // Shown at once; the server's answer (the list as it applied the change) comes back with the store.
   const list = [...(slots() ?? SLOTS.map(() => null))]

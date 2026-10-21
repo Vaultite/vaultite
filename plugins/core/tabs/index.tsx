@@ -1,8 +1,8 @@
-import { useEffect, useRef } from "react"
+import { useEffect, useId, useRef } from "react"
 import { ChevronDown, ChevronRight, Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
 import {
   canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, del, dotIcon, dragTab, dropTab, fmtAgo, foldSet, HeadingButton, isPopout, menuFor, newTab,
-  notifyError, openFile, openView, panesOf, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetNameField, SidebarHeading,
+  notifyError, openFile, openView, panesOf, pastEnd, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetNameField, SidebarHeading,
   SidebarRow, startDrag, tabMenuOf, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useRenaming, useSelectable, useSelected, useTabLabels, useTabLayout,
   type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
@@ -64,6 +64,12 @@ function SetRow({ s, n }: { s: TabSet; n: number }) {
 /** What a drop among a pane's rows does, and where its line goes (from the pane's top). */
 type ListHit = { d: Extract<TabDrop, { kind: "bar" }>; y: number }
 const LIST = "tabs:list"
+/** The last pane's box when (x, y) is just under its tabs, which a drop puts at its end. */
+function endOf(root: HTMLElement, x: number, y: number, el: Element | null) {
+  const last = root.querySelector<HTMLElement>("[data-tabs-pane]:last-child")
+  const row = last && [...last.querySelectorAll("[data-open-tab], [data-set-row]")].at(-1)
+  return row && pastEnd(root, row, x, y, el) ? last : null
+}
 
 /** Every pane's tabs, in the panes' order, each tab group a row with its tabs under it; with more than one pane, each
  *  under its number (the focused one's in full). Dragged along the list, a tab moves, joining or leaving a group. */
@@ -72,9 +78,13 @@ function TabRows({ store }: { store: Store }) {
   const info = useTabLabels(store)
   const panes = panesOf(ws.root)
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
-  useDropTarget<ListHit>(LIST, (item: DragItem, _x, y, el) => {
-    const box = el?.closest<HTMLElement>("[data-tabs-pane]")
-    const g = box && panesOf(ws.root).find((x) => x.id === box.dataset.tabsPane)
+  const list = useRef<HTMLDivElement>(null)
+  const target = `${LIST}:${useId()}`
+  useDropTarget<ListHit>(target, (item: DragItem, x, y, el) => {
+    const root = list.current
+    if (!root) return null
+    const box = el?.closest<HTMLElement>("[data-tabs-pane]") ?? endOf(root, x, y, el)
+    const g = box && root.contains(box) && panesOf(ws.root).find((p) => p.id === box.dataset.tabsPane)
     if (!box || !g || !(item.tab || item.tabset || item.to || item.group)) return null
     const own = item.tab ? g.tabs.find((t) => t.id === item.tab)?.set : undefined
     const slots = [...box.querySelectorAll<HTMLElement>("[data-open-tab], [data-set-row]")].map((e) => ({ el: e, tab: e.dataset.openTab, set: e.dataset.setRow }))
@@ -82,9 +92,9 @@ function TabRows({ store }: { store: Store }) {
     const d: ListHit["d"] = { kind: "bar", group: g.id, index: at.index, x: 0, set: item.tabset ? null : at.set }
     return canDropTab(item, d) ? { d, y: (slots.length ? at.edge : box.getBoundingClientRect().top) - box.getBoundingClientRect().top } : null
   }, (item, h) => dropTab(item, h.d))
-  const hit = useDropHit<ListHit>(LIST)
+  const hit = useDropHit<ListHit>(target)
   return (
-    <div className="flex flex-col gap-px" data-keylist data-open-tabs data-select-list={TABS}>
+    <div ref={list} className="flex flex-col gap-px" data-keylist data-open-tabs data-select-list={TABS}>
       {panes.map((g, n) => {
         const only = (t: Tab) => panes.length === 1 && g.tabs.length === 1 && t.to === "new"
         const line = hit?.d.group === g.id ? hit : null

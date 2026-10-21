@@ -1,6 +1,6 @@
 // Pinned: the files pinned to the sidebar (.vaultite/pages.json), all of pinning. Pins change one at a time on the file
 // as it is (POST /api/pins), so an old copy can't bring back pages unpinned elsewhere; pins follow moves.
-import { HTTPError, type OpCtx, OpError, type Param, pinProblem, Plugin, relocatedPin, repinList } from "../../../core/plugins.ts"
+import { HTTPError, type OpCtx, OpError, type Param, pinProblem, placePin, Plugin, relocatedPin, repinList } from "../../../core/plugins.ts"
 import { ConfigError, type Item, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -38,9 +38,7 @@ export function pinOne(vault: Vault, body: { path?: unknown; pinned?: unknown; b
     // A page is a file or folder (or a heading in a note, or a search): a path that isn't one would be a pin nothing shows.
     const problem = at < 0 ? pinProblem(vault, p) : null
     if (problem) throw new HTTPError(404, problem)
-    const rest = cur.filter((x) => x !== p)
-    const i = typeof body.before === "string" ? rest.indexOf(body.before) : -1
-    out = i < 0 ? [...rest, p] : [...rest.slice(0, i), p, ...rest.slice(i)]
+    out = placePin(cur, p, true, typeof body.before === "string" ? body.before : null)
   }
   if (out.join("\n") !== cur.join("\n") || !Array.isArray(conf.pinned)) vault.setConfig("pages", { ...conf, pinned: out })
   return { pinned: out }

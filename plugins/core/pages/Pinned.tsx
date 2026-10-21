@@ -5,7 +5,7 @@ import { ChevronRight, Folder, Hash, Heading, PinOff, Plus, Search } from "lucid
 import {
   checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
   pinnedFoldersOpen, pluginSettings, showInTree,
-  openItem, openView, PIN_SEARCH, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, startDrag, stem, useDrag, useDropHit,
+  openItem, openView, pastEnd, PIN_SEARCH, placePin, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, startDrag, stem, useDrag, useDropHit,
   useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
@@ -118,23 +118,23 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
   useDropTarget<PinDrop>(target, (item, x, y, el) => {
     const nav = list.current
     if (!el || !nav || !canPin(item)) return null
-    if (!nav.contains(el)) return item.from === "pin" && el.closest("aside") && el.closest("aside") === nav.closest("aside") ? { out: true } : null
+    const rows = [...nav.querySelectorAll<HTMLElement>("[data-pin]")]
+    const last = rows[rows.length - 1]
+    // Just under the list is its end, not out of it: unpinning takes leaving it for good.
+    if (!nav.contains(el) && !(last && pastEnd(nav, last, x, y, el))) {
+      return item.from === "pin" && el.closest("aside") && el.closest("aside") === nav.closest("aside") ? { out: true } : null
+    }
     // (in a pinned folder's files, the tree's own drags move things there: its own target)
     if (item.from === "tree" && el.closest("[data-pin-tree]")) return null
     const top = nav.getBoundingClientRect().top
-    const rows = [...nav.querySelectorAll<HTMLElement>("[data-pin]")]
     const next = rows.find((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2 })
-    const last = rows[rows.length - 1]
     const grid = nav.hasAttribute("data-pin-tiles") && last ? tileDrop(nav, x, y) : null
     const before = grid ? grid.before : next?.dataset.pin ?? null
     const all = currentPins(store)
     const keys = pinsOf(item)
     const known = keys.every((k) => all.includes(k))
     // Its own place (just before itself, or before the one after it): nothing to do.
-    if (known && keys.length === 1) {
-      const rest = all.filter((p) => p !== item.path), i = before ? rest.indexOf(before) : rest.length
-      if (i === all.indexOf(item.path!)) return null
-    }
+    if (known && keys.length === 1 && placePin(all, item.path!, true, before).join("\n") === all.join("\n")) return null
     if (grid) return { ...grid, known }
     const end = last ? last.getBoundingClientRect().bottom - top : 2
     return { before, y: next ? next.getBoundingClientRect().top - top - 1 : end, known }

@@ -372,6 +372,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `parseTimeline(text)`: The entries in a timeline section (the Markdown under its heading), in file order.
 - `pasteAttachments(s, from, files)`: Save pasted files as attachments of `from` (saveAttachments) and answer what to type for them: `![[name]]` (or `![](path)` with Markdown links), one per line.
 - `pastedFiles(d)`: The files a paste brings, only when it has no text of its own, as Obsidian takes it: Excel or Word cells come as text and a picture of them.
+- `pastEnd(list, last, x, y, el)`: Whether a drag at (x, y) over `el` is just past a list's `last` row, where a drop puts it at the end: under it, down to its panel's bottom or a row's height (a panel often ends right under it),…
 - `patch(path, body)`
 - `PhoneDownload`: A file kept on the phone: `file` where it is once `done`, `got` of `size` bytes meanwhile.
 - `phoneFiles`: The phone's kept files, for a player (null outside the iPhone app).
@@ -386,6 +387,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pinnedFoldersOpen`: Pinned folders open in place (plugins/core/pages), and the folders open inside them: closed until opened.
 - `pinOfView(target, disabled?)`: What pinning a view's tab pins (its `pinAs`, else its arg): the pin's key ("view:web/https://example.com", "view:inbox", "view:terminal/resume-claude-<session>") and its name now, or null when it…
 - `Place`: A place to open a terminal or an agent: which machine ("": this one) and, for an agent with accounts, which one.
+- `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end; itself: where it is) or unpinned…
 - `places()`: Every place: a terminal, then each agent that's on (in each of its accounts), on this machine and on each other one that's online with the Terminal plugin on (and the agent's plugin, for an agent).
 - `plain(s)`: Imported titles (Hevy etc.) carry emojis; the app shows plain text.
 - `plainError(e)`: An error, a rejection's reason or a message, as it should reach a person.
@@ -681,7 +683,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pinKind(entry)`: What an entry is: a path (`file`: a file or a folder), a heading (or block) in a note, a search, or a view (its tab's target: a web page, Inbox, a coding agent's conversation).
 - `pinProblem(vault, entry)`: Why `entry` can't be pinned (a file or folder that isn't in the vault, an empty search), or null.
 - `pipeSockets(ws, up, failed)`: Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its close comes back; `failed` when it can't be reached.
-- `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end) or unpinned (`on` false).
+- `placePin(list, path, on, before?)`: `list` with `path` pinned (at the end, or before `before`: moved there when it's pinned already and `before` is given; null or a page not in the list: the end; itself: where it is) or unpinned…
 - `Proc`: A process on this machine: its parent, its terminal's foreground group, when it started (epoch ms), its command line.
 - `processTable(maxAge?)`: Every process on this machine by pid, from one `ps` shared by every caller of the last `maxAge` ms.
 - `PROP_TYPES`

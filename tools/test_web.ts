@@ -694,9 +694,10 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("sidebars: heightsAt read back, and dropped with no heights", sb.readSidebars({ left: ["a"], heights: { a: 50 }, heightsAt: 700 })!.heightsAt === 700 &&
     !("heightsAt" in sb.readSidebars({ left: ["a"], heightsAt: 700 })!))
   const pins = await import("../core/pins.ts")
-  check("pins: placed at the end, before another, moved, unpinned", pins.placePin(["a", "b"], "c", true).join() === "a,b,c" &&
+  check("pins: placed at the end, before another, moved, kept before itself, unpinned", pins.placePin(["a", "b"], "c", true).join() === "a,b,c" &&
     pins.placePin(["a", "b"], "c", true, "a").join() === "c,a,b" && pins.placePin(["a", "b"], "b", true, "a").join() === "b,a" &&
-    pins.placePin(["a", "b"], "a", true).join() === "a,b" && pins.placePin(["a", "b"], "a", false).join() === "b")
+    pins.placePin(["a", "b"], "a", true).join() === "a,b" && pins.placePin(["a", "b"], "a", false).join() === "b" &&
+    pins.placePin(["a", "b"], "a", true, "a").join() === "a,b")
   check("pins: follow a moved folder, go with the trash", pins.repinList(["N/a", "N/b", "M"], "N", "O").join() === "O/a,O/b,M" &&
     pins.repinList(["N/a", "M"], "N/a", null).join() === "M")
   check("pins: a heading follows its note, a search stays", pins.repinList(["N/a.md#Plan", "search:N/a.md", "N/a.md"], "N/a.md", "O/b.md").join() === "O/b.md#Plan,search:N/a.md,O/b.md" &&
