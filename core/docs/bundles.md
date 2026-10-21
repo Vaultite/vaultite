@@ -85,7 +85,7 @@ books, and pages and databases over them).
   .bundle.json) and those Vaultite/plugins' `directory/listed.json` names (`bundles`: owner/name or owner/name/folder),
   each pinned at the commit that last changed it. Its `address`, `owner/name[/folder]@<commit>`, imports exactly that
   commit (`vau bundle import <address>`), kept in bundle.json's `from`; `imported` names the user's bundle from the same
-  place, `current` whether it's at that commit. The blocklist leaves one out. Setup's Bundles tab lists them under Browse (with
+  place, `current` whether it's at that commit. The blocklist leaves one out. Setup's Bundles tab lists them under Get bundles (with
   a search), each Imported or Update available; opening one is its import preview at that commit.
 - `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
   `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.

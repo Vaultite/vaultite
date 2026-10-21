@@ -175,6 +175,9 @@ for (const id of Object.keys(want)) {
 // ---------- 4. Save, export, import ----------
 {
   await go(page, B, "bundles")
+  check("none of yours: one row's empty state with Save and Import, nothing atop the page", await page.locator("[data-bundles-none] [data-bundles-save]").count() === 1 &&
+    await page.locator("[data-bundles-none] [data-bundles-import]").count() === 1 && !(await page.locator("[data-setup] header [data-bundles-save], [data-setup] header [data-bundles-import]").count()))
+  await shot(page, "none-yours")
   await page.locator("[data-bundles-save]").click()
   await until(() => page.locator("dialog[open] [data-bundle-save-form]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-name]").fill("QA desk")
@@ -183,7 +186,8 @@ for (const id of Object.keys(want)) {
   await until(() => existsSync(`${VAULT}/.vaultite/bundles/qa-desk/bundle.json`), 6000)
   check("Save current setup writes the bundle", json(VAULT, ".vaultite/bundles/qa-desk/bundle.json")?.name === "QA desk" && !!json(VAULT, ".vaultite/bundles/qa-desk/plugins.json"))
   await until(() => page.locator('[data-bundles-mine] [data-bundle="qa-desk"]').count(), 6000)
-  check("it shows under Yours", await page.locator('[data-bundles-mine] [data-bundle="qa-desk"]').count() === 1)
+  check("it shows under Yours, Save current setup after it", await page.locator('[data-bundles-mine] [data-bundle="qa-desk"]').count() === 1 &&
+    await page.locator("[data-bundles-mine] > :last-child[data-bundles-save]").count() === 1 && !(await page.locator("[data-bundles-none]").count()))
   // Share: what it sends (the picture off), Save file, Copy and Copy for an agent; then Import, pasted and from a file.
   await page.locator('[data-bundle="qa-desk"]').hover()
   await page.locator('[data-bundle="qa-desk"] ~ button').click()
@@ -211,6 +215,7 @@ for (const id of Object.keys(want)) {
   await dismissAll(page)
   // Import from the sheet: pasted (inside a message), its preview first, then Add.
   const incoming = "dialog[open] [data-bundle-incoming]"
+  await page.locator("[data-bundles-get]").click()
   await page.locator("[data-bundles-import]").click()
   await until(() => page.locator("dialog[open] [data-bundle-import-text]").count(), 6000)
   await page.locator("dialog[open] [data-bundle-import-text]").fill(`Here it is:\n${copied}`)
@@ -222,10 +227,12 @@ for (const id of Object.keys(want)) {
   await page.locator(`${incoming} [data-bundle-incoming-add]`).click()
   await until(() => existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`), 6000)
   check("Add, from the preview, adds it under a free id", existsSync(`${VAULT}/.vaultite/bundles/qa-desk-2/bundle.json`))
+  await page.locator("[data-bundles-yours]").click()
   await until(() => page.locator('[data-bundle="qa-desk-2"]').count(), 6000)
   check("and it shows", await page.locator('[data-bundle="qa-desk-2"]').count() === 1)
   await dismissAll(page)
-  await page.locator("[data-bundles-import-tile]").click()
+  await page.locator("[data-bundles-get]").click()
+  await page.locator("[data-bundles-import]").click()
   await until(() => page.locator("dialog[open] [data-bundle-import-form]").count(), 6000)
   await page.locator("dialog[open] input[type=file]").setInputFiles(path)
   await until(() => page.locator(`${incoming} [data-bundle-incoming-add]`).count(), 6000)

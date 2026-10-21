@@ -23,7 +23,7 @@ import { usePrefs } from "@/core/prefs"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { useSheetGuard } from "@/components/DetailSheet"
-import { Bar as Line, FilterField, Panel, SheetHead, Switch } from "@/components/kit"
+import { Bar as Line, FilterField, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -329,46 +329,59 @@ function useImportGestures(root: RefObject<HTMLDivElement | null>) {
 // Three across as soon as three fit (the built-ins are three: never two and one alone).
 const GRID = "grid grid-cols-1 gap-3 @lg:grid-cols-3"
 
-/** Where imported bundles land, so where importing starts; lit while a file is dragged over the page. */
-function ImportCard({ over }: { over: boolean }) {
+/** Where more of the user's own bundles start: saving the setup as one, after theirs. */
+function SaveCard() {
   return (
-    <button type="button" onClick={() => openDetail("bundle-import")} data-bundles-import-tile
-      className={cn("flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-dashed px-4 py-5 text-center transition-colors focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none",
-        over ? "border-primary bg-primary/8" : "border-foreground/15 hover:border-primary/60 hover:bg-primary/5")}>
-      <span className="grid size-9 place-items-center rounded-full bg-primary/12 text-primary"><Import className="size-[18px]" strokeWidth={2.25} /></span>
-      <span className="text-[15px] font-semibold">Import a bundle</span>
-      <span className="text-[13px] leading-[18px] text-muted-foreground">Paste it, drop its file or name a GitHub repository</span>
+    <button type="button" onClick={() => void startSave()} data-bundles-save
+      className="flex min-h-[150px] cursor-pointer flex-col items-center justify-center gap-2 rounded-[12px] border-[1.5px] border-dashed border-foreground/15 px-4 py-5 text-center transition-colors hover:border-primary/60 hover:bg-primary/5 focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:outline-none">
+      <span className="grid size-9 place-items-center rounded-full bg-primary/12 text-primary"><Plus className="size-[18px]" strokeWidth={2.25} /></span>
+      <span className="text-[15px] font-semibold">Save current setup</span>
+      <span className="text-[13px] leading-[18px] text-muted-foreground">Its plugins, sidebars, pinned pages and look</span>
     </button>
   )
 }
 
-/** What the Bundles tab offers beside Setup's tabs (pages/Setup.tsx): importing and saving one, or, while a new vault
- *  is being offered the bundles, starting from the default. */
-export function BundlesActions({ store }: { store: Store }) {
-  const l = useBundles()
-  const start = l?.bundles.find((b) => b.source === "app" && b.id === l.default)
+/** None of the user's own yet: the two ways to have one, across the whole row. */
+function NoneYours() {
   return (
-    <div className="flex shrink-0 flex-wrap justify-end gap-2">
-      {store.bundles?.onboarding
-        ? <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>
-        : <>
-          <Button onClick={() => openDetail("bundle-import")} data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import</Button>
-          <Button look="primary" onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
-        </>}
+    <div className="mb-6 flex flex-col items-center gap-3.5 rounded-[12px] border-[1.5px] border-dashed border-foreground/15 px-5 py-7 text-center" data-bundles-none>
+      <div>
+        <div className="text-[15px] font-semibold">No bundles of yours yet</div>
+        <p className="mx-auto mt-1 max-w-[440px] text-[13px] leading-[18px] text-muted-foreground">Save how Vaultite is set up now, or import one someone shared: paste it, drop its file or name a GitHub repository.</p>
+      </div>
+      <div className="flex flex-wrap justify-center gap-2">
+        <Button look="primary" onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
+        <Button onClick={() => openDetail("bundle-import")} data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import…</Button>
+      </div>
     </div>
   )
 }
 
-/** Setup's Bundles tab: the built-in bundles, then the user's. */
+/** What the Bundles tab offers beside Setup's tabs (pages/Setup.tsx): while a new vault is being offered the bundles,
+ *  starting from the default. Otherwise nothing, as on Plugins: saving and importing are in the page. */
+export function BundlesActions({ store }: { store: Store }) {
+  const l = useBundles()
+  const start = l?.bundles.find((b) => b.source === "app" && b.id === l.default)
+  if (!store.bundles?.onboarding) return null
+  return <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>
+}
+
+type Tab = "yours" | "get"
+
+/** Setup's Bundles tab, as Plugins is: Your bundles (built in, then the user's) or Get bundles (the directory's). */
 export function Bundles({ store }: { store: Store }) {
   const l = useBundles()
   const prev = store.bundles?.previous ?? null
   const welcome = !!store.bundles?.onboarding
+  const [tab, setTab] = useState<Tab>("yours")
+  const [query, setQuery] = useState("")
+  const q = query.trim().toLowerCase()
   // The list follows the vault (a bundle saved or imported by an AI, from another device).
   const files = store.files
   useEffect(() => { void refreshBundles() }, [files])
-  const app = l?.bundles.filter((b) => b.source === "app") ?? []
-  const mine = l?.bundles.filter((b) => b.source === "vault") ?? []
+  const match = (b: BundleInfo) => !q || `${b.name}\n${b.description}`.toLowerCase().includes(q)
+  const app = l?.bundles.filter((b) => b.source === "app" && match(b)) ?? []
+  const mine = l?.bundles.filter((b) => b.source === "vault" && match(b)) ?? []
   const start = app.find((b) => b.id === l?.default)
   const trying = store.bundles?.trial?.id
   const root = useRef<HTMLDivElement>(null)
@@ -384,25 +397,49 @@ export function Bundles({ store }: { store: Store }) {
           <Button onClick={() => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it"))}>Restore previous setup</Button>
         </div>
       )}
-      <div className="@container" data-keylist>
-        {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
-        <div className={cn(GRID, "mb-7")} data-bundles-app>
-          {app.map((b) => <BundleCard key={b.id} b={b} picked={welcome && b.id === start?.id} trying={trying === b.id} />)}
-        </div>
-        {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
-        {welcome && (
-          <p className="mb-6 text-[14px] text-muted-foreground" data-bundles-welcome-import>
-            Have a bundle? <button type="button" onClick={() => openDetail("bundle-import")} className="cursor-pointer font-medium text-primary hover:underline">Import it</button>
-          </p>
-        )}
-        {(!welcome || mine.length > 0) && <>
-          <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
-          <div className={cn(GRID, "mb-6")} data-bundles-mine>
-            {mine.map((b) => <BundleCard key={b.id} b={b} trying={trying === b.id} />)}
-            <ImportCard over={over} />
+      {/* (the search is above the list it looks in, as on Plugins) */}
+      {!welcome && (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <Segmented<Tab> label="Bundles" value={tab} onChange={setTab} className="shrink-0"
+            options={[{ value: "yours", label: "Your bundles", attrs: { "data-bundles-yours": "" } }, { value: "get", label: "Get bundles", attrs: { "data-bundles-get": "" } }]} />
+          <div className="flex min-w-[200px] flex-1 items-center gap-2">
+            <form role="search" className="flex min-w-0 flex-1" onSubmit={(e) => e.preventDefault()} data-bundles-search>
+              <FilterField value={query} onChange={setQuery} placeholder={tab === "get" ? "Search shared bundles" : "Search your bundles"} />
+            </form>
+            {tab === "get" && <Button onClick={() => openDetail("bundle-import")} className="px-3 md:h-7.5 md:px-2.5" data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import…</Button>}
           </div>
+        </div>
+      )}
+      <div className="@container" data-keylist>
+        {tab === "get" && !welcome ? <Browse query={query} /> : <>
+          {app.length > 0 && <>
+            {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
+            <div className={cn(GRID, "mb-7")} data-bundles-app>
+              {app.map((b) => <BundleCard key={b.id} b={b} picked={welcome && b.id === start?.id} trying={trying === b.id} />)}
+            </div>
+          </>}
+          {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
+          {welcome && (
+            <p className="mb-6 text-[14px] text-muted-foreground" data-bundles-welcome-import>
+              Have a bundle? <button type="button" onClick={() => openDetail("bundle-import")} className="cursor-pointer font-medium text-primary hover:underline">Import it</button>
+            </p>
+          )}
+          {mine.length > 0 ? <>
+            <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
+            <div className={cn(GRID, "mb-6")} data-bundles-mine>
+              {mine.map((b) => <BundleCard key={b.id} b={b} trying={trying === b.id} />)}
+              {!welcome && !q && <SaveCard />}
+            </div>
+          </> : !welcome && l && !q && <>
+            <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
+            <NoneYours />
+          </>}
+          {l && q && !app.length && !mine.length && (
+            <p className="text-[14px] text-muted-foreground" data-bundles-none-match>
+              None of yours match. <button type="button" onClick={() => setTab("get")} className="cursor-pointer font-medium text-primary hover:underline">Search shared bundles</button>
+            </p>
+          )}
         </>}
-        {!welcome && <Browse />}
       </div>
       {over && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-[12px] border-2 border-dashed border-primary/60 bg-background/85 text-[15px] font-medium" data-bundles-drop>
@@ -453,9 +490,8 @@ function ListedCard({ e }: { e: Listed }) {
   )
 }
 
-/** The directory's bundles (shared on GitHub), searched. Unreachable, one quiet line says so. */
-function Browse() {
-  const [q, setQ] = useState("")
+/** Get bundles: the directory's (shared on GitHub), searched. Unreachable, one quiet line says so. */
+function Browse({ query: q }: { query: string }) {
   const [dir, setDir] = useState<Directory | null>(null)
   const [failed, setFailed] = useState(false)
   // (fetched again when the user's imports change: which are theirs, and current)
@@ -468,10 +504,6 @@ function Browse() {
   const list = dir?.bundles ?? []
   return (
     <section className="mb-6" data-bundles-browse>
-      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
-        <h2 className="flex-1 text-[17px] font-semibold">Browse</h2>
-        <FilterField value={q} onChange={setQ} placeholder="Search bundles" className="max-md:basis-full md:max-w-[240px]" />
-      </div>
       {failed || (dir && !dir.available)
         ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared bundles can't be reached right now.</p>
         : dir && !list.length ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared bundles match." : "No bundles are shared yet."}</p>

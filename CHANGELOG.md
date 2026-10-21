@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Bundles: the tab is laid out as Plugins is: Your bundles (built in, then yours) and Get bundles (the directory, with
+  Import… for one it doesn't list), with the search beside them; with none of yours yet, one empty state offers Save
+  current setup and Import…, and after yours a tile saves another.
 - Terminal: `vau terminal run <file>` (terminal.run) hands a note to a coding agent or a shell command, here or on
   another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
 - The Web viewer is the Browser now, and Open in the browser is Open in another browser.
