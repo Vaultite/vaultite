@@ -6,6 +6,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.7.0 (2026-10-21)
+
+Bundles you can pick apart, try and keep in step with your setup, a directory to browse others', and one Setup page for
+bundles and plugins.
+
 - Setup: one page for Bundles and Plugins, as its two tabs, behind a Setup button beside Settings at the sidebar's foot
   (Your setup atop Settings goes there too); Open Setup, Open Plugins and Choose a bundle… open it from the palette.
 - Bundles: Standard after Zen (or any of the app's bundles after another) is that bundle's setup again: each says every
