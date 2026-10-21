@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+## 0.6.3 (2026-10-20)
+
+A quieter first run with the Zen bundle, and steadier editing and Review.
+
 - The Zen bundle replaces Agents: sidebars without rails that slide in from the window's edge, no tab bar, panes
   floating on the window. New in Appearance: Sidebar rails, and Pane titles for a tab bar that's off.
 - Pinned pages can show as tiles: a grid of their icons at the top of the sidebar, named on hover (Pinned settings >
