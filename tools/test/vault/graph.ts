@@ -241,7 +241,22 @@ export default async ($: VaultTest) => {
   write("Arch/Plain.md", "A new plain.\n")
   ;[, aop] = await api("POST", "ops/archive.restore", { path: "Arch/.archive/Plain.md" })
   check("archive.restore: back, key gone, a free name when taken", aop.path === "Arch/Plain 1.md" && read("Arch/Plain 1.md") === "Plain text.\n" && read("Arch/See.md").startsWith("[[Arch/Plain 1]]"), aop)
-  check("archive.add: a hidden file or a folder is refused", (await api("POST", "ops/archive.add", { path: "Arch" }))[0] === 400)
+  check("archive.add: a hidden file or an archive folder is refused", (await api("POST", "ops/archive.add", { path: ".vaultite" }))[0] === 400 &&
+    (await api("POST", "ops/archive.add", { path: "Arch/.archive" }))[0] === 400)
+  // A folder moves whole, its files unmarked (in an archive they count as archived); links into it follow, both ways.
+  write("Arch/Old project/Plan.md", "Plan.\n")
+  write("Arch/Old project/Notes/Idea.md", "Idea.\n")
+  write("Arch/To project.md", "[[Arch/Old project/Plan]] [[Arch/Old project/Notes/Idea]]\n")
+  ;[, aop] = await api("POST", "ops/archive.add", { path: "Arch/Old project" })
+  check("archive.add: a folder moves whole into .archive", aop.path === "Arch/.archive/Old project" && !exists("Arch/Old project") &&
+    read("Arch/.archive/Old project/Plan.md") === "Plan.\n" && exists("Arch/.archive/Old project/Notes/Idea.md") &&
+    read("Arch/To project.md") === "[[Arch/.archive/Old project/Plan]] [[Arch/.archive/Old project/Notes/Idea]]\n", [aop, read("Arch/To project.md")])
+  ;[, atree] = await api("GET", "files")
+  check("archive.add: what's in an archived folder counts as archived", atree.files.find((f: Any) => f.path === "Arch/.archive/Old project/Notes/Idea.md")?.archived === true)
+  write("Arch/Old project/New.md", "Taken.\n")
+  ;[, aop] = await api("POST", "ops/archive.restore", { path: "Arch/.archive/Old project" })
+  check("archive.restore: a folder comes back, a free name when taken", aop.path === "Arch/Old project 1" && read("Arch/Old project 1/Plan.md") === "Plan.\n" &&
+    read("Arch/To project.md").startsWith("[[Arch/Old project 1/Plan]]"), aop)
   // A path written before a file was archived (a recap, an agent's report) still finds it; its next move rewrites it.
   const ltw = linkResolver([{ path: "Inbox/.archive/Done.md" }, { path: "Inbox/Back.md" }])
   check("links: a path finds its archive twin, both ways", ltw("Inbox/Done") === "Inbox/.archive/Done.md" && ltw("Inbox/.archive/Back") === "Inbox/Back.md" &&

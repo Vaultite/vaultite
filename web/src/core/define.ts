@@ -456,8 +456,8 @@ export type EditorCtx = { kind: "markdown" | "code" | "text"
  *  it load only when on; open editors take them in and drop them as it's switched. */
 export type EditorExtension = (ctx: EditorCtx) => Extension | Promise<Extension>
 
-/** An item in a file's menu. `section`: "actions" (default, top level: what a file of its kind is for), "navigate",
- *  "more" (the More submenu, where most items belong), or a group of its own. Keep the top level short. */
+/** An item in a file's menu. `section`: "actions" (default, top level: what a file of its kind is for), "navigate", "more"
+ *  (More ▸, where most belong), "away" (with Delete: Archive), or a group of its own. Keep the top level short. */
 export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; disabled?: boolean; section?: string
   /** Do it to several files at once (core/select.ts: files selected together), saying so once. Offered for a selection
    *  only when every file's menu has this item (same label) with `many`. */

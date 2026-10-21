@@ -1,17 +1,17 @@
-// Archive: archiving moves a file into `.archive/` in its folder (core/fileprops.ts) and sets `archived: true`;
+// Archive: archiving moves a file or folder into `.archive/` in its folder (core/fileprops.ts), a file also `archived: true`;
 // unarchiving moves it back and removes the key. Moves go through file.move, so links follow.
 import fs from "node:fs"
 import { type OpCtx, OpError, Plugin } from "../../../core/plugins.ts"
-import { archiveTwin, dirOf, inArchive, isArchived, isHiddenPath, readText, setPropertyText, unarchived, type Vault } from "../../../core/vault.ts"
+import { ARCHIVE_DIR, archiveTwin, dirOf, inArchive, isArchived, isHiddenPath, readText, setPropertyText, unarchived, type Vault } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
 // An item archived or unarchived through the API (PUT /api/<collection>/<id>, item.update) moves too.
 plugin.onArchive((rel, archived) => (archived === inArchive(rel) ? null : dirOf(archiveTwin(rel))))
 
-/** `rel`, or "Name 1.md" and on when that's taken. */
-function free(vault: Vault, rel: string) {
-  const dot = rel.lastIndexOf("."), cut = dot > rel.lastIndexOf("/") + 1 ? dot : rel.length
+/** `rel`, or "Name 1.md" ("Name 1" for a folder) and on when that's taken. */
+function free(vault: Vault, rel: string, folder = false) {
+  const dot = rel.lastIndexOf("."), cut = !folder && dot > rel.lastIndexOf("/") + 1 ? dot : rel.length
   let out = rel
   for (let n = 1; fs.existsSync(vault.abs(out)); n++) out = `${rel.slice(0, cut)} ${n}${rel.slice(cut)}`
   return out
@@ -27,64 +27,73 @@ async function mark(ctx: OpCtx, rel: string, on: boolean) {
   if (next !== null && next !== text) await ctx.api("PUT", "file", { path: rel, text: next, base: text })
 }
 
-/** A vault file that can be archived: one that's there, not a folder, not hidden (an archive folder isn't). */
-function fileAt(ctx: OpCtx, path: unknown) {
-  const rel = String(path ?? "").replace(/^\/+/, "")
-  if (!rel || !fs.existsSync(ctx.vault.abs(rel))) throw new OpError(`no file '${rel}'`, 404)
-  if (fs.statSync(ctx.vault.abs(rel)).isDirectory()) throw new OpError(`${rel} is a folder: archive the files in it`)
+/** A vault file or folder that can be archived: one that's there, not hidden (an archive folder isn't), not an archive
+ *  folder itself. */
+function target(ctx: OpCtx, path: unknown) {
+  const rel = String(path ?? "").replace(/^\/+|\/+$/g, "")
+  if (!rel || !fs.existsSync(ctx.vault.abs(rel))) throw new OpError(`no file or folder '${rel}'`, 404)
   if (isHiddenPath(rel)) throw new OpError(`${rel} is hidden: it can't be archived`)
+  if (rel.split("/").pop() === ARCHIVE_DIR) throw new OpError(`${rel} is an archive folder: archive what's outside it`)
   return rel
 }
 
 type Moved = { from: string; path: string; updated: string[] }
 
-/** Archive a file: into its folder's `.archive/`, then `archived: true` (in the archive it counts as archived already). */
+const isFolder = (ctx: OpCtx, rel: string) => fs.statSync(ctx.vault.abs(rel)).isDirectory()
+
+/** Archive a file or folder: into its folder's `.archive/`, then a file gets `archived: true` (in the archive it counts
+ *  as archived already). */
 export async function archive(ctx: OpCtx, rel: string): Promise<Moved> {
   let at = rel, updated: string[] = []
-  if (!inArchive(rel)) ({ path: at, updated } = await ctx.op("file.move", { from: rel, to: free(ctx.vault, archiveTwin(rel)) }))
-  await mark(ctx, at, true)
+  const folder = isFolder(ctx, rel)
+  if (!inArchive(rel)) ({ path: at, updated } = await ctx.op("file.move", { from: rel, to: free(ctx.vault, archiveTwin(rel), folder) }))
+  if (!folder) await mark(ctx, at, true)
   return { from: rel, path: at, updated }
 }
 
-/** Unarchive a file: back out of `.archive/` (a free name if one took its place), then the key removed. */
+/** Unarchive a file or folder: back out of `.archive/` (a free name if one took its place), then a file's key removed. */
 export async function unarchive(ctx: OpCtx, rel: string): Promise<Moved> {
   let at = rel, updated: string[] = []
-  if (inArchive(rel)) ({ path: at, updated } = await ctx.op("file.move", { from: rel, to: free(ctx.vault, unarchived(rel)) }))
-  await mark(ctx, at, false)
+  const folder = isFolder(ctx, rel)
+  if (inArchive(rel)) ({ path: at, updated } = await ctx.op("file.move", { from: rel, to: free(ctx.vault, unarchived(rel), folder) }))
+  if (!folder) await mark(ctx, at, false)
   return { from: rel, path: at, updated }
 }
 
-const PATH = { type: "string", format: "path", required: true, description: "the file (a path, or a name as the user says it)" } as const
+const PATH = { type: "string", format: "path", required: true, description: "the file or folder (a path, or a name as the user says it)" } as const
 const said = (r: Moved, what: string) =>
   `${r.from === r.path ? `${what} ${r.path}` : `${what} ${r.from}: now ${r.path}`}${r.updated.length ? `; links updated in ${r.updated.join(", ")}` : ""}.`
 
 plugin.op({
   id: "archive.add",
   cli: "archive",
-  summary: "Archive a file: it moves into .archive/ in its folder and gets `archived: true`; links to it follow.",
+  summary: "Archive a file or folder: it moves into .archive/ in its folder (a file gets `archived: true`); links to it follow.",
   help: `Archived files are left out of lists, blocks, the graph and database views, and go last in search; the app still
-reads them, and links to them still work. Unarchive with vau unarchive.
+reads them, and links to them still work. A folder moves whole (Projects/Old -> Projects/.archive/Old), and everything
+in it counts as archived. Unarchive with vau unarchive.
 
   vau archive "People/Old friend.md"
-  vau archive Inbox/Clipped page.md`,
+  vau archive Inbox/Clipped page.md
+  vau archive "Projects/Old project"`,
   kind: "write",
   params: { path: PATH },
   args: ["path"],
   action: { on: ["*"], param: "path", label: "Archive", icon: "archive", menu: false },
-  run: ({ path }, ctx) => archive(ctx, fileAt(ctx, path)),
+  run: ({ path }, ctx) => archive(ctx, target(ctx, path)),
   text: (r) => said(r, "Archived"),
 })
 
 plugin.op({
   id: "archive.restore",
   cli: "unarchive",
-  summary: "Unarchive a file: it moves out of .archive/ back into its folder and loses `archived`; links follow.",
-  help: `  vau unarchive "People/.archive/Old friend.md"`,
+  summary: "Unarchive a file or folder: it moves out of .archive/ back into its folder (a file loses `archived`); links follow.",
+  help: `  vau unarchive "People/.archive/Old friend.md"
+  vau unarchive "Projects/.archive/Old project"`,
   kind: "write",
   params: { path: PATH },
   args: ["path"],
   action: { on: ["*"], param: "path", label: "Unarchive", icon: "archive-restore", archived: true, menu: false },
-  run: ({ path }, ctx) => unarchive(ctx, fileAt(ctx, path)),
+  run: ({ path }, ctx) => unarchive(ctx, target(ctx, path)),
   text: (r) => said(r, "Unarchived"),
 })
 

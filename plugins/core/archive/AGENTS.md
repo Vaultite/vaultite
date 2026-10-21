@@ -1,6 +1,7 @@
 ## Archive
 Archiving a file moves it into `.archive/` inside its own folder (`People/.archive/Old friend.md`) and sets
-`archived: true`; unarchiving moves it back and removes the key. Links to it are rewritten both ways.
+`archived: true`; unarchiving moves it back and removes the key. Links to it are rewritten both ways. A folder moves
+whole (`Projects/.archive/Old project`) without marking its files: everything in an `.archive/` counts as archived.
 - `vau archive <file>`, `vau unarchive <file>`; `PUT /api/<collection>/<id> {"archived": true}` (or `false`) moves an
   item too.
 - The app indexes `.archive/` folders: archived files open, their links resolve, history keeps them. Tools that skip

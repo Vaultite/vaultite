@@ -157,11 +157,14 @@ async function deleteForGood(path: string) {
 /** Delete, the right way for where it is: to the trash with Undo, or for good (asking) in the trash. */
 export const remove = (path: string) => (path === ".trash" || inTrash(path) ? deleteForGood(path) : trash(path))
 
+export type PluginGroups = { navigate: MenuItem[]; more: MenuItem[]; away: MenuItem[]; rest: MenuItem[][] }
+export const noGroups: PluginGroups = { navigate: [], more: [], away: [], rest: [] }
+
 /** Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by
- *  `section`: navigate, more, then the rest a group each, in the plugins' order. */
-export function pluginFileGroups(path: string, skip?: string, folder = false): { navigate: MenuItem[]; more: MenuItem[]; rest: MenuItem[][] } {
+ *  `section`: navigate, more, away (with Delete), then the rest a group each, in the plugins' order. */
+export function pluginFileGroups(path: string, skip?: string, folder = false): PluginGroups {
   const disabled = getPrefs().disabled
-  const by = new Map<string, MenuItem[]>([["navigate", []], ["more", []], ["actions", []]])
+  const by = new Map<string, MenuItem[]>([["navigate", []], ["more", []], ["away", []], ["actions", []]])
   for (const p of PLUGINS) {
     const menu = folder ? p.folderMenu : p.fileMenu
     if (!menu || !isEnabled(p.id, disabled) || p.id === skip) continue
@@ -174,8 +177,8 @@ export function pluginFileGroups(path: string, skip?: string, folder = false): {
   }
   // The ops that act on its kind (core/actions.ts) whose plugin has no item of its own for them
   for (const a of fileActions(path, skip)) if (a.menu) by.get("actions")!.push({ label: a.label, icon: actionIcon(a), run: () => void runAction(a) })
-  const { navigate, more, ...rest } = Object.fromEntries(by)
-  return { navigate, more, rest: Object.values(rest) }
+  const { navigate, more, away, ...rest } = Object.fromEntries(by)
+  return { navigate, more, away, rest: Object.values(rest) }
 }
 
 /** The plugins' "more" items as More ▸ (the menu's last before Delete), by name (they come from several plugins: an order to find them by), or one
@@ -184,7 +187,7 @@ export const moreItem = (items: MenuItem[]): MenuItem[] =>
   items.length > 1 ? [{ label: "More", icon: Ellipsis, run: () => {}, items: [...items].sort((x, y) => x.label.localeCompare(y.label)) }] : items
 
 /** A vault file's menu wherever it's shown: `top` (what's about where it is), change it, the plugins' groups, its path,
- *  Delete. `inside`: shown in something else (an embed, a card), so no Duplicate and Delete names what goes. */
+ *  Archive and Delete. `inside`: shown in something else (an embed, a card), so no Duplicate and Delete names what goes. */
 export function fileMenu(file: string, opts: { rename?: () => void; phone?: boolean; short?: boolean; top?: MenuItem[][]; inside?: boolean } = {}): MenuItem[] {
   const ro = isReadOnly(file), locked = ro || isProtected(file)
   const plug = pluginFileGroups(file)
@@ -196,7 +199,7 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
   // `short` (a desktop tab's, the tree at hand): what's about the file where it is, the rest in More file actions ▸
   // (Delete too: not a misclick away from Close)
   if (opts.short) {
-    const more = grouped([change, plug.navigate, ...plug.rest, plug.more, del])
+    const more = grouped([change, plug.navigate, ...plug.rest, plug.more, [...plug.away, ...del]])
     return grouped([...(opts.top ?? []), [...(locked ? [] : [rename]), copyPathItem(file), reveal, ...revealItem(file),
       ...(more.length ? [{ label: "More file actions", icon: Ellipsis, run: () => {}, items: more }] : [])]])
   }
@@ -207,7 +210,7 @@ export function fileMenu(file: string, opts: { rename?: () => void; phone?: bool
     plug.navigate,
     ...plug.rest,
     [copyPathItem(file), ...(opts.phone ? [] : [reveal]), ...revealItem(file), ...moreItem(plug.more)],
-    del,
+    [...plug.away, ...del],
   ])
 }
 
@@ -216,7 +219,7 @@ export const rowFileMenu = (path: string): MenuItem[] => fileMenu(path, { phone:
   openItem(() => openFile(path, { newTab: true }), isDesktop() ? () => openInSplit(`file:${path}`, "right") : undefined)]] })
 
 /** A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its
- *  path and Reveal in file tree, Delete. Renaming and New folder are the tree's, where the name is typed in place. */
+ *  path and Reveal in file tree, Archive and Delete. Renaming and New folder are the tree's, where the name is typed in place. */
 export function folderMenu(folder: string, opts: { skip?: string } = {}): MenuItem[] {
   const locked = isProtected(folder) || inTrash(folder)
   const plug = pluginFileGroups(folder, opts.skip, true)
@@ -230,7 +233,7 @@ export function folderMenu(folder: string, opts: { skip?: string } = {}): MenuIt
       ...revealItem(folder),
       ...moreItem(plug.more),
     ],
-    locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => remove(folder) }],
+    [...plug.away, ...(locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => remove(folder) }])],
   ])
 }
 
@@ -271,22 +274,23 @@ async function restoreMany(paths: string[]) {
   for (const p of topmost(paths)) { try { await restoreFile(p) } catch (e) { notifyError(e, "Couldn't restore") } }
 }
 
-/** The plugins' items every one of these files has and that can be done to several at once (`many`): Pin, Archive. */
-function pluginManyItems(paths: string[]): MenuItem[] {
+/** The plugins' items every one of these files and folders has and that can be done to several at once (`many`): Pin,
+ *  Archive; the away ones (Archive) apart, to go with Delete. */
+function pluginManyItems(paths: string[], folders: Set<string>): { items: MenuItem[]; away: MenuItem[] } {
   const disabled = getPrefs().disabled
-  const out: MenuItem[] = []
+  const items: MenuItem[] = [], away: MenuItem[] = []
   for (const p of PLUGINS) {
-    if (!p.fileMenu || !isEnabled(p.id, disabled)) continue
+    if (!isEnabled(p.id, disabled)) continue
     try {
-      const menus = paths.map((path) => p.fileMenu!(path))
+      const menus = paths.map((path) => (folders.has(path) ? p.folderMenu : p.fileMenu)?.(path) ?? [])
       for (const it of menus[0]) {
         if (!it.many || !menus.every((m) => m.some((x) => x.label === it.label && x.many))) continue
         const run = it.many
-        out.push({ label: it.label, icon: it.icon as LucideIcon | undefined, run: () => run(paths) })
+        ;(it.section === "away" ? away : items).push({ label: it.label, icon: it.icon as LucideIcon | undefined, run: () => run(paths) })
       }
     } catch { /* a plugin's menu failing must not break the rest */ }
   }
-  return out
+  return { items, away }
 }
 
 /** What files and folders selected together can do (the tree's right-click on one of them, the phone's bar): open the
@@ -304,13 +308,14 @@ export function filesMenu(paths: string[], opts: { newTab?: (path: string) => vo
   }
   const locked = roots.some((p) => p === ".trash" || inTrash(p) || isProtected(p))
   const open = opts.newTab ?? ((p: string) => openFile(p, { newTab: true }))
+  const plug = pluginManyItems(roots, folders)
   return grouped([
     files.length ? [{ label: files.length === 1 ? "Open in new tab" : `Open ${files.length} in new tabs`, icon: SquareArrowOutUpRight, run: () => files.forEach(open) }] : [],
     locked ? [] : [{ label: "Move to…", icon: files.length === roots.length ? FileInput : FolderInput, run: () => askMoveMany(roots) }],
-    files.length === roots.length ? pluginManyItems(files) : [],
+    plug.items,
     [{ label: "Copy paths", icon: Copy, run: () => void copied(roots.join("\n"), "paths") },
       ...(files.length === roots.length ? [{ label: "Copy links", icon: Link, run: () => void copied(files.map((f) => linkTo(f)).join("\n"), "links") }] : [])],
-    locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => void trashMany(roots) }],
+    [...plug.away, ...(locked ? [] : [{ label: "Delete", icon: Trash2, danger: true, run: () => void trashMany(roots) }])],
   ])
 }
 
@@ -318,6 +323,6 @@ export function filesMenu(paths: string[], opts: { newTab?: (path: string) => vo
 export function chooseAction(path: string) {
   const g = pluginFileGroups(path)
   const flat = (its: MenuItem[], pre = ""): MenuItem[] => its.flatMap((it) => (it.items ? flat(it.items, `${pre}${it.label}: `) : it.disabled ? [] : [{ ...it, label: pre + it.label }]))
-  const items = flat([...g.rest.flat(), ...g.navigate, ...g.more]).map((it, i) => ({ id: String(i), label: it.label, icon: it.icon, run: it.run }))
+  const items = flat([...g.rest.flat(), ...g.navigate, ...g.more, ...g.away]).map((it, i) => ({ id: String(i), label: it.label, icon: it.icon, run: it.run }))
   choose({ title: "Actions", heading: stem(path), placeholder: "Do what with it…", items, onPick: (it) => it.run() })
 }

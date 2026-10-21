@@ -165,7 +165,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `FileHead`: The file a file bar item is drawn for, as in its editor now: `fm` (a change redraws, typing doesn't), `type`, and `setProperty` to change one key as a small edit (absent when the file can't be…
 - `FileIcon`: An icon a plugin gives a file or folder: `icon` a name (Lucide's, a plugin's, or an emoji), `tint` a colour token (`green`).
 - `FileMark`: A short mark after a file's name in the file tree (Token count's size over its limit), with its tooltip.
-- `fileMenu(file, opts?)`: A vault file's menu wherever it's shown: `top` (what's about where it is), change it, the plugins' groups, its path, Delete.
+- `fileMenu(file, opts?)`: A vault file's menu wherever it's shown: `top` (what's about where it is), change it, the plugins' groups, its path, Archive and Delete.
 - `FileMenuItem`: An item in a file's menu.
 - `FileRow`: What a plugin draws into a file tree row itself (`fileRows`): on the row and its name, and elements before the name (in place of the row's icon) or after it.
 - `FileRowPart`: Classes, attributes and a style for a part of a file tree row.
@@ -189,7 +189,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `focusPane(gid?)`: Put the keyboard in pane `gid` (the focused one by default): its editor or terminal, if it shows one.
 - `focusSidebar(side)`: Put the keyboard in a sidebar (opening it): on the row it was on last there, else the open file's row in the tree, else its first row.
 - `Foldable({ title, count, big, keep, dflt, children, … })`: Rows under a heading that folds them (a panel's sections).
-- `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Delete.
+- `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Archive and Delete.
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
 - `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
@@ -384,7 +384,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `pluginById(id)`
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").
 - `PluginDef`
-- `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, then the rest a group each, in the plugins' order.
+- `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, away (with Delete), then the rest a group each, in…
 - `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on Setup's Plugins tab and the answers to its plugins' buttons.
 - `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file changes.
 - `PluginState`

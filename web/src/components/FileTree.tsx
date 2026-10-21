@@ -24,7 +24,7 @@ import type { FileIcon, FileMark, FileRow, FileRowPart, NewFile } from "@/core/d
 import { fileIcons, fileMarks, fileViewFor, formatFor, pluginNewFiles, revealPanel, useFileRows } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs, type FileSort } from "@/core/prefs"
 import { commandItems, menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
-import { copyPathItem, duplicate, duplicateItem, filesMenu, grouped, moreItem, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
+import { copyPathItem, duplicate, duplicateItem, filesMenu, grouped, moreItem, noGroups, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
 import { registerCommands } from "@/core/commands"
 import { currentRow } from "@/core/keylist"
 import { pickFolder } from "@/components/FolderPicker"
@@ -481,11 +481,11 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
         { label: "Delete permanently", icon: Trash2, run: () => remove(n.path), danger: true, sep: true },
       ]
     }
-    // Groups, a line between each: open; new; change (Rename, Move, Duplicate); keep (Archive, Pin); plugins' groups;
-    // the path, then More; Delete. Split rows (Open, New note, Rename, Copy path) keep the rest in their submenus.
+    // Groups, a line between each: open; new; change (Rename, Move, Duplicate); keep (Pin); plugins' groups;
+    // the path, then More; Archive and Delete. Split rows (Open, New note, Rename, Copy path) keep the rest in their submenus.
     const locked = !n.path || isProtected(n.path)
     const kinds = pluginNewFiles(disabled).map((nf): MenuItem => ({ label: nf.label, icon: nf.icon, run: () => void newOf(nf, here).catch((e) => notifyError(e, `Couldn't make it`)) }))
-    const plug = n.path ? pluginFileGroups(n.path, undefined, n.folder) : { navigate: [], more: [], rest: [] }
+    const plug = n.path ? pluginFileGroups(n.path, undefined, n.folder) : noGroups
     return grouped([
       file ? [
         openItem(() => openFile(n.path, { newTab: true, pane }), compact ? () => openInSplit(`file:${n.path}`, "right") : undefined),
@@ -504,7 +504,7 @@ export const FileTree = memo(function FileTree({ store, active, compact = true, 
       plug.navigate,
       ...plug.rest,
       [...(n.path ? [copyPathItem(n.path, { folder: n.folder }), ...revealItem(n.path)] : []), ...moreItem(plug.more)],
-      locked ? [] : [{ label: "Delete", icon: Trash2, run: () => remove(n.path), danger: true }],
+      [...plug.away, ...(locked ? [] : [{ label: "Delete", icon: Trash2, run: () => remove(n.path), danger: true }])],
       // The tree's empty space (the vault's top): what it shows, as its panel's menu has.
       n.path ? [] : treeShownItems(),
     ])

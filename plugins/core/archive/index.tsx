@@ -1,7 +1,8 @@
 import { Archive, ArchiveRestore, FolderArchive } from "lucide-react"
-import { confirmDialog, currentFile, definePlugin, getStore, inArchive, isHidden, notify, notifyError, op, plural, reload } from "@vaultite"
+import { ARCHIVE_DIR, confirmDialog, currentFile, definePlugin, type FileMenuItem, getStore, inArchive, isFolder, isHidden, notify, notifyError, op, plural, reload } from "@vaultite"
 
-// Archive and Unarchive in a file's menu and the palette (the moving is plugin.ts'), and the one-time tidy.
+// Archive and Unarchive in a file's or folder's menu (right above Delete) and the palette (the moving is plugin.ts'),
+// and the one-time tidy.
 
 type Moved = { from: string; path: string }
 
@@ -11,6 +12,11 @@ const name = (path: string) => path.split("/").pop()!.replace(/\.md$/i, "")
 const can = (path: string) => {
   const s = getStore()
   return !!s && !!path && !isHidden(path) && [...s.files.files, ...s.files.others].some((f) => f.path === path)
+}
+/** A vault folder, but an archive folder itself (archiving what's in it is its files'). */
+const canFolder = (path: string) => {
+  const s = getStore()
+  return !!s && !!path && !isHidden(path) && path.split("/").pop() !== ARCHIVE_DIR && isFolder(s.files, path)
 }
 
 /** Archive or unarchive a file; the toast's Undo does the other, wherever it went. */
@@ -29,7 +35,7 @@ async function setManyArchived(paths: string[], on: boolean) {
     try { moved.push((await op<Moved>(on ? "archive.add" : "archive.restore", { path })).path) } catch (e) { notifyError(e, on ? "Couldn't archive" : "Couldn't unarchive") }
   }
   await reload()
-  if (moved.length) notify(`${on ? "Archived" : "Unarchived"} ${plural(moved.length, "file")}`, { action: { label: "Undo", run: () => void setManyArchived(moved, !on) } })
+  if (moved.length) notify(`${on ? "Archived" : "Unarchived"} ${plural(moved.length, "item")}`, { action: { label: "Undo", run: () => void setManyArchived(moved, !on) } })
 }
 
 /** Move the files marked archived by hand (or from before this plugin) into their folders' .archive, after asking. */
@@ -48,13 +54,12 @@ async function tidy() {
   } catch (e) { notifyError(e, "Couldn't move the archived files") }
 }
 
+const item = (path: string, on: boolean): FileMenuItem[] => [{ label: on ? "Unarchive" : "Archive", icon: on ? ArchiveRestore : Archive, section: "away",
+  run: () => void setArchived(path, !on), many: (paths) => void setManyArchived(paths, !on) }]
+
 export default definePlugin({
-  fileMenu: (path) => {
-    if (!can(path)) return []
-    const on = archived(path)
-    return [{ label: on ? "Unarchive" : "Archive", icon: on ? ArchiveRestore : Archive, section: "navigate", run: () => void setArchived(path, !on),
-      many: (paths) => void setManyArchived(paths, !on) }]
-  },
+  fileMenu: (path) => (can(path) ? item(path, archived(path)) : []),
+  folderMenu: (path) => (canFolder(path) ? item(path, inArchive(path)) : []),
   commands: [
     { id: "archive:archive", name: "Archive the current file", when: () => can(currentFile()) && !archived(currentFile()), run: () => void setArchived(currentFile(), true) },
     { id: "archive:unarchive", name: "Unarchive the current file", when: () => can(currentFile()) && archived(currentFile()), run: () => void setArchived(currentFile(), false), icon: ArchiveRestore },
