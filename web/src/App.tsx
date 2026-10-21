@@ -7,6 +7,7 @@ import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
 import { desktop as desktopApp, otherVaults } from "@/core/desktop"
 import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
+import { useTypingFade } from "@/core/typing"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
@@ -214,7 +215,7 @@ export default function App() {
   const lingering = useLingeringSheet()
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
-  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, disabled, enabled, order } = usePrefs()
+  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, peekShade, typingFade, disabled, enabled, order } = usePrefs()
   // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
   const home = store ? homeTab(store, disabled, order) : null
   const isFileTab = tab.startsWith("file/") || tab === "file"
@@ -432,6 +433,7 @@ export default function App() {
   const leftOpen = sidebar || hideLeft
   // The traffic lights go with the sidebar they sit in.
   usePeekLights(hideLeft, peek)
+  useTypingFade(desktop && typingFade)
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
   useLayoutEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
@@ -454,6 +456,9 @@ export default function App() {
     <>
       {/* Desktop: the sidebar. Folded, it's an icon rail where only the width changes, so every icon stays put (RAIL in
           Sidebar.tsx, all offsets in spacing units). Right-click it to pick which panels show. */}
+      {/* Behind a hidden sidebar slid in, the page dims a little (index.css: it starts once the sidebar is in, so
+          brushing the edge never flashes it). Clicks pass through: one on the page puts the sidebar away. */}
+      {peekShade && (hideLeft || hideRight) && <div aria-hidden data-peek-shade="" data-shown={peek ? "" : undefined} className="pointer-events-none fixed inset-0 z-[35]" />}
       {!popout && <>
       <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && peek !== "left"} onContextMenu={menuFor(panelMenu)}
         className={cn(

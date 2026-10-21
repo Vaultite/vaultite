@@ -13,16 +13,17 @@ export default async ($: VaultTest) => {
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
     const setConf = (name: string, o: unknown) => write(`.vaultite/${name}.json`, JSON.stringify(o))
     // Its plugins (Activity off) and pins are put back at the end: the areas after it need them.
-    const pluginsBefore = conf("plugins"), pagesBefore = conf("pages")
+    const pluginsBefore = conf("plugins"), pagesBefore = conf("pages"), editorBefore = conf("editor")
     setConf("plugins", { disabled: ["clipper"], enabled: ON, updatesOff: ["lighthouse"], order: ["people"] })
     setConf("appearance", { theme: "light", textFont: "Georgia", scheme: "nord" })
+    setConf("editor", { tabSize: 2, propertiesInDocument: "source" })
     setConf("pages", { pinned: ["People/Alice Park.md", "Dashboards/People.md"] })
     setConf("plugins/page-preview/data", { delay: 300 })
     await api("PATCH", "config/plugin/terminal", { allowRemote: true })
     for (const f of ["sidebars", "hotkeys"]) { try { fs.unlinkSync(path.join(VAULT, `.vaultite/${f}.json`)) } catch { /* none */ } }
     const desk = { name: "Desk", sidebars: { left: ["files:files"], right: [], collapsed: [] }, pinned: ["People/Alice Park.md", "Dashboards/People.md"] }
     writeWs({ workspaces: [desk] })
-    const NAMES = ["plugins", "appearance", "pages", "sidebars", "hotkeys", "plugins/page-preview/data", "plugins/terminal/data", "plugins/history/data", "plugins/activity/data"]
+    const NAMES = ["plugins", "appearance", "editor", "pages", "sidebars", "hotkeys", "plugins/page-preview/data", "plugins/terminal/data", "plugins/history/data", "plugins/activity/data"]
     const before = Object.fromEntries(NAMES.map((n) => [n, conf(n)]))
     const slot1 = async () => (await api("GET", "workspaces"))[1].workspaces[0]
     const deskBefore = await slot1()
@@ -37,7 +38,7 @@ export default async ($: VaultTest) => {
     const plan = r.plan
     check("bundles: the preview says what changes", code === 200 && plan.plugins.off.includes("machines") && plan.settings.some((s: Any) => s.plugin === "page-preview" && s.key === "trigger" && s.to === "hover") &&
       plan.pins.list.join() === PREVIEWED && plan.pins.workspace?.join() === plan.pins.list.join() && plan.panels.workspace === 1 &&
-      plan.files.add.includes("Dashboards/Home.md") && !plan.empty, plan)
+      plan.files.add.includes("Dashboards/Home.md") && plan.editor.some((c: Any) => c.change === "editor:propertiesInDocument" && c.from === "source" && c.to === null) && !plan.empty, plan)
     ;[code, r] = await api("POST", "bundles/life-os/apply", { workspace: 1 })
     check("bundles: one installing a plugin asks first (it runs code)", code === 409 && r.error.includes("Books"), [code, r])
     // (Books and others moved out of the app: Life OS installs them from a made-up Vaultite/plugins here)
@@ -52,6 +53,7 @@ export default async ($: VaultTest) => {
     check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.order?.[0] === "people" && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)
     check("bundles: appearance is the bundle's whole look (the app's say every key); one it sets to the default is removed", !("textFont" in look) && !("theme" in look) && look.scheme === "flexoki" &&
       look.density === "comfortable", look)
+    check("bundles: the editor's settings: one it sets to the default is removed, the others kept", JSON.stringify(conf("editor")) === JSON.stringify({ tabSize: 2 }), conf("editor"))
     check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))
     check("bundles: pins are the bundle's, then the user's own", conf("pages").pinned.join() === LIFE, conf("pages"))
     check("bundles: its dashboard is added", exists("Dashboards/Home.md") && read("Dashboards/Home.md").includes("```base"))
@@ -118,6 +120,9 @@ export default async ($: VaultTest) => {
     check("bundles: saved: plugins, the workspace's pins, settings that differ from their defaults, never local ones", saved("plugins.json")?.disabled?.includes("clipper") &&
       saved("pages.json")?.pinned?.join() === deskBefore.pinned.join() && saved("plugins/page-preview/data.json")?.delay === 300 && saved("plugins/terminal/data.json") === null &&
       saved("appearance.json")?.scheme === "nord" && saved("hotkeys.json") === null, fs.readdirSync(path.join(VAULT, ".vaultite/bundles/my-desk"), { recursive: true }))
+    check("bundles: saved, the editor's settings the app's bundles set and the user's own", JSON.stringify(saved("editor.json")) === JSON.stringify({ tabSize: 2, propertiesInDocument: "source" }), saved("editor.json"))
+    ;[, r] = await api("GET", "bundles/my-desk/share")
+    check("bundles: sharing lists the editor's settings, to leave out", r.items.some((x: Any) => x.path === "editor.json" && x.kind === "settings" && x.on && x.keys.includes("tabSize")), r.items)
     ;[code, r] = await api("GET", "bundles/my-desk/export")
     const exported = JSON.parse(r)
     check("bundles: export is one JSON file", code === 200 && exported.vaultite === "bundle" && exported.files["plugins.json"].disabled.includes("clipper"), exported)
@@ -264,7 +269,7 @@ export default async ($: VaultTest) => {
       r.plan.skipped.some((x: Any) => x.plugin === "history" && x.key === "keep_days" && /higher/.test(x.why)), [r.plan.settings, r.plan.skipped])
     fs.rmSync(path.join(VAULT, ".vaultite/bundles/keep-days"), { recursive: true })
     if (hist) setConf("plugins/history/data", hist); else fs.rmSync(path.join(VAULT, ".vaultite/plugins/history/data.json"), { force: true })
-    for (const [name, was] of [["plugins", pluginsBefore], ["pages", pagesBefore]] as const) {
+    for (const [name, was] of [["plugins", pluginsBefore], ["pages", pagesBefore], ["editor", editorBefore]] as const) {
       if (was) setConf(name, was); else fs.rmSync(path.join(VAULT, `.vaultite/${name}.json`), { force: true })
     }
   }
@@ -272,15 +277,16 @@ export default async ($: VaultTest) => {
   // use and what changed since (drift), trying one, and installs pinned to a commit.
   {
     const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
-    const NAMES = ["plugins", "pages", "appearance", "sidebars", "plugins/pages/data", "plugins/errors/data", "plugins/page-preview/data"]
+    const NAMES = ["plugins", "pages", "appearance", "editor", "sidebars", "plugins/pages/data", "plugins/errors/data", "plugins/page-preview/data"]
     const kept = NAMES.map((n) => [n, exists(`.vaultite/${n}.json`) ? read(`.vaultite/${n}.json`) : null] as const)
     const { LOOK } = await import("../../../core/look.ts")
+    const { EDITOR } = await import("../../../core/editor.ts")
     const SETTINGS = [["errors", "notify"], ["pages", "show"], ["page-preview", "trigger"]]
     const defaultOf = (id: string, key: string) => (app.plugins.find((p) => p.id === id)?.manifest.settings as Any)?.[key]?.default
     const appIds = new Set(app.plugins.filter((p) => p.tier !== "vault").map((p) => p.id))
-    /** The setup as the app reads it: the look and the settings the app's bundles set (defaults filled in), the app's
+    /** The setup as the app reads it: the look, the editor and the settings the app's bundles set (defaults filled in), the app's
      *  plugins that are off, the panels, the pins. */
-    const setup = () => JSON.stringify({ look: { ...LOOK, ...conf("appearance") }, settings: SETTINGS.map(([id, k]) => conf(`plugins/${id}/data`)?.[k] ?? defaultOf(id, k)),
+    const setup = () => JSON.stringify({ look: { ...LOOK, ...conf("appearance") }, editor: { ...EDITOR, ...conf("editor") }, settings: SETTINGS.map(([id, k]) => conf(`plugins/${id}/data`)?.[k] ?? defaultOf(id, k)),
       off: [...app.vault.switchedOff()].filter((id) => appIds.has(id)).sort(), panels: (({ left, right, collapsed }: Any) => ({ left, right, collapsed }))(conf("sidebars") ?? {}),
       pins: conf("pages")?.pinned ?? [] })
     const apply = (id: string, body: Any = {}) => api("POST", `bundles/${id}/apply`, { allowCode: true, ...body })
@@ -295,7 +301,7 @@ export default async ($: VaultTest) => {
     const ids: string[] = r.plan.changes.map((c: Any) => c.id)
     const again: string[] = (await api("GET", "bundles/zen"))[1].plan.changes.map((c: Any) => c.id)
     check("bundles: each change has an id, the same each time, on its line too", ids.join() === again.join() && new Set(ids).size === ids.length &&
-      ["appearance:scheme", "panels", "setting:pages.show", "plugin:glance"].every((x) => ids.includes(x)) && r.plan.settings.every((c: Any) => ids.includes(c.change)) &&
+      ["appearance:scheme", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"].every((x) => ids.includes(x)) && r.plan.settings.every((c: Any) => ids.includes(c.change)) &&
       r.plan.changes.every((c: Any) => typeof c.label === "string" && c.label), r.plan.changes)
 
     // Applying some of them: the ones skipped aren't made, nor kept to restore; restore still puts the rest back.
@@ -319,6 +325,11 @@ export default async ($: VaultTest) => {
     check("bundles: changed since, it's modified, saying what differs", zen.modified === true && zen.differs.join() === "appearance:density" && !zen.inUse, zen)
     await apply("zen")
     check("bundles: applied again, it's as it was (Revert)", (await entry("zen")).modified === false)
+    await api("PATCH", "config/editor", { propertiesInDocument: "source" })
+    zen = await entry("zen")
+    check("bundles: an editor setting changed since differs too", zen.modified === true && zen.differs.join() === "editor:propertiesInDocument", zen)
+    await apply("zen")
+    check("bundles: applied again, the editor's setting is the bundle's", conf("editor")?.propertiesInDocument === "hidden" && (await entry("zen")).modified === false, conf("editor"))
     // Save changes: one of the app's is saved as "<Name> (mine)", the user's own over itself (its name, card and source kept).
     await api("PATCH", "config/appearance", { density: "compact" })
     ;[code, r] = await api("POST", "bundles", { over: "zen" })
@@ -340,6 +351,7 @@ export default async ($: VaultTest) => {
     ;[code, r] = await api("POST", "bundles", { name: "Whole desk" })
     const whole = r.bundle.id, saved = setup(), savedLook = JSON.parse(read(`.vaultite/bundles/${whole}/appearance.json`))
     check("bundles: saved, it states the whole look and the app's bundles' settings, defaults too", LOOK && Object.keys(LOOK).every((k) => k in savedLook) &&
+      JSON.parse(read(`.vaultite/bundles/${whole}/editor.json`)).propertiesInDocument === "hidden" &&
       JSON.parse(read(`.vaultite/bundles/${whole}/plugins/errors/data.json`)).notify === true && (await api("GET", `bundles/${whole}`))[1].plan.empty, savedLook)
     for (const other of ["life-os", "standard", "zen"]) {
       ;[code] = await apply(other)
@@ -350,7 +362,7 @@ export default async ($: VaultTest) => {
 
     // A copy without some changes (fork): applied anywhere, it does what the bundle without them does here.
     await apply("standard")
-    const FORK = ["appearance:scheme", "panels", "setting:pages.show", "plugin:glance"]
+    const FORK = ["appearance:scheme", "editor:propertiesInDocument", "panels", "setting:pages.show", "plugin:glance"]
     ;[code, r] = await api("POST", "bundles/zen/fork", { skip: FORK })
     const forked = r.bundle
     check("bundles: fork makes the user's copy, its name free, its card copied, not its picture", code === 200 && forked.name === "Zen (mine 2)" && forked.source === "vault" &&

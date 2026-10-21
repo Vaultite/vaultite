@@ -13,6 +13,7 @@ import type { AgentDef, EditorCtx, FileBarItem, FileFormat, FileIcon, FileMark, 
 import type { Store } from "@/core/data"
 import { defaultSidebars, placePanel, sameSidebars, setCollapsed, setDocked, setHeight, setHeights, sideOf as sideIn, withoutPanel, type Place, type Side, type Sidebars } from "../../../core/sidebars.ts"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
+import { peekSidebar } from "@/core/peek"
 import { isDesktop } from "@/core/platform"
 import { canonical, keyCaps, keysOf, setMissingCommand } from "@/core/commands"
 import { setFenceLookup, setFormatLookup, type Drawn } from "@/core/formats"
@@ -541,6 +542,8 @@ export function revealPanel(key: string) {
   const prefs = getPrefs(), s = sidebars(prefs), side = sideIn(s, key)
   if (!side || !sidebarPanels(prefs.disabled, prefs.order).some((x) => x.key === key)) return false
   if (drawerOpener && !isDesktop()) { setSidebars(setCollapsed(s, key, false)); drawerOpener(side); return true }
+  // Hidden without a rail (Zen): it slides in for this, and the setup keeps it hidden.
+  if (isDesktop() && peekSidebar(side)) { setSidebars(setCollapsed(s, key, false)); return true }
   if (side === "left" ? !prefs.sidebar : !prefs.rightSidebar) void setPrefs(side === "left" ? { sidebar: true } : { rightSidebar: true })
   setSidebars(setCollapsed(s, key, false))
   return true

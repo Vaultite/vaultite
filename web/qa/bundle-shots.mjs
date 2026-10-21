@@ -14,6 +14,8 @@ const BUNDLES = path.join(ROOT, "bundles")
 /** The page each is shot on: a note showing what it's for, else its first pinned page, else NOTE. */
 const OPENS = { standard: "Notes/How this vault works.md", zen: "Notes/Reading notes - Thinking in Systems.md" }
 const NOTE = "Notes/How this vault works.md"
+/** What a bundle's picture shows it doing: Zen with its sidebar hidden, only the note on the window. */
+const HIDE_SIDEBAR = new Set(["zen"])
 /** A small window (its text still reads on a card a third of the page wide), as a 16:10 picture: the card's
  *  (web/src/pages/Bundles.tsx Thumb), sharp in the preview sheet. */
 const WINDOW = { width: 1088, height: 680 }, PICTURE = { width: 960, height: 600 }
@@ -72,6 +74,11 @@ async function shoot(id) {
     await until(() => page.locator("main").count(), 10_000)
     await page.waitForLoadState("networkidle").catch(() => {})
     await wait(2500)
+    if (HIDE_SIDEBAR.has(id)) {
+      await page.locator("[data-sidebar-toggle='']").click()
+      await page.mouse.move(WINDOW.width / 2, WINDOW.height / 2)
+      await wait(800)
+    }
     for (const scheme of ["light", "dark"]) {
       await page.emulateMedia({ colorScheme: scheme })
       await wait(800)

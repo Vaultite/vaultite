@@ -177,7 +177,7 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     // (every switch: the app's, and plugins switched on and off here, Vim keys; File explorer's are its plugin's, below)
     ...switches.filter((w) => !w.plugin).map((w): Found => {
       const row = w.id.replace(/^setting:/, "")
-      return { id: row, label: w.name, sub: w.sub?.(), where: placeOf(w).name, words: w.words ?? "", run: () => show(w.section ?? "appearance", `[data-settings-row="${row}"]`), switch: w }
+      return { id: row, label: w.name, sub: w.sub?.(), where: placeOf(w).name, words: w.words ?? "", run: w.section === "sidebars" ? placeOf(w).open : () => show(w.section ?? "appearance", `[data-settings-row="${row}"]`), switch: w }
     }),
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
     { ...row("vaults", "Manage vaults", "General", "[data-settings-vault]", store.vault.path), words: "vault folder" },

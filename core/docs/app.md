@@ -99,7 +99,7 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard). Vertical tabs are both: `tabBar` false and
   `tabs:tabs` at the top of the left sidebar (Show tabs in the sidebar does it, Show tabs on top undoes it). `paneTitles`: false (default) | true: with the tab bar off, that bar names the tab on screen; off, nothing is above a pane.
   `tabTint`: true | false (default): the active tab takes a light wash of its colour (a web page's container).
-  `rails`: true (default) | false: off, a hidden sidebar has no icon rail and slides in while the pointer is at its edge. `lineNumbers`: true | false (default), line numbers beside a file's text while editing
+  `rails`: true (default) | false: off, a hidden sidebar has no icon rail and slides in while the pointer is at its edge; `peekShade`: true | false (default), the page dims a little behind it. `typingFade`: true | false (default): the bars above files fade while typing, back when the pointer moves or at Escape. `lineNumbers`: true | false (default), line numbers beside a file's text while editing
   it (code files always have them). `statusBar`: the plugins' items at the start of the desktop status bar, in order
   (`["companion:status", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one
   to move it). `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't

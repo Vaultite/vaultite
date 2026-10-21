@@ -9,6 +9,8 @@ import { defaultPanels, dockPanel, hidePanel, panelsIn, restoreSidebars, sideOf,
 import { usePrefs } from "@/core/prefs"
 import { menuFor, rightClickBelow, type MenuItem } from "@/components/ContextMenu"
 import { FilterField, SheetHead } from "@/components/kit"
+import { SwitchRow } from "@/components/SwitchRow"
+import { coreSwitch } from "@/core/switches"
 import { panelIcon } from "@/components/Sidebar"
 import { cn } from "@/lib/utils"
 
@@ -24,7 +26,7 @@ const named = (side: Side) => (side === "left" ? "Left sidebar" : "Right sidebar
 const carried = (item: DragItem) => (item.from === "row" && item.drawn && item.panel) || null
 
 export function SidebarsSheet() {
-  const { disabled, order } = usePrefs()
+  const { disabled, order, rails } = usePrefs()
   const setup = useSidebars()
   const [query, setQuery] = useState("")
   const all = sidebarPanels(disabled, order)
@@ -46,7 +48,11 @@ export function SidebarsSheet() {
   return (
     <div ref={root} data-customize-sidebars>
       <SheetHead icon={SlidersHorizontal} tint="var(--primary)" title="Sidebars"
-        sub="Drag panels to arrange them, between the sidebars, or down to hide them. Right-click one for more." />
+        sub="How they show, and their panels: drag a panel between them or down to hide it. Right-click one for more." />
+      {/* How they behave first, the switches Settings finds under Sidebars; then what's in them. */}
+      <div className="hairline mb-4">
+        {["rails", ...(rails ? [] : ["peek-shade"]), "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+      </div>
       <FilterField value={query} onChange={setQuery} placeholder="Filter panels" className="mb-3" />
       <div className="grid grid-cols-2 gap-3">
         {(["left", "right"] as const).map((side) => (

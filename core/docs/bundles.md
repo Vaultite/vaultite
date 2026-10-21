@@ -20,6 +20,7 @@ books, and pages and databases over them).
   sidebars.json      the panels, as .vaultite/sidebars.json ({} is the default panels)
   pages.json         {"pinned": ["Dashboards/Desk.md", "Dashboards/Projects.md"]}
   appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable", ...}: the app's and saved ones say every key
+  editor.json        the editor's settings, as .vaultite/editor.json ({"propertiesInDocument": "hidden"}): saved ones say those the app's set
   hotkeys.json       optional
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page)
   preview.png        its card's picture: a screenshot of the app it makes (the desktop app takes one when saving)
@@ -39,8 +40,8 @@ books, and pages and databases over them).
 - A bundle of only some parts changes only those: one with just appearance.json (and themes, snippets) restyles any
   setup. To match a picture (a screenshot someone shared): pick the scheme closest to its colours or write a theme
   (`.vaultite/themes/<Name>/`), its fonts, and a snippet for the rest (`vau docs app`, Appearance).
-- Applying makes small edits: the plugin switches that change, the keys its files set (a value of the look or a setting
-  that is the default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
+- Applying makes small edits: the plugin switches that change, the keys its files set (a value of the look, the editor or a
+  setting that is the default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
   deleted). A plugin it turns on writes its pages, as turning it on does (those already on don't: Standard over a new
   vault adds none); a plugin's page it pins (`Dashboards/Today.md`) is written if the pages folder has none. Pins become the
   bundle's pages, then the user's own as they were; dashboards the app brings (plugins' and its own bundles') that it
@@ -51,8 +52,8 @@ books, and pages and databases over them).
   toast's Undo, the Bundles tab, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
   they're unchanged.
 - Each change of a plan has an id (`changes` in `bundle.show`: `install:<plugin>`, `plugin:<plugin>`,
-  `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `hotkey:<command>`,
-  `newtab:<key>`), the same for the same bundle and setup. Applying with `skip` leaves those out (nor kept to restore);
+  `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `editor:<key>`,
+  `hotkey:<command>`, `newtab:<key>`), the same for the same bundle and setup. Applying with `skip` leaves those out (nor kept to restore);
   `vau bundle fork <id> --skip ...` saves the bundle without them as "<Name> (mine)" (a value skipped is the current
   one, still said; a pin, file or plugin skipped is left out). In the app each is a ticked line of the bundle's
   preview: unticked, Apply and Try leave it out, and Save as "<Name> (mine)" forks it (an install unticked takes its

@@ -223,9 +223,9 @@ export function AppearancePanel() {
           <Segmented<Density> label="Density" value={prefs.density === "comfortable" ? "comfortable" : "compact"} onChange={(density) => setPrefs({ density })} className="w-full shrink-0 sm:w-[220px]"
             options={[{ value: "compact", label: "Compact" }, { value: "comfortable", label: "Comfortable" }]} />
         </SettingRow>
-        {["file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"]), "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
-        <SettingRow label="Sidebars" onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
-        {["rails", "sidebar-scroll", "panel-dividers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        {["file-icons", "tab-bar", ...(prefs.tabBar ? [] : ["pane-titles"]), "typing-fade", "line-numbers"].map((k) => <SwitchRow key={k} s={coreSwitch(`setting:${k}`)} />)}
+        <SettingRow label="Sidebars" sub={prefs.rails ? "Hidden, they fold to icon rails" : "Hidden, they slide in from the window's edge"}
+          onClick={() => openDetail("sidebars")} data-settings-row="sidebars" />
         <PullRows />
         <Fonts />
         {textSizeKinds(prefs.disabled, prefs.order).map(([kind, k]) => (

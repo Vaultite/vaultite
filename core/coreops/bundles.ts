@@ -12,7 +12,7 @@ const SKIP: Param = { type: "array", items: { type: "string" }, commas: false,
 const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
-sidebars.json, pages.json, appearance.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
+sidebars.json, pages.json, appearance.json, editor.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
 pins, and preview.png and preview-dark.png, its card's picture in light and dark); a part it leaves out stays as it is when it's applied. The app's own are
 Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the user's are in
 .vaultite/bundles/<id>/. \`vau docs bundles\` has the format, so you can write one too.
@@ -20,7 +20,8 @@ Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the us
   list      the bundles there are, and the setup that can be restored
   show      what applying one would change here, each change with its id: plugins on and off (plugin:<id>), plugins
             installed (install:<id>), settings (setting:<plugin>.<key>), panels, pins (pin:<path>, pins:order), the
-            look (appearance:<key>), hotkeys (hotkey:<command>), the new tab (newtab:<key>), files added (file:<path>)
+            look (appearance:<key>), the editor (editor:<key>), hotkeys (hotkey:<command>), the new tab (newtab:<key>),
+            files added (file:<path>)
   apply     apply one: small edits (keys, one pin at a time), files only added. The panels and pins become the
             defaults and the workspace the user's window is on follows them (--workspace <n> another). The setup from
             before is kept: \`vau bundle restore\` puts it back. A bundle with vault plugins runs code on this machine:

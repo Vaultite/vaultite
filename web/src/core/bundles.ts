@@ -43,7 +43,7 @@ export type BundleInfo = {
 /** A value a plan changes; `change`: its id (PlanChange). */
 type Change = { change: string; key: string; from: unknown; to: unknown }
 /** One change applying makes, by an id stable for the same bundle and setup (core/bundles.ts PlanChange). */
-export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "hotkey" | "newtab"
+export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "editor" | "hotkey" | "newtab"
   label: string; from?: unknown; to?: unknown }
 export type Plan = {
   /** `added`: plugins the user added that it leaves as they are (unless applied with offAdded). */
@@ -55,6 +55,8 @@ export type Plan = {
   panels: { setup: Sidebars | null; changed: boolean; workspace: number | null }
   pins: { want: string[]; list: string[]; pin: string[]; unpin: string[]; missing: string[]; workspace: string[] | null } | null
   appearance: Change[]
+  /** The editor's settings (editor.json). */
+  editor: Change[]
   hotkeys: Change[]
   newtab: Change[]
   files: { add: string[]; kept: string[] }

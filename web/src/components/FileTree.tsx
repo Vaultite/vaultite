@@ -110,8 +110,8 @@ export function revealInTree(path: string, opts: { scroll?: boolean; flash?: boo
   if (changed) treeOpen.set(n)
   if (!opts.scroll && !opts.flash) return
   // Asked for (flash): a tree in sight, wherever the Files panel is (the right sidebar, a sidebar tab, folded, a
-  // rail), or, with the panel hidden, the Files tab.
-  const shown = [...document.querySelectorAll<HTMLElement>("[role=tree]")].some((t) => t.offsetParent && !t.closest("[data-flyout], [data-pin-tree]"))
+  // rail, a hidden sidebar slid in: one off the window's edge still lays its tree out), else the Files tab.
+  const shown = [...document.querySelectorAll<HTMLElement>("[role=tree]")].some((t) => t.offsetParent && !t.closest("[data-flyout], [data-pin-tree], [data-peek=false]"))
   if (opts.flash && !shown && isDesktop() && !revealPanel(FILES_PANEL)) openView("files", { newTab: true })
   // After the folders render (and the sidebar opens).
   // (the tree's row, not the same one in a pinned folder)

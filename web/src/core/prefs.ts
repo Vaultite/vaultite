@@ -52,6 +52,10 @@ export type Prefs = {
   /** A hidden sidebar folds to its icon rail; off, it's gone, sliding back over the page while the pointer is at its
    *  edge of the window. */
   rails: boolean
+  /** Behind a hidden sidebar slid in, the page dims a little. */
+  peekShade: boolean
+  /** The bars above files fade while typing in one, back once the pointer moves. */
+  typingFade: boolean
   /** Line numbers beside the text of a file being edited (Markdown, source mode, JSON);
    *  code files always have them. */
   lineNumbers: boolean

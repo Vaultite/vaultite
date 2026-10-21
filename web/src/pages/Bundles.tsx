@@ -1,5 +1,6 @@
 // Setup's Bundles tab: setups to start from, save and share (format: core/bundles.ts); a card, or a bundle pasted or
 // dropped on the page, opens a preview of what applying it changes, asking first when it runs code.
+import { EDITOR } from "../../../core/editor.ts"
 import { official } from "../../../core/updates.ts"
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import {
@@ -15,6 +16,7 @@ import {
 } from "@/core/bundles"
 import { copyText } from "@/core/richmd"
 import { closeDetail, openDetail, replaceDetail } from "@/core/nav"
+import { PROPERTIES_SHOWN } from "@/core/editorPrefs"
 import { errorText, notify, notifyError } from "@/core/notify"
 import { namedIcon, tintOf } from "@/core/pages"
 import { PLUGINS, pluginById, switchedOn, tintOfPlugin, usePlugins } from "@/core/plugins"
@@ -223,6 +225,7 @@ function changeName(id: string) {
   if (part === "pin") return `Pin ${stem(what)}`
   if (part === "pins") return "Order of pinned pages"
   if (part === "appearance") return APPEARANCE[what] ?? what
+  if (part === "editor") return EDITOR_NAMES[what] ?? what
   if (part === "newtab") return NEWTAB[what] ?? `New tab: ${what}`
   return part === "hotkey" ? `Hotkey ${what}` : id
 }
@@ -885,8 +888,11 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
               to={c.key === "page" && typeof c.to === "string" ? stem(c.to) : c.to} />)}
           </Panel>
         )}
-        {(plan.settings.length > 0 || plan.hotkeys.length > 0 || plan.skipped.length > 0) && (
+        {(plan.editor.length > 0 || plan.settings.length > 0 || plan.hotkeys.length > 0 || plan.skipped.length > 0) && (
           <Panel title="Settings" icon={Settings2}>
+            {/* (a key it takes out is the default again: said by its value) */}
+            {plan.editor.map((c) => <Setting key={`editor.${c.key}`} pick={pick} id={c.change} label={EDITOR_NAMES[c.key] ?? c.key} from={c.from ?? EDITOR_VALUES[c.key]}
+              to={c.to ?? EDITOR_VALUES[c.key]} labels={c.key === "propertiesInDocument" ? PROPERTIES_LABELS : undefined} />)}
             {plan.settings.map((s) => {
               const pl = pluginById(s.plugin)
               const decl = pl?.settingsDecls?.[s.key]
@@ -917,9 +923,16 @@ function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks;
   )
 }
 
+/** The editor's settings as Settings names them. */
+const EDITOR_NAMES: Record<string, string> = {
+  propertiesInDocument: "Properties in document", showInlineTitle: "Show inline title", readableLineLength: "Readable line length", spellcheck: "Spellcheck",
+  autoPairBrackets: "Auto-pair brackets", autoPairMarkdown: "Auto-pair Markdown", useTab: "Indent with tabs", tabSize: "Tab size",
+}
+const EDITOR_VALUES: Record<string, unknown> = EDITOR
+const PROPERTIES_LABELS = Object.fromEntries(PROPERTIES_SHOWN.map((x) => [x.value, x.label]))
 const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons" }
 const APPEARANCE: Record<string, string> = {
-  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", paneTitles: "Pane titles", tabTint: "Tinted active tab", rails: "Sidebar rails", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", fileBar: "File top bar", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",
+  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", paneTitles: "Pane titles", tabTint: "Tinted active tab", rails: "Sidebar rails", peekShade: "Dim the page behind a sidebar", typingFade: "Fade the file bar while typing", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", fileBar: "File top bar", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
 }
 

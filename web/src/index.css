@@ -971,3 +971,17 @@ html[data-page-lift], html[data-page-lift] body { background: color-mix(in srgb,
 html[data-page-lift] #main-scroll > main { min-height: 100dvh; background: var(--background); border-radius: 0 0 28px 28px; box-shadow: 0 10px 40px rgb(0 0 0 / 0.25); }
 /* The phone's bar stays where it is: its buttons change in place. */
 ::view-transition-group(phone-bar) { animation-duration: 200ms; }
+
+/* Behind a hidden sidebar slid in (appearance `peekShade`): a soft dim that waits for the sidebar to be in, so brushing
+   the window's edge never flashes the page, and lifts at once. Stronger in dark, where a dark page hardly darkens. */
+[data-peek-shade] { background: rgb(0 0 0 / 0.08); opacity: 0; transition: opacity 120ms ease-in; }
+.dark [data-peek-shade] { background: rgb(0 0 0 / 0.4); }
+[data-peek-shade][data-shown] { opacity: 1; transition: opacity 280ms ease-out 140ms; }
+
+/* Typing in a file (appearance `typingFade`, core/typing.ts): the bars above files fade, slower than they come back. */
+[data-view-bar] { transition: opacity 160ms ease-out; }
+:root[data-typing] [data-view-bar] { opacity: 0; transition: opacity 500ms ease-in 200ms; }
+
+@media (prefers-reduced-motion: reduce) {
+  [data-peek-shade], [data-peek-shade][data-shown], [data-view-bar], :root[data-typing] [data-view-bar] { transition: none; }
+}

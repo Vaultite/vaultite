@@ -56,6 +56,8 @@ const APPEARANCE: Record<string, Setting> = {
   paneTitles: { about: "false (default) or true: with tabBar off, a strip above each pane naming the tab on screen (tells splits apart); off, nothing above the pane", parse: bool("paneTitles") },
   tabTint: { about: "true or false (default): the active tab takes a light wash of its colour (a web page's container)", parse: bool("tabTint") },
   rails: { about: "true (default) or false: a hidden sidebar folds to its icon rail on desktop; off, it's gone, sliding back over the page while the pointer is at that edge of the window", parse: bool("rails") },
+  peekShade: { about: "true or false (default): with rails off, the page dims a little behind a hidden sidebar slid in", parse: bool("peekShade") },
+  typingFade: { about: "true or false (default): on desktop, the bars above files (the path, the file's items) fade while typing in a file, back when the pointer moves or at Escape", parse: bool("typingFade") },
   statusBar: {
     about: "the plugins' items at the start of the desktop status bar, in order, as <plugin>:<name> (today:routines, inbox:new, terminal:agents, claude-code:limits): a JSON list or names separated by commas; [] for none", parse: names },
   statusBarMore: {

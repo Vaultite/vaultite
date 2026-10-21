@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Bundles carry the editor's settings (editor.json): Zen hides notes' properties, and the others show them again.
+- Zen: the page dims softly behind a sidebar slid in, the file bar fades while you type, Files waits folded, and
+  "Show in the file tree" (a breadcrumb, Reveal) slides the hidden sidebar in instead of pinning it open.
+- Settings: the sidebars' switches (rails, dimming, scrolling, dividers) are in Appearance, Sidebars, above the panels.
 - Tab groups, as in a browser: right-click tabs for Add tab to new group, and a group is a coloured chip before its tabs
   (a header with its tabs under it in the Tabs panel, a section on a phone) that folds to its name; drag tabs in and
   out, drag the chip to move the whole group, and rename, recolour, ungroup or close it from its menu. Agents group tabs

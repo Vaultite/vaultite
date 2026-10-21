@@ -5,6 +5,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { fenceLayout, settingsOf, type SettingDecls } from "./blocks.ts"
+import { EDITOR, EDITOR_KEYS } from "./editor.ts"
 import { pageAt, templates } from "./pages.ts"
 import { asLocked, COMMIT, git, parseSource, readLock, tagsOf } from "./installs.ts"
 import { LOOK } from "./look.ts"
@@ -36,14 +37,14 @@ const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os" }
 /** Ids a bundle can't take: they're routes. */
 const RESERVED = new Set(["restore", "import", "onboarding", "previous", "keep", "applied", "trial", "browse"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
-export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys", "newtab"] as const
+export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "editor", "hotkeys", "newtab"] as const
 /** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes; its dark one is shown
  *  when the app is dark (each falls back to the other). */
 export const PREVIEW = "preview.png", PREVIEW_DARK = "preview-dark.png"
 export const PICTURES: string[] = [PREVIEW, PREVIEW_DARK]
-/** The app's own appearance when a key isn't set: a bundle setting one of these removes the key instead, so a vault
- *  never holds a default. */
-const LOOK_DEFAULTS: Item = LOOK
+/** The app's own appearance and editor settings when a key isn't set: a bundle setting one of these removes the key
+ *  instead, so a vault never holds a default. */
+const LOOK_DEFAULTS: Item = LOOK, EDITOR_DEFAULTS: Item = EDITOR
 /** A bundle is read whole each time the bundles are listed: past this it's listed with the error, not read. */
 const MAX_BYTES = 64 * 1024 * 1024
 
@@ -361,7 +362,7 @@ function pinOps(cur: string[], want: string[]): { path: string; pinned: boolean;
 type Change = { change: string; key: string; from: unknown; to: unknown }
 /** One change applying makes, by an id that's the same for the same bundle and setup (`<part>:<what>`, below): what
  *  apply's `skip` and fork's take. A plugin's page a pin needs is added with the pin. */
-export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "hotkey" | "newtab"
+export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "editor" | "hotkey" | "newtab"
   label: string; from?: unknown; to?: unknown }
 export type Plan = {
   /** Plugins it turns on and off (ids), ids it names that this app doesn't have, and `added`: plugins the user added
@@ -379,13 +380,15 @@ export type Plan = {
    *  own list (null: none). Null: pins stay as they are. */
   pins: { want: string[]; list: string[]; pin: string[]; unpin: string[]; missing: string[]; workspace: string[] | null } | null
   appearance: Change[]
+  /** The editor's settings it sets (editor.json). */
+  editor: Change[]
   hotkeys: Change[]
   /** A new tab's keys it sets (newtab.json: its sections, buttons, page). */
   newtab: Change[]
   /** Vault files it adds (and plugin dashboards it brings back), and the ones already there (left as they are). */
   files: { add: string[]; kept: string[] }
   /** Every change it makes, by id: install:<plugin>, plugin:<plugin> (on or off), setting:<plugin>.<key>, panels,
-   *  file:<vault path>, pin:<vault path> (pinned or unpinned), pins:order, appearance:<key>, hotkey:<command>, newtab:<key>. */
+   *  file:<vault path>, pin:<vault path> (pinned or unpinned), pins:order, appearance:<key>, editor:<key>, hotkey:<command>, newtab:<key>. */
   changes: PlanChange[]
   /** The changes left out as asked (skip), by id. */
   omitted: string[]
@@ -514,17 +517,18 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
     pins = { want: want.filter((p) => list.includes(p)), list, pin: list.filter((p) => !cur.includes(p)), unpin: cur.filter((p) => !list.includes(p)), missing: gone,
       workspace: own ? ws : null }
   }
-  // appearance, hotkeys: the keys it sets (an appearance value that's the app's default is written as no key)
-  const diff = (name: string, part: "appearance" | "hotkey", want: Item, defaults: Item = {}) => {
+  // appearance, editor, hotkeys: the keys it sets (a value of the look or the editor that's the app's default is written as no key)
+  const diff = (name: string, part: "appearance" | "editor" | "hotkey", want: Item, defaults: Item = {}) => {
     const cur = v.config(name), eff = (k: string, x: unknown) => x ?? defaults[k] ?? null
     return Object.entries(want).filter(([k, to]) => !same(eff(k, cur[k]), eff(k, to)))
       .map(([key, to]) => ({ change: `${part}:${key}`, key, from: cur[key] ?? null, to: Object.hasOwn(defaults, key) && same(to, defaults[key]) ? null : to }))
-      .filter((c) => take({ id: c.change, part, label: part === "hotkey" ? `Hotkey ${c.key}` : `Appearance: ${c.key}`, from: c.from, to: c.to }))
+      .filter((c) => take({ id: c.change, part, label: `${{ hotkey: "Hotkey", appearance: "Appearance:", editor: "Editor:" }[part]} ${c.key}`, from: c.from, to: c.to }))
   }
   const look = { ...json(b, "appearance.json") }, snippets = strs(v.config("appearance").snippets), bringsCss = broughtSnippets(host)
   const ownCss = [...strs(look.snippets), ...snippets.filter((s) => !strs(look.snippets).includes(s) && !bringsCss.has(s))]
   if (Object.hasOwn(look, "snippets") || ownCss.length < snippets.length) look.snippets = ownCss
-  const appearance = diff("appearance", "appearance", look, LOOK_DEFAULTS), hotkeys = diff("hotkeys", "hotkey", json(b, "hotkeys.json") ?? {})
+  const appearance = diff("appearance", "appearance", look, LOOK_DEFAULTS), editor = diff("editor", "editor", json(b, "editor.json") ?? {}, EDITOR_DEFAULTS)
+  const hotkeys = diff("hotkeys", "hotkey", json(b, "hotkeys.json") ?? {})
   // The new tab's page as this vault has it (a page that isn't here: the sections stay; one whose file is skipped: as it is).
   const nt = json(b, "newtab.json")
   let ntPage: string | null = null
@@ -545,7 +549,7 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
     if (changes.some((c) => c.id === `pin:${to}`)) add.push(to)
     else addFile(to)
   }
-  return { plugins: { on, off, missing, added }, code: codeInfo, settings: set, skipped, panels, pins, appearance, hotkeys, newtab, files: { add, kept },
+  return { plugins: { on, off, missing, added }, code: codeInfo, settings: set, skipped, panels, pins, appearance, editor, hotkeys, newtab, files: { add, kept },
     changes, omitted, empty: !changes.length }
 }
 
@@ -746,11 +750,12 @@ export async function apply(b: Bundle, host: Host, n: number | null, allowCode: 
   // The plugins it turns on write their pages, as turning one on does (pinned here, the pins below make the list the
   // bundle's); the ones already on wrote theirs then, or chose not to: Standard over a new vault adds none.
   if (p.plugins.on.length) host.writePages?.({ only: p.plugins.on })
-  // 3. Settings, appearance, hotkeys: the keys that change.
+  // 3. Settings, appearance, the editor, hotkeys: the keys that change.
   const byPlugin = new Map<string, Item>()
   for (const s of p.settings) byPlugin.set(s.plugin, { ...byPlugin.get(s.plugin), [s.key]: s.to })
   for (const [id, body] of byPlugin) await patch(`plugins/${id}/data`, body)
   await patch("appearance", Object.fromEntries(p.appearance.map((c) => [c.key, c.to])))
+  await patch("editor", Object.fromEntries(p.editor.map((c) => [c.key, c.to])))
   await patch("hotkeys", Object.fromEntries(p.hotkeys.map((c) => [c.key, c.to])))
   await patch("newtab", Object.fromEntries(p.newtab.map((c) => [c.key, c.to])))
   // 4. Panels: sidebars.json becomes the bundle's ({} for the default), and the workspace drops its own.
@@ -892,7 +897,7 @@ type SaveOptions = { name: string; description?: string; icon?: string; tint?: s
   over?: string }
 
 /** The current setup as a bundle's files, which applied after anything is this setup again (settings below, the whole
- *  look, panels, pins and their dashboards; hotkeys and vault plugins if asked). `meta`: its bundle.json (saving over). */
+ *  look, the editor's, panels, pins and their dashboards; hotkeys and vault plugins if asked). `meta`: its bundle.json (saving over). */
 async function current(host: Host, o: SaveOptions, meta: Item | null = null): Promise<Files> {
   const v = host.vault, kinds = known(host)
   const files: Files = {}
@@ -909,6 +914,10 @@ async function current(host: Host, o: SaveOptions, meta: Item | null = null): Pr
   // (every key, the defaults said: applied after another bundle, nothing of that one's look stays)
   const look = v.config("appearance")
   put("appearance.json", { ...LOOK, ...look })
+  // The editor's keys the app's bundles set, defaults said (as plugin settings), and any other the user set.
+  const ed = v.config("editor"), fixed = new Set(list(v).filter((b) => b.source === "app").flatMap((b) => { try { return Object.keys(json(b, "editor.json") ?? {}) } catch { return [] } }))
+  const editor = Object.fromEntries(EDITOR_KEYS.filter((k) => fixed.has(k) || (k in ed && !same(ed[k], EDITOR[k]))).map((k) => [k, ed[k] ?? EDITOR[k]]))
+  if (Object.keys(editor).length) put("editor.json", editor)
   const tab = v.config("newtab")
   if (Object.keys(tab).length) put("newtab.json", { ...tab, ...(typeof tab.page === "string" ? { page: asBundle(host, tab.page) } : {}) })
   // The dashboards it pins, the new tab's page, and the theme and snippets it uses.
@@ -1090,6 +1099,7 @@ async function fork(host: Host, id: string, skip: string[], n: number | null) {
   for (const x of skip) {
     const [part, ...rest] = x.split(":"), what = rest.join(":")
     if (part === "appearance") put("appearance.json", { ...obj("appearance.json"), [what]: v.config("appearance")[what] ?? LOOK_DEFAULTS[what] ?? null })
+    else if (part === "editor") put("editor.json", { ...obj("editor.json"), [what]: v.config("editor")[what] ?? EDITOR_DEFAULTS[what] ?? null })
     else if (part === "hotkey" || part === "newtab") {
       const rel = part === "hotkey" ? "hotkeys.json" : "newtab.json", o = obj(rel), cur = v.config(part === "hotkey" ? "hotkeys" : "newtab")[what]
       if (part === "newtab" && what === "page" && typeof cur === "string") o.page = asBundle(host, cur)
@@ -1158,6 +1168,11 @@ function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[]
     try { keys = Object.keys(json(b, rel) ?? {}) } catch { /* problems says */ }
     const p = host.plugins().find((x) => x.id === id)
     items.push({ path: rel, kind: "settings", label: String(p?.manifest.name ?? id), on: true, keys })
+  }
+  if (b.files["editor.json"] !== undefined) {
+    let keys: string[] = []
+    try { keys = Object.keys(json(b, "editor.json") ?? {}) } catch { /* problems says */ }
+    items.push({ path: "editor.json", kind: "settings", label: "Editor", on: true, keys })
   }
   if (b.files["hotkeys.json"] !== undefined) items.push({ path: "hotkeys.json", kind: "hotkeys", label: "Hotkeys", on: true })
   for (const id of code) {

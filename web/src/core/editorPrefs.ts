@@ -4,44 +4,22 @@ import { getStore, type Store } from "@/core/data"
 import { vaultEditor } from "@/core/conventions"
 import { notify } from "@/core/notify"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
+import { EDITOR, EDITOR_KEYS, type EditorSettings, type PropertiesShown } from "../../../core/editor.ts"
 
-export type PropertiesShown = "visible" | "hidden" | "source"
-export type EditorSettings = {
-  /** The browser's spelling check in notes. */
-  spellcheck: boolean
-  /** Tab indents with a tab; off, with `tabSize` spaces. */
-  useTab: boolean
-  /** How wide a tab draws, and how many spaces an indent is without tabs. */
-  tabSize: number
-  /** ( [ { and quotes typed close themselves; over a selection, wrap it. */
-  autoPairBrackets: boolean
-  /** * _ ~ = ` typed over a selection wrap it; a ` typed closes itself. */
-  autoPairMarkdown: boolean
-  /** A note's lines stop at a readable width (--line-width) instead of the pane's. */
-  readableLineLength: boolean
-  /** Properties above the text (reading and editing), not at all, or as the frontmatter's text (editing). */
-  propertiesInDocument: PropertiesShown
-  /** The file's name as a title at the top of the page; off, it's only in the tab and the path bar. */
-  showInlineTitle: boolean
-}
-
-const EDITOR_DEFAULTS: EditorSettings = {
-  spellcheck: true, useTab: true, tabSize: 4, autoPairBrackets: true, autoPairMarkdown: true, readableLineLength: true,
-  propertiesInDocument: "visible", showInlineTitle: true,
-}
+export type { EditorSettings, PropertiesShown }
 
 /** A value of the right shape for `key`, or undefined (a hand-edited file's `"tabSize": "big"` is ignored). */
 function editorValue<K extends keyof EditorSettings>(key: K, v: unknown): EditorSettings[K] | undefined {
-  const d = EDITOR_DEFAULTS[key]
+  const d = EDITOR[key]
   if (key === "propertiesInDocument") return (v === "visible" || v === "hidden" || v === "source" ? v : undefined) as EditorSettings[K] | undefined
   if (key === "tabSize") return (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 8 ? v : undefined) as EditorSettings[K] | undefined
   return (typeof v === typeof d ? v : undefined) as EditorSettings[K] | undefined
 }
 
 function read(own: Record<string, unknown>, other: Partial<EditorSettings>): EditorSettings {
-  const out = { ...EDITOR_DEFAULTS } as Record<string, unknown>
-  for (const k of Object.keys(EDITOR_DEFAULTS) as (keyof EditorSettings)[]) {
-    out[k] = editorValue(k, own[k]) ?? editorValue(k, other[k]) ?? EDITOR_DEFAULTS[k]
+  const out = { ...EDITOR } as Record<string, unknown>
+  for (const k of EDITOR_KEYS) {
+    out[k] = editorValue(k, own[k]) ?? editorValue(k, other[k]) ?? EDITOR[k]
   }
   return out as EditorSettings
 }

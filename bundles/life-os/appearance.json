@@ -14,7 +14,7 @@
   "fileIcons": true,
   "tabBar": true,
   "paneTitles": false, "tabTint": false,
-  "rails": true,
+  "rails": true, "peekShade": false, "typingFade": false,
   "lineNumbers": false,
   "statusBar": null,
   "statusBarMore": [],

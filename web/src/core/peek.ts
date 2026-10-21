@@ -1,6 +1,6 @@
 // A sidebar hidden without its rail (appearance `rails` off) slides in over the page while the pointer is at its edge of
 // the window, as Zen's compact mode does, and slides out once the pointer has left it.
-import { useEffect, useState, type CSSProperties } from "react"
+import { useEffect, useRef, useState, type CSSProperties } from "react"
 import { getDrag } from "@/core/drag"
 import { hasLights, showLights } from "@/core/desktop"
 import { space } from "@/lib/utils"
@@ -74,10 +74,29 @@ function held(aside: Element | null) {
   return !!aside && !!a && aside.contains(a) && a.matches("input, textarea, [contenteditable=true]")
 }
 
+const summons = new Set<(side: Side) => boolean>()
+
+/** Slide a hidden sidebar in for what asked to show something in it (a reveal in the tree, a panel opened), instead of
+ *  pinning it open. False: that sidebar isn't hidden this way (it has a rail, or it's open). */
+export const peekSidebar = (side: Side) => [...summons].some((f) => f(side))
+
 /** Which hidden sidebar is slid in: `left` / `right` say which sidebars are hidden now. */
 export function usePeek(left: boolean, right: boolean): Peek {
   const [peek, setPeek] = useState<Peek>(null)
+  // Summoned, it stays until the pointer has been in it and left (it wasn't brought by the pointer), a click or Escape.
+  const summoned = useRef(false)
   useEffect(() => { if ((peek === "left" && !left) || (peek === "right" && !right)) setPeek(null) }, [left, right, peek])
+  useEffect(() => { if (!peek) summoned.current = false }, [peek])
+  useEffect(() => {
+    const summon = (side: Side) => {
+      if (!(side === "left" ? left : right)) return false
+      summoned.current = true
+      setPeek(side)
+      return true
+    }
+    summons.add(summon)
+    return () => { summons.delete(summon) }
+  }, [left, right])
   useEffect(() => {
     if (!left && !right) return
     let opening: { side: "left" | "right"; t: ReturnType<typeof setTimeout> } | null = null
@@ -91,7 +110,8 @@ export function usePeek(left: boolean, right: boolean): Peek {
       if (peek) {
         const box = aside()?.getBoundingClientRect()
         const inside = !!box && e.clientX >= box.left - 8 && e.clientX <= box.right + 8
-        if (inside || side === peek) { stopClosing(); return }
+        if (inside || side === peek) { summoned.current = false; stopClosing(); return }
+        if (summoned.current) return
         if (!closing) closing = setTimeout(() => { closing = null; if (!held(aside())) setPeek(null) }, LINGER)
         return
       }
