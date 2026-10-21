@@ -1,8 +1,8 @@
 // The Tabs panel and the tab bar turned off (appearance `tabBar`). With the panel in the left sidebar: it lists the open
 // tabs, the shown one marked; a click on a row shows its tab; its X closes it; then with tabBar false (written to
 // appearance.json, followed live) each pane's bar shows only the tab on screen and how many it has, and the panel still
-// switches; a split lists each pane under its number; with paneTitles false too, each pane's top is a thin strip. Writes sidebars.json and appearance.json (put back): throwaway
-// server only.
+// switches; a split lists each pane under its number; with paneTitles false too, a note's own bar is its pane's title
+// row. Writes sidebars.json and appearance.json (put back): throwaway server only.
 //   node web/qa/tabspanel.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -67,12 +67,20 @@ try {
   check("a split lists each pane under its number", heads === 2 && (await page.$$("[data-pane-title]")).length === 2, heads)
   await page.screenshot({ path: `${OUT}split.png` })
 
-  // Nor pane titles: a thin strip over each pane, the panel still switching.
+  // Nor pane titles: a note's bar is its pane's title row.
   writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: false }) + "\n")
-  const bare = await until(async () => (await page.$$("[data-bare]")).length === 2, 8000)
-  // (the top-right one keeps the right sidebar's toggle clear: no right sidebar here)
-  const heights = await page.$$eval("[data-bare]", (els) => els.map((e) => [!!e.closest("[data-right-corner]"), e.getBoundingClientRect().height]))
-  check("paneTitles false: each pane's top is a thin strip, no title", bare && heights.every(([corner, h]) => (corner ? h === 40 : h > 0 && h < 16)) && !(await page.$("[data-pane-title]")), heights)
+  const bare = await until(async () => (await page.$$("[data-bare][data-merged]")).length === 2, 8000)
+  // Both show notes, whose bar is then the pane's title row: no strip over it, clear of the sidebars' toggles.
+  const tops = await page.$$eval("[data-group]", (els) => {
+    const toggles = [...document.querySelectorAll("[data-sidebar-toggle]")].map((t) => t.getBoundingClientRect())
+    return els.map((s) => {
+      const strip = s.querySelector("[data-bare]").getBoundingClientRect(), bar = [...s.querySelectorAll("[data-view-bar]")].map((b) => b.getBoundingClientRect()).find((r) => r.width)
+      const covered = [...s.querySelectorAll("[data-view-bar] button")].some((b) => { const r = b.getBoundingClientRect()
+        return toggles.some((t) => t.width && r.left < t.right && r.right > t.left && r.top < t.bottom && r.bottom > t.top) })
+      return { strip: strip.height, top: bar ? Math.round(bar.top - s.getBoundingClientRect().top) : null, covered }
+    })
+  })
+  check("paneTitles false: a note's bar is its pane's title row, no strip or title", bare && tops.every((t) => t.strip === 0 && t.top === 0 && !t.covered) && !(await page.$("[data-pane-title]")), tops)
   await page.screenshot({ path: `${OUT}bare.png` })
 
   // Back on.
