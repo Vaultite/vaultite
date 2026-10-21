@@ -671,8 +671,8 @@ export async function print(r: { code: number; out: string; err: string; exact?:
 
 export async function main(argv = process.argv.slice(2)) {
   // Piped into a reader that stops (`vau files | head`): its going away ends vau quietly, not with an error.
-  // (macOS may say ECONNRESET instead of EPIPE for a reader gone mid-write: a rare failure of the test for it)
-  const gone = (e: NodeJS.ErrnoException) => e.code === "EPIPE" || e.code === "ECONNRESET" || e.code === "ERR_STREAM_DESTROYED"
+  // (on macOS a pipe from Node is a socket, so a reader gone mid-write may say ECONNRESET or ENOTCONN instead of EPIPE)
+  const gone = (e: NodeJS.ErrnoException) => ["EPIPE", "ECONNRESET", "ENOTCONN", "ERR_STREAM_DESTROYED"].includes(e.code ?? "")
   process.stdout.on("error", (e: NodeJS.ErrnoException) => { if (!gone(e)) throw e; process.exit(process.exitCode ?? 0) })
   process.stderr.on("error", (e: NodeJS.ErrnoException) => { if (!gone(e)) throw e })
   if (!argv.length && process.stdin.isTTY && process.stdout.isTTY) return (await import("./repl.ts")).repl()

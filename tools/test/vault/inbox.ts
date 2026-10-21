@@ -396,6 +396,7 @@ export default async ($: VaultTest) => {
       write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "box", label: "Box", url: `http://127.0.0.1:${port}` }] }))
       await api("POST", "inbox/events", { source: "vau", kind: "info", title: "Here, not there" })
       await followMachines()
+      await waitFor(async () => (await api("GET", "inbox/events"))[1].events.some((e: Any) => e.id === "p1@box"), 3000, 50)
       let [, l] = await api("GET", "inbox/events")
       const p1 = l.events.find((e: Any) => e.id === "p1@box")
       check("inbox machines: another machine's events followed (its own only), named by machine, its terminal there",

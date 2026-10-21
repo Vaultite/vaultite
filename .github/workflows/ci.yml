@@ -30,9 +30,17 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      # First: the rules most pushes break, in seconds
+      - run: npm run check
+      # Playwright's Chromium, cached by its version, so its CDN being down fails nothing
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/Library/Caches/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       - run: npx playwright-core install --with-deps chromium
       - run: npm run build
-      - run: npm run check
       - run: npm test
       - run: npm run smoke
   qa:
@@ -46,6 +54,10 @@ jobs:
           node-version: 26
           cache: npm
       - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('node_modules/playwright-core/package.json') }}
       - run: npx playwright-core install --with-deps chromium
       - run: sudo apt-get install -y tmux xvfb ffmpeg
       - run: npm run build

@@ -1,0 +1,6 @@
+#!/bin/sh
+# A push to main runs what CI fails on fastest: the types and `npm run check` (CLAUDE.md's rules), a few seconds.
+# Skip with `git push --no-verify` only to land a fix for main itself.
+while read -r _ _ ref _; do [ "$ref" = refs/heads/main ] && main=1; done
+[ -n "$main" ] && [ -d node_modules ] || exit 0
+npx tsc -b && npm run -s check >/dev/null || { echo "pre-push: main must pass tsc and npm run check (see above)" >&2; exit 1; }

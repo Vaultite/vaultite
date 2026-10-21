@@ -57,3 +57,4 @@ Read `web/CLAUDE.md` first. UI text: sentence case, no emojis, no all caps.
 - **Commits**: Conventional Commits, `type(scope): summary` in at most 72 chars, saying what changed for the user
   (`fix(phone): tab list zoom no longer stretches the page`); a body only when the why isn't in the diff. Scope is the
   area (`phone`, `desktop`, `editor`, `plugins`, `server`, `cli`...). `.githooks/commit-msg` checks the shape.
+  `.githooks/pre-push` runs tsc and `npm run check` before a push to main: CI on main is everyone's, keep it green.
