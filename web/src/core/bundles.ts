@@ -29,6 +29,8 @@ export type BundleInfo = {
   code: string[]
   /** The repository it was imported from, or null. */
   from: string | null
+  /** The note it brings that says how the setup works: opened after applying. */
+  guide: string | null
   hotkeys: boolean
   /** Its preview.png's and preview-dark.png's versions (the card's picture, light and dark), or null: none. */
   preview: string | null; previewDark: string | null
@@ -99,7 +101,7 @@ export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
 }
 
-/** Apply a bundle (the caller asked first when it runs code), then show its first page, with Undo in a toast that said
+/** Apply a bundle (the caller asked first when it runs code), then show its guide or first page, with Undo in a toast that said
  *  it was on its way meanwhile (installing takes seconds). `offAdded`: the user's added plugins it doesn't name go off. */
 export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false, offAdded = false) {
   const id = `bundle-apply-${b.id}`
@@ -109,7 +111,8 @@ export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false, 
     const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded })
     await reload()
     void refreshBundles()
-    const first = r.plan.pins?.list[0] ?? plan.pins?.list[0]
+    // A guide it just added comes first: the pages it pins are linked from there.
+    const first = (b.guide && r.plan.files.add.includes(b.guide) ? b.guide : null) ?? r.plan.pins?.list[0] ?? plan.pins?.list[0]
     if (first) openFile(first)
   } catch (e) {
     dismissNotice(id)

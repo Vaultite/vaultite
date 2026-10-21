@@ -3,7 +3,7 @@
 import { official } from "../../../core/updates.ts"
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import {
-  ArrowRight, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PanelLeft, PanelRight, Pin, Plus,
+  ArrowRight, BookOpen, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -633,7 +633,13 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
         )}
         {plan.files.add.length > 0 && (
           <Panel title="Adds" icon={FilePlus}>
-            {plan.files.add.map((f) => <div key={f} className="flex h-7 items-center text-[14px]"><span className="truncate">{f}</span></div>)}
+            {plan.files.add.map((f) => f === b.guide ? (
+              <div key={f} className="flex h-7 items-center gap-2 text-[14px]" data-bundle-guide>
+                <BookOpen className="size-4 shrink-0" strokeWidth={2} style={{ color: tintOf(b.tint) }} />
+                <span className="min-w-0 flex-1 truncate">{stem(f)}</span>
+                <span className="shrink-0 text-[12px] text-muted-foreground">its guide, opened after applying</span>
+              </div>
+            ) : <div key={f} className="flex h-7 items-center text-[14px]"><span className="truncate">{f}</span></div>)}
             {plan.files.kept.length > 0 && <p className="mt-1 text-[13px] text-muted-foreground">Already here, kept as they are: {plan.files.kept.map(stem).join(", ")}</p>}
           </Panel>
         )}

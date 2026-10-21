@@ -1,6 +1,6 @@
 // Bundles (core/bundles.ts, pages/Bundles.tsx): a new vault starts from Standard with no offer; an older vault still
 // offered them opens on them (Standard picked, a line to import one), and skipping starts from Standard. The page's
-// cards and previews, Apply (each built-in: the files as previewed, its first page, Undo), "Restore previous setup",
+// cards and previews, Apply (each built-in: the files as previewed, its guide or first page, Undo), "Restore previous setup",
 // Save current setup, Share, and Import (the sheet, a file, pasted or dropped on the page: its preview, then Add or
 // Apply), and 390px. Screenshots.
 // WRITES the vault's settings and bundles: throwaway servers only.
@@ -67,12 +67,13 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await page.locator('[data-bundle="life-os"]').click()
   await until(() => page.locator('dialog[open] [data-bundle-preview="life-os"]').count(), 6000)
   await shot(page, "preview-life-os-new-vault")
+  check("the preview names its guide", await page.locator("dialog[open] [data-bundle-guide]").count() === 1)
   await page.locator("dialog[open] [data-bundle-apply]").click()
   await installs(page)
   await until(() => toastWith(page, "Applied Life OS").count(), 6000)
   check("applied: a toast with Undo", await toastWith(page, "Applied Life OS").isVisible() && (await toastWith(page, "Applied Life OS").locator("[data-button]").innerText()) === "Undo")
-  await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Dashboards/Today.md")), 6000)
-  check("applied: its first page is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Dashboards/Today.md"), await page.evaluate(() => location.hash))
+  await until(() => page.evaluate(() => decodeURIComponent(location.hash).includes("Guides/How Life OS works.md")), 6000)
+  check("applied: its guide is shown", decodeURIComponent(await page.evaluate(() => location.hash)).includes("Guides/How Life OS works.md") && existsSync(`${FVAULT}/Guides/How Life OS works.md`), await page.evaluate(() => location.hash))
   const s = settings(FVAULT)
   check("applied: Life OS's pins (its plugins' pages written in Dashboards/) and look", s.pages?.pinned?.[0] === "Dashboards/Today.md" && existsSync(`${FVAULT}/Dashboards/Today.md`) && s.appearance?.scheme === "flexoki" && s.plugins?.enabled?.includes("today"), s)
   await wait(1200)

@@ -197,6 +197,8 @@ export type Info = {
   code: string[]
   /** The repository it was imported from (bundle.json's `from`), or null. */
   from: string | null
+  /** The note it brings that says how the setup works (bundle.json's `guide`): opened after applying. */
+  guide: string | null
   hotkeys: boolean
   /** Its preview.png's and preview-dark.png's versions (GET /api/bundles/<id>/<file>), or null when it has none. */
   preview: string | null; previewDark: string | null
@@ -251,7 +253,8 @@ function info(b: Bundle, host: Host): Info {
     id: b.id, source: b.source, name: str(m.name, b.id), description: str(m.description), icon: str(m.icon, "package"), tint: str(m.tint, "primary"),
     sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
-    on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files, host).map((x) => x.id)], from: str(m.from) || null, hotkeys: b.files["hotkeys.json"] !== undefined,
+    on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files, host).map((x) => x.id)], from: str(m.from) || null,
+    guide: typeof b.files[str(m.guide)] === "string" ? str(m.guide) : null, hotkeys: b.files["hotkeys.json"] !== undefined,
     preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, previewDark: Buffer.isBuffer(b.files[PREVIEW_DARK]) ? hash(b.files[PREVIEW_DARK]) : null,
     problems: b.error ? [b.error] : problems(b.files),
   }
@@ -268,6 +271,7 @@ export function problems(files: Files): string[] {
   const ok = (rel: string) => { try { return json(files, rel) } catch { return null } }
   const m = ok("bundle.json")
   if (m && (typeof m.name !== "string" || !m.name.trim())) out.push("bundle.json needs a name")
+  if (m?.guide !== undefined && (typeof m.guide !== "string" || !m.guide.endsWith(".md") || typeof files[m.guide] !== "string")) out.push("bundle.json: guide must name a note it holds")
   const pj = ok("plugins.json")
   if (pj) for (const k of ["disabled", "enabled"]) if (pj[k] !== undefined && !Array.isArray(pj[k])) out.push(`plugins.json: ${k} must be a list of plugin ids`)
   if (pj?.install !== undefined && (!isObj(pj.install) || Object.entries(pj.install).some(([id, v]) => !ID.test(id) || !isObj(v) || typeof v.source !== "string"))) {
@@ -467,7 +471,8 @@ export async function plan(b: Bundle, host: Host, n: number | null, { skip = new
   const add: string[] = [], kept: string[] = []
   // (its pages go in the vault's pages folder, as the plugins' do)
   const at = placeOf(b, v), there = (f: string) => fs.existsSync(v.abs(at(f)))
-  const addFile = (to: string) => take({ id: `file:${to}`, part: "file", label: `Add ${to}` }) && !!add.push(to)
+  const guide = (() => { try { return json(b, "bundle.json")?.guide } catch { return null } })()
+  const addFile = (to: string) => take({ id: `file:${to}`, part: "file", label: to === guide ? `Add its guide, ${path.basename(to, ".md")}` : `Add ${to}` }) && !!add.push(to)
   for (const f of vaultFiles) { if (there(f)) kept.push(at(f)); else addFile(at(f)) }
   for (const h of hidden) {
     const pm = /^\.vaultite\/plugins\/([^/]+)\//.exec(h)

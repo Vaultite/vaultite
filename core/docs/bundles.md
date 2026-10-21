@@ -9,7 +9,9 @@ books, and pages and databases over them).
 - A bundle is a folder shaped like `.vaultite/`, plus the vault files it needs. The user's are in
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```
-  bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple"}
+  bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple",
+                      "guide": "Guides/How Writing desk works.md"}: guide is a note it brings saying in plain words how the setup
+                      works (its pages, where things go, how to start); opened after applying, and skippable like any file
   plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like people],
                       "install": {"tasks": {"name": "Tasks", "source": "Vaultite/plugins/tasks", "tag": "tasks/v1.0.1", "commit": "<sha>", "hash": "<its files'>"}}:
                       installed from there when applied, at that commit (tags move), refused unless its files hash to that (the lock's);
@@ -80,5 +82,5 @@ books, and pages and databases over them).
   place, `current` whether it's at that commit. The blocklist leaves one out.
 - `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
   `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.
-- To make one for the user, write the folder (pick blocks for its dashboards from `vau docs design`), check it
+- To make one for the user, write the folder (pick blocks for its dashboards from `vau docs design`) and its guide, check it
   with `vau bundle show <id>`, and let them apply it: never apply one without asking, and never one that runs code.
