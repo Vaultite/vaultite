@@ -37,7 +37,7 @@ import { byUser, notHereYet, onItsOwn, runHook, WriteRefused } from "./writegate
 import { asLocked, type Fetched, fetchSource, parseSource, readLock } from "./installs.ts"
 import { autoUpdates } from "./updates.ts"
 import { disclosuresOf, saysMore } from "./pluginmeta.ts"
-import { PluginIndex } from "./pluginindex.ts"
+import { browse, PluginIndex } from "./pluginindex.ts"
 import { API_VERSION, APP_VERSION } from "./version.ts"
 import { ConfigError, ConflictError, type Item, type Kind, NotFound, publicOf, requestWriter, Vault } from "./vault.ts"
 import { strings } from "./values.ts"
@@ -478,6 +478,10 @@ export class App {
     if (parts[0] === "docs" && method === "GET" && parts.length <= 2) {
       if (parts.length === 1) return topics(this.plugins).map(({ id, title, plugin }) => ({ id, title, plugin }))
       return new Text(topic(this.plugins, parts[1]).text + "\n", "text/markdown; charset=utf-8")
+    }
+    if (parts.join("/") === "bundles/browse" && method === "GET") {
+      const got = await this.index.get(query.refresh === "1")
+      return { url: got.url, available: got.available, fetched: got.fetched, ...(got.error ? { error: got.error } : {}), bundles: browse(got.index, query.q ?? "", B.imports(this.vault)) }
     }
     if (parts[0] === "bundles") {
       const out = await B.handle(this.host(http), method, parts.slice(1), query, obj)

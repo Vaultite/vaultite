@@ -332,6 +332,45 @@ export default async ($: VaultTest) => {
       ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/desk" })
       check("bundles: got again from there, it's updated in place (its newest tag)", bc === 200 && bo.bundle.id === "desk" && bo.bundle.scheme === "dracula" &&
         !exists(".vaultite/bundles/desk-2"), [bc, bo])
+      // Pinned at a commit (the directory's addresses): exactly that commit, recorded in `from`; the same place replaces it.
+      const DESK = path.join(tmp, "repos", "desk"), at = (ref: string) => g(DESK, "rev-list", "-n1", ref).trim()
+      ;[bc, bo] = await api("POST", "bundles/import/preview", { from: `repos/desk@${at("v1.0.0")}` })
+      check("bundles: pinned, its preview is that commit's, and replaces the one from the same place", bc === 200 && bo.replaces === "desk" &&
+        (typeof bo.file.files["bundle.json"] === "string" ? JSON.parse(bo.file.files["bundle.json"]) : bo.file.files["bundle.json"]).from === `repos/desk@${at("v1.0.0")}`, [bc, bo])
+      ;[bc, bo] = await api("POST", "bundles/import", { from: `repos/desk@${at("v1.0.0")}` })
+      check("bundles: pinned at a commit, it's that commit (not the newest tag), and from says so", bc === 200 && bo.bundle.id === "desk" && bo.bundle.scheme === "nord" &&
+        bo.bundle.from === `repos/desk@${at("v1.0.0")}` && !exists(".vaultite/bundles/desk-2"), [bc, bo])
+      ;[bc, bo] = await api("POST", "bundles/import", { from: `repos/desk@${"0".repeat(40)}` })
+      check("bundles: a commit the repository hasn't is an error", bc === 502 && /git fetch/.test(bo.error), [bc, bo])
+      ;[bc, bo] = await api("POST", "bundles/import", { from: `${tmp}@${at("v1.0.0")}` })
+      check("bundles: a folder on this machine has no commit to pin", bc === 400, [bc, bo])
+
+      // The directory's bundles (bundle.browse): searched, the blocklist's left out, and the user's import of each.
+      const was = process.env.VAULTITE_PLUGIN_INDEX, BINDEX = path.join(tmp, "bundle-index.json")
+      const bentry = (o: Any) => ({ description: "Made up.", author: "Bob Lee", stars: 1, updated: "2026-09-01T00:00:00Z", topics: ["vaultite-bundle"], runsCode: false, installs: [], ...o })
+      fs.writeFileSync(BINDEX, JSON.stringify({ format: 1, generated: "2026-10-01T00:00:00Z", plugins: [], blocked: { "boblee/bad": ["*"] }, bundles: [
+        bentry({ name: "Writing desk", description: "Pages for writing.", author: "repos", repo: "repos/desk", commit: at("v1.1.0"), stars: 9, icon: "pen", tint: "purple",
+          preview: `https://raw.githubusercontent.com/repos/desk/${at("v1.1.0")}/preview.png`, previewDark: "https://example.com/x.png" }),
+        bentry({ name: "Lamps", repo: "boblee/fleet", dir: "bundles/lamps", commit: "c".repeat(40), runsCode: true, installs: [{ id: "tasks", name: "Tasks", source: "Vaultite/plugins/tasks" }] }),
+        bentry({ name: "Bad", repo: "boblee/bad", commit: "b".repeat(40) }), { name: "No commit", repo: "x/y", commit: "abc" } ] }))
+      process.env.VAULTITE_PLUGIN_INDEX = BINDEX
+      ;[bc, bo] = await api("GET", "bundles/browse?refresh=1")
+      const wd = bo.bundles?.find((b: Any) => b.name === "Writing desk"), lamps = bo.bundles?.find((b: Any) => b.name === "Lamps")
+      check("browse: the directory's bundles by stars, blocked and unreadable ones left out", bc === 200 && bo.available && bo.bundles.map((b: Any) => b.name).join() === "Writing desk,Lamps", bo)
+      check("browse: each pinned at its commit, its pictures (raw GitHub only), what it installs", wd.address === `repos/desk@${at("v1.1.0")}` && wd.source === "repos/desk" &&
+        wd.preview.endsWith("/preview.png") && !wd.previewDark && lamps.address === `boblee/fleet/bundles/lamps@${"c".repeat(40)}` && lamps.runsCode && lamps.installs[0].source === "Vaultite/plugins/tasks", bo.bundles)
+      check("browse: the user's import of one, and whether it's at the listed commit", wd.imported === "desk" && wd.current === false && lamps.imported === null, wd)
+      ;[bc, bo] = await api("GET", "bundles/browse?q=lamps")
+      check("browse: searched by its words", bo.bundles.length === 1 && bo.bundles[0].name === "Lamps", bo.bundles)
+      text = (await vau("bundle", "browse", "desk")).out
+      check("vau bundle browse: each with its import address", text.includes("Writing desk (repos/desk) by repos, 9 stars") && text.includes("a newer commit is listed") &&
+        text.includes(`vau bundle import repos/desk@${at("v1.1.0")}`), text)
+      await api("POST", "bundles/import", { from: wd.address })
+      ;[, bo] = await api("GET", "bundles/browse")
+      check("browse: imported from its address, it's current", bo.bundles[0].imported === "desk" && bo.bundles[0].current === true && read(".vaultite/bundles/desk/appearance.json").includes("dracula"), bo.bundles[0])
+      check("browse: a bundle can't take the route's id", (await api("GET", "bundles/browse"))[0] === 200 && !(await api("POST", "bundles", { name: "Browse" }))[1].bundle?.id?.match(/^browse$/))
+      if (was === undefined) delete process.env.VAULTITE_PLUGIN_INDEX; else process.env.VAULTITE_PLUGIN_INDEX = was
+      for (const b of ((await api("GET", "bundles"))[1].bundles as Any[]).filter((x) => /^browse/.test(x.id))) await api("DELETE", `bundles/${b.id}`)
       await api("DELETE", "bundles/desk")
       const [, one] = await api("POST", "bundles/import", { vaultite: "bundle", format: 1, id: "night", files: { "bundle.json": { name: "Night" }, "appearance.json": { theme: "dark" } } })
       repo("night", { "night.bundle.json": (await api("GET", `bundles/${one.bundle.id}/export`))[1] }, null)
@@ -342,7 +381,7 @@ export default async ($: VaultTest) => {
       ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/beacon" })
       check("bundles: a repository without a bundle says so", bc === 404 && /has no bundle/.test(bo.error), [bc, bo])
       delete process.env.VAULTITE_GITHUB
-      for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(beacon|lights|desk|night) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
+      for (const f of fs.readdirSync(path.join(VAULT, ".trash"))) if (/^(beacon|lights|desk|night|browse\S*) /.test(f)) fs.rmSync(path.join(VAULT, ".trash", f), { recursive: true })
     }
 
     // Updating on their own (core/updates.ts): Vaultite's by default, notes from commits since, in the lock's history;
@@ -535,7 +574,26 @@ export default async ($: VaultTest) => {
     gh[issues("alicepark/harbor", "closed")] = { total_count: 8 }
     const asked: string[] = []
     const get = async (url: string) => { asked.push(url); return url in gh ? { status: 200, body: gh[url] } : { status: 404, body: { message: "Not Found" } } }
-    const { index, skipped } = await buildIndex({ get, listed: ["carol/listed", "not a repo"], blocked: { "boblee/oldboat": ["<1.0.0"] }, now })
+    // Bundles: a repository's at its top, a listed folder, one .bundle.json; each at the commit that last changed it.
+    const D = "d".repeat(40), A = "a".repeat(40), E = "e".repeat(40), G = "9".repeat(40), H = "abcdef1" + "0".repeat(33)
+    const last = (full: string, sha: string, date: string, dir = "") => { gh[`https://api.github.com/repos/${full}/commits?sha=main${dir ? `&path=${encodeURIComponent(dir)}` : ""}&per_page=1`] = [{ sha, commit: { committer: { date } } }] }
+    const tree = (full: string, sha: string, paths: string[]) => { gh[`https://api.github.com/repos/${full}/git/trees/${sha}?recursive=1`] = { tree: paths.map((p) => ({ path: p, type: "blob" })) } }
+    const brepo = (full: string, o: Any = {}) => ({ full_name: full, default_branch: "main", stargazers_count: 0, owner: { login: full.split("/")[0] }, ...o })
+    gh["https://api.github.com/search/repositories?q=topic%3Avaultite-bundle&sort=stars&per_page=100&page=1"] = { items: [brepo("dave/desk", { stargazers_count: 30, topics: ["vaultite-bundle"] }),
+      brepo("erin/night", { stargazers_count: 2, description: "Dark." }), brepo("frank/old", { archived: true }), brepo("gina/noname"), brepo("hank/bad")] }
+    last("dave/desk", D, "2026-09-28T00:00:00Z"); tree("dave/desk", D, ["bundle.json", "plugins.json", "preview.png", "preview-dark.png", "plugins/lamp/manifest.json", "README.md"])
+    gh[`https://raw.githubusercontent.com/dave/desk/${D}/bundle.json`] = { name: "Writing desk", description: "Pages for writing.", icon: "pen", tint: "purple" }
+    gh[`https://raw.githubusercontent.com/dave/desk/${D}/plugins.json`] = { enabled: ["tasks", "lamp"], install: { tasks: { name: "Tasks", source: "Vaultite/plugins/tasks", tag: "tasks/v1.0.1" } } }
+    gh["https://api.github.com/repos/Vaultite/plugins"] = brepo("Vaultite/plugins", { stargazers_count: 12 })
+    last("Vaultite/plugins", A, "2026-10-01T00:00:00Z", "bundles/agents"); tree("Vaultite/plugins", A, ["tasks/manifest.json", "bundles/agents/bundle.json", "bundles/agents/sidebars.json"])
+    gh[`https://raw.githubusercontent.com/Vaultite/plugins/${A}/bundles/agents/bundle.json`] = { name: "Agents", icon: "bot", tint: "orange" }
+    last("erin/night", E, "2026-08-01T00:00:00Z"); tree("erin/night", E, ["night.bundle.json"])
+    gh[`https://raw.githubusercontent.com/erin/night/${E}/night.bundle.json`] = { vaultite: "bundle", format: 1, files: { "bundle.json": { name: "Night" }, "plugins/owl/manifest.json": { id: "owl" } } }
+    last("gina/noname", G, "2026-08-01T00:00:00Z"); tree("gina/noname", G, ["bundle.json"])
+    gh[`https://raw.githubusercontent.com/gina/noname/${G}/bundle.json`] = { description: "No name." }
+    last("hank/bad", H, "2026-08-01T00:00:00Z")
+    const { index, skipped } = await buildIndex({ get, listed: { plugins: ["carol/listed", "not a repo"], bundles: ["Vaultite/plugins/bundles/agents", "dave/desk", "x/../y"] },
+      blocked: { "boblee/oldboat": ["<1.0.0"], "Hank/Bad": ["abcdef1"] }, now })
     const hb = index.plugins.find((p) => p.id === "harbor") as Any
     check("index builder: a repo's manifest at its latest release, with its GitHub numbers", hb?.repo === "alicepark/harbor" && hb.version === "1.2.0" && hb.tag === "v1.2.0" && hb.stars === 120 &&
       hb.released === "2026-09-15T00:00:00Z" && hb.issues.open === 2 && hb.issues.closed === 8 && hb.author === "Alice Park" && hb.fundingUrl === "https://example.com/fund" &&
@@ -559,6 +617,19 @@ export default async ($: VaultTest) => {
     check("index builder: listed.json's repos are asked for too", asked.includes("https://api.github.com/repos/carol/listed"))
     check("index builder: sorted by score, the blocklist goes out, and the app reads it", index.plugins[0].id === "harbor" && (index.blocked as Any)["boblee/oldboat"][0] === "<1.0.0" &&
       (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).plugins.length === 3)
+    const bs = index.bundles as Any[], desk = bs.find((b) => b.repo === "dave/desk"), agents = bs.find((b) => b.repo === "Vaultite/plugins"), night = bs.find((b) => b.repo === "erin/night")
+    check("index builder: bundles by stars, the topic's and listed.json's (a folder too), each once", bs.map((b) => b.name).join() === "Writing desk,Agents,Night", bs)
+    check("index builder: a bundle pinned at the commit that last changed it, with its address, pictures and what it installs", desk?.commit === D && desk.address === `dave/desk@${D}` &&
+      desk.updated === "2026-09-28T00:00:00Z" && desk.stars === 30 && desk.author === "dave" && desk.icon === "pen" && desk.tint === "purple" && desk.runsCode &&
+      desk.installs[0]?.source === "Vaultite/plugins/tasks" && desk.preview === `https://raw.githubusercontent.com/dave/desk/${D}/preview.png` &&
+      desk.previewDark === `https://raw.githubusercontent.com/dave/desk/${D}/preview-dark.png`, desk)
+    check("index builder: a listed folder's bundle, at its folder's last commit", agents?.dir === "bundles/agents" && agents.address === `Vaultite/plugins/bundles/agents@${A}` &&
+      !agents.runsCode && !agents.preview && agents.description === "", agents)
+    check("index builder: one .bundle.json, read from its files (its vault plugin runs code)", night?.name === "Night" && night.description === "Dark." && night.runsCode && !night.preview, night)
+    check("index builder: bundles left out, saying why: archived, no name, blocked, not a place", skipped.includes("frank/old: archived") && skipped.includes("gina/noname: its bundle.json has no name") &&
+      skipped.includes("hank/bad: blocked") && skipped.some((x) => x.startsWith("x/../y: not a bundle's place")), skipped)
+    const readBack = (await import("../../../core/pluginindex.ts")).readIndex(JSON.parse(JSON.stringify(index))).bundles
+    check("index builder: the app reads its bundles", readBack.length === 3 && readBack[0].address === desk?.address && readBack[0].installs.length === 1 && readBack[1].dir === "bundles/agents", readBack)
     check("index builder: the score blends stars with upkeep", scoreOf(1000, "2026-09-30T00:00:00Z", 0, 10, now) === 100 && scoreOf(0, null, 0, 0, now) === 10 &&
       scoreOf(120, "2026-09-20T00:00:00Z", 2, 8, now) > scoreOf(120, "2025-01-01T00:00:00Z", 2, 8, now))
     check("index builder: an excerpt is cut at 280", excerpt("x".repeat(10) + " word".repeat(100)).length <= 280)

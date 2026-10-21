@@ -25,7 +25,7 @@ export const DEFAULT_BUNDLE = "standard"
 /** The app's bundles that were folded into others: a vault that applied one has the one it's in now (tidy). */
 const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os" }
 /** Ids a bundle can't take: they're routes. */
-const RESERVED = new Set(["restore", "import", "onboarding", "previous"])
+const RESERVED = new Set(["restore", "import", "onboarding", "previous", "browse"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys", "newtab"] as const
 /** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes; its dark one is shown
@@ -968,16 +968,24 @@ function filesOf(o: unknown): { files: Files; id: string | null } {
   return { files, id: typeof o.id === "string" && ID.test(o.id) ? o.id : null }
 }
 
-/** A bundle from a repository (its newest tag, else its default branch): its folder at the top, without the repository's
- *  own files, or one .bundle.json. bundle.json's `from` keeps where. */
+/** A bundle from a repository (at @<commit>: that whole sha; else its newest tag, else its default branch): its folder
+ *  at the top, without the repository's own files, or one .bundle.json. bundle.json's `from` keeps where, pinned too. */
 async function fetchFrom(given: string): Promise<{ files: Files; id: string | null }> {
+  const pin = /@([0-9a-f]{40})$/.exec(given.trim())
+  const place = pin ? given.trim().slice(0, pin.index) : given
   let src
-  try { src = parseSource(given) } catch { throw new HTTPError(400, `'${given}' isn't a bundle's repository: owner/name on GitHub (owner/name/folder for one in a folder), a git URL, or a folder`) }
+  try { src = parseSource(place) } catch { throw new HTTPError(400, `'${given}' isn't a bundle's repository: owner/name on GitHub (owner/name/folder for one in a folder), a git URL, or a folder`) }
   if (src.archive) throw new HTTPError(400, "a bundle comes from a repository or a folder, not a zip")
+  if (pin && src.folder) throw new HTTPError(400, "a commit is fetched from a repository, not a folder")
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-bundle-"))
   try {
     let dir = src.folder ?? path.join(tmp, "clone")
-    if (!src.folder) {
+    if (pin) {
+      await git(["init", "--quiet", dir])
+      await git(["fetch", "--quiet", "--depth", "1", "--no-tags", src.url!, pin[1]], dir)
+      await git(["-c", "core.symlinks=false", "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"], dir)
+      if (src.dir) dir = path.join(dir, src.dir)
+    } else if (!src.folder) {
       const tag = src.tag ?? (await tagsOf(src.url!, src.dir))[0] ?? null
       await git(["-c", "core.symlinks=false", "clone", "--quiet", "--depth", "1", "--no-tags", "--single-branch", ...(tag ? ["--branch", tag] : []), src.url!, dir])
       if (src.dir) dir = path.join(dir, src.dir)
@@ -997,10 +1005,10 @@ async function fetchFrom(given: string): Promise<{ files: Files; id: string | nu
       try { o = JSON.parse(readText(path.join(dir, one[0]))) } catch { throw new HTTPError(400, `${one[0]} isn't JSON`) }
       ;({ files, id } = filesOf(o))
     }
-    const from = src.tag ? given.replace(/@[^@/]+$/, "") : given
+    const from = pin ? `${place}@${pin[1]}` : src.tag ? given.replace(/@[^@/]+$/, "") : given
     const m = json(files, "bundle.json") ?? {}
     files["bundle.json"] = JSON.stringify({ ...m, from }, null, 2) + "\n"
-    return { files, id: id ?? slug(given.split("/").at(-1)!.replace(/\.git$|@.*$/g, "")) }
+    return { files, id: id ?? slug(place.split("/").at(-1)!.replace(/\.git$|@.*$/g, "")) }
   } finally {
     fs.rmSync(tmp, { recursive: true, force: true })
   }
@@ -1014,13 +1022,23 @@ async function incomingFiles(body: unknown) {
   return got
 }
 
-/** The id an imported bundle takes: the user's one from the same repository (`from`: getting it again replaces it),
- *  else a free one. */
+/** The id an imported bundle takes: the user's one from the same place (`from`, at any commit: getting it again
+ *  replaces it), else a free one. */
 function idFor(v: Vault, files: Files, want: string | null) {
   let from: unknown = null
   try { from = json(files, "bundle.json")?.from } catch { /* problems says */ }
-  const was = typeof from === "string" && from ? list(v).find((b) => b.source === "vault" && (() => { try { return json(b, "bundle.json")?.from === from } catch { return false } })()) : null
+  const was = typeof from === "string" && from ? imports(v).find((b) => unpinned(b.from) === unpinned(from as string)) : null
   return { id: was?.id ?? freeId(v, want ?? String(JSON.parse(textOf(files["bundle.json"])).name), false), replaces: was?.id ?? null }
+}
+
+/** Where a bundle came from without the commit it was pinned at. */
+const unpinned = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
+
+/** The user's bundles imported from a repository, and from where (bundle.json's `from`). */
+export function imports(v: Vault): { id: string; from: string }[] {
+  return list(v).filter((b) => b.source === "vault").flatMap((b) => {
+    try { const from = json(b, "bundle.json")?.from; return typeof from === "string" && from ? [{ id: b.id, from }] : [] } catch { return [] }
+  })
 }
 
 /** A bundle into the user's bundles (from an export or a repository). Never applied here. */

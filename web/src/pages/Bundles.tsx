@@ -246,9 +246,12 @@ function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
   )
 }
 
+/** Where a bundle came from, without the commit an import from the directory pinned. */
+const place = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
+
 /** Get a bundle again from the repository it came from (its newest version replaces it). */
 async function fetchAgain(b: BundleInfo) {
-  try { await importText(b.from!); notify(`${b.name} is the newest from ${b.from}`) } catch (e) { notifyError(e, `Couldn't get ${b.name} again`) }
+  try { await importText(place(b.from!)); notify(`${b.name} is the newest from ${place(b.from!)}`) } catch (e) { notifyError(e, `Couldn't get ${b.name} again`) }
 }
 
 /** Delete one of the user's bundles (to the trash), with Undo: its export, imported again. */
@@ -478,7 +481,7 @@ export function BundlePreview({ id }: { id: string }) {
   }
   return (
     <div data-bundle-preview={b.id}>
-      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${b.from}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
+      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${place(b.from)}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <Button look="primary" disabled={busy || (plan.empty && !offAdded) || !!b.problems.length} onClick={apply} data-bundle-apply>
           {plan.empty && !offAdded ? "This is your setup already" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
@@ -528,7 +531,7 @@ export function IncomingBundle({ id }: { id: string }) {
   const keep = () => add(async (added) => { notify(`Added ${added.name} to your bundles`, { action: { label: "Preview", run: () => openDetail(`bundle/${added.id}`) } }) })
   return (
     <div data-bundle-incoming={b.id}>
-      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.from ? `From ${b.from}` : "Import"} title={b.name} sub={b.description || undefined} />
+      <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.from ? `From ${place(b.from)}` : "Import"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <Button look="primary" disabled={busy || !!b.problems.length} onClick={() => void apply()} data-bundle-incoming-apply>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></Button>
         <Button disabled={busy || !!b.problems.length} onClick={() => void keep()} data-bundle-incoming-add><Plus className="size-4" strokeWidth={2.25} />{replaces ? `Update ${replaces.name}` : "Add to your bundles"}</Button>

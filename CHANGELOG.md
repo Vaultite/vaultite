@@ -14,6 +14,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   you like a permission: its terminal shows waiting, the Inbox and phone have Approve and Deny, and its first prompt
   runs once you approve. The Inbox has Approve and Deny for any agent's permission, which stays unread until answered,
   and a companion's cursor shows its question right there with them.
+- Bundle directory: `vau bundle browse` finds bundles shared on GitHub (the topic vaultite-bundle, or listed in
+  Vaultite/plugins), each pinned at a commit; importing one gets exactly that commit (`owner/name@<commit>`).
+- The Agents bundle is back as a community bundle in the directory: coding agents in terminals beside your pages, their
+  sessions and limits, a feed of what they did, your machines and the server.
 - Phones: holding something for its menu (a tab, a recent file, a property, a block in a note) no longer selects its
   text or what's around it.
 - Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs

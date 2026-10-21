@@ -25,8 +25,10 @@ Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the us
   save      the current setup as the user's bundle <name> (--hotkeys, --vault-plugins to include those)
   export    one bundle as a single JSON file to share (<id>.bundle.json, or the file given; - prints it): not its
             picture, pages with the user's own text, nor pins to their notes, unless --include names them
+  browse    the bundles in the directory (GitHub repos with the topic vaultite-bundle, and listed ones), by stars
   import    a bundle from that JSON file, a folder shaped like one, or a git repository (owner/name: the bundle's
-            folder at its top, or one .bundle.json; getting it again updates it); it's added, not applied
+            folder at its top, or one .bundle.json; @<commit> pins it, as browse gives it; getting it again updates
+            it); it's added, not applied
   delete    one of the user's bundles (to the trash)
 
   vau bundle list
@@ -35,6 +37,7 @@ Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the us
   vau bundle restore
   vau bundle save "My desk" --description "Writing and agents"
   vau bundle export my-desk
+  vau bundle browse agents
   vau bundle import ~/Downloads/my-desk.bundle.json
   vau bundle import alice/writing-desk`
 
@@ -65,6 +68,24 @@ CLAUDE.md (made if missing), allowing it to keep them. Ask the user first.
       const rows = (r.bundles as Any[]).map((b) => `${b.id.padEnd(18)} ${where(b).padEnd(9)} ${b.name}` +
         `${b.code?.length ? "  (runs code)" : ""}${b.problems?.length ? `  (can't be read: ${b.problems.join("; ")})` : ""}`)
       return lines(rows, "No bundles.") + (r.previous ? `\nApplied ${r.previous.name} at ${r.previous.at}: \`vau bundle restore\` puts back the setup from before.` : "")
+    },
+  }, {
+    id: "bundle.browse",
+    cli: "bundle browse",
+    summary: "Search the bundle directory (GitHub repos with the topic vaultite-bundle): each with its import address, pinned at a commit.",
+    help: HELP,
+    kind: "read",
+    params: {
+      q: { type: "string", description: "words to look for in names, descriptions, authors and topics" },
+      refresh: { type: "boolean", description: "fetch the directory again now" },
+    },
+    args: ["q"],
+    run: ({ q, refresh }, ctx) => ctx.api("GET", `bundles/browse?q=${enc(q ?? "")}${refresh ? "&refresh=1" : ""}`),
+    text: (r) => {
+      if (!r.available) return `The bundle directory can't be read now (${r.url}${r.error ? `: ${r.error}` : ""}).`
+      return lines((r.bundles as Any[]).map((b) => `- ${b.name} (${b.source}) by ${b.author}, ${b.stars} stars${b.updated ? `, updated ${b.updated.slice(0, 10)}` : ""}` +
+        `${b.runsCode ? `, runs code${b.installs.length ? ` (installs ${b.installs.map((x: Any) => x.name).join(", ")})` : ""}` : ""}` +
+        `${b.imported ? `, imported as ${b.imported}${b.current ? "" : " (a newer commit is listed)"}` : ""}: ${b.description}\n  vau bundle import ${b.address}`), "No bundles match.")
     },
   }, {
     id: "bundle.show",
@@ -165,7 +186,7 @@ reads it from a file, or a folder shaped like a bundle.`,
     kind: "write",
     params: {
       bundle: { format: "json", description: "the bundle: its JSON (vau: a .bundle.json file, a bundle's folder, or a repository)" },
-      from: { type: "string", description: "a git repository to get it from: owner/name on GitHub (owner/name/folder, @tag), a git URL" },
+      from: { type: "string", description: "a git repository to get it from: owner/name on GitHub (owner/name/folder, @tag, or @<commit>: the whole sha), a git URL" },
     },
     args: ["bundle"],
     lock: false, // (fetching a repository waits on the network)

@@ -1,5 +1,5 @@
-// The plugin directory: one index.json (tools/plugin-index.ts builds it from the GitHub repos with the topic
-// vaultite-plugin), read from plugins.json's `index` (else DEFAULT_INDEX), cached in .vaultite/cache/, and its blocklist.
+// The plugin directory: one index.json of plugins and bundles (tools/plugin-index.ts), read from plugins.json's `index`
+// (else DEFAULT_INDEX), cached in .vaultite/cache/, and its blocklist.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -28,10 +28,26 @@ export type Entry = {
   /** Its manifest's category (core/categories.ts; one unknown here lists as Other). */
   category?: string
 }
-export type Index = { generated: string | null; plugins: Entry[]; blocked: Record<string, string[]> }
+/** A bundle in a repository (its folder `dir` in it, else at its top), pinned at the commit that last changed it:
+ *  imported as `address` (owner/name[/folder]@commit), so what's imported is what was listed. */
+export type BundleEntry = {
+  name: string; description: string; author: string; repo: string; dir: string | null; commit: string; address: string
+  stars: number; updated: string | null; topics: string[]
+  /** It brings or installs vault plugins (they run code: applying asks). */
+  runsCode: boolean
+  installs: { id: string; name: string; source: string }[]
+  icon?: string; tint?: string
+  /** Its card's pictures at that commit (light and dark), when it has them. */
+  preview?: string; previewDark?: string
+}
+export type Index = { generated: string | null; plugins: Entry[]; bundles: BundleEntry[]; blocked: Record<string, string[]> }
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
 
-const EMPTY: Index = { generated: null, plugins: [], blocked: {} }
+const EMPTY: Index = { generated: null, plugins: [], bundles: [], blocked: {} }
+/** Where a bundle is: owner/name, or owner/name/folder in it. */
+export const PLACE = /^[\w.-]+\/[\w.-]+(\/[\w-][\w.-]*)*$/
+const COMMIT = /^[0-9a-f]{40}$/
+const PICTURE = /^https:\/\/raw\.githubusercontent\.com\/[\w.%/-]+\.png$/
 const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) : "")
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : 0)
 const date = (v: unknown) => (typeof v === "string" && !Number.isNaN(Date.parse(v)) ? v : null)
@@ -54,9 +70,45 @@ export function readIndex(o: unknown): Index {
       ...(isObj(e.replaces) ? { replaces: Object.fromEntries(Object.entries(e.replaces).filter(([, v]) => Array.isArray(v))
         .map(([k, v]) => [k, (v as unknown[]).filter((x): x is string => typeof x === "string").slice(0, 20)])) } : {}) })
   }
+  const bundles: BundleEntry[] = []
+  for (const e of Array.isArray(o.bundles) ? o.bundles : []) {
+    if (!isObj(e) || !REPO.test(str(e.repo)) || !COMMIT.test(str(e.commit)) || !str(e.name)) continue
+    const dir = str(e.dir, 200), place = dir ? `${str(e.repo)}/${dir}` : str(e.repo)
+    if (dir && !PLACE.test(place)) continue
+    const pic = (v: unknown) => (PICTURE.test(str(v, 1000)) ? str(v, 1000) : null)
+    bundles.push({ name: str(e.name, 100), description: str(e.description), author: str(e.author, 100), repo: str(e.repo), dir: dir || null, commit: str(e.commit),
+      address: `${place}@${str(e.commit)}`, stars: num(e.stars), updated: date(e.updated),
+      topics: Array.isArray(e.topics) ? e.topics.filter((t): t is string => typeof t === "string").slice(0, 20) : [], runsCode: e.runsCode === true,
+      installs: (Array.isArray(e.installs) ? e.installs : []).filter(isObj).map((x) => ({ id: str(x.id, 100), name: str(x.name, 100) || str(x.id, 100), source: str(x.source, 300) }))
+        .filter((x) => /^[a-z][a-z0-9-]*$/.test(x.id)).slice(0, 50),
+      ...(iconOf(e.icon) ? { icon: iconOf(e.icon)! } : {}), ...(/^[a-z][a-z-]*$/.test(str(e.tint, 30)) ? { tint: str(e.tint) } : {}),
+      ...(pic(e.preview) ? { preview: pic(e.preview)! } : {}), ...(pic(e.previewDark) ? { previewDark: pic(e.previewDark)! } : {}) })
+  }
   const blocked: Record<string, string[]> = {}
   if (isObj(o.blocked)) for (const [k, v] of Object.entries(o.blocked)) if (Array.isArray(v)) blocked[k.toLowerCase()] = v.filter((x): x is string => typeof x === "string")
-  return { generated: date(o.generated), plugins, blocked }
+  return { generated: date(o.generated), plugins, bundles, blocked }
+}
+
+/** Whether the blocklist blocks a bundle (owner/name[/folder]@commit): its place, or its repository's, with "*" or that
+ *  commit (or its first 7 or more characters). */
+export function bundleBlocked(blocked: Record<string, string[]>, address: string) {
+  const [place, commit = ""] = address.toLowerCase().split("@")
+  const repo = place.split("/").slice(0, 2).join("/")
+  return [place, repo].some((k) => (blocked[k] ?? []).some((r) => { const x = r.trim().toLowerCase(); return x === "*" || (x.length >= 7 && commit.startsWith(x)) }))
+}
+
+/** The directory's bundles with these words, by stars, without blocked ones; each with the user's bundle imported from
+ *  the same place (`mine`: their bundle.json's `from`), and whether it's at the listed commit. */
+export function browse(index: Index, q: string, mine: { id: string; from: string | null }[]) {
+  const words = q.toLowerCase().split(/\s+/).filter(Boolean)
+  const placeOf = (from: string) => from.replace(/@[0-9a-f]{40}$/, "").toLowerCase()
+  return index.bundles
+    .filter((b) => !bundleBlocked(index.blocked, b.address) && words.every((w) => `${b.name} ${b.description} ${b.author} ${b.repo} ${b.topics.join(" ")}`.toLowerCase().includes(w)))
+    .sort((a, b) => b.stars - a.stars || (Date.parse(b.updated ?? "") || 0) - (Date.parse(a.updated ?? "") || 0))
+    .map((b) => {
+      const source = b.address.split("@")[0], here = mine.find((m) => m.from && placeOf(m.from) === source.toLowerCase())
+      return { ...b, source, imported: here?.id ?? null, current: !!here && here.from!.toLowerCase().endsWith(`@${b.commit}`) }
+    })
 }
 
 /** Whether version `v` is in a blocklist range: "1.2.3", "*", or comparisons, all of them ("<1.3.0", ">=1.0.0 <1.2.0"). */

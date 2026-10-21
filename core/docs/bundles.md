@@ -58,6 +58,12 @@ books, and pages and databases over them).
   GitHub, and the demo leaves out what needs the app (terminals, agents) and plugins it installs (they run code). Its
   Open in Vaultite is `vaultite://bundle/<owner>/<name>`, which opens in the Mac and iPhone apps on its import preview:
   nothing is added or applied until the user does. The share sheet's Link copies it.
+- **The directory**: `vau bundle browse [words]` (`GET /api/bundles/browse?q=`) lists shared bundles from the plugin
+  directory's index: GitHub repositories with the topic `vaultite-bundle` (the bundle's folder at the top, or one
+  .bundle.json) and those Vaultite/plugins' `directory/listed.json` names (`bundles`: owner/name or owner/name/folder),
+  each pinned at the commit that last changed it. Its `address`, `owner/name[/folder]@<commit>`, imports exactly that
+  commit (`vau bundle import <address>`), kept in bundle.json's `from`; `imported` names the user's bundle from the same
+  place, `current` whether it's at that commit. The blocklist leaves one out.
 - `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
   `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.
 - To make one for the user, write the folder (pick blocks for its dashboards from `vau docs design`), check it
