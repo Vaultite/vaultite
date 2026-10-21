@@ -51,7 +51,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Mac app: with the tab bar and pane titles off, the sidebar toggles beside a folded sidebar can be clicked again.
 - With the tab bar off, nothing shows above a pane unless Pane titles is on (now off by default); a note's bar or the
   Browser's address bar is then the window's title row, beside the sidebar's, making room for the toggles and the Mac's
-  traffic lights instead of an empty band above it.
+  traffic lights instead of an empty band above it; its empty part drags the window and has the tab bar's menu.
 - Status bar: what doesn't fit goes (characters, then items to the tray, then words), never onto a second line; last
   launch's widths hold only while the app loads, so no empty room is left where a longer song title was.
 - Mac app: the traffic lights come in once a hidden sidebar has slid in, not a frame at a time from their default place,

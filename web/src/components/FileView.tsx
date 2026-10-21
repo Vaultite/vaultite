@@ -174,7 +174,8 @@ const PathBar = memo(function PathBar({ path, mode, setMode, edit, settle, locke
         </button>
       )}
     </>} className={className}>
-      <nav aria-label="File path" className="flex min-w-0 flex-1 items-center">
+      {/* As wide as the path, not the bar: past it is the bar's empty part, which as the title row drags and has its menu. */}
+      <nav aria-label="File path" className="flex min-w-0 items-center">
         {outside && (
           <>
             <span data-tip={folderOf(path)} className="h-6 min-w-0 shrink truncate px-1 leading-6 text-muted-foreground">Outside the vault</span>
