@@ -50,7 +50,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   link in Extensions), a folder, or Brave and Chrome on the Mac; pinned ones' buttons are in the page's bar, every one in
   its … menu.
 - Managed extensions: ones the Mac's owner names in a file from the terminal are always on in every page and container,
-  with no switch or Remove in the app, like Chrome's force-installed ones (a site blocker can't be turned off on a whim).
+  with no switch or Remove in the app, like Chrome's force-installed ones (a site blocker can't be turned off on a whim;
+  its blocked page and its asks for time work as in Chrome).
 - Extensions that watch or change pages' requests (chrome.webRequest) work with Shields on: password managers fill
   sites' sign-in prompts (KeePassXC-Browser), and Zotero Connector sees what a page loads.
 - Web pages open in containers, as in Firefox and Brave: Personal, Work or your own, each signed in on its own, so one

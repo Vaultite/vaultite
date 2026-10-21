@@ -6,8 +6,8 @@
 // lists the windows; its options page opens in a tab; Settings from Brave gives it a Brave profile's (both areas); off,
 // the page is left alone; on a Web Store page the bar says it's added; removed, it's gone. Then managed: a copy without
 // its key named in this app's policy file is added, always on, with no switch or Remove (and the engine refuses both),
-// its pages open at the id Chrome gives its folder, a new container's pages get it too; out of the policy, it's an
-// ordinary one.
+// its pages open at the id Chrome gives its folder, a new container's pages get it too, its content script sends a page
+// to its own (as a site blocker does a feed); out of the policy, it's an ordinary one.
 // WRITES: the throwaway vault only.
 //   node web/qa/extensions.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -207,6 +207,9 @@ check("… its own pages open at its folder's id", await until(async () => (awai
 await setting({ containers: [{ id: "lab", name: "Lab", color: "teal" }] })
 await openUrl(`@lab/${SITE}/four`)
 check("… a new container's pages get it too", await until(async () => !!(await painted(`${SITE}/four`))?.painter, 15000), [await painted(`${SITE}/four`), await views()])
+await openUrl(`@lab/${SITE}/stop`)
+const stopped = () => inView(`chrome-extension://${MID}/stop.html`, "document.getElementById('stopped').textContent")
+check("… which sends a page to its own, as a site blocker does", await until(async () => (await stopped()) === `stopped ${SITE}/stop (${MID})`, 15000), [await stopped(), await views()])
 fs.writeFileSync(POLICY, JSON.stringify({ extensions: [] }))
 await command("web:extensions")
 check("out of the policy: an ordinary one, with its switch", await until(async () => (await row.locator("[role=switch][aria-checked=true]").count()) === 1, 20000), await row.innerText().catch(() => ""))
