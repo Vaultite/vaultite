@@ -1,6 +1,7 @@
 // Block an element, in the page (picker.ts runs this in an isolated world: the page's scripts never see it). The element
 // under the pointer is outlined; a click picks it; Wider and Narrower (↑ ↓) walk to its parent and back; what its
-// selector matches is hidden as a preview, the selector editable. Answers { selector } (Block, Enter) or null (Esc).
+// selector matches is marked in red, still shown (Preview, P, hides it to see the page without it), the selector
+// editable. Nothing's kept until Block: answers { selector } (Block, Enter) or null (Esc).
 // `at`: a point (CSS px) whose element starts picked (the page's right-click menu, Block element).
 function picker({ site, at }) {
   globalThis.__vaultitePicker?.cancel()
@@ -108,7 +109,7 @@ function picker({ site, at }) {
     let host = null, x = 0, y = 0
     const under = (px, py) => doc.elementsFromPoint(px, py).find((e) => e !== host && !top(e)) ?? null
 
-    let hovered = null, picked = null, selector = "", trail = [], previewing = true
+    let hovered = null, picked = null, selector = "", trail = [], previewing = false
 
     // ---------- the overlay: outlines, and a panel (in a closed shadow root, styled through the CSSOM: no page CSP) ----------
 
@@ -123,6 +124,7 @@ function picker({ site, at }) {
       .box { position: fixed; pointer-events: none; border-radius: 3px; outline: 2px solid rgba(10, 132, 255, 0.95); outline-offset: -1px;
         background: rgba(10, 132, 255, 0.12); transition: all 60ms ease-out; }
       .box.next { outline: 1.5px dashed rgba(10, 132, 255, 0.7); background: transparent; }
+      .box.hide { outline-color: rgba(255, 59, 48, 0.95); background: rgba(255, 59, 48, 0.16); }
       .panel { position: fixed; right: 16px; bottom: 16px; width: 380px; max-width: calc(100vw - 32px); pointer-events: auto;
         font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; color: #1d1d1f;
         background: rgba(252, 252, 253, 0.97); border: 0.5px solid rgba(0, 0, 0, 0.14); border-radius: 12px;
@@ -168,7 +170,7 @@ function picker({ site, at }) {
     const status = el("div", { className: "status" })
     const wider = el("button", { title: "The element around it (↑)" }, "Wider", el("kbd", { textContent: "↑" }))
     const narrower = el("button", { title: "Back to a smaller one (↓)" }, "Narrower", el("kbd", { textContent: "↓" }))
-    const preview = el("button", { textContent: "Preview", title: "Hide what it matches while you choose" })
+    const preview = el("button", { title: "Hide what it matches, to see the page without it (P)" }, "Preview", el("kbd", { textContent: "P" }))
     const block = el("button", { className: "main", textContent: "Block" })
     const tools = el("div", { className: "row" }, wider, narrower, preview, el("span", { className: "grow" }), block)
     const panel = el("div", { className: "panel" }, el("div", { className: "head" }, title, close), sub, input, status, tools)
@@ -185,13 +187,13 @@ function picker({ site, at }) {
       else if (!sel && has) doc.adoptedStyleSheets = doc.adoptedStyleSheets.filter((s) => s !== hide)
     }
 
-    /** Outlined: what's pointed at before a pick; after, what the selector matches (unless hidden as a preview), and
-     *  dashed, what a click would pick instead. */
+    /** Outlined: what's pointed at before a pick; after, in red, what the selector matches (unless hidden as a preview),
+     *  and dashed, what a click would pick instead. */
     function draw() {
       const want = []
       if (!picked) { if (hovered) want.push([hovered, ""]) }
       else {
-        if (!previewing) { try { for (const e of [...doc.querySelectorAll(selector)].slice(0, 200)) want.push([e, ""]) } catch { /* not a selector */ } }
+        if (!previewing) { try { for (const e of [...doc.querySelectorAll(selector)].slice(0, 200)) want.push([e, "hide"]) } catch { /* not a selector */ } }
         if (hovered && hovered !== picked) want.push([hovered, "next"])
       }
       while (boxes.children.length > want.length) boxes.lastChild.remove()
@@ -213,7 +215,7 @@ function picker({ site, at }) {
       const bad = n < 0, none = n === 0
       status.className = bad ? "status bad" : "status"
       status.textContent = bad ? "Not a valid selector" : none ? "Matches nothing on this page"
-        : `${previewing ? "Hides" : "Matches"} ${n === 1 ? "1 element" : `${n} elements`}${site ? ` on ${site}` : ""}`
+        : `${previewing ? "Previewing without" : "Will hide"} ${n === 1 ? "1 element" : `${n} elements`}${site ? ` on ${site}` : ""}`
       block.disabled = bad || !selector.trim()
       wider.disabled = top(outer(picked).parentElement)
       preview.setAttribute("aria-pressed", String(previewing))
@@ -292,12 +294,17 @@ function picker({ site, at }) {
     const keys = (e) => {
       const inPanel = e.composedPath().includes(host)
       const typing = inPanel && e.composedPath()[0] === input
-      if (e.type !== "keydown") { if (inPanel || ["Escape", "ArrowUp", "ArrowDown", "Enter"].includes(e.key)) stop(e); return }
+      if (e.type !== "keydown") { if (inPanel || ["Escape", "ArrowUp", "ArrowDown", "Enter", "p", "P"].includes(e.key)) stop(e); return }
       if (e.key === "Escape") { e.preventDefault(); stop(e); return end(null) }
       if (e.key === "Enter" && picked && (typing || !inPanel)) { e.preventDefault(); stop(e); if (!block.disabled) end({ selector }); return }
       if (!typing && (e.key === "ArrowUp" || e.key === "ArrowDown") && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault(); stop(e)
         return e.key === "ArrowUp" ? widen() : narrow()
+      }
+      if (!typing && picked && e.key.toLowerCase() === "p" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault(); stop(e)
+        previewing = !previewing
+        return show()
       }
       if (inPanel) stop(e)
     }
@@ -312,7 +319,7 @@ function picker({ site, at }) {
       removeEventListener("scroll", scrolled, { capture: true })
       host.remove()
       // (kept a moment when blocked: the rule reaches the page's own styles as the app saves it, with no flash between)
-      if (answer) setTimeout(() => setHidden(""), 2000)
+      if (answer) { setHidden(answer.selector); setTimeout(() => setHidden(""), 2000) }
       else setHidden("")
       delete globalThis.__vaultitePicker
       resolve(answer)

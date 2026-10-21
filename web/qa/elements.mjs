@@ -1,8 +1,8 @@
 // Block an element in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this script
 // serves on 127.0.0.1 (Shields' lists: a small one of its own, no network): the Shields menu's Block an element… starts
 // the picker (the page's right-click Block element… too, on what was clicked); pointing outlines, a click picks the
-// element (a stable selector, not its generated class), ↑ widens it to the custom element around it and previews it
-// hidden, ↓ narrows back, Esc cancels with nothing kept; Enter keeps `127.0.0.1##<selector>` in Blocked elements.md and
+// element (a stable selector, not its generated class), ↑ widens it to the custom element around it, marked but still
+// shown until P previews it hidden, ↓ narrows back, Esc cancels with nothing kept; Enter keeps `127.0.0.1##<selector>` in Blocked elements.md and
 // the page stays so, a reload too; the menu's Hidden on 127.0.0.1 shows one again (gone from the note, shown without a
 // reload); an agent's `web-viewer.block` hides live (a site's rule, and a generic one), unblock shows.
 // WRITES: the throwaway vault only.
@@ -117,8 +117,13 @@ await click("#s1 .label")
 check("a click picks it by a selector that lasts (its class, not the generated one)", await until(async () => (await picker())?.selector === "span.label", 5000), await picker())
 await key("Up")
 check("↑ widens it to the custom element around it, by its name and kind", await until(async () => (await picker())?.selector === "my-card[is-sponsored]", 5000), await picker())
-check("… and the preview hides what it matches, not the rest", await until(async () => JSON.stringify(await seen()) === JSON.stringify({ s1: false, s2: false, story: true, banner: true }), 5000)
-  && /Hides 2 elements on 127\.0\.0\.1/.test((await picker())?.status ?? ""), [await seen(), await picker()])
+check("… what it matches still shows, marked to hide", await until(async () => /Will hide 2 elements on 127\.0\.0\.1/.test((await picker())?.status ?? ""), 5000)
+  && JSON.stringify(await seen()) === JSON.stringify({ s1: true, s2: true, story: true, banner: true }), [await seen(), await picker()])
+await key("P")
+check("P previews: what it matches hidden, not the rest", await until(async () => JSON.stringify(await seen()) === JSON.stringify({ s1: false, s2: false, story: true, banner: true }), 5000)
+  && /Previewing without 2 elements/.test((await picker())?.status ?? ""), [await seen(), await picker()])
+await key("P")
+check("… P again shows them", await until(async () => (await seen())?.s1 === true, 5000), await seen())
 await key("Down")
 check("↓ narrows back", await until(async () => (await picker())?.selector === "span.label", 5000), await picker())
 await key("Up")

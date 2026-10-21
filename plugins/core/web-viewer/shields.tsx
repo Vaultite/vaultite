@@ -95,7 +95,7 @@ function hiddenItems(id: number, site: string, note: ElementRule[], hide: string
 type PageShields = { site: string; count: number }
 
 /** Shields, at the address's right: what was blocked on the page, and a menu to take them down for its site. */
-export function ShieldsButton({ id, url }: { id: number; url: string }) {
+export function ShieldsButton({ id, url, loading }: { id: number; url: string; loading?: boolean }) {
   const [page, setPage] = useState<PageShields | null>(null)
   const told = counts.use((m) => m.get(id))
   const s = settings.use()
@@ -104,7 +104,8 @@ export function ShieldsButton({ id, url }: { id: number; url: string }) {
     let gone = false
     void Promise.resolve(webPages?.engine?.("adblock:page", id)).then((r) => { if (!gone) setPage((r as PageShields | null) ?? null) }, () => {})
     return () => { gone = true }
-  }, [id, url])
+    // (asked again as a load ends: asked before a page's first address is in, it has no site yet)
+  }, [id, url, loading])
   if (!webPages?.engine || !page?.site) return null
   const { site } = page
   const count = told ?? page.count
