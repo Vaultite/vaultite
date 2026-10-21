@@ -73,12 +73,12 @@ final class WatchLink: NSObject, WCSessionDelegate {
                 let r = try await Servers.call("GET", "inbox/events?limit=30", from: "watch")
                 let events = (r["events"] as? [[String: Any]] ?? []).map { e in
                     // Only what a message carries (plist values: no JSON nulls).
-                    e.filter { ["id", "title", "body", "kind", "ask", "read", "t", "terminal"].contains($0.key) && !($0.value is NSNull) }
+                    e.filter { ["id", "title", "body", "preview", "kind", "ask", "read", "t", "terminal", "session"].contains($0.key) && !($0.value is NSNull) }
                 }
                 return ["events": events, "unread": r["unread"] as? Int ?? 0]
             case "answer":
                 guard let id = m["id"] as? String, let answer = m["answer"] as? String else { return ["error": "Nothing to answer"] }
-                return ["ok": true, "text": try await Push.answer(id, answer)]
+                return ["ok": true, "text": try await Push.answer(id, answer, text: m["text"] as? String)]
             default:
                 return ["ok": true]
             }

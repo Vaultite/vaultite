@@ -28,19 +28,25 @@ What it says, as Markdown.
   else starts a new one told to read the report; that session's next report goes on in the same file (one file per
   exchange).
 
-**Events** ("Claude Code finished", "Codex is waiting for you") matter for minutes, so they're kept on the server's
-machine, not in the vault: an unread one until it's read or dismissed, a read one for `keep_days` (the last 200). An
-agent's turn ending is kept read, with no toast or push (the setting `turns`): its report says when the work is done.
-With Machines every app shows every machine's (another's id ends in `@<machine>`, and changing it is done there). They
-toast, count on the Inbox button and go to the phone and watch, with Approve and Deny when an agent in an app terminal
-asks permission or an app on the public MCP asks to run code here.
+**Sessions**: each coding agent's session is one event, its row, kept on the machine it runs on (not in the vault).
+It's in the inbox only while it needs the user: it asks (a permission, a question, to sign in, a plan to approve), or
+its turn ended with something for them (a question, an answer to read, a failure: judged from its last message, by a
+small model when its words don't settle it), or its report (`vau inbox report`). Then it's unread (bold), with its last
+answer as Markdown, it toasts and goes to the phone and watch, and it's read once opened or replied to (`vau inbox
+reply <id> "<text>"`: typed into its session, resumed if it ended). A turn done with nothing for the user goes in
+quietly: the row keeps its last answer, read. Don't write "nothing needed from you" rules into prompts for this.
+**Events** (`vau notify`, a paused plugin, a server's question) matter for minutes, kept the same way: an unread one
+until it's read or dismissed, a read one for `keep_days` (the last 200). With Machines every app shows every machine's
+(another's id ends in `@<machine>`, and reading, answering or replying to it is done there; the machine whose session it
+is sends the push). Approve and Deny answer a permission an agent asks in an app terminal, or an app on the public MCP
+asking to run code here.
 - Coding agents in the app's terminals report by themselves. Agents started elsewhere post through a hook (`vau` is
   the app's `bin/vau`, full path where it isn't on PATH):
   - Claude Code, `~/.claude/settings.json`: `"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "vau inbox
     hook claude"}]}], "Notification": [{"matcher": "permission_prompt|elicitation_dialog", "hooks": [{"type": "command",
     "command": "vau inbox hook claude"}]}]}`
   - Codex, `~/.codex/config.toml`: `notify = ["vau", "inbox", "hook", "codex"]`
-  - Anything else: `POST /api/inbox/events {"source", "kind": "done" | "waiting" | "error" | "info", "title", "body",
+  - Anything else: `POST /api/inbox/events {"source", "kind": "waiting" | "done" | "error" | "info", "title", "body",
     "link", "key"}` (this machine's owner only; a `key` replaces its source's event with that key, so a daily one doesn't
     pile up).
 - Push needs Apple's push key (a .p8) in data/ and `"inbox": {"apns": {"key_id", "team_id", "key": "<file in data/>"}}`

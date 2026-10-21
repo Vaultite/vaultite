@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { type AgentAsk, type AgentMeter, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
-  type Usage } from "../../../core/agents.ts"
+  type Usage, lastTurn, parseTerminal } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, WANTED } from "./transcript.ts"
@@ -516,6 +516,24 @@ plugin.provide("agent-asks:claude", (): AgentAsk[] => [
 plugin.provide("agent-session:claude", (id: string): { transcript: string; last: number; ttl: number; account: string } | null => {
   const found = sessionFile(id, true), t = found && tail(found.file)
   return t ? { transcript: found.file, last: t.st.mtimeMs, ttl: ttlOf(t.text), account: found.account.id } : null
+})
+
+/** A session's latest turn: the user's last message and Claude's last answer (the service "agent-turn:claude": the Inbox
+ *  reads it as a turn ends). The session running in `terminal` when `session` isn't given; never a private account's. */
+plugin.provide("agent-turn:claude", async (terminal: string, session = "") => {
+  let sid = session || parseTerminal(terminal)?.resume || ""
+  if (!sid && terminal) {
+    for (const { a, s, pid, sid: id, tmux } of running(accounts())) {
+      if (!id || a.private) continue
+      const key = `${pid}@${s.procStart}`
+      const t = terminals.get(key) ?? await terminalOf(plugin, pid, tmux)
+      if (t) terminals.set(key, t)
+      if (t === terminal) { sid = id; break }
+    }
+  }
+  const found = sid ? sessionFile(sid) : null
+  const t = found ? await transcript(found.file) : null
+  return t ? { session: sid, ...lastTurn(t.talk.entries) } : null
 })
 
 /** A file's last 256 KB and its stat, or null when it can't be read. */

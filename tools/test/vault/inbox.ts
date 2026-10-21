@@ -10,10 +10,11 @@ export default async ($: VaultTest) => {
   let cr: Any
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
-    const { fromHook, prune, waitsOnYou } = await import("../../../plugins/core/inbox/plugin.ts")
-    check("inbox push: by default only what waits on you (an agent asking, a report), not a finished turn, an error or news",
-      waitsOnYou({ kind: "waiting" }) && waitsOnYou({ kind: "done", link: "Inbox/Report.md" }) && !waitsOnYou({ kind: "done" }) &&
-      !waitsOnYou({ kind: "error" }) && !waitsOnYou({ kind: "info", link: "Notes/a.md" }))
+    const { byThread, categoryOf, findEvent, fromHook, previewOf, prune, settled, waitsOnYou } = await import("../../../plugins/core/inbox/plugin.ts")
+    const { judge, sure } = await import("../../../plugins/core/inbox/needs.ts")
+    const { service } = await import("../../../core/plugins.ts")
+    check("inbox push: by default only what waits on you (a session that needs you, its report), not a quiet turn, an error or news",
+      waitsOnYou({ kind: "waiting" }) && !waitsOnYou({ kind: "done" }) && !waitsOnYou({ kind: "error" }) && !waitsOnYou({ kind: "info" }))
     let [st, b] = await api("POST", "inbox", { title: "Plant care apps compared", body: "## Findings\n- One", from: "Claude", source: "https://example.com/tools" })
     check("inbox: a result is a file in Inbox/, new", st === 201 && read("Inbox/Plant care apps compared.md").startsWith("---\ntype: inbox\nstatus: new\nfrom: Claude\nsource: https://example.com/tools\ncreated: '") &&
       read("Inbox/Plant care apps compared.md").includes("## Findings"), [st, b])
@@ -86,45 +87,128 @@ export default async ($: VaultTest) => {
       check("inbox events: pruning keeps every unread one, old or past the cap; read ones go after the days, past 200",
         kept.some((e) => e.id === "p0") && !kept.some((e) => e.id === "p1") && kept.filter((e) => !e.read).length === 251 && kept.filter((e) => e.read).length === 200, kept.length)
     }
-    // Hooks: Terminal's state command (state and prev), Claude Code's and Codex's JSON.
-    check("hook: working -> idle is done, idle at start isn't news", (fromHook({ state: "idle", prev: "working" }, {}) as Any)?.kind === "done" && fromHook({ state: "idle", prev: "" }, {}) === null)
-    check("hook: into waiting says what it asks", (fromHook({ state: "waiting", prev: "working" }, { hook_event_name: "PreToolUse", tool_name: "AskUserQuestion", tool_input: { questions: [{ question: "Which port?" }] } }) as Any)?.body === "Asks: Which port?")
-    check("hook: waiting -> working resolves", (fromHook({ state: "working", prev: "waiting" }, { session_id: "s1" }) as Any)?.resolve === true)
-    check("hook: Claude Code's Notification, but not its idle prompt", (fromHook({}, { hook_event_name: "Notification", message: "Claude needs your permission to use Bash" }) as Any)?.body === "Claude needs your permission to use Bash" &&
-      fromHook({}, { hook_event_name: "Notification", notification_type: "idle_prompt", message: "Claude is waiting for your input" }) === null)
-    check("hook: Codex's notify is done, with its last words", (fromHook({}, { type: "agent-turn-complete", "thread-id": "t1", "last-assistant-message": "**Merged** and pushed.\nMore" }) as Any)?.body === "Merged and pushed.")
-    ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0&state=waiting&prev=working", { hook_event_name: "Notification", session_id: "abc", message: "Claude needs your permission to use Bash" })
-    check("hook route: an event named after the agent's plugin, with its terminal", st === 200 && b.event?.title === "Claude Code is waiting for you" && b.event.terminal === "claude-k3j2h1g0" && b.event.session === "abc" && b.event.source === "claude", [st, b])
-    await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0&state=working&prev=waiting", {})
-    ;[, list] = await api("GET", "inbox/events")
-    check("hook route: answered, its waiting event is read", list.events.find((e: Any) => e.kind === "waiting")?.read === true, list.events)
-    ;[st, b] = await api("POST", "inbox/hook?agent=codex", { type: "agent-turn-complete", "thread-id": "t9", cwd: "/tmp/lighthouse" })
-    check("hook route: outside the app, the folder names it", b.event?.title === "Codex finished" && b.event.body === "lighthouse" && b.event.session === "t9", b)
-    check("hook route: a turn that ends is kept read (no toast, no push)", b.event?.read === true, b)
-    write(".vaultite/plugins/inbox/data.json", JSON.stringify({ turns: "notify" }))
-    ;[st, b] = await api("POST", "inbox/hook?agent=codex", { type: "agent-turn-complete", "thread-id": "t10", cwd: "/tmp/beacon" })
-    check("hook route: with turns notify, a turn that ends is news", b.event?.title === "Codex finished" && !b.event.read, b)
-    write(".vaultite/plugins/inbox/data.json", "{}")
+    // Needs you or done: what a turn's own words settle (an error, nothing said, a question last), else the model's
+    // one word (once per turn), else it needs you.
+    check("needs: an error, a question last, nothing said; the rest left to the model",
+      sure({ text: "x", error: true })?.why === "error" && sure({ text: "Merged.\n\nShould I deploy it now?" })?.needs === true &&
+      sure({ text: "Which one:\n```\nwhy?\n```\nRun it?" })?.needs === true && sure({ text: "  " })?.needs === false && sure({ text: "Merged and pushed." }) === null)
+    {
+      let asked = 0
+      const said = (word: string) => async () => { asked++; return { text: word, truncated: false } }
+      const done = await judge({ prompt: "Fix it", text: "Fixed and pushed to main." }, said("DONE"))
+      const again = await judge({ prompt: "Fix it", text: "Fixed and pushed to main." }, said("NEEDS_YOU"))
+      const odd = await judge({ prompt: "Fix it", text: "Fixed, odd word." }, said("Maybe"))
+      const failed = await judge({ prompt: "Fix it", text: "Fixed, model down." }, async () => { throw new Error("rate limited") })
+      const none = await judge({ text: "Fixed, no model here." }, null)
+      check("needs: the model's word, once per turn; a word it doesn't know, a failure or no model: it needs you",
+        !done.needs && done.by === "model" && !again.needs && asked === 2 && odd.needs && failed.needs && failed.by === "fallback" && none.needs, [done, again, odd, failed, none, asked])
+    }
+    // Hooks: Terminal's state command (state and prev), Claude Code's and Codex's JSON: a change of the session's state.
+    check("hook: Stop is a turn's end with its last message; a prompt is working again", (fromHook({ hook_event_name: "Stop", last_assistant_message: "Done." }) as Any)?.text === "Done." &&
+      (fromHook({ hook_event_name: "UserPromptSubmit", session_id: "s1" }) as Any)?.state === "working" && fromHook({ hook_event_name: "PostToolUse" }) === null)
+    check("hook: Claude Code's Notification, but not its idle prompt", (fromHook({ hook_event_name: "Notification", message: "Claude needs your permission to use Bash" }) as Any)?.msg === "Claude needs your permission to use Bash" &&
+      fromHook({ hook_event_name: "Notification", notification_type: "idle_prompt", message: "Claude is waiting for your input" }) === null)
+    check("hook: Codex's notify is a turn's end, its words and what was asked", (fromHook({ type: "agent-turn-complete", "thread-id": "t1", "last-assistant-message": "**Merged** and pushed.\nMore", "input-messages": ["Merge it"] }) as Any)?.text === "**Merged** and pushed.\nMore" &&
+      (fromHook({ type: "agent-turn-complete", "input-messages": ["Merge it"] }) as Any)?.prompt === "Merge it")
+    check("hook: what a waiting agent asks", (fromHook({ hook_event_name: "Notification", notification_type: "permission_prompt", message: "x" }) as Any)?.kind === "permission" &&
+      (fromHook({ hook_event_name: "Notification", notification_type: "elicitation_dialog", tool_input: { questions: [{ question: "Which port?" }] } }) as Any)?.msg === "Asks: Which port?")
+    const rows = async () => { await settled(); return (await api("GET", "inbox/events"))[1].events as Any[] }
+    ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "abc", message: "Claude needs your permission to use Bash" })
+    let row = (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")
+    check("a session asking: its row needs you, saying what it asks, told (nt), named for the agent when nothing else names it", st === 200 && row?.kind === "waiting" && row.ask === "permission" &&
+      row.body === "Claude needs your permission to use Bash" && row.session === "abc" && row.source === "claude" && row.title === "Claude Code session" && !row.read && row.nt === row.t, [st, row])
+    await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "UserPromptSubmit" })
+    check("answered (it works again: a prompt): read", (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")?.read === true)
+    await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Stop", session_id: "abc", last_assistant_message: "Two ways:\n\n1. **Await** it\n2. Retry\n\nWhich one?" })
+    let all = await rows()
+    row = all.find((e) => e.terminal === "claude-k3j2h1g0")
+    check("its turn ends with a question: the same row needs you, its answer whole, a plain preview",
+      all.filter((e) => e.terminal === "claude-k3j2h1g0").length === 1 && row?.kind === "waiting" && row.ask === "answer" && !row.read &&
+      row.body.includes("1. **Await** it") && row.preview === "Two ways: Await it Retry Which one?", row)
+    await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Stop", session_id: "abc", last_assistant_message: "" })
+    row = (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")
+    check("a quiet turn after (it went on by itself): its answer still to read, as it was", !row?.read && row?.preview?.startsWith("Two ways"), row)
+    await api("POST", "inbox/events/read", { ids: [row.id] })
+    await api("POST", "inbox/hook?agent=claude&terminal=claude-k3j2h1g0", { hook_event_name: "Stop", session_id: "abc", last_assistant_message: "" })
+    row = (await rows()).find((e) => e.terminal === "claude-k3j2h1g0")
+    check("read, then a turn done with nothing for you: quiet (read, done, not told again)", row?.read === true && row.kind === "done" && !row.ask && !row.body, row)
+    ;[st, b] = await api("POST", "inbox/hook?agent=codex", { type: "agent-turn-complete", "thread-id": "t9", cwd: "/tmp/lighthouse", "last-assistant-message": "Shall I merge it?" })
+    row = (await rows()).find((e) => e.session === "t9")
+    check("an agent's own hook outside the app: its folder names the session", row?.title === "lighthouse" && row.kind === "waiting" && row.source === "codex", row)
+    await api("POST", "inbox/hook?agent=codex", { type: "agent-turn-complete", "thread-id": "t9", cwd: "/tmp/lighthouse", "last-assistant-message": "Should it be squashed?" })
+    all = await rows()
+    check("its next turn: the same row, told again only a minute later (the same need, unread)", all.filter((e) => e.session === "t9").length === 1 &&
+      all.find((e) => e.session === "t9")?.nt === row.nt && all.find((e) => e.session === "t9")?.preview === "Should it be squashed?", all.filter((e) => e.session === "t9"))
     ;[st, b] = await api("POST", "inbox/hook?agent=claude", { hook_event_name: "PostToolUse" })
-    check("hook route: anything else isn't news", st === 200 && !b.event, b)
-    check("hook: what a waiting agent asks", (fromHook({}, { hook_event_name: "Notification", notification_type: "permission_prompt", message: "x" }) as Any)?.ask === "permission" &&
-      (fromHook({ state: "waiting", prev: "working" }, { tool_name: "AskUserQuestion" }) as Any)?.ask === "question" &&
-      (fromHook({ state: "waiting", prev: "working" }, { tool_name: "ExitPlanMode" }) as Any)?.ask === "plan")
-    ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-p9p9p9p9&state=waiting&prev=working", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "perm", message: "Claude needs your permission to use Bash" })
-    check("hook route: a permission is asked as one", b.event?.ask === "permission", b)
-    ;[st, b] = await api("POST", "ops/inbox.answer", { id: b.event.id, answer: "approve" })
+    check("hook route: anything else isn't news", st === 200 && !(await rows()).some((e) => e.source === "claude" && !e.terminal && !e.session), b)
+    {
+      // Terminal's stream (the service "inbox:state", OSC 7501's states): a turn's end reads its last message from the
+      // agent's transcript ("agent-turn:<agent>"), judged by the model when its words don't settle it.
+      const tell = service(app.plugins, "inbox:state") as (c: Any) => void
+      const cc = app.plugins.find((p) => p.id === "claude-code")!
+      const was = { turn: cc.services["agent-turn:claude"], sample: cc.services.sample }
+      let read = { session: "sess-osc", prompt: "What does the release need?", text: "A version bump first, then the tag.", at: 0 }
+      let asked: Any = null
+      cc.services["agent-turn:claude"] = async (terminal: string) => (terminal === "claude-osc75010" ? { ...read, at: Date.now() } : null)
+      cc.services.sample = async (a: Any) => { asked = a; return { text: "NEEDS_YOU", truncated: false } }
+      const at = Date.now()
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "working", from: "osc7501", at })
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "done", from: "osc7501", at })
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "done", from: "hooks", at })
+      let r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
+      check("inbox:state: a turn's end, its message from the transcript, asked of a quick model with what the user said; said twice, once",
+        r.length === 1 && r[0].kind === "waiting" && r[0].ask === "answer" && r[0].session === "sess-osc" && r[0].body === read.text &&
+        asked?.tier === "quick" && asked.prompt.includes("What does the release need?") && asked.prompt.includes(read.text), [r, asked?.prompt])
+      cc.services.sample = async () => ({ text: "DONE", truncated: false })
+      await api("POST", "inbox/events/read", { ids: [r[0].id] })
+      read = { ...read, prompt: "Tag it", text: "Tagged v1.2.0 and pushed." }
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "working", from: "osc7501", at })
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "blocked", kind: "permission", msg: "Run git push?", from: "osc7501", at })
+      r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
+      check("inbox:state: blocked asking permission needs you", r[0]?.kind === "waiting" && r[0].ask === "permission" && r[0].body === "Run git push?" && !r[0].read, r)
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "working", from: "osc7501", at })
+      tell({ terminal: "claude-osc75010", agent: "claude", state: "idle", from: "osc7501", at })
+      r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
+      check("inbox:state: answered, then done with nothing for you: quiet", r[0]?.read === true && r[0].kind === "done" && r[0].body === "Tagged v1.2.0 and pushed.", r)
+      cc.services["agent-turn:claude"] = was.turn; cc.services.sample = was.sample
+    }
+    ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-p9p9p9p9", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "perm", message: "Claude needs your permission to use Bash" })
+    const permId = (await rows()).find((e) => e.session === "perm")?.id
+    ;[st, b] = await api("POST", "ops/inbox.answer", { id: permId, answer: "approve" })
     check("answer: approving needs the terminal running (its question on screen)", st >= 400, [st, b])
-    const asked = (await api("GET", "inbox/events"))[1].events.find((e: Any) => e.session === "perm")?.id
     await (await import("../../../plugins/core/inbox/plugin.ts")).stillWaiting(0)
     ;[, list] = await api("GET", "inbox/events")
-    check("a permission whose terminal no longer asks it (here: none runs) is read", list.events.find((e: Any) => e.id === asked)?.read === true, list.events)
-    ;[, list] = await api("GET", "inbox/events")
+    check("a permission whose terminal no longer asks it (here: none runs) is read", list.events.find((e: Any) => e.id === permId)?.read === true, list.events)
     const done = list.events.find((e: Any) => e.kind === "done")
     ;[st, b] = await api("POST", "ops/inbox.answer", { id: done.id, answer: "approve" })
     check("answer: only a permission is approved", st === 409, [st, b])
     ;[st, b] = await api("POST", "ops/inbox.answer", { id: done.id, answer: "read" })
     ;[, list] = await api("GET", "inbox/events")
     check("answer: read marks it read", st === 200 && list.events.find((e: Any) => e.id === done.id)?.read === true, [st, b])
+    check("push: Approve and Deny for a permission it shows whole, Reply for a session's answer, else Mark read",
+      categoryOf({ id: "a", t: 0, source: "claude", kind: "waiting", ask: "permission", terminal: "claude-x", title: "x", body: "Bash" }) === "permission" &&
+      categoryOf({ id: "a", t: 0, source: "claude", kind: "waiting", ask: "answer", session: "s", title: "x" }) === "reply" &&
+      categoryOf({ id: "a", t: 0, source: "vau", kind: "info", title: "x" }) === "event")
+    check("a preview is one plain line", previewOf("## Done\n\n- **Fixed** the [[Notes/Sidebar|sidebar]]\n- `npm test` passes, see [the PR](https://x.y)\n\n```\ncode\n```") ===
+      "Done Fixed the Notes/Sidebar npm test passes, see the PR")
+    {
+      const es: Any[] = [{ id: "a1", t: 1 }, { id: "b2@m1", t: 2 }, { id: "c3@m1", t: 3 }, { id: "c3@m4", t: 4 }]
+      check("an event by its id: as listed, bare as its machine's notification said it (one only), or @ this machine",
+        findEvent(es, "b2@m1", "m4")?.id === "b2@m1" && findEvent(es, "b2", "m4")?.id === "b2@m1" && !findEvent(es, "c3", "m4") && findEvent(es, "a1@m4", "m4")?.id === "a1" && !findEvent(es, "a1@m9", "m4"))
+    }
+    {
+      const old: Any[] = [
+        { id: "o1", t: 5, source: "claude", kind: "done", title: "Claude Code finished", body: "Beacon docs", terminal: "claude-old1", read: true },
+        { id: "o2", t: 4, source: "claude", kind: "done", title: "Claude Code finished", body: "Beacon docs", terminal: "claude-old1", read: true },
+        { id: "o3", t: 3, source: "claude", kind: "done", title: "Claude Code: Fix done · Sidebar", body: "Fixed.", link: "Inbox/Fix done · Sidebar.md", session: "s-old" },
+        { id: "o4", t: 2, source: "vau", kind: "info", title: "Imported 12 meals" },
+        { id: "o5", t: 1, source: "claude", kind: "waiting", title: "Claude Code is waiting for you", body: "Claude needs your permission", ask: "permission", terminal: "claude-old2", read: true },
+      ]
+      const now = byThread(old)
+      check("events from before, one row per session: the newest, named after the session; a report's titled as the report; messages as they were",
+        now.length === 4 && now[0].id === "o1" && now[0].title === "Beacon docs" && !now[0].body && now[1].title === "Fix done · Sidebar" && now[1].ask === "report" &&
+        now[2].title === "Imported 12 meals" && now[3].ask === "permission", now)
+    }
     {
       const push = await import("../../../plugins/core/inbox/push.ts")
       const p = push.payload({ title: "Claude Code is waiting for you", body: "Bash", category: "permission", thread: "claude-x", urgent: true, data: { event: "e1" } }) as Any
@@ -160,6 +244,7 @@ export default async ($: VaultTest) => {
       if (embed) fs.rmSync(path.join(VAULT, "Attachments", embed[1]))
       if (as === 200) fs.rmSync(path.join(VAULT, ab.path))
       const conf = path.join(VAULT, ".vaultite/plugins/inbox/data.json"), was = exists(".vaultite/plugins/inbox/data.json") ? fs.readFileSync(conf, "utf8") : null
+      fs.mkdirSync(path.dirname(conf), { recursive: true })
       fs.writeFileSync(conf, JSON.stringify({ ...(was ? JSON.parse(was) : {}), voice_audio: false }))
       const [ws, wb] = await api("POST", "ops/inbox.voice", { text: "Buy rye bread", from: "iPhone", audio, ext: "m4a" })
       check("voice: voice_audio off keeps only the words", ws === 200 && !read(wb.path).includes("![[") && read(wb.path).includes("Buy rye bread"), [ws, wb])
@@ -199,7 +284,7 @@ export default async ($: VaultTest) => {
     check("inbox events: kept on this machine, not in the vault", kept.length === 1 && fs.existsSync(path.join(tmp, "local", "inbox", kept[0], "events.json")) && !exists("Inbox/events.json"), kept)
     write("Dashboards/Qa inbox.md", "---\ntype: dashboard\n---\n\n```block-inbox\nevents: 3\n```\n")
     let [, r] = await api("GET", "render?path=Dashboards/Qa inbox.md")
-    check("inbox block: as text, results and events", r.includes("[[Inbox/Written by hand|Written by hand]]") && r.includes("Codex finished: lighthouse"), r.slice(0, 600))
+    check("inbox block: as text, results and events", r.includes("[[Inbox/Written by hand|Written by hand]]") && r.includes("lighthouse: Should it be squashed? · needs you"), r.slice(0, 600))
     ;[st] = await api("DELETE", `inbox/events/${id}`)
     ;[, list] = await api("GET", "inbox/events")
     check("inbox events: forgotten one by one", st === 200 && !list.events.some((e: Any) => e.id === id), list.events.length)
@@ -214,12 +299,13 @@ export default async ($: VaultTest) => {
     check("report: its tl;dr on top, a callout", rep.split("---\n")[2]?.startsWith("\n> [!tldr] In short\n> The setup page is rewritten.\n> Publish it?\n\nRewrote"), rep)
     ;[, list] = await api("GET", "inbox/events")
     const repEvent = list.events.find((e: Any) => e.session === "sess-report-1")
-    check("report: an event links it", repEvent?.link === "Inbox/Change needs you · Lighthouse docs updated.md" && repEvent.title === "Claude Code: Change needs you · Lighthouse docs updated" && repEvent.kind === "done" &&
-      repEvent.body === "The setup page is rewritten. Publish it?", repEvent)
+    check("report: its session's row is the report, needing you, linking it", repEvent?.link === "Inbox/Change needs you · Lighthouse docs updated.md" && repEvent.title === "Change needs you · Lighthouse docs updated" &&
+      repEvent.kind === "waiting" && repEvent.ask === "report" && repEvent.body === "The setup page is rewritten.\nPublish it?" && !repEvent.read, repEvent)
     await api("POST", "inbox/hook?agent=claude", { hook_event_name: "Stop", session_id: "sess-report-1", last_assistant_message: "Done." })
+    await settled()
     ;[, list] = await api("GET", "inbox/events")
     const merged = list.events.filter((e: Any) => e.session === "sess-report-1")
-    check("report: the turn ending after it keeps its words", merged.length === 1 && merged[0].title === "Claude Code: Change needs you · Lighthouse docs updated", merged)
+    check("report: the turn ending after it leaves the report's row as it is", merged.length === 1 && merged[0].title === "Change needs you · Lighthouse docs updated" && merged[0].ask === "report", merged)
     {
       // Its event goes where the result goes: Done archives it (and reads the event, it's dealt with), Back to review
       // brings it back; one linking where a result was before it was archived links where it is now.
@@ -266,9 +352,9 @@ export default async ($: VaultTest) => {
     check("report: vau takes a list's values after its flag", cliOut.code === 0 && rep.includes("- First?\n- Second?") && rep.includes("session: sess-cli"), [cliOut, rep])
     ;[st, b] = await api("POST", "ops/inbox.report", { title: "One question", work: "fix", tldr: "x", summary: "x", questions: "Ship it, or wait?" })
     check("report: a question given as text keeps its commas", st === 200 && read("Inbox/Fix needs you · One question.md").includes("- Ship it, or wait?\n"), [st, b])
-    ;[st, b] = await api("POST", "ops/inbox.reply", { path: "Inbox/Written by hand.md", text: "hi" })
+    ;[st, b] = await api("POST", "ops/inbox.reply", { to: "Inbox/Written by hand.md", text: "hi" })
     check("reply: only to a report that names its session", st === 409, [st, b])
-    ;[st, b] = await api("POST", "ops/inbox.reply", { path: "Inbox/Nope.md", text: "hi" })
+    ;[st, b] = await api("POST", "ops/inbox.reply", { to: "Inbox/Nope.md", text: "hi" })
     check("reply: to a report that's there", st === 404, [st, b])
     // Where a reply goes once the session ended: resumed while its prompt cache lasts (the TTL its transcript wrote with),
     // else a new session; a handed terminal ends when the turn that reported does.
@@ -284,24 +370,24 @@ export default async ($: VaultTest) => {
       check("agent session: a transcript written with the hour-long cache", info?.ttl === 3600 && info.transcript === tfile && info.account === "default" && Date.now() - info.last < 60_000, info)
       check("agent session: else five minutes, and none for a session that isn't here", look("0a1b2c3d-1111-4222-8333-444455556666")?.ttl === 300 && look("9f9f9f9f-0000-4000-8000-000000000000") === null)
       ;[st, b] = await api("POST", "ops/inbox.report", { title: "Beacon fixed", work: "fix", tldr: "Fixed it.", summary: "Fixed it.", session: sid, agent: "claude" })
-      ;[st, b] = await api("POST", "ops/inbox.reply-plan", { path: "Inbox/Fix done · Beacon fixed.md" })
+      ;[st, b] = await api("POST", "ops/inbox.reply-plan", { to: "Inbox/Fix done · Beacon fixed.md" })
       check("reply plan: its session resumed while it's cached", st === 200 && b.how === "resume" && b.ttl === 3600 && b.ago < 60, [st, b])
       const old = (Date.now() - 2 * 3600_000) / 1000
       fs.utimesSync(tfile, old, old)
-      ;[st, b] = await api("POST", "ops/inbox.reply-plan", { path: "Inbox/Fix done · Beacon fixed.md" })
+      ;[st, b] = await api("POST", "ops/inbox.reply-plan", { to: "Inbox/Fix done · Beacon fixed.md" })
       check("reply plan: a new session once it isn't", st === 200 && b.how === "new" && b.ago >= 7200, [st, b])
       fs.utimesSync(tfile, Date.now() / 1000 - 56 * 60, Date.now() / 1000 - 56 * 60)
-      ;[st, b] = await api("POST", "ops/inbox.reply-plan", { path: "Inbox/Fix done · Beacon fixed.md" })
+      ;[st, b] = await api("POST", "ops/inbox.reply-plan", { to: "Inbox/Fix done · Beacon fixed.md" })
       check("reply plan: with five minutes to spare", b.how === "new", b)
       const handedOf = () => { const d = fs.readdirSync(path.join(tmp, "local", "inbox"))[0]; try { return JSON.parse(fs.readFileSync(path.join(tmp, "local", "inbox", d, "handed.json"), "utf8")) } catch { return [] } }
       ;(service(app.plugins, "inbox:handed") as (t: string) => void)("claude-handed1")
       check("handed: dispatch marks its terminal", handedOf().includes("claude-handed1"), handedOf())
       const out = await vau("inbox", "report", "Handed off", "--work", "fix", "--tldr", "Did it.", "--summary", "Did it.", "--terminal", "claude-handed1")
       check("handed: its report says the terminal ends with the turn", out.code === 0 && out.out.includes("this terminal ends when this turn does"), out)
-      await api("POST", "inbox/hook?agent=claude&terminal=claude-handed1&state=idle&prev=working", { hook_event_name: "Stop" })
+      await api("POST", "inbox/hook?agent=claude&terminal=claude-handed1", { hook_event_name: "Stop" })
       check("handed: the turn that reported ends it", !handedOf().includes("claude-handed1"), handedOf())
       await api("POST", "ops/inbox.report", { title: "Not handed", work: "fix", tldr: "Did it.", summary: "Did it.", terminal: "claude-mine1", agent: "claude" })
-      await api("POST", "inbox/hook?agent=claude&terminal=claude-mine1&state=idle&prev=working", { hook_event_name: "Stop" })
+      await api("POST", "inbox/hook?agent=claude&terminal=claude-mine1", { hook_event_name: "Stop" })
       check("handed: a terminal nobody handed a task stays", !handedOf().includes("claude-mine1"))
       // The same session's next report goes on in its file (after the reply, which archived it): one file per exchange.
       await api("POST", "ops/inbox.report", { title: "Thread start", work: "fix", tldr: "Ship it?", summary: "First round.", questions: ["Ship it?"], terminal: "claude-thread1", agent: "claude" })
@@ -346,26 +432,12 @@ export default async ($: VaultTest) => {
     cr = await vau("inbox", "add", "From", "the CLI", "--body", "Some text", "--from", "Sam")
     check("vau inbox add: a result", cr.code === 0 && read("Inbox/From the CLI.md").includes("from: Sam") && read("Inbox/From the CLI.md").includes("Some text"), cr)
     cr = await vau("inbox", "hook", "codex", JSON.stringify({ type: "agent-turn-complete", "thread-id": "t10", cwd: "/x/beacon" }))
+    await settled()
     ;[, list] = await api("GET", "inbox/events")
-    check("vau inbox hook: Codex's JSON as its last argument", cr.code === 0 && list.events[0].session === "t10" && list.events[0].body === "beacon", list.events[0])
+    check("vau inbox hook: Codex's JSON as its last argument", cr.code === 0 && list.events[0].session === "t10" && list.events[0].title === "beacon", list.events[0])
     cr = await vau("inbox", "clear")
     ;[, list] = await api("GET", "inbox/events")
     check("vau inbox clear", cr.code === 0 && !list.events.length, list)
-    // Terminal's state command, with the Inbox's: told only of the changes that are news, the hook's JSON passed on.
-    {
-      const { stateCommand } = await import("../../../plugins/core/terminal/plugin.ts")
-      const { execFileSync } = await import("node:child_process")
-      const dir = path.join(tmp, "statecmd")
-      fs.mkdirSync(dir)
-      const set = stateCommand(path.join(dir, "state"), (st: string) => `cat > "${dir}/told-${st}-$prev.json"`)
-      const run = (st: "working" | "waiting" | "idle", json = "{}") => execFileSync("/bin/sh", ["-c", set(st)], { input: json, env: { PATH: process.env.PATH } })
-      run("idle"); run("working"); run("working"); run("waiting", '{"message":"May I?"}'); run("working"); run("idle", '{"hook_event_name":"Stop"}')
-      const told = fs.readdirSync(dir).filter((f) => f.startsWith("told-")).sort()
-      check("terminal state command: marks the terminal, tells the inbox of news only", fs.readFileSync(path.join(dir, "state"), "utf8").trim() === "idle" &&
-        JSON.stringify(told) === JSON.stringify(["told-idle-working.json", "told-waiting-working.json", "told-working-waiting.json"]) &&
-        fs.readFileSync(path.join(dir, "told-waiting-working.json"), "utf8") === '{"message":"May I?"}', told)
-      check("terminal state command: without the Inbox, only the mark", !stateCommand("/x/state", null)("idle").includes("prev="))
-    }
     // One inbox on several machines: another machine's events followed and shown here (`<id>@<machine>`), and reading,
     // dismissing or answering one is done on that machine, which keeps it.
     {
@@ -385,6 +457,7 @@ export default async ($: VaultTest) => {
           const json = (status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)) }
           if (req.url === "/api/machines/self") return json(200, { instance: "peer-inbox", host: "box", platform: "darwin", version: "0.1.0", plugins: ["inbox"] })
           if (req.url?.startsWith("/api/inbox/events")) return json(200, { ok: true, unread: 0 })
+          if (req.url?.startsWith("/api/ops/inbox.")) return json(200, { id: "p6", answer: "approve", title: "x", terminal: "claude-aa11bb22", how: "type" })
           json(404, { error: "no such thing" })
         })
       })
@@ -459,6 +532,20 @@ export default async ($: VaultTest) => {
       }
       ;[st2] = await api("POST", "inbox/events/unread", { ids: ["p2@box"] })
       check("inbox machines: unread there", st2 === 200 && seen.includes(`POST /api/inbox/events/unread?local=1 {"ids":["p2"]}`), seen)
+      {
+        // A session there asking permission: answered there (where its terminal is), by its id here or bare (a phone
+        // answering that machine's notification through this server); a reply too.
+        theirs = [{ id: "mvp6abcd-a1b2c3", t: Date.now(), source: "claude", kind: "waiting", ask: "permission", title: "Beacon", body: "Run git push?", terminal: "claude-aa11bb22", session: "s-box" }, ...theirs]
+        for (const s of socks) s.send(JSON.stringify({ t: "events", events: theirs }))
+        await waitFor(async () => (await api("GET", "inbox/events"))[1].events.some((e: Any) => e.id === "mvp6abcd-a1b2c3@box"), 3000, 50)
+        seen.length = 0
+        const [a1] = await api("POST", "ops/inbox.answer", { id: "mvp6abcd-a1b2c3@box", answer: "approve" })
+        const [a2] = await api("POST", "ops/inbox.answer", { id: "mvp6abcd-a1b2c3", answer: "deny" })
+        const [a3] = await api("POST", "ops/inbox.reply", { to: "mvp6abcd-a1b2c3@box", text: "Push it" })
+        check("inbox machines: a permission there approved, denied and replied to there", a1 === 200 && a2 === 200 && a3 === 200 &&
+          seen.includes(`POST /api/ops/inbox.answer {"id":"mvp6abcd-a1b2c3","answer":"approve"}`) && seen.includes(`POST /api/ops/inbox.answer {"id":"mvp6abcd-a1b2c3","answer":"deny"}`) &&
+          seen.includes(`POST /api/ops/inbox.reply {"to":"mvp6abcd-a1b2c3","text":"Push it"}`), [a1, a2, a3, seen])
+      }
       ;[st2] = await api("POST", "inbox/events/p3@box/answer", { answer: "deny" })
       check("inbox machines: a gate answered on its machine (where it waits)", st2 === 200 && seen.includes(`POST /api/inbox/events/p3/answer {"answer":"deny"}`), seen)
       ;[st2] = await api("DELETE", "inbox/events/p3@box")

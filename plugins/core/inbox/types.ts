@@ -16,7 +16,7 @@ export type InboxItem = {
   agent?: string; session?: string; terminal?: string; machine?: string
 }
 
-/** Something an agent said (plugin.ts: InboxEvent). */
+/** Something an agent said, or an agent's session (one row each): plugin.ts' InboxEvent. */
 export type InboxEvent = {
   id: string; t: number; source: string; kind: string; title: string; body?: string
   link?: string; terminal?: string; session?: string; read?: boolean
@@ -24,8 +24,12 @@ export type InboxEvent = {
   key?: string
   /** Marked unread by hand: seeing the Inbox doesn't read it. */
   kept?: boolean
-  /** What a waiting agent asks (permission, question, plan). */
+  /** Why it needs the user (waiting): permission, question, auth, plan, answer, report, error. */
   ask?: string
+  /** Its body as one plain line. */
+  preview?: string
+  /** When it last told the user (toast, notifications): announced when this changes. */
+  nt?: number
   /** A permission the server waits on (an app connected to the MCP): Approve and Deny answer it, once. */
   gate?: boolean
   answer?: "approve" | "deny"

@@ -12,15 +12,20 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
     struct Event: Identifiable, Equatable {
         let id: String
         let title: String
+        /// Markdown (an agent's answer); `preview`, the same as one plain line.
         let body: String
+        let preview: String
         let kind: String
         let ask: String
         let terminal: String
+        let session: String
         var read: Bool
         let t: Date
 
         /// An agent waiting on a permission in an app terminal: Approve and Deny answer it.
         var approvable: Bool { kind == "waiting" && ask == "permission" && !terminal.isEmpty && !read }
+        /// An agent's session at its prompt (not asking a question there): a reply goes back into it.
+        var repliable: Bool { (!terminal.isEmpty || !session.isEmpty) && ["answer", "report", "error", ""].contains(ask) && (kind == "waiting" || kind == "done") }
     }
 
     /// A voice note sent: on its way, saved (what it said), or failed (why).
@@ -72,8 +77,9 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
             let r = try await ask(["do": "inbox"])
             events = (r["events"] as? [[String: Any]] ?? []).compactMap { e in
                 guard let id = e["id"] as? String, let title = e["title"] as? String else { return nil }
-                return Event(id: id, title: title, body: e["body"] as? String ?? "", kind: e["kind"] as? String ?? "info",
-                             ask: e["ask"] as? String ?? "", terminal: e["terminal"] as? String ?? "", read: e["read"] as? Bool ?? false,
+                return Event(id: id, title: title, body: e["body"] as? String ?? "", preview: e["preview"] as? String ?? e["body"] as? String ?? "",
+                             kind: e["kind"] as? String ?? "info", ask: e["ask"] as? String ?? "", terminal: e["terminal"] as? String ?? "",
+                             session: e["session"] as? String ?? "", read: e["read"] as? Bool ?? false,
                              t: Date(timeIntervalSince1970: (e["t"] as? Double ?? 0) / 1000))
             }
             unread = r["unread"] as? Int ?? events.filter { !$0.read }.count
@@ -83,10 +89,12 @@ final class PhoneLink: NSObject, ObservableObject, WCSessionDelegate {
         }
     }
 
-    /// Answer an event (approve, deny, read): what happened, in a word or a line.
-    func answer(_ id: String, _ answer: String) async -> (ok: Bool, text: String) {
+    /// Answer an event (approve, deny, read, or reply with `text`): what happened, in a word or a line.
+    func answer(_ id: String, _ answer: String, text: String? = nil) async -> (ok: Bool, text: String) {
         do {
-            let r = try await ask(["do": "answer", "id": id, "answer": answer])
+            var message: [String: Any] = ["do": "answer", "id": id, "answer": answer]
+            if let text { message["text"] = text }
+            let r = try await ask(message)
             if let i = events.firstIndex(where: { $0.id == id }), !events[i].read { events[i].read = true; unread = max(0, unread - 1) }
             WKInterfaceDevice.current().play(.success)
             return (true, r["text"] as? String ?? "Done")

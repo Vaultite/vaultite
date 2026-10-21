@@ -1,23 +1,25 @@
-// The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for each new event, unless it's
-// about what the user is looking at; the header button steps aside while the panel is in a sidebar.
+// The Inbox's frontend: a toast (and the Mac's notification while the window is behind) for what the server says to
+// tell (`nt`), unless the user is looking at it; the header button steps aside while the panel is in a sidebar.
 import { useEffect, useRef } from "react"
 import { Check, CheckCheck, FolderInput, Inbox as InboxIcon, RotateCcw } from "lucide-react"
 import { AmbientButton, definePlugin, getStore, onTabLayoutChange, notify, openFile, Panel, stampMs, systemNotify, useStore, type Store } from "@vaultite"
-import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, subscribeEvents, targetOf } from "./events"
+import { focusedTarget, follow, GATE_DETAIL, getEvents, markRead, onFresh, openEvent, SESSION_DETAIL, subscribeEvents, targetOf, viewOf } from "./events"
+import { SessionSheet, sessionTitle } from "./Session"
 import { ReplyBlock } from "./Reply"
 import { fileTo, GateSheet, gateTitle, InboxBlock, InboxButton, InboxPage, InboxPanel, InboxRailIcon, markDone, openInbox, toReview, useCount } from "./Inbox"
 import { settings, type Settings } from "./settings"
 import type { InboxEvent, InboxItem } from "./types"
 
 
-/** The user is looking at what an agent's news is about (finished, waiting): its terminal or session is the focused
- *  tab, in a window that's in front. (Not a message meant to be seen, `vau notify`'s: info, error.) */
+/** The user is looking at what an agent's news is about (its session needs them): its terminal or session is the
+ *  focused tab, in a window that's in front. (Not a message meant to be seen, `vau notify`'s: info, error.) */
 const watching = (e: InboxEvent) => (e.kind === "done" || e.kind === "waiting") && document.visibilityState === "visible" && document.hasFocus() &&
-  targetOf(e) === focusedTarget()
+  [targetOf(e), viewOf(e)].includes(focusedTarget())
 
-/** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a day's learnings, a log). */
+/** A toast's text: the title and the body's first line, short (the whole body is in the Inbox: a session's answer, a
+ *  day's learnings, a log). */
 function toastText(e: InboxEvent) {
-  const first = e.gate ? "" : e.body?.split("\n").map((l) => l.replace(/^[-*>#\s]+/, "").trim()).find(Boolean) ?? ""
+  const first = e.gate ? "" : e.preview || (e.body?.split("\n").map((l) => l.replace(/^[-*>#\s]+/, "").trim()).find(Boolean) ?? "")
   if (!first) return e.title
   return first.length > 140 ? `${e.title}: ${first.slice(0, 139).trimEnd()}…` : `${e.title}: ${first}`
 }
@@ -31,7 +33,7 @@ function announce(e: InboxEvent, s: Settings) {
       action: to ? { label: "Open", run: () => openEvent(e) } : undefined,
     })
   }
-  if (s.notifications !== false && !document.hasFocus()) systemNotify(e.title, e.body ?? "")?.then((clicked) => { if (clicked) openEvent(e) })
+  if (s.notifications !== false && !document.hasFocus()) systemNotify(e.title, e.preview || e.body || "")?.then((clicked) => { if (clicked) openEvent(e) })
 }
 
 /** When a result last had news (its thread's latest report, else when it came) as ms. */
@@ -45,7 +47,7 @@ function Background({ store }: { store: Store }) {
   useEffect(() => follow(), [])
   useEffect(() => onFresh((e) => announce(e, settings.get())), [])
   // A result that just arrived (an agent's inbox_add, a clip, a file written there): said once, like an event. Not the
-  // ones there when the app loads, nor one coming back (Undo).
+  // ones there when the app loads, nor one coming back (Undo), nor a report (its session's row tells it, on every machine).
   const known = useRef<Set<string> | null>(null)
   const review = toReview(store)
   useEffect(() => {
@@ -54,7 +56,7 @@ function Background({ store }: { store: Store }) {
     for (const r of review) {
       if (seen.has(r.id)) continue
       seen.add(r.id)
-      if (first || Date.now() - latestAt(r) > 10 * 60_000) continue
+      if (first || Date.now() - latestAt(r) > 10 * 60_000 || r.session || r.terminal) continue
       if (settings.get().toasts !== false) notify(`In your inbox: ${r.title}`, { id: `inbox-${r.id}`, action: { label: "Open", run: () => openFile(`${r.id}.md`) } })
       if (settings.get().notifications !== false && !document.hasFocus()) {
         systemNotify("In your inbox", r.title)?.then((clicked) => { if (clicked) openFile(`${r.id}.md`) })
@@ -82,9 +84,11 @@ function Preview() {
   return (
     <Panel title="Inbox" icon={InboxIcon} tint="var(--inbox)">
       <p className="text-[15px] leading-[20px] text-muted-foreground">
-        What your agents tell you, in one place. When Claude Code or another coding agent finishes or waits for an answer, a toast
-        says so (and a system notification, while the app is in the background), with a click to its terminal. Results to read
-        later, like an agent's research or a clipped page, land in the Inbox folder, to mark done (into Inbox/.archive/) or file away.
+        What your agents tell you, in one place. When a session of Claude Code or another coding agent needs you (it asks
+        something, wants an approval, or answered with something to read), its row says so, with a toast (and a system
+        notification, while the app is in the background); open it to read its answer and reply. A turn done with nothing
+        for you goes in quietly. Results to read later, like an agent's research or a clipped page, land in the Inbox folder,
+        to mark done (into Inbox/.archive/) or file away.
       </p>
     </Panel>
   )
@@ -115,7 +119,10 @@ export default definePlugin({
     inbox: { title: "Inbox", heading: false, sort: 20, hidden: true, view: "inbox", flyout: { icon: InboxRailIcon }, render: (ctx) => <InboxPanel {...ctx} /> },
   },
   views: { inbox: { icon: InboxIcon, title: () => "Inbox", render: ({ store, focused }) => <InboxPage store={store} focused={focused} /> } },
-  details: { [GATE_DETAIL]: { title: (_s, [id]) => gateTitle(id), render: (_s, [id]) => <GateSheet id={id} /> } },
+  details: {
+    [GATE_DETAIL]: { title: (_s, [id]) => gateTitle(id), render: (_s, [id]) => <GateSheet id={id} /> },
+    [SESSION_DETAIL]: { title: (_s, [id]) => sessionTitle(id), render: (_s, [id]) => <SessionSheet id={id} /> },
+  },
   blocks: { inbox: ({ store, options }) => <InboxBlock store={store} options={options} />, reply: (ctx) => <ReplyBlock {...ctx} /> },
   files: { types: ["inbox"], folders: ["Inbox"], icon: InboxIcon, tint: "var(--inbox)" },
   fileMenu: (path) => {

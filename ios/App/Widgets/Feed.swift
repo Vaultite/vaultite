@@ -39,14 +39,16 @@ enum Feed {
     /// `page`: the Today page, which a tap outside a routine opens. `off`: the server has no routines (Today is off there).
     struct Routines: Codable { let date: String; var page: String? = nil; let routines: [Routine]; var off: Bool? = nil }
 
-    /// An agent waiting for the user (an unread `waiting` event); `ask` permission with a terminal: Approve and Deny.
+    /// An agent's session that needs the user (an unread `waiting` event), on any of the machines; `ask` permission with
+    /// a terminal: Approve and Deny (answered on the machine it runs on). `preview`: its body as one plain line.
     struct Waiting: Codable, Hashable, Identifiable {
         let id: String
         let title: String
         let body: String?
+        let preview: String?
         let ask: String?
         let terminal: String?
-        var answerable: Bool { ask == "permission" && terminal != nil && !(terminal ?? "").contains("@") }
+        var answerable: Bool { ask == "permission" && terminal != nil }
     }
 
     /// The user's date, as the vault writes it (YYYY-MM-DD).

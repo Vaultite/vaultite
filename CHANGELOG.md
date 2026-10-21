@@ -6,6 +6,13 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Inbox: each agent session is one row, there only when it needs you (it asks, wants an approval, or its turn ended
+  with a question or an answer to read, judged from its last message by a small fast model), bold until you open it;
+  its sheet shows the answer drawn and a reply that goes back into the session. A turn done with nothing for you goes in
+  quietly, and only what needs you toasts and notifies (rate limited). No more "Claude Code finished" per turn.
+- Another machine's sessions reach this app again after a laptop sleeps or changes network, and their permissions are
+  approved, denied and replied to from here, the phone (Reply on the notification) and the watch; only the machine the
+  session runs on sends the phone's push.
 - Ask an agent in the background: a small box (the palette's look) takes a question, and Enter starts it in a new
   Claude Code session with no tab, where the workspace's new sessions go (the agent, account and machine are picked
   under the field, remembered per workspace); a toast says what was asked, with Open. `vau terminal ask` does the same.

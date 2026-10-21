@@ -148,7 +148,7 @@ struct EventRow: View {
             Image(systemName: icon).foregroundStyle(tint).font(.footnote).padding(.top, 2)
             VStack(alignment: .leading, spacing: 2) {
                 Text(event.title).font(.footnote.weight(event.read ? .regular : .semibold)).lineLimit(2)
-                if !event.body.isEmpty { Text(event.body).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
+                if !event.preview.isEmpty { Text(event.preview).font(.caption2).foregroundStyle(.secondary).lineLimit(2) }
                 Text(event.t, format: .relative(presentation: .named)).font(.caption2).foregroundStyle(.tertiary)
             }
         }
@@ -174,7 +174,7 @@ struct EventRow: View {
     }
 }
 
-/// One event, with its buttons: Approve and Deny for a permission, else Mark read.
+/// One event, with its buttons: Approve and Deny for a permission, else a reply (dictated) to a session and Mark read.
 struct EventView: View {
     @ObservedObject var link: PhoneLink
     let id: String
@@ -186,7 +186,7 @@ struct EventView: View {
             if let e = link.events.first(where: { $0.id == id }) {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(e.title).font(.headline)
-                    if !e.body.isEmpty { Text(e.body).font(.footnote) }
+                    if !e.body.isEmpty { Text(markdown(e.body)).font(.footnote) }
                     Text(e.t, format: .relative(presentation: .named)).font(.caption2).foregroundStyle(.secondary)
                     if let said {
                         Text(said.text).font(.footnote).foregroundStyle(said.ok ? .green : .red)
@@ -196,20 +196,33 @@ struct EventView: View {
                             .tint(.green).disabled(busy)
                         Button(role: .destructive) { act("deny") } label: { Label("Deny", systemImage: "xmark") }
                             .disabled(busy)
-                    } else if !e.read {
-                        Button { act("read") } label: { Label("Mark read", systemImage: "envelope.open") }
+                    } else {
+                        if e.repliable {
+                            TextFieldLink(prompt: Text("Your reply")) { Label("Reply", systemImage: "arrowshape.turn.up.left") } onSubmit: { text in
+                                if !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { act("reply", text) }
+                            }
                             .disabled(busy)
+                        }
+                        if !e.read {
+                            Button { act("read") } label: { Label("Mark read", systemImage: "envelope.open") }
+                                .disabled(busy)
+                        }
                     }
                 }
             }
         }
     }
 
-    private func act(_ answer: String) {
+    private func act(_ answer: String, _ text: String? = nil) {
         busy = true
         Task {
-            said = await link.answer(id, answer)
+            said = await link.answer(id, answer, text: text)
             busy = false
         }
+    }
+
+    /// An agent's answer drawn, not raw: its inline Markdown (bold, code, links), its lines kept.
+    private func markdown(_ md: String) -> AttributedString {
+        (try? AttributedString(markdown: md, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(md)
     }
 }

@@ -3,7 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { type AgentAsk, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
-  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts } from "../../../core/agents.ts"
+  priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts, lastTurn } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
 import { Conversation, titleOf, userText, WANTED } from "./rollout.ts"
@@ -317,6 +317,14 @@ async function session(id: string) {
   const t = await transcript(id)
   return t && { ...t.talk.head, title: scan.names.get(id) || t.talk.head.title, entries: t.talk.entries }
 }
+
+/** A session's latest turn: the user's last message and Codex's last answer (the service "agent-turn:codex": the Inbox
+ *  reads it as a turn ends). The session running in `terminal` when `session` isn't given. */
+plugin.provide("agent-turn:codex", async (terminal: string, session = "") => {
+  const id = session || (terminal ? (await live()).find((l) => l.terminal === terminal)?.id ?? "" : "")
+  const t = id ? await transcript(id) : null
+  return t ? { session: id, ...lastTurn(t.talk.entries) } : null
+})
 
 // ---------- Terminal runs it (the service "agent:codex")
 

@@ -4,8 +4,8 @@ import UserNotifications
 /// The Inbox's events as the phone's notifications (and so the watch's): the app asks to notify, registers with Apple's
 /// push service and gives its token to the server it opened last (POST /api/inbox/devices; the server sends,
 /// plugins/core/inbox/push.ts). A notification's buttons answer it (the op inbox.answer): Approve and Deny on an agent
-/// asking permission (category "permission"), Mark read on the rest ("event"). The watch registers the same categories
-/// (Watch/Notifications.swift), so its buttons are the same.
+/// asking permission (category "permission"), Reply (typed, or dictated on the watch) on a session's answer ("reply"),
+/// Mark read on the rest ("event"). The watch registers the same categories (Watch/WatchApp.swift).
 final class Push: NSObject, UNUserNotificationCenterDelegate {
     static let shared = Push()
 
@@ -14,6 +14,10 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
         UNNotificationCategory(identifier: "permission", actions: [
             UNNotificationAction(identifier: "approve", title: "Approve", options: [.authenticationRequired]),
             UNNotificationAction(identifier: "deny", title: "Deny", options: [.destructive]),
+        ], intentIdentifiers: []),
+        UNNotificationCategory(identifier: "reply", actions: [
+            UNTextInputNotificationAction(identifier: "reply", title: "Reply", options: [], textInputButtonTitle: "Send", textInputPlaceholder: "Your reply"),
+            UNNotificationAction(identifier: "read", title: "Mark read", options: []),
         ], intentIdentifiers: []),
         UNNotificationCategory(identifier: "event", actions: [
             UNNotificationAction(identifier: "read", title: "Mark read", options: []),
@@ -62,23 +66,30 @@ final class Push: NSObject, UNUserNotificationCenterDelegate {
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         guard let id = response.notification.request.content.userInfo["event"] as? String else { return }
         let answer: String
+        var text: String?
         switch response.actionIdentifier {
         case "approve": answer = "approve"
         case "deny": answer = "deny"
         case "read": answer = "read"
+        case "reply":
+            answer = "reply"
+            text = (response as? UNTextInputNotificationResponse)?.userText
+            if (text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return }
         default: return // the notification itself: the app opens
         }
         do {
-            _ = try await Self.answer(id, answer)
+            _ = try await Self.answer(id, answer, text: text)
         } catch {
-            Self.say("Couldn't \(answer == "read" ? "mark it read" : answer): \(Servers.say(error))")
+            Self.say("Couldn't \(answer == "read" ? "mark it read" : answer == "reply" ? "send the reply" : answer): \(Servers.say(error))")
         }
     }
 
-    /// Answer an event on the server (the op inbox.answer): what it did, in a line.
-    static func answer(_ id: String, _ answer: String) async throws -> String {
-        _ = try await Servers.call("POST", "ops/inbox.answer", ["id": id, "answer": answer])
-        return answer == "approve" ? "Approved" : answer == "deny" ? "Denied" : "Read"
+    /// Answer an event on the server (the op inbox.answer; `text`, a reply's): what it did, in a line.
+    static func answer(_ id: String, _ answer: String, text: String? = nil) async throws -> String {
+        var body: [String: Any] = ["id": id, "answer": answer]
+        if let text { body["text"] = text }
+        _ = try await Servers.call("POST", "ops/inbox.answer", body)
+        return answer == "approve" ? "Approved" : answer == "deny" ? "Denied" : answer == "reply" ? "Sent" : "Read"
     }
 
     /// A local notification: something the user asked for from a notification didn't happen.

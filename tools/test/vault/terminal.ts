@@ -299,7 +299,7 @@ export default async ($: VaultTest) => {
     const { execFileSync } = await import("node:child_process")
     const dir = path.join(tmp, "osc-hooks"), file = path.join(dir, "state"), mark = path.join(dir, "state.osc")
     fs.mkdirSync(dir)
-    const set = term.stateCommand(file, null, mark)
+    const set = term.stateCommand(file, mark)
     execFileSync("/bin/sh", ["-c", set("waiting", "permission")])
     const before = fs.readFileSync(file, "utf8")
     fs.writeFileSync(mark, "")

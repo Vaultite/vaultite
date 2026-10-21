@@ -395,6 +395,18 @@ export type Said = { kind: "user" | "assistant"; text: string; at: string }
 export type Entry = Said | Tool
 export type Head = { title: string; cwd: string; model: string; first: string; last: string; branch: string }
 
+/** A conversation's latest turn: the user's last message and the agent's last answer after it ("" while there's none),
+ *  and when that answer came (else the message), in ms. What an agent's service "agent-turn:<agent>" answers. */
+export function lastTurn(entries: Entry[]): { prompt: string; text: string; at: number } {
+  let prompt = "", text = "", at = 0
+  for (let i = entries.length - 1; i >= 0; i--) {
+    const e = entries[i]
+    if (e.kind === "assistant" && !text) { text = e.text; at = Date.parse(e.at) || 0 }
+    else if (e.kind === "user") { prompt = e.text; at ||= Date.parse(e.at) || 0; break }
+  }
+  return { prompt, text, at }
+}
+
 /** Long texts cut short: a view is for reading a conversation back, not for the raw data. */
 export const truncate = (s: string, n = 4000) => (s.length > n ? `${s.slice(0, n)}\n… (${(s.length - n).toLocaleString("en-US")} more characters)` : s)
 

@@ -9,10 +9,11 @@ export const cli: PluginCli = {
   commands: [{
     name: "inbox",
     after: "notify",
-    summary: "What's new in the inbox (results to review, agents' events); add a result; an agent's hook posts here.",
-    usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --summary <text> | reply <path> <text> | done <path> [--title <title>] | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <answer> | push <title> | voice <text> | clear]",
-    help: `The Inbox: results to review (files in Inbox/, status new) and what coding agents said (events, kept on the
-server's machine until read, then for a week: finished, waiting for you). Without a subcommand: both, newest first. The subcommands are
+    summary: "What's new in the inbox (results to review, agents' sessions that need you, events); add a result; an agent's hook posts here.",
+    usage: "vau inbox [add <title> [--body <text>] [--source <url>] [--from <who>] | report <title> --summary <text> | reply <path|id> <text> | done <path> [--title <title>] | hook <agent> [<json>] | read [<id>...] | unread <id>... | answer <id> <approve|deny|reply|read> [--text <text>] | push <title> | voice <text> | clear]",
+    help: `The Inbox: results to review (files in Inbox/, status new), coding agents' sessions while they need you (one row
+each: a question, an approval, an answer to read) and other events, kept on the server's machine until read, then for a
+week. Without a subcommand: all of it, newest first. The subcommands are
 operations: vau inbox.add --help explains one (inbox.list, inbox.add, inbox.report, inbox.reply, inbox.done,
 inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
 
@@ -26,6 +27,7 @@ inbox.read, inbox.unread, inbox.answer, inbox.push, inbox.voice, inbox.clear).
   vau inbox report "Sidebar fixed" --summary "..." --questions "Ship it?" --images /tmp/after.png
                                               end a task you were handed: a report the user replies to
   vau inbox reply "Inbox/Sidebar fixed.md" "Yes, ship it"   the reply, typed into the agent's session
+  vau inbox reply mg3k2a-1f9c0e "The second one"            the same, to a session's row (ids: vau inbox)
   vau inbox done "Inbox/Sidebar fixed.md"     archive a result (--title names it anew)
 
 Hooks (for an agent started outside the app; the app's own terminals need none): \`vau inbox hook <agent>\` reads the

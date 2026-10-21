@@ -1,5 +1,5 @@
-// The Inbox (plugins/core/inbox): events (posted, an agent's hook about a terminal, `vau notify`) toast and count on
-// the header's button; results (a file in Inbox/, one through the API) too; the Inbox view (Done with Undo, File to…,
+// The Inbox (plugins/core/inbox): events (posted, an agent's session that needs you, `vau notify`) toast and count on
+// the header's button; a session's sheet (Approve and Deny, its answer, the reply); results (a file in Inbox/, one through the API) too; the Inbox view (Done with Undo, File to…,
 // read and unread, the right-click menu); the sidebar panel (unread only; show_read); the block on a page; a phone.
 // Screenshots in the out dir. WRITES Inbox/, Notes/Filed/, Qa inbox.md, sidebars.json (put back) and starts a shell: throwaway
 // server only (then `tmux -L vaultite-<port> kill-server`).
@@ -46,34 +46,79 @@ check("an event toasts", !!(await toastWith("Backup finished: 12 GB in 4 min")),
 check("and counts on the button", (await until(async () => (await count()) === 1)) === true, await count())
 await shot(page, "1-toast-and-badge")
 
-// 2. An agent's hook about a terminal: Open goes to it, which reads it.
+// 2. An agent's session asking permission in a terminal: a toast; Open shows its sheet (what it asks, Approve and
+// Deny); its Open session goes to the terminal.
 const term = `qa${Date.now().toString(36)}`
 await page.goto(`${B}#view/terminal%2F${term}`)
 await until(() => page.locator(".xterm").count())
 await wait(1500)
 await page.goto(`${B}#file/${enc(PAGE)}`)
 await wait(800)
-await api("POST", `inbox/hook?agent=claude&terminal=${term}&state=waiting&prev=working`, { hook_event_name: "Notification", message: "Claude needs your permission to use Bash", session_id: "qa-session" })
-const waitingToast = await toastWith("Claude Code is waiting for you")
-check("an agent waiting: a toast naming it and what it asks", !!waitingToast && waitingToast.includes("permission to use Bash"), await toasts().allInnerTexts())
-await page.locator("[data-sonner-toast]", { hasText: "is waiting for you" }).getByRole("button", { name: "Open" }).click()
-check("Open goes to its terminal", !!(await until(() => page.evaluate((t) => location.hash.includes(`terminal%2F${t}`) || location.hash.includes(`terminal/${t}`), term))), await page.evaluate(() => location.hash))
+await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Notification", notification_type: "permission_prompt", message: "Claude needs your permission to use Bash", session_id: "qa-session" })
+const waitingToast = await toastWith("permission to use Bash")
+check("a session asking: a toast saying what it asks", !!waitingToast, await toasts().allInnerTexts())
+await page.locator("[data-sonner-toast]", { hasText: "permission to use Bash" }).getByRole("button", { name: "Open" }).click()
+const sheet = page.locator("[data-session-sheet]")
+check("Open shows its sheet, with Approve and Deny (no reply: it's answered there)", !!(await until(() => sheet.count())) && (await sheet.locator("[data-gate=approve]").count()) === 1 &&
+  (await sheet.locator("[data-reply]").count()) === 0, await sheet.count())
 let ev = await api("GET", "inbox/events")
-check("and reads it", ev.events.find((e) => e.kind === "waiting")?.read === true, ev.events)
+check("a permission isn't read by opening it (its answer reads it)", ev.events.find((e) => e.ask === "permission")?.read !== true, ev.events)
+await wait(400)
+await shot(page, "2-session-sheet-permission")
+await sheet.getByRole("button", { name: "Open session" }).click()
+check("Open session goes to its terminal", !!(await until(() => page.evaluate((t) => location.hash.includes(`terminal%2F${t}`) || location.hash.includes(`terminal/${t}`), term))), await page.evaluate(() => location.hash))
 
 // 3. While the user looks at that terminal, its news is read at once, never toasted.
 await page.bringToFront()
 const before = (await toasts().allInnerTexts()).length
-await api("POST", `inbox/hook?agent=claude&terminal=${term}&state=idle&prev=working`, {})
+await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "UserPromptSubmit" })
+await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Stop", last_assistant_message: "Done. Shall I also update the docs?" })
 await wait(1500)
 ev = await api("GET", "inbox/events")
-const finished = ev.events.find((e) => e.kind === "done" && e.terminal === term)
+const asked = ev.events.find((e) => e.terminal === term)
 const focused = await page.evaluate(() => document.hasFocus())
 if (focused) {
-  check("watching its terminal: read, not toasted", finished?.read === true && !(await toasts().allInnerTexts()).some((t) => t.includes("Claude Code finished")), [finished, await toasts().allInnerTexts(), before])
+  check("watching its terminal: its answer is read, not toasted", asked?.read === true && !(await toasts().allInnerTexts()).some((t) => t.includes("update the docs")), [asked, await toasts().allInnerTexts(), before])
 } else console.log("skip (the page has no focus here): watching its terminal")
 
-// 4. vau notify is an event too.
+// 3b. A session answering elsewhere: one row (bold), a toast; its sheet shows the answer as Markdown (read once open),
+// and the reply goes into its terminal. A turn done with nothing for the user: quiet, read, no toast.
+await page.goto(`${B}#file/${enc(PAGE)}`)
+await wait(800)
+const other = `qb${Date.now().toString(36)}`
+await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "Stop", session_id: "qa-other", cwd: "/tmp/lighthouse",
+  last_assistant_message: "Two ways to fix the **flaky test**:\n\n1. Await the write\n2. Retry the read\n\nWhich one do you want?" })
+check("a session that needs you: a toast with its answer's first line", !!(await toastWith("lighthouse: Two ways to fix the flaky test")), await toasts().allInnerTexts())
+await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "UserPromptSubmit" })
+await api("POST", `inbox/hook?agent=claude&terminal=${other}`, { hook_event_name: "Stop", last_assistant_message: "" })
+await wait(1200)
+ev = await api("GET", "inbox/events")
+const rows = ev.events.filter((e) => e.terminal === other)
+check("one row per session; a quiet turn after leaves its answer to read as it was", rows.length === 1 && rows[0].read !== true && rows[0].preview?.startsWith("Two ways"), rows)
+const quiet = `qc${Date.now().toString(36)}`
+const toastsBefore = (await toasts().allInnerTexts()).length
+await api("POST", `inbox/hook?agent=claude&terminal=${quiet}`, { hook_event_name: "Stop", cwd: "/tmp/quiet", last_assistant_message: "" })
+await wait(1500)
+ev = await api("GET", "inbox/events")
+check("a turn done with nothing for you: read, no toast", ev.events.find((e) => e.terminal === quiet)?.read === true && (await toasts().allInnerTexts()).length <= toastsBefore, ev.events.find((e) => e.terminal === quiet))
+await page.locator("[data-sonner-toast]", { hasText: "Two ways" }).getByRole("button", { name: "Open" }).click()
+check("its sheet: the answer drawn as Markdown", !!(await until(() => sheet.locator("strong", { hasText: "flaky test" }).count())) && (await sheet.locator("ol li").count()) === 2, await sheet.innerText().catch(() => ""))
+check("opened, it's read", !!(await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.id === rows[0].id)?.read === true)))
+await wait(400)
+await shot(page, "2b-session-sheet-answer")
+// The reply goes into its session: here its terminal, still running (a shell, so the reply runs as a command).
+await page.keyboard.press("Escape")
+await api("POST", `inbox/hook?agent=claude&terminal=${term}`, { hook_event_name: "Stop", last_assistant_message: "Ready. What should I echo?" })
+const termRow = await until(async () => (await api("GET", "inbox/events")).events.find((e) => e.terminal === term && !e.read))
+await page.locator("[data-sonner-toast]", { hasText: "What should I echo" }).getByRole("button", { name: "Open" }).click()
+await until(() => sheet.locator("[data-reply]").count())
+await sheet.locator("[data-reply]").fill("echo qa-replied")
+await sheet.getByRole("button", { name: "Send" }).click()
+const typed = await until(async () => ((await api("GET", `terminals/${term}/screen`))?.lines ?? []).join("\n").includes("qa-replied"), 10000)
+check("Send: the reply typed into its terminal, and the row read", !!typed && (await api("GET", "inbox/events")).events.find((e) => e.id === termRow?.id)?.read === true,
+  (await api("GET", `terminals/${term}/screen`).catch(() => ({})))?.lines?.slice(-5))
+
+// 4. vau notify is an event too.// 4. vau notify is an event too.
 vau("notify", "Wrote the weekly review", "--action-open", "Welcome.md")
 check("vau notify: a toast with Open", !!(await toastWith("Wrote the weekly review")))
 
@@ -260,6 +305,17 @@ if (pbutton) {
   check("phone: it opens the Inbox", !!(await until(() => ph.locator("[data-inbox-view]").count())))
   await wait(500)
   await shot(ph, "8-phone-inbox")
+  // A session that needs you: its row opens its sheet, the answer and the reply, in the phone's width.
+  await api("POST", `inbox/hook?agent=claude&terminal=qp${Date.now().toString(36)}`, { hook_event_name: "Stop", cwd: "/tmp/harbor",
+    last_assistant_message: "The release needs a **version bump** first.\n\n- Bump to 0.6.1\n- Or keep 0.6.0 and retag\n\nWhich should I do?" })
+  const prow = ph.locator("[data-inbox-view] [data-event]", { hasText: "harbor" })
+  await until(() => prow.count())
+  await prow.locator("button").first().tap()
+  const psheet = ph.locator("[data-session-sheet]")
+  check("phone: a session's row opens its sheet, with the reply", !!(await until(() => psheet.locator("[data-reply]").count())) &&
+    await ph.evaluate(() => document.documentElement.scrollWidth <= 390), await psheet.count())
+  await wait(600)
+  await shot(ph, "9-phone-session")
 }
 
 rmSync(path.join(VAULT, PAGE), { force: true })

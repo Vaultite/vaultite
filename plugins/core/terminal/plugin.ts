@@ -361,12 +361,10 @@ const watching = new Set<string>()
 async function watchFor(id: string, agent: string) {
   const asks = await asksOf(agent)
   if (!asks.length) return
-  const said = () => fs.existsSync(stateFile(id)) || (!!osc.get(id)?.status && !!plugin.service("inbox:state"))
+  const said = () => fs.existsSync(stateFile(id)) || !!osc.get(id)?.status
   for (let b = await backendOf(id); b && !said(); b = await backendOf(id)) {
     const hit = await askOn(b, id, asks)
     if (hit?.id !== asking.get(id)?.id) {
-      if (hit && !plugin.service("inbox:state")) plugin.service("inbox:event")?.({ source: agent, kind: "waiting", ask: "permission", key: `ask-${id}`, terminal: id,
-        title: `${agentName(agent) ?? agent} is waiting for you`, body: hit.says })
       if (hit) asking.set(id, hit)
       else asking.delete(id)
       stateChanged(id)
@@ -414,14 +412,11 @@ function agentMissing(id: string, agent: string) {
   void plugin.runOp("ui.notify", { text: `${name} isn't installed on this machine: install it, then start it again`, error: true, terminal: id }).catch(() => {})
 }
 
-/** A hook's command marking a terminal's state in `file` (and `tell`, the Inbox's, of news: $prev, the hook's JSON on
- *  stdin); nothing once file `osc` is there (the agent speaks OSC 7501, which says it all). */
-export function stateCommand(file: string, tell?: ((s: AgentState) => string) | null, osc?: string | null) {
+/** A hook's command marking a terminal's state in `file` (the stream hears it: "inbox:state"); nothing once file `osc`
+ *  is there (the agent speaks OSC 7501, which says it all). */
+export function stateCommand(file: string, osc?: string | null) {
   const mark = (s: AgentState, kind?: string | null) => `printf %s ${kind && s === "waiting" ? `${s}:${kind}` : s} > ${shellQuote(file)} 2>/dev/null || true`
-  const news: Record<AgentState, string> = { idle: `[ "$prev" = working ]`, waiting: `[ "$prev" != waiting ]`, working: `[ "$prev" = waiting ]` }
-  const set = !tell ? mark
-    : (s: AgentState, kind?: string | null) => `prev=$(cat ${shellQuote(file)} 2>/dev/null); prev=\${prev%%:*}; ${mark(s, kind)}; if ${news[s]}; then ${tell(s)}; fi`
-  return osc ? (s: AgentState, kind?: string | null) => `[ -e ${shellQuote(osc)} ] || { ${set(s, kind)}; }` : set
+  return osc ? (s: AgentState, kind?: string | null) => `[ -e ${shellQuote(osc)} ] || { ${mark(s, kind)}; }` : mark
 }
 
 /** The shell command an agent's terminal runs, and where (null: a plain shell). */
@@ -429,10 +424,8 @@ async function agentRun(id: string, prompt: string | null = null, dark: boolean 
   const a = agentOf(id)
   if (!a) return null
   try { fs.mkdirSync(STATES, { recursive: true }); forgetState(id) } catch { /* unmarked */ }
-  // With the Inbox hearing states (inbox:state), hooks are only for an agent that doesn't speak OSC 7501; before it
-  // does, they also tell it themselves (inbox:hook), whatever the agent speaks.
-  const states = !!plugin.service("inbox:state")
-  const set = stateCommand(stateFile(id), states ? null : plugin.service("inbox:hook")?.(a.name, id), states ? oscMark(id) : null)
+  // (hooks only for an agent that doesn't speak OSC 7501: until it does, they mark its state)
+  const set = stateCommand(stateFile(id), oscMark(id))
   try {
     const report = plugin.service("activity:report")
     const run = await plugin.service(`agent:${a.name}`)!({ resume: a.resume, context: agentContext(), state: set,

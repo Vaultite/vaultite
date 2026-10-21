@@ -1,5 +1,5 @@
-// The Inbox drawn (header button, panel, tab, block): only what needs the user, results to review and agents' unread
-// events; read ones are on the page, folded under Read (with the setting show_read, the last day's stay, greyed).
+// The Inbox drawn (header button, panel, tab, block): results to review, sessions that need the user (bold until read)
+// and unread events; read ones are folded under Read on the page (show_read: the last day's stay, greyed).
 import { useEffect, useState, type MouseEvent, type ReactNode } from "react"
 import {
   Bell, Check, CheckCheck, ChevronRight, CircleAlert, CircleCheck, ExternalLink, FileText, FolderInput, Globe, Inbox as InboxIcon, Mail, MailOpen,
@@ -7,7 +7,7 @@ import {
 } from "lucide-react"
 import {
   askMove, askMoveMany, Badged, Bar, Button, cn, currentFile, Empty, fmtAgo, getStore, haptic, HeadingButton, isArchived, isViewOpen, Loading, LoadingRows, menuBelow, menuFor,
-  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead,
+  notify, notifyError, openFile, openView, optimistic, Panel, pluginFileGroups, plural, put, rightClickBelow, rowMenu, selectClick, selectedAttr, setProperty, SheetHead, snippet,
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
@@ -23,10 +23,15 @@ export const toReview = (store: Store): InboxItem[] => (store.inbox ?? []).filte
 /** The results already dealt with: done (so in Inbox/.archive/; an old one archived without it too), newest first. */
 const settled = (store: Store): InboxItem[] => (store.inbox ?? []).filter((r) => !waiting(r))
 
+/** A report's session row: the report is listed itself (to review), so the row isn't, nor counted. */
+const shadowed = (e: InboxEvent, store: Store) => e.ask === "report" && !!e.link && toReview(store).some((r) => pathOf(r) === e.link)
+/** The events a list shows. */
+const listed = (events: InboxEvent[], store: Store) => events.filter((e) => !shadowed(e, store))
+
 /** How many things are new: unread events and results to review. */
 export function useCount(store: Store) {
-  const { unread } = useEvents()
-  return unread + toReview(store).length
+  const { events } = useEvents()
+  return listed(events, store).filter((e) => !e.read).length + toReview(store).length
 }
 
 export const openInbox = () => openView("inbox", { newTab: !isViewOpen("view:inbox") })
@@ -293,7 +298,8 @@ function FoldButton({ earlier, all, toggle, className }: { earlier: number; all:
 const small = "grid size-5 cursor-pointer place-items-center rounded-[4px] text-muted-foreground hover:bg-foreground/[0.08] hover:text-foreground"
 
 export function InboxPanel({ store, open, file }: SidebarCtx) {
-  const { events, unread } = useEvents()
+  const { unread } = useEvents()
+  const events = listed(useEvents().events, store)
   const results = toReview(store)
   const { shown: latest, earlier, all, toggle } = useFold(events, 8)
   useTick()
@@ -314,7 +320,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           </PanelRow>
         ))}
         {latest.map((e) => (
-          <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.body ? `${e.title}: ${e.body}` : e.title} time={fmtAgo(e.t, { short: true })}
+          <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.preview || e.body ? `${e.title}: ${e.preview || snippet(e.body!)}` : e.title} time={fmtAgo(e.t, { short: true })}
             dim={e.read} icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
             <GateButtons e={e} className={small} size="size-3.5" />
             {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
@@ -367,6 +373,8 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   // (one that leads nowhere opens in place, its whole body, and stays where it is while the page shows it)
   const [whole, setWhole] = useState(false)
   const asks = answerable(e)
+  // (an agent's answer is Markdown: one plain line here, whole in its sheet)
+  const line = e.preview || (e.body ? snippet(e.body) : "")
   return (
     <SwipeRow actions={() => eventSwipe(e)} className={pageSwipe}>
     <div data-event={e.id} data-kind={e.kind} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}
@@ -376,9 +384,9 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
       <button type="button" className="flex min-w-0 flex-1 cursor-pointer items-center gap-3 text-left" onClick={(ev) => { if (selectClick(ev, SELECT, key)) return; if (!targetOf(e)) { setWhole(!whole); markRead([e.id]); return } openEvent(e); touched?.(e.id) }}>
         <EventIcon e={fresh ? { ...e, read: false } : e} className="size-[18px] shrink-0" />
         <span className="min-w-0 flex-1">
-          <span className={cn("line-clamp-2 text-[15px] leading-[20px]", (!e.read || fresh) && "font-medium")}>{e.title}</span>
-          {(e.body || e.machineLabel) && <span data-tip={whole ? undefined : e.body} data-tip-trunc
-            className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}>{[e.body, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
+          <span className={cn("line-clamp-2 text-[15px] leading-[20px]", (!e.read || fresh) && "font-semibold")}>{e.title}</span>
+          {(e.body || e.machineLabel) && <span data-tip={whole ? undefined : line} data-tip-trunc
+            className={cn("block text-[13px] text-muted-foreground", whole ? "whitespace-pre-wrap break-words" : "max-md:line-clamp-2 md:truncate")}>{[whole ? e.body : line, e.machineLabel && `on ${e.machineLabel}`].filter(Boolean).join(" · ")}</span>}
         </span>
         {!asks && <span className="shrink-0 text-[13px] text-muted-foreground tabular-nums">{fmtAgo(e.t, { short: true })}</span>}
       </button>
@@ -431,7 +439,8 @@ function Lists({ store, events: ne, results: nr, fresh, touched, all: dealt }: {
   /** With what's dealt with, folded at the bottom (the Inbox page). */
   all?: boolean
 }) {
-  const { events, ready } = useEvents()
+  const { ready } = useEvents()
+  const events = listed(useEvents().events, store)
   const results = toReview(store).slice(0, nr)
   const { shown: latest, earlier, rest, all, toggle } = useFold(ne ? events : [], ne, fresh)
   useTick()
@@ -515,7 +524,7 @@ export function InboxPage({ store, focused }: { store: Store; focused: boolean }
         )}
       </div>
       <p className="mb-4 text-[13px] text-muted-foreground">
-        Results to review (files in Inbox/) and what your coding agents said: finished, waiting for you. Events are kept on this machine until read, then for a week.
+        Results to review (files in Inbox/), and your coding agents' sessions when they need you: a question, an approval, an answer to read. Each session is one row, read once you open it or reply.
       </p>
       <Lists store={store} events={20} results={100} fresh={fresh} touched={touched} all />
     </div>

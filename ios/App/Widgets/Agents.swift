@@ -2,8 +2,8 @@ import AppIntents
 import SwiftUI
 import WidgetKit
 
-/// Agents waiting for the user (unread `waiting` events), with Approve and Deny for a permission (the op inbox.answer),
-/// as the notification has. Kept current by the server's widget push when one starts or stops waiting.
+/// Agents' sessions that need the user (unread `waiting` events), with Approve and Deny for a permission (the op
+/// inbox.answer), as the notification has. Kept current by the server's widget push when one starts or stops waiting.
 
 struct ApproveEvent: AppIntent {
     static let title: LocalizedStringResource = "Approve"
@@ -120,7 +120,7 @@ struct WaitingRow: View {
         HStack(alignment: .center, spacing: 8) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(event.title).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                Text(event.body ?? "").font(.subheadline).lineLimit(2)
+                Text(event.preview ?? event.body ?? "").font(.subheadline).lineLimit(2)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             if buttons && event.answerable {

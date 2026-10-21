@@ -12,7 +12,7 @@ export type Apns = { key_id: string; team_id: string; key: string }
 /** The most of a body a notification shows. */
 export const BODY_MAX = 500
 /** What a notification says and does: its buttons come from its category (Push.swift registers them). */
-export type Note = { title: string; body?: string; category?: "permission" | "event"; thread?: string; urgent?: boolean; data?: Record<string, string> }
+export type Note = { title: string; body?: string; category?: "permission" | "reply" | "event"; thread?: string; urgent?: boolean; data?: Record<string, string> }
 
 const FILE = () => path.join(LOCAL, "push", "devices.json")
 const HOSTS = { sandbox: "https://api.sandbox.push.apple.com", production: "https://api.push.apple.com" }
