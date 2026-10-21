@@ -49,6 +49,10 @@ if (process.env.VAULTITE_QUIET) {
   app.focus = () => {}
   void app.whenReady().then(() => app.dock?.hide())
 }
+// A copy a script drives (VAULTITE_QUIET, or Playwright's launch, which always passes a debugging port; the app's own,
+// for agents, is added below) plays nothing aloud: a test's YouTube page would sound on whatever the Mac outputs to,
+// AirPods included. VAULTITE_SOUND=1 for a test that needs it.
+if ((process.env.VAULTITE_QUIET || app.commandLine.hasSwitch("remote-debugging-port")) && !process.env.VAULTITE_SOUND) app.commandLine.appendSwitch("mute-audio")
 // A Mac takes a window's icon from the bundle; on Linux each window carries it (the taskbar, Alt+Tab), else Electron's.
 if (LINUX) app.on("browser-window-created", (_e, w) => w.setIcon(ICON))
 // VAULTITE_BEHIND=1 (npm run app:dev): the windows opened at launch wait to be shown until the user switches to the app,
