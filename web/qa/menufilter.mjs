@@ -108,7 +108,7 @@ try {
   check("the filter: only the matching panels", (await list("left")) === "files:files" && !(await list("right")), [await list("left"), await list("right")])
   await page.fill("[data-customize-sidebars] input", "")
   await page.click("[data-restore-sidebars]")
-  check("Restore defaults: each panel where it comes", !!(await until(async () => (await saved()) === "search:search|pages:pages|terminal:sessions|files:files" && (await saved("right")) === "companion:conversations")), [await saved(), await saved("right")])
+  check("Restore defaults: each panel where it comes", !!(await until(async () => (await saved()) === "search:search|pages:pages|buttons:buttons|terminal:sessions|files:files" && (await saved("right")) === "companion:conversations")), [await saved(), await saved("right")])
   check("...the button undoes it now", (await page.locator("[data-restore-sidebars]").innerText()) === "Undo restore")
   await page.click("[data-restore-sidebars]")
   check("...Undo puts them back", !!(await until(async () => (await saved("right")) === "outline:outline|pages:pages")), await saved("right"))

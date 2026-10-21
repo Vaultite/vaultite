@@ -115,7 +115,7 @@ export function pasteMode(d: string, was: boolean) {
 const settle = (text: string) => Math.min(1000, 150 + Math.floor(text.length / 4))
 
 // ---------- Vaultite's vau first on PATH: a login shell's files (macOS' path_helper, Homebrew's shellenv) put theirs
-// before what the shell was given, so the shell puts VAULTITE_BIN first again once they've run.
+// before what the shell was given, so the shell puts VAULTITE_BIN (and QA's VAULTITE_AGENT_BIN) first again after them.
 
 /** The shells' startup files (`shellFiles`): zsh's ZDOTDIR and bash's rcfile. */
 export const SHELL_DIR = path.join(runtimeDir(), "vaultite-terminal", "shell")
@@ -123,8 +123,8 @@ export const SHELL_DIR = path.join(runtimeDir(), "vaultite-terminal", "shell")
  *  meanwhile; the last one read (.zlogin, or .zshrc when not a login shell) gives ZDOTDIR back and puts vau first. */
 const zshDone = [
   "if [[ -z $VAULTITE_USER_ZDOTDIR && $ZDOTDIR == $HOME ]]; then unset ZDOTDIR; fi",
-  "if [[ -n $VAULTITE_BIN ]]; then path=($VAULTITE_BIN ${path:#${(b)VAULTITE_BIN}}); fi",
-  "unset _vau_ours _vau_zdot",
+  "for _vau_d in $VAULTITE_AGENT_BIN $VAULTITE_BIN; do path=($_vau_d ${path:#${(b)_vau_d}}); done",
+  "unset _vau_ours _vau_zdot _vau_d",
 ]
 const zshFile = (name: string, last: string[] = []) => [
   "# Vaultite's terminals start zsh here (ZDOTDIR): the user's own startup files, then Vaultite's vau first on PATH.",
@@ -144,7 +144,8 @@ const SHELL_FILES: Record<string, string> = {
     "if [ -r /etc/profile ]; then . /etc/profile; fi",
     "for _vau_f in ~/.bash_profile ~/.bash_login ~/.profile; do if [ -r \"$_vau_f\" ]; then . \"$_vau_f\"; break; fi; done",
     "unset _vau_f",
-    "if [ -n \"$VAULTITE_BIN\" ]; then PATH=\"$VAULTITE_BIN:$PATH\"; fi",
+    "for _vau_d in \"$VAULTITE_AGENT_BIN\" \"$VAULTITE_BIN\"; do if [ -n \"$_vau_d\" ]; then PATH=\"$_vau_d:$PATH\"; fi; done",
+    "unset _vau_d",
     "",
   ].join("\n"),
 }
@@ -164,7 +165,7 @@ export function shellFiles() {
 export function loginArgs(shell: string): string[] {
   const name = path.basename(shell)
   if (name === "bash") return ["--rcfile", path.join(SHELL_DIR, "bashrc"), "-i"]
-  if (name === "fish") return ["-l", "-C", "if set -q VAULTITE_BIN; set -gx PATH $VAULTITE_BIN $PATH; end"]
+  if (name === "fish") return ["-l", "-C", "for _vau_d in $VAULTITE_AGENT_BIN $VAULTITE_BIN; set -gx PATH $_vau_d $PATH; end; set -e _vau_d"]
   return ["-l"]
 }
 

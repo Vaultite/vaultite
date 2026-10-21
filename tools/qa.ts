@@ -1,6 +1,6 @@
 // Every UI QA script (web/qa/*.mjs), each on a fresh sandbox and server, runs kept; exit 1 on any failure (npm run qa).
 // node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
-import { spawn, spawnSync } from "node:child_process"
+import { execFileSync, spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
@@ -55,6 +55,20 @@ function usage(name: string) {
   return (m?.[1] ?? "").match(/<[^>]+>|\[[^\]]+\]/g) ?? []
 }
 
+/** Stand-ins for the coding agents the app starts by name (its own and Vaultite/plugins'): they say their name, then sleep.
+ *  QA's terminals find them first (VAULTITE_AGENT_BIN), so QA never starts a real agent nor finds one missing. */
+function standIns() {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-qa-agents-")), src = path.join(dir, "agent.c")
+  // (compiled, so its process is named as the agent: a script runs as sh, and a copied system binary won't run)
+  fs.writeFileSync(src, `#include <stdio.h>\n#include <string.h>\n#include <unistd.h>\nint main(int c, char **v) { const char *n = strrchr(v[0], '/');
+    printf("%s: a stand-in for QA\\n", n ? n + 1 : v[0]); fflush(stdout); sleep(3600); return 0; }\n`)
+  execFileSync("cc", ["-o", path.join(dir, "claude"), src])
+  fs.rmSync(src)
+  for (const name of ["codex", "agent", "opencode", "openclaw", "hermes"]) fs.linkSync(path.join(dir, "claude"), path.join(dir, name))
+  return dir
+}
+const AGENT_BIN = standIns()
+
 type Server = { base: string, port: number, proc: ReturnType<typeof spawn> }
 async function serve(vault: string, local: string, env: Record<string, string>): Promise<Server> {
   const port = await freePort()
@@ -87,7 +101,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
   const servers: Server[] = []
   const t = Date.now()
   try {
-    const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude }
+    const env: Record<string, string> = { CLAUDE_CONFIG_DIR: claude, VAULTITE_AGENT_BIN: AGENT_BIN }
     // (a made-up plugin directory and git repositories, on this machine: web/qa/pluginstore.mjs)
     // (Vaultite's own plugins a bundle installs come from a made-up Vaultite/plugins, never GitHub)
     env.VAULTITE_GITHUB = officialRepos(path.join(tmp, "repos"))
@@ -165,4 +179,5 @@ const flaky = [...runs].filter(([, rs]) => rs.includes(true) && rs.includes(fals
 if (fails.length) console.log(`\n${fails.join("\n\n")}`)
 console.log(`\n${[...runs.values()].flat().filter(Boolean).length}/${[...runs.values()].flat().length} runs passed` +
   (flaky.length ? `; flaky: ${flaky.join(", ")}` : ""))
+fs.rmSync(AGENT_BIN, { recursive: true, force: true })
 process.exit(fails.length ? 1 : 0)

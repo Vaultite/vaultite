@@ -194,6 +194,10 @@ function fromReq(req: IncomingMessage): From {
   return { remote: typeof req.headers["tailscale-user-login"] === "string", client: iphone ? "iphone" : LOCAL.client }
 }
 
+/** Programs a terminal finds right after vau, before the user's own (the server's VAULTITE_AGENT_BIN): QA's stand-in
+ *  agents, so QA never starts a real one. */
+const AGENT_BIN = process.env.VAULTITE_AGENT_BIN ?? ""
+
 /** What a shell is told about where it runs (see the docstring): Vaultite's variables, and PATH with the app's bin/. */
 function context(id: string | null, from: From): Record<string, string> {
   const bin = vauBin()
@@ -205,7 +209,8 @@ function context(id: string | null, from: From): Record<string, string> {
     VAULTITE_CLIENT: from.client,
     ...(id ? { VAULTITE_TERMINAL: id } : {}),
     VAULTITE_BIN: bin,
-    PATH: [bin, env().PATH].filter(Boolean).join(":"),
+    ...(AGENT_BIN ? { VAULTITE_AGENT_BIN: AGENT_BIN } : {}),
+    PATH: [bin, AGENT_BIN, env().PATH].filter(Boolean).join(":"),
   }
   // zsh reads its startup files from SHELL_DIR, which reads the user's (backend.ts) and puts VAULTITE_BIN first.
   if (path.basename(shell()) === "zsh") {

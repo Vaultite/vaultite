@@ -114,19 +114,20 @@ export default async ($: VaultTest) => {
     check("terminal: the replay is the last scrollback lines", kept.length === 100 && kept[0] === "line 400" && kept.at(-1) === "line 499", kept.length)
     for (let i = 0; i < 2000; i++) tail.push(`\r${"#".repeat(50)} ${i}%`)
     check("terminal: output with no line breaks is held to about 200 characters a line", tail.text().length <= 100 * 200 + 60, tail.text().length)
-    // Vaultite's vau first on PATH after the user's startup files put another vau first (as Homebrew's shellenv does).
+    // Vaultite's vau first on PATH after the user's startup files put another vau first (as Homebrew's shellenv does),
+    // then QA's stand-in agents (VAULTITE_AGENT_BIN) before the user's own.
     const { execFileSync } = await import("node:child_process")
     const { SHELL_DIR, shellArgs, shellFiles } = await import("../../../plugins/core/terminal/backend.ts")
     shellFiles()
-    const home = fs.mkdtempSync(path.join(os.tmpdir(), "vau-shell-")), ours = path.join(home, "ours"), other = path.join(home, "other")
-    for (const d of [ours, other]) { fs.mkdirSync(d); fs.writeFileSync(path.join(d, "vau"), "#!/bin/sh\n", { mode: 0o755 }) }
+    const home = fs.mkdtempSync(path.join(os.tmpdir(), "vau-shell-")), ours = path.join(home, "ours"), other = path.join(home, "other"), agents = path.join(home, "agents")
+    for (const d of [ours, other, agents]) { fs.mkdirSync(d); for (const f of ["vau", "claude"]) if (d !== ours || f === "vau") fs.writeFileSync(path.join(d, f), "#!/bin/sh\n", { mode: 0o755 }) }
     for (const f of [".zprofile", ".bash_profile"]) fs.writeFileSync(path.join(home, f), `PATH="${other}:$PATH"; export FROM_PROFILE=1\n`)
-    const env = { HOME: home, TERM: "dumb", PATH: `${ours}:/usr/bin:/bin`, VAULTITE_BIN: ours }
+    const env = { HOME: home, TERM: "dumb", PATH: `${ours}:${agents}:/usr/bin:/bin`, VAULTITE_BIN: ours, VAULTITE_AGENT_BIN: agents }
     for (const sh of ["/bin/zsh", "/bin/bash"].filter((f) => fs.existsSync(f))) {
-      const zsh = sh.endsWith("zsh"), print = "printf '%s|%s|%s' \"$(command -v vau)\" \"$FROM_PROFILE\" \"${ZDOTDIR-unset}\""
+      const zsh = sh.endsWith("zsh"), print = "printf '%s|%s|%s|%s' \"$(command -v vau)\" \"$(command -v claude)\" \"$FROM_PROFILE\" \"${ZDOTDIR-unset}\""
       let out = ""
       try { out = execFileSync(sh, shellArgs(sh, { command: `${print}; exit` }), { cwd: home, env: { ...env, ...(zsh ? { ZDOTDIR: SHELL_DIR, VAULTITE_ZDOTDIR: SHELL_DIR } : {}) }, stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).toString() } catch (e) { out = String((e as Any).stdout) }
-      check(`terminal: ${path.basename(sh)} runs the user's startup files, then puts Vaultite's vau first`, out === `${path.join(ours, "vau")}|1|unset`, out)
+      check(`terminal: ${path.basename(sh)} runs the user's startup files, then puts Vaultite's vau first and QA's agents next`, out === `${path.join(ours, "vau")}|${path.join(agents, "claude")}|1|unset`, out)
     }
     // An agent's program not installed: its shell's exit 127 marks the state file, which the server tells the user.
     for (const sh of ["/bin/zsh", "/bin/bash", "/opt/homebrew/bin/fish", "/usr/bin/fish"].filter((f) => fs.existsSync(f))) {
