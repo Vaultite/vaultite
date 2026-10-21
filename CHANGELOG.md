@@ -9,7 +9,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Reordering Pinned and Tabs: dropping just under the last row puts it at the end (Pinned no longer unpins it), and
   dropping a pinned page over its own place leaves it there instead of sending it to the bottom.
 - Browser, Block element: what you pick is marked in red but stays on the page until you press Block; Preview (P) hides
-  it for a look. Shields' button no longer goes missing on a page opened as the app starts.
+  it for a look. Shields' button no longer goes missing on a page opened as the app starts, and is just the shield: the count is in its menu.
 - Bundles carry the editor's settings (editor.json): Zen hides notes' properties, and the others show them again.
 - Zen: the page dims softly behind a sidebar slid in, the file bar fades while you type, Files waits folded, and
   "Show in the file tree" (a breadcrumb, Reveal) slides the hidden sidebar in instead of pinning it open.
