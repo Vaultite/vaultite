@@ -3,7 +3,8 @@
 // isn't, nor in no container; the bar shows the tab's container (a chip inside the address; the active tab tinted
 // with appearance tabTint); a site set to always open in Work goes there from a
 // plain link; the container menu moves a tab to another; deleting a container clears its logins. A link from another
-// app opens in a web tab. A page playing sound shows a speaker on its tab, and the bar's button mutes it.
+// app opens in a web tab. A page playing sound shows a speaker on its tab, the bar's button mutes it and the tab's
+// speaker unmutes it.
 // WRITES: the throwaway vault only.
 //   node web/qa/containers.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -26,7 +27,7 @@ const server = http.createServer((req, res) => {
   const headers = { "Content-Type": "text/html; charset=utf-8" }
   if (u.pathname === "/login") headers["Set-Cookie"] = `who=${u.searchParams.get("u")}; Path=/; Max-Age=3600`
   res.writeHead(200, headers)
-  if (u.pathname === "/sound") return res.end(`<!doctype html><title>Sound</title><script>const c = new AudioContext(); const o = c.createOscillator(); const g = c.createGain(); g.gain.value = 0.01; o.connect(g).connect(c.destination); o.start()</script>`)
+  if (u.pathname === "/sound") return res.end(`<!doctype html><title>Sound</title><script>const c = new AudioContext(); const o = c.createOscillator(); o.frequency.value = 20; const g = c.createGain(); g.gain.value = 0.001; o.connect(g).connect(c.destination); o.start()</script>`)
   res.end(`<!doctype html><title>Who</title><p id="who">${u.pathname === "/login" ? "signed in" : `who:${who ?? "nobody"}`}</p>`)
 })
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
@@ -34,9 +35,10 @@ const PORT = server.address().port
 const SITE = `http://127.0.0.1:${PORT}`
 
 // ---------- the app ----------
+// (a muted copy plays nothing, so no page is audible: sound on, the test page's tone too low and deep to hear)
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
+  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_SOUND: "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
 const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
@@ -136,6 +138,8 @@ await win.locator("[data-web-page] button[aria-label='Mute tab']:visible").click
 const muted = () => app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; return w.contentView.children.some((x) => x.webContents && x.webContents !== w.webContents && x.getVisible() && x.webContents.isAudioMuted()) })
 check("… the bar's button mutes it", await until(muted, 5000), null)
 check("… and its tab says muted", await until(async () => (await win.locator("[role=tab][aria-selected=true] svg.lucide-volume-x").count()) === 1, 5000), await activeTab())
+await win.locator("[role=tab][aria-selected=true] [data-icon-action]").click()
+check("… a click on its tab's speaker unmutes it", await until(async () => !(await muted()), 5000), await activeTab())
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()
