@@ -145,7 +145,8 @@ try {
   await wait(900)
   after = await layoutOf()
   check("old heights taller than what panels draw: clamped, no empty room inside", noRoomInside(after) && Math.abs(after.panels.at(-1).bottom - after.end) <= 2, after.panels)
-  await put(DEFAULT); await wait(600)
+  // (back to Pinned's fitted height before measuring: a loaded machine draws the put late)
+  await put(DEFAULT); await until(async () => Math.abs(of(await layoutOf(), "pages:pages").box - pin0.box) <= 1, 8000); await wait(200)
   // Folding a panel and opening it again moves only the panels below it, and comes back to the same place.
   lay = await layoutOf()
   await clickHead("pages:pages"); await wait(500)
@@ -179,10 +180,12 @@ try {
   await page.keyboard.press("Escape")
   await page.evaluate(() => { location.hash = "settings" }); await wait(800)
   await page.click('[data-settings-nav="appearance"]'); await wait(300)
+  // (the sidebars' switches are on Appearance's Sidebars page, a sheet: a second step back)
+  await page.click('[data-settings-row="sidebars"]'); await wait(500)
   await page.click('[aria-label="Scroll sidebar panels separately"]'); await wait(600)
   check("Settings' switch: sidebarScroll is sidebar", (await api("config/appearance")).sidebarScroll === "sidebar", await api("config/appearance"))
   check("...and no dividers then", !(await page.$(`${L} [role=separator]`)))
-  await page.goBack(); await wait(500)
+  await page.goBack(); await wait(300); await page.goBack(); await wait(500)
 
   // ---------- scrolling as one (sidebarScroll: sidebar): a long file tree, the sidebar the one scroller ----------
   await openFolders(true)

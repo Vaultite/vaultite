@@ -105,14 +105,16 @@ check("(the drop point is outside the pop-out, on the main window's bar)", outsi
 check("a tab dragged out of the pop-out onto the main window's bar lands there", await until(async () => JSON.stringify(await tabsOf(page, "main")) === JSON.stringify([a, b])), await tabsOf(page, "main"))
 check("…and the emptied pop-out closed", await gone)
 
-// A tab bar's empty space: Stack tabs, Hide tab bar (and Show tab bar on the bar left).
+// A tab bar's empty space: Stack tabs, Hide tab bar (and Show tab bar on the title row left).
 const bar = await page.locator("[data-tab-bar]").first().boundingBox()
 const empty = async () => page.mouse.click(bar.x + bar.width - 60, bar.y + bar.height / 2, { button: "right" })
 await empty(); await wait(200)
 check("the bar's empty space has Stack tabs", (await page.locator("[role=menuitem]", { hasText: "Stack tabs" }).count()) === 1)
 check("…and Hide tab bar", await menuItem(page, "Hide tab bar"))
 check("…which hides it", await until(async () => (await page.locator("[data-tabs-hidden]").count()) === 1))
-await empty(); await wait(200)
+// Hidden, with pane titles off, the note's bar is the window's title row: its empty part has the bar's menu.
+const fill = await page.locator("[data-view-bar-fill]:visible").first().boundingBox()
+await page.mouse.click(fill.x + fill.width - 4, fill.y + fill.height / 2, { button: "right" }); await wait(200)
 check("…and Show tab bar brings it back", (await menuItem(page, "Show tab bar")) && await until(async () => (await page.locator("[data-tabs-hidden]").count()) === 0))
 
 // Open in new window: it stays here too.

@@ -25,13 +25,14 @@ const menu = page.locator(".cm-tooltip-autocomplete")
 // (Enter picks once the menu shows it and has been open 75 ms, CodeMirror's interactionDelay; before, it's a new line)
 const ready = async (name) => { await menu.locator("li[aria-selected]", { hasText: name }).waitFor(); await wait(100) }
 
-await page.goto(`${B}#file/${encodeURIComponent("Qa slash/Slash note.md")}`); await wait(1500)
-// Editing: live preview.
+await page.goto(`${B}#file/${encodeURIComponent("Qa slash/Slash note.md")}`)
+// Editing: live preview (once the note is drawn in either view: Mod+E on a page still loading toggles the wrong way).
+await page.waitForSelector(".vau-editor .cm-content", { timeout: 30000 }); await wait(300)
 if (!(await page.locator(".vau-editor .cm-content[contenteditable=true]").count())) { await page.keyboard.press("ControlOrMeta+e"); await wait(500) }
 const toEnd = async () => { await page.locator(".vau-editor .cm-line", { hasText: "First line." }).first().click(); await page.keyboard.press("ControlOrMeta+End"); await page.keyboard.press("Enter") }
 await toEnd()
-await page.keyboard.type("/"); await wait(400)
-check("/ at a line's start opens the menu", await menu.isVisible())
+await page.keyboard.type("/")
+check("/ at a line's start opens the menu", await until(() => menu.isVisible()))
 const all = await menu.locator("li").allInnerTexts()
 check(`it lists basics and blocks (${all.length} entries)`, all.some((t) => t.startsWith("Heading 1")) && all.some((t) => /People due/.test(t)))
 await page.screenshot({ path: `${OUT}slash-menu.png` })
@@ -63,10 +64,15 @@ check("no templates: the picker offers examples", empty === 1)
 await page.screenshot({ path: `${OUT}slash-templates-empty.png` })
 await page.getByRole("button", { name: "Add three examples" }).click()
 check("examples written to the templates folder", await until(async () => existsSync(`${VAULT}/${TPL}/Person.md`) && existsSync(`${VAULT}/${TPL}/Journal.md`)))
-await page.keyboard.type("Person"); await wait(300)
+// (the picker opens again once the examples are made: typed before, the keys go nowhere and Enter picks Journal)
+await page.locator("[role=option]", { hasText: "Person" }).waitFor({ timeout: 15000 })
+await page.keyboard.type("Person")
+await page.locator("[role=option][aria-selected=true]", { hasText: "Person" }).waitFor()
 await page.screenshot({ path: `${OUT}slash-templates-pick.png` })
-await page.keyboard.press("Enter"); await wait(2000)
-const hash = decodeURIComponent(await page.evaluate(() => location.hash))
+await page.keyboard.press("Enter")
+const hashNow = async () => decodeURIComponent(await page.evaluate(() => location.hash))
+await until(async () => /People\//.test(await hashNow()), 10000); await wait(500)
+const hash = await hashNow()
 check(`a person template makes a file in People (${hash})`, /People\/Untitled( \d+)?\.md/.test(hash))
 const made = hash.replace(/^#file\//, "")
 const today = new Date(); const iso = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`
