@@ -118,6 +118,9 @@ exports.default = async function sign(context) {
       sealed(app, appex, ["--force", "--timestamp=none", "--sign", id])
       return
     } catch {
+      // The updater (update.sh) waits for the next check instead: an ad hoc build over this Mac's signed app would lose
+      // every permission granted to it, and the grants then made fail again once it's signed.
+      if (process.env.VAULTITE_UPDATING) throw new Error(`sign.cjs: couldn't sign with ${id} (a locked keychain?): not building an update signed ad hoc`)
       console.warn(`sign.cjs: couldn't sign with ${id} (a locked keychain?): signing ad hoc, so macOS will ask for its permissions again`)
     }
   } else console.warn("sign.cjs: no code signing identity in the keychain: signing ad hoc, so macOS will ask for its permissions again after each build")

@@ -37,7 +37,8 @@ build)
       echo "$lock" > node_modules/.lock
     fi
     rm -rf dist-app
-    npm run "$script"
+    # (VAULTITE_UPDATING: electron/sign.cjs fails rather than sign ad hoc)
+    VAULTITE_UPDATING=1 npm run "$script"
     rm -rf "$next" && mkdir -p "$next"
     if [ "$(uname)" = Darwin ]; then mv dist-app/mac*/*.app "$next/"
     else mv dist-app/linux*-unpacked "$next/$(node -p 'require(process.argv[1]).productName' dist-app/linux*-unpacked/resources/app/package.json)"; fi

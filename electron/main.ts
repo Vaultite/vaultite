@@ -1100,7 +1100,9 @@ function checkForUpdate(byHand: boolean) {
     } else if (byHand && code === 3) {
       dialog.showMessageBox({ message: `${app.getName()} is up to date`, detail: `It runs ${BUILD!.commit.slice(0, 7)}, the newest on ${BRANCH}.` })
     } else if (byHand && !quitting) {
-      updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check." : "The new version didn't build.")
+      updateFailed(/^boot: \d+ failed/m.test(out) ? "The new version didn't pass its startup check."
+        : /not building an update signed ad hoc/.test(out) ? "The new version couldn't be signed: the keychain may be locked. The next check tries again."
+        : "The new version didn't build.")
     }
     if (ready !== built()) ready = null
     buildMenu()
