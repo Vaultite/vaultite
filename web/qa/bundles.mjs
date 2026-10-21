@@ -117,7 +117,8 @@ const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the va
 const want = {
   "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),
   "life-os": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.scheme === "flexoki",
-  "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && s.appearance.paneTitles === false && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
+  // (a value that's the app's default is written as no key: paneTitles is off by default)
+  "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && !s.appearance.paneTitles && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
 }
 for (const id of Object.keys(want)) {
   await go(page, B, "bundles")
