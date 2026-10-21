@@ -1,7 +1,7 @@
 // Settings: sections beside the one shown (a sheet each where narrow), headed by Your setup (a way to Setup's page).
 // Plugins add pages (`settingsPages`); `alwaysOn` ones' options are under Features, the others' a gear away in Setup.
 import { useMemo, useState, useEffect, type ReactNode } from "react"
-import { ChevronRight, Keyboard, Palette, PenLine, SlidersHorizontal, type LucideIcon } from "lucide-react"
+import { ChevronRight, Keyboard, Palette, PenLine, ShieldCheck, SlidersHorizontal, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { desktop as desktopApp, type UpdateMode } from "@/core/desktop"
 import { isDesktop } from "@/core/platform"
@@ -20,6 +20,7 @@ import { RailLayout, RailMenu, useRail, type RailItem } from "@/components/RailL
 import { PluginSettings } from "@/components/PluginSettings"
 import { AppearancePanel } from "@/components/Appearance"
 import { EditorPanel } from "@/components/EditorSettings"
+import { PermissionsPanel } from "@/components/Permissions"
 import { Catch } from "@/components/Guard"
 import { notifyError } from "@/core/notify"
 import { API_VERSION, APP_VERSION } from "../../../core/version.ts"
@@ -95,6 +96,11 @@ const CORE: Sec[] = [
   { id: "appearance", label: "Appearance", icon: Palette, render: () => headed("Appearance", Palette, <AppearancePanel />) },
   { id: "editor", label: "Editor", icon: PenLine, render: (store) => headed("Editor", PenLine, <EditorPanel store={store} />) },
   { id: "hotkeys", label: "Hotkeys", icon: Keyboard, render: () => <HotkeysSheet /> },
+  // (macOS's: the desktop app on a Mac only)
+  ...(desktopApp?.permission ? [{ id: "permissions", label: "Permissions", icon: ShieldCheck, render: () => <>
+    <SheetHead icon={ShieldCheck} tint="var(--primary)" title="Permissions" sub="What macOS lets Vaultite do on this Mac" />
+    <PermissionsPanel />
+  </> }] : []),
 ]
 /** The pages plugins that are on add (Connections' AI apps), in plugin order. */
 function pluginPages(disabled: string[]): Sec[] {
@@ -182,6 +188,8 @@ function findable(store: Store, disabled: string[], order: string[], show: Show)
     { id: "hotkeys", label: "Keyboard shortcuts", sub: "Every command's keys", where: "Hotkeys", words: "hotkeys keys bindings", run: () => show("hotkeys") },
     { ...row("vaults", "Manage vaults", "General", "[data-settings-vault]", store.vault.path), words: "vault folder" },
     row("version", "Version", "General", '[data-settings-row="version"]', "Vaultite and its plugin API"),
+    ...(desktopApp?.permission ? [{ id: "permissions", label: "Permissions", sub: "What macOS lets Vaultite do", where: "Settings", run: () => show("permissions"),
+      words: "privacy security macos microphone camera location accessibility screen recording input monitoring automation files folders desktop documents downloads full disk access icloud vault signed signature" }] : []),
     ...(desktopApp?.updates ? [{ ...row("updates", "Updates", "General", '[data-settings-row="updates"]', "Automatic, notify or off"), words: "update upgrade restart" }] : []),
     { ...row("plugin-updates", "Plugin updates", "General", '[data-settings-row="plugin-updates"]', "Vaultite's, all or none"), words: "update automatically plugins" },
   ]

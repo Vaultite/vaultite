@@ -8,6 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
+import { accessOf, type Access } from "../../../core/permissions.ts"
 
 /** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts). */
 export type AgentRun = { command: string; cwd?: string | null }
@@ -368,7 +369,7 @@ const connectTo = (socket: string) => new Promise<Wire>((ok, fail) => {
 const PROTOCOL = 1
 
 /** The keeper at `name` (the tmux socket's naming: vaultite, or vaultite-<port> for a server on another port). */
-export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string } {
+export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string; access(dir: string): Promise<Access | null> } {
   const socket = path.join(runtimeDir(), `vaultite-ptyd${PROTOCOL}-${name}.sock`)
   let ctl: Promise<Wire> | null = null
 
@@ -466,6 +467,17 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
     },
     kill: async (id) => { await ask("kill", { id }) },
     rename: async (from, to) => { await ask("rename", { id: from, to }) },
+    /** Whether the keeper running now can read `dir`; null when none runs (one isn't started for this). */
+    async access(dir) {
+      const w = await running()
+      if (!w) return null
+      let r: Record<string, unknown>
+      try { r = await w.request("access", { path: dir }) } catch (e) {
+        if (/unknown op/.test((e as Error).message)) return { ok: null, why: "its keeper is from an older build, which can't tell" }
+        return { ok: null, why: (e as Error).message }
+      }
+      return accessOf(r.ok ? "" : String(r.code || "EIO"))
+    },
     screen: async (id, lines) => String((await ask("screen", { id, lines })).text ?? ""),
     async send(id, text, enter, o) {
       // (the keeper brackets a paste when its program asked for that: it has the screen's modes)

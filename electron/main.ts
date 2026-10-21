@@ -11,6 +11,7 @@ import "./browser/index.ts"
 import { serverCall } from "./browser/engine.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
+import { macPermissions, permissionAct } from "./permissions.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
 import { plainError, sentence } from "../core/plainerror.ts"
 import * as Setup from "./setup.ts"
@@ -242,11 +243,13 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     },
   })
   child.stderr!.pipe(log)
-  // Its agents' calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers).
+  // Its agents' calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers), and macOS's
+  // permissions (app.permissions: core/coreops/permissions.ts).
   child.on("message", (m: { type?: string; rid?: number; name?: unknown; args?: unknown }) => {
     if (m?.type !== "desktop:call" || typeof m.rid !== "number") return
     const reply = (r: { value?: unknown; error?: string }) => { if (child.connected) child.send({ type: "desktop:reply", rid: m.rid, ...r }) }
-    Promise.resolve().then(() => serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
+    Promise.resolve().then(() => m.name === "app:permissions" ? (MAC ? macPermissions() : null)
+      : serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
       .then((value) => reply({ value }), (e) => reply({ error: e instanceof Error ? e.message : String(e) }))
   })
   return new Promise((ok, fail) => {
@@ -896,6 +899,8 @@ handle("print:pdf", async (w, name: string) => {
 })
 // The audio recorder: macOS asks once whether Vaultite may use the microphone (the page's getUserMedia then works).
 handle("media:microphone", async () => !MAC || systemPreferences.askForMediaAccess("microphone"))
+// Settings > Permissions' buttons (electron/permissions.ts): macOS's prompt, a folder read, or its System Settings pane.
+handle("app:permission", (_w, id: string) => { if (MAC) return permissionAct(str(id)) })
 handle("print:reveal", (_w, p: string) => { if (str(p).endsWith(".pdf")) shell.showItemInFolder(p) })
 // The Mac's notification (the Inbox, window not in front): true once clicked, false when closed. Kept in `shown`
 // until then: one nothing refers to is collected, and its click lost.

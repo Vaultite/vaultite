@@ -346,6 +346,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openItem(newTab, right?)`: "Open in new tab", with Open to the right in its submenu where there are splits (desktop).
 - `openMenu(at, items, up?, again?)`
 - `openNew(path, opts?)`: Open a file just made, in editing with its name ready to type.
+- `openPermissions`: Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older build).
 - `openPlace(p, opts?)`: Open what a place says.
 - `openPluginSettings(id, key?)`: Open a plugin's settings sheet (over the sheet that's open, if any); `key`: the setting to go to (its row's `data-setting`), scrolled to and flashed once the sheet has drawn it.
 - `openSession(src, s, terminalOn, e?, machine?)`: Open a session: the terminal tab it runs in (Terminal plugin), or its conversation in a tab (not a private one's).

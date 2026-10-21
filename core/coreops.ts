@@ -4,6 +4,7 @@ import type { App } from "./app.ts"
 import { bundleOps } from "./coreops/bundles.ts"
 import { contextOps } from "./coreops/context.ts"
 import { devOps } from "./coreops/dev.ts"
+import { permissionOps } from "./coreops/permissions.ts"
 import { secretOps } from "./coreops/secret.ts"
 import { fileOps } from "./coreops/files.ts"
 import { uploadOps } from "./coreops/uploads.ts"
@@ -24,7 +25,7 @@ import { type Op, OpError, quoted } from "./ops.ts"
 /** Every op of the core, in the order the catalog lists them (and `vau --help` its commands): where am I first. */
 export function coreOps(app: App): Op[] {
   return [...contextOps(app), ...fileOps(app), ...typeOps(app), ...propTypeOps(app), ...uploadOps(app), ...pluginOps(app), ...installOps(app), ...bundleOps(app), ...panelOps(app), ...newTabOps(app), ...pageOps(app), ...settingsOps(app), ...itemOps(app),
-    ...docsOps(app), ...uiOps(app), ...secretOps(), ...devOps(), ...opsOps(app)]
+    ...docsOps(app), ...uiOps(app), ...secretOps(), ...permissionOps(app), ...devOps(), ...opsOps(app)]
 }
 
 // ---------- ops: the catalog itself ----------

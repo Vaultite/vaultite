@@ -150,6 +150,11 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
   }
   switch (m.op) {
     case "hello": return { v: V, pid: process.pid, file: SELF, stale: stale() }
+    // Whether this process (its shells with it: macOS asks of the app that started it) can read a folder: the vault, which
+    // macOS may let the app read and not a keeper an older build started. (Off the event loop: a prompt waits for its answer.)
+    case "access":
+      fs.promises.readdir(String(m.path)).then(() => c.send({ re: m.re, ok: true }), (e: NodeJS.ErrnoException) => c.send({ re: m.re, ok: false, code: e.code ?? "" }))
+      return null
     case "create": create(m); return {}
     case "rename": {
       const s = shell(m.id), to = String(m.to ?? "")

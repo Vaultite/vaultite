@@ -17,6 +17,7 @@ import {
 import { runOps } from "./run.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
+import { accessOf, type Access } from "../../../core/permissions.ts"
 
 export type { AgentRun } from "./backend.ts"
 export const plugin = new Plugin(import.meta.url)
@@ -51,6 +52,7 @@ async function inFront(x: Shell): Promise<string | null> {
 const EXITED = 4000 // close code: the shell ended (the client doesn't reconnect)
 const GONE = 4004 // close code: ?attach=1 and the agent's session is gone (the client offers a new one)
 const REFUSED = 4003 // close code: this request may not have a shell (the client shows why)
+const BLOCKED = JSON.stringify({ t: "blocked" })
 
 /** A shell this server shows: its backend's link to it, and the pages' sockets on it. */
 type Session = {
@@ -60,6 +62,7 @@ type Session = {
   out: Tail // its last `scrollback` lines of output (a backend without pictures)
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
   opened?: string // how its start went, for its first tab's span: "spare 12ms", "new 95ms"
+  blocked?: boolean // macOS keeps its shell from the folder its agent runs in: its tabs say so
 }
 const sessions = new Map<string, Session>()
 
@@ -109,6 +112,16 @@ async function backendOf(id: string): Promise<Backend | null> {
 }
 /** A shell with this id runs here (in any backend). */
 const runsHere = async (id: string) => !!(await backendOf(id))
+
+/** Whether a new terminal can read `dir` (app.permissions: the vault): the running keeper's own read (an older build
+ *  may have started it), else this server's, which a keeper started now reads as; tmux and a plugin's backend can't tell. */
+async function access(dir: string): Promise<Access> {
+  const other = pluginBackend()
+  if (other?.preferred && (await other.ready().catch(() => false))) return { ok: null, why: `terminals run in ${other.label}, which can't tell` }
+  if (plugin.settings().backend === "tmux" && tmuxShells) return { ok: null, why: "terminals run in tmux, which can't tell" }
+  return (await keeper.access(dir)) ?? fs.promises.readdir(dir).then((): Access => ({ ok: true }), (e: NodeJS.ErrnoException) => accessOf(e.code ?? "EIO"))
+}
+plugin.provide("terminal:access", access)
 
 /** A file the page sends into terminal `id` (a pasted screenshot, any size), a piece at a time, saved where the shell
  *  can read it: its path once the `last` piece came, else null. `files`: the socket's uploads under way, by the page's id. */
@@ -409,12 +422,14 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   let b = await backendOf(id)
   timing.mark("find")
   const fresh = !b
+  let cwd = "" // (a new agent's folder)
   if (!b) {
     b = await backendForNew()
     // A coding agent: the login shell (interactive, so it has the user's PATH) runs it, then becomes a plain shell.
     const run = await agentRun(id, prompt, dark, how)
     if (agent) timing.mark("agent")
     const spec = { shell: shell(), run, cwd: vaultDir(), env: env(), ctx: context(id, from), cols, rows, scrollback: scrollback() }
+    if (run) cwd = run.cwd || spec.cwd
     timing.tags.how = "spare"
     if (!(b.spares && (await takeSpare(b, id, from, run)))) {
       timing.tags.how = "new"
@@ -473,6 +488,14 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   sessions.set(id, s)
   endedOnPurpose.delete(id)
   listChanged()
+  // An agent whose folder macOS keeps from the keeper stops with its own vague error ("Unexpected"): its tabs say why.
+  if (cwd && backend === keeper && process.platform === "darwin") {
+    void keeper.access(cwd).then((a) => {
+      if (a?.ok !== false) return
+      s.blocked = true
+      for (const ws of s.clients) if (ws.readyState === ws.OPEN) ws.send(BLOCKED)
+    })
+  }
   return { s, fresh }
 }
 
@@ -507,6 +530,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
   listChanged()
   ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws, scrollback: scrollback(), ...(fresh ? { started: s.opened } : {}) }))
   ws.send(JSON.stringify({ t: "size", cols: s.link.cols, rows: s.link.rows }))
+  if (s.blocked) ws.send(BLOCKED)
   if (s.link.snapshot) {
     // The screen and its history as they are now, then what it prints from there on.
     s.pending.add(ws)

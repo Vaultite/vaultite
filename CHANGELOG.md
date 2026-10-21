@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Mac app: Settings, Permissions shows what macOS lets Vaultite do (the vault folder for the app and its terminals,
+  microphone, accessibility, screen recording, folders...), whether the app's signature keeps them across updates, and
+  a way to allow each; `vau permissions` tells agents the same. A terminal macOS keeps from the vault says so.
 - Reordering Pinned and Tabs: dropping just under the last row puts it at the end (Pinned no longer unpins it), and
   dropping a pinned page over its own place leaves it there instead of sending it to the bottom.
 - Browser, Block element: what you pick is marked in red but stays on the page until you press Block; Preview (P) hides

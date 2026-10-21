@@ -174,6 +174,7 @@ export default async ($: VaultTest) => {
     const seen: Record<string, unknown>[] = []
     // (ended even when a step throws: a keeper left behind holds its shells' ptys)
     const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
+    const access: unknown[] = [await keeper.access(tmp)]
     try {
       for (const [id, end] of ways) {
         await keeper.create(id, spec, { spare: id === "leak-spare" })
@@ -186,8 +187,12 @@ export default async ($: VaultTest) => {
         const left = (await waitFor(() => ptys(pid) === 0, 5_000, 100)) ? 0 : ptys(pid)
         seen.push({ id, open, ready, ended, left })
       }
+      access.push(await keeper.access(tmp), await keeper.access(path.join(tmp, "no-such-folder")))
     } finally { stop() }
     check("terminal: the keeper lets go of a shell's pty once it ends", seen.every((s) => (s.open as number) >= 1 && s.ready && s.ended && s.left === 0), seen)
+    // (Settings > Permissions: whether the keeper itself may read the vault, which macOS can refuse it and not the app)
+    check("terminal: the keeper says whether it can read a folder, and never starts for that", JSON.stringify(access) ===
+      JSON.stringify([null, { ok: true }, { ok: false, why: "the folder isn't there" }]), access)
   }
 
   // Routes: * is one segment, a last ** the rest.

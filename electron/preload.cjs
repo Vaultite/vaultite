@@ -48,6 +48,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   printToPDF: call("print:pdf"),
   revealPdf: call("print:reveal"),
   microphone: call("media:microphone"),
+  permission: MAC ? call("app:permission") : undefined,
   notify: call("app:notify"),
   syncMenu: call("menu:sync"),
   // The Dock and other apps' windows (swiftc's helper) are a Mac's only: elsewhere their plugins find nothing.

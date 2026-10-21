@@ -5,6 +5,7 @@ import { onSwitches } from "@/core/switches"
 import { getStore, onStore } from "@/core/data"
 import { get, post, upload as uploadFile } from "@/core/http"
 import { openFile } from "@/core/files"
+import { openDetail } from "@/core/nav"
 import { dismissNotice, notify } from "@/core/notify"
 import { isMac, showLabel } from "@/core/platform"
 import { recentFiles, subscribeScoped, workspacePins } from "@/core/scope"
@@ -55,6 +56,9 @@ export type DesktopApi = {
   revealPdf?: (path: string) => Promise<unknown>
   /** Ask macOS for the microphone (once; later answers come from System Settings): whether it's allowed. */
   microphone?: () => Promise<boolean>
+  /** Settings > Permissions' button for a macOS permission (core/permissions.ts' ids, or "vault"): macOS's own prompt
+   *  where it has one, a folder read, else its System Settings pane. A Mac's only; builds from before it don't have it. */
+  permission?: (id: string) => Promise<unknown>
   /** The Mac's notification: true once it's clicked (the window comes to the front), false when it's dismissed or can't
    *  be shown. Builds of the app from before the Inbox don't have it. */
   notify?: (title: string, body: string) => Promise<boolean>
@@ -268,6 +272,10 @@ export async function savePdf(name: string): Promise<string | null | undefined> 
 /** Before recording: in the desktop app, macOS's permission for the microphone (false: refused). Browsers ask
  *  themselves, so true there. */
 export const askMicrophone = async () => (desktop?.microphone ? desktop.microphone().catch(() => true) : true)
+
+/** Settings > Permissions, what macOS lets the app do: null where there's none (a browser, another system, an older
+ *  build). The terminal's way there when macOS keeps an agent from the vault. */
+export const openPermissions = desktop?.permission ? () => openDetail("settings-section/permissions") : null
 
 /** In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the
  *  window then comes to the front), false when it's dismissed; null in a browser, or an app build without it. */

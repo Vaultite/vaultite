@@ -6,6 +6,21 @@ export default async ($: VaultTest) => {
   const { VAULT, api, app, check, exists, read, tmp, vault, write } = $
   const { vau, conf } = $.vars
   let cr: Any
+  // vau permissions (core/coreops/permissions.ts): outside the desktop app, only whether the server and its terminals read
+  // the vault; the app's signature read from codesign's words.
+  {
+    cr = await vau("permissions", "--json")
+    const r = cr.code === 0 ? JSON.parse(cr.out) : null
+    check("vau permissions: the server reads the vault; macOS's permissions only in the desktop app", r?.vault.path === VAULT &&
+      r.vault.app.ok === true && r.vault.terminals.ok !== false && r.mac === null, cr)
+    cr = await vau("permissions")
+    check("vau permissions: in words", cr.code === 0 && cr.out.includes("- the app can read it") && cr.out.includes("desktop app on a Mac"), cr)
+    const { signingOf, keepsPermissions } = await import("../../../core/permissions.ts")
+    const dev = signingOf("Identifier=app.vaultite.desktop\nAuthority=Developer ID Application: Alice Park (AB12CD34EF)\nAuthority=Developer ID Certification Authority\nTeamIdentifier=AB12CD34EF\n")
+    const adhoc = signingOf("Identifier=Vaultite\nCodeDirectory v=20400 size=1 flags=0x2(adhoc) hashes=3+3 location=embedded\nSignature=adhoc\nTeamIdentifier=not set\n")
+    check("permissions: a Developer ID signature keeps them across updates, an ad hoc one doesn't", dev.kind === "developer-id" && dev.team === "AB12CD34EF" &&
+      keepsPermissions(dev) && adhoc.kind === "adhoc" && !adhoc.team && !keepsPermissions(adhoc), [dev, adhoc])
+  }
   // The core's ops (core/coreops/) through vau: what's around them on this computer (LOCAL), settings key by key, items of
   // any kind, bundles, and the ops that are MCP tools answering an MCP client as the tools do.
   {

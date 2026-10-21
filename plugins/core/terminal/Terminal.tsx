@@ -7,7 +7,7 @@ import { FitAddon } from "@xterm/addon-fit"
 import { WebLinksAddon } from "@xterm/addon-web-links"
 import { WebglAddon } from "@xterm/addon-webgl"
 import "@xterm/xterm/css/xterm.css"
-import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openWebLink, pastedFiles, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
+import { agentOfTerminal, appShortcut, askedAt, closeView, cn, isMac, KeyBar, keyboardBusy, keyboardUp, mintedHere, notifyError, onLook, openMenu, openPermissions, openWebLink, pastedFiles, span, textSize, usePane, useTextSize, useTextSizeWheel, useVisibleArea } from "@vaultite"
 import { closedJustNow, parkTerminal, register, touch, unparkTerminal } from "./sessions"
 
 type RGBA = [number, number, number, number]
@@ -124,7 +124,7 @@ const EXITED = 4000 // the server's close code: the shell ended
 const REFUSED = 4003 // the server's close code: no shell for this page (it said why first)
 const GONE = 4004 // the server's close code: asked only to attach, and the agent's session is gone
 
-type Status = { kind: "live" } | { kind: "connecting"; tries: number } | { kind: "exited"; code: number; signal: number }
+type Status = { kind: "live"; /** macOS keeps it from its agent's folder (the server checked). */ blocked?: boolean } | { kind: "connecting"; tries: number } | { kind: "exited"; code: number; signal: number }
   /** An agent's session that ended by itself (or after its report): the tab stays, with Restart. */
   | { kind: "ended" }
   | { kind: "refused"; reason: string }
@@ -257,6 +257,8 @@ function create(id: string): Live {
         replayNext = !msg.fresh
         l.tmuxScroll = !!msg.tmux
         setStatus({ kind: "live" })
+      } else if (msg.t === "blocked") {
+        setStatus({ kind: "live", blocked: true })
       } else if (msg.t === "unreachable") {
         away = { label: msg.label || msg.machine || "another machine", reason: msg.reason || "isn't answering" }
       } else if (msg.t === "refused") {
@@ -562,6 +564,14 @@ export default function TerminalView({ id, focused, close }: { id: string; focus
     <div className={cn("flex flex-col bg-background", full ? "fixed inset-x-0 z-40 pt-[env(safe-area-inset-top)]" : "relative h-full min-h-[240px] w-full",
       full && !area.keyboard && "pb-[env(safe-area-inset-bottom)]")}
       style={full ? { top: area.top, height: area.height } : undefined}>
+      {status.kind === "live" && status.blocked && (
+        <div role="alert" data-terminal-blocked className="flex shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-4 py-2 text-[13px]">
+          <span className="min-w-0 text-muted-foreground">
+            macOS blocked access to the vault folder{openPermissions ? "" : ": allow Vaultite in System Settings, Privacy and security, Files and folders"}
+          </span>
+          {openPermissions && <button type="button" onClick={openPermissions} className="shrink-0 cursor-pointer rounded-[6px] bg-primary px-2.5 py-1 text-[13px] font-medium text-primary-foreground hover:opacity-90">Permissions</button>}
+        </div>
+      )}
       {/* (isolate: xterm.js's layers' z-indexes stay inside, under the bars below; WebGL's canvases would cover them) */}
       <div className="isolate min-h-0 flex-1 pl-3 pr-1 pt-2 pb-1">
         {/* Touch: no browser text selection or callout on a long press (the terminal's menu opens instead), and the

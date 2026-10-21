@@ -228,6 +228,8 @@ export { phoneFiles, phoneHealth, phoneVoiceNote, type PhoneDownload, type Phone
 export const pluginOn = (id: string) => isEnabled(id, getPrefs().disabled)
 // The Mac's notifications (the desktop app; null in a browser): the Inbox shows one while the window isn't in front.
 export { systemNotify } from "@/core/desktop"
+// Settings > Permissions (the desktop app on a Mac; null elsewhere): the terminal's way there when macOS blocks the vault.
+export { openPermissions } from "@/core/desktop"
 // The Dock's icon (the desktop app; null in a browser): the Dock icon plugin.
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.
