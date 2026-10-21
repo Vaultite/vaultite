@@ -114,6 +114,10 @@ export default async ($: VaultTest) => {
     check("hook route: a permission is asked as one", b.event?.ask === "permission", b)
     ;[st, b] = await api("POST", "ops/inbox.answer", { id: b.event.id, answer: "approve" })
     check("answer: approving needs the terminal running (its question on screen)", st >= 400, [st, b])
+    const asked = (await api("GET", "inbox/events"))[1].events.find((e: Any) => e.session === "perm")?.id
+    await (await import("../../../plugins/core/inbox/plugin.ts")).stillWaiting(0)
+    ;[, list] = await api("GET", "inbox/events")
+    check("a permission whose terminal no longer asks it (here: none runs) is read", list.events.find((e: Any) => e.id === asked)?.read === true, list.events)
     ;[, list] = await api("GET", "inbox/events")
     const done = list.events.find((e: Any) => e.kind === "done")
     ;[st, b] = await api("POST", "ops/inbox.answer", { id: done.id, answer: "approve" })

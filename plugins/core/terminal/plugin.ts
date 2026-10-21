@@ -5,7 +5,7 @@ import type { IncomingMessage } from "node:http"
 import os from "node:os"
 import path from "node:path"
 import { type RawData, WebSocket } from "ws"
-import { type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
+import { type AgentAsk, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
   type Request,
@@ -252,7 +252,45 @@ function agentReady(id: string, agent: string) {
     if (Date.now() < until) setTimeout(look, 50).unref?.()
   }
   look()
+  void watchAsks(id, agent)
 }
+
+const asksOf = (agent: string) => plugin.ask<AgentAsk[]>(`agent-asks:${agent}`, []).catch(() => [] as AgentAsk[])
+/** Which of `asks` terminal `id` shows at its bottom now, if any. */
+export async function askOn(b: Pick<Backend, "screen">, id: string, asks: AgentAsk[]) {
+  const text = asks.length ? (await b.screen(id, 12).catch(() => "")).replace(/\s+$/, "").split("\n").slice(-12).join("\n") : ""
+  return asks.find((a) => a.match.test(text)) ?? null
+}
+/** The question each agent terminal shows that its hooks can't tell (they don't run yet): it waits on the user. */
+const asking = new Map<string, string>()
+
+/** Watches agent terminal `id` until its hooks run (an hour at most) for a question its agent declares: it goes to the
+ *  inbox as a permission (Approve and Deny press its keys), read once it leaves the screen ("terminal:waits"). */
+async function watchAsks(id: string, agent: string) {
+  const asks = await asksOf(agent), until = Date.now() + 3_600_000
+  if (!asks.length) return
+  for (let b = await backendOf(id); b && Date.now() < until && !fs.existsSync(stateFile(id)); b = await backendOf(id)) {
+    const hit = await askOn(b, id, asks)
+    if (hit?.id !== asking.get(id)) {
+      if (hit) plugin.service("inbox:event")?.({ source: agent, kind: "waiting", ask: "permission", key: `ask-${id}`, terminal: id,
+        title: `${agentName(agent) ?? agent} is waiting for you`, body: hit.says })
+      if (hit) asking.set(id, hit.id)
+      else asking.delete(id)
+      listChanged()
+    }
+    await new Promise((r) => setTimeout(r, 1000))
+  }
+  if (asking.delete(id)) listChanged()
+}
+
+/** The question terminal `id` shows (its agent's, or `agent`'s for one run by hand in a plain shell), or null. */
+async function askIn(id: string, agent = "") {
+  const b = await backendOf(id), name = agentOf(id)?.name ?? agent
+  return b && /^[\w-]{1,40}$/.test(name) ? { b, hit: await askOn(b, id, await asksOf(name)) } : { b, hit: null }
+}
+
+/** Whether terminal `id` waits on the user now: a question on its screen, or its hooks said so. */
+plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || stateOf(id) === "waiting")
 
 /** What an agent's state file says when its shell had no such command (exit 127): it isn't installed here. */
 const MISSING = "missing"
@@ -654,7 +692,7 @@ async function localList(): Promise<Listed[]> {
       // Who's watching: the app's sockets plus holds besides this server's own (tmux attach in a real terminal), so a session
       // no tab shows reads as detached.
       const clients = s ? s.clients.size + Math.max(0, x.attached - 1) : x.attached
-      const state = stateOf(x.id) ?? x.state
+      const state = stateOf(x.id) ?? (asking.has(x.id) ? "waiting" : x.state)
       const front = await inFront(x)
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
@@ -807,6 +845,23 @@ plugin.route("POST", "terminals/*", async (req) => {
   if (!starting.has(id)) starting.set(id, start(id, 80, 24, LOCAL, prompt, savedDark(), { allow, model: word(req.body?.model), effort: word(req.body?.effort) }).finally(() => starting.delete(id)))
   await starting.get(id)!
   return { id, started: true, agent: agentOf(id)?.name ?? null }
+}, { lock: false })
+
+/** Answer the question an agent terminal shows (approve or deny) with the keys its agent declares (`agent`: whose, for
+ *  one run by hand in a plain shell); 409 when it shows none. */
+plugin.route("POST", "terminals/*/answer", async (req) => {
+  await owner(req)
+  const id = localId(req), answer: unknown = req.body?.answer
+  if (answer !== "approve" && answer !== "deny") throw new HTTPError(400, "answer: approve or deny")
+  await mustRun(id)
+  const { b, hit } = await askIn(id, typeof req.body?.agent === "string" ? req.body.agent : "")
+  if (!b || !hit) throw new HTTPError(409, "its terminal isn't asking anything now")
+  for (const [i, k] of hit[answer].entries()) {
+    if (i) await new Promise((r) => setTimeout(r, 150))
+    await b.send(id, k, false)
+  }
+  setTimeout(listChanged, 400)
+  return { id, ask: hit.id, answer }
 }, { lock: false })
 
 plugin.route("POST", "terminals/*/send", async (req) => {

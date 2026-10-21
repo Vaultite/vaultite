@@ -357,6 +357,9 @@ export type AgentStart = {
   model?: string | null
   effort?: string | null
 }
+/** A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last lines, and the keys
+ *  that answer it, each written apart. Terminal tells the inbox of one shown before the agent's hooks run. */
+export type AgentAsk = { id: string; match: RegExp; says: string; approve: string[]; deny: string[] }
 /** How a session is started, besides its id and first prompt. */
 export type AgentHow = Pick<AgentStart, "allow" | "model" | "effort">
 

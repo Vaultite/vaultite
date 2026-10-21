@@ -1,6 +1,6 @@
 // The Inbox's events in the app: one socket while the plugin is on; changes apply here at once and the server's answer
 // comes back over the socket.
-import { agentsOn, canRunAgents, cell, del, detailPath, getTabLayout, isDesktop, isViewOpen, notifyError, onMachine, openDetail, openFile, openView, post, type Agent, type TabLayout } from "@vaultite"
+import { agentsOn, canRunAgents, cell, del, detailPath, getTabLayout, isDesktop, isViewOpen, notifyError, onMachine, op, openDetail, openFile, openView, post, type Agent, type TabLayout } from "@vaultite"
 import type { InboxEvent } from "./types"
 
 export type Events = { events: InboxEvent[]; unread: number; ready: boolean }
@@ -82,17 +82,22 @@ export function markUnread(ids: string[]) {
   void post("inbox/events/unread", { ids }).catch(undo(before, "Couldn't mark it unread"))
 }
 
-/** Seeing the Inbox reads what's new, but not what the user marked unread. */
+/** Seeing the Inbox reads what's new, but not what the user marked unread, nor a permission still waiting (it's read once
+ *  answered). */
 export function markSeen() {
-  const ids = getEvents().events.filter((e) => !e.read && !e.kept).map((e) => e.id)
+  const ids = getEvents().events.filter((e) => !e.read && !e.kept && !answerable(e)).map((e) => e.id)
   if (ids.length) markRead(ids)
 }
 
-/** Answer a permission the server waits on (a gate): the server runs what was asked, or refuses it. */
-export async function answerGate(e: InboxEvent, answer: "approve" | "deny") {
+/** A permission waiting on an answer: one the server waits on (a gate), or an agent's in a terminal here. */
+export const answerable = (e: InboxEvent) => (e.gate ? !e.answer : e.kind === "waiting" && e.ask === "permission" && !!e.terminal && !e.terminal.includes("@") && !e.read)
+
+/** Answer a permission: a gate's server runs what was asked or refuses it; an agent's terminal gets the keys for it. */
+export async function answerAsk(e: InboxEvent, answer: "approve" | "deny") {
   set(getEvents().events.map((x) => (x.id === e.id ? { ...x, answer, read: true, kept: undefined } : x)))
   try {
-    await post(`inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
+    if (e.gate) await post(`inbox/events/${encodeURIComponent(e.id)}/answer`, { answer })
+    else await op("inbox.answer", { id: e.id, answer })
   } catch (err) {
     set(getEvents().events.map((x) => (x.id === e.id ? e : x)))
     throw err

@@ -105,6 +105,17 @@ export default async ($: VaultTest) => {
     check("terminal: @<machine> is another machine's", JSON.stringify(splitMachine("claude-k3j2@studio")) === JSON.stringify(["claude-k3j2", "studio"]) &&
       JSON.stringify(splitMachine("k3j2h1g0")) === JSON.stringify(["k3j2h1g0", ""]) && term.TERMINAL_ID.test("claude_work-k3@box-2") &&
       !term.TERMINAL_ID.test("a@B") && !term.TERMINAL_ID.test("a@b@c"), splitMachine("claude-k3j2@studio"))
+    // An agent's questions on its screen: Claude Code's folder trust (before its hooks run) and permission, by their last lines.
+    const cc = await import("../../../plugins/core/claude-code/plugin.ts")
+    const asks = cc.plugin.services["agent-asks:claude"]()
+    const showing = (text: string) => ({ screen: async () => text })
+    const trust = await term.askOn(showing("Accessing workspace:\n\n /Users/sam/Notes\n\n ❯ No, exit\n   Yes, I trust this folder\n\n Enter to confirm · Esc to cancel\n\n"), "t", asks)
+    check("terminal: Claude Code's folder trust is a question, approved by choosing Yes (its default is No)", trust?.id === "trust" &&
+      JSON.stringify(trust.approve) === JSON.stringify(["\x1b[B", "\r"]) && JSON.stringify(trust.deny) === JSON.stringify(["\x1b"]), trust)
+    const perm = await term.askOn(showing(" Bash command\n   rm -rf build\n Do you want to proceed?\n ❯ 1. Yes\n   2. No"), "t", asks)
+    check("terminal: its permission dialog is one too, Yes first", perm?.id === "permission" && JSON.stringify(perm.approve) === JSON.stringify(["\r"]), perm)
+    const above = await term.askOn(showing(["Do you want to proceed?", ...Array.from({ length: 20 }, (_, i) => `output ${i}`)].join("\n")), "t", asks)
+    check("terminal: a question scrolled up isn't asked now", above === null, above)
     // What a page gets back from a backend without pictures: the last `scrollback` lines, whole chunks, and a line
     // redrawn without end (a progress bar) held to its share.
     const { Tail } = await import("../../../plugins/core/terminal/backend.ts")

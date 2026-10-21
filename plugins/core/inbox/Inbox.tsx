@@ -11,7 +11,7 @@ import {
   SidebarHeading, startSelecting, SwipeRow, useAgents, useKeptCount, useSelectable, useSelected, useSelecting, useSidebars, useStore, useTick, type MenuItem,
   type SidebarCtx, type Store, type SwipeAction,
 } from "@vaultite"
-import { agentOf, answerGate, forget, getEvents, markRead, markSeen, markUnread, openEvent, targetOf, useEvents } from "./events"
+import { agentOf, answerable, answerAsk, forget, getEvents, markRead, markSeen, markUnread, openEvent, targetOf, useEvents } from "./events"
 import type { InboxEvent, InboxItem } from "./types"
 import { settings } from "./settings"
 
@@ -241,16 +241,16 @@ function PanelRow({ icon, label, time, active, dim, select, swipe, onClick, onCo
 
 const stop = (fn: () => void) => (e: MouseEvent) => { e.preventDefault(); e.stopPropagation(); fn() }
 
-const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answerGate(e, a)).then(
+const answer = (e: InboxEvent, a: "approve" | "deny") => (haptic("medium"), answerAsk(e, a)).then(
   () => notify(a === "approve" ? "Approved" : "Denied"), (err) => notifyError(err, "Couldn't answer it"))
 
 /** A row shows all of what it asks: one short line. */
 const shownWhole = (e: InboxEvent) => !e.body || (e.body.length <= 80 && !e.body.includes("\n"))
 
-/** Approve and Deny, on a permission the server waits on (an app connected to the MCP) that isn't answered yet. Approve
- *  answers at once only when the row shows the whole request; else it opens it. */
+/** Approve and Deny, on a permission not answered yet (the server's, or an agent's in a terminal). Approve answers at once
+ *  only when the row shows the whole request; else it opens it. */
 function GateButtons({ e, className, size }: { e: InboxEvent; className: string; size: string }) {
-  if (!e.gate || e.answer) return null
+  if (!answerable(e)) return null
   return <>
     <button type="button" className={className} aria-label="Approve" data-tip="Approve" data-gate="approve" onClick={stop(() => shownWhole(e) ? void answer(e, "approve") : openEvent(e))}>
       <Check className={size} strokeWidth={2.25} /></button>
@@ -317,7 +317,7 @@ export function InboxPanel({ store, open, file }: SidebarCtx) {
           <PanelRow key={e.id} data-event={e.id} data-kind={e.kind} select={eventKey(e)} swipe={() => eventSwipe(e)} label={e.body ? `${e.title}: ${e.body}` : e.title} time={fmtAgo(e.t, { short: true })}
             dim={e.read} icon={<EventIcon e={e} className="size-4 shrink-0" />} onClick={() => openEvent(e)} onContextMenu={menuFor(rowMenu(SELECT, eventKey(e), eventItems(e, !e.read)))}>
             <GateButtons e={e} className={small} size="size-3.5" />
-            {!(e.gate && !e.answer) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
+            {!answerable(e) && <HeadingButton icon={MoreHorizontal} label="More" onClick={rightClickBelow} />}
             <HeadingButton icon={X} label="Dismiss" onClick={stop(() => { haptic("medium"); void forget(e.id) })} />
           </PanelRow>
         ))}
@@ -366,7 +366,7 @@ function EventRow({ e, fresh, touched }: { e: InboxEvent; fresh?: boolean; touch
   const key = eventKey(e), picked = useSelected(SELECT, key)
   // (one that leads nowhere opens in place, its whole body, and stays where it is while the page shows it)
   const [whole, setWhole] = useState(false)
-  const asks = !!e.gate && !e.answer
+  const asks = answerable(e)
   return (
     <SwipeRow actions={() => eventSwipe(e)} className={pageSwipe}>
     <div data-event={e.id} data-kind={e.kind} data-unread={!read || undefined} data-select-key={key} {...selectedAttr(picked)}

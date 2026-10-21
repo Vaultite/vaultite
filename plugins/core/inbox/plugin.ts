@@ -272,6 +272,23 @@ function markUnread(ids: Set<string>) {
   return n
 }
 
+/** A permission an agent asks in a terminal here is read once it no longer waits ("terminal:waits"): answered anywhere,
+ *  refused, or its terminal ended. Checked every few seconds, a new one left to show first. */
+const ASKED = 5000
+export async function stillWaiting(after = ASKED) {
+  const waits = plugin.service("terminal:waits")
+  if (!waits) return
+  const gone = new Set<string>()
+  for (const e of list()) {
+    if (e.read || e.gate || e.kind !== "waiting" || e.ask !== "permission" || !e.terminal || e.terminal.includes("@") || Date.now() - e.t < after) continue
+    if (!(await waits(e.terminal, e.source))) gone.add(e.id)
+  }
+  if (gone.size) markRead(gone)
+}
+const waitTimer = setInterval(() => { if (plugin.loaded) void stillWaiting().catch(() => {}) }, ASKED)
+waitTimer.unref?.()
+plugin.onUnload(() => clearInterval(waitTimer))
+
 /** The agent's question was answered (its terminal went from waiting back to working): its waiting events are read. */
 function resolve(terminal: string, session: string) {
   const hit = list().filter((e) => !e.read && e.kind === "waiting" && ((terminal && e.terminal === terminal) || (session && e.session === session)))
@@ -1090,9 +1107,9 @@ plugin.op({
   id: "inbox.answer",
   cli: "inbox answer",
   summary: "Answer an event, as its phone notification's buttons do: approve or deny the permission an agent waits on, or read.",
-  help: `approve presses Enter in the agent's terminal (its first choice, Yes), deny presses Escape (No); only for an agent
-asking permission in an app terminal (the event's ask is permission), and only while its terminal still shows the
-question. read marks the event read.
+  help: `approve and deny press the keys the agent's plugin gives for the question its terminal shows (Claude Code's
+permission: Enter, its first choice Yes, or Escape); only for an agent asking permission in an app terminal (the event's
+ask is permission), and only while its terminal still shows the question. read marks the event read.
 
   vau inbox answer lzk3p2-a1b2c3 approve`,
   kind: "write",
@@ -1114,11 +1131,7 @@ question. read marks the event read.
         throw new OpError("only an agent asking permission in this machine's app terminal can be approved or denied", 409)
       }
       if (e.read) throw new OpError("it was answered already", 409)
-      const t = encodeURIComponent(e.terminal)
-      // Its question at the bottom of the screen (Claude Code's dialog: the question, then its choices), not one above.
-      const screen = await ctx.api("GET", `terminals/${t}/screen?lines=12`) as { lines: string[] }
-      if (!/Do you want to/.test(screen.lines.slice(-12).join("\n"))) throw new OpError("its terminal isn't asking for a permission now", 409)
-      await ctx.api("POST", `terminals/${t}/send`, answer === "approve" ? { text: "", enter: true } : { text: "\x1b", enter: false })
+      await ctx.api("POST", `terminals/${encodeURIComponent(e.terminal)}/answer`, { answer, agent: e.source })
     }
     await ctx.api("POST", "inbox/events/read", { ids: [id] })
     return { id, answer, title: e.title, terminal: e.terminal ?? null }

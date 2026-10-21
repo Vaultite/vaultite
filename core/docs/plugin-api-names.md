@@ -796,6 +796,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 
 ### `@vaultite/core/agents.ts` (plugin.ts: a coding agent's plugin)
 - `Account`: One of an agent's accounts: Claude Code's config folders, Hermes' homes, OpenClaw's agents.
+- `AgentAsk`: A question an agent shows on its screen (the service "agent-asks:<name>"), matched on its last lines, and the keys that answer it, each written apart.
 - `AgentHow`: How a session is started, besides its id and first prompt.
 - `agentIn(name, profile?)`: Agent `name` in account `profile` as a terminal names it (no account, or one that can't be named: just `name`).
 - `AgentMeter`: A live session by its terminal (service "agent-meters:<name>"): `session` the id it resumes; with `meters`, `tokens` its last request read of a `window`, cached for `ttl` seconds from `last` (ms).

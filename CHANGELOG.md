@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Agents: a question an agent asks before it's ready (Claude Code's "Do you trust this folder?" on a first run) waits on
+  you like a permission: its terminal shows waiting, the Inbox and phone have Approve and Deny, and its first prompt
+  runs once you approve. The Inbox has Approve and Deny for any agent's permission, which stays unread until answered.
 - Phones: holding something for its menu (a tab, a recent file, a property, a block in a note) no longer selects its
   text or what's around it.
 - Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs

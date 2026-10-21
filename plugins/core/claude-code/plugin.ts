@@ -4,7 +4,7 @@ import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { type AgentMeter, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
+import { type AgentAsk, type AgentMeter, type AgentStart, ago, codingAgent, dayOf, expandHome, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows,
   limitWindow, type Live, type SampleAsk, notOnThisMachine, priceList, processes, projectName, projectOf, shellQuote, projectRoots, epochSeconds, Tally, terminalOf, Transcript, transcripts,
   type Usage } from "../../../core/agents.ts"
 import { bullets, localDate, Plugin, section } from "../../../core/plugins.ts"
@@ -503,6 +503,12 @@ plugin.provide("agent:claude", async ({ resume, context, state, report, profile,
     cwd,
   }
 })
+
+/** Its dialogs: folder trust shows before its hooks run, its default No; a permission's first choice is Yes. */
+plugin.provide("agent-asks:claude", (): AgentAsk[] => [
+  { id: "trust", match: /Yes, I trust this folder/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\x1b[B", "\r"], deny: ["\x1b"] },
+  { id: "permission", match: /Do you want to/, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
+])
 
 /** A session's last response and how long its prompt cache lasts (the service "agent-session:claude": the Inbox resumes
  *  it while cached). The TTL is an hour when its last responses wrote 1 h cache, else five minutes. */
