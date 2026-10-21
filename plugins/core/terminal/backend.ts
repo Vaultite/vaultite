@@ -2,13 +2,12 @@
 // when the keeper can't start), or another plugin's. The types here are the contract a plugin's backend implements.
 import fs from "node:fs"
 import { shellQuote } from "../../../core/agents.ts"
-import { outliving, runtimeDir } from "../../../core/plugins.ts"
+import { type Access, accessOf, outliving, runtimeDir } from "../../../core/plugins.ts"
 import net from "node:net"
 import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
-import { accessOf, type Access } from "../../../core/permissions.ts"
 
 /** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts). */
 export type AgentRun = { command: string; cwd?: string | null }

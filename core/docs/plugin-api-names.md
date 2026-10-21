@@ -627,6 +627,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `workspacePins()`: The current workspace's pinned pages, or null: no workspaces, or the current one has no list of its own (it shows the vault's, .vaultite/pages.json: Pinned's).
 
 ### `@vaultite/core/plugins.ts` (plugin.ts)
+- `accessOf(code)`: A folder read's answer: "" read, else the error's code.
 - `addDays(date, n)`
 - `agentLines(vault, plugins?)`: What each plugin that's on tells agents up front, its manifest's `forAgents` (a `{key}` in it is that setting's value): composed into the vault's rules (Agent files), MCP's instructions and a…
 - `Answer`: A route's answer: JSON, Text, or a Reply (a status and either).

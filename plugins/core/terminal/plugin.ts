@@ -8,7 +8,7 @@ import { type RawData, WebSocket } from "ws"
 import { type AgentAsk, type AgentHow, type AgentMeter, type AgentStart, type AgentState, agentName, shellQuote, parseTerminal } from "../../../core/agents.ts"
 import {
   agentLines, HTTPError, LOCAL as LOCAL_DIR, machineSocket, pipeSockets, Plugin, processTable, runtimeDir, serverUrl, span, splitMachine, type Machine,
-  type Request,
+  type Request, type Access, accessOf,
 } from "../../../core/plugins.ts"
 import {
   asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, type AgentRun, type Backend,
@@ -17,7 +17,6 @@ import {
 import { runOps } from "./run.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
-import { accessOf, type Access } from "../../../core/permissions.ts"
 
 export type { AgentRun } from "./backend.ts"
 export const plugin = new Plugin(import.meta.url)

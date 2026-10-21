@@ -43,6 +43,8 @@ export { matches as searchMatches, parse as parseSearch, type SearchDoc, SearchE
 /** A line diff (difflib's opcodes), for what changed between two texts; diffLines: the same, fast at any size. */
 export { opcodes } from "./textedit.ts"
 export { diffLines } from "./linediff.ts"
+/** Whether a folder can be read, as Settings > Permissions says it (core/permissions.ts). */
+export { accessOf, type Access } from "./permissions.ts"
 // The sidebars' setup (.vaultite/sidebars.json), read and compared the app's way (Workspaces keeps copies).
 export { readSidebars, sameSidebars, type Sidebars } from "./sidebars.ts"
 export { pinFile, pinKind, placePin, repinList, withPinFile } from "./pins.ts"
