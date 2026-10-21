@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Connecting Claude or another AI app from Safari works: its sign-in page went on waiting after you typed the code.
 - Connections: an AI app let in by its code that's slow to finish says where it waits (its sign-in page not gone back
   yet, or the app not finishing), and one that never connects stays a while saying why, instead of a shimmer that
   vanishes; the server's log and Errors note it too.

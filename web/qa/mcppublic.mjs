@@ -57,7 +57,10 @@ try {
   check("authorize refuses an unregistered return address", (await auth({ redirect_uri: "https://app.example.com/other" })).status === 400)
   const noPkce = await auth({ code_challenge_method: "plain" })
   check("authorize without S256 goes back with an error", noPkce.status === 302 && /error=invalid_request/.test(noPkce.headers.get("location") ?? ""), noPkce.status)
-  const page = await (await auth({})).text()
+  const signIn = await auth({})
+  const csp = signIn.headers.get("content-security-policy") ?? ""
+  check("the sign-in page names its own origin for its poll (Safari's 'self' matches nothing once Vaultite Cloud sandboxes it)", csp.includes(`connect-src 'self' ${PUB}`), csp)
+  const page = await signIn.text()
   const code = /<div class="code"[^>]*>([^<]+)</.exec(page)?.[1]?.replace(/\s/g, "")
   const id = /const id = "([^"]+)"/.exec(page)?.[1]
   check("the sign-in page shows a code", code?.length === 6 && !!id, page.slice(0, 300))

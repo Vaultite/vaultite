@@ -744,10 +744,13 @@ export class PublicMcp {
 
   // --- pages
 
-  page(res: ServerResponse, status: number, title: string, text: string, extra = "", nonce = "") {
+  /** `origin`: the page's own, named as well as 'self': Vaultite Cloud sandboxes it (an opaque origin), and there
+   *  Safari's 'self' matches nothing, so its sign-in page could never ask whether it was let in. */
+  page(res: ServerResponse, status: number, title: string, text: string, extra = "", nonce = "", origin = "") {
+    const own = origin ? ` ${origin}` : ""
     res.writeHead(status, {
       "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store", "Referrer-Policy": "no-referrer",
-      "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self'; frame-ancestors 'none'; base-uri 'none'${nonce ? `; script-src 'nonce-${nonce}'` : ""}`,
+      "Content-Security-Policy": `default-src 'none'; style-src 'unsafe-inline'; connect-src 'self'${own}; img-src 'self'${own}; frame-ancestors 'none'; base-uri 'none'${nonce ? `; script-src 'nonce-${nonce}'` : ""}`,
     })
     res.end(`<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Vaultite</title><link rel="icon" href="icon.svg" type="image/svg+xml"><style>${CSS}</style></head><body><main><div class="brand"><img src="/icon.svg" alt="">Vaultite</div><h1>${esc(title)}</h1><p>${esc(text)}</p>${extra}</main></body></html>`)
@@ -771,7 +774,7 @@ async function poll() {
 }
 poll()
 </script>`
-    this.page(res, 200, `Connect ${s.app.name} to your vault`, `${s.app.name} asks to read and write your vault.`, extra, nonce)
+    this.page(res, 200, `Connect ${s.app.name} to your vault`, `${s.app.name} asks to read and write your vault.`, extra, nonce, new URL(s.base).origin)
   }
 }
 
