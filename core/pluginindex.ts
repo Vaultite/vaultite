@@ -5,7 +5,7 @@ import os from "node:os"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { git, parseSource } from "./installs.ts"
-import { type Disclosures, disclosuresOf, iconOf, REPO } from "./pluginmeta.ts"
+import { bundleBlocked, type Disclosures, disclosuresOf, iconOf, PLACE, REPO } from "./pluginmeta.ts"
 import { compareVersions, parseVersion } from "./version.ts"
 import { type Vault, writeAtomic } from "./vault.ts"
 import { fetchPublic } from "./web.ts"
@@ -44,8 +44,6 @@ export type Index = { generated: string | null; plugins: Entry[]; bundles: Bundl
 export type Got = { url: string; available: boolean; fetched: string | null; error?: string; index: Index }
 
 const EMPTY: Index = { generated: null, plugins: [], bundles: [], blocked: {} }
-/** Where a bundle is: owner/name, or owner/name/folder in it. */
-export const PLACE = /^[\w.-]+\/[\w.-]+(\/[\w-][\w.-]*)*$/
 const COMMIT = /^[0-9a-f]{40}$/
 const PICTURE = /^https:\/\/raw\.githubusercontent\.com\/[\w.%/-]+\.png$/
 const str = (v: unknown, max = 500) => (typeof v === "string" ? v.slice(0, max) : "")
@@ -87,14 +85,6 @@ export function readIndex(o: unknown): Index {
   const blocked: Record<string, string[]> = {}
   if (isObj(o.blocked)) for (const [k, v] of Object.entries(o.blocked)) if (Array.isArray(v)) blocked[k.toLowerCase()] = v.filter((x): x is string => typeof x === "string")
   return { generated: date(o.generated), plugins, bundles, blocked }
-}
-
-/** Whether the blocklist blocks a bundle (owner/name[/folder]@commit): its place, or its repository's, with "*" or that
- *  commit (or its first 7 or more characters). */
-export function bundleBlocked(blocked: Record<string, string[]>, address: string) {
-  const [place, commit = ""] = address.toLowerCase().split("@")
-  const repo = place.split("/").slice(0, 2).join("/")
-  return [place, repo].some((k) => (blocked[k] ?? []).some((r) => { const x = r.trim().toLowerCase(); return x === "*" || (x.length >= 7 && commit.startsWith(x)) }))
 }
 
 /** The directory's bundles with these words, by stars, without blocked ones; each with the user's bundle imported from

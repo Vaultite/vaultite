@@ -1,5 +1,5 @@
-// What a plugin's manifest says about it beyond what the app checks: its version, repository and disclosures (no Node,
-// no packages: the server, the app and tools/plugin-index.ts read them alike).
+// What a plugin's manifest says about it beyond what the app checks (its version, repository and disclosures), and
+// the directory's bundle places and blocklist (no Node, no packages: the server, app and tools/plugin-index.ts alike).
 export const VERSION = /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?$/
 export const REPO = /^[\w.-]+\/[\w.-]+$/
 /** A host a plugin talks to ("api.example.com", "*.example.com"), or "*": hosts the user sets in its settings (a sync's server). */
@@ -75,4 +75,15 @@ export const EXPORT_NAME = /^(?!(?:plugin|index|import|cli)$)[\w-]+(?:\/[\w-]+)*
 /** The modules a manifest `exports`, as far as they read (core/rules.ts says what's wrong). */
 export function exportsOf(m: Record<string, unknown>): string[] {
   return Array.isArray(m.exports) ? m.exports.filter((x): x is string => typeof x === "string" && EXPORT_NAME.test(x)) : []
+}
+
+/** Where a bundle is: owner/name, or owner/name/folder in it. */
+export const PLACE = /^[\w.-]+\/[\w.-]+(\/[\w-][\w.-]*)*$/
+
+/** Whether the blocklist blocks a bundle (owner/name[/folder]@commit): its place, or its repository's, with "*" or that
+ *  commit (or its first 7 or more characters). */
+export function bundleBlocked(blocked: Record<string, string[]>, address: string) {
+  const [place, commit = ""] = address.toLowerCase().split("@")
+  const repo = place.split("/").slice(0, 2).join("/")
+  return [place, repo].some((k) => (blocked[k] ?? []).some((r) => { const x = r.trim().toLowerCase(); return x === "*" || (x.length >= 7 && commit.startsWith(x)) }))
 }

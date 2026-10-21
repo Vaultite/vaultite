@@ -3,8 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
-import { bundleBlocked, PLACE } from "../core/pluginindex.ts"
-import { disclosuresOf, ICON_FILE, ICON_MAX, iconOf, REPO, svgIcon } from "../core/pluginmeta.ts"
+import { bundleBlocked, disclosuresOf, ICON_FILE, ICON_MAX, iconOf, PLACE, REPO, svgIcon } from "../core/pluginmeta.ts"
 import { compareVersions, tagVersion } from "../core/version.ts"
 
 /** One GET: its status and body (JSON when it parses). */
