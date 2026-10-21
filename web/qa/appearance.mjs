@@ -1,4 +1,4 @@
-// Appearance settings: its order (theme, colour scheme, density, file icons, fonts, text sizes, CSS snippets), Settings' three scheme
+// Appearance settings: its order (theme, colour scheme, density, file icons, sidebars, fonts, text sizes, CSS snippets), Settings' three scheme
 // tiles (Gruvbox, the default; the one in use or Classic; More…), the colour scheme gallery (the sheet of More… and of "Change
 // colour scheme": one grid, every built-in scheme and the vault's Obsidian themes, a tile each), the Fonts row (folded at first, saying what's set; a click unfolds the three pickers), every colour
 // scheme (built in, and the vault's Obsidian themes) in light and dark, and that no
@@ -49,8 +49,9 @@ for (const [w, dark] of [[1440, false], [1440, true], [390, false], [390, true]]
     check("CSS snippets are inside Appearance", (await appearance.locator('section[aria-label="CSS snippets"]').count()) === 1)
     check("no CSS snippets panel of its own", !(await page.getByRole("heading", { name: "CSS snippets" }).count()))
     const text = await appearance.innerText()
-    const at = ["Theme", "Colour scheme", "Density", "File icons", "Scroll sidebar panels separately", "Fonts", "Note text size", "CSS snippets"].map((t) => text.indexOf(t))
-    check("in order: theme, colour scheme, density, file icons, fonts, CSS snippets", at.every((x, i) => x >= 0 && (!i || x > at[i - 1])), at)
+    // (the sidebars' switches are in their sheet, opened from the Sidebars row)
+    const at = ["Theme", "Colour scheme", "Density", "File icons", "Sidebars", "Fonts", "Note text size", "CSS snippets"].map((t) => text.indexOf(t))
+    check("in order: theme, colour scheme, density, file icons, sidebars, fonts, CSS snippets", at.every((x, i) => x >= 0 && (!i || x > at[i - 1])), at)
     const radios = () => appearance.getByRole("radiogroup", { name: "Colour scheme" }).getByRole("radio").evaluateAll((els) => els.map((e) => `${e.getAttribute("aria-label")}${e.getAttribute("aria-checked") === "true" ? "*" : ""}`))
     check("three tiles: Gruvbox (the default), Classic (in use), More…", (await radios()).join() === "Gruvbox,Classic*" && (await appearance.getByRole("button", { name: "More colour schemes" }).count()) === 1, await radios())
     await appearance.getByRole("radio", { name: "Gruvbox", exact: true }).click(); await page.waitForTimeout(500)
@@ -109,10 +110,16 @@ const settle = async (page, scheme) => {
   await page.waitForFunction((s) => (document.documentElement.dataset.scheme ?? "default") === s, scheme, { timeout: 8000 }).catch(() => {})
   await page.waitForTimeout(350) // past the tiles' transitions
 }
+// The base once the page is done loading: what comes when it's idle (the status bar's file part) isn't a scheme's doing.
+const loaded = async (page) => {
+  let last = JSON.stringify(await boxes(page)), still = 0
+  for (let i = 0; i < 30 && still < 3; i++) { await page.waitForTimeout(400); const now = JSON.stringify(await boxes(page)); still = now === last ? still + 1 : 0; last = now }
+  return JSON.parse(last)
+}
 for (const [w, hash] of [[1440, "settings"], [1440, fileHash(today)], [1440, fileHash(note)], [390, "settings"], [390, fileHash(today)]]) {
   await set({})
   const page = await open(w, false, hash)
-  const base = await boxes(page)
+  const base = await loaded(page)
   const moved = []
   for (const scheme of ids) {
     await set({ scheme })
@@ -120,7 +127,10 @@ for (const [w, hash] of [[1440, "settings"], [1440, fileHash(today)], [1440, fil
       await page.emulateMedia({ colorScheme: dark ? "dark" : "light" })
       await settle(page, scheme)
       const now = await boxes(page)
-      if (now.length !== base.length) { moved.push(`${scheme} ${dark ? "dark" : "light"}: ${base.length} -> ${now.length} elements`); continue }
+      if (now.length !== base.length) {
+        const names = (l) => l.map((b) => b[0]), gone = names(base).filter((n) => !names(now).includes(n)), added = names(now).filter((n) => !names(base).includes(n))
+        moved.push(`${scheme} ${dark ? "dark" : "light"}: ${base.length} -> ${now.length} elements (gone ${JSON.stringify(gone)}, new ${JSON.stringify(added)})`); continue
+      }
       // Settings' second tile changes scheme and name with the scheme in use: the same box.
       const d = now.map((b, i) => [base[i], b]).filter(([a, b]) => a.slice(1).join() !== b.slice(1).join())
       if (d.length) moved.push(`${scheme} ${dark ? "dark" : "light"}: ${d.length} moved, first ${JSON.stringify(d[0])}`)
