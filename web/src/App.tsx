@@ -5,8 +5,8 @@ import { runCommandId, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
-import { desktop as desktopApp, otherVaults, showLights } from "@/core/desktop"
-import { usePeek } from "@/core/peek"
+import { desktop as desktopApp, otherVaults } from "@/core/desktop"
+import { peekPanel, peekRider, usePeek, usePeekLights } from "@/core/peek"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
@@ -439,7 +439,7 @@ export default function App() {
   const peek = usePeek(hideLeft, hideRight && hasRight)
   const leftOpen = sidebar || hideLeft
   // The traffic lights go with the sidebar they sit in.
-  useEffect(() => { showLights(!hideLeft || peek === "left") }, [hideLeft, peek])
+  usePeekLights(hideLeft, peek)
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
   useLayoutEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
@@ -467,9 +467,8 @@ export default function App() {
         className={cn(
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
           "transition-[width] duration-200 ease-out md:flex",
-          hideLeft && "inset-y-1.5 left-1.5 z-40 rounded-[12px] border-[0.5px] shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-          hideLeft && peek !== "left" && "-translate-x-[calc(100%+24px)]",
-        )} style={{ width: hideLeft ? `${sidebarPx(sidebarWidth)}px` : side }}>
+          hideLeft && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+        )} style={hideLeft ? { width: `${sidebarPx(sidebarWidth)}px`, ...peekPanel("left", peek === "left") } : { width: side }}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
         <div data-titlebar className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !leftOpen && "pointer-events-none opacity-0")}>
@@ -509,9 +508,10 @@ export default function App() {
           out again it opens, in one drag. */}
       {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={(x) => dragSidebar(false, x)} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
         className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
-      {/* Hidden without a rail, it shows only with the sidebar slid in: a click there keeps the sidebar open. */}
+      {/* Hidden without a rail, it slides in and out with the sidebar: a click there keeps the sidebar open. */}
       <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
-        className={hideLeft ? cn("z-50 translate-x-1.5 translate-y-1.5 transition-opacity", peek === "left" ? "opacity-100" : "pointer-events-none opacity-0") : undefined} />
+        className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "left" && "pointer-events-none") : undefined}
+        style={hideLeft ? peekRider("left", peek === "left", sidebarPx(sidebarWidth)) : undefined} />
       </>}
 
       {showRight && (
@@ -520,9 +520,8 @@ export default function App() {
           className={cn(
             "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-2 pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
             "transition-[width] duration-200 ease-out md:flex",
-            hideRight && "inset-y-1.5 right-1.5 z-40 rounded-[12px] border-[0.5px] shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
-            hideRight && peek !== "right" && "translate-x-[calc(100%+24px)]",
-          )} style={{ width: hideRight ? `${sidebarPx(rightSidebarWidth)}px` : rside }}>
+            hideRight && "z-40 rounded-[12px] border-0 shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+          )} style={hideRight ? { width: `${sidebarPx(rightSidebarWidth)}px`, ...peekPanel("right", peek === "right") } : { width: rside }}>
           {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
           <div className="relative flex min-h-0 flex-1 flex-col">
@@ -538,7 +537,8 @@ export default function App() {
       {desktop && !popout && (
         <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
           onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
-          className={!rails && !rightOpen ? cn("z-50 -translate-x-1.5 translate-y-1.5 transition-opacity", peek === "right" ? "opacity-100" : "pointer-events-none opacity-0") : undefined} />
+          className={!rails && !rightOpen ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "right" && "pointer-events-none") : undefined}
+          style={!rails && !rightOpen ? peekRider("right", peek === "right", sidebarPx(rightSidebarWidth)) : undefined} />
       )}
 
       {desktop ? (

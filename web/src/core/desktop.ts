@@ -71,9 +71,12 @@ export type DesktopApi = {
   learnWord?: (word: string) => Promise<unknown>
   /** The window (or a rectangle of it, in CSS pixels) as a PNG, base64 (`vau dev screenshot`). Builds from before it don't have it. */
   capture?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<{ png: string; width: number; height: number }>
-  /** Show or hide a Mac window's traffic lights. Builds from before it don't have it. */
-  lights?: (on: boolean) => Promise<unknown>
+  /** Show a Mac window's traffic lights at `at` (CSS px: `x` right of where they sit, centred on the line `mid` down),
+   *  or hide them (null). Builds from before it don't have it; ones from before `at` show them in place. */
+  lights?: (at: Lights | null) => Promise<unknown>
 }
+
+export type Lights = { x: number; mid: number }
 
 export type UpdateMode = "automatic" | "notify" | "off"
 
@@ -264,8 +267,11 @@ export const systemNotify = (title: string, body = ""): Promise<boolean> | null 
 export const captureWindow = (): Promise<{ png: string; width: number; height: number } | null> =>
   desktop?.capture ? desktop.capture().catch(() => null) : Promise.resolve(null)
 
-/** The Mac window's traffic lights shown or not (a sidebar hidden without its rail); nothing elsewhere. */
-export const showLights = (on: boolean) => { if (isMac) desktop?.lights?.(on).catch(() => {}) }
+/** A Mac window's traffic lights, which the page can hide and move: the desktop app's, not a browser's. */
+export const hasLights = isMac && !!desktop?.lights
+/** The Mac window's traffic lights shown at `at` (the sidebar's top row they sit in, which may float over the page),
+ *  or hidden (null: a sidebar hidden without its rail); nothing elsewhere. */
+export const showLights = (at: Lights | null) => { if (isMac) desktop?.lights?.(at).catch(() => {}) }
 
 /** The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them. */
 export const lookUp = desktop?.lookUp && isMac ? desktop.lookUp : null

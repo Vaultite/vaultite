@@ -8,6 +8,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs
   settings have it too.
+- Mac: a sidebar without its rail (Zen) slides in carrying the window's traffic lights and its toggle, set in its top
+  row as beside the pinned sidebar, instead of the lights hanging over its corner; the lights sit centred on that row
+  in either density.
 
 ## 0.6.3 (2026-10-20)
 

@@ -19,6 +19,11 @@ const PRELOAD = path.join(ROOT, "electron", "preload.cjs")
 const DIST = path.join(ROOT, "web", "dist")
 const ICON = path.join(ROOT, "web", "public", "icon-512.png")
 const MAC = process.platform === "darwin"
+// Where a Mac window's traffic lights sit (points from its top-left corner) until its page places them
+// (window:lights): web/src/index.css lays the sidebar's top row out around them.
+const LIGHTS = { x: 16, y: 14 }
+// Their height (points), to centre them on a row: each button's frame on macOS 15 (a 12pt circle in 14×16).
+const LIGHTS_HEIGHT = 16
 const LINUX = process.platform === "linux"
 
 // A build named otherwise (electron-builder's extraMetadata.productName: a test release) keeps a userData of its own.
@@ -292,7 +297,7 @@ async function openVault(p: string, file?: string) {
   const apps = appsOn(p)
   const win = new BrowserWindow({
     width: b?.width ?? 1280, height: b?.height ?? 820, x: b?.x, y: b?.y, minWidth: 800, minHeight: 480, show: false,
-    title: nameOf(p), titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 },
+    title: nameOf(p), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
     // (App windows on: transparent, the page paints itself and leaves app tabs see-through, electron/apps.ts)
     ...(apps ? { transparent: true, backgroundColor: "#00000000" } : { backgroundColor: background() }),
     // bypassHeatCheck: V8 caches the app's compiled scripts on the first launch, not the third (like VS Code).
@@ -428,7 +433,7 @@ function guard(win: BrowserWindow, origin: string) {
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (url.startsWith(`${origin}/?popout=`)) {
       return { action: "allow", overrideBrowserWindowOptions: {
-        width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 },
+        width: 960, height: 760, minWidth: 480, minHeight: 360, title: win.getTitle(), titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS,
         backgroundColor: background(), webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true },
       } }
     }
@@ -459,7 +464,7 @@ function showManager() {
   if (manager && !manager.isDestroyed()) return manager.focus()
   manager = new BrowserWindow({
     width: 760, height: 500, minWidth: 620, minHeight: 400, show: false, title: "Manage vaults",
-    titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 }, backgroundColor: background(),
+    titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS, backgroundColor: background(),
     fullscreenable: false, webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
   })
   manager.once("ready-to-show", () => manager?.show())
@@ -559,7 +564,7 @@ function showSetup() {
   setupWin = new BrowserWindow({
     // (useContentSize: a Linux window frame is outside it, so the page gets its 560×600 as on a Mac)
     width: 560, height: 600, useContentSize: true, resizable: false, maximizable: false, fullscreenable: false, show: false, title: "Set up Vaultite",
-    titleBarStyle: "hiddenInset", trafficLightPosition: { x: 16, y: 14 }, backgroundColor: background(),
+    titleBarStyle: "hiddenInset", trafficLightPosition: LIGHTS, backgroundColor: background(),
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true },
   })
   setupWin.once("ready-to-show", () => setupWin?.show())
@@ -906,8 +911,18 @@ handle("dock:pick", async (w) => {
 // The asking page's own window (a pop-out's too, which `handle` answers as its vault's).
 ipcMain.handle("text:look-up", (e) => { who(e); e.sender.showDefinitionForSelection() })
 ipcMain.handle("text:learn", (e, word: string) => { who(e); e.sender.session.addWordToSpellCheckerDictionary(str(word)) })
-// The traffic lights hidden while the page's sidebar is (no rails): they come back with it.
-ipcMain.handle("window:lights", (e, on: boolean) => { who(e); const w = BrowserWindow.fromWebContents(e.sender); if (MAC && w) w.setWindowButtonVisibility(!!on) })
+// The traffic lights in the page's sidebar's top row (`at`, CSS px: `x` right of LIGHTS, centred on the line `mid`
+// down), moving as it floats, hidden while it is (no rails). An older page sends a boolean: they stay put.
+ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | null) => {
+  who(e)
+  const w = BrowserWindow.fromWebContents(e.sender)
+  if (!MAC || !w) return
+  if (at && typeof at === "object" && Number.isFinite(at.x) && Number.isFinite(at.mid)) {
+    const z = e.sender.getZoomFactor()
+    w.setWindowButtonPosition({ x: Math.round(LIGHTS.x + at.x * z), y: Math.round(at.mid * z - LIGHTS_HEIGHT / 2) })
+  }
+  w.setWindowButtonVisibility(!!at)
+})
 // `vau dev screenshot` (core/coreops/dev.ts, owner-only): the asking page as a PNG, halved while it's too big for the socket back.
 ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: number; height: number }) => {
   who(e)

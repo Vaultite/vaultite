@@ -1,6 +1,6 @@
 // The desktop sidebar's panels, drawn from plugins' `sidebar` definitions (Search, Files and Pinned are plugins too, so
 // turning them off empties it). The components here are exported to plugins.
-import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from "react"
+import { createContext, Fragment, useContext, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from "react"
 import { createPortal } from "react-dom"
 import { Ellipsis, EyeOff, Layers, PanelBottom, PanelBottomClose, PanelLeft, PanelRight, Search, SlidersHorizontal, SquareArrowOutUpRight, type LucideIcon } from "lucide-react"
 import type { SidebarCtx, SidebarPanel } from "@/core/define"
@@ -168,7 +168,7 @@ export function SidebarPanels({ head, side = "left", ...ctx }: SidebarCtx & { he
 
 /** A sidebar's toggle: click opens or folds it; a panel dropped on it goes to that sidebar,
  *  so the right sidebar needs no room before it has panels. Outlined while a panel is dragged; `empty` dims it. */
-export function SidebarToggle({ side, open, empty, onClick, className }: { side: Side; open: boolean; empty?: boolean; onClick: () => void; className?: string }) {
+export function SidebarToggle({ side, open, empty, onClick, className, style }: { side: Side; open: boolean; empty?: boolean; onClick: () => void; className?: string; style?: CSSProperties }) {
   const el = useRef<HTMLButtonElement>(null)
   const d = useDrag()
   const target = `toggle:${side}`
@@ -187,7 +187,7 @@ export function SidebarToggle({ side, open, empty, onClick, className }: { side:
   const keys = useCommandKeys(side === "left" ? "sidebar:toggle" : "sidebar:toggle-right", true)
   const dragging = !!d && !!draggedPanel(d.item)
   return (
-    <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick}
+    <button ref={el} type="button" data-sidebar-toggle={side === "right" ? "right" : ""} onClick={onClick} style={style}
       aria-label={`${open ? "Hide" : "Show"} ${name}`} aria-expanded={open} data-tip={dragging ? undefined : `${open ? "Hide" : "Show"} ${name}${keys}`} data-tip-side={side === "right" ? "left" : undefined}
       className={cn("fixed top-[calc(env(safe-area-inset-top)+--spacing(1.5))] z-30 hidden size-7 cursor-pointer place-items-center rounded-[5px] transition-colors hover:bg-foreground/[0.06] hover:text-foreground md:grid",
         side === "left" ? "left-2" : "right-2",
