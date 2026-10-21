@@ -1,5 +1,5 @@
 // The desktop status bar beside the left sidebar: it never reaches it (what doesn't fit goes to the tray behind its
-// more button), its ambient items drag along it, onto the more button (tucked: appearance.json's
+// more button) nor wraps, holds last load's widths only while loading, and its ambient items drag along it, onto the more button (tucked: appearance.json's
 // `statusBarMore`) and back out of the tray. WRITES appearance.json (put back) and a made-up vault plugin with a long
 // item, .vaultite/plugins/qa-long (removed): throwaway server only.
 //   node web/qa/statusbar.mjs <base url> <vault path>
@@ -38,9 +38,11 @@ try {
     const side = document.querySelector("aside[data-side=left]").getBoundingClientRect().right
     return document.querySelector("[data-status-bar]").getBoundingClientRect().left - side
   })
-  const shown = await keys()
+  // (settled: an item fetching its data, Claude's limits, comes a moment later)
+  let shown = await keys()
+  for (let i = 0; i < 20; i++) { await wait(250); const now = await keys(); if (now.join() === shown.join() && i > 7) break; shown = now }
   console.log("bar:", shown.join(", "), "|", (await bar.innerText()).replace(/\n/g, " "))
-  check("wide window: every item in the bar, no more button", shown.length >= 2 && shown.includes("qa-long:long") && (await bar.locator("[data-status-more]").count()) === 0, shown)
+  check("wide window: every item in the bar, no more button", shown.length >= 2 && shown.includes("qa-long:long") && !(await bar.locator("[data-status-more]").isVisible()), shown)
   await page.screenshot({ path: `${SHOTS}statusbar-1-wide.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
 
   // 1. Narrow: the bar stops at the sidebar; the leftmost go to the tray.
@@ -48,11 +50,11 @@ try {
   await until(async () => !(await keys()).includes("qa-long:long"))
   const narrow = await keys()
   check("narrow: the bar keeps clear of the left sidebar", (await clear()) >= 0, await clear())
-  check("narrow: the more button shows, the long item left out, the short ones still in", (await bar.locator("[data-status-more]").count()) === 1
+  check("narrow: the more button shows, the long item left out, the short ones still in", (await bar.locator("[data-status-more]").isVisible())
     && !narrow.includes("qa-long:long") && narrow.length > 0, narrow)
   const gap = await page.evaluate(() => {
     const more = document.querySelector("[data-status-more]").getBoundingClientRect()
-    const next = [...document.querySelectorAll("[data-status-bar] > *")].find((el) => el.getBoundingClientRect().left > more.right && el.getBoundingClientRect().width)
+    const next = [...document.querySelectorAll("[data-status-row] > *")].find((el) => el.getBoundingClientRect().left > more.right && el.getBoundingClientRect().width)
     return next.getBoundingClientRect().left - more.right
   })
   check("narrow: no empty room after the more button", gap <= 12, gap)
@@ -98,6 +100,41 @@ try {
   check("out of the tray: back at the bar's start", (await keys())[0] === moved[0] && !!(await until(async () => !(await api("GET", "config/appearance")).statusBarMore?.includes(moved[0]))),
     { bar: await keys(), more: (await api("GET", "config/appearance")).statusBarMore })
   await page.screenshot({ path: `${SHOTS}statusbar-4-after.png`, clip: { x: 0, y: 740, width: 1280, height: 60 } })
+
+  // 5. Never on two lines, whatever the width: what doesn't fit is left out, not wrapped.
+  const lines = []
+  for (let w = 1280; w >= 780; w -= 50) {
+    await page.setViewportSize({ width: w, height: 800 }); await wait(250)
+    lines.push(await page.evaluate((w) => {
+      const bar = document.querySelector("[data-status-bar]"), row = bar.querySelector("[data-status-row]")
+      // (a text on two lines draws two boxes)
+      const texts = document.createTreeWalker(row, NodeFilter.SHOW_TEXT), two = [], range = document.createRange()
+      for (let t = texts.nextNode(); t; t = texts.nextNode()) {
+        if (!t.textContent.trim()) continue
+        range.selectNodeContents(t)
+        if ([...range.getClientRects()].filter((r) => r.width).length > 1) two.push(t.textContent)
+      }
+      return { w, tall: row.offsetHeight > bar.clientHeight, over: row.scrollWidth - row.clientWidth, two: two.slice(0, 3) }
+    }, w))
+  }
+  check("never on two lines nor past its room at any width", lines.every((l) => !l.tall && l.over <= 1 && !l.two.length), lines.filter((l) => l.tall || l.over > 1 || l.two.length))
+
+  // 6. Last load's widths hold only while the app loads: an item drawn narrower than last time (another song) keeps
+  // no room of the old one, and coming back to the first file holds none again.
+  await page.setViewportSize({ width: 1280, height: 800 }); await wait(2500)
+  await page.evaluate(() => {
+    const k = JSON.parse(localStorage.getItem("vaultite.statusbar.items") ?? "[]")
+    localStorage.setItem("vaultite.statusbar.items", JSON.stringify(k.map(([key, w]) => [key, key === "qa-long:long" ? w + 300 : w])))
+  })
+  const longWidth = () => page.evaluate(() => Math.round(document.querySelector("[data-ambient] > [data-status-key='qa-long:long']")?.getBoundingClientRect().width ?? 0))
+  const natural = await longWidth()
+  await page.reload()
+  await until(async () => (await longWidth()) > 0 && /word/.test(await bar.innerText()), 15000); await wait(1500)
+  const after = await longWidth()
+  await page.evaluate(() => { location.hash = "#view/inbox" }); await wait(800)
+  await page.evaluate((p) => { location.hash = `#file/${encodeURIComponent(p)}` }, P); await wait(1500)
+  const back = await longWidth()
+  check("an item drawn narrower than last load keeps none of its old room", Math.abs(after - natural) <= 2 && Math.abs(back - natural) <= 2, { natural, after, back })
 } finally {
   await api("PATCH", "config/appearance", { statusBar: look.statusBar ?? null, statusBarMore: look.statusBarMore ?? [] })
   await api("POST", "ops/plugin.disable", { id: "qa-long" })

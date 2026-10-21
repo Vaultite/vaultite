@@ -184,6 +184,20 @@ await wait(400)
 const firstTab = await win.locator("[data-corner] [role=tablist] [role=tab]").first().boundingBox()
 check("folded sidebar: the first tab clears the traffic lights (a Mac's) and the toggle", firstTab && firstTab.x >= (MAC ? 110 : 40), firstTab)
 await win.screenshot({ path: path.join(OUT, "rail.png") })
+// ...and without a tab bar or pane titles, a note's bar is the pane's title row: no strip above it, clear of the toggle.
+const look = await (await fetch(`${origin}/api/config/appearance`)).json()
+const setLook = (body) => fetch(`${origin}/api/config/appearance`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+await setLook({ tabBar: false, paneTitles: false })
+await win.evaluate(() => { location.hash = "#file/Start%20here.md" })
+const titleRow = () => win.evaluate(() => {
+  const bar = document.querySelector("[data-corner] [data-pane] [data-view-bar]"), toggle = document.querySelector("[data-sidebar-toggle='']")
+  const first = bar?.querySelector("button")?.getBoundingClientRect(), t = toggle.getBoundingClientRect()
+  return bar && { top: bar.getBoundingClientRect().top, first: first?.left, toggle: t.right, row: t.top + t.height / 2 - (first.top + first.height / 2) }
+})
+const row = await until(async () => { const r = await titleRow(); return r && r.top < 1 && r }, 10000)
+check("no tab bar: a note's bar is the title row, clear of the toggle and level with it", !!row && row.first >= row.toggle + 4 && Math.abs(row.row) <= 1, row || await titleRow())
+await win.screenshot({ path: path.join(OUT, "rail-title-row.png") })
+await setLook({ tabBar: look.tabBar ?? true, paneTitles: look.paneTitles ?? false })
 await menuClick("Show left sidebar")
 
 // Finder drops, as CDP drag events with real files.

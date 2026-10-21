@@ -65,100 +65,106 @@ function gapAt(box: HTMLElement, slots: HTMLElement[], key: string, x: number, y
   return { before: slots[i]?.dataset.statusKey ?? last, x: gaps[i].x - r.left, y: gaps[i].y - r.top }
 }
 
-/** The bar's items left out so it stops short of the left sidebar: from the right, each that still fits (by its width
- *  when last shown) in the room the rest of the bar leaves stays. Redone as anything in it changes size. */
-function useOverflow(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElement | null>, keys: string[]) {
+/** What the bar leaves out to stop short of the left sidebar, least needed first: characters, ambient items (the widest
+ *  first, to the tray), words, plugins' items. Each pass starts from everything, before a paint. Returns those in the tray. */
+function useFit(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElement | null>, keys: string[], pinned: boolean) {
   const [over, setOver] = useState<string[]>([])
-  const widths = useRef(new Map<string, number>())
-  const layout = useRef(() => {})
-  layout.current = () => {
-    const b = bar.current, f = fit.current
-    if (!b || !f || !b.offsetWidth) return
-    for (const el of f.querySelectorAll<HTMLElement>(":scope > [data-status-key]"))
-      if (!over.includes(el.dataset.statusKey!)) widths.current.set(el.dataset.statusKey!, el.getBoundingClientRect().width)
-    const side = document.querySelector("aside[data-side=left]")?.getBoundingClientRect().right ?? 0
-    const room = b.getBoundingClientRect().right - side - 12 - (b.offsetWidth - f.offsetWidth)
-    let used = 0
-    const next: string[] = []
-    for (const k of keys.toReversed()) {
-      // (an item drawing nothing isn't left out)
-      const w = widths.current.get(k) ?? 0, add = w + (used ? 4 : 0)
-      if (w && used + add > room + 0.5) next.unshift(k)
-      else if (w) used += add
-    }
-    if (next.join() !== over.join()) setOver(next)
+  const run = useRef(() => {})
+  run.current = () => {
+    const b = bar.current
+    if (!b?.offsetWidth) return
+    const out = (els: Iterable<Element>, gone = true) => { for (const el of els) el.toggleAttribute("data-fit-out", gone) }
+    const fits = () => b.scrollWidth <= b.clientWidth + 0.5
+    const drop = (n: number) => b.querySelectorAll(`[data-drop="${n}"]`)
+    out(b.querySelectorAll("[data-fit-out]"), false)
+    const more = b.querySelector<HTMLElement>("[data-status-more]")
+    if (more && !("pinned" in more.dataset)) out([more])
+    const left: string[] = []
+    if (!fits()) {
+      // (the counts' held room goes first: Steady keeps none while the bar is cramped)
+      b.dataset.cramped = ""
+      const steady = b.querySelector<HTMLElement>("[data-steady]")
+      if (steady) steady.style.minWidth = ""
+      if (!fits()) out(drop(1))
+      const f = fit.current, slots = f ? [...f.querySelectorAll<HTMLElement>(":scope > [data-status-key], :scope > [data-status-coming]")] : []
+      if (!fits() && f && slots.length) {
+        if (more) out([more], false)
+        const gap = parseFloat(getComputedStyle(f).columnGap) || 0
+        const room = f.offsetWidth - (b.scrollWidth - b.clientWidth)
+        const sized = slots.map((el) => ({ el, w: el.getBoundingClientRect().width })).filter((x) => x.w)
+        let used = sized.reduce((n, x, i) => n + x.w + (i ? gap : 0), 0)
+        for (const x of sized.toSorted((p, q) => q.w - p.w)) {
+          if (used <= room + 0.5) break
+          used -= x.w + (used > x.w ? gap : 0)
+          out([x.el])
+        }
+        for (const { el } of sized) if (el.dataset.statusKey && el.hasAttribute("data-fit-out")) left.push(el.dataset.statusKey)
+        // (the characters back into what room the tray left)
+        out(drop(1), false)
+        if (!fits()) out(drop(1))
+      }
+      for (const n of [2, 3]) if (!fits()) out(drop(n))
+    } else delete b.dataset.cramped
+    setOver((was) => (was.join() === left.join() ? was : left))
   }
   const joined = keys.join()
-  // (only when its items change, before the paint; their sizes changing is the observer's: measuring on every render
-  // forced the whole app's layout each time, seconds of it while the app loads)
-  useLayoutEffect(() => layout.current(), [joined])
-  useEffect(() => {
-    const b = bar.current, f = fit.current
-    if (!b || !f) return
-    const ro = new ResizeObserver(() => layout.current())
-    for (const el of [b, f, ...f.children, document.querySelector("aside[data-side=left]")]) if (el) ro.observe(el)
-    const resize = () => layout.current()
-    addEventListener("resize", resize)
-    return () => { ro.disconnect(); removeEventListener("resize", resize) }
-  }, [bar, fit, joined])
-  return over
-}
-
-/** Too narrow for the bar (a narrow window): its least needed parts go first, `data-drop` 1 (characters), 2 (words), 3
- *  (plugins' labels), and come back, last gone first, once there's room. Sizes come from an observer, not each render. */
-function useDrops(bar: RefObject<HTMLElement | null>, shown: boolean) {
+  // (when its items change, before the paint; their sizes changing is the observer's: measuring on every render forced
+  // the whole app's layout each time, seconds of it while the app loads)
+  useLayoutEffect(() => run.current(), [joined, pinned])
   useEffect(() => {
     const b = bar.current
     if (!b) return
-    const widths = new WeakMap<HTMLElement, number>()
-    const fit = () => {
-      const els = [...b.querySelectorAll<HTMLElement>("[data-drop]")].sort((x, y) => Number(x.dataset.drop) - Number(y.dataset.drop))
-      for (const el of els) if (el.style.display !== "none" && el.offsetWidth) widths.set(el, el.offsetWidth)
-      const gone = els.filter((el) => el.style.display === "none")
-      if (b.scrollWidth > b.clientWidth + 1) {
-        const next = els.find((el) => el.style.display !== "none")
-        if (next) { b.dataset.cramped = ""; next.style.display = "none" }
-      } else if (gone.length) {
-        const back = gone[gone.length - 1], room = parseFloat(getComputedStyle(b).maxWidth) - b.offsetWidth
-        if (room > (widths.get(back) ?? Infinity) + 12) { back.style.display = ""; if (gone.length === 1) delete b.dataset.cramped }
-      }
-    }
     let frame = 0
-    const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; fit() }) }
-    const ro = new ResizeObserver(soon), watch = () => { ro.observe(b); for (const el of b.querySelectorAll("[data-steady], [data-drop]")) ro.observe(el) }
-    // (its parts come and go with the file: each watched as it comes)
-    const mo = new MutationObserver(() => { watch(); soon() })
+    const soon = () => { if (!frame) frame = requestAnimationFrame(() => { frame = 0; run.current() }) }
+    // (its parts come and go with the file and the plugins: each watched as it comes)
+    const ro = new ResizeObserver(soon), watch = () => { ro.observe(b); for (const el of b.querySelectorAll("[data-status-key], [data-steady], [data-drop], [data-status-file]")) ro.observe(el) }
+    // (an element coming or going, not a count's text: that changes a size, which the observer sees)
+    const mo = new MutationObserver((rs) => { if (rs.some((r) => [...r.addedNodes, ...r.removedNodes].some((n) => n.nodeType === 1))) { watch(); soon() } })
     watch()
     mo.observe(b, { childList: true, subtree: true })
     addEventListener("resize", soon)
     return () => { ro.disconnect(); mo.disconnect(); cancelAnimationFrame(frame); removeEventListener("resize", soon) }
-  }, [bar, shown])
+  }, [bar, fit])
+  return over
 }
 
-const KEPT_WIDTH = "vaultite.statusbar", KEPT_ITEMS = "vaultite.statusbar.items", KEPT_SETUP = "vaultite.statusbar.setup"
+const KEPT_ITEMS = "vaultite.statusbar.items", KEPT_FILE = "vaultite.statusbar.file", KEPT_SETUP = "vaultite.statusbar.setup"
+/** How long at most the app's load holds the bar's room for what's still to come. */
+const LOAD_HOLD = 8000
 /** The ambient items' widths at the last load, in the bar's order. */
 type Kept = [key: string, width: number][]
-/** The bar and its ambient items as wide as last load's while they come in, until another file opens or the bar's
- *  `setup` changes (a bundle applied): like Steady. Returns the items' widths to hold, while held. */
-function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string, setup: string): Kept | null {
-  const first = useRef<string | null>(null)
-  if (first.current === null && path) first.current = path
-  // (last load's widths fit only the setup they were drawn with; once it changes, they fit nothing)
-  const loaded = useRef<string | null>(null)
-  if (loaded.current === null) try { loaded.current = localStorage.getItem(KEPT_SETUP) ?? "" } catch { loaded.current = "" }
-  const same = useRef(true)
-  if (setup !== loaded.current) same.current = false
-  const held = same.current && (first.current === null || first.current === path)
-  const kept = useRef<number | null>(null)
-  if (kept.current === null) try { kept.current = Number(localStorage.getItem(KEPT_WIDTH)) || 0 } catch { kept.current = 0 }
-  const items = useRef<Kept | null>(null)
-  if (items.current === null) {
-    try { const k = JSON.parse(localStorage.getItem(KEPT_ITEMS) ?? "[]"); items.current = Array.isArray(k) ? k : [] } catch { items.current = [] }
+type Holds = { items: Kept; file: number }
+/** Last load's room, held while the app loads so nothing moves: each ambient item's until it draws, the file's part's
+ *  until the file comes. Ends for good at another file, a new `setup` (a bundle) or LOAD_HOLD. Null: nothing held. */
+function useLoadHolds(bar: RefObject<HTMLElement | null>, fit: RefObject<HTMLElement | null>, path: string, setup: string): Holds | null {
+  const [drawn, redraw] = useState(0)
+  const st = useRef<{ kept: Kept; file: number; setup: string; first: string | null; done: boolean; drawn: Set<string> } | null>(null)
+  if (!st.current) {
+    let kept: Kept = [], file = 0, saved = ""
+    try {
+      const k = JSON.parse(localStorage.getItem(KEPT_ITEMS) ?? "[]")
+      kept = Array.isArray(k) ? k : []
+      file = Number(localStorage.getItem(KEPT_FILE)) || 0
+      saved = localStorage.getItem(KEPT_SETUP) ?? ""
+    } catch { /* none */ }
+    st.current = { kept, file, setup: saved, first: null, done: false, drawn: new Set() }
   }
-  // (before the paint: held from the bar's first frame)
-  useLayoutEffect(() => {
-    if (bar.current) bar.current.style.minWidth = held && kept.current ? `${kept.current}px` : ""
-  })
+  const h = st.current
+  if (h.first === null && path) h.first = path
+  if ((h.first !== null && path !== h.first) || setup !== h.setup) h.done = true
+  useEffect(() => {
+    if (h.done) return
+    const t = setTimeout(() => { h.done = true; redraw((n) => n + 1) }, LOAD_HOLD)
+    // An item lets go of its room once it draws.
+    const f = fit.current, mo = f && new MutationObserver(() => {
+      const now = h.kept.filter(([k]) => !h.drawn.has(k) && f.querySelector(`:scope > [data-status-key="${CSS.escape(k)}"]:not(:empty)`))
+      if (!now.length) return
+      for (const [k] of now) h.drawn.add(k)
+      redraw((n) => n + 1)
+    })
+    mo?.observe(f!, { childList: true, subtree: true, characterData: true })
+    return () => { clearTimeout(t); mo?.disconnect() }
+  }, [fit, h, h.done])
   useEffect(() => {
     const el = bar.current
     if (!el) return
@@ -170,15 +176,17 @@ function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string, setup: s
         if (!vaultPluginsIn()) return save()
         // (as drawn without what's held: an item drawing nothing is kept as 0, holding no room)
         const slots = [...el.querySelectorAll<HTMLElement>("[data-ambient] > [data-status-key]")]
-        const mins = [el, ...slots].map((x) => x.style.minWidth)
-        for (const x of [el, ...slots]) x.style.minWidth = ""
-        const w = Math.round(el.getBoundingClientRect().width)
-        const widths: Kept = slots.map((x) => [x.dataset.statusKey!, x.matches(":empty") ? 0 : Math.ceil(x.getBoundingClientRect().width)])
-        ;[el, ...slots].forEach((x, i) => { x.style.minWidth = mins[i] })
+        const part = el.querySelector<HTMLElement>("[data-status-file]"), steady = el.querySelector<HTMLElement>("[data-steady]")
+        const held = [...slots, ...(steady ? [steady] : [])], mins = held.map((x) => x.style.minWidth)
+        for (const x of held) x.style.minWidth = ""
+        const items: Kept = slots.map((x) => [x.dataset.statusKey!, x.matches(":empty") ? 0 : x.getBoundingClientRect().width])
+        const file = part?.getBoundingClientRect().width ?? 0
+        held.forEach((x, i) => { x.style.minWidth = mins[i] })
         try {
-          if (w) localStorage.setItem(KEPT_WIDTH, String(w))
-          localStorage.setItem(KEPT_ITEMS, JSON.stringify(widths))
+          localStorage.setItem(KEPT_ITEMS, JSON.stringify(items))
+          localStorage.setItem(KEPT_FILE, String(file))
           localStorage.setItem(KEPT_SETUP, setup)
+          localStorage.removeItem("vaultite.statusbar")
         } catch { /* full */ }
       }, 2000)
     }
@@ -187,7 +195,8 @@ function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string, setup: s
     save()
     return () => { clearTimeout(saving); ro.disconnect() }
   }, [bar, path, setup])
-  return held ? items.current : null
+  // (the same object until an item draws: the bar's items are drawn again only when it changes)
+  return useMemo(() => (h.done ? null : { items: h.kept.filter(([k]) => !h.drawn.has(k)), file: h.file }), [h, h.done, drawn])
 }
 
 /** The bar's ambient items with the room of those still to come (a vault plugin's, before the vault's plugins came)
@@ -233,12 +242,14 @@ export function StatusBar() {
   // the tray shows too.
   const barRef = useRef<HTMLDivElement>(null), fitRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
   const inBar = useMemo(() => ambient.filter((x) => !statusBarMore.includes(x.key)), [ambient, statusBarMore])
-  const over = useOverflow(barRef, fitRef, inBar.map((x) => x.key))
-  const keptItems = useKeptWidth(barRef, path, setup)
-  useDrops(barRef, !!(s && late))
-  const inTray = ambient.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
+  const rowRef = useRef<HTMLDivElement>(null)
+  const holds = useLoadHolds(barRef, fitRef, path, setup)
   const [tray, setTray] = useState(false)
   const d = useDrag(), dragged = d?.item.status
+  // (the more button shows while one is tucked or dragged, else only when the fit leaves one out)
+  const pinned = statusBarMore.some((k) => ambient.some((x) => x.key === k)) || !!dragged
+  const over = useFit(rowRef, fitRef, inBar.map((x) => x.key), pinned)
+  const inTray = ambient.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
   const { barHit, trayHit } = useAmbientDrops(barRef, fitRef, trayRef, ambient.map((x) => x.key), inTray.map((x) => x.key), statusBarMore)
   const trayOpen = tray && inTray.length > 0
   useEffect(() => {
@@ -248,32 +259,37 @@ export function StatusBar() {
     addEventListener("pointerdown", down, true); addEventListener("keydown", key, true)
     return () => { removeEventListener("pointerdown", down, true); removeEventListener("keydown", key, true) }
   }, [trayOpen])
-  const slot = (key: string, item: (typeof ambient)[number]["item"], hidden = false, hold = 0) => (
+  const slot = (key: string, item: (typeof ambient)[number]["item"], hold = 0) => (
     <span key={key} data-status-key={key} onPointerDown={(e) => startDrag(e, { from: "status", status: key, label: item.title })}
       style={hold ? { minWidth: hold } : undefined}
-      className={cn("flex shrink-0 items-center", !hold && "empty:hidden", hidden && "hidden", dragged === key && "opacity-50")}>
+      className={cn("flex shrink-0 items-center", !hold && "empty:hidden", dragged === key && "opacity-50")}>
       {item_(key, () => item.render())}
     </span>
   )
+  const held = holds?.items ?? null
   // Drawn again only when the bar's own layout changes: none of them takes the file, so a keystroke redraws none.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const inBarSlots = useMemo(() => withComing(inBar, keptItems, ambient.map((x) => x.key)).map((x) => "coming" in x
+  const inBarSlots = useMemo(() => withComing(inBar, held, ambient.map((x) => x.key)).map((x) => "coming" in x
     ? <span key={x.key} aria-hidden data-status-coming className="shrink-0" style={{ width: x.coming }} />
-    : slot(x.key, x.item, over.includes(x.key), keptItems?.find(([k]) => k === x.key)?.[1])), [inBar, keptItems, ambient, over, dragged, path])
+    : slot(x.key, x.item, held?.find(([k]) => k === x.key)?.[1])), [inBar, held, ambient, dragged, path])
   const line = (g: Gap | null) => g?.x !== undefined && <div aria-hidden className="pointer-events-none absolute h-4 w-0.5 rounded-full bg-primary" style={{ left: g.x - 1, top: g.y! - 8 }} />
-  const more = (inTray.length > 0 || !!dragged) && (
-    <button type="button" data-status-more onClick={() => setTray((t) => !t)} aria-label="More status items" aria-expanded={trayOpen} data-tip="More" data-tip-side="top"
+  // (always there, the fit showing it: drawn again only when it changes, not on each keystroke)
+  const any = ambient.length > 0, ring = trayHit?.x === undefined && !!trayHit
+  const more = useMemo(() => any && (
+    <button type="button" data-status-more data-pinned={pinned || undefined} onClick={() => setTray((t) => !t)} aria-label="More status items" aria-expanded={trayOpen} data-tip="More" data-tip-side="top"
       className={cn("grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] hover:bg-foreground/[0.06] hover:text-foreground",
-        trayOpen && "bg-foreground/[0.06] text-foreground", trayHit?.x === undefined && !!trayHit && "ring-1 ring-primary")}>
+        trayOpen && "bg-foreground/[0.06] text-foreground", ring && "ring-1 ring-primary")}>
       <Ellipsis className="size-3.5" strokeWidth={2.25} />
     </button>
-  )
-  const own = (more || inBar.length > 0) && <>
+  ), [any, pinned, trayOpen, ring])
+  // While the app loads, the file's part keeps last load's room until the file comes (useLoadHolds).
+  const fileComing = !late && !!holds?.file
+  const own = ambient.length > 0 && <>
     {more}
-    <div ref={fitRef} data-ambient className="flex min-w-0 items-center gap-1 overflow-hidden">
+    <div ref={fitRef} data-ambient className="flex shrink-0 items-center gap-1">
       {inBarSlots}
     </div>
-    {s && <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />}
+    {(s || fileComing) && <span aria-hidden className="h-3.5 w-px shrink-0 bg-border" />}
   </>
   const trayBox = trayOpen && (
     <div ref={trayRef} data-status-tray onClickCapture={() => setTray(false)} style={{ maxWidth: MAX_WIDTH }}
@@ -282,11 +298,14 @@ export function StatusBar() {
       {line(trayHit)}
     </div>
   )
-  const bar = "fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center gap-2 rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] text-muted-foreground tabular-nums md:flex"
+  const bar = "fixed right-(--right-sidebar,0px) bottom-0 z-20 transition-[right] duration-200 ease-out hidden h-7 items-center rounded-tl-[8px] border-t-[0.5px] border-l-[0.5px] border-border bg-sidebar pr-3 pl-1 text-[12px] whitespace-nowrap text-muted-foreground tabular-nums md:flex"
+  // (its row holds what's in line, so what it leaves out is measured without the tray and the drop line over it)
   const wrap = (children: ReactNode) => (
     <div ref={barRef} role="status" data-status-bar className={bar} style={{ maxWidth: MAX_WIDTH }} onContextMenu={menuFor(ambientMenu)}>
-      {own}
-      {children}
+      <div ref={rowRef} data-status-row className="flex min-w-0 items-center gap-2">
+        {own}
+        {children}
+      </div>
       {line(barHit)}
       {trayBox}
     </div>
@@ -298,13 +317,13 @@ export function StatusBar() {
     after: items.filter((x) => x.item.after).map(({ key, item }) => item_(key, () => item.render(file))),
   }), [items, file, path])
   // (the file's part all at once: its view button drawn a frame before the items late brings moved when they came)
-  if (!s || !late) return own ? wrap(null) : null
+  if (!s || !late) return own || fileComing ? wrap(fileComing && <span aria-hidden data-status-coming className="shrink-0" style={{ width: holds!.file }} />) : null
   const cur = MODES[s.mode]
   const tip = `Current view: ${VIEWS.find((v) => v.value === s.mode)!.label.toLowerCase()}`
   // Click or right-click: the file's views (three, or reading and source), the current one checked.
   const menu = (e: MouseEvent) => menuAbove(e, s.views.map((v) => ({ label: v.label, checked: v.value === s.mode, run: () => s.setMode(v.value) })))
   const n = (x: number, one: string) => `${numberText(x)} ${one}${x === 1 ? "" : "s"}`
-  return wrap(<>
+  return wrap(<span data-status-file className="flex shrink-0 items-center gap-2">
     {fileItems.before}
     {s.views.length > 1 ? (
       <button type="button" onClick={menu} onContextMenu={menu} aria-label={`${tip}. Change view`} aria-haspopup="menu" data-tip={tip} data-tip-side="top"
@@ -320,7 +339,7 @@ export function StatusBar() {
           : <><span data-drop="2">{n(counts.words, "word")}</span><span data-drop="1">{n(counts.chars, "character")}</span></>)}
       {fileItems.after}
     </Steady>
-  </>)
+  </span>)
 }
 
 /** The bar and its tray (with the more button) as drop targets for ambient items: in the bar, before the item after the
@@ -395,5 +414,5 @@ function Steady({ reset, children }: { reset: string; children: ReactNode }) {
     widest.current.w = Math.max(widest.current.w, el.getBoundingClientRect().width)
     el.style.minWidth = `${widest.current.w}px`
   })
-  return <span ref={ref} data-steady className="flex items-center justify-end gap-2 empty:hidden">{children}</span>
+  return <span ref={ref} data-steady className="flex shrink-0 items-center justify-end gap-2 empty:hidden">{children}</span>
 }

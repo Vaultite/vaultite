@@ -106,6 +106,8 @@ const LOCAL = process.env.VAULTITE_LOCAL || (app.isPackaged ? path.join(app.getP
 type Known = {
   path: string; port?: number; open?: boolean; last?: number
   bounds?: Rectangle; maximized?: boolean
+  /** Its page last hid the traffic lights (a sidebar hidden without rails): its window opens without them. */
+  lightsOff?: boolean
   /** Files from outside the vault opened in its window: allowed again when its server starts (tabs come back). */
   outside?: string[]
 }
@@ -315,6 +317,8 @@ async function openVault(p: string, file?: string) {
     // bypassHeatCheck: V8 caches the app's compiled scripts on the first launch, not the third (like VS Code).
     webPreferences: { preload: PRELOAD, sandbox: true, contextIsolation: true, spellcheck: true, v8CacheOptions: "bypassHeatCheck" },
   })
+  // (not shown where they sit by default while the page that hides them loads)
+  if (MAC && v.lightsOff) setLights(win, null)
   let server: ChildProcess, port: number
   try {
     [server, port] = await starting
@@ -419,6 +423,9 @@ function guard(win: BrowserWindow, origin: string) {
   win.on("enter-full-screen", lights)
   win.on("leave-full-screen", lights)
   win.webContents.on("dom-ready", lights)
+  // The Mac lays the title bar out again on these and may put the traffic lights back where they sit by default.
+  const again = () => applyLights(win)
+  if (MAC) { win.on("focus", again); win.on("blur", again); win.on("show", again); win.on("restore", again); win.on("resized", again); win.on("leave-full-screen", again) }
   win.webContents.on("did-create-window", (child, { url }) => {
     if (!url.startsWith(`${origin}/?popout=`)) return
     const w = [...wins.values()].find((x) => x.win === win) ?? popouts.get(win.webContents)
@@ -923,17 +930,34 @@ handle("dock:pick", async (w) => {
 // The asking page's own window (a pop-out's too, which `handle` answers as its vault's).
 ipcMain.handle("text:look-up", (e) => { who(e); e.sender.showDefinitionForSelection() })
 ipcMain.handle("text:learn", (e, word: string) => { who(e); e.sender.session.addWordToSpellCheckerDictionary(str(word)) })
+// ---------- the traffic lights ----------
+/** Each window's traffic lights as its page last placed them (points; null: hidden), put back after the Mac moves them. */
+const lightsOf = new WeakMap<BrowserWindow, { x: number; y: number } | null>()
+function setLights(w: BrowserWindow, at: { x: number; y: number } | null) {
+  lightsOf.set(w, at)
+  applyLights(w)
+}
+function applyLights(w: BrowserWindow) {
+  const at = lightsOf.get(w)
+  if (at === undefined || w.isDestroyed()) return
+  if (at) w.setWindowButtonPosition(at)
+  w.setWindowButtonVisibility(!!at)
+  // (shown again, the Mac lays them out where they sit by default: placed once more)
+  if (at) w.setWindowButtonPosition(at)
+}
 // The traffic lights in the page's sidebar's top row (`at`, CSS px: `x` right of LIGHTS, centred on the line `mid`
-// down), moving as it floats, hidden while it is (no rails). An older page sends a boolean: they stay put.
+// down), hidden while it is (no rails). An older page sends a boolean: they stay put.
 ipcMain.handle("window:lights", (e, at: boolean | { x: number; mid: number } | null) => {
   who(e)
   const w = BrowserWindow.fromWebContents(e.sender)
   if (!MAC || !w) return
   if (at && typeof at === "object" && Number.isFinite(at.x) && Number.isFinite(at.mid)) {
     const z = e.sender.getZoomFactor()
-    w.setWindowButtonPosition({ x: Math.round(LIGHTS.x + at.x * z), y: Math.round(at.mid * z - LIGHTS_HEIGHT / 2) })
-  }
-  w.setWindowButtonVisibility(!!at)
+    setLights(w, { x: Math.round(LIGHTS.x + at.x * z), y: Math.round(at.mid * z - LIGHTS_HEIGHT / 2) })
+  } else if (at) w.setWindowButtonVisibility(true)
+  else setLights(w, null)
+  const v = [...wins.values()].find((x) => x.win === w)?.vault
+  if (v && !!v.lightsOff !== !at) { if (at) delete v.lightsOff; else v.lightsOff = true; save() }
 })
 // `vau dev screenshot` (core/coreops/dev.ts, owner-only): the asking page as a PNG, halved while it's too big for the socket back.
 ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: number; height: number }) => {

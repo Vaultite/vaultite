@@ -14,6 +14,7 @@ import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { addToSet, allSets, askRenameSet, closeSet, colorSet, doneRenaming, foldSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet, useRenaming } from "@/core/tabsets"
 import { colorItems, dotIcon } from "@/components/ColorDot"
 import { PANES, type Drop } from "@/core/drop"
+import { usePaneHasTopBar } from "@/core/pane"
 import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
@@ -364,6 +365,19 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   alone: boolean }) {
   const { tabs, active } = group
   const { fileIcons, tabBar, paneTitles, tabTint } = usePrefs()
+  // Without tab bar or titles, a pane's top bar (a file's, the Browser's) is its title row (index.css): a right-click on
+  // its empty part is the strip's menu.
+  const hasTopBar = usePaneHasTopBar(group.id), merged = !tabBar && !paneTitles && hasTopBar
+  const strip = useRef<HTMLDivElement>(null)
+  useEffect(() => {
+    const section = strip.current?.parentElement
+    if (!merged || !section) return
+    const menu = (e: globalThis.MouseEvent) => {
+      if (!e.defaultPrevented && (e.target as Element).matches?.("[data-view-bar], [data-view-bar-fill], [data-web-bar]")) menuFor(() => barMenu(group))(e as never)
+    }
+    section.addEventListener("contextmenu", menu)
+    return () => section.removeEventListener("contextmenu", menu)
+  }, [merged, group])
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const hit = useDropHit<Drop>(PANES)
   const d = useDrag()
@@ -443,7 +457,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   // Nor pane titles (appearance `paneTitles`): a thin strip keeps the drag strip, the handle (on hover) and the menu.
   if (!tabBar && !paneTitles) {
     return (
-      <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare onContextMenu={menuFor(() => barMenu(group))}
+      <div ref={strip} role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare data-merged={merged || undefined} onContextMenu={menuFor(() => barMenu(group))}
         className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
         {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
         <div className="h-full min-w-0 flex-1" />

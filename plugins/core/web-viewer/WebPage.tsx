@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, ChevronDown, Ellipsis, Globe, Lock, MousePointerSquareDashed, Pause, Play, RotateCw, Scissors, Volume2, VolumeX, X, type LucideIcon } from "lucide-react"
 import {
-  cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, webPageActions, webPages, type MenuItem,
+  cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages, type MenuItem,
   type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
@@ -80,6 +80,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const box = useRef<HTMLDivElement>(null)
   const shot = useRef<HTMLImageElement>(null)
   const address = useRef<HTMLInputElement>(null)
+  const bar = useRef<HTMLDivElement>(null)
+  usePaneTopBar(bar)
   const [id, setId] = useState(0)
   const [state, setState] = useState<WebPageState>({ url: arg, title: "", back: false, forward: false, loading: http(arg) })
   const [saving, setSaving] = useState(false)
@@ -271,7 +273,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   return (
     <div className="flex h-full min-h-0 flex-col" data-web-page={id || ""}>
       {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
-      <div className="@container/bar flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5" data-web-bar>
+      <div ref={bar} className="@container/bar flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5" data-web-bar>
         <BarButton icon={ArrowLeft} label="Back" disabled={!state.back} onClick={() => void web.go(id, "back")} />
         <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} className="@max-xs/bar:hidden" />
         <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")} />

@@ -574,6 +574,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useOpenedFiles(store, n)`: The files opened lately in this workspace that are still there (not archived), newest first, at most `n`.
 - `useOutline(path)`: A file's headings (from its editor when it's on screen, else from the file), the one at the top of the screen, and going to one.
 - `usePane()`
+- `usePaneTopBar(ref)`: A view's top bar (ViewBar, the Browser's): without a tab bar it's its pane's title row (Tabs.tsx), and it makes room for what's fixed over the window's corners (the sidebars' toggles, a Mac's…
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).

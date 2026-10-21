@@ -9,7 +9,7 @@ export type Peek = "left" | "right" | null
 type Side = "left" | "right"
 
 /** Slid in, the sidebar floats this far (spacing units) from the window's edges; slid out, this far (px) past its edge,
- *  its shadow too. What rides on it from outside (its toggle, the Mac's traffic lights) moves by as much. */
+ *  its shadow too. What rides on it from outside (its toggle) moves by as much. */
 const INSET = 1.5
 // Its edge, an outline drawn inside: a border would move what's in it (a whole pixel on a 1x screen).
 const LINE = 0.5
@@ -38,28 +38,29 @@ function lightsAt(aside: Element | null) {
   return a.right > 0 ? { x: a.left, mid: row.top + row.height / 2 } : null
 }
 
-/** The traffic lights, centred on the left sidebar's top row in any density or zoom: hidden with it, and carried by it
- *  a frame at a time as it slides (they're the window's, drawn by the Mac: no transition moves them). */
+/** The traffic lights, on the left sidebar's top row, hidden with it. The Mac draws them: moved a frame at a time they
+ *  lagged its slide and flashed at their default place, so they go as it slides out and come once it has slid in. */
 export function usePeekLights(hidden: boolean, peek: Peek) {
   const shown = peek === "left"
   useEffect(() => {
     if (!hasLights) return
     const aside = document.querySelector("aside[data-side=left]")
     if (hidden && !aside) return showLights(null)
-    let frame = 0, said = ""
-    const follow = () => {
-      cancelAnimationFrame(frame)
-      const at = lightsAt(aside)
-      const now = JSON.stringify(at)
-      if (now !== said) { said = now; showLights(at) }
-      if (aside?.getAnimations().length) frame = requestAnimationFrame(follow)
+    let said = "", live = true
+    const say = (at: ReturnType<typeof lightsAt>) => { const now = JSON.stringify(at); if (now !== said) { said = now; showLights(at) } }
+    const place = () => {
+      // (only its sliding moves them: a rail folding changes its width, not where they sit)
+      const sliding = aside?.getAnimations().filter((a) => (a as CSSTransition).transitionProperty === "translate") ?? []
+      if (!sliding.length) return say(lightsAt(aside))
+      say(null)
+      void Promise.allSettled(sliding.map((a) => a.finished)).then(() => { if (live) place() })
     }
-    follow()
-    const sized = new ResizeObserver(() => follow())
+    place()
+    const sized = new ResizeObserver(() => place())
     const row = aside?.querySelector("[data-titlebar]")
     if (row) sized.observe(row)
-    addEventListener("resize", follow)
-    return () => { cancelAnimationFrame(frame); sized.disconnect(); removeEventListener("resize", follow) }
+    addEventListener("resize", place)
+    return () => { live = false; sized.disconnect(); removeEventListener("resize", place) }
   }, [hidden, shown])
 }
 

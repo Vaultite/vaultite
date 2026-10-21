@@ -495,6 +495,8 @@ dialog { --vau-panel-top: 0px; }
 /* Bottom panels (Vim's command line) stick at the pane's foot: on a computer, above the status bar drawn over it. */
 @media (min-width: 768px) { [data-pane], [data-kept] { --vau-panel-bottom: calc(var(--spacing) * 7); } }
 dialog { --vau-panel-bottom: 0px; }
+/* What the status bar leaves out while it doesn't fit (StatusBar.tsx, useFit): a plugin's item is display: contents. */
+[data-status-row] [data-fit-out] { display: none !important; }
 .vau-editor .cm-editor .cm-panels-bottom { padding-bottom: var(--vau-panel-bottom, 0px); }
 /* What a find lights where it can't mark the text (a drawn table, a page: core/findText.ts), as its matches in text. */
 ::highlight(vau-find) { background-color: color-mix(in srgb, var(--yellow) 32%, transparent); }
@@ -894,7 +896,10 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
    sits at the end of the top-right pane's tab bar: the bar keeps clear of it. */
 :root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--spacing) * 10); }
 /* Without pane titles, a corner the toggle sits in keeps a title bar's height, so it covers no page. */
-:root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-bare] { height: calc(var(--spacing) * 10); }
+:root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
+/* Nor tabs, with a top bar (merged: a file's, the Browser's): a pane at the window's top has no strip, its bar is the title
+   row, beside the sidebar's top row; it makes room for what sits in the corners itself (usePaneTopBar). */
+[data-top] > [data-bare][data-merged] { height: 0; overflow: hidden; }
 /* The desktop app (Electron: the preload sets data-electron on <html>; a browser never matches these). On a Mac
    (data-platform=darwin) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
    empty space of the top tab bars drag the window, the sidebar toggle moves right of the lights, and with the sidebar
@@ -906,6 +911,9 @@ html[data-electron] [data-top] > [role="tablist"] > div:first-child { align-self
 html[data-electron] [role="tablist"] [role="presentation"], html[data-electron] [role="tablist"] button,
 html[data-electron] [data-sidebar-toggle] { -webkit-app-region: no-drag; }
 html[data-electron] [data-header-item] { -webkit-app-region: no-drag; }
+/* A top bar that's its pane's title row (merged, above) drags the window by its empty part. */
+html[data-electron] [data-top] > [data-merged] ~ * :is([data-view-bar], [data-web-bar]) { -webkit-app-region: drag; }
+html[data-electron] [data-top] > [data-merged] ~ * :is([data-view-bar] > :not([data-view-bar-fill]), [data-view-bar-fill] > *, [data-web-bar] > *) { -webkit-app-region: no-drag; }
 /* The drag strip is a region of the window, not an element on top: it swallows the clicks of whatever is drawn over it
    unless that says no-drag. So everything drawn over the page does: menus (one opened in the header has its first item
    in the strip), the workspace list and a rail's flyout (beside the tab bar), dialogs, previews, tooltips, toasts, what
@@ -921,7 +929,7 @@ html[data-electron] :is(body > :not(#root), .fixed.inset-0, [role=menu], [role=d
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-titlebar] { padding-left: calc(88px + var(--spacing) * 6); }
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-sidebar-toggle=""] { left: 88px; }
 html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
-html[data-electron][data-platform=darwin]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare] { height: calc(var(--spacing) * 10); }
+html[data-electron][data-platform=darwin]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare]:not([data-merged]) { height: calc(var(--spacing) * 10); }
 /* A pop-out window (no sidebars): its top-left tab bar makes room for the lights. */
 html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
 /* In step with the panes sliding (Workspace: transition-[left] duration-200 ease-out), so the first tab never passes

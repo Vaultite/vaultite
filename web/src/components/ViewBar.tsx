@@ -1,10 +1,10 @@
 // Desktop: the bar on top of every tab's view: back and forward (the tab's own history),
 // then what the view says (a file's path, a page's name), then its buttons.
-import type { ReactNode } from "react"
+import { useRef, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight } from "lucide-react"
 import { useCommandKeys } from "@/core/commands"
 import { canNavigate, navigate, useTabs } from "@/core/workspace"
-import { usePane } from "@/core/pane"
+import { usePane, usePaneTopBar } from "@/core/pane"
 import { cn } from "@/lib/utils"
 
 /** A small icon button. */
@@ -28,10 +28,12 @@ function NavButtons() {
 }
 
 export function ViewBar({ children, right, className }: { children?: ReactNode; right?: ReactNode; className?: string }) {
+  const ref = useRef<HTMLDivElement>(null)
+  usePaneTopBar(ref)
   return (
-    <div data-view-bar className={cn("sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
+    <div ref={ref} data-view-bar className={cn("sticky top-0 z-10 -mx-2 mb-4 flex h-10 items-center gap-2 bg-background px-2 text-[13px]", className)}>
       <NavButtons />
-      <div className="flex min-w-0 flex-1 items-center">{children}</div>
+      <div data-view-bar-fill className="flex min-w-0 flex-1 items-center">{children}</div>
       {right}
     </div>
   )

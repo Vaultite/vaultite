@@ -1,7 +1,7 @@
 // Sidebars without rails (Zen): hidden, each takes no room and is off the window with its toggle; at its edge of the
 // window it slides in as a floating panel, as far from the window's top as from its side, and its toggle rides on it,
 // mid-slide too, sitting in it where it sits beside the pinned sidebar, centred on its top row (the Mac's traffic
-// lights follow the left one the same way, electron/main.ts: not in a browser). Writes appearance.json and
+// lights come once the left one is in: lights.mjs, not in a browser). Writes appearance.json and
 // sidebars.json (put back after): throwaway server only.
 //   node web/qa/peek.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
