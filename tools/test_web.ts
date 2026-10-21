@@ -847,6 +847,53 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("groups: ungrouping a pane puts its tabs in the one before it", tabs() === "file:a.md,file:b.md,file:c.md,file:d.md *" && ws.activeTab().id === "b", tabs())
   one([A, B, C], "c"); sp.placeTab("c", "a")
   check("groups: a tab placed before another, the tab on screen kept", tabs() === "file:c.md,file:a.md,file:b.md *" && ws.activeTab().id === "c", tabs())
+
+  // A view hears each tab of its that goes (a web page is its tab's), and `last` once its place shows nowhere (a terminal).
+  const heard: string[] = []
+  ws.setTabCloser((to: string, tab: string, last: boolean) => heard.push(`${to} ${tab}${last ? " last" : ""}`))
+  const W1 = { id: "w1", to: "view:web/https://example.com/" }, W2 = { id: "w2", to: "view:web/https://example.com/" }
+  one([A, W1, W2], "w2"); ws.closeTab("w1", true)
+  check("closing: a tab of a place another tab shows is heard, not as the last", heard.join("|") === "view:web/https://example.com/ w1", heard)
+  heard.length = 0; ws.closeTab("w2", true)
+  check("closing: the last tab of a place is heard as the last", heard.join("|") === "view:web/https://example.com/ w2 last", heard)
+  heard.length = 0; one([A, W1, W2], "a"); ws.closeTabs("others", "a", true)
+  check("closing several of a place: each heard, the last once", heard.join("|") === "view:web/https://example.com/ w1|view:web/https://example.com/ w2 last", heard)
+  heard.length = 0; one([A, W1], "w1"); ws.takeOut(["w1"])
+  check("a tab taken out to another window is heard, never as the last", heard.join("|") === "view:web/https://example.com/ w1", heard)
+  heard.length = 0; one([A, W1], "w1"); ws.closeTab("a", true)
+  check("closing a file's tab tells no view", !heard.length, heard)
+  ws.setTabCloser(() => {})
+}
+
+// ---------- Browser: a tab owns its page (electron/webpages.ts) ----------
+{
+  const wp = await import("../electron/webpages.ts")
+  type P = { id: number; win: string; tab: string; profile: string; holds: number; closing: boolean; let: number; orphan?: number }
+  let n = 0
+  const page = (tab: string, o: Partial<P> = {}): P => ({ id: ++n, win: "w", tab, profile: "", holds: 1, closing: false, let: 0, ...o })
+  const a = page("t1"), b = page("t2")
+  check("pages: a tab shown again gets its own page, never another tab's at the same address",
+    wp.claim([a, b], "w", "t1", "").reuse === a && wp.claim([a, b], "w", "t3", "").reuse === null && wp.claim([a, b], "w2", "t1", "").reuse === null)
+  const moved = wp.claim([a], "w", "t1", "c-work")
+  check("pages: a tab moved to another container gets a new page, its old one ends", moved.reuse === null && moved.end[0] === a, moved)
+  check("pages: no tab (a glance) never reuses one", wp.claim([page("")], "w", "", "").reuse === null)
+  const c = page("t1")
+  c.holds = 2
+  check("pages: let go of by a view while another still shows it, it stays shown", !wp.letGo(c, 5) && c.holds === 1)
+  check("pages: hidden with its tab in the background, it's kept", !wp.letGo(c, 6) && c.holds === 0 && c.let === 6)
+  check("pages: a glance's ends when let go of", wp.letGo(page(""), 1))
+  const shown = page("t4"), hidden = page("t5", { holds: 0 })
+  check("pages: a background tab closing ends its page at once", wp.tabGone([shown, hidden], "w", "t5")[0] === hidden)
+  check("pages: a shown tab closing ends its page as it's let go of", !wp.tabGone([shown], "w", "t4").length && shown.closing && wp.letGo(shown, 1)
+    && wp.claim([shown], "w", "t4", "").reuse === null)
+  const r1 = page("t6"), r2 = page(""), r3 = page("t7", { closing: true })
+  const ended = wp.windowReloaded([r1, r2, r3], "w", 1000)
+  check("pages: a window reloading: tabs' pages wait to be taken back, the rest end", ended.length === 2 && r1.orphan === 1000 && r1.holds === 0, ended)
+  check("pages: one not taken back in time ends", !wp.unclaimed([r1], 1000 + wp.RECLAIM_MS - 1).length && wp.unclaimed([r1], 1000 + wp.RECLAIM_MS)[0] === r1)
+  const bg = Array.from({ length: wp.KEEP + 3 }, (_, i) => page(`b${i}`, { holds: 0, let: i }))
+  const out = wp.discardable([...bg, page("x")], (p: P) => p.tab === "b0")
+  check("pages: short of memory, the longest in the background are discarded, never shown or playing ones",
+    out.map((p: P) => p.tab).join() === "b2,b1", out.map((p: P) => p.tab))
 }
 
 // ---------- Slides: a note split at --- lines (plugins/core/slides/slides.ts) ----------

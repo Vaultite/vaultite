@@ -15,6 +15,7 @@ import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { agentNews, focusedPage, focusedPageId, linksInViewer, pausedPages, profile, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
+import { Playing } from "./Playing"
 
 const WebPage = lazy(() => import("./WebPage"))
 
@@ -143,13 +144,13 @@ function Background() {
   // Which containers need Touch ID, told to the desktop app as they change.
   const locks = useContainers().filter((c) => c.lock).map((c) => profileIn(c.id)).join(" ")
   useEffect(() => { void webPages?.engine?.("lock:set", locks ? locks.split(" ") : []).catch(() => {}) }, [locks])
-  // Which pages play sound, shown or kept: read again as pages change.
+  // Which pages play sound, shown or in the background: read again as pages change.
   useEffect(() => {
     const web = webPages
     if (!web?.list) return
     let timer = 0
-    const read = () => void web.list!().then((list) => setSounds(new Map(list.flatMap((p) => p.muted || p.audible
-      ? [[argOf(p.url, containerOfProfile(p.profile)), { sound: p.muted ? "muted" as const : "playing" as const, id: p.id }] as const] : []))), () => {})
+    const read = () => void web.list!().then((list) => setSounds(list.flatMap((p) => p.muted || p.audible
+      ? [{ sound: p.muted ? "muted" as const : "playing" as const, audible: !!p.audible, id: p.id, tab: p.tab ?? "", arg: argOf(p.url, containerOfProfile(p.profile)), title: p.title }] : [])), () => {})
     const off = web.on((m) => { if (m.type === "state" || m.type === "pages") { clearTimeout(timer); timer = window.setTimeout(read, 250) } })
     return () => { off(); clearTimeout(timer) }
   }, [])
@@ -208,8 +209,8 @@ export default definePlugin({
       icon: Globe,
       title: (arg) => { const { url } = splitArg(arg); return url ? titleOf(url) || extensionPageName(url) || hostOf(url) || "Web page" : "New tab" },
       // (playing sound or muted: a speaker in place of the site's icon, as a browser's tab shows it)
-      iconFor: (arg) => {
-        const sound = soundOf(arg)?.sound
+      iconFor: (arg, tab) => {
+        const sound = soundOf(arg, tab)?.sound
         if (sound) return sound === "muted" ? VolumeX : Volume2
         const { container, url } = splitArg(arg), c = containerById(container)
         return siteIcon(url, c ? colorOf(c) : undefined)
@@ -226,7 +227,13 @@ export default definePlugin({
       render: ({ arg, focused, setArg }) => (
         <Suspense fallback={null}><WebPage key={splitArg(arg).container ?? ""} arg={arg} focused={focused} setArg={setArg} /></Suspense>
       ),
-      onClose: (arg) => { const { container, url } = splitArg(arg); void webPages?.close(url, profileIn(container)) },
+      // (a click on the speaker mutes the tab, as a browser's does)
+      iconAction: (arg, tab) => {
+        const s = soundOf(arg, tab)
+        return s ? { label: s.sound === "muted" ? "Unmute tab" : "Mute tab", run: () => void webPages?.go(s.id, s.sound === "muted" ? "unmute" : "mute") } : null
+      },
+      // (a tab's page is its own, whatever else shows the address)
+      onTabClose: (_arg, tab) => void webPages?.close(tab),
       tabMenu: (arg) => {
         const { url } = splitArg(arg), sound = soundOf(arg)
         return [
@@ -273,6 +280,7 @@ export default definePlugin({
     { id: "web:import-brave", name: "Import from Brave…", desktop: true, when: () => browsersHere().some((s) => s.browser === "brave"), run: () => void askImport("brave"), icon: Download },
     { id: "web:import-chrome", name: "Import from Chrome…", desktop: true, when: () => browsersHere().some((s) => s.browser === "chrome"), run: () => void askImport("chrome"), icon: Download },
   ],
+  ambient: { playing: { title: "Web pages playing", sort: 55, render: () => <Playing /> } },
   background: Background,
   preview: () => <Preview />,
 })

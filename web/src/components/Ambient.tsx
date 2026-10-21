@@ -1,10 +1,10 @@
 // What a plugin's ambient item draws in the status bar (AmbientItem): a small button, an icon and a few words.
-import type { ComponentType, CSSProperties, ReactNode } from "react"
+import type { ComponentType, CSSProperties, MouseEvent, ReactNode } from "react"
 import { cn } from "@/lib/utils"
 
 export function AmbientButton({ icon: Icon, text, tip, tint, onClick, className }: {
   icon: ComponentType<{ className?: string; strokeWidth?: number; style?: CSSProperties }>
-  text?: ReactNode; tip: string; tint?: string; onClick: () => void; className?: string
+  text?: ReactNode; tip: string; tint?: string; onClick: (e: MouseEvent<HTMLButtonElement>) => void; className?: string
 }) {
   return (
     <button type="button" onClick={onClick} aria-label={tip} data-tip={tip} data-tip-side="top"

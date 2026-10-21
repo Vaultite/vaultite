@@ -467,7 +467,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `SidebarCtx`
 - `SidebarHeading`
 - `SidebarPanel`: A panel in the desktop sidebar (search, pinned pages, the file tree).
-- `SidebarRow({ icon, iconClassName, tint, badge, tag, label, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
+- `SidebarRow({ icon, iconClassName, tint, badge, tag, iconAction, label, open, active, onClick, onContextMenu, href, tip, className, children, more, swipe, … })`: A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows.
 - `sidebars(prefs?)`: The sidebars' setup in effect: a plugin's own (the current workspace's), else sidebars.json's.
 - `Sidebars`
 - `sidebarsChanged()`: Tell the sidebars a plugin's setup changed (a workspace switch).
@@ -581,7 +581,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `vaultSidebars(prefs?)`: sidebars.json's setup: as saved, or the default while it's unset (what a workspace without its own shows).
 - `ViewCtx`
 - `ViewDef`: A kind of tab it opens that isn't a file (a terminal), desktop only.
-- `viewInfo(to, disabled?)`: A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too).
+- `viewInfo(to, disabled?, tab?)`: A view's tab as it shows (`view:terminal/abc`): its label, icon and state, as its tab draws them (a pinned one too); `tab`: the tab's id, for what's that tab's (its icon's action).
 - `viewMenuItems(target, disabled?)`: The items the plugins that are on add to a view's menus (`viewMenu`), for its tab's target.
 - `viewPinLabel(target, disabled?)`: A pinned view's name now, when its view knows it (its `pinLabel`: a web page's title, once loaded), else null.
 - `viewsChanged()`: Tell the tabs that a view's `title` or `iconClass` answers something else now.
@@ -592,7 +592,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).
 - `WebPageInfo`
 - `webPages`: The desktop app's web pages, or null (a browser, an app build from before the Browser).
-- `WebPages`: Web pages in the desktop app: native views drawn over this window in sessions of their own (logins kept apart from the app's), known by number; a released page is kept a while.
+- `WebPages`: Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's), known by number, each a tab's: hidden while it's in the background, ended with it.
 - `WebPageState`: Where a web page is (its address), what it's called and what it can do now.
 - `WebSite`
 - `WeeksGrid({ tip, tint, goal, weeks, onOpen })`

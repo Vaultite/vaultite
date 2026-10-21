@@ -211,8 +211,11 @@ export type ViewDef = {
   /** Its tab's icon. */
   icon: LucideIcon
   /** Picks its tab's icon per tab (a Claude Code terminal), else `icon`. Its own field, as an icon can be a plain
-   *  function too (a brand's mark). */
-  iconFor?: (arg: string) => LucideIcon
+   *  function too (a brand's mark). `tab`: the tab's id, where it's drawn for one (not a pin). */
+  iconFor?: (arg: string, tab?: string) => LucideIcon
+  /** What a click on its tab's icon does instead of showing the tab (a page playing sound: Mute tab), its `label` the
+   *  icon's tooltip; null: nothing, a click shows the tab. */
+  iconAction?: (arg: string, tab: string) => { label: string; run: () => void } | null
   /** The tab's label. It may read live data the plugin keeps (a terminal's session name): call `viewsChanged()` (the
    *  plugin API) when that changes, and every tab is drawn again. */
   title: (arg: string) => string
@@ -248,6 +251,9 @@ export type ViewDef = {
   /** The last tab showing it was closed (not moved, not navigated away from: it's still in that tab's history then;
    *  not while another tab has it, here or in another workspace). */
   onClose?: (arg: string) => void
+  /** A tab showing it left this window: closed (each one, before `onClose`), or taken out to another window. What
+   *  that tab had of its own here ends (its web page); `tab` is its id, as `usePane().tab` says. */
+  onTabClose?: (arg: string, tab: string) => void
   /** Before its last tabs close: what to ask, or null to close without asking. Only for what closing would lose (a
    *  terminal doesn't ask: its process keeps running); closing from its own ctx never asks. */
   confirmClose?: (args: string[]) => Promise<ConfirmOptions | null> | ConfirmOptions | null

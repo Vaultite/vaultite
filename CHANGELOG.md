@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: each tab owns its page, so closing a tab always ends it (a slow page's sound no longer plays on with no tab),
+  two tabs of one address are two pages, ⌘⇧T opens one page, and the address shows while it loads; a tab's speaker mutes
+  it with a click, and the status bar names the pages playing sound.
 - Applying a bundle with the app open draws it as a reload would: the status bar no longer keeps the last setup's width.
 - Bundles: the tab is laid out as Plugins is: Your bundles (built in, then yours) and Get bundles (the directory, with
   Import… for one it doesn't list), with the search beside them; with none of yours yet, one empty state offers Save

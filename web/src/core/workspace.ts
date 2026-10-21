@@ -326,7 +326,9 @@ export function popOut(id: string, move = false) {
 export function takeOut(ids: string[]) {
   for (const id of ids) {
     const g = groupOfTab(id)
-    if (!g) continue
+    const t = g?.tabs.find((x) => x.id === id)
+    if (!g || !t) continue
+    if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, false)
     const rest = g.tabs.filter((x) => x.id !== id)
     leave(g.id, rest, nextActive(g, id, rest))
   }
@@ -372,10 +374,10 @@ function leave(gid: string, tabs: Tab[], active: string) {
 /** How many tabs are open, in every pane (the phone's tab switcher button). */
 export const tabCount = (ws: Workspace = state) => leaves(ws.root).reduce((n, g) => n + g.tabs.length, 0)
 
-/** Plugins' views hear a tab closed (a terminal ends its shell) only once no tab anywhere still shows that place (other
- *  workspaces too: `setOpenElsewhere`). Moving a tab isn't closing it. */
-let onClosed: ((to: string) => void) | null = null
-export const setTabCloser = (fn: (to: string) => void) => { onClosed = fn }
+/** Views hear each tab of theirs leaving this window (closed, or taken out to another), `last` once no tab anywhere shows
+ *  that place (other workspaces too: `setOpenElsewhere`; a terminal ends its shell). Moving between panes isn't leaving. */
+let onClosed: ((to: string, tab: string, last: boolean) => void) | null = null
+export const setTabCloser = (fn: (to: string, tab: string, last: boolean) => void) => { onClosed = fn }
 /** Whether a place is open in tabs kept elsewhere (Workspaces: the other workspaces' tabs). Set by the app. */
 let elsewhere: (to: string) => boolean = () => false
 export const setOpenElsewhere = (fn: (to: string) => boolean) => { elsewhere = fn }
@@ -385,7 +387,12 @@ function lastOf(tabs: Tab[]) {
   const left = new Set(groups().flatMap((g) => g.tabs).filter((t) => !going.has(t.id)).map((t) => t.to))
   return [...new Set(tabs.map((t) => t.to))].filter((to) => to.startsWith("view:") && !left.has(to) && !elsewhere(to))
 }
-const closed = (tabs: Tab[]) => { remember(tabs); for (const to of lastOf(tabs)) onClosed?.(to) }
+function closed(tabs: Tab[]) {
+  remember(tabs)
+  const last = new Set(lastOf(tabs))
+  // (`last` once a place: with the last of its tabs)
+  tabs.forEach((t, i) => { if (t.to.startsWith("view:")) onClosed?.(t.to, t.id, last.has(t.to) && !tabs.slice(i + 1).some((x) => x.to === t.to)) })
+}
 
 /** Tabs closed lately, for ⌘⇧T, with their pane and place. Not blank tabs, nor views that end with their tab (a
  *  terminal's shell). */

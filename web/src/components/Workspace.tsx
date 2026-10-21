@@ -26,7 +26,12 @@ import { ViewBar } from "@/components/ViewBar"
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { cn } from "@/lib/utils"
 
-setTabCloser((to) => { const v = viewFor(to, getPrefs().disabled); if (v?.on) v.def.onClose?.(v.arg) })
+setTabCloser((to, tab, last) => {
+  const v = viewFor(to, getPrefs().disabled)
+  if (!v?.on) return
+  v.def.onTabClose?.(v.arg, tab)
+  if (last) v.def.onClose?.(v.arg)
+})
 setOpenElsewhere((to) => openElsewhere(to, getPrefs().disabled))
 setTabKeeper((to) => !!viewFor(to, getPrefs().disabled)?.def.keepsTab)
 setPageTest((path) => isPage(path))

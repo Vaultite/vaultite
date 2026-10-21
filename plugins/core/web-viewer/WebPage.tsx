@@ -2,7 +2,7 @@
 // anything of the app covers the box (sampled with elementFromPoint) the page is swapped for its snapshot until it's gone.
 import { useEffect, useRef, useState, type ReactNode } from "react"
 import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Globe, Lock, Pause, Play, RotateCw, Scissors, Volume2, VolumeX, X, type LucideIcon } from "lucide-react"
-import { notify, notifyError, openInSplit, openView, post, typingIn, useEnabled, usePane, webPageActions, webPages, type WebPageState, type WebPages } from "@vaultite"
+import { getTabLayout, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, webPageActions, webPages, type WebPageState, type WebPages } from "@vaultite"
 import { hostOf } from "./address"
 import { ExtensionButtons } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
@@ -62,8 +62,15 @@ const http = (u: string) => /^https?:\/\//i.test(u)
 /** What a tab may follow and name: the web, and an extension's own pages (its options). */
 const ownPage = (u: string) => http(u) || /^chrome-extension:\/\//i.test(u)
 
+/** Whether tab `id` still shows a web page (else it went elsewhere: its page ends; gone, it closed or is in another
+ *  workspace's tabs). */
+const stillWeb = (id: string) => {
+  const t = panesOf(getTabLayout().root).flatMap((g) => g.tabs).find((x) => x.id === id)
+  return !t || t.to === "view:web" || t.to.startsWith("view:web/")
+}
+
 function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: WebPages }) {
-  const { group } = usePane()
+  const { group, tab = "" } = usePane()
   // (a tab's container never changes under its page: index.tsx draws a page afresh for another)
   const { container, url: arg } = splitArg(tabArg)
   const setArg = (url: string) => setTabArg(argOf(url, container))
@@ -91,24 +98,25 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   }, [container, web])
   useEffect(() => { if (locked && shot.current) shot.current.hidden = true }, [locked])
 
-  // The page: the one this address had in these logins (a tab switched back to) or a new one; let go of when the tab goes
-  // (or its container locks). A new web tab has none till an address is typed (its arg).
+  // The page: the tab's own (shown again) or a new one; let go of as the tab hides (or its container locks), ended when
+  // the tab shows something else (closing it ends it too: onTabClose). A new web tab has none till an address is typed.
   const blank = !ownPage(arg)
   useEffect(() => {
     if (locked !== false || blank) return
     let gone = false, mine = 0
+    const leave = (id: number) => { void web.release(id); if (tab && !stillWeb(tab)) void web.close(tab) }
     settingsRead().then(() => {
       // A site that always opens in a container, opened in none: its tab goes there (drawn afresh, index.tsx).
       const rule = container ? null : ruleFor(arg)
       if (rule && containerById(rule)) { live.current.setTabArg(argOf(arg, rule)); return Promise.reject(null) }
-      return web.open(arg, null, profileIn(container))
+      return web.open(arg, null, profileIn(container), tab)
     }).then((r) => {
-      if (gone) { void web.release(r.id); return }
+      if (gone) { leave(r.id); return }
       mine = r.id
       setId(r.id)
       setState(r.state)
     }, (e) => { if (e !== null) notifyError(e, "Couldn't open the page") })
-    return () => { gone = true; if (mine) void web.release(mine); setId(0) }
+    return () => { gone = true; if (mine) leave(mine); setId(0) }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locked, blank])
 

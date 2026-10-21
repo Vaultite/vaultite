@@ -14,6 +14,11 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   purple, pink, yellow, teal, indigo, gray; `sites`: a page of one opened in no container opens there). What's opened
   from a page in a container opens in it too. `"lock": true` makes a container need Touch ID: its pages don't open or
   show until unlocked in its tab, and lock again when the Mac locks, sleeps or is idle 15 minutes ("Lock containers").
+- Tabs: each is its own page, as in any browser (two tabs of one address are two pages): one in the background keeps
+  its page, closing it ends it, and ⌘⇧T opens it again afresh at its address. When the Mac runs short of memory,
+  background tabs' pages may be let go (never one playing sound) and load again when shown. A tab playing sound shows
+  a speaker: a click on it mutes or unmutes the tab, and while a page makes sound the status bar's "Web pages playing"
+  names it, its menu showing its tab or muting it.
 - Logins: each workspace's pages have their own (a different account per workspace for the same site; workspace 1 keeps
   the ones pages shared before), or with `logins: shared` every page shares one.
 - The Web pages panel (in the sidebar's Panels menu): the pages open in this workspace's logins and the sites you

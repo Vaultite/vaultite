@@ -5,6 +5,7 @@ import { app, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemC
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { writeAtomic } from "./setup.ts"
+import { claim, discardable, letGo, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned } from "./webpages.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
 import fs from "node:fs"
@@ -12,7 +13,9 @@ import path from "node:path"
 
 export type WebRect = { x: number; y: number; width: number; height: number }
 export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; audible?: boolean; muted?: boolean }
-type Page = { id: number; win: BrowserWindow; view: WebContentsView; profile: string; held: boolean; closing: boolean; let: number; error?: string
+type Page = Owned<BrowserWindow> & { view: WebContentsView; error?: string
+  /** The address it was last sent to: what it shows until a load commits (getURL is "" till then). */
+  target: string
   /** The icon addresses it last told (page-favicon-updated), so the same list isn't fetched again. */
   icons?: string
   /** It had the keyboard when it was last hidden. */
@@ -25,9 +28,6 @@ const PARTITION = "persist:web"
 /** The session's partition for a profile ("" or a workspace's "2"; anything else is the shared one). */
 export const partitionOf = (profile: string) => (/^[a-z0-9-]{1,32}$/.test(profile) ? `${PARTITION}-${profile}` : PARTITION)
 const profileOf = (x: unknown) => (typeof x === "string" && /^[a-z0-9-]{1,32}$/.test(x) ? x : "")
-/** Pages let go of that each window keeps even when the Mac runs short of memory (more are kept until it does, the
- *  oldest ending first then, like Chrome's discarding). */
-const KEEP = 4
 const MAC = process.platform === "darwin"
 /** Keys a page keeps even when the app has a shortcut on them: editing text, finding, a rich editor's marks. */
 // (⌘Y isn't redo on a Mac: it's History there, as in Chrome)
@@ -163,7 +163,7 @@ const tell = (win: BrowserWindow, msg: Record<string, unknown>) => { if (!win.is
 function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  return { url: wc.getURL() || "", title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
+  return { url: wc.getURL() || p.target, title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
     ...(wc.isCurrentlyAudible() ? { audible: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
@@ -193,7 +193,7 @@ const RATE = 6
 const QUEUED = 200
 
 const sendState = (p: Page) => tell(p.win, { type: "state", id: p.id, state: stateOf(p) })
-/** The window's pages came or went, or one was let go of or taken back (the Web pages panel). */
+/** The window's pages came or went, or one was hidden or shown again (the Web pages panel). */
 const pagesChanged = (win: BrowserWindow) => tell(win, { type: "pages" })
 
 /** A shortcut as the app's commands name it (web/src/core/commands.ts: canonical, lower case): "mod+shift+t". */
@@ -218,7 +218,7 @@ async function otherApp(p: Page, to: string) {
   if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
 }
 
-function make(win: BrowserWindow, url: string, profile: string): Page {
+function make(win: BrowserWindow, url: string, profile: string, tab: string): Page {
   // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
   // extension's own pages embedded in it)
   const view = new WebContentsView({
@@ -230,7 +230,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   win.contentView.addChildView(view)
-  const p: Page = { id: next++, win, view, profile, held: true, closing: false, let: 0 }
+  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url }
   pages.set(p.id, p)
   const wc = view.webContents
   pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible() })
@@ -263,6 +263,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   revive(wc)
   const changed = () => sendState(p)
   wc.on("did-start-loading", () => { p.error = undefined; changed() })
+  wc.on("did-start-navigation", (d) => { if (d.isMainFrame && !d.isSameDocument && shows(d.url)) p.target = d.url })
   wc.on("did-stop-loading", changed)
   wc.on("did-navigate", (_e, to) => { noteVisit(profile, to); if (siteOf(hostOfUrl(to)) === CLOUD.site) cloudOpened.add(profile); changed() })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
@@ -371,13 +372,11 @@ function end(p: Page) {
   if (!p.view.webContents.isDestroyed()) p.view.webContents.close()
 }
 
-/** Pages let go of are kept (hidden, so Chromium throttles them): only when memory runs short does each window keep
- *  just its KEEP newest, the older ones ending. */
-async function trim(win?: BrowserWindow) {
-  const loose = (w: BrowserWindow) => [...pages.values()].filter((p) => p.win === w && !p.held && !p.closing).sort((a, b) => b.let - a.let)
-  const wins = win ? [win] : [...new Set([...pages.values()].map((p) => p.win))]
-  if (!wins.some((w) => loose(w).length > KEEP) || !(await shortOfMemory())) return
-  for (const w of wins) for (const p of loose(w).slice(KEEP)) end(p)
+/** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable). */
+async function trim() {
+  const audible = (p: Page) => !p.view.webContents.isDestroyed() && p.view.webContents.isCurrentlyAudible()
+  if (!discardable(pages.values(), audible).length || !(await shortOfMemory())) return
+  for (const p of discardable(pages.values(), audible)) end(p)
 }
 setInterval(() => void trim(), 60_000).unref()
 
@@ -419,10 +418,12 @@ function go(p: Page, action: string, url?: string) {
   else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
   // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)
   else if (action === "focus") { if (p.view.getVisible()) wc.focus(); else p.hadFocus = true }
-  else if (action === "load" && url && shows(url)) void wc.loadURL(url).catch(() => {})
+  else if (action === "load" && url && shows(url)) { p.target = url; void wc.loadURL(url).catch(() => {}) }
 }
 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
+/** A tab's id as the app's tabs make them (core/layout.ts newId); anything else is no tab. */
+const tabOf = (x: unknown) => (typeof x === "string" && /^[\w-]{1,64}$/.test(x) ? x : "")
 const rectOf = (r: unknown): WebRect | null => {
   if (!r || typeof r !== "object") return null
   const o = r as Record<string, unknown>
@@ -451,7 +452,7 @@ export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) 
   })
 }
 
-/** Wire a vault window: its pages end with it, and a reload of its page lets go of them. */
+/** Wire a vault window: its pages end with it; as its page reloads, its tabs take their pages back or they end. */
 export function webWindow(win: BrowserWindow) {
   win.on("closed", () => {
     for (const p of [...pages.values()]) if (p.win === win) end(p)
@@ -460,20 +461,25 @@ export function webWindow(win: BrowserWindow) {
   win.webContents.on("did-start-navigation", (d) => {
     if (!d.isMainFrame || d.isSameDocument) return
     void float(win, [])
-    for (const p of pages.values()) if (p.win === win && p.held) { p.held = false; p.let = Date.now(); p.view.setVisible(false) }
-    void trim(win)
+    for (const p of pages.values()) if (p.win === win) p.view.setVisible(false)
+    for (const p of windowReloaded(pages.values(), win, Date.now())) end(p)
+    setTimeout(() => { for (const p of unclaimed(pages.values(), Date.now())) end(p) }, RECLAIM_MS + 100)
   })
 }
 
 /** The IPC handlers (main.ts checks the asking page is a vault window's and gives its BrowserWindow). */
 export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]) => unknown> = {
-  "web:open": async (win, url, rect, profile) => {
+  // (a tab's page is the tab's: shown again, it's the same one, wherever it went since)
+  "web:open": async (win, url, rect, profile, tab) => {
     await engineLoaded()
-    const u = str(url), prof = profileOf(profile)
+    const u = str(url), prof = profileOf(profile), owner = tabOf(tab)
     if (!shows(u)) throw new Error("only http and https pages")
     if (!mayOpen(prof)) throw new Error("this container is locked")
-    let p = [...pages.values()].find((x) => x.win === win && x.profile === prof && !x.held && !x.closing && (x.view.webContents.getURL() || "") === u)
-    if (p) { p.held = true } else p = make(win, u, prof)
+    const { reuse, end: other } = claim(pages.values(), win, owner, prof)
+    for (const x of other) end(x)
+    const p = reuse ?? make(win, u, prof, owner)
+    p.holds++
+    p.orphan = undefined
     pagesChanged(win)
     place(p, rectOf(rect))
     return { id: p.id, state: stateOf(p) }
@@ -499,21 +505,13 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
   "web:release": (win, id) => {
     const p = pages.get(Number(id))
     if (!p || p.win !== win) return
-    if (p.closing) return end(p)
-    p.held = false
-    p.let = Date.now()
+    if (letGo(p, Date.now())) return end(p)
+    if (p.holds) return
     p.view.setVisible(false)
-    void trim(win)
+    void trim()
     pagesChanged(win)
   },
-  "web:close": (win, url, profile) => {
-    const u = str(url), prof = profileOf(profile)
-    for (const p of [...pages.values()]) {
-      if (p.win !== win || p.profile !== prof || (p.view.webContents.getURL() || "") !== u) continue
-      if (p.held) p.closing = true // its tab goes in a moment: it ends when let go of
-      else end(p)
-    }
-  },
+  "web:close": (win, tab) => { for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p) },
   "web:go": (win, id, action, url) => go(mine(win, id), str(action), typeof url === "string" ? url : undefined),
   "web:snapshot": async (win, id) => {
     const p = mine(win, id)
@@ -530,7 +528,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
   "web:external": (_win, url) => { const u = str(url); if (web(u)) openElsewhere(u); else if (/^mailto:/i.test(u)) void shell.openExternal(u) },
   "web:keys": (win, steps) => { keysOf.set(win, new Set(Array.isArray(steps) ? steps.filter((s): s is string => typeof s === "string") : [])) },
   "web:list": (win) => [...pages.values()].filter((p) => p.win === win && !p.closing)
-    .map((p) => ({ id: p.id, profile: p.profile, shown: p.held, ...stateOf(p) })),
+    .map((p) => ({ id: p.id, profile: p.profile, tab: p.tab, shown: p.holds > 0, ...stateOf(p) })),
   "web:sites": (_win, profile) => sitesOf(profileOf(profile)),
   "web:forget": async (_win, profile, site) => {
     const prof = profileOf(profile), s = webSession(prof), name = str(site).toLowerCase()

@@ -1,7 +1,8 @@
 // The Browser in the desktop app (Electron) against pages this script serves on 127.0.0.1: a web link opens a web
 // tab, a native view laid over its pane (splits, sidebar, dividers, zoom), hidden behind a picture of itself under the
 // palette or a menu, kept on tab switches; links, back, new tabs and other schemes; no bridge into the app; app
-// shortcuts from the page; Save to vault, downloads, an image's menu; closing ends the page. SHOW=1 shows the window;
+// shortcuts from the page; Save to vault, downloads, an image's menu; a tab's page is its own (a slow one switched away
+// from and back, two tabs of one address, ⌘⇧T); closing ends the page. SHOW=1 shows the window;
 // screenshots (screencapture, so the native view is in them) go to <out dir>.
 // WRITES: the throwaway vault only.
 //   node web/qa/webviewer.mjs <vault copy> <out dir>
@@ -39,6 +40,8 @@ const PNG = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR
 const server = http.createServer((req, res) => {
   const u = req.url ?? "/"
   if (u.startsWith("/lamp.png")) { res.writeHead(200, { "Content-Type": "image/png" }); return res.end(PNG) }
+  // (a page that takes a while: nothing of it has loaded while its tab is switched away from and back)
+  if (u.startsWith("/slow")) return void setTimeout(() => { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); res.end(page("Slow part", "<h1>Slow part</h1>")) }, 5000)
   if (u.startsWith("/file.txt")) { res.writeHead(200, { "Content-Type": "text/plain", "Content-Disposition": "attachment; filename=\"log book.txt\"" }); return res.end("Day one: calm.\n") }
   const html = u.startsWith("/two") ? page("Second part", "<h1>Second part</h1><p>The second part.</p>")
     : u.startsWith("/three") ? page("Third part", "<h1>Third part</h1><p>The third part.</p>")
@@ -436,6 +439,37 @@ const n = (await opened()).length
 await win.locator(".cm-link[data-url]").first().click()
 check("openLinks: browser: a click goes to the browser", await until(async () => (await opened()).length > n, 10000), await opened())
 check("… and opens no web tab", (await pages()).length === before, await pages())
+
+// ---------- a tab's page is its own ----------
+const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
+const n0 = (await pages()).length
+await ui({ action: "open", path: `${SITE}/slow`, newTab: true })
+check("a slow page: its address shows while it loads", await until(async () => (await win.locator("[data-web-address]:visible").inputValue().catch(() => "")) === `${SITE}/slow`, 4000)
+  && (await pages()).some((p) => p.url === ""), await pages())
+// (named by its site till its title comes)
+for (let i = 0; i < 3; i++) {
+  await win.locator("[role=tab]", { hasText: "Lighthouse" }).first().click(); await wait(150)
+  await win.locator("[role=tab]", { hasText: `127.0.0.1:${PORT}` }).first().click(); await wait(150)
+}
+check("… switched away and back while it loads: still one page", (await pages()).length === n0 + 1, await pages())
+check("… and it comes in", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/slow`), 10000), await pages())
+await menuClick("Close tab")
+check("… closed: its page ends", await until(async () => (await pages()).length === n0, 5000), await pages())
+await menuClick("Reopen closed tab")
+check("⌘⇧T: the tab again, with one page at its address", await until(async () => (await pages()).some((p) => p.visible && p.url === `${SITE}/slow`), 15000)
+  && (await pages()).length === n0 + 1, await pages())
+await menuClick("Close tab")
+await until(async () => (await pages()).length === n0, 5000)
+
+const threes = async () => (await pages()).filter((p) => p.url === `${SITE}/three`).length, t0 = await threes()
+await ui({ action: "open", path: `${SITE}/three`, newTab: true })
+await until(async () => (await threes()) === t0 + 1, 10000)
+await ui({ action: "open", path: `${SITE}/three`, newTab: true })
+check("two more tabs of one address: two more pages", await until(async () => (await threes()) === t0 + 2, 10000), await pages())
+await menuClick("Close tab")
+check("… closing one leaves the others'", await until(async () => (await threes()) === t0 + 1, 5000) && (await wait(500), (await threes()) === t0 + 1), await pages())
+await menuClick("Close tab")
+await until(async () => (await pages()).length === n0, 5000)
 
 // ---------- closing ----------
 const count = (await pages()).length

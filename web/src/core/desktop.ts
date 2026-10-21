@@ -107,18 +107,19 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   audible?: boolean; muted?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
 export type WebRect = { x: number; y: number; width: number; height: number }
-/** Web pages in the desktop app: native views drawn over this window in sessions of their own (logins kept apart from
- *  the app's), known by number; a released page is kept a while. Older builds ignore profiles. */
+/** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
+ *  known by number, each a tab's: hidden while it's in the background, ended with it. Older builds ignore tabs. */
 export type WebPages = {
-  /** Show a page at `url` (one let go of at that address, else a new one) over `rect`, or hidden (null). */
-  open: (url: string, rect: WebRect | null, profile?: string) => Promise<{ id: number; state: WebPageState }>
+  /** Show tab `tab`'s page over `rect`, or hidden (null): the one it has, else a new one at `url`. No tab (a glance):
+   *  a new one, ended when released. */
+  open: (url: string, rect: WebRect | null, profile?: string, tab?: string) => Promise<{ id: number; state: WebPageState }>
   /** Move it over `rect`, or hide it (null). Shown again: `focused` when it had the keyboard as it was hidden (builds
    *  from before answer nothing). */
   place: (id: number, rect: WebRect | null) => Promise<{ focused?: boolean } | undefined | void>
-  /** Its tab went (a tab switch, a workspace switch): hidden, kept a while for `open`. */
+  /** Its tab went to the background (a tab or workspace switch): hidden, kept for the tab's next `open`. */
   release: (id: number) => Promise<unknown>
-  /** The last tab showing this address closed: its page ends. */
-  close: (url: string, profile?: string) => Promise<unknown>
+  /** Tab `tab` closed, left this window or stopped showing a web page: its page ends. */
+  close: (tab: string) => Promise<unknown>
   go: (id: number, action: "back" | "forward" | "reload" | "stop" | "load" | "focus" | "mute" | "unmute", url?: string) => Promise<unknown>
   /** A picture of it as it is (JPEG), to show in its place while something of the app's is drawn over it. */
   snapshot: (id: number) => Promise<Uint8Array | null>
@@ -130,7 +131,7 @@ export type WebPages = {
   keys: (steps: string[]) => Promise<unknown>
   /** Show a downloaded file in Finder. */
   reveal: (path: string) => Promise<unknown>
-  /** This window's pages: on screen in a tab (`shown`) or kept a while after their tab went. */
+  /** This window's pages: on screen in a tab (`shown`) or their tab's in the background. */
   list?: () => Promise<WebPageInfo[]>
   /** The sites a profile keeps cookies for, signed-in ones first, with the account where the app knows how to ask. */
   sites?: (profile: string) => Promise<WebSite[]>
@@ -178,7 +179,9 @@ export type WebEvent =
 /** A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was
  *  read with. */
 export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string }
-export type WebPageInfo = WebPageState & { id: number; profile: string; shown: boolean }
+export type WebPageInfo = WebPageState & { id: number; profile: string; shown: boolean
+  /** The id of the tab it's for ("": none, a glance). Older builds don't say. */
+  tab?: string }
 export type WebSite = { site: string; account?: string
   /** No page of it was opened in these logins: its cookies came with other sites' pages (trackers). */
   other?: boolean }

@@ -18,7 +18,7 @@ import { checklist, menuFor, rightClickBelow, type CheckItem, type MenuItem } fr
 import { HeadingButton } from "@/components/Button"
 import { FileTree } from "@/components/FileTree"
 import { Drawn, Guard } from "@/components/Guard"
-import { Badged } from "@/components/kit"
+import { Badged, IconAction } from "@/components/kit"
 import { cn, space } from "@/lib/utils"
 import { Resizer } from "@/components/Resizer"
 import { usePanelLayout } from "@/components/panelLayout"
@@ -300,7 +300,7 @@ export const RAIL = 11
 export const ROW = "group/row flex h-7 items-center gap-2 rounded-[5px] pl-1.5 pr-1 text-[13px] whitespace-nowrap transition-colors"
 
 /** A row in the sidebar, like a pinned page: an icon (in line with the rail's) and a label that fades as it narrows. */
-export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
+export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, iconAction, label, open, active, onClick, onContextMenu, href, tip, className, children, more: dots, swipe, ...rest }: {
   /** None: the label alone (file icons turned off). */
   icon?: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
   label: React.ReactNode; open: boolean; active?: boolean; href?: string
@@ -314,6 +314,8 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
   badge?: boolean
   /** A tiny label on the icon's bottom corner (Badged: the machine a terminal runs on). */
   tag?: string
+  /** What a click on the icon does instead of the row's (a tab's `action`: mute it). */
+  iconAction?: { label: string; run: () => void }
   /** Its tooltip (default the label, when text): always in the rail; open, only when it adds to the row or the label is
    *  cut off. A non-text label counts as said by `tip`; null: none. `onClick` hears middle-click too (new tab). */
   tip?: string | null
@@ -338,9 +340,9 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
         ROW,
         active ? "bg-foreground/[0.08] font-medium" : "hover:bg-foreground/[0.04]", className,
       )}>
-      {Icon && <Badged on={badge} tag={tag}>
+      {Icon && <IconAction action={iconAction}><Badged on={badge} tag={tag}>
         <Icon className={cn("size-4 shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
-      </Badged>}
+      </Badged></IconAction>}
       <span className={cn("min-w-0 flex-1 truncate transition-opacity duration-200", !open && "opacity-0")}>{label}</span>
       {open && children}
       {open && dots && !coarse && <HeadingButton icon={Ellipsis} label={`More for ${text ?? "this"}`} tip="More" className="hidden group-hover/row:grid" data-no-drag data-row-more onClick={rightClickBelow} />}
