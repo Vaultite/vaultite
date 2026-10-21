@@ -333,7 +333,7 @@ try {
   await page.fill("[data-waiting] [data-connect-code]", code ?? "")
   await page.keyboard.press("Enter")
   await page.waitForSelector("[data-waiting]", { state: "detached", timeout: 10_000 }).catch(() => {})
-  check("the owner types its code there, and the row goes", !(await page.$("[data-waiting]")) && !!(await until(async () => (await (await fetch(`${BASE}/api/mcp/connections`)).json()).finishing?.includes("Lighthouse AI"), 3000)))
+  check("the owner types its code there, and the row goes", !(await page.$("[data-waiting]")) && !!(await until(async () => (await (await fetch(`${BASE}/api/mcp/connections`)).json()).finishing?.some((f) => f.name === "Lighthouse AI"), 3000)))
   const st = JSON.parse((await through("GET", `/authorize/status?id=${encodeURIComponent(sid ?? "")}`)).text || "{}")
   const back = new URL(st.to ?? "https://x.invalid/")
   check("it goes back to the app with the Cloud's address as issuer", back.searchParams.get("iss") === "https://alice.vaultite.app" && back.searchParams.get("state") === "s1", st)

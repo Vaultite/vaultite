@@ -140,12 +140,12 @@ plugin.provide("mcp:upload-link", (pending: Record<string, unknown>, who: Who) =
 cloud.start()
 plugin.onUnload(() => { pub?.stop(); cloud.stop() })
 
-/** The apps connected from the internet, the sign-ins waiting for their code (how many, and their apps), those finishing,
- *  and Vaultite Cloud. */
+/** The apps connected from the internet, the sign-ins waiting for their code (how many, and their apps), those finishing
+ *  and those that failed lately, and Vaultite Cloud. */
 plugin.route("GET", "mcp/connections", async (req) => {
   await allowed(req)
   return { url: settings ? `${settings.url}/mcp` : null, cloud: cloud.status(), connect: { ownerTools: ownerTools() }, connections: pub?.list() ?? [],
-    waiting: pub?.waiting() ?? 0, asking: pub?.asking() ?? [], finishing: pub?.finishing() ?? [] }
+    waiting: pub?.waiting() ?? 0, asking: pub?.asking() ?? [], finishing: pub?.finishing() ?? [], failed: pub?.failures() ?? [] }
 }, { lock: false })
 
 /** Connect's owner tools on or off: only from this Mac (or the owner's tailnet), never over the relay itself. */

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Connections: an AI app let in by its code that's slow to finish says where it waits (its sign-in page not gone back
+  yet, or the app not finishing), and one that never connects stays a while saying why, instead of a shimmer that
+  vanishes; the server's log and Errors note it too.
 - Agents: a question an agent asks before it's ready (Claude Code's "Do you trust this folder?" on a first run) waits on
   you like a permission: its terminal shows waiting, the Inbox and phone have Approve and Deny, and its first prompt
   runs once you approve. The Inbox has Approve and Deny for any agent's permission, which stays unread until answered,

@@ -80,6 +80,8 @@ try {
   const authCode = back.searchParams.get("code")
   const bad = await token({ grant_type: "authorization_code", code: authCode, client_id: clientId, redirect_uri: REDIRECT, code_verifier: "not-it" })
   check("a wrong verifier gets no token (and spends the code)", bad.status === 400 && bad.body?.error === "invalid_grant", bad.body)
+  const failed = (await json(await fetch(`${BASE}/api/mcp/connections`))).body?.failed
+  check("… and Connections says it didn't connect, and why", failed?.length === 1 && failed[0].name === "Lighthouse AI" && /refused: code_verifier/.test(failed[0].why), failed)
   // Again, with a fresh sign-in, the right way.
   const page2 = await (await auth({})).text()
   const code2 = /<div class="code"[^>]*>([^<]+)</.exec(page2)?.[1]?.replace(/\s/g, "")
@@ -87,7 +89,7 @@ try {
   await fetch(`${BASE}/api/mcp/connections`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ code: code2, as: "Lighthouse Desk" }) })
   const finishing = async () => (await json(await fetch(`${BASE}/api/mcp/connections`))).body?.finishing
   const f1 = await finishing()
-  check("let in from its app's sheet, it's finishing under that app's name (a row till it's connected)", f1?.length === 1 && f1[0] === "Lighthouse Desk", f1)
+  check("let in from its app's sheet, it's finishing under that app's name (a row till it's connected)", f1?.length === 1 && f1[0].name === "Lighthouse Desk" && !f1[0].stuck, f1)
   const to2 = new URL((await (await fetch(`${PUB}/authorize/status?id=${encodeURIComponent(id2)}`)).json()).to)
   const f2 = await finishing()
   check("… still, taken back to the app with its code", f2?.length === 1, f2)

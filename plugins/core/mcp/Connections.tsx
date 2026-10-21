@@ -12,7 +12,9 @@ type State = { url: string | null; cloud: Cloud; connect?: { ownerTools: boolean
   /** The apps whose sign-in page waits for its code. */
   asking?: string[]
   /** Apps let in by their code that haven't finished signing in: a row each, till they're connections. */
-  finishing?: string[] }
+  finishing?: { name: string; stuck?: string }[]
+  /** Those that didn't become connections lately, and why. */
+  failed?: { name: string; why: string }[] }
 
 /** The last answer, for a sheet's title (details' titles are drawn from what's at hand). */
 let lastState: State | null = null
@@ -266,9 +268,7 @@ export function SetupSheet({ id }: { id: AppId }) {
             <>
               <Section title="Steps"><Guide id={id} address={address} /></Section>
               <Section title="Code"><Connect waiting={data.waiting} onDone={reload} as={id === "other" ? undefined : g.name} /></Section>
-              {!!data.finishing?.length && (
-                <Group>{data.finishing.map((name, i) => <Row key={i} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />)}</Group>
-              )}
+              {!!(data.finishing?.length || data.failed?.length) && <Group><SignInRows data={data} /></Group>}
             </>
           ) : (
             <Section title="First, an address for your vault">
@@ -324,6 +324,21 @@ function AppMark({ icon: Icon, tint }: { icon: LucideIcon; tint?: string }) {
   )
 }
 
+/** The sign-ins let in that aren't connections yet (saying where one waits, once it's slow) and those that failed lately. */
+function SignInRows({ data, lead }: { data: State; lead?: boolean }) {
+  const mark = lead ? <AppMark icon={Bot} /> : undefined
+  return (
+    <>
+      {(data.finishing ?? []).map((f, i) => (
+        <Row key={`finishing-${i}`} lead={mark} title={f.name} meta={f.stuck ?? <span className="shimmer">Finishing connecting…</span>} wrap aria-busy data-connection-finishing data-stuck={f.stuck ? true : undefined} />
+      ))}
+      {(data.failed ?? []).map((f, i) => (
+        <Row key={`failed-${i}`} lead={mark} title={f.name} meta={<span className="text-[var(--red)]">Didn't connect: {f.why}</span>} wrap data-connection-failed />
+      ))}
+    </>
+  )
+}
+
 const usedText = (c: Connection) => [c.used ? `used ${fmtAgo(c.used)}` : null, c.access === "read" ? "read only" : null].filter(Boolean).join(" · ")
 
 /** A sign-in waiting for its code (the toast "wants to connect" opens Connections on it): what it's for and the field. */
@@ -373,9 +388,7 @@ export function AiApps() {
             const app = appOf(c)
             return <Row key={c.id} lead={<AppMark icon={app ? appIcon(app) : Bot} tint={app ? GUIDES[app].tint : undefined} />} title={c.name} meta={connectedMeta(c)} onOpen={() => open(c)} data-connection={c.id} data-app-connected />
           })}
-          {(data.finishing ?? []).map((name, i) => (
-            <Row key={`finishing-${i}`} lead={<AppMark icon={Bot} />} title={name} meta={<span className="shimmer">Finishing connecting…</span>} aria-busy data-connection-finishing />
-          ))}
+          <SignInRows data={data} lead />
           <Row lead={<AppMark icon={Plus} />} title="Another app" meta="Any app that takes a remote MCP server" onOpen={() => openDetail(detailPath(SETUP_DETAIL, "other"))} data-guide-for="other" />
         </div>
       </Group>

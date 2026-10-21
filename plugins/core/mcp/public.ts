@@ -63,6 +63,8 @@ const UPLOAD_TTL = 15 * 60_000
 const BODY_MAX = 4 << 20
 const REDIRECT_HOSTS = ["claude.ai", "claude.com", "chatgpt.com", "openai.com", "cursor.com", "agent.meta.ai"]
 const ACCESS_TTL = 3600, REFRESH_TTL = 30 * 86400, SIGN_IN_TTL = 10 * 60, CODE_TTL = 120
+/** Seconds a let-in sign-in may take at a step before Connections says where it stands; how long a failed one shows. */
+const SLOW = 15, FAILED_TTL = 10 * 60
 const CODE_CHARS = "BCDFGHJKMNPQRSTVWXZ23456789" // no vowels (no words), no 0/O, 1/I/L
 
 type Settings = { url: string; port: number; redirectHosts: string[]; tools: string[] | null; approvalWait: number }
@@ -72,8 +74,11 @@ type Grant = { name: string; client: string; created: string; used?: string; acc
 export type Access = "read" | "write"
 type Stored = { public?: Partial<Settings>; key?: string; grants?: Record<string, Grant> }
 type App = { name: string; redirects: string[] }
-type SignIn = { id: string; code: string; app: App; clientId: string; redirect: string; state: string | null; challenge: string; started: number; from: string; base: string; done?: string }
-type AuthCode = { clientId: string; app: App; redirect: string; challenge: string; until: number }
+type SignIn = { id: string; code: string; app: App; clientId: string; redirect: string; state: string | null; challenge: string; started: number; from: string; base: string; done?: string; auth?: string }
+/** `back`: when its sign-in page took it back to the app (status), which then trades it for tokens. */
+type AuthCode = { clientId: string; app: App; redirect: string; challenge: string; until: number; approved: number; back?: number }
+/** A sign-in let in that never became a connection, and why, for Connections. */
+type Failed = { name: string; why: string; until: number }
 
 const b64u = (b: Buffer | string) => Buffer.from(b).toString("base64url")
 const sha = (s: string) => crypto.createHash("sha256").update(s).digest("base64url")
@@ -91,6 +96,7 @@ export class PublicMcp {
   server: http.Server | null = null
   signIns = new Map<string, SignIn>()
   codes = new Map<string, AuthCode>()
+  failed: Failed[] = []
   sessions = new Map<string, Session>()
   hits = new Map<string, { n: number; until: number }>()
   /** Requests that came with this process's relay mark (cloud.ts). */
@@ -251,7 +257,8 @@ export class PublicMcp {
     if (!s) return null
     const authCode = crypto.randomBytes(24).toString("base64url")
     if (as) s.app = { ...s.app, name: as.slice(0, 80) }
-    this.codes.set(authCode, { clientId: s.clientId, app: s.app, redirect: s.redirect, challenge: s.challenge, until: now() + CODE_TTL })
+    this.codes.set(authCode, { clientId: s.clientId, app: s.app, redirect: s.redirect, challenge: s.challenge, until: now() + CODE_TTL, approved: now() })
+    s.auth = authCode
     const to = new URL(s.redirect)
     to.searchParams.set("code", authCode)
     if (s.state !== null) to.searchParams.set("state", s.state)
@@ -271,16 +278,40 @@ export class PublicMcp {
   }
 
   /** The apps whose code the owner typed that haven't finished signing in (their authorization code not yet traded for
-   *  tokens): their names, a connection about to show. */
+   *  tokens), a connection about to show; `stuck`: where one waits that's taking long. */
   finishing() {
     this.prune()
-    return [...this.codes.values()].map((c) => c.app.name)
+    const t = now()
+    return [...this.codes.values()].map((c) => {
+      const name = c.app.name
+      if (!c.back) return { name, stuck: t - c.approved > SLOW ? `Its sign-in page hasn't gone back to ${name} yet: keep that page open` : undefined }
+      return { name, stuck: t - c.back > SLOW ? `Back at ${name}, which hasn't finished signing in: is that browser signed in to ${name}?` : undefined }
+    })
+  }
+
+  /** The sign-ins let in that didn't become connections in the last minutes, and why. */
+  failures() {
+    this.prune()
+    return this.failed.map(({ name, why }) => ({ name, why }))
+  }
+
+  /** Notes a sign-in that won't finish: the log says why, and so does Connections for a while. */
+  fail(name: string, why: string) {
+    console.error(`mcp public: ${name} didn't finish connecting: ${why}`)
+    this.failed = [...this.failed.filter((f) => f.name !== name), { name, why, until: now() + FAILED_TTL }]
   }
 
   prune() {
     const t = now()
     for (const [k, s] of this.signIns) if (t - s.started > SIGN_IN_TTL) this.signIns.delete(k)
-    for (const [k, c] of this.codes) if (c.until < t) this.codes.delete(k)
+    for (const [k, c] of this.codes) {
+      if (c.until >= t) continue
+      this.codes.delete(k)
+      const name = c.app.name
+      this.fail(name, c.back ? `its sign-in page went back to ${name}, but ${name} never finished signing in (is that browser signed in to it?)`
+        : `its sign-in page never went back to ${name} (was it closed?)`)
+    }
+    this.failed = this.failed.filter((f) => f.until >= t)
     for (const [k, h] of this.hits) if (h.until < t) this.hits.delete(k)
   }
 
@@ -486,6 +517,8 @@ export class PublicMcp {
     if (!s || now() - s.started > SIGN_IN_TTL) return this.json(res, 200, { state: "expired" })
     if (!s.done) return this.json(res, 200, { state: "waiting" })
     this.signIns.delete(s.id)
+    const c = s.auth && this.codes.get(s.auth)
+    if (c) c.back = now()
     this.json(res, 200, { state: "approved", to: s.done })
   }
 
@@ -496,10 +529,15 @@ export class PublicMcp {
     if (f.grant_type === "authorization_code") {
       const c = this.codes.get(f.code ?? "")
       this.codes.delete(f.code ?? "")
-      if (!c || c.until < now()) return fail("invalid_grant", "the code is unknown or expired")
-      if (f.client_id && f.client_id !== c.clientId) return fail("invalid_grant", "the code is another app's")
-      if (f.redirect_uri && f.redirect_uri !== c.redirect) return fail("invalid_grant", "redirect_uri isn't the sign-in's")
-      if (!f.code_verifier || !same(sha(f.code_verifier), c.challenge)) return fail("invalid_grant", "code_verifier doesn't match the challenge")
+      if (!c || c.until < now()) {
+        console.error("mcp public: an app traded a sign-in code that's unknown or expired")
+        return fail("invalid_grant", "the code is unknown or expired")
+      }
+      const refuse = (why: string) => { this.fail(c.app.name, `its tokens were refused: ${why}`); return fail("invalid_grant", why) }
+      if (f.client_id && f.client_id !== c.clientId) return refuse("the code is another app's")
+      if (f.redirect_uri && f.redirect_uri !== c.redirect) return refuse("redirect_uri isn't the sign-in's")
+      if (!f.code_verifier || !same(sha(f.code_verifier), c.challenge)) return refuse("code_verifier doesn't match the challenge")
+      this.failed = this.failed.filter((x) => x.name !== c.app.name)
       const id = crypto.randomBytes(9).toString("base64url")
       const refresh = `${id}.${crypto.randomBytes(32).toString("base64url")}`
       const at = new Date().toISOString()
