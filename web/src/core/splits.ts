@@ -1,6 +1,6 @@
 // Splits: moving tabs and panes between groups and into new splits, opening at a place, focus and
 // dividers. The tree itself is core/layout.ts.
-import { beside, evened, leaves, mapGroups, mapTabs, moveOn, neighbourOf, newId, nextActive, pastBlank, resized, shownTab, tidy, type Group, type Layout, type Side, type Tab } from "@/core/layout"
+import { beside, evened, inSet, leaves, mapGroups, mapTabs, moveOn, neighbourOf, newId, nextActive, pastBlank, resized, setAt, shownTab, tidy, type Group, type Layout, type Side, type Tab } from "@/core/layout"
 import { focusPane } from "@/core/focus"
 import { activeTab, focusGroup, getWorkspace, groupOfTab, groups, set, show, showActive, withGroup } from "@/core/workspace"
 
@@ -13,26 +13,33 @@ function pull(id: string): { root: Layout; tab: Tab } | null {
   return { tab, root: mapGroups(getWorkspace().root, (x) => (x.id === g.id ? { ...x, tabs: rest, active: nextActive(x, id, rest) } : x)) }
 }
 
-/** Would moving tab `id` there change anything? Into its own group's bar at its own place, into the middle of its own
- *  group, or beside its own group when it's the group's only tab: no (drops like these aren't offered). */
-export function canMove(id: string, gid: string, where: Side | "center" | number) {
+/** Would moving tab `id` there change anything? Into its own bar at its own place (in the same tab group), its own
+ *  group's middle, or beside its own group as its only tab: no (drops like these aren't offered). */
+export function canMove(id: string, gid: string, where: Side | "center" | number, tabset?: string | null) {
   const g = groupOfTab(id)
   if (!g || !groups().some((x) => x.id === gid)) return false
   if (g.id !== gid) return true
   if (where === "center") return false
-  if (typeof where === "number") { const i = g.tabs.findIndex((t) => t.id === id); return where !== i && where !== i + 1 }
+  if (typeof where === "number") {
+    const i = g.tabs.findIndex((t) => t.id === id)
+    if (where !== i && where !== i + 1) return true
+    return tabset !== undefined && (tabset ?? undefined) !== g.tabs[i].set
+  }
   return g.tabs.length > 1
 }
 
-/** Move a tab into group `gid`'s bar before its `index`th tab, into its pane, or into a new split beside it. It becomes
- *  that group's active tab (replacing a blank one shown there) and the group gets the focus. */
-export function moveTabTo(id: string, gid: string, where: Side | "center" | number) {
-  if (!canMove(id, gid, where)) return
+/** Move a tab into group `gid`'s bar before its `index`th tab (into tab group `tabset`: null none, left out setAt's), its
+ *  pane, or a new split beside it: that group's active tab (a blank one shown there goes), the group focused. */
+export function moveTabTo(id: string, gid: string, where: Side | "center" | number, tabset?: string | null) {
+  if (!canMove(id, gid, where, tabset)) return
   const from = groupOfTab(id)!, p = pull(id)!
   if (typeof where === "number" || where === "center") {
     let at = typeof where === "number" ? where : Infinity
     if (from.id === gid && at > from.tabs.findIndex((t) => t.id === id)) at--
-    const into = (g: Group): Group => ({ ...g, tabs: [...g.tabs.slice(0, at), p.tab, ...g.tabs.slice(at)], active: id })
+    const into = (g: Group): Group => {
+      const s = tabset === undefined ? setAt(g.tabs, Math.min(at, g.tabs.length), from.id === gid ? p.tab.set : undefined) : tabset ?? undefined
+      return { ...g, tabs: [...g.tabs.slice(0, at), inSet(p.tab, s), ...g.tabs.slice(at)], active: id }
+    }
     set({ root: mapGroups(p.root, (g) => (g.id !== gid ? g : from.id === gid ? into(g) : pastBlank(g, into(g)))), focus: gid })
   } else {
     const g: Group = { id: `g${newId()}`, tabs: [p.tab], active: id }
@@ -54,7 +61,9 @@ export function moveGroupTo(gid: string, target: string, where: Side | "center" 
   const root = mapGroups(getWorkspace().root, (x) => (x.id === gid ? { ...x, tabs: [] } : x))
   if (typeof where === "number" || where === "center") {
     const at = typeof where === "number" ? where : Infinity
-    set({ root: mapGroups(root, (x) => (x.id !== target ? x : pastBlank(x, { ...x, tabs: [...x.tabs.slice(0, at), ...g.tabs, ...x.tabs.slice(at)], active: g.active }))), focus: target })
+    // (its tab groups come along)
+    const sets = (x: Group) => (g.sets ? { sets: [...(x.sets ?? []), ...g.sets] } : {})
+    set({ root: mapGroups(root, (x) => (x.id !== target ? x : pastBlank(x, { ...x, tabs: [...x.tabs.slice(0, at), ...g.tabs, ...x.tabs.slice(at)], active: g.active, ...sets(x) }))), focus: target })
   } else {
     // The emptied original is tidied away by set; the moved one keeps its id.
     set({ root: beside(tidy(root) ?? root, target, g, where), focus: g.id })
@@ -72,12 +81,12 @@ export function canOpenAt(to: string, gid: string, where: Side | "center" | numb
   return where !== "center" || shownTab(g)?.to !== to
 }
 
-/** Open `to` at a place, like a tab dropped there. A bar never gets the same place twice: the tab that has it moves
- *  instead. A blank tab the pane showed doesn't stay behind; the group gets the focus. */
-export function openAt(to: string, gid: string, where: Side | "center" | number) {
+/** Open `to` at a place, like a tab dropped there (in a bar, in tab group `tabset`). A bar never gets the same place
+ *  twice: the tab that has it moves instead. A blank tab the pane showed doesn't stay behind; the group gets the focus. */
+export function openAt(to: string, gid: string, where: Side | "center" | number, tabset?: string | null) {
   if (!canOpenAt(to, gid, where)) return
   const has = typeof where === "number" ? groups().find((x) => x.id === gid)?.tabs.find((t) => t.to === to) : null
-  if (has) return moveTabTo(has.id, gid, where)
+  if (has) return moveTabTo(has.id, gid, where, tabset)
   if (typeof where === "number" || where === "center") {
     set(withGroup(gid, (g) => {
       const has = where === "center" ? g.tabs.find((t) => t.to === to) : null
@@ -85,7 +94,8 @@ export function openAt(to: string, gid: string, where: Side | "center" | number)
       const cur = shownTab(g)
       if (where === "center" && cur?.to === "new") return mapTabs(g, cur.id, (t) => moveOn(t, to))
       const id = newId(), at = typeof where === "number" ? where : g.tabs.findIndex((t) => t.id === g.active) + 1
-      return pastBlank(g, { ...g, tabs: [...g.tabs.slice(0, at), { id, to }, ...g.tabs.slice(at)], active: id })
+      const tab: Tab = typeof where === "number" && tabset ? { id, to, set: tabset } : { id, to }
+      return pastBlank(g, { ...g, tabs: [...g.tabs.slice(0, at), tab, ...g.tabs.slice(at)], active: id })
     }, { focus: gid }))
   } else {
     const id = newId(), g: Group = { id: `g${newId()}`, tabs: [{ id, to }], active: id }
@@ -94,15 +104,15 @@ export function openAt(to: string, gid: string, where: Side | "center" | number)
   show(to, true)
 }
 
-/** Several tabs selected together, moved as one (dragged by `held`, which is shown after), in their order on screen:
- *  into a bar before its `where`th tab, a pane's middle, or a new split beside it (the first makes it, the rest join). */
-export function moveTabsTo(ids: string[], held: string, gid: string, where: Side | "center" | number) {
+/** Several tabs selected together, moved as one (dragged by `held`, shown after) in their order: into a bar (as
+ *  moveTabTo), a pane's middle, or a new split beside it (the first makes it, the rest join). */
+export function moveTabsTo(ids: string[], held: string, gid: string, where: Side | "center" | number, tabset?: string | null) {
   const order = groups().flatMap((g) => g.tabs.map((t) => t.id)).filter((id) => ids.includes(id))
   if (!order.length) return
   if (typeof where === "number") {
     let at = where
     for (const id of order) {
-      moveTabTo(id, gid, at)
+      moveTabTo(id, gid, at, tabset)
       const g = groups().find((x) => x.id === gid)
       const i = g?.tabs.findIndex((t) => t.id === id) ?? -1
       if (i >= 0) at = i + 1
@@ -201,14 +211,15 @@ export function ungroup(gid: string) {
   regroup(mapGroups(getWorkspace().root, (x) => (x.id === gid ? { ...x, tabs: [] } : x.id === into.id ? { ...x, tabs: [...x.tabs, ...tabs] } : x)))
 }
 
-/** Tab `id` moved in its own pane to before tab `before` (the end for null); the tab on screen stays. */
+/** Tab `id` moved in its own pane to before tab `before` (the end for null), joining the tab group it lands in
+ *  (setAt); the tab on screen stays. */
 export function placeTab(id: string, before: string | null) {
   const g = groupOfTab(id)
   if (!g || id === before) return
   const t = g.tabs.find((x) => x.id === id)!, rest = g.tabs.filter((x) => x.id !== id)
   const at = before ? rest.findIndex((x) => x.id === before) : rest.length
   if (at < 0) return
-  set(withGroup(g.id, (x) => ({ ...x, tabs: [...rest.slice(0, at), t, ...rest.slice(at)] })))
+  set(withGroup(g.id, (x) => ({ ...x, tabs: [...rest.slice(0, at), inSet(t, setAt(rest, at, t.set)), ...rest.slice(at)] })))
 }
 
 /** Move a tab (the active one by default) into a new split beside its group. */

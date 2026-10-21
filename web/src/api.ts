@@ -49,6 +49,12 @@ export { startedFresh } from "@/core/workspace"
 export { closeTab, goHere, hashOf, newTab, selectTab, useWorkspace as useTabLayout } from "@/core/workspace"
 export { leaves as panesOf, type Group as TabGroup, type Tab } from "@/core/layout"
 export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInfo } from "@/components/Tabs"
+// Tab groups (a pane's named, coloured runs of tabs): their menu, names and folding, and drops among a pane's tabs drawn
+// as a list (the Tabs panel), which join or leave them as the tab bar's do.
+export { setMenu, setName, SetNameField } from "@/components/Tabs"
+export { foldSet, useRenaming } from "@/core/tabsets"
+export { type TabSet } from "@/core/layout"
+export { canDropAt as canDropTab, dropOn as dropTab, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.
 export { clearSelection, rowMenu, selectClick, selectedAttr, selectedIn, selectionFor, selectItem, startSelecting, useSelectable, useSelected, useSelectedKeys, useSelecting, type Selectable } from "@/core/select"
 export { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
@@ -115,6 +121,9 @@ export { openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, keysInEditor, selectedText, type OpenEditor } from "@/core/editors"
 export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 // Highlight colours (==🟢text==): the class each draws with (hl-<colour>), and colouring one in an editor.
+// The palette things are coloured by (a container, a tab group): its names, tokens and menu rows.
+export { COLOR_NAMES, COLORS, colorVar, isColor, type Color } from "../../core/colors.ts"
+export { colorItems, dotIcon } from "@/components/ColorDot"
 export { blockPieces, paragraphAt, colorHighlight, dropHighlightEmoji, HIGHLIGHT_COLORS, HIGHLIGHT_EMOJI, highlightAt, highlightClass, highlightColor, unhighlight, type HighlightColor } from "@/core/highlights"
 export { highlightItems } from "@/core/highlightMenu"
 export { openAround, textRanges } from "@/core/findText"

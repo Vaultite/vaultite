@@ -508,6 +508,29 @@ export const setPanelDocked = (key: string, docked: boolean) => changeSidebars((
 /** Fold a panel to its heading, or open it again. */
 export const togglePanelCollapsed = (key: string) => changeSidebars((s) => setCollapsed(s, key, !s.collapsed.includes(key)))
 
+/** The panel that lists the open tabs (SidebarPanel.tabList), while its plugin is on. */
+export function tabListPanel(prefs = getPrefs()) {
+  return sidebarPanels(prefs.disabled, prefs.order).find((x) => x.panel.tabList)?.key ?? null
+}
+/** The tabs are in a sidebar instead of above the panes: the tab bar off and the tab list in a sidebar. */
+export function tabsInSidebar(prefs = getPrefs()) {
+  const key = tabListPanel(prefs)
+  return !prefs.tabBar && !!key && !!sideIn(sidebars(prefs), key)
+}
+/** Vertical tabs or not, one switch as browsers have it: in the sidebar, the tab bar goes and the tab list shows at the
+ *  top of the left sidebar (where it is, if it's in one already), the sidebar open; on top, the reverse. */
+export function showTabsIn(where: "sidebar" | "top") {
+  const key = tabListPanel()
+  if (!key) return
+  if (where === "top") {
+    void setPrefs({ tabBar: true })
+    if (sideIn(sidebars(), key)) hidePanel(key)
+    return
+  }
+  changeSidebars((s) => setCollapsed(sideIn(s, key) ? s : placePanel(s, key, { side: "left", before: s.left[0] ?? null }), key, false))
+  void setPrefs({ tabBar: false, ...(sideIn(sidebars(), key) === "left" && !getPrefs().sidebar ? { sidebar: true } : {}) })
+}
+
 // (a phone shows a sidebar as a drawer: components/PhoneDrawer.tsx opens it)
 let drawerOpener: ((side: Side) => void) | null = null
 export const setDrawerOpener = (fn: (side: Side) => void) => { drawerOpener = fn }

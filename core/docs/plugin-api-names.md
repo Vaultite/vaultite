@@ -77,6 +77,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Button({ look, size, className, type, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
+- `canDropTab(item, d)`: Would that drop (in a list of a pane's tabs drawn elsewhere: the Tabs panel) change anything?
 - `canRunAgents()`: Whether agents can run here: the Terminal plugin is on.
 - `canvases()`: The canvases in the page (a hidden tab's too: `canvasShown` tells).
 - `CanvasItem`: A thing on a canvas as others read it, in the canvas's units (x/y its top left): a shape, a text, an arrow joining `from` and `to` (items' ids).
@@ -108,7 +109,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `closeView(to)`: Close every tab showing a view (`terminal/abc`), as if the user did (its plugin hears it).
 - `CloudSession`: A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was read with.
 - `cn`
+- `Color`
+- `COLOR_NAMES`
 - `colorHighlight(color)`: Colour the highlight each selection is in (null: the default, no emoji); elsewhere, highlight the selection (or the word at the cursor) in it.
+- `colorItems(current, pick)`: The palette as menu rows, `current` checked.
+- `COLORS`
+- `colorVar(c)`: The CSS colour of one (an unknown one is gray).
 - `commandItems(...ids)`: Commands as menu rows (by id), those offered now, named and keyed as in the palette: a setting with its check ("Line numbers"), one that switches something else by what it does now ("Hide left…
 - `commandKeys(id)`: Those keys as `keyHint` writes them, "" without any: for a button's tooltip, so it never names keys of its own.
 - `commandList()`: Every command registered now, available or not (`available` says which can run).
@@ -139,10 +145,12 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `dismissNotice(id)`: Close a toast before its time.
 - `dockAtEnd(key, side)`: Put a panel at the end of a sidebar, open, and that sidebar open: what every move without a drop does (a sidebar's toggle, Move to the other sidebar, ticking it in the Panels menu), so where it…
 - `dockIcon()`: The Dock's icon in the desktop app (electron/main.ts): null in a browser or a build without it.
+- `dotIcon(color)`: A colour's dot (a CSS colour), as a menu row's icon.
 - `dow(s)`
 - `DragItem`
 - `dragTab(e, tab, opts?)`: Press on a tab: it drags, or (one of several selected) they all do.
 - `dropHighlightEmoji(md)`: Each `==🟢` at a highlight's start back to `==`, for text shown without its marks (previews, sorting).
+- `dropTab(item, d)`: Drop `item` there: a pane or a tab moves, a file opens in a new tab (or its tab in that bar moves there).
 - `edgeScroller(axis?)`: Scrolls a box while a drag holds the pointer near its edge, faster the closer: `near` on every move, `stop` when the pointer leaves or the drag ends.
 - `Editable({ value, set, placeholder, className, children })`: A value a block shows that can be changed in place (a person's context): click, type, Enter.
 - `EditorCtx`: Which editor a plugin's editor extensions go into: a note (Markdown, live preview or source), a code file, or other text (JSON, an artifact's HTML, a CSV's source); `path`: its file, when it's one.
@@ -192,6 +200,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `folderMenu(folder, opts?)`: A folder's menu away from the tree (a pinned folder): a note in it, Move, the plugins' groups (but `skip`'s), its path and Reveal in file tree, Archive and Delete.
 - `folderOf(path)`
 - `foldInList(open, activate?)`: Open (true) or close the row's children, or step into the first child / out to the parent, tree-style; `activate` opens a leaf on → (Vim's l).
+- `foldSet(id, collapsed?)`: Fold a tab group to its name, or open it (`collapsed` left out: the other way).
 - `followLink(s, link, newTab, from?)`: Follow a link clicked in drawn Markdown (a file, heading or ^block, a detail, a #tag, a command, a web or app link).
 - `followMapTheme(map, onTheme)`: Follow light/dark and the colour scheme (data-scheme): reload the style so no old scheme colours linger.
 - `FormatCtx`
@@ -236,6 +245,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `inKeyList()`: The keyboard is on a row of a list.
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
+- `isColor(c)`
 - `isDesktop()`: A computer's width (the desktop's panes), not a phone's.
 - `isDoc(path)`: Notes, JSON and pages plugins draw (artifacts, tables): the files that can be pages (pinned).
 - `isFolder(t, path)`
@@ -448,6 +458,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `sessionTitle(src, id)`: A session tab's label: its title once a block has seen it, else "<label> session".
 - `setDefaultPlace(agent, machine, profile?)`: Make machine `machine` ("": this one) the current workspace's default, and `profile` agent `agent`'s account there.
 - `setDefaultSidebars(next)`: Save a setup as sidebars.json's, whatever's current: what a workspace without panels of its own shows, and what new workspaces start with.
+- `setMenu(id, at)`: A tab group's menu (right-click its name: in the bar, the Tabs panel or the phone's tab list).
+- `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
+- `SetNameField({ s, className })`: A tab group's name being typed in place (Enter or leaving it keeps it, Escape doesn't).
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
 - `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
@@ -498,11 +511,14 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Switch({ on, onChange, label, disabled })`: A small switch in the app's accent colour.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…
 - `Tab`
+- `TabDrop`: Where a dragged tab or file would land: a place in a tab bar (`x`: the line's position in the bar; `set`: the tab group it joins there, null none), or a pane's edge or middle.
 - `TabGroup`
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).
 - `TabLayout`
 - `tabMenuOf(id)`: A tab's right-click menu, the one its bar has.
 - `TABS`: The tabs' selection (core/select.ts): by tab id, the bars', the Tabs panel's and the phone's cards alike.
+- `TabSet`: A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by side), folded to its name while `collapsed`.
+- `tabSlot(g, slots, pos, axis, own?)`: Where `pos` along a pane's tabs as drawn lands: before which tab (`index`), in which tab group (after its name or between its tabs; at its end only for `own`, the dragged tab's), and where the…
 - `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, move them into a split of their own.
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.
 - `tagsOf(fm, body)`: A file's tags: its frontmatter `tags` (or `tag`), then its inline #tags, each once.
@@ -559,6 +575,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `usePendingKeys()`: The sequence under way (its steps so far), or null: for the keys hint.
 - `usePluginSettings(id)`: A plugin's settings (its data.json), followed live: null while they load, {} when there are none; `set` writes those keys (null removes one), shown at once and put back if the write fails.
 - `usePreview()`: Drawn in a plugin's preview (made-up data, nothing fetched or written).
+- `useRenaming()`
 - `useRowsNear(total, step?)`: How many of `total` rows to draw: a first `step`, then `step` more whenever the mark (`ref` it: an element after the last row drawn) comes within a few screens of what scrolls it.
 - `useScopedState(key, fallback, scope?)`: The same as a hook: [value, set], redrawn when it changes (here, another device on the workspace, a switch).
 - `useSelectable(list, def)`: Make a list's rows selectable while mounted: its container says `data-select-list={list}`, each row `data-select-key`; their order on screen is the order a ⇧-click takes.
@@ -615,6 +632,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BlockCtx`: What a block's text gets: the file it's in (or the one its `file:` names), its options (the block's YAML, with the manifest's declared defaults filled in: core/blocks.ts) and today (YYYY-MM-DD).
 - `BROWSER_UA`
 - `bullets(rows, empty?)`: A Markdown list, or a line saying there's nothing.
+- `COLORS`
 - `CONNECT_HEADER`: Set by Connect (plugins/core/mcp/connect.ts) on what it hands the app while the owner's tools are off over it.
 - `contentType(path)`: The Content-Type a file is served with, by its extension (the web app's files, a vault file's bytes).
 - `csvRecords(text)`: The records of a CSV with a header row, as objects keyed by the header's names.
@@ -633,6 +651,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).
 - `HTTPError`
+- `isColor(c)`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`
 - `linkResolver(files, opts?)`: A resolver over these files: a link target (written in `from`) to a file's path, or null.

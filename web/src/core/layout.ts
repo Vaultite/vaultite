@@ -1,5 +1,6 @@
 // The tabs' layout as data: tabs in groups, groups in a tree of splits, and the pure changes to it (no state, no
 // address, no DOM). core/workspace.ts keeps the one on screen and changes it with these.
+import { isColor, type Color } from "../../../core/colors.ts"
 
 export type Tab = { id: string; to: string
   /** Where it was before, oldest first; and where Back came from, the next first. */
@@ -8,10 +9,17 @@ export type Tab = { id: string; to: string
    *  place closes it and shows that tab again, as it was left. Kept for this visit only, like its history. */
   from?: string
   /** Pinned: what's opened from it opens in a tab beside it, ⌘W and closing others leave it open. */
-  pinned?: boolean }
+  pinned?: boolean
+  /** The tab group it's in (one of its pane's `sets`). */
+  set?: string }
+/** A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by
+ *  side), folded to its name while `collapsed`. A "set" in code, since the code's groups are panes. */
+export type TabSet = { id: string; name: string; color: Color; collapsed?: boolean }
 export type Group = { id: string; tabs: Tab[]; active: string
   /** Its tabs side by side, sliding over each other with their titles on spines. */
-  stacked?: boolean }
+  stacked?: boolean
+  /** Its tab groups, in the order their tabs are. */
+  sets?: TabSet[] }
 /** Groups (or splits) side by side ("row": a vertical divider between them) or stacked ("col"); `sizes` are their
  *  shares, adding up to 1. */
 export type Split = { id: string; dir: "row" | "col"; kids: Layout[]; sizes: number[] }
@@ -64,14 +72,19 @@ export function clean(n: unknown): Layout | null {
   // (a hand-edited or half-synced file: a tab that isn't one is dropped, not every tab bar stopped on it)
   const tabs = (Array.isArray(x.tabs) ? x.tabs : []).flatMap((t) => (okTab(t) ? [okHistory(t)] : []))
   const active = tabs.some((t) => t.id === x.active) ? x.active! : tabs[0]?.id
-  return tabs.length && active ? { id: String(x.id), tabs, active, ...(x.stacked === true ? { stacked: true } : {}) } : null
+  const sets = (Array.isArray(x.sets) ? x.sets : []).flatMap((s) => (okSet(s) ? [{ id: s.id, name: s.name.slice(0, 80), color: s.color, ...(s.collapsed === true ? { collapsed: true } : {}) }] : []))
+  return tabs.length && active ? fixSets({ id: String(x.id), tabs, active, ...(x.stacked === true ? { stacked: true } : {}), ...(sets.length ? { sets } : {}) }) : null
 }
+const okSet = (s: unknown): s is TabSet => !!s && typeof s === "object" && typeof (s as TabSet).id === "string" && !!(s as TabSet).id
+  && typeof (s as TabSet).name === "string" && isColor((s as TabSet).color)
 const okTab = (t: unknown): t is Tab => !!t && typeof t === "object" && typeof (t as Tab).id === "string" && !!(t as Tab).id && typeof (t as Tab).to === "string" && !!(t as Tab).to
 const strings = (a: unknown) => Array.isArray(a) && a.every((x) => typeof x === "string")
 function okHistory(t: Tab): Tab {
-  if ((t.back === undefined || strings(t.back)) && (t.fwd === undefined || strings(t.fwd)) && (t.from === undefined || typeof t.from === "string")) return t
-  const { back, fwd, from, ...rest } = t
-  return { ...rest, ...(strings(back) ? { back } : {}), ...(strings(fwd) ? { fwd } : {}), ...(typeof from === "string" ? { from } : {}) }
+  if ((t.back === undefined || strings(t.back)) && (t.fwd === undefined || strings(t.fwd)) && (t.from === undefined || typeof t.from === "string")
+    && (t.set === undefined || (typeof t.set === "string" && !!t.set))) return t
+  const { back, fwd, from, set, ...rest } = t
+  return { ...rest, ...(strings(back) ? { back } : {}), ...(strings(fwd) ? { fwd } : {}), ...(typeof from === "string" ? { from } : {}),
+    ...(typeof set === "string" && set ? { set } : {}) }
 }
 
 /** Every group changed by `fn`. */
@@ -175,4 +188,65 @@ export function evened(root: Layout, splitId: string): Layout {
   const fix = (n: Layout): Layout => !isSplit(n) ? n
     : n.id === splitId ? { ...n, sizes: n.kids.map(() => 1 / n.kids.length) } : { ...n, kids: n.kids.map(fix) }
   return fix(root)
+}
+
+// ---------- tab groups (TabSet): runs of a pane's tabs ----------
+
+/** A tab in tab group `set` (none: out of any). */
+export const inSet = (t: Tab, set: string | undefined): Tab => {
+  if (t.set === set) return t
+  const { set: _, ...rest } = t
+  return set ? { ...rest, set } : rest
+}
+
+/** `g` as tab groups must be: each one's tabs together (where its first is), none in an unknown or empty one, listed in
+ *  order, the tab shown never folded away (its group opens). Unchanged, `g` itself. */
+export function fixSets(g: Group): Group {
+  if (!g.sets) return g.tabs.some((t) => t.set) ? { ...g, tabs: g.tabs.map((t) => inSet(t, undefined)) } : g
+  const known = new Map(g.sets.map((s) => [s.id, s]))
+  const tabs: Tab[] = [], done = new Set<string>()
+  for (const t of g.tabs) {
+    const s = t.set && known.has(t.set) ? t.set : undefined
+    if (!s) { tabs.push(inSet(t, undefined)); continue }
+    if (done.has(s)) continue
+    done.add(s)
+    tabs.push(...g.tabs.filter((x) => x.set === s))
+  }
+  const shown = tabs.find((t) => t.id === g.active)?.set
+  const sets = [...done].map((id) => { const s = known.get(id)!; return s.collapsed && id === shown ? { id: s.id, name: s.name, color: s.color } : s })
+  const same = tabs.length === g.tabs.length && tabs.every((t, i) => t === g.tabs[i]) && sets.length === g.sets.length && sets.every((s, i) => s === g.sets![i])
+  if (same) return g
+  const { sets: _, ...rest } = g
+  return sets.length ? { ...rest, tabs, sets } : { ...rest, tabs }
+}
+/** Every pane's tab groups fixed (fixSets); unchanged, `n` itself. */
+export function fixAllSets(n: Layout): Layout {
+  if (!isSplit(n)) return fixSets(n)
+  const kids = n.kids.map(fixAllSets)
+  return kids.every((k, i) => k === n.kids[i]) ? n : { ...n, kids }
+}
+
+/** The tab group a tab put at index `at` of `tabs` (which haven't got it) joins: the one on both sides of it, or, at
+ *  either end of its own group (`own`), that one. Else none. */
+export function setAt(tabs: Tab[], at: number, own?: string): string | undefined {
+  const l = tabs[at - 1]?.set, r = tabs[at]?.set
+  if (l && l === r) return l
+  return own && (l === own || r === own) ? own : undefined
+}
+
+/** Where a tab group's tabs are in its pane: the first's index and how many. */
+export function runOf(g: Group, set: string) {
+  const at = g.tabs.findIndex((t) => t.set === set)
+  return { at, n: at < 0 ? 0 : g.tabs.filter((t) => t.set === set).length }
+}
+/** The tab group a tab is in, if any. */
+export const setOf = (g: Group, tab: string): TabSet | undefined => {
+  const id = g.tabs.find((t) => t.id === tab)?.set
+  return id ? g.sets?.find((s) => s.id === id) : undefined
+}
+/** Index `at` moved out of any tab group's run (to before it), so what goes there joins none. */
+export function outsideSets(tabs: Tab[], at: number) {
+  const s = tabs[at]?.set
+  if (!s || tabs[at - 1]?.set !== s) return at
+  return tabs.findIndex((t) => t.set === s)
 }

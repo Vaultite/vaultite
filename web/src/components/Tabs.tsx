@@ -2,16 +2,19 @@
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Blocks, Columns2, Columns3, Files, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Blocks, Columns2, Columns3, Files, Group as GroupIcon, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pencil, Pin, PinOff, Plus, Rows2, SquareDashed, Ungroup, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
 import { askRename, closeTab, closeTabIds, closeTabs, getWorkspace, groupOfTab, isPopout, newTab, selectTab, togglePinTab, toggleStacked, popOut } from "@/core/workspace"
 import { moveTabsTo, hasSiblings, moveToSplit, splitTab } from "@/core/splits"
 import { hasMainWindow, moveToMain } from "@/core/windows"
-import { leaves, vaultPath, type Group, type Tab } from "@/core/layout"
+import { leaves, vaultPath, type Group, type Tab, type TabSet } from "@/core/layout"
+import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
+import { addToSet, allSets, askRenameSet, closeSet, colorSet, doneRenaming, foldSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet, useRenaming } from "@/core/tabsets"
+import { colorItems, dotIcon } from "@/components/ColorDot"
 import { PANES, type Drop } from "@/core/drop"
-import { useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
+import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { commandItems, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { fileIcon } from "@/components/FileTree"
@@ -44,6 +47,7 @@ function tabMenu(tab: Tab, last: boolean, count: number, group: Group, bar = fal
     { label: "Close all", run: () => closeTabs("all", tab.id) },
     // ("Pin tab", as its command: the file's own Pin, under More file actions, pins it to the sidebar)
     tab.pinned ? { label: "Unpin tab", icon: PinOff, sep: true, run: () => togglePinTab(tab.id) } : { label: "Pin tab", icon: Pin, sep: true, run: () => togglePinTab(tab.id) },
+    ...setItems([tab.id]),
     withVariant({ label: "Split right", icon: Columns2, run: () => splitTab("right", tab.id) },
       { label: "Move to new split right", icon: Columns2, run: () => moveToSplit("right", tab.id), disabled: !siblings }),
     withVariant({ label: "Split down", icon: Rows2, run: () => splitTab("bottom", tab.id) },
@@ -58,6 +62,88 @@ function tabMenu(tab: Tab, last: boolean, count: number, group: Group, bar = fal
 
 /** The tabs' selection (core/select.ts): by tab id, the bars', the Tabs panel's and the phone's cards alike. */
 export const TABS = "tabs"
+
+// ---------- tab groups (core/tabsets.ts) ----------
+
+/** What a tab group is called: its name, or its colour's ("Blue group"). */
+export const setName = (s: TabSet) => s.name || `${COLOR_NAMES[s.color]} group`
+/** Where a new group's name is typed: its chip in the tab bar, else its row in the Tabs panel. */
+const nameHere = () => (getPrefs().tabBar ? "bar" : "panel")
+
+/** A tab menu's tab group rows, for one tab or several selected: into a new group (named in place), into another
+ *  group, out of theirs. */
+export function setItems(ids: string[]): MenuItem[] {
+  const tabs = leaves(getWorkspace().root).flatMap((g) => g.tabs).filter((t) => ids.includes(t.id))
+  if (!tabs.length) return []
+  const n = tabs.length, own = new Set(tabs.map((t) => t.set))
+  const others = allSets().filter((s) => !(own.size === 1 && own.has(s.id)))
+  return [
+    { label: n === 1 ? "Add tab to new group" : `Add ${n} tabs to new group`, icon: GroupIcon, sep: true, run: () => {
+      const id = makeSet(ids)
+      if (id) askRenameSet(id, nameHere())
+    } },
+    ...(others.length ? [{ label: "Add to group", icon: Layers, run: () => {}, items: others.map((s) => ({ label: setName(s), icon: dotIcon(colorVar(s.color)), run: () => addToSet(ids, s.id) })) }] : []),
+    ...(tabs.some((t) => t.set) ? [{ label: "Remove from group", icon: Ungroup, run: () => leaveSet(ids) }] : []),
+  ]
+}
+
+/** A tab group's menu (right-click its name: in the bar, the Tabs panel or the phone's tab list). */
+export function setMenu(id: string, at: "bar" | "panel" | "phone"): MenuItem[] {
+  const s = setById(id)?.s
+  if (!s) return []
+  return [
+    ...(at === "phone" ? [] : [{ label: "Rename group", icon: Pencil, run: () => askRenameSet(id, at) }]),
+    { label: "Colour", icon: dotIcon(colorVar(s.color)), run: () => {}, items: colorItems(s.color, (c) => colorSet(id, c)) },
+    ...(at === "phone" ? [] : [{ label: "New tab in group", icon: Plus, run: () => newTabInSet(id) }]),
+    { label: "Ungroup", icon: Ungroup, sep: true, run: () => ungroupSet(id) },
+    { label: "Close group", icon: X, run: () => closeSet(id) },
+  ]
+}
+
+/** A tab group's name being typed in place (Enter or leaving it keeps it, Escape doesn't). */
+export function SetNameField({ s, className }: { s: TabSet; className?: string }) {
+  const [v, setV] = useState(s.name)
+  const done = useRef(false)
+  const commit = (keep: boolean) => { if (done.current) return; done.current = true; if (keep && v.trim() !== s.name) renameSet(s.id, v); doneRenaming() }
+  return (
+    <input autoFocus value={v} placeholder="Name" spellCheck={false} aria-label="Group name" data-no-drag
+      onFocus={(e) => e.currentTarget.select()} onChange={(e) => setV(e.target.value)} onBlur={() => commit(true)}
+      // (inside a row that's a link in the Tabs panel: a click here mustn't follow it)
+      onPointerDown={(e) => e.stopPropagation()} onClick={(e) => { e.stopPropagation(); e.preventDefault() }}
+      onKeyDown={(e) => {
+        e.stopPropagation()
+        if (e.key === "Enter") { e.preventDefault(); commit(true) }
+        if (e.key === "Escape") { e.preventDefault(); commit(false) }
+      }}
+      style={{ width: `${Math.max(5, v.length + 1)}ch` }}
+      className={cn("min-w-0 max-w-[160px] rounded-[4px] bg-card px-1 text-foreground outline-none placeholder:text-tertiary", className)} />
+  )
+}
+
+/** A tab group's chip in the tab bar, before its tabs: a click folds it (folded, its count shows), right-click has its
+ *  menu, dragging it moves the whole group. */
+function SetChip({ s, n }: { s: TabSet; n: number }) {
+  const renaming = useRenaming()
+  const editing = renaming?.id === s.id && renaming.at === "bar"
+  const d = useDrag()
+  const c = colorVar(s.color)
+  return (
+    <div data-set-chip={s.id} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
+      onPointerDown={(e) => { if (!editing) startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) }) }}
+      onClick={() => { if (!editing) foldSet(s.id) }}
+      data-tip={d || editing ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
+      className={cn("relative flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] text-[12px] font-semibold transition-colors", s.name || editing ? "px-1.5" : "w-6 justify-center",
+        d?.item.tabset === s.id && "opacity-50")}
+      style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, background: `color-mix(in srgb, ${c} 16%, transparent)` }}>
+      {editing ? <SetNameField s={s} className="h-5 text-[12px] font-medium" />
+        : s.name ? <span className="max-w-[140px] truncate">{s.name}</span>
+        : <span aria-label={setName(s)} className="size-2 rounded-full" style={{ background: c }} />}
+      {s.collapsed && !editing && <span className="font-medium tabular-nums opacity-75">{n}</span>}
+      {/* The line under the group's tabs starts here (each tab carries it on). */}
+      {!s.collapsed && <span aria-hidden className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full" style={{ background: c }} />}
+    </div>
+  )
+}
 
 /** What tabs selected together can do: close them (or the others), pin them, move them into a split of their own. */
 export function tabsMenu(ids: string[], phone = false): MenuItem[] {
@@ -74,6 +160,7 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
     { label: "Close other tabs", run: () => closeTabIds(ids, { keep: true }), disabled: tabs.length === all.length },
     ...(phone ? [] : [
       { label: `${pinned ? "Unpin" : "Pin"} ${n === 1 ? "tab" : `${n} tabs`}`, icon: pinned ? PinOff : Pin, sep: true, run: () => tabs.forEach((t) => { if (!!t.pinned === pinned) togglePinTab(t.id) }) },
+      ...setItems(ids),
       { label: "Move to new split right", icon: Columns2, run: () => moveTabsTo(ids, first, own!.id, "right"), disabled: !splits },
       { label: "Move to new split down", icon: Rows2, run: () => moveTabsTo(ids, first, own!.id, "bottom"), disabled: !splits },
       ...(isPopout() && hasMainWindow() ? [{ label: "Move to main window", icon: AppWindow, run: () => moveToMain(ids) }] : []),
@@ -86,9 +173,12 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
  *  the bar's empty space. */
 function barItems(group: Group): MenuItem[] {
   const { tabBar, paneTitles } = getPrefs()
+  // With the tabs in the sidebar, the way back is to put them on top (the tab bar on, the list gone).
+  const vertical = tabsInSidebar()
   return [
     { label: group.stacked ? "Unstack tabs" : "Stack tabs", icon: Layers, sep: true, run: () => toggleStacked(group.id) },
-    { label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) },
+    ...commandItems("tab:sidebar"),
+    ...(vertical ? [] : [{ label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) }]),
     ...(tabBar ? [] : [{ label: paneTitles ? "Hide pane titles" : "Show pane titles", icon: Heading1, run: () => setPrefs({ paneTitles: !paneTitles }) }]),
   ]
 }
@@ -152,6 +242,7 @@ export function DragGhost({ info }: { info: (t: Tab) => TabInfo }) {
     : d.item.column ? { label: d.item.label ?? d.item.column.key, icon: Columns3 }
     : d.item.panel && !(d.item.to && d.hit?.target === PANES) ? { label: d.item.label ?? d.item.panel, icon: PanelTop }
     : d.item.group ? { label: d.item.label ?? "Pane", icon: AppWindow }
+    : d.item.tabset ? { label: d.item.label ?? "", icon: dotIcon(colorVar(setById(d.item.tabset)?.s.color ?? "gray")) }
     : d.item.from === "row" && !d.item.to ? { label: d.item.label ?? d.item.path?.split("/").pop()?.replace(/\.md$/i, "") ?? "", icon: FileText }
     : info({ id: "", to: d.item.to ?? "new" })
   // Near the window's right edge it goes left of the pointer; a finger's goes above it (a finger covers what's under).
@@ -179,14 +270,16 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
   startDrag(e, ids && ids.length > 1 ? { ...item, tabs: ids, label: `${ids.length} tabs` } : item, { touch: opts?.touch })
 }
 
-function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, settling, close }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
+function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, settling, close, line }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
   /** Whether the active tab takes its colour (appearance `tabTint`). */
   tint: boolean; menu: () => MenuItem[]
+  /** In a tab group: the line under its tabs, in its colour, on to the next one unless it's the `last`. */
+  line?: { color: string; last: boolean }
   /** Held at this width after a close (TabBar). */
   width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void }) {
   const d = useDrag()
   const picked = useSelected(TABS, tab.id)
-  const dragging = d?.item.tab === tab.id || (picked && !!d?.item.tabs)
+  const dragging = d?.item.tab === tab.id || (picked && !!d?.item.tabs) || (!!tab.set && d?.item.tabset === tab.set)
   // (a light wash of its colour, lighter while its pane isn't the focused one: calm in either theme)
   const wash = active && tint && info.wash
     ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
@@ -218,6 +311,7 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
           <X className="size-3.5" strokeWidth={2} />
         </button>
       )}
+      {line && <span aria-hidden className={cn("pointer-events-none absolute -bottom-[3px] left-0 h-[2px]", line.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: line.color }} />}
     </div>
   )
 }
@@ -272,6 +366,8 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   const hit = useDropHit<Drop>(PANES)
   const d = useDrag()
   const line = hit?.kind === "bar" && hit.group === group.id ? hit.x : null
+  // (dropped there, it joins that tab group: the line takes its colour)
+  const lineSet = hit?.kind === "bar" && hit.group === group.id && hit.set ? group.sets?.find((x) => x.id === hit.set) : undefined
   const shown = tabs.find((t) => t.id === active) ?? tabs[0]
   // What the pane is called while it's dragged: its tab, and how many more go with it.
   const label = tabs.length > 1 ? `${info(shown).label} and ${tabs.length - 1} more` : info(shown).label
@@ -346,9 +442,10 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   if (!tabBar && !paneTitles) {
     return (
       <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare onContextMenu={menuFor(() => barMenu(group))}
-        className="group/bar relative h-2.5 shrink-0 bg-background">
-        <div className="absolute inset-0" />
-        <div className="absolute top-0.5 right-1.5 z-10">{handle}</div>
+        className="group/bar relative flex h-2.5 shrink-0 bg-background pr-1.5">
+        {/* In flow, so the drag strip (its first child, index.css) keeps out of the corner padding the toggles sit in. */}
+        <div className="h-full min-w-0 flex-1" />
+        <div className="relative z-10 mt-0.5 self-start">{handle}</div>
       </div>
     )
   }
@@ -377,8 +474,16 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", d?.item.group === group.id && "opacity-50")}>
-        {tabs.map((t, i) => <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
-          menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)} />)}
+        {tabs.map((t, i) => {
+          const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
+          const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined
+          const chip = s && <SetChip key={`set:${s.id}`} s={s} n={tabs.filter((x) => x.set === s.id).length} />
+          if (own?.collapsed) return chip || null
+          const item = <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
+            menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)}
+            line={own ? { color: colorVar(own.color), last: tabs[i + 1]?.set !== own.id } : undefined} />
+          return chip ? [chip, item] : item
+        })}
         {/* Right after the last tab (not pinned to the bar's end). */}
         <button type="button" onClick={() => newTab(group.id)} aria-label="New tab" data-tip="New tab"
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
@@ -387,7 +492,8 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       </div>
       {/* The pane's handle: drag it to move the whole pane (all its tabs). Shown while the pointer is over the bar. */}
       {handle}
-      {line !== null && <div aria-hidden data-drop-line className="pointer-events-none absolute top-1.5 bottom-1.5 w-[2px] -translate-x-1/2 rounded-full bg-primary" style={{ left: line }} />}
+      {line !== null && <div aria-hidden data-drop-line className={cn("pointer-events-none absolute top-1.5 bottom-1.5 w-[2px] -translate-x-1/2 rounded-full", !lineSet && "bg-primary")}
+        style={{ left: line, ...(lineSet ? { background: colorVar(lineSet.color) } : {}) }} />}
     </div>
   )
 }

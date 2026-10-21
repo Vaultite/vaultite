@@ -1,9 +1,10 @@
 import { useEffect, useRef } from "react"
-import { Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
+import { ChevronDown, ChevronRight, Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
 import {
-  closeTab, cn, definePlugin, del, dragTab, fmtAgo, HeadingButton, isPopout, menuFor, newTab, notifyError, openFile, openView, panesOf,
-  pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, SidebarHeading, SidebarRow, tabMenuOf, TABS, tabsMenu, useDrag, useSelectable, useSelected,
-  useTabLabels, useTabLayout, type SidebarCtx, type Store, type Tab, type TabGroup, type TabInfo,
+  canDropTab, closeTab, cn, colorVar, commandItems, definePlugin, del, dotIcon, dragTab, dropTab, fmtAgo, foldSet, HeadingButton, isPopout, menuFor, newTab,
+  notifyError, openFile, openView, panesOf, pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, setMenu, setName, SetNameField, SidebarHeading,
+  SidebarRow, startDrag, tabMenuOf, TABS, tabSlot, tabsMenu, useDrag, useDropHit, useDropTarget, useRenaming, useSelectable, useSelected, useTabLabels, useTabLayout,
+  type DragItem, type SidebarCtx, type Store, type Tab, type TabDrop, type TabGroup, type TabInfo, type TabSet,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
 
@@ -17,14 +18,16 @@ const othersItem = (shown: boolean) => ({
 })
 
 
-function Row({ t, g, i, only }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean }) {
+function Row({ t, g, i, only, inSet }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean; inSet?: boolean }) {
   const d = useDrag()
   const picked = useSelected(TABS, t.id)
   return (
-    // Dragged like a tab in its bar: onto a pane (its edge splits), another bar, or Pinned; selected with others, they all go.
-    <div onPointerDown={(e) => dragTab(e, t)} className={cn((d?.item.tab === t.id || (picked && d?.item.tabs)) && "opacity-50")}
+    // Dragged like a tab in its bar: along the list (in or out of a group), onto a pane (its edge splits), another bar,
+    // or Pinned; selected with others, they all go.
+    <div onPointerDown={(e) => dragTab(e, t)} className={cn((d?.item.tab === t.id || (picked && d?.item.tabs) || (!!t.set && d?.item.tabset === t.set)) && "opacity-50")}
       onContextMenu={menuFor(rowMenu(TABS, t.id, () => tabMenuOf(t.id)))}>
       <SidebarRow data-open-tab={t.id} data-select-key={t.id} {...selectedAttr(picked)} icon={i.icon} iconClassName={i.iconClassName} tint={i.tint} badge={i.badge} iconAction={i.action} label={i.label} open active={t.id === g.active} more
+        className={inSet ? "pl-5" : undefined}
         swipe={() => (t.pinned || only ? [] : [{ label: "Close", icon: X, danger: true, run: () => closeTab(t.id), removes: true }])}
         onClick={(e) => { if (e.button === 1) { if (!t.pinned && !only) closeTab(t.id) } else if (!selectClick(e, TABS, t.id, g.active)) selectTab(t.id) }}>
         {t.pinned ? (
@@ -38,23 +41,80 @@ function Row({ t, g, i, only }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean
   )
 }
 
-/** Every pane's tabs, in the panes' order; with more than one pane, each under its number (the focused one's in full). */
+/** A tab group's row, its tabs indented under it: a click folds it, right-click has its menu, dragging it moves the
+ *  whole group. */
+function SetRow({ s, n }: { s: TabSet; n: number }) {
+  const renaming = useRenaming()
+  const editing = renaming?.id === s.id && renaming.at === "panel"
+  const d = useDrag()
+  const Chevron = s.collapsed ? ChevronRight : ChevronDown
+  return (
+    <div onPointerDown={(e) => { if (!editing) startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) }) }} className={cn(d?.item.tabset === s.id && "opacity-50")}
+      onContextMenu={menuFor(() => setMenu(s.id, "panel"))}>
+      <SidebarRow data-set-row={s.id} aria-expanded={!s.collapsed} icon={dotIcon(colorVar(s.color))} open tip={null} onClick={() => { if (!editing) foldSet(s.id) }}
+        label={editing ? <SetNameField s={s} className="h-5.5 text-[13px]" /> : <span className={cn("font-medium", !s.name && "text-muted-foreground")}>{setName(s)}</span>}>
+        <span className="shrink-0 text-[12px] text-tertiary tabular-nums">{n}</span>
+        {/* (open, its chevron shows on hover, as a panel heading's does) */}
+        <Chevron aria-hidden className={cn("size-3.5 shrink-0 text-muted-foreground", !s.collapsed && "opacity-0 group-hover/row:opacity-100")} strokeWidth={2.25} />
+      </SidebarRow>
+    </div>
+  )
+}
+
+/** What a drop among a pane's rows does, and where its line goes (from the pane's top). */
+type ListHit = { d: Extract<TabDrop, { kind: "bar" }>; y: number }
+const LIST = "tabs:list"
+
+/** Every pane's tabs, in the panes' order, each tab group a row with its tabs under it; with more than one pane, each
+ *  under its number (the focused one's in full). Dragged along the list, a tab moves, joining or leaving a group. */
 function TabRows({ store }: { store: Store }) {
   const ws = useTabLayout()
   const info = useTabLabels(store)
   const panes = panesOf(ws.root)
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
+  useDropTarget<ListHit>(LIST, (item: DragItem, _x, y, el) => {
+    const box = el?.closest<HTMLElement>("[data-tabs-pane]")
+    const g = box && panesOf(ws.root).find((x) => x.id === box.dataset.tabsPane)
+    if (!box || !g || !(item.tab || item.tabset || item.to || item.group)) return null
+    const own = item.tab ? g.tabs.find((t) => t.id === item.tab)?.set : undefined
+    const slots = [...box.querySelectorAll<HTMLElement>("[data-open-tab], [data-set-row]")].map((e) => ({ el: e, tab: e.dataset.openTab, set: e.dataset.setRow }))
+    const at = tabSlot(g, slots, y, "y", own)
+    const d: ListHit["d"] = { kind: "bar", group: g.id, index: at.index, x: 0, set: item.tabset ? null : at.set }
+    return canDropTab(item, d) ? { d, y: (slots.length ? at.edge : box.getBoundingClientRect().top) - box.getBoundingClientRect().top } : null
+  }, (item, h) => dropTab(item, h.d))
+  const hit = useDropHit<ListHit>(LIST)
   return (
     <div className="flex flex-col gap-px" data-keylist data-open-tabs data-select-list={TABS}>
-      {panes.map((g, n) => (
-        <div key={g.id} className="flex flex-col gap-px" data-tabs-pane={g.id}>
-          {panes.length > 1 && (
-            <div className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium max-md:h-8 max-md:text-[13px]", n && "mt-1",
-              g.id === ws.focus ? "text-muted-foreground" : "text-tertiary")}>Pane {n + 1}</div>
-          )}
-          {g.tabs.map((t) => <Row key={t.id} t={t} g={g} i={info(t)} only={panes.length === 1 && g.tabs.length === 1 && t.to === "new"} />)}
-        </div>
-      ))}
+      {panes.map((g, n) => {
+        const only = (t: Tab) => panes.length === 1 && g.tabs.length === 1 && t.to === "new"
+        const line = hit?.d.group === g.id ? hit : null
+        const lineSet = line?.d.set ? g.sets?.find((x) => x.id === line.d.set) : undefined
+        return (
+          <div key={g.id} className="relative flex flex-col gap-px" data-tabs-pane={g.id}>
+            {panes.length > 1 && (
+              <div className={cn("flex h-6 items-end px-1.5 pb-0.5 text-[11px] font-medium max-md:h-8 max-md:text-[13px]", n && "mt-1",
+                g.id === ws.focus ? "text-muted-foreground" : "text-tertiary")}>Pane {n + 1}</div>
+            )}
+            {g.tabs.map((t, i) => {
+              const s = t.set ? g.sets?.find((x) => x.id === t.set) : undefined
+              if (!s) return <Row key={t.id} t={t} g={g} i={info(t)} only={only(t)} />
+              if (g.tabs[i - 1]?.set === s.id) return null
+              const run = g.tabs.filter((x) => x.set === s.id)
+              return (
+                <div key={`set:${s.id}`} className="relative flex flex-col gap-px">
+                  <SetRow s={s} n={run.length} />
+                  {/* (a line in the group's colour down its tabs, from under its dot) */}
+                  {!s.collapsed && <span aria-hidden className="pointer-events-none absolute top-7.5 bottom-0.5 left-[13px] w-[2px] rounded-full"
+                    style={{ background: `color-mix(in srgb, ${colorVar(s.color)} 55%, transparent)` }} />}
+                  {!s.collapsed && run.map((x) => <Row key={x.id} t={x} g={g} i={info(x)} only={only(x)} inSet />)}
+                </div>
+              )
+            })}
+            {line && <div aria-hidden data-drop-line className={cn("pointer-events-none absolute right-1 left-1 h-[2px] -translate-y-1/2 rounded-full", !lineSet && "bg-primary")}
+              style={{ top: line.y, ...(lineSet ? { background: colorVar(lineSet.color) } : {}) }} />}
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -134,11 +194,10 @@ function OtherDevices({ store }: { store: Store }) {
 }
 
 function TabsPanel({ store, open }: SidebarCtx) {
-  const shown = settings.use().other_devices !== false
   if (!open) return null
   return (
-    // A right-click anywhere but a tab or a device (they have their own menus) switches other devices' tabs.
-    <div className="flex shrink-0 flex-col" data-tabs-panel onContextMenu={menuFor(() => [othersItem(shown)])}>
+    // (a right-click anywhere but a tab, a group or a device has the panel's menu: `menu`)
+    <div className="flex shrink-0 flex-col" data-tabs-panel>
       <SidebarHeading title="Tabs" open={open}>
         <HeadingButton icon={Plus} label="New tab" onClick={() => newTab()} />
       </SidebarHeading>
@@ -152,8 +211,10 @@ export default definePlugin({
   background: ({ store }) => (isPopout() ? null : <Report store={store} />),
   sidebar: {
     tabs: {
-      title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true,
+      title: "Tabs", names: ["tabs", "open tabs", "tab list", "vertical tabs"], heading: false, sort: 5, hidden: true, tabList: true,
       view: "tabs", flyout: { icon: Layers2 }, render: (ctx) => <TabsPanel {...ctx} />,
+      // (Show tabs on top, the way back to the tab bar, and other devices' tabs on or off)
+      menu: () => [...commandItems("tab:sidebar"), othersItem(settings.get().other_devices !== false)],
     },
   },
   views: {

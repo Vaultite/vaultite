@@ -7,6 +7,6 @@
     "other_devices": { "type": "boolean", "default": true, "label": "Other devices' tabs", "description": "under this device's tabs, what your other devices have open, to open here (right-click the Tabs heading to switch)" }
   },
   "name": "Tabs",
-  "description": "A sidebar panel with the open tabs, pane by pane: show, close and drag them from the sidebar, with or without the tab bar. Under them, the tabs your other devices have open, to open here.",
+  "description": "A sidebar panel with the open tabs, pane by pane, and their tab groups: show, close and drag them from the sidebar, with or without the tab bar (Show tabs in the sidebar makes them vertical tabs). Under them, the tabs your other devices have open, to open here.",
   "replaces": { "obsidian": ["vertical-tabs"] }
 }

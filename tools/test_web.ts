@@ -18,6 +18,7 @@ const STUBS: Record<string, string> = {
   "@/core/prefs": "export const getPrefs = () => ({ disabled: [] })",
   "@/core/appearance": "export const onLook = () => () => {}",
   "@/core/desktop": "export const webPages = null; export const keyboardTakes = () => 0; export const pageTakenSince = () => null",
+  "@/core/live": "export const answerUi = () => {}",
 }
 // (plugins import the app as "@vaultite": here, only what their editing commands use)
 const shim = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "vau-shim-")), "vaultite.ts")
@@ -863,6 +864,74 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   heard.length = 0; one([A, W1], "w1"); ws.closeTab("a", true)
   check("closing a file's tab tells no view", !heard.length, heard)
   ws.setTabCloser(() => {})
+
+  // Tab groups (core/tabsets.ts: a pane's runs of tabs, TabSet in layout.ts).
+  const ts: Any = await web("core/tabsets.ts")
+  const E = { id: "e", to: "file:e.md" }
+  const pane = () => ws.groups()[0]
+  const runs = () => ws.groups().map((x: Any) => x.tabs.map((t: Any) => {
+    const st = x.sets?.find((y: Any) => y.id === t.set)
+    return t.id + (st ? `(${st.name || st.color}${st.collapsed ? "-" : ""})` : "")
+  }).join(",")).join(" | ")
+  one([A, B, C, D, E], "a")
+  let s1 = ts.makeSet(["b", "d"], { name: "Work" })
+  check("tab groups: tabs made a group sit together where the first was, with the first unused colour", runs() === "a,b(Work),d(Work),c,e" && pane().sets[0].color === "blue", runs())
+  ts.makeSet(["e"])
+  check("tab groups: the next group takes the next colour; no name when the tabs share no folder or site", pane().sets[1].color === "orange" && pane().sets[1].name === "", pane().sets)
+  check("tab groups: a new group's name is the folder its files share, or their site", ts.suggestName([{ id: "x", to: "file:Projects/Lighthouse/a.md" }, { id: "y", to: "file:Projects/Lighthouse/b.md" }]) === "Lighthouse"
+    && ts.suggestName([{ id: "x", to: "view:web/https://www.github.com/a" }, { id: "y", to: "view:web/@work/https://github.com/b" }]) === "Github"
+    && ts.suggestName([{ id: "x", to: "file:a.md" }, { id: "y", to: "view:terminal/q" }]) === "")
+  ts.addToSet(["a"], s1)
+  check("tab groups: a tab added to a group goes to its end", runs() === "b(Work),d(Work),a(Work),c,e(orange)", runs())
+  ts.leaveSet(["d"])
+  check("tab groups: a tab taken out of its group goes right after it", runs() === "b(Work),a(Work),d,c,e(orange)", runs())
+  sp.moveTabTo("c", "g0", 1)
+  check("tab groups: a tab dragged between two of a group's tabs joins it", runs() === "b(Work),c(Work),a(Work),d,e(orange)", runs())
+  sp.moveTabTo("c", "g0", 5)
+  check("tab groups: dragged out past the group's end, it leaves", runs() === "b(Work),a(Work),d,e(orange),c", runs())
+  sp.moveTabTo("a", "g0", 2, null)
+  check("tab groups: at the group's end, its own last tab stays in unless the drop says none", runs() === "b(Work),a,d,e(orange),c", runs())
+  sp.moveTabTo("d", "g0", 1, s1)
+  check("tab groups: a drop just after a group's chip joins it", runs() === "b(Work),d(Work),a,e(orange),c", runs())
+  ts.foldSet(s1)
+  check("tab groups: folding the group whose tab isn't on screen leaves the tab shown", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.activeTab().id === "a", runs())
+  ws.selectTab("b")
+  check("tab groups: showing a tab of a folded group opens it", runs() === "b(Work),d(Work),a,e(orange),c" && ws.activeTab().id === "b", runs())
+  ts.foldSet(s1)
+  check("tab groups: folding the group on screen shows the tab after it", runs() === "b(Work-),d(Work-),a,e(orange),c" && ws.activeTab().id === "a", runs())
+  ts.foldSet(s1, false)
+  ts.moveSetTo(s1, "g0", 5)
+  check("tab groups: a whole group dragged moves with its tabs in order", runs() === "a,e(orange),c,b(Work),d(Work)", runs())
+  ts.moveSetTo(s1, "g0", 1)
+  check("tab groups: a group dropped inside another goes before it, never into it", runs() === "a,b(Work),d(Work),e(orange),c", runs())
+  ts.renameSet(s1, "  Lighthouse "); ts.colorSet(s1, "teal")
+  check("tab groups: renamed (trimmed) and recoloured", pane().sets[0].name === "Lighthouse" && pane().sets[0].color === "teal", pane().sets)
+  ws.closeTab("e")
+  check("tab groups: closing a group's last tab removes the group", runs() === "a,b(Lighthouse),d(Lighthouse),c" && pane().sets.length === 1, runs())
+  ws.closeTab("d"); ws.reopenTab()
+  check("tab groups: a closed tab reopens back in its group", runs() === "a,b(Lighthouse),d(Lighthouse),c", runs())
+  ws.reopenTab()
+  check("tab groups: one whose group went reopens where it was, in none", runs() === "a,b(Lighthouse),d(Lighthouse),e,c" && pane().sets.length === 1, runs())
+  ws.selectTab("b"); ws.go("file:z.md", true)
+  check("tab groups: a tab opened from a grouped tab joins its group", runs().startsWith("a,b(Lighthouse),") && ws.activeTab().set === s1, runs())
+  ws.newTab()
+  check("tab groups: a new blank tab from a grouped tab goes after the group, in none", ws.activeTab().to === "new" && !ws.activeTab().set
+    && pane().tabs.findIndex((t: Any) => t.to === "new") === pane().tabs.map((t: Any) => t.set).lastIndexOf(s1) + 1, runs())
+  ts.ungroupSet(s1)
+  check("tab groups: ungrouped, the tabs stay where they were", !pane().sets && !pane().tabs.some((t: Any) => t.set), runs())
+  // Saved and read back: a tab in a group the pane hasn't is in none; a group's tabs apart are gathered; a bad colour drops it.
+  const read = lay.clean({ id: "g0", active: "a", tabs: [{ id: "a", to: "file:a.md", set: "s" }, { id: "b", to: "file:b.md" }, { id: "c", to: "file:c.md", set: "s" }, { id: "d", to: "file:d.md", set: "gone" }],
+    sets: [{ id: "s", name: "Read", color: "green", collapsed: true }, { id: "x", name: "Bad", color: "chartreuse" }] })
+  check("tab groups: read back as they must be (together, known groups only, the one on screen open)",
+    read.tabs.map((t: Any) => t.id + (t.set ?? "")).join(",") === "as,cs,b,d" && read.sets.length === 1 && !read.sets[0].collapsed, read)
+  two([A, B], [C, D], "gL"); s1 = ts.makeSet(["a", "c"], { name: "Both" })
+  check("tab groups: tabs from two panes grouped go to the first's pane", runs() === "a(Both),c(Both),b | d", runs())
+  ts.moveSetTo(s1, "gR", "right")
+  check("tab groups: a group dragged to a pane's edge is a pane of its own", runs() === "b | d | a(Both),c(Both)", runs())
+  sp.moveTabTo("d", ws.groups()[2].id, "center")
+  check("tab groups: a tab moved into another pane's middle joins no group", runs() === "b | a(Both),c(Both),d", runs())
+  const saved = JSON.parse(JSON.stringify(ws.getWorkspace())); ws.replaceWorkspace(saved)
+  check("tab groups: a layout put back (another device, a reload) keeps them", runs() === "b | a(Both),c(Both),d", runs())
 }
 
 // ---------- Browser: a tab owns its page (electron/webpages.ts) ----------

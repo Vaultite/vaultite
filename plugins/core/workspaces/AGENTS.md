@@ -20,7 +20,8 @@ write the same file. `1.json`:
   window's; `--workspace <n>`, `--vault`); `POST /api/workspaces/<n>/pins/default` makes its list pages.json's.
 - `state`: what the app and plugins keep per workspace (`files:open`, `core:recent`), merged key by key on PUT. Leave
   it to the app.
-- `layout`: `root` is a group `{id, tabs: [{id, to}], active}` or a split `{id, dir: row | col, kids, sizes}`. A tab's
+- `layout`: `root` is a group `{id, tabs: [{id, to}], active}` or a split `{id, dir: row | col, kids, sizes}`; a group's
+  tab groups are its `sets` and each tab's `set` (`vau docs tabs`). A tab's
   `to` is `file:<vault path>`, `view:terminal/<session id>`, a panel as a tab (`view:files`, `view:terminals`,
   `view:pages`, `view:search/<query>`, `view:links`, `view:local-graph`) or `new` (blank); left out, one blank tab.
   `active` and `focus` are only where a device starts. With the Machines plugin on, a terminal tab is saved as

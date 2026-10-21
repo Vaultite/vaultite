@@ -2,7 +2,7 @@
 // with its own history. This device's (localStorage), or with Workspaces the current workspace's, shared across devices.
 import { backDetail, route } from "@/core/nav"
 import { isDesktop } from "@/core/platform"
-import { HISTORY, blankGroup, clean, dropBlank, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, nextActive, okGroup, shownTab, tidy, vaultPath, type Group, type Layout, type Tab, type Workspace } from "@/core/layout"
+import { HISTORY, blankGroup, clean, dropBlank, fixAllSets, inSet, isBlank, leaves, mapGroups, mapTabs, moveOn, newId, nextActive, okGroup, shownTab, tidy, vaultPath, type Group, type Layout, type Tab, type Workspace } from "@/core/layout"
 import { signal } from "@/core/signal"
 
 const notify = () => dispatchEvent(new HashChangeEvent("hashchange"))
@@ -62,11 +62,11 @@ function noteFile() {
 let state = load()
 noteFile()
 const changed = signal()
-/** The next workspace, tidied (an emptied group closes; with none left, a blank tab). A focused group that closed
- *  hands the focus to its neighbour. */
+/** The next workspace, tidied (an emptied group closes; with none left, a blank tab; tab groups as they must be:
+ *  fixSets). A focused group that closed hands the focus to its neighbour. */
 export function set(next: Workspace) {
   const was = leaves(state.root).map((g) => g.id)
-  const root = tidy(next.root) ?? blankGroup()
+  const root = tidy(fixAllSets(next.root)) ?? blankGroup()
   const gs = leaves(root)
   let focus = next.focus
   if (!gs.some((g) => g.id === focus)) {
@@ -234,10 +234,12 @@ export function go(to: string, newTab = false, push = true) {
   show(to, push)
 }
 
-/** A group with a new tab showing `to` right after tab `after`, active (`from`: the tab it was opened from, Tab.from). */
+/** A group with a new tab showing `to` right after tab `after`, active (`from`: the tab it was opened from, Tab.from),
+ *  in `after`'s tab group, as a browser's link opened from a grouped tab is. */
 function withTabAfter(g: Group, after: string, to: string, from?: string): Group {
   const id = newId(), at = g.tabs.findIndex((t) => t.id === after) + 1
-  const tab: Tab = from ? { id, to, from } : { id, to }
+  const set = g.tabs[at - 1]?.set
+  const tab: Tab = { id, to, ...(from ? { from } : {}), ...(set ? { set } : {}) }
   return { ...g, tabs: [...g.tabs.slice(0, at), tab, ...g.tabs.slice(at)], active: id }
 }
 
@@ -403,13 +405,13 @@ function remember(tabs: Tab[]) {
   for (const t of [...tabs].reverse()) {
     const g = groupOfTab(t.id)
     if (!g || isBlank(t) || ending.has(t.to)) continue
-    reopenable.push({ tab: { id: t.id, to: t.to, back: t.back, fwd: t.fwd, ...(t.pinned ? { pinned: true } : {}) }, group: g.id, at: g.tabs.indexOf(t) })
+    reopenable.push({ tab: { id: t.id, to: t.to, back: t.back, fwd: t.fwd, ...(t.pinned ? { pinned: true } : {}), ...(t.set ? { set: t.set } : {}) }, group: g.id, at: g.tabs.indexOf(t) })
   }
   reopenable.splice(0, Math.max(0, reopenable.length - 50))
 }
 export const canReopenTab = () => reopenable.length > 0
-/** Reopen the tab closed last where it was (its pane gone: the focused one), with its history; skips ones open again
- *  or `gone`. A blank active tab there makes way for it. */
+/** Reopen the tab closed last where it was (its pane gone: the focused one), with its history and tab group (if still
+ *  there); skips ones open again or `gone`. A blank active tab there makes way for it. */
 export function reopenTab(gone: (to: string) => boolean = () => false) {
   let last = reopenable.pop()
   while (last && (findOpen(last.tab.to) || gone(last.tab.to))) last = reopenable.pop()
@@ -487,7 +489,7 @@ export const takeRename = (path: string) => { if (toRename !== path) return fals
 export function newTab(gid = state.focus) {
   set(withGroup(gid, (g) => {
     if (isBlank(shownTab(g))) return g
-    const blank = g.tabs.find(isBlank) ?? { id: newId(), to: "new" }
+    const had = g.tabs.find(isBlank), blank = had ? inSet(had, undefined) : { id: newId(), to: "new" }
     const tabs = g.tabs.filter((t) => t.id !== blank.id)
     const at = tabs.findIndex((t) => t.id === g.active) + 1
     return { ...g, tabs: [...tabs.slice(0, at), blank, ...tabs.slice(at)], active: blank.id }

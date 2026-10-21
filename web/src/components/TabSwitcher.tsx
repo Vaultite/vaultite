@@ -16,7 +16,8 @@ import { headerItems, viewFor } from "@/core/plugins"
 import { usePrefs } from "@/core/prefs"
 import { haptic } from "@/core/haptics"
 import { Badged, PageHeader, usePortalHost } from "@/components/kit"
-import { TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
+import { setMenu, setName, TABS, tabCardMenu, tabsMenu, type TabInfo } from "@/components/Tabs"
+import { colorVar } from "../../../core/colors.ts"
 import { rowMenu, selectClick, selectedAttr, selecting, startSelecting, useSelectable, useSelected } from "@/core/select"
 import { menuBelow, menuOnCard, type MenuItem } from "@/components/ContextMenu"
 import { NewTab, useNewTabPage } from "@/components/NewTab"
@@ -583,6 +584,20 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
       lifted={t.id === liftedId} onPick={() => pickTab(t.id)} menu={menuOf(t)} />
   )
   const grid = "grid grid-cols-2 gap-3 @min-[520px]:grid-cols-3"
+  /** A pane's cards, each tab group's under its name (held: its menu), the tabs after one on a row of their own. */
+  const sections = (g: Group, tabs: Tab[]) => tabs.flatMap((t, i) => {
+    const s = t.set !== tabs[i - 1]?.set ? g.sets?.find((x) => x.id === t.set) : undefined
+    const after = !t.set && tabs[i - 1]?.set ? [<div key={`end:${tabs[i - 1].set}`} aria-hidden className="col-span-full -mb-3" />] : []
+    const head = s ? [
+      <div key={`set:${s.id}`} data-set-head={s.id} onContextMenu={menuOnCard(() => setMenu(s.id, "phone"))}
+        className={cn("col-span-full -mb-1 flex h-8 min-w-0 items-center gap-2 text-[15px] font-semibold", i > 0 && "mt-2")}>
+        <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: colorVar(s.color) }} />
+        <span className={cn("min-w-0 truncate", s.name ? "text-foreground" : "text-muted-foreground")}>{setName(s)}</span>
+        <span className="shrink-0 font-normal text-tertiary">{tabs.filter((x) => x.set === s.id).length}</span>
+      </div>,
+    ] : []
+    return [...after, ...head, card(t)]
+  })
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids, true), noun: ["tab", "tabs"] })
   const openIndex = open ? panes.indexOf(open) : -1
   // While a card is lifted, its pane's tabs are shown as they'd be with it where it would go.
@@ -631,8 +646,8 @@ export function TabSwitcher({ store, info }: { store: Store; info: (t: Tab) => T
         <div ref={box} className="@container">
           <div className={grid} data-select-list={TABS}>
             {found ? found.map(card)
-              : open ? inOrder(open.tabs).map(card)
-              : !multi ? inOrder(panes[0].tabs).map(card)
+              : open ? sections(open, inOrder(open.tabs))
+              : !multi ? sections(panes[0], inOrder(panes[0].tabs))
               : panes.map((g, i) => (g.tabs.length === 1 ? card(g.tabs[0])
                 : <GroupCard key={g.id} store={store} group={g} name={labels[i]} info={info} current={g.tabs.some((t) => t.id === cur.id)}
                     lit={hit?.kind === "join" && hit.group === g.id} onOpen={() => setOpened(g.id)} />))}

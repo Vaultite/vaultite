@@ -13,7 +13,7 @@
   ],
   "fileIcons": true,
   "tabBar": true,
-  "paneTitles": true, "tabTint": false,
+  "paneTitles": false, "tabTint": false,
   "rails": true,
   "lineNumbers": false,
   "statusBar": null,

@@ -234,8 +234,9 @@ plugin.route("DELETE", "workspaces/*", (req) => {
 
 // ---------- moving tabs and panes to another workspace, or opening files there ----------
 // The app's layout shape, only what's needed here and checked loosely, since the file is written by hand too.
-type Tab = { id: string; to: string }
-type Group = { id: string; tabs: Tab[]; active: string }
+type Tab = { id: string; to: string; set?: string }
+/** `sets`: its tab groups ({id, name, color, collapsed}), its tabs' `set` naming theirs. */
+type Group = { id: string; tabs: Tab[]; active: string; sets?: Item[] }
 type Split = { id: string; dir: string; kids: Node[]; sizes: number[] }
 type Node = Group | Split
 type Layout = { root: Node; focus?: string }
@@ -314,7 +315,7 @@ function withPane(l: Layout | null, g: Group): { layout: Layout; tabs: Tab[]; gr
   const active = tabs[Math.max(0, g.tabs.findIndex((t) => t.id === g.active))].id
   const id = leaves(l!.root).some((x) => x.id === g.id) ? newId("g") : g.id
   const k = isSplit(l!.root) && l!.root.dir === "row" ? l!.root.kids.length : 1
-  const root = tidy({ id: newId("s"), dir: "row", kids: [l!.root, { id, tabs, active }], sizes: [k / (k + 1), 1 / (k + 1)] })!
+  const root = tidy({ id: newId("s"), dir: "row", kids: [l!.root, { id, tabs, active, ...(g.sets ? { sets: g.sets } : {}) }], sizes: [k / (k + 1), 1 / (k + 1)] })!
   return { layout: { ...l!, root }, tabs, group: id }
 }
 
@@ -371,7 +372,8 @@ plugin.route("POST", "workspaces/move", (req) => {
   }
   if (from === to) throw new HTTPError(400, `${what} is already in workspace ${to + 1}`)
   const g = has(from)!
-  const moving = (gid ? g.tabs : g.tabs.filter((t) => (id ? t.id === id : localPlace(t.to) === target)).slice(0, 1)).map((t) => ({ id: t.id, to: t.to }))
+  // (a whole pane keeps its tab groups; a tab alone leaves its group)
+  const moving = (gid ? g.tabs : g.tabs.filter((t) => (id ? t.id === id : localPlace(t.to) === target)).slice(0, 1)).map((t) => ({ id: t.id, to: t.to, ...(gid && t.set ? { set: t.set } : {}) }))
   list[from] = { ...list[from]!, layout: without(layoutOf(list[from])!, new Set(moving.map((t) => t.id))) }
   // What's open there already isn't opened twice (two tabs of one terminal would fight over its size): it just leaves
   // here, and the tab there stays as it is.
@@ -383,7 +385,7 @@ plugin.route("POST", "workspaces/move", (req) => {
     return { from: from + 1, to: to + 1, tabs: [], workspaces: shown() }
   }
   const active = coming.some((t) => t.id === g.active) ? g.active : coming[0].id
-  const put = gid ? withPane(dl, { id: g.id, tabs: coming, active }) : withTabs(dl, coming)
+  const put = gid ? withPane(dl, { id: g.id, tabs: coming, active, ...(Array.isArray(g.sets) ? { sets: g.sets } : {}) }) : withTabs(dl, coming)
   list[to] = { ...dest, layout: put.layout }
   save(list)
   const tabs = put.tabs.map((t) => ({ ...t, to: localPlace(t.to) }))
@@ -444,15 +446,18 @@ plugin.provide("context", ({ workspace: n }: { workspace: number | null }) => {
   return { data: { workspace: { n, label } }, text: `Workspace: ${n} (${label}), the one the user's window is on (vau workspace lists them)` }
 })
 
-type PaneTabs = { pane: number; group: string; focused: boolean; tabs: { id: string; to: string; path?: string }[] }
+type PaneTabs = { pane: number; group: string; focused: boolean; tabs: { id: string; to: string; path?: string; group?: string }[]; groups: Item[] }
 
 /** A workspace's tabs, pane by pane (left to right, top to bottom). */
 function workspaceTabs(w: Item, n: number) {
   const panes: PaneTabs[] = []
   const l = layoutOf(w)
   for (const g of l ? leaves(l.root) : []) {
+    const sets = (Array.isArray(g.sets) ? g.sets : []).filter((x) => x && typeof x.id === "string")
     panes.push({ pane: panes.length + 1, group: String(g.id), focused: g.id === l!.focus,
-      tabs: g.tabs.filter((t) => t && typeof t.to === "string").map((t) => ({ id: String(t.id), to: t.to, ...(t.to.startsWith("file:") ? { path: t.to.slice(5) } : {}) })) })
+      tabs: g.tabs.filter((t) => t && typeof t.to === "string").map((t) => ({ id: String(t.id), to: t.to, ...(t.to.startsWith("file:") ? { path: t.to.slice(5) } : {}),
+        ...(t.set && sets.some((x) => x.id === t.set) ? { group: t.set } : {}) })),
+      groups: sets.map((x) => ({ id: x.id, name: String(x.name ?? ""), color: String(x.color ?? "gray"), ...(x.collapsed === true ? { collapsed: true } : {}) })) })
   }
   return { workspace: n, name: nameOf(w, n), panes }
 }
@@ -476,7 +481,8 @@ user was in last switches to it (the command workspace:<n>; an unused one shows 
 tab, and is made once something changes there).
 
 tabs: each workspace's tabs (or workspace <n>'s), pane by pane: the tab's id and what it shows (a file's path, or
-view:terminal/<id>, new for a blank tab). Panes are numbered left to right, top to bottom; * marks the one focused last.
+view:terminal/<id>, new for a blank tab), a tab group's tabs under it (vau tabs group changes them). Panes are numbered
+left to right, top to bottom; * marks the one focused last.
 
 move: moves a tab to workspace <n> (POST /api/workspaces/move), like dragging it onto that number in the sidebar's
 header: it leaves its workspace (its pane closes if it was the last tab there; a workspace's only tab leaves a blank
@@ -574,7 +580,11 @@ plugin.op({
   text: (out: ReturnType<typeof workspaceTabs>[]) => {
     const rows = out.flatMap((w) => [
       `${w.workspace}. ${w.name}`,
-      ...(w.panes.length ? w.panes.flatMap((p) => [`  pane ${p.pane}${p.focused ? " *" : ""}`, ...p.tabs.map((t) => `    ${t.id}  ${t.path ?? t.to}`)]) : ["  (one blank tab)"]),
+      ...(w.panes.length ? w.panes.flatMap((p) => [`  pane ${p.pane}${p.focused ? " *" : ""}`, ...p.tabs.flatMap((t, i) => {
+        const g = t.group && t.group !== p.tabs[i - 1]?.group ? p.groups.find((x) => x.id === t.group) : null
+        const head = g ? [`    group ${g.name ? `"${g.name}"` : "(no name)"} ${g.color}${g.collapsed ? ", collapsed" : ""} (${g.id})`] : []
+        return [...head, `    ${t.group ? "  " : ""}${t.id}  ${t.path ?? t.to}`]
+      })]) : ["  (one blank tab)"]),
     ])
     return rows.length ? rows.join("\n") : "(no workspaces yet: the sidebar uses .vaultite/plugins.json)"
   },

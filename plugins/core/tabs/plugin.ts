@@ -2,7 +2,7 @@
 // Tabs panel; terminal tabs saved with their machine (`@<machine>`), like Workspaces'.
 import fs from "node:fs"
 import path from "node:path"
-import { HTTPError, Plugin, type Request } from "../../../core/plugins.ts"
+import { COLORS, HTTPError, type OpCtx, OpError, Plugin, type Request } from "../../../core/plugins.ts"
 import type { Item } from "../../../core/vault.ts"
 
 export const plugin = new Plugin(import.meta.url)
@@ -99,4 +99,105 @@ plugin.route("PUT", "tabs/devices/*", async (req) => {
 plugin.route("DELETE", "tabs/devices/*", (req) => {
   plugin.saveSettings(null, file(idOf(req.arg(0))))
   return { ok: true }
+})
+
+// ---------- the user's window's tabs and tab groups (vau tabs): asked of the window, which has them ----------
+
+type ReportTab = { id: string; to: string; active?: boolean; pinned?: boolean; group?: string }
+type ReportGroup = { id: string; name: string; color: string; collapsed?: boolean; tabs: number }
+type Report = { panes: { pane: number; id: string; focused: boolean; tabs: ReportTab[]; groups: ReportGroup[] }[] }
+
+/** Ask the window the user was in last (core/live.ts' asks; web/src/core/tabsets.ts answers). */
+async function ask(ctx: OpCtx, msg: Record<string, unknown>) {
+  try { return await ctx.ui({ action: "tabs", ...msg }) } catch (e) {
+    if (e instanceof OpError && e.status === 409) throw new OpError("no app window is open on this server: open the app (browser or desktop) first", 409)
+    throw e
+  }
+}
+const groupLine = (g: ReportGroup) => `${g.name ? `"${g.name}"` : "(no name)"} ${g.color}${g.collapsed ? ", collapsed" : ""} (${g.id})`
+
+const HELP = `The user's window's tabs (the one they used last), pane by pane, with their tab groups: like a browser's,
+a group is a named, coloured run of a pane's tabs, side by side, that folds to its name (collapsed). With Workspaces on
+they're the current workspace's (vau workspace tabs lists every workspace's, from their files).
+
+tabs: each tab's id and what it shows (file:<path>, view:<view>, new for a blank tab); * marks the one on screen in
+each pane, a group's tabs are indented under it.
+
+group: makes the tabs a new group where the first of them is (tabs from other panes move there), or with --group
+<id> adds them to that one; --name, --color (${COLORS.join(", ")}; default the first no group has) and --collapsed
+true/false name, colour or fold it (with --group alone: an existing one). Name tabs by id, by what they show
+(file:Notes/a.md, view:terminal/x) or by a file's path or name. A new group's name, left out, is the folder or site
+its tabs share, else none.
+
+ungroup: --group <id> ungroups it (its tabs stay where they are); tabs without --group leave their groups, each going
+right after its group, as dragging it out would.
+
+  vau tabs
+  vau tabs group "Notes/Idea.md" "Notes/Plan.md" --name Lighthouse --color teal
+  vau tabs group t1k2x9a0 --group s1k2x9a1
+  vau tabs group --group s1k2x9a1 --collapsed true
+  vau tabs ungroup --group s1k2x9a1
+  vau tabs ungroup "Notes/Plan.md"`
+
+plugin.op({
+  id: "tabs.list",
+  cli: "tabs",
+  summary: "The user's window's tabs, pane by pane, with their tab groups (name, colour, folded).",
+  help: HELP,
+  kind: "read",
+  run: (_p, ctx) => ask(ctx, { do: "list" }),
+  text: (r: Report) => r.panes.flatMap((p) => {
+    const out = [...(r.panes.length > 1 ? [`pane ${p.pane}${p.focused ? " (focused)" : ""}`] : [])]
+    const pad = r.panes.length > 1 ? "  " : ""
+    let open: string | undefined
+    for (const t of p.tabs) {
+      if (t.group !== open) {
+        open = t.group
+        const g = p.groups.find((x) => x.id === t.group)
+        if (g) out.push(`${pad}group ${groupLine(g)}`)
+      }
+      out.push(`${pad}${t.group ? "  " : ""}${t.active ? "* " : "  "}${t.id}  ${t.to}${t.pinned ? " (pinned)" : ""}`)
+    }
+    return out
+  }).join("\n"),
+})
+
+plugin.op({
+  id: "tabs.group",
+  cli: "tabs group",
+  summary: "Group tabs in the user's window (a new tab group, or into one), or name, colour or fold a group.",
+  help: HELP,
+  kind: "write",
+  params: {
+    tabs: { type: "array", items: { type: "string" }, description: "the tabs: ids (vau tabs), what they show, or files' paths or names" },
+    group: { type: "string", description: "an existing group's id: add the tabs to it (or change it)" },
+    name: { type: "string", description: "its name (empty: none, the chip is its colour)" },
+    color: { type: "string", enum: COLORS, description: "its colour" },
+    collapsed: { type: "boolean", description: "fold it to its name, or open it" },
+  },
+  args: ["tabs"],
+  run: (p, ctx) => {
+    if (!p.group && !p.tabs?.length) throw new OpError("say which tabs to group (or --group to change one)", 400)
+    return ask(ctx, { do: "group", ...p })
+  },
+  text: (r) => `Group ${groupLine({ ...r.group, tabs: r.group.tabs.length })}: ${r.group.tabs.map((t: ReportTab) => t.to).join(", ")}.`,
+  did: (p) => ({ action: "ui", text: p.group ? `Changed tab group ${p.group}` : `Grouped ${p.tabs?.length ?? 0} tab(s)${p.name ? ` as "${p.name}"` : ""}` }),
+})
+
+plugin.op({
+  id: "tabs.ungroup",
+  cli: "tabs ungroup",
+  summary: "Ungroup a tab group in the user's window (its tabs stay), or take tabs out of theirs.",
+  help: HELP,
+  kind: "write",
+  params: {
+    tabs: { type: "array", items: { type: "string" }, description: "tabs to take out of their groups" },
+    group: { type: "string", description: "the group to ungroup" },
+  },
+  args: ["tabs"],
+  run: (p, ctx) => {
+    if (!p.group && !p.tabs?.length) throw new OpError("say which group (--group) or which tabs", 400)
+    return ask(ctx, { do: "ungroup", ...p })
+  },
+  text: (r) => (r.ungrouped ? `Ungrouped ${r.ungrouped}.` : `Took ${r.removed.length} tab(s) out of their groups.`),
 })

@@ -53,7 +53,7 @@ const APPEARANCE: Record<string, Setting> = {
     about: "CSS snippets turned on, by name (a JSON list, or names separated by commas)", parse: names },
   fileIcons: { about: "true or false: icons before file names: the tree, tabs, search and the quick switcher", parse: bool("fileIcons") },
   tabBar: { about: "true (default) or false: the tabs above each pane on desktop; off, each pane's bar shows only the tab on screen (switch with the Tabs panel or the keyboard)", parse: bool("tabBar") },
-  paneTitles: { about: "true (default) or false: with tabBar off, a strip above each pane naming the tab on screen; off, nothing above the pane", parse: bool("paneTitles") },
+  paneTitles: { about: "false (default) or true: with tabBar off, a strip above each pane naming the tab on screen (tells splits apart); off, nothing above the pane", parse: bool("paneTitles") },
   tabTint: { about: "true or false (default): the active tab takes a light wash of its colour (a web page's container)", parse: bool("tabTint") },
   rails: { about: "true (default) or false: a hidden sidebar folds to its icon rail on desktop; off, it's gone, sliding back over the page while the pointer is at that edge of the window", parse: bool("rails") },
   statusBar: {

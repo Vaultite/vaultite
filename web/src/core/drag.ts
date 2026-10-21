@@ -9,7 +9,7 @@ import { signal } from "@/core/signal"
 export type DragItem = {
   /** Where it comes from ("row": a database view's file, a board's card or a calendar's item; with `to`, a panel's row
    *  that opens something, like a terminal in the Terminals panel). */
-  from: "tab" | "group" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block" | "table" | "column"
+  from: "tab" | "group" | "tabset" | "tree" | "pin" | "panel" | "row" | "newtab" | "status" | "block" | "table" | "column"
   /** What it opens in a tab ("file:Notes/Idea.md", "view:terminal/abc", "settings"); none for a folder. */
   to?: string
   /** The tab it is (dropping it moves that tab); otherwise a drop opens a new one. */
@@ -23,6 +23,8 @@ export type DragItem = {
   folder?: boolean
   /** A pane: its group's id (all its tabs go together). */
   group?: string
+  /** A tab group (TabSet), by id: its tabs go together. */
+  tabset?: string
   /** A sidebar panel's key ("terminal:sessions"), and what the dragged item shows (its title; a pane's "3 tabs"). */
   panel?: string
   label?: string

@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
+import { FoldVertical, AppWindow, Group as GroupIcon, Ungroup, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandId, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
@@ -18,7 +18,8 @@ import { backDetail, closeDetail, openDetail, replaceHash, route, setDetailRedir
 import { keepScroll, restoreScroll, scrollOf } from "@/core/viewstate"
 import { currentWorkspace, noteOpened, subscribeScoped } from "@/core/scope"
 import { sayWindowState, setWindowState } from "@/core/live"
-import { backgrounds, detailFor, headerItems, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
+import { backgrounds, detailFor, headerItems, homeTab, isEnabled, panelsIn, pluginById, pluginCommands, safeMode, showTabsIn, tabListPanel, tabsInSidebar, turnPluginsBackOn, usePluginsVersion, useSidebars, viewFor } from "@/core/plugins"
+import { askRenameSet, leaveSet, makeSet } from "@/core/tabsets"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
 import { allSwitches, switchCommand } from "@/core/switches"
@@ -334,6 +335,11 @@ export default function App() {
     { id: "tab:close", name: "Close current tab", keys: desktopApp ? ["Mod+W"] : undefined, run: () => { if (!activeTab().pinned) closeTab(activeTab().id) }, label: "Close tab", icon: X },
     { id: "tab:toggle-pin", name: "Pin tab", when: isDesktop, run: () => togglePinTab(activeTab().id), icon: Pin, nameWhenOn: "Unpin tab", on: () => !!activeTab().pinned },
     { id: "tab:toggle-stacked", name: "Stack tabs", when: isDesktop, run: () => toggleStacked(), icon: Layers, nameWhenOn: "Unstack tabs", on: isStacked },
+    // Vertical tabs, one switch: the tab bar or the Tabs panel at the top of the left sidebar (core/plugins.ts).
+    { id: "tab:sidebar", name: "Show tabs in the sidebar", when: () => isDesktop() && !isPopout() && !!tabListPanel(), run: () => showTabsIn(tabsInSidebar() ? "top" : "sidebar"),
+      icon: PanelLeft, nameWhenOn: "Show tabs on top", on: () => tabsInSidebar() },
+    { id: "tab:group", name: "Add current tab to new group", when: isDesktop, run: () => { const id = makeSet([activeTab().id]); if (id) askRenameSet(id, getPrefs().tabBar ? "bar" : "panel") }, icon: GroupIcon },
+    { id: "tab:ungroup", name: "Remove current tab from group", when: () => isDesktop() && !!activeTab().set, run: () => leaveSet([activeTab().id]), icon: Ungroup },
     // A window of its own (a pop-out): no sidebars, its own tabs.
     { id: "tab:move-to-window", name: "Move current tab to new window", when: () => isDesktop() && activeTab().to !== "new", run: () => popOut(activeTab().id, true), icon: AppWindow },
     { id: "tab:move-to-main", name: "Move current tab to main window", when: hasMainWindow, run: () => moveToMain([activeTab().id]), icon: AppWindow },

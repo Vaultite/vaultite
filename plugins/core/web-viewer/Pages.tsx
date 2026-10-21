@@ -3,12 +3,11 @@
 import { useEffect, useState } from "react"
 import { ChevronDown, EyeOff, Globe, KeyRound, LogOut, Plus } from "lucide-react"
 import {
-  confirmDialog, HeadingButton, menuBelow, menuFor, notifyError, plural, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
+  confirmDialog, dotIcon, HeadingButton, menuBelow, menuFor, notifyError, plural, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
   type SidebarCtx, type WebPageInfo, type WebSite,
 } from "@vaultite"
 import { siteIcon } from "./icons"
 import { hostOf } from "./address"
-import { dotIcon } from "./ContainerButton"
 import { colorOf, containerById, containerOfProfile, profileIn, useContainers } from "./containers"
 import { profile, settings } from "./state"
 

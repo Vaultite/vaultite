@@ -1,32 +1,16 @@
 // The page bar's container button: which container the tab is in (its colour and name), and a menu to move the tab to
 // another, always open its site there, and add, rename, recolour or delete containers.
-import { forwardRef, type MouseEvent } from "react"
-import { Boxes, type LucideIcon, type LucideProps } from "lucide-react"
-import { choose, cn, confirmDialog, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
+import type { MouseEvent } from "react"
+import { Boxes } from "lucide-react"
+import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
 import {
-  addContainer, argOf, COLORS, colorOf, containerById, containers, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
-  type Container, type ContainerColor,
+  addContainer, argOf, colorOf, containerById, containers, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
+  type Container,
 } from "./containers"
 
 /** Whether this Mac can ask for Touch ID (asked once). */
 let lockable: Promise<boolean> | null = null
 const canLock = () => (lockable ??= Promise.resolve(webPages?.engine?.("lock:can")).then((v) => v === true, () => false))
-
-const dots = new Map<string, LucideIcon>()
-/** A colour's dot, as a menu row's icon. */
-export function dotIcon(color: string): LucideIcon {
-  let c = dots.get(color)
-  if (!c) {
-    c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => (
-      <span className={cn(className, "grid place-items-center")}><span className="size-2.5 rounded-full" style={{ background: color }} /></span>
-    )) as unknown as LucideIcon
-    dots.set(color, c)
-  }
-  return c
-}
-
-const COLOR_NAMES: Record<ContainerColor, string> = { blue: "Blue", orange: "Orange", green: "Green", red: "Red", purple: "Purple", pink: "Pink",
-  yellow: "Yellow", teal: "Teal", indigo: "Indigo", gray: "Gray" }
 
 /** Ask for a name (a new container's, or a new name for one). */
 function askName(title: string, current: string, done: (name: string) => void) {
@@ -64,8 +48,7 @@ const editItems = (c: Container, canLock: boolean): MenuItem[] => [
     { label: "Can read and act", checked: c.agents === "act", run: () => void updateContainer(c.id, { agents: "act" }) },
   ] },
   { label: `Rename ${c.name}…`, run: () => askName(`Rename ${c.name}`, c.name, (name) => void updateContainer(c.id, { name })) },
-  { label: "Colour", run: () => {}, items: COLORS.map((color) => ({ label: COLOR_NAMES[color], icon: dotIcon(colorOf({ color })), checked: c.color === color,
-    run: () => void updateContainer(c.id, { color }) })) },
+  { label: "Colour", run: () => {}, items: colorItems(c.color, (color) => void updateContainer(c.id, { color })) },
   { label: `Delete ${c.name}…`, danger: true, run: () => void deleteContainer(c) },
 ]
 

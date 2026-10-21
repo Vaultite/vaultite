@@ -1,17 +1,16 @@
 // Containers: named logins a tab picks (Personal, Work), each its own cookies and storage, so one site can be signed in
 // to with several accounts side by side. A tab in one is `view:web/@<id>/<address>`; a tab in none has its workspace's.
+import { COLORS, colorVar, isColor, type Color } from "@vaultite"
 import { settings, profile, type Settings } from "./state"
 
-export type Container = { id: string; name: string; color: ContainerColor
+export type Container = { id: string; name: string; color: Color
   /** Sites it opens ("youtube.com"): a page of one opened in no container opens in this one. */
   sites?: string[]
   /** Its pages need Touch ID to open (electron/browser/lock.ts). */
   lock?: boolean
   /** What agents may do in its pages (electron/browser/agent.ts): read them, or act in them too; unset, nothing. */
   agents?: "read" | "act" }
-export const COLORS = ["blue", "orange", "green", "red", "purple", "pink", "yellow", "teal", "indigo", "gray"] as const
-export type ContainerColor = (typeof COLORS)[number]
-export const colorOf = (c: Pick<Container, "color">) => `var(--${COLORS.includes(c.color) ? c.color : "gray"})`
+export const colorOf = (c: Pick<Container, "color">) => colorVar(c.color)
 
 /** Until the user changes them (kept in code: a vault gets them written only once it's changed). */
 const DEFAULTS: Container[] = [
@@ -24,7 +23,7 @@ const DEFAULTS: Container[] = [
 const ID = /^[a-z0-9]{1,24}$/
 const clean = (list: unknown): Container[] | null => Array.isArray(list)
   ? list.flatMap((c): Container[] => c && typeof c === "object" && ID.test(String(c.id)) && typeof c.name === "string" && c.name.trim()
-    ? [{ id: c.id, name: c.name.trim().slice(0, 40), color: COLORS.includes(c.color) ? c.color : "gray",
+    ? [{ id: c.id, name: c.name.trim().slice(0, 40), color: isColor(c.color) ? c.color : "gray",
         ...(Array.isArray(c.sites) && c.sites.length ? { sites: c.sites.filter((s: unknown): s is string => typeof s === "string" && !!s) } : {}),
         ...(c.lock === true ? { lock: true } : {}), ...(c.agents === "read" || c.agents === "act" ? { agents: c.agents } : {}) }]
     : [])
@@ -71,7 +70,7 @@ export function newContainerId(name: string) {
   while (taken.has(id)) id = `${base}${n++}`
   return id
 }
-export function addContainer(name: string, color?: ContainerColor): Container {
+export function addContainer(name: string, color?: Color): Container {
   const list = containers()
   const c: Container = { id: newContainerId(name), name: name.trim().slice(0, 40), color: color ?? COLORS[list.length % COLORS.length] }
   void save([...list, c])

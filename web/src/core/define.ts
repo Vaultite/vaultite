@@ -312,6 +312,8 @@ export type SidebarPanel = {
   menu?: () => FileMenuItem[]
   /** Draws an icons-only form with `dock` (Buttons): a phone can draw it in its drawer's dock, at the thumb, instead. */
   dockable?: true
+  /** It lists the open tabs (Tabs): Show tabs in the sidebar puts it at the top of the left sidebar, the tab bar off. */
+  tabList?: true
   /** Other names people call it by ("file tree", "explorer"), for `vau panels`; core/appsource.ts reads them from the
    *  source, so keep them a plain list of strings. */
   names?: string[]
@@ -472,7 +474,9 @@ export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; 
    *  only when every file's menu has this item (same label) with `many`. */
   many?: (paths: string[]) => void
   /** A submenu, as a menu item's (`split`: clicking the row still runs `run`, the rest in its submenu). */
-  items?: FileMenuItem[]; split?: boolean; hint?: string }
+  items?: FileMenuItem[]; split?: boolean; hint?: string
+  /** A switch: a check shows while it's on. */
+  checked?: boolean }
 
 /** A button a plugin adds to a web page's bar in the Browser (its icon, `label` its tooltip), also in its tab's menu. */
 export type WebPageAction = { label: string; icon: LucideIcon; run: () => void }
