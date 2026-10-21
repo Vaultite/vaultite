@@ -21,7 +21,7 @@ import { formatSize, isMedia, kindOf, type FileKind } from "@/core/filekinds"
 import { FileCard, ImageView, PdfView, PlayerView, rawUrl, useFileInfo } from "@/components/FileViewers"
 import { assetUrl, imageActions } from "@/components/editing"
 import { readProps, setProp } from "@/core/frontmatter"
-import { changeIcon } from "@/components/FileActions"
+import { changeIcon, iconChangeable } from "@/components/FileActions"
 import { renderMarkdown } from "@/core/markdown"
 import { notify, notifyError } from "@/core/notify"
 import { merge3 } from "@/core/merge"
@@ -909,7 +909,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
         {/* The inline title (Settings > Editor): off, the name is only in the tab and the path bar (a sheet, having
             neither, keeps it). */}
         {!page && !(code && pane && !phoneTab) && (showInlineTitle || !pane ? (
-          <TitleRow icon={props.icon} tint={props.tint} phone={phoneTab}>
+          <TitleRow icon={props.icon} tint={props.tint} phone={phoneTab}
+            onIcon={changeable && iconChangeable(path) ? () => changeIcon(path, (n) => setProperty("icon", n)) : undefined}>
             <Title path={path} editable={shown !== "read" && !ro && !isProtected(path) && !outside} sheet={!pane} focus={fresh} settle={settle}
               mode={shown} onEnter={toText} />
           </TitleRow>

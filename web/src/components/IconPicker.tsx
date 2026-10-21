@@ -9,15 +9,15 @@ import { Bar } from "@/components/kit"
 import { Marked, Palette } from "@/components/Palette"
 import { signal } from "@/core/signal"
 
-export type IconAsk = { title: string; current?: string; onPick: (name: string) => void }
+export type IconAsk = { title: string; current?: string; onPick: (name: string) => void; onClose?: () => void }
 let asking: IconAsk | null = null
 const subs = signal()
-/** Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji. */
+/** Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji; `onClose` runs as it closes, picked or not. */
 export function pickIcon(a: IconAsk | null) { asking = a; subs.notify() }
 
 export function IconPicker() {
   const a = subs.use(() => asking)
-  return a ? <Picker key={a.title} a={a} onClose={() => pickIcon(null)} /> : null
+  return a ? <Picker key={a.title} a={a} onClose={() => { pickIcon(null); a.onClose?.() }} /> : null
 }
 
 type Row = { id: string; marks: number[]; about?: string }

@@ -123,14 +123,16 @@ export async function duplicate(path: string) {
 }
 export const duplicateItem = (path: string, sep = false): MenuItem => ({ label: "Duplicate", icon: FileSymlink, sep, run: () => duplicate(path) })
 
-/** Pick a Markdown file's icon (its `icon` key: a Lucide name or an emoji). `set`: how to write it (an open editor's own). */
-export function changeIcon(path: string, set: (n: string) => unknown = (n) => setProperty(path, "icon", n)) {
+/** Pick a Markdown file's icon (its `icon` key: a Lucide name or an emoji). `set`: how to write it (an open editor's own);
+ *  `onClose`: once the picker is gone, picked or not. */
+export function changeIcon(path: string, set: (n: string) => unknown = (n) => setProperty(path, "icon", n), onClose?: () => void) {
   const s = getStore()
-  pickIcon({ title: "Change icon", current: (s && fileOf(s, path)?.icon) || undefined, onPick: (n) => { Promise.resolve(set(n)).catch((e) => notifyError(e)) } })
+  pickIcon({ title: "Change icon", current: (s && fileOf(s, path)?.icon) || undefined, onPick: (n) => { Promise.resolve(set(n)).catch((e) => notifyError(e)) }, onClose })
 }
+/** A Markdown file in the vault, whose icon can be changed (where it can be changed at all). */
+export const iconChangeable = (path: string) => isMd(path) && !isHidden(path) && !inTrash(path)
 /** "Change icon", for a Markdown file in the vault. */
-const iconItem = (path: string): MenuItem[] =>
-  isMd(path) && !isHidden(path) && !inTrash(path) ? [{ label: "Change icon", icon: Smile, run: () => changeIcon(path) }] : []
+const iconItem = (path: string): MenuItem[] => iconChangeable(path) ? [{ label: "Change icon", icon: Smile, run: () => changeIcon(path) }] : []
 
 /** A file's name as the tree shows it (in the trash, without the time trashing added). */
 const nameOf = (path: string) => {

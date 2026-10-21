@@ -368,7 +368,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `phoneHealth`: The phone's Apple Health, for a plugin that takes it (null outside the iPhone app): `route` is where the server takes what it reads (after /api/).
 - `PhoneHealth`: What the phone's Apple Health sync is doing: `sent` counts what it posted (sleep samples, workouts, days); `phase` and `progress` (0-1) while it goes through the history; `done` once the history…
 - `phoneVoiceNote()`: Open the iPhone app's own voice note (a widget's `vaultite://record`: App/VoiceNote.swift): Capacitor hands an address it doesn't serve to the system, which gives it back to the app.
-- `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji.
+- `pickIcon(a)`: Ask the user for an icon: `onPick` gets its name (`guitar`) or the emoji; `onClose` runs as it closes, picked or not.
 - `PIN_SEARCH`: A search pinned: "search:<query>".
 - `PIN_VIEW`: A view pinned, as a tab's target: "view:<name>" or "view:<name>/<arg>" (view:web/<address>: a web page).
 - `pinInWorkspace(path, on, before, base)`: Pin a page in the current workspace (at the end, or before `before`) or unpin it there; one without a list of its own starts from `base` (the vault's).

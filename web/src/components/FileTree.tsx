@@ -24,10 +24,11 @@ import type { FileIcon, FileMark, FileRow, FileRowPart, NewFile } from "@/core/d
 import { fileIcons, fileMarks, fileViewFor, formatFor, pluginNewFiles, revealPanel, useFileRows } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs, type FileSort } from "@/core/prefs"
 import { commandItems, menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
-import { copyPathItem, duplicate, duplicateItem, filesMenu, grouped, moreItem, noGroups, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
+import { changeIcon, copyPathItem, duplicate, duplicateItem, filesMenu, grouped, iconChangeable, moreItem, noGroups, openItem, pluginFileGroups, remove, removeMany, renameItem, revealItem, topmost } from "@/components/FileActions"
 import { registerCommands } from "@/core/commands"
 import { currentRow } from "@/core/keylist"
 import { pickFolder } from "@/components/FolderPicker"
+import { ICON_BUTTON } from "@/components/FileTitle"
 import { SwipeRow, type SwipeAction } from "@/components/SwipeRow"
 import { capitalize, cn, scrollingBox, space } from "@/lib/utils"
 import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSelected } from "@/core/select"
@@ -735,6 +736,9 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
   // Archived (core/fileprops.ts): still here, dimmed, icon and name alike; an archive folder and all in it too.
   const archived = !!n.file?.archived || archives(n.path)
   const pad = (compact ? 1.5 : 1) + depth * indent
+  // Renaming: the field, and whether it lost the keyboard to the icon picker (not a rename done)
+  const field = useRef<HTMLInputElement>(null), picking = useRef(false)
+  const renamingIcon = renaming === n.path && <Icon className={cn("shrink-0 text-muted-foreground", compact ? "size-[15px]" : "size-[18px]")} strokeWidth={2} />
   const click = (e: MouseEvent) => {
     if (selectClick(e, SELECT, n.path, currentFile())) return
     if (n.folder) return rows.opened.toggle(n.path)
@@ -747,10 +751,14 @@ const TreeRow = memo(function TreeRow({ n, depth, rows, active, renaming, dropOn
         <div data-tree-path={n.path} data-tree-folder={n.folder || undefined}
           className={cn("mb-px flex items-center gap-1.5 rounded-[5px] bg-foreground/[0.06]", rowH)} style={{ paddingLeft: space(pad + 5) }}>
           {/* (where the row's icon is: after its chevron's room) */}
-          {fileIcons && <Icon className={cn("shrink-0 text-muted-foreground", compact ? "size-[15px]" : "size-[18px]")} strokeWidth={2} />}
-          <input autoFocus defaultValue={n.name} aria-label="New name" spellCheck={false}
-            onFocus={(e) => e.target.select()}
-            onBlur={(e) => on.current.rename(n, e.target.value)}
+          {fileIcons && (iconChangeable(n.path) ? (
+            // The name stays as typed: the field keeps the keyboard through the click, and gets it back from the picker.
+            <button type="button" aria-label="Change icon" data-tip="Change icon" className={ICON_BUTTON} onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { picking.current = true; changeIcon(n.path, undefined, () => field.current?.focus()) }}>{renamingIcon}</button>
+          ) : renamingIcon)}
+          <input ref={field} autoFocus defaultValue={n.name} aria-label="New name" spellCheck={false}
+            onFocus={(e) => { if (!picking.current) e.target.select(); picking.current = false }}
+            onBlur={(e) => { if (!picking.current) on.current.rename(n, e.target.value) }}
             onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") on.current.cancelRename(n) }}
             className="h-6 min-w-0 flex-1 rounded-[4px] bg-card px-1 outline-none ring-1 ring-primary/60" />
         </div>

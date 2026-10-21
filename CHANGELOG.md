@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Notes: click a note's icon beside its title to change it, or the icon of a row you're renaming in the file tree.
 - Archive: folders can be archived whole, from their menu or `vau archive <folder>`, into `.archive/` in the folder
   above; Archive now sits right above Delete in file and folder menus.
 
