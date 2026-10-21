@@ -7,7 +7,8 @@
 #   updates from). By hand: Actions, Release, Run workflow (on main).
 # Secrets: MAC_CERT_P12 (the Developer ID Application certificate and key, base64) and MAC_CERT_PASSWORD; NOTARY_KEY (an
 # App Store Connect API key's .p8, base64), NOTARY_KEY_ID and NOTARY_ISSUER; for the feed, CLOUDFLARE_API_TOKEN (R2
-# edit) and CLOUDFLARE_ACCOUNT_ID.
+# edit) and CLOUDFLARE_ACCOUNT_ID; SITE_DEPLOY_TOKEN (a fine-grained token: tkslucas/vaultite-site, Contents read and
+# write) for a release to redeploy vaultite.com, its demo built from it.
 name: Release
 on:
   push:
@@ -179,3 +180,11 @@ jobs:
           for f in out/*-mac.zip out/*-mac.zip.blockmap out/*.AppImage out/*.yml; do
             npx -y wrangler@4 r2 object put "vaultite-updates/$dir$(basename "$f")" --file "$f" --remote
           done
+      # vaultite.com's demo is the latest release: its repository's deploy.yml builds this one and deploys the site.
+      - name: The website
+        if: env.STABLE == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.SITE_DEPLOY_TOKEN }}
+        run: |
+          [ -n "$GH_TOKEN" ] || { echo "::warning::SITE_DEPLOY_TOKEN isn't set: vaultite.com wasn't redeployed (its Deploy workflow, by hand)"; exit 0; }
+          gh api repos/tkslucas/vaultite-site/dispatches -f event_type=release -f "client_payload[tag]=$GITHUB_REF_NAME"
