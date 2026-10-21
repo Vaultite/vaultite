@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Ask an agent in the background: a small box (the palette's look) takes a question, and Enter starts it in a new
+  Claude Code session with no tab, where the workspace's new sessions go (the agent, account and machine are picked
+  under the field, remembered per workspace); a toast says what was asked, with Open. `vau terminal ask` does the same.
 - An Obsidian vault keeps its look: its base theme (light, dark or system), its theme from `.obsidian/themes/`, the CSS
   snippets it has on from `.obsidian/snippets/` and its fonts apply until you set them in Vaultite. Nothing is written
   to `.obsidian/`.

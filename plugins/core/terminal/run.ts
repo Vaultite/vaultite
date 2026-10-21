@@ -1,9 +1,9 @@
-// terminal.run: a file handed to a coding agent (or a shell command) in a new terminal, here or on another of the
-// Machines. What Dispatch's buttons, scheduled jobs (a note run each morning) and `vau` start agents on notes with.
+// terminal.run: a file handed to an agent (or a command) in a new terminal, here or on another machine (Dispatch,
+// schedules, `vau`); terminal.ask: a question for an agent in a new background terminal (the Ask box).
 import fs from "node:fs"
 import path from "node:path"
 import { agentIn, newTerminalId, shellQuote, startAgent, TERMINAL_AGENT } from "../../../core/agents.ts"
-import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin } from "../../../core/plugins.ts"
+import { type Machine, MACHINE_CLIENT, type OpCtx, OpError, type Plugin, quoted } from "../../../core/plugins.ts"
 
 export const DEFAULT_PROMPT = "Read the note {path} and do what it asks."
 /** What an agent is told after its prompt while the Inbox is on: it works alone, and its report is where the user answers. */
@@ -19,6 +19,14 @@ type Started = { id: string; handed: boolean; running?: boolean }
 /** A template with {path}, {file}, {title} and {vault} filled in (shell-quoted in a command); other braces stay. */
 export function fill(template: string, vars: Record<string, string>, shell = false) {
   return template.replace(/\{(path|file|title|vault)\}/g, (_m, k: string) => (shell ? shellQuote(vars[k]) : vars[k]))
+}
+
+/** A question's first words, as its session is called until the agent names it: one line, at most about 60 letters. */
+export function askTitle(prompt: string) {
+  const line = prompt.replace(/\s+/g, " ").trim()
+  if (line.length <= 60) return line
+  const cut = line.slice(0, 60), space = cut.lastIndexOf(" ")
+  return `${(space > 30 ? cut.slice(0, space) : cut).replace(/[\s,;:.-]+$/, "")}…`
 }
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
@@ -47,28 +55,40 @@ export function runOps(plugin: Plugin) {
     if (!found) throw new OpError(`${m.label} doesn't have ${rel} yet (its sync may still be bringing it there)`, 409)
   }
 
-  /** Runs it on machine `m` (its server, which checks its owner again), once its copy of the file is this one's. Once
-   *  only: a run another machine passed on isn't passed on again. */
+  /** Runs it on machine `m` (its server), once its copy of the file is this one's. */
   async function onMachine(ctx: OpCtx, m: Machine, rel: string, w: What, o: { account: string; allow: boolean; again: boolean }) {
-    if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a run passed on from another machine runs where it's sent, not on ${m.label}`, 409)
-    if (!m.online) throw new OpError(`${m.label} is offline`, 502)
+    reachable(ctx, m)
     if (!m.vault || m.vault !== await plugin.ask<string>("machines:vault", "")) {
       throw new OpError(`${m.label} ${m.vault ? "has a vault of its own, not this one" : "doesn't say which vault it has (an older Vaultite)"}, so it can't open ${rel}`, 409)
     }
     await sameCopy(m, rel)
+    const out = await passOn<{ handed?: boolean; running?: boolean }>(ctx, m, "terminal.run", { path: rel, ...w, open: false, ...(o.allow ? { allow: true } : {}),
+      ...(o.account ? { account: o.account } : {}), ...(o.again ? { again: true } : {}) })
+    return { id: out.id, handed: !!out.handed, running: !!out.running }
+  }
+
+  /** Machine `m` can be asked: it's online, and this call wasn't passed on from another machine (passed on once only). */
+  function reachable(ctx: OpCtx, m: Machine) {
+    if (ctx.who.client?.startsWith("machine/")) throw new OpError(`a call passed on from another machine runs where it's sent, not on ${m.label}`, 409)
+    if (!m.online) throw new OpError(`${m.label} is offline`, 502)
+  }
+
+  /** Op `id` run by machine `m`'s server with `body` (it checks its owner again): its answer, its terminal named with
+   *  the machine. */
+  async function passOn<T>(ctx: OpCtx, m: Machine, id: string, body: object): Promise<T & { id: string }> {
+    reachable(ctx, m)
     let r: Response
     try {
-      r = await fetch(`${m.url}/api/ops/terminal.run`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
-        body: JSON.stringify({ path: rel, ...w, open: false, ...(o.allow ? { allow: true } : {}), ...(o.account ? { account: o.account } : {}),
-          ...(o.again ? { again: true } : {}) }), signal: AbortSignal.timeout(30000) })
+      r = await fetch(`${m.url}/api/ops/${id}`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
+        body: JSON.stringify(body), signal: AbortSignal.timeout(30000) })
     } catch {
       throw new OpError(`${m.label} doesn't answer`, 502)
     }
-    let out: { id?: string; handed?: boolean; running?: boolean; error?: string } = {}
+    let out: { id?: string; error?: string } = {}
     try { out = await r.json() as typeof out } catch { /* not JSON */ }
-    if (r.status === 404 && !out.id) throw new OpError(`${m.label} runs an older Vaultite, without terminal.run`, 409)
+    if (r.status === 404 && !out.id) throw new OpError(`${m.label} runs an older Vaultite, without ${id}`, 409)
     if (!r.ok || !out.id) throw new OpError(`${m.label}: ${out.error || `answered ${r.status}`}`, r.ok ? 502 : r.status)
-    return { id: `${out.id}@${m.id}`, handed: !!out.handed, running: !!out.running }
+    return { ...out as T, id: `${out.id}@${m.id}` }
   }
 
   const vaultDir = () => { try { return fs.realpathSync(plugin.vault.path) } catch { return plugin.vault.path } }
@@ -168,5 +188,53 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
     text: (r) => `${r.running ? "Already running:" : "Started"} ${r.path} ${r.agent ? `with ${r.agent}` : "in a shell"}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""} in ${r.id}${r.shown ? "" : ` (${r.handed
       ? "in the background: its report comes to the inbox" : "no tab open"}; vau terminal screen ${r.machine ? `${r.id.split("@")[0]} on that machine` : r.id})`}.`,
     did: ({ path: rel, agent, command }) => ({ action: "run", text: `Handed ${rel} to ${command ? "a shell command" : agent || "claude"}` }),
+  })
+
+  plugin.op({
+    owner: "the terminal",
+    id: "terminal.ask",
+    cli: "terminal ask",
+    summary: "Ask a coding agent (Claude Code by default) something in a new terminal that runs in the background, here or on another machine.",
+    help: `The agent starts with the prompt as its first message, in a terminal with no tab (open: show it): it's listed
+with the others (vau terminal) and answers there. With machine, on another of the Machines (its terminal is
+<id>@<machine>); with account, in that one of the agent's accounts; with model, that model (haiku, sonnet...). title:
+the prompt's first words, until the agent names its session.
+
+  vau terminal ask "What changed in the release notes this week?"
+  vau terminal ask "Summarize Notes/Idea.md" --machine studio --account personal`,
+    kind: "write",
+    lock: false, // starting a shell holds nothing of the vault
+    params: {
+      prompt: { type: "string", required: true, description: "what to ask, the agent's first message" },
+      agent: { type: "string", default: "claude", description: "the agent to ask (claude, codex, opencode...; claude_personal: one of its accounts)" },
+      account: { type: "string", description: "the agent's account to run in (personal)" },
+      machine: { type: "string", description: "ask on another of the Machines, by its id (studio); this one when left out" },
+      model: { type: "string", description: "the model to run, for an agent that takes one (haiku, sonnet...); its default when left out" },
+      open: { type: "boolean", description: "open its terminal's tab in the user's window (default false: in the background)" },
+    },
+    args: ["prompt"],
+    run: async ({ prompt, agent, account, machine, model, open }, ctx) => {
+      const said = prompt.trim()
+      if (!said) throw new OpError("say what to ask")
+      if (!TERMINAL_AGENT.test(agent)) throw new OpError(`'${agent}' isn't an agent's name (claude, codex, opencode...; claude_personal: one of its accounts)`)
+      if (account && !/^[a-z0-9]{1,32}$/.test(account)) throw new OpError(`'${account}' isn't an account's id`)
+      if (model && !/^[\w.[\]-]{1,60}$/.test(model)) throw new OpError(`'${model}' isn't a model's name`)
+      const m = await machineFor(machine)
+      let id: string
+      if (m) id = (await passOn(ctx, m, "terminal.ask", { prompt: said, agent, ...(account ? { account } : {}), ...(model ? { model } : {}) })).id
+      else {
+        id = newTerminalId(account ? agentIn(agent.split("_")[0], account) : agent)
+        await startAgent(ctx, id, said, model ? { model } : {})
+      }
+      let shown = false
+      if (open) {
+        try { await ctx.ui({ action: "open", path: `view:terminal/${id}`, newTab: true }); shown = true } catch (e) {
+          if (!(e instanceof OpError && e.status === 409)) throw e
+        }
+      }
+      return { id, agent, title: askTitle(said), shown, ...(m ? { machine: m.id } : {}), ...(account ? { account } : {}) }
+    },
+    text: (r) => `Asked ${r.agent}${r.account ? ` (${r.account})` : ""}${r.machine ? ` on ${r.machine}` : ""}: "${r.title}", in ${r.id}${r.shown ? "" : ` (in the background: vau terminal screen ${r.machine ? `${r.id.split("@")[0]} on that machine` : r.id})`}.`,
+    did: ({ prompt, agent }) => ({ action: "run", text: `Asked ${agent} ${quoted(prompt, 60)}` }),
   })
 }

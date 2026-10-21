@@ -361,6 +361,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PageHeader({ title, subtitle, section, tabs, children, className })`: A page's large title, on desktop right under its tab's bar (ViewBar), like a file's.
 - `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
 - `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as read with `editGrid`.
+- `PaletteFrame({ label, onClose, onKeyDown, children })`: The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held still under it; Escape or a click outside closes it, and the keyboard goes back.
 - `Panel({ title, icon, tint, action, className, children })`: A card, headed like the Health app: small symbol and title in the category colour.
 - `PanelFold`
 - `panelMenu(key?, side?)`: Right-click a sidebar: its panels ticked, More ▸ with the hidden ones and the other sidebar's (a `checklist`).

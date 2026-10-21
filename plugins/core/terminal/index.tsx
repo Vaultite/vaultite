@@ -1,10 +1,11 @@
 import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
-import { Bot, FileText, LogOut, Server, SquareTerminal, SquareX } from "lucide-react"
-import { agentOfTerminal, AmbientButton, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
+import { Bot, FileText, LogOut, MessageSquareText, Server, SquareTerminal, SquareX } from "lucide-react"
+import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
 import { agentIn, current, endForGood, getSessions, labelOf, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
+import { AskBox, openAsk } from "./AskBox"
 
 // xterm.js is its own chunk: loaded when a terminal tab opens, or ahead of it once the app is idle on a computer (the
 // first terminal then doesn't wait for ~0.5 MB of script; phones, which rarely open one, load it when they do).
@@ -116,12 +117,14 @@ export default definePlugin({
   ),
   // Its text size, apart from the app's zoom (⌘+scroll over a terminal, the commands, Settings > Appearance).
   textSizes: { terminal: { label: "Terminal", sub: "Terminals' text: more or fewer columns" } },
-  background: () => <SessionNames />,
+  background: () => <><SessionNames /><AskBox /></>,
   commands: [
     // New ones open where the workspace says (chooseDefaultPlace); ⌃` is always this machine, the way out when that one's away.
     { id: "terminal:open", name: "Open terminal", run: () => void openTerminal(), icon: SquareTerminal },
     { id: "terminal:open-here", name: "Open terminal on this machine", keys: ["Ctrl+`"], run: () => void openTerminal({ machine: "" }), icon: SquareTerminal },
     { id: "terminal:open-split", desktop: true, name: "Open terminal in right split", run: () => void openTerminal({ split: true }) },
+    // A question for an agent that answers in the background (Dictate's ⌘J opens it and dictates into it).
+    { id: "terminal:ask", name: "Ask an agent in the background…", when: canRunAgents, run: openAsk, icon: MessageSquareText, label: "Ask" },
     { id: "terminal:open-where", name: "Open a terminal or an agent on a machine…", run: () => void choosePlace(), icon: Server },
     { id: "terminal:home", name: "Choose where new terminals and agents open in this workspace…", run: () => void chooseDefaultPlace(), icon: Server },
     { id: "terminal:open-list", name: "Open terminals in a tab", run: () => openTab("view:terminals") },

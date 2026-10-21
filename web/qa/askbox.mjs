@@ -1,0 +1,101 @@
+// The Ask box (plugins/core/terminal/AskBox.tsx, terminal:ask): the command opens it with its field focused; the field
+// grows with what's typed and Shift+Enter is a new line; Esc closes it; the row under it picks the agent (remembered);
+// Enter asks in a new terminal in the background (terminal.ask, here on haiku): the box closes, no tab opens, the
+// Terminals list has it, and a toast "Asked Claude: <first words>" has Open, which opens its tab. On a phone it fits the
+// screen with 44px targets. Run by hand on a server with Claude Code, its session answers (tools/qa.ts' stand-in only
+// starts): throwaway server only, the session ended after.
+//   node web/qa/askbox.mjs <base url> [out dir]
+import { mkdirSync } from "node:fs"
+import { apiAt, palette, qa, until, wait } from "./lib/qa.mjs"
+
+const { args: [arg, OUT = "/tmp/askbox-shots/"], browser, check, watch, done } = await qa(import.meta.url)
+const B = arg.endsWith("/") ? arg : `${arg}/`
+const api = apiAt(B, { "X-Vaultite-Client": "cli" })
+mkdirSync(OUT, { recursive: true })
+const PROMPT = "Reply with just the word pong."
+const box = (p) => p.locator("[data-ask-box]")
+const sessions = async () => (await api("POST", "ops/terminal.list", {})).sessions ?? []
+const started = []
+
+try {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } })
+  const page = watch(await ctx.newPage(), { label: "desktop" })
+  // A cheap model for the session it starts (the box asks with the agent's default).
+  await page.route("**/api/ops/terminal.ask", (r) => r.continue({ postData: JSON.stringify({ ...JSON.parse(r.request().postData() ?? "{}"), model: "haiku" }) }))
+  await page.goto(B)
+  await page.waitForFunction(() => document.querySelector("#root > *"), null, { timeout: 20000 })
+  await wait(1500)
+
+  await palette(page, "Ask an agent in the background", 400)
+  check("the command opens the box, its field focused", await box(page).count() === 1 &&
+    await page.evaluate(() => document.activeElement?.matches("[data-ask-box] textarea")))
+  check("it asks Claude by default", (await box(page).locator("textarea").getAttribute("placeholder")) === "Ask Claude…")
+  const h0 = (await box(page).locator("textarea").boundingBox()).height
+  await page.keyboard.type("one")
+  for (let i = 0; i < 3; i++) { await page.keyboard.press("Shift+Enter"); await page.keyboard.type("more") }
+  const h1 = (await box(page).locator("textarea").boundingBox()).height
+  check("Shift+Enter is a new line, and the field grows with it", (await box(page).locator("textarea").inputValue()) === "one\nmore\nmore\nmore" && h1 > h0 + 40, [h0, h1])
+  await page.screenshot({ path: `${OUT}desktop.png` })
+  await page.keyboard.press("Escape")
+  check("Esc closes it", await until(async () => (await box(page).count()) === 0, 2000))
+
+  // The agent picker: a menu of the agents that are on, its pick remembered for the next box.
+  await palette(page, "Ask an agent in the background", 400)
+  await box(page).getByRole("button", { name: "Agent" }).click()
+  const menu = page.locator("[role=menu]").last()
+  await until(() => menu.count(), 2000)
+  const rows = await menu.innerText()
+  check("the agent chip's menu lists the agents", /Claude Code/.test(rows), rows)
+  await page.keyboard.press("Escape")
+  await wait(200)
+  check("its menu closing leaves the box open", await box(page).count() === 1)
+
+  // Enter: a session in the background, a toast with Open.
+  const before = new Set((await sessions()).map((s) => s.id))
+  await box(page).locator("textarea").click()
+  await page.keyboard.type(PROMPT)
+  await page.keyboard.press("Enter")
+  check("Enter closes the box", await until(async () => (await box(page).count()) === 0, 10000))
+  const toast = page.locator("[data-sonner-toast]", { hasText: "Asked Claude:" }).first()
+  check("a toast says what was asked, with Open", await until(() => toast.count(), 5000) && (await toast.innerText()).includes(PROMPT) &&
+    await toast.getByRole("button", { name: "Open" }).count() === 1, await toast.innerText().catch(() => ""))
+  const fresh = await until(async () => (await sessions()).find((s) => !before.has(s.id) && s.agent === "claude"), 10000)
+  if (fresh) started.push(fresh.id)
+  check("the Terminals list has the new session, with no tab", !!fresh && !fresh.tabs?.length, fresh)
+  const hash = await page.evaluate(() => location.hash)
+  check("no tab opened for it", !hash.includes(fresh?.id ?? "-"), hash)
+  // (before the toast times out)
+  await toast.getByRole("button", { name: "Open" }).click().catch(() => {})
+  check("Open opens its terminal's tab", await until(async () => decodeURIComponent(await page.evaluate(() => location.hash)).includes(`terminal/${fresh?.id}`), 5000), await page.evaluate(() => location.hash))
+  // A folder Claude Code hasn't trusted asks first (in the inbox, for the user): approved here.
+  if (fresh) {
+    // (the trust question shows once Claude Code has started; a folder trusted before has none)
+    let last = ""
+    const answered = async () => { const t = last = ((await api("POST", "ops/terminal.screen", { id: fresh.id, lines: 40 })).lines ?? []).join("\n"); return /a stand-in for QA|⏺ pong[\s\S]*haiku/i.test(t) ? t : null }
+    await until(async () => (await api("POST", `terminals/${fresh.id}/answer`, { answer: "approve" }))?.answer === "approve" || await answered(), 20000, 1000)
+    const screen = await until(answered, 60000, 1500)
+    check(/stand-in/.test(screen ?? "") ? "the session runs claude (QA's stand-in)" : "the session runs Claude Code on haiku and answers", !!screen, last.slice(-1500))
+  }
+  await page.screenshot({ path: `${OUT}opened.png` })
+  await ctx.close()
+
+  // A phone: the box fits the screen, its targets 44px, its text 17px.
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2 })
+  const pp = watch(await phone.newPage(), { label: "phone" })
+  await pp.goto(B)
+  await pp.waitForFunction(() => document.querySelector("#root > *"), null, { timeout: 20000 })
+  await wait(1500)
+  await palette(pp, "Ask an agent in the background", 400)
+  const fit = await pp.evaluate(() => {
+    const b = document.querySelector("[data-ask-box]")?.getBoundingClientRect(), t = document.querySelector("[data-ask-box] textarea")
+    const buttons = [...document.querySelectorAll("[data-ask-box] button")].map((x) => Math.round(x.getBoundingClientRect().height))
+    return b && { left: b.left, right: b.right, width: innerWidth, font: t && getComputedStyle(t).fontSize, buttons, scroll: document.documentElement.scrollWidth }
+  })
+  check("phone: the box fits the screen, 17px text, 44px targets", !!fit && fit.left >= 8 && fit.right <= fit.width - 8 && fit.font === "17px" &&
+    fit.buttons.every((h) => h >= 44) && fit.scroll <= fit.width, fit)
+  await pp.screenshot({ path: `${OUT}phone.png` })
+  await phone.close()
+} finally {
+  for (const id of started) await api("POST", "ops/terminal.end", { id }).catch(() => {})
+}
+await done()

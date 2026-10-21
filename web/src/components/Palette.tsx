@@ -1,5 +1,5 @@
 // The overlay the quick switcher (⌘O) and command palette (⌘P) share: arrows or ⌃N/⌃P move, Enter
-// picks (⌘ or ⇧ when the caller says), Esc closes.
+// picks (⌘ or ⇧ when the caller says), Esc closes. Its frame (PaletteFrame) is any palette-like box's (the Ask box).
 import { Fragment, memo, useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent, type ReactNode } from "react"
 import { X } from "lucide-react"
 import { keyCaps, keyHint } from "@/core/commands"
@@ -77,18 +77,10 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
   /** What rows are drawn with besides their item (a setting): a change redraws them. */
   look?: unknown
 }) {
-  // Closed, the keyboard goes back where it was (or to what it opened).
-  useHeldFocus()
   const [sel, setSel] = useState(query ? 0 : start)
   const list = useRef<HTMLDivElement>(null)
   const input = useRef<HTMLInputElement>(null)
-  // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
-  // ContextMenu's menus are; opened before the field is focused.
-  const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
-  const layer = useRef<HTMLDialogElement>(null)
-  useLayoutEffect(() => { if (over) layer.current?.showModal() }, [over])
-  // The page under it held still, then the field focused (core/pagelock.ts).
-  usePageLock()
+  // The page under it held still (PaletteFrame), then the field focused.
   useLayoutEffect(() => input.current?.focus({ preventScroll: true }), [])
   // On a phone, dragging the results puts the keyboard away (core/pagelock.ts).
   useEffect(() => (list.current ? dismissKeyboardOnDrag(list.current) : undefined), [])
@@ -113,12 +105,61 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
     else if (e.key === "ArrowUp" || (e.ctrlKey && (e.key === "k" || (isMac && e.key === "p")))) { e.preventDefault(); setSel((s) => Math.max(s - 1, 0)) }
     else if (e.key === "Enter" && !e.nativeEvent.isComposing) { e.preventDefault(); pick(sel, e) }
   }
-  // Anywhere in it: Escape closes it, and Tab stays in its field (its rows are chosen with the arrows).
-  const onDialogKey = (e: KeyboardEvent) => {
-    if (e.key === "Escape") { e.preventDefault(); onClose() }
-    else if (e.key === "Tab") { e.preventDefault(); input.current?.focus() }
-  }
+  // Tab stays in its field (its rows are chosen with the arrows).
+  const onDialogKey = (e: KeyboardEvent) => { if (e.key === "Tab") { e.preventDefault(); input.current?.focus() } }
 
+  return (
+    <PaletteFrame label={label} onClose={onClose} onKeyDown={onDialogKey}>
+      <div className="flex items-center gap-2 border-b-[0.5px] border-border pr-3 pl-5">
+        <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKey} placeholder={placeholder}
+          autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="go" role="combobox" aria-expanded aria-controls="palette-results"
+          aria-activedescendant={items[sel] ? `palette-${items[sel].id}` : undefined}
+          className="h-14 min-w-0 flex-1 bg-transparent text-[17px] outline-none placeholder:text-muted-foreground" />
+        {query && (
+          <button type="button" aria-label="Clear" onClick={() => { setQuery(""); input.current?.focus() }}
+            className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card hover:bg-foreground/80">
+            <X className="size-4" strokeWidth={3} />
+          </button>
+        )}
+      </div>
+      <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
+        {heading && <div className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
+        {!items.length && empty}
+        {items.map((it, i) => (
+          <Fragment key={it.id}>
+          {section && section(it) && section(it) !== (i ? section(items[i - 1]) : undefined) && (
+            <div role="presentation" className="px-3 pt-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{section(it)}</div>
+          )}
+          <PaletteRow id={it.id} item={it} i={i} selected={i === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
+          </Fragment>
+        ))}
+        {onEnd && <div ref={end} aria-hidden className="h-px" />}
+      </div>
+      <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t-[0.5px] border-border px-5 py-2.5 text-[13px] text-muted-foreground md:flex">
+        {hints.map(([k, what]) => (
+          <span key={k} className="whitespace-nowrap">
+            <span className="font-keys font-semibold text-foreground/80">{k.split(" ").map(keyHint).join("")}</span> {what}
+          </span>
+        ))}
+      </div>
+    </PaletteFrame>
+  )
+}
+
+/** The palette's overlay without its list, for any palette-like box (the Ask box): a card near the top, the page held
+ *  still under it; Escape or a click outside closes it, and the keyboard goes back. Its children focus their field. */
+export function PaletteFrame({ label, onClose, onKeyDown, children }: { label: string; onClose: () => void; onKeyDown?: (e: KeyboardEvent) => void; children: ReactNode }) {
+  useHeldFocus()
+  // Over an open sheet (a modal <dialog>: the rest of the page is inert), it's a modal dialog of its own above it, as
+  // ContextMenu's menus are; opened before the field is focused.
+  const [over] = useState(() => [...document.querySelectorAll("dialog[open]")].some((d) => { try { return d.matches(":modal") } catch { return false } }))
+  const layer = useRef<HTMLDialogElement>(null)
+  useLayoutEffect(() => { if (over) layer.current?.showModal() }, [over])
+  usePageLock()
+  const onKey = (e: KeyboardEvent) => {
+    if (e.key === "Escape") { e.preventDefault(); onClose() }
+    else onKeyDown?.(e)
+  }
   const overlay = (
     // On the part of the screen the keyboard leaves (core/pagelock.ts' --vvh, --vvtop), so the list ends above it and
     // a finger on it scrolls it.
@@ -126,41 +167,10 @@ export function Palette<T extends { id: string }>({ label, placeholder, query, s
       style={{ top: "var(--vvtop, 0px)", height: "var(--vvh, 100dvh)" }}>
       <button type="button" aria-label={`Close ${label.toLowerCase()}`} tabIndex={-1} onClick={onClose}
         className="absolute inset-0 cursor-default bg-black/30 animate-in fade-in duration-150" />
-      <div role="dialog" aria-modal="true" aria-label={label} onKeyDown={onDialogKey}
+      <div role="dialog" aria-modal="true" aria-label={label} onKeyDown={onKey}
         style={{ maxHeight: "min(70dvh, 600px, calc(var(--vvh, 100dvh) - 1.5rem - env(safe-area-inset-top)))" }}
         className="relative flex w-full max-w-[680px] flex-col overflow-hidden rounded-[14px] border-[0.5px] border-border bg-card shadow-2xl animate-in fade-in zoom-in-95 duration-150">
-        <div className="flex items-center gap-2 border-b-[0.5px] border-border pr-3 pl-5">
-          <input ref={input} value={query} onChange={(e) => setQuery(e.target.value)} onKeyDown={onKey} placeholder={placeholder}
-            autoComplete="off" autoCorrect="off" spellCheck={false} enterKeyHint="go" role="combobox" aria-expanded aria-controls="palette-results"
-            aria-activedescendant={items[sel] ? `palette-${items[sel].id}` : undefined}
-            className="h-14 min-w-0 flex-1 bg-transparent text-[17px] outline-none placeholder:text-muted-foreground" />
-          {query && (
-            <button type="button" aria-label="Clear" onClick={() => { setQuery(""); input.current?.focus() }}
-              className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-full bg-muted-foreground text-card hover:bg-foreground/80">
-              <X className="size-4" strokeWidth={3} />
-            </button>
-          )}
-        </div>
-        <div ref={list} id="palette-results" role="listbox" className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-1.5">
-          {heading && <div className="px-3 pt-1.5 pb-1 text-[12px] font-semibold text-muted-foreground">{heading}</div>}
-          {!items.length && empty}
-          {items.map((it, i) => (
-            <Fragment key={it.id}>
-            {section && section(it) && section(it) !== (i ? section(items[i - 1]) : undefined) && (
-              <div role="presentation" className="px-3 pt-2.5 pb-1 text-[12px] font-semibold text-muted-foreground">{section(it)}</div>
-            )}
-            <PaletteRow id={it.id} item={it} i={i} selected={i === sel} look={look} draw={row} onHover={rowHover} onPick={rowPick} />
-            </Fragment>
-          ))}
-          {onEnd && <div ref={end} aria-hidden className="h-px" />}
-        </div>
-        <div className="hidden flex-wrap items-center gap-x-5 gap-y-1 border-t-[0.5px] border-border px-5 py-2.5 text-[13px] text-muted-foreground md:flex">
-          {hints.map(([k, what]) => (
-            <span key={k} className="whitespace-nowrap">
-              <span className="font-keys font-semibold text-foreground/80">{k.split(" ").map(keyHint).join("")}</span> {what}
-            </span>
-          ))}
-        </div>
+        {children}
       </div>
     </div>
   )

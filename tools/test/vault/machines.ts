@@ -149,6 +149,12 @@ export default async ($: VaultTest) => {
         req.on("end", () => { seen.push(`run ${b} ${req.headers["x-vaultite-client"]}`); json(200, { id: "claude_personal-qa1", path: "Notes/Qa there.md", shown: false, handed: true }) })
         return
       }
+      if (req.url === "/api/ops/terminal.ask" && req.method === "POST") {
+        let b = ""
+        req.on("data", (d) => { b += d })
+        req.on("end", () => { seen.push(`ask ${b}`); json(200, { id: "claude-qa2", agent: "claude", title: "Hi", shown: false }) })
+        return
+      }
       json(404, { error: "no such thing" })
     })
     await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
@@ -164,6 +170,11 @@ export default async ($: VaultTest) => {
       const passed = await app.runOp("terminal.run", { path: "Notes/Qa there.md", machine: "box" }, { who: { client: "machine/other", agent: null, label: "other", source: "other" } })
         .then(() => null, (e: Any) => e)
       check("terminal.run: one passed on from another machine isn't passed on again", passed?.status === 409, passed?.message)
+      ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Hi", machine: "box", model: "haiku" })
+      check("terminal.ask: on another machine, passed on to its server, its terminal named with it", c === 200 && body.id === "claude-qa2@box" && body.machine === "box" &&
+        body.shown === false && seen.includes(`ask ${JSON.stringify({ prompt: "Hi", agent: "claude", model: "haiku" })}`), [c, body, seen])
+      ;[c, body] = await api("POST", "ops/terminal.ask", { prompt: "Hi", machine: "gone" })
+      check("terminal.ask: an offline machine says so", c === 502 && String(body.error).includes("offline"), [c, body])
       ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "nope" })
       check("terminal.run: an unknown machine says which there are", c === 404 && String(body.error).includes("box"), [c, body])
       ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "gone" })

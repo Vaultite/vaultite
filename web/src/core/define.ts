@@ -196,6 +196,8 @@ export type LinkTarget = { kind: string; id: string; title: string; detail: stri
 /** A coding agent it brings (Claude Code, Codex), run by the Terminal plugin in a tab (`view:terminal/<name>-<id>`;
  *  resume-<name>-<session> resumes). How to start it is its backend's service "agent:<name>". */
 export type AgentDef = { label: string; icon: LucideIcon; tint?: string
+  /** What it's called as the one answering ("Claude" for Claude Code: "Asked Claude: …"), else its label. */
+  speaker?: string
   /** Its program's names, when it runs in a plain terminal ("codex"): that terminal shows as the agent too. */
   process?: string[]
   /** Its accounts, when it has several: a route answering [{id, label}], the one its bare name runs first. The terminal

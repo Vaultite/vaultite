@@ -528,7 +528,7 @@ export function agentPlugin(src: AgentSource, o: Omit<PluginDef, "blocks"> & {
     views: { [src.view]: { icon: src.icon, title: (id) => sessionTitle(src, id), pinAs: (id) => id || null, render: ({ arg }) => <AgentSession key={arg} src={src} id={arg} /> } },
     // (Terminal runs it: the service "agent:<agent>" in its plugin.ts says how)
     ...(process && opens ? {
-      agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(accounts ? { accounts } : {}) } },
+      agents: { [src.agent]: { label: src.label, icon: src.icon, tint: src.tint, process, session: src.view, ...(src.speaker ? { speaker: src.speaker } : {}), ...(accounts ? { accounts } : {}) } },
       commands: [
         { ...opens.open, when, run: () => openAgent(src.agent), icon: src.icon },
         ...(opens.where ? [{ ...opens.where, when, run: () => void choosePlace({ agent: src.agent }) }] : []),

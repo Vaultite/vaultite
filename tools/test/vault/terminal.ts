@@ -56,6 +56,19 @@ export default async ($: VaultTest) => {
     tr = await term("open", { agent: "nope" })
     check("vau terminal open: an agent no plugin brings is refused (and its shell ended)", tr.code === 1 && tr.err.includes("no agent 'nope'") && calls.some((x) => x.startsWith("DELETE terminals/nope-")), [tr, calls])
     calls.length = 0
+    tr = await term("ask", { prompt: "  What changed in the release notes this week?  ", model: "haiku" })
+    const asked = /^POST terminals\/(claude-[a-z0-9]{8}) (.*)$/.exec(calls[0] ?? "")
+    check("vau terminal ask: a new agent's session told the prompt first, in the background (no tab)", tr.code === 0 && !!asked &&
+      asked[2] === JSON.stringify({ prompt: "What changed in the release notes this week?", model: "haiku" }) && calls.length === 1 &&
+      tr.out.includes('"What changed in the release notes this week?"') && tr.out.includes("in the background"), [tr, calls])
+    calls.length = 0
+    tr = await term("ask", { prompt: "Plan the garden for spring, with the beds by the fence first and the herbs where the sun stays longest", account: "personal", open: true })
+    check("vau terminal ask: in an account, its tab opened when asked, titled by the prompt's first words",
+      tr.code === 0 && /^POST terminals\/claude_personal-[a-z0-9]{8} /.test(calls[0] ?? "") && calls[1]?.startsWith('POST ui {"action":"open","path":"view:terminal/claude_personal-') &&
+      tr.out.includes('"Plan the garden for spring, with the beds by the fence…"'), [tr, calls])
+    tr = await term("ask", { prompt: "   " })
+    check("vau terminal ask: an empty prompt is refused", tr.code === 1 && tr.err.includes("say what to ask"), tr)
+    calls.length = 0
     tr = await term("resume", { session: "left sidebar" })
     check("vau terminal resume <title>: the one session with those words, resumed in a tab", tr.code === 0 &&
       calls.includes("POST terminals/resume-claude-3f2a9c1e-5b7d-4e2a-9c1f-0a2b3c4d5e6f") && calls.some((x) => x.includes('"path":"view:terminal/resume-claude-3f2a9c1e-5b7d-4e2a-9c1f-0a2b3c4d5e6f"')), [tr, calls])
