@@ -5,7 +5,8 @@ import { runCommandId, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
 import { loadActions } from "@/core/actions"
 import { currentEditor, keysInEditor } from "@/core/editors"
-import { desktop as desktopApp, otherVaults } from "@/core/desktop"
+import { desktop as desktopApp, otherVaults, showLights } from "@/core/desktop"
+import { usePeek } from "@/core/peek"
 import { phoneApp, takeLinks } from "@/core/phoneapp"
 import { GrantAsker } from "@/components/GrantAsker"
 import { isProtected, inVault, isReadOnly, openFile, stem } from "@/core/files"
@@ -24,6 +25,7 @@ import { allSwitches, switchCommand } from "@/core/switches"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
+import { setSheetFile } from "@/components/TargetView"
 import { newNote, revealInTree } from "@/components/FileTree"
 import { panelMenu, RAIL, SidebarPanels, SidebarToggle } from "@/components/Sidebar"
 import { FileView } from "@/components/FileView"
@@ -148,7 +150,7 @@ const CORE_SHEETS: Record<string, [string, (store: Store, id: string) => React.R
 }
 
 /** The detail sheet for a path: a plugin's (person/…, log/…), or the core's plugin sheet (plugin/<id>). */
-function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab) => TabInfo): { body: React.ReactNode; title: string } {
+function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Tab) => TabInfo): { body: React.ReactNode; title: string; wide?: boolean } {
   const [kind, id] = path.split("/")
   if (kind === "file") {
     const p = decodeURIComponent(id ?? "")
@@ -172,7 +174,7 @@ function detail_(store: Store, path: string, disabled: string[], tabInfo: (t: Ta
   const file = d?.def.file?.(store, d.args)
   if (file) return { body: <FileView store={store} path={file} pane={false} />, title: stem(file) }
   const title = d ? d.def.title(store, d.args) : ""
-  if (d && title) return { body: <Guard what="This sheet" size="tab" reset={path}><Drawn draw={() => d.def.render(store, d.args)} /></Guard>, title }
+  if (d && title) return { body: <Guard what="This sheet" size="tab" reset={path}><Drawn draw={() => d.def.render(store, d.args)} /></Guard>, title, wide: d.def.wide }
   return { body: <SheetHead icon={ListChecks} tint="var(--muted-foreground)" kicker="Not found" title="This entry isn't loaded" />, title: "" }
 }
 
@@ -208,6 +210,8 @@ function useRoute() {
 // The vault's own plugins load with each state, before it's drawn.
 onState(loadVaultPlugins)
 
+setSheetFile((store, path) => <FileView store={store} path={path} pane={false} />)
+
 // A detail that is a file (a person, a note) opens as the file.
 setDetailRedirect((path) => {
   const s = getStore()
@@ -221,7 +225,7 @@ export default function App() {
   const lingering = useLingeringSheet()
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
-  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, disabled, enabled, order } = usePrefs()
+  const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, disabled, enabled, order } = usePrefs()
   const pages = [...SYSTEM_PAGES, ...OTHER_PAGES]
   // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
   const home = store ? homeTab(store, disabled, order) : null
@@ -297,6 +301,7 @@ export default function App() {
   // Back when this sheet was opened from another sheet.
   const canBack = !!prev
   const prevTitle = canBack && store ? sheet_(store, prev, disabled, tabInfo).title : ""
+  const sheetDetail = store && sheet ? sheet_(store, sheet, disabled, tabInfo) : null
   // The quick switcher (⌘O) or the command palette (⌘P); their commands are below.
   const [palette, setPalette] = useState<"search" | "commands" | null>(null)
   const setSearching = (on: boolean) => setPalette(on ? "search" : null)
@@ -417,7 +422,9 @@ export default function App() {
   useCommands(() => allSwitches(disabled).map(switchCommand), [disabled.join(), enabled.join(), pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it.
   const popout = isPopout()
-  const side = popout ? "0px" : sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)
+  // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).
+  const hideLeft = desktop && !popout && !rails && !sidebar
+  const side = popout || hideLeft ? "0px" : sidebar ? `${sidebarPx(sidebarWidth)}px` : space(RAIL)
   const header = headerItems(disabled, order)
   // The right sidebar is there while
   // panels are in it; with none it takes no room, only its dimmed toggle (a click opens it empty to drop panels in).
@@ -427,7 +434,12 @@ export default function App() {
   useEffect(() => { if (hasRight) setEmptyRight(false) }, [hasRight])
   const rightOpen = hasRight ? rightSidebar : emptyRight
   const showRight = !popout && (hasRight || emptyRight)
-  const rside = showRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
+  const hideRight = desktop && showRight && !rails && !rightOpen
+  const rside = showRight && !hideRight ? (rightOpen ? `${sidebarPx(rightSidebarWidth)}px` : space(RAIL)) : "0px"
+  const peek = usePeek(hideLeft, hideRight && hasRight)
+  const leftOpen = sidebar || hideLeft
+  // The traffic lights go with the sidebar they sit in.
+  useEffect(() => { showLights(!hideLeft || peek === "left") }, [hideLeft, peek])
   // What's fixed to the window's edges (the status bar) keeps clear of the sidebars.
   // (before the paint: the bar drawn a frame with the old room moves when it gets the new)
   useLayoutEffect(() => { document.documentElement.style.setProperty("--right-sidebar", desktop ? rside : "0px") }, [rside, desktop])
@@ -436,8 +448,9 @@ export default function App() {
   useLayoutEffect(() => {
     const root = document.documentElement.dataset
     if (showRight) root.rightSidebar = ""; else delete root.rightSidebar
-    if (!popout && !sidebar) root.leftRail = ""; else delete root.leftRail
-  }, [showRight, popout, sidebar])
+    if (!popout && !sidebar && rails) root.leftRail = ""; else delete root.leftRail
+    if (!rails) root.noRails = ""; else delete root.noRails
+  }, [showRight, popout, sidebar, rails])
   // The shell takes its places without sliding to them while the vault's state comes in (main.tsx sets it).
   useEffect(() => {
     if (!store) return
@@ -450,30 +463,32 @@ export default function App() {
       {/* Desktop: the sidebar. Folded, it's an icon rail where only the width changes, so every icon stays put (RAIL in
           Sidebar.tsx, all offsets in spacing units). Right-click it to pick which panels show. */}
       {!popout && <>
-      <aside data-side="left" data-collapsed={!sidebar || undefined} onContextMenu={menuFor(panelMenu)}
+      <aside data-side="left" data-collapsed={!leftOpen || undefined} data-peek={hideLeft ? peek === "left" : undefined} inert={hideLeft && peek !== "left"} onContextMenu={menuFor(panelMenu)}
         className={cn(
           "fixed inset-y-0 left-0 z-20 hidden flex-col overflow-hidden border-r-[0.5px] border-border bg-sidebar pr-[calc(--spacing(2)-0.5px)] pl-2 pt-[env(safe-area-inset-top)] pb-2",
           "transition-[width] duration-200 ease-out md:flex",
-        )} style={{ width: side }}>
+          hideLeft && "inset-y-1.5 left-1.5 z-40 rounded-[12px] border-[0.5px] shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+          hideLeft && peek !== "left" && "-translate-x-[calc(100%+24px)]",
+        )} style={{ width: hideLeft ? `${sidebarPx(sidebarWidth)}px` : side }}>
         {/* As tall as the tab bar: right of the toggle, plugins' `header` items (Workspaces' switcher); a container, so
             an item fits itself to the room the traffic lights leave. */}
-        <div data-titlebar className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !sidebar && "pointer-events-none opacity-0")}>
-          {store && desktop && sidebar && header.map(({ key, item }) => (
+        <div data-titlebar className={cn("@container flex h-10 shrink-0 items-center justify-end gap-1 pl-7.5 whitespace-nowrap transition-opacity duration-200", !leftOpen && "pointer-events-none opacity-0")}>
+          {store && desktop && leftOpen && header.map(({ key, item }) => (
             <div key={key} data-header-item={key} className="flex min-w-0 shrink-0 items-center"><Guard what="This item"><Drawn draw={() => item.render({ store, open: true, file: filePath, tab: targetOf(tab) })} /></Guard></div>
           ))}
         </div>
         {/* The plugins' panels; as a rail, the header's items go first, under the toggle. Phones draw them in drawers
             (PhoneDrawer.tsx). */}
         <div className="flex min-h-0 flex-1 flex-col">
-          {store && desktop && <SidebarPanels store={store} open={sidebar} file={filePath} tab={targetOf(tab)}
-            head={!sidebar && header.length ? header.map(({ key, item }) => (
+          {store && desktop && <SidebarPanels store={store} open={leftOpen} file={filePath} tab={targetOf(tab)}
+            head={!leftOpen && header.length ? header.map(({ key, item }) => (
               <div key={key} data-header-item={key} className="flex"><Guard what="This item"><Drawn draw={() => item.render({ store, open: false, file: filePath, tab: targetOf(tab) })} /></Guard></div>
             )) : undefined} />}
         </div>
         {/* The vault's profile: the vault's name (a menu), then Plugins and Settings as buttons. As a rail,
             the two buttons stack, in line with the icons above. */}
-        <nav aria-label="App" className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !sidebar && "flex-col items-start")}>
-          {sidebar && (
+        <nav aria-label="App" className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
+          {leftOpen && (
             <button type="button" onClick={vaultMenu} aria-haspopup="menu"
               className="flex h-7 min-w-0 flex-1 cursor-pointer items-center gap-2 rounded-[5px] px-1.5 text-left text-[13px] font-medium whitespace-nowrap hover:bg-foreground/[0.06]">
               <ChevronsUpDown className="size-4 shrink-0 text-tertiary" strokeWidth={2} />
@@ -481,7 +496,7 @@ export default function App() {
             </button>
           )}
           {SYSTEM_PAGES.map((t) => (
-            <a key={t.id} href={`#${t.id}`} aria-label={t.label} data-tip={t.label} data-tip-side={sidebar ? "top" : "right"}
+            <a key={t.id} href={`#${t.id}`} aria-label={t.label} data-tip={t.label} data-tip-side={leftOpen ? "top" : "right"}
               onClick={(e) => { if (!desktop) return; e.preventDefault(); go(targetOf(t.id), e.metaKey || e.ctrlKey) }}
               className={cn("grid size-7 shrink-0 place-items-center rounded-[5px] transition-colors",
                 t.id === active?.id ? "bg-foreground/[0.08] text-primary" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground")}>
@@ -492,21 +507,26 @@ export default function App() {
       </aside>
       {/* Its edge (the splits' Resizer): dragged past half its narrowest it folds to the rail, keeping its width, and
           out again it opens, in one drag. */}
-      <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={(x) => dragSidebar(false, x)} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
-        className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />
-      <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })} />
+      {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={(x) => dragSidebar(false, x)} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
+        className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
+      {/* Hidden without a rail, it shows only with the sidebar slid in: a click there keeps the sidebar open. */}
+      <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
+        className={hideLeft ? cn("z-50 translate-x-1.5 translate-y-1.5 transition-opacity", peek === "left" ? "opacity-100" : "pointer-events-none opacity-0") : undefined} />
       </>}
 
       {showRight && (
-        <aside data-side="right" data-collapsed={!rightOpen || undefined} onContextMenu={menuFor(() => panelMenu(undefined, "right"))}
+        <aside data-side="right" data-collapsed={!(rightOpen || hideRight) || undefined} data-peek={hideRight ? peek === "right" : undefined} inert={hideRight && peek !== "right"}
+          onContextMenu={menuFor(() => panelMenu(undefined, "right"))}
           className={cn(
             "fixed inset-y-0 right-0 z-20 hidden flex-col overflow-hidden border-l-[0.5px] border-border bg-sidebar pr-2 pl-[calc(--spacing(2)-0.5px)] pt-[env(safe-area-inset-top)] pb-2",
             "transition-[width] duration-200 ease-out md:flex",
-          )} style={{ width: rside }}>
+            hideRight && "inset-y-1.5 right-1.5 z-40 rounded-[12px] border-[0.5px] shadow-[0_8px_32px_rgb(0_0_0/0.22)] transition-[translate]",
+            hideRight && peek !== "right" && "translate-x-[calc(100%+24px)]",
+          )} style={{ width: hideRight ? `${sidebarPx(rightSidebarWidth)}px` : rside }}>
           {/* As tall as the tab bar, with the toggle (fixed, below) at its right end. */}
           <div data-titlebar className="h-10 shrink-0" />
           <div className="relative flex min-h-0 flex-1 flex-col">
-            {store && desktop && <SidebarPanels side="right" store={store} open={rightOpen} file={filePath} tab={targetOf(tab)} />}
+            {store && desktop && <SidebarPanels side="right" store={store} open={rightOpen || hideRight} file={filePath} tab={targetOf(tab)} />}
           </div>
         </aside>
       )}
@@ -517,7 +537,8 @@ export default function App() {
       )}
       {desktop && !popout && (
         <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
-          onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))} />
+          onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
+          className={!rails && !rightOpen ? cn("z-50 -translate-x-1.5 translate-y-1.5 transition-opacity", peek === "right" ? "opacity-100" : "pointer-events-none opacity-0") : undefined} />
       )}
 
       {desktop ? (
@@ -544,8 +565,8 @@ export default function App() {
       <DetailSheet open={!!sheet && !!store} onClose={sheet === "tabs" ? closeSwitcher : closeDetail} path={sheet} depth={depth}
         still={!desktop && sheet === "tabs" && zooms()} own={sheet === "tabs"}
         onBack={canBack ? backDetail : undefined} backLabel={prevTitle.length <= 12 ? prevTitle : "Back"}
-        title={store && sheet ? sheet_(store, sheet, disabled, tabInfo).title : ""}>
-        {store && sheet && <Guard key={sheet} what="This sheet" size="tab" reset={sheet}>{sheet_(store, sheet, disabled, tabInfo).body}</Guard>}
+        title={sheetDetail?.title ?? ""} wide={sheetDetail?.wide}>
+        {sheetDetail && <Guard key={sheet} what="This sheet" size="tab" reset={sheet}>{sheetDetail.body}</Guard>}
       </DetailSheet>
 
       {palette === "search" && store && <SearchPalette store={store} onClose={() => setPalette(null)} />}

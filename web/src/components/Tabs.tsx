@@ -2,7 +2,7 @@
 // splits). Drops that would change nothing aren't offered; a whole pane drags by the handle at its bar's end.
 import { useEffect, useRef, useState } from "react"
 import { createPortal } from "react-dom"
-import { AppWindow, Blocks, Columns2, Columns3, Files, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, X, type LucideIcon } from "lucide-react"
+import { AppWindow, Blocks, Columns2, Columns3, Files, Heading1, LayoutList, MousePointerClick, GripVertical, Folder, PanelTop, PanelBottom, FileText, Layers, Pin, PinOff, Plus, Rows2, SquareDashed, X, type LucideIcon } from "lucide-react"
 import type { Store } from "@/core/data"
 import { startDrag, useDrag, useDropHit, type DragItem } from "@/core/drag"
 import { stem } from "@/core/files"
@@ -81,10 +81,11 @@ export function tabsMenu(ids: string[], phone = false): MenuItem[] {
 /** How a pane shows its tabs: stacked or in a row, and the tab bar on or off (appearance `tabBar`). Also the menu of
  *  the bar's empty space. */
 function barItems(group: Group): MenuItem[] {
-  const { tabBar } = getPrefs()
+  const { tabBar, paneTitles } = getPrefs()
   return [
     { label: group.stacked ? "Unstack tabs" : "Stack tabs", icon: Layers, sep: true, run: () => toggleStacked(group.id) },
     { label: tabBar ? "Hide tab bar" : "Show tab bar", icon: PanelTop, run: () => setPrefs({ tabBar: !tabBar }) },
+    ...(tabBar ? [] : [{ label: paneTitles ? "Hide pane titles" : "Show pane titles", icon: Heading1, run: () => setPrefs({ paneTitles: !paneTitles }) }]),
   ]
 }
 
@@ -254,7 +255,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   /** The only group (its single blank tab can't be closed). */
   alone: boolean }) {
   const { tabs, active } = group
-  const { fileIcons, tabBar } = usePrefs()
+  const { fileIcons, tabBar, paneTitles } = usePrefs()
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const hit = useDropHit<Drop>(PANES)
   const d = useDrag()
@@ -329,6 +330,16 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       <GripVertical className="size-4" strokeWidth={2} />
     </button>
   )
+  // Nor pane titles (appearance `paneTitles`): a thin strip keeps the drag strip, the handle (on hover) and the menu.
+  if (!tabBar && !paneTitles) {
+    return (
+      <div role="tablist" aria-label="Open tabs" data-tab-bar={group.id} data-tabs-hidden data-bare onContextMenu={menuFor(() => barMenu(group))}
+        className="group/bar relative h-2.5 shrink-0 bg-background">
+        <div className="absolute inset-0" />
+        <div className="absolute top-0.5 right-1.5 z-10">{handle}</div>
+      </div>
+    )
+  }
   // The tab bar turned off (appearance `tabBar`): the same bar (the window's drag strip, the pane's handle, a drop
   // opens in the pane), showing only the tab on screen.
   if (!tabBar) {

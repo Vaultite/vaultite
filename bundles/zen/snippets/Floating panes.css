@@ -1,0 +1,10 @@
+/* Floating panes: each pane a rounded card on the window's sidebar colour, a small gap around and between them. */
+@media (min-width: 768px) {
+  body { background: var(--sidebar); }
+  aside[data-side]:not([data-peek]) { border-color: transparent; }
+  section[data-group] { border: 5px solid var(--sidebar); border-radius: 15px; overflow: hidden; background: var(--background); }
+  section[data-group]::after {
+    content: ""; position: absolute; inset: 0; z-index: 20; pointer-events: none;
+    border-radius: 10px; box-shadow: inset 0 0 0 0.5px var(--border);
+  }
+}

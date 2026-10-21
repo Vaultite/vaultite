@@ -61,7 +61,7 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   await go(page, FB, "bundles")
   await until(() => page.locator("[data-bundle]").count(), 6000)
   const ids = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => e.dataset.bundle))
-  check("three built-in bundles, Standard first", ids.join() === "standard,life-os,agent-cockpit", ids)
+  check("three built-in bundles, Standard first", ids.join() === "standard,zen,life-os", ids)
   const inUse = await page.locator("[data-bundle]:has([data-bundle-in-use])").evaluateAll((els) => els.map((e) => e.dataset.bundle))
   check("a new vault: Standard's card says In use, the others don't", inUse.join() === "standard", inUse)
   await page.locator('[data-bundle="life-os"]').click()
@@ -108,8 +108,7 @@ const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the va
 const want = {
   "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),
   "life-os": (s) => s.pages.pinned[0] === `${PAGES}Today.md` && s.pages.pinned[1] === `${PAGES}Home.md` && existsSync(`${VAULT}/${PAGES}Home.md`) && s.appearance.scheme === "flexoki",
-  "agent-cockpit": (s) => s.pages.pinned[0] === `${PAGES}Agents.md` && s.pages.pinned.includes(`${PAGES}Server.md`) && s.appearance.scheme === "tokyo-night" && s.sidebars.right.includes("activity:feed") &&
-    s.sidebars.left.includes("machines:machines") && json(VAULT, ".vaultite/plugins/history/data.json")?.keep_days >= 30,
+  "zen": (s) => s.appearance.rails === false && s.appearance.tabBar === false && s.appearance.paneTitles === false && s.sidebars.left.includes("tabs:tabs") && s.appearance.snippets?.includes("Floating panes"),
 }
 for (const id of Object.keys(want)) {
   await go(page, B, "bundles")
@@ -119,10 +118,9 @@ for (const id of Object.keys(want)) {
   await until(() => page.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   const text = await sheet.innerText()
   check(`${id}: the preview says what changes`, /Plugins|Sidebars|Pinned pages|Look/.test(text), text.slice(0, 200))
-  if (id === "agent-cockpit" || id === "life-os") await shot(page, `preview-${id}`)
+  if (id === "zen" || id === "life-os") await shot(page, `preview-${id}`)
   await page.locator("dialog[open] [data-bundle-apply]").click()
   if (id === "life-os") await installs(page)
-  if (id === "agent-cockpit") await installs(page, "Cursor")
   await until(() => page.locator("[data-sonner-toast]", { hasText: "Applied" }).count(), 6000)
   await until(() => { const s = settings(VAULT); try { return want[id](s) } catch { return false } }, 6000)
   const s = settings(VAULT)
@@ -130,7 +128,7 @@ for (const id of Object.keys(want)) {
   try { ok = want[id](s) } catch { /* below */ }
   check(`${id}: applied as the preview said`, ok, s)
   check(`${id}: plugins.json's other keys are left alone`, JSON.stringify(Object.keys(s.plugins).filter((k) => !["disabled", "enabled"].includes(k))) === JSON.stringify(Object.keys(original.plugins ?? {}).filter((k) => !["disabled", "enabled"].includes(k))), s.plugins)
-  if (id === "life-os" || id === "agent-cockpit") { await wait(1500); await shot(page, `after-${id}`) }
+  if (id === "life-os" || id === "zen") { await wait(1500); await shot(page, `after-${id}`) }
   await dismissAll(page)
 }
 
@@ -268,7 +266,7 @@ await ctx.close()
   await until(() => pp.locator("[data-bundle]").count() >= 3, 6000)
   check("390px: the page fits", await overflow(pp) <= 0, await overflow(pp))
   await shot(pp, "phone-picker")
-  await pp.locator('[data-bundle="agent-cockpit"]').click()
+  await pp.locator('[data-bundle="zen"]').click()
   await until(() => pp.locator("dialog[open] [data-bundle-apply]").count(), 6000)
   check("390px: the preview fits", await pp.evaluate(() => { const d = document.querySelector("dialog[open]"); return d ? d.scrollWidth - d.clientWidth : 0 }) <= 0)
   await shot(pp, "phone-preview")

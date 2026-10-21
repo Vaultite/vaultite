@@ -6,6 +6,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- The Zen bundle replaces Agents: sidebars without rails that slide in from the window's edge, no tab bar, panes
+  floating on the window. New in Appearance: Sidebar rails, and Pane titles for a tab bar that's off.
+- Pinned pages can show as tiles: a grid of their icons at the top of the sidebar, named on hover (Pinned settings >
+  Show pinned pages as).
+- New plugin Glance (Navigation, off until turned on): ⌥-click a link, a file in the sidebar or a search result to see
+  it in a wide sheet over the page, live and editable, then Open in tab, Open to the side, or close it.
 - Phones: a page pulled down offers New note, Open a file (straight down) and Close tab; choose its three commands in
   Settings > Appearance on the phone.
 - An agent that isn't installed (Claude Code, Codex...) says so in a toast instead of the companion staying on

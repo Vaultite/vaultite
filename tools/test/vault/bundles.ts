@@ -27,7 +27,7 @@ export default async ($: VaultTest) => {
     const deskBefore = await slot1()
 
     let [code, r] = await api("GET", "bundles")
-    check("bundles: the app's three, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,life-os,agent-cockpit" &&
+    check("bundles: the app's three, readable, Standard first and the default", r.bundles.filter((b: Any) => b.source === "app").map((b: Any) => b.id).join() === "standard,zen,life-os" &&
       r.bundles.every((b: Any) => !b.problems.length || b.source !== "app") && r.default === "standard", r.bundles.map((b: Any) => [b.id, b.problems]))
     const LIFE = "Dashboards/Today.md,Dashboards/Home.md,Dashboards/People.md,Dashboards/Health.md,Dashboards/Learning.md,Dashboards/Projects.md,People/Alice Park.md"
     // (the pages of the plugins it installs are known once they are)
@@ -234,9 +234,12 @@ export default async ($: VaultTest) => {
     // A number the user set higher stays: a bundle never lowers it.
     const hist = conf("plugins/history/data")
     setConf("plugins/history/data", { keep_days: 90 })
-    ;[, r] = await api("GET", "bundles/agent-cockpit")
+    write(".vaultite/bundles/keep/bundle.json", JSON.stringify({ name: "Keep" }))
+    write(".vaultite/bundles/keep/plugins/history/data.json", JSON.stringify({ keep_days: 30 }))
+    ;[, r] = await api("GET", "bundles/keep")
     check("bundles: a number you set higher is never lowered", !r.plan.settings.some((x: Any) => x.plugin === "history" && x.key === "keep_days") &&
       r.plan.skipped.some((x: Any) => x.plugin === "history" && x.key === "keep_days" && /higher/.test(x.why)), [r.plan.settings, r.plan.skipped])
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/keep"), { recursive: true })
     if (hist) setConf("plugins/history/data", hist); else fs.rmSync(path.join(VAULT, ".vaultite/plugins/history/data.json"), { force: true })
     for (const [name, was] of [["plugins", pluginsBefore], ["pages", pagesBefore]] as const) {
       if (was) setConf(name, was); else fs.rmSync(path.join(VAULT, `.vaultite/${name}.json`), { force: true })

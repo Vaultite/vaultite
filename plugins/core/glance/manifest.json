@@ -1,0 +1,8 @@
+{
+  "id": "glance",
+  "icon": "scan-eye",
+  "category": "navigation",
+  "offByDefault": true,
+  "name": "Glance",
+  "description": "⌥-click a link, a file in the sidebar or a search result to see it over the page instead of going there: the real note, editable, or a web page in the Web viewer. Open it in a tab or to the side from there, or close it and carry on. Computers only."
+}

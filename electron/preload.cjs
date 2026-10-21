@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("vaultite", {
   lookUp: call("text:look-up"),
   learnWord: call("text:learn"),
   capture: call("page:capture"),
+  lights: call("window:lights"),
   on: (fn) => { ipcRenderer.on("vaultite", (_e, msg) => fn(msg)) },
   // The Web viewer's pages (electron/web.ts). The pages themselves get no preload: nothing of this reaches them.
   web: {

@@ -44,6 +44,7 @@ import { effectiveType } from "../../../core/fileprops.ts"
 import { JsonView } from "@/components/JsonView"
 import { barButton, ViewBar } from "@/components/ViewBar"
 import { usePortalHost } from "@/components/kit"
+import { useWideSheet } from "@/components/DetailSheet"
 import { TITLE, TitleRow } from "@/components/FileTitle"
 import { useHeldFocus } from "@/core/focus"
 import { useEditAt, type DrawnLine } from "@/core/anchors"
@@ -261,8 +262,8 @@ const ViewToggle = memo(function ViewToggle({ mode, setMode, edit, phone }: { mo
   }
   const button = (
     <button type="button" data-view-toggle={mode} onClick={() => { haptic(); setMode(reading ? edit : "read") }} aria-label={label} aria-pressed={!reading}
-      className="grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50">
-      <Icon className="size-[21px]" strokeWidth={2} />
+      className="grid size-11 shrink-0 cursor-pointer place-items-center text-primary active:opacity-50 md:text-muted-foreground md:transition-colors md:hover:text-foreground">
+      <Icon className="size-[21px] md:size-[18px]" strokeWidth={2} />
     </button>
   )
   return host ? createPortal(button, host) : null
@@ -375,6 +376,7 @@ function Missing({ path, pane }: { path: string; pane: boolean }) {
 function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileText; pane: boolean; onGone: () => void }) {
   const path = initial.path
   const [saved, setSaved, tabId] = useMode()
+  const wideSheet = useWideSheet()
   // A note just made with New note opens in editing, with its name selected.
   const [fresh] = useState(() => takeNew(path))
   // Just renamed from its title: still editing (and on to the text if Enter did it).
@@ -834,6 +836,8 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   // A page read, or edited as it's read, is as wide as its cards; one of only text reads as a note does, in the same
   // column whether it's read or edited.
   const wide = (board || !!editGrid) && !pageView?.narrow?.(pageCtx)
+  // In a tab, or a sheet as wide as one (a glance): the page's column, centred.
+  const column = pane || wideSheet
   // A drawn file that takes its whole pane in a tab (`layout: "pane"`: a canvas): the bar, then the drawing edge to edge.
   const fills = pane && layout === "pane"
   const pathBar = (className?: string) => pane && isDesktop() && <PathBar path={path} mode={views.length > 1 ? shown : undefined} setMode={setMode} edit={edit}
@@ -891,7 +895,7 @@ function Loaded({ store, initial, pane, onGone }: { store: Store; initial: FileT
   }
 
   const fileArticle = (
-    <article ref={article} className={cn("file-view", pane && "mx-auto pb-24", pane && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
+    <article ref={article} className={cn("file-view", pane && "pb-24", column && "mx-auto", column && (wide || code || notebook || format ? "max-w-[1040px]" : readable && "max-w-(--line-width)"))} data-path={path} data-kind={kind}
       data-grid={editGrid ? "" : undefined}
       onContextMenu={outsideMenu} data-file-drop={droppable ? "" : undefined} onDragOver={droppable ? (e) => { if (e.dataTransfer.types.includes("Files")) e.preventDefault() } : undefined} onDrop={droppable ? onDrop : undefined}
       style={zoom && readable ? { maxWidth: `calc(var(--line-width) * ${zoom})` } : undefined}>

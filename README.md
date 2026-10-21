@@ -77,7 +77,7 @@ node bin/vau service install --vault ~/Vault     # a systemd user unit (launchd 
 tailscale serve --bg --https=8447 http://127.0.0.1:8793
 ```
 
-Then add `https://<machine>.<tailnet>.ts.net:8447` in the app, and apply the Agents bundle.
+Then add `https://<machine>.<tailnet>.ts.net:8447` in the app.
 
 ## License
 

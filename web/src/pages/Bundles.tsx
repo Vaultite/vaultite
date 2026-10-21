@@ -639,7 +639,7 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
 
 const NEWTAB: Record<string, string> = { page: "New tab's page", sections: "New tab's sections", actions: "New tab's buttons", icons: "New tab's button icons" }
 const APPEARANCE: Record<string, string> = {
-  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", fileBar: "File top bar", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",
+  theme: "Theme", scheme: "Colour scheme", density: "Density", fileIcons: "File icons", tabBar: "Tab bar", paneTitles: "Pane titles", rails: "Sidebar rails", lineNumbers: "Line numbers", statusBar: "Status bar", statusBarMore: "Status bar tray", fileBar: "File top bar", pullActions: "Pull-down actions", sidebarScroll: "Sidebar scrolling", panelDividers: "Lines between sidebar panels", quickTextSize: "Quick text size",
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
 }
 

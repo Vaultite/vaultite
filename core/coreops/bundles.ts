@@ -12,7 +12,7 @@ const where = (b: Any) => (b.source === "app" ? "built-in" : "yours")
 const HELP = `A bundle is a setup of the app, in the shapes the vault already uses (a folder like .vaultite/: plugins.json,
 sidebars.json, pages.json, appearance.json, hotkeys.json, newtab.json, plugins/<id>/data.json, plus the dashboards it
 pins, and preview.png, its card's picture); a part it leaves out stays as it is when it's applied. The app's own are
-Standard (standard, the app's defaults), Life OS (life-os) and Agents (agent-cockpit); the user's are in
+Standard (standard, the app's defaults), Zen (zen) and Life OS (life-os); the user's are in
 .vaultite/bundles/<id>/. \`vau docs bundles\` has the format, so you can write one too.
 
   list      the bundles there are, and the setup that can be restored

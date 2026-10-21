@@ -108,10 +108,10 @@ export { addKeys, appShortcut, beginKeys, cancelKeys, commandKeys, keyCaps, keyH
 export { isLinux, isMac, modKey, revealLabel, showLabel } from "@/core/platform"
 export { checklist, commandItems, menuAbove, menuBelow, menuFor, menuShowing, openMenu, rightClickBelow, type CheckItem, type MenuItem } from "@/components/ContextMenu"
 export { onVaultChange, touches, useVaultChange } from "@/core/live"
-export { backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
-export { backlinks, followLink, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Target } from "@/core/links"
+export { afterSheets, backDetail, openDetail, replaceDetail, replaceHash, scrollPage } from "@/core/nav"
+export { backlinks, followLink, linkPlace, mentions, openTag, openWebLink, plainText, resolver, snippet, takeSchemeLink, WIKI, type Target } from "@/core/links"
 // Places in files (a heading, a block id) and tags (core/sections.ts, shared with the server).
-export { openAt, useOutline, type Heading } from "@/core/anchors"
+export { openAt, showAnchorIn, useOutline, type Heading } from "@/core/anchors"
 export { currentEditor, editorOf, keysInEditor, selectedText, type OpenEditor } from "@/core/editors"
 export { canvases, canvasOf, canvasShown, onCanvases, registerCanvas, type CanvasItem, type CanvasPeer, type OpenCanvas } from "@/core/canvases"
 // Highlight colours (==🟢text==): the class each draws with (hl-<colour>), and colouring one in an editor.
@@ -142,6 +142,9 @@ export { Button, buttonClass, HeadingButton } from "@/components/Button"
 export { Badged, Bar, Bars, Editable, Empty, FilterField, Foldable, Group, KV, List, Loading, LoadingRows, PageHeader, Panel, Ring, Row, Section, Segmented, SettingRow, SheetHead, Stat, Switch } from "@/components/kit"
 // A form in a sheet that isn't saved as you type: closing the sheet with something unsaved asks first.
 export { useSheetGuard } from "@/components/DetailSheet"
+/** Buttons a sheet's content puts in its header, left of Close; and a tab's target drawn in a sheet (a glance). */
+export { SheetActions } from "@/components/DetailSheet"
+export { TargetView } from "@/components/TargetView"
 export { WeeksGrid } from "@/components/WeeksGrid"
 // Maps: the base map's look (core/mapstyle.ts), its buttons, and a lazy map of pins (MapLibre loads with it).
 export { followMapTheme, MAP_STYLE, mapTheme, restyleMap, type MapTheme } from "@/core/mapstyle"
@@ -168,7 +171,7 @@ export { Resizer } from "@/components/Resizer"
 export { haptic, type Haptic } from "@/core/haptics"
 // Phones: keys above the on-screen keyboard, and the part of the window it leaves.
 export { KeyBar, keyboardUp, useVisibleArea, type BarKey } from "@/components/KeyBar"
-export { FilesPanel, PanelFold, panelMenu, SidebarHeading, SidebarRow, SidebarSearch } from "@/components/Sidebar"
+export { FilesPanel, PanelFold, panelMenu, SidebarHeading, SidebarRow, SidebarSearch, SidebarTile } from "@/components/Sidebar"
 export { ActionButtons, AddButton } from "@/components/NewTab"
 // The core's pages that panels open as tabs: the file tree (view:files) and the search page.
 export { Files as FilesPage } from "@/pages/Files"

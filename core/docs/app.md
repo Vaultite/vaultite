@@ -96,7 +96,8 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   (default): ⌘/⌃ and the wheel, or a pinch, over a note or a terminal changes its text size.
 - `interfaceFont`, `textFont` (notes), `monoFont` (code): a font's name or a CSS font-family list; empty is the app's.
   `fileIcons`: true | false. `tabBar`: true (default) | false: off, each pane's bar shows only the tab on screen, not
-  the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard). `lineNumbers`: true | false (default), line numbers beside a file's text while editing
+  the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard); `paneTitles` false drops that bar too.
+  `rails`: true (default) | false: off, a hidden sidebar has no icon rail and slides in while the pointer is at its edge. `lineNumbers`: true | false (default), line numbers beside a file's text while editing
   it (code files always have them). `statusBar`: the plugins' items at the start of the desktop status bar, in order
   (`["companion:status", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one
   to move it). `statusBarMore`: those of them kept in the bar's tray (its more button, which also holds what doesn't

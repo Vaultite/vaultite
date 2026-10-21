@@ -1,8 +1,9 @@
 // Pages are files: a page's file address opens its dashboard, the sidebar lists the pinned files, right-click hides and
 // shows them (the menu stays open), dashboards open in reading as a grid and ⌘E edits them, on a phone the drawer
-// lists them (the sidebar's panel) and a new tab shows them as tiles, Pinned's settings list them, and /api/render reads a
-// dashboard as text. Screenshots in /tmp/vaultite-pages/.
-// WRITES .vaultite/pages.json (and puts it back): throwaway server only.
+// lists them (the sidebar's panel) and a new tab shows them as tiles, Pinned's settings list them, Show pinned pages as
+// Tiles draws the open sidebar's as a grid (the drawer keeps its list), and /api/render reads a dashboard as text.
+// Screenshots in /tmp/vaultite-pages/.
+// WRITES .vaultite/pages.json and Pinned's data.json (and puts them back): throwaway server only.
 //   node web/qa/pages.mjs <base url>
 import { execFileSync } from "node:child_process"
 import { mkdirSync } from "node:fs"
@@ -14,6 +15,9 @@ const OUT = "/tmp/vaultite-pages/"
 mkdirSync(OUT, { recursive: true })
 const pinnedBefore = (await (await fetch(`${B}api/config/pages`)).json()).pinned
 const pluginsBefore = await (await fetch(`${B}api/config/plugins`)).json()
+const showBefore = (await (await fetch(`${B}api/config/plugin/pages`)).json()).show ?? null
+const setShow = (show) => fetch(`${B}api/config/plugin/pages`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ show }) })
+await setShow(null)
 // What it tests, whatever the vault turned off or pinned (the sandbox starts calm: two pins): the plugins whose pages
 // it opens on (a page arrives with its plugin), and those five pages pinned. Both put back at the end.
 const PAGES = ["People", "Claude", "Agents", "Queue", "People map"]
@@ -117,6 +121,22 @@ await m.locator('[data-settings-nav="plugin:pages"]').tap(); await m.waitForTime
 check("Pinned's settings: the pages, saying how many are pinned", (await m.locator("dialog[open] [data-page-row]").count()) >= drawer.length &&
   (await m.locator("dialog[open] [data-pages-count]").innerText()).includes(`${drawer.length} pinned`), await m.locator("dialog[open] [data-pages-count]").innerText().catch(() => ""))
 await m.screenshot({ path: `${OUT}phone-settings.png`, fullPage: true })
+
+// Tiles: the open sidebar's pages as a grid of icons, named by their tooltips, in the list's order; the drawer keeps rows.
+const listed = await side()
+await setShow("tiles")
+await page.goto("about:blank"); await page.goto(`${B}${hashOf("People")}`)
+await page.waitForSelector("[data-pin-tiles] [data-pin]", { timeout: 10000 }).catch(() => {})
+const grid = await page.locator("[data-pin-tiles] [data-pin]").evaluateAll((ts) => ts.map((t) => ({ tip: t.getAttribute("data-tip"), text: t.textContent, top: Math.round(t.getBoundingClientRect().top) })))
+check("Tiles: the sidebar's pages as a grid, named by tooltips", grid.length >= 5 && grid.every((t) => t.tip && !t.text) && grid[0].top === grid[3].top && same(grid.map((t) => t.tip), listed.map((l) => l.replaceAll(" / ", "/"))), [grid.map((t) => t.tip), listed])
+check("Tiles: the open page's tile is the active one", await page.locator('[data-pin-tiles] [aria-current="page"]').getAttribute("data-tip") === "People")
+await page.screenshot({ path: `${OUT}desktop-tiles.png` })
+await page.locator("[data-pin-tiles] [data-pin]").nth(1).click(); await page.waitForTimeout(600)
+check("Tiles: a click opens its page", await page.locator("[data-pin-tiles] [data-pin]").nth(1).getAttribute("aria-current") === "page")
+await m.goto("about:blank"); await m.goto(`${B}#files`); await m.waitForTimeout(1200)
+await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await m.waitForTimeout(500)
+check("Tiles: a phone's drawer keeps the list", (await m.locator("[data-phone-drawer=left] nav[aria-label=Pages] a").count()) >= 5 && !(await m.locator("[data-phone-drawer=left] [data-pin-tiles]").count()))
+await setShow(showBefore)
 
 const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(`${DIR}/People.md`)}`)).text()
 check("/api/render reads a dashboard as text", md.includes("## Want to reach out") && !md.includes("```block-"), md.slice(0, 200))

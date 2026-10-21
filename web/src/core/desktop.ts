@@ -71,6 +71,8 @@ export type DesktopApi = {
   learnWord?: (word: string) => Promise<unknown>
   /** The window (or a rectangle of it, in CSS pixels) as a PNG, base64 (`vau dev screenshot`). Builds from before it don't have it. */
   capture?: (rect?: { x: number; y: number; width: number; height: number }) => Promise<{ png: string; width: number; height: number }>
+  /** Show or hide a Mac window's traffic lights. Builds from before it don't have it. */
+  lights?: (on: boolean) => Promise<unknown>
 }
 
 export type UpdateMode = "automatic" | "notify" | "off"
@@ -261,6 +263,9 @@ export const systemNotify = (title: string, body = ""): Promise<boolean> | null 
 /** The window as a PNG (base64), or null: a browser, or a build without it. */
 export const captureWindow = (): Promise<{ png: string; width: number; height: number } | null> =>
   desktop?.capture ? desktop.capture().catch(() => null) : Promise.resolve(null)
+
+/** The Mac window's traffic lights shown or not (a sidebar hidden without its rail); nothing elsewhere. */
+export const showLights = (on: boolean) => { if (isMac) desktop?.lights?.(on).catch(() => {}) }
 
 /** The desktop app's Look up and spell checker (the editor's menu): null in a browser or a build without them. */
 export const lookUp = desktop?.lookUp && isMac ? desktop.lookUp : null

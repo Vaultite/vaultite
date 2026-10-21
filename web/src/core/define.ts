@@ -74,6 +74,8 @@ export type DetailDef = {
   title: (store: Store, args: string[]) => string
   /** This detail is a file (a person is People/<name>.md): open the file instead (see `files`). */
   file?: (store: Store, args: string[]) => string | null
+  /** A page rather than a form (a glance): on a computer the sheet takes most of the window, its title in a bar. */
+  wide?: boolean
 }
 /** What a file view gets: the file's path, its frontmatter (parsed) and body as they are in the editor right now. */
 export type FileCtx = { store: Store; path: string; fm: Record<string, unknown>; body: string

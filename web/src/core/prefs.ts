@@ -45,6 +45,11 @@ export type Prefs = {
   /** The tabs above each pane (desktop); off, each pane's bar shows only what's on screen, and the sidebar (the Tabs
    *  panel, Terminals, Pinned) or the keyboard switches tabs. */
   tabBar: boolean
+  /** With the tab bar off, a strip above each pane naming what's open; off, the pane starts at the window's top. */
+  paneTitles: boolean
+  /** A hidden sidebar folds to its icon rail; off, it's gone, sliding back over the page while the pointer is at its
+   *  edge of the window. */
+  rails: boolean
   /** Line numbers beside the text of a file being edited (Markdown, source mode, JSON);
    *  code files always have them. */
   lineNumbers: boolean
@@ -83,11 +88,11 @@ export type Prefs = {
 const KEY = "vaultite.prefs"
 // (the appearance ones are core/bundles.ts' LOOK_DEFAULTS too: keep them the same)
 const DEFAULTS: Prefs = {
-  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, lineNumbers: false, statusBar: null, statusBarMore: [], fileBar: null, pullActions: null, fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
+  theme: "system", scheme: DEFAULT_SCHEME, density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [], sidebar: true, sidebarWidth: 240, rightSidebar: true, rightSidebarWidth: 280, disabled: [], enabled: [], order: [], fileIcons: true, tabBar: true, paneTitles: true, rails: true, lineNumbers: false, statusBar: null, statusBarMore: [], fileBar: null, pullActions: null, fileSort: "name", folderLimit: 0, autoReveal: true, showHidden: false, showArchived: false, sidebars: null, newTab: { sections: null, actions: null, icons: null, page: null }, updates: "vaultite", updatesOn: [], updatesOff: [], device: {}, editor: {},
 }
 // Which vault file each synced pref is saved in, key by key; `sidebars` is a whole file (WHOLE).
 const FILES = {
-  appearance: ["theme", "scheme", "density", "sidebarScroll", "panelDividers", "quickTextSize", "interfaceFont", "textFont", "monoFont", "snippets", "fileIcons", "tabBar", "lineNumbers", "statusBar", "statusBarMore", "fileBar", "pullActions"], plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
+  appearance: ["theme", "scheme", "density", "sidebarScroll", "panelDividers", "quickTextSize", "interfaceFont", "textFont", "monoFont", "snippets", "fileIcons", "tabBar", "paneTitles", "rails", "lineNumbers", "statusBar", "statusBarMore", "fileBar", "pullActions"], plugins: ["disabled", "enabled", "order", "updates", "updatesOn", "updatesOff"], files: ["fileSort", "folderLimit", "autoReveal", "showHidden", "showArchived"],
 } as const
 type File = keyof typeof FILES
 /** Prefs that are a whole settings file each: .vaultite/sidebars.json is `sidebars` ({left, right}). */

@@ -4,8 +4,8 @@ import { Fragment, useEffect, useId, useRef } from "react"
 import { ChevronRight, Folder, Hash, Heading, PinOff, Plus, Search } from "lucide-react"
 import {
   checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
-  pinnedFoldersOpen, showInTree,
-  openItem, openView, PIN_SEARCH, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, startDrag, stem, useDrag, useDropHit,
+  pinnedFoldersOpen, pluginSettings, showInTree,
+  openItem, openView, PIN_SEARCH, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, startDrag, stem, useDrag, useDropHit,
   useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { SquareArrowOutUpRight } from "lucide-react"
@@ -41,9 +41,31 @@ function openEntry(e: PinEntry, opts: { newTab?: boolean; pane?: string }) {
   if (e.kind === "view") return openView(e.target, { newTab: opts.newTab })
   openView(`search/${e.query}`, { newTab: opts.newTab })
 }
-/** Where a drop lands: before a page (null: the end; `known`: already pinned, so only its place changes), or `out` of
- *  the list, elsewhere in the sidebar (unpinned). */
-type PinDrop = { before: string | null; y: number; known: boolean } | { out: true }
+/** Where a drop lands: before a page (null: the end; `known`: already pinned, so only its place changes), its line
+ *  across the list at `y` (tiles: down the grid at `x`, `h` tall), or `out` of the list, elsewhere in the sidebar. */
+type PinDrop = { before: string | null; y: number; x?: number; h?: number; known: boolean } | { out: true }
+
+/** The plugin's settings: `show`, how the open sidebar draws the list (manifest.json). */
+const settings = pluginSettings<{ show?: "list" | "tiles" }>("pages")
+
+/** Where a drop at (x, y) lands among tiles, as offsets in `nav`: before the first tile of the pointer's row whose
+ *  middle is right of it, its line in the gap left of it; past a row's last tile, the line is right of that one. */
+function tileDrop(nav: HTMLElement, x: number, y: number) {
+  const tiles = [...nav.querySelectorAll<HTMLElement>("[data-pin]")].map((el) => ({ el, b: el.getBoundingClientRect() }))
+  const box = nav.getBoundingClientRect()
+  const gap = tiles.length > 1 ? Math.max(0, tiles[1].b.left - tiles[0].b.right) : 0
+  const first = tiles.find((t) => y < t.b.bottom + gap)
+  if (!first) {
+    const last = tiles[tiles.length - 1]
+    return { before: null, x: last.b.right - box.left + gap / 2, y: last.b.top - box.top, h: last.b.height }
+  }
+  const row = tiles.filter((t) => Math.abs(t.b.top - first.b.top) < 1)
+  const next = row.find((t) => x < t.b.left + t.b.width / 2)
+  const end = row[row.length - 1]
+  const after = tiles[tiles.indexOf(end) + 1]
+  return { before: next ? next.el.dataset.pin! : after?.el.dataset.pin ?? null,
+    x: (next ? next.b.left - gap / 2 : end.b.right + gap / 2) - box.left, y: first.b.top - box.top, h: first.b.height }
+}
 
 /** The list's menu (Pinned pages ▸): the shown ones ticked, then More ▸ with unpinned pages, the file on screen and the
  *  plugins' main views (Inbox, Graph view); a `checklist`, redrawn after each click. Same-named ones say their folders. */
@@ -76,7 +98,7 @@ export function PinCurrent({ file }: { file: string }) {
   )
 }
 
-export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx & {
+export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout }: SidebarCtx & {
   /** Open pages in that pane (the Pinned tab opens them beside itself). */
   pane?: string }) {
   useEnabled() // drawn again when a plugin is turned on or off (its pages show or hide)
@@ -84,14 +106,16 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
   useViewsVersion() // and when a pinned view's state does (a conversation running, waiting for an answer)
   const desk = currentWorkspace()
   const pages = shownEntries(store)
+  // Tiles only in the open sidebar: the rail, a phone's drawer and the Pinned tab keep the list.
+  const tiles = settings.use().show === "tiles" && open && !!panel && !phone && !flyout
   const list = useRef<HTMLElement>(null)
   const d = useDrag()
   const dragging = !!d && canPin(d.item)
   // Each list its own target (the sidebar's, and one in a Pinned tab); only the sidebar's unpins what leaves it.
   const target = `${PINS}:${useId()}`
   const hit = useDropHit<PinDrop>(target)
-  const line = hit && "y" in hit ? hit.y : null
-  useDropTarget<PinDrop>(target, (item, _x, y, el) => {
+  const line = hit && "y" in hit ? hit : null
+  useDropTarget<PinDrop>(target, (item, x, y, el) => {
     const nav = list.current
     if (!el || !nav || !canPin(item)) return null
     if (!nav.contains(el)) return item.from === "pin" && el.closest("aside") && el.closest("aside") === nav.closest("aside") ? { out: true } : null
@@ -101,7 +125,8 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
     const rows = [...nav.querySelectorAll<HTMLElement>("[data-pin]")]
     const next = rows.find((r) => { const b = r.getBoundingClientRect(); return y < b.top + b.height / 2 })
     const last = rows[rows.length - 1]
-    const before = next?.dataset.pin ?? null
+    const grid = nav.hasAttribute("data-pin-tiles") && last ? tileDrop(nav, x, y) : null
+    const before = grid ? grid.before : next?.dataset.pin ?? null
     const all = currentPins(store)
     const keys = pinsOf(item)
     const known = keys.every((k) => all.includes(k))
@@ -110,6 +135,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
       const rest = all.filter((p) => p !== item.path), i = before ? rest.indexOf(before) : rest.length
       if (i === all.indexOf(item.path!)) return null
     }
+    if (grid) return { ...grid, known }
     const end = last ? last.getBoundingClientRect().bottom - top : 2
     return { before, y: next ? next.getBoundingClientRect().top - top - 1 : end, known }
   }, (item, h) => {
@@ -152,14 +178,22 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
     const picked = picks.has(id)
     const file = entry.kind === "file" ? entry.path : entry.kind === "heading" ? entry.file.path : null
     const view = entry.kind === "view" ? viewInfo(entry.target) : null
-    // A folder: open in place, its files under it (the file tree's rows); in the rail, only its icon.
+    // A folder: open in place, its files under it (the file tree's rows); in the rail and as a tile, only its icon.
     const folder = entry.kind === "folder" ? entry : null
-    const unfold = !!folder && open && unfolded.has(id)
+    const inPlace = open && !tiles
+    const unfold = !!folder && inPlace && unfolded.has(id)
     const shown = entry.kind === "file" ? iconAt(entry.path) : null
-    const icon = view ? view.icon : folder ? (open ? ChevronRight : Folder) : entry.kind === "search" ? Search : entry.kind === "heading" ? (entry.heading.startsWith("^") ? Hash : Heading) : shown!.icon
+    const icon = view ? view.icon : folder ? (inPlace ? ChevronRight : Folder) : entry.kind === "search" ? Search : entry.kind === "heading" ? (entry.heading.startsWith("^") ? Hash : Heading) : shown!.icon
     const active = entry.kind === "file" ? id === current : entry.kind === "view" && !!tab && (tab === entry.target || tab === to)
     // Breadcrumb style, as the path bar above a file: its folders dimmed, then its name.
     const label = folder?.parent ? <><span className="text-muted-foreground">{folder.parent.split("/").join(" / ")} / </span>{folder.label}</> : entry.label
+    const href = folder ? undefined : `#${file ? `file/${encodeURIComponent(file)}` : `view/${encodeURIComponent(to!.slice(5))}`}`
+    const click = (e: React.MouseEvent) => {
+      if (selectClick(e, SELECT, id, entry.kind === "file" && id === current ? id : null)) return
+      // (the rail and a tile have no room to open it in: the file tree shows it)
+      if (folder) return inPlace ? pinnedFoldersOpen.toggle(id) : void showInTree(id)
+      openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane })
+    }
     return (
       <Fragment key={id}>
       <div onPointerDown={(e) => {
@@ -176,16 +210,13 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
           { label: "Unpin", icon: PinOff, sep: true, run: () => pinNoted(id, false) },
         ]))}
         className={cn(d?.item.from === "pin" && (d.item.path === id || (picked && d.item.paths)) && "opacity-40")}>
-        <SidebarRow data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} aria-expanded={folder && open ? unfold : undefined} {...selectedAttr(picked)}
-          href={folder ? undefined : `#${file ? `file/${encodeURIComponent(file)}` : `view/${encodeURIComponent(to!.slice(5))}`}`} icon={icon}
+        {tiles ? <SidebarTile data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} {...selectedAttr(picked)} href={href} icon={icon}
+          tint={view?.tint ?? shown?.tint} iconClassName={view?.iconClassName} badge={view?.badge} label={folder ? id : entry.label} active={active} onClick={click} />
+        : <SidebarRow data-pin={id} data-select-key={id} data-pin-folder={folder ? "" : undefined} aria-expanded={folder && open ? unfold : undefined} {...selectedAttr(picked)}
+          href={href} icon={icon}
           tint={view?.tint ?? shown?.tint} iconClassName={folder && open ? cn("transition-transform duration-150", unfold && "rotate-90") : view?.iconClassName} badge={view?.badge}
           label={label} tip={folder ? id : undefined} open={open} more active={active} swipe={() => [{ label: "Unpin", icon: PinOff, run: () => pinNoted(id, false), removes: true }]}
-          onClick={(e) => {
-            if (selectClick(e, SELECT, id, entry.kind === "file" && id === current ? id : null)) return
-            // (the rail has no room to open it in: the file tree shows it)
-            if (folder) return open ? pinnedFoldersOpen.toggle(id) : void showInTree(id)
-            openEntry(entry, { newTab: e.metaKey || e.ctrlKey || e.button === 1, pane })
-          }} />
+          onClick={click} />}
       </div>
       {unfold && <FileTree store={store} folder={id} header={false} active={current} pane={pane} />}
       </Fragment>
@@ -194,9 +225,13 @@ export function PinnedPages({ store, open, file, tab, panel, pane }: SidebarCtx 
   return (
     // As a tab, the list's menu is the pages; in the sidebar it's the panel's (index.tsx: its `menu`).
     <nav ref={list} aria-label="Pages" onContextMenu={panel ? undefined : menuFor(() => pinChecklist(file))}
+      data-pin-tiles={tiles ? "" : undefined}
       className={cn("relative shrink-0", dragging && !pages.length && "min-h-8 rounded-[6px] border border-dashed border-border")}>
-      <div className="flex flex-col gap-px" data-select-list={SELECT}>{pages.map(row)}</div>
-      {line !== null && <div aria-hidden data-pin-line className="pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary" style={{ top: line }} />}
+      {/* Tiles: as many to a row as fit at least 11 units wide (four in a sidebar of the default width). */}
+      <div className={tiles ? "grid grid-cols-[repeat(auto-fill,minmax(--spacing(11),1fr))] gap-1.5" : "flex flex-col gap-px"} data-select-list={SELECT}>{pages.map(row)}</div>
+      {line && (line.x === undefined
+        ? <div aria-hidden data-pin-line className="pointer-events-none absolute inset-x-1 h-0.5 rounded-full bg-primary" style={{ top: line.y }} />
+        : <div aria-hidden data-pin-line className="pointer-events-none absolute w-0.5 rounded-full bg-primary" style={{ left: line.x - 1, top: line.y, height: line.h }} />)}
     </nav>
   )
 }

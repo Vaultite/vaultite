@@ -906,6 +906,8 @@ handle("dock:pick", async (w) => {
 // The asking page's own window (a pop-out's too, which `handle` answers as its vault's).
 ipcMain.handle("text:look-up", (e) => { who(e); e.sender.showDefinitionForSelection() })
 ipcMain.handle("text:learn", (e, word: string) => { who(e); e.sender.session.addWordToSpellCheckerDictionary(str(word)) })
+// The traffic lights hidden while the page's sidebar is (no rails): they come back with it.
+ipcMain.handle("window:lights", (e, on: boolean) => { who(e); const w = BrowserWindow.fromWebContents(e.sender); if (MAC && w) w.setWindowButtonVisibility(!!on) })
 // `vau dev screenshot` (core/coreops/dev.ts, owner-only): the asking page as a PNG, halved while it's too big for the socket back.
 ipcMain.handle("page:capture", async (e, rect?: { x: number; y: number; width: number; height: number }) => {
   who(e)

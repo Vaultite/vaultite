@@ -4,5 +4,8 @@
   "category": "navigation",
   "alwaysOn": true,
   "name": "Pinned",
-  "description": "Pin files to the sidebar as pages, in your order: drag to reorder, drag a file from the tree to pin it, or Pin in a file's menu. The pinned pages are also in search, in its settings, in the phone's drawer and as tiles on a phone's new tab, and a new device opens on the first one. Off, nothing is pinned or shown; your list stays in .vaultite/pages.json."
+  "description": "Pin files to the sidebar as pages, in your order: drag to reorder, drag a file from the tree to pin it, or Pin in a file's menu. The pinned pages are also in search, in its settings, in the phone's drawer and as tiles on a phone's new tab, and a new device opens on the first one. Off, nothing is pinned or shown; your list stays in .vaultite/pages.json.",
+  "settings": {
+    "show": { "type": "enum", "values": ["list", "tiles"], "labels": { "list": "List", "tiles": "Tiles" }, "default": "list", "label": "Show pinned pages as", "description": "in the open sidebar: a list of their names, or a grid of their icons, each named when pointed at" }
+  }
 }

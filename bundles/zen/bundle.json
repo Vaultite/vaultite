@@ -1,0 +1,7 @@
+{
+  "name": "Zen",
+  "description": "Only what you're working on: the sidebars hide until the pointer reaches the window's edge, no tab bar, panes floating on the window, pinned pages as tiles and Glance to look at a link without leaving the page.",
+  "icon": "wind",
+  "tint": "teal",
+  "sort": 2
+}

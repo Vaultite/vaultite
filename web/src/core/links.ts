@@ -147,6 +147,21 @@ export async function followLink(s: Store, link: { wiki?: string; url?: string; 
     onPick: (c) => { if (c.to) open(c.to); else void create() } })
 }
 
+/** Where a link in drawn Markdown goes, without going: a file (and the heading or block in it), a plugin's detail, or a
+ *  web address; null for what isn't a place (a #tag, a command, another app's link, a note that isn't there). */
+export function linkPlace(s: Store, link: { wiki?: string; url?: string }, from?: string): { file?: string; anchor?: string; detail?: string; url?: string } | null {
+  let wiki = link.wiki ?? ""
+  if (link.url) {
+    if (/^https?:/i.test(link.url)) return { url: link.url }
+    if (/^[a-z][a-z0-9+.-]*:/i.test(link.url)) return null
+    wiki = mdTarget(s, link.url, from)
+  }
+  const [name, anchor] = splitAnchor(wiki)
+  if (!name) return from && anchor ? { file: from, anchor } : null
+  const t = resolver(s)(name, from)
+  return t?.file ? { file: t.file, anchor } : t?.detail ? { detail: t.detail } : null
+}
+
 /** A file: linked by its name or path (a page's with or without its extension, `[[Report.html]]`) and aliases. */
 const fileTarget = (f: VaultFile): Target => ({
   kind: "file", id: f.path.replace(/\.md$/i, ""), title: stem(f.path), detail: "", file: f.path,

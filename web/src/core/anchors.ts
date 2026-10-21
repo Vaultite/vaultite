@@ -38,26 +38,26 @@ export function registerDoc(d: DocView) {
 /** An editor's text changed (the outline follows it). */
 export const docChanged = () => changed()
 
-/** The editor showing this file that's on screen, the focused pane's first. */
-function viewOf(path: string): DocView | null {
-  const shown = docs.filter((d) => d.path === path && d.dom.isConnected && d.dom.getClientRects().length > 0)
+/** The editor showing this file that's on screen, the focused pane's first; `within`: only one inside it. */
+function viewOf(path: string, within?: Element | null): DocView | null {
+  const shown = docs.filter((d) => d.path === path && d.dom.isConnected && d.dom.getClientRects().length > 0 && (!within || within.contains(d.dom)))
   return shown.find((d) => d.dom.closest("#main-scroll")) ?? shown[shown.length - 1] ?? null
 }
 
-let pending: { path: string; anchor: string; until: number } | null = null
+let pending: { path: string; anchor: string; until: number; within?: Element | null } | null = null
 /** A heading drawn outside an editor (a dashboard being read: the Markdown between its blocks), on screen. */
-function drawnHeading(path: string, anchor: string): HTMLElement | null {
+function drawnHeading(path: string, anchor: string, within?: Element | null): HTMLElement | null {
   if (anchor.startsWith("^")) return null
   const want = anchorKey(anchor.split("#").pop() ?? "")
-  const hs = document.querySelectorAll<HTMLElement>(`.file-view[data-path="${CSS.escape(path)}"] :is(h1, h2, h3, h4, h5, h6)`)
+  const hs = (within ?? document).querySelectorAll<HTMLElement>(`.file-view[data-path="${CSS.escape(path)}"] :is(h1, h2, h3, h4, h5, h6)`)
   return [...hs].find((h) => h.getClientRects().length > 0 && anchorKey(h.textContent ?? "") === want) ?? null
 }
 
 function tryPending() {
   if (!pending) return
   if (Date.now() > pending.until) { pending = null; return }
-  const v = viewOf(pending.path)
-  const h = v ? null : drawnHeading(pending.path, pending.anchor)
+  const v = viewOf(pending.path, pending.within)
+  const h = v ? null : drawnHeading(pending.path, pending.anchor, pending.within)
   if (h) { pending = null; cancelRestores(); h.scrollIntoView({ block: "start", behavior: "smooth" }); return }
   if (!v) return
   const { anchor } = pending
@@ -79,8 +79,14 @@ export function openAt(path: string, anchor: string, opts: { newTab?: boolean; p
   const v = viewOf(path)
   if (a && v && !opts.newTab && v.dom.closest("#main-scroll")) return go(v, a)
   openFile(path, opts)
-  if (!a) return
-  pending = { path, anchor: a, until: Date.now() + 4000 }
+  if (a) awaitAnchor({ path, anchor: a })
+}
+
+/** Scroll a file shown inside `within` (a glance's sheet) to a heading or block, once its editor is there. */
+export const showAnchorIn = (within: Element, path: string, anchor: string) => { if (anchor.trim()) awaitAnchor({ path, anchor: anchor.trim(), within }) }
+
+function awaitAnchor(p: { path: string; anchor: string; within?: Element }) {
+  pending = { ...p, until: Date.now() + 4000 }
   let n = 0
   const t = setInterval(() => { tryPending(); if (!pending || ++n > 40) clearInterval(t) }, 100)
 }

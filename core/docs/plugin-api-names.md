@@ -12,6 +12,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `addDays(s, n)`
 - `addKeys(owner, keys)`: Give commands more default keys, by command id, under `owner` (a plugin's id); null takes them away.
 - `AddToTimeline({ path, kinds })`: Add to a file's timeline where it has none yet (a person's profile): the same form, and the line comes with its `## Timeline` section (the server makes it at the file's end).
+- `afterSheets(fn)`: Run `fn` once the open sheets have closed (their history entries popped), so what it shows isn't under a sheet.
 - `Agent`: A coding agent of a plugin that's on (see AgentDef): `name` is its key ("codex"), `plugin` the plugin's id.
 - `AgentAccount`: One of an agent's accounts, as its plugin lists them (`accounts` in its definition): the first is its bare name's.
 - `AgentDay`
@@ -258,6 +259,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `KV({ label, children })`: A label and its value, in a Group.
 - `Layout`: A block's place on a dashboard's grid: COMMON's `wide` and `stack`.
 - `leaveList()`: Give the keyboard back to the focused pane: its editor or terminal, else nothing (so the page's keys work).
+- `linkPlace(s, link, from?)`: Where a link in drawn Markdown goes, without going: a file (and the heading or block in it), a plugin's detail, or a web address; null for what isn't a place (a #tag, a command, another app's…
 - `LinkTarget`: Something a [[wikilink]] can point to: `names` match exactly (any case), after files' names and paths.
 - `linkTo(path, from?)`: A [[link]] to a file (written in `from`), as short as the app's links allow: the shortest path that finds it.
 - `List({ children })`
@@ -456,7 +458,9 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `settingsFile(id)`: Where a plugin's settings are kept.
 - `SettingsSearchEntry`: A row of its settings panel, for the Settings page's search: what it says, and `key`, the row's `data-setting`, to go to it.
 - `settleFile(path)`: Save what's typed in `path`'s open editors now, before something outside the app reads the file (an agent).
+- `SheetActions({ children })`: Buttons for the sheet's header, left of Close (a glance's Open in tab).
 - `SheetHead({ icon, tint, kicker, title, sub, children })`: No `kicker`: the icon sits beside the title (a settings section, where "Settings" above it says nothing new).
+- `showAnchorIn(within, path, anchor)`: Scroll a file shown inside `within` (a glance's sheet) to a heading or block, once its editor is there.
 - `showInTree(path)`: A file or folder in the file tree, flashed (hidden files turned on first when it's in a dot folder).
 - `showLabel`: The same for a toast's action, on something just saved.
 - `shownName(path)`: A file or folder as the app names it: a note without .md, other files with their extension.
@@ -469,6 +473,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `sidebarsChanged()`: Tell the sidebars a plugin's setup changed (a workspace switch).
 - `SidebarSearch({ open })`: The search field: opens the quick switcher (⌘O works without it).
 - `SidebarSetup`: A plugin that keeps the sidebars' setup itself (Workspaces), in sidebars.json's shape: `get` null means sidebars.json applies; call `sidebarsChanged()` when `get`'s answer changes.
+- `SidebarTile({ icon, iconClassName, tint, badge, label, active, onClick, onContextMenu, href, className, … })`: A sidebar tile, a SidebarRow drawn as its icon alone, bigger (a grid of them: Pinned's tiles): named by its tooltip, under it.
 - `SlashItem`: An entry in the editor's slash menu: `text` replaces the "/query" ("$|" marks the cursor), or `run` does something else with the function that types text there.
 - `snippet(md)`: Markdown as one line of plain text: a preview in a row, a card or a search result.
 - `SortableList({ ids, onMove, className, lift, children })`
@@ -505,6 +510,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `takeSchemeLink(url, mod?)`: A plugin that's on takes this link of another app's scheme (`<app>://`): whether one did.
 - `takeSpans()`: The spans ended since the last call.
 - `Target`
+- `TargetView({ store, to, close, setTarget })`: A tab's target drawn outside the panes, in a sheet (a glance): a file as a sheet shows one, a plugin's view as its tab draws it, filling the sheet when it fills a pane.
 - `TerminalAgent`
 - `terminalId(asked?)`: A new terminal session id: 8 letters and digits.
 - `textDiff(before, after, context?)`: `before` against `after`, line by line; with `context`, unchanged runs further than that from a change are folded.

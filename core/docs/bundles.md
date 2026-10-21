@@ -3,9 +3,9 @@ A bundle is a whole setup of the app at once: which plugins are on, their settin
 pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks one on the
 Bundles page (Your setup, atop Settings' menu; a new vault starts from Standard), saves their own setup as one, shares
 it as a file or a repository, and imports others' (Import, or pasting or dropping one on the page: its preview first).
-The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Life OS
-(`life-os`: days, people, health, books, and pages and databases over them), Agents (`agent-cockpit`: coding agents in
-terminals, their activity, other machines and the server).
+The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
+sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Life OS (`life-os`: days, people, health,
+books, and pages and databases over them).
 - A bundle is a folder shaped like `.vaultite/`, plus the vault files it needs. The user's are in
   `.vaultite/bundles/<id>/` (the id is the folder's name):
   ```

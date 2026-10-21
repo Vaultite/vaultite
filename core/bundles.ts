@@ -23,7 +23,7 @@ const ONBOARDING = `${VAULT_BUNDLES}/onboarding.json`
 /** The setup a vault opened for the first time starts from (core/start.ts), and one that skips the offer gets. */
 export const DEFAULT_BUNDLE = "standard"
 /** The app's bundles that were folded into others: a vault that applied one has the one it's in now (tidy). */
-const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os", "self-hosted": "agent-cockpit" }
+const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os" }
 /** Ids a bundle can't take: they're routes. */
 const RESERVED = new Set(["restore", "import", "onboarding", "previous"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
@@ -32,7 +32,7 @@ export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys",
 export const PREVIEW = "preview.png"
 /** The app's own appearance when a key isn't set (web/src/core/prefs.ts DEFAULTS): a bundle setting one of these
  *  removes the key instead, so a vault never holds a default. */
-const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, fileIcons: true, tabBar: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
+const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, fileIcons: true, tabBar: true, paneTitles: true, rails: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
 /** A bundle is read whole each time the bundles are listed: past this it's listed with the error, not read. */
 const MAX_BYTES = 64 * 1024 * 1024
 

@@ -1,6 +1,7 @@
 // The one sheet for every detail view: don't add other modals; open things with openDetail(). A native modal <dialog>;
 // on phones a bottom bar with Done, which asks first when the content has unsaved input (useSheetGuard).
 import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type PointerEvent, type ReactNode } from "react"
+import { createPortal } from "react-dom"
 import { ChevronLeft, X } from "lucide-react"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { onAway } from "@/core/away"
@@ -13,6 +14,17 @@ import { cn } from "@/lib/utils"
 /** The open sheet's content that would be lost, as lines ("Name: My setup"), from each form's guard. */
 const guards = new Set<{ current: () => string[] }>()
 const InSheet = createContext(false)
+const Wide = createContext(false)
+
+/** Whether this is drawn in a wide sheet (a glance): a page there lays out as in a pane, in its column. */
+export const useWideSheet = () => useContext(Wide)
+
+/** Buttons for the sheet's header, left of Close (a glance's Open in tab). */
+export function SheetActions({ children }: { children: ReactNode }) {
+  // (the sheet's header is drawn from the start, open or not: its content finds it as it draws)
+  const host = document.getElementById("sheet-actions")
+  return host ? createPortal(children, host) : null
+}
 
 /** A form in a sheet that isn't saved as you type: closing the sheet while `lost()` has lines asks first, showing them. */
 export function useSheetGuard(lost: () => string[]) {
@@ -36,8 +48,10 @@ function movedTo(detail: string) {
   try { return `file/${encodeURIComponent(whereNow(decodeURIComponent(detail.slice(5)), 0))}` } catch { return detail }
 }
 
-export function DetailSheet({ open, onClose, onBack, backLabel, title, path, depth, still, own, children }: {
+export function DetailSheet({ open, onClose, onBack, backLabel, title, path, depth, still, own, wide, children }: {
   open: boolean; onClose: () => void
+  /** Computers: most of the window, as tall as it allows, its title in a bar (a glance: a page, not a form). */
+  wide?: boolean
   /** Phones: its content draws its own top line (the tab list), so the floating header takes no taps. */
   own?: boolean
   /** Phones: it doesn't slide up (the tab list: the page shrinks into it instead, core/motion.ts). */
@@ -119,7 +133,9 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, open])
 
-  const floating = !onBack
+  // (wide, on a computer: a window's bar, with the title, the content's buttons and Close)
+  const bar = !!wide && isDesktop()
+  const floating = !onBack && !bar
   const letGo = () => { drag.current?.quit(); drag.current = null; setDy(0) }
   const header = {
     onPointerDown: (e: PointerEvent) => {
@@ -154,6 +170,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
         "bg-card md:shadow-2xl md:ring-1 md:ring-border/40 md:bg-card/90 md:backdrop-blur-2xl md:backdrop-saturate-200",
         "inset-0 transition-transform duration-200",
         "md:inset-0 md:m-auto md:max-h-[80dvh] md:w-[calc(100%-2rem)] md:max-w-[560px] md:rounded-[12px]",
+        wide && "md:h-[86dvh] md:max-h-none md:w-[80vw] md:max-w-none md:rounded-[14px]",
         "backdrop:bg-black/35",
         !still && "open:animate-in open:slide-in-from-bottom open:duration-300",
         "md:open:fade-in md:open:zoom-in-95 md:open:slide-in-from-bottom-0 md:open:duration-200",
@@ -164,10 +181,10 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
       <header className={cn(
         "z-10 shrink-0 touch-none select-none",
         floating ? "absolute inset-x-0 top-0" : "relative", own && "max-md:pointer-events-none",
-        compact && "shadow-[0_0.5px_0_var(--border)]", compact && floating && "bg-card",
+        (compact || bar) && "shadow-[0_0.5px_0_var(--border)]", compact && floating && "bg-card",
       )} {...header}>
         <div className="h-[env(safe-area-inset-top)] md:hidden" aria-hidden />
-        <div className="group relative flex h-11 items-center justify-between pr-[7px] pl-1.5 md:h-14 md:pr-[11px] md:pl-3">
+        <div className={cn("group relative flex h-11 items-center justify-between pr-[7px] pl-1.5 md:h-14 md:pr-[11px] md:pl-3", bar && "gap-1 md:h-12")}>
           {onBack ? (
             <button type="button" onClick={back} aria-label={backLabel && backLabel !== "Back" ? `Back to ${backLabel}` : "Back"}
               className="flex min-h-11 max-w-[44%] cursor-pointer items-center gap-0.5 rounded-[8px] pr-2 text-[17px] text-primary active:opacity-50">
@@ -175,7 +192,8 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
               <span className="truncate">{backLabel || "Back"}</span>
             </button>
           ) : <span />}
-          {title && (
+          {bar && <div className={cn("min-w-0 flex-1 truncate text-[15px] font-semibold", !onBack && "pl-2")}>{title}</div>}
+          {title && !bar && (
             <div aria-hidden className={cn(
               "pointer-events-none absolute top-1/2 -translate-y-1/2 truncate text-center text-[17px] font-semibold transition-opacity duration-150",
               onBack ? "inset-x-[128px]" : "inset-x-14 group-has-[#sheet-actions:not(:empty)]:inset-x-[100px]",
@@ -200,7 +218,7 @@ export function DetailSheet({ open, onClose, onBack, backLabel, title, path, dep
         )}>
         {open && (
           <div key={key} className={cn(anim && "animate-in fade-in duration-200", anim === "push" && "slide-in-from-right-8", anim === "pop" && "slide-in-from-left-8")}>
-            <InSheet.Provider value>{children}</InSheet.Provider>
+            <InSheet.Provider value><Wide.Provider value={!!wide}>{children}</Wide.Provider></InSheet.Provider>
           </div>
         )}
       </div>

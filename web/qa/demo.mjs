@@ -80,17 +80,20 @@ async function visit(name, browser) {
   is("a plugin that needs a machine isn't turned on", refused.status === 403 && /needs the Vaultite app/.test(refused.json?.error), refused)
 
   await page.goto("about:blank")
-  await page.goto(`${base}?bundle=agent-cockpit`)
+  await page.goto(`${base}?bundle=zen`)
   await drawn()
   const bundles = (await api("GET", "bundles")).json, plugins = (await api("GET", "config/plugins")).json
-  is("?bundle= starts on that bundle, what needs a machine still off (but what draws made-up data)", bundles?.previous?.bundle === "agent-cockpit" && !plugins?.enabled?.includes("dispatch") && plugins?.enabled?.includes("machines"),
+  is("?bundle= starts on that bundle", bundles?.previous?.bundle === "zen" && !plugins?.enabled?.includes("dispatch"),
     { previous: bundles?.previous, enabled: plugins?.enabled })
 
   // The coding agents of Vaultite's own plugins (built in here) draw their made-up sessions and limits, as the app's do.
-  const agentsOn = ["cursor", "opencode", "openclaw", "hermes"].filter((id) => plugins?.enabled?.includes(id))
+  const AGENTS = ["cursor", "opencode", "openclaw", "hermes"]
+  await api("PATCH", "config/plugins", { enabled: [...new Set([...plugins?.enabled ?? [], ...AGENTS])] })
+  const nowOn = (await api("GET", "config/plugins")).json?.enabled ?? []
+  const agentsOn = AGENTS.filter((id) => nowOn.includes(id))
   const made = await Promise.all(agentsOn.map(async (id) => [id, (await api("GET", `${id}?days=30`)).json?.sessions?.length ?? 0]))
   const cursorLimits = (await api("GET", "cursor?days=30")).json?.limits?.windows?.length ?? 0
-  is("the Agents bundle's coding agents of Vaultite's own are on, with made-up sessions (Cursor's limits too)", agentsOn.length === 4 && made.every(([, n]) => n > 0) && cursorLimits > 0,
+  is("the coding agents of Vaultite's own, turned on, draw made-up sessions (Cursor's limits too)", agentsOn.length === 4 && made.every(([, n]) => n > 0) && cursorLimits > 0,
     { agentsOn, made, cursorLimits })
   await open("Dashboards/Agents.md")
   const titles = ["Search results page", "Retry failed uploads", "Plan the Lighthouse launch", "Map tiles flicker"]

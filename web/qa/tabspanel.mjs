@@ -1,7 +1,7 @@
 // The Tabs panel and the tab bar turned off (appearance `tabBar`). With the panel in the left sidebar: it lists the open
 // tabs, the shown one marked; a click on a row shows its tab; its X closes it; then with tabBar false (written to
 // appearance.json, followed live) each pane's bar shows only the tab on screen and how many it has, and the panel still
-// switches; a split lists each pane under its number. Writes sidebars.json and appearance.json (put back): throwaway
+// switches; a split lists each pane under its number; with paneTitles false too, each pane's top is a thin strip. Writes sidebars.json and appearance.json (put back): throwaway
 // server only.
 //   node web/qa/tabspanel.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -14,7 +14,7 @@ const keep = (f) => { const p = path.join(VAULT, ".vaultite", f); return { p, wa
 const sidebars = keep("sidebars.json"), look = keep("appearance.json")
 const lookNow = () => JSON.parse(look.was ?? "{}")
 writeFileSync(sidebars.p, JSON.stringify({ left: ["tabs:tabs", "pages:pages", "files:files"], right: [], collapsed: [] }) + "\n")
-writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true }) + "\n")
+writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true, paneTitles: true }) + "\n")
 // Two made-up notes the served vault has (the sandbox's).
 const notes = ["Notes/Lisbon trip.md", "Notes/How this vault works.md", "Start here.md"].filter((p) => existsSync(path.join(VAULT, p)))
 if (notes.length < 3) { console.error("needs the sandbox vault (vau sandbox <folder>)"); process.exit(2) }
@@ -48,7 +48,7 @@ try {
   await page.screenshot({ path: `${OUT}panel.png` })
 
   // The bar off, live.
-  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false }) + "\n")
+  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: true }) + "\n")
   const off = await until(() => page.$("[data-tabs-hidden]"), 8000)
   check("tabBar false: the bar shows no tabs", !!off && (await page.$$("[data-tab-bar] [role=tab]")).length === 0)
   const title = () => page.$eval("[data-pane-title]", (e) => e.textContent.trim()).catch(() => null)
@@ -66,6 +66,14 @@ try {
   const heads = await page.$$eval("[data-tabs-pane]", (els) => els.length)
   check("a split lists each pane under its number", heads === 2 && (await page.$$("[data-pane-title]")).length === 2, heads)
   await page.screenshot({ path: `${OUT}split.png` })
+
+  // Nor pane titles: a thin strip over each pane, the panel still switching.
+  writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: false, paneTitles: false }) + "\n")
+  const bare = await until(async () => (await page.$$("[data-bare]")).length === 2, 8000)
+  // (the top-right one keeps the right sidebar's toggle clear: no right sidebar here)
+  const heights = await page.$$eval("[data-bare]", (els) => els.map((e) => [!!e.closest("[data-right-corner]"), e.getBoundingClientRect().height]))
+  check("paneTitles false: each pane's top is a thin strip, no title", bare && heights.every(([corner, h]) => (corner ? h === 40 : h > 0 && h < 16)) && !(await page.$("[data-pane-title]")), heights)
+  await page.screenshot({ path: `${OUT}bare.png` })
 
   // Back on.
   writeFileSync(look.p, JSON.stringify({ ...lookNow(), tabBar: true }) + "\n")

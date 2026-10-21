@@ -1,0 +1,7 @@
+{
+  "disabled": [],
+  "enabled": [
+    "glance",
+    "web-viewer"
+  ]
+}

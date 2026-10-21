@@ -1,0 +1,13 @@
+{
+  "theme": "system",
+  "scheme": "rose-pine",
+  "density": "comfortable",
+  "fileIcons": true,
+  "tabBar": false,
+  "paneTitles": false,
+  "rails": false,
+  "statusBar": [],
+  "snippets": [
+    "Floating panes"
+  ]
+}

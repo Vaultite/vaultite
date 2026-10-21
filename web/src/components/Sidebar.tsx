@@ -349,6 +349,26 @@ export function SidebarRow({ icon: Icon, iconClassName, tint, badge, tag, label,
   return swipe && coarse && open ? <SwipeRow actions={swipe} className="rounded-[5px]">{row}</SwipeRow> : row
 }
 
+/** A sidebar tile, a SidebarRow drawn as its icon alone, bigger (a grid of them: Pinned's tiles): named by its
+ *  tooltip, under it. Its icon keeps a row's colours; active, the tile stands out as a segmented control's choice. */
+export function SidebarTile({ icon: Icon, iconClassName, tint, badge, label, active, onClick, onContextMenu, href, className, ...rest }: {
+  icon: React.ComponentType<{ className?: string; strokeWidth?: number; style?: React.CSSProperties }>
+  label: string; active?: boolean; href?: string; className?: string; iconClassName?: string; tint?: string; badge?: boolean
+  onClick?: (e: React.MouseEvent) => void; onContextMenu?: (e: React.MouseEvent) => void
+} & Record<`data-${string}`, string | undefined>) {
+  return (
+    <a href={href ?? "#"} data-keyrow {...rest} data-tip={label} aria-label={label} aria-current={active ? "page" : undefined}
+      onClick={(e) => { if (!onClick) return; e.preventDefault(); onClick(e) }} onContextMenu={onContextMenu}
+      onAuxClick={(e) => { if (e.button !== 1) return; e.preventDefault(); onClick?.(e) }}
+      className={cn("grid h-10 min-w-0 place-items-center rounded-[8px] transition-colors",
+        active ? "bg-[var(--segment-on)] shadow-[0_1px_3px_rgb(0_0_0/0.1)] ring-[0.5px] ring-border" : "bg-foreground/[0.05] hover:bg-foreground/[0.09]", className)}>
+      <Badged on={badge}>
+        <Icon className={cn("size-[18px] shrink-0", tint ? undefined : active ? "text-primary" : "text-muted-foreground", iconClassName)} strokeWidth={2} style={tint ? { color: tint } : undefined} />
+      </Badged>
+    </a>
+  )
+}
+
 /** The search field: opens the quick switcher (⌘O works without it). Its 0.5px border and its padding make a row's
  *  `pl-1.5`, so its icon lines up with theirs. */
 export function SidebarSearch({ open }: SidebarCtx) {

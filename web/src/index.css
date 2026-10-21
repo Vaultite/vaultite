@@ -888,7 +888,9 @@ details.callout[open] > summary .callout-fold { transform: rotate(90deg); }
 
 /* With no right sidebar on screen (data-right-sidebar, App.tsx), its toggle (fixed in the window's top-right corner)
    sits at the end of the top-right pane's tab bar: the bar keeps clear of it. */
-:root:not([data-right-sidebar]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--spacing) * 10); }
+:root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [role="tablist"] { padding-right: calc(var(--spacing) * 10); }
+/* Without pane titles, a corner the toggle sits in keeps a title bar's height, so it covers no page. */
+:root:not([data-right-sidebar]):not([data-no-rails]) [data-right-corner] > [data-bare] { height: calc(var(--spacing) * 10); }
 /* The desktop app (Electron: the preload sets data-electron on <html>; a browser never matches these). On a Mac
    (data-platform=darwin) its title bar is hidden and the traffic lights sit in the sidebar's top row: that row and the
    empty space of the top tab bars drag the window, the sidebar toggle moves right of the lights, and with the sidebar
@@ -915,6 +917,7 @@ html[data-electron] :is(body > :not(#root), .fixed.inset-0, [role=menu], [role=d
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-titlebar] { padding-left: calc(88px + var(--spacing) * 6); }
 html[data-electron][data-platform=darwin]:not([data-fullscreen]) [data-sidebar-toggle=""] { left: 88px; }
 html[data-electron][data-platform=darwin][data-left-rail]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
+html[data-electron][data-platform=darwin]:is([data-left-rail], [data-popout]):not([data-fullscreen]) [data-corner] > [data-bare] { height: calc(var(--spacing) * 10); }
 /* A pop-out window (no sidebars): its top-left tab bar makes room for the lights. */
 html[data-electron][data-platform=darwin][data-popout]:not([data-fullscreen]) [data-corner] > [role="tablist"] { padding-left: calc(88px - var(--spacing)); }
 /* In step with the panes sliding (Workspace: transition-[left] duration-200 ease-out), so the first tab never passes
