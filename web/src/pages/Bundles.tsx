@@ -10,7 +10,7 @@ import type { Store } from "@/core/data"
 import { fmtAgo } from "@/core/data"
 import {
   addIncoming, agentPrompt, applyBundle, bundleText, deleteBundle, exportBundle, givenImport, importText, incomingOf, isBundleText, openImport, previewOf,
-  previewUrl, refreshBundles, restoreSetup, runsCode, saveBundle, shareOf, skipOnboarding, startSave, takenShot, useBundles, type BundleInfo, type Incoming,
+  refreshBundles, restoreSetup, runsCode, saveBundle, shareOf, skipOnboarding, startSave, takenShot, useBundles, usePicture, type BundleInfo, type Incoming,
   type Plan, type ShareItem,
 } from "@/core/bundles"
 import { copyText } from "@/core/richmd"
@@ -176,8 +176,8 @@ function MiniPage({ b }: { b: BundleInfo }) {
 /** A small picture of the app a bundle makes: its preview.png, else a sketch in its own colours (its sidebars and the
  *  page it opens on). */
 function Thumb({ b }: { b: BundleInfo }) {
-  const url = previewUrl(b)
-  if (url) return <img src={url} alt="" draggable={false} className="h-[112px] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
+  const url = usePicture(b)
+  if (url) return <img src={url} alt="" draggable={false} className="aspect-[16/10] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
   return <Sketch b={b} />
 }
 
@@ -189,7 +189,7 @@ function Sketch({ b }: { b: BundleInfo }) {
   const folded = b.panels?.collapsed ?? []
   return (
     <div aria-hidden data-scheme={scheme === "default" ? undefined : scheme}
-      className={cn("scheme-preview flex h-[112px] overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border bg-background text-foreground", dark && "dark")}>
+      className={cn("scheme-preview flex aspect-[16/10] overflow-hidden rounded-t-[11px] border-b-[0.5px] border-border bg-background text-foreground", dark && "dark")}>
       {left.length > 0 && (
         <div className={cn("flex shrink-0 flex-col gap-[7px] overflow-hidden border-r-[0.5px] border-border bg-sidebar px-2.5 pt-2.5", right.length ? "w-[32%]" : "w-[36%]")}>
           {left.map((k) => <MiniPanel key={k} k={k} b={b} folded={folded.includes(k)} />)}
@@ -381,7 +381,8 @@ export function Bundles({ store, section }: { store: Store; section?: boolean })
 
 // ---------- a bundle's preview: what applying it changes here ----------
 
-type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }> }
+/** `file`: an import's export (its pictures are in it). */
+type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }>; file?: unknown }
 
 const showValue = (v: unknown) => (v === null || v === undefined ? "default" : typeof v === "boolean" ? (v ? "on" : "off") : Array.isArray(v) ? v.join(", ") || "none" : String(v))
 
@@ -547,6 +548,7 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
   const code = runsCode(plan)
   const pins = plan.pins
   const added = plan.plugins.added ?? []
+  const picture = usePicture(b, p.file)
   return (
     <>
       {b.on !== null && <p className="-mt-2 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-reach>Applies to every window and device on this vault; agents lose the tools of plugins it turns off.</p>}
@@ -560,7 +562,7 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
         </div>
       )}
       {!!b.problems.length && <p className="mb-4 text-[14px] text-[var(--red)]">{b.problems.join(". ")}</p>}
-      {previewUrl(b) && <img src={previewUrl(b)!} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
+      {picture && <img src={picture} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
       <div className="grid grid-cols-1 gap-3">
         {(plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0 || added.length > 0) && (
           <Panel title="Plugins" icon={Puzzle}>

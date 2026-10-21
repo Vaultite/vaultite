@@ -13,7 +13,7 @@ const ROOT = path.resolve(import.meta.dirname, "..")
 const QA = path.join(ROOT, "web/qa")
 const OFFICIAL = path.resolve(process.env.VAULTITE_PLUGINS ?? path.join(ROOT, "..", "vaultite-plugins"))
 /** Not tests (benchmarks, a library, the smoke test), needing more than one machine, or another build (the demo's). */
-const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "termhost", "demo"])
+const SKIP = new Set(["boot", "perf", "stability", "termperf", "shots", "subjects", "machines", "termhost", "demo", "bundle-shots"])
 const TIMEOUT = 8 * 60_000
 
 const argv = process.argv.slice(2)

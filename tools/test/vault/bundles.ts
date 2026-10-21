@@ -140,16 +140,16 @@ export default async ($: VaultTest) => {
     // Sharing leaves out what's the user's own: the picture, a page with their text, pins to their notes.
     write(".vaultite/bundles/my-desk/Dashboards/Desk.md", "---\ntype: dashboard\n---\n\nPlans for Bob's party\n\n```block-inbox\n```\n")
     write(".vaultite/bundles/my-desk/Dashboards/Plain.md", "---\ntype: dashboard\n---\n\n## Today\n\n```block-inbox\n```\n")
-    fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/my-desk/preview.png"), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]))
+    for (const f of ["preview.png", "preview-dark.png"]) fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/my-desk", f), Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00]))
     ;[code, r] = await api("GET", "bundles/my-desk/share")
     const item = (f: string) => r.items?.find((x: Any) => x.path === f)
     check("bundles: share lists the parts, the user's own off", code === 200 && item("preview.png")?.on === false && item("Dashboards/Desk.md")?.own && !item("Dashboards/Desk.md").on &&
       item("Dashboards/Plain.md")?.on && item("plugins/page-preview/data.json")?.keys?.includes("delay") && r.dropped.join() === "People/Alice Park.md", r)
     let out = JSON.parse((await api("GET", "bundles/my-desk/export"))[1])
-    check("bundles: shared, it's without them: the pin to a note of the user's is taken out, the app's page kept", !out.files["preview.png"] && !out.files["Dashboards/Desk.md"] &&
+    check("bundles: shared, it's without them: the pin to a note of the user's is taken out, the app's page kept", !out.files["preview.png"] && !out.files["preview-dark.png"] && !out.files["Dashboards/Desk.md"] &&
       !!out.files["Dashboards/Plain.md"] && out.files["pages.json"].pinned.join() === "Dashboards/People.md", Object.keys(out.files))
     out = JSON.parse((await api("POST", "bundles/my-desk/export", { include: ["preview.png"], leave: ["plugins/page-preview/data.json"] }))[1])
-    check("bundles: what's sent can be chosen", !!out.files["preview.png"]?.base64 && !out.files["plugins/page-preview/data.json"], Object.keys(out.files))
+    check("bundles: what's sent can be chosen (the picture: light and dark)", !!out.files["preview.png"]?.base64 && !!out.files["preview-dark.png"]?.base64 && !out.files["plugins/page-preview/data.json"], Object.keys(out.files))
     out = JSON.parse((await api("GET", "bundles/my-desk/export?all=1"))[1])
     check("bundles: all of it, as kept (a delete's Undo)", !!out.files["preview.png"] && !!out.files["Dashboards/Desk.md"] && out.files["pages.json"].pinned.includes("People/Alice Park.md"), Object.keys(out.files))
 
@@ -193,6 +193,14 @@ export default async ($: VaultTest) => {
     fs.rmSync(path.join(VAULT, "Dashboards/Lamp room.md"))
     ;[code, r] = await api("GET", "bundles/lamp-light/preview.png")
     check("bundles: its picture is served as its bytes", code === 200 && Buffer.isBuffer(r) && r.equals(png), [code, typeof r])
+    ;[code] = await api("GET", "bundles/lamp-light/preview-dark.png")
+    const lamp = (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === "lamp-light")
+    check("bundles: a dark picture is its own, null when there's none", code === 404 && !!lamp.preview && lamp.previewDark === null, [code, lamp])
+    fs.writeFileSync(path.join(VAULT, ".vaultite/bundles/lamp-light/preview-dark.png"), png)
+    ;[code, r] = await api("GET", "bundles/lamp-light/preview-dark.png")
+    const dark = (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === "lamp-light")
+    check("bundles: ...and served as the light one is", code === 200 && Buffer.isBuffer(r) && r.equals(png) && dark.previewDark === dark.preview, [code, dark])
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/lamp-light/preview-dark.png"))
     ;[code] = await api("POST", "bundles", { name: "Not a picture", preview: Buffer.from("hello").toString("base64") })
     check("bundles: a picture that isn't a PNG is refused", code === 400, code)
     setConf("appearance", { ...appearanceBefore, scheme: "dracula" })

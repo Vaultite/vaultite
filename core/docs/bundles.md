@@ -19,6 +19,7 @@ books, and pages and databases over them).
   hotkeys.json       optional
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page)
   preview.png        its card's picture: a screenshot of the app it makes (the desktop app takes one when saving)
+  preview-dark.png   the same in dark, shown while the app is dark (each picture stands in for the other)
   plugins/<id>/data.json   a plugin's settings: only the keys that differ from its defaults
   plugins/<id>/      with a manifest.json: a vault plugin made in the vault that it brings (it runs code: applying asks the user, and their yes
                      allows it on that machine; one already in the vault keeps waiting until allowed on its own)

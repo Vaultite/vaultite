@@ -1,6 +1,6 @@
 // Bundles in the app: its side of the API (list, preview, apply with Undo, restore, save, export, import). Format and
 // applying are the server's (core/bundles.ts); the page is pages/Bundles.tsx.
-import { useEffect } from "react"
+import { useEffect, useSyncExternalStore } from "react"
 import { getStore, reload } from "@/core/data"
 import { del, get, post, request } from "@/core/http"
 import { isDesktop } from "@/core/platform"
@@ -13,6 +13,8 @@ import { currentWorkspace } from "@/core/scope"
 import type { Sidebars } from "../../../core/sidebars.ts"
 import { parseRepo, repoText } from "../../../core/bundlelinks.ts"
 import { signal } from "@/core/signal"
+import { onLook } from "@/core/appearance"
+import { isDark } from "@/lib/utils"
 
 export type BundleInfo = {
   id: string; source: "app" | "vault"; name: string; description: string; icon: string; tint: string; author: string; sort: number
@@ -28,8 +30,8 @@ export type BundleInfo = {
   /** The repository it was imported from, or null. */
   from: string | null
   hotkeys: boolean
-  /** Its preview.png's version (the card's picture), or null: the card draws a sketch. */
-  preview: string | null
+  /** Its preview.png's and preview-dark.png's versions (the card's picture, light and dark), or null: none. */
+  preview: string | null; previewDark: string | null
   problems: string[]
   /** The setup is this bundle's: applying it would change nothing. */
   inUse?: boolean
@@ -124,8 +126,15 @@ export type SaveOptions = { name: string; description?: string; icon?: string; h
   /** The card's picture: a PNG as base64. */
   preview?: string }
 
-/** A bundle's card picture, when it has one. */
-export const previewUrl = (b: Pick<BundleInfo, "id" | "preview">) => (b.preview ? `api/bundles/${encodeURIComponent(b.id)}/preview.png?v=${b.preview}` : null)
+/** A bundle's card picture as the app looks now: its dark one while dark, each the other's fallback; null: it has none
+ *  (the card draws a sketch). `file`: an import's export, which holds them (it isn't among the bundles yet). */
+export function usePicture(b: Pick<BundleInfo, "id" | "preview" | "previewDark">, file?: unknown): string | null {
+  const dark = useSyncExternalStore(onLook, isDark)
+  const [name, v] = (dark && b.previewDark) || !b.preview ? ["preview-dark.png", b.previewDark] : ["preview.png", b.preview]
+  if (!v) return null
+  const inline = (file as { files?: Record<string, { base64?: string } | undefined> } | undefined)?.files?.[name]?.base64
+  return inline ? `data:image/png;base64,${inline}` : `api/bundles/${encodeURIComponent(b.id)}/${name}?v=${v}`
+}
 
 // The window as it was when saving began (the desktop app's), before the sheet covered it: the new bundle's picture.
 let shot: string | null = null

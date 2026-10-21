@@ -1,5 +1,6 @@
 // Every plugin follows the rules (core/rules.ts, plugins/CLAUDE.md), and so do the ops, bundles, skills and block fences.
 // node tools/check_plugins.ts [vault] | --plugin <folder> [--tag v1.2.0] [--installable]   (npm run check)
+import { isUtf8 } from "node:buffer"
 import fs from "node:fs"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
@@ -210,11 +211,12 @@ for (const [id, [tier, d]] of found) {
 for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort() : []) {
   const dir = path.join(APP_BUNDLES, id)
   if (!fs.statSync(dir).isDirectory()) continue
-  const files: Record<string, string> = {}
-  for (const f of walk(dir)) files[path.relative(dir, f).split(path.sep).join("/")] = fs.readFileSync(f, "utf8")
+  const files: Record<string, string | Buffer> = {}
+  // (a picture or a font as its bytes, as the app reads it)
+  for (const f of walk(dir)) { const b = fs.readFileSync(f); files[path.relative(dir, f).split(path.sep).join("/")] = isUtf8(b) ? b.toString("utf8") : b }
   const at = `bundles/${id}`
   problems.push(...bundleProblems(files).map((x) => `${at}: ${x}`))
-  const json = (f: string) => { try { return JSON.parse(files[f] ?? "null") } catch { return null } }
+  const json = (f: string) => { try { return JSON.parse(String(files[f] ?? "null")) } catch { return null } }
   const pj = json("plugins.json")
   // (one it installs, an official plugin, is checked in its own repository)
   const installs = new Set(Object.keys(pj?.install ?? {}))

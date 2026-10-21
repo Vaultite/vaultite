@@ -1,6 +1,6 @@
 // A bundle in a GitHub repository, fetched by the visitor's browser: the demo has no git, so this is core/bundles.ts
 // importFrom's clone over GitHub's API (the file list, its tags) and raw files, made into an export to import.
-import { CONFIGS, PREVIEW, slug } from "../../core/bundles.ts"
+import { CONFIGS, PICTURES, slug } from "../../core/bundles.ts"
 import { parseRepo, repoText } from "../../core/bundlelinks.ts"
 import { HTTPError } from "../../core/plugins.ts"
 import { compareVersions, tagVersion } from "../../core/version.ts"
@@ -50,7 +50,7 @@ export async function fromGitHub(given: string, f: Fetch = fetch): Promise<Expor
     const conf = async (name: string) => { try { return all.some((e) => e.rel === name) ? JSON.parse(text(await raw(name)) ?? "") : null } catch { return null } }
     const pages = await conf("pages.json"), newtab = await conf("newtab.json")
     const named = [...(Array.isArray(pages?.pinned) ? pages.pinned : []), String(newtab?.page ?? "")]
-    const own = (rel: string) => rel.includes("/") || rel === "bundle.json" || rel === PREVIEW || CONFIGS.some((c) => rel === `${c}.json`) || named.includes(rel)
+    const own = (rel: string) => rel.includes("/") || rel === "bundle.json" || PICTURES.includes(rel) || CONFIGS.some((c) => rel === `${c}.json`) || named.includes(rel)
     const take = all.filter((e) => own(e.rel))
     if (take.length > MAX_FILES || take.reduce((n, e) => n + e.size, 0) > MAX_BYTES) throw new HTTPError(413, "that bundle is too big: over 64 MB in all")
     files = {}

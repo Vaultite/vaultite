@@ -21,6 +21,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Mac: a sidebar without its rail (Zen) slides in carrying the window's traffic lights and its toggle, set in its top
   row as beside the pinned sidebar, instead of the lights hanging over its corner; the lights sit centred on that row
   in either density.
+- Bundles: the app's own bundles show a real picture of the app they make, in light or dark as the app is.
 
 ## 0.6.3 (2026-10-20)
 

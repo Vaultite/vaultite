@@ -28,8 +28,10 @@ const FOLDED: Record<string, string> = { minimal: "standard", pages: "life-os" }
 const RESERVED = new Set(["restore", "import", "onboarding", "previous"])
 /** The settings files a bundle may hold, as the vault's .vaultite/ has them. */
 export const CONFIGS = ["plugins", "sidebars", "pages", "appearance", "hotkeys", "newtab"] as const
-/** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes. */
-export const PREVIEW = "preview.png"
+/** The picture a bundle's card shows instead of its sketch: a screenshot of the app it makes; its dark one is shown
+ *  when the app is dark (each falls back to the other). */
+export const PREVIEW = "preview.png", PREVIEW_DARK = "preview-dark.png"
+export const PICTURES: string[] = [PREVIEW, PREVIEW_DARK]
 /** The app's own appearance when a key isn't set (web/src/core/prefs.ts DEFAULTS): a bundle setting one of these
  *  removes the key instead, so a vault never holds a default. */
 const LOOK_DEFAULTS: Item = { theme: "system", scheme: "gruvbox", density: "compact", sidebarScroll: "panels", panelDividers: false, quickTextSize: false, fileIcons: true, tabBar: true, paneTitles: true, rails: true, lineNumbers: false, interfaceFont: "", textFont: "", monoFont: "", snippets: [] }
@@ -157,7 +159,7 @@ function parts(files: Files) {
   const settings = new Map<string, string>() // plugin id -> its data.json path
   const vaultFiles: string[] = [], hidden: string[] = [] // vault paths, and .vaultite/ ones (themes, snippets, plugin folders)
   for (const f of Object.keys(files)) {
-    if (f === "bundle.json" || f === PREVIEW || CONFIGS.some((c) => f === `${c}.json`)) continue
+    if (f === "bundle.json" || PICTURES.includes(f) || CONFIGS.some((c) => f === `${c}.json`)) continue
     const m = /^plugins\/([^/]+)\/(.+)$/.exec(f)
     if (m) {
       if (code.has(m[1])) hidden.push(`.vaultite/${f}`)
@@ -185,8 +187,8 @@ export type Info = {
   /** The repository it was imported from (bundle.json's `from`), or null. */
   from: string | null
   hotkeys: boolean
-  /** Its preview.png's version (GET /api/bundles/<id>/preview.png), or null when it has none. */
-  preview: string | null
+  /** Its preview.png's and preview-dark.png's versions (GET /api/bundles/<id>/<file>), or null when it has none. */
+  preview: string | null; previewDark: string | null
   problems: string[]
   /** The setup is this bundle's (the list's, for the workspace it's asked for): applying it would change nothing. */
   inUse?: boolean
@@ -236,7 +238,7 @@ function info(b: Bundle, host: Host): Info {
     sort: typeof m.sort === "number" ? m.sort : 1000,
     author: str(m.author), theme: str(look.theme) || null, scheme: str(look.scheme) || null, density: str(look.density) || null,
     on, pinned, panels, home: homeOf(b, host, pinned), code: [...parts(b.files).code, ...installsOf(b.files, host).map((x) => x.id)], from: str(m.from) || null, hotkeys: b.files["hotkeys.json"] !== undefined,
-    preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null,
+    preview: Buffer.isBuffer(b.files[PREVIEW]) ? hash(b.files[PREVIEW]) : null, previewDark: Buffer.isBuffer(b.files[PREVIEW_DARK]) ? hash(b.files[PREVIEW_DARK]) : null,
     problems: b.error ? [b.error] : problems(b.files),
   }
 }
@@ -261,7 +263,7 @@ export function problems(files: Files): string[] {
   if (pg && pg.pinned !== undefined && !Array.isArray(pg.pinned)) out.push("pages.json: pinned must be a list of vault paths")
   const sb = ok("sidebars.json")
   if (sb && Object.keys(sb).length && !readSidebars(sb)) out.push("sidebars.json needs left or right (a list of panels), or {} for the default")
-  if (files[PREVIEW] !== undefined && !isPng(files[PREVIEW])) out.push(`${PREVIEW} isn't a PNG image`)
+  for (const f of PICTURES) if (files[f] !== undefined && !isPng(files[f])) out.push(`${f} isn't a PNG image`)
   return out
 }
 
@@ -889,7 +891,7 @@ const ownText = (t: string) => t.replace(/^---\n[\s\S]*?\n---\n?/, "").replace(/
 function shareOf(b: Bundle, host: Host): { items: ShareItem[]; dropped: string[] } {
   const { code, settings, vaultFiles } = parts(b.files)
   const items: ShareItem[] = []
-  if (b.files[PREVIEW] !== undefined) items.push({ path: PREVIEW, kind: "picture", label: "Picture", on: false })
+  if (PICTURES.some((f) => b.files[f] !== undefined)) items.push({ path: PREVIEW, kind: "picture", label: "Picture", on: false })
   for (const f of vaultFiles) {
     const t = b.files[f]
     const page = typeof t === "string" && (f.endsWith(".md") || f.endsWith(".base"))
@@ -927,7 +929,8 @@ function shared(b: Bundle, host: Host, o: { all?: boolean; include?: string[]; l
   if (o.all || b.error) return b
   const { items, dropped: gone } = shareOf(b, host)
   const out = items.filter((x) => !(x.on || o.include?.includes(x.path)) || !!o.leave?.includes(x.path)).map((x) => x.path)
-  const left = (f: string) => out.some((x) => (x.endsWith("/") ? f.startsWith(x) : f === x))
+  // (the picture's item is its light and dark ones)
+  const left = (f: string) => out.some((x) => (x.endsWith("/") ? f.startsWith(x) : f === x || (x === PREVIEW && f === PREVIEW_DARK)))
   const files: Files = Object.fromEntries(Object.entries(b.files).filter(([f]) => !left(f)))
   const drop = new Set([...gone, ...out])
   const pg = (() => { try { return json(files, "pages.json") } catch { return null } })()
@@ -985,7 +988,7 @@ async function fetchFrom(given: string): Promise<{ files: Files; id: string | nu
       const all = readFolder(dir)
       let named: string[] = []
       try { named = [...strs(json(all, "pages.json")?.pinned), String(json(all, "newtab.json")?.page ?? "")] } catch { /* problems says */ }
-      const own = (f: string) => f.includes("/") || f === "bundle.json" || f === PREVIEW || CONFIGS.some((c) => f === `${c}.json`) || named.includes(f)
+      const own = (f: string) => f.includes("/") || f === "bundle.json" || PICTURES.includes(f) || CONFIGS.some((c) => f === `${c}.json`) || named.includes(f)
       files = Object.fromEntries(Object.entries(all).filter(([f]) => own(f)))
     } else {
       const one = fs.readdirSync(dir).filter((n) => n.endsWith(".bundle.json"))
@@ -1090,8 +1093,8 @@ export async function handle(host: Host, method: string, parts: string[], query:
     return { deleted: id, trashed: v.toTrash(`${VAULT_BUNDLES}/${id}`) }
   }
   if (parts.length === 2 && action === "apply" && method === "POST") return apply(find(v, id), host, workspaceOf(body.workspace), body.allowCode === true, { offAdded: body.offAdded === true })
-  if (parts.length === 2 && action === PREVIEW && method === "GET") {
-    const png = find(v, id).files[PREVIEW]
+  if (parts.length === 2 && PICTURES.includes(action) && method === "GET") {
+    const png = find(v, id).files[action]
     if (!isPng(png)) throw new HTTPError(404, `${id} has no preview`)
     return new Text(png as Buffer, "image/png", { "Cache-Control": "private, max-age=31536000, immutable" })
   }
