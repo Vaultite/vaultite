@@ -65,7 +65,7 @@ function mdTarget(s: Store, href: string, from?: string) {
   return `${hit.replace(/\.md$/i, "")}${anchor ? `#${anchor}` : ""}`
 }
 
-/** A plugin that's on takes this web link (the Web viewer opens it in a tab): whether one did. */
+/** A plugin that's on takes this web link (the Browser opens it in a tab): whether one did. */
 function takeWebLink(url: string, mod: boolean) {
   const { disabled, order } = getPrefs()
   for (const p of active(disabled, order)) {
@@ -84,7 +84,7 @@ export function takeSchemeLink(url: string, mod = false) {
 }
 const OTHER_SCHEME = /^(?!https?:|mailto:|tel:|javascript:|data:|blob:|file:|vaultite:)[a-z][a-z0-9+.-]*:/i
 
-/** Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Web viewer), else the
+/** Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the
  *  system browser (a new browser tab on the web). `mod`: ⌘-clicked. */
 export function openWebLink(url: string, mod = false) {
   if (!takeWebLink(url, mod)) window.open(url, "_blank", "noopener,noreferrer")

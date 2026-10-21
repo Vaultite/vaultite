@@ -1,7 +1,9 @@
-// The Web viewer's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
+// The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
 import { app, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, session, shell, type Session, systemPreferences,
   WebContentsView, type WebContents } from "electron"
+import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
+import { openElsewhere } from "./browser/default.ts"
 import { writeAtomic } from "./setup.ts"
 import { execFile } from "node:child_process"
 import crypto from "node:crypto"
@@ -9,7 +11,7 @@ import fs from "node:fs"
 import path from "node:path"
 
 export type WebRect = { x: number; y: number; width: number; height: number }
-export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string }
+export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; audible?: boolean; muted?: boolean }
 type Page = { id: number; win: BrowserWindow; view: WebContentsView; profile: string; held: boolean; closing: boolean; let: number; error?: string
   /** The icon addresses it last told (page-favicon-updated), so the same list isn't fetched again. */
   icons?: string
@@ -21,14 +23,15 @@ export type WebSite = { site: string; account?: string; other?: boolean }
 
 const PARTITION = "persist:web"
 /** The session's partition for a profile ("" or a workspace's "2"; anything else is the shared one). */
-const partitionOf = (profile: string) => (/^[a-z0-9-]{1,32}$/.test(profile) ? `${PARTITION}-${profile}` : PARTITION)
+export const partitionOf = (profile: string) => (/^[a-z0-9-]{1,32}$/.test(profile) ? `${PARTITION}-${profile}` : PARTITION)
 const profileOf = (x: unknown) => (typeof x === "string" && /^[a-z0-9-]{1,32}$/.test(x) ? x : "")
 /** Pages let go of that each window keeps even when the Mac runs short of memory (more are kept until it does, the
  *  oldest ending first then, like Chrome's discarding). */
 const KEEP = 4
 const MAC = process.platform === "darwin"
 /** Keys a page keeps even when the app has a shortcut on them: editing text, finding, a rich editor's marks. */
-const PAGE_KEYS = new Set(["a", "c", "v", "x", "z", "shift+z", "y", "f", "g", "shift+g", "b", "i", "u", "k", "shift+v", "arrowleft",
+// (⌘Y isn't redo on a Mac: it's History there, as in Chrome)
+const PAGE_KEYS = new Set(["a", "c", "v", "x", "z", "shift+z", ...(MAC ? [] : ["y"]), "f", "g", "shift+g", "b", "i", "u", "k", "shift+v", "arrowleft",
   "arrowright", "arrowup", "arrowdown", "backspace", "delete", "enter", "shift+enter", "tab"].map((k) => `mod+${k}`))
 
 const pages = new Map<number, Page>()
@@ -38,6 +41,8 @@ let next = 1
 const sessions = new Map<string, Session>()
 
 const web = (u: string) => /^https?:\/\//i.test(u)
+/** What a page may show: the web, and what a feature of the engine adds (an extension's own pages). */
+const shows = (u: string) => web(u) || engineOpens(u)
 /** Images asked for with Save image to vault (their addresses), whose downloads go to the window instead. */
 const toVault = new Set<string>()
 const pageOf = (wc: WebContents) => [...pages.values()].find((p) => p.view.webContents === wc)
@@ -77,6 +82,7 @@ function webSession(profile: string) {
     })
   })
   sessions.set(profile, s)
+  sessionMade(s, profile)
   return s
 }
 
@@ -157,7 +163,8 @@ const tell = (win: BrowserWindow, msg: Record<string, unknown>) => { if (!win.is
 function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  return { url: wc.getURL() || "", title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}) }
+  return { url: wc.getURL() || "", title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
+    ...(wc.isCurrentlyAudible() ? { audible: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
@@ -212,26 +219,32 @@ async function otherApp(p: Page, to: string) {
 }
 
 function make(win: BrowserWindow, url: string, profile: string): Page {
+  // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
+  // extension's own pages embedded in it)
   const view = new WebContentsView({
-    webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: false, webSecurity: true, spellcheck: true },
+    webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, webSecurity: true, spellcheck: true },
   })
   view.setBackgroundColor("#ffffff")
   view.setVisible(false)
+  // (a size before it's first shown: a page laid out at none has nothing an agent could click)
+  const [w, h] = win.getContentSize()
+  view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   win.contentView.addChildView(view)
   const p: Page = { id: next++, win, view, profile, held: true, closing: false, let: 0 }
   pages.set(p.id, p)
   const wc = view.webContents
+  pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible() })
 
   // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.
   const refuse = (e: { preventDefault: () => void }, to: string) => {
-    if (web(to)) return
+    if (shows(to)) return
     e.preventDefault()
     void otherApp(p, to)
   }
   wc.on("will-navigate", (e) => refuse(e, e.url))
   wc.on("will-redirect", (e) => refuse(e, e.url))
   wc.setWindowOpenHandler(({ url: to, disposition, features }) => {
-    if (!web(to)) { void otherApp(p, to); return { action: "deny" } }
+    if (!shows(to)) { void otherApp(p, to); return { action: "deny" } }
     // A popup with a size (signing in with another site): a small window in the same session, which can answer the page.
     if (disposition === "new-window" && features) {
       return { action: "allow", overrideBrowserWindowOptions: {
@@ -244,7 +257,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   })
   wc.on("did-create-window", (child) => {
     child.webContents.on("will-navigate", (e) => refuse(e, e.url))
-    child.webContents.setWindowOpenHandler(({ url: to }) => { if (web(to)) void shell.openExternal(to); else void otherApp(p, to); return { action: "deny" } })
+    child.webContents.setWindowOpenHandler(({ url: to }) => { if (web(to)) openElsewhere(to); else void otherApp(p, to); return { action: "deny" } })
   })
 
   revive(wc)
@@ -254,6 +267,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
   wc.on("did-navigate", (_e, to) => { noteVisit(profile, to); if (siteOf(hostOfUrl(to)) === CLOUD.site) cloudOpened.add(profile); changed() })
   wc.on("did-navigate-in-page", (_e, _u, main) => { if (main) changed() })
   wc.on("page-title-updated", changed)
+  wc.on("audio-state-changed", changed)
   wc.on("did-fail-load", (_e, code, desc, _u, main) => {
     if (!main || code === -3) return // -3: stopped, or another load took over
     p.error = desc || `error ${code}`
@@ -311,7 +325,7 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
     if (c.linkURL && web(c.linkURL)) {
       items.push(
         { label: "Open link in a new tab", click: () => tell(win, { type: "open", id: p.id, url: c.linkURL }) },
-        { label: "Open link in the browser", click: () => void shell.openExternal(c.linkURL) },
+        { label: "Open link in another browser", click: () => openElsewhere(c.linkURL) },
         { label: "Copy link", click: () => clipboard.writeText(c.linkURL) },
         { type: "separator" },
       )
@@ -338,8 +352,9 @@ function make(win: BrowserWindow, url: string, profile: string): Page {
       { label: "Reload", click: () => go(p, "reload") },
       { type: "separator" },
       { label: "Save page to vault", click: () => tell(win, { type: "clip", id: p.id }) },
-      { label: "Open in the browser", enabled: web(wc.getURL()), click: () => void shell.openExternal(wc.getURL()) },
+      { label: "Open in another browser", enabled: web(wc.getURL()), click: () => openElsewhere(wc.getURL()) },
       { type: "separator" },
+      ...(/^https?:/i.test(wc.getURL()) ? [{ label: "Block element…", click: () => tell(win, { type: "block", id: p.id, x: c.x, y: c.y }) }] : []),
       { label: "Inspect element", click: () => wc.inspectElement(c.x, c.y) },
     )
     Menu.buildFromTemplate(items).popup({ window: win })
@@ -401,9 +416,10 @@ function go(p: Page, action: string, url?: string) {
   else if (action === "forward" && h.canGoForward()) h.goForward()
   else if (action === "reload") wc.reload()
   else if (action === "stop") wc.stop()
+  else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
   // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)
   else if (action === "focus") { if (p.view.getVisible()) wc.focus(); else p.hadFocus = true }
-  else if (action === "load" && url && web(url)) void wc.loadURL(url).catch(() => {})
+  else if (action === "load" && url && shows(url)) void wc.loadURL(url).catch(() => {})
 }
 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
@@ -451,9 +467,11 @@ export function webWindow(win: BrowserWindow) {
 
 /** The IPC handlers (main.ts checks the asking page is a vault window's and gives its BrowserWindow). */
 export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]) => unknown> = {
-  "web:open": (win, url, rect, profile) => {
+  "web:open": async (win, url, rect, profile) => {
+    await engineLoaded()
     const u = str(url), prof = profileOf(profile)
-    if (!web(u)) throw new Error("only http and https pages")
+    if (!shows(u)) throw new Error("only http and https pages")
+    if (!mayOpen(prof)) throw new Error("this container is locked")
     let p = [...pages.values()].find((x) => x.win === win && x.profile === prof && !x.held && !x.closing && (x.view.webContents.getURL() || "") === u)
     if (p) { p.held = true } else p = make(win, u, prof)
     pagesChanged(win)
@@ -461,7 +479,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     return { id: p.id, state: stateOf(p) }
   },
   "web:place": (win, id, rect) => {
-    const p = mine(win, id), r = rectOf(rect), wasHidden = !p.view.getVisible()
+    const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !p.view.getVisible()
     place(p, r)
     // (shown again: whether it had the keyboard when it was hidden)
     if (r && wasHidden && p.view.getVisible()) { const had = !!p.hadFocus; p.hadFocus = false; return { focused: had } }
@@ -509,7 +527,7 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     const r = await p.view.webContents.executeJavaScriptInIsolatedWorld(1001, [{ code: "({ url: location.href, title: document.title, html: '<!doctype html>' + document.documentElement.outerHTML })" }])
     return r as { url: string; title: string; html: string }
   },
-  "web:external": (_win, url) => { const u = str(url); if (web(u) || /^mailto:/i.test(u)) void shell.openExternal(u) },
+  "web:external": (_win, url) => { const u = str(url); if (web(u)) openElsewhere(u); else if (/^mailto:/i.test(u)) void shell.openExternal(u) },
   "web:keys": (win, steps) => { keysOf.set(win, new Set(Array.isArray(steps) ? steps.filter((s): s is string => typeof s === "string") : [])) },
   "web:list": (win) => [...pages.values()].filter((p) => p.win === win && !p.closing)
     .map((p) => ({ id: p.id, profile: p.profile, shown: p.held, ...stateOf(p) })),
@@ -538,6 +556,8 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     const all = loadIcons()
     return Object.fromEntries((Array.isArray(hosts) ? hosts : []).slice(0, 500).filter((h): h is string => typeof h === "string").map((h) => [h, all.get(h) ?? ""]))
   },
+  // The browser engine's features (electron/browser/): each answers its own names.
+  "web:engine": (win, name, ...args) => engineCall(win, name, args),
   "web:reveal": (_win, p) => {
     const file = path.resolve(str(p))
     if (path.dirname(file) === app.getPath("downloads") && fs.existsSync(file)) shell.showItemInFolder(file)

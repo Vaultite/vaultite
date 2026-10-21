@@ -1,4 +1,4 @@
-// The Web viewer in the desktop app (Electron) against pages this script serves on 127.0.0.1: a web link opens a web
+// The Browser in the desktop app (Electron) against pages this script serves on 127.0.0.1: a web link opens a web
 // tab, a native view laid over its pane (splits, sidebar, dividers, zoom), hidden behind a picture of itself under the
 // palette or a menu, kept on tab switches; links, back, new tabs and other schemes; no bridge into the app; app
 // shortcuts from the page; Save to vault, downloads, an image's menu; closing ends the page. SHOW=1 shows the window;
@@ -25,7 +25,7 @@ process.on("exit", () => awake?.kill())
 
 // ---------- made-up pages ----------
 const page = (title, body) => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>
-<meta name="author" content="Alice Park"><meta name="description" content="A made-up article for the web viewer's QA.">
+<meta name="author" content="Alice Park"><meta name="description" content="A made-up article for the Browser's QA.">
 <style>body{font:18px/1.5 Georgia,serif;margin:0;padding:40px 60px;background:#1d1f21;color:#d6d3cc}a{color:#8ab4f8}h1{font-size:40px}.box{height:900px}</style></head>
 <body>${body}</body></html>`
 const ARTICLE = page("Lighthouse field notes", `<article><h1>Lighthouse field notes</h1>
@@ -198,7 +198,7 @@ await win.keyboard.press("Escape")
 await win.mouse.click(5, 400) // (somewhere in the sidebar, if a menu is still there)
 check("the menu gone: the page is back", await until(shown, 10000), await pages())
 await win.locator("[data-web-page] button[aria-label=Back]").hover({ force: true })
-await win.locator("[data-web-page] button[aria-label='Open in the browser']").hover()
+await win.locator("[data-web-page] button[aria-label='Open in another browser']").hover()
 /** The copies above the page placed on the tooltip (toasts still up from before are copied too, each its own). */
 const copies = () => app.evaluate(({ BrowserWindow }, tip) => {
   const w = BrowserWindow.getAllWindows()[0], z = w.webContents.getZoomFactor()

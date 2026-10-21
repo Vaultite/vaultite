@@ -285,7 +285,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `MenuItem`
 - `menuShowing()`: A menu is showing.
 - `mintedHere(id)`: Whether this page made terminal `id` ("claude-k3j2h1g0@studio" too) just now, so its tab may start it: a tab put back (a reload, the app reopened, another device) only attaches, and never starts…
-- `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop web viewer) hands back as keydowns for `runShortcut`.
+- `modifiedSteps()`: The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the desktop Browser) hands back as keydowns for `runShortcut`.
 - `modKey`: The app's Mod key in words, for "⌘-click" / "Ctrl-click".
 - `money(v)`
 - `moveInList(delta)`: Move the keyboard `delta` rows (1 down, -1 up), or to the first or last row.
@@ -342,7 +342,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `openTag(tag)`: A #tag clicked: the files that have it (the plugin that draws `tag` details: Tags), else a search for it, as in Obsidian.
 - `openTerminal(opts?)`: Open a plain terminal: on `machine` ("": this one), else the workspace's default.
 - `openView(to, opts?)`: Open a plugin's view.
-- `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Web viewer), else the system browser (a new browser tab on the web).
+- `openWebLink(url, mod?)`: Open a web link (http, https): a plugin's way if one takes it (`webLink`: the desktop app's Browser), else the system browser (a new browser tab on the web).
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
 - `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.
@@ -588,10 +588,10 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `viewShown(target, disabled?)`: Whether a view's plugin is there and on (a pinned view of a plugin turned off doesn't show).
 - `viewSurfaces(disabled?)`: The main view of each plugin that's on, as a pin (its first view pinned as itself, without an arg: Inbox, Graph view), in the plugins' order: what Pinned's menu offers.
 - `WebEvent`
-- `WebPageAction`: A button a plugin adds to a web page's bar in the Web viewer (its icon, `label` its tooltip), also in its tab's menu.
+- `WebPageAction`: A button a plugin adds to a web page's bar in the Browser (its icon, `label` its tooltip), also in its tab's menu.
 - `webPageActions(page)`: What the plugins that are on add to a web page's bar (`webPageActions`).
 - `WebPageInfo`
-- `webPages`: The desktop app's web pages, or null (a browser, an app build from before the Web viewer).
+- `webPages`: The desktop app's web pages, or null (a browser, an app build from before the Browser).
 - `WebPages`: Web pages in the desktop app: native views drawn over this window in sessions of their own (logins kept apart from the app's), known by number; a released page is kept a while.
 - `WebPageState`: Where a web page is (its address), what it's called and what it can do now.
 - `WebSite`

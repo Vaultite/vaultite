@@ -1,4 +1,4 @@
-// Claude Code on the web's sessions, read by the desktop app with the Web viewer's logins (electron/web.ts): one list
+// Claude Code on the web's sessions, read by the desktop app with the Browser's logins (electron/web.ts): one list
 // for the whole app, asked once, then told as it changes. Elsewhere (a browser, a phone) there's none.
 import { webPages, type CloudSession } from "@vaultite"
 

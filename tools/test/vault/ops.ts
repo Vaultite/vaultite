@@ -79,6 +79,17 @@ export default async ($: VaultTest) => {
     check("clipper.save: the same address again", !t.error && t.text.startsWith("Already clipped: Clippings/Beacon - a field guide.md"), t)
     t = await run("clipper.save", { url: "https://beacon.example.com/other", html: "~/Downloads/page.html" })
     check("clipper.save: html that's a file's name is refused, saying how", t.error && t.text.includes("--html - < page.html"), t)
+    t = await run("bookmarks.add", { url: "https://beacon.example.com/guide", title: "Beacon [guide]", folder: "Reading/Later" })
+    check("bookmarks.add: Bookmarks.md made, the link under its folders' headings", !t.error && t.text === "Added 1 bookmark to Bookmarks.md."
+      && read("Bookmarks.md").includes("type: bookmarks") && read("Bookmarks.md").includes("## Reading\n\n### Later\n- [Beacon \\[guide\\]](https://beacon.example.com/guide)"), [t, exists("Bookmarks.md") && read("Bookmarks.md")])
+    write("Bookmarks.md", read("Bookmarks.md").replace("### Later", "My own line.\n\n### Later"))
+    t = await run("bookmarks.add", { links: [{ url: "https://beacon.example.com/guide", folder: "Reading/Later" }, { url: "https://tides.example.com/", title: "Tides", folder: "Reading" }] })
+    check("bookmarks.add: one there already is left, a new one goes under its folder, the user's lines kept", !t.error && t.text === "Added 1 bookmark to Bookmarks.md (1 already there)."
+      && read("Bookmarks.md").includes("## Reading\n\nMy own line.\n\n- [Tides](https://tides.example.com/)\n\n### Later"), [t, read("Bookmarks.md")])
+    const [, st] = await api("GET", "state")
+    check("bookmarks.add: the store has its links", ((st.bookmarks as Any[]) ?? []).some((b: Any) => b.url === "https://tides.example.com/" && b.folder === "Reading"), st.bookmarks)
+    t = await run("bookmarks.add", { url: "file:///etc/hosts" })
+    check("bookmarks.add: only web addresses", t.error && t.text.includes("not a web address"), t)
     t = await run("inbox.add", { title: "Op findings", body: "## Birds\n- Wren", tldr: "Wrens, mostly." })
     check("inbox.add: from who asked, said like inbox_add", !t.error && t.text === "In the user's inbox: Inbox/Op findings.md (they'll see it marked new)." && read("Inbox/Op findings.md").includes("from: Claude Code") &&
       read("Inbox/Op findings.md").includes("> [!tldr] In short\n> Wrens, mostly.\n\n## Birds"), t)

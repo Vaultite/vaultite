@@ -348,7 +348,7 @@ function intent(e: KeyboardEvent) {
 }
 
 /** The first steps of the commands' keys that hold ⌘, ⌃ or ⌥: what a widget keeping the keyboard outside the page (the
- *  desktop web viewer) hands back as keydowns for `runShortcut`. */
+ *  desktop Browser) hands back as keydowns for `runShortcut`. */
 export const modifiedSteps = () => [...table().keys()].filter((s) => /(^|\+)(mod|ctrl|alt)\+/.test(s))
 
 /** A command that's available now has these keys, or a sequence goes on with them: a key the app would take (a

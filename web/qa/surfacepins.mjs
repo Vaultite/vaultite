@@ -1,6 +1,6 @@
 // Views pinned (plugins/core/pages): Pin in a view tab's menu pins it as its target (Inbox: view:inbox), a search tab as
 // its search; a web page pinned by its address (vau pin <address> --label) shows under its name and opens in a web tab,
-// hidden while the Web viewer is off; Pinned's menu (More ▸) offers the plugins' main views, one click to pin.
+// hidden while the Browser is off; Pinned's menu (More ▸) offers the plugins' main views, one click to pin.
 // WRITES pages.json and turns plugins on and off (puts them back): throwaway server only.
 //   node web/qa/surfacepins.mjs <base url> [out dir]
 import { execFileSync } from "node:child_process"
@@ -66,7 +66,7 @@ try {
   await page.keyboard.press("Escape")
 
   vau("plugin", "off", "web-viewer")
-  check("Web viewer off: it hides, still pinned", await until(async () => (await web.count()) === 0, 8000) && (await pins()).includes(WEB))
+  check("Browser off: it hides, still pinned", await until(async () => (await web.count()) === 0, 8000) && (await pins()).includes(WEB))
   vau("plugin", "on", "web-viewer")
   check("...back when it's on, in its place", await until(async () => (await web.count()) === 1, 8000))
 

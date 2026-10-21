@@ -1,24 +1,27 @@
 // The Web pages panel: pages open in this workspace's logins and the sites you opened that keep cookies (Sign out
 // each), then one line for trackers' cookies (Clear).
 import { useEffect, useState } from "react"
-import { EyeOff, Globe, KeyRound, LogOut, Plus } from "lucide-react"
+import { ChevronDown, EyeOff, Globe, KeyRound, LogOut, Plus } from "lucide-react"
 import {
-  confirmDialog, HeadingButton, menuFor, notifyError, plural, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
+  confirmDialog, HeadingButton, menuBelow, menuFor, notifyError, plural, SidebarHeading, SidebarRow, useWorkspaceVersion, webPages, type MenuItem,
   type SidebarCtx, type WebPageInfo, type WebSite,
 } from "@vaultite"
 import { siteIcon } from "./icons"
 import { hostOf } from "./address"
+import { dotIcon } from "./ContainerButton"
+import { colorOf, containerById, containerOfProfile, profileIn, useContainers } from "./containers"
 import { profile, settings } from "./state"
 
-/** Open an address in a web tab (a new one, or the tab already showing it). */
-type Open = (url: string) => void
+/** Open an address in a web tab (a new one, or the tab already showing it), in a container or none. */
+type Open = (url: string, container?: string | null) => void
 
-function useWebPages() {
+function useWebPages(container: string | null) {
   const [pages, setPages] = useState<WebPageInfo[] | null>(null)
   const [sites, setSites] = useState<WebSite[] | null>(null)
   const ws = useWorkspaceVersion()
   const { logins } = settings.use()
-  const prof = profile()
+  // (the sites listed are the chosen logins': the workspace's, or a container's)
+  const prof = profileIn(container)
   useEffect(() => {
     const web = webPages
     if (!web?.list || !web.sites) return
@@ -36,7 +39,10 @@ function useWebPages() {
     })
     return () => { gone = true; off(); clearTimeout(listing); clearTimeout(siting) }
   }, [prof, ws, logins])
-  return { pages: pages?.filter((p) => p.profile === prof && /^https?:/i.test(p.url)) ?? null, sites, prof, refresh: () => void webPages?.sites?.(prof).then(setSites, () => {}) }
+  // This workspace's pages, and those in containers (any workspace's tabs may show them).
+  const own = profile()
+  return { pages: pages?.filter((p) => (p.profile === own || !!containerById(containerOfProfile(p.profile))) && /^https?:/i.test(p.url)) ?? null, sites, prof,
+    refresh: () => void webPages?.sites?.(prof).then(setSites, () => {}) }
 }
 
 async function signOut(prof: string, s: WebSite, done: () => void) {
@@ -75,15 +81,25 @@ function Unavailable() {
 export function WebPagesPanel({ open, openPage, ask }: Pick<SidebarCtx, "open"> & { openPage: Open
   /** Ask for an address and open it (the heading's +). */
   ask: () => void }) {
-  const { pages, sites: all, prof, refresh } = useWebPages()
+  const [container, setContainer] = useState<string | null>(null)
+  const list = useContainers()
+  const inside = list.find((c) => c.id === container) ?? null
+  const { pages, sites: all, prof, refresh } = useWebPages(inside?.id ?? null)
+  const loginsMenu = (e: React.MouseEvent) => menuBelow(e, [
+    { label: "Workspace logins", checked: !inside, run: () => setContainer(null) },
+    ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === inside?.id, run: () => setContainer(c.id) })),
+  ])
   const sites = all?.filter((s) => !s.other) ?? null, others = all?.filter((s) => s.other) ?? []
-  const pageRows = (pages ?? []).map((p) => (
-    <SidebarRow key={p.id} icon={siteIcon(p.url)} label={p.title || hostOf(p.url)} open={open} tint={p.shown ? "var(--web-viewer)" : undefined}
-      tip={`${p.title || hostOf(p.url)}: ${p.url}`} data-web-page-row={String(p.id)} onClick={() => openPage(p.url)}
-      onContextMenu={menuFor(() => [{ label: "Open", icon: Globe, run: () => openPage(p.url) }])}>
+  const pageRows = (pages ?? []).map((p) => {
+    const c = containerById(containerOfProfile(p.profile))
+    return (
+    <SidebarRow key={p.id} icon={siteIcon(p.url, c ? colorOf(c) : undefined)} label={p.title || hostOf(p.url)} open={open} tint={p.shown ? "var(--web-viewer)" : undefined}
+      tip={`${p.title || hostOf(p.url)}: ${p.url}${c ? ` (${c.name})` : ""}`} data-web-page-row={String(p.id)} onClick={() => openPage(p.url, c?.id)}
+      onContextMenu={menuFor(() => [{ label: "Open", icon: Globe, run: () => openPage(p.url, c?.id) }])}>
       {!p.shown && <span className="mr-1 text-[11px] text-tertiary">kept</span>}
     </SidebarRow>
-  ))
+    )
+  })
   if (!open) return pageRows.length ? <div className="flex flex-col gap-px">{pageRows}</div> : null
   return (
     <div className="flex shrink-0 flex-col" data-web-pages-panel>
@@ -98,13 +114,18 @@ export function WebPagesPanel({ open, openPage, ask }: Pick<SidebarCtx, "open"> 
             {pageRows}
             {pages && !pages.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">No pages open</p>}
           </div>
-          <div className="mt-2 mb-0.5 h-6 truncate pl-1.5 text-[11px] leading-6 font-semibold text-tertiary">{prof ? `Sites, in workspace ${prof}` : "Sites"}</div>
+          <button type="button" onClick={loginsMenu} data-web-logins={inside?.id ?? ""}
+            className="mt-2 mb-0.5 flex h-6 max-w-full cursor-pointer items-center gap-1.5 truncate pl-1.5 text-left text-[11px] leading-6 font-semibold text-tertiary hover:text-muted-foreground">
+            {inside && <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(inside) }} />}
+            {inside ? `Sites, in ${inside.name}` : profile() ? `Sites, in workspace ${profile()}` : "Sites"}
+            <ChevronDown className="size-3 shrink-0" strokeWidth={2.25} />
+          </button>
           <div className="flex flex-col gap-px" data-web-sites>
             {(sites ?? []).map((s) => (
               <SidebarRow key={s.site} icon={KeyRound} label={<SiteLabel s={s} />} open={open} tip={s.account ? `${s.site}: ${s.account}` : s.site}
-                tint={s.account ? "var(--web-viewer)" : undefined} data-web-site={s.site} onClick={() => openPage(`https://${s.site}/`)} more
+                tint={s.account ? "var(--web-viewer)" : undefined} data-web-site={s.site} onClick={() => openPage(`https://${s.site}/`, inside?.id)} more
                 swipe={() => [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(prof, s, refresh) }]}
-                onContextMenu={menuFor(() => siteMenu(prof, s, openPage, refresh))} />
+                onContextMenu={menuFor(() => siteMenu(prof, s, (u) => openPage(u, inside?.id), refresh))} />
             ))}
             {sites && !sites.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">No sites yet</p>}
             {others.length > 0 && (

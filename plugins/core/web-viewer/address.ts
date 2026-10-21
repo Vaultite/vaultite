@@ -1,4 +1,4 @@
-// What's typed in the web viewer's address bar (or in "Open web page…") as an address. Shared with tools/test_web.ts.
+// What's typed in the Browser's address bar (or in "Open web page…") as an address. Shared with tools/test_web.ts.
 
 /** The search used for words that aren't an address: `%s` is what was typed. */
 export const SEARCH = "https://duckduckgo.com/?q=%s"

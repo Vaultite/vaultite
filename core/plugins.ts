@@ -17,6 +17,7 @@ import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { CONNECT_HEADER, fromInternet } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"
+import { desktopCall } from "./desktopapp.ts"
 import { pinFile, pinKind, withPinFile } from "./pins.ts"
 import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
@@ -639,6 +640,10 @@ export class Plugin {
     }
     return log
   }
+
+  /** Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts); fails when this server isn't the
+   *  desktop app's. */
+  desktop(name: string, ...args: unknown[]) { return desktopCall(name, args) }
 
   /** Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make`
    *  is false, with vault.txt naming the vault. */

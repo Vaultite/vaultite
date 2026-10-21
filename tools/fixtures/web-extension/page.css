@@ -1,0 +1,3 @@
+/* Drawn into the page from the extension (a web-accessible resource). */
+html[data-painter] { outline: 4px solid var(--painter, orange); }
+p { --from-extension: yes; }

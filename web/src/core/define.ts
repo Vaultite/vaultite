@@ -222,6 +222,9 @@ export type ViewDef = {
   iconTint?: (arg: string) => string | undefined
   /** A dot on its tab's icon: something wants the user (a coding agent waiting for an answer). */
   iconBadge?: (arg: string) => boolean
+  /** A colour its tab takes lightly while it's the active one, when the appearance setting `tabTint` is on (a web
+   *  page's container). */
+  tabTint?: (arg: string) => string | undefined
   /** The arg is the view's own state (a search's query), changed with `ctx.setArg`: the view isn't drawn afresh when it
    *  changes, and the tab keeps it (it's in the workspace's layout, so it survives a reload and shows on other devices). */
   argState?: boolean
@@ -465,7 +468,7 @@ export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; 
   /** A submenu, as a menu item's (`split`: clicking the row still runs `run`, the rest in its submenu). */
   items?: FileMenuItem[]; split?: boolean; hint?: string }
 
-/** A button a plugin adds to a web page's bar in the Web viewer (its icon, `label` its tooltip), also in its tab's menu. */
+/** A button a plugin adds to a web page's bar in the Browser (its icon, `label` its tooltip), also in its tab's menu. */
 export type WebPageAction = { label: string; icon: LucideIcon; run: () => void }
 
 /** An icon a plugin gives a file or folder: `icon` a name (Lucide's, a plugin's, or an emoji), `tint` a colour token
@@ -518,7 +521,7 @@ export type PluginDef = {
    *  `subscribe` says when they change while search is open. */
   searchLive?: { docs: () => SearchDoc[]; subscribe: (changed: () => void) => () => void }
   links?: (store: Store) => LinkTarget[]
-  /** Web links clicked in the app: true when it opened one itself (the Web viewer), false to leave it to the browser.
+  /** Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser.
    *  The first plugin that's on and takes it wins. */
   webLink?: (url: string, how: { mod: boolean }) => boolean
   /** Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one.
@@ -597,7 +600,7 @@ export type PluginDef = {
   editorMenu?: (ctx: { view: EditorView; path?: string }) => MenuItem[]
   /** Items it adds to a folder's menu in the file tree, for that folder's path; [] for none. */
   folderMenu?: (path: string) => FileMenuItem[]
-  /** Buttons it adds to a web page's bar in the Web viewer (see WebPageAction), for the page shown; [] for none. */
+  /** Buttons it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none. */
   webPageActions?: (page: { url: string; title: string }) => WebPageAction[]
   /** Marks on files in the file tree, by path, from the store (keep it to the few files that need one). */
   fileMarks?: (store: Store) => Record<string, FileMark>

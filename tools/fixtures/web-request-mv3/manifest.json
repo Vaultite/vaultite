@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "Request watcher",
+  "version": "1.0.0",
+  "description": "A made-up extension for web/qa/webrequest.mjs: chrome.webRequest observers in a service worker (Manifest V3), and HTTP sign-in as a password manager answers it.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvV8oAP3UU/QQw+j6EH0esksw1V6Lk/SyCwLgvmBH/zct9EoehB8Hh6THfDlRmcunZ3JCffx+4spic8c9NcX7FTam6Vmc0/IxrqPX/3vRJPVsRO5n6BZCkrr2YCywxiARDzkVzNan/dGZ6keNmt04osmH8ilumo4laOTjdTNZr9AGk3wBNpqgNMmEdSUiXFbH+T1gSRCzhdTw8PSsBrWyO6qEVUVipOUg3m+HZ/xJPfS4R4qwCIk48Q5kNyZRJCk5OuR3t+oM21zKQGySfR+R8uoaEhjLFwQlHpw4Fp0JzOVPAc/HZ9lgV7Q85Fer9QtRMxGwm4XzQGVwbRQMNTZ5LQIDAQAB",
+  "permissions": ["webRequest", "webRequestAuthProvider"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "worker.js" }
+}

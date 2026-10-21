@@ -46,13 +46,19 @@ export function SiteIcon({ host, className }: { host: string; className?: string
 }
 
 const components = new Map<string, LucideIcon>()
-/** As a tab's icon (a lucide icon's props), one per site so a tab isn't drawn afresh. */
-export function siteIcon(url: string): LucideIcon {
-  const host = hostOf(url)
-  let c = components.get(host)
+/** As a tab's icon (a lucide icon's props), one per site and container colour so a tab isn't drawn afresh; a tab in a
+ *  container has its colour as a bar under the icon, as Firefox's do. */
+export function siteIcon(url: string, color?: string): LucideIcon {
+  const host = hostOf(url), key = `${host} ${color ?? ""}`
+  let c = components.get(key)
   if (!c) {
-    c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => <SiteIcon host={host} className={className} />) as unknown as LucideIcon
-    components.set(host, c)
+    c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => color
+      ? <span className={`${className ?? ""} relative inline-grid`} data-container-tint>
+          <SiteIcon host={host} className="size-full" />
+          <span className="absolute inset-x-0 -bottom-[3px] h-[2px] rounded-full" style={{ background: color }} />
+        </span>
+      : <SiteIcon host={host} className={className} />) as unknown as LucideIcon
+    components.set(key, c)
   }
   return c
 }

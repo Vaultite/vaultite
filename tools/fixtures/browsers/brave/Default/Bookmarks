@@ -1,0 +1,49 @@
+{
+  "checksum": "",
+  "version": 1,
+  "roots": {
+    "bookmark_bar": {
+      "type": "folder",
+      "name": "Bookmarks bar",
+      "children": [
+        {
+          "type": "url",
+          "name": "Lighthouse",
+          "url": "https://lighthouse.example/"
+        },
+        {
+          "type": "folder",
+          "name": "Reading",
+          "children": [
+            {
+              "type": "url",
+              "name": "The Harbor News",
+              "url": "https://news.example.org/"
+            },
+            {
+              "type": "url",
+              "name": "A local file",
+              "url": "file:///Users/alice/notes.txt"
+            }
+          ]
+        }
+      ]
+    },
+    "other": {
+      "type": "folder",
+      "name": "Other bookmarks",
+      "children": [
+        {
+          "type": "url",
+          "name": "Tide tables",
+          "url": "https://tides.example.com/today"
+        }
+      ]
+    },
+    "synced": {
+      "type": "folder",
+      "name": "Mobile bookmarks",
+      "children": []
+    }
+  }
+}

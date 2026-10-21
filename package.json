@@ -54,6 +54,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@excalidraw/excalidraw": "^0.18.1",
+    "@ghostery/adblocker-electron": "^2.20.1",
     "@lezer/common": "^1.5.3",
     "@lezer/highlight": "^1.2.5",
     "@lezer/markdown": "^1.7.2",
@@ -243,6 +244,11 @@
       {
         "name": "Vaultite",
         "schemes": ["vaultite"]
+      },
+      {
+        "name": "Web page",
+        "schemes": ["http", "https"],
+        "role": "Viewer"
       }
     ],
     "fileAssociations": [

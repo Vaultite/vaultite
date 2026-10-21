@@ -19,7 +19,7 @@ Vaultite has **no accounts and no login**: whoever can reach the server can read
   only that listener, never the app's port. Each connection signs in with a code you type in Connections, where you can
   make it read only or end it. It never gets what only the owner may run (terminals, the screen), and what can run code
   on the machine (turning on or allowing a plugin, writing under `.vaultite/`, settings) waits for your yes in the Inbox.
-- The desktop app's Web viewer shows pages in a session of their own (their logins kept apart from the app's, and by
+- The desktop app's Browser shows pages in a session of their own (their logins kept apart from the app's, and by
   default each workspace's apart from the others'), with no preload, no Node and context isolation: a page can't reach
   the app, its bridge or the machine. Pages go only to http and https addresses (mailto: opens the mail app, any other
   scheme is refused), their permission requests are refused (but writing the clipboard and notifications, which come

@@ -736,7 +736,7 @@ function safeView(name: string, def: ViewDef): ViewDef {
     try { return f(arg) } catch (e) { console.error(`view ${name}`, e); return or }
   })
   safe = { ...def, title: guard(def.title, name)!, iconFor: guard(def.iconFor, def.icon), iconClass: guard(def.iconClass, undefined),
-    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null) }
+    iconTint: guard(def.iconTint, undefined), iconBadge: guard(def.iconBadge, false), tabTint: guard(def.tabTint, undefined), pinAs: guard(def.pinAs, null), pinLabel: guard(def.pinLabel, undefined), resolve: guard(def.resolve, null) }
   safeViews.set(def, safe)
   return safe
 }

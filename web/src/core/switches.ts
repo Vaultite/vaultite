@@ -1,6 +1,6 @@
 // On/off settings, declared once (a plugin's: a boolean in its manifest): Settings, its search, the palette, menus and
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
-import { ArrowDownUp, Archive, BookOpenText, Brackets, Eye, Heading, Heading1, ListOrdered, ListTree, MousePointer2, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, WrapText } from "lucide-react"
+import { ArrowDownUp, Archive, BookOpenText, Brackets, Eye, Heading, Heading1, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, SeparatorHorizontal, Shapes, SpellCheck, WrapText } from "lucide-react"
 import type { Command } from "@/core/commands"
 import { getStore, reload } from "@/core/data"
 import { editorSet, editorSettings, setEditor, type EditorSettings } from "@/core/editorPrefs"
@@ -49,6 +49,7 @@ const CORE: SwitchDef[] = [
   { id: "setting:file-icons", name: "File icons", section: "appearance", icon: Shapes, ...pref("fileIcons") },
   { id: "setting:tab-bar", name: "Tab bar", section: "appearance", icon: PanelTop, words: "tabs", ...pref("tabBar") },
   { id: "setting:pane-titles", name: "Pane titles", section: "appearance", icon: Heading1, sub: () => "With the tab bar off, what's open shows above each pane", words: "tab bar title zen", ...pref("paneTitles") },
+  { id: "setting:tab-tint", name: "Tint the active tab", section: "appearance", icon: PaintBucket, sub: () => "In its colour, lightly: a web page's container", words: "tabs colour color container wash", ...pref("tabTint") },
   { id: "setting:rails", name: "Sidebar rails", section: "appearance", icon: PanelLeftDashed, sub: () => "Off, a hidden sidebar slides in when the pointer reaches the window's edge", words: "rail icons compact zen hover edge sidebars", ...pref("rails") },
   { id: "setting:line-numbers", name: "Line numbers", section: "appearance", icon: ListOrdered, words: "gutter", ...pref("lineNumbers") },
   { id: "setting:sidebar-scroll", name: "Scroll sidebar panels separately", section: "appearance", icon: ArrowDownUp, words: "sidebars",

@@ -23,7 +23,9 @@ import { rowMenu, selectClick, selectedAttr, selectionFor, useSelectable, useSel
 /** `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting). */
 export type TabInfo = { label: string; icon: LucideIcon; tint?: string; iconClassName?: string
   /** A dot on the icon (a view's `iconBadge`: a coding agent waiting for you). */
-  badge?: boolean }
+  badge?: boolean
+  /** The colour the tab takes lightly while it's the active one, with appearance `tabTint` (a view's `tabTint`). */
+  wash?: string }
 
 
 /** `it`, with `other` (its variant: moving instead of copying) in its submenu, or alone when that can't be done now. */
@@ -175,19 +177,25 @@ export function dragTab(e: React.PointerEvent<HTMLElement>, tab: Tab, opts?: { t
   startDrag(e, ids && ids.length > 1 ? { ...item, tabs: ids, label: `${ids.length} tabs` } : item, { touch: opts?.touch })
 }
 
-function TabItem({ tab, info, active, focused, only, icons, menu, width, settling, close }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean; menu: () => MenuItem[]
+function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, settling, close }: { tab: Tab; info: TabInfo; active: boolean; focused: boolean; only: boolean; icons: boolean
+  /** Whether the active tab takes its colour (appearance `tabTint`). */
+  tint: boolean; menu: () => MenuItem[]
   /** Held at this width after a close (TabBar). */
   width?: number; settling: boolean; close: (e: React.MouseEvent<HTMLElement>) => void }) {
   const d = useDrag()
   const picked = useSelected(TABS, tab.id)
   const dragging = d?.item.tab === tab.id || (picked && !!d?.item.tabs)
+  // (a light wash of its colour, lighter while its pane isn't the focused one: calm in either theme)
+  const wash = active && tint && info.wash
+    ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
+    : undefined
   return (
     <div data-tab-id={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
         "max-w-[220px]", active ? "bg-card shadow-sm ring-[0.5px] ring-border" : "hover:bg-foreground/[0.05]", dragging && "opacity-50")}
-      style={width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex 160ms ease-out" } : undefined}>
+      style={{ ...wash, ...(width ? { flex: `0 0 ${width}px` } : settling ? { transition: "flex 160ms ease-out" } : undefined) }} data-tab-wash={wash ? "" : undefined}>
       <button type="button" role="tab" aria-selected={active}
         onAuxClick={(e) => { if (e.button === 1) { e.preventDefault(); if (!tab.pinned) close(e) } }}
         data-tip={d ? undefined : info.label} data-tip-trunc className="flex h-full min-w-0 flex-1 cursor-pointer items-center gap-1.5 pr-6 pl-2 text-left text-[13px]">
@@ -233,7 +241,8 @@ export function useTabInfo(store: Store | null, pageInfo: (id: string) => TabInf
 export function viewInfo(to: string, disabled = getPrefs().disabled): TabInfo {
   const v = viewFor(to, disabled)
   return v ? { label: v.def.title(v.arg), icon: v.def.iconFor?.(v.arg) ?? v.def.icon,
-    iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on && !!v.def.iconBadge?.(v.arg) }
+    iconClassName: v.on ? v.def.iconClass?.(v.arg) : undefined, tint: v.on ? v.def.iconTint?.(v.arg) : undefined, badge: v.on && !!v.def.iconBadge?.(v.arg),
+    wash: v.on ? v.def.tabTint?.(v.arg) : undefined }
     : { label: to.slice(5), icon: SquareDashed }
 }
 
@@ -255,7 +264,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   /** The only group (its single blank tab can't be closed). */
   alone: boolean }) {
   const { tabs, active } = group
-  const { fileIcons, tabBar, paneTitles } = usePrefs()
+  const { fileIcons, tabBar, paneTitles, tabTint } = usePrefs()
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const hit = useDropHit<Drop>(PANES)
   const d = useDrag()
@@ -365,7 +374,7 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
           keeping the active tab in view. */}
       <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", d?.item.group === group.id && "opacity-50")}>
-        {tabs.map((t, i) => <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons}
+        {tabs.map((t, i) => <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
           menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)} />)}
         {/* Right after the last tab (not pinned to the bar's end). */}
         <button type="button" onClick={() => newTab(group.id)} aria-label="New tab" data-tip="New tab"

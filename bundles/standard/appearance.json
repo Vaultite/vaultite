@@ -11,7 +11,7 @@
   "snippets": [],
   "fileIcons": false,
   "tabBar": true,
-  "paneTitles": true,
+  "paneTitles": true, "tabTint": false,
   "rails": true,
   "lineNumbers": false,
   "statusBar": null,

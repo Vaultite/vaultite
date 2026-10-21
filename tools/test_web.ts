@@ -859,16 +859,50 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("slides: headings only (and a short line) is a title slide", isTitleSlide("# Launch\nQ3 plan") && !isTitleSlide("# Plan\n- one\n- two") && !isTitleSlide("Text only"))
 }
 
-// ---------- Web viewer: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------
+// ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------
 {
   const { addressOf, hostOf } = await import("../plugins/core/web-viewer/address.ts")
-  check("web viewer: an address with its scheme as it is", addressOf(" https://example.com/a?b=1#c ") === "https://example.com/a?b=1#c")
-  check("web viewer: a host gets https", addressOf("example.com/posts") === "https://example.com/posts" && addressOf("sub.example.co.uk") === "https://sub.example.co.uk/")
-  check("web viewer: this machine and IP addresses get http", addressOf("localhost:3000/x") === "http://localhost:3000/x" && addressOf("127.0.0.1:8080") === "http://127.0.0.1:8080/")
-  check("web viewer: words are a search", addressOf("open source notes") === "https://duckduckgo.com/?q=open%20source%20notes"
+  check("Browser: an address with its scheme as it is", addressOf(" https://example.com/a?b=1#c ") === "https://example.com/a?b=1#c")
+  check("Browser: a host gets https", addressOf("example.com/posts") === "https://example.com/posts" && addressOf("sub.example.co.uk") === "https://sub.example.co.uk/")
+  check("Browser: this machine and IP addresses get http", addressOf("localhost:3000/x") === "http://localhost:3000/x" && addressOf("127.0.0.1:8080") === "http://127.0.0.1:8080/")
+  check("Browser: words are a search", addressOf("open source notes") === "https://duckduckgo.com/?q=open%20source%20notes"
     && addressOf("notes", "https://search.example/?s=%s") === "https://search.example/?s=notes")
-  check("web viewer: other schemes and nothing are refused", addressOf("file:///etc/hosts") === null && addressOf("javascript:alert(1)") === null && addressOf("  ") === null)
-  check("web viewer: a tab's name before the page's title is its site", hostOf("https://www.example.com/a") === "example.com" && hostOf("nonsense") === "nonsense")
+  check("Browser: other schemes and nothing are refused", addressOf("file:///etc/hosts") === null && addressOf("javascript:alert(1)") === null && addressOf("  ") === null)
+  check("Browser: a tab's name before the page's title is its site", hostOf("https://www.example.com/a") === "example.com" && hostOf("nonsense") === "nonsense")
+}
+
+// ---------- Browser: the bookmarks note (plugins/core/web-viewer/bookmarks.ts) ----------
+{
+  const { addBookmarks, matchBookmarks, readBookmarks } = await import("../plugins/core/web-viewer/bookmarks.ts")
+  const note = "# Links\n\n- [Top](https://top.example.com/)\n\n## Reading\n* <https://bare.example.com/a>\n\n```\n## Not a folder\n- [No](https://no.example.com/)\n```\n\n### Later\n- [x] [Done \\] it](https://later.example.com/)\n"
+  const read = readBookmarks(note)
+  check("bookmarks: links by their folders (a # title isn't one), a code block's ignored", JSON.stringify(read.map((b) => [b.folder, b.title, b.url])) === JSON.stringify([
+    ["", "Top", "https://top.example.com/"], ["Reading", "", "https://bare.example.com/a"], ["Reading/Later", "Done ] it", "https://later.example.com/"]]), read)
+  const added = addBookmarks(note, [{ url: "https://top.example.com/", title: "Again", folder: "" }, { url: "https://new.example.com/", title: "New", folder: "Reading/Later" },
+    { url: "https://deep.example.com/", title: "Deep", folder: "Reading/Later/Deeper" }, { url: "javascript:alert(1)", title: "Bad", folder: "" }])
+  check("bookmarks: added under their folders, a missing one made, nothing changed, no repeats", added.added === 2
+    && added.body.includes("[x] [Done \\] it](https://later.example.com/)\n- [New](https://new.example.com/)\n\n#### Deeper\n- [Deep](https://deep.example.com/)\n")
+    && added.body.startsWith(note.slice(0, -1)), added)
+  check("bookmarks: matched by title and address", matchBookmarks(read, "later")[0]?.url === "https://later.example.com/" && !matchBookmarks(read, "nothing").length)
+}
+
+// ---------- Browser: the blocked elements note (plugins/core/web-viewer/elements.ts) ----------
+{
+  const { addRule, makeRule, readRules, removeRule } = await import("../plugins/core/web-viewer/elements.ts")
+  const note = "Things I hid.\n\n## youtube.com\n\n- `youtube.com##ytd-reel-shelf-renderer` Shorts\n- youtube.com##ytd-comments#comments\n\n## Notes\n\nA paragraph.\n\n```\nexample.com##.ad\n```\n"
+  check("blocked elements: rules as list items, bare or in backticks (words after them a note), a pasted block's too; headings aren't",
+    JSON.stringify(readRules(note).map((r) => [r.site, r.selector])) === JSON.stringify([["youtube.com", "ytd-reel-shelf-renderer"], ["youtube.com", "ytd-comments#comments"], ["example.com", ".ad"]]), readRules(note))
+  const a = addRule(note, makeRule("#related", "https://www.youtube.com/watch")!)
+  check("blocked elements: a rule added under its site's heading, after its last, nothing else changed", a.added
+    && a.body.includes("- youtube.com##ytd-comments#comments\n- `youtube.com###related`\n\n## Notes"), a.body)
+  const b = addRule(a.body, makeRule("news.example.com,~old.news.example.com##div[class*=\"promo\"]")!)
+  check("blocked elements: a new site gets its heading at the end; a rule there already isn't added again",
+    b.body.endsWith("```\n\n## news.example.com\n\n- `news.example.com,~old.news.example.com##div[class*=\"promo\"]`\n") && !addRule(b.body, makeRule("youtube.com##ytd-reel-shelf-renderer")!).added, b.body)
+  const c = removeRule(b.body, "news.example.com,~old.news.example.com##div[class*=\"promo\"]")
+  check("blocked elements: a rule removed takes its heading when nothing's left under it", c.removed && c.body === a.body, c.body)
+  const d = removeRule(c.body, "youtube.com##ytd-comments#comments")
+  check("blocked elements: … and leaves it with others", d.body.includes("## youtube.com\n\n- `youtube.com##ytd-reel-shelf-renderer` Shorts\n- `youtube.com###related`\n"), d.body)
+  check("blocked elements: what isn't a rule isn't made one", makeRule("a\nb") === null && makeRule(".x", "not a site!") === null && makeRule("## heading") === null)
 }
 
 // ---------- Audio recorder: the transcript under the recording (plugins/core/audio-recorder/transcript.ts) ----------

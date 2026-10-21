@@ -2,6 +2,7 @@
 // node tools/qa.ts [script...] [--repeat 3] [--jobs 3]; --lint: selectors QA scripts use that no source draws.
 import { execFileSync, spawn, spawnSync } from "node:child_process"
 import fs from "node:fs"
+import { createRequire } from "node:module"
 import os from "node:os"
 import path from "node:path"
 import { freePort, record, sleep } from "./test/lib.ts"
@@ -46,6 +47,10 @@ const opt = (name: string, d: number) => { const i = argv.indexOf(`--${name}`); 
 const repeat = opt("repeat", 1), jobs = opt("jobs", 3)
 const names = argv.length ? argv.map((a) => path.basename(a, ".mjs"))
   : fs.readdirSync(QA).filter((f) => f.endsWith(".mjs")).map((f) => f.slice(0, -4)).filter((n) => !SKIP.has(n))
+// Electron's binary, fetched on its first use when npm skipped its install script: once here, before scripts launch it
+// together (one would run it half written: ETXTBSY).
+const desktop = (n: string) => { try { return fs.readFileSync(path.join(QA, `${n}.mjs`), "utf8").includes("_electron") } catch { return false } }
+if (names.some(desktop)) createRequire(import.meta.url)("electron")
 
 
 /** The usage line's arguments, after `node web/qa/<name>.mjs`. */

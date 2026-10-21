@@ -18,7 +18,7 @@ files when they're moved or deleted through the app or the API.
   `--vault` pages.json's.
 - A tab that isn't a file can be pinned too, as its target (`view:<name>`, `view:<name>/<arg>`), from its tab's menu
   (Pin) or by dragging the tab onto the list; the list's menu (More) offers each plugin's main page (`view:inbox`,
-  `view:graph`). A web page is `view:web/<address>` (`vau pin <address>`): it opens in the Web viewer, with its site's
+  `view:graph`). A web page is `view:web/<address>` (`vau pin <address>`): it opens in the Browser, with its site's
   icon. A coding agent's conversation is its terminal's resume (`view:terminal/resume-claude-<session id>`,
   `@<machine>` after it for another machine's): it opens the terminal running it, else resumes the conversation in a
   new one. A view's name is `labels` in pages.json (`{"<entry>": "<name>"}`), its title when pinned (a page's is

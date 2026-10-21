@@ -158,7 +158,7 @@ page: a dashboard, a note, an artifact (.html), a table (.csv), an image or a re
 in place in the list. A heading in a note ("Notes/Idea.md#Plan", a block
 "Notes/Idea.md#^id") and a search ("search:tag:#book") can be pinned too, like bookmarks, and so can a tab that isn't
 a file, as its target ("view:<name>" or "view:<name>/<arg>", as vau open takes it): a web page (its address, or
-"view:web/<address>": it opens in the Web viewer, named by label until it's opened, then by its title), a plugin's
+"view:web/<address>": it opens in the Browser, named by label until it's opened, then by its title), a plugin's
 page ("view:inbox", "view:graph"), a coding agent's conversation ("view:terminal/resume-claude-<session id>",
 "@<machine>" after it for another machine's: it opens the terminal running it, else resumes it there). A view whose
 plugin is off doesn't show until it's on again.

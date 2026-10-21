@@ -1,4 +1,4 @@
-// The Web viewer in a browser (the desktop app's side is web/qa/webviewer.mjs): there's no viewer here, so a web link
+// The Browser on the web (the desktop app's side is web/qa/webviewer.mjs): there's no viewer here, so a web link
 // in a note opens a browser tab as before (a click and a ⌘-click), a `view:web/<url>` tab says pages open in the
 // desktop app and links out, "Open web page…" isn't offered, and on a phone (390px) the tab reads the same.
 // WRITES Notes/Qa web links.md: throwaway server only.

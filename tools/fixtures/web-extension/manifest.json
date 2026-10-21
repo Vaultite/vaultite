@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "Page painter",
+  "version": "1.0.0",
+  "description": "A made-up extension for web/qa/extensions.mjs: a content script, storage, messaging, a popup and an options page.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAltWm0/r29QvctOUUAZQM45GFT2A75EQTir0BjKll+HMEIBL9TaJ+98MGN2E9ShinV3XXXEbSTPQXpEFYtf8GW4FGxam2/e/b5EwJDrhEYTLdwDoqtWZQRK0v933BUbItPDH68At8dEi8c/3bPssaolNBKOZtZKS4R8ZFOmalPryAAkCOO1fSkXTLAePGOenmBthPC56Pyq2truahq617TO66U01TmN9RfujGdRYAce6tGDI6EITwpkfCHVgitys5OoR0RxvnCgFMCbKzhv9QiWVdzpSd7ScRxkywZ/iefJTiqnyM9JajmVPigu9Gu5+pQNiA8aNUDfOwy7p2jsSn0wIDAQAB",
+  "icons": {
+    "48": "icon.png"
+  },
+  "permissions": [
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "worker.js"
+  },
+  "action": {
+    "default_title": "Page painter",
+    "default_icon": {
+      "48": "icon.png"
+    },
+    "default_popup": "popup.html"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "content_scripts": [
+    {
+      "matches": [
+        "http://127.0.0.1/*"
+      ],
+      "js": [
+        "content.js"
+      ],
+      "run_at": "document_idle"
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "page.css"
+      ],
+      "matches": [
+        "http://127.0.0.1/*"
+      ]
+    }
+  ]
+}

@@ -59,7 +59,7 @@ try {
     } }, null, 2))
   const plugins = json(".vaultite/plugins.json") ?? {}
   // Workspaces on (off by default): its sheet and its menu's Settings… are tested; Vim off (off by default): an off
-  // plugin's settings are found, said off, and its switch is Editor's Vim keys; Logs and Web viewer on: gears.
+  // plugin's settings are found, said off, and its switch is Editor's Vim keys; Logs and Browser on: gears.
   const on = ["qa-tracker", "logs", "web-viewer", "workspaces"]
   writeFileSync(file(".vaultite/plugins.json"), JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []).filter((id) => id !== "vim" && !on.includes(id)), ...on] }, null, 2))
   // (on in plugins.json alone it waits for this machine's yes: core/trust.ts)

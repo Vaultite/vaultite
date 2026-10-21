@@ -1,4 +1,4 @@
-// The Web viewer's logins in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
+// The Browser's logins in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
 // script serves on 127.0.0.1 (a cookie login): signed in on a page in workspace 1, a page in workspace 2 isn't (its own
 // session, persist:web-2) and workspace 1 still is (persist:web, the one pages shared before); the Web pages panel (in
 // a tab) lists the open pages and the site signed in to (a tracker's cookie as one line, Clear), and Sign out (after

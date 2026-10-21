@@ -8,6 +8,36 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 - Terminal: `vau terminal run <file>` (terminal.run) hands a note to a coding agent or a shell command, here or on
   another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
+- The Web viewer is the Browser now, and Open in the browser is Open in another browser.
+- Chrome extensions run in web pages: add them from the Chrome Web Store (Add to Vaultite on an extension's page, or a
+  link in Extensions), a folder, or Brave and Chrome on the Mac; their buttons and popups are in the page's bar.
+- Managed extensions: ones the Mac's owner names in a file from the terminal are always on in every page and container,
+  with no switch or Remove in the app, like Chrome's force-installed ones (a site blocker can't be turned off on a whim).
+- Extensions that watch or change pages' requests (chrome.webRequest) work with Shields on: password managers fill
+  sites' sign-in prompts (KeePassXC-Browser), and Zotero Connector sees what a page loads.
+- Web pages open in containers, as in Firefox and Brave: Personal, Work or your own, each signed in on its own, so one
+  site can have several accounts side by side. The page's bar shows the tab's container and moves it to another, and a
+  site can always open in one.
+- A container can lock with Touch ID, like Brave's app lock: its pages stay hidden until unlocked, and lock again when
+  the Mac locks, sleeps or sits idle 15 minutes (Lock containers locks them now).
+- Agents use the desktop app's browser as you would (`vau browser open`, `snapshot`, `act`, `read`):
+  their tab opens beside yours, the bar says what they're doing with Pause, and Show what agents did in the
+  browser replays each run step by step. Each container says whether agents can't use it, read it, or act in it;
+  only the new Agents container lets them act until you say otherwise.
+- Make Vaultite the default browser (a command): links from other apps open in a web tab.
+- A web page playing sound shows a speaker on its tab; Mute tab is in its menu and its bar.
+- Web pages keep a history on this Mac: the address bar completes a site as you type and suggests your history,
+  bookmarks and open tabs, a new web tab starts at the address, ⌘Y opens History, and Import from Brave (or Chrome)
+  brings a profile's history in and its bookmarks into a Bookmarks note.
+- Web pages in the Mac app block ads, trackers and YouTube's video ads (Shields, with uBlock Origin's default lists): a
+  page's Shields button counts what was blocked and turns them off for its site. Nothing of it loads until a web page
+  opens.
+- Block an element (the Shields menu, the palette, or right-click a part of the page to start on it): point at part of a page, widen or narrow the pick with ↑ and ↓,
+  see it hidden before you save, and edit its selector. Rules are `youtube.com##selector` lines in a Blocked elements
+  note that pages follow as it changes; the Shields menu lists a site's rules (click one to show it again) and hides
+  YouTube's Shorts, recommendations or comments in one click. Agents add rules with `vau browser block`.
+- Tint the active tab (Settings > Appearance, off by default): a web page's tab takes its container's colour, lightly.
+  The container's line under the address is straight.
 - Notes: click a note's icon beside its title to change it, or the icon of a row you're renaming in the file tree.
 - Archive: folders can be archived whole, from their menu or `vau archive <folder>`, into `.archive/` in the folder
   above; Archive now sits right above Delete in file and folder menus.

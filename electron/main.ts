@@ -7,6 +7,8 @@ import path from "node:path"
 import { fileURLToPath, pathToFileURL } from "node:url"
 import { menuTemplate, type MenuSnapshot } from "./menu.ts"
 import { revive, webHandlers, webWindow } from "./web.ts"
+import "./browser/index.ts"
+import { serverCall } from "./browser/engine.ts"
 import { appHandlers, appsOn, appsWindow, stopApps } from "./apps.ts"
 import { openSandbox, refreshSandbox, sandboxPath } from "./sandbox.ts"
 import { parseRepo, repoText } from "../core/bundlelinks.ts"
@@ -29,6 +31,9 @@ const LINUX = process.platform === "linux"
 // A build named otherwise (electron-builder's extraMetadata.productName: a test release) keeps a userData of its own.
 app.setName(JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8")).productName ?? "Vaultite")
 if (process.env.VAULTITE_USER_DATA) app.setPath("userData", path.resolve(process.env.VAULTITE_USER_DATA))
+// Under --no-sandbox (an AppImage under AppArmor, Playwright on Linux) renderers no window makes (extensions' workers) keep
+// Electron's sandboxed renderer, the one that runs service-worker preloads (app.enableSandbox() would drop --no-sandbox).
+if (app.commandLine.hasSwitch("no-sandbox")) app.commandLine.appendSwitch("enable-sandbox")
 // VAULTITE_QUIET=1 (web/qa's desktop scripts): windows draw as usual but are never seen or felt (transparent,
 // click-through, never focused, no Dock icon), so a test never pops up over the user's work.
 if (process.env.VAULTITE_QUIET) {
@@ -231,6 +236,13 @@ function startServer(v: Known, port: number): Promise<ChildProcess> {
     },
   })
   child.stderr!.pipe(log)
+  // Its agents' calls to the browser engine (core/desktopapp.ts asks, electron/browser/engine.ts answers).
+  child.on("message", (m: { type?: string; rid?: number; name?: unknown; args?: unknown }) => {
+    if (m?.type !== "desktop:call" || typeof m.rid !== "number") return
+    const reply = (r: { value?: unknown; error?: string }) => { if (child.connected) child.send({ type: "desktop:reply", rid: m.rid, ...r }) }
+    Promise.resolve().then(() => serverCall(wins.get(v.path)?.win, m.name, Array.isArray(m.args) ? m.args : []))
+      .then((value) => reply({ value }), (e) => reply({ error: e instanceof Error ? e.message : String(e) }))
+  })
   return new Promise((ok, fail) => {
     let out = ""
     const timer = setTimeout(() => fail(new Error(`the server didn't start in time\n${out.slice(-2000)}`)), 120_000)
@@ -949,7 +961,7 @@ handle("app:notify", (w, title: string, body: string) => new Promise<boolean>((r
   shown.add(n)
   n.show()
 }))
-// The Web viewer's pages (electron/web.ts). App windows turned on after the window opened: it reopens once its
+// The Browser's pages (electron/web.ts). App windows turned on after the window opened: it reopens once its
 // server is gone (the new one takes its port, so the tabs come back).
 handle("apps:reopen", (w) => {
   if (!w) throw new Error("no vault here")
@@ -1351,6 +1363,13 @@ app.on("open-url", (e, url) => {
 async function appLink(url: string) {
   let u: URL
   try { u = new URL(url) } catch { return }
+  // A web link from another app, Vaultite being the Mac's browser: a web tab in the focused vault's window.
+  if (u.protocol === "http:" || u.protocol === "https:") {
+    const w = focusedVault() ?? await (async () => { const last = [...known].sort((a, b) => (b.last ?? 0) - (a.last ?? 0))[0]; return last ? openVault(last.path).catch(() => null) : null })()
+    if (!w) return showManager()
+    const go = (n = 0) => { if (w.win.isDestroyed()) return; if (w.ready) { w.win.webContents.send("vaultite", { type: "web", url: u.href }); w.win.show(); w.win.focus() } else if (n < 150) setTimeout(() => go(n + 1), 200) }
+    return go()
+  }
   if (u.protocol !== "vaultite:") return
   let rest = ""
   try { rest = decodeURIComponent(u.pathname.replace(/^\/+/, "")) } catch { return }

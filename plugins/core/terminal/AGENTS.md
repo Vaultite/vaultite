@@ -11,7 +11,7 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
 - The sidebar's Terminals panel (also a tab, `view:terminals`) lists every running shell: click to open it, x to end
   it, right-click to copy its id or its agent's session id, or open that conversation. A terminal's tab shows the same
   name as its row (an agent's session name). In the desktop app it also lists Claude Code on the web's sessions under
-  Cloud (with claude.ai signed in in the Web viewer; a click opens one in a web tab).
+  Cloud (with claude.ai signed in in the Browser; a click opens one in a web tab).
 - With the Machines plugin on, other machines' shells are listed too, and `view:terminal/<id>@<machine>` is a shell on
   that machine ("Open a terminal or an agent on a machine…"). Workspaces save every terminal tab with its machine, so a
   tab made on one machine opens the same shell from the others (when that machine doesn't answer, the tab says so and

@@ -97,6 +97,7 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `interfaceFont`, `textFont` (notes), `monoFont` (code): a font's name or a CSS font-family list; empty is the app's.
   `fileIcons`: true | false. `tabBar`: true (default) | false: off, each pane's bar shows only the tab on screen, not
   the row of tabs (switch with the Tabs panel, `tabs:tabs`, or the keyboard); `paneTitles` false drops that bar too.
+  `tabTint`: true | false (default): the active tab takes a light wash of its colour (a web page's container).
   `rails`: true (default) | false: off, a hidden sidebar has no icon rail and slides in while the pointer is at its edge. `lineNumbers`: true | false (default), line numbers beside a file's text while editing
   it (code files always have them). `statusBar`: the plugins' items at the start of the desktop status bar, in order
   (`["companion:status", "terminal:agents"]`; unset: each plugin's default ones; right-click the bar for the list; drag one

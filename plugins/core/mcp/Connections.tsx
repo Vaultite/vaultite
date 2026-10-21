@@ -77,7 +77,7 @@ function CloudSignIn({ cloud, onDone, intro }: { cloud: Cloud; onDone: () => voi
     setBusy(true)
     try { await op<Cloud>("mcp.cloud-sign-in", { code }); setEntering(false); setCode(""); onDone() } catch (e) { notifyError(e) } finally { setBusy(false) }
   }
-  // Like the guides' links: the Web viewer when it's on (the desktop app), else the browser.
+  // Like the guides' links: the Browser when it's on (the desktop app), else the system browser.
   const openConnect = () => openWebLink(cloud.connectUrl)
   return (
     <>

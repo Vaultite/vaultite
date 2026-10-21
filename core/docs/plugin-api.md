@@ -39,6 +39,7 @@ Written from the code's own doc comments (tools/plugin_api_doc.ts), so it's what
 - `plugin.patchSettings(changes, { nullRemoves)`: Change some keys (null removes one unless `nullRemoves` is false); returns the settings after. A declared one's value is checked against its manifest declaration (400).
 - `plugin.localKeys(file)`: The keys its manifest marks `local`: this machine's (core/trust.ts), never read from or written to the vault.
 - `plugin.dayLog(kind)`: A log of JSON lines in localDir(), a file a day (<kind>-<date>.jsonl): appended at once (an error that ends the server is on disk first), read and rewritten by day, days older than `keep` pruned at most hourly.
+- `plugin.desktop(name, ...args)`: Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts); fails when this server isn't the desktop app's.
 - `plugin.localDir(make)`: Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make` is false, with vault.txt naming the vault.
 - `plugin.cachePath()`: .vaultite/cache/<id>.json in the vault (the vault's folder when run on its own, like the GitHub refresh).
 - `plugin.secrets()`: This machine's data/config.json (private URLs, keys). Never copy these into the vault.
@@ -97,7 +98,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `search`: What the quick switcher and the search tab find by name: its things, from the store.
 - `searchLive`: Things it finds that aren't in the store (running terminals): `docs` is asked whenever search looks, and `subscribe` says when they change while search is open.
 - `links`
-- `webLink`: Web links clicked in the app: true when it opened one itself (the Web viewer), false to leave it to the browser. The first plugin that's on and takes it wins.
+- `webLink`: Web links clicked in the app: true when it opened one itself (the Browser), false to leave it to the system browser. The first plugin that's on and takes it wins.
 - `schemeLink`: Links of another app's scheme clicked in the app (`<app>://open?file=…`, `zotero://…`): true when it took one. The first plugin that's on and takes it wins; none: the link does nothing.
 - `preview`: What the Plugins sheet shows, with made-up data: a render, or the id of the plugin whose dashboards (pages/*.md) to show (a plugin whose blocks are on Projects previews "projects"). Defaults to its own dashboards.
 - `mock`: Made-up data for previews: its keys of the store (what its plugin.ts puts in /api/state), made from the real store where that's configuration, not personal data (the logs' areas).
@@ -130,7 +131,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `viewMenu`: Items it adds to a view's menus (its tab's, a terminal's row), for its tab's target ("view:terminal/abc"); [] for none.
 - `editorMenu`: Items it adds to a text editor's right-click menu (desktop), for that editor (`path`: its file); [] for none.
 - `folderMenu`: Items it adds to a folder's menu in the file tree, for that folder's path; [] for none.
-- `webPageActions`: Buttons it adds to a web page's bar in the Web viewer (see WebPageAction), for the page shown; [] for none.
+- `webPageActions`: Buttons it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none.
 - `fileMarks`: Marks on files in the file tree, by path, from the store (keep it to the few files that need one).
 - `fileIcons`: Icons it gives files and folders, by path, from the store, wherever the app draws a file's icon (the tree, tabs, lists); a file's own `icon:` wins. The first plugin's wins.
 - `fileRows`: Rows of the file tree it draws into itself, by path (see FileRow); call `fileRowsChanged()` when they change. Keep a row's object the same while it says the same: only rows whose object changed are drawn again.

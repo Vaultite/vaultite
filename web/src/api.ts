@@ -185,7 +185,7 @@ export { SearchPage } from "@/pages/Search"
 export { usePane } from "@/core/pane"
 export { focusPane, holdFocus, keyboardBusy, useDismiss, useHeldFocus } from "@/core/focus"
 // Make a pane the focused one (the address, the status bar and commands follow it) without moving the keyboard: a view
-// whose keyboard lives outside the page (the web viewer's page) was clicked.
+// whose keyboard lives outside the page (the Browser's page) was clicked.
 export { focusGroup, isPopout } from "@/core/workspace"
 export { offeredCommand, onCommandsChanged, runCommandById, runCommandNamed } from "@/core/commands"
 export { isDesktop, useDesktop } from "@/core/platform"
@@ -223,7 +223,7 @@ export { systemNotify } from "@/core/desktop"
 export { dockIcon } from "@/core/desktop"
 // macOS's Look up and the spell checker (the desktop app; null in a browser): the editor's menu.
 export { lookUp, spelling } from "@/core/desktop"
-// Web pages laid over a pane (the Web viewer): null in a browser, and in app builds from before it.
+// Web pages laid over a pane (the Browser): null in a browser, and in app builds from before it.
 export { webPages, type CloudSession, type WebEvent, type WebPageInfo, type WebPages, type WebPageState, type WebSite } from "@/core/desktop"
 export { appWindows, type AppEvent, type AppInfo, type AppProblem, type AppWindows } from "@/core/desktop"
 // Files saved as attachments where the vault's settings say (pasted or dropped images): their vault paths.

@@ -45,7 +45,7 @@ export type DesktopApi = {
    *  page saying whether a restart would lose nothing now. Older builds don't have it. */
   updates?: { get: () => Promise<{ mode: UpdateMode; available: boolean }>; set: (mode: UpdateMode) => Promise<unknown>; safe: (safe: boolean) => Promise<unknown> }
   /** `spelling`: a right-click the page left to the system, with the misspelled word under it ("" none) and guesses. */
-  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; version?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
+  on: (fn: (msg: { type: string; id?: string; bundle?: string; path?: string; url?: string; version?: string; auto?: boolean; text?: string | null; done?: boolean; restart?: boolean; word?: string; suggestions?: string[] }) => void) => void
   /** Tell the menu bar this window's commands, pins and recent files (electron/menu.ts). Builds from before it don't
    *  have it. */
   syncMenu?: (snap: MenuSnapshot) => Promise<unknown>
@@ -61,7 +61,7 @@ export type DesktopApi = {
   /** Another picture in the Dock (a PNG data: URL; null: the app's own again), whether one is set, and an image picked
    *  anywhere on the Mac as a data: URL. Builds from before the Dock icon plugin don't have it. */
   dock?: { set: (png: string | null) => Promise<unknown>; custom: () => Promise<boolean>; pick: () => Promise<string | null> }
-  /** Web pages laid over a pane (the Web viewer's tabs; electron/web.ts). Builds from before it don't have it. */
+  /** Web pages laid over a pane (the Browser's tabs; electron/web.ts). Builds from before it don't have it. */
   web?: WebPages
   /** Other Mac apps' windows behind a pane (App windows' tabs; electron/apps.ts). Builds from before it don't have it. */
   apps?: AppWindows
@@ -102,7 +102,9 @@ export type MenuSnapshot = {
 /** Where a web page is (its address), what it's called and what it can do now. */
 export type WebPageState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean
   /** Why the page didn't load ("ERR_NAME_NOT_RESOLVED"), until the next load. */
-  error?: string }
+  error?: string
+  /** It's playing sound now; its sound is muted. */
+  audible?: boolean; muted?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
 export type WebRect = { x: number; y: number; width: number; height: number }
 /** Web pages in the desktop app: native views drawn over this window in sessions of their own (logins kept apart from
@@ -117,7 +119,7 @@ export type WebPages = {
   release: (id: number) => Promise<unknown>
   /** The last tab showing this address closed: its page ends. */
   close: (url: string, profile?: string) => Promise<unknown>
-  go: (id: number, action: "back" | "forward" | "reload" | "stop" | "load" | "focus", url?: string) => Promise<unknown>
+  go: (id: number, action: "back" | "forward" | "reload" | "stop" | "load" | "focus" | "mute" | "unmute", url?: string) => Promise<unknown>
   /** A picture of it as it is (JPEG), to show in its place while something of the app's is drawn over it. */
   snapshot: (id: number) => Promise<Uint8Array | null>
   /** Its HTML as rendered now, and where it is. */
@@ -146,6 +148,9 @@ export type WebPages = {
   /** Sites' icons (data URLs) by host without "www.", as pages last told them ("" for none yet). Older builds don't
    *  have it. */
   icons?: (hosts: string[]) => Promise<Record<string, string>>
+  /** Ask a feature of the browser engine (electron/browser/: blocking, extensions, history...) by its name. Older
+   *  builds don't have it. */
+  engine?: (name: string, ...args: unknown[]) => Promise<unknown>
   on: (fn: (msg: WebEvent) => void) => () => void
 }
 export type WebEvent =
@@ -153,6 +158,7 @@ export type WebEvent =
   | { type: "open"; id: number; url: string }
   | { type: "focus"; id: number }
   | { type: "clip"; id: number }
+  | { type: "block"; id: number; x: number; y: number }
   | { type: "address"; id: number }
   | { type: "key"; id: number; key: string; code: string; meta: boolean; ctrl: boolean; alt: boolean; shift: boolean }
   | { type: "download"; name: string; path: string; ok: boolean }
@@ -167,6 +173,8 @@ export type WebEvent =
   | { type: "session"; id: number; profile: string; url: string; site: string; kind: "done" | "waiting"; title: string; body: string }
   /** Claude Code on the web's sessions changed (`cloud`). */
   | { type: "cloud"; sessions: CloudSession[] }
+  /** Something a feature of the browser engine tells (electron/browser/engine.ts `tell`): its own `type`. */
+  | { type: `engine:${string}`; [k: string]: unknown }
 /** A session of Claude Code on the web (electron/web.ts): `updated` in ms, `url` its page, `profile` the logins it was
  *  read with. */
 export type CloudSession = { id: string; title: string; state: "running" | "waiting" | "idle"; updated: number; url: string; profile: string }
@@ -225,7 +233,7 @@ export type AppEvent = { type: "gone"; wid: number } | { type: "title"; wid: num
   | { type: "through"; on: false }
 
 export const desktop: DesktopApi | null = (window as unknown as { vaultite?: DesktopApi }).vaultite ?? null
-/** The desktop app's web pages, or null (a browser, an app build from before the Web viewer). */
+/** The desktop app's web pages, or null (a browser, an app build from before the Browser). */
 export const webPages: WebPages | null = desktop?.web ?? null
 /** The desktop app's other apps' windows, or null (a browser, an app build from before App windows). */
 export const appWindows: AppWindows | null = desktop?.apps ?? null
@@ -368,6 +376,8 @@ export function startDesktop() {
     // A bundle's link (vaultite://bundle/<owner>/<name>): its preview.
     else if (m.type === "link" && m.bundle) void import("@/core/bundles").then((b) => b.openBundleLink(m.bundle!))
     else if (m.type === "open" && m.path) open(m.path)
+    // A web link from another app (Vaultite as the Mac's browser).
+    else if (m.type === "web" && m.url && /^https?:\/\//i.test(m.url)) { const url = m.url; void import("@/core/links").then((l) => l.openWebLink(url)) }
     else if (m.type === "go" && m.path) openFile(m.path)
     else if (m.type === "spelling") spelled({ word: m.word ?? "", suggestions: m.suggestions ?? [] })
     else if (m.type === "update") {

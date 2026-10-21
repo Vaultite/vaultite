@@ -36,6 +36,8 @@ const server = http.createServer((req, res) => {
 await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "127.0.0.1", ok) })
 const PORT = server.address().port
 const SITE = `http://127.0.0.1:${PORT}`
+// Another site on this server (lighthouse.test, mapped to it): a page of the stand-in claude.ai's own host would be one of claude.ai's.
+const OTHER = `http://lighthouse.test:${PORT}/other`
 /** A session's status as claude.ai would say it. */
 const setState = (id, status) => { const s = sessions.find((x) => x.id === `session_${id}`); s.session_status = status; s.updated_at = new Date().toISOString() }
 // Workspaces on (off by default): pages' logins are per workspace.
@@ -45,13 +47,13 @@ if (fs.existsSync(pluginsFile)) {
   fs.writeFileSync(pluginsFile, JSON.stringify({ ...p, enabled: [...(p.enabled ?? []).filter((x) => x !== "workspaces"), "workspaces"] }, null, 2) + "\n")
 }
 fs.mkdirSync(path.join(VAULT, "Notes"), { recursive: true })
-fs.writeFileSync(path.join(VAULT, "Notes/Code.md"), `# Code\n\n[code](${SITE}/code) [other](${SITE}/other)\n`)
+fs.writeFileSync(path.join(VAULT, "Notes/Code.md"), `# Code\n\n[code](${SITE}/code) [other](${OTHER})\n`)
 
 // ---------- the app ----------
 let app, win, origin
 async function launch() {
   app = await _electron.launch({
-    executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
+    executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT, "--host-resolver-rules=MAP *.test 127.0.0.1"],
     env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_TEST_CLAUDE_URL: SITE, VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
   })
   win = await app.firstWindow()
@@ -117,7 +119,7 @@ await setting({ notifications: null })
 
 // A restart with another tab in front: no claude.ai page, so claude.ai isn't asked with the logins alone.
 await openLink(1)
-await until(async () => (await all()).some((p) => p.url === `${SITE}/other` && p.visible), 10000)
+await until(async () => (await all()).some((p) => p.url === OTHER && p.visible), 10000)
 await app.close()
 asked = 0
 await launch()

@@ -1,0 +1,9 @@
+{
+  "manifest_version": 2,
+  "name": "Request bender",
+  "version": "1.0.0",
+  "description": "A made-up extension for web/qa/webrequest.mjs: blocking chrome.webRequest listeners (Manifest V2) that cancel, redirect and change headers.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAxbAl5hun9zpywveXbv6ViEiLx9eoxRheeXsE0wRj9ZoVFge1Am2efjCPM3jnzBW5JFS+zTkGkk2HEAiw8PBnsw4166d4Vb/sMtT1gl7LLwdo3G8HW6G5soAE/8vBGtPYNqSyH/tp6iOFZ8ubk90QIZI0h7htRPb7t6RbXOZB6qN514jlx/GMGE7MHSQMfjj+nI+mFefayoWW3jAaxWpoUZKK0VDSn5RC5fU80qQ16bklfFIKv2tZu+rLmBmqj2fwJcuFKUOTdprbunwSeh2LnxCkQVT8g2khFv/e1PGS/Wl8mNG8mXYha/nOxyK1pQwEG4foQssYIOVQEdkR/kFydQIDAQAB",
+  "permissions": ["webRequest", "webRequestBlocking", "http://127.0.0.1/*"],
+  "background": { "scripts": ["background.js"], "persistent": true }
+}
