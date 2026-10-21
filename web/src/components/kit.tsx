@@ -15,15 +15,16 @@ export function usePortalHost(id: string | null) {
   return host
 }
 
-/** A page's large title. On desktop it sits right under its tab's bar (ViewBar), like a file's title, whatever the page.
- *  `section`: a section's (Settings'), at its sections' size. */
-export function PageHeader({ title, subtitle, section, children, className }: { title: string; subtitle?: ReactNode; section?: boolean; children?: ReactNode; className?: string }) {
+/** A page's large title, on desktop right under its tab's bar (ViewBar), like a file's. `section`: at a Settings
+ *  section's size. `tabs`: the page's tabs under it (a Segmented), `children` (what it does) in line with them. */
+export function PageHeader({ title, subtitle, section, tabs, children, className }: { title: string; subtitle?: ReactNode; section?: boolean; tabs?: ReactNode; children?: ReactNode; className?: string }) {
   // On phones a size down: the header above names the page too (PhoneHeader).
   return (
     <header className={cn("mb-5 flex flex-wrap items-end justify-between gap-x-4 gap-y-3 pt-1 md:pt-0", className)}>
-      <div>
+      <div className={cn(tabs && "min-w-0 max-md:w-full")}>
         <h1 className={cn("text-[24px] leading-[30px] font-bold", !section && "title-font md:text-[34px] md:leading-[41px]")}>{title}</h1>
         {subtitle && <p className="mt-0.5 text-[15px] leading-[20px] text-muted-foreground">{subtitle}</p>}
+        {tabs && <div className="mt-3">{tabs}</div>}
       </div>
       {children}
     </header>
@@ -278,8 +279,9 @@ export function SettingRow({ label, sub, stack, below, value, onClick, chevron =
     : <div {...rest} className={cls}>{body}</div>
 }
 
-export function Segmented<T extends string>({ value, options, onChange, label, className }: {
-  value: T; options: { value: T; label: string; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; className?: string
+/** A choice of a few, side by side. `big`: a page's tabs, as tall as a finger on phones. */
+export function Segmented<T extends string>({ value, options, onChange, label, big, className }: {
+  value: T; options: { value: T; label: string; attrs?: Record<`data-${string}`, string> }[]; onChange: (v: T) => void; label: string; big?: boolean; className?: string
 }) {
   return (
     <div role="radiogroup" aria-label={label} className={cn("flex rounded-[9px] bg-muted p-[2px]", className)}>
@@ -289,6 +291,7 @@ export function Segmented<T extends string>({ value, options, onChange, label, c
           <button key={o.value} type="button" role="radio" aria-checked={on} {...o.attrs} onClick={() => { if (!on) haptic("selection"); onChange(o.value) }}
             className={cn(
               "relative min-h-8 flex-1 cursor-pointer rounded-[7px] px-4 text-[13px] whitespace-nowrap transition-[background,box-shadow] duration-200",
+              big && "max-md:min-h-10 max-md:text-[15px]",
               on ? "bg-card font-semibold shadow-[0_3px_8px_rgb(0_0_0/0.12),0_3px_1px_rgb(0_0_0/0.04)] dark:bg-[var(--segment-on)]" : "font-medium text-foreground/80",
             )}>
             {o.label}

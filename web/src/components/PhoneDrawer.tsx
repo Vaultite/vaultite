@@ -1,7 +1,8 @@
 // Phones: the sidebars as drawers, with the same panels a size up. Screen edges are always the
 // drawers' (Back and Forward are the bar's buttons); panels draw only while a drawer is out.
 import { useEffect, useLayoutEffect, useRef, useState } from "react"
-import { ChevronsUpDown, Puzzle, Settings as SettingsIcon } from "lucide-react"
+import { ChevronsUpDown } from "lucide-react"
+import { APP_PAGES, appPageOf, hrefOf, openAppPage } from "@/core/apppages"
 import { onAway } from "@/core/away"
 import type { Store } from "@/core/data"
 import { fingerHolding } from "@/core/drag"
@@ -198,10 +199,11 @@ function DrawerBody({ side, store, file, tab, vaultName, vaultMenu }: { side: Si
             <span className="min-w-0 truncate text-[15px] font-semibold">{vaultName}</span>
             <ChevronsUpDown className="size-4 shrink-0 text-tertiary" strokeWidth={2} />
           </button>
-          {([["plugins", "Plugins", Puzzle], ["settings", "Settings", SettingsIcon]] as const).map(([id, label, Icon]) => (
-            <a key={id} href={`#${id}`} aria-label={label} aria-current={on === id ? "page" : undefined}
-              className={cn("grid size-11 shrink-0 place-items-center rounded-[10px] active:bg-foreground/[0.06]", on === id ? "text-primary" : "text-muted-foreground")}>
-              <Icon className="size-[21px]" strokeWidth={2} />
+          {APP_PAGES.map((p) => (
+            <a key={p.id} href={hrefOf(p)} aria-label={p.label} aria-current={appPageOf(on) === p ? "page" : undefined} data-app-page={p.id}
+              onClick={(e) => { e.preventDefault(); openAppPage(p) }}
+              className={cn("grid size-11 shrink-0 place-items-center rounded-[10px] active:bg-foreground/[0.06]", appPageOf(on) === p ? "text-primary" : "text-muted-foreground")}>
+              <p.icon className="size-[21px]" strokeWidth={2} />
             </a>
           ))}
         </nav>

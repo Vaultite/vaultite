@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from "react"
-import { FoldVertical, AppWindow, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, Settings as SettingsIcon, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap, type LucideIcon } from "lucide-react"
+import { FoldVertical, AppWindow, Braces, EyeOff, ArchiveRestore, ArrowLeft, ArrowRight, ArrowRightToLine, ChevronLeft, ChevronRight, ChevronsUpDown, CirclePlay, ClipboardCopy, Columns2, Command as CommandIcon, Copy, CopyX, FileInput, FilePlus, FileText, FlaskConical, Focus, FolderOpen, Hash, Import, Keyboard, Layers, LayoutDashboard, Link, ListChecks, ListTree, Moon, Package, PackagePlus, Palette as PaletteIcon, PanelLeft, PanelRight, PencilLine, Pin, Plus, Puzzle, Redo2, RefreshCw, RotateCcw, Rows2, Server, SlidersHorizontal, Smile, SquareArrowOutUpRight, SquareSplitHorizontal, SquareSplitVertical, Sun, SunMoon, Tags, Trash2, Undo2, UnfoldVertical, Vault, X, Zap } from "lucide-react"
 import { getStore, onState, reload, useStore, type Store } from "@/core/data"
 import { runCommandId, useCommands } from "@/core/commands"
 import { isDesktop, isMac, useDesktop } from "@/core/platform"
@@ -40,7 +40,8 @@ import { editorSettings, showPropertiesAs } from "@/core/editorPrefs"
 import { PluginPreview } from "@/components/PluginPreview"
 import { PluginSettings } from "@/components/PluginSettings"
 import { settingsCommands, settingsTitle } from "@/core/pluginSettings"
-import { offerBundles, openBundleLink, openBundles, previousSetup, restoreSetup, startSave } from "@/core/bundles"
+import { offerBundles, openBundleLink, previousSetup, restoreSetup, startSave } from "@/core/bundles"
+import { APP_PAGES, appPageOf, hrefOf, isSetupTab, openAppPage, openSetup, type AppPage } from "@/core/apppages"
 import { CommandPalette } from "@/components/CommandPalette"
 import { FolderPicker } from "@/components/FolderPicker"
 import { Chooser } from "@/components/Chooser"
@@ -69,7 +70,7 @@ import { chooseScheme } from "@/components/SchemeChooser"
 import { chooseNewTabPage, showNewTabSections } from "@/components/NewTab"
 
 // The app's own pages, which few visits open: loaded when they are.
-const Plugins = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.Plugins })))
+const Setup = lazy(() => import("@/pages/Setup").then((m) => ({ default: m.Setup })))
 const PluginGroupSheet = lazy(() => import("@/pages/Plugins").then((m) => ({ default: m.PluginGroupSheet })))
 const GetPluginSheet = lazy(() => import("@/components/PluginBrowse").then((m) => ({ default: m.GetPluginSheet })))
 const Settings = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.Settings })))
@@ -78,32 +79,18 @@ const HotkeysSheet = lazy(() => import("@/pages/Hotkeys").then((m) => ({ default
 const SidebarsSheet = lazy(() => import("@/pages/Sidebars").then((m) => ({ default: m.SidebarsSheet })))
 const FontsSheet = lazy(() => import("@/components/Appearance").then((m) => ({ default: m.FontsSheet })))
 const SettingsSection = lazy(() => import("@/pages/Settings").then((m) => ({ default: m.SettingsSection })))
-const BundlesPage = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.Bundles })))
 const BundlePreview = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.BundlePreview })))
 const SaveBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.SaveBundle })))
 const ShareBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ShareBundle })))
 const ImportBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.ImportBundle })))
 const IncomingBundle = lazy(() => import("@/pages/Bundles").then((m) => ({ default: m.IncomingBundle })))
 
-// The core app's own pages (Plugins, Settings), beside the vault's name at the sidebar's bottom. Every
-// other page is a file.
-type Page = { id: string; label: string; icon: LucideIcon; tint: string
-  /** Opening it from the keyboard. */
-  keys?: string[]
-  /** It lays out and scrolls itself in a pane, its root stretched to the pane's box (Workspace's TabContent); else the
-   *  pane scrolls it. */
-  full?: boolean
-  /** It draws itself. */
-  render: (store: Store) => React.ReactNode }
-const SYSTEM_PAGES: Page[] = [
-  { id: "plugins", label: "Plugins", icon: Puzzle, tint: "var(--primary)", render: (store) => <Suspense><Plugins store={store} /></Suspense> },
-  { id: "settings", label: "Settings", keys: ["Mod+,"], icon: SettingsIcon, tint: "var(--muted-foreground)", full: true, render: (store) => <Suspense><Settings store={store} /></Suspense> },
-]
-/** The app's pages without a button of their own: Bundles (pages/Bundles.tsx), reached from the command "Choose a
- *  bundle…", Settings and Plugins, and opened by itself on a new vault. */
-const OTHER_PAGES: Page[] = [
-  { id: "bundles", label: "Bundles", icon: Package, tint: "var(--primary)", render: (store) => <Suspense><BundlesPage store={store} /></Suspense> },
-]
+// The app's own pages (core/apppages.ts), each drawn from its lazy chunk: Setup on the tab its address names.
+const DRAW: Record<AppPage["id"], (store: Store, to: string, tab: Tab | null) => React.ReactNode> = {
+  setup: (store, to, tab) => <Suspense><Setup store={store} tab={isSetupTab(to) ? to : "bundles"} at={tab?.id} /></Suspense>,
+  settings: (store) => <Suspense><Settings store={store} /></Suspense>,
+}
+const pageTabOf = (to: string) => { const p = appPageOf(to); return p && { ...p, render: DRAW[p.id] } }
 /** The sidebar: open (its edge drags between these px widths, double-click resets) or an icon rail (RAIL: in spacing
  *  units, so it follows density; `railPx` is what it measures now). */
 const SIDEBAR = { min: 200, max: 480, default: 240 }
@@ -226,7 +213,6 @@ export default function App() {
   const sheet = detail || lingering || ""
   const { store, error } = useStore()
   const { sidebar, sidebarWidth, rightSidebar, rightSidebarWidth, rails, disabled, enabled, order } = usePrefs()
-  const pages = [...SYSTEM_PAGES, ...OTHER_PAGES]
   // Where a device starts (a plugin's `home`: Pinned's first page), else a new tab.
   const home = store ? homeTab(store, disabled, order) : null
   const isFileTab = tab.startsWith("file/") || tab === "file"
@@ -254,7 +240,7 @@ export default function App() {
   // vault the app has never opened before shows the bundles first (core/bundles.ts: a setup to start from).
   useEffect(() => {
     if (store?.vault.sandbox) sandboxNotice()
-    if (store && offerBundles()) { openBundles(); return }
+    if (store && offerBundles()) { openSetup("bundles"); return }
     if (home) fillFirstTab(home)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store])
@@ -263,7 +249,7 @@ export default function App() {
     if (!store) return
     // The address moved on since this was drawn (a workspace's tabs put in place meanwhile): the next draw sees to it.
     if (route().tab !== tab) return
-    if (isFileTab || isViewTab || isNewTab || pages.some((p) => p.id === tab)) return
+    if (isFileTab || isViewTab || isNewTab || appPageOf(tab)) return
     const to = !tab || (!desktop && !detail) ? (home ? hashOf(home) : desktop ? null : "new") : null
     if (!to) return
     replaceHash(`${to}${detail ? `/${detail}` : ""}`, history.state)
@@ -272,7 +258,7 @@ export default function App() {
   useWorkspace() // re-render when tabs change
   // The address shows the focused group's active tab; when it changes by itself (back, a link, a page picked in
   // the phone's drawer), the tab follows. Phones use the same tabs, shown one at a time (components/TabSwitcher.tsx).
-  const known = isFileTab || isViewTab || isNewTab || pages.some((p) => p.id === tab)
+  const known = isFileTab || isViewTab || isNewTab || !!appPageOf(tab)
   useEffect(() => {
     if (known) followHash(tab)
     else if (desktop && !detail && store) replaceHash(hashOf(activeTab().to))
@@ -285,7 +271,7 @@ export default function App() {
     if (!location.hash) replaceHash(hashOf(activeTab().to))
   }, [])
   const filePath = isFileTab ? targetOf(tab).slice(5) : ""
-  const active = pages.find((t) => t.id === tab) ?? null
+  const active = appPageOf(tab)
   // A file's sheet in the address (#<tab>/file/…, a phone's): on desktop, the file's tab.
   useEffect(() => {
     if (!desktop || !store || !detail) return
@@ -295,7 +281,7 @@ export default function App() {
     try { f = decodeURIComponent(arg ?? "") } catch { f = null }
     if (f) { history.replaceState(null, "", `#${hashOf(activeTab().to)}`); go(`file:${f}`, false, false) }
   }, [desktop, store, detail])
-  const pageInfo = (id: string) => { const p = pages.find((x) => x.id === hashOf(id)); return p ? { label: p.label, icon: p.icon, tint: p.tint } : null }
+  const pageInfo = (id: string) => { const p = appPageOf(hashOf(id)); return p ? { label: p.label, icon: p.icon, tint: p.tint } : null }
   const tabInfo = useTabInfo(store, pageInfo)
   setPageInfo(pageInfo)
   // Back when this sheet was opened from another sheet.
@@ -318,7 +304,6 @@ export default function App() {
     return !!s && p !== null && !inVault(s, p)
   }
   const besideText = () => { const ed = currentEditor(); return !!ed?.undo && keysInEditor(ed) }
-  const pageKey = pages.map((p) => `${p.id}:${p.label}`).join("|")
   useCommands(() => [
     // (`label` and `icon`: as a blank tab's buttons, core/newtab.ts' default ones.)
     { id: "switcher:open", name: "Open quick switcher", keys: ["Mod+O"], run: () => setPalette((p) => (p === "search" ? null : "search")), label: "Open a file", icon: FileText },
@@ -375,10 +360,10 @@ export default function App() {
     // (The name stays a literal for core/appsource.ts; off a Mac it's the file manager's.)
     { id: "file:reveal-finder", name: "Reveal current file in Finder", when: () => !!tabFile() && canReveal(), run: () => revealInFinder(tabFile()), icon: FolderOpen,
       ...(isMac ? {} : { name: "Show current file in folder" }) },
-    ...SYSTEM_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys,
-      run: () => { if (isDesktop()) go(targetOf(p.id)); else location.hash = `#${p.id}` }, icon: p.icon })),
-    // Bundles (core/bundles.ts): setups of the app to start from, save and share.
-    { id: "bundles:choose", name: "Choose a bundle…", run: openBundles, icon: Package },
+    ...APP_PAGES.map((p) => ({ id: `page:${p.id}`, name: `Open ${p.label}`, keys: p.keys, words: p.words, run: () => openAppPage(p), icon: p.icon })),
+    // Setup's tabs: Plugins, and Bundles (core/bundles.ts), setups of the app to start from, save and share.
+    { id: "page:plugins", name: "Open Plugins", words: "setup extensions install", run: () => openSetup("plugins"), icon: Puzzle },
+    { id: "bundles:choose", name: "Choose a bundle…", words: "setup", run: () => openSetup("bundles"), icon: Package },
     { id: "bundles:save", name: "Save current setup as a bundle…", run: () => void startSave(), icon: PackagePlus },
     { id: "bundles:import", name: "Import a bundle…", run: () => openDetail("bundle-import"), icon: Import },
     { id: "bundles:restore", name: "Restore previous setup", when: () => !!previousSetup(), run: () => restoreSetup().catch((e) => notifyError(e, "Couldn't restore it")), icon: ArchiveRestore },
@@ -409,7 +394,7 @@ export default function App() {
     { id: "app:switch-server", name: "Switch server…", when: () => !!phoneApp, run: () => phoneApp?.launcher(), icon: Server },
     { id: "file:open-outside", name: "Open file from outside the vault…", when: () => !!desktopApp, run: () => desktopApp?.pickOutside(), icon: FileInput },
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [pageKey, !!store])
+  ], [!!store])
   // Plugins' own commands (Open terminal...), while they're on (an opt-in one's too: `enabled`), and again when the
   // vault's plugins arrive or change.
   const pluginsVersion = usePluginsVersion()
@@ -484,7 +469,7 @@ export default function App() {
               <div key={key} data-header-item={key} className="flex"><Guard what="This item"><Drawn draw={() => item.render({ store, open: false, file: filePath, tab: targetOf(tab) })} /></Guard></div>
             )) : undefined} />}
         </div>
-        {/* The vault's profile: the vault's name (a menu), then Plugins and Settings as buttons. As a rail,
+        {/* The vault's profile: the vault's name (a menu), then Setup and Settings as buttons. As a rail,
             the two buttons stack, in line with the icons above. */}
         <nav aria-label="App" className={cn("-mx-2 -mb-2 flex shrink-0 gap-1 border-t-[0.5px] border-border p-2", !leftOpen && "flex-col items-start")}>
           {leftOpen && (
@@ -494,9 +479,9 @@ export default function App() {
               <span className="min-w-0 truncate">{vaultName}</span>
             </button>
           )}
-          {SYSTEM_PAGES.map((t) => (
-            <a key={t.id} href={`#${t.id}`} aria-label={t.label} data-tip={t.label} data-tip-side={leftOpen ? "top" : "right"}
-              onClick={(e) => { if (!desktop) return; e.preventDefault(); go(targetOf(t.id), e.metaKey || e.ctrlKey) }}
+          {APP_PAGES.map((t) => (
+            <a key={t.id} href={hrefOf(t)} aria-label={t.label} data-tip={t.label} data-tip-side={leftOpen ? "top" : "right"} data-app-page={t.id}
+              onClick={(e) => { if (!desktop) return; e.preventDefault(); openAppPage(t, e.metaKey || e.ctrlKey) }}
               className={cn("grid size-7 shrink-0 place-items-center rounded-[5px] transition-colors",
                 t.id === active?.id ? "bg-foreground/[0.08] text-primary" : "text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground")}>
               <t.icon className="size-4" strokeWidth={2} />
@@ -542,7 +527,7 @@ export default function App() {
       )}
 
       {desktop ? (
-        <Workspace store={store} error={error} left={side} right={rside} pageInfo={pageInfo} page={(to) => pages.find((p) => p.id === to) ?? null} />
+        <Workspace store={store} error={error} left={side} right={rside} pageInfo={pageInfo} page={pageTabOf} />
       ) : (
         // Phones: the window scrolls, under the header (its name, the drawer's button, the … menu); one tab at a time,
         // the active one (the tab list has the others; files open in tabs, as on a computer: core/files.ts, openFile).
@@ -554,7 +539,7 @@ export default function App() {
             {store && <Guard what="This tab" size="tab" reset={tab} close={() => closeTab(activeTab().id)}>
               {isFileTab && <FileView key={filePath} store={store} path={filePath} pane />}
               {(isNewTab || isViewTab) && <PhoneTab key={isViewTab && viewFor(targetOf(tab), disabled)?.def.argState ? targetOf(tab).split("/")[0] : tab} store={store} to={targetOf(tab)} />}
-              {active && !isFileTab && <div key={active.id}><Drawn draw={() => active.render!(store)} /></div>}
+              {active && !isFileTab && <div key={active.id}><Drawn draw={() => DRAW[active.id](store, tab, activeTab())} /></div>}
             </Guard>}
           </main>
           {/* What a finger drags (a file, a page, a panel: core/drag.ts); a computer's is the Workspace's. */}
@@ -591,7 +576,7 @@ export default function App() {
 
       {/* Phones: the bar at the bottom (Back, search, a new tab, the tab list, the menu) and the sidebars as drawers. */}
       {!desktop && (
-        <PhoneBar system={SYSTEM_PAGES} active={active} listOpen={detail === "tabs"}
+        <PhoneBar system={APP_PAGES} active={active} listOpen={detail === "tabs"}
           onSearch={() => setSearching(true)} onCommands={() => setPalette("commands")} onNewNote={() => void newNote()} />
       )}
       {/* Phones: a page pulled down from its top: New note, Commands, Close tab. */}

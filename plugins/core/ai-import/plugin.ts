@@ -20,7 +20,7 @@ const jobs: Job[] = []
 let queue: Promise<unknown> = Promise.resolve()
 let n = 0
 
-const on = () => { if (plugin.isOff()) throw new HTTPError(404, "the AI import plugin is off (Settings > Plugins)") }
+const on = () => { if (plugin.isOff()) throw new HTTPError(404, "the AI import plugin is off (Setup > Plugins)") }
 
 /** The settings, with the request's query over them. */
 function options(q: Record<string, string>): Options {
@@ -262,7 +262,7 @@ under it. Don't tick memories for the user: this adds what they ticked.
       try {
         return await ctx.op("people.remember", args)
       } catch (e) {
-        if (e instanceof OpError && e.status === 404 && /no operation/.test(e.message)) throw new OpError("adding memories needs the People plugin (people.remember): turn it on (Settings > Plugins)", 409)
+        if (e instanceof OpError && e.status === 404 && /no operation/.test(e.message)) throw new OpError("adding memories needs the People plugin (people.remember): turn it on (Setup > Plugins)", 409)
         throw e
       }
     })

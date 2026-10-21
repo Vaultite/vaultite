@@ -1,8 +1,9 @@
 ## Bundles
 A bundle is a whole setup of the app at once: which plugins are on, their settings, the sidebars' panels, the pinned
-pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks one on the
-Bundles page (Your setup, atop Settings' menu; a new vault starts from Standard), saves their own setup as one, shares
-it as a file or a repository, and imports others' (Import, or pasting or dropping one on the page: its preview first).
+pages and the dashboards they need, the look, and optionally hotkeys and vault plugins. The user picks one on Setup's
+Bundles tab (Setup is beside Settings at the sidebar's foot, its other tab Plugins; a new vault starts from Standard),
+saves their own setup as one, shares it as a file or a repository, and imports others' (Import, or pasting or dropping
+one on the page: its preview first).
 The app's own: Standard (`standard`, the app's defaults: notes and links, a terminal and Claude Code), Zen (`zen`: the
 sidebars hide until the pointer reaches the window's edge, no tab bar, Glance), Life OS (`life-os`: days, people, health,
 books, and pages and databases over them).
@@ -47,7 +48,7 @@ books, and pages and databases over them).
   (sidebars.json, pages.json) and the workspace the user is on follows them (its own panels go; its own pins get the
   same edits); other workspaces keep theirs, and tabs aren't touched.
 - What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous setup" (the
-  toast's Undo, Settings, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
+  toast's Undo, the Bundles tab, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
   they're unchanged.
 - Each change of a plan has an id (`changes` in `bundle.show`: `install:<plugin>`, `plugin:<plugin>`,
   `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `hotkey:<command>`,

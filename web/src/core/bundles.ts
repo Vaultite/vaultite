@@ -1,10 +1,10 @@
 // Bundles in the app: its side of the API (list, preview, apply with Undo, restore, save, export, import). Format and
-// applying are the server's (core/bundles.ts); the page is pages/Bundles.tsx.
+// applying are the server's (core/bundles.ts); the page is Setup's Bundles tab (pages/Bundles.tsx).
 import { useEffect, useSyncExternalStore } from "react"
 import { getStore, reload } from "@/core/data"
 import { del, get, post, request } from "@/core/http"
-import { isDesktop } from "@/core/platform"
-import { activeTab, go } from "@/core/workspace"
+import { activeTab } from "@/core/workspace"
+import { appPageOf } from "@/core/apppages"
 import { captureWindow } from "@/core/desktop"
 import { openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
@@ -94,8 +94,6 @@ const onboarding = (): boolean => !!getStore()?.bundles?.onboarding
 /** Applying it puts code in the vault or turns a vault plugin on (core/bundles.ts runsCode). */
 export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
-/** Open Bundles (the command "Choose a bundle…", Plugins) as its own page; inside Settings it's Your setup instead. */
-export const openBundles = () => { if (!isDesktop()) location.hash = "#bundles"; else go("bundles") }
 
 export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
@@ -152,11 +150,10 @@ export function usePicture(b: Pick<BundleInfo, "id" | "preview" | "previewDark">
 // The window as it was when saving began (the desktop app's), before the sheet covered it: the new bundle's picture.
 let shot: string | null = null
 export const takenShot = () => shot
-/** Start saving the setup. A picture of the window comes first, unless what's shown is Bundles itself (or Settings). */
+/** Start saving the setup. A picture of the window comes first, unless what's shown is Setup itself (or Settings). */
 export async function startSave() {
   shot = null
-  const to = activeTab()?.to
-  if (to !== "bundles" && to !== "settings") shot = (await captureWindow().catch(() => null))?.png ?? null
+  if (!appPageOf(activeTab()?.to ?? "")) shot = (await captureWindow().catch(() => null))?.png ?? null
   openDetail("bundle-save")
 }
 

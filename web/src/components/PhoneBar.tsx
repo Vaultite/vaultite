@@ -1,7 +1,7 @@
 // Phones: the bottom bar, five buttons always in the same place (Back, Forward, new tab, tabs, menu). Back is the
 // app's own, since an installed web app has none and Safari's edge swipe would leave it. Dragged up, it opens the tabs.
 import { useEffect, useRef, useState, useSyncExternalStore } from "react"
-import { Check, ChevronLeft, ChevronRight, Command, FilePlus, Menu, Plus, Search, type LucideIcon } from "lucide-react"
+import { Check, ChevronLeft, ChevronRight, Command, FilePlus, Menu, Plus, Search } from "lucide-react"
 import { tabCount, useWorkspace } from "@/core/workspace"
 import { slide } from "@/core/motion"
 import { canGoBack, canGoForward } from "@/core/nav"
@@ -9,9 +9,9 @@ import { liftFrom } from "@/core/pageLift"
 import { usePageLock } from "@/core/pagelock"
 import { newPhoneTab, openSwitcher } from "@/core/phoneTabs"
 import { shootTab } from "@/core/tabShots"
+import { hrefOf, openAppPage, type AppPage } from "@/core/apppages"
 import { cn } from "@/lib/utils"
 
-export type BarPage = { id: string; label: string; icon: LucideIcon }
 type Item = "back" | "forward" | "new" | "tabs" | "menu"
 /** The bar, left to right. */
 const BAR: Item[] = ["back", "forward", "new", "tabs", "menu"]
@@ -40,7 +40,7 @@ function TabsButton({ listOpen }: { listOpen: boolean }) {
 }
 
 export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNewNote }: {
-  system: BarPage[]; active: BarPage | null; listOpen: boolean
+  system: AppPage[]; active: AppPage | null; listOpen: boolean
   onSearch: () => void; onCommands: () => void; onNewNote: () => void
 }) {
   const back = useCanGoBack(), forward = useCanGoForward()
@@ -107,7 +107,7 @@ export function PhoneBar({ system, active, listOpen, onSearch, onCommands, onNew
                   <Command className="size-[20px] text-primary" strokeWidth={2} /><span className="flex-1">Commands</span>
                 </button>
                 {system.map((t) => (
-                  <a key={t.id} href={`#${t.id}`} role="menuitem" onClick={() => setMenuAt(null)} className={item}>
+                  <a key={t.id} href={hrefOf(t)} role="menuitem" data-bar-menu={t.id} onClick={(e) => { e.preventDefault(); setMenuAt(null); openAppPage(t) }} className={item}>
                     <t.icon className="size-[20px] text-primary" strokeWidth={2} />
                     <span className="flex-1">{t.label}</span>
                     {t.id === active?.id && <Check className="size-[18px] text-primary" strokeWidth={2.5} />}

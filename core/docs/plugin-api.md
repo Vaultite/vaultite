@@ -77,15 +77,15 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `runsOnServer`: Reads files or runs programs on the server's machine (an agent's, a CLI); it shows on every device through it.
 - `desktopApp`: Works only in the desktop app on a Mac (other apps' windows, the Dock): elsewhere it's listed and does nothing, and the web demo keeps it off.
 - `tint`: Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages, files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else.
-- `category`: Its category on the Plugins page and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools: core/categories.ts); none or unknown: Other.
+- `category`: Its category on Setup's Plugins tab and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools: core/categories.ts); none or unknown: Other.
 - `blocks`: Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core checks a block's options against it (a quiet note while editing), fills in its defaults, and lists it for AIs.
 - `draws`: Blocks another plugin declares that it draws too, picked by their `by` option (`block-agent-usage` with `agent: codex`): it draws each in its definition and as text, like its own.
 - `settings`: Its settings (.vaultite/plugins/<id>/data.json), typed like a block's options plus a label each (core/blocks.ts SettingDecl): its settings sheet draws them as a form, and its docs list them (`vau docs <id>`).
 - `offByDefault`: Off until the user turns it on (plugins.json `enabled`), for a plugin that changes how everything behaves (Vim), and every built-in that isn't `essential` or `alwaysOn` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff).
-- `essential`: One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`, or by a bundle). Either way the Plugins page lists it by its category.
-- `alwaysOn`: Part of the app itself (built-in only): always on, no switch, not on the Plugins page; its settings are in Settings. Neither `essential` nor `offByDefault`.
-- `group`: Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS), which says which are on and opens a sheet of their switches; each keeps its own.
-- `switchIn`: Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only).
+- `essential`: One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`, or by a bundle). Either way Setup's Plugins tab lists it by its category.
+- `alwaysOn`: Part of the app itself (built-in only): always on, no switch, not on Setup's Plugins tab; its settings are in Settings. Neither `essential` nor `offByDefault`.
+- `group`: Listed on Setup's Plugins tab in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS), which says which are on and opens a sheet of their switches; each keeps its own.
+- `switchIn`: Its switch is a row in a Settings section instead of on Setup's Plugins tab ({"section": "editor", "label": "Vim keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only).
 - `replaces`: Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in plugins standing in for the same one are alternatives: turning one on turns the other off.
 - `marks`: Frontmatter keys that type a file without `type:` ({"kanban-plugin": "kanban"}: core/fileprops.ts setMarks).
 

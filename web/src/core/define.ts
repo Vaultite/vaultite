@@ -34,7 +34,7 @@ export type Manifest = {
   /** Its colour, a named one ("orange", "teal": --orange...): the app makes --<id> of it (--today), which its pages,
    *  files and cards use (`tint: today` in a dashboard) and a colour scheme may set to something else. */
   tint?: string
-  /** Its category on the Plugins page and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools:
+  /** Its category on Setup's Plugins tab and in Settings ("life"; "ai-apps" for an outside AI it reads, "agents" for AI tools:
    *  core/categories.ts); none or unknown: Other. */
   category?: string
   /** Every block it draws (`blocks` in its definition), what it shows and its options (core/blocks.ts). The core
@@ -50,15 +50,15 @@ export type Manifest = {
    *  and every built-in that isn't `essential` or `alwaysOn` (bundles turn them on). The server keeps its backend off too (Vault.switchedOff). */
   offByDefault?: boolean
   /** One of the app's own (built-in only), on from the start. The other built-ins are off until turned on (`offByDefault`,
-   *  or by a bundle). Either way the Plugins page lists it by its category. */
+   *  or by a bundle). Either way Setup's Plugins tab lists it by its category. */
   essential?: boolean
-  /** Part of the app itself (built-in only): always on, no switch, not on the Plugins page; its settings are in
+  /** Part of the app itself (built-in only): always on, no switch, not on Setup's Plugins tab; its settings are in
    *  Settings. Neither `essential` nor `offByDefault`. */
   alwaysOn?: boolean
-  /** Listed on the Plugins page in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS),
+  /** Listed on Setup's Plugins tab in one row with the rest of its group ("coding-agents": core/categories.ts GROUPS),
    *  which says which are on and opens a sheet of their switches; each keeps its own. */
   group?: string
-  /** Its switch is a row in a Settings section instead of on the Plugins page ({"section": "editor", "label": "Vim
+  /** Its switch is a row in a Settings section instead of on Setup's Plugins tab ({"section": "editor", "label": "Vim
    *  keys"}: core/categories.ts SWITCH_SECTIONS), its settings a gear away (built-in only). */
   switchIn?: { section: string; label: string }
   /** Other apps' plugins it stands in for, by app ({"obsidian": ["dataview"]}; "*": it runs any of them). Two opt-in
@@ -673,20 +673,20 @@ export type HostedPlugin = PluginDef & { id: string; name: string; icon: LucideI
   problems?: string[]
   /** What it can do beyond the vault, as a vault plugin's manifest says it (shown before it's allowed). */
   disclosures?: Disclosures }
-/** What hosts plugins (hostPlugins): its plugins' byline on the Plugins page and the answers to its plugins' buttons. */
+/** What hosts plugins (hostPlugins): its plugins' byline on Setup's Plugins tab and the answers to its plugins' buttons. */
 export type PluginHost = { title: string
   /** A plugin of it, lower case: in its sheet's kicker and in sentences ("plugin from another app"). */
   kind: string
-  /** What its plugins are, a line: the tooltip of their byline on the Plugins page. */
+  /** What its plugins are, a line: the tooltip of their byline on Setup's Plugins tab. */
   intro?: string
   setOn: (id: string, on: boolean) => unknown
   allow?: (id: string) => unknown
   uninstall?: (id: string) => unknown
-  /** Where to find more of its plugins: a source on the Plugins page's Get plugins. */
+  /** Where to find more of its plugins: a source in Get plugins (Setup's Plugins tab). */
   browse?: BrowseSource
   /** What its plugins can do once allowed, said before one first runs ("It runs with the app's full access…"). */
   trust?: string }
-/** A source of plugins to install on the Plugins page's Get plugins (a host's: another app's plugins). */
+/** A source of plugins to install in Get plugins (Setup's Plugins tab; a host's: another app's plugins). */
 export type BrowseSource = { title: string
   /** Its sort orders (the first is the default). */
   sorts?: { value: string; label: string }[]

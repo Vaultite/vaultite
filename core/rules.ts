@@ -317,7 +317,7 @@ export function pluginProblems(dir: string, root: string, ids: Map<string, strin
     return [`${label}: no readable manifest.json (${(e as Error).message})`]
   }
   const out = manifestProblems(m, name, new Set(ids.keys()), `${label}/manifest.json`)
-  // The app's plugins each name a category (the Plugins page groups by it); a vault plugin's is optional (else Other).
+  // The app's plugins each name a category (Setup's Plugins tab groups by it); a vault plugin's is optional (else Other).
   if (!vault && !CATEGORIES.some((c) => c.id === m.category)) {
     out.push(`${label}/manifest.json: category must be one of ${CATEGORIES.map((c) => c.id).join(", ")} (core/categories.ts)`)
   }

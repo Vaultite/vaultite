@@ -44,9 +44,9 @@ setCloseGuard(async (tos) => {
   return true
 })
 
-/** A core page a tab can show (Plugins, Settings). `full`: it lays out and scrolls itself under the tab's bar (a menu
- *  beside what's picked, each scrolling on its own: RailLayout), and is kept drawn while hidden, as other pages are. */
-export type PageTab = { label: string; full?: boolean; render?: (store: Store) => ReactNode }
+/** A core page a tab can show (Setup, Settings), drawn for its address `to` in `tab`. `full`: it lays out and scrolls
+ *  itself under the tab's bar (RailLayout), and is kept drawn while hidden, as other pages are. */
+export type PageTab = { label: string; full?: boolean; render?: (store: Store, to: string, tab: Tab | null) => ReactNode }
 type Props = {
   store: Store | null; error: string | null
   /** Where it starts: the sidebar's width (a CSS length: px open, spacing units as the rail). */
@@ -282,10 +282,10 @@ const TabContent = memo(function TabContent({ tab, to, view, file, full, focused
       <main className="absolute inset-0 flex flex-col">
         <div className="shrink-0 px-8"><ViewBar>{page.label}</ViewBar></div>
         {/* (a grid stretches the page's root to the box, so what it scrolls is the box's height, not its own) */}
-        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"><Drawn draw={() => page.render!(p.store!)} /></div>
+        <div className="relative grid min-h-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)]"><Drawn draw={() => page.render!(p.store!, to, tab)} /></div>
       </main>
     )
-    else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!)} />)
+    else if (page?.render) body = padded(false, <ViewBar>{page.label}</ViewBar>, <Drawn draw={() => page.render!(p.store!, to, tab)} />)
   }
   // A view whose arg is its own state (a search's query) stays mounted while it changes. One that fails to draw fails
   // alone, in its tab, which can close (else the app stops, and a reload opens it again).

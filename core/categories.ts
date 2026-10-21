@@ -1,4 +1,4 @@
-// Plugin categories (a manifest's `category`) in the order the Plugins page lists them, for server and app. A plugin
+// Plugin categories (a manifest's `category`) in the order Setup's Plugins tab lists them, for server and app. A plugin
 // with none or an unknown one is "Other", listed last.
 export const CATEGORIES = [
   { id: "navigation", label: "Navigation" },
@@ -19,7 +19,7 @@ export function categoryOf(category: unknown): { id: string; label: string } {
   return CATEGORIES.find((c) => c.id === category) ?? OTHER
 }
 
-/** Plugin groups (a manifest's `group`): the Plugins page lists each as one row saying which of them are on, and opens
+/** Plugin groups (a manifest's `group`): Setup's Plugins tab lists each as one row saying which of them are on, and opens
  *  a sheet with each one's own switch. */
 export const GROUPS = [
   { id: "coding-agents", label: "Coding agents" },
@@ -27,5 +27,5 @@ export const GROUPS = [
 
 export const groupOf = (group: unknown) => GROUPS.find((g) => g.id === group) ?? null
 
-/** The Settings sections a plugin's switch can be in instead of the Plugins page (a manifest's `switchIn`). */
+/** The Settings sections a plugin's switch can be in instead of Setup's Plugins tab (a manifest's `switchIn`). */
 export const SWITCH_SECTIONS = ["editor"] as const

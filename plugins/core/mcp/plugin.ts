@@ -15,7 +15,7 @@ const sessions = new Map<string, Session>()
 
 
 async function allowed(req: Request) {
-  if (plugin.isOff()) throw new HTTPError(404, "the MCP plugin is off (Settings > Plugins)")
+  if (plugin.isOff()) throw new HTTPError(404, "the MCP plugin is off (Setup > Plugins)")
   await plugin.ownerOnly(req, "Vaultite's MCP server")
 }
 

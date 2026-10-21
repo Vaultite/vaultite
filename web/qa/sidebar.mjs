@@ -1,7 +1,7 @@
 // The sidebar is plugins' panels: Search, Pages (core plugins), Terminal's sessions and Files, in that order (the
 // default: their `sort`). With no sessions the Terminals panel folds itself (nothing saved). Opens a
 // terminal from the Terminals panel and finds it listed (lit while its tab is focused), turns opt-in plugins off one by
-// one (their panels go, live, without a reload; the app's own are always on), empties the sidebar but for Plugins and
+// one (their panels go, live, without a reload; the app's own are always on), empties the sidebar but for Setup and
 // Settings, puts the panels back,
 // folds panels by their headings (and checks a drag or a heading's button doesn't), then ends the session from the
 // panel (its tab closes). In both densities, the geometry (RAIL in Sidebar.tsx): rows follow density, and the headings,
@@ -88,10 +88,10 @@ try {
   await wait(1500)
   check("an always-on plugin's panel stays", (await panels()).includes("search:search"), await panels())
   setDisabled(["backlinks"])
-  // A sidebar with no panels: Plugins and Settings stay.
+  // A sidebar with no panels: Setup and Settings stay.
   setDefault([])
   check("empty sidebar", !!(await until(async () => (await panels()).length === 0)), await panels())
-  check("Plugins and Settings stay", !!(await page.$("aside nav[aria-label='App'] [aria-label='Plugins']")) && !!(await page.$("aside nav[aria-label='App'] [aria-label='Settings']")))
+  check("Setup and Settings stay", !!(await page.$("aside nav[aria-label='App'] [aria-label='Setup']")) && !!(await page.$("aside nav[aria-label='App'] [aria-label='Settings']")))
   await page.screenshot({ path: `${OUT}3-empty.png` })
 
   // Back: the session is still running.

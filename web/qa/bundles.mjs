@@ -82,7 +82,8 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   writeFileSync(`${FVAULT}/.vaultite/bundles/onboarding.json`, "{}\n")
   await go(page, FB)
   await until(() => page.evaluate(() => location.hash === "#bundles"), 6000)
-  check("offered: it opens on the bundles, and greets", (await page.locator("main h1").first().innerText()).includes("Welcome"), await page.locator("main h1").first().innerText())
+  check("offered: it opens on the bundles, and greets, without Setup's tabs", (await page.locator("main h1").first().innerText()).includes("Welcome") &&
+    !(await page.locator("[data-setup-tab]").count()), await page.locator("main h1").first().innerText())
   await until(() => page.locator("[data-bundles-skip]").count(), 6000)
   check("offered: Standard is picked, and a quiet line imports one", await page.locator('[data-bundle="standard"] [data-bundle-picked]').count() === 1
     && await page.locator("[data-bundles-welcome-import]").count() === 1 && (await page.locator("[data-bundles-skip]").innerText()).includes("Standard"))
@@ -93,8 +94,9 @@ const overflow = (page) => page.evaluate(() => document.documentElement.scrollWi
   const m = settings(FVAULT)
   check("skipped: Standard's plugins (Claude Code on), and Restore still Life OS's", !(m.plugins?.enabled ?? []).includes("people") && !m.plugins?.disabled?.includes("claude-code")
     && json(FVAULT, ".vaultite/bundles/previous.json")?.bundle === "life-os", [m.plugins, json(FVAULT, ".vaultite/bundles/previous.json")?.bundle])
-  await until(async () => (await page.locator("main h1").first().innerText()) === "Bundles", 6000)
-  check("then the page is just Bundles", (await page.locator("main h1").first().innerText()) === "Bundles")
+  await until(async () => (await page.locator("main h1").first().innerText()) === "Setup", 6000)
+  check("then the page is Setup, on its Bundles tab", (await page.locator("main h1").first().innerText()) === "Setup" &&
+    (await page.locator("[data-setup-tab=bundles]").getAttribute("aria-checked")) === "true")
   await ctx.close()
 }
 
@@ -103,8 +105,13 @@ const { ctx, page } = await open(1280, 820)
 const original = settings(VAULT)
 await go(page, B, "bundles")
 await until(() => page.locator("[data-bundle]").count() >= 3, 6000)
-check("an existing vault isn't greeted", (await page.locator("main h1").first().innerText()) === "Bundles")
+check("an existing vault isn't greeted", (await page.locator("main h1").first().innerText()) === "Setup")
 await shot(page, "picker")
+// What a built-in brings beyond settings is a mark on its title's row, its tooltip naming the plugins: cards one height.
+const cards = await page.locator("[data-bundles-app] [data-bundle]").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().height)))
+check("built-in cards are one height", cards.length >= 3 && new Set(cards).size === 1, cards)
+const mark = page.locator('[data-bundle="life-os"] [data-bundle-installs]')
+check("Life OS: a mark saying which plugins it installs", await mark.count() === 1 && /^Installs .*Today/.test(await mark.getAttribute("data-tip")), await mark.getAttribute("data-tip").catch(() => null))
 const PAGES = "Dashboards/" // (a bundle's pages, and its plugins', go in the vault's pages folder)
 const want = {
   "standard": (s) => !s.pages.pinned.some((p) => p.includes("Dashboards/Today")) && s.appearance.fileIcons === false && !(s.plugins.enabled ?? []).includes("people") && s.sidebars.right.includes("backlinks:links"),

@@ -199,10 +199,10 @@ export const setTabKeeper = (fn: (to: string) => boolean) => { keeps = fn }
 let isPage: (path: string) => boolean = () => false
 export const setPageTest = (fn: (path: string) => boolean) => { isPage = fn }
 
-/** Where a target is open: the focused group first. */
-export function findOpen(to: string) {
+/** Where a target is open (any of several: a page's tabs), the focused group first. */
+export function findOpen(...to: string[]) {
   for (const g of [focused(), ...groups().filter((x) => x.id !== state.focus)]) {
-    const t = g.tabs.find((x) => x.to === to)
+    const t = g.tabs.find((x) => to.includes(x.to))
     if (t) return { g, t }
   }
   return null

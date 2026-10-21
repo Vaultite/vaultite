@@ -1,7 +1,7 @@
-// Plugins: Your plugins (by category, never the `alwaysOn` parts) or Get plugins (PluginBrowse.tsx), each narrowed by
-// Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
+// Setup's Plugins tab: Your plugins (by category, never the `alwaysOn` parts) or Get plugins (PluginBrowse.tsx), each
+// narrowed by Filter, the search above the list it looks in. A row not built in says where it's from; tap for its sheet.
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent, type ReactNode } from "react"
-import { ChevronRight, ListFilter, Package, Search, Settings2, X } from "lucide-react"
+import { ChevronRight, ListFilter, Search, Settings2, X } from "lucide-react"
 import { allowPlugin, byCategory, hostOf, isEnabled, names, pluginById, setSwitch, standInOf, switchedOn, tintOfPlugin, usePlugins, type Plugin } from "@/core/plugins"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { disclosed } from "../../../core/pluginmeta.ts"
@@ -12,9 +12,8 @@ import type { Store } from "@/core/data"
 import { hasSettings, openPluginSettings, settingsTitle } from "@/core/pluginSettings"
 import { showInTree } from "@/components/FileTree"
 import { openDetail } from "@/core/nav"
-import { FilterField, PageHeader, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
+import { FilterField, Panel, Segmented, SheetHead, Switch } from "@/components/kit"
 import { Button } from "@/components/Button"
-import { openBundles } from "@/core/bundles"
 import { DirectoryMatches, GET_NONE, getSources, passesGet, PluginBrowse, SHOWS, sortOf, sortsOf, type GetFilters, type GetShow, type Listed } from "@/components/PluginBrowse"
 import { Certified } from "@/components/Certified"
 import { GroupRow, groupIcon, groupMembers, groupWords } from "@/components/PluginGroup"
@@ -224,9 +223,8 @@ function categoriesIn(l: Listed | null) {
   return [...CATEGORIES, OTHER].filter((c) => ids.has(c.id))
 }
 
-/** `section`: drawn as Settings' section, else a page of its own (each scrolled by what holds it). `bundles`: what the
- *  Bundles button opens (in Settings, its section). */
-export function Plugins({ store, section, bundles = openBundles }: { store: Store; section?: boolean; bundles?: () => void }) {
+/** Setup's Plugins tab (pages/Setup.tsx). */
+export function Plugins({ store }: { store: Store }) {
   const files = store.pluginSettings ?? []
   const all = usePlugins()
   const prefs = usePrefs()
@@ -394,9 +392,6 @@ export function Plugins({ store, section, bundles = openBundles }: { store: Stor
 
   return (
     <div data-plugins>
-      <PageHeader title="Plugins" section={section}>
-        <Button onClick={bundles} data-plugins-bundles><Package className="size-4" strokeWidth={2.25} />Bundles</Button>
-      </PageHeader>
       {/* The search is above the list it looks in: what's installed, or (Get plugins) every source. */}
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <Segmented<Tab> label="Plugins" value={tab} onChange={setTab} className="shrink-0"

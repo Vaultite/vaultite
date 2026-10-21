@@ -73,7 +73,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `BlockView(props)`: ```block-<name> drawn by its plugin with its options (defaults filled in); one whose plugin is off says so (`quiet`: nothing).
 - `BrandIcon({ d, fillRule, size, strokeWidth, absoluteStrokeWidth, … })`: A brand's mark (Lucide has none: GitHub, Claude) drawn like a lucide icon: one filled path in 24x24, so strokeWidth is ignored.
 - `BrowseEntry`
-- `BrowseSource`: A source of plugins to install on the Plugins page's Get plugins (a host's: another app's plugins).
+- `BrowseSource`: A source of plugins to install in Get plugins (Setup's Plugins tab; a host's: another app's plugins).
 - `Button({ look, size, className, type, … })`: A text button (an icon may lead): `primary` for what the page is for, `secondary` beside it.
 - `buttonClass({ look, size }?, className?)`: A button's classes, for a link drawn as one.
 - `cancelKeys()`: Stop the sequence under way.
@@ -346,7 +346,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `optimistic(change, write, failed)`: A tap answered at once: change the store now, then write; a failed write brings the server's back and says so.
 - `otherMachines(list, plugin?)`: The other machines that are online and have `plugin` on (all online ones without it).
 - `PageCtx`: What a page view gets: the file as it is in the editor, the page's name, where it's drawn, and which plugins are off.
-- `PageHeader({ title, subtitle, section, children, className })`: A page's large title.
+- `PageHeader({ title, subtitle, section, tabs, children, className })`: A page's large title, on desktop right under its tab's bar (ViewBar), like a file's.
 - `pageOf(store, plugin, name)`: A page a plugin brought, by its file name ("Activity"), wherever the user keeps it, or undefined.
 - `PageView`: A Markdown file drawn as a page while read (Dashboards); editing it edits its text in live preview, laid out as read with `editGrid`.
 - `Panel({ title, icon, tint, action, className, children })`: A card, headed like the Health app: small symbol and title in the category colour.
@@ -385,7 +385,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `PluginCommand`: Something it can do from the command palette (⌘P); `keys` also bind it ("Mod+Shift+T").
 - `PluginDef`
 - `pluginFileGroups(path, skip?, folder?)`: Plugins' `fileMenu` items (a folder's: `folderMenu`) for the plugins that are on (but `skip`: a plugin's own menu), by `section`: navigate, more, then the rest a group each, in the plugins' order.
-- `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on the Plugins page and the answers to its plugins' buttons.
+- `PluginHost`: What hosts plugins (hostPlugins): its plugins' byline on Setup's Plugins tab and the answers to its plugins' buttons.
 - `pluginSettings(id)`: A plugin's settings (its data.json) as module state, one per plugin: read on first use and again whenever the file changes.
 - `PluginState`
 - `plural(n, word, many?)`: A count and its noun: "1 file", "3 files" (`many`: a plural that isn't the word + s).
@@ -435,7 +435,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Section({ title, children, className })`: A labelled group inside a card ("Up next", "Lifts").
 - `seenArea(el)`: Where on screen a row can be seen: the window, cut by every box around it that clips, below the sticky heading of its panel (rows pass under it).
 - `Segment`: A body in pieces: blocks, embeds and the Markdown between (blank-only text dropped).
-- `Segmented({ value, options, onChange, label, className })`
+- `Segmented({ value, options, onChange, label, big, className })`: A choice of a few, side by side.
 - `segments(body)`
 - `Selectable`: What a list's selected things can do together: its rows' right-click and the phone's bar.
 - `selectClick(e, list, key, current?)`: A row's click: ⌘ (Ctrl) adds or takes it, ⇧ the run from the last picked (first from `current`, the open row, as in Finder); a phone selecting adds or takes.

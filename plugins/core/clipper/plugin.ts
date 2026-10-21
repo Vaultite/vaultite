@@ -157,7 +157,7 @@ async function clip(b: Item): Promise<Clip> {
 
 
 plugin.route("POST", "clip", async (req) => {
-  if (plugin.isOff()) throw new HTTPError(404, "the Web clipper plugin is off (Settings > Plugins)")
+  if (plugin.isOff()) throw new HTTPError(404, "the Web clipper plugin is off (Setup > Plugins)")
   const r = await clip((req.body ?? {}) as Item)
   return r.existing ? r : reply(201, r)
 }, { lock: false })

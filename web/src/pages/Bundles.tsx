@@ -1,9 +1,9 @@
-// Bundles: setups to start from, save and share (format: core/bundles.ts); a card, or a bundle pasted or dropped on the
-// page, opens a preview of what applying it changes, asking first when it runs code.
+// Setup's Bundles tab: setups to start from, save and share (format: core/bundles.ts); a card, or a bundle pasted or
+// dropped on the page, opens a preview of what applying it changes, asking first when it runs code.
 import { official } from "../../../core/updates.ts"
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import {
-  ArrowRight, BookOpen, Bot, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PanelLeft, PanelRight, Pin, Plus,
+  ArrowRight, BookOpen, Bot, CircleAlert, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
   Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
@@ -23,7 +23,7 @@ import { usePrefs } from "@/core/prefs"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { useSheetGuard } from "@/components/DetailSheet"
-import { Bar as Line, PageHeader, Panel, SheetHead, Switch } from "@/components/kit"
+import { Bar as Line, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -205,8 +205,12 @@ function Sketch({ b }: { b: BundleInfo }) {
   )
 }
 
-/** A bundle: its picture and name, nothing to read (what it changes is in its preview); only a warning when it runs
- *  code or can't be read. */
+/** Plugins by id, named ("Tasks and Kanban"): those not installed yet by their id. */
+const AND = new Intl.ListFormat("en", { type: "conjunction" })
+const listOf = (ids: string[]) => AND.format(ids.map((id) => pluginById(id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)))
+
+/** A bundle: its picture and name, nothing to read (what it changes is in its preview); only a mark when it installs
+ *  plugins, runs code or can't be read. */
 function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
   const Icon = iconOfBundle(b)
   return (
@@ -222,14 +226,12 @@ function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{b.name}</span>
             {b.inUse && !picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-in-use data-tip="Your setup is this one: applying it changes nothing">In use</span>}
             {picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-picked>Picked</span>}
+            {/* What it brings beyond settings, as marks on the title's row: every card stays one height. */}
+            {!!b.code.length && (b.source === "app"
+              ? <span className="shrink-0 text-muted-foreground" data-bundle-installs={b.code.join(" ")} data-tip={`Installs ${listOf(b.code)}`}><PackagePlus className="size-4" strokeWidth={2} /></span>
+              : <span className="shrink-0 text-[var(--red)]" data-bundle-runs-code data-tip={`Runs code: ${listOf(b.code)}`}><ShieldAlert className="size-4" strokeWidth={2} /></span>)}
+            {!!b.problems.length && <span className="shrink-0 text-[var(--red)]" data-bundle-unreadable data-tip={`Can't be read: ${b.problems.join("\n")}`}><CircleAlert className="size-4" strokeWidth={2} /></span>}
           </div>
-          {(!!b.code.length || !!b.problems.length) && (
-            <div className="mt-auto flex flex-wrap items-center gap-x-2 gap-y-1 pt-2 text-[12px]">
-              {!!b.code.length && (b.source === "app" ? <span className="text-muted-foreground">Installs plugins</span>
-                : <span className="font-medium text-[var(--red)]">Runs code</span>)}
-              {!!b.problems.length && <span className="text-[var(--red)]" data-tip={b.problems.join("\n")}>Can't be read</span>}
-            </div>
-          )}
         </div>
       </button>
       {b.source === "vault" && (
@@ -320,8 +322,25 @@ function ImportCard({ over }: { over: boolean }) {
   )
 }
 
-/** `section`: drawn as Settings' section. */
-export function Bundles({ store, section }: { store: Store; section?: boolean }) {
+/** What the Bundles tab offers beside Setup's tabs (pages/Setup.tsx): importing and saving one, or, while a new vault
+ *  is being offered the bundles, starting from the default. */
+export function BundlesActions({ store }: { store: Store }) {
+  const l = useBundles()
+  const start = l?.bundles.find((b) => b.source === "app" && b.id === l.default)
+  return (
+    <div className="flex shrink-0 flex-wrap justify-end gap-2">
+      {store.bundles?.onboarding
+        ? <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>
+        : <>
+          <Button onClick={() => openDetail("bundle-import")} data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import</Button>
+          <Button look="primary" onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
+        </>}
+    </div>
+  )
+}
+
+/** Setup's Bundles tab: the built-in bundles, then the user's. */
+export function Bundles({ store }: { store: Store }) {
   const l = useBundles()
   const prev = store.bundles?.previous ?? null
   const welcome = !!store.bundles?.onboarding
@@ -335,16 +354,6 @@ export function Bundles({ store, section }: { store: Store; section?: boolean })
   const over = useImportGestures(root)
   return (
     <div ref={root} className="relative min-h-full" data-file-drop data-bundles-page>
-      <PageHeader title={welcome ? "Welcome to Vaultite" : "Bundles"} section={section} subtitle={welcome ? "Pick a setup to start from. You can change all of it later." : undefined}>
-        <div className="flex shrink-0 flex-wrap justify-end gap-2">
-          {welcome
-            ? <Button look="primary" onClick={() => skipOnboarding().catch((e) => notifyError(e))} data-bundles-skip>Start with {start?.name ?? "the default"}</Button>
-            : <>
-              <Button onClick={() => openDetail("bundle-import")} data-bundles-import><Import className="size-4" strokeWidth={2.25} />Import</Button>
-              <Button look="primary" onClick={() => void startSave()} data-bundles-save><Plus className="size-4" strokeWidth={2.25} />Save current setup</Button>
-            </>}
-        </div>
-      </PageHeader>
       {prev && (
         <div className="glass mb-5 flex items-center gap-3 rounded-[12px] px-4 py-3" data-bundles-previous>
           <History className="size-5 shrink-0 text-muted-foreground" strokeWidth={2} />

@@ -11,7 +11,7 @@ license: Apache-2.0
 2. Read `vau docs vault-plugins` whole before writing one (manifest, server, operations, scripts with no code,
    frontend, blocks), and `vau docs api` for an operation's shape.
 3. `vau plugin new <id>` writes a working one to start from; change it from there.
-4. It's off until the user turns it on, since it runs code on their Mac: ask them (the Plugins page, or
+4. It's off until the user turns it on, since it runs code on their Mac: ask them (Setup ▸ Plugins, or
    `vau plugin on <id>`).
 5. Check it: `vau plugins check` (why it didn't load, blocks to fix), then run its operations (`vau ops`) and read its
    page as the user sees it (`vau render <file>`).

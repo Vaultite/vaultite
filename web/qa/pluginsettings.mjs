@@ -1,7 +1,7 @@
-// Plugins' settings (components/PluginSettings.tsx) and the shorter Settings page: Settings has Your setup (Bundles) on
-// top, the app's own rows, Plugins (a section beside the menu; a gear there opens the sheet) and, under Features, the
+// Plugins' settings (components/PluginSettings.tsx) and the shorter Settings page: Settings has Your setup on top (it
+// goes to Setup's page, where Bundles and Plugins are), the app's own rows and, under Features, the
 // app's own (`alwaysOn`) plugins that have settings; its search finds every plugin's settings, in the menu's place, the
-// arrows lighting one and Enter going there; on the Plugins page a
+// arrows lighting one and Enter going there, and Setup's tabs; on Setup's Plugins tab a
 // gear (on plugins that are on and have settings) opens the sheet; generated forms write only the key changed; custom
 // panels (Pinned, File explorer); a data.json-only plugin (Logs); a vault plugin's declared settings; every way to open
 // a sheet; 390px. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
@@ -73,7 +73,8 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     const text = await page.locator("main").innerText()
     const nav = await page.locator("[data-settings-nav]").evaluateAll((els) => els.map((e) => e.dataset.settingsNav))
-    check("Settings: Your setup, its sections, then Plugins", ["bundles", "general", "appearance", "editor", "hotkeys", "plugins"].every((id, i) => nav[i] === id), nav)
+    check("Settings: Your setup, then its sections, and no Bundles or Plugins of its own", (await page.locator("[data-settings-setup]").count()) === 1 &&
+      ["general", "appearance", "editor", "hotkeys"].every((id, i) => nav[i] === id) && !nav.includes("plugins") && !nav.includes("bundles"), nav)
     check("Settings: nothing a plugin adds", !["This workspace", "Pinned pages", "Show hidden files", "Connect an AI", "Vim's keys"].some((t) => text.includes(t)) &&
       !(await page.locator("main [data-workspace-settings], main [data-pinned-settings]").count()), text)
     await shot(page, "1-settings-desktop")
@@ -84,25 +85,22 @@ try {
     check("...nor one that can be switched (a gear away on Plugins)", !(await page.locator('[data-settings-nav="plugin:web-viewer"], [data-settings-nav="plugin:logs"], [data-settings-nav="plugin:workspaces"]').count()))
     const lit = (id) => page.locator(`[data-settings-nav="${id}"]`).evaluate((e) => e.className.includes("font-medium"))
 
-    // Your setup: Bundles beside the menu.
-    await page.locator('[data-settings-nav="bundles"]').click()
-    check("Your setup: Bundles beside the menu", !!(await until(() => page.locator('[data-settings-section="bundles"] [data-bundles-page]').count(), 4000)) &&
-      await page.locator("[data-settings-list]").count() === 1)
-    // Plugins beside the menu (it stays: no menu of its own); a gear there opens the sheet; its Bundles goes to Your setup.
-    await page.locator('[data-settings-nav="appearance"]').click()
-    await page.locator('[data-settings-nav="plugins"]').click()
-    const ps = page.locator('[data-settings-section="plugins"]')
-    check("Settings > Plugins: a section beside the menu", !!(await until(() => ps.locator("[data-plugin-row]").count(), 4000)) &&
-      (await page.evaluate(() => location.hash)).startsWith("#settings") && await page.locator("[data-settings-list]").count() === 1 && await lit("plugins") &&
-      await ps.locator("[data-plugins-filter]").count() === 1 && await ps.locator("[data-plugins-search] input").count() === 1)
-    check("...without the app's own parts", !(await ps.locator('[data-plugin-row="files"], [data-plugin-row="mcp"]').count()))
-    await shot(page, "1a-settings-plugins")
-    await ps.locator("[data-plugin-gear=web-viewer]").click()
-    check("...a gear opens its sheet", !!(await until(() => sheet(page, "web-viewer").count(), 4000)))
-    await shot(page, "1b-settings-plugin-gear")
-    await closeSheet(page)
-    await ps.locator("[data-plugins-bundles]").click()
-    check("...its Bundles button: Your setup", !!(await until(() => page.locator('[data-settings-section="bundles"]').count(), 4000)))
+    // Your setup: Setup's page, in Settings' tab (one path to Bundles and Plugins).
+    await page.locator("[data-settings-setup]").click()
+    check("Your setup: Setup's page on Bundles", !!(await until(() => page.locator("main [data-setup=bundles] [data-bundles-page]").count(), 4000)) &&
+      (await page.evaluate(() => location.hash)) === "#bundles" && !(await page.locator("main [data-settings]").count()))
+    await shot(page, "1a-your-setup")
+    await go(page, "settings")
+    await until(() => page.locator("[data-settings-list]").count(), 4000)
+    // Settings' search finds Setup's tabs, a page away.
+    await page.locator("[data-settings-search] input").fill("plugins")
+    await until(() => page.locator('[data-settings-result="plugins"]').count(), 4000)
+    check("search: Plugins, in Setup", (await page.locator('[data-settings-result="plugins"]').innerText()).includes("Setup"))
+    await page.locator('[data-settings-result="plugins"] button').first().click()
+    check("...goes to Setup's Plugins tab", !!(await until(() => page.locator("main [data-setup=plugins] [data-plugin-row]").count(), 4000)) &&
+      (await page.evaluate(() => location.hash)) === "#plugins")
+    await go(page, "settings")
+    await until(() => page.locator("[data-settings-list]").count(), 4000)
     await page.locator('[data-settings-nav="appearance"]').click()
 
     // Search: the app's rows (going to one clears the search and flashes it) and every plugin's settings, its manifest's
@@ -301,13 +299,17 @@ try {
     await until(() => page.locator("[data-settings-list]").count(), 4000)
     await wait(500)
     await page.screenshot({ path: `${OUT}8-settings-phone.png`, fullPage: true })
-    await page.locator('[data-settings-nav="plugins"]').click()
-    check("phone: Settings > Plugins goes to the Plugins page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
+    await page.locator("[data-settings-setup]").click()
+    check("phone: Your setup goes to Setup's page, on Bundles", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))
+    await until(() => page.locator("[data-setup-tab=plugins]").count(), 4000)
+    const tabH = await page.locator("[data-setup-tab=plugins]").evaluate((e) => e.getBoundingClientRect().height)
+    check("phone: Setup's tabs are a finger tall", tabH >= 40, tabH)
+    await page.screenshot({ path: `${OUT}8a-setup-phone.png`, fullPage: true })
+    await page.locator("[data-setup-tab=plugins]").click()
+    check("phone: its Plugins tab", !!(await until(() => page.evaluate(() => location.hash.startsWith("#plugins")), 4000)), await page.evaluate(() => location.hash))
     check("phone: Plugins has its search and Filter, no menu", !!(await until(() => page.locator("[data-plugins] [data-plugins-search] input").count(), 4000)) &&
       await page.locator("[data-plugins-filter]").count() === 1 && !(await page.locator("[data-rail]").count()))
-    await page.goto(`${B}#settings`); await until(() => page.locator("[data-settings-setup]").count(), 4000)
-    await page.locator("[data-settings-setup]").click()
-    check("phone: Your setup goes to the Bundles page", !!(await until(() => page.evaluate(() => location.hash.startsWith("#bundles")), 4000)), await page.evaluate(() => location.hash))
+    await page.screenshot({ path: `${OUT}8b-setup-plugins-phone.png`, fullPage: true })
     const wide = () => page.evaluate(() => { const d = document.querySelector("dialog[open]"); if (!d) return null
       return [...d.querySelectorAll("*")].filter((e) => e.getBoundingClientRect().right > innerWidth + 1 && e.getBoundingClientRect().width > 0).map((e) => e.outerHTML.slice(0, 80)) })
     for (const id of ["page-preview", "pages", "search"]) {

@@ -1,4 +1,4 @@
-// A tab that fails to draw fails alone (components/Guard.tsx): here the Plugins page's chunk throws as it runs, and its
+// A tab that fails to draw fails alone (components/Guard.tsx): here the Setup page's chunk throws as it runs, and its
 // tab says so in its place (Try again, Close tab, its error behind Show details), with the sidebar still there and no
 // "Vaultite stopped"; Close tab closes it. A chunk that didn't load (the server away a moment: here Settings' script is
 // refused once, and the server's index.html too for a while) shows "Reconnecting to Vaultite…", then reloads once the
@@ -19,20 +19,20 @@ try {
   await page.goto(B); await wait(2500)
 
   // 1. A tab whose code throws: the error in its place, the rest goes on.
-  await page.route(/\/assets\/Plugins-[^/]+\.js$/, (r) => r.fulfill({ contentType: "text/javascript", body: 'throw new Error("qa: the Plugins page broke")' }))
+  await page.route(/\/assets\/Setup-[^/]+\.js$/, (r) => r.fulfill({ contentType: "text/javascript", body: 'throw new Error("qa: the Setup page broke")' }))
   await go("#plugins")
   const failed = await until(() => page.$('[data-guard-failed="This tab"]'), 8000)
   check("a tab that throws says so in its place, its error only behind Show details", !!failed && /couldn't be drawn/.test(await failed.textContent()) &&
-    !/qa: the Plugins page broke/.test(await failed.textContent()), failed && await failed.textContent())
+    !/qa: the Setup page broke/.test(await failed.textContent()), failed && await failed.textContent())
   await page.getByRole("button", { name: "Show details" }).click()
-  check("...Show details shows it", /qa: the Plugins page broke/.test(await failed.textContent()), await failed.textContent())
+  check("...Show details shows it", /qa: the Setup page broke/.test(await failed.textContent()), await failed.textContent())
   await page.screenshot({ path: `${OUT}tab-failed.png` })
   check("...not Vaultite stopped", !(await stopped()))
   check("...the sidebar still there", (await page.$$("[data-panel]")).length > 0)
   const n = (await tabs()).length
   await page.getByRole("button", { name: "Close tab" }).click()
   check("Close tab closes it", !!(await until(async () => !(await page.$('[data-guard-failed="This tab"]')) && (await tabs()).length <= Math.max(1, n - 1), 8000)), await tabs())
-  await page.unroute(/\/assets\/Plugins-[^/]+\.js$/)
+  await page.unroute(/\/assets\/Setup-[^/]+\.js$/)
 
   // 2. A chunk that didn't load while the server was away: reconnects, reloads, draws.
   let refused = 0, away = true

@@ -11,7 +11,7 @@ a folder `.vaultite/plugins/<id>/`, the same shape as the app's plugins. `vau pl
 only settings (`data.json`, `<name>.json`) is settings, not a plugin.
 - `exports`: modules in its folder that plugins requiring it may import (`["types", "lib/format"]`, without extension):
   `import { projectFor } from "@plugins/projects/Projects"`, in index.tsx and plugin.ts alike, the same instance as its own.
-- `group`: its row on the Plugins page is its group's (`"coding-agents"`), with the app's coding agents.
+- `group`: its row on Setup's Plugins tab is its group's (`"coding-agents"`), with the app's coding agents.
 - `version` (semver), `author`, `repo` (its GitHub repository) and `fundingUrl` (https): shown in its sheet; one to
   install from GitHub needs `version` and `repo`.
 - `disclosures`: what it does beyond the vault, shown before anyone allows it: `{"network": ["api.example.com"],
@@ -33,7 +33,7 @@ only settings (`data.json`, `<name>.json`) is settings, not a plugin.
   its folder (`"icon.svg"`, at most 16 kB): one colour, drawn in the text's colour. None: a puzzle piece.
 - `tint`: a named colour (`red`, `orange`, `yellow`, `green`, `teal`, `blue`, `indigo`, `purple`, `pink`, `gray`); the app makes
   `--<id>` of it, so its dashboards can say `tint: <id>`. Those names are the app's colours: `text-[var(--green)]`.
-- `category`: its Plugins page section: `navigation`, `writing`, `life`, `health`, `agents`, `developer`, `formats`,
+- `category`: its section on Setup's Plugins tab: `navigation`, `writing`, `life`, `health`, `agents`, `developer`, `formats`,
   `system` (else Other).
 - `apiVersion` / `minAppVersion`: the plugin API and oldest app it needs (`app.api` and `app.version` in
   `GET /api/state`); one asking for more isn't loaded, and its `problems` say so.
@@ -155,10 +155,10 @@ names the folders on this machine that live data is read from, which the menu op
 pinned when it's turned on, unless the vault's pages.json says `"pinNew": false`) and `AGENTS.md` (its file formats, read with `vau docs <id>`: agents look a kind's format up
 before writing one; `vau docs` lists the topics).
 
-**It's off until the user turns it on** (Plugins page, Vault plugins, or `vau plugin on <id>`; it runs code on their
+**It's off until the user turns it on** (Setup ▸ Plugins, or `vau plugin on <id>`; it runs code on their
 machine, its manifest's commands too): tell them to. Turning it on from their machine allows it there at its current files
 (a hash kept on that machine, never in the vault); one turned on elsewhere (another machine, a shared vault, a bundle) or
-whose files changed since waits for them to allow it (Plugins page's Review, `vau plugin allow <id>`). One made with
+whose files changed since waits for them to allow it (its Review in Setup ▸ Plugins, `vau plugin allow <id>`). One made with
 `vau plugin new` on their machine is allowed with its edits, so editing it reloads it; another's edits wait, unless they
 let them run while it's written (`vau plugin allow <id> --edits`). So editing a plugin the user allowed (its notes for an
 agent too) pauses it, its schedule with it, until they allow it again: they're told in the inbox; say so in your report.
@@ -179,7 +179,7 @@ here, nor one that says it does more beyond the vault than it did. Each update i
 with what's new (its commits' subjects since, upkeep left out): `vau plugin history`; `vau plugin rollback <id>` goes
 back to the version before and skips the newer one from then on. Writing one in its own folder: `vau plugin install <folder>`, turn
 it on, then after each edit `vau plugin update <id> --apply` (it keeps running); a `.vaultiteignore` (like .gitignore)
-leaves its tests and QA out of installs. The Plugins page's Get plugins (`vau plugin search`) lists the plugin
+leaves its tests and QA out of installs. Get plugins in Setup ▸ Plugins (`vau plugin search`) lists the plugin
 directory: every GitHub repository with the topic `vaultite-plugin` and a version tag, read daily into one index
 (plugins.json's `index`: an https address, or `owner/name/path.json` in a GitHub repository, read with git so a private
 one works), which can also block a version with a known problem (it then doesn't load). To publish one:

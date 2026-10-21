@@ -16,14 +16,14 @@ With Claude Code installed, write this on a new line and press Enter:
 
 \`@claude what can I do with this vault?\`
 
-Its cursor shows up in this note and answers here. With Codex, set the agent in Settings > Plugins > Companion, then write \`@codex\`.
+Its cursor shows up in this note and answers here. With Codex, set the agent in Setup > Plugins > Companion, then write \`@codex\`.
 
 ## Next
 
 - ⌘O finds any file, ⌘P runs any command (Ctrl+O and Ctrl+P on Windows and Linux).
 - Open terminal (⌘P) runs a coding agent in this folder: \`claude\`, \`codex\` or another. It reads the vault's rules.
 - Settings > Bundles turns on a whole setup at once.
-- Settings > Plugins turns on one feature at a time.
+- Setup > Plugins turns on one feature at a time.
 - Settings > Connections puts Claude, ChatGPT, Muse and Grok Bot in this vault, on the web and on your phone.
 - [[How this vault works]]: what a file is, and what a note can hold.
 - Delete this note when you're done with it.

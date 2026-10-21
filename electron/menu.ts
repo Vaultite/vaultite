@@ -143,8 +143,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
   const settings = () => [
     cmd("page:settings", "Settings…", "settings", { key: "Mod+,", always: true }),
     cmd("hotkeys:open", "Hotkeys", "keyboard", { always: true }),
-    cmd("page:plugins", "Plugins", "puzzle", { always: true }),
-    cmd("bundles:choose", "Bundles", "package", { always: true }),
+    cmd("page:setup", "Setup", "blocks", { always: true }),
     { label: "Set up Vaultite", icon: icon("circle-play"), click: ctx.setup },
   ]
 
@@ -306,7 +305,7 @@ export function menuTemplate(ctx: MenuContext): MenuItemConstructorOptions[] {
 }
 
 /** Commands every vault window has (App.tsx's own, and the file's while one is open): shown greyed while unavailable. */
-const CORE = new Set(["page:settings", "page:plugins", "hotkeys:open", "bundles:choose", "file:new", "tab:new", "switcher:open",
+const CORE = new Set(["page:settings", "page:setup", "hotkeys:open", "file:new", "tab:new", "switcher:open",
   "file:rename", "file:duplicate", "file:reveal-finder", "tab:close", "tab:close-others", "tab:reopen", "find:open", "find:replace",
   "file:copy-link", "file:copy-path", "palette:open", "sidebar:toggle", "sidebar:toggle-right", "view:toggle",
   "setting:line-numbers", "split:right", "split:down", "vault:reload", "nav:back", "nav:forward", "tab:next", "tab:previous",

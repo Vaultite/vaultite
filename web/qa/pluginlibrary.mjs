@@ -1,9 +1,9 @@
-// The Plugins page as one library (pages/Plugins.tsx): sections by category, the AI apps together whatever their
+// Setup's Plugins tab as one library (pages/Plugins.tsx): sections by category, the AI apps together whatever their
 // defaults (the coding agents one row, components/PluginGroup.tsx, its sheet each one's switch), each row a line
 // on what it does, on ones first, a built-in one with no source label or mark; the app's own (`alwaysOn`) parts and Vim
 // (in Editor) aren't rows; Filter narrows by status, source and category (chips under the search undo them), the search
 // above the list looks in all of them and in the directory; a plugin's sheet names its category; no menu: Your plugins
-// and Get plugins are tabs, Bundles a button (Settings' Your setup). Screenshots, light and dark, wide and narrow. Reads
+// and Get plugins are tabs, Bundles Setup's other tab. Screenshots, light and dark, wide and narrow. Reads
 // only.
 //   node web/qa/pluginlibrary.mjs <base url> [out dir]
 import { mkdirSync } from "node:fs"
@@ -96,12 +96,14 @@ for (const colorScheme of ["light", "dark"]) {
     check("its sheet names its category", (await page.locator("dialog[open]").getByText("System", { exact: true }).count()) > 0)
     check("an opt-in plugin's preview draws its blocks while it's off", await until(async () => (await page.locator('dialog[open] [data-block="activity"]').count()) >= 1, 4000))
     await page.keyboard.press("Escape"); await wait(500)
-    await page.locator("[data-plugins-bundles]").click()
-    check("Bundles: a page of its own, not Settings", await until(() => page.locator("[data-bundles-page] [data-bundles-save]").count(), 6000) &&
-      !(await page.locator("[data-settings]").count()))
-    await page.screenshot({ path: `${OUT}plugins-bundles.png` })
-    await page.goto("about:blank"); await page.goto(`${B}#plugins`)
-    check("...back to the list", await until(() => page.locator("[data-plugin-row]").count(), 4000))
+    // Plugins is a tab of Setup, beside Bundles: switching swaps the tab's address in place, adding no history.
+    const depth = await page.evaluate(() => history.length)
+    await page.locator("[data-setup-tab=bundles]").click()
+    check("Setup: its Bundles tab, in the same tab", await until(() => page.locator("[data-setup=bundles] [data-bundles-save]").count(), 6000) &&
+      (await page.evaluate(() => location.hash)) === "#bundles" && (await page.evaluate(() => history.length)) === depth && !(await page.locator("[data-settings]").count()))
+    await page.screenshot({ path: `${OUT}setup-bundles.png` })
+    await page.locator("[data-setup-tab=plugins]").click()
+    check("...and back to Plugins", await until(() => page.locator("[data-plugin-row]").count(), 4000) && (await page.evaluate(() => location.hash)) === "#plugins")
     await page.locator("[data-plugins-get]").click()
     check("Get plugins shows beside the menu", await until(() => page.locator("[data-plugin-browse]").count(), 6000))
     await page.screenshot({ path: `${OUT}plugins-get.png` })

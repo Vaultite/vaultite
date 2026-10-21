@@ -42,6 +42,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   as "<Name> (mine)" for the app's: `vau bundle save --over`) or apply it again.
 - Bundles: try one (`vau bundle apply --trial`): keep it (`vau bundle keep`) or restore the setup from before, even
   after a restart or another bundle applied meanwhile.
+- Setup: one page for Bundles and Plugins, as its two tabs, behind a Setup button beside Settings at the sidebar's foot
+  (Your setup atop Settings goes there too); Open Setup, Open Plugins and Choose a bundle… open it from the palette.
+- Bundles: a bundle that installs plugins says so with a small mark on its card's title row (hover it for which), so
+  every card is one height.
 
 ## 0.6.3 (2026-10-20)
 
