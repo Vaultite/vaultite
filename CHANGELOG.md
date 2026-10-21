@@ -26,6 +26,20 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   row as beside the pinned sidebar, instead of the lights hanging over its corner; the lights sit centred on that row
   in either density.
 - Bundles: the app's own bundles show a real picture of the app they make, in light or dark as the app is.
+- Bundles: Standard after Zen (or any of the app's bundles after another) is that bundle's setup again: each says every
+  part of the look and every setting any of them sets, instead of leaving Zen's tab bar, rails and tiles behind.
+- Bundles: a saved bundle says the whole look and the settings the app's bundles set, so applying it after any other
+  gives back the setup it was saved from.
+- Bundles: plugins a bundle installs are pinned to the commit and files recorded when it was saved (the app's too): a
+  moved tag can't change what's installed, and files that differ are refused, nothing installed.
+- Bundles: getting a bundle you have again (an update) says what changed (files, plugins re-pinned) and replaces yours
+  only when you say so; it's never applied.
+- Bundles: apply only some of a bundle's changes (each has an id: `vau bundle show`, `--skip`); restore still puts the
+  rest back. `vau bundle fork` makes "<Name> (mine)" without the changes skipped.
+- Bundles: the bundle in use says when the setup has changed since and what differs; save the changes (over yours, or
+  as "<Name> (mine)" for the app's: `vau bundle save --over`) or apply it again.
+- Bundles: try one (`vau bundle apply --trial`): keep it (`vau bundle keep`) or restore the setup from before, even
+  after a restart or another bundle applied meanwhile.
 
 ## 0.6.3 (2026-10-20)
 

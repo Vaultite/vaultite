@@ -44,6 +44,20 @@ export default async ($: VaultTest) => {
     const changed = await inUse()
     await freshApp.host().call("PATCH", "config/appearance", { scheme: null })
     check("new vault: Standard is in use, until the setup changes", JSON.stringify(was) === '["standard"]' && !changed.length && JSON.stringify(await inUse()) === '["standard"]', [was, changed])
+    // Each of the app's bundles says every part any of them says (Standard the defaults): Zen, then Standard, is a new
+    // vault's Standard again, every settings file as it was (key order aside).
+    const sorted = (x: unknown): unknown => Array.isArray(x) ? x.map(sorted) : x && typeof x === "object"
+      ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => (a < b ? -1 : 1)).map(([k, v]) => [k, sorted(v)])) : x
+    const configs = () => {
+      const dir = path.join(fresh, ".vaultite/plugins")
+      const names = ["appearance", "plugins", "sidebars", "pages", "newtab", "hotkeys", ...(fs.existsSync(dir) ? fs.readdirSync(dir).map((id) => `plugins/${id}/data`) : [])]
+      return JSON.stringify(Object.fromEntries(names.flatMap((n) => { const o = conf(fresh, n); return o && Object.keys(o).length ? [[n, sorted(o)]] : [] })))
+    }
+    const standard = configs()
+    await freshApp.host().call("POST", "bundles/zen/apply", {})
+    const zen = configs()
+    await freshApp.host().call("POST", "bundles/standard/apply", {})
+    check("new vault: Zen, then Standard, is Standard again (every settings file as it was)", zen !== standard && configs() === standard, [standard, zen, configs()])
     const own = path.join(tmp, "Own notes")
     fs.mkdirSync(path.join(own, "Ideas"), { recursive: true })
     fs.writeFileSync(path.join(own, "Ideas/One.md"), "An idea.\n")

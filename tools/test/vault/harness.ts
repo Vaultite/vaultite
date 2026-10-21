@@ -45,6 +45,11 @@ export async function vaultHarness(from?: string) {
   fs.cpSync(path.join(TOOLS, "fixtures", "claude"), CLAUDE_DIR, { recursive: true })
   fs.cpSync(path.join(TOOLS, "fixtures", "codex"), CODEX_DIR, { recursive: true })
   Object.assign(process.env, { CLAUDE_CONFIG_DIR: CLAUDE_DIR, CODEX_HOME: CODEX_DIR })
+  // The app's bundles with their installs pinned to a made-up Vaultite/plugins (tools/test/official.ts), which a test
+  // reaches through VAULTITE_GITHUB.
+  const { officialBundles, officialRepos } = await import("../official.ts")
+  officialRepos(path.join(tmp, "official"))
+  process.env.VAULTITE_BUNDLES = officialBundles(path.join(tmp, "official"))
   // Imported after the environment is set: plugins read it when they load.
   const { open } = await import("../../../core/app.ts")
   const { merge3 } = await import("../../../core/textedit.ts")

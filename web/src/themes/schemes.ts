@@ -1,9 +1,11 @@
 // The colour schemes that ship with the app, a CSS file each; `only`: one mode. Licences: LICENSES.md. The default is
 // Gruvbox; `default` is index.css's own tokens, named Classic.
+import { LOOK } from "../../../core/look.ts"
+
 export type SchemeInfo = { id: string; name: string; only?: "light" | "dark"; note?: string }
 
-/** The scheme a vault without `scheme` in appearance.json has (= core/bundles.ts' LOOK_DEFAULTS). */
-export const DEFAULT_SCHEME = "gruvbox"
+/** The scheme a vault without `scheme` in appearance.json has. */
+export const DEFAULT_SCHEME = LOOK.scheme
 
 /** A scheme id as the app draws it: unset is the default. */
 export const schemeId = (id: unknown) => (typeof id === "string" && id ? id : DEFAULT_SCHEME)

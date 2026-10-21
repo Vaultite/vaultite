@@ -11,19 +11,23 @@ import { disclosed, disclosuresOf } from "../pluginmeta.ts"
 import { autoUpdates, type Update } from "../updates.ts"
 import { compareVersions, tagVersion } from "../version.ts"
 import { settingsFile } from "../rules.ts"
-import { DIR } from "../vaultplugins.ts"
+import { digestOf, DIR } from "../vaultplugins.ts"
 import { notHereYet } from "../writegate.ts"
 import { type Any } from "./common.ts"
 import { strings } from "../values.ts"
 
 const SOURCE = { type: "string" as const, required: true, description: "owner/name on GitHub (owner/name/folder for one of several in it; with @tag), a git URL, a folder on this machine, or a zip's https address with #sha256=<hex>" }
 
-/** Install a plugin from `source` (at `tag`, else its newest): off, unless plugins.json has it on; `moved`, one of the
- *  app's plugins that moved to it (core/migrations.ts MOVED), said so when it asks to be allowed here. */
-export async function installFrom(app: App, source: string, tag?: string | null, { moved = false } = {}) {
-  const src = parseSource(source, tag)
+/** Install a plugin from `source` (at `commit`, else `tag`, else its newest; refused unless its files hash to `hash`):
+ *  off, unless plugins.json has it on; `moved`, one of the app's plugins that moved to it (core/migrations.ts MOVED). */
+export async function installFrom(app: App, source: string, tag?: string | null, { moved = false, commit = null, hash = null }: { moved?: boolean; commit?: string | null; hash?: string | null } = {}) {
+  const src = { ...parseSource(source, tag), commit }
   const f = await fetchSource(src, new Map(app.app.map((p) => [p.id, p.tier])), new Map([...app.vaultPlugins.found].map(([x, vp]) => [x, vp.dir])))
   try {
+    const got = hash ? digestOf(f.dir).content : null
+    if (got !== hash) {
+      throw new OpError(`its files${commit ? ` at commit ${commit.slice(0, 7)}` : f.tag ? ` at ${f.tag}` : ""} aren't the ones recorded (they hash to ${got}, not ${hash})`, 422)
+    }
     const version = String(f.manifest.version ?? "")
     const why = app.index.blockedWhy(f.id, version, [src.repo, typeof f.manifest.repo === "string" ? f.manifest.repo : null])
     if (why) throw new OpError(why, 409)
@@ -119,6 +123,9 @@ it needs version and repo), copies it to .vaultite/plugins/<id>/ and records whe
 .vaultite/plugins-lock.json. It's off until turned on (\`vau plugin on <id>\`: it runs code on this machine, so ask the
 user first, and show them what it says it does: its disclosures).
 
+--commit fetches that commit (its full sha) instead of what a tag names now, and --hash refuses, installing nothing,
+files that don't hash to what .vaultite/plugins-lock.json recorded: what a bundle's installs are pinned by (tags move).
+
 A plugin that isn't in a repository can come as a zip from an https address, pinned by its hash after it
 (#sha256=<64 hex digits>, refused if the download differs): the plugin's files at its top or in its one folder. Its
 address is recorded without its query (a short-lived signed one isn't kept); it has no updates: a newer version is
@@ -132,9 +139,11 @@ another address.
     kind: "write",
     owner: "installing a plugin",
     lock: false, // (fetching waits on the network: it writes only at the end)
-    params: { source: SOURCE, tag: { type: "string", description: "the tag to install (else the newest version tag)" } },
+    params: { source: SOURCE, tag: { type: "string", description: "the tag to install (else the newest version tag)" },
+      commit: { type: "string", description: "a commit to install, its full sha: what the tag named when it was recorded (tags move); the tag is kept for updates" },
+      hash: { type: "string", description: "what its files must hash to, as .vaultite/plugins-lock.json records it: refused, nothing installed, when they differ" } },
     args: ["source"],
-    run: ({ source, tag }) => installFrom(app, source, tag),
+    run: ({ source, tag, commit, hash }) => installFrom(app, source, tag, { commit: commit ?? null, hash: hash ?? null }),
     text: (r) => [`Installed ${r.name} ${r.version} in ${r.folder}/${r.tag ? ` (${r.tag})` : r.commit ? ` (commit ${r.commit.slice(0, 7)})` : ""}.`,
       ...(r.untagged ? ["It has no version tags: it's the default branch as it is now (updates follow its commits)."] : []),
       ...disclosed(r.disclosures).map((d) => `It says it ${d}.`),

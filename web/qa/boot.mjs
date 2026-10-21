@@ -15,7 +15,7 @@ import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { CHROME, ROOT, freePort, launch, qa, wait } from "./lib/qa.mjs"
-import { officialRepos } from "../../tools/test/official.ts"
+import { officialBundles, officialRepos } from "../../tools/test/official.ts"
 const { check, fails } = await qa(import.meta.url, { chrome: false })
 if (!fs.existsSync(CHROME)) { console.log("boot: skipped (no Google Chrome here)"); process.exit(0) }
 if (!process.argv[2] && !fs.existsSync(path.join(ROOT, "web/dist/index.html"))) { console.error("boot: no web/dist (npm run build first)"); process.exit(1) }
@@ -27,7 +27,7 @@ async function serve(vault, local) {
   const port = await freePort()
   const server = spawn(process.execPath, [path.join(ROOT, "server.ts")], {
     cwd: ROOT, stdio: ["ignore", "ignore", "pipe"],
-    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local, ...(github ? { VAULTITE_GITHUB: github } : {}) },
+    env: { ...process.env, PORT: String(port), HOST: "127.0.0.1", VAULTITE_VAULT: vault, VAULTITE_LOCAL: local, ...(github ? { VAULTITE_GITHUB: github, VAULTITE_BUNDLES: bundles } : {}) },
   })
   servers.push({ server, port })
   let said = ""
@@ -38,11 +38,12 @@ async function serve(vault, local) {
   if (!up) { console.error(`boot: the server didn't start\n${said}`); stop(); process.exit(1) }
   return base
 }
-let base = process.argv[2], tmp = null, github = null
+let base = process.argv[2], tmp = null, github = null, bundles = null
 if (!base) {
   tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vau-boot-"))
   // (a bundle installing Vaultite's own plugins gets them from a made-up Vaultite/plugins here, never GitHub)
   github = officialRepos(path.join(tmp, "official"))
+  bundles = officialBundles(path.join(tmp, "official"))
   const made = spawnSync(process.execPath, [path.join(ROOT, "bin/vau"), "sandbox", path.join(tmp, "vault")], { encoding: "utf8" })
   if (made.status !== 0) { console.error(`boot: couldn't make the sandbox\n${made.stderr || made.stdout}`); process.exit(1) }
   base = await serve(path.join(tmp, "vault"), path.join(tmp, "local"))

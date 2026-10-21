@@ -2,8 +2,22 @@
   "theme": "system",
   "scheme": "flexoki",
   "density": "comfortable",
-  "fileIcons": true,
+  "sidebarScroll": "panels",
+  "panelDividers": false,
+  "quickTextSize": false,
+  "interfaceFont": "",
+  "textFont": "",
+  "monoFont": "",
   "snippets": [
     "Serif titles"
-  ]
+  ],
+  "fileIcons": true,
+  "tabBar": true,
+  "paneTitles": true,
+  "rails": true,
+  "lineNumbers": false,
+  "statusBar": null,
+  "statusBarMore": [],
+  "fileBar": null,
+  "pullActions": null
 }

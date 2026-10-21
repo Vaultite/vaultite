@@ -11,16 +11,17 @@ books, and pages and databases over them).
   ```
   bundle.json        {"name": "Writing desk", "description": "One line on what it's for", "icon": "pen", "tint": "purple"}
   plugins.json       {"disabled": [every app plugin that's off], "enabled": [opt-in ones that are on: its vault plugins, built-ins off by default like people],
-                      "install": {"tasks": {"name": "Tasks", "source": "Vaultite/plugins/tasks", "tag": "tasks/v1.0.1"}}: installed from there when applied;
+                      "install": {"tasks": {"name": "Tasks", "source": "Vaultite/plugins/tasks", "tag": "tasks/v1.0.1", "commit": "<sha>", "hash": "<its files'>"}}:
+                      installed from there when applied, at that commit (tags move), refused unless its files hash to that (the lock's);
                       one of the app's own plugins that moved to Vaultite's plugins, named in `enabled`, is installed from there too}
   sidebars.json      the panels, as .vaultite/sidebars.json ({} is the default panels)
   pages.json         {"pinned": ["Dashboards/Desk.md", "Dashboards/Projects.md"]}
-  appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable"}
+  appearance.json    {"theme": "system", "scheme": "everforest", "density": "comfortable", ...}: the app's and saved ones say every key
   hotkeys.json       optional
   newtab.json        what a new tab shows, as .vaultite/newtab.json (its `page`: a dashboard it brings, or a plugin's page)
   preview.png        its card's picture: a screenshot of the app it makes (the desktop app takes one when saving)
   preview-dark.png   the same in dark, shown while the app is dark (each picture stands in for the other)
-  plugins/<id>/data.json   a plugin's settings: only the keys that differ from its defaults
+  plugins/<id>/data.json   a plugin's settings: those that differ from its defaults (saved: also the ones the app's bundles set)
   plugins/<id>/      with a manifest.json: a vault plugin made in the vault that it brings (it runs code: applying asks the user, and their yes
                      allows it on that machine; one already in the vault keeps waiting until allowed on its own)
   themes/<Name>/, snippets/<name>.css   themes and CSS snippets it uses, and the fonts the snippets load
@@ -35,8 +36,8 @@ books, and pages and databases over them).
 - A bundle of only some parts changes only those: one with just appearance.json (and themes, snippets) restyles any
   setup. To match a picture (a screenshot someone shared): pick the scheme closest to its colours or write a theme
   (`.vaultite/themes/<Name>/`), its fonts, and a snippet for the rest (`vau docs app`, Appearance).
-- Applying makes small edits: the plugin switches that change, the keys its files set (an appearance value that is the
-  default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
+- Applying makes small edits: the plugin switches that change, the keys its files set (a value of the look or a setting
+  that is the default removes the key), one pin at a time, and the files it brings only where there's none (nothing is ever
   deleted). A plugin it turns on writes its pages, as turning it on does (those already on don't: Standard over a new
   vault adds none); a plugin's page it pins (`Dashboards/Today.md`) is written if the pages folder has none. Pins become the
   bundle's pages, then the user's own as they were; dashboards the app brings (plugins' and its own bundles') that it
@@ -46,12 +47,25 @@ books, and pages and databases over them).
 - What it changed is kept in `.vaultite/bundles/previous.json` until the next apply: "Restore previous setup" (the
   toast's Undo, Settings, `vau bundle restore`) puts each key, pin and panel back and trashes the files it added if
   they're unchanged.
+- Each change of a plan has an id (`changes` in `bundle.show`: `install:<plugin>`, `plugin:<plugin>`,
+  `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `hotkey:<command>`,
+  `newtab:<key>`), the same for the same bundle and setup. Applying with `skip` leaves those out (nor kept to restore);
+  `vau bundle fork <id> --skip ...` saves the bundle without them as "<Name> (mine)" (a value skipped is the current
+  one, still said; a pin, file or plugin skipped is left out).
+- The bundle applied last (`.vaultite/bundles/applied.json`, with what it skipped) is in use; once the setup changes,
+  `GET /api/bundles` gives it `modified` and `differs` (the ids that would apply). Applying it again puts it back;
+  `vau bundle save --over <id>` keeps the changes: over one of the user's (its name, card and `from` kept), or as
+  "<Name> (mine)" for one of the app's. Saving makes the bundle saved the one in use.
+- Trying one (`apply --trial`, `.vaultite/bundles/trial.json`): `vau bundle keep` ends it as an apply; restore puts back
+  the setup from before. Another applied while trying ends the trial, and restore still goes back to before it.
 - A bundle is in use (`inUse` in `GET /api/bundles`, "In use" on its card) while applying it would change nothing: a
   new vault's Standard, until a setting it sets changes.
 - Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
   asked. A plugin's page as it wrote it goes by its name (`Dashboards/Today.md`), other pinned dashboards as files. Sharing (export, Copy) leaves out its picture, pages with the user's own text and pins to their notes, unless
   asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;
-  `vau bundle import owner/name` adds it (bundle.json's `from` keeps where), again updates it.
+  `vau bundle import owner/name` adds it (bundle.json's `from` keeps where). Getting it again is an update: its preview
+  (`changes`: files added, changed, removed; installs re-pinned) says what's different, and it replaces the user's copy
+  only with `replace` (`--replace`), never applied.
 - **A bundle's link**: once its file is in a public GitHub repository (one `.bundle.json` at its top, or the bundle's
   folder there), `https://vaultite.com/b/<owner>/<name>` (`/<folder>` after it for one in a folder of the repository)
   is a page that shows it and runs it live in the web demo, on its made-up vault: the visitor's browser fetches it from

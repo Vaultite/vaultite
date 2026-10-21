@@ -366,7 +366,9 @@ export class App {
           if (fs.existsSync(this.vault.abs(`.vaultite/plugins/${id}/manifest.json`))) this.vaultPlugins.allow(id)
         }
       },
-      install: async (source, tag) => { await this.callOp("plugin.install", { source, ...(tag ? { tag } : {}) }, this.who(), { http }) },
+      install: async (source, tag, { commit, hash }) => {
+        await this.callOp("plugin.install", { source, ...(tag ? { tag } : {}), ...(commit ? { commit } : {}), ...(hash ? { hash } : {}) }, this.who(), { http })
+      },
       uninstall: async (id) => { await this.callOp("plugin.uninstall", { id }, this.who(), { http }) },
     }
   }

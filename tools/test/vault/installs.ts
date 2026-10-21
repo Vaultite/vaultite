@@ -330,14 +330,18 @@ export default async ($: VaultTest) => {
         got("Dashboards/Desk.md") && got("appearance.json") && !got("README.md") && !got("LICENSE"), [bc, bo])
       repo("desk", { "appearance.json": JSON.stringify({ scheme: "dracula" }) }, "v1.1.0")
       ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/desk" })
-      check("bundles: got again from there, it's updated in place (its newest tag)", bc === 200 && bo.bundle.id === "desk" && bo.bundle.scheme === "dracula" &&
+      check("bundles: got again from there, it isn't replaced without the user's go", bc === 409, [bc, bo])
+      ;[bc, bo] = await api("POST", "bundles/import/preview", { from: "repos/desk" })
+      check("bundles: its preview says what changed", bc === 200 && bo.replaces === "desk" && bo.changes?.changed.join() === "appearance.json", bo.changes)
+      ;[bc, bo] = await api("POST", "bundles/import", { from: "repos/desk", replace: true })
+      check("bundles: with it, it's updated in place (its newest tag)", bc === 200 && bo.bundle.id === "desk" && bo.bundle.scheme === "dracula" &&
         !exists(".vaultite/bundles/desk-2"), [bc, bo])
       // Pinned at a commit (the directory's addresses): exactly that commit, recorded in `from`; the same place replaces it.
       const DESK = path.join(tmp, "repos", "desk"), at = (ref: string) => g(DESK, "rev-list", "-n1", ref).trim()
       ;[bc, bo] = await api("POST", "bundles/import/preview", { from: `repos/desk@${at("v1.0.0")}` })
       check("bundles: pinned, its preview is that commit's, and replaces the one from the same place", bc === 200 && bo.replaces === "desk" &&
         (typeof bo.file.files["bundle.json"] === "string" ? JSON.parse(bo.file.files["bundle.json"]) : bo.file.files["bundle.json"]).from === `repos/desk@${at("v1.0.0")}`, [bc, bo])
-      ;[bc, bo] = await api("POST", "bundles/import", { from: `repos/desk@${at("v1.0.0")}` })
+      ;[bc, bo] = await api("POST", "bundles/import", { from: `repos/desk@${at("v1.0.0")}`, replace: true })
       check("bundles: pinned at a commit, it's that commit (not the newest tag), and from says so", bc === 200 && bo.bundle.id === "desk" && bo.bundle.scheme === "nord" &&
         bo.bundle.from === `repos/desk@${at("v1.0.0")}` && !exists(".vaultite/bundles/desk-2"), [bc, bo])
       ;[bc, bo] = await api("POST", "bundles/import", { from: `repos/desk@${"0".repeat(40)}` })
@@ -365,7 +369,7 @@ export default async ($: VaultTest) => {
       text = (await vau("bundle", "browse", "desk")).out
       check("vau bundle browse: each with its import address", text.includes("Writing desk (repos/desk) by repos, 9 stars") && text.includes("a newer commit is listed") &&
         text.includes(`vau bundle import repos/desk@${at("v1.1.0")}`), text)
-      await api("POST", "bundles/import", { from: wd.address })
+      await api("POST", "bundles/import", { from: wd.address, replace: true })
       ;[, bo] = await api("GET", "bundles/browse")
       check("browse: imported from its address, it's current", bo.bundles[0].imported === "desk" && bo.bundles[0].current === true && read(".vaultite/bundles/desk/appearance.json").includes("dracula"), bo.bundles[0])
       check("browse: a bundle can't take the route's id", (await api("GET", "bundles/browse"))[0] === 200 && !(await api("POST", "bundles", { name: "Browse" }))[1].bundle?.id?.match(/^browse$/))

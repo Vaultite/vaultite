@@ -343,7 +343,7 @@ const LOCAL: Record<string, Local> = {
       const b = p.bundle
       if (typeof b !== "string" || /^\s*\{/.test(b)) return p
       const from = local(b)
-      if (!fs.existsSync(from) && /^([\w.-]+\/[\w.-]+|https?:\/\/|git@|ssh:\/\/)/.test(b)) return { from: b }
+      if (!fs.existsSync(from) && /^([\w.-]+\/[\w.-]+|https?:\/\/|git@|ssh:\/\/)/.test(b)) { const { bundle: _, ...rest } = p; return { ...rest, from: b } }
       if (fs.existsSync(from) && fs.statSync(from).isDirectory()) {
         const files: Record<string, string | { base64: string }> = {}
         const utf8 = new TextDecoder("utf-8", { fatal: true })

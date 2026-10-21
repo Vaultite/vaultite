@@ -2,12 +2,22 @@
   "theme": "system",
   "scheme": "rose-pine",
   "density": "comfortable",
+  "sidebarScroll": "panels",
+  "panelDividers": false,
+  "quickTextSize": false,
+  "interfaceFont": "",
+  "textFont": "",
+  "monoFont": "",
+  "snippets": [
+    "Floating panes"
+  ],
   "fileIcons": true,
   "tabBar": false,
   "paneTitles": false,
   "rails": false,
+  "lineNumbers": false,
   "statusBar": [],
-  "snippets": [
-    "Floating panes"
-  ]
+  "statusBarMore": [],
+  "fileBar": null,
+  "pullActions": null
 }

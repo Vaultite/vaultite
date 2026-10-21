@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 import { freePort, record, sleep } from "./test/lib.ts"
 import { slot } from "./qa_slots.ts"
-import { officialRepos } from "./test/official.ts"
+import { officialBundles, officialRepos } from "./test/official.ts"
 import { MOVED } from "../core/migrations.ts"
 
 const ROOT = path.resolve(import.meta.dirname, "..")
@@ -105,6 +105,7 @@ async function run(name: string): Promise<{ ok: boolean, ms: number, out: string
     // (a made-up plugin directory and git repositories, on this machine: web/qa/pluginstore.mjs)
     // (Vaultite's own plugins a bundle installs come from a made-up Vaultite/plugins, never GitHub)
     env.VAULTITE_GITHUB = officialRepos(path.join(tmp, "repos"))
+    env.VAULTITE_BUNDLES = officialBundles(path.join(tmp, "repos"))
     if ((usage(name) as string[]).includes("<plugin index>")) Object.assign(env, { VAULTITE_PLUGIN_INDEX: path.join(tmp, "index.json"), VAULTITE_GITHUB: `file://${path.join(tmp, "repos")}` })
     const main = await serve(vault, path.join(tmp, "local"), env)
     servers.push(main)

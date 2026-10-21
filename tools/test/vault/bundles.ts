@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import type { Any, VaultTest } from "./harness.ts"
@@ -49,7 +50,7 @@ export default async ($: VaultTest) => {
     if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
     const pj = conf("plugins"), look = conf("appearance")
     check("bundles: plugins.json keeps its other keys", pj.updatesOff?.[0] === "lighthouse" && pj.order?.[0] === "people" && pj.enabled.includes("today") && !pj.enabled.includes("machines") && pj.enabled.includes("books"), pj)
-    check("bundles: appearance keeps the keys the bundle doesn't set; one it sets to the default is removed", look.textFont === "Georgia" && !("theme" in look) && look.scheme === "flexoki" &&
+    check("bundles: appearance is the bundle's whole look (the app's say every key); one it sets to the default is removed", !("textFont" in look) && !("theme" in look) && look.scheme === "flexoki" &&
       look.density === "comfortable", look)
     check("bundles: a plugin's settings: the key set, the others kept", JSON.stringify(conf("plugins/page-preview/data")) === JSON.stringify({ delay: 300, trigger: "hover" }), conf("plugins/page-preview/data"))
     check("bundles: pins are the bundle's, then the user's own", conf("pages").pinned.join() === LIFE, conf("pages"))
@@ -242,15 +243,197 @@ export default async ($: VaultTest) => {
     // A number the user set higher stays: a bundle never lowers it.
     const hist = conf("plugins/history/data")
     setConf("plugins/history/data", { keep_days: 90 })
-    write(".vaultite/bundles/keep/bundle.json", JSON.stringify({ name: "Keep" }))
-    write(".vaultite/bundles/keep/plugins/history/data.json", JSON.stringify({ keep_days: 30 }))
-    ;[, r] = await api("GET", "bundles/keep")
+    write(".vaultite/bundles/keep-days/bundle.json", JSON.stringify({ name: "Keep" }))
+    write(".vaultite/bundles/keep-days/plugins/history/data.json", JSON.stringify({ keep_days: 30 }))
+    ;[, r] = await api("GET", "bundles/keep-days")
     check("bundles: a number you set higher is never lowered", !r.plan.settings.some((x: Any) => x.plugin === "history" && x.key === "keep_days") &&
       r.plan.skipped.some((x: Any) => x.plugin === "history" && x.key === "keep_days" && /higher/.test(x.why)), [r.plan.settings, r.plan.skipped])
-    fs.rmSync(path.join(VAULT, ".vaultite/bundles/keep"), { recursive: true })
+    fs.rmSync(path.join(VAULT, ".vaultite/bundles/keep-days"), { recursive: true })
     if (hist) setConf("plugins/history/data", hist); else fs.rmSync(path.join(VAULT, ".vaultite/plugins/history/data.json"), { force: true })
     for (const [name, was] of [["plugins", pluginsBefore], ["pages", pagesBefore]] as const) {
       if (was) setConf(name, was); else fs.rmSync(path.join(VAULT, `.vaultite/${name}.json`), { force: true })
     }
+  }
+  // What the Bundles page builds on: each change's id, applying some of them, a copy without some (fork), the bundle in
+  // use and what changed since (drift), trying one, and installs pinned to a commit.
+  {
+    const conf = (name: string) => { try { return JSON.parse(read(`.vaultite/${name}.json`)) } catch { return null } }
+    const NAMES = ["plugins", "pages", "appearance", "sidebars", "plugins/pages/data", "plugins/errors/data", "plugins/page-preview/data"]
+    const kept = NAMES.map((n) => [n, exists(`.vaultite/${n}.json`) ? read(`.vaultite/${n}.json`) : null] as const)
+    const { LOOK } = await import("../../../core/look.ts")
+    const SETTINGS = [["errors", "notify"], ["pages", "show"], ["page-preview", "trigger"]]
+    const defaultOf = (id: string, key: string) => (app.plugins.find((p) => p.id === id)?.manifest.settings as Any)?.[key]?.default
+    const appIds = new Set(app.plugins.filter((p) => p.tier !== "vault").map((p) => p.id))
+    /** The setup as the app reads it: the look and the settings the app's bundles set (defaults filled in), the app's
+     *  plugins that are off, the panels, the pins. */
+    const setup = () => JSON.stringify({ look: { ...LOOK, ...conf("appearance") }, settings: SETTINGS.map(([id, k]) => conf(`plugins/${id}/data`)?.[k] ?? defaultOf(id, k)),
+      off: [...app.vault.switchedOff()].filter((id) => appIds.has(id)).sort(), panels: (({ left, right, collapsed }: Any) => ({ left, right, collapsed }))(conf("sidebars") ?? {}),
+      pins: conf("pages")?.pinned ?? [] })
+    const apply = (id: string, body: Any = {}) => api("POST", `bundles/${id}/apply`, { allowCode: true, ...body })
+    const entry = async (id: string) => (await api("GET", "bundles"))[1].bundles.find((b: Any) => b.id === id)
+    const github = process.env.VAULTITE_GITHUB
+    const OFFICIAL = path.join($.tmp, "official")
+    process.env.VAULTITE_GITHUB = officialRepos(OFFICIAL)
+    await apply("standard")
+
+    // Each change has an id, the same for the same bundle and setup.
+    let [code, r] = await api("GET", "bundles/zen")
+    const ids: string[] = r.plan.changes.map((c: Any) => c.id)
+    const again: string[] = (await api("GET", "bundles/zen"))[1].plan.changes.map((c: Any) => c.id)
+    check("bundles: each change has an id, the same each time, on its line too", ids.join() === again.join() && new Set(ids).size === ids.length &&
+      ["appearance:scheme", "panels", "setting:pages.show", "plugin:glance"].every((x) => ids.includes(x)) && r.plan.settings.every((c: Any) => ids.includes(c.change)) &&
+      r.plan.changes.every((c: Any) => typeof c.label === "string" && c.label), r.plan.changes)
+
+    // Applying some of them: the ones skipped aren't made, nor kept to restore; restore still puts the rest back.
+    const before = setup(), lookBefore = conf("appearance"), panelsBefore = JSON.stringify(conf("sidebars"))
+    const SKIP = ["appearance:scheme", "panels", "setting:pages.show"]
+    ;[code, r] = await apply("zen", { skip: SKIP })
+    check("bundles: apply leaves out the changes skipped", code === 200 && [...r.plan.omitted].sort().join() === SKIP.join() && conf("appearance")?.scheme === lookBefore?.scheme &&
+      conf("appearance")?.tabBar === false && conf("plugins/pages/data")?.show !== "tiles" && JSON.stringify(conf("sidebars")) === panelsBefore, [code, r?.plan?.omitted, conf("appearance")])
+    const prev = JSON.parse(read(".vaultite/bundles/previous.json"))
+    check("bundles: a change skipped isn't kept to restore", !("scheme" in (prev.config.appearance ?? {})) && !prev.config.sidebars && !prev.config["plugins/pages/data"], prev.config)
+    let zen = await entry("zen")
+    check("bundles: the bundle applied last, without what it was applied without, is in use", zen.applied?.skip?.join() === SKIP.join() && zen.modified === false && zen.inUse === true, zen)
+    ;[code] = await api("POST", "bundles/restore")
+    check("bundles: restored after applying some changes, the setup is as it was", code === 200 && setup() === before, [before, setup()])
+    check("bundles: restored, the bundle in use is the one before", (await entry("standard"))?.applied && !(await entry("zen")).applied)
+
+    // Drift: the bundle in use, changed since, says what differs; applying it again (Revert) puts it back.
+    await apply("zen")
+    await api("PATCH", "config/appearance", { density: "compact" })
+    zen = await entry("zen")
+    check("bundles: changed since, it's modified, saying what differs", zen.modified === true && zen.differs.join() === "appearance:density" && !zen.inUse, zen)
+    await apply("zen")
+    check("bundles: applied again, it's as it was (Revert)", (await entry("zen")).modified === false)
+    // Save changes: one of the app's is saved as "<Name> (mine)", the user's own over itself (its name, card and source kept).
+    await api("PATCH", "config/appearance", { density: "compact" })
+    ;[code, r] = await api("POST", "bundles", { over: "zen" })
+    const mineId = r.bundle?.id
+    check("bundles: Save changes to one of the app's makes \"Zen (mine)\", now in use", code === 200 && r.bundle.name === "Zen (mine)" && r.bundle.icon === "wind" && r.bundle.tint === "teal" &&
+      (await entry(mineId))?.applied && (await entry(mineId)).modified === false && !(await entry("zen")).applied, r)
+    write(`.vaultite/bundles/${mineId}/bundle.json`, JSON.stringify({ name: "Zen (mine)", icon: "wind", tint: "teal", from: "alice/zen" }))
+    await api("PATCH", "config/appearance", { scheme: "nord" })
+    ;[code, r] = await api("POST", "bundles", { over: mineId })
+    const savedOver = JSON.parse(read(`.vaultite/bundles/${mineId}/bundle.json`))
+    check("bundles: Save changes to the user's own saves over it, its name and source kept", code === 200 && r.bundle.id === mineId && savedOver.from === "alice/zen" &&
+      JSON.parse(read(`.vaultite/bundles/${mineId}/appearance.json`)).scheme === "nord" && (await entry(mineId)).modified === false, [r, savedOver])
+
+    // A saved bundle, applied after any other, is the setup it was saved from: the whole look, the settings the app's
+    // bundles set (defaults said), plugins, panels, pins.
+    await api("PATCH", "config/plugin/page-preview", { trigger: "hover" })
+    await api("PATCH", "config/plugin/errors", { notify: null })
+    await api("PATCH", "config/appearance", { lineNumbers: true, statusBar: ["today:routines"] })
+    ;[code, r] = await api("POST", "bundles", { name: "Whole desk" })
+    const whole = r.bundle.id, saved = setup(), savedLook = JSON.parse(read(`.vaultite/bundles/${whole}/appearance.json`))
+    check("bundles: saved, it states the whole look and the app's bundles' settings, defaults too", LOOK && Object.keys(LOOK).every((k) => k in savedLook) &&
+      JSON.parse(read(`.vaultite/bundles/${whole}/plugins/errors/data.json`)).notify === true && (await api("GET", `bundles/${whole}`))[1].plan.empty, savedLook)
+    for (const other of ["life-os", "standard", "zen"]) {
+      ;[code] = await apply(other)
+      const between = setup()
+      ;[code, r] = await apply(whole)
+      check(`bundles: saved, applied after ${other}, it's the setup it was saved from`, code === 200 && between !== saved && setup() === saved, [saved, setup()])
+    }
+
+    // A copy without some changes (fork): applied anywhere, it does what the bundle without them does here.
+    await apply("standard")
+    const FORK = ["appearance:scheme", "panels", "setting:pages.show", "plugin:glance"]
+    ;[code, r] = await api("POST", "bundles/zen/fork", { skip: FORK })
+    const forked = r.bundle
+    check("bundles: fork makes the user's copy, its name free, its card copied, not its picture", code === 200 && forked.name === "Zen (mine 2)" && forked.source === "vault" &&
+      forked.icon === "wind" && forked.tint === "teal" && !forked.preview && !forked.from, r)
+    ;[code] = await api("POST", "bundles/zen/fork", { skip: ["setting:nope.x"] })
+    check("bundles: fork with an id that isn't a change is refused", code === 400, code)
+    await apply("zen", { skip: FORK })
+    const partial = setup()
+    await api("POST", "bundles/restore")
+    await apply(forked.id)
+    check("bundles: the copy applied here is the bundle applied without those changes", setup() === partial, [partial, setup()])
+    await apply("life-os")
+    await apply(forked.id)
+    check("bundles: and so it is after another (a value it skipped is this setup's, said)", setup() === partial, [partial, setup()])
+
+    // Trying one: Keep, or Restore to before it; applying another meanwhile restores to before the trial too.
+    const uninstallAll = async () => { for (const id of Object.keys(conf("plugins-lock") ?? {})) await api("POST", "ops/plugin.uninstall", { id }) }
+    await apply("standard")
+    await uninstallAll()
+    const pre = setup()
+    ;[code, r] = await apply("zen", { trial: true })
+    let list = (await api("GET", "bundles"))[1]
+    check("bundles: trying one: apply, the list and the state say so (kept in the vault)", code === 200 && r.trial?.id === "zen" && list.trial?.id === "zen" && list.trial.name === "Zen" &&
+      (await api("GET", "state"))[1].bundles?.trial?.id === "zen" && JSON.parse(read(".vaultite/bundles/trial.json")).bundle === "zen", [r.trial, list.trial])
+    ;[code, r] = await api("POST", "bundles/keep")
+    check("bundles: Keep ends the trial, keeping its setup; restore still possible", code === 200 && r.kept === "Zen" && !r.trial && !exists(".vaultite/bundles/trial.json") &&
+      exists(".vaultite/bundles/previous.json") && setup() !== pre, r)
+    ;[code] = await api("POST", "bundles/keep")
+    check("bundles: Keep with nothing tried is a 404", code === 404, code)
+    await api("POST", "bundles/restore")
+    check("bundles: restored after a kept trial, it's the setup from before", setup() === pre, [pre, setup()])
+    await apply("zen", { trial: true })
+    await apply("life-os", { trial: true })
+    list = (await api("GET", "bundles"))[1]
+    check("bundles: trying another while trying one: the trial is the new one", list.trial?.id === "life-os", list.trial)
+    ;[code, r] = await api("POST", "bundles/restore")
+    check("bundles: restored, it's the setup from before the first trial (and what it installed goes)", code === 200 && setup() === pre && !exists(".vaultite/bundles/trial.json") &&
+      !exists(".vaultite/plugins/books"), [pre, setup(), r])
+    await apply("zen", { trial: true })
+    ;[code, r] = await apply(whole)
+    list = (await api("GET", "bundles"))[1]
+    check("bundles: another applied while trying ends the trial, its restore point the setup before it", code === 200 && !list.trial && !r.trial && list.applied?.id === whole, list.trial)
+    await api("POST", "bundles/restore")
+    check("bundles: restored, it's the setup from before the trial", setup() === pre && (await entry("standard")).applied, [pre, setup()])
+
+    // Installs are pinned: a commit and its files' hash. The tag moving doesn't change what's installed; files that
+    // aren't the ones recorded are refused, nothing installed.
+    const repo = path.join(OFFICIAL, "Vaultite", "plugins")
+    const git = (...a: string[]) => execFileSync("git", ["-c", "user.name=Alice Park", "-c", "user.email=alice@example.com", "-c", "commit.gpgSign=false", "-c", "tag.gpgSign=false", ...a],
+      { cwd: repo, encoding: "utf8" }).trim()
+    const pinned = git("rev-parse", "books/v1.0.0^{commit}")
+    const booksPin = JSON.parse(fs.readFileSync(path.join(process.env.VAULTITE_BUNDLES!, "life-os", "plugins.json"), "utf8")).install.books
+    const manifest = path.join(repo, "books", "manifest.json"), stood = fs.readFileSync(manifest, "utf8")
+    fs.writeFileSync(manifest, stood.replace("A stand-in for tests.", "Moved since."))
+    git("commit", "-qam", "books moved")
+    git("tag", "-f", "books/v1.0.0")
+    const moved = git("rev-parse", "HEAD")
+    const reader = (pin: Any) => write(".vaultite/bundles/reader/plugins.json", JSON.stringify({ enabled: ["books"], install: { books: { name: "Books", source: "Vaultite/plugins/books", tag: "books/v1.0.0", ...pin } } }))
+    write(".vaultite/bundles/reader/bundle.json", JSON.stringify({ name: "Reader" }))
+    reader({ commit: pinned, hash: booksPin.hash })
+    ;[code, r] = await apply("reader")
+    check("bundles: an install pinned to a commit gets its files, though its tag moved", code === 200 && conf("plugins-lock")?.books?.commit === pinned &&
+      !read(".vaultite/plugins/books/manifest.json").includes("Moved since"), [code, r, conf("plugins-lock")?.books])
+    ;[code, r] = await api("POST", "bundles", { name: "Reader again" })
+    const readerAgain = r.bundle.id, savedPin = JSON.parse(read(`.vaultite/bundles/${readerAgain}/plugins.json`)).install?.books
+    check("bundles: saved, a setup pins each install: its commit and files' hash", savedPin?.commit === pinned && savedPin?.hash === booksPin.hash && savedPin?.source === "Vaultite/plugins/books", savedPin)
+    await api("POST", "bundles/restore")
+    reader({ commit: pinned, hash: "0123456789abcdef" })
+    const now = setup()
+    ;[code, r] = await apply("reader")
+    check("bundles: files that aren't the ones recorded are refused, saying which and that nothing changed", code === 422 && /^Reader isn't applied: couldn't install Books/.test(r.error) &&
+      /its files at commit \w{7} aren't the ones recorded/.test(r.error) && /Nothing was installed or changed/.test(r.error) && !exists(".vaultite/plugins/books") && setup() === now, [code, r])
+
+    // Getting a bundle the user has again (an update) says what changed, and replaces theirs only when told to.
+    const exp = JSON.parse((await api("GET", `bundles/${readerAgain}/export?all=1`))[1])
+    const v1 = { ...exp, files: { ...exp.files, "bundle.json": { name: "Shared reader", from: "alice/reader" } } }
+    ;[code, r] = await api("POST", "bundles/import", v1)
+    const shared = r.bundle?.id
+    const v2pj = structuredClone(exp.files["plugins.json"])
+    v2pj.install.books = { ...v2pj.install.books, commit: moved, hash: "fedcba9876543210" }
+    const v2 = { ...v1, files: { ...v1.files, "plugins.json": v2pj, "appearance.json": { ...v1.files["appearance.json"], scheme: "nord" }, "Dashboards/Shelf.md": "---\ntype: dashboard\n---\n" } }
+    delete v2.files["pages.json"]
+    ;[code, r] = await api("POST", "bundles/import/preview", v2)
+    check("bundles: an update's preview says what changed: files added, changed, removed, installs re-pinned", code === 200 && r.replaces === shared &&
+      r.changes?.added.join() === "Dashboards/Shelf.md" && r.changes.changed.join() === "appearance.json,plugins.json" && r.changes.removed.join() === "pages.json" &&
+      r.changes.installs.length === 1 && r.changes.installs[0].id === "books" && r.changes.installs[0].from === pinned && r.changes.installs[0].to === moved, r.changes)
+    ;[code, r] = await api("POST", "bundles/import", v2)
+    check("bundles: an update isn't taken without the user's go", code === 409 && /replac/.test(r.error) && !exists(`.vaultite/bundles/${shared}/Dashboards/Shelf.md`), [code, r])
+    ;[code, r] = await api("POST", "bundles/import", { ...v2, replace: true })
+    check("bundles: with it, theirs is replaced, not applied", code === 200 && r.bundle.id === shared && exists(`.vaultite/bundles/${shared}/Dashboards/Shelf.md`) && setup() === now, [code, r])
+    check("bundles: the same again changes nothing", (await api("POST", "bundles/import/preview", { ...v2 }))[1].changes?.changed.length === 0)
+
+    git("tag", "-f", "books/v1.0.0", pinned)
+    if (github === undefined) delete process.env.VAULTITE_GITHUB; else process.env.VAULTITE_GITHUB = github
+    for (const id of [mineId, whole, forked.id, "reader", readerAgain, shared]) await api("DELETE", `bundles/${id}`)
+    await uninstallAll()
+    for (const f of ["previous", "applied", "trial"]) fs.rmSync(path.join(VAULT, `.vaultite/bundles/${f}.json`), { force: true })
+    for (const [n, text] of kept) { if (text === null) fs.rmSync(path.join(VAULT, `.vaultite/${n}.json`), { force: true }); else write(`.vaultite/${n}.json`, text) }
   }
 }

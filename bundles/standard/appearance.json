@@ -2,5 +2,20 @@
   "theme": "system",
   "scheme": "gruvbox",
   "density": "compact",
-  "fileIcons": false
+  "sidebarScroll": "panels",
+  "panelDividers": false,
+  "quickTextSize": false,
+  "interfaceFont": "",
+  "textFont": "",
+  "monoFont": "",
+  "snippets": [],
+  "fileIcons": false,
+  "tabBar": true,
+  "paneTitles": true,
+  "rails": true,
+  "lineNumbers": false,
+  "statusBar": null,
+  "statusBarMore": [],
+  "fileBar": null,
+  "pullActions": null
 }

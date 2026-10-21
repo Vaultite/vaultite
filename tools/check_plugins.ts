@@ -208,22 +208,27 @@ for (const [id, [tier, d]] of found) {
   const pd = path.join(d, "pages")
   if (fs.existsSync(pd)) for (const n of fs.readdirSync(pd)) if (n.endsWith(".md")) pages.add(`Dashboards/${n}`)
 }
+const builtIns = new Map<string, Record<string, string | Buffer>>()
 for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort() : []) {
   const dir = path.join(APP_BUNDLES, id)
   if (!fs.statSync(dir).isDirectory()) continue
   const files: Record<string, string | Buffer> = {}
   // (a picture or a font as its bytes, as the app reads it)
   for (const f of walk(dir)) { const b = fs.readFileSync(f); files[path.relative(dir, f).split(path.sep).join("/")] = isUtf8(b) ? b.toString("utf8") : b }
+  builtIns.set(id, files)
   const at = `bundles/${id}`
   problems.push(...bundleProblems(files).map((x) => `${at}: ${x}`))
   const json = (f: string) => { try { return JSON.parse(String(files[f] ?? "null")) } catch { return null } }
   const pj = json("plugins.json")
   // (one it installs, an official plugin, is checked in its own repository)
   const installs = new Set(Object.keys(pj?.install ?? {}))
-  for (const [p, x] of Object.entries<{ source?: string }>(pj?.install ?? {})) {
+  for (const [p, x] of Object.entries<{ source?: string; commit?: string; hash?: string }>(pj?.install ?? {})) {
     if (!/^Vaultite\/plugins\/[a-z][a-z0-9-]*$/.test(x?.source ?? "")) problems.push(`${at}/plugins.json: '${p}' is installed from ${x?.source}: the app's bundles install only Vaultite's plugins (Vaultite/plugins/<id>)`)
     if (ids.has(p)) problems.push(`${at}/plugins.json: '${p}' is one of the app's plugins: it isn't installed`)
+    // (tags move: what's installed is a commit, and refused unless its files are the ones recorded)
+    if (!x?.commit || !x.hash) problems.push(`${at}/plugins.json: '${p}' needs its commit and hash: node tools/pin_bundles.ts`)
   }
+  for (const p of pj?.enabled ?? []) if (MOVED[p] && !installs.has(p)) problems.push(`${at}/plugins.json: '${p}' moved out of the app: name it in install, pinned (node tools/pin_bundles.ts)`)
   for (const k of ["disabled", "enabled"]) for (const p of pj?.[k] ?? []) {
     if (!ids.has(p) && !installs.has(p)) problems.push(`${at}/plugins.json: '${p}' isn't a plugin of the app${MOVED[p] ? ` (it moved: install it from ${MOVED[p]})` : ""}`)
     else if (alwaysOn.has(p)) problems.push(`${at}/plugins.json: '${p}' is always on: leave it out`)
@@ -238,6 +243,29 @@ for (const id of fs.existsSync(APP_BUNDLES) ? fs.readdirSync(APP_BUNDLES).sort()
   for (const f of Object.keys(files)) {
     const m = /^plugins\/([^/]+)\/data\.json$/.exec(f)
     if (m && !ids.has(m[1]) && !installs.has(m[1])) problems.push(`${at}/${f}: '${m[1]}' isn't a plugin of the app`)
+  }
+}
+
+// The app's bundles each say every part of the setup any of them says (Standard the defaults), so applying one leaves
+// nothing of another: the config files, every key of the look (core/look.ts), and each plugin setting one sets.
+{
+  const { LOOK_KEYS } = await import("../core/look.ts")
+  const { CONFIGS } = await import("../core/bundles.ts")
+  const keysOf = (files: Record<string, string | Buffer>, f: string) => { try { return Object.keys(JSON.parse(String(files[f] ?? "{}"))) } catch { return [] } }
+  const said = new Map<string, string>() // "<file>\0<key>" -> the bundle that says it
+  for (const [id, files] of builtIns) {
+    for (const c of CONFIGS) if (files[`${c}.json`] !== undefined) said.set(`${c}.json\0`, said.get(`${c}.json\0`) ?? id)
+    for (const f of Object.keys(files)) if (/^plugins\/[^/]+\/data\.json$/.test(f)) for (const k of keysOf(files, f)) said.set(`${f}\0${k}`, said.get(`${f}\0${k}`) ?? id)
+  }
+  for (const [id, files] of builtIns) {
+    for (const [key, by] of said) {
+      const [f, k] = key.split("\0")
+      if (files[f] === undefined) problems.push(`bundles/${id}: it has no ${f}, which bundles/${by} has: each of the app's bundles says every part (Standard the defaults)`)
+      else if (k && !keysOf(files, f).includes(k)) problems.push(`bundles/${id}/${f}: it doesn't say ${k}, which bundles/${by} sets: say it (its default in Standard)`)
+    }
+    const look = keysOf(files, "appearance.json")
+    for (const k of LOOK_KEYS) if (!look.includes(k)) problems.push(`bundles/${id}/appearance.json: it doesn't say ${k}: the look says every key (core/look.ts), the default too`)
+    for (const k of look) if (!(LOOK_KEYS as string[]).includes(k)) problems.push(`bundles/${id}/appearance.json: '${k}' isn't a key of the look (core/look.ts)`)
   }
 }
 

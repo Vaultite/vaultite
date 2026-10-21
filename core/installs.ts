@@ -31,7 +31,12 @@ const HISTORY_MAX = 30
 /** What a source names: a git address or folder, its GitHub repo, `dir` the plugin's folder in a repo of several (tags
  *  `<dir>/v1.2.0`), a tag; or `archive`, a zip's address and the sha256 it must have. */
 export type Source = { given: string; url: string | null; folder: string | null; repo: string | null; dir: string | null; tag: string | null
-  archive?: { url: string; sha256: string } }
+  archive?: { url: string; sha256: string }
+  /** A commit to fetch (its full sha) instead of what the tag names now: tags move, a commit doesn't. */
+  commit?: string | null }
+
+/** A commit as pinned: git's full sha. */
+export const COMMIT = /^[0-9a-f]{40}$/
 
 /** A zip's address: https (http only to this machine), its path ending in .zip, `#sha256=<64 hex>` after it. */
 const ARCHIVE = /^(https?):\/\/([^/?#]+)(\/[^?#]*\.zip)(\?[^#]*)?(?:#sha256=([0-9a-fA-F]{64}))?$/i
@@ -107,7 +112,7 @@ async function headOf(url: string) {
 /** A source fetched and checked, in a temporary folder: its files (as the vault would have them), manifest, tag, commit. */
 export type Fetched = { dir: string; id: string; manifest: Item; tag: string | null; commit: string | null; untagged: boolean; done: () => void }
 
-/** Clone (or copy) a source at its tag (else its newest version tag, else the default branch: `untagged`), copy what
+/** Clone (or copy) a source at its commit, else its tag (else its newest version tag, else the default branch: `untagged`), copy what
  *  the app reads to <tmp>/<id>/ and check it as installed beside `vault`'s plugins (id -> folder): 422 with its problems. */
 export async function fetchSource(src: Source, tiers: Map<string, string>, vault: Map<string, string>): Promise<Fetched> {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "vaultite-install-"))
@@ -116,7 +121,22 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
     let from: string, tag: string | null = null, commit: string | null = null, untagged = false
     if (src.folder) from = src.folder
     else if (src.archive) from = await unpack(src, path.join(tmp, "zip"))
-    else {
+    else if (src.commit) {
+      if (!COMMIT.test(src.commit)) throw new OpError(`'${src.commit}' isn't a commit: its full sha, 40 hex digits`)
+      tag = src.tag ?? null
+      untagged = !tag
+      from = path.join(tmp, "clone")
+      fs.mkdirSync(from)
+      await git(["init", "--quiet"], from)
+      await git(["fetch", "--quiet", "--depth", "1", "--no-tags", src.url!, src.commit], from)
+      await git(["-c", "core.symlinks=false", "-c", "advice.detachedHead=false", "checkout", "--quiet", "FETCH_HEAD"], from)
+      commit = (await git(["rev-parse", "HEAD"], from)).trim()
+      if (commit !== src.commit) throw new OpError(`${src.repo ?? src.url} gave commit ${commit} for ${src.commit}`, 502)
+      if (src.dir) {
+        from = path.join(from, src.dir)
+        if (!fs.existsSync(path.join(from, "manifest.json"))) throw new OpError(`${src.repo ?? src.url} has no plugin in ${src.dir}/ at commit ${commit.slice(0, 7)}`, 404)
+      }
+    } else {
       tag = src.tag ?? (await tagsOf(src.url!, src.dir))[0] ?? null
       untagged = !tag
       from = path.join(tmp, "clone")
@@ -136,13 +156,7 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
     if (!/^[a-z][a-z0-9-]*$/.test(id)) throw new OpError(`${src.given}: its manifest's id must be lowercase letters, digits and dashes`, 422)
     if (tiers.has(id)) throw new OpError(`${src.given} is '${id}', which is one of the app's own plugins: it can't be installed`, 409)
     const dir = path.join(tmp, "stage", id)
-    const ignored = ignoreOf(from)
-    for (const f of walk(from)) {
-      if (fs.lstatSync(f).isSymbolicLink() || ignored(path.relative(from, f))) continue
-      const to = path.join(dir, path.relative(from, f))
-      fs.mkdirSync(path.dirname(to), { recursive: true })
-      fs.copyFileSync(f, to)
-    }
+    stage(from, dir)
     const ids = new Map([...[...vault.keys()].map((v): [string, string] => [v, "vault"]), [id, "vault"], ...tiers])
     const label = `${DIR}/${id}`
     const { problems } = checkVaultPlugin(dir, { ids, label, tag, installable: true, manifest, dirOf: (r) => vault.get(r) ?? path.join(path.dirname(dir), r) })
@@ -151,6 +165,18 @@ export async function fetchSource(src: Source, tiers: Map<string, string>, vault
   } catch (e) {
     done()
     throw e
+  }
+}
+
+/** Copy a plugin's files as installing does (not its ignored ones, nor links), from a checkout to `dir`: what its
+ *  hash (digestOf) is of. */
+export function stage(from: string, dir: string) {
+  const ignored = ignoreOf(from)
+  for (const f of walk(from)) {
+    if (fs.lstatSync(f).isSymbolicLink() || ignored(path.relative(from, f))) continue
+    const to = path.join(dir, path.relative(from, f))
+    fs.mkdirSync(path.dirname(to), { recursive: true })
+    fs.copyFileSync(f, to)
   }
 }
 

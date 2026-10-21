@@ -1,10 +1,12 @@
 // A made-up Vaultite/plugins here, so tests installing Vaultite's own plugins (core/migrations.ts MOVED) never reach
-// GitHub: each a stub tagged <id>/v1.0.0, with a page where the real one has one (bundles pin them).
+// GitHub: each a stub tagged <id>/v1.0.0, with a page where the real one has one; and the app's bundles pinned to them.
 import { execFileSync } from "node:child_process"
 import fs from "node:fs"
 import path from "node:path"
 import { pathToFileURL } from "node:url"
+import { stage } from "../../core/installs.ts"
 import { MOVED } from "../../core/migrations.ts"
+import { digestOf } from "../../core/vaultplugins.ts"
 
 const PAGES: Record<string, string> = { health: "Health", learning: "Learning", projects: "Projects", today: "Today" }
 
@@ -35,4 +37,26 @@ export function officialRepos(dir: string): string {
     for (const id of Object.keys(MOVED)) git("tag", `${id}/v1.0.0`)
   }
   return pathToFileURL(dir).href
+}
+
+/** The app's bundles copied under `dir` (VAULTITE_BUNDLES), the plugins they install pinned to the stand-ins
+ *  officialRepos(dir) made, as tools/pin_bundles.ts pins them to the real ones: what applying them installs here. */
+export function officialBundles(dir: string): string {
+  const out = path.join(dir, "bundles"), repo = path.join(dir, "Vaultite", "plugins")
+  if (fs.existsSync(out)) return out
+  fs.cpSync(path.join(import.meta.dirname, "..", "..", "bundles"), out, { recursive: true })
+  for (const id of fs.readdirSync(out)) {
+    const file = path.join(out, id, "plugins.json")
+    if (!fs.existsSync(file)) continue
+    const pj = JSON.parse(fs.readFileSync(file, "utf8"))
+    for (const [p, x] of Object.entries<Record<string, unknown>>(pj.install ?? {})) {
+      const files = fs.mkdtempSync(path.join(dir, "stage-"))
+      stage(path.join(repo, p), path.join(files, p))
+      pj.install[p] = { ...x, tag: `${p}/v1.0.0`, commit: execFileSync("git", ["rev-parse", `${p}/v1.0.0^{commit}`], { cwd: repo, encoding: "utf8" }).trim(),
+        hash: digestOf(path.join(files, p)).content }
+      fs.rmSync(files, { recursive: true, force: true })
+    }
+    fs.writeFileSync(file, JSON.stringify(pj, null, 2) + "\n")
+  }
+  return out
 }

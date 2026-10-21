@@ -35,13 +35,19 @@ export type BundleInfo = {
   problems: string[]
   /** The setup is this bundle's: applying it would change nothing. */
   inUse?: boolean
+  /** The bundle applied last only: when and without what, and whether the setup changed since (`differs`: change ids). */
+  applied?: { at: string; skip: string[] }; modified?: boolean; differs?: string[]
 }
-type Change = { key: string; from: unknown; to: unknown }
+/** A value a plan changes; `change`: its id (PlanChange). */
+type Change = { change: string; key: string; from: unknown; to: unknown }
+/** One change applying makes, by an id stable for the same bundle and setup (core/bundles.ts PlanChange). */
+export type PlanChange = { id: string; part: "install" | "plugin" | "setting" | "panels" | "file" | "pin" | "pins" | "appearance" | "hotkey" | "newtab"
+  label: string; from?: unknown; to?: unknown }
 export type Plan = {
   /** `added`: plugins the user added that it leaves as they are (unless applied with offAdded). */
   plugins: { on: string[]; off: string[]; missing: string[]; added: string[] }
   /** `source`: where one it installs comes from (else it brings its files). */
-  code: { id: string; name: string; kept: boolean; source?: string; tag?: string | null }[]
+  code: { id: string; name: string; kept: boolean; source?: string; tag?: string | null; commit?: string | null; hash?: string | null; change?: string }[]
   settings: (Change & { plugin: string })[]
   skipped: { plugin: string; key: string; why: string }[]
   panels: { setup: Sidebars | null; changed: boolean; workspace: number | null }
@@ -50,11 +56,15 @@ export type Plan = {
   hotkeys: Change[]
   newtab: Change[]
   files: { add: string[]; kept: string[] }
+  /** Every change, by id; `omitted`: those skipped. */
+  changes: PlanChange[]; omitted: string[]
   empty: boolean
 }
 export type Previous = { bundle: string; name: string; at: string }
-/** `default`: the one a new vault starts from (Standard), and skipping the offer gives. */
-type Listing = { bundles: BundleInfo[]; default: string; previous: Previous | null; onboarding: boolean }
+/** `default`: the one a new vault starts from (Standard), and skipping the offer gives; `trial`: one being tried;
+ *  `applied`: the one applied last. */
+type Listing = { bundles: BundleInfo[]; default: string; previous: Previous | null; onboarding: boolean
+  trial: { id: string; name: string; at: string } | null; applied: { id: string; name: string; at: string; skip: string[] } | null }
 
 let listing: Listing | null = null
 let loading: Promise<void> | null = null
@@ -228,7 +238,9 @@ export type ImportSource = string | File
 /** An import's preview (core/bundles.ts incoming): the bundle as it would be added, what applying it would change,
  *  the bundle of the user's it replaces (one from the same repository), and `file`: it as an export, to add. */
 export type Incoming = { bundle: BundleInfo; files: string[]; plan: Plan; pages?: Record<string, { icon: string | null; tint: string | null; plugin: string | null }>
-  replaces: string | null; file: unknown }
+  replaces: string | null; file: unknown
+  /** An update (`replaces`): what's different from the user's copy. */
+  changes: { added: string[]; changed: string[]; removed: string[]; installs: { id: string; name: string; from: string | null; to: string | null }[] } | null }
 
 /** What importing a bundle would add and applying it change here, writing nothing (a repository is fetched). */
 export async function incomingOf(source: ImportSource): Promise<Incoming> {
@@ -238,9 +250,10 @@ export async function incomingOf(source: ImportSource): Promise<Incoming> {
   return post<Incoming>("bundles/import/preview", { ...body, workspace: currentWorkspace()?.n ?? null })
 }
 
-/** Add a previewed bundle to the user's bundles, as previewed. */
+/** Add a previewed bundle to the user's bundles, as previewed (replacing theirs from the same repository: the preview
+ *  said so). */
 export async function addIncoming(inc: Incoming) {
-  const r = await post<{ bundle: BundleInfo }>("bundles/import", { file: inc.file })
+  const r = await post<{ bundle: BundleInfo }>("bundles/import", { file: inc.file, replace: !!inc.replaces })
   await refreshBundles()
   return r.bundle
 }
