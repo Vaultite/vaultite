@@ -1,7 +1,7 @@
 // The Browser's pages: a WebContentsView over a tab's pane, which the page places and covers; sandboxed, a session
 // per profile, http(s) only. What it does and why: plugins/core/web-viewer/CLAUDE.md.
-import { app, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, session, shell, type Session, systemPreferences,
-  WebContentsView, type WebContents } from "electron"
+import { app, BaseWindow, BrowserWindow, clipboard, dialog, type Input, Menu, type MenuItemConstructorOptions, nativeImage, powerSaveBlocker, screen, session, shell,
+  type Session, systemPreferences, WebContentsView, type WebContents } from "electron"
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
 import { writeAtomic } from "./setup.ts"
@@ -12,8 +12,21 @@ import fs from "node:fs"
 import path from "node:path"
 
 export type WebRect = { x: number; y: number; width: number; height: number }
-export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; audible?: boolean; muted?: boolean }
+export type WebState = { url: string; title: string; back: boolean; forward: boolean; loading: boolean; error?: string; audible?: boolean; muted?: boolean
+  player?: boolean }
 type Page = Owned<BrowserWindow> & { view: WebContentsView; error?: string
+  /** Where its tab last asked it to be (null: hidden): where it goes back to from full screen. */
+  want: WebRect | null
+  /** Its player: a window of its own it fills (see the player's section below), still its tab's. */
+  player?: BaseWindow
+  /** It's full screen (the page asked: a video's button), filling its window or its player. */
+  full?: boolean
+  /** Its full screen made the window full screen: leaving it, the window goes back. */
+  madeFull?: boolean
+  /** The style its player added (its main video's fill), taken out as it's back. */
+  fillCss?: string
+  /** Its player's video is full screen in it: leaving that leaves the player. */
+  filled?: boolean
   /** The address it was last sent to: what it shows until a load commits (getURL is "" till then). */
   target: string
   /** The icon addresses it last told (page-favicon-updated), so the same list isn't fetched again. */
@@ -164,7 +177,7 @@ function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
   return { url: wc.getURL() || p.target, title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
-    ...(wc.isCurrentlyAudible() ? { audible: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}) }
+    ...(wc.isCurrentlyAudible() ? { audible: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
 const NOTIFY = "__vaultite_notify__"
@@ -222,7 +235,10 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
   // extension's own pages embedded in it)
   const view = new WebContentsView({
-    webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, webSecurity: true, spellcheck: true },
+    // (a page's full screen never resizes the window by itself: fit() fills its window or player, which goes full
+    // screen only where that's wanted)
+    webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, webSecurity: true, spellcheck: true,
+      disableHtmlFullscreenWindowResize: true },
   })
   view.setBackgroundColor("#ffffff")
   view.setVisible(false)
@@ -230,10 +246,11 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   win.contentView.addChildView(view)
-  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url }
+  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null }
   pages.set(p.id, p)
   const wc = view.webContents
-  pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible() })
+  pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible(),
+    player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) } })
 
   // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.
   const refuse = (e: { preventDefault: () => void }, to: string) => {
@@ -274,7 +291,24 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
     p.error = desc || `error ${code}`
     changed()
   })
-  wc.on("focus", () => tell(win, { type: "focus", id: p.id }))
+  wc.on("focus", () => { if (!p.player) tell(win, { type: "focus", id: p.id }) })
+  // Full screen (a video's button): it fills its window (made full screen, as Chrome does) or its player, over the rest.
+  wc.on("enter-html-full-screen", () => {
+    p.full = true
+    if (!p.player) {
+      win.contentView.addChildView(p.view) // (again: over every other page and the toasts' copies)
+      if (!win.isFullScreen()) { win.setFullScreen(true); p.madeFull = true }
+    }
+    fit(p)
+  })
+  wc.on("leave-html-full-screen", () => {
+    p.full = false
+    // (its player's video leaving full screen, with Esc or the site's own button, leaves the player: Esc never reaches
+    // the page while it's full screen)
+    if (p.player && p.filled) { p.filled = false; fromPlayer(p, true); return }
+    if (p.madeFull) { p.madeFull = false; if (!win.isDestroyed() && win.isFullScreen()) win.setFullScreen(false) }
+    fit(p)
+  })
   wc.on("page-favicon-updated", (_e, urls) => void iconFrom(p, urls))
 
   // Its notifications (see the head of this file).
@@ -313,6 +347,8 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   wc.on("before-input-event", (e, i) => {
     if (i.type !== "keyDown") return
     const step = stepOf(i)
+    // In its player the page keeps every key but Esc, which brings it back (⌘W closes the player, as the menu has it).
+    if (p.player) { if (step === "escape") { e.preventDefault(); fromPlayer(p, true) } return }
     const nav = { "mod+r": "reload", "mod+[": "back", "mod+]": "forward" }[step]
     if (nav) { e.preventDefault(); go(p, nav); return }
     if (step === "mod+l") { e.preventDefault(); tell(win, { type: "address", id: p.id }); return }
@@ -347,6 +383,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
     if (c.isEditable) items.push({ role: "cut" }, { role: "copy" }, { role: "paste" }, { type: "separator" })
     else if (c.selectionText) items.push({ role: "copy" }, { type: "separator" })
     const h = wc.navigationHistory
+    if (p.player) items.push({ label: "Back to its tab", click: () => fromPlayer(p, true) }, { type: "separator" })
     items.push(
       { label: "Back", enabled: h.canGoBack(), click: () => go(p, "back") },
       { label: "Forward", enabled: h.canGoForward(), click: () => go(p, "forward") },
@@ -358,7 +395,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
       ...(/^https?:/i.test(wc.getURL()) ? [{ label: "Block element…", click: () => tell(win, { type: "block", id: p.id, x: c.x, y: c.y }) }] : []),
       { label: "Inspect element", click: () => wc.inspectElement(c.x, c.y) },
     )
-    Menu.buildFromTemplate(items).popup({ window: win })
+    Menu.buildFromTemplate(items).popup({ window: p.player ?? win })
   })
 
   void wc.loadURL(url).catch(() => { /* did-fail-load says why */ })
@@ -367,16 +404,18 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
 
 function end(p: Page) {
   pages.delete(p.id)
+  fromPlayer(p)
   pagesChanged(p.win)
   if (!p.win.isDestroyed()) p.win.contentView.removeChildView(p.view)
   if (!p.view.webContents.isDestroyed()) p.view.webContents.close()
 }
 
-/** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable). */
+/** Background tabs' pages are kept (hidden, so Chromium throttles them) till memory runs short (webpages.ts discardable);
+ *  one in a player is on screen, whatever its tab. */
 async function trim() {
-  const audible = (p: Page) => !p.view.webContents.isDestroyed() && p.view.webContents.isCurrentlyAudible()
-  if (!discardable(pages.values(), audible).length || !(await shortOfMemory())) return
-  for (const p of discardable(pages.values(), audible)) end(p)
+  const keep = (p: Page) => !!p.player || (!p.view.webContents.isDestroyed() && p.view.webContents.isCurrentlyAudible())
+  if (!discardable(pages.values(), keep).length || !(await shortOfMemory())) return
+  for (const p of discardable(pages.values(), keep)) end(p)
 }
 setInterval(() => void trim(), 60_000).unref()
 
@@ -392,8 +431,23 @@ function shortOfMemory(): Promise<boolean> {
 /** The page a window's keyboard last came from as it was hidden, till the window asks (`web:take`) or it's shown. */
 const keyboardFrom = new WeakMap<BrowserWindow, number>()
 
+/** Where its tab wants it (null: hidden); in its player or full screen it stays filling that till it's back. */
 function place(p: Page, rect: WebRect | null) {
-  if (!rect || rect.width < 2 || rect.height < 2) {
+  p.want = rect && rect.width >= 2 && rect.height >= 2 ? rect : null
+  fit(p)
+}
+
+function fit(p: Page) {
+  const fill = p.player ?? (p.full ? p.win : null)
+  if (fill) {
+    if (fill.isDestroyed()) return
+    const [width, height] = fill.getContentSize()
+    p.view.setBounds({ x: 0, y: 0, width, height })
+    p.view.setVisible(true)
+    return
+  }
+  const rect = p.want
+  if (!rect) {
     if (!p.view.getVisible()) return
     p.hadFocus = p.view.webContents.isFocused()
     p.view.setVisible(false)
@@ -408,7 +462,7 @@ function place(p: Page, rect: WebRect | null) {
   p.view.setVisible(true)
 }
 
-function go(p: Page, action: string, url?: string) {
+function go(p: Page, action: string, url?: string): unknown {
   const wc = p.view.webContents
   const h = wc.navigationHistory
   if (action === "back" && h.canGoBack()) h.goBack()
@@ -417,8 +471,111 @@ function go(p: Page, action: string, url?: string) {
   else if (action === "stop") wc.stop()
   else if (action === "mute" || action === "unmute") { wc.setAudioMuted(action === "mute"); sendState(p) }
   // (a hidden page never has the keyboard: it gets it as it's shown, `web:place` answering `focused`)
-  else if (action === "focus") { if (p.view.getVisible()) wc.focus(); else p.hadFocus = true }
+  else if (action === "focus") { if (p.player) return; if (p.view.getVisible()) wc.focus(); else p.hadFocus = true }
   else if (action === "load" && url && shows(url)) { p.target = url; void wc.loadURL(url).catch(() => {}) }
+  // (answers "none" when the page has no video)
+  else if (action === "pip") return wc.executeJavaScriptInIsolatedWorld(1004, [{ code: PIP }], true).catch(() => null)
+}
+
+// ---------- players: a page in a window of its own, to watch or share (a call's window picker finds it by its title) ----------
+
+const PLAYER_TITLE = "Vaultite player"
+/** The page's main video: the biggest playing (else any), or the biggest frame that may go full screen (an embedded
+ *  player), or none (the page itself fills the player). */
+const MAIN_VIDEO = `const size = (el) => { const r = el.getBoundingClientRect(); return r.width >= 160 && r.height >= 90 ? r.width * r.height : 0 }
+  const videos = [...document.querySelectorAll("video")].map((el) => ({ el, video: el, n: size(el) * (el.paused ? 1 : 2) }))
+  const frames = [...document.querySelectorAll("iframe")].filter((f) => f.allowFullscreen || /\bfullscreen\b/.test(f.allow)).map((el) => ({ el, video: null, n: size(el) }))
+  const best = [...videos, ...frames].filter((c) => c.n > 0).sort((a, b) => b.n - a.n)[0]`
+// (what goes full screen with a video is its site's player, the box around it no bigger than it: its controls, captions)
+const FILL = `(() => {
+  ${MAIN_VIDEO}
+  if (!best) return false
+  let el = best.el
+  if (best.video) {
+    const n = size(best.video)
+    while (el.parentElement && el.parentElement !== document.body && size(el.parentElement) <= n * 1.25) el = el.parentElement
+    best.video.setAttribute("data-vaultite-player-video", "")
+  }
+  el.setAttribute("data-vaultite-player", "")
+  return el.requestFullscreen({ navigationUI: "hide" }).then(() => true, () => false)
+})()`
+const FILL_CSS = `[data-vaultite-player]:fullscreen { background: #000 !important }
+[data-vaultite-player]:fullscreen [data-vaultite-player-video], video[data-vaultite-player]:fullscreen { width: 100% !important; height: 100% !important;
+  max-width: none !important; max-height: none !important; object-fit: contain !important }`
+const UNFILL = `(() => { for (const el of document.querySelectorAll("[data-vaultite-player], [data-vaultite-player-video]")) { el.removeAttribute("data-vaultite-player"); el.removeAttribute("data-vaultite-player-video") }
+  if (document.fullscreenElement) void document.exitFullscreen().catch(() => {}) })()`
+const PIP = `(() => {
+  if (document.pictureInPictureElement) return void document.exitPictureInPicture().catch(() => {})
+  ${MAIN_VIDEO}
+  const v = videos.filter((c) => c.n > 0).sort((a, b) => b.n - a.n)[0]?.el
+  if (!v) return "none"
+  return v.requestPictureInPicture().then(() => true, () => false)
+})()`
+/** While a player is open, macOS doesn't nap the app (it's often in the background, shared in a call). */
+let napBlock: number | null = null
+const players = () => [...pages.values()].some((p) => p.player)
+
+/** Out of full screen (its player, or Esc, or the window leaving full screen). */
+function leaveFull(p: Page) {
+  if (!p.view.webContents.isDestroyed()) void p.view.webContents.executeJavaScriptInIsolatedWorld(1004, [{ code: "document.fullscreenElement && void document.exitFullscreen().catch(() => {})" }]).catch(() => {})
+}
+
+/** Into its player: the page moves (playing on, not loaded again) into a window of its own, which it fills, its main
+ *  video full screen in it; never throttled while hidden or on another Space, nor let go under memory pressure. */
+async function toPlayer(p: Page, fullScreen: boolean) {
+  if (p.player) { if (!p.player.isDestroyed()) { p.player.show(); p.player.focus() } return }
+  const wc = p.view.webContents
+  if (wc.isDestroyed() || p.win.isDestroyed()) return
+  const area = screen.getDisplayMatching(p.win.getBounds()).workArea
+  const width = Math.min(1280, Math.round(area.width * 0.8)), height = Math.round(width * 9 / 16)
+  const w = new BaseWindow({ title: PLAYER_TITLE, width, height, x: area.x + Math.round((area.width - width) / 2), y: area.y + Math.round((area.height - height) / 2),
+    minWidth: 320, minHeight: 180, backgroundColor: "#000000", show: false })
+  p.player = w
+  p.win.contentView.removeChildView(p.view)
+  w.contentView.addChildView(p.view)
+  wc.setBackgroundThrottling(false)
+  // (full screen in its tab already: it stays so, filling the player, and the window it made full screen goes back)
+  if (p.full) { p.filled = true; if (p.madeFull) { p.madeFull = false; p.win.setFullScreen(false) } }
+  w.on("resize", () => fit(p))
+  w.on("close", () => fromPlayer(p, true))
+  fit(p)
+  w.show()
+  if (fullScreen) w.setFullScreen(true)
+  wc.focus()
+  napBlock ??= powerSaveBlocker.start("prevent-app-suspension")
+  sendState(p)
+  pagesChanged(p.win)
+  if (p.filled) return
+  p.fillCss = await wc.insertCSS(FILL_CSS, { cssOrigin: "user" }).catch(() => undefined)
+  const filled = p.player === w && await wc.executeJavaScriptInIsolatedWorld(1004, [{ code: FILL }], true).catch(() => false) === true
+  if (filled && p.player === w) p.filled = true
+}
+
+/** Back in its tab, still playing: hidden till the tab places it (shown or not), the player closed. `user`: they asked,
+ *  so its window comes to the front. */
+function fromPlayer(p: Page, user = false) {
+  const w = p.player
+  if (!w) return
+  p.player = undefined
+  p.filled = false
+  const wc = p.view.webContents
+  if (!wc.isDestroyed()) {
+    wc.setBackgroundThrottling(true)
+    void wc.executeJavaScriptInIsolatedWorld(1004, [{ code: UNFILL }]).catch(() => {})
+    if (p.fillCss) void wc.removeInsertedCSS(p.fillCss).catch(() => {})
+  }
+  p.fillCss = undefined
+  // (closed after this turn: this may be its own close)
+  if (!w.isDestroyed()) { w.contentView.removeChildView(p.view); setImmediate(() => { if (!w.isDestroyed()) w.close() }) }
+  if (pages.has(p.id) && !p.win.isDestroyed()) {
+    p.view.setVisible(false)
+    p.want = null
+    p.win.contentView.addChildView(p.view)
+    sendState(p)
+    pagesChanged(p.win)
+    if (user) { p.win.show(); p.win.focus() }
+  }
+  if (napBlock !== null && !players()) { powerSaveBlocker.stop(napBlock); napBlock = null }
 }
 
 const str = (x: unknown) => { if (typeof x !== "string") throw new Error("expected text"); return x }
@@ -454,6 +611,9 @@ export function revive(wc: WebContents, gone?: () => void, giveUp?: () => void) 
 
 /** Wire a vault window: its pages end with it; as its page reloads, its tabs take their pages back or they end. */
 export function webWindow(win: BrowserWindow) {
+  // (a page full screen in it follows it as it goes full screen; the window leaving full screen takes the page out too)
+  win.on("resize", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) fit(p) })
+  win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
   win.on("closed", () => {
     for (const p of [...pages.values()]) if (p.win === win) end(p)
     for (const f of floats.get(win) ?? []) if (!f.view.webContents.isDestroyed()) f.view.webContents.close()
@@ -461,7 +621,7 @@ export function webWindow(win: BrowserWindow) {
   win.webContents.on("did-start-navigation", (d) => {
     if (!d.isMainFrame || d.isSameDocument) return
     void float(win, [])
-    for (const p of pages.values()) if (p.win === win) p.view.setVisible(false)
+    for (const p of pages.values()) if (p.win === win && !p.player) { if (p.full) leaveFull(p); p.view.setVisible(false) }
     for (const p of windowReloaded(pages.values(), win, Date.now())) end(p)
     setTimeout(() => { for (const p of unclaimed(pages.values(), Date.now())) end(p) }, RECLAIM_MS + 100)
   })
@@ -507,15 +667,19 @@ export const webHandlers: Record<string, (win: BrowserWindow, ...args: unknown[]
     if (!p || p.win !== win) return
     if (letGo(p, Date.now())) return end(p)
     if (p.holds) return
-    p.view.setVisible(false)
+    p.want = null
+    if (p.full && !p.player) leaveFull(p)
+    if (!p.player) p.view.setVisible(false)
     void trim()
     pagesChanged(win)
   },
+  // Its player: on (`fullScreen`: on a Space of its own) or back in its tab.
+  "web:player": (win, id, on, fullScreen) => { const p = mine(win, id); if (on) return toPlayer(p, fullScreen !== false); fromPlayer(p, true) },
   "web:close": (win, tab) => { for (const p of tabGone(pages.values(), win, tabOf(tab))) end(p) },
   "web:go": (win, id, action, url) => go(mine(win, id), str(action), typeof url === "string" ? url : undefined),
   "web:snapshot": async (win, id) => {
     const p = mine(win, id)
-    if (!p.view.getVisible()) return null
+    if (!p.view.getVisible() || p.player) return null
     const img = await p.view.webContents.capturePage()
     return img.isEmpty() ? null : new Uint8Array(img.toJPEG(85))
   },

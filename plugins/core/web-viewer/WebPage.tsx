@@ -1,7 +1,8 @@
 // A web page in a tab: a slim bar over the desktop app's native page. Native views draw above everything, so when
 // anything of the app covers the box (sampled with elementFromPoint) the page is swapped for its snapshot until it's gone.
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, ChevronDown, Ellipsis, Globe, Lock, MousePointerSquareDashed, Pause, Play, RotateCw, Scissors, Volume2, VolumeX, X, type LucideIcon } from "lucide-react"
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
+  VolumeX, X, type LucideIcon } from "lucide-react"
 import {
   cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages, type MenuItem,
   type WebPageAction, type WebPageState, type WebPages,
@@ -14,7 +15,7 @@ import { argOf, containerById, profileIn, ruleFor, splitArg } from "./containers
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
-import { agentNews, bookmark, pausedPages, setFocusedPage, settingsRead, setTitle, shown } from "./state"
+import { agentNews, bookmark, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -89,6 +90,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // What the effects below read without starting again.
   const live = useRef({ arg, state, setArg, setTabArg, error: false })
   useEffect(() => { live.current = { arg, state, setArg, setTabArg, error: !!state.error } })
+  // In its player (a window of its own): the tab says so, and nothing here places the page.
+  const away = !!state.player
 
   // A container that needs Touch ID: whether it's locked now (null: not known yet), asked again as containers lock.
   const [locked, setLocked] = useState<boolean | null>(container ? null : false)
@@ -164,7 +167,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     if (!id) return
     shown.set(id, {
       group, container, url: () => live.current.state.url, onState: setState, clip: () => void clipRef.current(),
-      focusAddress: () => { address.current?.focus(); address.current?.select() },
+      focusAddress: () => { address.current?.focus(); address.current?.select() }, inPlayer: () => !!live.current.state.player,
     })
     return () => { shown.delete(id) }
   }, [id, group, container, web])
@@ -181,7 +184,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // Keep the page over the box, or hidden behind its picture while the app draws over it.
   useEffect(() => {
     const el = box.current
-    if (!id || !el) return
+    if (!id || !el || away) return
     let raf = 0, last = "", hidden = true, busy = false, gone = false, picture = ""
     const freeze = async () => {
       const bytes = await web.snapshot(id).catch(() => null)
@@ -252,7 +255,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       clearInterval(tick)
       if (picture) URL.revokeObjectURL(picture)
     }
-  }, [id, web])
+  }, [id, web, away])
 
   const inside = containerById(container)
   const ext = useExtensionBar(id, state.url)
@@ -289,6 +292,10 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
           { label: "Bookmark", icon: Bookmark, hint: commandKeys("web:bookmark") || undefined, run: () => void bookmark(state.url, state.title) },
           ...(web.engine && id ? [{ label: "Block an element…", icon: MousePointerSquareDashed, run: () => void pickElement(id) }] : []),
           { label: "Open in another browser", icon: ArrowUpRight, run: () => void web.external(state.url) },
+          ...(web.player && id ? [away
+            ? { label: "Bring back from player", icon: Undo2, sep: true, run: () => setPlayer(id, false) }
+            : { label: "Open as player", icon: MonitorPlay, hint: commandKeys("web:player") || undefined, sep: true, run: () => setPlayer(id, true) }] : []),
+          ...(id ? [{ label: "Picture in picture", icon: PictureInPicture2, run: () => void pictureInPicture(web, id) }] : []),
           ...withSep(actionItems(actions.filter((a) => a.kind !== "save"))),
           ...withSep(extensionItems(ext, at)),
         ]} />
@@ -297,6 +304,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
         <img ref={shot} alt="" hidden draggable={false} className="pointer-events-none absolute inset-x-0 top-0 h-[calc(100%_-_var(--page-foot,0px))] w-full object-fill select-none" />
         {blank && <Start onOpen={(to, newTab) => go(to, "typed", newTab)} />}
+        {away && <Away onShow={() => setPlayer(id, true)} onBack={() => setPlayer(id, false)} />}
         {state.error && <Problem error={state.error} url={state.url || arg} onRetry={() => void web.go(id, "reload")} />}
         {locked && inside && <Locked name={inside.name} unlock={() => void Promise.resolve(web.engine?.("lock:unlock", profileIn(container), inside.name))
           .then((ok) => { if (ok === true) setLocked(false) }, (e) => notifyError(e, "Couldn't unlock it"))} />}
@@ -333,6 +341,26 @@ function AgentBar({ web, id }: { web: WebPages; id: number }) {
         {paused ? <Play className="size-3.5" strokeWidth={2.25} /> : <Pause className="size-3.5" strokeWidth={2.25} />}
         {paused ? "Resume" : "Pause"}
       </button>
+    </div>
+  )
+}
+
+/** Its main video in a window over every other (the Mac's picture in picture), or back. */
+async function pictureInPicture(web: WebPages, id: number) {
+  if ((await web.go(id, "pip").catch(() => null)) === "none") notify("No video on this page")
+}
+
+/** The tab of a page in its player. */
+function Away({ onShow, onBack }: { onShow: () => void; onBack: () => void }) {
+  return (
+    <div className="absolute inset-0 flex flex-col items-center bg-background px-8 pt-20 text-center" data-web-away>
+      <MonitorPlay className="size-8 text-tertiary" strokeWidth={1.5} />
+      <p className="mt-4 text-[15px] text-foreground">Playing in its own window</p>
+      <p className="mt-1 text-[13px] text-muted-foreground">Esc in it brings it back here.</p>
+      <div className="mt-4 flex gap-2">
+        <button type="button" onClick={onShow} className="cursor-pointer rounded-[6px] border-[0.5px] border-border px-3 py-1.5 text-[13px] hover:bg-foreground/[0.06]">Show player</button>
+        <button type="button" onClick={onBack} className="cursor-pointer rounded-[6px] border-[0.5px] border-border px-3 py-1.5 text-[13px] hover:bg-foreground/[0.06]" data-web-away-back>Bring back</button>
+      </div>
     </div>
   )
 }

@@ -4,7 +4,7 @@ that page (`vau open "view:web/https://example.com"`); its bar has back, forward
 words to search for; the tab's container at its left, Shields at its right), pinned extensions, Save and a … menu. Save
 clips the page as it's shown (the Web clipper's `POST /api/clip` with its HTML, so a page you're logged in to works
 too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Block an element,
-Open in another browser, plugins' other actions and Extensions. Right-click an image in a
+Open in another browser, Open as player, Picture in picture, plugins' other actions and Extensions. Right-click an image in a
 page: Save image to vault (into the attachments folder, like a pasted one), Download image, Copy image, Copy image
 address. Commands: "Open web page…", "Clip current web page", "Open web pages in a tab". Pages keep their own logins,
 apart from the app's, on the Mac running the desktop app; nothing about them is kept in the vault.
@@ -21,6 +21,16 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   background tabs' pages may be let go (never one playing sound) and load again when shown. A tab playing sound shows
   a speaker: a click on it mutes or unmutes the tab, and while a page makes sound the status bar's "Web pages playing"
   names it, its menu showing its tab or muting it.
+- Full screen: a page's own (a video's button) fills the window, which goes full screen, as in Chrome; Esc brings it back.
+- Players, to watch a page or share it in a call (Discord's window picker finds "Vaultite player"): "Open as player" (the
+  … menu, "Open current web page as player", ⌥⌘P) moves the tab's page, playing on and not loaded again, into a window
+  of its own with no app around it, full screen on a Space of its own (`playerFullScreen: false`: a window), its main
+  video's player full screen in it (the site's controls and captions with it; a video in an embedded player of another
+  site, that player; no video, the page itself). It plays on while the window is hidden, in the background or on another
+  Space, and isn't let go when memory runs short. Esc, closing the window (⌘W) or the tab's Bring back return it to its
+  tab, still playing; its tab says where it is meanwhile, and closing the tab closes the player. Agents: `vau browser
+  player <tab>` (`--window`, `--off`), any tab. Picture in picture (the … menu) floats the page's video over every
+  window instead.
 - Logins: each workspace's pages have their own (a different account per workspace for the same site; workspace 1 keeps
   the ones pages shared before), or with `logins: shared` every page shares one.
 - The Sites panel (in the sidebar's Panels menu; "Show sites and logins"): the sites opened in this workspace's logins

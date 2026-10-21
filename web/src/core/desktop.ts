@@ -108,7 +108,9 @@ export type WebPageState = { url: string; title: string; back: boolean; forward:
   /** Why the page didn't load ("ERR_NAME_NOT_RESOLVED"), until the next load. */
   error?: string
   /** It's playing sound now; its sound is muted. */
-  audible?: boolean; muted?: boolean }
+  audible?: boolean; muted?: boolean
+  /** It's in its player, a window of its own (still its tab's). */
+  player?: boolean }
 /** A rectangle of the window, in the page's CSS pixels (getBoundingClientRect's). */
 export type WebRect = { x: number; y: number; width: number; height: number }
 /** Web pages in the desktop app: native views over this window in sessions of their own (logins apart from the app's),
@@ -124,7 +126,10 @@ export type WebPages = {
   release: (id: number) => Promise<unknown>
   /** Tab `tab` closed, left this window or stopped showing a web page: its page ends. */
   close: (tab: string) => Promise<unknown>
-  go: (id: number, action: "back" | "forward" | "reload" | "stop" | "load" | "focus" | "mute" | "unmute", url?: string) => Promise<unknown>
+  go: (id: number, action: "back" | "forward" | "reload" | "stop" | "load" | "focus" | "mute" | "unmute" | "pip", url?: string) => Promise<unknown>
+  /** Into its player, a window of its own its main video fills (`fullScreen`: on a Space of its own), or back in its tab
+   *  (`on` false). Older builds don't have it. */
+  player?: (id: number, on: boolean, fullScreen?: boolean) => Promise<unknown>
   /** A picture of it as it is (JPEG), to show in its place while something of the app's is drawn over it. */
   snapshot: (id: number) => Promise<Uint8Array | null>
   /** Its HTML as rendered now, and where it is. */

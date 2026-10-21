@@ -371,6 +371,14 @@ handle("agent:navigate", async (_win, tab, to, by) => {
   void record(p, byOf(by), { action: "navigate", value: t })
   return r
 })
+// (any tab, whatever its container lets agents do: it moves the page to a window, nothing in it is read or done)
+handle("agent:player", (_win, tab, on, fullScreen) => {
+  const p = allPages().find((x) => x.id === Number(tab))
+  if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
+  if (!/^https?:/i.test(p.wc.getURL() || p.url)) throw new Error("only a web page opens as a player")
+  p.player(on !== false, fullScreen !== false)
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
+})
 handle("agent:act", async (_win, tab, a, by) => {
   const p = pageFor(tab, "act")
   const step = (a && typeof a === "object" ? a : {}) as Act

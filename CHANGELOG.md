@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: "Open as player" (a page's … menu, ⌥⌘P) moves a tab's page, still playing, into a window of its own, its
+  video filling it full screen on its own Space, to watch or share in a call; Esc brings it back. A video's own full
+  screen now fills the window, and Picture in picture floats a page's video.
 - Mac app: Settings, Permissions shows what macOS lets Vaultite do (the vault folder for the app and its terminals,
   microphone, accessibility, screen recording, folders...), whether the app's signature keeps them across updates, and
   a way to allow each; `vau permissions` tells agents the same. A terminal macOS keeps from the vault says so.

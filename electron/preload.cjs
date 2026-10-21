@@ -65,6 +65,7 @@ contextBridge.exposeInMainWorld("vaultite", {
     release: call("web:release"),
     close: call("web:close"),
     go: call("web:go"),
+    player: call("web:player"),
     snapshot: call("web:snapshot"),
     html: call("web:html"),
     external: call("web:external"),

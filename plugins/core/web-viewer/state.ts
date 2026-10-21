@@ -1,6 +1,6 @@
 // The Browser's state in the app: its settings, the pages' titles and the pages on screen, for the desktop app's
 // events.
-import { cell, currentWorkspace, notify, notifyError, op, openFile, pluginSettings, viewsChanged, type WebPageState } from "@vaultite"
+import { cell, currentWorkspace, notify, notifyError, op, openFile, pluginSettings, viewsChanged, webPages, type WebPageState } from "@vaultite"
 import type { Container } from "./containers"
 
 export type Settings = {
@@ -20,6 +20,8 @@ export type Settings = {
   shieldsDown?: string[]
   /** Parts of sites hidden with one click, by id (elements.ts PRESETS: "youtube-shorts"). */
   hide?: string[]
+  /** Whether a page opened as a player goes full screen, on a Space of its own (the default), or is a window. */
+  playerFullScreen?: boolean
 }
 
 /** Its settings (data.json), live. */
@@ -80,6 +82,8 @@ export type Shown = {
   onState: (s: WebPageState) => void
   clip: () => void
   focusAddress: () => void
+  /** It's in its player. */
+  inPlayer: () => boolean
 }
 export const shown = new Map<number, Shown>()
 /** The page in the focused pane, if one is: "Clip current web page". */
@@ -98,3 +102,7 @@ export async function bookmark(url: string, title: string) {
     notify(r.added ? "Bookmarked" : "Already bookmarked", { action: path ? { label: "Open bookmarks", run: () => openFile(path) } : undefined })
   } catch (e) { notifyError(e, "Couldn't bookmark the page") }
 }
+
+/** Page `id` into its player (full screen as the settings say), or back in its tab. */
+export const setPlayer = (id: number, on: boolean) =>
+  void Promise.resolve(webPages?.player?.(id, on, settings.get().playerFullScreen !== false)).catch((e) => notifyError(e, on ? "Couldn't open the player" : "Couldn't bring the page back"))

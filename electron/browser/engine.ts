@@ -9,8 +9,10 @@ export type EnginePage = { id: number; wc: WebContents; profile: string; win: Br
   url: string
   /** Take it off the screen (its tab shows it again when it asks to). */
   hide: () => void
-  /** It's on screen now, in a tab. */
-  visible: () => boolean }
+  /** It's on screen now, in a tab or its player. */
+  visible: () => boolean
+  /** Into a window of its own to watch it in (`fullScreen`: on a Space of its own), or back in its tab. */
+  player: (on: boolean, fullScreen: boolean) => void }
 type PageSetup = (p: EnginePage) => void
 
 const sessionSetups: SessionSetup[] = []

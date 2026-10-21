@@ -116,6 +116,29 @@ plugin.op({
 })
 
 plugin.op({
+  id: "web-viewer.player",
+  cli: "browser player",
+  summary: "Open a tab's page as a player, a window of its own with its video filling it (to watch, or share in a call), or bring it back.",
+  help: `The page moves on playing (not loaded again) into a window titled "Vaultite player", its main video filling it, full
+screen on a Space of its own (the Browser's playerFullScreen setting; --window: a window), and plays on while it's hidden
+or in the background. --off brings it back to its tab, as Esc in it does. Any tab: it moves the page, nothing in it is
+read or done.
+
+  vau browser player 3
+  vau browser player 3 --off`,
+  kind: "write",
+  params: {
+    tab,
+    off: { type: "boolean", description: "bring it back to its tab" },
+    window: { type: "boolean", description: "a window, not full screen" },
+  },
+  args: ["tab"],
+  run: (p) => ask<Page>("agent:player", p.tab, !p.off, p.window ? false : plugin.settings().playerFullScreen !== false),
+  text: (r: Page) => where(r),
+  did: (p) => ({ action: "run", text: p.off ? "Brought a browser tab back from its player" : "Opened a browser tab as a player" }),
+})
+
+plugin.op({
   id: "web-viewer.read",
   cli: "browser read",
   summary: "A tab's page as plain text: everything it shows, for reading (a snapshot is for acting).",

@@ -10,6 +10,9 @@
   one when shown again, ended when the tab closes or leaves the window (`onTabClose`) or shows something else. None
   outlives its tab: a reloaded window's tabs take theirs back within seconds or they end. Never match pages by address:
   `getURL()` is "" till the first load commits (it was how hidden pages kept playing with no tab).
+- A page in its player (a window of its own, web.ts's players) is still its tab's, `win` its tab's window: only where
+  it's drawn changes (`fit`), so ending, reclaiming and closing work as for any; its tab draws nothing over it meanwhile.
+  Esc never reaches a page that's full screen (Electron takes it), so the player's video leaving full screen leaves it.
 - The page keeps the keyboard; the app's ⌘/⌃/⌥ shortcuts come back as `key` events.
 - Claude Code on the web's sessions come from claude.ai's JSON API with a profile's cookies, asked only after that
   profile opened a claude.ai page (never on load alone), never from its DOM, which changes.
