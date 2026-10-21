@@ -14,6 +14,7 @@ import {
   asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, type AgentRun, type Backend,
   type Link, type Listed as Shell,
 } from "./backend.ts"
+import { runOps } from "./run.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
 
@@ -801,6 +802,7 @@ plugin.onUnload(() => { if (poll) clearInterval(poll); if (listTimer) clearTimeo
 // --- sessions from outside the app (`vau terminal`): routes for list, screen, start, send and end; this machine's only,
 // same access as a shell.
 terminalOps(plugin) // vau terminal ...: terminal.list, open, resume, screen, send, end, tidy (ops.ts), through these routes
+runOps(plugin) // vau terminal run: a file handed to an agent or a command, here or on another machine (run.ts)
 
 async function owner(req: Request) {
   await plugin.ownerOnly(req, "the terminal")

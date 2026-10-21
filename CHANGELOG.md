@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Terminal: `vau terminal run <file>` (terminal.run) hands a note to a coding agent or a shell command, here or on
+  another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
 - Notes: click a note's icon beside its title to change it, or the icon of a row you're renaming in the file tree.
 - Archive: folders can be archived whole, from their menu or `vau archive <folder>`, into `.archive/` in the folder
   above; Archive now sits right above Delete in file and folder menus.

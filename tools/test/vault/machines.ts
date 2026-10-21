@@ -133,4 +133,56 @@ export default async ($: VaultTest) => {
     fs.rmSync(path.join(VAULT, "Notes/Qa host.md"))
     await api("GET", "workspaces") // forgets this machine's id (none listed now)
   }
+  // terminal.run on another machine: passed on to its server once its copy of the file matches, the terminal named with
+  // its machine; and what it refuses (here too).
+  {
+    const seen: string[] = []
+    let peerVault: string | null = null // (this vault's, else its own)
+    const peer = (await import("node:http")).createServer((req, res) => {
+      const json = (status: number, body: unknown) => { res.writeHead(status, { "Content-Type": "application/json" }); res.end(JSON.stringify(body)) }
+      if (req.url === "/api/machines/self") return json(200, { instance: "peer-2", host: "box", platform: "linux", version: "0.1.0", commit: "abc1234", plugins: ["terminal"],
+        vault: peerVault ?? JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/machines/vault.json"), "utf8")).id })
+      if (req.url === "/api/file?path=Notes%2FQa%20there.md") return json(200, { path: "Notes/Qa there.md", text: "Over there.\n" })
+      if (req.url === "/api/ops/terminal.run" && req.method === "POST") {
+        let b = ""
+        req.on("data", (d) => { b += d })
+        req.on("end", () => { seen.push(`run ${b} ${req.headers["x-vaultite-client"]}`); json(200, { id: "claude_personal-qa1", path: "Notes/Qa there.md", shown: false, handed: true }) })
+        return
+      }
+      json(404, { error: "no such thing" })
+    })
+    await new Promise<void>((r) => peer.listen(0, "127.0.0.1", () => r()))
+    write(".vaultite/plugins/machines/data.json", JSON.stringify({ machines: [{ id: "box", label: "Box", url: `http://127.0.0.1:${(peer.address() as { port: number }).port}/` },
+      { id: "gone", url: "http://127.0.0.1:9" }] }))
+    await api("GET", "machines")
+    write("Notes/Qa there.md", "Over there.\n")
+    try {
+      let [c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "box", account: "personal", prompt: "Read {path}." })
+      check("terminal.run: on another machine, its terminal there, in the background", c === 200 && body.id === "claude_personal-qa1@box" && body.machine === "box" &&
+        body.handed === true && body.shown === false &&
+        seen[0]?.startsWith(`run ${JSON.stringify({ path: "Notes/Qa there.md", agent: "claude", prompt: "Read {path}.", open: false, account: "personal" })} machine/`), [c, body, seen])
+      const passed = await app.runOp("terminal.run", { path: "Notes/Qa there.md", machine: "box" }, { who: { client: "machine/other", agent: null, label: "other", source: "other" } })
+        .then(() => null, (e: Any) => e)
+      check("terminal.run: one passed on from another machine isn't passed on again", passed?.status === 409, passed?.message)
+      ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "nope" })
+      check("terminal.run: an unknown machine says which there are", c === 404 && String(body.error).includes("box"), [c, body])
+      ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "gone" })
+      check("terminal.run: an offline machine says so", c === 502 && String(body.error).includes("offline"), [c, body])
+      peerVault = "another"
+      app.plugins.find((p) => p.id === "machines")!.forget() // (the list is kept 20 s)
+      ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", machine: "box" })
+      check("terminal.run: a machine with another vault is refused", c === 409 && String(body.error).includes("vault of its own"), [c, body])
+      ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Nowhere.md" })
+      check("terminal.run: a file that isn't there says so, nothing started", c === 404 && /there's no file/.test(String(body.error)), [c, body])
+      ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", agent: "claude", command: "ls" })
+      check("terminal.run: an agent or a command, not both", c === 400 && /not both/.test(String(body.error)), [c, body])
+      ;[c, body] = await api("POST", "ops/terminal.run", { path: "Notes/Qa there.md", command: "echo {path}" })
+      check("terminal.run: a command this machine hasn't run asks first", c === 409 && String(body.error).startsWith("This machine hasn't run this action's command before:"), [c, body])
+    } finally {
+      peer.close()
+      fs.rmSync(path.join(VAULT, ".vaultite/plugins/machines/data.json"))
+      fs.rmSync(path.join(VAULT, "Notes/Qa there.md"))
+      await api("GET", "machines")
+    }
+  }
 }

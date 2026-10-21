@@ -28,6 +28,11 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
 - `vau terminal` lists this machine's sessions (with an agent's own session id, when it says) and the tabs showing
   them, and opens, resumes (a Claude Code session by its title too), reads (`screen`), types into (`send`) and ends
   them; `vau terminal tidy` closes the tabs of agents' sessions that are gone.
+- `vau terminal run <file>` (terminal.run) hands a file to an agent in a new terminal, told its path and to do what it
+  asks (`prompt`, `agent`, `account`; `command`: a shell command instead), here or on another machine (`machine`).
+  With the Inbox on it works alone in the background and ends with a report there. Dispatch's buttons and vault
+  plugins' schedules (a note run each morning) start agents with it; the same run again while one still runs answers
+  with that one (`again`: another).
 - A session ended for good (its tab's End session, its row's x, `vau terminal end`: an agent asked to close itself runs
   it without an id) closes its tabs on every device, as does exiting the shell left after an agent (exit, ⌃D); an
   agent's session that died or whose machine restarted keeps them, saying so, with Restart. Otherwise a shell ends only

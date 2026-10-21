@@ -99,7 +99,7 @@ its scripts is a plugin). Each `command` is an argv array run in the plugin's fo
   or an area), the event as JSON on stdin; in the background, one at a time per hook, at most 30 a minute (don't
   write what you listen to).
 - `"startup": [{"command": [...]}]`: run once when the server has opened the vault with the plugin on.
-- `"schedule": [{"every": "1h", "command": [...]}, {"every": "1d", "at": "07:00", "op": "dispatch.run", "params":
+- `"schedule": [{"every": "1h", "command": [...]}, {"every": "1d", "at": "07:00", "op": "terminal.run", "params":
   {"path": "Notes/Morning brief.md"}}]`: a command or any op on a timer (`every` 15m, 2h, 1d, 1w; `at` this machine's time,
   with whole days; `name` to tell them apart). One machine runs it: Machines' first, or the one its `machine` names. A
   run missed while the server was down runs once when it's back. `vau schedule list`, `vau schedule run <id>`.

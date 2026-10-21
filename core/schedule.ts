@@ -1,4 +1,4 @@
-// Jobs on a timer: plugin.every's and a vault plugin's manifest `schedule` (a command or any op: a note dispatched to
+// Jobs on a timer: plugin.every's and a vault plugin's manifest `schedule` (a command or any op: a note handed to
 // Claude each morning). One machine runs each (Machines' first unless it names one); when they last ran stays on it.
 import fs from "node:fs"
 import { type Op, OpError } from "./ops.ts"

@@ -19,7 +19,7 @@ What it says, as Markdown.
   into `Inbox/.archive/`, and its events are read and link it there. A clip lands here with `inbox: true`.
 - **A TL;DR on top** of every result you write (`--tldr`): what it says and what you need from the user, in two or
   three plain sentences.
-- **A report** ends a task you were handed to do alone (a voice note, a dispatch):
+- **A report** ends a task you were handed to do alone (a voice note, a note handed to you: Dispatch, a schedule):
   `vau inbox report "<title>" --work <feature|fix|change|research|plan|answer> --tldr "<in short>" --summary "<markdown>"`
   (`--help` for the rest). It names your session (from VAULTITE_TERMINAL and CLAUDE_CODE_SESSION_ID) and ends with a
   reply box. Write it to stand alone: what was asked (link the note), what you did, where (files, repo, branch, commit),
