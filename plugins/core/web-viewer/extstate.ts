@@ -6,6 +6,8 @@ import { cell, notify, notifyError, viewsChanged, webPages } from "@vaultite"
 /** An installed extension, as the Extensions view lists it. */
 export type Ext = { id: string; name: string; version: string; on: boolean; pinned: boolean; from: "store" | "folder"; description: string; icon: string
   options: boolean; mv2: boolean; error: string
+  /** Profiles of this Mac's other browsers that have its settings (electron/browser/extsettings.ts brings them). */
+  settingsFrom: { browser: string; profile: string; name: string }[]
   /** Forced on by this Mac's policy (electron/browser/extpolicy.ts): no switch, no Remove. */
   managed: boolean }
 export const engine = <T,>(name: string, ...args: unknown[]) => {

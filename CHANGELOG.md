@@ -44,6 +44,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Terminal: `vau terminal run <file>` (terminal.run) hands a note to a coding agent or a shell command, here or on
   another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
 - The Web viewer is the Browser now, and Open in the browser is Open in another browser.
+- An extension added from Brave or Chrome comes with its settings there (options, sign-in, license), and one already
+  added gets them from its … menu, Settings from Brave: DeArrow's license and SponsorBlock's settings carry over.
 - Chrome extensions run in web pages: add them from the Chrome Web Store (Add to Vaultite on an extension's page, or a
   link in Extensions), a folder, or Brave and Chrome on the Mac; pinned ones' buttons are in the page's bar, every one in
   its … menu.

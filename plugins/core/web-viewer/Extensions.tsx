@@ -1,9 +1,9 @@
 // Chrome extensions in web pages (the engine's, electron/browser/extensions.ts): their buttons in a page's bar, the
 // Extensions tab, and "Add to Vaultite" on a Web Store page. What's installed is this Mac's: code run on every site.
 import { forwardRef, useEffect, useState, type FormEvent, type MouseEvent } from "react"
-import { Download, FolderOpen, Lock, MoreHorizontal, Pin, PinOff, Plus, Puzzle, RefreshCw, Settings2, Trash2, type LucideIcon, type LucideProps } from "lucide-react"
+import { ArrowDownToLine, Download, FolderOpen, Lock, MoreHorizontal, Pin, PinOff, Plus, Puzzle, RefreshCw, Settings2, Trash2, type LucideIcon, type LucideProps } from "lucide-react"
 import { Button, cn, confirmDialog, Empty, menuBelow, notify, notifyError, PageHeader, Panel, plural, Switch, type MenuItem } from "@vaultite"
-import { addExtension, engine, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
+import { addExtension, engine, extensionsChanged, hasExtensions, openExtensions, popupOpen, storeIdOf, useExtensions, version, type Ext } from "./extstate"
 
 /** An extension's button as one page shows it (its badge and icon may be that page's own). */
 type Button = { id: string; name: string; pinned: boolean; title: string; icon: string; badge: string; badgeColor: string; badgeTextColor: string; popup: boolean; enabled: boolean }
@@ -107,6 +107,13 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
   const [others, setOthers] = useState<Other[] | null>(null)
   const [problems, setProblems] = useState<string[]>([])
   const v = version.use((n) => n)
+  // Asked again as it opens and as the app comes back: what other browsers have changes outside it.
+  useEffect(() => {
+    if (!hasExtensions()) return
+    extensionsChanged()
+    addEventListener("focus", extensionsChanged)
+    return () => removeEventListener("focus", extensionsChanged)
+  }, [])
   useEffect(() => {
     if (!hasExtensions()) return
     void engine<Other[]>("ext:others").then(setOthers, () => setOthers([]))
@@ -130,8 +137,16 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
     if (!await confirmDialog({ title: `Remove ${x.name}?`, body: "It's removed from every web page, with its settings and what it kept.", confirm: "Remove", danger: true })) return
     run(x.id, () => engine("ext:remove", x.id), "Couldn't remove it")
   }
+  const bring = async (x: Ext, from: Ext["settingsFrom"][number]) => {
+    if (!await confirmDialog({ title: `Use ${from.browser}'s settings for ${x.name}?`, confirm: "Use them",
+      body: `Its settings here (its options, sign-in and license) are replaced by ${from.browser}'s.` })) return
+    run(x.id, async () => { await engine("ext:settings-from", x.id, from.browser, from.profile); notify(`${x.name} has ${from.browser}'s settings`) }, "Couldn't bring its settings")
+  }
   const menu = (x: Ext) => (e: MouseEvent<HTMLButtonElement>) => menuBelow(e, [
     ...(x.options ? [{ label: "Options", icon: Settings2, run: () => void engine("ext:options", x.id) }] : []),
+    // (a browser's profile named only when that browser has it in more than one)
+    ...x.settingsFrom.map((f) => ({ label: `Settings from ${f.browser}${x.settingsFrom.filter((g) => g.browser === f.browser).length > 1 ? ` (${f.name})` : ""}`,
+      icon: ArrowDownToLine, run: () => void bring(x, f) })),
     { label: x.pinned ? "Unpin from the bar" : "Pin to the bar", icon: x.pinned ? PinOff : Pin, run: () => void engine("ext:pin", x.id, !x.pinned) },
     ...(x.managed ? [] : [{ label: "Remove", icon: Trash2, danger: true, sep: true, run: () => void remove(x) }]),
   ])
@@ -210,7 +225,7 @@ export function ExtensionsView({ openPage }: { openPage: (url: string) => void }
                     <div className="truncate text-[14px] leading-[20px]">{o.name}</div>
                     <div className={cn(line, "text-muted-foreground")}>{o.browser}</div>
                   </div>
-                  <Button size="small" disabled={!!busy} onClick={() => run(o.id, async () => { const r = await engine<{ name: string }>("ext:import", o.id); notify(`Added ${r.name}`) }, "Couldn't add it")}>
+                  <Button size="small" disabled={!!busy} onClick={() => run(o.id, async () => { const r = await engine<{ name: string; settings: boolean }>("ext:import", o.id); notify(r.settings ? `Added ${r.name}, with its settings from ${o.browser}` : `Added ${r.name}`) }, "Couldn't add it")}>
                     <Download className="size-4" strokeWidth={2} />{busy === o.id ? "Adding…" : "Add"}
                   </Button>
                 </div>

@@ -268,7 +268,10 @@ export async function update(): Promise<Installed[]> {
 
 export type Found = { browser: string; id: string; name: string; version: string; icon: string; dir: string }
 const HOME = os.homedir()
-const BROWSERS: [string, string][] = process.platform === "darwin"
+/** VAULTITE_TEST_BROWSERS: a folder with brave/ and chrome/ in it (QA), as import.ts's. */
+const BROWSERS: [string, string][] = process.env.VAULTITE_TEST_BROWSERS
+  ? [["Brave", path.join(process.env.VAULTITE_TEST_BROWSERS, "brave")], ["Chrome", path.join(process.env.VAULTITE_TEST_BROWSERS, "chrome")]]
+  : process.platform === "darwin"
   ? [["Brave", "BraveSoftware/Brave-Browser"], ["Chrome", "Google/Chrome"], ["Edge", "Microsoft Edge"], ["Arc", "Arc/User Data"], ["Vivaldi", "Vivaldi"], ["Chromium", "Chromium"]]
     .map(([n, d]) => [n, path.join(HOME, "Library/Application Support", d)])
   : [["Brave", "BraveSoftware/Brave-Browser"], ["Chrome", "google-chrome"], ["Edge", "microsoft-edge"], ["Vivaldi", "vivaldi"], ["Chromium", "chromium"]]
@@ -300,6 +303,30 @@ export function others(): Found[] {
   }
   return [...out.values()].sort((a, b) => a.name.localeCompare(b.name))
 }
+
+/** A browser's profile that keeps `id`'s settings (chrome.storage's local and sync areas, each a folder of its own). */
+export type Source = { browser: string; profile: string; name: string; dir: string }
+
+/** The profiles of this Mac's other browsers that have `id` with settings, Brave's Default first. */
+export function sources(id: string): Source[] {
+  if (!ID.test(id)) return []
+  const out: Source[] = []
+  for (const [browser, base] of BROWSERS) {
+    let profiles: string[] = []
+    try { profiles = fs.readdirSync(base).filter((p) => p === "Default" || /^Profile \d+$/.test(p)) } catch { continue }
+    let names: Record<string, { name?: unknown }> = {}
+    try { names = JSON.parse(fs.readFileSync(path.join(base, "Local State"), "utf8"))?.profile?.info_cache ?? {} } catch { /* named by folder */ }
+    for (const prof of profiles.sort((a, b) => (a === "Default" ? -1 : b === "Default" ? 1 : a.localeCompare(b, undefined, { numeric: true })))) {
+      const dir = path.join(base, prof)
+      if (!AREAS.some((a) => fs.existsSync(path.join(dir, a, id)))) continue
+      const name = names[prof]?.name
+      out.push({ browser, profile: prof, name: typeof name === "string" && name ? name : prof, dir })
+    }
+  }
+  return out
+}
+/** chrome.storage's areas as Chromium keeps them in a profile, local then sync. */
+export const AREAS = ["Local Extension Settings", "Sync Extension Settings"] as const
 
 /** A native messaging app's manifest for `name`, as Chrome and its kin keep them on this Mac, if it lets `ext` in. */
 export function nativeHost(name: string, ext: string): { path: string } | null {

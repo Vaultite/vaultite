@@ -44,3 +44,7 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   listener (filters, host permissions, blocking answers by request id). onAuthRequired is Electron's `login`, matched to
   its request by the 401 before it; the app has no sign-in prompt, so no credentials shows the site's 401. Extensions
   never see the app's own requests (no initiator, no page), nor extensions'.
+- Another browser's settings for an extension (extsettings.ts) are read and written by a stand-in extension with its
+  key, never the extension itself (its worker would act on what it found mid-copy): Chromium keeps each chrome.storage
+  area as a LevelDB folder, which a session of its own reads as its local area. Written through the storage shim, so
+  the sync area lands where the extension reads it.

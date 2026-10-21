@@ -6,6 +6,8 @@ import { actionsChanged, buttonOf, closeNatives, closeOffscreen, emit, expect, f
   watchWorkers } from "./extapi.ts"
 import * as store from "./extstore.ts"
 import { applyPolicy, problems, watchPolicy } from "./extpolicy.ts"
+import { read as readSettings, write as writeSettings } from "./extsettings.ts"
+import { partitionOf } from "../web.ts"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -121,6 +123,24 @@ async function added(x: store.Installed) {
   return { id: x.id, name: x.name }
 }
 
+/** `x`'s settings as another browser's profile has them, in every session here (that profile is all of them) and the
+ *  default one a first page makes: where it's loaded, it starts again with them. */
+async function bringSettings(x: store.Installed, from: store.Source) {
+  const dir = store.dirOf(x), settings = await readSettings(from, x.id, dir)
+  const partitions = [partitionOf(""), ...Object.values(store.load().partitions)]
+  const all = new Set([...sessions.keys(), ...partitions.map((p) => session.fromPartition(p))])
+  for (const s of all) {
+    const had = !!s.extensions.getExtension(x.id)
+    if (had) unloadFrom(s, x.id)
+    try { await writeSettings(s, x.id, dir, settings) } finally { if (had) await loadInto(s, x) }
+  }
+}
+const sourceOf = (id: string, browser: unknown, profile: unknown) => {
+  const src = store.sources(id).find((s) => s.browser === browser && s.profile === profile)
+  if (!src) throw new Error(`${typeof browser === "string" ? browser : "that browser"} doesn't have its settings`)
+  return src
+}
+
 /** A Web Store link or id → the id. */
 function idOf(input: unknown) {
   const s = typeof input === "string" ? input.trim() : ""
@@ -134,6 +154,7 @@ function listed() {
       id: x.id, name: x.name, version: x.version, on: x.on, pinned: x.pinned, from: x.from, managed: !!x.managed,
       description: store.said(dir, m.description).slice(0, 300), icon: store.imageOf(dir, m.icons, 48),
       options: !!(m.options_ui?.page ?? m.options_page), mv2: m.manifest_version === 2, error: failed.get(x.id) ?? "",
+      settingsFrom: store.sources(x.id).map(({ browser, profile, name }) => ({ browser, profile, name })),
     }
   }).sort((a, b) => a.name.localeCompare(b.name))
 }
@@ -164,14 +185,29 @@ handle("ext:add-file", async (win) => {
   return added(fs.statSync(f).isDirectory() ? store.fromFolder(f) : store.fromCrx(fs.readFileSync(f), undefined, "folder"))
 })
 handle("ext:others", () => store.others().map(({ dir: _dir, ...x }) => x))
-/** One of another browser's: from the Web Store when it still has it (so it updates), else that browser's copy. */
+/** One of another browser's: from the Web Store when it still has it (so it updates), else that browser's copy; with
+ *  its settings from that profile, before it first runs (so it starts as it is there, signed in). */
 handle("ext:import", async (_win, id) => {
   const found = store.others().find((x) => x.id === id)
   if (!found) throw new Error("that browser doesn't have it any more")
-  try { return await added(await store.fromStore(found.id)) } catch (e) {
+  let x: store.Installed
+  try { x = await store.fromStore(found.id) } catch (e) {
     if (!(e instanceof store.NotOffered)) console.error("vaultite: the Web Store didn't give an extension, copied instead:", e)
-    return added(store.fromFolder(found.dir))
+    x = store.fromFolder(found.dir)
   }
+  const from = store.sources(x.id).find((s) => found.dir.startsWith(s.dir + path.sep))
+  let settings = false
+  if (from) {
+    try { await bringSettings(x, from); settings = true } catch (e) { console.error(`vaultite: couldn't bring ${x.name}'s settings from ${found.browser}:`, e) }
+  }
+  return { ...await added(x), settings }
+})
+/** An installed one's settings replaced by another browser's profile's. */
+handle("ext:settings-from", async (_win, id, browser, profile) => {
+  const x = known(id), from = sourceOf(x.id, browser, profile)
+  await bringSettings(x, from)
+  changed()
+  return { name: x.name, browser: from.browser }
 })
 handle("ext:on", async (_win, id, on) => {
   const x = store.change(known(id).id, { on: !!on })

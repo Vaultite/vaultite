@@ -81,7 +81,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   run on every site): "Extensions" (a command, or a page's … menu) lists them with a switch each,
   Options, Pin to the bar and Remove, and adds one from a Chrome Web Store link or id, from a folder or `.crx` file, or
   from another browser on the Mac (Brave, Chrome, Edge, Arc, Vivaldi: from the Web Store when it still has it, else
-  that browser's copy, as for Manifest V2 ones the store dropped). On a Web Store extension's page the bar offers "Add
+  that browser's copy, as for Manifest V2 ones the store dropped), with its settings from that browser's profile
+  (chrome.storage: its options, sign-in, license), so it starts as it is there; an installed one that another browser
+  also has gets "Settings from Brave" in its … menu, which replaces its settings here with that profile's. On a Web Store extension's page the bar offers "Add
   to Vaultite". Pinned ones show their button in every page's bar (badge and all; a narrow pane leaves them to the …
   menu's Extensions); a click opens its popup under it. Web Store ones update about daily. An extension's settings and data are per logins (each workspace's, each
   container's), as in Chrome's profiles. Not there: their items in the page's right-click menu, their keyboard

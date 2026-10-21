@@ -3,10 +3,11 @@
 // network: added from its folder in the Extensions view, its content script paints the page from the sync area and
 // learns its tab from the service worker, its button in the bar shows its badge, a click opens its popup under it,
 // which finds the page as the active tab and repaints it by message (closing on Escape); the worker opens a tab and
-// lists the windows; its options page opens in a tab; off, the page is left alone; on a Web Store page the bar says
-// it's added; removed, it's gone. Then managed: a copy without its key named in this app's policy file is added, always
-// on, with no switch or Remove (and the engine refuses both), its pages open at the id Chrome gives its folder, a new
-// container's pages get it too; out of the policy, it's an ordinary one.
+// lists the windows; its options page opens in a tab; Settings from Brave gives it a Brave profile's (both areas); off,
+// the page is left alone; on a Web Store page the bar says it's added; removed, it's gone. Then managed: a copy without
+// its key named in this app's policy file is added, always on, with no switch or Remove (and the engine refuses both),
+// its pages open at the id Chrome gives its folder, a new container's pages get it too; out of the policy, it's an
+// ordinary one.
 // WRITES: the throwaway vault only.
 //   node web/qa/extensions.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -34,7 +35,7 @@ const SITE = `http://127.0.0.1:${server.address().port}`
 
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
-  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
+  env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_TEST_BROWSERS: path.join(TMP, "browsers"), VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
 })
 const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
@@ -60,6 +61,26 @@ const inView = (prefix, code) => app.evaluate(({ BrowserWindow }, [prefix, code]
   return v ? v.webContents.executeJavaScript(code) : null
 }, [prefix, code])
 const painted = (prefix = SITE) => inView(prefix, "({ ...document.documentElement.dataset })")
+
+// A made-up Brave profile with the painter's settings (for Settings from Brave, below): each area a LevelDB folder as
+// Chromium keeps it, written by a session of their own.
+const BRAVE = path.join(TMP, "browsers/brave")
+fs.mkdirSync(path.join(BRAVE, "Default"), { recursive: true })
+fs.writeFileSync(path.join(BRAVE, "Local State"), JSON.stringify({ profile: { info_cache: { Default: { name: "Personal" } } } }))
+for (const [area, items] of [["Sync Extension Settings", { color: "plum" }], ["Local Extension Settings", { seen: "in brave" }]]) {
+  const at = path.join(TMP, `area-${area.split(" ")[0]}`)
+  await app.evaluate(async ({ session, WebContentsView }, [at, dir, id, items]) => {
+    const s = session.fromPath(at)
+    await s.extensions.loadExtension(dir)
+    const v = new WebContentsView({ webPreferences: { session: s } })
+    await v.webContents.loadURL(`chrome-extension://${id}/popup.html`)
+    await v.webContents.executeJavaScript(`chrome.storage.local.set(${JSON.stringify(items)})`)
+    v.webContents.close()
+    s.extensions.removeExtension(id)
+  }, [at, FIXTURE, ID, items])
+  await wait(500)
+  fs.cpSync(path.join(at, "Local Extension Settings", ID), path.join(BRAVE, "Default", area, ID), { recursive: true })
+}
 
 // ---------- added from its folder ----------
 // (the folder picker answered as if the user chose the fixture)
@@ -117,6 +138,19 @@ const before = (await views()).length
 const opened = await ask({ type: "open", url: `${SITE}/two` })
 check("… and opens a tab", opened?.opened === true && await until(async () => (await views()).some((v) => v.url === `${SITE}/two`), 10000), [opened, before, await views()])
 check("… whose page it paints too", await until(async () => (await painted(`${SITE}/two`))?.painter === "orange", 10000), await painted(`${SITE}/two`))
+
+// ---------- its settings from Brave ----------
+await command("web:extensions")
+await win.locator(`[data-ext-more="${ID}"]`).click()
+await win.locator("[role=menuitem]", { hasText: "Settings from Brave" }).click()
+await win.locator("dialog[open] button", { hasText: "Use them" }).click()
+check("Settings from Brave: done, it says", await until(async () => (await win.locator("body").innerText()).includes("Page painter has Brave's settings"), 15000))
+await openUrl(`${SITE}/brave`)
+check("… its sync area is Brave's", await until(async () => (await painted(`${SITE}/brave`))?.painter === "plum", 15000), await painted(`${SITE}/brave`))
+// (the options tab open before was the extension's last run: a page of this one)
+await openUrl(`${options}?brave`)
+const seen = () => inView(`${options}?brave`, "chrome.storage.local.get('seen').then((r) => r.seen)")
+check("… and its local area", await until(async () => (await seen()) === "in brave", 10000), await seen())
 
 // ---------- the Web Store's page ----------
 await app.evaluate(({ session }) => {
