@@ -5,7 +5,7 @@
 // Settings and a note in the editor (its chunk loads then). Then the screen itself: the app's code throwing as it loads,
 // and not loading at all, must each show it (rather than a blank window). Last, a vault of the user's own (Obsidian's,
 // plain Markdown, their AGENTS.md): opening it must change none of their files and add nothing outside .vaultite/;
-// picking a setup for it as Set up Vaultite does adds only its plugins' pages, new files in Dashboards/; and every
+// picking a setup for it as Set up Vaultite does adds only its plugins' pages, new files in Dashboards/, and its guide; and every
 // plugin on with their schedules run writes nothing (core/writegate.ts: a plugin acting on its own writes outside
 // .vaultite/ only once the user allowed it).
 // WRITES: only the throwaway vault it makes (none with <base url>, which should be a throwaway server too).
@@ -148,7 +148,9 @@ try {
     const later = files(own)
     const changed = Object.keys(before).filter((f) => before[f] !== later[f]), added = Object.keys(later).filter((f) => !(f in before))
     check("own vault: a setup picked changes none of the user's files (their own Today too)", applied.every((c) => c === 200) && !changed.length, [applied, changed])
-    check("own vault: ...and adds only its plugins' pages, in Dashboards/", added.length > 0 && added.every((f) => f.startsWith("Dashboards/") && /^type: dashboard$/m.test(later[f])), added)
+    const guide = (await (await call("GET", "bundles/life-os")).json()).bundle?.guide
+    check("own vault: ...and adds only its plugins' pages, in Dashboards/, and its guide", added.length > 0 && added.includes(guide) &&
+      added.every((f) => f === guide || (f.startsWith("Dashboards/") && /^type: dashboard$/m.test(later[f]))), added)
     // ...its pages pinned and drawn, the user's files now.
     const st = await (await fetch(`${ownBase}api/state`)).json()
     const people = st.files.files.find((f) => f.path === "Dashboards/People.md")

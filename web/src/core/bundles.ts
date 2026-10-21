@@ -6,7 +6,7 @@ import { del, get, post, request } from "@/core/http"
 import { activeTab } from "@/core/workspace"
 import { appPageOf } from "@/core/apppages"
 import { captureWindow } from "@/core/desktop"
-import { openDetail, replaceDetail, route } from "@/core/nav"
+import { afterSheets, openDetail, replaceDetail, route } from "@/core/nav"
 import { openFile } from "@/core/files"
 import { dismissNotice, notify, notifyError } from "@/core/notify"
 import { currentWorkspace } from "@/core/scope"
@@ -94,19 +94,43 @@ const onboarding = (): boolean => !!getStore()?.bundles?.onboarding
 /** Applying it puts code in the vault or turns a vault plugin on (core/bundles.ts runsCode). */
 export const runsCode = (p: Plan) => p.code.some((c) => !c.kept || p.plugins.on.includes(c.id))
 
+/** The plan without the changes `skip` names, as far as asking about code goes: what it installs, and turns on. */
+export const without = (p: Plan, skip: ReadonlySet<string>): Plan => !skip.size ? p : {
+  ...p, code: p.code.filter((c) => !c.change || !skip.has(c.change)), plugins: { ...p.plugins, on: p.plugins.on.filter((id) => !skip.has(`plugin:${id}`)) },
+}
+
+/** Changes that go with another, by id: a plugin turned on whose install is left out isn't there to turn on
+ *  (core/bundles.ts plan). */
+export function lockedBy(p: Plan, off: ReadonlySet<string>): Set<string> {
+  return new Set(p.code.filter((c) => c.change && off.has(c.change)).map((c) => `plugin:${c.id}`).filter((id) => p.changes.some((c) => c.id === id)))
+}
+/** What applying leaves out: the changes unticked, and those that go with them. */
+export const skipOf = (p: Plan, off: ReadonlySet<string>) => [...new Set([...off, ...lockedBy(p, off)])].filter((id) => p.changes.some((c) => c.id === id))
+
 
 export async function previewOf(id: string): Promise<{ bundle: BundleInfo; files: string[]; plan: Plan }> {
   return get(`bundles/${encodeURIComponent(id)}${currentWorkspace() ? `?workspace=${currentWorkspace()!.n}` : ""}`)
 }
 
-/** Apply a bundle (the caller asked first when it runs code), then show its guide or first page, with Undo in a toast that said
- *  it was on its way meanwhile (installing takes seconds). `offAdded`: the user's added plugins it doesn't name go off. */
-export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false, offAdded = false) {
+export type ApplyOptions = {
+  /** The caller asked first: it runs code. */
+  allowCode?: boolean
+  /** The user's added plugins it doesn't name go off. */
+  offAdded?: boolean
+  /** Change ids left out (skipOf). */
+  skip?: string[]
+  /** Only tried: the app-wide bar keeps it or reverts (BundleTrial). */
+  trial?: boolean
+}
+
+/** Apply a bundle, then show its guide or first page, with Undo in a toast that said it was on its way meanwhile
+ *  (installing takes seconds); a trial ends without one, its bar says it. */
+export async function applyBundle(b: BundleInfo, plan: Plan, { allowCode = false, offAdded = false, skip = [], trial = false }: ApplyOptions = {}) {
   const id = `bundle-apply-${b.id}`
-  const installs = allowCode ? plan.code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
-  notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `Applying ${b.name}…`, { id, duration: Infinity })
+  const installs = allowCode ? without(plan, new Set(skip)).code.filter((c) => c.source && !c.kept).map((c) => c.name) : []
+  notify(installs.length ? `Installing ${new Intl.ListFormat("en", { type: "conjunction" }).format(installs)} for ${b.name}…` : `${trial ? "Trying" : "Applying"} ${b.name}…`, { id, duration: Infinity })
   try {
-    const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded })
+    const r = await post<{ applied: string; plan: Plan }>(`bundles/${encodeURIComponent(b.id)}/apply`, { workspace: currentWorkspace()?.n ?? null, allowCode, offAdded, skip, trial })
     await reload()
     void refreshBundles()
     // A guide it just added comes first: the pages it pins are linked from there.
@@ -116,7 +140,32 @@ export async function applyBundle(b: BundleInfo, plan: Plan, allowCode = false, 
     dismissNotice(id)
     throw e
   }
-  notify(`Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
+  if (trial) dismissNotice(id)
+  else notify(`Applied ${b.name}`, { id, duration: 8000, action: { label: "Undo", run: () => restoreSetup() } })
+}
+
+/** End a trial keeping the bundle tried (Restore still goes back to before it). */
+export async function keepTrial() {
+  await post("bundles/keep", {})
+  await reload()
+  void refreshBundles()
+}
+
+/** Save a bundle without the changes `skip` names as the user's "<Name> (mine)". */
+export async function forkBundle(b: BundleInfo, skip: string[]) {
+  const r = await post<{ bundle: BundleInfo }>(`bundles/${encodeURIComponent(b.id)}/fork`, { skip, workspace: currentWorkspace()?.n ?? null })
+  await refreshBundles()
+  return r.bundle
+}
+
+/** Keep the setup's changes since bundle b was applied: saved over it when it's the user's (with a new picture when
+ *  the desktop app takes one), else as a new "<Name> (mine)". Closes the sheet first, so the picture is of the app. */
+export async function saveChanges(b: BundleInfo) {
+  await new Promise<void>((done) => afterSheets(() => requestAnimationFrame(() => done())))
+  const png = b.source === "vault" ? await windowShot() : null
+  const r = await post<{ bundle: BundleInfo }>("bundles", { over: b.id, workspace: currentWorkspace()?.n ?? null, ...(png ? { preview: png } : {}) })
+  await refreshBundles()
+  return r.bundle
 }
 
 /** Put back the setup from before the last bundle applied. */
@@ -147,13 +196,15 @@ export function usePicture(b: Pick<BundleInfo, "id" | "preview" | "previewDark">
   return inline ? `data:image/png;base64,${inline}` : `api/bundles/${encodeURIComponent(b.id)}/${name}?v=${v}`
 }
 
-// The window as it was when saving began (the desktop app's), before the sheet covered it: the new bundle's picture.
+/** The desktop app's picture of the window, for a bundle's card: none of Setup itself (or Settings), nor in a browser. */
+const windowShot = async () => (appPageOf(activeTab()?.to ?? "") ? null : (await captureWindow().catch(() => null))?.png ?? null)
+
+// The window as it was when saving began, before the sheet covered it: the new bundle's picture.
 let shot: string | null = null
 export const takenShot = () => shot
-/** Start saving the setup. A picture of the window comes first, unless what's shown is Setup itself (or Settings). */
+/** Start saving the setup. A picture of the window comes first. */
 export async function startSave() {
-  shot = null
-  if (!appPageOf(activeTab()?.to ?? "")) shot = (await captureWindow().catch(() => null))?.png ?? null
+  shot = await windowShot()
   openDetail("bundle-save")
 }
 
@@ -224,7 +275,8 @@ export const isBundleText = (text: string) => {
 
 const notABundle = (what: string) => new Error(`${what} isn't a bundle: paste its JSON, or a GitHub repository (owner/name)`)
 
-/** Import a bundle from text (sourceOf): it joins the user's bundles, not applied. */
+/** Import a bundle from text (sourceOf): it joins the user's bundles, not applied. Never over one of theirs (409): an
+ *  update goes through its preview (openImport), which says what changed. */
 export async function importText(text: string, what = "that") {
   const body = sourceOf(text)
   if (!body) throw notABundle(what)
@@ -271,6 +323,25 @@ export function openImport(source: ImportSource) {
   const d = route().detail
   if (d === "bundle-import" || d.startsWith("bundle-incoming/")) replaceDetail(`bundle-incoming/${key}`)
   else openDetail(`bundle-incoming/${key}`)
+}
+
+// ---------- the directory: bundles shared on GitHub (core/pluginindex.ts) ----------
+
+/** A bundle the directory lists, pinned at `commit` (`address`: owner/name[/folder]@commit, what importing takes);
+ *  `imported`: the user's bundle from the same place, `current`: it's at that commit. */
+export type Listed = { name: string; description: string; author: string; repo: string; dir: string | null; commit: string; address: string; source: string
+  stars: number; updated: string | null; topics: string[]; runsCode: boolean; installs: { id: string; name: string; source: string }[]
+  icon?: string; tint?: string; preview?: string; previewDark?: string; imported: string | null; current: boolean }
+/** `available`: the index could be read (else `error` says why; offline, say). */
+export type Directory = { url: string; available: boolean; fetched: string | null; error?: string; bundles: Listed[] }
+
+/** The directory's bundles with these words. */
+export const browseBundles = (q: string) => get<Directory>(`bundles/browse${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ""}`)
+
+/** A listed bundle's picture as the app looks now (each stands in for the other), or null. */
+export function useListedPicture(e: Pick<Listed, "preview" | "previewDark">): string | null {
+  const dark = useSyncExternalStore(onLook, isDark)
+  return (dark ? e.previewDark ?? e.preview : e.preview ?? e.previewDark) ?? null
 }
 
 /** A bundle's link (vaultite://bundle/<owner>/<name>, from its page on vaultite.com): its import preview. */

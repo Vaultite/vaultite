@@ -1075,7 +1075,8 @@ async function fork(host: Host, id: string, skip: string[], n: number | null) {
   const unknown = skip.filter((x) => !p.changes.some((c) => c.id === x))
   if (unknown.length) throw new HTTPError(400, `${unknown.join(", ")}: not a change applying ${b.id} makes here (bundle.show lists them)`)
   const files: Files = { ...b.files }
-  delete files[PREVIEW]
+  // (its pictures are of the bundle with every change: not this one's)
+  for (const f of PICTURES) delete files[f]
   const obj = (rel: string) => ({ ...json(files, rel) })
   const put = (rel: string, o: unknown) => { files[rel] = JSON.stringify(o, null, 2) + "\n" }
   const at = placeOf(b, v)

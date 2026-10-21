@@ -59,6 +59,7 @@ import { PhoneHeader } from "@/components/PhoneHeader"
 import { drawerOut, openDrawer, PhoneDrawers } from "@/components/PhoneDrawer"
 import { Tooltips } from "@/components/Tooltip"
 import { Toaster } from "@/components/Toast"
+import { BundleTrial } from "@/components/BundleTrial"
 import { SelectionBar } from "@/components/SelectionBar"
 import { VaultManager, webVaults } from "@/components/VaultManager"
 import { ContextMenus } from "@/components/ContextMenu"
@@ -567,6 +568,7 @@ export default function App() {
       {!desktop && <SelectionBar />}
       <ContextMenus />
       <ConfirmDialogs />
+      <BundleTrial store={store} />
       <Toaster desktop={desktop} />
 
       {/* Plugins' background work (Workspaces keeping the tabs and the vault in step), drawn nowhere; one that throws

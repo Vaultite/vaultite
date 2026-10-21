@@ -36,9 +36,10 @@ export type State = PluginState & {
   pluginSettings?: string[]
   /** Where plugins write outside .vaultite/ on their own, and the user's answers (core/grants.ts). */
   writeGrants?: Grant[]
-  /** Bundles (core/bundles.ts): the setup the last one applied replaced (to restore), and whether a new vault is still
-   *  being offered them. */
-  bundles?: { previous: { bundle: string; name: string; at: string } | null; onboarding: boolean }
+  /** Bundles (core/bundles.ts): the setup the last one applied replaced (to restore), the one being tried, the one applied
+   *  last (without what), and whether a new vault is still being offered them. */
+  bundles?: { previous: { bundle: string; name: string; at: string } | null; onboarding: boolean
+    trial: { id: string; name: string; at: string } | null; applied: { id: string; name: string; at: string; skip: string[] } | null }
   /** Defaults another app's settings give the vault's settings files ("files", "plugins/<id>/data"): what applies while
    *  a key is unset there, never written (core/plugins.ts settingDefaults). */
   settingDefaults?: Record<string, Record<string, unknown>>

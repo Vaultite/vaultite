@@ -354,7 +354,7 @@ export default async ($: VaultTest) => {
     ;[code, r] = await api("POST", "bundles/zen/fork", { skip: FORK })
     const forked = r.bundle
     check("bundles: fork makes the user's copy, its name free, its card copied, not its picture", code === 200 && forked.name === "Zen (mine 2)" && forked.source === "vault" &&
-      forked.icon === "wind" && forked.tint === "teal" && !forked.preview && !forked.from, r)
+      forked.icon === "wind" && forked.tint === "teal" && !forked.preview && !forked.previewDark && !forked.from, r)
     ;[code] = await api("POST", "bundles/zen/fork", { skip: ["setting:nope.x"] })
     check("bundles: fork with an id that isn't a change is refused", code === 400, code)
     await apply("zen", { skip: FORK })

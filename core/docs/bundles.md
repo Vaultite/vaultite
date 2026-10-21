@@ -54,13 +54,18 @@ books, and pages and databases over them).
   `setting:<plugin>.<key>`, `panels`, `file:<path>`, `pin:<path>`, `pins:order`, `appearance:<key>`, `hotkey:<command>`,
   `newtab:<key>`), the same for the same bundle and setup. Applying with `skip` leaves those out (nor kept to restore);
   `vau bundle fork <id> --skip ...` saves the bundle without them as "<Name> (mine)" (a value skipped is the current
-  one, still said; a pin, file or plugin skipped is left out).
+  one, still said; a pin, file or plugin skipped is left out). In the app each is a ticked line of the bundle's
+  preview: unticked, Apply and Try leave it out, and Save as "<Name> (mine)" forks it (an install unticked takes its
+  plugin with it; a plugin's files and the page a pin needs go with theirs).
 - The bundle applied last (`.vaultite/bundles/applied.json`, with what it skipped) is in use; once the setup changes,
   `GET /api/bundles` gives it `modified` and `differs` (the ids that would apply). Applying it again puts it back;
   `vau bundle save --over <id>` keeps the changes: over one of the user's (its name, card and `from` kept), or as
-  "<Name> (mine)" for one of the app's. Saving makes the bundle saved the one in use.
-- Trying one (`apply --trial`, `.vaultite/bundles/trial.json`): `vau bundle keep` ends it as an apply; restore puts back
-  the setup from before. Another applied while trying ends the trial, and restore still goes back to before it.
+  "<Name> (mine)" for one of the app's. Saving makes the bundle saved the one in use. In the app its card says In use ·
+  modified (its tip names what differs), and its preview offers Save changes (Save as "<Name> (mine)" for the app's)
+  and Revert.
+- Trying one (`apply --trial`, `.vaultite/bundles/trial.json`; Try on its preview): `vau bundle keep` ends it as an
+  apply; restore puts back the setup from before. Another applied while trying ends the trial, and restore still goes
+  back to before it. Meanwhile every window shows a bar at its foot, "Trying <Name>", with Revert and Keep.
 - A bundle is in use (`inUse` in `GET /api/bundles`, "In use" on its card) while applying it would change nothing: a
   new vault's Standard, until a setting it sets changes.
 - Saving names the installed plugins that are on by their source (`install`); the vault's own go as files only when
@@ -68,7 +73,7 @@ books, and pages and databases over them).
   asked (`--include`). A git repository is a bundle too: its folder at the top, or one `.bundle.json`;
   `vau bundle import owner/name` adds it (bundle.json's `from` keeps where). Getting it again is an update: its preview
   (`changes`: files added, changed, removed; installs re-pinned) says what's different, and it replaces the user's copy
-  only with `replace` (`--replace`), never applied.
+  only with `replace` (`--replace`), never applied (a card's Check for updates… opens that preview).
 - **A bundle's link**: once its file is in a public GitHub repository (one `.bundle.json` at its top, or the bundle's
   folder there), `https://vaultite.com/b/<owner>/<name>` (`/<folder>` after it for one in a folder of the repository)
   is a page that shows it and runs it live in the web demo, on its made-up vault: the visitor's browser fetches it from
@@ -80,7 +85,8 @@ books, and pages and databases over them).
   .bundle.json) and those Vaultite/plugins' `directory/listed.json` names (`bundles`: owner/name or owner/name/folder),
   each pinned at the commit that last changed it. Its `address`, `owner/name[/folder]@<commit>`, imports exactly that
   commit (`vau bundle import <address>`), kept in bundle.json's `from`; `imported` names the user's bundle from the same
-  place, `current` whether it's at that commit. The blocklist leaves one out.
+  place, `current` whether it's at that commit. The blocklist leaves one out. Setup's Bundles tab lists them under Browse (with
+  a search), each Imported or Update available; opening one is its import preview at that commit.
 - `vau bundle --help` (each is an op, `POST /api/ops/bundle.<name>`). An export is one JSON file:
   `{"vaultite": "bundle", "format": 1, "id", "files": {"<path>": <JSON, text, or {"base64": ...} for bytes>}}`.
 - To make one for the user, write the folder (pick blocks for its dashboards from `vau docs design`) and its guide, check it

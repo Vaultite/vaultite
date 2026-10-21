@@ -3,15 +3,15 @@
 import { official } from "../../../core/updates.ts"
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode, type RefObject } from "react"
 import {
-  ArrowRight, BookOpen, Bot, CircleAlert, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
-  Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Trash2, type LucideIcon,
+  ArrowRight, BookOpen, Bot, Check, CircleAlert, Copy, Download, FilePlus, History, Import, LayoutDashboard, MoreHorizontal, Package, PackagePlus, PanelLeft, PanelRight, Pin, Plus,
+  Puzzle, RefreshCw, Settings2, Share, ShieldAlert, Star, Trash2, type LucideIcon,
 } from "lucide-react"
 import type { Store } from "@/core/data"
 import { fmtAgo } from "@/core/data"
 import {
-  addIncoming, agentPrompt, applyBundle, bundleText, deleteBundle, exportBundle, givenImport, importText, incomingOf, isBundleText, openImport, previewOf,
-  refreshBundles, restoreSetup, runsCode, saveBundle, shareOf, skipOnboarding, startSave, takenShot, useBundles, usePicture, type BundleInfo, type Incoming,
-  type Plan, type ShareItem,
+  addIncoming, agentPrompt, applyBundle, browseBundles, bundleText, deleteBundle, exportBundle, forkBundle, givenImport, importText, incomingOf, isBundleText,
+  lockedBy, openImport, previewOf, refreshBundles, restoreSetup, runsCode, saveBundle, saveChanges, shareOf, skipOf, skipOnboarding, startSave, takenShot,
+  useBundles, useListedPicture, usePicture, without, type BundleInfo, type Directory, type Incoming, type Listed, type Plan, type ShareItem,
 } from "@/core/bundles"
 import { copyText } from "@/core/richmd"
 import { closeDetail, openDetail, replaceDetail } from "@/core/nav"
@@ -23,7 +23,7 @@ import { usePrefs } from "@/core/prefs"
 import { menuBelow } from "@/components/ContextMenu"
 import { confirmDialog } from "@/components/ConfirmDialog"
 import { useSheetGuard } from "@/components/DetailSheet"
-import { Bar as Line, Panel, SheetHead, Switch } from "@/components/kit"
+import { Bar as Line, FilterField, Panel, SheetHead, Switch } from "@/components/kit"
 import { Swatches } from "@/components/Appearance"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/Button"
@@ -177,9 +177,11 @@ function MiniPage({ b }: { b: BundleInfo }) {
  *  page it opens on). */
 function Thumb({ b }: { b: BundleInfo }) {
   const url = usePicture(b)
-  if (url) return <img src={url} alt="" draggable={false} className="aspect-[16/10] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
-  return <Sketch b={b} />
+  return url ? <Picture src={url} /> : <Sketch b={b} />
 }
+
+const Picture = ({ src, onError }: { src: string; onError?: () => void }) =>
+  <img src={src} alt="" draggable={false} onError={onError} className="aspect-[16/10] w-full rounded-t-[11px] border-b-[0.5px] border-border bg-background object-cover object-top-left" />
 
 function Sketch({ b }: { b: BundleInfo }) {
   const { scheme: mine, theme } = usePrefs()
@@ -207,16 +209,37 @@ function Sketch({ b }: { b: BundleInfo }) {
 
 /** Plugins by id, named ("Tasks and Kanban"): those not installed yet by their id. */
 const AND = new Intl.ListFormat("en", { type: "conjunction" })
-const listOf = (ids: string[]) => AND.format(ids.map((id) => pluginById(id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)))
+const pluginName = (id: string) => pluginById(id)?.name ?? id.charAt(0).toUpperCase() + id.slice(1)
+const listOf = (ids: string[]) => AND.format(ids.map(pluginName))
+
+/** A change by its id (core/bundles.ts PlanChange), named for a tooltip's list: "Colour scheme", "Books". */
+function changeName(id: string) {
+  const [part, ...rest] = id.split(":"), what = rest.join(":")
+  if (part === "install") return `Install ${pluginName(what)}`
+  if (part === "plugin") return pluginName(what)
+  if (part === "setting") { const [pid, ...k] = what.split("."), key = k.join("."); return `${pluginName(pid)}: ${pluginById(pid)?.settingsDecls?.[key]?.label ?? key}` }
+  if (part === "panels") return "Sidebar panels"
+  if (part === "file") return stem(what)
+  if (part === "pin") return `Pin ${stem(what)}`
+  if (part === "pins") return "Order of pinned pages"
+  if (part === "appearance") return APPEARANCE[what] ?? what
+  if (part === "newtab") return NEWTAB[what] ?? `New tab: ${what}`
+  return part === "hotkey" ? `Hotkey ${what}` : id
+}
+const fewOf = (names: string[]) => (names.length > 5 ? `${names.slice(0, 5).join(", ")} and ${names.length - 5} more` : AND.format(names))
+
+const CARD = "glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none"
+const Badge = ({ quiet, children, ...rest }: { quiet?: boolean; children: ReactNode; [data: `data-${string}`]: string | boolean | undefined }) =>
+  <span className={cn("shrink-0 rounded-[5px] px-1.5 text-[11px] leading-[18px] font-medium whitespace-nowrap", quiet ? "bg-foreground/[0.06] text-muted-foreground" : "bg-primary/12 text-primary")} {...rest}>{children}</span>
 
 /** A bundle: its picture and name, nothing to read (what it changes is in its preview); only a mark when it installs
- *  plugins, runs code or can't be read. */
-function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
+ *  plugins, runs code or can't be read. `trying`: it's being tried (the app-wide bar keeps or reverts it). */
+function BundleCard({ b, picked, trying }: { b: BundleInfo; picked?: boolean; trying?: boolean }) {
   const Icon = iconOfBundle(b)
   return (
     <div className="group/card relative flex min-w-0 flex-col">
       <button type="button" onClick={() => openDetail(`bundle/${b.id}`)} data-bundle={b.id} data-keyrow aria-label={`${b.name}: preview`}
-        className={cn("glass flex min-w-0 flex-1 cursor-pointer flex-col rounded-[12px] text-left ring-primary/60 transition-shadow hover:ring-2 focus-visible:ring-2 focus-visible:outline-none", picked && "ring-2 ring-primary")}>
+        className={cn(CARD, picked && "ring-2 ring-primary")}>
         <Thumb b={b} />
         <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
           <div className="flex items-center gap-2">
@@ -224,8 +247,10 @@ function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
               <Icon className="size-4" strokeWidth={2.25} />
             </span>
             <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{b.name}</span>
-            {b.inUse && !picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-in-use data-tip="Your setup is this one: applying it changes nothing">In use</span>}
-            {picked && <span className="shrink-0 rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary" data-bundle-picked>Picked</span>}
+            {picked ? <Badge data-bundle-picked>Picked</Badge>
+              : trying ? <Badge data-bundle-trying>Trying</Badge>
+              : b.modified ? <Badge data-bundle-modified data-tip={`Changed since you applied it: ${fewOf(b.differs?.map(changeName) ?? [])}`}>In use · modified</Badge>
+              : b.inUse && <Badge data-bundle-in-use data-tip="Your setup is this one: applying it changes nothing">In use</Badge>}
             {/* What it brings beyond settings, as marks on the title's row: every card stays one height. */}
             {!!b.code.length && (b.source === "app"
               ? <span className="shrink-0 text-muted-foreground" data-bundle-installs={b.code.join(" ")} data-tip={`Installs ${listOf(b.code)}`}><PackagePlus className="size-4" strokeWidth={2} /></span>
@@ -237,7 +262,7 @@ function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
       {b.source === "vault" && (
         <button type="button" aria-label={`${b.name}: more`} data-tip="More" onClick={(e) => menuBelow(e, [
           { label: "Share…", icon: Share, run: () => openDetail(`bundle-share/${b.id}`) },
-          ...(b.from ? [{ label: "Get the newest", icon: RefreshCw, run: () => { void fetchAgain(b) } }] : []),
+          ...(b.from ? [{ label: "Check for updates…", icon: RefreshCw, run: () => openImport(place(b.from!)) }] : []),
           { label: "Delete", icon: Trash2, danger: true, run: () => { void removeBundle(b) } },
         ])}
           className="absolute top-2 right-2 grid size-7 cursor-pointer place-items-center rounded-[7px] bg-background/80 text-muted-foreground opacity-0 backdrop-blur group-hover/card:opacity-100 hover:text-foreground focus-visible:opacity-100 max-md:opacity-100">
@@ -250,11 +275,6 @@ function BundleCard({ b, picked }: { b: BundleInfo; picked?: boolean }) {
 
 /** Where a bundle came from, without the commit an import from the directory pinned. */
 const place = (from: string) => from.replace(/@[0-9a-f]{40}$/, "")
-
-/** Get a bundle again from the repository it came from (its newest version replaces it). */
-async function fetchAgain(b: BundleInfo) {
-  try { await importText(place(b.from!)); notify(`${b.name} is the newest from ${place(b.from!)}`) } catch (e) { notifyError(e, `Couldn't get ${b.name} again`) }
-}
 
 /** Delete one of the user's bundles (to the trash), with Undo: its export, imported again. */
 async function removeBundle(b: BundleInfo) {
@@ -350,6 +370,7 @@ export function Bundles({ store }: { store: Store }) {
   const app = l?.bundles.filter((b) => b.source === "app") ?? []
   const mine = l?.bundles.filter((b) => b.source === "vault") ?? []
   const start = app.find((b) => b.id === l?.default)
+  const trying = store.bundles?.trial?.id
   const root = useRef<HTMLDivElement>(null)
   const over = useImportGestures(root)
   return (
@@ -366,7 +387,7 @@ export function Bundles({ store }: { store: Store }) {
       <div className="@container" data-keylist>
         {!welcome && <h2 className="mb-2 text-[17px] font-semibold">Built in</h2>}
         <div className={cn(GRID, "mb-7")} data-bundles-app>
-          {app.map((b) => <BundleCard key={b.id} b={b} picked={welcome && b.id === start?.id} />)}
+          {app.map((b) => <BundleCard key={b.id} b={b} picked={welcome && b.id === start?.id} trying={trying === b.id} />)}
         </div>
         {/* (like a phone's setup offering to restore from a backup: there, not in the way) */}
         {welcome && (
@@ -377,10 +398,11 @@ export function Bundles({ store }: { store: Store }) {
         {(!welcome || mine.length > 0) && <>
           <h2 className="mb-2 text-[17px] font-semibold">Yours</h2>
           <div className={cn(GRID, "mb-6")} data-bundles-mine>
-            {mine.map((b) => <BundleCard key={b.id} b={b} />)}
+            {mine.map((b) => <BundleCard key={b.id} b={b} trying={trying === b.id} />)}
             <ImportCard over={over} />
           </div>
         </>}
+        {!welcome && <Browse />}
       </div>
       {over && (
         <div className="pointer-events-none absolute inset-0 grid place-items-center rounded-[12px] border-2 border-dashed border-primary/60 bg-background/85 text-[15px] font-medium" data-bundles-drop>
@@ -391,6 +413,73 @@ export function Bundles({ store }: { store: Store }) {
   )
 }
 
+// ---------- the directory's bundles ----------
+
+/** What a listed bundle's card draws without its picture: the sketch of a bundle that says nothing but its look. */
+const sketchOf = (e: Listed): BundleInfo => ({ id: e.address, source: "vault", name: e.name, description: e.description, icon: e.icon ?? "package", tint: e.tint ?? "",
+  author: e.author, sort: 0, theme: null, scheme: null, density: null, on: null, pinned: null, panels: null, home: null, code: [], from: e.address, guide: null,
+  hotkeys: false, preview: null, previewDark: null, problems: [] })
+
+/** A bundle the directory lists, as a card: who made it and its stars under its name, and whether the user has it.
+ *  Opening it is its import preview, pinned at the commit listed (an update says what changed). */
+function ListedCard({ e }: { e: Listed }) {
+  const src = useListedPicture(e)
+  const [broken, setBroken] = useState(false)
+  const b = sketchOf(e), Icon = iconOfBundle(b)
+  return (
+    <button type="button" onClick={() => openImport(e.address)} data-listed={e.source} data-keyrow aria-label={`${e.name}: preview`} className={cn(CARD, "relative")}>
+      {src && !broken ? <Picture src={src} onError={() => setBroken(true)} /> : <Sketch b={b} />}
+      {/* (over its picture, where a narrow card's name and author keep their room) */}
+      {e.imported && (
+        <span className={cn("absolute top-2 right-2 rounded-[6px] bg-background/85 px-1.5 text-[11px] leading-[20px] font-medium shadow-[0_0_0_0.5px_var(--border)] backdrop-blur",
+          e.current ? "text-muted-foreground" : "text-primary")} {...(e.current ? { "data-listed-imported": true } : { "data-listed-update": true })}>
+          {e.current ? "Imported" : "Update available"}
+        </span>
+      )}
+      <div className="flex min-w-0 flex-1 flex-col p-3.5 pt-3">
+        <div className="flex items-center gap-2">
+          <span className="grid size-7 shrink-0 place-items-center rounded-[7px] bg-muted" style={{ color: tintOfBundle(b) }}>
+            <Icon className="size-4" strokeWidth={2.25} />
+          </span>
+          <span className="min-w-0 flex-1 truncate text-[15px] font-semibold">{e.name}</span>
+          {e.runsCode && <span className="shrink-0 text-[var(--red)]" data-bundle-runs-code data-tip={`Runs code${e.installs.length ? `: installs ${AND.format(e.installs.map((x) => x.name))}` : ""}`}><ShieldAlert className="size-4" strokeWidth={2} /></span>}
+        </div>
+        <div className="mt-1 flex min-w-0 items-center gap-1.5 pl-9 text-[13px] text-muted-foreground">
+          <span className="min-w-0 truncate">{e.author}</span>
+          {e.stars > 0 && <><span aria-hidden>·</span><Star className="size-3 shrink-0" strokeWidth={2.25} /><span className="tabular-nums" aria-label={`${e.stars} stars`}>{e.stars}</span></>}
+        </div>
+      </div>
+    </button>
+  )
+}
+
+/** The directory's bundles (shared on GitHub), searched. Unreachable, one quiet line says so. */
+function Browse() {
+  const [q, setQ] = useState("")
+  const [dir, setDir] = useState<Directory | null>(null)
+  const [failed, setFailed] = useState(false)
+  // (fetched again when the user's imports change: which are theirs, and current)
+  const mine = useBundles()?.bundles.filter((b) => b.from).map((b) => `${b.id} ${b.from}`).join("\n")
+  useEffect(() => {
+    let live = true
+    const t = setTimeout(() => browseBundles(q).then((d) => { if (live) { setDir(d); setFailed(false) } }, () => { if (live) setFailed(true) }), q ? 250 : 0)
+    return () => { live = false; clearTimeout(t) }
+  }, [q, mine])
+  const list = dir?.bundles ?? []
+  return (
+    <section className="mb-6" data-bundles-browse>
+      <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h2 className="flex-1 text-[17px] font-semibold">Browse</h2>
+        <FilterField value={q} onChange={setQ} placeholder="Search bundles" className="max-md:basis-full md:max-w-[240px]" />
+      </div>
+      {failed || (dir && !dir.available)
+        ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-off>The directory of shared bundles can't be reached right now.</p>
+        : dir && !list.length ? <p className="text-[14px] text-muted-foreground" data-bundles-browse-none>{q.trim() ? "No shared bundles match." : "No bundles are shared yet."}</p>
+        : <div className={GRID} data-bundles-listed>{list.map((e) => <ListedCard key={e.address} e={e} />)}</div>}
+    </section>
+  )
+}
+
 // ---------- a bundle's preview: what applying it changes here ----------
 
 /** `file`: an import's export (its pictures are in it). */
@@ -398,23 +487,62 @@ type Preview = { bundle: BundleInfo; plan: Plan; pages?: Record<string, { icon: 
 
 const showValue = (v: unknown) => (v === null || v === undefined ? "default" : typeof v === "boolean" ? (v ? "on" : "off") : Array.isArray(v) ? v.join(", ") || "none" : String(v))
 
-function Chip({ id, off }: { id: string; off?: boolean }) {
-  const p = pluginById(id)
-  const Icon = p?.icon ?? Puzzle
+/** Which of a plan's changes the preview leaves out (unticked), and those that go with one left out (`locked`: a plugin
+ *  whose install is). Absent: the plan as it is, nothing to tick (an import's preview). */
+type Picks = { off: ReadonlySet<string>; locked: ReadonlySet<string>; toggle: (id: string) => void }
+
+/** A tick before a change: quiet when off, the accent's when on. */
+const Tick = ({ on, className }: { on: boolean; className?: string }) => (
+  <span aria-hidden className={cn("grid size-4 shrink-0 place-items-center rounded-[4.5px] transition-colors max-md:size-5 max-md:rounded-[6px]", className,
+    on ? "bg-primary text-primary-foreground" : "shadow-[inset_0_0_0_1px_color-mix(in_oklab,var(--foreground)_30%,transparent)]")}>
+    {on && <Check className="size-3 max-md:size-3.5" strokeWidth={3.25} />}
+  </span>
+)
+
+/** A change, led by its tick (unticked: dimmed). Without an `id`, a line going with change `rides` (a pin's page) or
+ *  none: no tick, dimmed with it. `block`: more than text (the sidebars), its tick at the top. */
+function ChangeLine({ pick, id, rides, block, className, children, ...data }: {
+  pick?: Picks; id?: string; rides?: string; block?: boolean; className?: string; children: ReactNode; [data: `data-${string}`]: string | boolean | undefined
+}) {
+  const body = (dim: boolean) => <div className={cn("min-w-0 flex-1 transition-opacity", block ? "flex flex-col gap-2" : "flex items-center gap-2", dim && "opacity-45")}>{children}</div>
+  if (!pick || !id) {
+    const dim = !!pick && !!rides && (pick.off.has(rides) || pick.locked.has(rides))
+    return <div className={cn("flex min-w-0 gap-2.5", block ? "items-start" : "items-center", className)} {...data}>{pick && <span className="w-4 shrink-0 max-md:w-5" />}{body(dim)}</div>
+  }
+  const locked = pick.locked.has(id), on = !locked && !pick.off.has(id)
+  const toggle = () => { if (!locked) pick.toggle(id) }
   return (
-    <span className={cn("inline-flex h-7 max-w-full items-center gap-1.5 rounded-[7px] bg-foreground/[0.05] pr-2.5 pl-1.5 text-[13px]", off && "text-muted-foreground")}>
-      <Icon className={cn("size-4 shrink-0", off && "opacity-60")} strokeWidth={2} style={{ color: off ? undefined : tintOfPlugin(id) }} />
-      <span className={cn("truncate", off && "line-through decoration-foreground/30")}>{p?.name ?? id}</span>
-    </span>
+    <div role="checkbox" aria-checked={on} aria-disabled={locked || undefined} tabIndex={0} data-change={id} {...data}
+      onClick={toggle} onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); toggle() } }}
+      className={cn("-mx-1.5 flex min-w-0 gap-2.5 rounded-[7px] px-1.5 select-none focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:outline-none max-md:min-h-11",
+        block ? "items-start py-1.5" : "items-center", locked ? "cursor-default" : "cursor-pointer hover:bg-foreground/[0.04]", className)}>
+      <Tick on={on} className={block ? "mt-0.5" : undefined} />
+      {body(!on)}
+    </div>
   )
 }
 
 function Group({ title, count, children }: { title: string; count?: number; children: ReactNode }) {
   return (
     <div className="mb-3 last:mb-0">
-      <div className="mb-1.5 text-[12px] font-semibold tracking-wide text-muted-foreground">{title}{count !== undefined && <span className="ml-1 font-normal">{count}</span>}</div>
+      <div className="mb-1 text-[12px] font-semibold tracking-wide text-muted-foreground">{title}{count !== undefined && <span className="ml-1 font-normal">{count}</span>}</div>
       {children}
     </div>
+  )
+}
+
+/** Lines two across where they fit (plugins, short and many). */
+const Lines = ({ children, ...rest }: { children: ReactNode; [data: `data-${string}`]: string | boolean | undefined }) =>
+  <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2" {...rest}>{children}</div>
+
+/** A plugin a plan turns on or off (`off`: drawn quiet), or one of the user's it leaves alone. */
+function PluginLine({ id, name, off, pick }: { id: string; name: string; off?: boolean; pick?: Picks }) {
+  const Icon = pluginById(id)?.icon ?? Puzzle
+  return (
+    <ChangeLine pick={pick} id={pick && `plugin:${id}`} className="min-h-8 text-[14px]">
+      <Icon className="size-4 shrink-0" strokeWidth={2} style={{ color: off ? "var(--muted-foreground)" : tintOfPlugin(id) }} />
+      <span className={cn("min-w-0 truncate", off && "text-muted-foreground")}>{name}</span>
+    </ChangeLine>
   )
 }
 
@@ -446,65 +574,103 @@ function Side({ side, keys, collapsed }: { side: string; keys: string[]; collaps
   )
 }
 
-function PageRow({ path, look, state }: { path: string; look?: { icon: string | null; tint: string | null; plugin: string | null }; state?: "new" | "kept" | "off" }) {
+/** A pinned page's icon and name (`off`: one it unpins), and whether it's newly pinned or the user's own. */
+function PageText({ path, look, state }: { path: string; look?: { icon: string | null; tint: string | null; plugin: string | null }; state?: "new" | "kept" | "off" }) {
   const Icon = namedIcon(look?.icon) ?? (look?.plugin ? pluginById(look.plugin)?.icon : null) ?? LayoutDashboard
-  return (
-    <div className={cn("flex h-8 items-center gap-2 text-[14px]", state === "off" && "text-muted-foreground")}>
-      <Icon className={cn("size-4 shrink-0", state === "off" && "opacity-60")} strokeWidth={2} style={{ color: state === "off" ? undefined : tintOf(look?.tint) ?? (look?.plugin ? tintOfPlugin(look.plugin) : "var(--muted-foreground)") }} />
-      <span className={cn("min-w-0 flex-1 truncate", state === "off" && "line-through decoration-foreground/30")}>{stem(path)}</span>
-      {state === "new" && <span className="rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary">pinned</span>}
-      {state === "kept" && <span className="text-[12px] text-muted-foreground">yours</span>}
-    </div>
-  )
+  return <>
+    <Icon className={cn("size-4 shrink-0", state === "off" && "opacity-60")} strokeWidth={2} style={{ color: state === "off" ? undefined : tintOf(look?.tint) ?? (look?.plugin ? tintOfPlugin(look.plugin) : "var(--muted-foreground)") }} />
+    <span className={cn("min-w-0 flex-1 truncate", state === "off" && "text-muted-foreground line-through decoration-foreground/30")}>{stem(path)}</span>
+    {state === "new" && <span className="rounded-[5px] bg-primary/12 px-1.5 text-[11px] leading-[18px] font-medium text-primary">pinned</span>}
+    {state === "kept" && <span className="text-[12px] text-muted-foreground">yours</span>}
+  </>
 }
 
 /** Applying runs code from it: ask first (Vaultite's own plugins, said so: they come from Vaultite's plugins). */
-const askToRun = (b: BundleInfo, plan: Plan) => plan.code.every((c) => c.source && official(c.source)) ? confirmDialog({
-  title: `Install ${new Intl.ListFormat("en", { type: "conjunction" }).format(plan.code.map((c) => c.name))}?`,
+const askToRun = (b: BundleInfo, plan: Plan, trial = false) => plan.code.every((c) => c.source && official(c.source)) ? confirmDialog({
+  title: `Install ${AND.format(plan.code.map((c) => c.name))}?`,
   body: `${b.name} installs Vaultite's own plugins from its plugin directory. Like any plugin, they run on the machine that serves this app, with your files.`,
-  confirm: "Install and apply",
+  confirm: trial ? "Install and try" : "Install and apply",
 }) : confirmDialog({
   title: `Run code from ${b.name}?`,
   body: `It brings vault plugins (${plan.code.map((c) => c.source && !c.kept ? `${c.name}, from ${c.source}` : c.name).join("; ")}). They run on the machine that serves this app, with your files and permissions. Apply bundles that run code only from people you trust.`,
-  confirm: "Apply and run them", danger: true,
+  confirm: trial ? "Try and run them" : "Apply and run them", danger: true,
 })
 
-/** What applying a bundle changes here, then Apply. */
+const sameSet = (a: ReadonlySet<string>, b: ReadonlySet<string>) => a.size === b.size && [...a].every((x) => b.has(x))
+
+/** What applying a bundle changes here, each change ticked: Apply or Try it, without those unticked (then Save as
+ *  "<Name> (mine)" keeps it so). The bundle in use whose setup changed since says so: Save changes, or Revert. */
 export function BundlePreview({ id }: { id: string }) {
   const [p, setP] = useState<Preview | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
   const [offAdded, setOffAdded] = useState(false)
+  const [edits, setEdits] = useState<ReadonlySet<string> | null>(null)
+  const l = useBundles()
   useEffect(() => { previewOf(id).then((x) => setP(x as Preview), (e) => setError(errorText(e))) }, [id])
   if (error) return <SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title="Can't open this bundle" sub={error} />
   if (!p) return <div aria-busy><SheetHead icon={Package} tint="var(--muted-foreground)" kicker="Bundle" title={<Line w="45%" />} sub={<Line w="70%" />} /></div>
   const { bundle: b, plan } = p
-  const code = runsCode(plan)
-  const apply = async () => {
-    if (code && !(await askToRun(b, plan))) return
+  const listed = l?.bundles.find((x) => x.id === b.id)
+  // The bundle applied last starts without what it was applied without: applying it is reverting to it.
+  const base = new Set((listed?.applied?.skip ?? []).filter((x) => plan.changes.some((c) => c.id === x)))
+  const off = edits ?? base
+  const pick: Picks = { off, locked: lockedBy(plan, off), toggle: (x) => setEdits(new Set(off.has(x) ? [...off].filter((y) => y !== x) : [...off, x])) }
+  const skip = skipOf(plan, off), chosen = without(plan, new Set(skip))
+  const edited = !sameSet(off, base), left = plan.changes.length - skip.length
+  const modified = !!listed?.modified && !edited
+  const code = runsCode(chosen)
+  const nothing = !left && !offAdded
+  const act = async (what: () => Promise<unknown>, failed: string) => {
     setBusy(true)
-    try {
-      closeDetail()
-      await applyBundle(b, plan, code, offAdded)
-    } catch (e) { notifyError(e, `Couldn't apply ${b.name}`) } finally { setBusy(false) }
+    try { await what() } catch (e) { notifyError(e, failed) } finally { setBusy(false) }
   }
+  const apply = async (trial: boolean) => {
+    if (code && !(await askToRun(b, chosen, trial))) return
+    await act(async () => { closeDetail(); await applyBundle(b, plan, { allowCode: code, offAdded, skip, trial }) }, `Couldn't ${trial ? "try" : "apply"} ${b.name}`)
+  }
+  const fork = () => act(async () => { const n = await forkBundle(b, skip); replaceDetail(`bundle/${n.id}`); notify(`Saved ${n.name}`) }, "Couldn't save it")
+  const save = () => act(async () => { const n = await saveChanges(b); notify(n.id === b.id ? `Saved the changes to ${b.name}` : `Saved as ${n.name}`) }, "Couldn't save the changes")
+  const mine = `${b.name} (mine)`
   return (
     <div data-bundle-preview={b.id}>
       <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.source === "app" ? "Built-in bundle" : b.from ? `From ${place(b.from)}` : "Your bundle"} title={b.name} sub={b.description || undefined} />
+      {modified && (
+        <div className="mb-4 rounded-[12px] bg-foreground/[0.04] px-3.5 py-3 text-[14px] leading-[20px]" data-bundle-drift>
+          <div className="font-semibold">In use · modified</div>
+          <div className="text-muted-foreground">Your setup has changed since you applied it: Revert puts back what's below.</div>
+        </div>
+      )}
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <Button look="primary" disabled={busy || (plan.empty && !offAdded) || !!b.problems.length} onClick={apply} data-bundle-apply>
-          {plan.empty && !offAdded ? "This is your setup already" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
-        </Button>
-        {b.source === "vault" && <Button onClick={() => openDetail(`bundle-share/${b.id}`)} data-bundle-share><Share className="size-4" strokeWidth={2} />Share</Button>}
-        {b.source === "vault" && <Button onClick={() => { closeDetail(); void removeBundle(b) }}><Trash2 className="size-4" strokeWidth={2} />Delete</Button>}
+        {modified ? <>
+          <Button look="primary" disabled={busy} onClick={() => void save()} data-bundle-save-changes>{b.source === "vault" ? "Save changes" : `Save as ${mine}`}</Button>
+          <Button disabled={busy || !!b.problems.length} onClick={() => void apply(false)} data-bundle-revert><History className="size-4" strokeWidth={2} />Revert</Button>
+        </> : <>
+          <Button look="primary" disabled={busy || nothing || !!b.problems.length} onClick={() => void apply(false)} data-bundle-apply>
+            {nothing && !edited ? "This is your setup already" : edited ? "Apply" : <>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></>}
+          </Button>
+          {!(nothing && !edited) && <Button disabled={busy || nothing || !!b.problems.length} onClick={() => void apply(true)} data-bundle-try>Try</Button>}
+          {edited && <Button disabled={busy || !!b.problems.length} onClick={() => void fork()} data-bundle-fork>Save as {mine}</Button>}
+        </>}
+        {b.source === "vault" && !edited && (
+          <Button aria-label="More" data-tip="More" className="px-2.5" data-bundle-more onClick={(e) => menuBelow(e, [
+            { label: "Share…", icon: Share, run: () => openDetail(`bundle-share/${b.id}`) },
+            { label: "Delete", icon: Trash2, danger: true, run: () => { closeDetail(); void removeBundle(b) } },
+          ])}><MoreHorizontal className="size-4" strokeWidth={2.25} /></Button>
+        )}
       </div>
-      <Changes p={p} offAdded={offAdded} setOffAdded={setOffAdded} />
+      {skip.length > 0 && (
+        <p className="-mt-3 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-leaving>
+          {edited ? `Leaving out ${skip.length} of its ${plan.changes.length} changes.` : `Leaving out ${skip.length === 1 ? "one change" : `${skip.length} changes`}, as when you applied it.`} <button type="button" onClick={() => setEdits(new Set())} className="cursor-pointer font-medium text-primary hover:underline" data-bundle-include-all>Include all</button>
+        </p>
+      )}
+      <Changes p={p} pick={pick} offAdded={offAdded} setOffAdded={setOffAdded} />
     </div>
   )
 }
 
-/** A bundle given to the app (openImport), before it's added: what applying it would change, then Apply (added, then
- *  applied) or Add (to the user's bundles). Reloaded, what it was given is gone: the Import sheet instead. */
+/** A bundle given to the app (openImport), not added yet: what applying it changes, then Apply (added, then applied)
+ *  or Add (an update says first what's new). Reloaded, what it was given is gone: the Import sheet instead. */
 export function IncomingBundle({ id }: { id: string }) {
   const [source] = useState(() => givenImport(id))
   const [inc, setInc] = useState<Incoming | null>(null)
@@ -514,7 +680,7 @@ export function IncomingBundle({ id }: { id: string }) {
   const l = useBundles()
   useEffect(() => { if (source) incomingOf(source).then(setInc, (e) => setError(errorText(e))) }, [source])
   if (!source) return <ImportBundle />
-  const repo = typeof source === "string" && !source.trim().startsWith("{") && !source.includes("\n") ? source.trim() : null
+  const repo = typeof source === "string" && !source.trim().startsWith("{") && !source.includes("\n") ? place(source.trim()) : null
   if (error) return (
     <div data-bundle-incoming-error>
       <SheetHead icon={Import} tint="var(--muted-foreground)" kicker="Import" title="Can't import this bundle" sub={error} />
@@ -535,32 +701,69 @@ export function IncomingBundle({ id }: { id: string }) {
   }
   const apply = async () => {
     if (code && !(await askToRun(b, plan))) return
-    await add((added) => applyBundle(added, plan, code, offAdded))
+    await add((added) => applyBundle(added, plan, { allowCode: code, offAdded }))
   }
-  const keep = () => add(async (added) => { notify(`Added ${added.name} to your bundles`, { action: { label: "Preview", run: () => openDetail(`bundle/${added.id}`) } }) })
+  const keep = () => add(async (added) => {
+    if (replaces) notify(`Updated ${added.name}`)
+    else notify(`Added ${added.name} to your bundles`, { action: { label: "Preview", run: () => openDetail(`bundle/${added.id}`) } })
+  })
   return (
     <div data-bundle-incoming={b.id}>
       <SheetHead icon={iconOfBundle(b)} tint={tintOfBundle(b)} kicker={b.from ? `From ${place(b.from)}` : "Import"} title={b.name} sub={b.description || undefined} />
       <div className="mb-5 flex flex-wrap items-center gap-2">
         <Button look="primary" disabled={busy || !!b.problems.length} onClick={() => void apply()} data-bundle-incoming-apply>Apply {b.name}<ArrowRight className="size-4" strokeWidth={2.25} /></Button>
-        <Button disabled={busy || !!b.problems.length} onClick={() => void keep()} data-bundle-incoming-add><Plus className="size-4" strokeWidth={2.25} />{replaces ? `Update ${replaces.name}` : "Add to your bundles"}</Button>
+        <Button disabled={busy || !!b.problems.length} onClick={() => void keep()} data-bundle-incoming-add>{replaces ? <><RefreshCw className="size-4" strokeWidth={2.25} />Update {replaces.name}</> : <><Plus className="size-4" strokeWidth={2.25} />Add to your bundles</>}</Button>
       </div>
       <p className="-mt-2 mb-5 text-[13px] leading-[18px] text-muted-foreground">
         {replaces ? `It replaces your ${replaces.name}, from the same repository. ` : ""}Either way it's kept in your bundles, to apply again or share.
       </p>
+      {inc.changes && <Updated changes={inc.changes} name={replaces?.name ?? b.name} />}
       {plan.empty && <p className="mb-4 text-[14px] text-muted-foreground">Applying it changes nothing here: it's your setup already.</p>}
       <Changes p={inc} offAdded={offAdded} setOffAdded={setOffAdded} />
     </div>
   )
 }
 
-/** A preview's body: what applying the bundle changes here (plugins, panels, pins, the look, settings, files). */
-function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; setOffAdded: (v: boolean) => void }) {
+const short = (commit: string | null) => (commit ? commit.slice(0, 7) : "none")
+
+/** What an update changes in the user's copy of a bundle: its files, and the plugins it installs pinned anew. */
+function Updated({ changes: c, name }: { changes: NonNullable<Incoming["changes"]>; name: string }) {
+  const files: [string, string][] = [...c.added.map((f): [string, string] => [f, "added"]), ...c.changed.map((f): [string, string] => [f, "changed"]), ...c.removed.map((f): [string, string] => [f, "removed"])]
+  return (
+    <div className="mb-3" data-bundle-update><Panel title={`What's new since your ${name}`} icon={RefreshCw}>
+      {!files.length && !c.installs.length && <p className="text-[14px] text-muted-foreground">Nothing: it's the same as yours.</p>}
+      {files.map(([f, how]) => (
+        <div key={f} className="flex min-h-7 items-center gap-3 text-[14px]">
+          <span className={cn("min-w-0 flex-1 truncate", how === "removed" && "text-muted-foreground line-through decoration-foreground/30")}>{f}</span>
+          <span className="shrink-0 text-[12px] text-muted-foreground">{how}</span>
+        </div>
+      ))}
+      {c.installs.map((x) => (
+        <div key={x.id} className="flex min-h-7 items-center gap-3 text-[14px]">
+          <PackagePlus className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
+          <span className="min-w-0 flex-1 truncate">{x.name}</span>
+          <span className="shrink-0 font-mono text-[12px] text-muted-foreground">{x.from && x.to ? `${short(x.from)} → ${short(x.to)}` : x.to ? "now installed" : "no longer installed"}</span>
+        </div>
+      ))}
+    </Panel></div>
+  )
+}
+
+/** A preview's body: what applying the bundle changes here (plugins, panels, pins, the look, settings, files), each
+ *  change a line ticked when `pick` is given. */
+function Changes({ p, pick, offAdded, setOffAdded }: { p: Preview; pick?: Picks; offAdded: boolean; setOffAdded: (v: boolean) => void }) {
   const { bundle: b, plan } = p
-  const code = runsCode(plan)
+  const skip = new Set(pick ? skipOf(plan, pick.off) : [])
+  const chosen = without(plan, skip)
+  const code = runsCode(chosen)
   const pins = plan.pins
   const added = plan.plugins.added ?? []
   const picture = usePicture(b, p.file)
+  const has = (id: string) => plan.changes.some((c) => c.id === id)
+  const installs = plan.code.filter((c) => c.change)
+  const nameOf = (id: string) => pluginById(id)?.name ?? plan.code.find((c) => c.id === id)?.name ?? id
+  // (a vault plugin's own files go with its install, said once there)
+  const files = plan.files.add.filter((f) => !f.startsWith(".vaultite/plugins/"))
   return (
     <>
       {b.on !== null && <p className="-mt-2 mb-4 text-[13px] leading-[18px] text-muted-foreground" data-bundle-reach>Applies to every window and device on this vault; agents lose the tools of plugins it turns off.</p>}
@@ -569,21 +772,32 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
           <ShieldAlert className="mt-0.5 size-5 shrink-0 text-[var(--red)]" strokeWidth={2} />
           <div className="text-[14px] leading-[20px]">
             <div className="font-semibold">It runs code on this machine</div>
-            <div className="text-muted-foreground">It brings vault plugins: {plan.code.map((c) => c.name + (c.kept ? " (you have one by that name: yours stays)" : c.source ? ` (installed from ${c.source})` : "")).join(", ")}. Applying asks you first.</div>
+            <div className="text-muted-foreground">It brings vault plugins: {chosen.code.map((c) => c.name + (c.kept ? " (you have one by that name: yours stays)" : c.source ? ` (installed from ${c.source})` : "")).join(", ")}. Applying asks you first.</div>
           </div>
         </div>
       )}
       {!!b.problems.length && <p className="mb-4 text-[14px] text-[var(--red)]">{b.problems.join(". ")}</p>}
       {picture && <img src={picture} alt={`${b.name}, as it looks`} className="mb-4 w-full rounded-[12px] border-[0.5px] border-border" data-bundle-picture />}
       <div className="grid grid-cols-1 gap-3">
-        {(plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0 || added.length > 0) && (
+        {(installs.length > 0 || plan.plugins.on.length > 0 || plan.plugins.off.length > 0 || plan.plugins.missing.length > 0 || added.length > 0) && (
           <Panel title="Plugins" icon={Puzzle}>
-            {!!plan.plugins.on.length && <Group title="Turns on" count={plan.plugins.on.length}><div className="flex flex-wrap gap-1.5">{plan.plugins.on.map((x) => <Chip key={x} id={x} />)}</div></Group>}
-            {!!plan.plugins.off.length && <Group title="Turns off" count={plan.plugins.off.length}><div className="flex flex-wrap gap-1.5">{plan.plugins.off.map((x) => <Chip key={x} id={x} off />)}</div></Group>}
+            {!!installs.length && (
+              <Group title="Installs" count={installs.length}>
+                {installs.map((c) => (
+                  <ChangeLine key={c.id} pick={pick} id={c.change} className="min-h-8 text-[14px]">
+                    <PackagePlus className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
+                    <span className="shrink-0">{c.name}</span>
+                    <span className="min-w-0 truncate text-[13px] text-muted-foreground">{c.source ? `from ${c.source}` : "its own code"}</span>
+                  </ChangeLine>
+                ))}
+              </Group>
+            )}
+            {!!plan.plugins.on.length && <Group title="Turns on" count={plan.plugins.on.length}><Lines>{plan.plugins.on.map((x) => <PluginLine key={x} id={x} name={nameOf(x)} pick={pick} />)}</Lines></Group>}
+            {!!plan.plugins.off.length && <Group title="Turns off" count={plan.plugins.off.length}><Lines>{plan.plugins.off.map((x) => <PluginLine key={x} id={x} name={nameOf(x)} pick={pick} off />)}</Lines></Group>}
             {!!plan.plugins.missing.length && <Group title="Not in this app (skipped)"><p className="text-[13px] text-muted-foreground">{plan.plugins.missing.join(", ")}</p></Group>}
             {!!added.length && (
               <Group title={offAdded ? "Plugins you added: turned off too" : "Plugins you added stay as they are"} count={added.length}>
-                <div className="flex flex-wrap gap-1.5" data-bundle-added>{added.map((x) => <Chip key={x} id={x} off={offAdded} />)}</div>
+                <Lines data-bundle-added>{added.map((x) => <PluginLine key={x} id={x} name={nameOf(x)} off={offAdded} />)}</Lines>
                 <div className="mt-2 flex min-h-10 items-center gap-3">
                   <span className="min-w-0 flex-1 text-[14px]">Turn those off too<span className="block text-[13px] text-muted-foreground">Restore previous setup turns them back on</span></span>
                   <Switch on={offAdded} onChange={setOffAdded} label="Turn the plugins you added off too" />
@@ -594,23 +808,34 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
         )}
         {plan.panels.setup && plan.panels.changed && (
           <Panel title="Sidebars" icon={PanelLeft}>
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <Side side="Left" keys={plan.panels.setup.left} collapsed={plan.panels.setup.collapsed} />
-              <Side side="Right" keys={plan.panels.setup.right} collapsed={plan.panels.setup.collapsed} />
-            </div>
-            <p className="mt-2 text-[13px] leading-[18px] text-muted-foreground">
-              The default panels, and this workspace's{plan.panels.workspace ? " (its own panels are replaced)" : ""}. Your other workspaces keep theirs.
-            </p>
+            <ChangeLine pick={pick} id={has("panels") ? "panels" : undefined} block>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Side side="Left" keys={plan.panels.setup.left} collapsed={plan.panels.setup.collapsed} />
+                <Side side="Right" keys={plan.panels.setup.right} collapsed={plan.panels.setup.collapsed} />
+              </div>
+              <p className="text-[13px] leading-[18px] text-muted-foreground">
+                The default panels, and this workspace's{plan.panels.workspace ? " (its own panels are replaced)" : ""}. Your other workspaces keep theirs.
+              </p>
+            </ChangeLine>
           </Panel>
         )}
         {pins && (pins.pin.length > 0 || pins.unpin.length > 0 || pins.list.length > 0) && (
           <Panel title="Pinned pages" icon={Pin}>
             {!pins.list.length && <p className="text-[14px] text-muted-foreground">None</p>}
-            {pins.list.map((x) => <PageRow key={x} path={x} look={p.pages?.[x]} state={pins.want.includes(x) ? (pins.pin.includes(x) ? "new" : undefined) : "kept"} />)}
+            {pins.list.map((x) => (
+              <ChangeLine key={x} pick={pick} id={has(`pin:${x}`) ? `pin:${x}` : undefined} className="min-h-8 text-[14px]">
+                <PageText path={x} look={p.pages?.[x]} state={pins.want.includes(x) ? (pins.pin.includes(x) ? "new" : undefined) : "kept"} />
+              </ChangeLine>
+            ))}
+            {has("pins:order") && <ChangeLine pick={pick} id="pins:order" className="min-h-8 text-[14px]"><span className="min-w-0 truncate text-muted-foreground">In the bundle's order</span></ChangeLine>}
             {!!pins.unpin.length && (
               <div className="mt-2 border-t-[0.5px] border-border pt-2">
                 <div className="mb-0.5 text-[12px] font-semibold tracking-wide text-muted-foreground">Unpinned (the files stay)</div>
-                {pins.unpin.map((x) => <PageRow key={x} path={x} look={p.pages?.[x]} state="off" />)}
+                {pins.unpin.map((x) => (
+                  <ChangeLine key={x} pick={pick} id={has(`pin:${x}`) ? `pin:${x}` : undefined} className="min-h-8 text-[14px]">
+                    <PageText path={x} look={p.pages?.[x]} state="off" />
+                  </ChangeLine>
+                ))}
               </div>
             )}
             {!!pins.missing.length && <p className="mt-2 text-[13px] text-muted-foreground">Not here, so not pinned: {pins.missing.map(stem).join(", ")}</p>}
@@ -623,8 +848,8 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
               const theme = plan.appearance.find((c) => c.key === "theme")?.to as string | undefined
               return scheme ? <Swatches id={scheme} mode={theme === "dark" || theme === "light" ? theme : undefined} className="mb-2 h-12 max-w-[280px]" /> : null
             })()}
-            {plan.appearance.map((c) => <Setting key={c.key} label={APPEARANCE[c.key] ?? c.key} from={c.from} to={c.to} />)}
-            {plan.newtab.map((c) => <Setting key={`newtab.${c.key}`} label={NEWTAB[c.key] ?? `New tab: ${c.key}`} from={c.key === "page" && typeof c.from === "string" ? stem(c.from) : c.from}
+            {plan.appearance.map((c) => <Setting key={c.key} pick={pick} id={c.change} label={APPEARANCE[c.key] ?? c.key} from={c.from} to={c.to} />)}
+            {plan.newtab.map((c) => <Setting key={`newtab.${c.key}`} pick={pick} id={c.change} label={NEWTAB[c.key] ?? `New tab: ${c.key}`} from={c.key === "page" && typeof c.from === "string" ? stem(c.from) : c.from}
               to={c.key === "page" && typeof c.to === "string" ? stem(c.to) : c.to} />)}
           </Panel>
         )}
@@ -633,22 +858,25 @@ function Changes({ p, offAdded, setOffAdded }: { p: Preview; offAdded: boolean; 
             {plan.settings.map((s) => {
               const pl = pluginById(s.plugin)
               const decl = pl?.settingsDecls?.[s.key]
-              return <Setting key={`${s.plugin}.${s.key}`} label={`${pl?.name ?? s.plugin}: ${decl?.label ?? s.key}`} from={s.from} to={s.to} labels={decl?.labels} />
+              return <Setting key={`${s.plugin}.${s.key}`} pick={pick} id={s.change} label={`${pl?.name ?? s.plugin}: ${decl?.label ?? s.key}`} from={s.from} to={s.to} labels={decl?.labels} />
             })}
-            {plan.hotkeys.map((h) => <Setting key={h.key} label={`Hotkey: ${h.key}`} from={h.from} to={h.to} />)}
+            {plan.hotkeys.map((h) => <Setting key={h.key} pick={pick} id={h.change} label={`Hotkey: ${h.key}`} from={h.from} to={h.to} />)}
             {plan.skipped.length > 0 && <p className="mt-1 text-[13px] leading-[18px] text-muted-foreground" data-bundle-skipped>Kept as they are: {plan.skipped.map((x) =>
               `${pluginById(x.plugin)?.name ?? x.plugin}: ${pluginById(x.plugin)?.settingsDecls?.[x.key]?.label ?? x.key} (${x.why})`).join("; ")}</p>}
           </Panel>
         )}
-        {plan.files.add.length > 0 && (
+        {files.length > 0 && (
           <Panel title="Adds" icon={FilePlus}>
-            {plan.files.add.map((f) => f === b.guide ? (
-              <div key={f} className="flex h-7 items-center gap-2 text-[14px]" data-bundle-guide>
-                <BookOpen className="size-4 shrink-0" strokeWidth={2} style={{ color: tintOf(b.tint) }} />
-                <span className="min-w-0 flex-1 truncate">{stem(f)}</span>
-                <span className="shrink-0 text-[12px] text-muted-foreground">its guide, opened after applying</span>
-              </div>
-            ) : <div key={f} className="flex h-7 items-center text-[14px]"><span className="truncate">{f}</span></div>)}
+            {files.map((f) => {
+              const own = has(`file:${f}`) ? `file:${f}` : undefined
+              return f === b.guide ? (
+                <ChangeLine key={f} pick={pick} id={own} className="min-h-8 text-[14px]" data-bundle-guide>
+                  <BookOpen className="size-4 shrink-0" strokeWidth={2} style={{ color: tintOfBundle(b) }} />
+                  <span className="min-w-0 flex-1 truncate font-medium">{stem(f)}</span>
+                  <span className="shrink-0 text-[12px] text-muted-foreground max-sm:hidden">its guide, opened after applying</span>
+                </ChangeLine>
+              ) : <ChangeLine key={f} pick={pick} id={own} rides={own ? undefined : `pin:${f}`} className="min-h-8 text-[14px]"><span className="min-w-0 truncate">{f}</span></ChangeLine>
+            })}
             {plan.files.kept.length > 0 && <p className="mt-1 text-[13px] text-muted-foreground">Already here, kept as they are: {plan.files.kept.map(stem).join(", ")}</p>}
           </Panel>
         )}
@@ -663,15 +891,15 @@ const APPEARANCE: Record<string, string> = {
   interfaceFont: "Interface font", textFont: "Text font", monoFont: "Monospace font", snippets: "CSS snippets",
 }
 
-function Setting({ label, from, to, labels }: { label: string; from: unknown; to: unknown; labels?: Record<string, string> }) {
+function Setting({ pick, id, label, from, to, labels }: { pick?: Picks; id: string; label: string; from: unknown; to: unknown; labels?: Record<string, string> }) {
   const name = (v: unknown) => (labels && v !== null && v !== undefined && labels[String(v)]) || showValue(v)
   return (
-    <div className="flex min-h-8 items-center gap-3 text-[14px]">
+    <ChangeLine pick={pick} id={id} className="min-h-8 text-[14px]">
       <span className="min-w-0 flex-1 truncate">{label}</span>
-      <span className="shrink-0 text-muted-foreground line-through decoration-foreground/25">{name(from)}</span>
+      <span className="ml-1 shrink-0 text-muted-foreground line-through decoration-foreground/25">{name(from)}</span>
       <ArrowRight className="size-3.5 shrink-0 text-tertiary" strokeWidth={2.25} />
       <span className="shrink-0 font-medium">{name(to)}</span>
-    </div>
+    </ChangeLine>
   )
 }
 

@@ -6,6 +6,32 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Setup: one page for Bundles and Plugins, as its two tabs, behind a Setup button beside Settings at the sidebar's foot
+  (Your setup atop Settings goes there too); Open Setup, Open Plugins and Choose a bundle… open it from the palette.
+- Bundles: Standard after Zen (or any of the app's bundles after another) is that bundle's setup again: each says every
+  part of the look and every setting any of them sets, instead of leaving Zen's tab bar, rails and tiles behind.
+- Bundles: a saved bundle says the whole look and the settings the app's bundles set, so applying it after any other
+  gives back the setup it was saved from.
+- Bundles: each change in a bundle's preview has a tick: untick some to apply or try it without them, or save it as
+  "<Name> (mine)" (`vau bundle apply --skip`, `vau bundle fork`); restore still puts the rest back.
+- Bundles: Try one from its preview: a bar at the foot of every window says Trying <Name>, with Keep and Revert, until
+  you pick one, even after a restart (`vau bundle apply --trial`, `vau bundle keep`).
+- Bundles: the bundle in use says In use · modified on its card once your setup changes (hover for what differs); its
+  preview offers Save changes (over yours, or as "<Name> (mine)" for the app's) and Revert.
+- Bundles: Browse, on the Bundles tab, lists bundles shared on GitHub (the topic vaultite-bundle, or listed in
+  Vaultite/plugins), searchable, saying which you have and which has an update; each is pinned at a commit, and
+  importing one gets exactly that commit (`vau bundle browse`).
+- The Agents bundle is back as a community bundle in the directory: coding agents in terminals beside your pages, their
+  sessions and limits, a feed of what they did, your machines and the server.
+- Bundles: updating one you have (Check for updates… on its card, or Update available in Browse) says what's new
+  (files, plugins re-pinned) and replaces yours only when you say so; it's never applied.
+- Bundles: plugins a bundle installs are pinned to the commit and files recorded when it was saved (the app's too): a
+  moved tag can't change what's installed, and files that differ are refused, nothing installed.
+- Bundles: a bundle can bring a guide, a note on how its setup works, opened after applying it; Life OS and Zen have
+  one.
+- Bundles: the app's own bundles show a real picture of the app they make, in light or dark as the app is.
+- Bundles: a bundle that installs plugins says so with a small mark on its card's title row (hover it for which), so
+  every card is one height.
 - Connecting Claude or another AI app from Safari works: its sign-in page went on waiting after you typed the code.
 - Connections: an AI app let in by its code that's slow to finish says where it waits (its sign-in page not gone back
   yet, or the app not finishing), and one that never connects stays a while saying why, instead of a shimmer that
@@ -14,12 +40,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   you like a permission: its terminal shows waiting, the Inbox and phone have Approve and Deny, and its first prompt
   runs once you approve. The Inbox has Approve and Deny for any agent's permission, which stays unread until answered,
   and a companion's cursor shows its question right there with them.
-- Bundle directory: `vau bundle browse` finds bundles shared on GitHub (the topic vaultite-bundle, or listed in
-  Vaultite/plugins), each pinned at a commit; importing one gets exactly that commit (`owner/name@<commit>`).
-- The Agents bundle is back as a community bundle in the directory: coding agents in terminals beside your pages, their
-  sessions and limits, a feed of what they did, your machines and the server.
-- Bundles: a bundle can bring a guide, a note on how its setup works, opened after applying it; Life OS and Zen have
-  one.
 - Phones: holding something for its menu (a tab, a recent file, a property, a block in a note) no longer selects its
   text or what's around it.
 - Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs
@@ -27,25 +47,6 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Mac: a sidebar without its rail (Zen) slides in carrying the window's traffic lights and its toggle, set in its top
   row as beside the pinned sidebar, instead of the lights hanging over its corner; the lights sit centred on that row
   in either density.
-- Bundles: the app's own bundles show a real picture of the app they make, in light or dark as the app is.
-- Bundles: Standard after Zen (or any of the app's bundles after another) is that bundle's setup again: each says every
-  part of the look and every setting any of them sets, instead of leaving Zen's tab bar, rails and tiles behind.
-- Bundles: a saved bundle says the whole look and the settings the app's bundles set, so applying it after any other
-  gives back the setup it was saved from.
-- Bundles: plugins a bundle installs are pinned to the commit and files recorded when it was saved (the app's too): a
-  moved tag can't change what's installed, and files that differ are refused, nothing installed.
-- Bundles: getting a bundle you have again (an update) says what changed (files, plugins re-pinned) and replaces yours
-  only when you say so; it's never applied.
-- Bundles: apply only some of a bundle's changes (each has an id: `vau bundle show`, `--skip`); restore still puts the
-  rest back. `vau bundle fork` makes "<Name> (mine)" without the changes skipped.
-- Bundles: the bundle in use says when the setup has changed since and what differs; save the changes (over yours, or
-  as "<Name> (mine)" for the app's: `vau bundle save --over`) or apply it again.
-- Bundles: try one (`vau bundle apply --trial`): keep it (`vau bundle keep`) or restore the setup from before, even
-  after a restart or another bundle applied meanwhile.
-- Setup: one page for Bundles and Plugins, as its two tabs, behind a Setup button beside Settings at the sidebar's foot
-  (Your setup atop Settings goes there too); Open Setup, Open Plugins and Choose a bundle… open it from the palette.
-- Bundles: a bundle that installs plugins says so with a small mark on its card's title row (hover it for which), so
-  every card is one height.
 
 ## 0.6.3 (2026-10-20)
 
