@@ -1085,7 +1085,12 @@ export class Vault {
         out.push(`${rel}:${st.mtimeNs}:${st.size}${away ? ":evicted" : ""}`)
       }
     }
-    for (const name of ["app.json", "types.json", "daily-notes.json", "templates.json"]) {
+    // (and its themes and snippets, which the app lists: core/appearance.ts)
+    const look = (dir: string, file: (name: string) => string | null) => {
+      try { return fs.readdirSync(this.abs(`.obsidian/${dir}`)).map(file).filter((f): f is string => f !== null) } catch { return [] }
+    }
+    for (const name of ["app.json", "types.json", "daily-notes.json", "templates.json", "appearance.json", "themes", "snippets",
+      ...look("themes", (n) => `themes/${n}/theme.css`), ...look("snippets", (n) => (n.endsWith(".css") ? `snippets/${n}` : null))]) {
       try {
         const st = fs.statSync(this.abs(`.obsidian/${name}`), { bigint: true })
         out.push(`${name}:${st.mtimeNs}:${st.size}`)

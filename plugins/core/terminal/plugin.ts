@@ -352,7 +352,7 @@ async function agentRun(id: string, prompt: string | null = null, dark: boolean 
 /** Light or dark as appearance.json sets it, for a terminal started with no window to ask (an agent's); null when it
  *  follows each device's. */
 function savedDark(): boolean | null {
-  const t = (plugin.vault.config("appearance") as { theme?: unknown } | null)?.theme
+  const t = (plugin.vault.configWithDefaults("appearance") as { theme?: unknown } | null)?.theme
   return t === "dark" ? true : t === "light" ? false : null
 }
 

@@ -83,13 +83,14 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
 - `showInlineTitle`: true (default: the file's name as a title at the top of every file, editable while editing) |
   false (only in the tab and the path bar; a sheet keeps it). Not read from Obsidian's.
 
-**Appearance**, `.vaultite/appearance.json` (or `vau appearance <key> <value>`), one for every device:
+**Appearance**, `.vaultite/appearance.json` (or `vau appearance <key> <value>`), one for every device. A key it doesn't
+set is `.obsidian/appearance.json`'s when the vault has one (its base theme, theme, snippets on and fonts):
 - `theme`: `system` | `light` | `dark` (Claude Code in the app's terminals starts in its ANSI theme of that mode, so it
   draws in the scheme's colours too). `scheme`: `gruvbox` (default), `default` (Classic: Apple's colours), `catppuccin`,
   `nord`, `dracula` (dark only), `solarized`, `tokyo-night`, `rose-pine`, `everforest`, `kanagawa`, `one`, `ayu`,
   `github`, `flexoki`, `amethyst`, `paper`, or
-  `theme:<Name>` for a downloaded theme in `.vaultite/themes/<Name>/` (as downloaded: `manifest.json`, `theme.css`;
-  only its colours carry over; `GET /api/themes` lists them).
+  `theme:<Name>` for a downloaded theme in `.vaultite/themes/<Name>/` or `.obsidian/themes/<Name>/` (as downloaded:
+  `manifest.json`, `theme.css`; only its colours carry over; `GET /api/themes` lists them).
 - `density`: `compact` (default) | `comfortable`. `sidebarScroll`: `panels` (default: each panel scrolls in its own
   box, dividers between them set heights) | `sidebar` (the whole sidebar scrolls as one; `heights` ignored).
   `panelDividers`: true | false (default), a line between the sidebars' panels. `quickTextSize`: true | false
@@ -109,7 +110,8 @@ doesn't set is `.obsidian/app.json`'s, else Obsidian's default:
   straight down (what a plain pull runs), right (`["file:new", "switcher:open", "tab:close"]`, the default; one left
   out or empty keeps its default).
   No font size: the user zooms with ⌘+ and ⌘- (Ctrl off a Mac), and notes' and terminals' text sizes are each device's.
-- `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`). A snippet is
+- `snippets`: the CSS snippets on, by name (`["Wide lines"]` is `.vaultite/snippets/Wide lines.css`, else
+  `.obsidian/snippets/`'s; the app never writes those). A snippet is
   CSS added after the app's; the colours are variables (`--background`, `--foreground`, `--card`, `--primary`,
   `--red`...), so `:root { --primary: #d33682; }` changes the accent; `--line-width` is a note's widest line (700px);
   `--font-heading` the titles' and large headings' font (unset: the font around them). A font file beside the snippets

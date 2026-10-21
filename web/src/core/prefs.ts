@@ -9,7 +9,7 @@ import { signal } from "@/core/signal"
 
 export type Theme = "system" | "light" | "dark"
 /** Colour scheme: recolours every page (tokens in index.css, overrides in themes/<name>.css; the list is
- *  themes/schemes.ts), or "theme:<Name>", an Obsidian theme in the vault's .vaultite/themes/. */
+ *  themes/schemes.ts), or "theme:<Name>", an Obsidian theme in the vault's .vaultite/themes/ (or .obsidian/themes/). */
 export type Scheme = string
 export type Density = "compact" | "comfortable"
 /** How a sidebar with more than fits scrolls: each panel in its own box, under dividers that set their heights
@@ -29,7 +29,7 @@ export type Prefs = {
   quickTextSize: boolean
   /** CSS font-family lists; empty = the app's own (the system font, SF Mono). */
   interfaceFont: string; textFont: string; monoFont: string
-  /** CSS snippets turned on (.vaultite/snippets/<name>.css), by name. */
+  /** CSS snippets turned on (.vaultite/snippets/<name>.css, or .obsidian/snippets/), by name. */
   snippets: string[]
   /** Opt-in plugins turned on: the vault's (off until then: they run code) and the app's `offByDefault` ones (Vim, Finance). */
   enabled: string[]
@@ -158,11 +158,13 @@ export function setPrefs(changes: Partial<Prefs>) {
   return Promise.all([...whole, ...newTab, ...editor, ...(Object.keys(FILES) as File[]).filter((file) => FILES[file].some((k) => k in changes)).map((file) => save(file, Object.keys(changes)))]).then(() => {})
 }
 
-/** The vault's settings arrived: they're the truth, a key a file doesn't have the default. */
-export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab" | "editor", Record<string, unknown>>>) {
+/** The vault's settings arrived: they're the truth, a key a file doesn't have another app's (`seeds`: the look an
+ *  Obsidian vault has, core/plugins.ts settingDefaults), else the default. */
+export function hydratePrefs(config: Partial<Record<File | (typeof WHOLE)[keyof typeof WHOLE] | "newtab" | "editor", Record<string, unknown>>>,
+  seeds: Record<string, Record<string, unknown>> = {}) {
   const next = { ...prefs, sidebars: readSidebars(config.sidebars), newTab: readNewTab(config.newtab), editor: isObject(config.editor) ? config.editor : {} }
   for (const file of Object.keys(FILES) as File[]) {
-    const got: unknown = config[file], saved = isObject(got) ? got : {}
+    const got: unknown = config[file], saved = { ...(isObject(seeds[file]) ? seeds[file] : {}), ...(isObject(got) ? got : {}) }
     for (const k of FILES[file]) (next as Record<string, unknown>)[k] = k in saved && fits(k, saved[k]) ? saved[k] : DEFAULTS[k]
   }
   if (JSON.stringify(next) !== JSON.stringify(prefs)) commit(next)

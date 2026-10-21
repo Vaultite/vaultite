@@ -41,7 +41,7 @@ the window shows (and the hidden ones), which plugins are on or off, the appeara
         extra: extra.map((x) => x.text ?? "").filter(Boolean),
         sidebars: target ? { workspace: target.label, own: !!target.setup } : null,
         panels, plugins: plugins.map((p) => ({ id: p.id, tier: p.tier, on: on(p.id) })),
-        appearance: app.vault.config("appearance"), hotkeys: app.vault.config("hotkeys"),
+        appearance: app.vault.configWithDefaults("appearance"), hotkeys: app.vault.config("hotkeys"),
         untyped: untyped(app).map((g) => ({ folder: g.folder, type: g.type, files: g.files.length })),
       }
     },

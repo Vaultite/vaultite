@@ -273,7 +273,7 @@ function load(): Promise<void> {
           if (loaded.store !== server.store || loaded.error) publish({ store: server.store, error: null })
           continue
         }
-        hydratePrefs(all.config)
+        hydratePrefs(all.config, all.settingDefaults)
         setVaultAppearance(all.appearance)
         hydrateHotkeys(all.config.hotkeys)
         await beforeState?.(all)

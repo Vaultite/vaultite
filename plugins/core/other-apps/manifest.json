@@ -4,5 +4,5 @@
   "category": "formats",
   "alwaysOn": true,
   "name": "Vaults from other apps",
-  "description": "A vault another Markdown app also opens keeps that app's settings: new notes and pasted images go where they say, links are written as Markdown links when it uses them, and its property types apply. Its plugins run here, or what stands in for them."
+  "description": "A vault another Markdown app also opens keeps that app's settings: new notes and pasted images go where they say, links are written as Markdown links when it uses them, its theme, snippets and fonts carry over, and its property types apply. Its plugins run here, or what stands in for them."
 }

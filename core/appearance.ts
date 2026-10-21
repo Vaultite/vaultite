@@ -1,17 +1,18 @@
-// Obsidian themes and CSS snippets from .vaultite/ (which are on: appearance.json). A theme converts to a colour scheme:
-// only its colours carry over, its variables resolved in cascade order and mapped to the app's tokens.
+// Obsidian themes and CSS snippets from .vaultite/, then .obsidian/ (never written), which are on: appearance.json. A
+// theme converts to a colour scheme: only its colours carry over, its variables resolved and mapped to the app's tokens.
 import fs from "node:fs"
 import path from "node:path"
 import { HTTPError, Text } from "./plugins.ts"
 import type { Vault } from "./vault.ts"
 
 export type ThemeInfo = { name: string; author: string; version: string; modes: Mode[]; mtime: number; problem?: string }
-export type SnippetInfo = { name: string; mtime: number }
+export type SnippetInfo = { name: string; mtime: number; path: string }
 type Mode = "light" | "dark"
 type Vars = Record<string, string>
 
 const THEMES = ".vaultite/themes"
 const SNIPPETS = ".vaultite/snippets"
+const THEME_DIRS = [THEMES, ".obsidian/themes"], SNIPPET_DIRS = [SNIPPETS, ".obsidian/snippets"]
 const NAME = /^[^/\\.][^/\\]*$/ // a plain file or folder name
 const FONTS: Record<string, string> = { ".woff2": "font/woff2", ".woff": "font/woff", ".ttf": "font/ttf", ".otf": "font/otf" }
 
@@ -42,12 +43,25 @@ function convertedOf(file: string): Converted {
   return theme
 }
 
+/** A theme's folder, the first of THEME_DIRS that has it, or null. */
+function themeDir(vault: Vault, name: string) {
+  if (!NAME.test(name)) return null
+  for (const d of THEME_DIRS) { const dir = vault.abs(`${d}/${name}`); if (fs.existsSync(dir)) return dir }
+  return null
+}
+
+/** A file beside the snippets (a snippet, a font), the first of SNIPPET_DIRS that has it, or null. */
+function snippetFile(vault: Vault, file: string) {
+  if (!NAME.test(file)) return null
+  for (const d of SNIPPET_DIRS) { const f = vault.abs(`${d}/${file}`); if (fs.existsSync(f)) return f }
+  return null
+}
+
 export function listThemes(vault: Vault): ThemeInfo[] {
-  const root = vault.abs(THEMES)
   const out: ThemeInfo[] = []
-  for (const e of dirs(root)) {
-    if (!e.isDirectory() || !NAME.test(e.name)) continue
-    const dir = path.join(root, e.name)
+  for (const root of THEME_DIRS) for (const e of dirs(vault.abs(root))) {
+    if (!e.isDirectory() || !NAME.test(e.name) || out.some((t) => t.name === e.name)) continue
+    const dir = vault.abs(`${root}/${e.name}`)
     const file = themeCSS(dir)
     const m = readJSON(path.join(dir, "manifest.json"))
     const info: ThemeInfo = {
@@ -64,10 +78,13 @@ export function listThemes(vault: Vault): ThemeInfo[] {
 }
 
 export function listSnippets(vault: Vault): SnippetInfo[] {
-  const root = vault.abs(SNIPPETS)
-  return dirs(root).filter((e) => e.isFile() && e.name.endsWith(".css") && NAME.test(e.name))
-    .map((e) => ({ name: e.name.slice(0, -4), mtime: mtime(path.join(root, e.name)) }))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  const out: SnippetInfo[] = []
+  for (const root of SNIPPET_DIRS) for (const e of dirs(vault.abs(root))) {
+    const name = e.name.slice(0, -4)
+    if (!e.isFile() || !e.name.endsWith(".css") || !NAME.test(e.name) || out.some((s) => s.name === name)) continue
+    out.push({ name, mtime: mtime(vault.abs(`${root}/${e.name}`)), path: `${root}/${e.name}` })
+  }
+  return out.sort((a, b) => a.name.localeCompare(b.name))
 }
 
 /** The appearance routes, or undefined if the request isn't one of them. */
@@ -77,8 +94,8 @@ export function handle(vault: Vault, method: string, parts: string[], body: Reco
     if (parts.length === 1) return listThemes(vault)
     if (parts.length === 2 && file.endsWith(".css")) {
       const name = file.slice(0, -4)
-      const dir = vault.abs(`${THEMES}/${name}`)
-      const css = NAME.test(name) ? themeCSS(dir) : null
+      const dir = themeDir(vault, name)
+      const css = dir ? themeCSS(dir) : null
       if (!css) throw new HTTPError(404, `no theme '${name}' in ${THEMES}`)
       return new Text(schemeCSS(`theme:${name}`, convertedOf(css)), "text/css; charset=utf-8")
     }
@@ -87,7 +104,7 @@ export function handle(vault: Vault, method: string, parts: string[], body: Reco
     if (method === "GET" && parts.length === 1) return listSnippets(vault)
     if (method === "GET" && parts.length === 2 && file.endsWith(".css") && NAME.test(file)) {
       try {
-        return new Text(fs.readFileSync(vault.abs(`${SNIPPETS}/${file}`), "utf8"), "text/css; charset=utf-8")
+        return new Text(fs.readFileSync(snippetFile(vault, file) ?? "", "utf8"), "text/css; charset=utf-8")
       } catch {
         throw new HTTPError(404, `no snippet '${file}' in ${SNIPPETS}`)
       }
@@ -96,7 +113,7 @@ export function handle(vault: Vault, method: string, parts: string[], body: Reco
     const font = FONTS[path.extname(file ?? "").toLowerCase()]
     if (method === "GET" && parts.length === 2 && font && NAME.test(file)) {
       try {
-        return new Text(fs.readFileSync(vault.abs(`${SNIPPETS}/${file}`)), font, { "Cache-Control": "no-cache" })
+        return new Text(fs.readFileSync(snippetFile(vault, file) ?? ""), font, { "Cache-Control": "no-cache" })
       } catch {
         throw new HTTPError(404, `no font '${file}' in ${SNIPPETS}`)
       }

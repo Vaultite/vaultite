@@ -1,6 +1,6 @@
 // The app's settings files (core/docs/app.md) read and changed key by key (Vault.patchConfig; the app follows live),
 // and what they can name: commands and keys, blocks, icons.
-import fs from "node:fs"
+import { listSnippets, listThemes } from "../appearance.ts"
 import type { App } from "../app.ts"
 import { commandList, pageIcons, schemes } from "../appsource.ts"
 import { closest, COMMON, optionText } from "../blocks.ts"
@@ -152,7 +152,7 @@ checked here: vau appearance and vau hotkey check theirs.
     params: { key: { type: "string", description: "one setting (theme, scheme...); all of them when left out" } },
     args: ["key"],
     run: ({ key }) => {
-      const cur = app.vault.config("appearance")
+      const cur = app.vault.configWithDefaults("appearance")
       return key ? { [key]: cur[key] ?? null } : cur
     },
     text: (r, p) => (p.key ? (r[p.key] === null ? `${p.key}: (default)` : `${p.key}: ${JSON.stringify(r[p.key])}`) : showLook(r)),
@@ -181,19 +181,19 @@ parses, else text). There's no font size setting: ⌘+ and ⌘- (Ctrl off a Mac)
     },
     args: ["key", "value"],
     run: ({ key, value: raw, force }) => {
-      if (!key) return { appearance: app.vault.config("appearance") }
+      if (!key) return { appearance: app.vault.configWithDefaults("appearance") }
       const s = APPEARANCE[key]
       if (!s && !force) throw new OpError(`no appearance setting '${key}'. Keys: ${Object.keys(APPEARANCE).join(", ")} (force for another)`, 404)
-      if (raw === undefined) return { key, value: app.vault.config("appearance")[key] ?? null }
+      if (raw === undefined) return { key, value: app.vault.configWithDefaults("appearance")[key] ?? null }
       const reset = raw === "reset" || (raw === "default" && key !== "scheme")
       const parsed = reset ? null : s ? s.parse(raw) : value(raw)
-      // Themes and snippets are files in the vault: they must be there.
-      const has = (p: string) => fs.existsSync(app.vault.abs(p))
-      if (key === "scheme" && typeof parsed === "string" && parsed.startsWith("theme:") && !has(`.vaultite/themes/${parsed.slice(6)}/theme.css`)) {
+      // Themes and snippets are files in the vault (.vaultite/, or an Obsidian vault's .obsidian/): they must be there.
+      if (key === "scheme" && typeof parsed === "string" && parsed.startsWith("theme:") && !listThemes(app.vault).some((t) => t.name === parsed.slice(6) && !t.problem)) {
         throw new OpError(`no theme '${parsed.slice(6)}': put its folder (manifest.json and theme.css) in .vaultite/themes/`, 404)
       }
       if (key === "snippets" && Array.isArray(parsed)) {
-        for (const n of parsed) if (!has(`.vaultite/snippets/${n}.css`)) throw new OpError(`no snippet '${n}': .vaultite/snippets/${n}.css isn't there`, 404)
+        const have = listSnippets(app.vault).map((x) => x.name)
+        for (const n of parsed) if (!have.includes(n)) throw new OpError(`no snippet '${n}': .vaultite/snippets/${n}.css isn't there`, 404)
       }
       return { appearance: app.vault.patchConfig("appearance", { [key]: parsed }) }
     },

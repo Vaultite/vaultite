@@ -69,6 +69,30 @@ export default async ($: VaultTest) => {
   ;[, s] = await api("GET", "state")
   check("obsidian: an empty app.json changes nothing", same(s.obsidian, {}), s.obsidian)
   {
+    // Its look: themes and snippets listed from .obsidian/ too, appearance.json the defaults of the app's, never written.
+    const own = path.join(VAULT, ".vaultite/appearance.json"), had = fs.existsSync(own) ? read(".vaultite/appearance.json") : null
+    fs.rmSync(own, { force: true })
+    write(".obsidian/themes/Obs Theme/manifest.json", JSON.stringify({ name: "Obs Theme", author: "Someone", version: "1.0.0" }))
+    write(".obsidian/themes/Obs Theme/theme.css", ".theme-dark { --background-primary: #101010; --text-normal: #eeeeee; }\n.theme-light { --background-primary: #fafafa; --text-normal: #111111; }\n")
+    write(".obsidian/snippets/obs-wide.css", ".markdown-preview-view { max-width: none; }\n")
+    write(".obsidian/appearance.json", JSON.stringify({ theme: "obsidian", cssTheme: "Obs Theme", enabledCssSnippets: ["obs-wide", "gone"], textFontFamily: "iA Writer Quattro", accentColor: "#ff0000" }))
+    ;[, s] = await api("GET", "state")
+    check("obsidian: its themes and snippets are listed", s.appearance.themes.some((t: Any) => t.name === "Obs Theme" && !t.problem) && s.appearance.snippets.some((x: Any) => x.name === "obs-wide" && x.path === ".obsidian/snippets/obs-wide.css"), s.appearance)
+    check("obsidian: appearance.json's look is the default of the app's (snippets that are there)", same(s.settingDefaults.appearance, { theme: "dark", scheme: "theme:Obs Theme", snippets: ["obs-wide"], textFont: "iA Writer Quattro" }), s.settingDefaults.appearance)
+    const [tc, css] = await api("GET", "themes/Obs Theme.css")
+    const [sc] = await api("GET", "snippets/obs-wide.css")
+    check("obsidian: its theme converts and its snippet serves", tc === 200 && String(css).includes("#101010") && sc === 200, [tc, sc])
+    const [, look] = await api("POST", "ops/appearance.set", { key: "scheme" })
+    const [setC] = await api("POST", "ops/appearance.set", { key: "snippets", value: "obs-wide" })
+    check("obsidian: vau appearance shows its look and takes its snippets", look.value === "theme:Obs Theme" && setC === 200, [look, setC])
+    check("obsidian: nothing is written to .obsidian/", same(JSON.parse(read(".obsidian/appearance.json")).enabledCssSnippets, ["obs-wide", "gone"]))
+    fs.rmSync(path.join(VAULT, ".obsidian/themes"), { recursive: true })
+    fs.rmSync(path.join(VAULT, ".obsidian/snippets"), { recursive: true })
+    fs.rmSync(path.join(VAULT, ".obsidian/appearance.json"))
+    if (had === null) fs.rmSync(own, { force: true })
+    else fs.writeFileSync(own, had)
+  }
+  {
     // Its plugins: what stands in for each here (manifests' `replaces`), from the app's and the directory's.
     write(".obsidian/community-plugins.json", JSON.stringify(["recent-files-obsidian", "obsidian-made-up", "made-up-elsewhere"]))
     write(".obsidian/plugins/recent-files-obsidian/manifest.json", JSON.stringify({ id: "recent-files-obsidian", name: "Recent Files" }))

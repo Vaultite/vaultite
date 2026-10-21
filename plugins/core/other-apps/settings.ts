@@ -3,6 +3,7 @@
 import fs from "node:fs"
 import path from "node:path"
 import type { Item, Vault } from "../../../core/vault.ts"
+import { listSnippets, listThemes } from "../../../core/appearance.ts"
 
 export type ObsidianSettings = {
   newFileLocation?: "root" | "current" | "folder"
@@ -89,7 +90,7 @@ const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : und
 const keys = (o: Item) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined))
 
 /** The defaults .obsidian/ sets for the app's settings, by file (settingDefaults): excluded files, attachments,
- *  templates folder and formats, daily notes' folder, format and template. Only keys they set. */
+ *  templates folder and formats, daily notes' folder, format and template, and the look. Only keys they set. */
 export function obsidianDefaults(vault: Vault): Record<string, Item> {
   const app = obsidianSettings(vault)
   if (app === null) return {}
@@ -108,5 +109,23 @@ export function obsidianDefaults(vault: Vault): Record<string, Item> {
     const set = keys({ format: text(d.format), template: text(d.template) && folder(d.template).replace(/\.md$/i, "") })
     if (Object.keys(set).length) out["plugins/daily-notes/data"] = set
   }
+  const look = appearance(vault)
+  if (Object.keys(look).length) out.appearance = look
   return out
+}
+
+const MODES: Record<string, string> = { obsidian: "dark", moonstone: "light", system: "system" }
+
+/** appearance.json's look as the app's (core/look.ts): light or dark, its theme as the colour scheme, its snippets
+ *  (both listed from .obsidian/ too: core/appearance.ts) and its fonts; its accent colour and text size have no match. */
+function appearance(vault: Vault): Item {
+  const a = obsidianJson(vault, "appearance")
+  if (!a) return {}
+  const theme = text(a.cssTheme), snippets = listSnippets(vault).map((s) => s.name)
+  return keys({
+    theme: MODES[a.theme],
+    scheme: theme && listThemes(vault).some((t) => t.name === theme && !t.problem) ? `theme:${theme}` : undefined,
+    snippets: Array.isArray(a.enabledCssSnippets) ? a.enabledCssSnippets.filter((n: unknown) => typeof n === "string" && snippets.includes(n)) : undefined,
+    interfaceFont: text(a.interfaceFontFamily), textFont: text(a.textFontFamily), monoFont: text(a.monospaceFontFamily),
+  })
 }

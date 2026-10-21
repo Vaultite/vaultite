@@ -262,7 +262,7 @@ function PullRows() {
   })
 }
 
-/** CSS snippets, the end of Appearance: the vault's .vaultite/snippets/*.css, a switch each, and New snippet. */
+/** CSS snippets, the end of Appearance: the vault's .vaultite/snippets/*.css (and an Obsidian vault's), a switch each, and New snippet. */
 function Snippets() {
   const { snippets: on } = usePrefs()
   const { snippets } = useVaultAppearance()
@@ -285,8 +285,11 @@ function Snippets() {
       <div className="hairline">
         {snippets.map((s) => (
           <div key={s.name} className="flex min-h-11 items-center gap-3 py-1">
-            <button type="button" onClick={() => openFile(`${SNIPPETS_FOLDER}/${s.name}.css`)} data-tip="Edit"
-              className="min-w-0 flex-1 cursor-pointer truncate text-left text-[15px] hover:text-primary">{s.name}</button>
+            {s.path.startsWith(`${SNIPPETS_FOLDER}/`)
+              ? <button type="button" onClick={() => openFile(s.path)} data-tip="Edit"
+                className="min-w-0 flex-1 cursor-pointer truncate text-left text-[15px] hover:text-primary">{s.name}</button>
+              // (Obsidian's, in .obsidian/snippets: the app never writes there)
+              : <span className="min-w-0 flex-1 truncate text-[15px]">{s.name} <span className="text-muted-foreground">· Obsidian</span></span>}
             <Switch on={enabled.includes(s.name)} onChange={(v) => toggle(s.name, v)} label={`${s.name} snippet`} />
           </div>
         ))}

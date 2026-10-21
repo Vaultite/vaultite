@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- An Obsidian vault keeps its look: its base theme (light, dark or system), its theme from `.obsidian/themes/`, the CSS
+  snippets it has on from `.obsidian/snippets/` and its fonts apply until you set them in Vaultite. Nothing is written
+  to `.obsidian/`.
 - Browser: "Open as player" (a page's … menu, ⌥⌘P) moves a tab's page, still playing, into a window of its own, its
   video filling it full screen on its own Space, to watch or share in a call; Esc brings it back. A video's own full
   screen now fills the window, and Picture in picture floats a page's video.

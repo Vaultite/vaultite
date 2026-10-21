@@ -9,6 +9,9 @@ sets that mean the same thing here (and never writes `.obsidian/`):
   `dateFormat`, `timeFormat` (Templates); `daily-notes.json`'s `folder`, `format`, `template` (Daily notes).
 - The editor's `spellcheck`, `useTab`, `tabSize`, `autoPairBrackets`, `autoPairMarkdown`, `readableLineLength` and
   `propertiesInDocument`: what `.vaultite/editor.json` doesn't set (`vau docs app`).
+- `appearance.json`: the defaults of `.vaultite/appearance.json` (`vau docs app`): `theme` (`obsidian` dark,
+  `moonstone` light, `system`), `cssTheme` as the scheme, `enabledCssSnippets`, and the three fonts; `.obsidian/themes/`
+  and `.obsidian/snippets/` are listed beside the vault's own. Its accent colour and text size have no match here.
 - `.obsidian/types.json`: its property types (`{"types": {"due": "date"}}`; `multitext` is a list) apply here too,
   under `.vaultite/types.json`'s, which wins for a key both have (`vau docs properties`).
 - Its plugins (`.obsidian/community-plugins.json`): `vau other-apps plugins` lists each with what stands in for it here;
