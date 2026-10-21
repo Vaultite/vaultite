@@ -7,9 +7,9 @@ export default async ($: VaultTest) => {
   // ---------- Activity: who did what (plugin.onRequest, plugin.onChange), timings ----------
   const act = await import("../../../plugins/core/activity/plugin.ts")
   /** A request as server.ts reports it: started, run, ended. */
-  async function actHeard(method: string, p: string, body: unknown, client: string | null, agent: string | null = null) {
+  async function actHeard(method: string, p: string, body: unknown, client: string | null, agent: string | null = null, at = Date.now()) {
     const [route, qs] = p.split("?")
-    const end = app.requestStarted({ t: Date.now(), method, route, query: qs ? Object.fromEntries(new URLSearchParams(qs)) : {}, client, agent, command: null,
+    const end = app.requestStarted({ t: at, method, route, query: qs ? Object.fromEntries(new URLSearchParams(qs)) : {}, client, agent, command: null,
       ua: client ? "" : "curl/8.7.1", remote: "203.0.113.9", port: 1, forwarded: false })
     const t = performance.now()
     const r = await api(method, p, body)
@@ -21,15 +21,24 @@ export default async ($: VaultTest) => {
   await actHeard("PUT", "file", { path: "Act/a.md", text: "one two\n" }, "app/desktop")
   let ev = (await actEvents()).filter((e: Any) => e.paths?.includes("Act/a.md"))
   check("activity: the app's edits are yours, a run of them one event with a count", ev.length === 1 && ev[0].actor.kind === "you" && ev[0].actor.device === "desktop" && ev[0].count === 2 && ev[0].text === "Edited Act/a.md", ev)
+  {
+    // Back to back: the next request starts within a file clock's margin of the last one's write, which stays its own.
+    await actHeard("PUT", "file", { path: "Act/first.md", text: "first\n" }, "app/desktop")
+    const m = fs.statSync(path.join(VAULT, "Act/first.md")).mtimeMs
+    await actHeard("PUT", "file", { path: "Act/second.md", text: "second\n" }, null, null, Math.floor(m) + 2)
+    app.changed(["Act/first.md", "Act/second.md"])
+    const second = (await actEvents()).find((e: Any) => e.paths?.includes("Act/second.md"))
+    check("activity: a write just after another doesn't take the file the other wrote", second && !second.paths.includes("Act/first.md"), second)
+  }
   await actHeard("POST", "logs", [{ area: "workouts", date: "2026-09-20", source: "claude", ext_id: "act-1", title: "Push day" }], "cli", "claude-code")
   ev = await actEvents("&actor=agent")
   check("activity: the CLI under a coding agent is that agent, its log worded", ev.some((e: Any) => e.actor.name === "Claude Code" && e.text === "Logged Push day" && e.route === "logs"), ev)
-  await actHeard("GET", "render?path=ME.md", undefined, null)
+  await actHeard("GET", "render?path=Act/a.md", undefined, null)
   check("activity: reads aren't recorded unless asked", !(await actEvents("&actor=script")).some((e: Any) => e.action === "read"))
   write(".vaultite/plugins/activity/data.json", JSON.stringify({ reads: true }))
-  await actHeard("GET", "render?path=ME.md", undefined, null)
+  await actHeard("GET", "render?path=Act/a.md", undefined, null)
   ev = await actEvents("&actor=script")
-  check("activity: asked, reads by others are kept, the app's aren't", ev.some((e: Any) => e.action === "read" && e.paths?.includes("ME.md") && e.actor.name === "curl"), ev)
+  check("activity: asked, reads by others are kept, the app's aren't", ev.some((e: Any) => e.action === "read" && e.paths?.includes("Act/a.md") && e.actor.name === "curl"), ev)
   await actHeard("GET", "state", undefined, "app/web")
   check("activity: the app's reads are only timed", !(await actEvents("&actor=you")).some((e: Any) => e.action === "read"))
   await actHeard("PATCH", "config/plugins", { panels: ["files:files"] }, "app/web")

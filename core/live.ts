@@ -48,6 +48,7 @@ export class Live {
   private pinger: ReturnType<typeof setInterval> | null = null
   private closed = false
   private sent = "" // the v of the last event
+  private told: Set<string> | null = new Set() // the paths told at that v (null: all of them)
 
   private unmove: () => void
   private unarrive: () => void
@@ -116,9 +117,9 @@ export class Live {
     }
     // A folder gone from disk is only let go of a few seconds later (Vault.sync): look again then.
     if (this.vault.waiting()) this.recheck()
-    // FSEvents can report one write twice: Markdown files already indexed, with the index unchanged since the last
-    // event, are nothing new. (Anything else can't be told apart this way, so it goes out.)
-    if (paths && this.v === this.sent && paths.every((p) => this.vault.entries.has(p))) return
+    // FSEvents can report one write twice: Markdown files already indexed and told of, with the index unchanged since,
+    // are nothing new. (Anything else can't be told apart this way, so it goes out.)
+    if (paths && this.v === this.sent && paths.every((p) => this.vault.entries.has(p) && (!this.told || this.told.has(p)))) return
     this.emit(paths)
   }
 
@@ -136,7 +137,9 @@ export class Live {
   }
 
   private emit(paths: string[] | null) {
-    this.sent = this.v
+    if (this.v !== this.sent) { this.sent = this.v; this.told = new Set() }
+    if (!paths) this.told = null
+    else for (const p of paths) this.told?.add(p)
     const change = { paths, v: this.v }
     for (const fn of this.listeners) fn(change)
     this.send({ type: "change", ...change })

@@ -62,10 +62,11 @@ let k = await until(async () => { const v = await keys(); return v.inText && v.i
 check(`⌘E to editing puts the keys in the text (${JSON.stringify(k)})`, k.inText && k.file === LONG)
 check("the cursor is on a line in sight", k.inSight)
 check(`the page stayed where it was read (${t0} -> ${await top()})`, Math.abs((await top()) - t0) < 80)
-const firstLine = k.line
+// (down two lines: by where it's drawn, as its line may be one of the blank ones between)
+const was = k
 await page.keyboard.press("j"); await page.keyboard.press("j"); await wait(300)
 k = await keys()
-check(`j in normal mode moves the cursor (${firstLine} -> ${k.line})`, k.line && k.line !== firstLine && /^Line \d+/.test(k.line))
+check(`j in normal mode moves the cursor (${JSON.stringify(was.line)} at ${was.y} -> ${JSON.stringify(k.line)} at ${k.y})`, k.inText && k.y !== null && was.y !== null && k.y > was.y + 20)
 await wait(1500)
 check("j typed nothing into the note", (await read(LONG)) === longText)
 await page.screenshot({ path: `${OUT}vimfocus-edit.png` })

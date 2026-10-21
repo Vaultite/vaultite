@@ -145,6 +145,8 @@ for (const dark of [false, true]) {
   await page.locator(`[data-session="${sid}"]`).first().click()
   check("its tab comes back as it was", await until(async () => (await text()).includes("parked-21"), 3000), (await text()).slice(-200))
   check("without a new socket", (await socks(sid)).length === 1, await socks(sid))
+  // (its view takes the keys once it's drawn: after that, not into the palette)
+  check("it has the keys again", await until(() => page.evaluate((sid) => !!document.activeElement?.closest(`[data-terminal="${sid}"]`), sid), 3000))
   await openPalette(page)
   await page.locator('input[placeholder^="Select a command"]').fill("Close current tab") // (into the palette, not the terminal)
   await wait(300)

@@ -34,6 +34,20 @@ export default async ($: VaultTest) => {
   heard.length = 0
   await api("PUT", "file", { path: "Notes/Live two.md", text: "From the app.\n", base: read("Notes/Live two.md") })
   check("live: the app's own writes are heard too", await wait(() => touched("Notes/Live two.md")), heard)
+  {
+    // A write the API indexed itself, heard after another change was told at that index: still told (once).
+    const own = new Live(vault), got: Any[] = []
+    own.listen((c) => got.push(c))
+    await api("PUT", "file", { path: "Notes/Live three.md", text: "Indexed by the API.\n" })
+    own.add(".vaultite/live-probe.json")
+    await wait(() => got.length === 1)
+    own.add("Notes/Live three.md")
+    check("live: a file indexed before another change was told is told of too", await wait(() => got.some((c) => c.paths?.includes("Notes/Live three.md"))), got)
+    own.add("Notes/Live three.md")
+    await new Promise((r) => setTimeout(r, 300))
+    check("live: the same file again, nothing new since, isn't", got.length === 2, got)
+    own.close()
+  }
   check("live: .git, .DS_Store, iCloud placeholders and temp files are ignored",
     ignored(".git/index") && ignored("Notes/.DS_Store") && ignored("Notes/.a.md.icloud") && ignored("Notes/a.md.tmp-1-2") &&
     ignored(".vaultite/artifacts/x.html.json") && !ignored(".vaultite/cache/github.json") && !ignored("Notes/a.md"))

@@ -23,6 +23,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Typing in a note no longer redraws the status bar's items: a keystroke draws less than half of what it did.
 - Back to a page lands exactly where it was scrolled: its blocks come back at the height they had, not rounded up, so
   the page no longer settles a few pixels as they load.
+- Switching to editing puts the cursor on a line still wholly in sight once the page settles, so the first key no
+  longer scrolls to a line that ended up half hidden.
+- A file written through the API just as something else changed is still told to open windows and plugins: Review
+  no longer misses an AI's edit made right after another change.
+- A file saved just before another write is no longer put down to that write in Activity, so Review still has the
+  text from just before an AI's change instead of saying no earlier version is kept.
 
 ## 0.6.2 (2026-10-20)
 

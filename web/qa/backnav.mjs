@@ -38,16 +38,31 @@ const open = async (w, h, mobile = false) => {
   const tabs = () => page.evaluate(() => [...document.querySelectorAll("section[aria-label=Pane] [role=tab]")].map((t) => ({ name: t.innerText.trim(), on: t.getAttribute("aria-selected") === "true" })))
   const active = async () => (await tabs()).find((t) => t.on)?.name
   const scrollTop = () => page.evaluate(() => document.getElementById("main-scroll")?.scrollTop ?? 0)
-  // A person the page lists, whose tab isn't open yet.
-  const name = await page.evaluate((names) => { const t = document.getElementById("main-scroll")?.innerText ?? ""; return names.find((n) => t.includes(n)) }, v.people.map((p) => p.name))
-  const person = v.need(v.people.find((p) => p.name === name), "a person on the People page")
+  // A person the page lists on its first screen, low enough to stay in sight once it's scrolled (clicking one out of
+  // sight would scroll the page itself), whose tab isn't open yet.
+  const SCROLL = 150
+  const [name, nth] = await (async () => {
+    const box = await page.locator("#main-scroll").boundingBox()
+    for (const p of v.people) {
+      const all = await page.locator("#main-scroll").getByText(p.name, { exact: true }).all()
+      for (let i = 0; i < all.length; i++) {
+        const b = await all[i].boundingBox()
+        if (b && b.y >= box.y + SCROLL + 40 && b.y + b.height <= box.y + box.height - 20) return [p.name, i]
+      }
+    }
+    return [null, 0]
+  })()
+  const person = v.need(v.people.find((p) => p.name === name), "a person on the People page's first screen")
   for (let i = 0; i < 5 && (await tabs()).some((t) => t.name === person.name); i++) {
     await page.locator("[role=tab]", { hasText: person.name }).first().click({ button: "middle" }); await wait(300)
   }
   if ((await active()) !== "People") { await page.locator("[role=tab]", { hasText: "People" }).first().click(); await wait(500) }
-  await page.evaluate(() => document.getElementById("main-scroll").scrollTo({ top: 150 })); await wait(300)
+  await page.evaluate((top) => document.getElementById("main-scroll").scrollTo({ top }), SCROLL)
+  // (until the app has kept where it is: core/viewstate.ts)
+  const kept = () => page.evaluate((key) => { try { return new Map(JSON.parse(localStorage.getItem("vaultite.places")).places).get(key)?.y } catch { return undefined } }, `file:${PEOPLE}`)
+  check("People scrolls, and where is kept", await until(async () => { const t = await scrollTop(); return t > 0 && (await kept()) === t }), { now: await scrollTop(), kept: await kept() })
   const y = await scrollTop()
-  const row = () => page.locator("#main-scroll").getByText(person.name, { exact: true }).first()
+  const row = () => page.locator("#main-scroll").getByText(person.name, { exact: true }).nth(nth)
   await row().click(); await wait(1000)
   check("a person opened from People goes in a tab beside it", (await active()) === person.name && (await tabs()).some((t) => t.name === "People"), await tabs())
   const back = page.locator("#main-scroll [aria-label='Navigate back']")

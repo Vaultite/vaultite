@@ -335,9 +335,16 @@ function describeOp(id: string, b: Record<string, unknown>, byApp: boolean): Did
 // ---------- requests, and the files they changed
 
 /** Writes in progress or just done, to tie the files that change on disk to the request that wrote them: a file whose
- *  mtime falls between a write's start and end is that write's. */
-type Write = { t0: number; t1: number; paths: string[]; event: ActivityEvent | null }
+ *  mtime falls between a write's start and end (Infinity until it ends) is that write's. */
+type Write = { start: number; end: number; paths: string[]; event: ActivityEvent | null }
 const writes: Write[] = []
+/** How far a file's mtime may fall outside its write: a file's clock is coarser than Date.now(), and a write may land as
+ *  its answer goes. */
+const BEFORE = 5, AFTER = 50
+/** The write a file with this mtime is from: the one going on then, else one just around it. (Exact first: the next
+ *  request's margin starts before the last one ended, and would take its file.) */
+const writeAt = (mtime: number) => writes.findLast((x) => mtime >= x.start && mtime <= x.end)
+  ?? writes.findLast((x) => mtime >= x.start - BEFORE && mtime <= x.end + AFTER)
 
 plugin.onRequest((s) => {
   const route = s.route
@@ -345,11 +352,11 @@ plugin.onRequest((s) => {
   const { actor, lookup: ask } = whoFrom(s)
   const write = s.method !== "GET" && s.method !== "HEAD" && !route.startsWith("activity") && !(route.startsWith("ops/") && opKind(route.slice(4)) === "read")
   const caller = ask && (write || !byApp) && !route.startsWith("activity") ? lookup(s.port).catch(() => null) : null
-  const w: Write | null = write ? { t0: s.t - 5, t1: Infinity, paths: [], event: null } : null
+  const w: Write | null = write ? { start: s.t, end: Infinity, paths: [], event: null } : null
   if (w) { writes.push(w); if (writes.length > 100) writes.splice(0, writes.length - 100) }
   return (end: RequestEnd) => {
     const late = timing(s, end, actor)
-    if (w) w.t1 = Date.now() + 50
+    if (w) w.end = Date.now()
     // (a call an agent, the CLI or a script got wrong is kept even unrecorded otherwise: what they fail at)
     const did = end.status >= 400 && !byApp && !route.startsWith("activity") ? failed(s.method, route, end)
       : describe(s.method, route, s.query, end.body, byApp || actor.kind === "you")
@@ -406,8 +413,8 @@ plugin.onChange((paths) => {
     try { mtime = fs.statSync(plugin.vault.abs(p)).mtimeMs } catch { /* deleted or moved away */ }
     // Written by a request: its mtime is in its time; gone: a write that ended just now (a delete, a move).
     const w = mtime !== null
-      ? writes.findLast((x) => mtime! >= x.t0 && mtime! <= x.t1)
-      : writes.findLast((x) => x.t1 === Infinity || now - x.t1 < 1500)
+      ? writeAt(mtime)
+      : writes.findLast((x) => now - (x.end + AFTER) < 1500)
     if (w) {
       if (!w.paths.includes(p)) w.paths.push(p)
       if (w.event && !w.event.paths?.includes(p)) (w.event.paths ??= []).push(p)
