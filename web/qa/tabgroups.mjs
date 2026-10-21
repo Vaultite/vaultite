@@ -56,8 +56,11 @@ try {
   check("another tab joins it from its menu, at its end", (await bar()).includes("<Lighthouse work> Lighthouse ME"), await bar())
   await menu(tab("2026-10-20"), "Add tab to new group")
   await until(() => page.$("[data-set-chip] input"), 3000); await page.keyboard.press("Backspace"); await page.keyboard.press("Enter"); await wait(300)
-  const chips = await page.$$eval("[data-set-chip]", (els) => els.map((e) => ({ text: e.textContent.trim(), bg: getComputedStyle(e).backgroundColor })))
+  const chips = await page.$$eval("[data-set-chip]", (els) => els.map((e) => ({ text: e.textContent.trim(), bg: getComputedStyle(e.firstElementChild).backgroundColor })))
   check("a group without a name is its colour's dot, in the next colour", chips.length === 2 && chips[1].text === "" && chips[0].bg !== chips[1].bg, chips)
+  // The group's line is one line: under its chip at the same height as under its tabs.
+  const lines = await page.$$eval("[data-set-chip] > span[aria-hidden], [data-tab-id] > span[aria-hidden]", (els) => els.map((e) => Math.round(e.getBoundingClientRect().top)))
+  check("the group's line under its chip is level with the one under its tabs", lines.length > 1 && new Set(lines).size === 1, lines)
   await page.mouse.move(640, 500); await page.screenshot({ path: `${OUT}bar-light.png`, clip: { x: 0, y: 0, width: 1280, height: 120 } })
 
   // Dragging a tab between two of the group's tabs: it joins; dragged past its end: it leaves.

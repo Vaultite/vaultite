@@ -132,13 +132,15 @@ function SetChip({ s, n }: { s: TabSet; n: number }) {
       onPointerDown={(e) => { if (!editing) startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) }) }}
       onClick={() => { if (!editing) foldSet(s.id) }}
       data-tip={d || editing ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
-      className={cn("relative flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] text-[12px] font-semibold transition-colors", s.name || editing ? "px-1.5" : "w-6 justify-center",
-        d?.item.tabset === s.id && "opacity-50")}
-      style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, background: `color-mix(in srgb, ${c} 16%, transparent)` }}>
-      {editing ? <SetNameField s={s} className="h-5 text-[12px] font-medium" />
-        : s.name ? <span className="max-w-[140px] truncate">{s.name}</span>
-        : <span aria-label={setName(s)} className="size-2 rounded-full" style={{ background: c }} />}
-      {s.collapsed && !editing && <span className="font-medium tabular-nums opacity-75">{n}</span>}
+      className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", d?.item.tabset === s.id && "opacity-50")}>
+      {/* (as tall as a tab, the pill inside: the line under it then lines up with the tabs') */}
+      <span className={cn("flex h-6 items-center gap-1 rounded-[6px] text-[12px] font-semibold transition-colors", s.name || editing ? "px-1.5" : "w-6 justify-center")}
+        style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, background: `color-mix(in srgb, ${c} 16%, transparent)` }}>
+        {editing ? <SetNameField s={s} className="h-5 text-[12px] font-medium" />
+          : s.name ? <span className="max-w-[140px] truncate">{s.name}</span>
+          : <span aria-label={setName(s)} className="size-2 rounded-full" style={{ background: c }} />}
+        {s.collapsed && !editing && <span className="font-medium tabular-nums opacity-75">{n}</span>}
+      </span>
       {/* The line under the group's tabs starts here (each tab carries it on). */}
       {!s.collapsed && <span aria-hidden className="pointer-events-none absolute -right-1 -bottom-[3px] left-1 h-[2px] rounded-l-full" style={{ background: c }} />}
     </div>
