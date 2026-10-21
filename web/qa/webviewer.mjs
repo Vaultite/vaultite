@@ -201,7 +201,7 @@ await win.keyboard.press("Escape")
 await win.mouse.click(5, 400) // (somewhere in the sidebar, if a menu is still there)
 check("the menu gone: the page is back", await until(shown, 10000), await pages())
 await win.locator("[data-web-page] button[aria-label=Back]").hover({ force: true })
-await win.locator("[data-web-page] button[aria-label='Open in another browser']").hover()
+await win.locator("[data-web-page] [data-web-more]").hover()
 /** The copies above the page placed on the tooltip (toasts still up from before are copied too, each its own). */
 const copies = () => app.evaluate(({ BrowserWindow }, tip) => {
   const w = BrowserWindow.getAllWindows()[0], z = w.webContents.getZoomFactor()

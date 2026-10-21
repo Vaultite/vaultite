@@ -1,6 +1,6 @@
 // The Browser's containers in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
 // script serves on 127.0.0.1 (a cookie login): a tab in Work (persist:web-c-work) signed in, the same site in Personal
-// isn't, nor in no container; the bar shows the tab's container (a straight line under the address; the active tab tinted
+// isn't, nor in no container; the bar shows the tab's container (a chip inside the address; the active tab tinted
 // with appearance tabTint); a site set to always open in Work goes there from a
 // plain link; the container menu moves a tab to another; deleting a container clears its logins. A link from another
 // app opens in a web tab. A page playing sound shows a speaker on its tab, and the bar's button mutes it.
@@ -74,9 +74,7 @@ check("… signed in there", await until(async () => (await visible())?.text ===
 check("… the bar says Work", await until(async () => (await win.locator("[data-web-page] [data-web-container=work]:visible").count()) === 1, 5000),
   await win.locator("[data-web-container]").evaluateAll((l) => l.map((e) => e.getAttribute("data-web-container"))))
 check("… the tab's icon has its colour", await until(async () => (await win.locator("[role=tab][aria-selected=true] [data-container-tint]").count()) === 1, 5000), await activeTab())
-const line = win.locator("[data-web-page] [data-web-container-line]:visible")
-check("… and the address its line, straight", await until(() => line.count(), 5000) === 1
-  && await line.evaluate((e) => { const s = getComputedStyle(e); return s.borderRadius === "0px" && parseFloat(s.height) === 1.5 }), null)
+check("… its chip inside the address", await win.locator("[data-web-page] [data-web-address-bar] [data-web-container=work]:visible").count() === 1, null)
 const look = path.join(VAULT, ".vaultite/appearance.json")
 const lookWas = fs.existsSync(look) ? fs.readFileSync(look, "utf8") : null
 const washed = () => win.locator("[data-tab-wash] [role=tab][aria-selected=true]").count()

@@ -11,11 +11,12 @@ import { cn } from "@/lib/utils"
  *  how to fold or open it. None (a heading outside the sidebar, the rail): the heading is only a label. */
 export const PanelFold = createContext<{ collapsed: boolean; toggle: (e?: { altKey: boolean }) => void } | null>(null)
 
-/** A panel's heading: label left, hover buttons right (touch: swiped to), then … for its right-click menu; click folds
- *  the panel, drag moves it (`data-panel-handle`). Nothing in the rail. */
-export function SidebarHeading({ title, open, children, className }: {
+/** A panel's heading: label left, hover buttons right (touch: swiped to), then … for its menu, then `aside` (always
+ *  shown: a picker of what it shows); click folds the panel, drag moves it (`data-panel-handle`). Nothing in the rail. */
+export function SidebarHeading({ title, open, children, aside, className }: {
   title: string; open: boolean
   children?: React.ReactNode
+  aside?: React.ReactNode
   className?: string
 }) {
   const fold = useContext(PanelFold)
@@ -41,7 +42,7 @@ export function SidebarHeading({ title, open, children, className }: {
   if (coarse && children) {
     return (
       <SwipeRow {...head} under={children} className={box}>
-        <div className="flex h-7 items-center pr-0.5 pl-1.5">{label}</div>
+        <div className="flex h-7 items-center gap-0.5 pr-0.5 pl-1.5">{label}<span className="flex-1" />{aside}</div>
       </SwipeRow>
     )
   }
@@ -54,6 +55,7 @@ export function SidebarHeading({ title, open, children, className }: {
         {/* The heading's right-click, under the button: whatever menu the panel gives it (Panels ▸, Hide...). */}
         {f && <HeadingButton icon={Ellipsis} label={`More for ${title}`} tip="More" data-heading-more onClick={rightClickBelow} />}
       </span>
+      {aside}
     </div>
   )
 }

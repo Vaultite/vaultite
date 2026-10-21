@@ -1,6 +1,6 @@
 // The Browser's state in the app: its settings, the pages' titles and the pages on screen, for the desktop app's
 // events.
-import { cell, currentWorkspace, pluginSettings, viewsChanged, type WebPageState } from "@vaultite"
+import { cell, currentWorkspace, notify, notifyError, op, openFile, pluginSettings, viewsChanged, type WebPageState } from "@vaultite"
 import type { Container } from "./containers"
 
 export type Settings = {
@@ -88,3 +88,13 @@ export const setFocusedPage = (id: number, on: boolean) => { if (on) focused = i
 export const focusedPage = () => (focused ? shown.get(focused) ?? null : null)
 /** That page's id (0: none). */
 export const focusedPageId = () => (focused && shown.has(focused) ? focused : 0)
+
+/** Bookmark a page: a line in the bookmarks note (⌘D, the bar's … menu). */
+export async function bookmark(url: string, title: string) {
+  if (!/^https?:\/\//i.test(url)) return
+  try {
+    const r = await op<{ path: string | null; added: number }>("bookmarks.add", { url, title })
+    const path = r.path
+    notify(r.added ? "Bookmarked" : "Already bookmarked", { action: path ? { label: "Open bookmarks", run: () => openFile(path) } : undefined })
+  } catch (e) { notifyError(e, "Couldn't bookmark the page") }
+}

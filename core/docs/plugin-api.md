@@ -131,7 +131,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `viewMenu`: Items it adds to a view's menus (its tab's, a terminal's row), for its tab's target ("view:terminal/abc"); [] for none.
 - `editorMenu`: Items it adds to a text editor's right-click menu (desktop), for that editor (`path`: its file); [] for none.
 - `folderMenu`: Items it adds to a folder's menu in the file tree, for that folder's path; [] for none.
-- `webPageActions`: Buttons it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none.
+- `webPageActions`: Items it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none.
 - `fileMarks`: Marks on files in the file tree, by path, from the store (keep it to the few files that need one).
 - `fileIcons`: Icons it gives files and folders, by path, from the store, wherever the app draws a file's icon (the tree, tabs, lists); a file's own `icon:` wins. The first plugin's wins.
 - `fileRows`: Rows of the file tree it draws into itself, by path (see FileRow); call `fileRowsChanged()` when they change. Keep a row's object the same while it says the same: only rows whose object changed are drawn again.

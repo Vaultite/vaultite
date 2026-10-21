@@ -18,6 +18,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   the top of the left sidebar and hides the tab bar; Show tabs on top puts them back.
 - Mac app: with the tab bar and pane titles off, the sidebar toggles beside a folded sidebar can be clicked again.
 - With the tab bar off, nothing shows above a pane unless Pane titles is on (now off by default).
+- A web page's bar is calmer: its container and Shields sit inside the address, one Save button saves the page to the
+  vault (plugins' ways to save, like Save video, in its menu), and Bookmark, Block an element, Open in another browser,
+  extensions and plugins' other actions are in its … menu. As a pane narrows, the address gives way first.
+- The Web pages panel is Sites: the sites signed in to in this workspace's logins (Default without workspaces) or a
+  container's, picked on its heading, with Sign out and Clear trackers; the Browser's settings list every container's.
+- Plugins: a `webPageActions` item with `kind: "save"` goes in a web page's Save menu, any other in its … menu.
 - Browser: each tab owns its page, so closing a tab always ends it (a slow page's sound no longer plays on with no tab),
   two tabs of one address are two pages, ⌘⇧T opens one page, and the address shows while it loads; a tab's speaker mutes
   it with a click, and the status bar names the pages playing sound.
@@ -29,7 +35,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
 - The Web viewer is the Browser now, and Open in the browser is Open in another browser.
 - Chrome extensions run in web pages: add them from the Chrome Web Store (Add to Vaultite on an extension's page, or a
-  link in Extensions), a folder, or Brave and Chrome on the Mac; their buttons and popups are in the page's bar.
+  link in Extensions), a folder, or Brave and Chrome on the Mac; pinned ones' buttons are in the page's bar, every one in
+  its … menu.
 - Managed extensions: ones the Mac's owner names in a file from the terminal are always on in every page and container,
   with no switch or Remove in the app, like Chrome's force-installed ones (a site blocker can't be turned off on a whim).
 - Extensions that watch or change pages' requests (chrome.webRequest) work with Shields on: password managers fill

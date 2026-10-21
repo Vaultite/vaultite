@@ -1,7 +1,7 @@
-// The page bar's container button: which container the tab is in (its colour and name), and a menu to move the tab to
-// another, always open its site there, and add, rename, recolour or delete containers.
+// The container chip at the address's left: which container the tab is in (its colour and name), and a menu to move the
+// tab to another, always open its site there, and add, rename, recolour or delete containers.
 import type { MouseEvent } from "react"
-import { Boxes } from "lucide-react"
+import { Box } from "lucide-react"
 import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
 import {
   addContainer, argOf, colorOf, containerById, containers, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
@@ -58,7 +58,7 @@ export function containerMenu(container: string | null, url: string, reopen: (ar
   const here = containerById(container)
   return [
     { label: "Open in", caption: true, run: () => {} },
-    { label: "No container", icon: Boxes, checked: !here, run: () => { if (here) reopen(url) } },
+    { label: "No container", icon: Box, checked: !here, run: () => { if (here) reopen(url) } },
     ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, run: () => { if (c.id !== here?.id) reopen(argOf(url, c.id)) } })),
     ...(site && here ? [{ label: `Always open ${site} in ${here.name}`, checked: rule === here.id, sep: true,
       run: () => void setSiteRule(site, rule === here.id ? null : here.id) }] : []),
@@ -68,23 +68,24 @@ export function containerMenu(container: string | null, url: string, reopen: (ar
   ]
 }
 
+/** Inside the page bar's address (a narrow bar, `@container/bar`: the dot alone). */
 export function ContainerButton({ container, url, reopen }: { container: string | null; url: string; reopen: (arg: string) => void }) {
   const c = containerById(container)
   const open = (e: MouseEvent) => { const at = { currentTarget: e.currentTarget } as MouseEvent; void canLock().then((can) => menuBelow(at, containerMenu(container, url, reopen, can))) }
   if (!c) {
     return (
-      <button type="button" onClick={open} aria-label="Container" data-tip="Open in a container" data-web-container=""
-        className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
-        <Boxes className="size-4" strokeWidth={2} />
+      <button type="button" onClick={open} aria-label="Container" aria-haspopup="menu" data-tip="Open in a container" data-web-container=""
+        className="ml-0.5 grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-tertiary hover:bg-foreground/[0.07] hover:text-foreground">
+        <Box className="size-3.5" strokeWidth={2} />
       </button>
     )
   }
   return (
-    <button type="button" onClick={open} aria-label={`Container: ${c.name}`} data-web-container={c.id}
-      className="ml-0.5 flex h-6 max-w-[120px] shrink-0 cursor-pointer items-center gap-1.5 rounded-full px-2 text-[12px] font-medium"
+    <button type="button" onClick={open} aria-label={`Container: ${c.name}`} aria-haspopup="menu" data-web-container={c.id}
+      className="ml-0.5 flex h-5.5 max-w-[120px] shrink-0 cursor-pointer items-center gap-1.5 rounded-[5px] px-1.5 text-[12px] font-medium hover:brightness-110 @max-md/bar:px-[7px]"
       style={{ color: colorOf(c), background: `color-mix(in srgb, ${colorOf(c)} 14%, transparent)` }}>
       <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c) }} />
-      <span className="min-w-0 truncate">{c.name}</span>
+      <span className="min-w-0 truncate @max-md/bar:hidden">{c.name}</span>
     </button>
   )
 }

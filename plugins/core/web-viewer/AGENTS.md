@@ -1,8 +1,10 @@
 ## Browser
 A web browser in tabs of the desktop app, next to your notes. A tab `view:web/<address>` shows
 that page (`vau open "view:web/https://example.com"`); its bar has back, forward, reload, the address (an address or
-words to search for), "Open in another browser" and "Save to vault", which clips the page as it's shown (the Web clipper's
-`POST /api/clip` with its HTML, so a page you're logged in to works too) into `Clippings/`. Right-click an image in a
+words to search for; the tab's container at its left, Shields at its right), pinned extensions, Save and a … menu. Save
+clips the page as it's shown (the Web clipper's `POST /api/clip` with its HTML, so a page you're logged in to works
+too) into `Clippings/`; its menu has plugins' other ways to save (Save video). The … menu: Bookmark, Block an element,
+Open in another browser, plugins' other actions and Extensions. Right-click an image in a
 page: Save image to vault (into the attachments folder, like a pasted one), Download image, Copy image, Copy image
 address. Commands: "Open web page…", "Clip current web page", "Open web pages in a tab". Pages keep their own logins,
 apart from the app's, on the Mac running the desktop app; nothing about them is kept in the vault.
@@ -21,9 +23,10 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   names it, its menu showing its tab or muting it.
 - Logins: each workspace's pages have their own (a different account per workspace for the same site; workspace 1 keeps
   the ones pages shared before), or with `logins: shared` every page shares one.
-- The Web pages panel (in the sidebar's Panels menu): the pages open in this workspace's logins and the sites you
-  opened in them, with the account for Claude and ChatGPT (Sign out clears a site's cookies and storage), then one line
-  for trackers (cookies other sites' pages left), which clears them.
+- The Sites panel (in the sidebar's Panels menu; "Show sites and logins"): the sites opened in this workspace's logins
+  ("Default" without workspaces) or a container's, picked on its heading's right, with the account for Claude and
+  ChatGPT (Sign out clears a site's cookies and storage), then one line for trackers (cookies other sites' pages left),
+  which clears them. The Browser's settings have the same for every set of logins, under Sites and logins.
 - Notifications: a page's notifications become Inbox events (source: the site, kind `web`, linking to its tab), so
   they're toasts and the Mac's notifications too; `notifications: false` drops them.
 - Claude Code on the web: with claude.ai signed in in a workspace's logins, the desktop app reads its sessions every 5
@@ -75,12 +78,12 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   prefer selectors that last (a custom element's name, an id, a semantic attribute), never a generated class. Not
   Focus's: what a managed extension blocks isn't here, and nothing here gets around it.
 - Extensions (Chrome's, on the Mac running the desktop app; installed per Mac, never in the vault, since each is code
-  run on every site): "Extensions" (a command, or the puzzle button in a page's bar) lists them with a switch each,
+  run on every site): "Extensions" (a command, or a page's … menu) lists them with a switch each,
   Options, Pin to the bar and Remove, and adds one from a Chrome Web Store link or id, from a folder or `.crx` file, or
   from another browser on the Mac (Brave, Chrome, Edge, Arc, Vivaldi: from the Web Store when it still has it, else
   that browser's copy, as for Manifest V2 ones the store dropped). On a Web Store extension's page the bar offers "Add
-  to Vaultite". Pinned ones show their button in every page's bar (badge and all); a click opens its popup under it.
-  Web Store ones update about daily. An extension's settings and data are per logins (each workspace's, each
+  to Vaultite". Pinned ones show their button in every page's bar (badge and all; a narrow pane leaves them to the …
+  menu's Extensions); a click opens its popup under it. Web Store ones update about daily. An extension's settings and data are per logins (each workspace's, each
   container's), as in Chrome's profiles. Not there: their items in the page's right-click menu, their keyboard
   shortcuts, identity sign-in, side panels. `chrome.webRequest` works beside Shields (what Shields blocks, extensions
   don't see).

@@ -94,7 +94,7 @@ function hiddenItems(id: number, site: string, note: ElementRule[], hide: string
 
 type PageShields = { site: string; count: number }
 
-/** The bar's Shields button: what was blocked on the page, and a menu to take them down for its site. */
+/** Shields, at the address's right: what was blocked on the page, and a menu to take them down for its site. */
 export function ShieldsButton({ id, url }: { id: number; url: string }) {
   const [page, setPage] = useState<PageShields | null>(null)
   const told = counts.use((m) => m.get(id))
@@ -133,12 +133,12 @@ export function ShieldsButton({ id, url }: { id: number; url: string }) {
   ]
   const Icon = up ? Shield : ShieldOff
   return (
-    <button type="button" aria-label="Shields" data-tip="Shields" data-web-shields={up ? "up" : "down"} data-count={count}
-      onClick={(e) => menuBelow(e, menu())}
-      className={cn("flex h-7 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-1.5 text-[13px] tabular-nums hover:bg-foreground/[0.06] hover:text-foreground",
+    <button type="button" aria-label={up && count > 0 ? `Shields: ${numberText(count)} blocked` : "Shields"} aria-haspopup="menu" data-tip="Shields"
+      data-web-shields={up ? "up" : "down"} data-count={count} onClick={(e) => menuBelow(e, menu())}
+      className={cn("flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[5px] px-1.5 text-[12px] tabular-nums hover:bg-foreground/[0.07] hover:text-foreground",
         up ? "text-muted-foreground" : "text-tertiary")}>
-      <Icon className="size-4" strokeWidth={2} />
-      {up && count > 0 && <span>{numberText(count)}</span>}
+      <Icon className="size-3.5" strokeWidth={2} />
+      {up && count > 0 && <span className="@max-md/bar:hidden">{numberText(count)}</span>}
     </button>
   )
 }

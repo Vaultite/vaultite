@@ -1,8 +1,8 @@
 // The Browser's logins in the desktop app (Electron), end to end on a throwaway vault, against a made-up site this
 // script serves on 127.0.0.1 (a cookie login): signed in on a page in workspace 1, a page in workspace 2 isn't (its own
-// session, persist:web-2) and workspace 1 still is (persist:web, the one pages shared before); the Web pages panel (in
-// a tab) lists the open pages and the site signed in to (a tracker's cookie as one line, Clear), and Sign out (after
-// asking) clears it; with logins "shared", a page in workspace 2 gets workspace 1's session. Notifications: a page's becomes an Inbox event linking to its tab
+// session, persist:web-2) and workspace 1 still is (persist:web, the one pages shared before); the Sites panel (in
+// a tab, plugins/core/web-viewer/Sites.tsx) lists the site signed in to (a tracker's cookie as one line, Clear) under
+// its workspace's logins, and Sign out (after asking) clears it; with logins "shared", a page in workspace 2 gets workspace 1's session. Notifications: a page's becomes an Inbox event linking to its tab
 // (one from another workspace's logins says so and links nowhere), a frame inside the page can't make one, none with
 // notifications off, and a burst is cut short.
 // WRITES: the throwaway vault only.
@@ -96,12 +96,13 @@ await inPage(`location.href = ${JSON.stringify(`${SITE}/whoami`)}`)
 check("… signed in there", await until(async () => (await visible())?.text === "who:Alice", 10000), await visible())
 
 // ---------- the panel, in a tab ----------
-await command("web:pages-tab")
-check("Web pages: the open page", await until(async () => (await win.locator("[data-web-pages-panel] [data-web-page-row]").count()) === 1, 10000), await win.locator("[data-web-pages-panel]").innerText().catch(() => ""))
-check("… and the site signed in to", await until(async () => (await win.locator("[data-web-pages-panel] [data-web-site='127.0.0.1']").count()) === 1, 10000),
-  await win.locator("[data-web-pages-panel]").innerText().catch(() => ""))
-check("… a tracker's cookie as a tracker, not a site", await until(async () => (await win.locator("[data-web-pages-panel] [data-web-trackers='1']").count()) === 1
-  && (await win.locator("[data-web-pages-panel] [data-web-site='localhost']").count()) === 0, 10000), await win.locator("[data-web-pages-panel]").innerText().catch(() => ""))
+await command("web:sites-tab")
+check("Sites: the site signed in to", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site='127.0.0.1']").count()) === 1, 10000),
+  await win.locator("[data-web-sites-panel]").innerText().catch(() => ""))
+check("… in workspace 1's logins", (await win.locator("[data-web-sites-panel] [data-web-logins]").innerText().catch(() => "")) === "Workspace 1",
+  await win.locator("[data-web-sites-panel] [data-web-logins]").innerText().catch(() => ""))
+check("… a tracker's cookie as a tracker, not a site", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-trackers='1']").count()) === 1
+  && (await win.locator("[data-web-sites-panel] [data-web-site='localhost']").count()) === 0, 10000), await win.locator("[data-web-sites-panel]").innerText().catch(() => ""))
 await win.locator("[data-web-trackers]").click()
 await win.locator("dialog[open] button", { hasText: "Clear" }).click()
 check("Clear: the tracker's cookie goes, the site's stays", await until(async () => (await win.locator("[data-web-trackers]").count()) === 0, 10000)
@@ -112,21 +113,21 @@ await command("workspace:2")
 await openLink(0)
 check("workspace 2: a web page in persist:web-2", await until(async () => (await visible())?.partition === "persist:web-2", 15000), await visible())
 check("… not signed in", await until(async () => (await visible())?.text === "who:nobody", 10000), await visible())
-await command("web:pages-tab")
-check("… its panel: its page, no sites", await until(async () => (await win.locator("[data-web-pages-panel] [data-web-page-row]").count()) === 1
-  && (await win.locator("[data-web-pages-panel] [data-web-site]").count()) === 0, 10000), await win.locator("[data-web-pages-panel]").innerText().catch(() => ""))
+await command("web:sites-tab")
+check("… its panel: no sites, in its own logins", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site]").count()) === 0
+  && (await win.locator("[data-web-sites-panel] [data-web-logins]").innerText().catch(() => "")) === "Workspace 2", 10000), await win.locator("[data-web-sites-panel]").innerText().catch(() => ""))
 check("workspace 1's logins kept", (await cookiesIn("persist:web")).includes("who=Alice"), await cookiesIn("persist:web"))
 
 // ---------- sign out, in workspace 1 ----------
 await command("workspace:1")
-await until(async () => (await win.locator("[data-web-pages-panel] [data-web-site='127.0.0.1']").count()) === 1, 10000)
+await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site='127.0.0.1']").count()) === 1, 10000)
 await win.locator("[data-web-site='127.0.0.1']").hover()
 await win.locator("[data-web-site='127.0.0.1'] [data-row-more]").click()
 await win.locator("[role=menuitem]", { hasText: /^Sign out/ }).click()
 check("Sign out asks first", await until(async () => (await win.locator("dialog[open]").count()) > 0, 10000), null)
 await win.locator("dialog[open] button", { hasText: "Sign out" }).click()
 check("… then the site's cookies go", await until(async () => !(await cookiesIn("persist:web")).includes("who=Alice"), 10000), await cookiesIn("persist:web"))
-check("… and it leaves the panel", await until(async () => (await win.locator("[data-web-pages-panel] [data-web-site]").count()) === 0, 10000), null)
+check("… and it leaves the panel", await until(async () => (await win.locator("[data-web-sites-panel] [data-web-site]").count()) === 0, 10000), null)
 
 // ---------- logins shared ----------
 await fetch(`${origin}/api/config/plugin/web-viewer`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ logins: "shared" }) })
@@ -150,7 +151,7 @@ const inThat = (code) => app.evaluate(({ BrowserWindow }, [code, url]) => {
 await inThat(`new Notification("Looked at"); 1`)
 await wait(1500)
 check("while you're looking at the page: none", !(await eventNamed("Looked at")), await events())
-await command("web:pages-tab") // (another tab in front: the page is put away, and still runs)
+await command("web:sites-tab") // (another tab in front: the page is put away, and still runs)
 await inThat(`new Notification("Build done", { body: "All green" }); 1`)
 check("a page's notification: an Inbox event", await until(async () => !!(await eventNamed("Build done")), 10000), await events())
 const ev = await eventNamed("Build done")

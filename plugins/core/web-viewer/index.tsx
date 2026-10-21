@@ -1,19 +1,19 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Boxes, Download, Eraser, ExternalLink, Globe, History, Lock, MousePointerSquareDashed, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, op, openFile, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, Lock, MousePointerSquareDashed, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
+import { choose, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
-import { WebPagesPanel, WebPagesView } from "./Pages"
+import { SitesPanel, SitesSettings, SitesView } from "./Sites"
 import { ExtensionsView } from "./Extensions"
 import { extensionPageName, extensionsChanged, hasExtensions, popupChanged, setExtensionsOpener } from "./extstate"
 import { ReplaysView } from "./Replays"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { agentNews, focusedPage, focusedPageId, linksInViewer, pausedPages, profile, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { agentNews, bookmark, focusedPage, focusedPageId, linksInViewer, pausedPages, profile, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { Playing } from "./Playing"
 
@@ -31,15 +31,10 @@ function askAddress(container: string | null = null) {
   openView(`web/${argOf("", container)}`, { newTab: true })
 }
 
-/** Bookmark the page in the focused pane: a line in the bookmarks note. */
-async function bookmarkPage() {
-  const p = focusedPage(), url = p?.url()
-  if (!url || !/^https?:\/\//i.test(url)) return
-  try {
-    const r = await op<{ path: string | null; added: number }>("bookmarks.add", { url, title: titleOf(url) ?? "" })
-    const path = r.path
-    notify(r.added ? "Bookmarked" : "Already bookmarked", { action: path ? { label: "Open bookmarks", run: () => openFile(path) } : undefined })
-  } catch (e) { notifyError(e, "Couldn't bookmark the page") }
+/** Bookmark the page in the focused pane. */
+function bookmarkPage() {
+  const url = focusedPage()?.url()
+  if (url) void bookmark(url, titleOf(url) ?? "")
 }
 
 /** Pick a container, then an address to open in it. */
@@ -244,14 +239,15 @@ export default definePlugin({
       },
     },
     "agent-runs": { icon: Bot, title: () => "Agents in the browser", render: () => <ReplaysView /> },
-    "web-pages": { icon: Globe, title: () => "Web pages", render: () => <WebPagesView openPage={openPage} ask={() => void askAddress()} /> },
+    // (named web-pages from when it listed open pages too: kept, as sidebars and tabs name it)
+    "web-pages": { icon: Globe, title: () => "Sites", render: () => <SitesView openPage={openPage} /> },
     "web-extensions": { icon: Puzzle, title: () => "Extensions", render: () => <ExtensionsView openPage={openPage} /> },
     "web-history": { icon: History, title: () => "History", render: () => <HistoryView openPage={(url) => openPage(url)} onImport={() => void askImport()} /> },
   },
   files: { types: ["bookmarks"], icon: Bookmark },
   sidebar: {
-    "web-pages": { title: "Web pages", heading: false, sort: 34, hidden: true, view: "web-pages",
-      render: (ctx) => <WebPagesPanel open={ctx.open} openPage={openPage} ask={() => void askAddress()} /> },
+    "web-pages": { title: "Sites", names: ["logins", "cookies", "signed in"], heading: false, sort: 34, hidden: true, view: "web-pages",
+      render: (ctx) => <SitesPanel open={ctx.open} openPage={openPage} /> },
   },
   webLink: (url, { mod }) => {
     if (!webPages || mod || !linksInViewer()) return false
@@ -265,22 +261,24 @@ export default definePlugin({
     { id: "web:default-browser", name: "Make Vaultite the default browser", desktop: true, when: () => !!webPages?.engine, icon: Globe,
       run: () => void Promise.resolve(webPages?.engine?.("browser:make-default")).then((yes) => notify(yes ? "Vaultite is the default browser: links from other apps open here" : "Confirm it in the box macOS shows"), (e) => notifyError(e, "Couldn't make it the default browser")) },
     { id: "web:lock", name: "Lock containers", desktop: true, when: () => !!webPages?.engine && containers().some((c) => c.lock), run: () => void webPages?.engine?.("lock:lock"), icon: Lock },
-    { id: "web:open-container", name: "New tab in container…", desktop: true, when: () => !!webPages, run: askContainer, icon: Boxes },
+    { id: "web:open-container", name: "New tab in container…", desktop: true, when: () => !!webPages, run: askContainer, icon: Box },
     { id: "web:clip", name: "Clip current web page", when: () => !!focusedPage(), run: () => focusedPage()?.clip(), icon: Scissors },
     { id: "web:browser", name: "Open current web page in another browser", when: () => !!focusedPage(), run: () => { const p = focusedPage(); if (p) void webPages?.external(p.url()) }, icon: ExternalLink },
     { id: "web:address", name: "Edit current web page's address", when: () => !!focusedPage(), run: () => focusedPage()?.focusAddress(), icon: PencilLine },
     { id: "web:search-selection", name: "Search the web for selected text", desktop: true, when: () => !!webPages && !!selectedText().trim(), run: () => openWebLink(searchUrl(selectedText().replace(/\s+/g, " "), settings.get().search)), icon: Search },
     { id: "web:extensions", name: "Extensions", desktop: true, when: hasExtensions, run: openExtensions, icon: Puzzle },
-    { id: "web:pages-tab", name: "Open web pages in a tab", desktop: true, when: () => !!webPages, run: () => openView("web-pages", { newTab: !isViewOpen("view:web-pages") }) },
+    { id: "web:sites-tab", name: "Show sites and logins", desktop: true, when: () => !!webPages?.sites, icon: Globe, run: () => openView("web-pages", { newTab: !isViewOpen("view:web-pages") }) },
     { id: "web:history", name: "Show history", keys: isMac ? ["Mod+Y"] : ["Mod+H"], desktop: true, when: () => !!webPages?.engine, run: () => openView("web-history", { newTab: !isViewOpen("view:web-history") }), icon: History },
     { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: askClear, icon: Eraser },
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),
       run: () => void pickElement(focusedPageId()), icon: MousePointerSquareDashed },
-    { id: "web:bookmark", name: "Bookmark current web page", keys: ["Mod+D"], when: () => !!focusedPage(), run: () => void bookmarkPage(), icon: Bookmark },
+    { id: "web:bookmark", name: "Bookmark current web page", keys: ["Mod+D"], when: () => !!focusedPage(), run: bookmarkPage, icon: Bookmark },
     { id: "web:import-brave", name: "Import from Brave…", desktop: true, when: () => browsersHere().some((s) => s.browser === "brave"), run: () => void askImport("brave"), icon: Download },
     { id: "web:import-chrome", name: "Import from Chrome…", desktop: true, when: () => browsersHere().some((s) => s.browser === "chrome"), run: () => void askImport("chrome"), icon: Download },
   ],
   ambient: { playing: { title: "Web pages playing", sort: 55, render: () => <Playing /> } },
+  settingsPanel: () => <SitesSettings />,
+  settingsSearch: [{ key: "sites", label: "Sites and logins", description: "the sites signed in to in each container's and workspace's logins: sign out, clear trackers" }],
   background: Background,
   preview: () => <Preview />,
 })

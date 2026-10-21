@@ -478,8 +478,9 @@ export type FileMenuItem = { label: string; icon?: LucideIcon; run: () => void; 
   /** A switch: a check shows while it's on. */
   checked?: boolean }
 
-/** A button a plugin adds to a web page's bar in the Browser (its icon, `label` its tooltip), also in its tab's menu. */
-export type WebPageAction = { label: string; icon: LucideIcon; run: () => void }
+/** What a plugin adds to a web page's bar in the Browser, also in its tab's menu: `kind: "save"` (Save video) goes in
+ *  the bar's Save menu, under Save page to vault; any other in its … menu (Open in another app). */
+export type WebPageAction = { label: string; icon: LucideIcon; run: () => void; kind?: "save" }
 
 /** An icon a plugin gives a file or folder: `icon` a name (Lucide's, a plugin's, or an emoji), `tint` a colour token
  *  (`green`). */
@@ -610,7 +611,7 @@ export type PluginDef = {
   editorMenu?: (ctx: { view: EditorView; path?: string }) => MenuItem[]
   /** Items it adds to a folder's menu in the file tree, for that folder's path; [] for none. */
   folderMenu?: (path: string) => FileMenuItem[]
-  /** Buttons it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none. */
+  /** Items it adds to a web page's bar in the Browser (see WebPageAction), for the page shown; [] for none. */
   webPageActions?: (page: { url: string; title: string }) => WebPageAction[]
   /** Marks on files in the file tree, by path, from the store (keep it to the few files that need one). */
   fileMarks?: (store: Store) => Record<string, FileMark>

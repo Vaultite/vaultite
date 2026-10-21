@@ -26,13 +26,11 @@ function imageIcon(src: string): LucideIcon {
 
 // ---------- the page's bar ----------
 
-/** The buttons of the extensions that are on, for the page `pageId`: pinned ones in the bar, every one in the puzzle's
- *  menu; on a Web Store page, "Add to Vaultite". */
-export function ExtensionButtons({ pageId, url }: { pageId: number; url: string }) {
+/** The extensions that are on, as the page `pageId` shows their buttons (badge and icon may be its own), and a click
+ *  on one: its popup under `el`. */
+export function useExtensionBar(pageId: number, url: string) {
   const [buttons, setButtons] = useState<Button[]>([])
   const v = version.use((n) => n)
-  const exts = useExtensions()
-  const open = popupOpen.use((s) => s)
   useEffect(() => {
     if (!pageId || !hasExtensions()) return
     let gone = false
@@ -43,26 +41,34 @@ export function ExtensionButtons({ pageId, url }: { pageId: number; url: string 
     const r = el.getBoundingClientRect()
     void engine("ext:click", pageId, b.id, { x: r.left, y: r.top, width: r.width, height: r.height }).catch((e) => notifyError(e, `Couldn't open ${b.name}`))
   }
-  const storeId = storeIdOf(url)
-  const pinned = buttons.filter((b) => b.pinned)
-  const menu = (e: MouseEvent<HTMLButtonElement>) => {
-    const at = e.currentTarget
-    const items: MenuItem[] = buttons.map((b) => ({
-      label: b.name, icon: imageIcon(b.icon), hint: b.badge || undefined, run: () => click(b, at),
-    }))
-    items.push({ label: "Extensions", icon: Puzzle, sep: items.length > 0, run: () => openExtensions() })
-    menuBelow(e, items)
-  }
+  return { buttons, click, url }
+}
+export type ExtensionBar = ReturnType<typeof useExtensionBar>
+
+/** The page's … menu's Extensions ▸: every one that's on (its popup opens under `at`), then the Extensions tab. */
+export function extensionItems(bar: ExtensionBar, at: HTMLElement): MenuItem[] {
+  if (!hasExtensions()) return []
+  return [{ label: "Extensions", icon: Puzzle, run: () => openExtensions(), items: [
+    ...bar.buttons.map((b): MenuItem => ({ label: b.name, icon: imageIcon(b.icon), hint: b.badge || undefined, disabled: !b.enabled, run: () => bar.click(b, at) })),
+    { label: "Manage extensions", icon: Settings2, sep: bar.buttons.length > 0, run: () => openExtensions() },
+  ] }]
+}
+
+/** The bar's pinned extensions' buttons; on a Web Store extension's page, "Add to Vaultite". */
+export function ExtensionButtons({ bar, className }: { bar: ExtensionBar; className?: string }) {
+  const exts = useExtensions()
+  const open = popupOpen.use((s) => s)
   if (!hasExtensions()) return null
+  const storeId = storeIdOf(bar.url)
   return (
     <>
       {storeId && <StoreButton id={storeId} exts={exts} />}
-      {pinned.map((b) => (
+      {bar.buttons.filter((b) => b.pinned).map((b) => (
         <button key={b.id} type="button" aria-label={b.title} data-tip={b.title} data-ext-button={b.id} disabled={!b.enabled}
-          onClick={(e) => click(b, e.currentTarget)}
+          onClick={(e) => bar.click(b, e.currentTarget)}
           onContextMenu={(e) => { e.preventDefault(); menuBelow(e, buttonMenu(b)) }}
           className={cn("relative grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] hover:bg-foreground/[0.06] disabled:cursor-default disabled:opacity-40",
-            open === b.id && "bg-foreground/[0.08]")}>
+            open === b.id && "bg-foreground/[0.08]", className)}>
           {b.icon ? <img src={b.icon} alt="" draggable={false} className="size-4 object-contain" /> : <Puzzle className="size-4 text-muted-foreground" strokeWidth={2} />}
           {b.badge && (
             <span className="pointer-events-none absolute right-0 bottom-0 max-w-[26px] truncate rounded-[3px] px-[2px] text-[8px] leading-[10px] font-semibold"
@@ -70,12 +76,6 @@ export function ExtensionButtons({ pageId, url }: { pageId: number; url: string 
           )}
         </button>
       ))}
-      {(buttons.length > pinned.length || (exts?.length ?? 0) > 0) && (
-        <button type="button" aria-label="Extensions" data-tip="Extensions" data-ext-menu onClick={menu}
-          className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
-          <Puzzle className="size-4" strokeWidth={2} />
-        </button>
-      )}
     </>
   )
 }

@@ -1,17 +1,20 @@
 // A web page in a tab: a slim bar over the desktop app's native page. Native views draw above everything, so when
 // anything of the app covers the box (sampled with elementFromPoint) the page is swapped for its snapshot until it's gone.
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bot, Globe, Lock, Pause, Play, RotateCw, Scissors, Volume2, VolumeX, X, type LucideIcon } from "lucide-react"
-import { getTabLayout, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, webPageActions, webPages, type WebPageState, type WebPages } from "@vaultite"
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, ChevronDown, Ellipsis, Globe, Lock, MousePointerSquareDashed, Pause, Play, RotateCw, Scissors, Volume2, VolumeX, X, type LucideIcon } from "lucide-react"
+import {
+  cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, webPageActions, webPages, type MenuItem,
+  type WebPageAction, type WebPageState, type WebPages,
+} from "@vaultite"
 import { hostOf } from "./address"
-import { ExtensionButtons } from "./Extensions"
+import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
-import { argOf, colorOf, containerById, profileIn, ruleFor, splitArg } from "./containers"
+import { argOf, containerById, profileIn, ruleFor, splitArg } from "./containers"
 import { markTyped } from "./history"
-import { ShieldsButton } from "./shields"
+import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
-import { agentNews, pausedPages, setFocusedPage, settingsRead, setTitle, shown } from "./state"
+import { agentNews, bookmark, pausedPages, setFocusedPage, settingsRead, setTitle, shown } from "./state"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -250,7 +253,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   }, [id, web])
 
   const inside = containerById(container)
-  const tint = inside ? colorOf(inside) : undefined
+  const ext = useExtensionBar(id, state.url)
 
   const go: Go = (to, how, newTab) => {
     markTyped(to, how)
@@ -263,26 +266,30 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     void web.go(id, "focus")
   }
 
+  const onWeb = http(state.url)
+  const actions = onWeb ? webPageActions({ url: state.url, title: state.title }) : []
   return (
     <div className="flex h-full min-h-0 flex-col" data-web-page={id || ""}>
-      <div className="flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5">
+      {/* (a container: as it narrows, the address gives way first, then labels, pinned extensions and Forward go) */}
+      <div className="@container/bar flex h-10 shrink-0 items-center gap-0.5 border-b-[0.5px] border-border px-1.5" data-web-bar>
         <BarButton icon={ArrowLeft} label="Back" disabled={!state.back} onClick={() => void web.go(id, "back")} />
-        <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} />
+        <BarButton icon={ArrowRight} label="Forward" disabled={!state.forward} onClick={() => void web.go(id, "forward")} className="@max-xs/bar:hidden" />
         <BarButton icon={state.loading ? X : RotateCw} label={state.loading ? "Stop" : "Reload"} disabled={!id} onClick={() => void web.go(id, state.loading ? "stop" : "reload")} />
-        <ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} />
-        <AddressBar url={state.url} current={tabArg} tint={tint} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }} />
+        <AddressBar url={state.url} current={tabArg} inputRef={address} onGo={go} onLeave={() => { if (id) void web.go(id, "focus") }}
+          lead={<ContainerButton container={container} url={state.url || arg} reopen={(to) => setTabArg(to)} />}
+          trail={id > 0 && onWeb ? <ShieldsButton id={id} url={state.url} /> : null} />
         {(state.audible || state.muted) && (
           <BarButton icon={state.muted ? VolumeX : Volume2} label={state.muted ? "Unmute tab" : "Mute tab"} onClick={() => void web.go(id, state.muted ? "unmute" : "mute")} />
         )}
-        {id > 0 && http(state.url) && <ShieldsButton id={id} url={state.url} />}
-        {http(state.url) && webPageActions({ url: state.url, title: state.title }).map((a) => <BarButton key={a.label} icon={a.icon} label={a.label} onClick={a.run} />)}
-        <ExtensionButtons pageId={id} url={state.url} />
-        <BarButton icon={ArrowUpRight} label="Open in another browser" disabled={!http(state.url)} onClick={() => void web.external(state.url)} />
-        <button type="button" onClick={() => void clip()} disabled={!id || saving || !http(state.url)} data-tip="Save to vault: the page as a note in Clippings" data-web-clip
-          className="flex h-7 shrink-0 cursor-pointer items-center gap-1.5 rounded-[6px] px-2 text-[13px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-50 disabled:hover:bg-transparent">
-          <Scissors className="size-4" strokeWidth={2} />
-          {saving ? "Saving…" : "Save to vault"}
-        </button>
+        <ExtensionButtons bar={ext} className="@max-md/bar:hidden" />
+        <SaveButton disabled={!id || !onWeb} saving={saving} onSave={() => void clip()} actions={actions.filter((a) => a.kind === "save")} />
+        <MoreButton disabled={!onWeb} items={(at) => [
+          { label: "Bookmark", icon: Bookmark, hint: commandKeys("web:bookmark") || undefined, run: () => void bookmark(state.url, state.title) },
+          ...(web.engine && id ? [{ label: "Block an element…", icon: MousePointerSquareDashed, run: () => void pickElement(id) }] : []),
+          { label: "Open in another browser", icon: ArrowUpRight, run: () => void web.external(state.url) },
+          ...withSep(actionItems(actions.filter((a) => a.kind !== "save"))),
+          ...withSep(extensionItems(ext, at)),
+        ]} />
       </div>
       {id > 0 && <AgentBar web={web} id={id} />}
       <div ref={box} className="relative min-h-0 flex-1 overflow-hidden bg-background" data-web-box>
@@ -349,11 +356,54 @@ function Problem({ error, url, onRetry }: { error: string; url: string; onRetry:
   )
 }
 
-function BarButton({ icon: Icon, label, onClick, disabled }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean }): ReactNode {
+function BarButton({ icon: Icon, label, onClick, disabled, className }: { icon: LucideIcon; label: string; onClick: () => void; disabled?: boolean; className?: string }): ReactNode {
   return (
-    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} data-tip={label}
-      className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent">
+    <button type="button" onClick={onClick} disabled={disabled} aria-label={label} data-tip={label} className={cn(BAR_ICON, className)}>
       <Icon className="size-4" strokeWidth={2} />
+    </button>
+  )
+}
+
+const BAR_ICON = "grid size-7 shrink-0 cursor-pointer place-items-center rounded-[6px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+
+/** Plugins' actions as menu rows. */
+const actionItems = (actions: WebPageAction[]): MenuItem[] => actions.map((a) => ({ label: a.label, icon: a.icon, run: a.run }))
+/** A group of rows after others: a line above its first. */
+const withSep = (items: MenuItem[]) => items.map((it, i) => (i === 0 ? { ...it, sep: true } : it))
+
+/** Save: a click saves the page to the vault (a note in Clippings); plugins' ways to save (Save video) are in its menu,
+ *  the chevron beside it or a right-click. */
+function SaveButton({ disabled, saving, onSave, actions }: { disabled: boolean; saving: boolean; onSave: () => void; actions: WebPageAction[] }) {
+  const more = actions.length > 0
+  const menu = (e: React.MouseEvent) => {
+    e.preventDefault()
+    if (disabled || !more) return
+    menuBelow(e, [{ label: "Save page to vault", icon: Scissors, hint: commandKeys("web:clip") || undefined, run: onSave }, ...withSep(actionItems(actions))])
+  }
+  const part = "flex h-7 shrink-0 cursor-pointer items-center text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent"
+  return (
+    <div className="ml-0.5 flex shrink-0 items-center" data-web-save onContextMenu={menu}>
+      <button type="button" onClick={onSave} disabled={disabled || saving} aria-label="Save page to vault" data-tip="Save page to vault: a note in Clippings" data-web-clip
+        className={cn(part, "gap-1.5 px-2 text-[13px] @max-lg/bar:px-1.5", more ? "rounded-l-[6px]" : "rounded-[6px]")}>
+        <Scissors className="size-4" strokeWidth={2} />
+        <span className="@max-lg/bar:hidden">{saving ? "Saving…" : "Save"}</span>
+      </button>
+      {more && (
+        <button type="button" onClick={menu} disabled={disabled} aria-label="Ways to save" aria-haspopup="menu" data-tip="Ways to save" data-web-save-menu
+          className={cn(part, "w-5 justify-center rounded-r-[6px]")}>
+          <ChevronDown className="size-3.5" strokeWidth={2.25} />
+        </button>
+      )}
+    </div>
+  )
+}
+
+/** The bar's … menu: what's done with the page less often (`items` asked as it opens, for the button it opens under). */
+function MoreButton({ disabled, items }: { disabled: boolean; items: (at: HTMLElement) => MenuItem[] }) {
+  return (
+    <button type="button" disabled={disabled} aria-label="More for this page" aria-haspopup="menu" data-tip="More" data-web-more className={BAR_ICON}
+      onClick={(e) => menuBelow(e, items(e.currentTarget))}>
+      <Ellipsis className="size-4" strokeWidth={2} />
     </button>
   )
 }

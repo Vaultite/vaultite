@@ -1,5 +1,5 @@
-// The page bar's address: completed inline to a site visited before, with a list under it (the search, open tabs,
-// bookmarks, history). The list covers the native page, which WebPage swaps for its picture meanwhile.
+// The page bar's address (the container chip and Shields inside it): completed inline to a site visited before, with a
+// list under it (search, open tabs, bookmarks, history) over the native page, which WebPage swaps for its picture.
 import { Fragment, useEffect, useLayoutEffect, useMemo, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type RefObject } from "react"
 import { ArrowRight, Search, Star, X } from "lucide-react"
 import { cn, isMac, isViewOpen, openView, useStore, webPages, type WebPageInfo } from "@vaultite"
@@ -34,12 +34,14 @@ async function openTabs(): Promise<(WebPageInfo & { arg: string })[]> {
   })
 }
 
-export function AddressBar({ url, current, tint, inputRef, onGo, onLeave }: {
+export function AddressBar({ url, current, lead, trail, inputRef, onGo, onLeave }: {
   /** The page's address (what shows while not typing). */
   url: string
   /** This tab's arg: it isn't offered as a tab to switch to. */
   current: string
-  tint?: string
+  /** Inside the field, before and after what's typed (the container chip, Shields). */
+  lead?: ReactNode
+  trail?: ReactNode
   inputRef: RefObject<HTMLInputElement | null>
   onGo: Go
   /** Esc with nothing to close: the keyboard goes back to the page. */
@@ -145,31 +147,34 @@ export function AddressBar({ url, current, tint, inputRef, onGo, onLeave }: {
   }
 
   return (
-    <div className="relative mx-1 min-w-0 flex-1" data-web-address-bar>
-      <input ref={inputRef} aria-label="Address" spellCheck={false} autoComplete="off" data-web-address placeholder="Search or type an address"
-        role="combobox" aria-expanded={list} aria-controls="web-suggestions" aria-autocomplete="both"
-        value={shown}
-        onChange={(e) => {
-          const deleting = (e.nativeEvent as InputEvent).inputType?.startsWith("delete")
-          setTyped(e.target.value)
-          setAuto(!deleting)
-          setOpen(true)
-          setSel(0)
-          setMoved(false)
-        }}
-        onFocus={(e) => {
-          setTyped(url)
-          setOpen(false)
-          setAuto(true)
-          e.currentTarget.select()
-          void openTabs().then(setTabs)
-        }}
-        onBlur={reset}
-        onKeyDown={onKeyDown}
-        className={cn("h-7 w-full rounded-[6px] bg-foreground/[0.05] px-2.5 text-[13px] outline-none placeholder:text-tertiary",
-          "focus:bg-background focus:ring-1 focus:ring-primary/50", typed === null && "text-muted-foreground")} />
-      {/* The tab's container: a straight line along the foot, between the rounded corners. */}
-      {tint && <span aria-hidden className="pointer-events-none absolute inset-x-1.5 bottom-0 h-[1.5px]" style={{ background: tint }} data-web-container-line />}
+    <div className="relative mx-1 min-w-12 flex-1" data-web-address-bar>
+      <div onMouseDown={(e) => { if (e.target === e.currentTarget) { e.preventDefault(); inputRef.current?.focus() } }}
+        className="flex h-7 items-center gap-0.5 rounded-[6px] bg-foreground/[0.05] pr-0.5 has-[input:focus]:bg-background has-[input:focus]:ring-1 has-[input:focus]:ring-primary/50">
+        {lead}
+        <input ref={inputRef} aria-label="Address" spellCheck={false} autoComplete="off" data-web-address placeholder="Search or type an address"
+          role="combobox" aria-expanded={list} aria-controls="web-suggestions" aria-autocomplete="both"
+          value={shown}
+          onChange={(e) => {
+            const deleting = (e.nativeEvent as InputEvent).inputType?.startsWith("delete")
+            setTyped(e.target.value)
+            setAuto(!deleting)
+            setOpen(true)
+            setSel(0)
+            setMoved(false)
+          }}
+          onFocus={(e) => {
+            setTyped(url)
+            setOpen(false)
+            setAuto(true)
+            e.currentTarget.select()
+            void openTabs().then(setTabs)
+          }}
+          onBlur={reset}
+          onKeyDown={onKeyDown}
+          className={cn("h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-tertiary", lead ? "pl-1.5" : "pl-2.5",
+            trail ? "pr-1" : "pr-2", typed === null && "text-muted-foreground")} />
+        {trail}
+      </div>
       {list && (
         <div id="web-suggestions" role="listbox" aria-label="Suggestions" data-web-suggestions onMouseDown={(e) => e.preventDefault()}
           className="glass-strong absolute top-[calc(100%+4px)] right-0 left-0 z-50 min-w-[320px] overflow-hidden rounded-[10px] p-1 shadow-xl">
