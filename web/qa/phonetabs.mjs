@@ -338,14 +338,14 @@ try {
   await P.locator("[role=menu] button", { hasText: /^Close tab$/ }).tap(); await wait(600)
   check("… menu: Close tab closes the tab on screen", (await pCount()) === nMenu - 1 && !(await onScreen("Three")), [await pHash(), await pCount()])
 
-  // ---------- the bar's menu: New note, Search, Commands, Plugins, Settings ----------
+  // ---------- the bar's menu: New note, Search, Commands, Setup, Settings ----------
   const menuBtn = P.locator("[data-bar=menu]")
   await menuBtn.tap(); await wait(300)
   const menuBox = await P.locator("#bar-menu").boundingBox()
   const barBox = await P.locator("[data-phone-bar]").boundingBox()
   check("menu: opens above the bar", !!menuBox && menuBox.y + menuBox.height <= barBox.y, { menuBox, barBox })
   const menuItems = (await P.locator("#bar-menu [role=menuitem]").allInnerTexts()).map((t) => t.trim())
-  check("menu: New note, Search, Commands, Plugins, Settings", menuItems.join() === "New note,Search,Commands,Plugins,Settings", menuItems)
+  check("menu: New note, Search, Commands, Setup, Settings", menuItems.join() === "New note,Search,Commands,Setup,Settings", menuItems)
   const link = P.locator("#bar-menu a[role=menuitem]").last()
   const href = await link.getAttribute("href")
   await link.tap(); await wait(600)

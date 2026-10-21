@@ -1,4 +1,4 @@
-// The file menus (tree, tab, phone …) and what they do: their groups (Archive with Pin; Open local graph, Open version
+// The file menus (tree, tab, phone …) and what they do: their groups (Archive right above Delete; Open local graph, Open version
 // history and the other less used items in More ▸; split rows: Open to the right in Open in new tab ▸, other kinds of
 // new file in New note ▸, Change icon in Rename ▸), Duplicate (a copy next to it, a note with its own id once edited), Copy path
 // (a click copies from the vault folder; its submenu by hover, chevron and the keyboard: from the vault folder, from the
@@ -72,8 +72,8 @@ const origin = new URL(B).origin
     check(`tree menu: ${want}`, tree.includes(want), tree)
   }
   check("tree menu: Open to the right, Change icon and the other kinds are in submenus", !["Open to the right", "Change icon", "New"].some((x) => tree.includes(x)), tree)
-  // Its groups (a line between each): open; new (other kinds in New note ▸); change; Archive and Pin (the plugins'
-  // "navigate" section); the path then More ▸ (the plugins' "more"); delete.
+  // Its groups (a line between each): open; new (other kinds in New note ▸); change; Pin (the plugins' "navigate"
+  // section); the path then More ▸ (the plugins' "more"); Archive right above Delete (the plugins' "away").
   const groups = await menu.evaluate((m) => {
     const out = [[]]
     for (const el of m.children) {
@@ -85,7 +85,7 @@ const origin = new URL(B).origin
   const groupOf = (label) => groups.find((g) => g.includes(label))?.join("|")
   check("tree menu: open, new, change, keep, more, delete groups", groups[0]?.join("|") === "Open in new tab" &&
     groups[1]?.join("|") === "New note|New folder" && groups[2]?.join("|") === "Rename|Move file to…|Duplicate" &&
-    groupOf("Pin") === "Archive|Pin" && groupOf("More") === `Copy path|${REVEAL}|More` && groups.at(-1)?.join("|") === "Delete", groups)
+    groupOf("Pin") === "Pin" && groupOf("More") === `Copy path|${REVEAL}|More` && groups.at(-1)?.join("|") === "Archive|Delete", groups)
   // Split rows: hovering opens the rest, the row's own choice first.
   for (const [row_, want] of [["Open in new tab", "Open in new tab|Open to the right"], ["Rename", "Rename|Change icon"]]) {
     await menu.locator(":scope > button", { hasText: new RegExp(`^${row_}$`) }).hover(); await wait(300)
