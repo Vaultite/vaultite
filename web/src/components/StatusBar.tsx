@@ -135,15 +135,20 @@ function useDrops(bar: RefObject<HTMLElement | null>, shown: boolean) {
   }, [bar, shown])
 }
 
-const KEPT_WIDTH = "vaultite.statusbar", KEPT_ITEMS = "vaultite.statusbar.items"
+const KEPT_WIDTH = "vaultite.statusbar", KEPT_ITEMS = "vaultite.statusbar.items", KEPT_SETUP = "vaultite.statusbar.setup"
 /** The ambient items' widths at the last load, in the bar's order. */
 type Kept = [key: string, width: number][]
-/** The bar as wide as last load's, and its ambient items as wide as theirs, while they come in (each, arriving, pushed
- *  the rest), until another file opens: like Steady. Returns the items' widths to hold, while held. */
-function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string): Kept | null {
+/** The bar and its ambient items as wide as last load's while they come in, until another file opens or the bar's
+ *  `setup` changes (a bundle applied): like Steady. Returns the items' widths to hold, while held. */
+function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string, setup: string): Kept | null {
   const first = useRef<string | null>(null)
   if (first.current === null && path) first.current = path
-  const held = first.current === null || first.current === path
+  // (last load's widths fit only the setup they were drawn with; once it changes, they fit nothing)
+  const loaded = useRef<string | null>(null)
+  if (loaded.current === null) try { loaded.current = localStorage.getItem(KEPT_SETUP) ?? "" } catch { loaded.current = "" }
+  const same = useRef(true)
+  if (setup !== loaded.current) same.current = false
+  const held = same.current && (first.current === null || first.current === path)
   const kept = useRef<number | null>(null)
   if (kept.current === null) try { kept.current = Number(localStorage.getItem(KEPT_WIDTH)) || 0 } catch { kept.current = 0 }
   const items = useRef<Kept | null>(null)
@@ -173,6 +178,7 @@ function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string): Kept | 
         try {
           if (w) localStorage.setItem(KEPT_WIDTH, String(w))
           localStorage.setItem(KEPT_ITEMS, JSON.stringify(widths))
+          localStorage.setItem(KEPT_SETUP, setup)
         } catch { /* full */ }
       }, 2000)
     }
@@ -180,7 +186,7 @@ function useKeptWidth(bar: RefObject<HTMLElement | null>, path: string): Kept | 
     for (const c of [el, ...el.children]) ro.observe(c)
     save()
     return () => { clearTimeout(saving); ro.disconnect() }
-  }, [bar, path])
+  }, [bar, path, setup])
   return held ? items.current : null
 }
 
@@ -203,7 +209,9 @@ function withComing<T extends { key: string }>(shown: T[], kept: Kept | null, kn
 
 export function StatusBar() {
   const s = statusSubs.use(() => status_)
-  const { disabled, order, enabled, statusBar, statusBarMore } = usePrefs()
+  const { disabled, order, enabled, statusBar, statusBarMore, density, interfaceFont, snippets } = usePrefs()
+  // What the bar's width depends on but the file: a change lets go of the widths held for the setup before.
+  const setup = JSON.stringify([statusBar, statusBarMore, disabled, enabled, density, interfaceFont, snippets])
   const plugins = usePluginsVersion() // (a vault plugin's code arriving)
   const items = useMemo(() => statusItems(disabled, order), [disabled, order, enabled, plugins])
   const ambient = useMemo(() => ambientShown(disabled, order, statusBar).shown, [disabled, order, enabled, statusBar, plugins])
@@ -226,7 +234,7 @@ export function StatusBar() {
   const barRef = useRef<HTMLDivElement>(null), fitRef = useRef<HTMLDivElement>(null), trayRef = useRef<HTMLDivElement>(null)
   const inBar = useMemo(() => ambient.filter((x) => !statusBarMore.includes(x.key)), [ambient, statusBarMore])
   const over = useOverflow(barRef, fitRef, inBar.map((x) => x.key))
-  const keptItems = useKeptWidth(barRef, path)
+  const keptItems = useKeptWidth(barRef, path, setup)
   useDrops(barRef, !!(s && late))
   const inTray = ambient.filter((x) => statusBarMore.includes(x.key) || over.includes(x.key))
   const [tray, setTray] = useState(false)
@@ -304,7 +312,7 @@ export function StatusBar() {
         <cur.icon className="size-3.5" strokeWidth={2.25} />
       </button>
     ) : <span className="w-1 shrink-0" />}
-    <Steady reset={path}>
+    <Steady reset={`${path}\n${setup}`}>
       {late?.info ? late.info.map((x) => <span key={x}>{x}</span>)
         : late?.says ? item_("says", () => { const said = late.says!(body); return said && <span>{said}</span> })
         : counts && nb && s.mode === "read" ? <span>{n(counts.cells, "cell")}</span>

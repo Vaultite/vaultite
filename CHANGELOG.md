@@ -6,6 +6,7 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Applying a bundle with the app open draws it as a reload would: the status bar no longer keeps the last setup's width.
 - Bundles: the tab is laid out as Plugins is: Your bundles (built in, then yours) and Get bundles (the directory, with
   Import… for one it doesn't list), with the search beside them; with none of yours yet, one empty state offers Save
   current setup and Import…, and after yours a tile saves another.
