@@ -1,7 +1,7 @@
 // The Tabs panel's other devices (plugins/core/tabs). Two devices (browser contexts: a desktop one and a phone one with
 // an iPhone's user agent), each with the Tabs panel: what one has open shows under the other's tabs, named by its
 // browser, and not under its own (the phone's first tab is the vault's start page); a click there opens it on this device; a tab closed there goes from the other's list;
-// "Forget this device" takes it away. Writes sidebars.json (put back) and the devices' files: throwaway server only.
+// "Forget this device" takes it away; the Tabs heading's right-click hides and shows other devices' tabs. Writes sidebars.json (put back) and the devices' files: throwaway server only.
 //   node web/qa/devicetabs.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
 import path from "node:path"
@@ -62,6 +62,15 @@ try {
   await P.goto(`${B}/#view/tabs`)
   const after = await until(async () => { const x = await theirs(P); return x[0]?.rows.length === 1 ? x : null }, 8000)
   check("a closed tab goes from the other device's list", after?.[0]?.rows?.[0] === stem(notes[1]), after)
+
+  // Right-clicking the Tabs heading hides other devices' tabs, and shows them again.
+  const others = async (on) => {
+    await A.click("[data-tabs-panel] [data-heading=Tabs]", { button: "right" })
+    await A.click("text=Other devices' tabs")
+    return until(async () => (((await theirs(A)).length > 0) === on ? true : null), 8000)
+  }
+  check("the Tabs heading's menu hides other devices' tabs", (await others(false)) === true, await theirs(A))
+  check("and shows them again", (await others(true)) === true, await theirs(A))
 
   // Forgetting a device.
   await A.click("[data-device-tabs] [data-device] > div:first-child", { button: "right" })

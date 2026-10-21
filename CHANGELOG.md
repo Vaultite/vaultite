@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs
+  settings have it too.
+
 ## 0.6.3 (2026-10-20)
 
 A quieter first run with the Zen bundle, and steadier editing and Review.

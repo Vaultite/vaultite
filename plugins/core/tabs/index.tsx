@@ -1,14 +1,20 @@
 import { useEffect, useRef } from "react"
 import { Globe, Layers2, Monitor, Pin, Plus, Smartphone, X } from "lucide-react"
 import {
-  closeTab, cn, definePlugin, del, dragTab, fmtAgo, HeadingButton, isPopout, menuFor, newTab, notifyError, openFile, openView, panesOf, put,
-  rowMenu, selectClick, selectedAttr, selectTab, SidebarHeading, SidebarRow, tabMenuOf, TABS, tabsMenu, useDrag, useSelectable, useSelected,
+  closeTab, cn, definePlugin, del, dragTab, fmtAgo, HeadingButton, isPopout, menuFor, newTab, notifyError, openFile, openView, panesOf,
+  pluginSettings, put, rowMenu, selectClick, selectedAttr, selectTab, SidebarHeading, SidebarRow, tabMenuOf, TABS, tabsMenu, useDrag, useSelectable, useSelected,
   useTabLabels, useTabLayout, type SidebarCtx, type Store, type Tab, type TabGroup, type TabInfo,
 } from "@vaultite"
 import type { Device, DeviceTab } from "./types"
 
 // The open tabs as a list in the sidebar, pane by pane, so the tab bar can be off (`tabBar`); under them the other
 // devices' tabs (plugin.ts), to open here.
+
+const settings = pluginSettings<{ other_devices?: boolean }>("tabs")
+/** Other devices' tabs on or off, from a right-click on the heading or a device (the setting's sheet has it too). */
+const othersItem = (shown: boolean) => ({
+  label: "Other devices' tabs", checked: shown, run: () => { settings.set({ other_devices: !shown }).catch((e) => notifyError(e, "Couldn't change it")) },
+})
 
 
 function Row({ t, g, i, only }: { t: Tab; g: TabGroup; i: TabInfo; only: boolean }) {
@@ -97,8 +103,9 @@ const opened = (t: DeviceTab) => (t.to.startsWith("file:") ? openFile(t.to.slice
 /** The tabs the other devices have open, a device each (the latest first): a click opens one here. */
 function OtherDevices({ store }: { store: Store }) {
   const info = useTabLabels(store)
+  const shown = settings.use().other_devices !== false
   const list = (store.tabDevices ?? []).filter((d) => d.id !== DEVICE && d.tabs.length)
-  if (!list.length) return null
+  if (!shown || !list.length) return null
   return (
     <div className="mt-2 flex flex-col gap-px" data-keylist data-device-tabs>
       {list.map((d: Device) => {
@@ -106,7 +113,10 @@ function OtherDevices({ store }: { store: Store }) {
         return (
           <div key={d.id} className="flex flex-col gap-px" data-device={d.id}>
             <div className="mt-1 flex h-6 items-end gap-1.5 px-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground max-md:h-8 max-md:text-[13px]"
-              onContextMenu={menuFor(() => [{ label: "Forget this device", icon: X, run: () => { del(`tabs/devices/${d.id}`).catch((e) => notifyError(e, "Couldn't forget it")) } }])}>
+              onContextMenu={menuFor(() => [
+                { label: "Forget this device", icon: X, run: () => { del(`tabs/devices/${d.id}`).catch((e) => notifyError(e, "Couldn't forget it")) } },
+                othersItem(true),
+              ])}>
               <Icon className="mb-px size-3 shrink-0" strokeWidth={2} />
               <span className="min-w-0 truncate">{d.name}</span>
               <span className="shrink-0 font-normal text-tertiary">{fmtAgo(d.at)}</span>
@@ -124,9 +134,11 @@ function OtherDevices({ store }: { store: Store }) {
 }
 
 function TabsPanel({ store, open }: SidebarCtx) {
+  const shown = settings.use().other_devices !== false
   if (!open) return null
   return (
-    <div className="flex shrink-0 flex-col" data-tabs-panel>
+    // A right-click anywhere but a tab or a device (they have their own menus) switches other devices' tabs.
+    <div className="flex shrink-0 flex-col" data-tabs-panel onContextMenu={menuFor(() => [othersItem(shown)])}>
       <SidebarHeading title="Tabs" open={open}>
         <HeadingButton icon={Plus} label="New tab" onClick={() => newTab()} />
       </SidebarHeading>
