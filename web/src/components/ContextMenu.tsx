@@ -139,25 +139,37 @@ const held = new WeakSet<Event>()
  *  pickup), the phone taps and the lifting click is swallowed; a move or early lift calls it off. Returns a stop. */
 function watchHolds() {
   let timer = 0, from = { x: 0, y: 0 }, target: Element | null = null
+  const root = document.documentElement
   const stop = () => { clearTimeout(timer); timer = 0 }
+  // A hold taken: the page selects nothing till the finger lifts (index.css), since iOS's own selection begins just
+  // after it, on what's under the finger. What iOS selects anyway (it judges the text as the finger lands) is dropped.
+  const marked = () => root.hasAttribute("data-held")
+  const mark = (on: boolean) => { if (marked() !== on) root.toggleAttribute("data-held", on) }
+  const selecting = () => { const s = getSelection(); if (s && !s.isCollapsed && marked()) s.removeAllRanges() }
+  const lift = (e: Event) => { if (!("touches" in e && (e as TouchEvent).touches.length)) { stop(); mark(false) } }
   const down = (e: globalThis.PointerEvent) => {
     stop()
     const t = e.target
-    if (e.pointerType !== "touch" || !e.isPrimary || !(t instanceof Element) || ownHold(t)) return
+    if (e.pointerType !== "touch" || !e.isPrimary || !(t instanceof Element)) return
+    mark(false)
+    if (ownHold(t)) return
     from = { x: e.clientX, y: e.clientY }
     target = t
+    // A hold here is a menu: marked as the finger lands, when WebKit judges whether the text under it is selectable.
+    if (t.closest("[data-hold-menu]")) mark(true)
     timer = window.setTimeout(() => {
       timer = 0
       // What's under the finger now: the press may have begun on a picture of the screen (a tab growing out of its +,
       // a view transition: core/motion.ts), whose target is the page itself.
       const now = document.elementFromPoint(from.x, from.y)
       const at = now && now !== document.documentElement ? now : target
-      if (!at?.isConnected || ownHold(at)) return
+      if (!at?.isConnected || ownHold(at)) { mark(false); return }
       const ev = new globalThis.MouseEvent("contextmenu", { bubbles: true, cancelable: true, composed: true, view: window, clientX: from.x, clientY: from.y, button: 2, buttons: 2 })
       held.add(ev)
       at.dispatchEvent(ev)
       // A menu opened, or the finger picked something up (core/drag.ts): a tap, as iOS answers a hold.
-      if (!ev.defaultPrevented && !fingerHolding()) return
+      if (!ev.defaultPrevented && !fingerHolding()) { mark(false); return }
+      mark(true)
       haptic(fingerHolding() ? "medium" : "light")
       getSelection()?.removeAllRanges()
       const swallow = (c: Event) => { c.preventDefault(); c.stopPropagation() }
@@ -171,18 +183,26 @@ function watchHolds() {
   const opts = { capture: true, passive: true }
   addEventListener("pointerdown", down, opts)
   addEventListener("pointermove", move, opts)
-  addEventListener("pointerup", stop, opts)
+  addEventListener("pointerup", lift, opts)
+  // (a scroll or a drag took the pointer, but the finger is still down: the mark stays till touchend)
   addEventListener("pointercancel", stop, opts)
+  addEventListener("touchend", lift, opts)
+  addEventListener("touchcancel", lift, opts)
   addEventListener("scroll", stop, opts)
   addEventListener("contextmenu", native, { capture: true })
+  document.addEventListener("selectionchange", selecting)
   return () => {
     stop()
+    mark(false)
     removeEventListener("pointerdown", down, opts)
     removeEventListener("pointermove", move, opts)
-    removeEventListener("pointerup", stop, opts)
+    removeEventListener("pointerup", lift, opts)
     removeEventListener("pointercancel", stop, opts)
+    removeEventListener("touchend", lift, opts)
+    removeEventListener("touchcancel", lift, opts)
     removeEventListener("scroll", stop, opts)
     removeEventListener("contextmenu", native, { capture: true })
+    document.removeEventListener("selectionchange", selecting)
   }
 }
 /** For a … button: the menu under it. */

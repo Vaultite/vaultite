@@ -1,8 +1,9 @@
 // A finger held still is the right-click on touch (components/ContextMenu.tsx, watchHolds), on a phone-sized page with
-// touch: held on a blank tab's button its menu opens (once) and lifting the finger doesn't press the button; held and
-// moved (a scroll) or lifted early, nothing; held on a note's text, no menu (the system's selection stays); held on a
-// tab card in the tab list, its menu (and the card is picked up). Chrome's touch emulation, not an iPhone:
-// WebKit's own hold (selection, a link's preview) isn't covered. WRITES .vaultite/newtab.json: throwaway only.
+// touch: held on a blank tab's button its menu opens (once), nothing is selected till the finger lifts, and lifting it
+// doesn't press the button; held and moved (a scroll) or lifted early, nothing; held on a note's text, no menu (the
+// system's selection stays); held on a tab card in the tab list, its menu (and the card is picked up). Chrome's touch
+// emulation, not an iPhone: WebKit's own hold (selection, a link's preview) isn't covered.
+// WRITES .vaultite/newtab.json: throwaway only.
 //   node web/qa/hold.mjs <base url> <vault path> [out dir]
 import { mkdirSync, rmSync } from "node:fs"
 import path from "node:path"
@@ -14,7 +15,9 @@ rmSync(path.join(VAULT, ".vaultite/newtab.json"), { force: true })
 try {
   const page = watch(await browser.newPage({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true }))
   const { touch } = await fingers(page)
-  /** A finger on the element's middle for `ms`, moved `dy` px on the way, then lifted. */
+  /** A finger on the element's middle for `ms`, moved `dy` px on the way, then lifted. `marked`: whether the page was
+   *  kept from selecting (data-held) before the lift and after, and whether a selection made then (as iOS's) stayed. */
+  let marked = null
   const hold = async (sel, ms = 700, dy = 0) => {
     // (a box still for half a second, its point on it: the new tab's sections fill in after it opens, moving rows down)
     let b, still = 0
@@ -28,8 +31,15 @@ try {
     await touch("touchStart", x, y)
     if (dy) { await wait(100); await touch("touchMove", x, y + dy) }
     await wait(ms)
+    marked = await page.evaluate(async (s) => {
+      const el = [...document.querySelectorAll(s)].find((e) => /\w{4}/.test(e.textContent)), sel = getSelection()
+      if (el) sel.selectAllChildren(el)
+      await new Promise((r) => setTimeout(r, 50))
+      return { held: document.documentElement.hasAttribute("data-held"), selected: !sel.isCollapsed }
+    }, sel.split(" >> ")[0])
     await touch("touchEnd", x, y)
     await wait(300)
+    marked.after = await page.evaluate(() => { getSelection().removeAllRanges(); return document.documentElement.hasAttribute("data-held") })
   }
   const menus = () => page.locator("[role=menu]").count()
   const closeMenus = async () => { for (let i = 0; i < 3 && await menus(); i++) { await page.keyboard.press("Escape"); await wait(150) } }
@@ -45,6 +55,8 @@ try {
   await hold("[data-newtab-action='file:new']")
   check("held on a button: its menu opens, once", await menus() === 1 && await page.locator("[role=menu] >> text=Move down").count() === 1, await menus())
   check("held on a button: the menu is the hold's (one contextmenu event, sent by the app)", JSON.stringify(await page.evaluate(() => window.__menus)) === "[false]", await page.evaluate(() => window.__menus))
+  check("held on a button: nothing is selected while it's held", marked.held && !marked.selected, marked)
+  check("held on a button: selecting again once the finger lifts", !marked.after, marked)
   await page.screenshot({ path: path.join(OUT, "held-button.png") })
   check("held on a button: lifting the finger doesn't press it (no note made)", await page.locator("[data-newtab-action='file:new']").count() === 1 &&
     (await page.getAttribute("[data-tabs-button]", "aria-label")) === tabs0)
@@ -69,6 +81,7 @@ try {
   await text.first().waitFor({ timeout: 10000 })
   await hold("main .cm-content .cm-line >> text=/\\w{4}/")
   check("held on a note's text: no menu", await menus() === 0, await menus())
+  check("held on a note's text: its text stays selectable", !marked.held && marked.selected && !marked.after, marked)
 
   // The tab list: a card held is picked up to move it, not a menu.
   await page.click("[data-tabs-button]")

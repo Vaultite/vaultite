@@ -193,12 +193,13 @@
   /* iOS: holding one of the app's own links (a file's row: #file/...) is a right-click (ContextMenu.tsx, watchHolds),
      not the system's link preview. Web links keep theirs. */
   a[href^="#"] { -webkit-touch-callout: none; }
-  /* Touch: a finger held on the app's own controls (the drawers, menus, the header and bar, the file tree's rows, the
-     sheet's bar) opens a menu or picks something up (watchHolds, core/drag.ts), never selects their words: iOS starts
-     its selection just after a hold opens a menu, on whatever is under the finger then (the menu's items). Text stays
-     selectable where it's content: a note, a field, a terminal. */
+  /* A finger holding for a menu or a pickup (ContextMenu.tsx, watchHolds): nothing is selected or called out till it
+     lifts, whatever it holds. */
+  html[data-held] { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+  /* Touch: the app's own controls (the drawers, menus, the header and bar, the sheet's bar) aren't text, so a finger
+     held on one that has no menu doesn't select their words either. Content stays selectable: a note, a field. */
   @media (pointer: coarse) {
-    :is([data-phone-drawer], [data-phone-header], [data-phone-bar], [role="menu"], [data-tree-path], [data-sheet-bar]) {
+    :is([data-phone-drawer], [data-phone-header], [data-phone-bar], [role="menu"], [data-sheet-bar]) {
       -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
     }
     [data-phone-drawer] :is(input, textarea, [contenteditable="true"], [contenteditable=""]) { -webkit-user-select: text; user-select: text; }

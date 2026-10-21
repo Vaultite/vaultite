@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Phones: holding something for its menu (a tab, a recent file, a property, a block in a note) no longer selects its
+  text or what's around it.
 - Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs
   settings have it too.
 - Mac: a sidebar without its rail (Zen) slides in carrying the window's traffic lights and its toggle, set in its top
