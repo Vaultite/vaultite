@@ -47,7 +47,7 @@ export function Faces({ path, big, fit }: { path: string; big?: boolean; fit?: b
   const agents = liveAgents().sort((a, b) => Number(b.path === path) - Number(a.path === path))
   const max = Math.min(FACES, room)
   const shown = agents.length > max ? agents.slice(0, max - 1) : agents, rest = agents.slice(shown.length)
-  const where = (a: Agent) => `${a.name}: ${STATUS[a.state] ?? a.state}${a.path ? (a.path === path ? ", here" : `, in ${fileOf(a.path)}`) : ""}`
+  const where = (a: Agent) => `${a.name}: ${a.asks ? "needs you" : STATUS[a.state] ?? a.state}${a.path ? (a.path === path ? ", here" : `, in ${fileOf(a.path)}`) : ""}`
   const size = big ? "-my-1.5 h-11 min-w-11 md:my-0 md:h-8 md:min-w-8" : "h-7 min-w-7"
   const overlap = big ? "-ml-[26px] md:-ml-[14px]" : "-ml-[13px]"
   return (

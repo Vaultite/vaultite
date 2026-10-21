@@ -31,9 +31,9 @@ export type Moment = { seq: number; t: number; kind: "ask" | "point" | "edit" | 
  *  drawing, an element (`find`: its id or text) or a point of it (x, y). */
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 /** reading: it was handed what the user did; thinking: something to answer; seen: it let that pass, until its next change;
- *  starting: its session boots (asks to it wait for its first `next`). model, effort: what its session runs. */
+ *  starting: its session boots (asks wait for its first `next`); model, effort: what it runs; asks: a permission it waits on. */
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
-  model?: string; effort?: string }
+  model?: string; effort?: string; asks?: { event: string; text: string } }
 /** What an agent leaves in the app: words by its cursor (say, gone after a while), a margin comment, a suggested change,
  *  a highlight (gone after a while). `anchor`: a comment's line as it read, to find it again without `find`. */
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
@@ -712,7 +712,7 @@ function ended(name: string, id?: string) {
   if (id) dead.add(id)
   const wait = waiters.get(k)
   if (wait) { waiters.delete(k); wait([]) }
-  setAgent(name, { state: "away" })
+  setAgent(name, { state: "away", asks: undefined })
 }
 plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
   const s = sessions().find((x) => x.id === ev.id)
@@ -724,6 +724,21 @@ plugin.onEvent({ types: ["terminal.agent-missing"] }, (ev) => {
   if (!s) return
   try { fs.rmSync(sessionFile(s.name)) } catch { /* none */ }
   ended(s.name, s.id)
+})
+
+// A permission an agent's session asks (Claude Code's folder trust before it starts, a tool's) shows by its cursor with
+// Approve and Deny, until its terminal no longer waits (answered there, in the inbox or on the phone).
+plugin.onEvent({ types: ["inbox.event"] }, (ev) => {
+  const s = ev.kind === "waiting" && ev.ask === "permission" ? sessions().find((x) => x.id === ev.terminal) : undefined
+  if (!s) return
+  setAgent(s.name, { asks: { event: str(ev.id), text: str(ev.body) || str(ev.title) } })
+  void (async () => {
+    while (agents.get(key(s.name))?.asks?.event === ev.id) {
+      await new Promise((r) => setTimeout(r, 2000))
+      if (agents.get(key(s.name))?.asks?.event !== ev.id) return
+      if (!(await plugin.ask<boolean>("terminal:waits", false, s.id))) setAgent(s.name, { asks: undefined })
+    }
+  })()
 })
 
 // A session whose turn ended stops watching: nudged back when it hasn't waited on moments for a while. An agent quiet

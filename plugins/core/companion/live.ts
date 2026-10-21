@@ -6,7 +6,7 @@ import type { Hunk } from "./text.ts"
 export type Mode = "off" | "quiet" | "notice" | "pair"
 export type Target = { path?: string; line?: number; find?: string; x?: number; y?: number }
 export type Agent = Target & { name: string; tint: string; state: "watching" | "reading" | "thinking" | "writing" | "starting" | "away"; t: number; seen?: boolean
-  model?: string; effort?: string }
+  model?: string; effort?: string; asks?: { event: string; text: string } }
 export type Note = Target & { id: string; kind: "say" | "comment" | "suggestion" | "highlight"; agent: string; t: number
   text?: string; replace?: string; replies?: { by: "user" | "agent"; text: string }[]; pinned?: string
   /** A comment the user dismissed, when (companion.history's). */
@@ -41,6 +41,12 @@ function expect(name: string, a: Partial<Agent>, ms: number) {
   ahead.set(name, { a: { ...a, seen: undefined, t: Date.now() }, timer: setTimeout(() => { ahead.delete(name); showAgents() }, ms) })
   showAgents()
 }
+/** Agent `name`'s question answered here: it goes at once. Returns the undo, for an answer that failed. */
+export function answered(name: string) {
+  expect(name, { asks: undefined }, 5000)
+  return () => { clearTimeout(ahead.get(name)?.timer); ahead.delete(name); showAgents() }
+}
+
 /** The user is writing an ask to @name on this line: its cursor comes over to read along, when it's free. */
 export function listen(name: string, path: string, line: number) {
   const a = mentionAgent(name), was = a && told.find((x) => x.name === a.name)

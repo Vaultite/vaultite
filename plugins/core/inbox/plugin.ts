@@ -250,7 +250,7 @@ function dropEvent(source: string, key: string) {
 function told(e: InboxEvent) {
   try {
     plugin.emit("inbox.event", { id: e.id, kind: e.kind, source: e.source, title: e.title, ...(e.terminal ? { terminal: e.terminal } : {}),
-      ...(e.session ? { session: e.session } : {}), ...(e.link ? { link: e.link } : {}) })
+      ...(e.session ? { session: e.session } : {}), ...(e.link ? { link: e.link } : {}), ...(e.ask ? { ask: e.ask, body: e.body ?? "" } : {}) })
   } catch { /* not loaded by an App (a test calling it alone) */ }
 }
 

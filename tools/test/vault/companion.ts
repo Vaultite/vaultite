@@ -393,8 +393,20 @@ export default async ($: VaultTest) => {
     ;[, got] = await api("POST", "ops/companion.next", { timeout: 0 })
     check("companion: and only once a minute", !got.handover, got)
     check("companion: Start fresh needs a running session", (await api("POST", "ops/companion.fresh", {}))[0] === 404)
-    // Its terminal ended (closed, killed): its cursor goes, the companion's too.
+    // A permission its session asks (Claude Code's folder trust, a tool's) shows by its cursor, until its terminal no
+    // longer waits (here none runs, so at the first look).
     const t = await import("../../../plugins/core/terminal/plugin.ts")
+    const ib = await import("../../../plugins/core/inbox/plugin.ts")
+    ib.plugin.emit("inbox.event", { id: "e-trust", kind: "waiting", source: "claude", title: "Claude Code is waiting for you", terminal: "claude-test0001",
+      ask: "permission", body: "Trust this folder? It can read, edit and run files in it" })
+    let [, s1] = await api("POST", "ops/companion.status", {})
+    const asks = s1.agents.find((a: Any) => a.name === "Claude")?.asks
+    check("companion: a permission its session asks is on its cursor", asks?.event === "e-trust" && asks.text.startsWith("Trust this folder?"), s1.agents)
+    ib.plugin.emit("inbox.event", { id: "e-other", kind: "waiting", source: "claude", title: "x", terminal: "claude-elsewhere", ask: "permission", body: "x" })
+    await $.sleep(2300)
+    ;[, s1] = await api("POST", "ops/companion.status", {})
+    check("companion: another terminal's isn't, and it goes once its terminal doesn't wait", !s1.agents.some((a: Any) => a.asks), s1.agents)
+    // Its terminal ended (closed, killed): its cursor goes, the companion's too.
     await api("POST", "ops/companion.next", { timeout: 0 })
     t.plugin.emit("terminal.ended", { id: "claude-test0001", code: 0, signal: 1 })
     let [, s2] = await api("POST", "ops/companion.status", {})

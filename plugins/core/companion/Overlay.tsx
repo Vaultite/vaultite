@@ -3,10 +3,10 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState, useSyncExternalStore } from "react"
 import { createPortal } from "react-dom"
 import { Check, Ellipsis, Pin, X } from "lucide-react"
-import { canvasOf, canvasShown, capitalize, cn, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, openFile, seenArea, snippet } from "@vaultite"
+import { canvasOf, canvasShown, capitalize, cn, dismissNotice, fmtTime, haptic, keyHint, Markdown, menuBelow, menuFor, notify, notifyError, op, openFile, seenArea, snippet } from "@vaultite"
 import type { EditorView } from "@codemirror/view"
 import { pointFor } from "./canvas"
-import { accept, type Agent, answer, getState, type Target, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
+import { accept, type Agent, answer, answered, getState, type Target, type Note, onBump, pick, pin, pointAt, sendMoment, subscribe, tintOf, typing, viewOf, views } from "./live"
 import { agentMenu } from "./session"
 import { nearest } from "./text"
 import { showThread, useInMargin } from "./threads"
@@ -211,13 +211,21 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
   const closeFan = (focusFlag = false) => { clearTimeout(shut.current); if (focusFlag) { setFan(false); flagRef.current?.focus() } else shut.current = setTimeout(() => setFan(false), 350) }
   useEffect(() => () => clearTimeout(shut.current), [])
   useEffect(() => { if (!many) setFan(false) }, [many])
+  // (its question is here, with its buttons: the inbox's toast of it, now or arriving just after, would cover them)
+  const asked = a.asks?.event
+  useEffect(() => {
+    if (!asked) return
+    dismissNotice(`inbox-${asked}`)
+    const t = setTimeout(() => dismissNotice(`inbox-${asked}`), 1500)
+    return () => clearTimeout(t)
+  }, [asked])
   // (what opens beside it opens toward the room: its flag needs a little, its words more)
   const right = at.x > innerWidth - 320 && at.x > innerWidth / 2, flagRight = at.x > innerWidth - 140
   // (quiet when it's only watching: the arrow, its name once it does something; a tick when it let a moment pass)
   const idle = a.state === "watching" && !said && typing?.agent !== a.name && Date.now() - a.t > 4000
   const seen = a.state === "watching" && !!a.seen
   // (its name shows as it moves or acts, then fades to the bare arrow, as in a shared doc; hovered, again)
-  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || typing?.agent === a.name || hover || open || !!drag || fan
+  const flag = Date.now() - a.t < 3000 || a.state === "thinking" || a.state === "writing" || a.state === "starting" || !!said || !!a.asks || typing?.agent === a.name || hover || open || !!drag || fan
   const low = !drag && !!spot.low, tag = flag && (!under || hover || open)
   useEffect(() => {
     if (!open && !fan) return
@@ -225,7 +233,7 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
     addEventListener("pointerdown", down, true)
     return () => removeEventListener("pointerdown", down, true)
   }, [open, fan, setOpen])
-  if (spot.drawn && !said) return null
+  if (spot.drawn && !said && !a.asks) return null
   const enter = (e: React.PointerEvent) => {
     if (e.pointerType === "touch") return
     setHover(true)
@@ -295,15 +303,31 @@ function Cursor({ a, spot, said, others, under, shift, open, setOpen, pop }: { a
           flagRight ? "right-[-6px]" : "left-[13px]", low ? "top-[-20px]" : "top-[18px]", tag || fan ? "pointer-events-auto cursor-pointer" : "opacity-0 focus-visible:opacity-100")} style={{ background: tint }}>
         {a.name}
         {many && <span className="font-medium opacity-85">+{others.length}</span>}
-        {(hover || open || a.state === "starting") && !many && <span className="font-medium opacity-85">{STATUS[a.state]}</span>}
-        {(a.state === "thinking" || a.state === "reading" || a.state === "starting") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
+        {(hover || open || a.state === "starting" || a.asks) && !many && <span className="font-medium opacity-85">{a.asks ? "needs you" : STATUS[a.state]}</span>}
+        {!a.asks && (a.state === "thinking" || a.state === "reading" || a.state === "starting") && <span className="companion-dots" aria-label={a.state}><i /><i /><i /></span>}
         {seen && <Check key={a.t} className="companion-seen size-3" strokeWidth={3} aria-label="seen" />}
       </button>
       {fan && many && !open && <Fan agents={[a, ...others]} up={low} right={flagRight} keep={keepFan} close={closeFan} pop={(name) => { setFan(false); pop(name) }} />}
       {/* (kept inside the window) */}
       {open && <Popover a={a} up={low || at.y > innerHeight - 360} left={Math.max(4, Math.min(innerWidth - 284, right ? at.x + 23 - 280 : at.x - 1)) - (at.x - 3)} close={() => setOpen(false)} />}
       </>}
-      {said && !open && !drag && (
+      {a.asks && !open && !drag ? (
+        <div key={a.asks.event} data-companion-ask={a.asks.event} role="group" aria-label={`${a.name} asks`}
+          className={cn("companion-pop pointer-events-auto absolute flex w-max flex-col gap-1.5 rounded-[12px] border border-border/60 bg-background px-3 py-2 text-[13.5px] leading-snug text-foreground shadow-lg",
+            right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")}
+          style={{ maxWidth: Math.max(200, Math.min(300, right ? at.x - 30 : innerWidth - at.x - 34)), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}>
+          <span>{a.asks.text}</span>
+          <span className="flex justify-end gap-1">
+            {(["deny", "approve"] as const).map((v) => (
+              <button key={v} type="button" data-gate={v} className={cn("cursor-pointer rounded-[7px] px-2.5 py-1 text-[12.5px] font-medium max-sm:py-1.5",
+                v === "approve" ? "text-white hover:brightness-110" : "text-muted-foreground hover:bg-foreground/[0.07] hover:text-foreground")}
+                style={v === "approve" ? { background: tint } : undefined}
+                onClick={() => { haptic("medium"); const undo = answered(a.name); op("inbox.answer", { id: a.asks!.event, answer: v }).catch((e) => { undo(); notifyError(e, "Couldn't answer it") }) }}>
+                {v === "approve" ? "Approve" : "Deny"}</button>
+            ))}
+          </span>
+        </div>
+      ) : said && !open && !drag && (
         <div key={said.id} className={cn("companion-pop pointer-events-auto absolute flex w-max cursor-pointer items-start gap-1 rounded-[12px] border border-border/60 bg-background py-1.5 pr-1 pl-3 text-[13.5px] leading-snug text-foreground shadow-lg",
           right ? "right-[22px] rounded-tr-[4px]" : "left-[24px] rounded-tl-[4px]", low ? "bottom-[22px]" : "bottom-[2px]")} style={{ maxWidth: Math.max(160, Math.min(300, right ? at.x - 30 : innerWidth - at.x - 34)), boxShadow: `0 0 0 1.5px color-mix(in srgb, ${tint} 45%, transparent), 0 8px 24px rgba(0,0,0,.12)` }}
           onClick={() => answer(said.id, "dismiss")}>
