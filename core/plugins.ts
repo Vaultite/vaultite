@@ -12,12 +12,13 @@ import { fileURLToPath, pathToFileURL } from "node:url"
 import { type RawData, WebSocket } from "ws"
 import { type BlockDecls, blocksDoc, declsOf, drawsOf, settingsDoc, settingsOf, valueProblem } from "./blocks.ts"
 import type { EventFilter, VaultEvent } from "./events.ts"
-import { entryOf, type Op, type OpCtx, type OpDid, type OpEntry, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
+import { entryOf, type Op, type OpCtx, type OpDid, type OpEntry, type OpImage, type OpKind, pluginOpsDoc, type Who } from "./ops.ts"
 import { type Job, type When, whenProblems } from "./schedule.ts"
 import { ownerRefusal } from "./owner.ts"
 export { CONNECT_HEADER, fromInternet } from "./owner.ts"
 export { outliving, runtimeDir } from "./runtime.ts"
-import { desktopCall } from "./desktopapp.ts"
+import { desktopCall, inDesktop, NO_DESKTOP } from "./desktopapp.ts"
+export { inDesktop } from "./desktopapp.ts"
 import { pinFile, pinKind, withPinFile } from "./pins.ts"
 import type { ServerError } from "./serverlog.ts"
 import { noteSource } from "./sources.ts"
@@ -270,7 +271,7 @@ export type OpsHost = {
   catalog: () => OpEntry[]
   /** Run an op as `who`, holding the vault for a write (as POST /api/ops does). Always pass `http` (req.http) when
    *  there is one, or anyone who reached your route could do what only the owner may. */
-  call: (name: string, params: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage; input?: Readable }) => Promise<{ entry: OpEntry; params: Item; result: unknown; text: string }>
+  call: (name: string, params: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage; input?: Readable }) => Promise<{ entry: OpEntry; params: Item; result: unknown; text: string; image?: OpImage | null }>
   /** A route of the HTTP API in-process as `who` (held for a write, synced for a read): its body; a 4xx or 5xx throws an
    *  OpError with its message. `report`, `http`: as call's. */
   api: (method: string, route: string, body?: unknown, who?: Who, opts?: { report?: string; http?: IncomingMessage }) => Promise<unknown>
@@ -644,9 +645,13 @@ export class Plugin {
     return log
   }
 
-  /** Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts); fails when this server isn't the
-   *  desktop app's. */
-  desktop(name: string, ...args: unknown[]) { return desktopCall(name, args) }
+  /** Ask the desktop app's browser engine (an `agent:` call, electron/browser/agent.ts): this server's when it's the
+   *  desktop app's, else one on another machine serving this vault (`machines:desktop`); fails when there's none. */
+  desktop(name: string, ...args: unknown[]): Promise<unknown> {
+    if (inDesktop()) return desktopCall(name, args)
+    const there = this.service("machines:desktop")
+    return typeof there === "function" ? Promise.resolve().then(() => there(name, args)) : Promise.reject(new Error(NO_DESKTOP))
+  }
 
   /** Its folder on this machine for this vault, <LOCAL>/<id>/<vault key>/ (disposable, never synced): made unless `make`
    *  is false, with vault.txt naming the vault. */

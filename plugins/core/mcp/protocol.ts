@@ -7,8 +7,8 @@ import { cardData, contents, linked, listed, type McpApp, takesUi, UI_EXTENSION,
  *  what a note it writes says as its source). */
 export type Client = Omit<Who, "client"> & { client?: string | null }
 
-/** An op's answer: its text, and its result (what a card draws). */
-export type OpOut = { text: string; result?: unknown }
+/** An op's answer: its text, its result (what a card draws), and the picture it is (a screenshot). */
+export type OpOut = { text: string; result?: unknown; image?: { data: string; mimeType: string } | null }
 /** What a tool runs with: who it's for, and how to run an operation (by id: its answer as text, or with its result). */
 export type ToolCtx = { client: Client; op: (id: string, params: Record<string, unknown>) => Promise<string | OpOut> }
 
@@ -145,7 +145,8 @@ export async function callTool(tool: Tool, args: Record<string, unknown>, ctx: T
     const out = await tool.run(args, ctx)
     const text = typeof out === "string" ? out : out.text
     const data = tool.app && app !== undefined && typeof out !== "string" ? await cardData(tool.app, { tool: tool.name, args, result: out.result, text, app }) : undefined
-    return { content: [{ type: "text", text }], ...(data ? { structuredContent: data } : {}), isError: false }
+    const image = typeof out !== "string" && out.image ? [{ type: "image", data: out.image.data, mimeType: out.image.mimeType }] : []
+    return { content: [{ type: "text", text }, ...image], ...(data ? { structuredContent: data } : {}), isError: false }
   } catch (e) {
     const known = e instanceof ToolError || e instanceof OpError
     if (!known) console.error(`mcp: ${tool.name}:`, e)

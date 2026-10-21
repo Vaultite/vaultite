@@ -216,6 +216,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `GridEdit`: What changes a run of blocks in the file, each block by its index in the run (found where it is now).
 - `Group({ children })`: Inset grouped list, like iOS Settings (detail sheets).
 - `grouped(groups)`: A menu made of groups, a line between each two (empty groups left out): the file menus' one shape.
+- `groupTab(to, name)`: Put the tab showing `to` (the one on screen in its pane, as a tab just opened is) in the tab group named `name`: an agent's tabs, "<agent>/<task>".
 - `haptic(weight?)`
 - `Haptic`: iOS's kinds: impacts (light: a menu, a swipe past its mark, a tick; medium: picked up, put down, a row's action done), `selection` (an item passing another, a choice ticked), notifications…
 - `hashOf(to)`: The hash for a tab's target: "file/Notes%2FIdea.md", "view/terminal%2Fabc", "new".
@@ -656,6 +657,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `hookCommand(route, query, more?)`: A shell command that posts its stdin (a hook's JSON) to `route` here; `more` is appended to the query as the shell expands it ("&prev=$prev").
 - `hostOps(vault, host)`: The App gives its vault's plugins operations and events (core/app.ts).
 - `HTTPError`
+- `inDesktop()`: Whether this server runs in the desktop app (its browser can be asked).
 - `isColor(c)`
 - `isTextKind(k)`: Kinds whose text the app reads (and writes); "other" is tried as text too.
 - `kindOf(path)`

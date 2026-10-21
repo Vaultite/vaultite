@@ -12,7 +12,9 @@ export type EnginePage = { id: number; wc: WebContents; profile: string; win: Br
   /** It's on screen now, in a tab or its player. */
   visible: () => boolean
   /** Into a window of its own to watch it in (`fullScreen`: on a Space of its own), or back in its tab. */
-  player: (on: boolean, fullScreen: boolean) => void }
+  player: (on: boolean, fullScreen: boolean) => void
+  /** The app's tab it's for ("": none). */
+  tab: () => string }
 type PageSetup = (p: EnginePage) => void
 
 const sessionSetups: SessionSetup[] = []

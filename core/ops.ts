@@ -95,10 +95,14 @@ export type Op = {
   did?: (params: Any) => OpDid
   /** Its text is printed as is when piped, no newline added (a secret going into another command). */
   exact?: boolean
+  /** A picture the answer is (a screenshot), base64: sent beside its text to a client that shows pictures (MCP). */
+  image?: (result: Any) => OpImage | null
   /** It also takes bytes of any size (what they are: "the file"), as `ctx.input`: the raw body of POST /api/ops/<id>
    *  (any type but JSON; the parameters then in the query), or an in-process caller's (call's `input`). */
   input?: string
 }
+
+export type OpImage = { data: string; mimeType: string }
 
 /** A call as Activity lists it: what kind of change (default request, delete for a destructive op), a sentence in the
  *  past tense, and the files it was about. `by`: the name an agent calling did it under (Companion's Ada), for its writes. */
@@ -142,6 +146,8 @@ export type OpEntry = {
   exact?: boolean
   /** Op.input: the bytes it takes as a raw body. */
   input?: string
+  /** Op.image: its answer comes with a picture (`?as=answer`). */
+  image?: true
   action: OpAction | null
 }
 
@@ -193,7 +199,7 @@ export const toolName = (op: Op): string | null => (op.mcp ? (typeof op.mcp === 
 export function entryOf(op: Op, plugin: string | null): OpEntry {
   return { id: op.id, plugin, summary: op.summary, help: op.help ?? "", kind: op.kind, params: paramsSchema(op), args: op.args ?? [],
     cli: op.cli ?? null, mcp: toolName(op), result: op.result ?? null, owner: op.owner ?? null, action: op.action ?? null, ...(op.exact ? { exact: true } : {}),
-    ...(op.input ? { input: op.input } : {}) }
+    ...(op.input ? { input: op.input } : {}), ...(op.image ? { image: true as const } : {}) }
 }
 
 // ---------- checking and converting parameters ----------

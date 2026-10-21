@@ -5,7 +5,7 @@ import crypto from "node:crypto"
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
-import { API_VERSION, APP_VERSION, bullets, HTTPError, LOADED, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
+import { API_VERSION, APP_VERSION, bullets, HTTPError, inDesktop, LOADED, MACHINE_CLIENT, Plugin, reply, ROOT, section, Text } from "../../../core/plugins.ts"
 import { dialIn, type DialEntry } from "./dial.ts"
 import type { Item } from "../../../core/vault.ts"
 
@@ -15,6 +15,8 @@ export type Machine = {
   id: string; label: string; url: string; online: boolean; self: boolean
   dial?: boolean; readOnly?: boolean; via?: string; home?: string
   host?: string; platform?: string; version?: string; commit?: string; plugins?: string[]; vault?: string; error?: string
+  /** Its server is a desktop app's: its browser answers agents (plugin.desktop). */
+  desktop?: boolean
 }
 
 const INSTANCE = crypto.randomUUID()
@@ -68,7 +70,7 @@ function vaultId(): string {
 
 async function self() {
   return { instance: INSTANCE, host: HOST, platform: process.platform, version: APP_VERSION, api: API_VERSION,
-    commit: await commit, plugins: enabledPlugins(), vault: vaultId() }
+    commit: await commit, plugins: enabledPlugins(), vault: vaultId(), desktop: inDesktop() }
 }
 
 
@@ -95,7 +97,8 @@ async function probe(m: DialEntry, own: string): Promise<Machine> {
   }
   if (isOwn(m.url, own)) {
     const s = await self()
-    return { ...m, online: true, self: true, host: s.host, platform: s.platform, version: s.version, commit: s.commit || undefined, plugins: s.plugins, vault: s.vault || undefined }
+    return { ...m, online: true, self: true, host: s.host, platform: s.platform, version: s.version, commit: s.commit || undefined, plugins: s.plugins, vault: s.vault || undefined,
+      desktop: s.desktop }
   }
   try {
     const r = await fetch(`${m.url}/api/machines/self`, { headers: MACHINE_CLIENT, signal: AbortSignal.timeout(3000) })
@@ -103,7 +106,8 @@ async function probe(m: DialEntry, own: string): Promise<Machine> {
     const s = await r.json() as Item
     if (s.instance === INSTANCE) knownOwn.add(m.url)
     return { ...m, online: true, self: s.instance === INSTANCE, host: s.host, platform: s.platform, version: s.version,
-      commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined }
+      commit: s.commit || undefined, plugins: Array.isArray(s.plugins) ? s.plugins : [], vault: typeof s.vault === "string" && s.vault ? s.vault : undefined,
+      desktop: s.desktop === true }
   } catch (e) {
     return { ...m, online: false, self: false, error: (e as Error).name === "TimeoutError" ? "no answer" : "unreachable" }
   }
@@ -140,6 +144,40 @@ plugin.provide("machines:ids", () => listed().map((m) => m.id)) // (the first ru
 
 plugin.route("GET", "machines", () => machines())
 plugin.route("GET", "machines/self", () => self())
+
+// --- the browser of a desktop app on another machine (plugin.desktop on a server that isn't one: the always-on one
+// driving the Mac's browser for its agents)
+
+/** Ask the browser engine of the first listed machine whose desktop app serves this vault (`plugin.desktop`). */
+async function desktopThere(name: string, args: unknown[]) {
+  const own = vaultId(), all = await machines()
+  const m = all.find((x) => !x.self && !x.via && x.online && x.desktop && (!own || x.vault === own))
+  if (!m) {
+    const others = all.filter((x) => !x.self && !x.via)
+    const why = others.map((x) => `${x.label} ${!x.online ? `(${x.error ?? "offline"})` : own && x.vault !== own ? "(another vault)" : "(no desktop app)"}`)
+    throw new Error(`the browser is in Vaultite's desktop app, and no machine has one open with this vault: open it on a Mac${why.length ? ` (${why.join(", ")})` : " listed in Machines"}`)
+  }
+  let r: Response
+  try {
+    r = await fetch(`${m.url}/api/machines/desktop`, { method: "POST", headers: { ...MACHINE_CLIENT, "Content-Type": "application/json" },
+      body: JSON.stringify({ name, args }), signal: AbortSignal.timeout(100_000) })
+  } catch { throw new Error(`${m.label}'s desktop app doesn't answer`) }
+  const answer = await r.json().catch(() => ({})) as Item
+  if (!r.ok) throw new Error(`${String(answer.error || `${m.label} answered ${r.status}`)} (on ${m.label})`)
+  return answer.value
+}
+/** Ask the browser engine of another machine's desktop app with this vault open: what plugin.desktop does off one. */
+plugin.provide("machines:desktop", desktopThere)
+
+plugin.route("POST", "machines/desktop", async (req) => {
+  await plugin.ownerOnly(req, "The desktop app's browser")
+  // (only this server's own engine: never passed on again)
+  if (!inDesktop()) throw new HTTPError(409, "this machine's server isn't a desktop app's")
+  const name = String(req.body?.name ?? "")
+  if (!/^agent:[a-z-]+$/.test(name)) throw new HTTPError(400, "only the browser's agent calls")
+  try { return { value: (await plugin.desktop(name, ...(Array.isArray(req.body.args) ? req.body.args : []))) ?? null } }
+  catch (e) { throw new HTTPError(409, (e as Error).message) }
+}, { lock: false })
 
 const FS: Record<string, string> = { "fs/list": "ls", "fs/read": "read", "fs/recent": "recent" }
 

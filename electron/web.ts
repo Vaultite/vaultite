@@ -249,7 +249,7 @@ function make(win: BrowserWindow, url: string, profile: string, tab: string): Pa
   const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null }
   pages.set(p.id, p)
   const wc = view.webContents
-  pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible(),
+  pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible(), tab: () => p.tab,
     player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) } })
 
   // Only to the web: another app's link (zoommtg://, slack://, mailto:) goes to that app, as a browser does.

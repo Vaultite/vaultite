@@ -1,5 +1,5 @@
 // The desktop app's main process, asked from its server (forked with VAULTITE_DESKTOP=1, an IPC channel between them):
-// the browser engine's agent calls (electron/browser/agent.ts). Elsewhere (the M1's server, a browser) there's none.
+// the browser engine's agent calls (electron/browser/agent.ts). Elsewhere plugin.desktop asks another machine's.
 const pending = new Map<number, { ok: (v: unknown) => void; fail: (e: Error) => void; timer: ReturnType<typeof setTimeout> }>()
 let next = 1
 let listening = false
@@ -7,9 +7,12 @@ let listening = false
 /** Whether this server runs in the desktop app (its browser can be asked). */
 export const inDesktop = () => process.env.VAULTITE_DESKTOP === "1" && typeof process.send === "function" && process.connected
 
+/** Why no desktop app can be asked: none serves this vault here, nor on a machine Machines lists. */
+export const NO_DESKTOP = "the browser is in Vaultite's desktop app, and none has this vault open: open it on a Mac (one listed in Machines, if not this one)"
+
 /** Ask the desktop app's browser engine `name` (an `agent:` call); fails after `ms`. */
-export function desktopCall(name: string, args: unknown[], ms = 60_000): Promise<unknown> {
-  if (!inDesktop()) return Promise.reject(new Error("the browser is in Vaultite's desktop app: run this where the desktop app runs (its terminals, or vau there)"))
+export function desktopCall(name: string, args: unknown[], ms = 90_000): Promise<unknown> {
+  if (!inDesktop()) return Promise.reject(new Error(NO_DESKTOP))
   if (!listening) {
     listening = true
     process.on("message", (m: { type?: string; rid?: number; value?: unknown; error?: string }) => {

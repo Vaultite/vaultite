@@ -628,7 +628,8 @@ export class App {
     }
   }
 
-  /** /api/ops: GET the catalog or one entry, POST runs one (`?as=text`: its answer as Markdown). */
+  /** /api/ops: GET the catalog or one entry, POST runs one (`?as=text`: its answer as Markdown; `?as=answer`: that and
+   *  its picture, for `vau mcp`). */
   private async opsRoute(method: string, parts: string[], query: Record<string, string>, body: unknown, http?: IncomingMessage): Promise<unknown> {
     if (method === "GET" && parts.length === 0) return query.as === "text" ? new Text(this.opsDoc() + "\n") : this.catalog()
     if (parts.length !== 1) return reply(404, { error: "not found" })
@@ -642,7 +643,8 @@ export class App {
     const raw = http && this.streams(method, ["ops", parts[0]], String(http.headers?.["content-type"] ?? ""))
     const given = raw ? Object.fromEntries(Object.entries(query).filter(([k]) => k !== "as")) : body
     // (server.ts synced the vault for it: unlocked() above; callOp holds it for a write)
-    const { result, text } = await this.callOp(parts[0], given, undefined, { synced: true, http, input: raw ? http : undefined })
+    const { result, text, image } = await this.callOp(parts[0], given, undefined, { synced: true, http, input: raw ? http : undefined })
+    if (query.as === "answer") return { text, ...(image ? { image } : {}) }
     return query.as !== "text" ? result ?? null : new Text(text)
   }
 
@@ -693,9 +695,10 @@ export class App {
         : opts.synced ? await run() : await this.vault.synced().then(run)
       const text = op.text ? op.text(out.result, out.params, who) : typeof out.result === "string" ? out.result
         : jsonBlock(out.result ?? null)
+      const image = op.image?.(out.result) ?? null
       if (write) this.done(op, plugin, who, out.params, null, t0)
       end?.({ status: 200, ms: performance.now() - t0, body: given })
-      return { entry: entryOf(op, plugin), params: out.params, result: out.result, text }
+      return { entry: entryOf(op, plugin), params: out.params, result: out.result, text, image }
     } catch (e) {
       if (write) this.done(op, plugin, who, given, e, t0)
       end?.({ status: e instanceof OpError || e instanceof HTTPError || e instanceof ConfigError ? e.status : 500, ms: performance.now() - t0, body: given, error: String((e as Error)?.message ?? e) })

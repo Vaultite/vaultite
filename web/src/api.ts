@@ -52,7 +52,7 @@ export { dragTab, TABS, tabMenuOf, tabsMenu, useTabLabels, viewInfo, type TabInf
 // Tab groups (a pane's named, coloured runs of tabs): their menu, names and folding, and drops among a pane's tabs drawn
 // as a list (the Tabs panel), which join or leave them as the tab bar's do.
 export { setMenu, setName, SetNameField } from "@/components/Tabs"
-export { foldSet, useRenaming } from "@/core/tabsets"
+export { foldSet, groupTab, useRenaming } from "@/core/tabsets"
 export { type TabSet } from "@/core/layout"
 export { canDropAt as canDropTab, dropOn as dropTab, slotIn as tabSlot, type Drop as TabDrop } from "@/core/drop"
 // Selecting several rows of a list (⌘- and ⇧-click, ⇧↑↓, ⌘A; a phone's Select): one way for every list.

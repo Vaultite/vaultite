@@ -2,9 +2,14 @@
 // serves on 127.0.0.1: through the browser ops (POST /api/ops/web-viewer.*), an agent opens a tab (in the Agents
 // container, in a pane beside the user's), snapshots it, fills a form and submits it with real input, reads the result
 // and takes a screenshot; it can't use a tab in Personal (no access), nor one the user paused; its steps can be replayed.
+// Then as Claude Code over MCP (vau mcp, plugins/core/mcp/cli.ts): its tabs grouped by task and marked its own, a
+// form filled, a file uploaded and one downloaded, the page searched, a picture, an expression in its own world, the
+// user asked for help (Done in the bar), its tab closed; and through a server with no desktop app (core/desktopapp.ts,
+// plugins/core/machines/plugin.ts) that passes the calls on to this one, or says none is open.
 // WRITES: the throwaway vault only.
 //   node web/qa/agents.mjs <vault copy>
 import { _electron } from "playwright-core"
+import { spawn } from "node:child_process"
 import fs from "node:fs"
 import http from "node:http"
 import os from "node:os"
@@ -20,7 +25,12 @@ process.on("exit", () => awake?.kill())
 // ---------- a made-up site with a form ----------
 const server = http.createServer((req, res) => {
   const u = new URL(req.url ?? "/", SITE)
+  if (u.pathname === "/file.txt") { res.writeHead(200, { "Content-Type": "text/plain", "Content-Disposition": "attachment; filename=\"log book.txt\"" }); return res.end("Day one: calm.\n") }
   res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" })
+  if (u.pathname === "/upload") {
+    return res.end(`<!doctype html><title>Upload</title><label>Document <input type="file" id="doc"></label><p id="got">none</p><a href="/file.txt">The log book</a>
+<script>doc.onchange = () => { got.textContent = "Picked " + doc.files[0].name + ", " + doc.files[0].size + " bytes" }; window.secretOfThePage = 42</script>`)
+  }
   if (u.pathname === "/hello") {
     return res.end(`<!doctype html><title>Hello</title><h1 id="out">Hello ${u.searchParams.get("name")}${u.searchParams.get("news") ? ", subscribed" : ""}, ${u.searchParams.get("size")}</h1>`)
   }
@@ -33,6 +43,14 @@ await new Promise((ok, fail) => { server.once("error", fail); server.listen(0, "
 const SITE = `http://127.0.0.1:${server.address().port}`
 
 // ---------- the app ----------
+// (Machines on: a server with no desktop app passes its agents' calls to this one)
+const plugins = path.join(VAULT, ".vaultite/plugins.json")
+const on = fs.existsSync(plugins) ? JSON.parse(fs.readFileSync(plugins, "utf8")) : { enabled: [], disabled: [] }
+fs.writeFileSync(plugins, JSON.stringify({ ...on, enabled: [...new Set([...(on.enabled ?? []), "machines", "web-viewer"])], disabled: (on.disabled ?? []).filter((x) => x !== "machines") }))
+fs.mkdirSync(path.join(VAULT, "Attachments"), { recursive: true })
+fs.writeFileSync(path.join(VAULT, "Attachments/cv.txt"), "Alice Park, keeper.\n")
+const DOWNLOADS = path.join(TMP, "Downloads")
+fs.mkdirSync(DOWNLOADS, { recursive: true })
 const app = await _electron.launch({
   executablePath: path.join(ROOT, "node_modules/.bin/electron"), args: [ROOT, "--vault", VAULT],
   env: { ...process.env, VAULTITE_QUIET: process.env.SHOW ? "" : "1", VAULTITE_USER_DATA: path.join(TMP, "userData"), VAULTITE_LOCAL: path.join(TMP, "local") },
@@ -41,7 +59,7 @@ const win = await app.firstWindow()
 watch(win, { console: true, fail: false })
 await win.waitForSelector("[role=tree]", { timeout: 60000 })
 const origin = new URL(win.url()).origin
-await app.evaluate(({ BrowserWindow }) => { const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }); w.focus() })
+await app.evaluate(({ app: a, BrowserWindow }, dl) => { a.setPath("downloads", dl); const w = BrowserWindow.getAllWindows()[0]; w.setBounds({ x: 40, y: 40, width: 1400, height: 860 }); w.focus() }, DOWNLOADS)
 const ui = (body) => fetch(`${origin}/api/ui`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })
 /** A browser op, as an agent calls it: its answer, or { error } with its status. */
 const op = async (id, params) => {
@@ -96,6 +114,106 @@ await ui({ action: "command", id: "web:agent-runs" })
 await win.locator("[data-web-replay]").first().click()
 check("the replay shows its steps, with pictures", await until(async () => Number(await win.locator("[data-web-replay-steps]").getAttribute("data-web-replay-steps").catch(() => 0)) >= 6
   && (await win.locator("[data-web-replay-steps] img").count()) === 1, 10000), null)
+
+// ---------- as Claude Code over MCP (vau mcp, on stdio) ----------
+/** An MCP client on stdio, as Claude Code runs `vau mcp`: its JSON-RPC calls, and a tool's result. */
+function stdio(url) {
+  const p = spawn(process.execPath, [path.join(ROOT, "bin/vau"), "mcp"], { env: { ...process.env, VAULTITE_URL: url, CLAUDECODE: "" }, stdio: ["pipe", "pipe", "inherit"] })
+  let buf = "", n = 0
+  const waiting = new Map()
+  p.stdout.on("data", (d) => {
+    buf += d
+    for (let i; (i = buf.indexOf("\n")) >= 0; buf = buf.slice(i + 1)) { const m = JSON.parse(buf.slice(0, i)); waiting.get(m.id)?.(m); waiting.delete(m.id) }
+  })
+  const rpc = (method, params) => new Promise((ok) => { const id = ++n; waiting.set(id, ok); p.stdin.write(JSON.stringify({ jsonrpc: "2.0", id, method, params }) + "\n") })
+  return { rpc, close: () => p.kill(), tool: async (name, args = {}) => (await rpc("tools/call", { name, arguments: args })).result }
+}
+const text = (r) => r?.content?.find((c) => c.type === "text")?.text ?? ""
+const mcp = stdio(origin)
+await mcp.rpc("initialize", { protocolVersion: "2025-06-18", capabilities: {}, clientInfo: { name: "claude-code", version: "1" } })
+const tools = (await mcp.rpc("tools/list", {})).result?.tools?.map((t) => t.name) ?? []
+const want = ["browser_tabs", "browser_open", "browser_close", "browser_snapshot", "browser_act", "browser_navigate", "browser_read", "browser_screenshot", "browser_wait", "browser_evaluate", "browser_ask_user"]
+check("MCP: the browser's tools", want.every((t) => tools.includes(t)), tools.filter((t) => t.startsWith("browser")))
+const o1 = await mcp.tool("browser_open", { url: `${SITE}/form`, task: "form test" })
+const t1 = Number(/^Tab (\d+)/.exec(text(o1))?.[1])
+check("MCP: browser_open answers its tab", !o1.isError && t1 > 0, text(o1))
+const o2 = await mcp.tool("browser_open", { url: `${SITE}/upload`, task: "form test" })
+const t2 = Number(/^Tab (\d+)/.exec(text(o2))?.[1])
+const groups = await until(async () => {
+  const r = await fetch(`${origin}/api/ops/tabs.list`, { method: "POST", headers: { "Content-Type": "application/json" }, body: "{}" }).then((x) => x.json())
+  const g = r.panes?.flatMap((p) => p.groups).find((x) => x.name === "Claude Code/form test")
+  return g?.tabs === 2 ? g : null
+}, 5000)
+check("MCP: its two tabs in one tab group, Claude Code/form test", !!groups, groups)
+const listed = text(await mcp.tool("browser_tabs", { task: "form test" }))
+check("MCP: browser_tabs marks them its own, the user's as theirs", listed.split("\n").filter((l) => /\(yours\)$/.test(l)).length === 2 && /\(the user's\)/.test(listed), listed)
+const snap2 = text(await mcp.tool("browser_snapshot", { tab: t1 }))
+const ref2 = (re) => re.exec(snap2)?.[1]
+await mcp.tool("browser_act", { tab: t1, action: "fill", ref: ref2(/textbox "Name" \[ref=(e\d+)\]/), value: "Bob" })
+const sent2 = await mcp.tool("browser_act", { tab: t1, action: "click", ref: ref2(/button "Send" \[ref=(e\d+)\]/) })
+check("MCP: a form filled and sent", /Went to another page/.test(text(sent2)), text(sent2))
+const found = text(await mcp.tool("browser_read", { tab: t1, find: "hello bob" }))
+check("MCP: browser_read finds a line", /^1: Hello Bob, Small$/m.test(found), found)
+const shot2 = await mcp.tool("browser_screenshot", { tab: t1 })
+const img = shot2?.content?.find((c) => c.type === "image")
+check("MCP: browser_screenshot is a picture", img?.mimeType === "image/png" && Buffer.from(img.data, "base64").subarray(1, 4).toString() === "PNG", shot2?.content?.map((c) => c.type))
+const tabsNow = await op("tabs")
+check("… of a tab in the background too", tabsNow.find?.((t) => t.tab === t1)?.shown === false && !shot2.isError, tabsNow)
+const snap3 = text(await mcp.tool("browser_snapshot", { tab: t2 }))
+const fileRef = /button "Document" \[ref=(e\d+)\]/.exec(snap3)?.[1] ?? /\[ref=(e\d+)\]/.exec(snap3)?.[1]
+const up = await mcp.tool("browser_act", { tab: t2, action: "upload", ref: fileRef, files: ["Attachments/cv.txt"] })
+check("MCP: a vault file uploaded into a file input", !up.isError && await until(async () => /Picked cv\.txt, 20 bytes/.test(text(await mcp.tool("browser_read", { tab: t2 }))), 5000), [text(up), snap3])
+const ev = await mcp.tool("browser_evaluate", { tab: t2, expression: "({ title: document.title, page: typeof window.secretOfThePage })" })
+check("MCP: an expression in its own world: the DOM, not the page's scripts", text(ev) === '{"title":"Upload","page":"undefined"}', text(ev))
+const linkRef = /link "The log book" \[ref=(e\d+)\]/.exec(text(await mcp.tool("browser_snapshot", { tab: t2 })))?.[1]
+const dl = text(await mcp.tool("browser_act", { tab: t2, action: "click", ref: linkRef }))
+check("MCP: a click that downloads says where it went", dl.includes(`Downloaded log book.txt to ${path.join(DOWNLOADS, "log book.txt")}`), dl)
+const asked = await mcp.tool("browser_ask_user", { tab: t1, reason: "Sign in to the made-up site" })
+check("MCP: asking the user: its bar says so", !asked.isError && await until(async () => /Claude Code needs you:\s*Sign in to the made-up site/.test(await win.locator("[data-web-agent-ask]").innerText().catch(() => "")), 5000), text(asked))
+const events = await fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.json())
+check("… and the Inbox", events.events?.some((e) => e.source === "browser" && e.kind === "waiting" && /Sign in/.test(e.body)), events.events?.slice(0, 3))
+const waited2 = mcp.tool("browser_wait", { tab: t1, helped: true, timeout: 20 })
+await wait(500)
+const t0 = Date.now()
+await win.locator("[data-web-agent-done]").click()
+const w2 = await waited2
+check("… its Done ends the agent's wait at once", !w2.isError && Date.now() - t0 < 3000, [text(w2), Date.now() - t0])
+const after = await fetch(`${origin}/api/inbox/events?local=1`).then((r) => r.json())
+check("… and its Inbox event goes", !after.events?.some((e) => e.source === "browser" && /Sign in/.test(e.body ?? "")), after.events?.slice(0, 3))
+const userTab = (await op("tabs")).find((t) => t.url.endsWith("?mine"))
+const notMine = await mcp.tool("browser_close", { tab: userTab.tab })
+check("MCP: closing the user's tab is refused", notMine.isError && /the user's/.test(text(notMine)), text(notMine))
+const closed = await mcp.tool("browser_close", { tab: t2 })
+check("MCP: its own tab closes", !closed.isError && !(await op("tabs")).some((t) => t.tab === t2), text(closed))
+
+// ---------- through a server with no desktop app (the always-on one): passed on to this one ----------
+const PLAIN = 20000 + Math.floor(Math.random() * 20000)
+const plain = spawn(process.execPath, [path.join(ROOT, "server.ts")], { cwd: ROOT, stdio: ["ignore", "pipe", "pipe"],
+  env: { ...process.env, VAULTITE_VAULT: VAULT, VAULTITE_LOCAL: path.join(TMP, "local-plain"), HOST: "127.0.0.1", PORT: String(PLAIN), VAULTITE_DESKTOP: "" } })
+let plainOut = ""
+plain.stdout.on("data", (d) => { plainOut += d })
+plain.stderr.on("data", (d) => { plainOut += d })
+await until(() => /vaultite on http/.test(plainOut), 60000)
+const machinesFile = path.join(VAULT, ".vaultite/plugins/machines/data.json")
+fs.mkdirSync(path.dirname(machinesFile), { recursive: true })
+const list = (ms) => fs.writeFileSync(machinesFile, JSON.stringify({ machines: ms }))
+list([{ id: "plain", label: "Plain", url: `http://127.0.0.1:${PLAIN}` }])
+const http2 = async (name, args) => {
+  const r = await fetch(`http://127.0.0.1:${PLAIN}/api/mcp`, { method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "tools/call", params: { name, arguments: args } }) }).then((x) => x.json())
+  return r.result
+}
+const none = await http2("browser_tabs", {})
+check("no desktop app: says none has the vault open", none?.isError && /no machine has one open with this vault/.test(text(none)), text(none))
+list([{ id: "plain", label: "Plain", url: `http://127.0.0.1:${PLAIN}` }, { id: "desk", label: "Desk", url: origin }])
+const relayed = await http2("browser_tabs", {})
+check("a desktop app listed in Machines: its tabs", !relayed?.isError && text(relayed).includes(`${t1}  [act, agents]`), text(relayed))
+const relayRead = await http2("browser_read", { tab: t1, find: "Bob" })
+check("… and reading one", /Hello Bob/.test(text(relayRead)), text(relayRead))
+const relayShot = await http2("browser_screenshot", { tab: t1 })
+check("… and its picture", relayShot?.content?.some((c) => c.type === "image"), relayShot?.content?.map((c) => c.type))
+plain.kill()
+mcp.close()
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()

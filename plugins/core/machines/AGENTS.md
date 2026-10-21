@@ -6,6 +6,9 @@ served through Tailscale Serve adds itself once (with the Tailscale plugin on; `
 stays removed); edit the labels freely.
 - `GET /api/machines` says which answer and what each runs (`self`: this one); `GET /api/machines/<id>/<path>` is
   `GET /api/<path>` on that machine (read-only).
+- The browser's agents (`vau docs web-viewer`) on a server that isn't a desktop app's go to the first machine listed
+  whose desktop app has this vault open (`desktop` in `/api/machines`), through its `POST /api/machines/desktop` (the
+  owner's only).
 - In the `machines` block and the sidebar panel, a click (or a right-click, with the panel's own menu after it) opens a
   terminal or an agent there. Other plugins take `machine: <id>` in their blocks (Claude Code's, `tailscale`; in
   /api/render any block with it is drawn by that machine), and a terminal id ending in `@<id>` is a shell on that

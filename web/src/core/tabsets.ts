@@ -82,6 +82,18 @@ export function addToSet(ids: string[], setId: string) {
   set({ ...getWorkspace(), root: gather(tabs, where.g.id, at, setId) })
 }
 
+/** Put the tab showing `to` (the one on screen in its pane, as a tab just opened is) in the tab group named `name`: an
+ *  agent's tabs, "<agent>/<task>". Its pane's group of that name, else another pane's, else a new one. */
+export function groupTab(to: string, name: string) {
+  const all = groups()
+  const g = all.find((x) => x.tabs.some((t) => t.id === x.active && t.to === to)) ?? all.find((x) => x.tabs.some((t) => t.to === to))
+  const tab = g && (g.tabs.find((t) => t.id === g.active && t.to === to) ?? g.tabs.find((t) => t.to === to))
+  if (!g || !tab || !name.trim()) return
+  const named = g.sets?.find((s) => s.name === name) ?? allSets().find((s) => s.name === name)
+  if (named) addToSet([tab.id], named.id)
+  else makeSet([tab.id], { name })
+}
+
 /** Take tabs out of their tab groups: each goes right after what's left of its group, as in a browser. */
 export function leaveSet(ids: string[]) {
   const going = new Set(inOrder(ids).filter((t) => t.set).map((t) => t.id))

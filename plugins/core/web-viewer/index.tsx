@@ -2,7 +2,7 @@
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
 import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, Lock, MonitorPlay, MousePointerSquareDashed, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
-import { choose, closeView, definePlugin, focusGroup, getStore, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
+import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, groupTab, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
 import { iconCame, siteIcon } from "./icons"
@@ -13,7 +13,7 @@ import { ReplaysView } from "./Replays"
 import { askClear, HistoryView } from "./HistoryView"
 import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
-import { agentNews, bookmark, focusedPage, focusedPageId, linksInViewer, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
+import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
 import { Playing } from "./Playing"
 
@@ -152,9 +152,18 @@ function Background() {
   useEffect(() => webPages?.on((m) => {
     if (m.type === "state") shown.get(m.id)?.onState(m.state)
     else if (m.type === "open") openPage(m.url, shown.get(m.id)?.container ?? null)
-    // An agent's tab: beside the user's work, without taking the keyboard.
-    else if (m.type === "engine:agent:open" && typeof m.url === "string" && typeof m.profile === "string")
-      openInSplit(`view:web/${argOf(m.url, containerOfProfile(m.profile))}`, "right", false)
+    // An agent's tab: beside the user's work, without taking the keyboard, in its task's tab group.
+    else if (m.type === "engine:agent:open" && typeof m.url === "string" && typeof m.profile === "string") {
+      const to = `view:web/${argOf(m.url, containerOfProfile(m.profile))}`
+      openInSplit(to, "right", false)
+      if (typeof m.group === "string" && m.group) groupTab(to, m.group)
+    } else if (m.type === "engine:agent:close" && typeof m.tab === "string" && m.tab) closeTab(m.tab, true)
+    else if (m.type === "engine:agent:help" && typeof m.id === "number") {
+      const id = m.id, on = !!m.on
+      helpAsks.update((a) => { const next = new Map(a); if (on) next.set(id, { by: String(m.by ?? "An agent"), reason: String(m.reason ?? "") }); else next.delete(id); return next })
+      // (shown, so the user sees what's asked where it's asked)
+      if (on && typeof m.tab === "string" && m.tab) selectTab(m.tab)
+    }
     else if (m.type === "engine:agent:acting" && typeof m.id === "number") {
       const id = m.id
       agentNews.update((n) => new Map(n).set(id, { by: String(m.by ?? "An agent"), what: String(m.what ?? ""), at: Date.now() }))

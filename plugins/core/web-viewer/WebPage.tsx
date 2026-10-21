@@ -1,7 +1,7 @@
 // A web page in a tab: a slim bar over the desktop app's native page. Native views draw above everything, so when
 // anything of the app covers the box (sampled with elementFromPoint) the page is swapped for its snapshot until it's gone.
 import { useEffect, useRef, useState, type ReactNode } from "react"
-import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
+import { ArrowLeft, ArrowRight, ArrowUpRight, Bookmark, Bot, Check, ChevronDown, Ellipsis, Globe, Lock, MonitorPlay, MousePointerSquareDashed, Pause, PictureInPicture2, Play, RotateCw, Scissors, Undo2, Volume2,
   VolumeX, X, type LucideIcon } from "lucide-react"
 import {
   cn, commandKeys, getTabLayout, menuBelow, notify, notifyError, openInSplit, openView, panesOf, post, typingIn, useEnabled, usePane, usePaneTopBar, webPageActions, webPages, type MenuItem,
@@ -15,7 +15,7 @@ import { argOf, containerById, profileIn, ruleFor, splitArg } from "./containers
 import { markTyped } from "./history"
 import { pickElement, ShieldsButton } from "./shields"
 import { Start } from "./Start"
-import { agentNews, bookmark, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
+import { agentNews, bookmark, helpAsks, pausedPages, setFocusedPage, setPlayer, settingsRead, setTitle, shown } from "./state"
 
 type Props = { arg: string; focused: boolean; setArg: (arg: string) => void }
 
@@ -109,6 +109,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   // The page: the tab's own (shown again) or a new one; let go of as the tab hides (or its container locks), ended when
   // the tab shows something else (closing it ends it too: onTabClose). A new web tab has none till an address is typed.
   const blank = !ownPage(arg)
+  /** The address the tab had when it got its page: one that went on in the background (an agent's) isn't sent back. */
+  const taken = useRef("")
   useEffect(() => {
     if (locked !== false || blank) return
     let gone = false, mine = 0
@@ -121,6 +123,7 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     }).then((r) => {
       if (gone) { leave(r.id); return }
       mine = r.id
+      taken.current = live.current.arg
       setId(r.id)
       setState(r.state)
     }, (e) => { if (e !== null) notifyError(e, "Couldn't open the page") })
@@ -130,7 +133,10 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
 
   // The tab's address follows the page; one given to the tab (not from the page) is loaded.
   useEffect(() => {
-    if (!id || arg === live.current.state.url || !ownPage(arg)) return
+    if (!id) return
+    const back = arg === taken.current
+    taken.current = ""
+    if (back || arg === live.current.state.url || !ownPage(arg)) return
     void web.go(id, "load", arg)
   }, [id, arg, web])
   useEffect(() => {
@@ -316,10 +322,12 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
 /** How long an agent's last step shows in the bar. */
 const NEWS_MS = 6000
 
-/** An agent at work in this tab: who and what it's doing, with Pause (its next steps are refused till Resume). */
+/** An agent at work in this tab: who and what it's doing, with Pause (its next steps are refused till Resume); or
+ *  what it asked the user to do here, with Done. */
 function AgentBar({ web, id }: { web: WebPages; id: number }) {
   const news = agentNews.use((m) => m.get(id))
   const paused = pausedPages.use((s) => s.has(id))
+  const ask = helpAsks.use((m) => m.get(id))
   const [, tick] = useState(0)
   const fresh = !!news && Date.now() - news.at < NEWS_MS
   useEffect(() => {
@@ -327,6 +335,21 @@ function AgentBar({ web, id }: { web: WebPages; id: number }) {
     const t = setTimeout(() => tick((n) => n + 1), NEWS_MS - (Date.now() - news.at) + 50)
     return () => clearTimeout(t)
   }, [fresh, news])
+  if (ask) {
+    const done = () => void Promise.resolve(web.engine?.("agents:helped", id)).catch((e) => notifyError(e, "Couldn't tell the agent"))
+    return (
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b-[0.5px] border-border px-3 text-[13px]" data-web-agent-ask
+        style={{ background: "color-mix(in srgb, var(--purple) 14%, transparent)" }}>
+        <Bot className="size-4 shrink-0" strokeWidth={2} style={{ color: "var(--purple)" }} />
+        <span className="min-w-0 flex-1 truncate"><span className="font-medium">{ask.by} needs you:</span> {ask.reason}</span>
+        <button type="button" onClick={done} data-web-agent-done
+          className="flex h-6 shrink-0 cursor-pointer items-center gap-1 rounded-[6px] px-2 text-[12px] font-medium hover:bg-foreground/[0.06]">
+          <Check className="size-3.5" strokeWidth={2.25} />
+          Done
+        </button>
+      </div>
+    )
+  }
   if (!fresh && !paused) return null
   const pause = (on: boolean) => void Promise.resolve(web.engine?.("agents:pause", id, on)).catch((e) => notifyError(e, "Couldn't pause it"))
   return (

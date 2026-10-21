@@ -23,6 +23,8 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
       const { toolsOf } = await import("./catalog.ts")
       type Client = import("./protocol.ts").Client
       const session: import("./protocol.ts").Session = { client: null }
+      /** The ops whose answers are pictures too, as the catalog said last. */
+      let pictured = new Set<string>()
       /** The server's API as the client, each call told to Activity as `mcp <tool>`; its errors are the tool's. Unless one
        *  was named, each call finds the server again: the desktop app's vault may open after the client started this. */
       const as = (agent: string | null, tool: string) => {
@@ -39,10 +41,19 @@ The same tools are served over HTTP at <server>/api/mcp (this machine and its ow
         version: APP_VERSION,
         instructions: async () => String(await as(session.client?.agent ?? null, "initialize")("POST", "ops/mcp.instructions?as=text", {}) ?? ""),
         // The catalog as the server has it now (plugins turned on or off change it).
-        tools: async () => toolsOf(await as(session.client?.agent ?? null, "tools/list")("GET", "ops")),
+        tools: async () => {
+          const entries = await as(session.client?.agent ?? null, "tools/list")("GET", "ops") as import("../../../core/plugins.ts").OpEntry[]
+          pictured = new Set(entries.filter((e) => e.image).map((e) => e.id))
+          return toolsOf(entries)
+        },
         ctx: (client: Client, tool: string) => {
           const call = as(client.agent, tool)
-          return { client, op: async (id: string, params: Record<string, unknown>) => String(await call("POST", `ops/${encodeURIComponent(id)}?as=text`, params) ?? "") }
+          return { client, op: async (id: string, params: Record<string, unknown>) => {
+            // (an op whose answer is a picture too, a screenshot: both)
+            if (!pictured.has(id)) return String(await call("POST", `ops/${encodeURIComponent(id)}?as=text`, params) ?? "")
+            const r = await call("POST", `ops/${encodeURIComponent(id)}?as=answer`, params) as { text?: unknown; image?: { data: string; mimeType: string } } | null
+            return { text: String(r?.text ?? ""), image: r?.image ?? null }
+          } }
         },
       }
       const write = (x: unknown) => process.stdout.write(JSON.stringify(x) + "\n")

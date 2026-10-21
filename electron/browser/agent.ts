@@ -1,9 +1,10 @@
 // Agents in the browser, asked by the vault's server (plugins/core/web-viewer/plugin.ts): a page's accessibility tree with
 // refs, then real input on them over the DevTools protocol (no page scripts); each container's access is checked here.
 import { app, type WebContents } from "electron"
+import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
-import { allPages, eachPage, handle, mayOpen, tell, type EnginePage } from "./engine.ts"
+import { allPages, eachPage, eachSession, handle, mayOpen, tell, type EnginePage } from "./engine.ts"
 
 type Access = "none" | "read" | "act"
 /** By profile; a profile not named is none. `home`: where an agent's new tab opens unless it names a container. */
@@ -11,6 +12,11 @@ let access = new Map<string, Access>()
 let home = ""
 /** Pages the user paused agents in (the bar's Stop), till they resume. */
 const paused = new Set<number>()
+/** Who opened each agent's page (the others are the user's). */
+const owners = new Map<number, By>()
+/** Pages an agent asked the user to do something in (sign in, a check), till they say it's done; and who waits on it. */
+const asks = new Map<number, { by: string; reason: string }>()
+const helpWaits = new Map<number, Set<() => void>>()
 
 const accessOf = (p: EnginePage): Access => (!mayOpen(p.profile) ? "none" : access.get(p.profile) ?? "none")
 const levels: Record<Access, number> = { none: 0, read: 1, act: 2 }
@@ -95,6 +101,40 @@ async function snapshot(p: EnginePage) {
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), snapshot: lines.join("\n") }
 }
 
+// ---------- downloads, by page: where each landed (the app saves them in Downloads, web.ts) ----------
+
+type Download = { name: string; path: string; state: "progressing" | "completed" | "cancelled" | "interrupted"; at: number }
+const downloads = new WeakMap<WebContents, Download[]>()
+eachSession((s) => {
+  s.on("will-download", (_e, item, wc) => {
+    if (!wc) return
+    const d: Download = { name: item.getFilename(), path: "", state: "progressing", at: Date.now() }
+    downloads.set(wc, [...(downloads.get(wc) ?? []), d].slice(-20))
+    item.once("done", (_ev, state) => { d.path = item.getSavePath(); d.state = state })
+  })
+})
+const shownDownload = (d: Download) => ({ name: d.name, state: d.state, ...(d.path ? { path: d.path } : {}) })
+
+// ---------- files given to a page's file input: kept a day in userData, never the vault ----------
+
+const UPLOADS = () => path.join(app.getPath("userData"), "agent-uploads")
+const MAX_UPLOAD = 50 << 20
+function uploadFiles(files: unknown): string[] {
+  const list = Array.isArray(files) ? files as { name?: unknown; data?: unknown }[] : []
+  if (!list.length) throw new Error("upload needs files")
+  const dir = path.join(UPLOADS(), crypto.randomUUID())
+  fs.mkdirSync(dir, { recursive: true })
+  let size = 0
+  return list.map((f, i) => {
+    const data = Buffer.from(String(f?.data ?? ""), "base64")
+    if ((size += data.length) > MAX_UPLOAD) throw new Error("upload takes 50 MB at most")
+    const name = path.basename(String(f?.name ?? "")).replace(/^\.+/, "") || `file-${i + 1}`
+    const file = path.join(dir, name)
+    fs.writeFileSync(file, data)
+    return file
+  })
+}
+
 // ---------- acting, with real input ----------
 
 async function nodeOf(p: EnginePage, ref: unknown) {
@@ -155,18 +195,22 @@ async function press(p: EnginePage, combo: string) {
   await cdp(p.wc, "Input.dispatchKeyEvent", { type: "keyUp", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, modifiers })
 }
 
-/** After an action: a moment for what it started (a navigation, a menu) to settle. */
-async function settle(p: EnginePage, was: string) {
+/** After an action: a moment for what it started (a navigation, a menu, a download) to settle. */
+async function settle(p: EnginePage, was: string, since = Date.now()) {
   const until = Date.now() + 8000
   await new Promise((r) => setTimeout(r, 250))
   while (Date.now() < until && !p.wc.isDestroyed() && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
+  const started = () => (downloads.get(p.wc) ?? []).filter((d) => d.at >= since)
+  const short = Date.now() + 5000
+  while (Date.now() < short && started().some((d) => d.state === "progressing")) await new Promise((r) => setTimeout(r, 100))
   const url = p.wc.isDestroyed() ? "" : p.wc.getURL()
-  return { tab: p.id, url, title: p.wc.isDestroyed() ? "" : p.wc.getTitle(), navigated: url !== was }
+  const got = started()
+  return { tab: p.id, url, title: p.wc.isDestroyed() ? "" : p.wc.getTitle(), navigated: url !== was, ...(got.length ? { downloads: got.map(shownDownload) } : {}) }
 }
 
-type Act = { action: string; ref?: string; value?: string; key?: string; direction?: string }
+type Act = { action: string; ref?: string; value?: string; key?: string; direction?: string; files?: unknown }
 async function act(p: EnginePage, a: Act) {
-  const was = p.wc.getURL()
+  const was = p.wc.getURL(), since = Date.now()
   const need = (v: unknown, what: string) => { if (v === undefined || v === null || v === "") throw new Error(`${a.action} needs ${what}`); return v }
   switch (a.action) {
     case "click": case "dblclick": case "hover": {
@@ -214,26 +258,39 @@ async function act(p: EnginePage, a: Act) {
       for (const ch of options[at]) await cdp(p.wc, "Input.dispatchKeyEvent", { type: "keyDown", key: ch, text: ch, unmodifiedText: ch })
       break
     }
+    case "upload": {
+      // (into a file input as a person's pick would: Chromium gives the page the files, no dialog)
+      const n = await nodeOf(p, need(a.ref, "a ref"))
+      const d = await describe(p, n.id)
+      if (d.tag !== "input" || d.attrs.type !== "file") throw new Error("upload is for a file input (<input type=file>): its ref, from the snapshot")
+      await cdp(p.wc, "DOM.setFileInputFiles", { backendNodeId: n.id, files: uploadFiles(a.files) })
+      break
+    }
     case "scroll": {
       const n = a.ref ? await nodeOf(p, a.ref) : null
       const dy = { up: -600, down: 600 }[String(a.direction ?? "down")] ?? 600
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x: n?.x ?? 400, y: n?.y ?? 300, deltaX: 0, deltaY: dy })
       break
     }
-    default: throw new Error(`no action "${a.action}": click, dblclick, hover, fill, type, press, check, uncheck, select or scroll`)
+    default: throw new Error(`no action "${a.action}": click, dblclick, hover, fill, type, press, check, uncheck, select, upload or scroll`)
   }
-  return settle(p, was)
+  return settle(p, was, since)
 }
 
 // ---------- what agents did, kept for replay (this Mac's userData, never the vault) ----------
 
 const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 const KEEP_DAYS = 14
-/** Who asked: the agent's name and its session (the op's caller), a run each a day. */
-type By = { name?: string; session?: string }
-const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${String(by.session || by.name || "agent").replace(/[^\w.-]+/g, "_").slice(0, 60)}`
+/** Who asked: the agent's name, its session (the op's caller) and the task it named, a run each a day. */
+type By = { name?: string; session?: string; task?: string }
+const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${[by.session || by.name || "agent", by.task].filter(Boolean).join("-").replace(/[^\w.-]+/g, "_").slice(0, 80)}`
+/** An agent's tabs' group in the window, Neo's way: "<agent>/<task>". */
+const groupOf = (by: By) => [by.name || "Agent", by.task].filter(Boolean).join("/")
+const sameAgent = (a: By, b: By) => (a.name ?? "") === (b.name ?? "") && (a.session ?? "") === (b.session ?? "") && (!b.task || a.task === b.task)
 
-async function record(p: EnginePage, by: By, step: Record<string, unknown>) {
+async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
+  // (a step not naming its task is the one the tab was opened for)
+  const by = asked.task ? asked : { ...asked, task: owners.get(p.id)?.task }
   try {
     const dir = path.join(RUNS(), runOf(by))
     fs.mkdirSync(dir, { recursive: true })
@@ -276,11 +333,20 @@ async function nameOf(p: EnginePage, ref: unknown) {
 
 // ---------- the calls ----------
 
-const byOf = (x: unknown): By => (x && typeof x === "object" ? { name: String((x as By).name ?? "") || undefined, session: String((x as By).session ?? "") || undefined } : {})
-const listOf = () => allPages().filter((p) => !p.wc.isDestroyed() && /^https?:/i.test(p.wc.getURL() || p.url)).map((p) => ({
-  tab: p.id, url: p.wc.getURL() || p.url, title: p.wc.getTitle(), container: p.profile.startsWith("c-") ? p.profile.slice(2) : null,
-  access: accessOf(p), shown: p.visible(), ...(paused.has(p.id) ? { paused: true } : {}),
-}))
+const byOf = (x: unknown): By => {
+  if (!x || typeof x !== "object") return {}
+  const s = (k: keyof By) => String((x as By)[k] ?? "").trim().slice(0, 80) || undefined
+  return { name: s("name"), session: s("session"), task: s("task") }
+}
+/** The web pages, each with whose it is: an agent's (`by`, and `mine` for the one asking) or the user's. */
+const listOf = (asking: By) => allPages().filter((p) => !p.wc.isDestroyed() && /^https?:/i.test(p.wc.getURL() || p.url)).map((p) => {
+  const owner = owners.get(p.id)
+  return {
+    tab: p.id, url: p.wc.getURL() || p.url, title: p.wc.getTitle(), container: p.profile.startsWith("c-") ? p.profile.slice(2) : null,
+    access: accessOf(p), shown: p.visible(), by: owner ? groupOf(owner) : null, mine: !!owner && sameAgent(owner, asking),
+    ...(paused.has(p.id) ? { paused: true } : {}), ...(asks.has(p.id) ? { asking: asks.get(p.id)!.reason } : {}),
+  }
+})
 
 // The app's: what agents may do in each profile, and where their tabs open.
 handle("agents:access", (_win, map, where) => {
@@ -289,6 +355,14 @@ handle("agents:access", (_win, map, where) => {
   access = next
   home = typeof where === "string" && next.get(where) === "act" ? where : [...next].find(([, v]) => v === "act")?.[0] ?? ""
 })
+// The user did what an agent asked (the bar's Done), or the tab closed.
+function helped(id: number) {
+  if (!asks.delete(id)) return
+  for (const p of allPages()) if (p.id === id) tell(p.win, { type: "engine:agent:help", id, on: false })
+  for (const done of helpWaits.get(id) ?? []) done()
+  helpWaits.delete(id)
+}
+handle("agents:helped", (_win, id) => helped(Number(id)))
 handle("agents:pause", (_win, id, on) => {
   if (on) paused.add(Number(id)); else paused.delete(Number(id))
   for (const p of allPages()) if (p.id === Number(id)) tell(p.win, { type: "engine:agent:paused", id: p.id, on: !!on })
@@ -313,21 +387,22 @@ handle("agents:run", (_win, run) => {
 })
 
 // The server's (its agents', checked here whatever the server says).
-handle("agent:tabs", () => listOf())
+handle("agent:tabs", (_win, by) => listOf(byOf(by)))
 handle("agent:open", async (win, url, container, by) => {
   const u = String(url ?? "")
   if (!/^https?:\/\//i.test(u)) throw new Error("only http and https addresses")
   const profile = container ? `c-${String(container)}` : home
   if (!profile) throw new Error("no container lets agents act: set one's Agents to Act (the container menu in a page's bar)")
   if (access.get(profile) !== "act" || !mayOpen(profile)) throw new Error(`agents may not act in ${container ? `the container ${String(container)}` : "that container"}`)
-  const before = Math.max(0, ...allPages().map((p) => p.id))
-  tell(win, { type: "engine:agent:open", url: u, profile, by: byOf(by).name ?? "" })
+  const before = Math.max(0, ...allPages().map((p) => p.id)), who = byOf(by)
+  tell(win, { type: "engine:agent:open", url: u, profile, by: who.name ?? "", group: groupOf(who) })
   const until = Date.now() + 20_000
   for (;;) {
     const p = allPages().find((x) => x.id > before && x.profile === profile && x.url === u) ?? allPages().find((x) => x.profile === profile && x.wc.getURL() === u)
     if (p) {
+      owners.set(p.id, who)
       while (Date.now() < until && p.wc.isLoading()) await new Promise((r) => setTimeout(r, 100))
-      void record(p, byOf(by), { action: "open", value: u })
+      void record(p, who, { action: "open", value: u })
       return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
     }
     if (Date.now() > until) throw new Error("the tab didn't open: is the vault's window open?")
@@ -340,22 +415,75 @@ handle("agent:read", async (_win, tab) => {
   const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: "({ url: location.href, title: document.title, text: document.body ? document.body.innerText : '' })" }]) as { url: string; title: string; text: string }
   return { tab: p.id, ...r, text: r.text.length > 200_000 ? `${r.text.slice(0, 200_000)}\n… (cut short)` : r.text }
 })
+handle("agent:close", async (_win, tab) => {
+  const p = allPages().find((x) => x.id === Number(tab))
+  if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
+  if (!owners.has(p.id)) throw new Error("this tab is the user's: agents close only the tabs agents opened")
+  tell(p.win, { type: "engine:agent:close", id: p.id, tab: p.tab() })
+  const until = Date.now() + 5000
+  while (Date.now() < until && !p.wc.isDestroyed()) await new Promise((r) => setTimeout(r, 100))
+  if (!p.wc.isDestroyed()) throw new Error("the tab didn't close: is the vault's window open?")
+  return { tab: p.id }
+})
+/** At most this wide, so a picture costs an agent less (a Retina page is twice the size). */
+const SHOT_WIDTH = 1280
 handle("agent:screenshot", async (_win, tab) => {
   const p = pageFor(tab, "read")
-  if (!p.visible()) throw new Error("the tab isn't on screen: show it first (agents' tabs open beside yours)")
-  const img = await p.wc.capturePage()
+  // (a tab in the background is drawn for it, and stays hidden)
+  const img = await p.wc.capturePage(undefined, { stayHidden: true })
   if (img.isEmpty()) throw new Error("the page drew nothing yet")
-  return { tab: p.id, png: img.toPNG().toString("base64") }
+  const { width } = img.getSize()
+  return { tab: p.id, png: (width > SHOT_WIDTH ? img.resize({ width: SHOT_WIDTH }) : img).toPNG().toString("base64") }
+})
+handle("agent:evaluate", async (_win, tab, expression, by) => {
+  const p = pageFor(tab, "act")
+  const code = String(expression ?? "")
+  if (!code.trim()) throw new Error("evaluate needs an expression")
+  const who = byOf(by)
+  acting(p, who, "running a script")
+  // A world of its own: the DOM, never the page's scripts or their variables (nor they the agent's).
+  const value = await Promise.race([p.wc.executeJavaScriptInIsolatedWorld(1013, [{ code }]),
+    new Promise((_r, fail) => setTimeout(() => fail(new Error("the expression took over 30 s")), 30_000))])
+  void record(p, who, { action: "evaluate", value: code.slice(0, 500) })
+  let json = JSON.stringify(value ?? null) ?? "null"
+  if (json.length > 100_000) json = `${json.slice(0, 100_000)}… (cut short)`
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
+})
+handle("agent:help", (_win, tab, reason, by) => {
+  const p = pageFor(tab, "read")
+  const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
+  if (!why) throw new Error("say what the user should do (sign in, solve the check)")
+  const who = byOf(by)
+  asks.set(p.id, { by: who.name || "An agent", reason: why })
+  tell(p.win, { type: "engine:agent:help", id: p.id, tab: p.tab(), by: who.name || "An agent", reason: why, on: true })
+  void record(p, who, { action: "help", value: why })
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
 handle("agent:wait", async (_win, tab, what, ms) => {
   const p = pageFor(tab, "read")
-  const w = (what && typeof what === "object" ? what : {}) as { text?: string; url?: string }
+  const w = (what && typeof what === "object" ? what : {}) as { text?: string; url?: string; download?: boolean; helped?: boolean }
   const wait = Math.min(60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
   const code = `(() => { const t = ${JSON.stringify(String(w.text ?? ""))}; return !t || (document.body?.innerText ?? "").includes(t) })()`
+  const latest = () => (downloads.get(p.wc) ?? []).at(-1)
+  if (w.helped && asks.has(p.id)) {
+    // (the user's Done ends it at once, not at the next look)
+    await new Promise<void>((done) => {
+      const set = helpWaits.get(p.id) ?? new Set()
+      helpWaits.set(p.id, set)
+      const end = () => { clearTimeout(timer); set.delete(end); done() }
+      const timer = setTimeout(end, wait)
+      set.add(end)
+    })
+    if (asks.has(p.id)) throw new Error(`waited ${Math.round(wait / 1000)} s: the user hasn't said it's done yet (they still see what you asked): wait again`)
+  }
   for (;;) {
-    const ok = (!w.url || p.wc.getURL().includes(String(w.url))) && !p.wc.isLoading() && await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code }]).catch(() => false)
-    if (ok) return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
-    if (Date.now() > until) throw new Error(`waited ${Math.round(wait / 1000)} s: ${w.text ? `no "${w.text}"` : w.url ? `not at ${w.url}` : "still loading"}`)
+    const d = latest()
+    const ok = (!w.url || p.wc.getURL().includes(String(w.url))) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading()
+      && await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code }]).catch(() => false)
+    if (ok) return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), ...(w.download && d ? { download: shownDownload(d) } : {}) }
+    if (Date.now() > until) {
+      throw new Error(`waited ${Math.round(wait / 1000)} s: ${w.text ? `no "${w.text}"` : w.url ? `not at ${w.url}` : w.download ? (d ? `${d.name} is still downloading` : "nothing downloaded in this tab") : "still loading"}`)
+    }
     await new Promise((r) => setTimeout(r, 200))
   }
 })
@@ -383,14 +511,24 @@ handle("agent:act", async (_win, tab, a, by) => {
   const p = pageFor(tab, "act")
   const step = (a && typeof a === "object" ? a : {}) as Act
   const who = byOf(by), name = step.ref ? await nameOf(p, step.ref) : ""
+  const files = step.action === "upload" && Array.isArray(step.files) ? (step.files as { name?: unknown }[]).map((f) => String(f?.name ?? "")).join(", ") : ""
   // (what's typed into a password field isn't kept)
   const id = step.ref ? refs.get(p.wc)?.get(String(step.ref)) : undefined
   const secret = id ? await describe(p, id).then((d) => d.attrs.type === "password", () => false) : false
   acting(p, who, `${step.action}${name ? ` “${name}”` : ""}`)
   const r = await act(p, step)
-  void record(p, who, { action: step.action, ref: step.ref, name, value: secret ? "•••" : step.value ?? step.key ?? step.direction })
+  void record(p, who, { action: step.action, ref: step.ref, name, value: secret ? "•••" : files || (step.value ?? step.key ?? step.direction) })
   return r
 })
 
-// A page that ends isn't paused any more.
-eachPage((p) => p.wc.once("destroyed", () => paused.delete(p.id)))
+// A page that ends isn't paused, anyone's, or asking any more.
+eachPage((p) => p.wc.once("destroyed", () => { paused.delete(p.id); owners.delete(p.id); helped(p.id) }))
+// Files given to file inputs, a day on.
+setTimeout(() => {
+  try {
+    for (const d of fs.readdirSync(UPLOADS())) {
+      const at = path.join(UPLOADS(), d)
+      if (Date.now() - fs.statSync(at).mtimeMs > 86400_000) fs.rmSync(at, { recursive: true, force: true })
+    }
+  } catch { /* none yet */ }
+}, 60_000).unref()

@@ -15,6 +15,12 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Mac app: Settings, Permissions shows what macOS lets Vaultite do (the vault folder for the app and its terminals,
   microphone, accessibility, screen recording, folders...), whether the app's signature keeps them across updates, and
   a way to allow each; `vau permissions` tells agents the same. A terminal macOS keeps from the vault says so.
+- Browser agents over MCP: `browser_open`, `browser_snapshot`, `browser_act` and the rest are MCP tools, and a server
+  without the desktop app (the always-on one) passes them to a Mac whose app has the vault open, or says none has.
+  Agents' tabs are grouped as <agent>/<task> and marked theirs, they close their own, upload vault files, hear where a
+  download went, search a page (`--find`), get a picture of a background tab, run an expression in a world of its own,
+  and ask you to sign in with a Done in the tab's bar (and the Inbox). A tab an agent moved on in the background no
+  longer goes back to its first page when shown.
 - Reordering Pinned and Tabs: dropping just under the last row puts it at the end (Pinned no longer unpins it), and
   dropping a pinned page over its own place leaves it there instead of sending it to the bottom.
 - Browser, Block element: what you pick is marked in red but stays on the page until you press Block; Preview (P) hides

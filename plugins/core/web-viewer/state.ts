@@ -71,6 +71,8 @@ export type AgentNews = { by: string; what: string; at: number }
 export const agentNews = cell(new Map<number, AgentNews>())
 /** Pages the user paused agents in (the bar's Pause). */
 export const pausedPages = cell(new Set<number>())
+/** What an agent asked the user to do in a page (sign in, a check), by the page's id, till they say it's done. */
+export const helpAsks = cell(new Map<number, { by: string; reason: string }>())
 
 /** A page on screen (WebPage.tsx): what the desktop app's events about it reach. */
 export type Shown = {

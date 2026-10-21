@@ -7,7 +7,7 @@
   "description": "A web browser in the desktop app's tabs, next to your notes: containers for several accounts side by side, Shields against ads and trackers, Chrome extensions, history and bookmarks, and agents working beside you. Links in notes and terminals open there, or in another browser with ⌘.",
   "enhances": ["clipper"],
   "runsOnServer": true,
-  "forAgents": "A web page for you, beside the user's: `vau browser open <url>` (`vau docs web-viewer`).",
+  "forAgents": "A web page for you, beside the user's: `web-viewer.open` (`vau docs web-viewer`).",
   "tint": "blue",
   "settings": {
     "openLinks": { "type": "enum", "values": ["viewer", "browser"], "default": "viewer", "label": "Open web links", "labels": {"viewer": "In the viewer", "browser": "In the browser"}, "description": "where web links clicked in notes and terminals open in the desktop app: a tab of the viewer (⌘-click: the browser), or always the browser" },
