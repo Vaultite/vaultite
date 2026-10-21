@@ -464,21 +464,22 @@ plugin.provide("sample", (a: SampleAsk) => sample(a, DEFAULT_DIR))
 
 // ---------- Terminal runs it (the service "agent:claude")
 
-/** Claude Code's hooks for a session it runs in (`--settings`, added to the user's own). `report` (Activity's) hears
- *  each edit and command; the rest mark the terminal working, waiting (it asks something) or idle. */
+/** Claude Code's hooks (`--settings`, added to the user's own). `report` (Activity's) hears each edit and command; the
+ *  rest mark the terminal working, waiting or idle, and do nothing once it speaks OSC 7501 (terminal: stateCommand). */
 function hooks(state: AgentStart["state"], report: string | null): object | null {
   if (!state && !report) return null
   const told = report ? [{ matcher: "^(Edit|Write|MultiEdit|NotebookEdit|Bash)$", hooks: [{ type: "command", command: report }] }] : []
   if (!state) return { hooks: { PostToolUse: told } }
-  const set = (s: "working" | "waiting" | "idle") => [{ type: "command", command: state(s) }]
+  const set = (s: "working" | "waiting" | "idle", kind?: "permission" | "question") => [{ type: "command", command: state(s, kind) }]
   const asks = "AskUserQuestion|ExitPlanMode"
   return { hooks: {
     SessionStart: [{ hooks: set("idle") }],
     UserPromptSubmit: [{ hooks: set("working") }],
-    PreToolUse: [{ matcher: `^(?!(${asks})$).*`, hooks: set("working") }, { matcher: `^(${asks})$`, hooks: set("waiting") }],
+    PreToolUse: [{ matcher: `^(?!(${asks})$).*`, hooks: set("working") }, { matcher: `^(${asks})$`, hooks: set("waiting", "question") }],
     PostToolUse: [{ hooks: set("working") }, ...told],
     // A turn that was interrupted fires no Stop: a minute idle at its prompt counts too.
-    Notification: [{ matcher: "permission_prompt|elicitation_dialog", hooks: set("waiting") }, { matcher: "idle_prompt", hooks: set("idle") }],
+    Notification: [{ matcher: "permission_prompt", hooks: set("waiting", "permission") }, { matcher: "elicitation_dialog", hooks: set("waiting", "question") },
+      { matcher: "idle_prompt", hooks: set("idle") }],
     Stop: [{ hooks: set("idle") }],
   } }
 }

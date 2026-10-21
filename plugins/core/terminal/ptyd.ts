@@ -9,6 +9,7 @@ import { fileURLToPath } from "node:url"
 import type { IPty } from "node-pty"
 import type { Terminal as Headless } from "@xterm/headless"
 import type { SerializeAddon as Serializer } from "@xterm/addon-serialize"
+import { REPLY, watcher } from "./osc7501.ts"
 
 const SOCK = process.argv[2]
 if (!SOCK) { console.error("usage: ptyd.ts <socket path>"); process.exit(2) }
@@ -36,10 +37,12 @@ const { SerializeAddon } = require("@xterm/addon-serialize") as typeof import("@
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a)
 
-type Conn = { sock: net.Socket; session: Shell | null; ready: boolean; send: (m: object) => void }
+type Conn = { sock: net.Socket; session: Shell | null; ready: boolean; send: (m: object) => void; status?: boolean }
 type Shell = {
   id: string; pty: IPty; term: Headless; ser: Serializer; created: number; activity: number; spare: boolean
   title: string; attached: Set<Conn>
+  /** Its program's OSC 7501 (osc7501.ts): the probe answered here, reports taken out of its output and kept. */
+  status: ReturnType<typeof watcher>; told?: ReturnType<typeof setTimeout>
 }
 const shells = new Map<string, Shell>()
 const conns = new Set<Conn>()
@@ -51,6 +54,17 @@ const picture = (s: Shell) => s.ser.serialize({ scrollback: s.term.options.scrol
 function forward(s: Shell, d: string) {
   for (const c of s.attached) if (c.ready) c.send({ t: "data", d })
 }
+
+/** Its records changed: the connections that follow them hear what they say now (a burst in one message). */
+function statusChanged(s: Shell) {
+  s.told ??= setTimeout(() => {
+    s.told = undefined
+    if (shells.get(s.id) !== s) return
+    for (const c of conns) if (c.status) c.send({ t: "status", id: s.id, ...s.status.records.said() })
+  }, 50)
+}
+// (VAULTITE_TRACE_7501: each report and probe in the log, to see what a program says)
+const TRACE = !!process.env.VAULTITE_TRACE_7501
 
 /** node-pty couldn't open a pseudo-terminal: on a Mac, usually all of them are taken (kern.tty.ptmx_max, 511). */
 const noPty = (e: unknown) => /posix_openpt|openpty|forkpty/.test(String((e as Error)?.message ?? e))
@@ -83,13 +97,22 @@ function create(m: Record<string, unknown>) {
   const term = new Terminal({ cols, rows, scrollback: Number(m.scrollback) > 0 ? Number(m.scrollback) : SCROLLBACK, allowProposedApi: true })
   const ser = new SerializeAddon()
   term.loadAddon(ser as never)
-  const s: Shell = { id, pty: p, term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set() }
+  // The probe is answered as it's read, before what follows it (Claude Code's primary DA, which the headless terminal
+  // or a page answers later): a DA answer first would say the protocol isn't spoken here.
+  const status = watcher(() => {
+    if (TRACE) log("7501", s.id, "probe answered")
+    try { p.write(REPLY) } catch { /* ended */ }
+  })
+  const s: Shell = { id, pty: p, term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set(), status }
   term.onTitleChange((t) => { s.title = t })
   // Its answers to the programs' questions, only while no page is there to answer.
   term.onData((d) => { if (!s.attached.size) try { p.write(d) } catch { /* ended */ } })
-  p.onData((d) => {
+  p.onData((raw) => {
     s.activity = Date.now()
-    term.write(d, () => forward(s, d))
+    if (TRACE && raw.includes("\x1b]7501;")) for (const m of raw.matchAll(/\x1b\]7501;([^\x07\x1b]*)/g)) log("7501", s.id, JSON.stringify(m[1]))
+    const { out: d, changed } = status.feed(raw)
+    if (changed) statusChanged(s)
+    if (d) term.write(d, () => forward(s, d))
   })
   p.onExit(({ exitCode, signal }) => {
     // After what it printed last has been passed on.
@@ -149,7 +172,11 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
     return s
   }
   switch (m.op) {
-    case "hello": return { v: V, pid: process.pid, file: SELF, stale: stale() }
+    case "hello": return { v: V, pid: process.pid, file: SELF, stale: stale(), status: true }
+    // This connection hears every shell's OSC 7501 records as they change ({t: "status", id, seen, status}).
+    case "status": c.status = true; return {}
+    // Its program ended (the server sees its shell at the prompt again): working and blocked records go.
+    case "status-drop": { const s = shell(m.id); if (s.status.records.drop()) statusChanged(s); return {} }
     // Whether this process (its shells with it: macOS asks of the app that started it) can read a folder: the vault, which
     // macOS may let the app read and not a keeper an older build started. (Off the event loop: a prompt waits for its answer.)
     case "access":
@@ -171,7 +198,7 @@ function handle(c: Conn, m: Record<string, unknown>): Record<string, unknown> | 
     }
     case "list": return {
       sessions: [...shells.values()].map((s) => ({ id: s.id, pid: s.pty.pid, process: process_(s), created: s.created, activity: s.activity,
-        attached: s.attached.size, title: s.title, cols: s.term.cols, rows: s.term.rows, spare: s.spare })),
+        attached: s.attached.size, title: s.title, cols: s.term.cols, rows: s.term.rows, spare: s.spare, said: s.status.records.said() })),
     }
     case "screen": { const s = shell(m.id); return { text: screen(s, Math.max(1, Math.min(s.term.options.scrollback ?? SCROLLBACK, Number(m.lines) || 50))) } }
     case "attach": {

@@ -2,7 +2,7 @@
 // from $CODEX_HOME; nothing is written anywhere. Value = the tokens at API list prices (PRICES), not what the plan costs.
 import fs from "node:fs"
 import path from "node:path"
-import { type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
+import { type AgentAsk, type AgentStart, ago, codingAgent, cwds, dayOf, findBin, HOME, isoOf, jsonLines, JsonlScan, limitRows, limitWindow, type Live, notOnThisMachine,
   priceList, processes, projectOf, shellQuote, projectRoots, sessionsOf, epochSeconds, Tally, terminalOf, Transcript, transcripts } from "../../../core/agents.ts"
 import { Plugin, section } from "../../../core/plugins.ts"
 import { type Item, sortBy } from "../../../core/vault.ts"
@@ -328,6 +328,13 @@ plugin.provide("agent:codex", async ({ resume, prompt }: AgentStart) => {
   return { command: resume ? `codex resume ${shellQuote(resume)}${prompt ? ` ${shellQuote(prompt)}` : ""}` : prompt ? `codex -- ${shellQuote(prompt)}` : "codex",
     cwd: t?.talk.head.cwd || null }
 })
+
+/** Its dialogs, seen on its screen (it has no hooks, and doesn't speak OSC 7501 yet), by their last lines: folder
+ *  trust, its default Trust; running a command or making edits, its first choice Yes, Esc No. */
+plugin.provide("agent-asks:codex", (): AgentAsk[] => [
+  { id: "trust", match: /Trust this folder\? Codex can/, says: "Trust this folder? It can read, edit and run files in it", approve: ["\r"], deny: ["\x1b"] },
+  { id: "permission", match: /Yes, proceed \(y\)[\s\S]*Press enter to confirm or esc to cancel/, says: "Asks permission", approve: ["\r"], deny: ["\x1b"] },
+])
 
 // ---------- blocks as text (GET /api/render)
 

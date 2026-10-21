@@ -5,6 +5,12 @@
   server's own children. Names follow the port, so a QA server's shells stay out of the live list. Under a systemd
   unit the keeper and tmux need their own scope, or a restart kills them.
 - One shell has one size, the last device's; a view used again that doesn't match sends its own.
+- A terminal's state (the list's `state`, the service "inbox:state") comes from OSC 7501 (`osc7501.ts`) when its program
+  speaks it, else its agent's hooks, else a question its agent declares seen on its screen. OSC 7501 is answered and
+  read where the pty is held (the keeper, the server's own shells), in stream order: the probe's answer has to reach the
+  program before the primary DA answer right after it (Claude Code takes a DA answer first as "not spoken here"). tmux
+  answers DA itself and drops the OSC, so agents there stay on hooks; a keeper an older build started speaks it only once
+  it's restarted.
 - Terminal ids: `<name>-<id>` starts agent `<name>`, `<name>_<account>-<id>` in an account, `resume-<name>-<session>`
   resumes, through the service `agent:<name>` of the plugin that brings it.
 - A tab opened from outside only attaches (a page starts only ids it minted), so `vau terminal open` starts the session

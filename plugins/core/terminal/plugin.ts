@@ -14,6 +14,7 @@ import {
   asPaste, limits, loadPty, mirrored, plain, plainBackend, ptydBackend, ptyLink, runScript, SHELL_DIR, shellArgs, shellFiles, Tail, unmarked, type AgentRun, type Backend,
   type Link, type Listed as Shell,
 } from "./backend.ts"
+import { shown, type Kind, type Said, type SessionState } from "./osc7501.ts"
 import { runOps } from "./run.ts"
 import { terminalOps } from "./ops.ts"
 import { tmuxBackend } from "./tmux.ts"
@@ -249,19 +250,93 @@ export function agentOf(id: string): { name: string; resume: string | null; prof
   return t && !t.machine && typeof plugin.service(`agent:${t.agent}`) === "function" ? { name: t.agent, resume: t.resume, profile: t.profile } : null
 }
 
-/** Where a terminal's state is kept (what its agent's hooks said last: working, waiting or idle), whatever its backend. */
+/** Where a terminal's state is kept (what its agent's hooks said last: working, waiting[:kind] or idle), whatever its
+ *  backend; `<file>.osc` once its program spoke OSC 7501 (the hooks then say nothing: stateCommand). */
 const stateFile = (id: string) => path.join(STATES, id)
+const oscMark = (id: string) => `${stateFile(id)}.osc`
 function stateOf(id: string) {
   try { return fs.readFileSync(stateFile(id), "utf8").trim() || undefined } catch { return undefined }
 }
 
-/** Times agent terminal `id` from its start to its agent's first hook (its state file written: it's ready), a minute
- *  at most: the span "agent.ready". Its shell finding no such program instead (MISSING) is told to the user. */
+// --- a terminal's state, for the list and the Inbox ("inbox:state"): OSC 7501 when its program speaks it (osc7501.ts),
+// else its agent's hooks (the state file), else a question its agent declares seen on its screen (watchAsks).
+
+/** A change of a terminal's state, as the service "inbox:state" hears it. `msg` is the program's text: untrusted. */
+export type StateChange = { terminal: string; agent: string; state: SessionState; kind?: Kind; msg?: string; from: "osc7501" | "hooks" | "screen"; at: number }
+type Now = Omit<StateChange, "terminal" | "at">
+
+/** What each terminal's program said in OSC 7501, by terminal. */
+const osc = new Map<string, Said>()
+/** The question each agent terminal shows that its hooks can't tell (they don't run yet): it waits on the user. */
+const asking = new Map<string, AgentAsk>()
+/** An OSC 7501 program's own name, as the agent whose service runs it. */
+const AGENT_APPS: Record<string, string> = { "claude-code": "claude" }
+
+/** Terminal `id`'s state now, or null when nothing says. */
+function stateNow(id: string): Now | null {
+  const agent = agentOf(id)?.name ?? ""
+  const o = osc.get(id), st = o?.status
+  if (st) return { agent: agent || AGENT_APPS[st.app ?? ""] || st.app || "", state: st.state, ...(st.kind ? { kind: st.kind } : {}), ...(shown(st.msg) ? { msg: shown(st.msg) } : {}), from: "osc7501" }
+  // (a program that speaks it says nothing before its session starts: Claude Code's folder trust is only on its screen)
+  const [hook, kind] = o?.seen ? [] : (stateOf(id) ?? "").split(":")
+  if (hook === "working" || hook === "idle") return { agent, state: hook, from: "hooks" }
+  if (hook === "waiting") return { agent, state: "blocked", ...(kind === "permission" || kind === "question" ? { kind } : {}), from: "hooks" }
+  const ask = asking.get(id)
+  if (ask) return { agent, state: "blocked", kind: "permission", msg: ask.says, from: "screen" }
+  return null
+}
+
+/** What was said last about each terminal (`state` null: nothing after something), and a change waiting its turn. */
+const told = new Map<string, { now: Now; at: number; timer?: ReturnType<typeof setTimeout> }>()
+/** How soon after the last a change is told: a program can change state as fast as it writes, and what it causes
+ *  outside the terminal is rate-limited (a new state at most 4 times a second, a new message every 2 s). */
+const STATE_GAP = 250, MSG_GAP = 2000
+
+/** Terminal `id`'s state may have changed: the list hears it, and the Inbox ("inbox:state") does once it has. */
+function stateChanged(id: string) {
+  listChanged()
+  const last = told.get(id)
+  if (last?.timer) return
+  // (nothing says any more after something did: it's at rest, as a program cleared or gone says)
+  const now = stateNow(id) ?? (last ? { ...last.now, state: "idle" as const, kind: undefined, msg: undefined } : null)
+  if (!now) return
+  const gap = !last ? 0 : now.state !== last.now.state || now.kind !== last.now.kind ? STATE_GAP : now.msg !== last.now.msg ? MSG_GAP : -1
+  if (gap < 0) return
+  const wait = last ? last.at + gap - Date.now() : 0
+  if (wait > 0) {
+    told.set(id, { ...last!, timer: setTimeout(() => { told.set(id, { ...last!, timer: undefined }); stateChanged(id) }, wait) })
+    return
+  }
+  told.set(id, { now, at: Date.now() })
+  const change: StateChange = { terminal: id, ...now, at: Date.now() }
+  for (const k of ["kind", "msg"] as const) if (change[k] === undefined) delete change[k]
+  try { void Promise.resolve(plugin.service("inbox:state")?.(change)).catch((e) => console.error("terminal: inbox:state:", e)) } catch (e) { console.error("terminal: inbox:state:", e) }
+}
+
+/** A backend heard terminal `id`'s program in OSC 7501. The first time, its hooks stop saying anything (`oscMark`). */
+function oscSaid(id: string, said: Said) {
+  if (!TERMINAL_ID.test(id) || id.startsWith(SPARE)) return
+  const was = osc.get(id)
+  osc.set(id, said)
+  if (said.seen && !was?.seen) try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(oscMark(id), "") } catch { /* hooks go on */ }
+  if (JSON.stringify(was) !== JSON.stringify(said)) stateChanged(id)
+}
+
+/** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */
+function forgetState(id: string) {
+  for (const f of [stateFile(id), oscMark(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
+  osc.delete(id); asking.delete(id)
+  clearTimeout(told.get(id)?.timer)
+  told.delete(id)
+}
+
+/** Times agent terminal `id` from its start to its agent's first word (a hook, or OSC 7501), a minute at most: the
+ *  span "agent.ready". Its shell finding no such program instead (MISSING) is told to the user. */
 function agentReady(id: string, agent: string) {
   const timing = span("agent.ready", { agent }), until = Date.now() + 60_000
   const look = () => {
     if (stateOf(id) === MISSING) return void agentMissing(id, agent)
-    if (fs.existsSync(stateFile(id))) return void timing.end()
+    if (fs.existsSync(stateFile(id)) || osc.get(id)?.seen) return void timing.end()
     if (Date.now() < until) setTimeout(look, 50).unref?.()
   }
   look()
@@ -274,26 +349,31 @@ export async function askOn(b: Pick<Backend, "screen">, id: string, asks: AgentA
   const text = asks.length ? (await b.screen(id, 12).catch(() => "")).replace(/\s+$/, "").split("\n").slice(-12).join("\n") : ""
   return asks.find((a) => a.match.test(text)) ?? null
 }
-/** The question each agent terminal shows that its hooks can't tell (they don't run yet): it waits on the user. */
-const asking = new Map<string, string>()
 
-/** Watches agent terminal `id` until its hooks run (an hour at most) for a question its agent declares: it goes to the
- *  inbox as a permission (Approve and Deny press its keys), read once it leaves the screen ("terminal:waits"). */
+/** Watches agent terminal `id` for a question its agent declares (Approve and Deny press its keys) until its hooks or,
+ *  with the Inbox hearing states, OSC 7501 say it; an agent with neither (Codex) while it runs. "terminal:waits". */
 async function watchAsks(id: string, agent: string) {
-  const asks = await asksOf(agent), until = Date.now() + 3_600_000
+  if (watching.has(id)) return
+  watching.add(id)
+  try { await watchFor(id, agent) } finally { watching.delete(id) }
+}
+const watching = new Set<string>()
+async function watchFor(id: string, agent: string) {
+  const asks = await asksOf(agent)
   if (!asks.length) return
-  for (let b = await backendOf(id); b && Date.now() < until && !fs.existsSync(stateFile(id)); b = await backendOf(id)) {
+  const said = () => fs.existsSync(stateFile(id)) || (!!osc.get(id)?.status && !!plugin.service("inbox:state"))
+  for (let b = await backendOf(id); b && !said(); b = await backendOf(id)) {
     const hit = await askOn(b, id, asks)
-    if (hit?.id !== asking.get(id)) {
-      if (hit) plugin.service("inbox:event")?.({ source: agent, kind: "waiting", ask: "permission", key: `ask-${id}`, terminal: id,
+    if (hit?.id !== asking.get(id)?.id) {
+      if (hit && !plugin.service("inbox:state")) plugin.service("inbox:event")?.({ source: agent, kind: "waiting", ask: "permission", key: `ask-${id}`, terminal: id,
         title: `${agentName(agent) ?? agent} is waiting for you`, body: hit.says })
-      if (hit) asking.set(id, hit.id)
+      if (hit) asking.set(id, hit)
       else asking.delete(id)
-      listChanged()
+      stateChanged(id)
     }
     await new Promise((r) => setTimeout(r, 1000))
   }
-  if (asking.delete(id)) listChanged()
+  if (asking.delete(id)) stateChanged(id)
 }
 
 /** The question terminal `id` shows (its agent's, or `agent`'s for one run by hand in a plain shell), or null. */
@@ -302,8 +382,21 @@ async function askIn(id: string, agent = "") {
   return b && /^[\w-]{1,40}$/.test(name) ? { b, hit: await askOn(b, id, await asksOf(name)) } : { b, hit: null }
 }
 
-/** Whether terminal `id` waits on the user now: a question on its screen, or its hooks said so. */
-plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || stateOf(id) === "waiting")
+/** Whether terminal `id` waits on the user now: a question on its screen, or its state says so. */
+plugin.provide("terminal:waits", async (id: string, agent = "") => !!(await askIn(id, agent)).hit || stateNow(id)?.state === "blocked")
+/** Terminal `id`'s state now (StateChange without its time), or null when nothing says. */
+plugin.provide("terminal:state", (id: string) => (TERMINAL_ID.test(id) ? stateNow(id) : null))
+
+// The backends that read OSC 7501 tell each shell's records as they change; the hooks' state files are watched.
+for (const b of [keeper, fallback]) b.status?.follow(oscSaid)
+let hooksWatch: fs.FSWatcher | null = null
+try {
+  fs.mkdirSync(STATES, { recursive: true })
+  // (the folder is every server's on this machine: only this one's terminals)
+  hooksWatch = fs.watch(STATES, (_e, name) => { if (name && TERMINAL_ID.test(String(name))) void runsHere(String(name)).then((here) => here && stateChanged(String(name))) })
+  hooksWatch.on("error", () => {})
+} catch (e) { console.error("terminal: can't watch the agents' state files:", e) }
+plugin.onUnload(() => hooksWatch?.close())
 
 /** What an agent's state file says when its shell had no such command (exit 127): it isn't installed here. */
 const MISSING = "missing"
@@ -321,21 +414,25 @@ function agentMissing(id: string, agent: string) {
   void plugin.runOp("ui.notify", { text: `${name} isn't installed on this machine: install it, then start it again`, error: true, terminal: id }).catch(() => {})
 }
 
-/** The shell command a hook runs to mark a terminal's state (its state `file`), and `tell` (Inbox) when the change is
- *  news: finished, asks something, was answered ($prev, the hook's JSON on stdin). */
-export function stateCommand(file: string, tell?: ((s: AgentState) => string) | null) {
-  const mark = (s: AgentState) => `printf %s ${s} > ${shellQuote(file)} 2>/dev/null || true`
-  if (!tell) return mark
+/** A hook's command marking a terminal's state in `file` (and `tell`, the Inbox's, of news: $prev, the hook's JSON on
+ *  stdin); nothing once file `osc` is there (the agent speaks OSC 7501, which says it all). */
+export function stateCommand(file: string, tell?: ((s: AgentState) => string) | null, osc?: string | null) {
+  const mark = (s: AgentState, kind?: string | null) => `printf %s ${kind && s === "waiting" ? `${s}:${kind}` : s} > ${shellQuote(file)} 2>/dev/null || true`
   const news: Record<AgentState, string> = { idle: `[ "$prev" = working ]`, waiting: `[ "$prev" != waiting ]`, working: `[ "$prev" = waiting ]` }
-  return (s: AgentState) => `prev=$(cat ${shellQuote(file)} 2>/dev/null); ${mark(s)}; if ${news[s]}; then ${tell(s)}; fi`
+  const set = !tell ? mark
+    : (s: AgentState, kind?: string | null) => `prev=$(cat ${shellQuote(file)} 2>/dev/null); prev=\${prev%%:*}; ${mark(s, kind)}; if ${news[s]}; then ${tell(s)}; fi`
+  return osc ? (s: AgentState, kind?: string | null) => `[ -e ${shellQuote(osc)} ] || { ${set(s, kind)}; }` : set
 }
 
 /** The shell command an agent's terminal runs, and where (null: a plain shell). */
 async function agentRun(id: string, prompt: string | null = null, dark: boolean | null = null, how: AgentHow = {}): Promise<AgentRun | null> {
   const a = agentOf(id)
   if (!a) return null
-  try { fs.mkdirSync(STATES, { recursive: true }); fs.rmSync(stateFile(id), { force: true }) } catch { /* unmarked */ }
-  const set = stateCommand(stateFile(id), plugin.service("inbox:hook")?.(a.name, id))
+  try { fs.mkdirSync(STATES, { recursive: true }); forgetState(id) } catch { /* unmarked */ }
+  // With the Inbox hearing states (inbox:state), hooks are only for an agent that doesn't speak OSC 7501; before it
+  // does, they also tell it themselves (inbox:hook), whatever the agent speaks.
+  const states = !!plugin.service("inbox:state")
+  const set = stateCommand(stateFile(id), states ? null : plugin.service("inbox:hook")?.(a.name, id), states ? oscMark(id) : null)
   try {
     const report = plugin.service("activity:report")
     const run = await plugin.service(`agent:${a.name}`)!({ resume: a.resume, context: agentContext(), state: set,
@@ -476,7 +573,7 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     // A clean exit (an agent's too: the shell after it) closes its tabs, the ones away now once they're put back; an
     // agent's session that died keeps its tabs, saying so, with Restart.
     if (!code && !signal) markEnded(id)
-    try { fs.rmSync(stateFile(id), { force: true }) } catch { /* none */ }
+    forgetState(id)
     plugin.emit("terminal.ended", { id, code, signal })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
@@ -692,7 +789,11 @@ let poll: ReturnType<typeof setInterval> | null = null
 let follow: ReturnType<typeof setInterval> | null = null
 
 type Listed = { id: string; agent: string | null; process: string; busy: boolean; clients: number; started: number; title?: string
-  state?: string; machine?: string; machineLabel?: string; backend?: string; external?: boolean
+  /** What its program is doing (stateNow), while something runs in it; `kind` and `msg` (untrusted) as it said. */
+  state?: SessionState; kind?: Kind; msg?: string
+  /** Its agent isn't installed here (the shell found no such program). */
+  missing?: true
+  machine?: string; machineLabel?: string; backend?: string; external?: boolean
   /** Its agent's own session id (what it resumes), when the agent says (its service "agent-meters:<name>"). */
   session?: string
   /** Its agent's context and prompt cache, with Agent meters on (the service "terminal:meters"). */
@@ -716,11 +817,26 @@ async function localList(): Promise<Listed[]> {
       // Who's watching: the app's sockets plus holds besides this server's own (tmux attach in a real terminal), so a session
       // no tab shows reads as detached.
       const clients = s ? s.clients.size + Math.max(0, x.attached - 1) : x.attached
-      const state = stateOf(x.id) ?? (asking.has(x.id) ? "waiting" : x.state)
+      // (a backend's word on what its program said, kept till it tells a change: after a restart, its first)
+      if (x.said && !osc.has(x.id)) {
+        osc.set(x.id, x.said)
+        const now = stateNow(x.id)
+        if (now) told.set(x.id, { now, at: Date.now() })
+      }
       const front = await inFront(x)
+      // (an agent's terminal from before this server started: its questions are watched for again)
+      const agent = agentOf(x.id)?.name
+      if (agent && front !== null && !watching.has(x.id) && !osc.get(x.id)?.status && !fs.existsSync(stateFile(x.id))) void watchAsks(x.id, agent)
+      // Its program ended (the shell is at its prompt again): what it was working on or blocked on is over.
+      const said = osc.get(x.id)?.status?.state
+      if (front === null && (said === "working" || said === "blocked")) void b.status?.drop(x.id)
+      const now = stateNow(x.id), shows = !SHELLS.has(x.process)
+      const state = stateOf(x.id) === MISSING ? null : now?.state ?? (x.state === "working" || x.state === "idle" ? x.state : x.state === "waiting" ? "blocked" : null)
       out.set(x.id, { id: x.id, agent: agentOf(x.id)?.name ?? null, process: front ?? x.process, busy: front !== null, clients, started: x.created || s?.started || 0,
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
-        title: front !== null ? titleOf(x.title ?? "") : undefined, state: state && !SHELLS.has(x.process) ? state : undefined, backend: b.name,
+        title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
+        ...(state && shows ? { state, ...(now?.kind ? { kind: now.kind } : {}), ...(now?.msg ? { msg: now.msg } : {}) } : {}),
+        ...(stateOf(x.id) === MISSING ? { missing: true as const } : {}),
         ...(x.external ? { external: true } : {}) })
     }
   }

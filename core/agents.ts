@@ -338,9 +338,9 @@ export type AgentStart = {
   resume: string | null
   /** What to tell the agent about where it runs (context.md): its system prompt's addition, if it takes one. */
   context: string
-  /** A shell command marking the terminal's state for the Terminals panel, for the agent's hooks; with the Inbox on a
-   *  state change is also news. */
-  state: ((s: AgentState) => string) | null
+  /** A shell command marking the terminal's state for the Terminals panel and the Inbox, for the agent's hooks (`kind`:
+   *  what a waiting one asks). Where the agent speaks OSC 7501 (the terminal reads it), the command does nothing. */
+  state: ((s: AgentState, kind?: "permission" | "question") => string) | null
   /** A shell command for the agent's hooks to report what it did (the hook's JSON on stdin), to Activity; null when off. */
   report?: string | null
   /** Which of its accounts to start in (the id's `_<profile>`: Claude Code's config folders), or null for its default. */

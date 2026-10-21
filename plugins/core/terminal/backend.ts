@@ -8,6 +8,7 @@ import os from "node:os"
 import path from "node:path"
 import { spawn } from "node:child_process"
 import type { IPty } from "node-pty"
+import { REPLY, watcher, type Said } from "./osc7501.ts"
 
 /** An agent's command and the folder it runs in (from the plugin that brings it: AgentStart in core/agents.ts). */
 export type AgentRun = { command: string; cwd?: string | null }
@@ -67,7 +68,18 @@ export interface Link {
 /** A running shell as a backend lists it. `process`: the program in front; `attached`: holds on it, this server's
  *  included; `activity`: last input or output (ms); `external`: not started by Vaultite (a herdr pane of the user's). */
 export type Listed = { id: string; pid?: number; process: string; created: number; activity?: number; attached: number; title?: string
-  state?: string; external?: boolean; spare?: boolean }
+  state?: string; external?: boolean; spare?: boolean
+  /** What its program said in OSC 7501, from a backend that reads it (`status`). */
+  said?: Said }
+
+/** A backend that reads OSC 7501 where it holds the pty (osc7501.ts): it answers the probe itself, in its place in the
+ *  stream, takes reports out of the output and keeps each shell's records. Without one, programs there aren't answered. */
+export interface StatusReader {
+  /** `fn` hears a shell's records as they change. */
+  follow(fn: (id: string, said: Said) => void): void
+  /** Its program ended: working and blocked records go. */
+  drop(id: string): Promise<void>
+}
 
 export interface Backend {
   readonly name: string
@@ -96,6 +108,8 @@ export interface Backend {
   /** Forget its history (what scrolling up shows): tmux's, once a ready shell's typed line has given way to an agent.
    *  (The keeper's goes with the script's `clear`, which clears the scrollback too.) */
   clearHistory?(id: string): Promise<void>
+  /** Its programs' OSC 7501. tmux has none: it answers the primary DA itself and drops OSCs it doesn't know. */
+  readonly status?: StatusReader
 }
 
 /** A long or multi-line text goes as a paste: typed, an agent reads it in the pty's ~1 KB pieces, each a paste of its
@@ -202,13 +216,13 @@ export async function loadPty() {
 export const plain = (s: string) => s.replace(/\x1b\[[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(\x07|\x1b\\)|\x1b[@-_]/g, "").replace(/\r(?!\n)/g, "")
 
 /** A Link around a pseudo-terminal this process holds (the plain backend's, tmux's client). */
-export function ptyLink(p: IPty, extra: Partial<Pick<Link, "redraw" | "scroll" | "write">> & { exit?: (code: number, signal: number) => Promise<Exit> } = {}): Link {
+export function ptyLink(p: IPty, extra: Partial<Pick<Link, "redraw" | "scroll" | "write" | "onData">> & { exit?: (code: number, signal: number) => Promise<Exit> } = {}): Link {
   const link: Link = {
     get cols() { return p.cols },
     get rows() { return p.rows },
     write: extra.write ?? ((b) => { try { p.write(b as unknown as string) } catch { /* ended */ } }),
     resize: (c, r) => { try { p.resize(c, r) } catch { /* ended */ } },
-    onData: (fn) => { p.onData(fn) },
+    onData: extra.onData ?? ((fn) => { p.onData(fn) }),
     onExit: (fn) => { p.onExit(async ({ exitCode, signal }) => fn(extra.exit ? await extra.exit(exitCode, signal ?? 0) : { code: exitCode, signal: signal ?? 0 })) },
     redraw: extra.redraw,
     scroll: extra.scroll,
@@ -247,7 +261,10 @@ export async function mirrored(link: Link, scrollback = limits.scrollback()): Pr
 // ---------- pty: the server's own children (they end with it)
 
 export function plainBackend(): Backend {
-  const shells = new Map<string, { p: IPty; created: number; activity: number; out: Tail; attached: number; paste: boolean }>()
+  type Shell = { p: IPty; created: number; activity: number; out: Tail; attached: number; paste: boolean; data: Set<(d: string) => void>
+    status: ReturnType<typeof watcher> }
+  const shells = new Map<string, Shell>()
+  const heard = new Set<(id: string, said: Said) => void>()
   const get = (id: string) => {
     const s = shells.get(id)
     if (!s) throw new Error(`there's no shell '${id}'`)
@@ -260,17 +277,23 @@ export function plainBackend(): Backend {
     list: async () => [...shells].map(([id, s]) => {
       let process = ""
       try { process = path.basename(s.p.process) } catch { /* ended */ } // (Linux: /bin/bash)
-      return { id, pid: s.p.pid, process, created: s.created, activity: s.activity, attached: s.attached }
+      return { id, pid: s.p.pid, process, created: s.created, activity: s.activity, attached: s.attached, said: s.status.records.said() }
     }),
     async create(id, spec) {
       const lib = await loadPty()
       const p = lib.spawn(spec.shell, shellArgs(spec.shell, spec.run), { name: "xterm-256color", cols: spec.cols, rows: spec.rows, cwd: spec.run?.cwd || spec.cwd,
         env: { ...spec.env, ...spec.ctx } })
-      const s = { p, created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0, paste: false }
-      p.onData((d) => {
+      // (the probe answered as it's read: before a page answers the primary DA that follows it)
+      const status = watcher(() => { try { p.write(REPLY) } catch { /* ended */ } })
+      const s: Shell = { p, created: Date.now(), activity: Date.now(), out: new Tail(spec.scrollback), attached: 0, paste: false, data: new Set(), status }
+      p.onData((raw) => {
         s.activity = Date.now()
+        const { out: d, changed } = status.feed(raw)
+        if (changed) for (const fn of heard) fn(id, status.records.said())
+        if (!d) return
         s.out.push(d)
         s.paste = pasteMode(d, s.paste)
+        for (const fn of s.data) fn(d)
       })
       p.onExit(() => { if (shells.get(id) === s) shells.delete(id) })
       shells.set(id, s)
@@ -278,11 +301,13 @@ export function plainBackend(): Backend {
     async attach(id) {
       const s = get(id)
       s.attached++
-      const link = ptyLink(s.p)
+      const mine = new Set<(d: string) => void>()
+      const link = ptyLink(s.p, { onData: (fn) => { mine.add(fn); s.data.add(fn) } })
       // Letting go of it here is ending it: it's this process's child.
       let closed = false
-      link.close = () => { if (!closed) { closed = true; s.attached-- } }
-      link.onExit(() => { if (!closed) { closed = true; s.attached-- } })
+      const close = () => { if (!closed) { closed = true; s.attached--; for (const fn of mine) s.data.delete(fn) } }
+      link.close = close
+      link.onExit(close)
       return link
     },
     kill: async (id) => { try { get(id).p.kill("SIGHUP") } catch { /* ended */ } },
@@ -291,6 +316,10 @@ export function plainBackend(): Backend {
       const s = get(id)
       if (text) s.p.write(o?.paste && s.paste ? bracketed(text) : text)
       if (enter) { if (text) await new Promise((r) => setTimeout(r, settle(text))); s.p.write("\r") }
+    },
+    status: {
+      follow: (fn) => { heard.add(fn) },
+      drop: async (id) => { const s = shells.get(id); if (s?.status.records.drop()) for (const fn of heard) fn(id, s.status.records.said()) },
     },
   }
 }
@@ -371,6 +400,7 @@ const PROTOCOL = 1
 export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unknown[]) => void }): Backend & { socket: string; access(dir: string): Promise<Access | null> } {
   const socket = path.join(runtimeDir(), `vaultite-ptyd${PROTOCOL}-${name}.sock`)
   let ctl: Promise<Wire> | null = null
+  const heard = new Set<(id: string, said: Said) => void>()
 
   /** Starts the keeper: detached (its own session and process group) and, under systemd, in a scope of its own, so
    *  nothing that ends the server ends it. The desktop app's server runs on Electron as Node (ELECTRON_RUN_AS_NODE). */
@@ -399,7 +429,13 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
   function control(): Promise<Wire> {
     if (!ctl) {
       // (a connection that closes clears only itself: a retired keeper's can close after the next one's is made)
-      const p: Promise<Wire> = open().then((w) => { w.onClose = () => { if (ctl === p) ctl = null }; return w })
+      const p: Promise<Wire> = open().then((w) => {
+        w.onClose = () => { if (ctl === p) ctl = null }
+        // Its shells' OSC 7501 records as they change (a keeper from an older build doesn't know the op: nothing comes).
+        w.listeners.add((m) => { if (m.t === "status" && typeof m.id === "string") for (const fn of heard) fn(m.id, { seen: !!m.seen, status: (m.status ?? null) as Said["status"] }) })
+        w.send("status")
+        return w
+      })
       ctl = p
       p.catch(() => { if (ctl === p) ctl = null })
     }
@@ -478,6 +514,11 @@ export function ptydBackend(name: string, o: { daemon: string; log?: (...a: unkn
       return accessOf(r.ok ? "" : String(r.code || "EIO"))
     },
     screen: async (id, lines) => String((await ask("screen", { id, lines })).text ?? ""),
+    status: {
+      // (the connection that hears them is made when the keeper runs: now, or with its first shell)
+      follow: (fn) => { heard.add(fn); void running() },
+      drop: async (id) => { await (await running())?.request("status-drop", { id }).catch(() => {}) },
+    },
     async send(id, text, enter, o) {
       // (the keeper brackets a paste when its program asked for that: it has the screen's modes)
       if (text) await ask("input", { id, b64: Buffer.from(text).toString("base64"), ...(o?.paste ? { paste: true } : {}) }).catch(() => {})

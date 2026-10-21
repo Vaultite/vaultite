@@ -127,6 +127,12 @@ export default async ($: VaultTest) => {
       JSON.stringify(trust.approve) === JSON.stringify(["\x1b[B", "\r"]) && JSON.stringify(trust.deny) === JSON.stringify(["\x1b"]), trust)
     const perm = await term.askOn(showing(" Bash command\n   rm -rf build\n Do you want to proceed?\n ❯ 1. Yes\n   2. No"), "t", asks)
     check("terminal: its permission dialog is one too, Yes first", perm?.id === "permission" && JSON.stringify(perm.approve) === JSON.stringify(["\r"]), perm)
+    // Codex has no hooks and no OSC 7501 yet: its command approval, seen by its last lines, is Yes by Enter.
+    const cx = await import("../../../plugins/core/codex/plugin.ts")
+    const codexAsk = await term.askOn(showing("  $ curl -sI https://example.com | head -1\n\n\n› 1. Yes, proceed (y)\n  2. Yes, and don't ask again for commands that start with `curl` (p)\n" +
+      "  3. No, and tell Codex what to do differently (esc)\n\n  Press enter to confirm or esc to cancel"), "t", cx.plugin.services["agent-asks:codex"]())
+    check("terminal: Codex's approval of a command is a permission, Yes by Enter, No by Esc", codexAsk?.id === "permission" &&
+      JSON.stringify(codexAsk.approve) === JSON.stringify(["\r"]) && JSON.stringify(codexAsk.deny) === JSON.stringify(["\x1b"]), codexAsk)
     const above = await term.askOn(showing(["Do you want to proceed?", ...Array.from({ length: 20 }, (_, i) => `output ${i}`)].join("\n")), "t", asks)
     check("terminal: a question scrolled up isn't asked now", above === null, above)
     // What a page gets back from a backend without pictures: the last `scrollback` lines, whole chunks, and a line
@@ -206,6 +212,99 @@ export default async ($: VaultTest) => {
     // (Settings > Permissions: whether the keeper itself may read the vault, which macOS can refuse it and not the app)
     check("terminal: the keeper says whether it can read a folder, and never starts for that", JSON.stringify(access) ===
       JSON.stringify([null, { ok: true }, { ok: false, why: "the folder isn't there" }]), access)
+  }
+
+  // OSC 7501 (osc7501.ts): reports by the spec's rules, taken out of the output however it's cut, records' state; the
+  // probe answered by the keeper before the primary DA after it (Claude Code reads a DA answer first as "not spoken").
+  {
+    const { parse, Records, Scanner, REPLY } = await import("../../../plugins/core/terminal/osc7501.ts")
+    const b64 = (t: string) => Buffer.from(t).toString("base64")
+    const tf = parse("state=blocked:kind=permission:app=terraform:msg=QXBwbHkgMyB0byBhZGQsIDEgdG8gY2hhbmdlLCAwIHRvIGRlc3Ryb3k/")
+    check("osc7501: the spec's report", JSON.stringify(tf) === JSON.stringify({ state: "blocked", id: "", msg: "Apply 3 to add, 1 to change, 0 to destroy?", kind: "permission", app: "terraform" }), tf)
+    const p = (b: string) => JSON.stringify(parse(b))
+    check("osc7501: a malformed pair is skipped, an unknown key ignored, the last of a repeated key wins, spaces trimmed",
+      p(" state = idle :nope: x=1 :foo=bar:state=done") === JSON.stringify({ state: "done", id: "" }), p(" state = idle :nope: x=1 :foo=bar:state=done"))
+    check("osc7501: no state, or one it doesn't know, is ignored whole", parse("msg=aGk=") === null && parse("state=sleeping") === null)
+    check("osc7501: a msg with a control character, base64 that doesn't decode, or past its limit discards the report (one outside the value characters is a malformed pair)",
+      parse(`state=working:msg=${b64("one\ntwo")}`) === null && parse("state=working:msg=a") === null && p("state=working:msg=@@@") === JSON.stringify({ state: "working", id: "" }) && parse(`state=working:msg=${b64("x".repeat(2049))}`) === null &&
+      parse(`state=working:title=${b64("x".repeat(193))}`) === null && parse(`state=working:msg=${b64("é 2048".padEnd(2047, "x"))}`) !== null)
+    check("osc7501: an id outside its grammar is ignored (never the root's), a good one kept", parse("state=done:id=a//b") === null && parse(`state=done:id=${"a/".repeat(8)}a`) === null &&
+      (parse("state=done:id=build/test") as { id: string }).id === "build/test")
+    check("osc7501: kind only with blocked, progress only 0-100 with working or blocked, app in its characters",
+      p("state=idle:kind=permission:progress=5:app=a b") === JSON.stringify({ state: "idle", id: "" }) &&
+      p("state=working:progress=101:kind=auth") === JSON.stringify({ state: "working", id: "" }) && p("state=blocked:kind=auth:progress=40") === JSON.stringify({ state: "blocked", id: "", kind: "auth", progress: 40 }))
+    check("osc7501: the probe, and an echoed answer isn't one", parse("?") === "probe" && parse(REPLY.slice(7, -2)) === null)
+    // Cut at every place: the same reports, prompts and resets, and the output without the reports.
+    const report = `\x1b]7501;state=working:app=x:msg=${b64("Building")}\x1b\\`, probe = "\x1b]7501;?\x07"
+    const stream = `a${report}b\x1b]0;title\x07c${probe}\x1b[c\x1b]133;A\x07d\x1bc`
+    const bad: unknown[] = []
+    for (let k = 0; k <= stream.length; k++) {
+      const sc = new Scanner(), x = sc.feed(stream.slice(0, k)), y = sc.feed(stream.slice(k))
+      const seen = [...x.seen, ...y.seen].map((e) => e.t).join(), out = (x.out + y.out).replace(report, "").replace(probe, "")
+      if (seen !== "report,probe,prompt,reset" || out !== "ab\x1b]0;title\x07c\x1b[c\x1b]133;A\x07d\x1bc") bad.push({ k, seen, out })
+    }
+    const whole = new Scanner().feed(stream)
+    check("osc7501: found and taken out of the output wherever a chunk ends (one begun in an earlier chunk goes on whole)", !bad.length && !whole.out.includes("7501"), bad.slice(0, 3))
+    const cancelled = new Scanner().feed("\x1b]7501;state=done\x1b[1mbold")
+    check("osc7501: ESC that isn't ST cancels the report, and what it starts goes on", !cancelled.seen.length && cancelled.out === "\x1b[1mbold", cancelled)
+    // Records: blocked anywhere wins, else the root's, else its children's; lifetimes; clear; app from an ancestor.
+    const r = new Records()
+    const say = (b: string) => r.report(parse(b) as Exclude<ReturnType<typeof parse>, "probe" | null>)
+    say("state=working:app=deploy"); say(`state=working:id=us:msg=${b64("Pushing")}`); say(`state=blocked:kind=permission:id=eu:msg=${b64("Approve eu-west?")}`)
+    const blocked = r.status()
+    say("state=done:id=eu")
+    const root = r.status()
+    say("state=clear:id=us"); say("state=clear:id=eu"); say(`state=done:app=deploy:msg=${b64("Deployed")}`)
+    check("osc7501: blocked anywhere is the terminal's state (app from the root), then the root's", JSON.stringify(blocked) === JSON.stringify({ state: "blocked", kind: "permission", msg: "Approve eu-west?", app: "deploy" }) &&
+      root?.state === "working" && r.status()?.msg === "Deployed", [blocked, root, r.status()])
+    say("state=working:id=job")
+    r.drop()
+    check("osc7501: a prompt or the program's end drops working and blocked, done stays", r.status()?.state === "done" && r.said().seen)
+    say("state=working:id=a/b"); say("state=working:id=a/c"); say("state=clear:id=a")
+    const kids = r.status()?.state
+    say("state=clear")
+    check("osc7501: clear removes a record and those beneath it; with no id, all", kids === "done" && r.status() === null && r.said().seen, kids)
+    const many = new Records()
+    for (let i = 0; i < 300; i++) many.report({ state: "working", id: `w${i}` })
+    many.report({ state: "blocked", id: "w299" })
+    check("osc7501: at most 256 records, the least recently updated going", many.status()?.state === "blocked" && (many as unknown as { map: Map<string, unknown> }).map.size === 256 &&
+      !(many as unknown as { map: Map<string, unknown> }).map.has("w0"))
+    // The keeper answers the probe in its place: the shell reads the answer, then the headless terminal's DA answer.
+    const { ptydBackend } = await import("../../../plugins/core/terminal/backend.ts")
+    const { waitFor } = await import("../lib.ts")
+    const keeper = ptydBackend(`test7501-${process.pid}`, { daemon: path.resolve(import.meta.dirname, "../../../plugins/core/terminal/ptyd.ts") })
+    const got = path.join(tmp, "probe-answer")
+    const said: unknown[] = []
+    keeper.status!.follow((id, s) => said.push({ id, ...s }))
+    const script = `stty raw -echo; printf '\\033]7501;?\\033\\\\\\033[c'; dd bs=1 count=${REPLY.length + 7} of=${got} 2>/dev/null; ` +
+      `printf '\\033]7501;state=blocked:kind=question:msg=${b64("Which port?")}\\033\\\\'; sleep 30`
+    const spec = { shell: "/bin/sh", run: { command: script }, cwd: tmp, env: { PATH: "/usr/bin:/bin", HOME: tmp }, ctx: {}, cols: 80, rows: 24, scrollback: 100 }
+    const stop = () => { try { process.kill(Number(fs.readFileSync(`${keeper.socket}.pid`, "utf8")), "SIGTERM") } catch { /* none */ } }
+    let answer = "", listed: unknown = null
+    try {
+      await keeper.create("probe1", { ...spec, run: { command: script } })
+      await waitFor(() => fs.existsSync(got) && fs.statSync(got).size >= REPLY.length + 7, 10_000, 50)
+      answer = fs.existsSync(got) ? fs.readFileSync(got, "latin1") : ""
+      await waitFor(() => JSON.stringify(said).includes("Which port?"), 5_000, 50)
+      listed = (await keeper.list()).find((x) => x.id === "probe1")?.said
+      await keeper.kill("probe1")
+    } finally { stop() }
+    check("osc7501: the keeper answers the probe before the primary DA after it", answer.startsWith(REPLY) && answer.slice(REPLY.length).startsWith("\x1b[?"), JSON.stringify(answer))
+    const blockedSaid = { seen: true, status: { state: "blocked", kind: "question", msg: "Which port?" } }
+    check("osc7501: the keeper tells the server its records as they change (from the probe on: it speaks it), and lists them",
+      JSON.stringify(said.at(-1)) === JSON.stringify({ id: "probe1", ...blockedSaid }) && said.every((x) => (x as { seen: boolean }).seen) &&
+      JSON.stringify(listed) === JSON.stringify(blockedSaid), [said, listed])
+    // An agent's hooks once it speaks OSC 7501 (its terminal's mark there): they say nothing.
+    const term = await import("../../../plugins/core/terminal/plugin.ts")
+    const { execFileSync } = await import("node:child_process")
+    const dir = path.join(tmp, "osc-hooks"), file = path.join(dir, "state"), mark = path.join(dir, "state.osc")
+    fs.mkdirSync(dir)
+    const set = term.stateCommand(file, null, mark)
+    execFileSync("/bin/sh", ["-c", set("waiting", "permission")])
+    const before = fs.readFileSync(file, "utf8")
+    fs.writeFileSync(mark, "")
+    execFileSync("/bin/sh", ["-c", set("working")])
+    check("osc7501: an agent's state hooks mark what it asks, and do nothing once it speaks OSC 7501", before === "waiting:permission" && fs.readFileSync(file, "utf8") === "waiting:permission", before)
   }
 
   // Routes: * is one segment, a last ** the rest.

@@ -33,7 +33,12 @@ export { terminalId as newId } from "@vaultite"
 
 /** A session as /api/terminals lists it: `agent`, the coding agent its id names (codex-<id>), or null; `machine` and
  *  `machineLabel`, another machine's (its id ends in @<machine>). */
-export type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string; state?: string
+export type Session = { id: string; agent: string | null; process: string; busy?: boolean; clients: number; started: number; title?: string
+  /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
+   *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
+  state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
+  /** Its agent isn't installed on that machine. */
+  missing?: boolean
   machine?: string; machineLabel?: string
   /** Where it runs (backend.ts: vaultite, tmux, herdr...), and whether it's another program's own (a herdr pane the
    *  user opened there: listed only while a tab shows it, never ended by closing one). */
@@ -149,9 +154,11 @@ async function settle(ids: string[]) {
 /** A session's colour, its state's (Claude Code's agent view): its agent's own (Claude Code's orange, Codex's green)
  *  while it works or says nothing, yellow while it waits on you, none (the icons' grey) idle or a plain shell. */
 export const tintOf = (s: Session, a = agentIn(s)) =>
-  !a || (s.state === "idle" && !cacheIn(s)) ? undefined : s.state === "waiting" ? "var(--yellow)" : a.tint
+  !a || (resting(s) && !cacheIn(s)) ? undefined : s.state === "blocked" ? "var(--yellow)" : a.tint
 /** Where a session sorts (the agent view's groups): waiting on you, working, idle (or saying nothing), a plain shell. */
-export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 3 : s.state === "waiting" ? 0 : s.state === "working" ? 1 : 2)
+export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 3 : s.state === "blocked" ? 0 : s.state === "working" ? 1 : 2)
+/** Its program says it's at rest: waiting for the next instruction, or finished (done or failed, its result to look at). */
+export const resting = (s: Session) => s.state === "idle" || s.state === "done" || s.state === "error"
 
 // ---------- every session the server runs, live (one socket for the whole app) ----------
 // The Terminals panel, its tab and the terminal tabs' names and states all read this one list.
@@ -225,12 +232,12 @@ export function runningResume(id: string): string | null {
 /** The icon's status while an agent runs (when its hooks say: AgentStart's `state` on the server): a slow pulse while
  *  it works (opacity only, cheap), yellow with a dot while it waits on you (`waiting`, `tintOf`). */
 export const stateClass = (s: Session, a = agentIn(s)) =>
-  !a ? undefined : s.state === "working" ? "animate-pulse" : s.state === "idle" ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
+  !a ? undefined : s.state === "working" ? "animate-pulse" : resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
 
 /** How much of its prompt cache's time an idle agent has left (0-1), when Agent meters draws it in the icon. */
 export const cacheIn = (s: Session) => {
   const c = s.meter?.cache
-  return c?.as === "icon" && s.state === "idle" ? cacheLeft(c) : 0
+  return c?.as === "icon" && resting(s) ? cacheLeft(c) : 0
 }
 export const cacheLeft = (c: { until: number; ttl: number }) => Math.min(1, Math.max(0, (c.until - Date.now()) / (c.ttl * 1000)))
 /** The icon dimmed from the top as far as its cache has run out (DRAIN[n]: n tenths left, still coloured). */
@@ -247,7 +254,8 @@ export function meterText(s: Session) {
   const k = (n: number) => (n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : `${Math.round(n / 1000)}k`)
   const left = cache && Math.ceil(Math.max(0, cache.until - Date.now()) / 60000)
   return [c && `context ${k(c.tokens)} of ${k(c.window)} (${Math.round((c.tokens / c.window) * 100)}%)`,
-    cache && s.state === "idle" && (left ? `cache ${left} min left` : "cache expired")].filter(Boolean).join(", ")
+    cache && resting(s) && (left ? `cache ${left} min left` : "cache expired")].filter(Boolean).join(", ")
 }
-export const waiting = (s: Session, a = agentIn(s)) => !!a && s.state === "waiting"
-export const stateTip = (s: Session) => (s.state === "working" ? " (working)" : s.state === "waiting" ? " (waiting for you)" : s.state === "missing" ? " (not installed)" : "")
+export const waiting = (s: Session, a = agentIn(s)) => !!a && s.state === "blocked"
+export const stateTip = (s: Session) => (s.missing ? " (not installed)" : s.state === "working" ? " (working)" : s.state === "blocked" ? " (waiting for you)"
+  : s.state === "done" ? " (done)" : s.state === "error" ? " (failed)" : "")

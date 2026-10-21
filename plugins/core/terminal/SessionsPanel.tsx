@@ -8,7 +8,7 @@ import {
   useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { cloudListed, getCloud, subscribeCloud } from "./cloud"
-import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
+import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
  *  list the terminal tabs' names, colours and states come from too (sessions.ts). */
@@ -84,7 +84,7 @@ function Meters({ s, tint }: { s: Session; tint?: string }) {
   const used = c ? Math.min(1, c.tokens / c.window) : 0
   const rings = [
     c?.as === "bar" && { key: "context", r: 6, part: used, colour: used > 0.9 ? "var(--red)" : used > 0.75 ? "var(--orange)" : "var(--muted-foreground)" },
-    cache?.as === "bar" && s.state === "idle" && { key: "cache", r: 3, part: cacheLeft(cache), colour: tint ?? "var(--muted-foreground)" },
+    cache?.as === "bar" && resting(s) && { key: "cache", r: 3, part: cacheLeft(cache), colour: tint ?? "var(--muted-foreground)" },
   ].filter((b) => !!b)
   const text = c?.as === "percent" ? `${Math.round(used * 100)}%` : c?.as === "tokens" ? `${Math.round(c.tokens / 1000)}k` : ""
   if (!rings.length && !text) return null

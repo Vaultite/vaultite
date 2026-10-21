@@ -5,7 +5,7 @@ import { fmtAgo, OpError, type OpCtx, type Plugin, quoted } from "../../../core/
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any
-type Session = { id: string; agent: string | null; process: string; clients: number; started: number; title?: string; state?: string; backend?: string
+type Session = { id: string; agent: string | null; process: string; clients: number; started: number; title?: string; state?: string; kind?: string; backend?: string
   session?: string }
 type TabAt = { workspace: number; tab: string }
 
@@ -92,7 +92,7 @@ shell's (a new shell when shown). The others: vau terminal open|resume|screen|se
       return { sessions: ss.map((s) => ({ ...s, tabs: tabs.get(s.id) ?? [] })), gone }
     },
     text: (r) => {
-      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state})` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}  ${fmtAgo(s.started, { short: true })} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
+      const rows = (r.sessions as (Session & { tabs: TabAt[] })[]).map((s) => `${s.id}  ${s.process || "-"}${s.state ? ` (${s.state}${s.kind ? `: ${s.kind}` : ""})` : ""}${s.title ? `  "${s.title}"` : ""}${s.session ? `  session ${s.session}` : ""}  ${fmtAgo(s.started, { short: true })} ago, ${where(s.tabs)}${s.backend === "pty" ? " (in the server: a restart ends it)" : ""}`)
       const gone = (r.gone as { id: string; tabs: TabAt[]; agent: boolean }[]).map((o) => `${o.id}  gone, ${where(o.tabs)}${o.agent ? " (an agent's: vau terminal tidy closes it)" : " (a new shell when shown)"}`)
       return (rows.length ? rows.join("\n") : "(no terminal sessions on this machine)") + (gone.length ? `\n\nTabs with no session:\n${gone.join("\n")}` : "")
     },
