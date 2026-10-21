@@ -6,14 +6,15 @@ import { op } from "@/core/http"
 import { errorText, notifyError } from "@/core/notify"
 import { Button } from "@/components/Button"
 import { Loading, LoadingRows, Panel, SettingRow } from "@/components/kit"
-import { keepsPermissions, signingText, STATE_TEXT, type Access, type Permission, type PermissionReport, type PermissionState } from "../../../core/permissions.ts"
+import { signingText, STATE_TEXT, type Access, type Permission, type PermissionReport, type PermissionState } from "../../../core/permissions.ts"
 
 const DOT: Record<PermissionState, string> = { allowed: "var(--green)", denied: "var(--orange)", "not-asked": "var(--gray)", unknown: "var(--gray)" }
 const ACTION: Record<Permission["action"], string> = { ask: "Allow…", check: "Check", settings: "Open Settings" }
 
+// A row's end: its way to allow it, then the state in a column of its own width, so every row's dot lines up.
 function State({ state, children }: { state: PermissionState; children?: string }) {
   return (
-    <span className="flex shrink-0 items-center gap-1.5 text-[14px] text-muted-foreground" data-permission-state={state}>
+    <span className="flex w-28 shrink-0 items-center gap-1.5 text-[14px] text-muted-foreground" data-permission-state={state}>
       <span aria-hidden className="size-2 rounded-full" style={{ background: DOT[state] }} />{children ?? STATE_TEXT[state]}
     </span>
   )
@@ -50,13 +51,13 @@ export function PermissionsPanel() {
       <Panel>
         <div className="hairline">
           <SettingRow label="Vault folder" sub={vaultLine(vault)} data-settings-row="permission-vault">
-            <State state={vaultState} />
             {vaultState === "denied" && <Button size="small" onClick={() => void act("vault")}>Open Settings</Button>}
+            <State state={vaultState} />
           </SettingRow>
-          {mac && (
+          {/* (only when it costs them: a signed build keeps them, one from source has Electron's) */}
+          {mac && (mac.signing.kind === "adhoc" || mac.signing.kind === "unsigned") && (
             <SettingRow label="Signature" sub={signingText(mac.signing)} data-settings-row="permission-signing">
-              {mac.signing.kind === "source" ? <State state="unknown">From source</State>
-                : <State state={keepsPermissions(mac.signing) ? "allowed" : "denied"}>{keepsPermissions(mac.signing) ? "Kept" : "Asked again"}</State>}
+              <State state="denied">Asked again</State>
             </SettingRow>
           )}
         </div>
@@ -66,8 +67,8 @@ export function PermissionsPanel() {
           <div className="hairline">
             {mac.permissions.map((p) => (
               <SettingRow key={p.id} label={p.name} sub={p.use} data-settings-row={`permission-${p.id}`}>
-                <State state={p.state} />
                 {p.state !== "allowed" && <Button size="small" onClick={() => void act(p.id)}>{ACTION[p.action]}</Button>}
+                <State state={p.state} />
               </SettingRow>
             ))}
           </div>
