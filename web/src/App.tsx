@@ -506,10 +506,6 @@ export default function App() {
           out again it opens, in one drag. */}
       {!hideLeft && <Resizer label="Resize the sidebar" onStart={() => { dragFrom = sidebarPx(getPrefs().sidebarWidth) }} onDrag={(x) => dragSidebar(false, x)} onReset={() => setPrefs({ sidebar: true, sidebarWidth: SIDEBAR.default })}
         className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ left: `calc(${side} - 4px)` }} />}
-      {/* Hidden without a rail, it slides in and out with the sidebar: a click there keeps the sidebar open. */}
-      <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
-        className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "left" && "pointer-events-none") : undefined}
-        style={hideLeft ? peekRider("left", peek === "left", sidebarPx(sidebarWidth)) : undefined} />
       </>}
 
       {showRight && (
@@ -532,12 +528,6 @@ export default function App() {
           onReset={() => setPrefs({ rightSidebar: true, rightSidebarWidth: 280 })}
           className="fixed inset-y-0 z-30 hidden w-[7px] md:block" style={{ right: `calc(${rside} - 4px)` }} />
       )}
-      {desktop && !popout && (
-        <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
-          onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
-          className={!rails && !rightOpen ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "right" && "pointer-events-none") : undefined}
-          style={!rails && !rightOpen ? peekRider("right", peek === "right", sidebarPx(rightSidebarWidth)) : undefined} />
-      )}
 
       {desktop ? (
         <Workspace store={store} error={error} left={side} right={rside} pageInfo={pageInfo} page={pageTabOf} />
@@ -558,6 +548,21 @@ export default function App() {
           {/* What a finger drags (a file, a page, a panel: core/drag.ts); a computer's is the Workspace's. */}
           <DragGhost info={tabInfo} />
         </div>
+      )}
+
+      {/* The sidebars' toggles, fixed over the window's top corners, come after the panes: in the desktop app a drag
+          region (index.css: a top bar that's its pane's title row) drawn later than them would swallow their clicks. */}
+      {/* (the left one: hidden without a rail, it slides in and out with the sidebar; a click there keeps the sidebar open) */}
+      {!popout && (
+        <SidebarToggle side="left" open={sidebar} onClick={() => setPrefs({ sidebar: !sidebar })}
+          className={hideLeft ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "left" && "pointer-events-none") : undefined}
+          style={hideLeft ? peekRider("left", peek === "left", sidebarPx(sidebarWidth)) : undefined} />
+      )}
+      {desktop && !popout && (
+        <SidebarToggle side="right" open={rightOpen} empty={!hasRight}
+          onClick={() => (hasRight ? setPrefs({ rightSidebar: !rightSidebar }) : setEmptyRight(!emptyRight))}
+          className={!rails && !rightOpen ? cn("z-50 transition-[translate,color,background-color] duration-200 ease-out", peek !== "right" && "pointer-events-none") : undefined}
+          style={!rails && !rightOpen ? peekRider("right", peek === "right", sidebarPx(rightSidebarWidth)) : undefined} />
       )}
 
       <DetailSheet open={!!sheet && !!store} onClose={sheet === "tabs" ? closeSwitcher : closeDetail} path={sheet} depth={depth}
