@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Vault plugins: one whose files are put back as they were (its broken edit undone) starts again at once, instead of
+  saying it couldn't start until the page was reloaded.
 - Plugins: a plugin's row tapped just after installing it opens its own sheet once its code has loaded, not the
   directory's sheet with Install.
 - Start @name's model and effort chooser stays open while the note changes from outside away from it (an agent's

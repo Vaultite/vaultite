@@ -83,11 +83,15 @@ const loaded = new Map<string, { version: string; def: PluginDef | null; icon?: 
 /** A bundle that failed is tried again at most this often (a state comes every second while agents write). */
 const RETRY = 30_000
 
-let tries = 0 // a failed import is remembered by its URL: another try needs another one
+// A failed import is remembered by its URL for the page's life, even one that failed only because the server had moved
+// on from that version: its next try (that version again, its files restored) needs another URL.
+const spent = new Set<string>()
+let tries = 0
 
-async function importBundle(info: VaultPluginInfo, version: string, retry: boolean) {
+async function importBundle(info: VaultPluginInfo, version: string) {
+  const key = `${info.id}/${version}`
   try {
-    const url = new URL(`api/plugins/${encodeURIComponent(info.id)}/${version}/bundle.js${retry ? `?try=${++tries}` : ""}`, document.baseURI).href
+    const url = new URL(`api/plugins/${encodeURIComponent(info.id)}/${version}/bundle.js${spent.has(key) ? `?try=${++tries}` : ""}`, document.baseURI).href
     // (an import that never settles would hold the state's arrival with it: the app's state waits for its plugins)
     let late = 0
     const mod = await Promise.race([import(/* @vite-ignore */ url), new Promise<never>((_, no) => { late = window.setTimeout(() => no(new Error("its code didn't arrive in 20 s")), 20_000) })])
@@ -99,6 +103,7 @@ async function importBundle(info: VaultPluginInfo, version: string, retry: boole
     return { version, def, icon: mod.icon as LucideIcon | undefined, error: null }
   } catch (e) {
     // (it may have changed again meanwhile: a newer state brings it, or tries this one again)
+    spent.add(key)
     console.warn(`vault plugin ${info.id}:`, e)
     noteAppError("plugin", Object.assign(new Error(`${info.name}: ${(e as Error)?.message ?? e}`), { stack: (e as Error)?.stack }))
     return { version, def: null, error: `index.tsx couldn't run in the app: ${(e as Error).message ?? e}`, at: Date.now() }
@@ -114,7 +119,7 @@ export async function loadVaultPlugins(state: State) {
     if (!info.bundle) return void loaded.delete(info.id)
     const hit = loaded.get(info.id)
     if (hit?.version === info.bundle && hit.error && Date.now() - (hit.at ?? 0) < RETRY) return
-    if (hit?.version !== info.bundle || hit.error) loaded.set(info.id, await importBundle(info, info.bundle, hit?.version === info.bundle))
+    if (hit?.version !== info.bundle || hit.error) loaded.set(info.id, await importBundle(info, info.bundle))
   }))
   const plugins = list.map((info): Plugin => {
     const hit = info.bundle ? loaded.get(info.id) : undefined
