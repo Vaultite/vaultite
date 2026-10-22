@@ -989,14 +989,37 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("sound: a new sound ends its quiet stretch", wp.playing(g, true, 20_000) && g.quiet === undefined)
 }
 
-// ---------- Slides: a note split at --- lines (plugins/core/slides/slides.ts) ----------
+// ---------- Slides: a note as a deck, read as Advanced Slides reads one (plugins/core/slides/slides.ts) ----------
 {
-  const { splitSlides, isTitleSlide } = await import("../plugins/core/slides/slides.ts")
-  const deck = "# Launch\n\n---\n\n## Why\n- one\n\n----\n```md\n---\nnot a split\n```\n---\n\n---\n![[chart.png]]\n"
-  const got = splitSlides(deck)
+  const { parseDeck, isTitleSlide, scopeCss, scopeSelector } = await import("../plugins/core/slides/slides.ts")
+  const mds = (body: string, opts = {}) => parseDeck(body, opts).slides.map((s) => s.md)
+  const got = mds("# Launch\n\n---\n\n## Why\n- one\n\n----\n```md\n---\nnot a split\n```\n---\n\n---\n![[chart.png]]\n")
   check("slides: split at --- lines, never inside code, empty ones dropped", got.length === 4 && got[0] === "# Launch" && got[2].includes("not a split") && got[3] === "![[chart.png]]", got)
-  check("slides: a note without --- is one slide", splitSlides("Just text\n").length === 1)
+  check("slides: a note without --- is one slide", mds("Just text\n").length === 1)
   check("slides: headings only (and a short line) is a title slide", isTitleSlide("# Launch\nQ3 plan") && !isTitleSlide("# Plan\n- one\n- two") && !isTitleSlide("Text only"))
+
+  const deck = parseDeck("<style>\n.reveal h1 { color: red }\n</style>\n\n# Hi\n\nnotes:\nSay hi.\n\n- and this\n\n---\n# One\n--\n# One, below\nNote: under it\n---\n```\nnote: in code\n```\n")
+  const [a, b, c, d] = deck.slides
+  check("slides: notes: to the end of the slide are its notes, not on it", a.md === "# Hi" && a.notes === "Say hi.\n\n- and this" && c.notes === "under it" && !d.notes && d.md.includes("note: in code"), deck.slides)
+  check("slides: -- makes vertical slides, in their column", deck.slides.length === 4 && b.h === 1 && b.v === 0 && c.h === 1 && c.v === 1 && d.h === 2, deck.slides.map((s) => [s.h, s.v]))
+  check("slides: a <style> is the deck's, off its slide", deck.css === ".reveal h1 { color: red }" && !a.md.includes("style"))
+  check("slides: a <style> in a %% comment is left out", parseDeck("%%\n<style>h1{}</style>\n%%\n# A").css === "")
+  const custom = parseDeck("# A\n\n===\n\n# B\n>>\n# C\n??? said\n", { separator: "^===$", verticalSeparator: "\\n>>\\n", notesSeparator: "\\?\\?\\?" })
+  check("slides: frontmatter's separator, verticalSeparator and notesSeparator", custom.slides.length === 3 && custom.slides[2].v === 1 && custom.slides[2].notes === "said", custom.slides)
+  check("slides: a bad separator regex is matched as text", mds("a\n(\nb", { separator: "(" }).length === 2)
+
+  const [bgd, frag, lst] = parseDeck('<!-- slide bg="[[pic.png]]" data-background-opacity="0.5" -->\n## Pic\n---\n<!-- .slide: class="big" style="color: red" -->\nFade in <!-- element class="fragment" data-fragment-index="2" -->\n---\n- Always\n+ First\n+ Second\n1) Third\n').slides
+  check("slides: <!-- slide bg --> is the slide's background, its data-background-* its look", bgd.bg === "[[pic.png]]" && bgd.bgAttrs.opacity === "0.5" && bgd.md === "## Pic", bgd)
+  check("slides: <!-- .slide: --> gives the slide a class and style", frag.cls === "big" && frag.style === "color: red")
+  check("slides: an element annotation is a marker where it was", frag.md === 'Fade in <span class="slide-el-0"></span>' && frag.els[0].cls === "fragment" && frag.els[0].index === 2, frag)
+  check("slides: + and 1) list items are fragments, - ones aren't", lst.els.length === 3 && lst.els.every((e) => e.li && e.cls === "fragment") && !lst.md.split("\n")[0].includes("slide-el"), lst)
+  check("slides: <split> and ::: block lines are left out, their content kept", mds("<split even>\n\nA\n\nB\n</split>\n::: block\nC\n:::")[0] === "A\n\nB\nC")
+
+  check("slides: the deck's CSS: the page and .reveal are the deck", scopeSelector(":root", "[d]") === "[d]" && scopeSelector(".reveal .slides section h1, .x", "[d]") === "[d] h1, [d] .x"
+    && scopeSelector(".reveal.dark p", "[d]") === "[d].dark p" && scopeSelector("html .a", "[d]") === "[d] .a" && scopeSelector(":is(a, b) > c", "[d]") === "[d] :is(a, b) > c")
+  const sc = scopeCss("@import url(x.css);\n/* c } */ body { margin: 0 }\n@media (min-width: 1px) { .reveal h2 { color: blue } }\n@font-face { font-family: X; }\n@page { size: A4 }\n.a::after { content: \"}\" }", "[d]")
+  check("slides: the deck's CSS stays in the deck (@media scoped, @import and @page dropped)",
+    sc.includes("[d] { margin: 0 }") && sc.includes("@media (min-width: 1px) {\n[d] h2 { color: blue }") && sc.includes("@font-face") && !sc.includes("@import") && !sc.includes("A4") && sc.includes('[d] .a::after { content: "}" }'), sc)
 }
 
 // ---------- Browser: what's typed in the address bar (plugins/core/web-viewer/address.ts) ----------

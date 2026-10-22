@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Slides present Obsidian Advanced Slides decks: `note:` speaker notes come off the slide and show beside it (S, or
+  the notes button), `--` vertical slides, fragments (`<!-- element class="fragment" -->`, `+` lists) stepped through,
+  slide backgrounds (`<!-- slide bg="..." -->`, with text in a tone that reads on them), and the deck's `<style>` kept to
+  the presentation; the frontmatter's separators, `bg`, `theme` and `showNotes` count.
 - `vau profile` samples the running server's CPU for some seconds (no restart) and lists where its time went; the
   profile is kept for Chrome's DevTools.
 - Status bar: after the window or a sidebar is resized it no longer reaches under the left sidebar or keeps empty room

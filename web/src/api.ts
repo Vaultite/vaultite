@@ -216,7 +216,7 @@ export { capitalize, cn, plural } from "@/lib/utils"
 export { AgentLimits, AgentLimitsChip, AgentModels, agentPlugin, AgentProject, AgentProjects, AgentSessions, AgentUsageBlock, money, openSession, sessionTitle, tokens, useAgentRoute } from "@/components/AgentUsage"
 export type { AgentMock, AgentSource, AgentUsage, Day as AgentDay, LiveSession as AgentLiveSession, Session as AgentSessionSummary, Share as AgentShare, Window as AgentWindow } from "@/components/AgentUsage"
 export { AgentSession, type Entry as AgentEntry, type SessionPage as AgentSessionPage } from "@/components/AgentSession"
-export { setProperty } from "@/core/frontmatter"
+export { readProps, setProperty } from "@/core/frontmatter"
 /** A frontmatter key as a chip in a file's header or the status bar, its values each with a label, an icon and a colour
  *  (Provenance's `origin`, the keys All properties pins), and the editor of those values for a settings sheet. */
 export { ChipValuesEditor, chipLabel, chipMenu, chipValues, CHIP_TINTS, PropertyChip, type ChipProps, type ChipValue } from "@/components/PropertyChip"

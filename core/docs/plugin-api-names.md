@@ -417,6 +417,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `range(from, n)`
 - `rawUrl(path, opts?)`: The address of a file's bytes (a vault path, or an outside file's absolute path).
 - `readFile(path)`: A file's text.
+- `readProps(block)`
 - `readSidebars`
 - `RecentKind`
 - `RecentList({ store, files })`: The files as a blank tab lists them: the sidebar's rows (a page draws them a size up: `data-size-up`), each with the icon it has in the file tree and on its tab (a person's, a dashboard's own),…
