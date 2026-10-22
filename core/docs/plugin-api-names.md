@@ -849,7 +849,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `jsonLines(bin, args, o)`: Talks to `bin` in JSON lines over stdio: `first` sent, then `hear` gets each message read (`send` more, `done` with the answer).
 - `JsonlScan`: An agent's JSONL transcripts under `dirs`, read as they grow (at most every 5 s; all again once asked for older days): `line` hears each new line with its file's state (`fresh`, again when the…
 - `KNOWN_AGENTS`: The AI agents Vaultite tells apart, the first match winning: id (its plugin's), name, its name in a terminal, what its writes say they came from (default its id), how it calls itself (an MCP…
-- `lastTurn(entries)`: A conversation's latest turn: the user's last message and the agent's last answer after it ("" while there's none), and when that answer came (else the message), in ms.
+- `lastTurn(entries)`: A conversation's latest turn: the user's last message, the agent's last answer after it ("" while none), when (ms, else 0), and if it's final (no tool call after it).
 - `limitRows(windows)`: A plan's limits, one line each: how much is used and when it renews.
 - `Limits`: A plan's limits as an agent reads them: where from, when, and each window.
 - `limitWindow(id, label, minutes, used, resets, now)`: A plan limit's window at `now` (epoch s; `resets` too): one that renewed since it was read is unused.

@@ -11,25 +11,41 @@ export type Verdict = { needs: boolean; why: Need | null; by: "rule" | "model" |
 /** A turn as it ended: what the user said last, the agent's final message, and whether it ended in an error. */
 export type Turn = { prompt?: string; text: string; error?: boolean }
 
-const plain = (s: string) => s.replace(/```[\s\S]*?```/g, " ").replace(/[*_`#>|]+/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+const plain = (s: string) => s.replace(/```[\s\S]*?```/g, " ").replace(/^\s*(#{1,6}\s|>).*$/gm, "").replace(/[*_`#|]+/g, "").replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+
+const lines = (s: string) => plain(s).split("\n").map((l) => l.trim()).filter(Boolean)
+const asks = (l = "") => /\?["')\]]*$/.test(l)
+/** A question the user wants answered, not a request put as one ("Can you fix it?"). */
+const wondering = (l = "") => asks(l) && /^(what|why|how|which|who|where|when|is|are|does|do|did|was|were|has|have|should)\b/i.test(l) &&
+  !/^(can|could|would|will) you\b/i.test(l)
 
 /** What the turn's own words settle, or null for the model to say. */
 export function sure(t: Turn): Verdict | null {
   if (t.error) return { needs: true, why: "error", by: "rule" }
-  const text = t.text.trim()
-  if (!text) return { needs: false, why: null, by: "rule" }
-  // Its last line a question (not one in a code block, a quote or a heading): it waits on the answer.
-  const last = plain(text).split("\n").map((l) => l.trim()).filter(Boolean).at(-1) ?? ""
-  if (/\?["')\]]*$/.test(last)) return { needs: true, why: "answer", by: "rule" }
+  const said = lines(t.text)
+  if (!said.length) return { needs: false, why: null, by: "rule" }
+  // Its last line a question (not one in a code block, a quote or a heading), or one just before a short closing line
+  // ("Take your time."): it waits on the answer.
+  const [before, last] = [said.at(-2), said.at(-1)]
+  if (asks(last) || (asks(before) && last!.length <= 60)) return { needs: true, why: "answer", by: "rule" }
+  // The user asked a question: what it says is their answer to read.
+  if (wondering(lines(t.prompt ?? "").at(-1))) return { needs: true, why: "answer", by: "rule" }
   return null
 }
 
-export const SYSTEM = `You triage the final message a coding agent wrote when its turn ended, for the user who started it and is busy elsewhere. Reply with one word: NEEDS_YOU or DONE.
-NEEDS_YOU only when at least one is true:
-1. It asks the user something or waits on them: a question, a choice between options, a confirmation, an approval, a login, something for them to try or do.
-2. It says it couldn't finish: blocked, failed, or an error it couldn't fix.
-3. The user's last message asked to be told something (a question, "tell me", "what do you think", a review, an explanation, how it's going, a result to report) and this message tells it.
-DONE otherwise: a report of work done or under way (built, fixed, shipped, deployed, a report filed in the inbox, closing the session), an acknowledgement, or a plan the agent is carrying out itself.`
+export const SYSTEM = `You triage the final message a coding agent wrote when its turn ended, for the user who started it and is busy elsewhere. Reply with exactly one word: NEEDS_YOU or DONE.
+NEEDS_YOU when any of these is true:
+1. The user's last message asked to know something (a question, "tell me", "look and tell me", "what do you think", a review, an explanation, how it's going) and this message tells it: that answer is for them to read, even when it's short or reads like a report.
+2. It asks the user something or waits on them: a question, options to choose from, a confirmation, an approval, a login, something for them to try or do.
+3. It couldn't do what was asked: blocked, failed, something missing, or an error it couldn't fix.
+DONE when none is true: the user asked for work and this says it's done or under way (built, fixed, created, shipped, deployed, a report filed in the inbox, the session closing), an acknowledgement, or a plan the agent is carrying out itself. An offer to do more ("let me know if...") doesn't change that.
+When unsure, NEEDS_YOU.
+
+Examples:
+User: "What's in this folder? Look and tell me." Agent: "Mostly Markdown notes: daily notes, logs and the Lighthouse project." -> NEEDS_YOU
+User: "Read config.yaml and tell me its port." Agent: "config.yaml doesn't exist, so I can't tell its port." -> NEEDS_YOU
+User: "Create notes.txt with the word hi." Agent: "Created notes.txt containing hi." -> DONE
+User: "Fix the login bug and push." Agent: "Fixed the token refresh and pushed to main; tests pass. Let me know if you want a release." -> DONE`
 
 const cut = (s: string, n: number) => (s.length <= n ? s : `${s.slice(0, Math.floor(n * 0.4))}\n[…]\n${s.slice(s.length - Math.floor(n * 0.6))}`)
 
@@ -63,7 +79,7 @@ export function judge(t: Turn, sample: Sample | null, ms = 30_000): Promise<Verd
     const t0 = Date.now()
     try {
       const r = await sample({ system: SYSTEM, prompt: question(t), tier: "quick", signal: AbortSignal.timeout(ms) })
-      const word = r.text.trim().toUpperCase()
+      const word = r.text.trim().toUpperCase().replace(/^[^A-Z]+/, "")
       if (word.startsWith("DONE")) return { needs: false, why: null, by: "model", ms: Date.now() - t0 }
       return { needs: true, why: "answer", by: word.startsWith("NEEDS") ? "model" : "fallback", ms: Date.now() - t0 }
     } catch {

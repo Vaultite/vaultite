@@ -9,15 +9,16 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Inbox: each agent session is one row, there only when it needs you (it asks, wants an approval, or its turn ended
   with a question or an answer to read, judged from its last message by a small fast model), bold until you open it;
   its sheet shows the answer drawn and a reply that goes back into the session. A turn done with nothing for you goes in
-  quietly, and only what needs you toasts and notifies (rate limited). No more "Claude Code finished" per turn.
+  quietly, and only what needs you toasts and notifies (rate limited). No more "Claude Code finished" per turn. A
+  session you end yourself (End session) leaves its row read.
 - Another machine's sessions reach this app again after a laptop sleeps or changes network, and their permissions are
   approved, denied and replied to from here, the phone (Reply on the notification) and the watch; only the machine the
   session runs on sends the phone's push.
 - Agents' tabs show their state: a dot breathing slowly while one works, a dot when it needs
   you (it waits on you, or its Inbox row is unread), a check once it's done with nothing for you, on the tab bar, the
-  Tabs panel, the phone's tabs and Terminals, which lists the ones that need you first, in bold. Closing an agent's
-  tab leaves it running there; End session ends it (asking only while it works), and a session dispatched from a note
-  opens beside that note's tab, in its tab group.
+  Tabs panel, the phone's tabs and Terminals, which lists the ones that need you first, in bold (the status bar counts
+  the same). Closing an agent's tab leaves it running there; End session ends it (asking only while it works), and a
+  session dispatched from a note opens beside that note's tab, in its tab group.
 - Ask an agent in the background: a small box (the palette's look) takes a question, and Enter starts it in a new
   Claude Code session with no tab, where the workspace's new sessions go (the agent, account and machine are picked
   under the field, remembered per workspace); a toast says what was asked, with Open. `vau terminal ask` does the same.

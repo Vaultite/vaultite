@@ -2,6 +2,7 @@ import fs from "node:fs"
 import path from "node:path"
 import type { IncomingMessage } from "node:http"
 import type { Any, VaultTest } from "./harness.ts"
+import type { Turn } from "../../../plugins/core/inbox/needs.ts"
 import { waitFor } from "../lib.ts"
 
 export default async ($: VaultTest) => {
@@ -11,7 +12,7 @@ export default async ($: VaultTest) => {
   // Inbox (plugins/core/inbox): results are files in Inbox/, events are kept on this machine (VAULTITE_LOCAL), hooks become events.
   {
     const { byThread, categoryOf, findEvent, fromHook, previewOf, prune, settled, waitsOnYou } = await import("../../../plugins/core/inbox/plugin.ts")
-    const { judge, sure } = await import("../../../plugins/core/inbox/needs.ts")
+    const { judge, sure, SYSTEM } = await import("../../../plugins/core/inbox/needs.ts")
     const { service } = await import("../../../core/plugins.ts")
     check("inbox push: by default only what waits on you (a session that needs you, its report), not a quiet turn, an error or news",
       waitsOnYou({ kind: "waiting" }) && !waitsOnYou({ kind: "done" }) && !waitsOnYou({ kind: "error" }) && !waitsOnYou({ kind: "info" }))
@@ -93,6 +94,33 @@ export default async ($: VaultTest) => {
       sure({ text: "x", error: true })?.why === "error" && sure({ text: "Merged.\n\nShould I deploy it now?" })?.needs === true &&
       sure({ text: "Which one:\n```\nwhy?\n```\nRun it?" })?.needs === true && sure({ text: "  " })?.needs === false && sure({ text: "Merged and pushed." }) === null)
     {
+      // Turns as real agents ended them (Claude Code on haiku), each the same verdict every time: by rule, or else for
+      // the model (null), whose answers on these were measured stable (needs.ts' SYSTEM).
+      const cases: [string, Turn, boolean | null][] = [
+        ["a question last", { prompt: "Ask me a question.", text: "What would you like to work on in `lighthouse`? For example, I could look through the notes or set up something new.\n\nWhich one?" }, true],
+        ["a question, then a short closing line", { prompt: "Ask me about my favorite color.", text: "What's your favorite color?\n\nTake your time." }, true],
+        ["a choice, then what it'll do", { prompt: "Name the plugin", text: "Should it be called **Lighthouse** or **Beacon**?\n\nI'll set it up as soon as you pick." }, true],
+        ["a question in a heading isn't one", { prompt: "Write the FAQ", text: "Wrote the FAQ into `Docs/FAQ.md`.\n\n## What is Lighthouse?\nAdded 6 answers." }, null],
+        ["the user asked what: its answer", { prompt: "What's using the disk?", text: "Mostly caches (41 GB) and `node_modules` (14 GB).\n\nLet me know if you want me to clear the caches." }, true],
+        ["the user asked how it's going", { prompt: "How is the migration going?", text: "Half done: 120 of 240 notes migrated, no errors so far." }, true],
+        ["a request put as a question is left to the model", { prompt: "Can you fix the build?", text: "Fixed the build: a stale import in `core/index.ts`. Committed on main." }, null],
+        ["here's what I found, to a look-and-tell", { prompt: "What kinds of files are in this folder? Look and tell me what you found.", text: "This folder is a vault of about 200 Markdown notes: daily notes, logs and projects." }, null],
+        ["a report of work done", { prompt: "Create hello.txt containing hi.", text: "Created `hello.txt` containing `hi`." }, null],
+        ["a failure", { prompt: "Read /nonexistent/config.yaml and tell me its port.", text: "The file doesn't exist, so I can't tell you its port setting." }, null],
+        ["nothing said", { prompt: "Go on", text: "" }, false],
+      ]
+      const off = cases.filter(([, t, want]) => (sure(t)?.needs ?? null) !== want)
+      check("needs: what a turn's words settle, the same each time; the rest for the model", !off.length, off.map(([why, t]) => [why, sure(t)]))
+      check("needs: the model is asked for one word, told to keep the unsure on needs you", /exactly one word: NEEDS_YOU or DONE/.test(SYSTEM) && /When unsure, NEEDS_YOU/.test(SYSTEM))
+      const { lastTurn } = await import("../../../core/agents.ts")
+      const at = "2026-01-01T10:00:00Z", later = "2026-01-01T10:00:05Z"
+      const said = lastTurn([{ kind: "user", text: "Go", at }, { kind: "assistant", text: "Looking.", at }, { kind: "tool", id: "1", name: "Bash", summary: "ls", input: "", result: "", error: false, at: later }])
+      const answered = lastTurn([{ kind: "user", text: "Go", at }, { kind: "assistant", text: "Looking.", at }, { kind: "tool", id: "1", name: "Bash", summary: "ls", input: "", result: "", error: false, at }, { kind: "assistant", text: "Found 3.", at: later }])
+      const none = lastTurn([{ kind: "user", text: "Go", at }])
+      check("lastTurn: words before a tool call aren't the turn's last; no answer yet has no time",
+        said.text === "Looking." && !said.final && answered.text === "Found 3." && answered.final && answered.at === Date.parse(later) && none.text === "" && none.at === 0 && !none.final, [said, answered, none])
+    }
+    {
       let asked = 0
       const said = (word: string) => async () => { asked++; return { text: word, truncated: false } }
       const done = await judge({ prompt: "Fix it", text: "Fixed and pushed to main." }, said("DONE"))
@@ -147,7 +175,7 @@ export default async ($: VaultTest) => {
       const tell = service(app.plugins, "inbox:state") as (c: Any) => void
       const cc = app.plugins.find((p) => p.id === "claude-code")!
       const was = { turn: cc.services["agent-turn:claude"], sample: cc.services.sample }
-      let read = { session: "sess-osc", prompt: "What does the release need?", text: "A version bump first, then the tag.", at: 0 }
+      let read = { session: "sess-osc", prompt: "Look at the release and tell me what it needs.", text: "A version bump first, then the tag.", at: 0, final: true }
       let asked: Any = null
       cc.services["agent-turn:claude"] = async (terminal: string) => (terminal === "claude-osc75010" ? { ...read, at: Date.now() } : null)
       cc.services.sample = async (a: Any) => { asked = a; return { text: "NEEDS_YOU", truncated: false } }
@@ -158,7 +186,7 @@ export default async ($: VaultTest) => {
       let r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
       check("inbox:state: a turn's end, its message from the transcript, asked of a quick model with what the user said; said twice, once",
         r.length === 1 && r[0].kind === "waiting" && r[0].ask === "answer" && r[0].session === "sess-osc" && r[0].body === read.text &&
-        asked?.tier === "quick" && asked.prompt.includes("What does the release need?") && asked.prompt.includes(read.text), [r, asked?.prompt])
+        asked?.tier === "quick" && asked.prompt.includes("Look at the release and tell me what it needs.") && asked.prompt.includes(read.text), [r, asked?.prompt])
       cc.services.sample = async () => ({ text: "DONE", truncated: false })
       await api("POST", "inbox/events/read", { ids: [r[0].id] })
       read = { ...read, prompt: "Tag it", text: "Tagged v1.2.0 and pushed." }
@@ -170,6 +198,26 @@ export default async ($: VaultTest) => {
       tell({ terminal: "claude-osc75010", agent: "claude", state: "idle", from: "osc7501", at })
       r = (await rows()).filter((e) => e.terminal === "claude-osc75010")
       check("inbox:state: answered, then done with nothing for you: quiet", r[0]?.read === true && r[0].kind === "done" && r[0].body === "Tagged v1.2.0 and pushed.", r)
+      // OSC 7501's done comes before Claude Code writes its last answer: the transcript has the turn's earlier words (or
+      // none), then the answer a moment later. The answer is what's judged.
+      let reads = 0
+      cc.services["agent-turn:claude"] = async (terminal: string) => terminal !== "claude-osc75011" ? null : ++reads < 3
+        ? { session: "sess-late", prompt: "Ask me a question.", text: reads === 1 ? "" : "Let me look first.", at: reads === 1 ? 0 : Date.now(), final: false }
+        : { session: "sess-late", prompt: "Ask me a question.", text: "What would you like to work on?", at: Date.now(), final: true }
+      tell({ terminal: "claude-osc75011", agent: "claude", state: "working", from: "osc7501", at })
+      tell({ terminal: "claude-osc75011", agent: "claude", state: "done", from: "osc7501", at })
+      await settled()
+      r = (await rows()).filter((e) => e.terminal === "claude-osc75011")
+      check("inbox:state: its done before the transcript has the answer: waits for it, needs you", r[0]?.kind === "waiting" && r[0].body === "What would you like to work on?" && !r[0].read && reads === 3, [r, reads])
+      // Ended by the user (End session, vau terminal end): its row is dealt with. One that ended by itself keeps it.
+      const term = app.plugins.find((p) => p.id === "terminal")!
+      term.emit("terminal.ended", { id: "claude-osc75011", code: 0, signal: 0 })
+      await new Promise((ok) => setTimeout(ok, 50))
+      check("a session that exited by itself keeps its answer to read", (await rows()).find((e) => e.terminal === "claude-osc75011")?.read === false)
+      term.emit("terminal.ended", { id: "claude-osc75011", code: 0, signal: 1, onPurpose: true })
+      await new Promise((ok) => setTimeout(ok, 50))
+      check("a session the user ended: its row is read", (await rows()).find((e) => e.terminal === "claude-osc75011")?.read === true)
+      await api("DELETE", `inbox/events/${r[0].id}`) // (the block's newest events below are the ones before it)
       cc.services["agent-turn:claude"] = was.turn; cc.services.sample = was.sample
     }
     ;[st, b] = await api("POST", "inbox/hook?agent=claude&terminal=claude-p9p9p9p9", { hook_event_name: "Notification", notification_type: "permission_prompt", session_id: "perm", message: "Claude needs your permission to use Bash" })

@@ -282,6 +282,5 @@ export function meterText(s: Session) {
   return [c && `context ${k(c.tokens)} of ${k(c.window)} (${Math.round((c.tokens / c.window) * 100)}%)`,
     cache && resting(s) && (left ? `cache ${left} min left` : "cache expired")].filter(Boolean).join(", ")
 }
-export const waiting = (s: Session, a = agentIn(s)) => !!a && s.state === "blocked"
 export const stateTip = (s: Session) => (s.missing ? " (not installed)" : s.state === "working" ? " (working)" : s.state === "blocked" ? " (waiting for you)"
   : s.needs ? " (has something for you)" : s.state === "error" ? " (failed)" : s.state === "done" ? " (done)" : "")

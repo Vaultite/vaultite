@@ -52,6 +52,8 @@ check("Terminals: the ones that need you first (waiting, then with an unread row
 const row = (s) => rows.find((r) => r.id === s.id)
 check("Terminals: those that need you are bold, with a dot", [blocked, unseen].every((s) => row(s)?.bold && row(s)?.dot) && [working, seen].every((s) => !row(s)?.bold && !row(s)?.dot), rows)
 check("Terminals: working shows a breathing dot, seen a check", /working-dot/.test(row(working)?.icon) && /breathe/.test(row(working)?.icon) && /lucide-check/.test(row(seen)?.icon), rows)
+const ambient = await D.$eval('[data-ambient] > [data-status-key$="agents"]', (e) => e.innerText.trim()).catch(() => "")
+check("status bar: agents at work count what Terminals says needs you (blocked and an unread row)", ambient === "1 · 2 need you", ambient)
 
 // ---------- tabs: each session opened from its row ----------
 for (const s of [working, blocked, unseen, seen]) { await D.click(`[data-session="${s.id}"]`); await wait(400) }

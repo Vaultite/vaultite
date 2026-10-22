@@ -337,6 +337,14 @@ const waitTimer = setInterval(() => { if (plugin.loaded) void stillWaiting().cat
 waitTimer.unref?.()
 plugin.onUnload(() => clearInterval(waitTimer))
 
+/** A session the user ended (End session, vau terminal end) was dealt with: its row is read. One that ended by itself
+ *  (it crashed, or exited) keeps an answer still to read. */
+plugin.onEvent({ types: ["terminal.ended"] }, (ev) => {
+  if (ev.onPurpose !== true || typeof ev.id !== "string") return
+  const hit = list().filter((e) => !e.read && !e.gate && !e.machine && e.terminal === ev.id)
+  if (hit.length) markRead(new Set(hit.map((e) => e.id)))
+})
+
 /** What an agent asks before it goes on: answered, it works again. */
 const BLOCKED = new Set(["permission", "question", "auth", "plan"])
 
@@ -744,7 +752,7 @@ const ASKING: Record<string, string> = { permission: "Asks permission", question
 
 type Who = { agent: string; terminal: string; session: string }
 /** An agent's last turn as its plugin reads it (the service "agent-turn:<agent>"): the user's message, its last answer. */
-type Last = { session: string; prompt: string; text: string; at: number }
+type Last = { session: string; prompt: string; text: string; at: number; final: boolean }
 const BODY = 8000
 
 /** A turn that ended: its last message read (the hook's, else the agent's transcript), judged; needing the user, its
@@ -769,16 +777,16 @@ async function turnEnded(who: Who, h: Heard, since: number) {
   endHanded(who.terminal)
 }
 
-/** The agent's last turn: once its transcript has it (written as the turn ends, so asked again for a few seconds),
- *  else what it has. */
+/** The agent's last turn: once its transcript has this turn's final answer (OSC 7501's done comes before the agent has
+ *  written it, so asked again for a few seconds), else this turn's latest words, else none. */
 async function lastTurn(who: Who, since: number, wantText: boolean): Promise<Last | null> {
   let t: Last | null = null
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 10; i++) {
     t = await plugin.ask<Last | null>(`agent-turn:${who.agent}`, null, who.terminal, who.session).catch(() => null)
-    if (!t || !wantText || t.at >= since - 1000) return t
+    if (!t || !wantText || (t.final && t.at >= since - 1000)) return t
     await new Promise((r) => setTimeout(r, 500))
   }
-  return t && { ...t, text: "" }
+  return t && (t.at >= since - 1000 ? t : { ...t, text: "" })
 }
 
 const rowOf = (k: Who) => (e: InboxEvent) => !e.gate && !e.machine && e.source === k.agent &&

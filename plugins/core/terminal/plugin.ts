@@ -579,7 +579,8 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
     // agent's session that died keeps its tabs, saying so, with Restart.
     if (!code && !signal) markEnded(id)
     forgetState(id)
-    plugin.emit("terminal.ended", { id, code, signal })
+    // (onPurpose: the user ended it, End session or vau terminal end: the Inbox takes its row as dealt with)
+    plugin.emit("terminal.ended", { id, code, signal, ...(s.ended && !s.kept ? { onPurpose: true } : {}) })
     for (const ws of s.clients) {
       if (ws.readyState !== ws.OPEN) continue
       ws.send(JSON.stringify({ t: "exit", code, signal, ...(s.ended && !s.kept ? { ended: true } : {}) }))
@@ -606,6 +607,12 @@ const endedOnPurpose = new Set<string>()
 function markEnded(id: string) {
   endedOnPurpose.add(id)
   if (endedOnPurpose.size > 500) endedOnPurpose.delete(endedOnPurpose.values().next().value!)
+}
+
+/** Ended on purpose while this server held no session for it (after a restart): no exit tells it, so this does. */
+function endedHere(id: string) {
+  markEnded(id)
+  plugin.emit("terminal.ended", { id, code: 0, signal: 1, onPurpose: true })
 }
 
 /** Ends a session for good: its shell, not just this server's hold on it. `keep`: its tabs stay, saying it ended (an
@@ -754,7 +761,7 @@ plugin.socket("terminal/*", async (ws, req, { wild, query }) => {
   if (query.end) {
     const s = sessions.get(id)
     if (s) end(s)
-    else { markEnded(id); await (await backendOf(id))?.kill(id).catch(() => {}) } // a tab closed while its session had no client here (after a restart)
+    else { endedHere(id); await (await backendOf(id))?.kill(id).catch(() => {}) } // a tab closed while its session had no client here (after a restart)
     return ws.close(EXITED, "ended")
   }
   const cols = clamp(query.cols, 2, 1000, 80), rows = clamp(query.rows, 1, 500, 24)
@@ -1041,7 +1048,7 @@ plugin.route("DELETE", "terminals/*", async (req) => {
   // (?keep=1: its tabs stay, saying it ended)
   const s = sessions.get(id), keep = req.query.keep === "1"
   if (s) end(s, keep)
-  else { if (!keep) markEnded(id); await b.kill(id) }
+  else { if (!keep) endedHere(id); await b.kill(id) }
   listChanged()
   return { id, ended: true }
 }, { lock: false })

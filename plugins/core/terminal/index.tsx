@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
-import { agentIn, current, endForGood, getSessions, iconOf, labelOf, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
+import { agentIn, current, endForGood, getSessions, iconOf, labelOf, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
 import { AskBox, openAsk } from "./AskBox"
@@ -48,14 +48,15 @@ function SessionNames() {
 
 const openTab = (to: string) => openView(to, { newTab: !isViewOpen(to) })
 
-/** The status bar's agents at work and waiting on the user: a click goes to the first one waiting, else Terminals. */
+/** The status bar's agents at work and the ones that need the user (as Terminals says: blocked, or an Inbox row unread):
+ *  a click goes to the first that needs them, else Terminals. */
 function AgentsAtWork() {
   const list = useSessions().list ?? []
-  const working = list.filter((s) => agentIn(s) && s.state === "working"), asking = list.filter((s) => waiting(s))
-  if (!working.length && !asking.length) return null
-  const tip = [working.length && `${working.length} working`, asking.length && `${asking.length} waiting for you`].filter(Boolean).join(", ")
-  return <AmbientButton icon={Bot} text={asking.length ? `${working.length} · ${asking.length} waiting` : working.length} tip={`Agents: ${tip}`}
-    tint={asking.length ? "var(--yellow)" : undefined} onClick={() => openTab(asking.length ? `view:terminal/${asking[0].id}` : "view:terminals")} />
+  const working = list.filter((s) => agentIn(s) && s.state === "working"), needs = list.filter((s) => needsYou(s))
+  if (!working.length && !needs.length) return null
+  const tip = [working.length && `${working.length} working`, needs.length && `${needs.length} need you`].filter(Boolean).join(", ")
+  return <AmbientButton icon={Bot} text={needs.length ? `${working.length} · ${needs.length} need you` : working.length} tip={`Agents: ${tip}`}
+    tint={needs.length ? "var(--yellow)" : undefined} onClick={() => openTab(needs.length ? `view:terminal/${needs[0].id}` : "view:terminals")} />
 }
 
 /** What a coding agent started in a terminal here is told, word for word (GET /api/terminals/instructions). */
