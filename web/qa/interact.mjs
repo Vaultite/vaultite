@@ -84,14 +84,14 @@ async function dragTo(from, x, y) {
   const [fx, fy] = [b.x + Math.min(40, b.width / 2), b.y + b.height / 2]
   await page.mouse.move(fx, fy); await page.mouse.down()
   await page.mouse.move(fx + 8, fy + 4, { steps: 2 }); await page.mouse.move(x, y, { steps: 10 }); await wait(200)
-  const ghost = await page.evaluate(() => ({ text: document.querySelector("[data-drag-ghost]")?.textContent ?? null, line: !!document.querySelector("[data-drop-line]") }))
+  const ghost = await page.evaluate(() => ({ text: document.querySelector("[data-drag-ghost]")?.textContent ?? null, line: !!document.querySelector("[data-drop-preview]") }))
   await page.mouse.up(); await wait(500)
   return ghost
 }
 await page.locator(`aside [data-tree-path="${DIR}/Two.md"] > button`).first().click({ button: "middle" }); await wait(500)
 const two = await page.locator("[data-tab-id]", { hasText: "Two" }).first().boundingBox()
 const g = await dragTo(page.locator(`aside [data-tree-path="${DIR}/One.md"]`).first(), two.x + two.width - 4, two.y + two.height / 2)
-check("a tree file dropped on a bar that has its tab: offered (a line)", g.line, g)
+check("a tree file dropped on a bar that has its tab: offered (the tabs make way)", g.line, g)
 check("...its tab moves there, no second one", (await tabs()).join("|") === "Two|One", await tabs())
 await fresh()
 

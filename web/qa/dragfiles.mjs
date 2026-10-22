@@ -43,7 +43,7 @@ async function spot(gid, where) {
 }
 const barStart = async (gid) => { const r = await page.locator(`section[data-group="${gid}"] [data-tab-id]`).first().boundingBox(); return [r.x + 4, r.y + r.height / 2] }
 const center = async (loc) => { await loc.scrollIntoViewIfNeeded(); const b = await loc.boundingBox(); return [b.x + Math.min(60, b.width / 2), b.y + b.height / 2] }
-/** Drag `from` to (x, y); before letting go, what's offered (a pane zone, a bar line, a pin line, a highlighted folder, the ghost's hint). */
+/** Drag `from` to (x, y); before letting go, what's offered (a pane zone, a bar making way, a pin line, a highlighted folder, the ghost's hint). */
 async function drag(from, [x, y], { drop = true, name } = {}) {
   const [fx, fy] = await center(from)
   await page.mouse.move(fx, fy); await page.mouse.down()
@@ -51,7 +51,7 @@ async function drag(from, [x, y], { drop = true, name } = {}) {
   await page.mouse.move(x, y, { steps: 10 }); await wait(150)
   const offered = await page.evaluate(() => ({
     zone: document.querySelector("[data-drop-zone]")?.dataset.dropZone ?? null,
-    line: !!document.querySelector("[data-drop-line]"),
+    line: !!document.querySelector("[data-drop-preview]"),
     pinLine: !!document.querySelector("[data-pin-line]"),
     folder: [...document.querySelectorAll("aside .drop-target")].length,
     ghost: document.querySelector("[data-drag-ghost]")?.textContent ?? null,
@@ -90,7 +90,7 @@ const g1 = ps[1].id
 // Onto a tab bar: a tab at that place.
 o = await drag(row("Qa drag/One.md"), await barStart(g1))
 ps = await panes()
-check("tree file over a tab bar: a line shows where", o.line, o)
+check("tree file over a tab bar: the tabs make way where it goes", o.line, o)
 check("...dropped: first tab there, active", ps[1].tabs[0] === "One" && ps[1].active === "One", ps)
 
 // Onto the bottom edge of the right pane.

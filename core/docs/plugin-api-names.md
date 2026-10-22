@@ -246,6 +246,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `iconNamed(name)`: An icon a plugin adds by name (`icons` in its definition), on or off: a file's `icon: claude`, Terminal's Claude sessions.
 - `iconOf(f?)`: A file's own icon (its `icon:`), or the icon of the plugin that brought it, or of the plugin whose kind of file it is (a dashboard's, a person's), or the core's for its own kind (Me), if any.
 - `inArchive(rel)`: Whether a path is inside an archive folder (People/.archive/Kai.md): such a file is archived, key or not.
+- `INCOMING`
 - `inKeyList()`: The keyboard is on a row of a list.
 - `insertOnOwnLine(text, f?)`: Text typed at the cursor of the file being edited (at its end when nothing is), on lines of its own.
 - `isArchived(x)`: Whether a file (its frontmatter) or an item (a person, a routine: the vault puts `archived: true` on the items of archived files) is archived.
@@ -471,6 +472,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `setName(s)`: What a tab group is called: its name, or its colour's ("Blue group").
 - `SetNameField({ s, className })`: A tab group's name being typed in place (Enter or leaving it keeps it, Escape doesn't).
 - `setProperty(path, key, value)`: Set one property of a file on disk (undefined removes it) as a small edit with its `base`, for blocks that edit a value in place (a database cell).
+- `setsAsDrawn(tabs)`: Each tab's group as drawn (a preview's while dragging), and whether it's that group's last: its line ends there.
 - `setTabLayout(next, opts?)`: Put a whole other layout in place (Workspaces switching).
 - `setTextSize(kind, percent)`: Set a kind's size, in percent (kept within STEPS' range).
 - `SettingDecl`: A plugin's settings declared like a block's options plus `label`, `labels` and `local` (this machine's own: bundles skip it).
@@ -520,14 +522,16 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `Switch({ on, onChange, label, disabled })`: A small switch in the app's accent colour.
 - `systemNotify(title, body?)`: In the desktop app, the Mac's notification (`title`, a line of `body`): resolves true when the user clicks it (the window then comes to the front), false when it's dismissed; null in a browser, or…
 - `Tab`
-- `TabDrop`: Where a dragged tab or file would land: a place in a tab bar (`x`: the line's position in the bar; `set`: the tab group it joins there, null none), or a pane's edge or middle.
+- `TabDrop`: Where a dragged tab or file would land: a place in a tab bar (`set`: the tab group it joins there, null none), or a pane's edge or middle.
 - `TabGroup`
 - `TabInfo`: `iconClassName`: a status on the icon (a view's `iconClass`: a Claude Code session working or waiting).
 - `TabLayout`
 - `tabMenuOf(id)`: A tab's right-click menu, the one its bar has.
+- `tabPreview(g, item, d)`
+- `tabPreviewOrder(g, p)`: What a pane's tabs show in that order (useSlide's keys): each tab group's name (`set:<id>`) before its tabs, which a folded one hides.
 - `TABS`: The tabs' selection (core/select.ts): by tab id, the bars', the Tabs panel's and the phone's cards alike.
 - `TabSet`: A tab group, as browsers have them: a named, coloured run of a pane's tabs (those whose `set` is its id, side by side), folded to its name while `collapsed`.
-- `tabSlot(g, slots, pos, axis, own?)`: Where `pos` along a pane's tabs as drawn lands: before which tab (`index`), in which tab group (after its name or between its tabs; at its end only for `own`, the dragged tab's), and where the…
+- `tabSlot(g, slots, pos, axis)`: Where `pos` along a pane's tabs as drawn lands: before which tab (`index`), in which tab group.
 - `tabsMenu(ids, phone?)`: What tabs selected together can do: close them (or the others), pin them, move them into a split of their own.
 - `tagName(t)`: A tag written the way it's matched: no #, no slashes at its ends.
 - `tagsOf(fm, body)`: A file's tags: its frontmatter `tags` (or `tag`), then its inline #tags, each once.
@@ -594,6 +598,7 @@ Every name a plugin imports, with its parameters and what it is (tools/plugin_ap
 - `useSelecting(list?)`: A phone selecting (in this list): taps pick rows, and swipes rest.
 - `useSheetGuard(lost)`: A form in a sheet that isn't saved as you type: closing the sheet while `lost()` has lines asks first, showing them.
 - `useSidebars()`
+- `useSlide(box, order, axis)`: Slide `box`'s `[data-slide]` items (its children, `box` positioned) into `order`, their keys; those left out fade.
 - `useStore()`: The store and the last error loading it, redrawn when either changes.
 - `useTabLabels(store)`: What each tab shows (its label and icon), as its bar does: for plugins (the Tabs panel).
 - `useTabLayout()`

@@ -84,9 +84,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   sidebar slides in from its edge over a browser tab or an embedded page (a PDF, an app's card) too.
 - Settings: the sidebars' switches (rails, dimming, scrolling, dividers) are in Appearance, Sidebars, above the panels.
 - Tab groups, as in a browser: right-click tabs for Add tab to new group, and a group is a coloured chip before its tabs
-  (a header with its tabs under it in the Tabs panel, a section on a phone) that folds to its name; drag tabs in and
-  out, drag the chip to move the whole group, and rename, recolour, ungroup or close it from its menu. Agents group tabs
-  with `vau tabs group`.
+  (in the Tabs panel, the same pill with a line down its tabs; a section on a phone) that folds to its name; drag the
+  chip to move the whole group, and rename, recolour, ungroup or close it from its menu. Agents group tabs with
+  `vau tabs group`. Dragging tabs, the others make way and the tab shows where it lands, the group's line under it if
+  it joins: held over a group's last tab it joins its end, just past it it leaves in place, and dropped on a folded
+  group it goes in, the group staying folded.
 - Vertical tabs in one switch: Show tabs in the sidebar (the palette, or right-click the tab bar) puts the Tabs panel at
   the top of the left sidebar and hides the tab bar; Show tabs on top puts them back.
 - Mac app: with the tab bar and pane titles off, the sidebar toggles beside a folded sidebar can be clicked again.

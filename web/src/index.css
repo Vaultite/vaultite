@@ -397,6 +397,8 @@ html[data-dragging], html[data-dragging] * { cursor: grabbing !important; }
 /* ...and toasts let it through: what's under one (a pane's edge, a tab bar) is still a place to drop (core/drag.ts finds
    targets with elementFromPoint). */
 html[data-dragging] [data-sonner-toaster], html[data-dragging] [data-sonner-toaster] * { pointer-events: none !important; }
+/* A list making way for what's dragged over it (core/slide.ts); after the drop it's already where it goes, so no slide. */
+html[data-dragging] [data-slide] { transition: transform 160ms cubic-bezier(0.2, 0, 0, 1), opacity 120ms ease-out; }
 
 /* The icon rail (SidebarPanels): a thin line between its groups of icons (the header's items, then each panel's), none
    around a group that draws nothing there (a panel with nothing to show, a header item drawing nothing: Workspaces before

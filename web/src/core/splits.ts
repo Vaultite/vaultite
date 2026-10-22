@@ -38,7 +38,9 @@ export function moveTabTo(id: string, gid: string, where: Side | "center" | numb
     if (from.id === gid && at > from.tabs.findIndex((t) => t.id === id)) at--
     const into = (g: Group): Group => {
       const s = tabset === undefined ? setAt(g.tabs, Math.min(at, g.tabs.length), from.id === gid ? p.tab.set : undefined) : tabset ?? undefined
-      return { ...g, tabs: [...g.tabs.slice(0, at), inSet(p.tab, s), ...g.tabs.slice(at)], active: id }
+      // Into a folded tab group it's put away there: the tab on screen stays (unless it's this one, which opens it).
+      const away = !!s && !!g.sets?.find((x) => x.id === s)?.collapsed && !(from.id === gid && from.active === id)
+      return { ...g, tabs: [...g.tabs.slice(0, at), inSet(p.tab, s), ...g.tabs.slice(at)], active: away ? g.active : id }
     }
     set({ root: mapGroups(p.root, (g) => (g.id !== gid ? g : from.id === gid ? into(g) : pastBlank(g, into(g)))), focus: gid })
   } else {
@@ -124,7 +126,7 @@ export function moveTabsTo(ids: string[], held: string, gid: string, where: Side
     if (into && into.id !== gid) for (const id of order.slice(1)) moveTabTo(id, into.id, "center")
   }
   const g = groupOfTab(held)
-  if (g) set(withGroup(g.id, (x) => ({ ...x, active: held }), { focus: g.id }))
+  if (g && !(tabset && g.sets?.find((x) => x.id === tabset)?.collapsed)) set(withGroup(g.id, (x) => ({ ...x, active: held }), { focus: g.id }))
   showActive()
 }
 

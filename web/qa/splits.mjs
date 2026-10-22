@@ -42,7 +42,7 @@ async function spot(gid, where) {
   const at = { left: [0.08, 0.5], right: [0.92, 0.5], top: [0.5, 0.08], bottom: [0.5, 0.92], center: [0.5, 0.5] }[where]
   return [r.x + r.width * at[0], r.y + r.height * at[1]]
 }
-/** Drag a tab to (x, y); before letting go, what's offered there (a zone, a line in a bar, or nothing). */
+/** Drag a tab to (x, y); before letting go, what's offered there (a zone, a bar making way for it, or nothing). */
 async function drag(from, [x, y], { drop = true, name } = {}) {
   const b = await from.boundingBox()
   await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2)
@@ -51,7 +51,7 @@ async function drag(from, [x, y], { drop = true, name } = {}) {
   await page.mouse.move(x, y, { steps: 8 }); await wait(120)
   const offered = await page.evaluate(() => ({
     zone: document.querySelector("[data-drop-zone]")?.dataset.dropZone ?? null,
-    line: !!document.querySelector("[data-drop-line]"),
+    line: !!document.querySelector("[data-drop-preview]"),
   }))
   if (name) await shot(name)
   if (drop) await page.mouse.up(); else { await page.keyboard.press("Escape"); await page.mouse.up() }
@@ -143,12 +143,12 @@ const g0 = ps[0].id
 // Reorder along the bar: the first tab after the last.
 const order0 = ps[0].tabs
 let o = await drag(tab(g0, order0[0]), await barSpot(g0, null), { name: "drag-bar" })
-check("reorder: a line shows where it goes", o.line && !o.zone, o)
+check("reorder: the tabs make way where it goes", o.line && !o.zone, o)
 ps = await panes()
 check("reorder: the first tab went last", ps[0].tabs.join("|") === [...order0.slice(1), order0[0]].join("|"), ps[0].tabs)
 // Dropping a tab back where it is isn't offered.
 o = await drag(tab(g0, ps[0].tabs[1]), await barSpot(g0, ps[0].tabs[1]))
-check("no line where it already is", !o.line, o)
+check("nothing makes way where it already is", !o.line, o)
 // Its own pane's middle: nothing to do.
 o = await drag(tab(g0, A), await spot(g0, "center"))
 check("own pane's middle isn't offered", !o.zone, o)

@@ -13,7 +13,8 @@ import { leaves, vaultPath, type Group, type Tab, type TabSet } from "@/core/lay
 import { COLOR_NAMES, colorVar } from "../../../core/colors.ts"
 import { addToSet, allSets, askRenameSet, closeSet, colorSet, doneRenaming, foldSet, leaveSet, makeSet, newTabInSet, renameSet, setById, ungroupSet, useRenaming } from "@/core/tabsets"
 import { colorItems, dotIcon } from "@/components/ColorDot"
-import { PANES, type Drop } from "@/core/drop"
+import { INCOMING, PANES, previewIn, previewOrder, setsAsDrawn, type Drop } from "@/core/drop"
+import { useSlide } from "@/core/slide"
 import { usePaneHasTopBar } from "@/core/pane"
 import { tabsInSidebar, useViewsVersion, viewFor, viewMenuItems } from "@/core/plugins"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
@@ -124,20 +125,22 @@ export function SetNameField({ s, className }: { s: TabSet; className?: string }
 
 /** A tab group's chip in the tab bar, before its tabs: a click folds it (folded, its count shows), right-click has its
  *  menu, dragging it moves the whole group. */
-function SetChip({ s, n }: { s: TabSet; n: number }) {
+function SetChip({ s, n, target }: { s: TabSet; n: number
+  /** A tab dragged onto it (folded) would join it. */
+  target: boolean }) {
   const renaming = useRenaming()
   const editing = renaming?.id === s.id && renaming.at === "bar"
   const d = useDrag()
   const c = colorVar(s.color)
   return (
-    <div data-set-chip={s.id} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
+    <div data-set-chip={s.id} data-slide={`set:${s.id}`} role="presentation" aria-expanded={!s.collapsed} onContextMenu={menuFor(() => setMenu(s.id, "bar"))}
       onPointerDown={(e) => { if (!editing) startDrag(e, { from: "tabset", tabset: s.id, label: setName(s) }) }}
       onClick={() => { if (!editing) foldSet(s.id) }}
       data-tip={d || editing ? undefined : s.collapsed ? `Expand ${setName(s)}` : `Collapse ${setName(s)}`}
       className={cn("relative flex h-7 shrink-0 cursor-pointer items-center", d?.item.tabset === s.id && "opacity-50")}>
       {/* (as tall as a tab, the pill inside: the line under it then lines up with the tabs') */}
       <span className={cn("flex h-6 items-center gap-1 rounded-[6px] text-[12px] font-semibold transition-colors", s.name || editing ? "px-1.5" : "w-6 justify-center")}
-        style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, background: `color-mix(in srgb, ${c} 16%, transparent)` }}>
+        style={{ color: `color-mix(in srgb, ${c} 72%, var(--foreground))`, background: `color-mix(in srgb, ${c} 16%, transparent)`, ...(target ? { boxShadow: `0 0 0 2px ${c}` } : {}) }}>
         {editing ? <SetNameField s={s} className="h-5 text-[12px] font-medium" />
           : s.name ? <span className="max-w-[140px] truncate">{s.name}</span>
           : <span aria-label={setName(s)} className="size-2 rounded-full" style={{ background: c }} />}
@@ -289,7 +292,7 @@ function TabItem({ tab, info, active, focused, only, icons, tint, menu, width, s
     ? { background: `color-mix(in srgb, ${info.wash} ${focused ? 14 : 8}%, var(--card))`, boxShadow: `0 0 0 0.5px color-mix(in srgb, ${info.wash} 40%, var(--border)), 0 1px 2px rgb(0 0 0 / 0.05)` }
     : undefined
   return (
-    <div data-tab-id={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
+    <div data-tab-id={tab.id} data-slide={tab.id} data-select-key={tab.id} {...selectedAttr(picked)} role="presentation" onContextMenu={menuFor(rowMenu(TABS, tab.id, menu))}
       onPointerDown={(e) => dragTab(e, tab)}
       onClick={(e) => { if (!selectClick(e, TABS, tab.id, active ? null : groupOfTab(tab.id)?.active)) selectTab(tab.id) }}
       className={cn("group/tab @container/tab relative flex h-7 min-w-12 flex-1 basis-0 items-center rounded-[6px] transition-colors",
@@ -384,13 +387,18 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
   useSelectable(TABS, { menu: (ids) => tabsMenu(ids), noun: ["tab", "tabs"] })
   const hit = useDropHit<Drop>(PANES)
   const d = useDrag()
-  const line = hit?.kind === "bar" && hit.group === group.id ? hit.x : null
-  // (dropped there, it joins that tab group: the line takes its colour)
-  const lineSet = hit?.kind === "bar" && hit.group === group.id && hit.set ? group.sets?.find((x) => x.id === hit.set) : undefined
+  // Dragged over it, the tabs make way for what's dragged, in the tab group it would join (its line under it).
+  const preview = d ? previewIn(group, d.item, hit) : null
+  const drawn = setsAsDrawn(preview?.tabs ?? tabs)
+  const lineOf = (id: string) => {
+    const at = drawn.get(id), s = at?.set ? group.sets?.find((x) => x.id === at.set) : undefined
+    return s ? { color: colorVar(s.color), last: at!.last } : undefined
+  }
   const shown = tabs.find((t) => t.id === active) ?? tabs[0]
   // What the pane is called while it's dragged: its tab, and how many more go with it.
   const label = tabs.length > 1 ? `${info(shown).label} and ${tabs.length - 1} more` : info(shown).label
   const row = useRef<HTMLDivElement>(null)
+  useSlide(row, preview && [...previewOrder(group, preview), "new"], "x")
   useEffect(() => {
     const r = row.current
     if (!r) return
@@ -491,28 +499,32 @@ export function TabBar({ group, focused, info, alone }: { group: Group; focused:
       className="group/bar relative flex h-10 shrink-0 items-center gap-1 border-b-[0.5px] border-border bg-background pr-1.5 pl-2">
       {/* Tabs shrink down to their icon and close button, then the row scrolls (a mouse wheel scrolls it sideways),
           keeping the active tab in view. */}
-      <div ref={row} data-select-list={TABS} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
+      <div ref={row} data-select-list={TABS} data-drop-preview={preview ? "" : undefined} onWheel={(e) => { if (!e.deltaX && e.currentTarget.scrollWidth > e.currentTarget.clientWidth) e.currentTarget.scrollLeft += e.deltaY }}
         className={cn("relative -my-1 flex min-w-0 flex-1 items-center gap-1 overflow-x-auto py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden", d?.item.group === group.id && "opacity-50")}>
         {tabs.map((t, i) => {
           const s = t.set && t.set !== tabs[i - 1]?.set ? group.sets?.find((x) => x.id === t.set) : undefined
           const own = t.set ? group.sets?.find((x) => x.id === t.set) : undefined
-          const chip = s && <SetChip key={`set:${s.id}`} s={s} n={tabs.filter((x) => x.set === s.id).length} />
+          const chip = s && <SetChip key={`set:${s.id}`} s={s} n={tabs.filter((x) => x.set === s.id).length} target={preview?.into === s.id} />
           if (own?.collapsed) return chip || null
           const item = <TabItem key={t.id} tab={t} info={info(t)} active={t.id === active} focused={focused} only={tabs.length === 1 && t.to === "new" && alone} icons={fileIcons} tint={tabTint}
             menu={() => tabMenu(t, i === tabs.length - 1, tabs.length, group)} width={held?.width} settling={settling} close={(e) => closeHeld(t, e)}
-            line={own ? { color: colorVar(own.color), last: tabs[i + 1]?.set !== own.id } : undefined} />
+            line={lineOf(t.id)} />
           return chip ? [chip, item] : item
         })}
         {/* Right after the last tab (not pinned to the bar's end). */}
-        <button type="button" onClick={() => newTab(group.id)} aria-label="New tab" data-tip="New tab"
+        <button type="button" onClick={() => newTab(group.id)} aria-label="New tab" data-tip="New tab" data-slide="new" data-slide-fixed
           className="grid size-7 shrink-0 cursor-pointer place-items-center rounded-[5px] text-muted-foreground hover:bg-foreground/[0.06] hover:text-foreground">
           <Plus className="size-4" strokeWidth={2} />
         </button>
+        {/* Where something from elsewhere would open. */}
+        {preview?.tabs.some((t) => t.id === INCOMING) && (
+          <div aria-hidden data-slide={INCOMING} className="pointer-events-none absolute top-1 left-0 h-7 rounded-[6px] bg-foreground/[0.06] ring-[0.5px] ring-border">
+            {lineOf(INCOMING) && <span className={cn("absolute -bottom-[3px] left-0 h-[2px]", lineOf(INCOMING)!.last ? "right-1 rounded-r-full" : "-right-1")} style={{ background: lineOf(INCOMING)!.color }} />}
+          </div>
+        )}
       </div>
       {/* The pane's handle: drag it to move the whole pane (all its tabs). Shown while the pointer is over the bar. */}
       {handle}
-      {line !== null && <div aria-hidden data-drop-line className={cn("pointer-events-none absolute top-1.5 bottom-1.5 w-[2px] -translate-x-1/2 rounded-full", !lineSet && "bg-primary")}
-        style={{ left: line, ...(lineSet ? { background: colorVar(lineSet.color) } : {}) }} />}
     </div>
   )
 }

@@ -12,7 +12,7 @@ const t0 = Date.now()
 const ROOT = path.dirname(import.meta.dirname)
 const WEB = path.join(ROOT, "web", "src")
 const STUBS: Record<string, string> = {
-  "@/core/data": "export const put = async () => { throw new Error('no server in tools/test_web.ts') }",
+  "@/core/data": "export const put = async () => { throw new Error('no server in tools/test_web.ts') }; export const getStore = () => null",
   "@/core/http": "export const put = async () => { throw new Error('no server in tools/test_web.ts') }",
   "@/core/files": "export const readFile = async () => { throw new Error('no server in tools/test_web.ts') }; export const splitFm = () => ({ fm: '', body: '' })",
   "@/core/prefs": "export const getPrefs = () => ({ disabled: [] })",
@@ -908,6 +908,33 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
   check("tab groups: a whole group dragged moves with its tabs in order", runs() === "a,e(orange),c,b(Work),d(Work)", runs())
   ts.moveSetTo(s1, "g0", 1)
   check("tab groups: a group dropped inside another goes before it, never into it", runs() === "a,b(Work),d(Work),e(orange),c", runs())
+  // Where a drop lands among a pane's tabs as drawn (drop.ts), each slot 96px wide and 100px from the last.
+  const dr: Any = await web("core/drop.ts")
+  const s2 = pane().sets[1].id
+  const laid = (keys: string[]) => keys.map((k, i) => ({ el: { closest: () => null, getBoundingClientRect: () => ({ left: i * 100, right: i * 100 + 96, top: 0, bottom: 28 }) },
+    ...(k.startsWith("set:") ? { set: k.slice(4) } : { tab: k }) }))
+  const bar = laid(["a", `set:${s1}`, "b", "d", `set:${s2}`, "e", "c"])
+  const at = (pos: number, slots = bar) => { const r = dr.slotIn(pane(), slots, pos, "x"); return `${r.index}:${r.set === s1 ? "Work" : r.set === s2 ? "orange" : r.set}` }
+  check("drops: right after a group's name, or between its tabs, joins it", at(150) === "1:Work" && at(250) === "2:Work", [at(150), at(250)])
+  check("drops: over a group's last tab joins its end; just past it, outside it at the same place", at(390) === "3:Work" && at(399) === "3:null", [at(390), at(399)])
+  check("drops: before a group's name joins none", at(120) === "1:null", at(120))
+  ts.foldSet(s2)
+  const folded = laid(["a", `set:${s1}`, "b", "d", `set:${s2}`, "c"])
+  check("drops: on the middle of a folded group's name, into its end; at its sides, beside it", at(448, folded) === "4:orange" && at(405, folded) === "3:null" && at(490, folded) === "4:null",
+    [at(448, folded), at(405, folded), at(490, folded)])
+  ws.selectTab("a")
+  sp.moveTabTo("c", "g0", 4, s2)
+  check("drops: a tab dropped into a folded group is put away there, the tab on screen staying", runs() === "a,b(Work),d(Work),e(orange-),c(orange-)" && ws.activeTab().id === "a", runs())
+  sp.moveTabTo("c", "g0", 5, null); ts.foldSet(s2, false)
+  // What the bar draws while dragging: the tabs as the drop would leave them.
+  const order = (item: Any, d: Any) => { const p = dr.previewIn(pane(), item, d); return p && dr.previewOrder(pane(), p).map((k: string) => k === `set:${s1}` ? "[Work]" : k === `set:${s2}` ? "[orange]" : k).join(",") }
+  check("drop preview: a tab dragged into a group's end shows there, its name before them",
+    order({ from: "tab", tab: "c" }, { kind: "bar", group: "g0", index: 3, set: s1 }) === "a,[Work],b,d,c,[orange],e", order({ from: "tab", tab: "c" }, { kind: "bar", group: "g0", index: 3, set: s1 }))
+  check("drop preview: a file from elsewhere makes room where it'd open; a drop elsewhere changes nothing here",
+    order({ from: "tree", to: "file:z.md" }, { kind: "bar", group: "g0", index: 1, set: null }) === `a,${dr.INCOMING},[Work],b,d,[orange],e,c`
+    && order({ from: "tab", tab: "c" }, { kind: "pane", group: "g0", zone: "left" }) === null)
+  check("drop preview: a whole group dragged moves with its name", order({ from: "tabset", tabset: s1 }, { kind: "bar", group: "g0", index: 5, set: null }) === "a,[orange],e,c,[Work],b,d",
+    order({ from: "tabset", tabset: s1 }, { kind: "bar", group: "g0", index: 5, set: null }))
   ts.renameSet(s1, "  Lighthouse "); ts.colorSet(s1, "teal")
   check("tab groups: renamed (trimmed) and recoloured", pane().sets[0].name === "Lighthouse" && pane().sets[0].color === "teal", pane().sets)
   ws.closeTab("e")
