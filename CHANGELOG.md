@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- An open window that sits idle costs less: a settled graph no longer redraws every frame (its GPU and page work drop to
+  nearly nothing), a hidden window stops the server checking every terminal every 2 s, and the app no longer re-lists
+  its commands for the menu bar or re-places comment cards every second and a half while nothing needs them.
 - Browser: switching to a web tab shows its page about three times sooner (25 ms instead of 80), a new tab's page
   loads in a renderer started ahead, as Chrome does (a third sooner), the app no longer spends a steady few percent of
   CPU checking whether a menu or toast covers the page, and each request costs Shields less.

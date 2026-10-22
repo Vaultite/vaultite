@@ -83,7 +83,9 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
   const st = useRef({
     nodes: [] as SimNode[], links: [] as SimLink[], by: new Map<string, SimNode>(), adj: new Map<string, Set<string>>(),
     sim: null as Simulation<SimNode, SimLink> | null,
-    t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false, dirty: true,
+    t: { k: 1, x: 0, y: 0 }, w: 0, h: 0, dpr: 1, touched: false,
+    // Marking it dirty asks for a frame: the loop runs while something moves or changed, never every frame of a still graph.
+    drawn: false, wake: () => {}, get dirty() { return !this.drawn }, set dirty(v: boolean) { this.drawn = !v; if (v) this.wake() },
     hover: null as SimNode | null, search: "", focus: "", font: "system-ui", colors: { fg: "#000", muted: "#888", line: "#ccc", bg: "#fff", accent: "#07f" },
     onOpen, compact: !!compact, arrows: false, look: {} as Look, fit: null as (() => void) | null, setMoved: (_: boolean) => {},
   })
@@ -148,6 +150,7 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     if (!sim || !stirred.current) { stirred.current = true; return }
     setForces(sim, { repel, linkDistance, center }, !!compact, st.current.nodes.length > 800)
     if (sim.alpha() < 0.3) sim.alpha(0.3)
+    st.current.dirty = true
   }, [repel, linkDistance, center, compact])
   useEffect(() => { if (refit) st.current.fit?.() }, [refit])
 
@@ -433,18 +436,21 @@ export default function GraphCanvas({ graph, colorOf, edgeColor, arrows, look = 
     const io = new IntersectionObserver((es) => { seen = es[es.length - 1].isIntersecting; if (seen) s.dirty = true })
     io.observe(el)
     const loop = () => {
-      frame = requestAnimationFrame(loop)
+      frame = 0
       if (!seen) return
-      const sim = s.sim
-      if (sim && sim.alpha() > sim.alphaMin()) {
+      const sim = s.sim, moving = !!sim && sim.alpha() > sim.alphaMin()
+      if (moving) {
         sim.tick(s.nodes.length > 1500 ? 1 : 2)
         if (!s.touched) fit(0.25)
-        s.dirty = true
+        s.drawn = false
       }
-      if (s.dirty) { s.dirty = false; draw() }
+      if (!s.drawn) { s.drawn = true; draw() }
+      if (moving && !frame) frame = requestAnimationFrame(loop)
     }
-    frame = requestAnimationFrame(loop)
+    s.wake = () => { if (!frame && seen) frame = requestAnimationFrame(loop) }
+    s.wake()
     return () => {
+      s.wake = () => {}
       cancelAnimationFrame(frame)
       io.disconnect()
       ro.disconnect()

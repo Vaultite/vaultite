@@ -454,7 +454,18 @@ function syncMenu(sync: (snap: MenuSnapshot) => Promise<unknown>) {
     last = json
     sync(snap).catch(() => { last = "" })
   }
-  const soon = () => { if (!timer) timer = window.setTimeout(send, 150) }
+  // Each time it lists every command: a moment after a change while the window has the focus, else (its menu bar not
+  // the one showing) every few seconds at most, and not at all while hidden.
+  let due = 0
+  const soon = () => {
+    if (document.hidden) return
+    const ms = document.hasFocus() ? 150 : 5000
+    if (timer && due <= Date.now() + ms) return
+    clearTimeout(timer)
+    due = Date.now() + ms
+    timer = window.setTimeout(send, ms)
+  }
+  document.addEventListener("visibilitychange", soon)
   onCommandsChanged(soon)
   // (a setting's check, and names that follow what's on: Hide left sidebar)
   onSwitches(soon)

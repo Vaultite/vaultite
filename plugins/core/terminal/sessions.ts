@@ -207,18 +207,28 @@ function connect() {
   }
 }
 
-/** Listen to the sessions list (the socket opens with the first listener and closes after the last). */
+function disconnect() {
+  const sock = ws
+  ws = null; tries = 0
+  clearInterval(ticking); ticking = 0
+  clearTimeout(timer)
+  sock?.close()
+}
+// Hidden, the socket closes: while one is open the server reads every shell's state (ps, tmux) every 2 s, all day. Shown
+// again it opens, and its first message is the list as it is now.
+if (typeof document !== "undefined") document.addEventListener("visibilitychange", () => {
+  if (document.hidden) disconnect()
+  else if (listeners.size && !ws) connect()
+})
+
+/** Listen to the sessions list (the socket opens with the first listener, while the page is shown, and closes after the
+ *  last). */
 export function subscribeSessions(fn: () => void) {
   listeners.add(fn)
-  if (!ws) connect()
+  if (!ws && !document.hidden) connect()
   return () => {
     listeners.delete(fn)
-    if (listeners.size) return
-    const sock = ws
-    ws = null; tries = 0
-    clearInterval(ticking); ticking = 0
-    clearTimeout(timer)
-    sock?.close()
+    if (!listeners.size) disconnect()
   }
 }
 export const getSessions = () => now

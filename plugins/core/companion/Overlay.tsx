@@ -495,7 +495,11 @@ export function Overlay() {
     // (a sidebar opening moves a pane's text without resizing its editor; a tab switch or a split moves editors unsaid)
     const ro = new ResizeObserver(later), watch = () => { for (const el of document.querySelectorAll("[data-pane], #main-scroll")) ro.observe(el) }
     watch()
-    const tick = setInterval(() => { if (document.visibilityState === "visible") later() }, 1500)
+    // (only with something to place: an idle app with no agents or comments does nothing every 1.5 s)
+    const tick = setInterval(() => {
+      const st = getState()
+      if (document.visibilityState === "visible" && st.mode !== "off" && (st.notes.length || st.agents.length)) later()
+    }, 1500)
     return () => { off(); ro.disconnect(); removeEventListener("scroll", later, { capture: true }); removeEventListener("resize", resized); clearInterval(tick); cancelAnimationFrame(frame) }
   }, [])
   // The note's own room under its text, so scrolling reaches its lowest card.
