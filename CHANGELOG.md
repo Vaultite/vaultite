@@ -6,91 +6,89 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
-- Vault plugins: one whose files are put back as they were (its broken edit undone) starts again at once, instead of
-  saying it couldn't start until the page was reloaded.
-- Plugins: a plugin's row tapped just after installing it opens its own sheet once its code has loaded, not the
-  directory's sheet with Install.
-- Start @name's model and effort chooser stays open while the note changes from outside away from it (an agent's
-  edit, the file changed on disk); typing on or moving off it still closes it.
-- An open window that sits idle costs less: a settled graph no longer redraws every frame (its GPU and page work drop to
-  nearly nothing), a hidden window stops the server checking every terminal every 2 s, and the app no longer re-lists
-  its commands for the menu bar or re-places comment cards every second and a half while nothing needs them.
-- Browser: switching to a web tab shows its page about three times sooner (25 ms instead of 80), a new tab's page
-  loads in a renderer started ahead, as Chrome does (a third sooner), the app no longer spends a steady few percent of
-  CPU checking whether a menu or toast covers the page, and each request costs Shields less.
-- The command palette opens drawing a page of rows, more as you scroll: about a quarter of the work it did on a
-  vault with many plugins (every command's row).
-- Typing in a long note (over 32 KB) no longer counts its words and tokens on every key: the status bar updates
-  them when typing pauses.
-- Vault plugins' code is kept by the browser: a reload no longer waits for every plugin's bundle again (about half
-  a second on a vault with twenty of them).
-- Status bar: every item can be hidden, moved and tucked under More, the file's too (view, word and character counts,
-  Vim's mode, chips, origin, tokens): right-click the bar, or "Show in status bar" / "Hide from status bar" and "Show
-  all status bar items" in the palette. With nothing shown, the bar is a faint corner whose right-click brings them
-  back; saved setups keep the file's items they showed.
+## 0.7.0 (2026-10-22)
+
+The web viewer becomes a browser (Shields, containers, Chrome extensions, agents using it), tab groups and vertical
+tabs, bundles you can pick apart, try and browse, Obsidian's Advanced Slides and reading-view plugins, and a faster app.
+
+- Chrome extensions run in web pages: add them from the Chrome Web Store (Add to Vaultite on an extension's page, or a
+  link in Extensions), a folder, or Brave and Chrome on the Mac; pinned ones' buttons are in the page's bar, every one in
+  its … menu.
+- Managed extensions: ones the Mac's owner names in a file from the terminal are always on in every page and container,
+  with no switch or Remove in the app, like Chrome's force-installed ones (a site blocker can't be turned off on a whim;
+  its blocked page and its asks for time work as in Chrome).
+- Extensions that watch or change pages' requests (chrome.webRequest) work with Shields on: password managers fill
+  sites' sign-in prompts (KeePassXC-Browser), and Zotero Connector sees what a page loads.
+- An extension added from Brave or Chrome comes with its settings there (options, sign-in, license), and one already
+  added gets them from its … menu, Settings from Brave: DeArrow's license and SponsorBlock's settings carry over.
+- Web pages open in containers, as in Firefox and Brave: Personal, Work or your own, each signed in on its own, so one
+  site can have several accounts side by side. The page's bar shows the tab's container and moves it to another, and a
+  site can always open in one.
+- A container can lock with Touch ID, like Brave's app lock: its pages stay hidden until unlocked, and lock again when
+  the Mac locks, sleeps or sits idle 15 minutes (Lock containers locks them now).
+- Web pages in the Mac app block ads, trackers and YouTube's video ads (Shields, with uBlock Origin's default lists): a
+  page's Shields button counts what was blocked and turns them off for its site. Nothing of it loads until a web page
+  opens.
+- Block an element (the Shields menu, the palette, or right-click a part of the page to start on it): point at part of a page, widen or narrow the pick with ↑ and ↓,
+  see it hidden before you save, and edit its selector. Rules are `youtube.com##selector` lines in the Browser's list
+  (`.vaultite/plugins/web-viewer/blocked-elements.md`; a Blocked elements note moves there once) that pages follow as it
+  changes; the Shields menu lists a site's rules (click one to show it again) and hides
+  YouTube's Shorts, recommendations or comments in one click. Agents add rules with `vau browser block`.
+- Web pages keep a history on this Mac: the address bar completes a site as you type and suggests your history,
+  bookmarks and open tabs, a new web tab starts at the address, ⌘Y opens History, and Import from Brave (or Chrome)
+  brings a profile's history in and its bookmarks into a Bookmarks note.
+- Make Vaultite the default browser (a command): links from other apps open in a web tab.
+- The Web viewer is the Browser now, and Open in the browser is Open in another browser.
+- A web page's bar is calmer: its container and Shields sit inside the address, one Save button saves the page to the
+  vault (plugins' ways to save, like Save video, in its menu), and Bookmark, Block an element, Open in another browser,
+  extensions and plugins' other actions are in its … menu. As a pane narrows, the address gives way first.
+- The Web pages panel is Sites: the sites signed in to in this workspace's logins (Default without workspaces) or a
+  container's, picked on its heading, with Sign out and Clear trackers; the Browser's settings list every container's.
+- Browser: each tab owns its page, so closing a tab always ends it (a slow page's sound no longer plays on with no tab),
+  two tabs of one address are two pages, ⌘⇧T opens one page, and the address shows while it loads; a tab's speaker mutes
+  it with a click, and the status bar names the pages playing sound.
 - Browser: switching between web tabs no longer flashes see-through for a frame. A tab's container menu is only for
   choosing one (Open in, Always open here, New container, Manage containers); containers are added and changed in
   Sites (the panel's + and the picked one's options, the Sites tab with every container and its options), which also
   pins the sites each always opens. Menus mixing icons and checks put the check at the end, so no row starts indented.
-- Reading view runs plugins over a note's blocks (`reading` in the plugin API): Obsidian plugins' Markdown
-  post-processors now reach a note being read, so Simple Embeds turns a YouTube link into a player there, Banners draws
-  its banner and Supercharged Links marks links; blocks no plugin changed draw as before.
-- Big vaults (tens of thousands of notes): the first load no longer reads every note again for token counts, a rename
-  reads only the notes that link to it, and each request's sync no longer asks every file its kind. Typing and opening
-  notes stay fast with a folder of thousands of files open in the file tree (it draws only the rows in sight, and a save
-  no longer redraws it), and the first search no longer reads every JSON file first: plain `.json` data is left out of
-  search, as in Obsidian (canvases, drawings, tables and code are still searched).
-- Vault plugins load in a vault that is also a code project (a `package.json` saying `"type": "commonjs"` at its top).
-- Claude Code's usage is counted with less than half the work: right after the server starts (a deploy, the desktop app
-  opening) it no longer stalls the app while it reads weeks of transcripts.
-- Terminals: a burst of output (a long listing, a busy agent) reaches the screen 5-10x sooner in a few large pieces
-  instead of thousands of tiny ones, the terminal list (`vau terminal`, the Terminals panel) answers without starting
-  tmux or `ps` again when it just did, and typing no longer lays out the page on every key.
-- Slides present Obsidian Advanced Slides decks: `note:` speaker notes come off the slide and show beside it (S, or
-  the notes button), `--` vertical slides, fragments (`<!-- element class="fragment" -->`, `+` lists) stepped through,
-  slide backgrounds (`<!-- slide bg="..." -->`, with text in a tone that reads on them), and the deck's `<style>` kept to
-  the presentation; the frontmatter's separators, `bg`, `theme` and `showNotes` count.
-- `vau profile` samples the running server's CPU for some seconds (no restart) and lists where its time went; the
-  profile is kept for Chrome's DevTools.
-- Status bar: after the window or a sidebar is resized it no longer reaches under the left sidebar or keeps empty room
-  at its end (it held the width it had at the last launch).
-- Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing
-  changed on disk, and a save, or a note an agent edits, re-reads only that file (on a 3,000-file vault, 6 to 20 times
-  less work per request, and an edit on disk 0.1 ms instead of 64).
-- Lighter over the network: an open app asks the server about 6 times less (a change on disk no longer has every window
-  read every setting and live card again), the phone back from sleep reads only what changed meanwhile, its first load
-  comes a quarter smaller, and agents' hooks and `vau` commands answer without waiting on the vault.
+- Browser: menus, the palette, popovers, tooltips and toasts draw over a live page; it no longer freezes into a picture
+  or blinks as one opens, and a toast over a page lets clicks through to it.
+- Browser: "Open as player" (a page's … menu, ⌥⌘P) moves a tab's page, still playing, into a window of its own, its
+  video filling it full screen on its own Space, to watch or share in a call; Esc brings it back. A video's own full
+  screen now fills the window, and Picture in picture floats a page's video.
+- Browser, Block element: what you pick is marked in red but stays on the page until you press Block; Preview (P) hides
+  it for a look. Shields' button no longer goes missing on a page opened as the app starts, and is just the shield: the count is in its menu.
+- A web page playing sound shows a speaker on its tab; Mute tab is in its menu and its bar.
+- A web tab playing a video keeps its speaker, and the status bar its "playing", through quiet scenes, till the video
+  pauses; the speaker sits beside the site's icon instead of replacing it. A background video in a quiet scene is no
+  longer let go when memory runs short.
+- Browser site styles: a site's own CSS (`.vaultite/plugins/web-viewer/sites/youtube.com.css`) in the vault's look, its
+  colours and fonts as `--vault-*` variables that follow light, dark and the colour scheme; it applies as you save, wins
+  over the site's own without !important, and the Shields menu turns it off or opens it beside the page ("Style this
+  site…"). Agents write one with `vau browser style`.
+- Tint the active tab (Settings > Appearance, off by default): a web page's tab takes its container's colour, lightly.
+  The container's line under the address is straight.
+- Agents use the desktop app's browser as you would (`vau browser open`, `snapshot`, `act`, `read`):
+  their tab opens beside yours, the bar says what they're doing with Pause, and Show what agents did in the
+  browser replays each run step by step. Each container says whether agents can't use it, read it, or act in it;
+  only the new Agents container lets them act until you say otherwise.
+- Browser agents over MCP: `browser_open`, `browser_snapshot`, `browser_act` and the rest are MCP tools, and a server
+  without the desktop app (the always-on one) passes them to a Mac whose app has the vault open, or says none has.
+  Agents' tabs are grouped as <agent>/<task> and marked theirs, they close their own, upload vault files, hear where a
+  download went, search a page (`--find`), get a picture of a background tab, run an expression in a world of its own,
+  and ask you to sign in with a Done in the tab's bar (and the Inbox). A tab an agent moved on in the background no
+  longer goes back to its first page when shown.
 - Agents in the browser: `act` answers what changed on the page once it settles (`--diff`) and fills a whole form at
   once (`--fields`), refs last while their element does, `browser run` does a whole flow in one call (a script in a
   sandbox, 30 s), and `browser pdf` saves a page into the vault. "Show agents in the browser" shows the tabs agents work
   in now, live, with Show tab and Pause, then past runs searched by agent, task or the summary given on open.
+- Agents never take your focus: a terminal an agent opens, resumes or dispatches goes in a tab behind yours, with a
+  quiet toast ("Claude Code started a session") and Show. `vau terminal open claude --prompt "..."` starts it on its task.
 - Agents' lines: what agents write in a note is marked theirs by line, kept beside the note (never in its text) and
   found again as you edit: a thin bar in the writer's colour by each line, hover (or a held finger's menu) for who,
   model, effort and when; a line you edit after an agent shows as both. Provenance's setting Agents' lines: a bar,
   tinted (the text stays washed in their colour), or off. `vau blame <note>` lists them, and the day's recap counts
   lines by agent. The companion is told an ask's whole paragraph and the three above it, uncut.
-- Renaming or moving a note updates Markdown links that name it alone (`[a](Note.md)`, Obsidian's shortest path), not
-  only relative ones and wikilinks.
-- Agents never take your focus: a terminal an agent opens, resumes or dispatches goes in a tab behind yours, with a
-  quiet toast ("Claude Code started a session") and Show. `vau terminal open claude --prompt "..."` starts it on its task.
-- Browser: menus, the palette, popovers, tooltips and toasts draw over a live page; it no longer freezes into a picture
-  or blinks as one opens, and a toast over a page lets clicks through to it.
-- Cloud sessions: Claude Code on the web's sessions have a sidebar panel of their own, out of Terminals. Every claude.ai
-  account the Browser is signed in to shows (each workspace's logins, each container, each organization), under its
-  name, any of them hidden from the panel's eye; a session opens in the logins it belongs to. Asked once before
-  anything is read. Start a new one with +, or send a note as a new session's prompt. Working and waiting sessions show
-  as such again (claude.ai's list had stopped saying).
-- A web tab playing a video keeps its speaker, and the status bar its "playing", through quiet scenes, till the video
-  pauses; the speaker sits beside the site's icon instead of replacing it. A background video in a quiet scene is no
-  longer let go when memory runs short.
-- Inbox: each agent session is one row, there only when it needs you (it asks, wants an approval, or its turn ended
-  with a question or an answer to read, judged from its last message by a small fast model), bold until you open it;
-  its sheet shows the answer drawn and a reply that goes back into the session. A turn done with nothing for you goes in
-  quietly, and only what needs you toasts and notifies (rate limited). No more "Claude Code finished" per turn. A
-  session you end yourself (End session) leaves its row read.
-- Another machine's sessions reach this app again after a laptop sleeps or changes network, and their permissions are
-  approved, denied and replied to from here, the phone (Reply on the notification) and the watch; only the machine the
-  session runs on sends the phone's push.
 - Agents' tabs show their state: the agent's logo stays, with a dot on its corner breathing while it works, yellow when
   it waits on you, blue when its Inbox row has an answer to read, red if it failed, on the tab bar, the
   Tabs panel, the phone's tabs and Terminals, which lists the ones that need you first, in bold (the status bar counts
@@ -103,113 +101,63 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   an answer or a login, and why) or done, instead of hooks and screen reading, and so does Codex from 0.163 (its turn's
   answer reaching the Inbox under its session's name); agents that don't speak it (older Codex, or any agent in tmux)
   keep those, and Codex's permission prompts show as waiting with Approve and Deny.
-- An Obsidian vault keeps its look: its base theme (light, dark or system), its theme from `.obsidian/themes/`, the CSS
-  snippets it has on from `.obsidian/snippets/` and its fonts apply until you set them in Vaultite. Nothing is written
-  to `.obsidian/`.
-- Browser: "Open as player" (a page's … menu, ⌥⌘P) moves a tab's page, still playing, into a window of its own, its
-  video filling it full screen on its own Space, to watch or share in a call; Esc brings it back. A video's own full
-  screen now fills the window, and Picture in picture floats a page's video.
-- Mac app: Settings, Permissions shows what macOS lets Vaultite do (the vault folder for the app and its terminals,
-  microphone, accessibility, screen recording, folders...), whether the app's signature keeps them across updates, and
-  a way to allow each; `vau permissions` tells agents the same. A terminal macOS keeps from the vault says so.
-- Browser agents over MCP: `browser_open`, `browser_snapshot`, `browser_act` and the rest are MCP tools, and a server
-  without the desktop app (the always-on one) passes them to a Mac whose app has the vault open, or says none has.
-  Agents' tabs are grouped as <agent>/<task> and marked theirs, they close their own, upload vault files, hear where a
-  download went, search a page (`--find`), get a picture of a background tab, run an expression in a world of its own,
-  and ask you to sign in with a Done in the tab's bar (and the Inbox). A tab an agent moved on in the background no
-  longer goes back to its first page when shown.
-- Reordering Pinned and Tabs: dropping just under the last row puts it at the end (Pinned no longer unpins it), and
-  dropping a pinned page over its own place leaves it there instead of sending it to the bottom.
-- Browser, Block element: what you pick is marked in red but stays on the page until you press Block; Preview (P) hides
-  it for a look. Shields' button no longer goes missing on a page opened as the app starts, and is just the shield: the count is in its menu.
-- Bundles carry the editor's settings (editor.json): Zen hides notes' properties, and the others show them again.
-- Zen: the page dims softly behind a sidebar slid in, the file bar fades while you type, Files waits folded, and
-  "Show in the file tree" (a breadcrumb, Reveal) slides the hidden sidebar in instead of pinning it open. A hidden
-  sidebar slides in from its edge over a browser tab or an embedded page (a PDF, an app's card) too.
-- Settings: the sidebars' switches (rails, dimming, scrolling, dividers) are in Appearance, Sidebars, above the panels.
+- Inbox: each agent session is one row, there only when it needs you (it asks, wants an approval, or its turn ended
+  with a question or an answer to read, judged from its last message by a small fast model), bold until you open it;
+  its sheet shows the answer drawn and a reply that goes back into the session. A turn done with nothing for you goes in
+  quietly, and only what needs you toasts and notifies (rate limited). No more "Claude Code finished" per turn. A
+  session you end yourself (End session) leaves its row read.
+- Agents: a question an agent asks before it's ready (Claude Code's "Do you trust this folder?" on a first run) waits on
+  you like a permission: its terminal shows waiting, the Inbox and phone have Approve and Deny, and its first prompt
+  runs once you approve. The Inbox has Approve and Deny for any agent's permission, which stays unread until answered,
+  and a companion's cursor shows its question right there with them.
+- Terminal: `vau terminal run <file>` (terminal.run) hands a note to a coding agent or a shell command, here or on
+  another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
+- Cloud sessions: Claude Code on the web's sessions have a sidebar panel of their own, out of Terminals. Every claude.ai
+  account the Browser is signed in to shows (each workspace's logins, each container, each organization), under its
+  name, any of them hidden from the panel's eye; a session opens in the logins it belongs to. Asked once before
+  anything is read. Start a new one with +, or send a note as a new session's prompt. Working and waiting sessions show
+  as such again (claude.ai's list had stopped saying).
+- Another machine's sessions reach this app again after a laptop sleeps or changes network, and their permissions are
+  approved, denied and replied to from here, the phone (Reply on the notification) and the watch; only the machine the
+  session runs on sends the phone's push.
 - Tab groups, as in a browser: right-click tabs for Add tab to new group, and a group is a coloured chip before its tabs
   (in the Tabs panel, the same pill with a line down its tabs; a section on a phone) that folds to its name; drag the
   chip to move the whole group, and rename, recolour, ungroup or close it from its menu. Agents group tabs with
   `vau tabs group`. Dragging tabs, the others make way and the tab shows where it lands, the group's line under it if
   it joins: held over a group's last tab it joins its end, just past it it leaves in place, and dropped on a folded
   group it goes in, the group staying folded.
+- Vertical tabs in one switch: Show tabs in the sidebar (the palette, or right-click the tab bar) puts the Tabs panel at
+  the top of the left sidebar and hides the tab bar; Show tabs on top puts them back.
 - Every list you reorder by dragging makes way as the tabs do, instead of showing a line: pinned pages (list and
   tiles), sidebar panels, the Sidebars sheet, a blank tab's sections and buttons, the status bar and its tray, and the
   header's items. Something dragged in from elsewhere opens a gap where it would land; a pin dragged out to unpin
   leaves the rest closed up.
-- Vertical tabs in one switch: Show tabs in the sidebar (the palette, or right-click the tab bar) puts the Tabs panel at
-  the top of the left sidebar and hides the tab bar; Show tabs on top puts them back.
-- Mac app: with the tab bar and pane titles off, the sidebar toggles beside a folded sidebar can be clicked again.
+- Reordering Pinned and Tabs: dropping just under the last row puts it at the end (Pinned no longer unpins it), and
+  dropping a pinned page over its own place leaves it there instead of sending it to the bottom.
 - With the tab bar off, nothing shows above a pane unless Pane titles is on (now off by default); a note's bar or the
   Browser's address bar is then the window's title row, beside the sidebar's, making room for the toggles and the Mac's
   traffic lights instead of an empty band above it; its empty part drags the window and has the tab bar's menu.
+- Mac app: with the tab bar and pane titles off, the sidebar toggles beside a folded sidebar can be clicked again.
+- Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs
+  settings have it too.
+- Status bar: every item can be hidden, moved and tucked under More, the file's too (view, word and character counts,
+  Vim's mode, chips, origin, tokens): right-click the bar, or "Show in status bar" / "Hide from status bar" and "Show
+  all status bar items" in the palette. With nothing shown, the bar is a faint corner whose right-click brings them
+  back; saved setups keep the file's items they showed.
 - Status bar: what doesn't fit goes (characters, then items to the tray, then words), never onto a second line; last
   launch's widths hold only while the app loads, so no empty room is left where a longer song title was.
+- Status bar: after the window or a sidebar is resized it no longer reaches under the left sidebar or keeps empty room
+  at its end (it held the width it had at the last launch).
 - Mac app: the traffic lights come in once a hidden sidebar has slid in, not a frame at a time from their default place,
   and stay hidden with it after full screen, a focus change or a new window.
-- A web page's bar is calmer: its container and Shields sit inside the address, one Save button saves the page to the
-  vault (plugins' ways to save, like Save video, in its menu), and Bookmark, Block an element, Open in another browser,
-  extensions and plugins' other actions are in its … menu. As a pane narrows, the address gives way first.
-- The Web pages panel is Sites: the sites signed in to in this workspace's logins (Default without workspaces) or a
-  container's, picked on its heading, with Sign out and Clear trackers; the Browser's settings list every container's.
-- Plugins: a `webPageActions` item with `kind: "save"` goes in a web page's Save menu, any other in its … menu.
-- Browser: each tab owns its page, so closing a tab always ends it (a slow page's sound no longer plays on with no tab),
-  two tabs of one address are two pages, ⌘⇧T opens one page, and the address shows while it loads; a tab's speaker mutes
-  it with a click, and the status bar names the pages playing sound.
+- Mac: a sidebar without its rail (Zen) slides in carrying the window's traffic lights and its toggle, set in its top
+  row as beside the pinned sidebar, instead of the lights hanging over its corner; the lights sit centred on that row
+  in either density.
+- Zen: the page dims softly behind a sidebar slid in, the file bar fades while you type, Files waits folded, and
+  "Show in the file tree" (a breadcrumb, Reveal) slides the hidden sidebar in instead of pinning it open. A hidden
+  sidebar slides in from its edge over a browser tab or an embedded page (a PDF, an app's card) too.
+- Settings: the sidebars' switches (rails, dimming, scrolling, dividers) are in Appearance, Sidebars, above the panels.
 - Applying a bundle with the app open draws it as a reload would: the status bar no longer keeps the last setup's width.
-- Bundles: the tab is laid out as Plugins is: Your bundles (built in, then yours) and Get bundles (the directory, with
-  Import… for one it doesn't list), with the search beside them; with none of yours yet, one empty state offers Save
-  current setup and Import…, and after yours a tile saves another.
-- Terminal: `vau terminal run <file>` (terminal.run) hands a note to a coding agent or a shell command, here or on
-  another machine, reporting to the inbox: what Dispatch's buttons and scheduled notes now start agents with.
-- The Web viewer is the Browser now, and Open in the browser is Open in another browser.
-- An extension added from Brave or Chrome comes with its settings there (options, sign-in, license), and one already
-  added gets them from its … menu, Settings from Brave: DeArrow's license and SponsorBlock's settings carry over.
-- Chrome extensions run in web pages: add them from the Chrome Web Store (Add to Vaultite on an extension's page, or a
-  link in Extensions), a folder, or Brave and Chrome on the Mac; pinned ones' buttons are in the page's bar, every one in
-  its … menu.
-- Managed extensions: ones the Mac's owner names in a file from the terminal are always on in every page and container,
-  with no switch or Remove in the app, like Chrome's force-installed ones (a site blocker can't be turned off on a whim;
-  its blocked page and its asks for time work as in Chrome).
-- Extensions that watch or change pages' requests (chrome.webRequest) work with Shields on: password managers fill
-  sites' sign-in prompts (KeePassXC-Browser), and Zotero Connector sees what a page loads.
-- Web pages open in containers, as in Firefox and Brave: Personal, Work or your own, each signed in on its own, so one
-  site can have several accounts side by side. The page's bar shows the tab's container and moves it to another, and a
-  site can always open in one.
-- A container can lock with Touch ID, like Brave's app lock: its pages stay hidden until unlocked, and lock again when
-  the Mac locks, sleeps or sits idle 15 minutes (Lock containers locks them now).
-- Agents use the desktop app's browser as you would (`vau browser open`, `snapshot`, `act`, `read`):
-  their tab opens beside yours, the bar says what they're doing with Pause, and Show what agents did in the
-  browser replays each run step by step. Each container says whether agents can't use it, read it, or act in it;
-  only the new Agents container lets them act until you say otherwise.
-- Make Vaultite the default browser (a command): links from other apps open in a web tab.
-- A web page playing sound shows a speaker on its tab; Mute tab is in its menu and its bar.
-- Web pages keep a history on this Mac: the address bar completes a site as you type and suggests your history,
-  bookmarks and open tabs, a new web tab starts at the address, ⌘Y opens History, and Import from Brave (or Chrome)
-  brings a profile's history in and its bookmarks into a Bookmarks note.
-- Web pages in the Mac app block ads, trackers and YouTube's video ads (Shields, with uBlock Origin's default lists): a
-  page's Shields button counts what was blocked and turns them off for its site. Nothing of it loads until a web page
-  opens.
-- Block an element (the Shields menu, the palette, or right-click a part of the page to start on it): point at part of a page, widen or narrow the pick with ↑ and ↓,
-  see it hidden before you save, and edit its selector. Rules are `youtube.com##selector` lines in the Browser's list
-  (`.vaultite/plugins/web-viewer/blocked-elements.md`; a Blocked elements note moves there once) that pages follow as it
-  changes; the Shields menu lists a site's rules (click one to show it again) and hides
-  YouTube's Shorts, recommendations or comments in one click. Agents add rules with `vau browser block`.
-- Browser site styles: a site's own CSS (`.vaultite/plugins/web-viewer/sites/youtube.com.css`) in the vault's look, its
-  colours and fonts as `--vault-*` variables that follow light, dark and the colour scheme; it applies as you save, wins
-  over the site's own without !important, and the Shields menu turns it off or opens it beside the page ("Style this
-  site…"). Agents write one with `vau browser style`.
-- Tint the active tab (Settings > Appearance, off by default): a web page's tab takes its container's colour, lightly.
-  The container's line under the address is straight.
-- Notes: click a note's icon beside its title to change it, or the icon of a row you're renaming in the file tree.
-- Archive: folders can be archived whole, from their menu or `vau archive <folder>`, into `.archive/` in the folder
-  above; Archive now sits right above Delete in file and folder menus.
-
-## 0.7.0 (2026-10-21)
-
-Bundles you can pick apart, try and keep in step with your setup, a directory to browse others', and one Setup page for
-bundles and plugins.
-
 - Setup: one page for Bundles and Plugins, as its two tabs, behind a Setup button beside Settings at the sidebar's foot
   (Your setup atop Settings goes there too); Open Setup, Open Plugins and Choose a bundle… open it from the palette.
 - Bundles: Standard after Zen (or any of the app's bundles after another) is that bundle's setup again: each says every
@@ -236,21 +184,72 @@ bundles and plugins.
 - Bundles: the app's own bundles show a real picture of the app they make, in light or dark as the app is.
 - Bundles: a bundle that installs plugins says so with a small mark on its card's title row (hover it for which), so
   every card is one height.
+- Bundles: the tab is laid out as Plugins is: Your bundles (built in, then yours) and Get bundles (the directory, with
+  Import… for one it doesn't list), with the search beside them; with none of yours yet, one empty state offers Save
+  current setup and Import…, and after yours a tile saves another.
+- Bundles carry the editor's settings (editor.json): Zen hides notes' properties, and the others show them again.
+- Slides present Obsidian Advanced Slides decks: `note:` speaker notes come off the slide and show beside it (S, or
+  the notes button), `--` vertical slides, fragments (`<!-- element class="fragment" -->`, `+` lists) stepped through,
+  slide backgrounds (`<!-- slide bg="..." -->`, with text in a tone that reads on them), and the deck's `<style>` kept to
+  the presentation; the frontmatter's separators, `bg`, `theme` and `showNotes` count.
+- Reading view runs plugins over a note's blocks (`reading` in the plugin API): Obsidian plugins' Markdown
+  post-processors now reach a note being read, so Simple Embeds turns a YouTube link into a player there, Banners draws
+  its banner and Supercharged Links marks links; blocks no plugin changed draw as before.
+- Renaming or moving a note updates Markdown links that name it alone (`[a](Note.md)`, Obsidian's shortest path), not
+  only relative ones and wikilinks.
+- An Obsidian vault keeps its look: its base theme (light, dark or system), its theme from `.obsidian/themes/`, the CSS
+  snippets it has on from `.obsidian/snippets/` and its fonts apply until you set them in Vaultite. Nothing is written
+  to `.obsidian/`.
+- Vault plugins load in a vault that is also a code project (a `package.json` saying `"type": "commonjs"` at its top).
+- Notes: click a note's icon beside its title to change it, or the icon of a row you're renaming in the file tree.
+- Archive: folders can be archived whole, from their menu or `vau archive <folder>`, into `.archive/` in the folder
+  above; Archive now sits right above Delete in file and folder menus.
+- Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing
+  changed on disk, and a save, or a note an agent edits, re-reads only that file (on a 3,000-file vault, 6 to 20 times
+  less work per request, and an edit on disk 0.1 ms instead of 64).
+- Lighter over the network: an open app asks the server about 6 times less (a change on disk no longer has every window
+  read every setting and live card again), the phone back from sleep reads only what changed meanwhile, its first load
+  comes a quarter smaller, and agents' hooks and `vau` commands answer without waiting on the vault.
+- Big vaults (tens of thousands of notes): the first load no longer reads every note again for token counts, a rename
+  reads only the notes that link to it, and each request's sync no longer asks every file its kind. Typing and opening
+  notes stay fast with a folder of thousands of files open in the file tree (it draws only the rows in sight, and a save
+  no longer redraws it), and the first search no longer reads every JSON file first: plain `.json` data is left out of
+  search, as in Obsidian (canvases, drawings, tables and code are still searched).
+- Browser: switching to a web tab shows its page about three times sooner (25 ms instead of 80), a new tab's page
+  loads in a renderer started ahead, as Chrome does (a third sooner), the app no longer spends a steady few percent of
+  CPU checking whether a menu or toast covers the page, and each request costs Shields less.
+- Terminals: a burst of output (a long listing, a busy agent) reaches the screen 5-10x sooner in a few large pieces
+  instead of thousands of tiny ones, the terminal list (`vau terminal`, the Terminals panel) answers without starting
+  tmux or `ps` again when it just did, and typing no longer lays out the page on every key.
+- An open window that sits idle costs less: a settled graph no longer redraws every frame (its GPU and page work drop to
+  nearly nothing), a hidden window stops the server checking every terminal every 2 s, and the app no longer re-lists
+  its commands for the menu bar or re-places comment cards every second and a half while nothing needs them.
+- The command palette opens drawing a page of rows, more as you scroll: about a quarter of the work it did on a
+  vault with many plugins (every command's row).
+- Typing in a long note (over 32 KB) no longer counts its words and tokens on every key: the status bar updates
+  them when typing pauses.
+- Vault plugins' code is kept by the browser: a reload no longer waits for every plugin's bundle again (about half
+  a second on a vault with twenty of them).
+- Claude Code's usage is counted with less than half the work: right after the server starts (a deploy, the desktop app
+  opening) it no longer stalls the app while it reads weeks of transcripts.
+- `vau profile` samples the running server's CPU for some seconds (no restart) and lists where its time went; the
+  profile is kept for Chrome's DevTools.
+- Plugins: a plugin's row tapped just after installing it opens its own sheet once its code has loaded, not the
+  directory's sheet with Install.
+- Start @name's model and effort chooser stays open while the note changes from outside away from it (an agent's
+  edit, the file changed on disk); typing on or moving off it still closes it.
+- Mac app: Settings, Permissions shows what macOS lets Vaultite do (the vault folder for the app and its terminals,
+  microphone, accessibility, screen recording, folders...), whether the app's signature keeps them across updates, and
+  a way to allow each; `vau permissions` tells agents the same. A terminal macOS keeps from the vault says so.
+- Plugins: a `webPageActions` item with `kind: "save"` goes in a web page's Save menu, any other in its … menu.
 - Connecting Claude or another AI app from Safari works: its sign-in page went on waiting after you typed the code.
 - Connections: an AI app let in by its code that's slow to finish says where it waits (its sign-in page not gone back
   yet, or the app not finishing), and one that never connects stays a while saying why, instead of a shimmer that
   vanishes; the server's log and Errors note it too.
-- Agents: a question an agent asks before it's ready (Claude Code's "Do you trust this folder?" on a first run) waits on
-  you like a permission: its terminal shows waiting, the Inbox and phone have Approve and Deny, and its first prompt
-  runs once you approve. The Inbox has Approve and Deny for any agent's permission, which stays unread until answered,
-  and a companion's cursor shows its question right there with them.
 - Phones: holding something for its menu (a tab, a recent file, a property, a block in a note) no longer selects its
   text or what's around it.
-- Tabs panel: right-click its heading (or a device) to hide other devices' tabs and list only this device's; Tabs
-  settings have it too.
-- Mac: a sidebar without its rail (Zen) slides in carrying the window's traffic lights and its toggle, set in its top
-  row as beside the pinned sidebar, instead of the lights hanging over its corner; the lights sit centred on that row
-  in either density.
+- Vault plugins: one whose files are put back as they were (its broken edit undone) starts again at once, instead of
+  saying it couldn't start until the page was reloaded.
 
 ## 0.6.3 (2026-10-20)
 
