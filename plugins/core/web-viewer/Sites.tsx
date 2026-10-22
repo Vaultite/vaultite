@@ -1,15 +1,16 @@
 // Sites: a set of logins' accounts and the sites always opened there, then the rest folded with its trackers (Clear).
 // Drawn as the sidebar's Sites panel (one set of logins), the Sites tab (every set, containers managed) and in settings.
-import { forwardRef, useEffect, useState } from "react"
+import { forwardRef, useEffect, useRef, useState } from "react"
 import { Bot, ChevronDown, ChevronRight, ChevronsUpDown, Ellipsis, EyeOff, Fingerprint, Globe, LogOut, Pin, Plus, Settings2 } from "lucide-react"
 import {
-  Button, confirmDialog, currentWorkspace, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, scopedState, Section,
-  SettingRow, SidebarHeading, SidebarRow, useScopedState, useWorkspaceVersion, webPages, workspaceList, type MenuItem, type SidebarCtx, type WebSite,
+  Button, confirmDialog, currentWorkspace, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, reorder, scopedState, Section,
+  SettingRow, SidebarHeading, SidebarRow, slotAt, startDrag, useDrag, useDropHit, useDropTarget, useScopedState, useSlide, useWorkspaceVersion, webPages, workspaceList,
+  type MenuItem, type SidebarCtx, type WebSite,
 } from "@vaultite"
 import type { LucideIcon, LucideProps } from "lucide-react"
 import { keep, listed } from "./accounts"
 import { SiteIcon, siteIcon } from "./icons"
-import { colorOf, containersOf, profileIn, setSiteRule, useContainers, type Container } from "./containers"
+import { colorOf, containersOf, moveContainer, profileIn, setSiteRule, useContainers, type Container } from "./containers"
 import { agentsSay, canLockNow, containerItems, newContainer, useCanLock } from "./ContainerButton"
 import { profile, profileFor, settings } from "./state"
 
@@ -313,21 +314,22 @@ export function SitesPanel({ open, openPage }: Pick<SidebarCtx, "open"> & { open
   )
 }
 
-/** A set of logins' heading in the Sites tab: its dot and name, what's set on a container (Touch ID, agents), and its
- *  options on hover and right-click. */
+/** A set of logins' heading in the Sites tab: its dot and name, what's set on a container (Touch ID, agents), how many
+ *  accounts, and its options on hover and right-click. A container's is where it's dragged to another place. */
 function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: string }) {
   const can = useCanLock()
   const items = () => (c ? containerItems(c, can) : [])
   const agents = c ? agentsSay(c) : ""
   return (
     <div onContextMenu={c ? menuFor(items) : undefined} data-web-logins-heading={l.container ?? l.prof}
-      className="group/head mb-1 flex h-8 items-center gap-2 pr-0.5 pl-1.5">
+      onPointerDown={c ? (e) => startDrag(e, { from: "container", container: c.id, label: c.name }) : undefined}
+      className={`group/head mb-1 flex h-8 items-center gap-2 pr-0.5 pl-1.5 select-none ${c ? "cursor-grab" : ""}`}>
       <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
       <span className="min-w-0 truncate text-[14px] font-semibold" data-web-logins-name="">{l.name}</span>
       {c?.lock && <Fingerprint aria-label="Locked with Touch ID" data-tip="Locked with Touch ID" className="size-3.5 shrink-0 text-tertiary" strokeWidth={2} />}
       {agents && <Bot aria-label={agents} data-tip={agents} className="size-3.5 shrink-0 text-tertiary" strokeWidth={2} />}
-      <span className="min-w-0 flex-1 truncate text-right text-[12px] text-tertiary group-hover/head:hidden group-focus-within/head:hidden">{count}</span>
-      {c && <span className="hidden group-hover/head:block group-focus-within/head:block">
+      <span className="min-w-0 flex-1 truncate text-right text-[12px] text-tertiary">{count}</span>
+      {c && <span data-no-drag="" className="md:opacity-0 md:group-hover/head:opacity-100 md:group-focus-within/head:opacity-100">
         <HeadingButton icon={Ellipsis} label={`Options for ${c.name}`} tip="Options" onClick={(e) => menuBelow(e, items())} />
       </span>}
     </div>
@@ -337,13 +339,14 @@ function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: strin
 /** A set of logins in the Sites tab, a card in its colour: its heading and its sites; nothing while a filter matches none. */
 function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; openPage: Open; filter: string }) {
   const data = useSites(l.prof)
+  const lifted = useDrag()?.item.container === c?.id && !!c
   const q = filter.trim().toLowerCase()
   if (q && data.sites && !data.sites.some((s) => matches(s, q)) && !data.others.some((s) => matches(s, q)) && !(c?.sites ?? []).some((x) => x.includes(q))) return null
-  const accounts = data.sites?.filter(isIn).length ?? 0, n = data.sites?.length ?? 0
-  const count = data.sites === null ? "" : [accounts ? plural(accounts, "account") : "", n - accounts ? plural(n - accounts, "site") : ""].filter(Boolean).join(" · ")
+  const accounts = data.sites?.filter(isIn).length ?? 0
+  const count = accounts ? plural(accounts, "account") : ""
   return (
     // (a card in its colour, faint, so every row reads as inside it)
-    <section data-web-logins-section={l.container ?? l.prof} className="mt-3 rounded-[12px] border px-1.5 pt-1 pb-1.5 first:mt-2"
+    <section data-web-logins-section={l.container ?? l.prof} data-slide={c?.id} className={`rounded-[12px] border px-1.5 pt-1 pb-1.5 ${lifted ? "opacity-40" : ""}`}
       style={{ background: `color-mix(in srgb, ${l.color} 6%, transparent)`, borderColor: `color-mix(in srgb, ${l.color} 20%, transparent)` }}>
       <LoginsHeading l={l} c={c} count={count} />
       <SiteRows logins={l} data={data} openPage={openPage} filter={filter} />
@@ -351,19 +354,38 @@ function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; o
   )
 }
 
+type Reorder = { before: string | null; order: string[] }
+const DROP = "web-viewer:containers"
+/** The Sites tab's containers take one dragged by its heading: it goes where the others make way. The order a drag
+ *  would leave (null: none). */
+function useContainerDrop(box: React.RefObject<HTMLDivElement | null>) {
+  useDropTarget<Reorder>(DROP, (item, x, y) => {
+    const el = box.current
+    if (!item.container || !el) return null
+    const b = el.getBoundingClientRect()
+    if (x < b.left || x > b.right || y < b.top - 40 || y > b.bottom + 40) return null
+    const cards = [...el.querySelectorAll<HTMLElement>(":scope > [data-slide]")]
+    const { order, before, same } = reorder(cards.map((e) => e.dataset.slide!), [item.container], slotAt(el, cards, x, y, "y"))
+    return same ? null : { before, order }
+  }, (item, h) => void moveContainer(item.container!, h.before))
+  return useDropHit<Reorder>(DROP)?.order ?? null
+}
+
 /** The Sites tab: every set of logins with who's signed in where and its sites, where containers are added and changed. */
 export function SitesView({ openPage }: { openPage: Open }) {
   const all = useAllLogins()
   const containers = useContainers()
   const [q, setQ] = useState("")
+  const box = useRef<HTMLDivElement>(null)
+  useSlide(box, useContainerDrop(box), "y")
   if (!webPages?.sites) return <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10"><SitesPanel open openPage={openPage} /></div>
   return (
     <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10" data-web-sites-view>
       <PageHeader title="Sites" subtitle="Who you're signed in as, container by container">
         <Button size="small" onClick={() => newContainer()} data-web-new-container="">New container</Button>
       </PageHeader>
-      <FilterField value={q} onChange={setQ} placeholder="Filter sites and accounts" className="mb-2" />
-      <div data-size-up="">
+      <FilterField value={q} onChange={setQ} placeholder="Filter sites and accounts" />
+      <div ref={box} data-size-up="" data-web-logins-list="" className="relative mt-2 flex flex-col gap-3">
         {all.map((l) => <LoginsSection key={l.prof} l={l} c={containers.find((x) => x.id === l.container)} openPage={openPage} filter={q} />)}
       </div>
     </div>

@@ -9,7 +9,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - **Sites, tidied**: each container is a card in its colour and leads with who you're signed in as, now on Google
   (YouTube and its country sites in the same row, other Google accounts beside it), X, Reddit, GitHub and Hacker News
   too, with their pictures; a site whose login cookie is there shows signed in even when it won't say who, and keeps
-  the name it last gave. The rest fold behind "N more sites", latest visited first, and a filter finds a site or account. The address bar's container menu says who you'd be in
+  the name it last gave. The rest fold behind "N more sites", latest visited first, and a filter finds a site or account.
+  Drag a container by its name (or Move up and down in its menu) to reorder it everywhere it's listed. The address bar's container menu says who you'd be in
   each container. A page's own icon (Google Maps) no longer replaces its site's on every other tab.
 - **Answered at once**: what you do shows straight away instead of after the server replies. Forgetting a device,
   signing out of a site, disconnecting an app, removing history, errors, extensions or reviewed files fold their rows

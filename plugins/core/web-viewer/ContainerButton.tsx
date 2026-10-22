@@ -1,11 +1,11 @@
 // The container chip at the address's left: which container the tab is in (its colour and name), and a menu to move the
 // tab to another or always open its site there. A container's own options (containerItems) are in Sites.
 import { useEffect, useState, type MouseEvent } from "react"
-import { Bot, Box, Fingerprint, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
+import { ArrowDown, ArrowUp, Bot, Box, Fingerprint, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
 import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
 import { accountIn, askSites } from "./accounts"
 import {
-  addContainer, argOf, colorOf, containerById, containers, profileIn, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
+  addContainer, argOf, colorOf, containerById, containers, moveContainer, profileIn, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
   type Container,
 } from "./containers"
 
@@ -54,15 +54,20 @@ const AGENTS: { v: Container["agents"]; label: string; says: string }[] = [
 /** What agents may do in `c`'s pages, said for a row ("" when nothing). */
 export const agentsSay = (c: Container) => AGENTS.find((a) => a.v === c.agents)?.says ?? ""
 
-/** A container's own options: its name, colour, Touch ID, what agents may do and deleting it. */
-export const containerItems = (c: Container, canLock: boolean): MenuItem[] => [
+/** A container's own options: its name, colour, Touch ID, what agents may do, its place and deleting it. */
+export const containerItems = (c: Container, canLock: boolean): MenuItem[] => {
+  const list = containers(), i = list.findIndex((x) => x.id === c.id)
+  return [
   { label: "Rename…", icon: Pencil, run: () => askName(`Rename ${c.name}`, c.name, (name) => void updateContainer(c.id, { name })) },
   { label: "Colour", icon: dotIcon(colorOf(c)), run: () => {}, items: colorItems(c.color, (color) => void updateContainer(c.id, { color })) },
   ...(canLock || c.lock ? [{ label: "Lock with Touch ID", icon: Fingerprint, checked: !!c.lock, keep: true, run: () => void updateContainer(c.id, { lock: !c.lock }) }] : []),
   { label: "Agent access", icon: Bot, hint: AGENTS.find((a) => a.v === c.agents)?.label, run: () => {},
     items: AGENTS.map((a) => ({ label: a.label, checked: c.agents === a.v, run: () => void updateContainer(c.id, { agents: a.v }) })) },
+  ...(i > 0 ? [{ label: "Move up", icon: ArrowUp, sep: true, run: () => void moveContainer(c.id, list[i - 1].id) }] : []),
+  ...(i >= 0 && i < list.length - 1 ? [{ label: "Move down", icon: ArrowDown, sep: i === 0, run: () => void moveContainer(c.id, list[i + 2]?.id ?? null) }] : []),
   { label: `Delete ${c.name}…`, icon: Trash2, danger: true, sep: true, run: () => void deleteContainer(c) },
-]
+  ]
+}
 /** The container menu for a tab showing `url` in `container`; `reopen` takes the tab's new arg. Only choosing: a
  *  container's own options are in Sites (`manage`). Each names who's signed in to the page's site there, if known. */
 export function containerMenu(container: string | null, url: string, reopen: (arg: string) => void, manage: () => void): MenuItem[] {

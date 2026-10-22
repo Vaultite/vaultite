@@ -79,6 +79,13 @@ export function addContainer(name: string, color?: Color): Container {
 export const updateContainer = (id: string, change: Partial<Omit<Container, "id">>) =>
   save(containers().map((c) => (c.id === id ? { ...c, ...change } : c)))
 export const removeContainer = (id: string) => save(containers().filter((c) => c.id !== id))
+/** Put a container before another (null: last): every list of them follows this order. */
+export function moveContainer(id: string, before: string | null) {
+  const list = containers(), c = list.find((x) => x.id === id)
+  if (!c || id === before) return
+  const rest = list.filter((x) => x.id !== id), at = before ? rest.findIndex((x) => x.id === before) : -1
+  return save(at < 0 ? [...rest, c] : [...rest.slice(0, at), c, ...rest.slice(at)])
+}
 
 /** Always open `site` in `id` (null: in no container): it leaves any other container's sites. */
 export function setSiteRule(site: string, id: string | null) {

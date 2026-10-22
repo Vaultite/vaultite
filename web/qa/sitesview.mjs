@@ -2,7 +2,8 @@
 // leads each container (a card in its colour), with the sites always opened there, a site whose login can't be named
 // saying "Signed in"; the rest and the trackers fold away behind one line; a login
 // that covers other sites (Google's, YouTube) is one row, and signing out of it signs out of both; the filter keeps only
-// what matches; the address bar's container menu names who's signed in to the page's site in each container.
+// what matches; a container dragged by its heading moves everywhere it's listed; the address bar's container menu
+// names who's signed in to the page's site in each container.
 // WRITES: the throwaway vault only.
 //   node web/qa/sitesview.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -70,7 +71,10 @@ check("a site signed in whose name it can't have leads, saying so", JSON.stringi
   && /Signed in/.test(await work.locator("[data-web-site='x.com']").innerText()), await work.innerText())
 const card = await work.evaluate((e) => ({ bg: getComputedStyle(e).backgroundColor, border: getComputedStyle(e).borderTopWidth }))
 check("each container is a card in its colour", card.bg !== "rgba(0, 0, 0, 0)" && parseFloat(card.border) > 0, card)
-check("the heading counts accounts and sites", /2 accounts · 1 site/.test(await work.locator("[data-web-logins-heading]").innerText()), await work.locator("[data-web-logins-heading]").innerText())
+const head = work.locator("[data-web-logins-heading]")
+check("the heading counts accounts only", /2 accounts/.test(await head.innerText()) && !/site/.test(await head.innerText()), await head.innerText())
+await head.hover()
+check("… and keeps it on hover, its options beside it", await until(async () => /2 accounts/.test(await head.innerText()) && await head.locator("button").isVisible(), 3000), await head.innerText())
 
 await win.locator("[data-web-sites-view] input[type=search]").fill("alice-light")
 check("filter: only the containers with a match, only what matches", await until(async () => (await personal.count()) === 0 && (await work.locator("[data-web-site]").count()) === 1, 3000),
@@ -87,6 +91,18 @@ await dialog.locator("button", { hasText: "Sign out" }).click()
 const forgot = () => app.evaluate(() => globalThis.forgot)
 check("… it signs out of both, and the row goes", await until(async () => (await forgot()).length === 2 && (await google.count()) === 0, 5000), await forgot())
 
+// Drag Work's heading above Personal's: the containers' order changes everywhere (their menus too).
+const order = () => win.locator("[data-web-logins-section][data-slide]").evaluateAll((els) => els.map((e) => e.getAttribute("data-slide")))
+const from = await head.locator("[data-web-logins-name]").boundingBox(), to = await personal.boundingBox()
+await win.mouse.move(from.x + 10, from.y + from.height / 2)
+await win.mouse.down()
+await win.mouse.move(from.x + 14, from.y - 20, { steps: 4 })
+await win.mouse.move(to.x + 40, to.y + 10, { steps: 12 })
+check("dragging a container's heading, the others make way", await until(async () => (await win.locator("[data-web-logins-list][data-drop-preview]").count()) === 1, 3000))
+await win.mouse.up()
+const saved = () => JSON.parse(fs.readFileSync(path.join(VAULT, ".vaultite/plugins/web-viewer/data.json"), "utf8")).containers.map((c) => c.id)
+check("… dropped above Personal: Work comes first, kept in the vault's settings", await until(async () => JSON.stringify(await order()) === '["work","personal"]' && saved()[0] === "work", 5000), [await order(), saved()])
+
 // The container menu, on a page of github.com in Work: who's signed in there in each container.
 await ui({ action: "open", path: "view:web/@work/https://github.com/", newTab: true })
 const chip = win.locator("[data-web-page] [data-web-container='work']:visible")
@@ -99,6 +115,7 @@ check("the container menu names each container's account for the site", await un
   const it = await items()
   return it.some((t) => t.startsWith("Personal") && t.includes("alicepark")) && it.some((t) => t.startsWith("Work") && t.includes("alice-lighthouse"))
 }, 5000), await items())
+check("… in the order they were dragged to", (await items()).findIndex((t) => t.startsWith("Work")) < (await items()).findIndex((t) => t.startsWith("Personal")), await items())
 await win.keyboard.press("Escape")
 
 await app.close()
