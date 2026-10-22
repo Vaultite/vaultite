@@ -31,7 +31,12 @@ const GATED: Record<string, string> = {
   "ui.command": "run a command in your window",
   "dispatch.run": "start a coding agent on your machine with a file",
 }
-const APP_FILES = /^\/*\.vaultite(\/|$)/
+const APP_FILES = /^\.vaultite(\/|$)/i
+/** A value as the vault path it would name, read as core/files.ts clean() reads one ("./.Vaultite\\x" is .vaultite/x on
+ *  a Mac's disk), and every string a param holds, nested ones and keys too. */
+const asPath = (v: string) => v.replaceAll("\\", "/").trim().split("/").filter((x) => x !== "" && x !== ".").join("/")
+const stringsIn = (v: unknown, depth = 0): string[] => typeof v === "string" ? [v]
+  : !v || typeof v !== "object" || depth > 5 ? [] : Object.entries(v).flatMap(([k, x]) => [...(Array.isArray(v) ? [] : [k]), ...stringsIn(x, depth + 1)])
 
 /** Why a read-only app can't run this op, or "" when it may: it runs only ops that read. */
 export function accessRefusal(app: string, access: Access | undefined, entry: OpEntry | null, name: string): string {
@@ -46,9 +51,8 @@ export function gateOf(id: string, kind: OpEntry["kind"], params: Record<string,
   if (id === "dispatch.run" && params.allow === true) return "run a shell command a setting names, on your machine"
   if (id === "plugin.allow" && params.edits === true) return "let a vault plugin run code on this machine, and its later edits without asking"
   if (GATED[id]) return GATED[id]
-  const strings = Object.values(params).flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v): v is string => typeof v === "string")
-  const app = kind !== "read" && strings.find((v) => APP_FILES.test(v.trim()) && !code(v.trim()))
-  if (app) return `write ${app.trim().replace(/^\/+/, "")} (the app's settings and plugins)`
+  const app = kind !== "read" && stringsIn(params).map(asPath).find((v) => APP_FILES.test(v) && !code(v))
+  if (app) return `write ${app} (the app's settings and plugins)`
   if (id === "clipper.save" && typeof params.url === "string") {
     let host = ""
     try { host = new URL(params.url).hostname } catch { /* not an address: the op says so */ }

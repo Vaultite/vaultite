@@ -195,11 +195,13 @@ export default async ($: VaultTest) => {
       check("connect: MCP's routes are never the app's", ["/mcp", "/register", "/token", "/authorize", "/authorize/status", "/.well-known/oauth-authorization-server", "/upload/abc", "/favicon.ico"].every((x) => MCP_PATHS.test(x))
         && !["/", "/api/state", "/assets/main.js", "/index.html"].some((x) => MCP_PATHS.test(x)))
       check("connect: terminals, dispatch, screens and settings refused without owner tools; the rest not",
-        ["/api/terminals", "/api/terminal/x", "/api/web-viewer/tabs", "/api/web-viewer/live/3", "/api/dispatch", "/api/ops/terminal.list", "/api/ops/dispatch.run", "/api/ops/settings.set", "/api/ops/ui.command", "/api/vaults/open"].every((x) => ownerOnly(x))
+        ["/api/terminals", "/api/terminal/x", "/api/web-viewer/tabs", "/api/web-viewer/live/3", "/api/dispatch", "/api/ops/terminal.list", "/api/ops/dispatch.run", "/api/ops/settings.set", "/api/ops/ui.command", "/api/ui", "/api/vaults/open"].every((x) => ownerOnly(x))
         && !["/api/state", "/api/ops/docs.read", "/api/events", "/api/file"].some((x) => ownerOnly(x)))
       const fake = (headers: Record<string, string>) => ({ headers: { host: "127.0.0.1:8793", ...headers }, socket: { remoteAddress: "127.0.0.1" } }) as Any
       check("connect: the app's owner checks refuse what Connect marks, even with allowRemote", ownerRefusal(fake({ "x-vaultite-connect": "1" }), { allowRemote: true, owner: "" }, "the terminal").includes("Vaultite Connect")
         && ownerRefusal(fake({}), { owner: "" }, "the terminal") === "")
+      check("machines: a request another machine passes on for a guest is refused what only the owner gets, even with allowRemote",
+        ownerRefusal(fake({ "x-vaultite-guest": "1" }), { allowRemote: true, owner: "" }, "the terminal").includes("another machine"))
     }
     t = await tool("add_timeline", { person: "Sammy", kind: "call", text: "Talked about the show", date: "2026-09-29", duration_min: 30 })
     check("mcp add_timeline: by an alias, placed by date", !t.error && read("People/Sam Reyes.md").includes("- 2026-09-29 · call · 30 min · Talked about the show"), read("People/Sam Reyes.md"))

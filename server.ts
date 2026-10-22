@@ -308,12 +308,13 @@ async function raw(req: http.IncomingMessage, res: http.ServerResponse, query: R
 // Other names this server is reached by (a reverse proxy's own domain), besides its addresses, localhost and its own names.
 const EXTRA_HOSTS = (process.env.VAULTITE_HOSTS ?? "").split(",").map((h) => h.trim().toLowerCase()).filter(Boolean)
 
-/** Why a request isn't from this app's own pages, or "": another site's page (its Origin), or a page reaching this server
- *  under another site's name (DNS rebinding): the Host must be an address, localhost, or this machine's own name. */
-async function foreign(req: http.IncomingMessage) {
+/** Why a request isn't from this app's pages, or "": another site's (its Origin, unless `origin` is false), the internet
+ *  (Funnel), or a page under another site's name (DNS rebinding): the Host is an address, localhost or this machine's. */
+async function foreign(req: http.IncomingMessage, origin = true) {
   const h = req.headers
+  if ("tailscale-funnel-request" in h) return "this app doesn't answer the internet (Tailscale Funnel)"
   const hosts = [h.host, h["x-forwarded-host"]].map((x) => String(x ?? "").toLowerCase())
-  if (h.origin !== undefined && !hosts.includes(originHost(req) || "-")) return "the page asking isn't this app"
+  if (origin && h.origin !== undefined && !hosts.includes(originHost(req) || "-")) return "the page asking isn't this app"
   for (const host of hosts.filter(Boolean)) {
     const name = hostName(host)
     if (net.isIP(name) || name === "localhost" || name.endsWith(".localhost")) continue
@@ -380,6 +381,9 @@ async function served(req: http.IncomingMessage, res: http.ServerResponse, url: 
   if (slash < 1 || slash === raw.length - 1) return false
   const prefix = decode(raw.slice(0, slash))
   if (prefix === "api" || fs.existsSync(path.join(DIST, prefix))) return false
+  // (sandboxed pages ask for these with Origin "null": only the Host is checked, so a rebound name can't read the vault)
+  const why = await foreign(req, false)
+  if (why) { void send(res, 403, why, "text/plain; charset=utf-8"); return true }
   await ready
   await app.syncPlugins()
   const query = Object.fromEntries(url.searchParams)
@@ -495,14 +499,14 @@ const server = http.createServer(async (req, res) => {
   // "//x" would parse as a host (and "//" throw): read the request line as a path only
   const url = new URL((req.url ?? "/").replace(/^\/+/, "/"), "http://localhost")
   try {
-    // What the window shows while the vault is read: whether it's read, and the files iCloud is still downloading.
-    if (url.pathname === "/api/loading") {
-      const root = path.join(vault?.path ?? VAULT_AT, "/")
-      return json(res, { ready: !!vault, downloading: slowReads().filter((p) => p.startsWith(root)).map((p) => p.slice(root.length)) })
-    }
     if (url.pathname.startsWith("/api/")) {
       const why = await foreign(req)
       if (why) return json(res, { error: why }, 403)
+      // What the window shows while the vault is read: whether it's read, and the files iCloud is still downloading.
+      if (url.pathname === "/api/loading") {
+        const root = path.join(vault?.path ?? VAULT_AT, "/")
+        return json(res, { ready: !!vault, downloading: slowReads().filter((p) => p.startsWith(root)).map((p) => p.slice(root.length)) })
+      }
       await ready // Activity's hook is the app's: it's there once the vault is read
       const t = performance.now(), end = started(req, url), id = (++requests).toString(36)
       // (the id ties this line to the errors the request logged: errorContext)

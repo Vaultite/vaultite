@@ -474,7 +474,8 @@ function guard(win: AppWindow, origin: string) {
   // the page's own menu (plugins/core/editing/menu.ts). There's no menu of Electron's.
   win.webContents.on("context-menu", (_e, p) => win.webContents.send("vaultite", { type: "spelling", word: p.misspelledWord, suggestions: p.dictionarySuggestions }))
   win.webContents.on("will-navigate", (e, url) => {
-    if (url.startsWith(origin + "/") || url === origin) return
+    // (the app's page only: a vault's own file served under its origin, /v/ or /api/raw, would get the bridge)
+    if (appPage(url, origin)) return
     e.preventDefault()
     openLink(url)
   })
@@ -492,6 +493,10 @@ function guard(win: AppWindow, origin: string) {
     } else openLink(url)
     return { action: "deny" }
   })
+}
+
+const appPage = (url: string, origin: string) => {
+  try { const u = new URL(url); return u.origin === origin && (u.pathname === "/" || u.pathname === "/index.html") } catch { return false }
 }
 
 /** Tell a window to open a file (a vault path or an allowed outside file), once its page is listening. */
@@ -792,9 +797,9 @@ function copyIn(w: Win, paths: string[], folder: string, move: boolean) {
 /** The vault window a request came from (null: the manager), after checking it's our page asking. */
 function who(e: IpcMainInvokeEvent): Win | null {
   const url = e.senderFrame?.url ?? ""
-  for (const w of wins.values()) if (w.win.webContents === e.sender && url.startsWith(`http://127.0.0.1:${w.port}/`)) return w
+  for (const w of wins.values()) if (w.win.webContents === e.sender && appPage(url, `http://127.0.0.1:${w.port}`)) return w
   const pop = popouts.get(e.sender)
-  if (pop && url.startsWith(`http://127.0.0.1:${pop.port}/`)) return pop
+  if (pop && appPage(url, `http://127.0.0.1:${pop.port}`)) return pop
   if (manager && e.sender === manager.webContents && url.startsWith(pathToFileURL(DIST).href)) return null
   throw new Error("not a Vaultite window")
 }

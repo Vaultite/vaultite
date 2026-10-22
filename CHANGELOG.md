@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Tighter network checks**: a page reaching the app under another site's name (DNS rebinding) can't read plugins'
+  pages either, and requests through Tailscale Funnel (the internet) are refused.
 - **Copy the sign-in code**: the page an AI app opens to connect to your vault has a copy button beside its code, to
   paste into Connections.
 - **One server per vault on a machine**: a second server for a vault this machine already serves won't start, and the
