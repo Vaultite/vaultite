@@ -16,6 +16,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   at its end (it held the width it had at the last launch).
 - Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing
   changed on disk, and a save re-reads only the file saved (on a 3,000-file vault, 6 to 20 times less work per request).
+- Lighter over the network: an open app asks the server about 6 times less (a change on disk no longer has every window
+  read every setting and live card again), the phone back from sleep reads only what changed meanwhile, its first load
+  comes a quarter smaller, and agents' hooks and `vau` commands answer without waiting on the vault.
 - Agents in the browser: `act` answers what changed on the page once it settles (`--diff`) and fills a whole form at
   once (`--fields`), refs last while their element does, `browser run` does a whole flow in one call (a script in a
   sandbox, 30 s), and `browser pdf` saves a page into the vault. "Show agents in the browser" shows the tabs agents work

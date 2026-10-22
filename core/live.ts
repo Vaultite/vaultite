@@ -92,6 +92,7 @@ export class Live {
     if (!this.closed) setTimeout(() => this.start(), full ? 60_000 : 5000).unref()
   }
   private full = false
+  private rootName = "" // the vault's real folder's name, as FSEvents names the folder itself
 
   /** A changed path (vault-relative), or null when the watcher couldn't say which. */
   add(rel: string | null) {
@@ -107,9 +108,21 @@ export class Live {
 
   private again: ReturnType<typeof setTimeout> | null = null
 
+  /** Without the folders FSEvents tells of beside what changed in them (iCloud touches each one above a write) and the
+   *  vault's own: for `.vaultite`, every window read every live card and setting again. A folder told alone stays. */
+  private narrow(paths: string[]) {
+    let root = this.rootName
+    if (!root) try { root = this.rootName = path.basename(fs.realpathSync(this.vault.path)) } catch { /* gone: nothing is its */ }
+    return paths.filter((p) => {
+      if (p === "" || (p === root && !fs.existsSync(path.join(this.vault.path, p)))) return false
+      if (!paths.some((q) => q.startsWith(p + "/"))) return true
+      try { return !fs.statSync(path.join(this.vault.path, p)).isDirectory() } catch { return true }
+    })
+  }
+
   private async flush() {
     this.timer = null
-    const paths = this.all ? null : [...this.pending].sort()
+    const paths = this.all ? null : this.narrow([...this.pending]).sort()
     this.pending.clear()
     this.all = false
     try {

@@ -74,6 +74,20 @@ export default async ($: VaultTest) => {
     check("live: the same file again, nothing new since, isn't", got.length === 2, got)
     own.close()
   }
+  {
+    // FSEvents tells of the folders above a write (iCloud touches them) and of the vault's own folder, by its name.
+    fs.mkdirSync(path.join(VAULT, ".vaultite/plugins/tabs"), { recursive: true })
+    const own = new Live(vault), got: Any[] = []
+    own.listen((c) => got.push(c))
+    for (const p of [".vaultite", ".vaultite/plugins", ".vaultite/plugins/tabs", ".vaultite/plugins/tabs/device-x.json", path.basename(fs.realpathSync(VAULT))]) own.add(p)
+    await wait(() => got.length > 0)
+    check("live: folders told beside what changed in them, and the vault's own, aren't told", JSON.stringify(got[0]?.paths) === '[".vaultite/plugins/tabs/device-x.json"]', got)
+    got.length = 0
+    own.add("Notes")
+    await wait(() => got.length > 0)
+    check("live: a folder told alone is", JSON.stringify(got[0]?.paths) === '["Notes"]', got)
+    own.close()
+  }
   check("live: .git, .DS_Store, iCloud placeholders and temp files are ignored",
     ignored(".git/index") && ignored("Notes/.DS_Store") && ignored("Notes/.a.md.icloud") && ignored("Notes/a.md.tmp-1-2") &&
     ignored(".vaultite/artifacts/x.html.json") && !ignored(".vaultite/cache/github.json") && !ignored("Notes/a.md"))
