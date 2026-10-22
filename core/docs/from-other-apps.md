@@ -20,6 +20,7 @@ A vault another Markdown app made (an Obsidian vault) opens as it is (both apps 
   runs them: `replaces: {"obsidian": ["*"]}`) or with what stands in for it here; `vau other-apps plugins`, `vau
   other-apps use <id> original|<plugin>`, `vau other-apps run-all`, or the sheet of Vaults from other apps. Never both:
   turning one on turns the other off. More are in Get plugins (Setup ▸ Plugins), under that app's source.
-- Not read: `workspace.json`, hotkeys and appearance. Renames update `[[links]]`,
-  not Markdown links.
+- Renames and moves update links to the file: wikilinks, embeds and Markdown links (relative, from the vault's top or
+  by name alone, as Obsidian's shortest path writes them).
+- Not read: `workspace.json`, hotkeys and appearance.
 - Obsidian is a trademark of Dynalist Inc.; Vaultite is not affiliated with or endorsed by it.

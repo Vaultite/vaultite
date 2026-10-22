@@ -777,6 +777,14 @@ export class Vault {
       }
       return null
     }
+    // A Markdown link by the file's name alone (Obsidian's shortest path: `[a](Note.md)` for Sub/Note.md), as the index reads it.
+    const named = (h: string, was: string, now: string) => {
+      if (/^\.\.?\//.test(h) || h.startsWith("/")) return null
+      const old = before(h, was), np = old === null ? undefined : fwd.get(old)
+      if (np === undefined || after(h, now) === np) return null
+      const out = after(base(np), now) === np ? base(np) : np
+      return /\.md$/i.test(np) && !/\.md$/i.test(h) ? out.slice(0, -3) : out
+    }
     const changed: string[] = []
     for (const [rel, e] of [...this.entries]) {
       const self = back.get(rel) ?? rel
@@ -786,7 +794,7 @@ export class Vault {
       const neu = mapLinks(text, (t, md) => {
         if (!md) return wiki(t, self, rel)
         const old = find(dirOf(self), t, was)
-        if (!old) return null
+        if (!old) return named(t, self, rel)
         const np = fwd.get(old.p) ?? old.p
         if (find(dirOf(rel), t, is)?.p === np) return null
         const out = old.md ? np.slice(0, -3) : np

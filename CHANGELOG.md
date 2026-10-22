@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Renaming or moving a note updates Markdown links that name it alone (`[a](Note.md)`, Obsidian's shortest path), not
+  only relative ones and wikilinks.
 - Agents never take your focus: a terminal an agent opens, resumes or dispatches goes in a tab behind yours, with a
   quiet toast ("Claude Code started a session") and Show. `vau terminal open claude --prompt "..."` starts it on its task.
 - Browser: menus, the palette, popovers, tooltips and toasts draw over a live page; it no longer freezes into a picture
