@@ -499,7 +499,8 @@ export class App {
       if (parts.length === 4 && parts[3].endsWith(".js")) {
         const code = this.vaultPlugins.code(parts[1], parts[2], parts[3])
         if (code === null) throw new HTTPError(404, `no ${parts[3]} of a vault plugin '${parts[1]}' that's on and built at ${parts[2]}`)
-        return new Text(code, "text/javascript; charset=utf-8")
+        // (its address names its build: kept by the browser, so a reload imports it without asking)
+        return new Text(code, "text/javascript; charset=utf-8", { "Cache-Control": "private, max-age=31536000, immutable" })
       }
     }
     if (parts.join("/") === "blocks" && method === "GET") return this.blocks()

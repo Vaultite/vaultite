@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Vault plugins' code is kept by the browser: a reload no longer waits for every plugin's bundle again (about half
+  a second on a vault with twenty of them).
 - Status bar: every item can be hidden, moved and tucked under More, the file's too (view, word and character counts,
   Vim's mode, chips, origin, tokens): right-click the bar, or "Show in status bar" / "Hide from status bar" and "Show
   all status bar items" in the palette. With nothing shown, the bar is a faint corner whose right-click brings them
