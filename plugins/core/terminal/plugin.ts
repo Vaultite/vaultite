@@ -36,11 +36,13 @@ const VERSION = /^\d+(\.\d+)+$/
 const byName = (x: Shell): Shell => (x.process?.includes("/") ? { ...x, process: path.basename(x.process) } : x)
 /** What runs in front in a shell, or null at its prompt. A script reads as its interpreter (`mo` as "bash"), so a
  *  shell's name is checked against the foreground group: not the shell itself, something runs. */
+let readsTable = false // the last list read the process table (inFront): this one asks for it with the backends
 async function inFront(x: Shell): Promise<string | null> {
   // A program whose binary is named for its version (Claude Code's native install runs
   // ~/.local/share/claude/versions/2.1.290) reads by the name it was started as ("claude").
   if (!SHELLS.has(x.process) && !VERSION.test(x.process)) return x.process
   if (!x.pid) return SHELLS.has(x.process) ? null : x.process
+  readsTable = true
   const all = await processTable()
   const fg = all.get(x.pid)?.tpgid ?? 0
   if (fg <= 0 || fg === x.pid) return SHELLS.has(x.process) ? null : x.process
@@ -63,6 +65,22 @@ type Session = {
   pending: Set<WebSocket> // sockets waiting for their picture (they get no output before it: it's in it)
   opened?: string // how its start went, for its first tab's span: "spare 12ms", "new 95ms"
   blocked?: boolean // macOS keeps its shell from the folder its agent runs in: its tabs say so
+  queued: string // output not sent yet: what one read of the backend brought, sent as one message (flush)
+}
+
+/** Sends what the backend said since the last flush to the pages, as one message; called once the read that brought
+ *  it is done, and before anything that must come after it (a new page's join, the exit). */
+function flush(s: Session) {
+  if (!s.queued) return
+  const bytes = Buffer.from(s.queued, "utf8")
+  s.queued = ""
+  for (const ws of s.clients) {
+    if (ws.readyState !== ws.OPEN || s.pending.has(ws)) continue
+    // A client that stopped reading (a phone asleep on a live socket) would hold a chatty agent's output in memory
+    // without end: dropped, it reconnects and gets the replay.
+    if (ws.bufferedAmount > BEHIND) { ws.terminate(); continue }
+    ws.send(bytes)
+  }
 }
 const sessions = new Map<string, Session>()
 
@@ -107,8 +125,9 @@ async function backendForNew(): Promise<Backend> {
 async function backendOf(id: string): Promise<Backend | null> {
   const s = sessions.get(id)
   if (s) return s.backend
-  for (const b of backends()) if (await b.has(id).catch(() => false)) return b
-  return null
+  // (all asked at once: tmux's answer is a process of its own, which a busy machine is slow to start)
+  const all = backends(), has = await Promise.all(all.map((b) => b.has(id).catch(() => false)))
+  return all[has.indexOf(true)] ?? null
 }
 /** A shell with this id runs here (in any backend). */
 const runsHere = async (id: string) => !!(await backendOf(id))
@@ -574,19 +593,15 @@ async function start(id: string, cols: number, rows: number, from = LOCAL, promp
   const link = await backend.attach(id, cols, rows)
   timing.mark("attach")
   const s: Session = { id, backend, link, clients: new Set(), started: Date.now(), out: new Tail(scrollback()), pending: new Set(), ended: false,
-    opened: `${timing.tags.how} ${Math.round(timing.end())}ms` }
+    opened: `${timing.tags.how} ${Math.round(timing.end())}ms`, queued: "" }
   link.onData((data) => {
     if (!link.snapshot) s.out.push(data)
-    const bytes = Buffer.from(data, "utf8")
-    for (const ws of s.clients) {
-      if (ws.readyState !== ws.OPEN || s.pending.has(ws)) continue
-      // A client that stopped reading (a phone asleep on a live socket) would hold a chatty agent's output in memory
-      // without end: dropped, it reconnects and gets the replay.
-      if (ws.bufferedAmount > BEHIND) { ws.terminate(); continue }
-      ws.send(bytes)
-    }
+    // (a burst comes as many messages in one read: the microtask runs once that read's are all in)
+    if (!s.queued) queueMicrotask(() => flush(s))
+    s.queued += data
   })
   link.onExit(async (exit) => {
+    flush(s)
     if (sessions.get(id) === s) sessions.delete(id)
     listChanged()
     // Only our hold on it ended (the server's tmux client was killed): the clients reconnect, which reattaches.
@@ -655,6 +670,7 @@ function resize(s: Session, cols: number, rows: number) {
 }
 
 function attach(s: Session, ws: WebSocket, fresh: boolean) {
+  flush(s) // (what came before it is in its picture or replay)
   s.clients.add(ws)
   listChanged()
   ws.send(JSON.stringify({ t: "attached", fresh, tmux: s.backend.redraws, scrollback: scrollback(), ...(fresh ? { started: s.opened } : {}) }))
@@ -664,6 +680,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
     // The screen and its history as they are now, then what it prints from there on.
     s.pending.add(ws)
     s.link.snapshot((picture) => {
+      flush(s) // (what came before the picture is in it: not for this page)
       s.pending.delete(ws)
       if (picture && ws.readyState === ws.OPEN) ws.send(Buffer.from(picture, "utf8"))
     })
@@ -675,7 +692,7 @@ function attach(s: Session, ws: WebSocket, fresh: boolean) {
   }
   const uploads = new Map<string, string>()
   ws.on("message", (data: RawData, binary: boolean) => {
-    const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer)
+    const buf = Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data)
     if (binary) {
       s.link.write(buf)
       // Enter may have started a program (claude, vim): tabs show its name soon, not at the next poll.
@@ -845,10 +862,27 @@ function titleOf(raw: string) {
 
 /** This machine's sessions, oldest first, from every backend (one nobody reattached since a restart too), with what
  *  runs and what its agent's hooks said. Another program's own shells are `external`. */
-async function localList(): Promise<Listed[]> {
-  const out = new Map<string, Listed>()
-  for (const b of backends()) {
-    for (const x of (await b.list().catch(() => [] as Shell[])).map(byName)) {
+function localList(): Promise<Listed[]> {
+  if (lastLocal && performance.now() - lastLocal.at < LIST_FRESH) return lastLocal.list
+  const mine = { at: performance.now(), list: readList() }
+  lastLocal = mine
+  mine.list.catch(() => { if (lastLocal === mine) lastLocal = null })
+  return mine.list
+}
+/** The last list made, shared by what asks soon after (the panel's poll, agents' terminal.list, a tab's title):
+ *  reading it runs `ps` and asks every backend. A change (listChanged) forgets it. */
+let lastLocal: { at: number; list: Promise<Listed[]> } | null = null
+const LIST_FRESH = 1900 // (under the poll's 2 s, so each poll reads it again)
+
+async function readList(): Promise<Listed[]> {
+  const out = new Map<string, Listed>(), timing = span("terminal.list")
+  // (all at once: tmux's and a plugin's lists each start a process, and so does the process table inFront reads)
+  if (readsTable) void processTable()
+  readsTable = false
+  const all = backends(), lists = await Promise.all(all.map((b) => b.list().catch(() => [] as Shell[])))
+  timing.mark("backends")
+  for (const [i, b] of all.entries()) {
+    for (const x of lists[i].map(byName)) {
       if (x.spare || x.id.startsWith(SPARE) || out.has(x.id)) continue
       const s = sessions.get(x.id)
       // Who's watching: the app's sockets plus holds besides this server's own (tmux attach in a real terminal), so a session
@@ -878,15 +912,21 @@ async function localList(): Promise<Listed[]> {
         ...(x.external ? { external: true } : {}) })
     }
   }
+  timing.mark("in front")
   // (an agent run by hand in a plain terminal goes by its program's name: claude, codex)
   const meters = plugin.service("terminal:meters"), agents = [...new Set([...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : [])))]
   const live = (await Promise.all(agents.map((a) => liveOf(a, typeof meters === "function")))).flat().filter((m) => out.get(m.terminal)?.busy)
   for (const m of live) if (m.session) out.get(m.terminal)!.session = m.session
+  timing.mark("agents")
   for (const x of out.values()) if (x.state && await plugin.ask<boolean>("inbox:needs", false, x.id, x.session ?? "")) x.needs = true
+  timing.mark("inbox")
   if (typeof meters === "function" && live.length) {
     const by = await Promise.resolve(meters(live)).catch(() => null) as Record<string, unknown> | null
     for (const [id, m] of Object.entries(by ?? {})) { const x = out.get(id); if (x) x.meter = m }
+    timing.mark("meters")
   }
+  timing.tags.sessions = String(out.size)
+  timing.end()
   return [...out.values()].sort((a, b) => a.started - b.started)
 }
 
@@ -959,6 +999,7 @@ async function sendOnce() {
 
 /** Something changed: tell the watchers (bursts, like a tab closing and its shell ending, coalesce). */
 function listChanged() {
+  lastLocal = null
   if (!watchers.size || listTimer) return
   listTimer = setTimeout(() => { listTimer = null; void sendList() }, 50)
 }
@@ -986,7 +1027,7 @@ plugin.onUnload(() => { if (poll) clearInterval(poll); if (listTimer) clearTimeo
 // --- sessions from outside the app (`vau terminal`): routes for list, screen, start, send and end; this machine's only,
 // same access as a shell.
 terminalOps(plugin) // vau terminal ...: terminal.list, open, resume, screen, send, end, tidy (ops.ts), through these routes
-runOps(plugin, { startedOn, listNow: sendList }) // vau terminal run: a file handed to an agent or a command, here or on another machine (run.ts)
+runOps(plugin, { startedOn, listNow: () => { lastLocal = null; return sendList() } }) // vau terminal run: a file handed to an agent or a command, here or on another machine (run.ts)
 
 async function owner(req: Request) {
   await plugin.ownerOnly(req, "the terminal")

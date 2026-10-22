@@ -219,7 +219,7 @@ export function machineSocket(m: Machine, path: string, query: Record<string, st
   const qs = new URLSearchParams(query).toString()
   return new WebSocket(`${m.url.replace(/^http/, "ws")}/api/${path}${qs ? `?${qs}` : ""}`, { headers: MACHINE_CLIENT })
 }
-const bytes = (data: RawData) => (Array.isArray(data) ? Buffer.concat(data) : Buffer.from(data as ArrayBuffer))
+const bytes = (data: RawData) => (Array.isArray(data) ? Buffer.concat(data) : Buffer.isBuffer(data) ? data : Buffer.from(data))
 /** A close code a socket may send on (1005, 1006 and 1015 are only ever reported). */
 const sendable = (code: number) => (code >= 1000 && code <= 4999 && ![1004, 1005, 1006, 1015].includes(code) ? code : 1011)
 /** Joins `ws` to `up` (another machine's same socket) both ways, as they are: what's sent before it opens waits, its

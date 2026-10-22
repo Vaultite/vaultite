@@ -22,7 +22,13 @@ export function tmuxBackend(name: string, o: { conf: string; env: () => Record<s
   const tmux = (...args: string[]) => new Promise<string>((resolve, reject) =>
     execFile(TMUX, ["-L", SOCKET, "-f", o.conf, ...args], { timeout: 5000, env: o.env() }, (err, stdout) => (err ? reject(err) : resolve(stdout))))
   const pane = (id: string) => `=${PREFIX}${id}:` // its pane (a bare =name only names the session)
-  const hasSession = (id: string) => tmux("has-session", "-t", `=${PREFIX}${id}`).then(() => true, () => false)
+  /** No tmux server on this socket (its file isn't there, in a folder that is): nothing to ask. Each answer is a tmux
+   *  process otherwise, and the list is read every 2 s while the Terminals panel shows. */
+  const none = () => {
+    const dir = path.join(process.env.TMUX_TMPDIR || "/tmp", `tmux-${process.getuid?.() ?? 0}`)
+    return fs.existsSync(dir) && !fs.existsSync(path.join(dir, SOCKET))
+  }
+  const hasSession = async (id: string) => !none() && tmux("has-session", "-t", `=${PREFIX}${id}`).then(() => true, () => false)
 
   /** What tmux runs for a shell: through sh, which writes the shell's exit status, named after the tmux session it's in
    *  when it ends (a ready shell is renamed when it's taken). */
@@ -81,6 +87,7 @@ export function tmuxBackend(name: string, o: { conf: string; env: () => Record<s
     has: hasSession,
     async list() {
       let text = ""
+      if (none()) return []
       try { text = await tmux("list-sessions", "-F", "#{session_name}\t#{session_created}\t#{pane_current_command}\t#{session_attached}\t#{pane_title}\t#{pane_pid}\t#{session_activity}") } catch { return [] } // no server yet
       return text.split("\n").flatMap((line) => {
         const [sname, created, command = "", attached = "0", title = "", pid = "", activity = ""] = line.split("\t")

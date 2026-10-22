@@ -225,6 +225,9 @@ function create(id: string): Live {
   // The shell's size, as the server last said: another device (the phone) may have made it its own.
   let shell = { cols: 0, rows: 0 }
 
+  let shown = false
+  const firstOutput = () => { if (shown) return; shown = true; opening.mark("first output"); opening.end() }
+
   const connect = () => {
     exited = false; refused = false; sessionGone = false; away = null; l.ended = false
     const url = `${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/api/terminal/${encodeURIComponent(id)}?cols=${t.cols}&rows=${t.rows}&dark=${document.documentElement.classList.contains("dark") ? 1 : 0}${attachOnly ? "&attach=1" : ""}`
@@ -234,9 +237,10 @@ function create(id: string): Live {
     sock.onopen = () => opening.mark("socket")
     sock.onmessage = (e) => {
       if (typeof e.data !== "string") {
-        if (!replayNext) return t.write(new Uint8Array(e.data as ArrayBuffer), () => { opening.mark("first output"); opening.end() })
+        // (a callback only until its first output is drawn: the span is done then, and a burst is many messages)
+        if (!replayNext) return t.write(new Uint8Array(e.data as ArrayBuffer), shown ? undefined : firstOutput)
         replayNext = false; replaying = true
-        return t.write(new Uint8Array(e.data as ArrayBuffer), () => { replaying = false; opening.mark("first output"); opening.end() })
+        return t.write(new Uint8Array(e.data as ArrayBuffer), () => { replaying = false; firstOutput() })
       }
       let msg: { t?: string; fresh?: boolean; tmux?: boolean; started?: string; code?: number; signal?: number; reason?: string; path?: string; machine?: string; label?: string; cols?: number; rows?: number; ended?: boolean
         scrollback?: number }
@@ -350,6 +354,9 @@ function create(id: string): Live {
     l.refit()
     if (shell.cols && (shell.cols !== t.cols || shell.rows !== t.rows)) send(JSON.stringify({ t: "resize", cols: t.cols, rows: t.rows }))
   }
+  // A key or a click claims it only when another device's size is on it: measuring the box on every key forced a layout
+  // of the page per keystroke (the box's own resizes are the ResizeObserver's).
+  const claimIfTaken = () => { if (shell.cols && (shell.cols !== t.cols || shell.rows !== t.rows)) claim() }
   const onFocus = () => { touch(id); claim() }
   box.addEventListener("wheel", onWheel, { capture: true, passive: false })
   box.addEventListener("paste", onPaste, true)
@@ -359,8 +366,8 @@ function create(id: string): Live {
   box.addEventListener("drop", onDrop)
   box.addEventListener("pointerdown", flushCopy, true)
   box.addEventListener("keydown", flushCopy, true)
-  box.addEventListener("pointerdown", claim, true)
-  box.addEventListener("keydown", claim, true)
+  box.addEventListener("pointerdown", claimIfTaken, true)
+  box.addEventListener("keydown", claimIfTaken, true)
   // Back to this window (another app, the phone put down) or this tab of the browser: what it shows takes its size.
   const onShown = () => { if (document.visibilityState === "visible") claim() }
   window.addEventListener("focus", onShown)

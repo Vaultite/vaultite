@@ -41,6 +41,8 @@ type Conn = { sock: net.Socket; session: Shell | null; ready: boolean; send: (m:
 type Shell = {
   id: string; pty: IPty; term: Headless; ser: Serializer; created: number; activity: number; spare: boolean
   title: string; attached: Set<Conn>
+  /** Output read while the headless terminal still parses the last piece: written (and passed on) as one. */
+  queued: string; parsing: boolean
   /** Its program's OSC 7501 (osc7501.ts): the probe answered here, reports taken out of its output and kept. */
   status: ReturnType<typeof watcher>; told?: ReturnType<typeof setTimeout>
 }
@@ -53,6 +55,20 @@ const picture = (s: Shell) => s.ser.serialize({ scrollback: s.term.options.scrol
 /** Passed on to the attached connections that have their picture (one that's waiting for it has this in it). */
 function forward(s: Shell, d: string) {
   for (const c of s.attached) if (c.ready) c.send({ t: "data", d })
+}
+
+/** Output into the headless terminal, then on once parsed. While a piece is being parsed what follows waits and goes as
+ *  one: a burst arrives in the pty's 30-byte reads, and one message each would cost every hop more than the bytes. */
+function output(s: Shell, d: string) {
+  if (s.parsing) { s.queued += d; return }
+  s.parsing = true
+  s.term.write(d, () => {
+    forward(s, d)
+    s.parsing = false
+    const next = s.queued
+    s.queued = ""
+    if (next) output(s, next)
+  })
 }
 
 /** Its records changed: the connections that follow them hear what they say now (a burst in one message). */
@@ -103,7 +119,8 @@ function create(m: Record<string, unknown>) {
     if (TRACE) log("7501", s.id, "probe answered")
     try { p.write(REPLY) } catch { /* ended */ }
   })
-  const s: Shell = { id, pty: p, term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set(), status }
+  const s: Shell = { id, pty: p, term, ser, created: Date.now(), activity: Date.now(), spare: !!m.spare, title: "", attached: new Set(), status,
+    queued: "", parsing: false }
   term.onTitleChange((t) => { s.title = t })
   // Its answers to the programs' questions, only while no page is there to answer.
   term.onData((d) => { if (!s.attached.size) try { p.write(d) } catch { /* ended */ } })
@@ -112,10 +129,11 @@ function create(m: Record<string, unknown>) {
     if (TRACE && raw.includes("\x1b]7501;")) for (const m of raw.matchAll(/\x1b\]7501;([^\x07\x1b]*)/g)) log("7501", s.id, JSON.stringify(m[1]))
     const { out: d, changed } = status.feed(raw)
     if (changed) statusChanged(s)
-    if (d) term.write(d, () => forward(s, d))
+    if (d) output(s, d)
   })
   p.onExit(({ exitCode, signal }) => {
-    // After what it printed last has been passed on.
+    // After what it printed last has been passed on (what waits to be parsed goes in first).
+    if (s.queued) { const last = s.queued; s.queued = ""; term.write(last, () => forward(s, last)) }
     term.write("", () => {
       if (shells.get(s.id) === s) shells.delete(s.id)
       for (const c of s.attached) { c.send({ t: "exit", code: exitCode, signal: signal ?? 0 }); c.session = null }

@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Terminals: a burst of output (a long listing, a busy agent) reaches the screen 5-10x sooner in a few large pieces
+  instead of thousands of tiny ones, the terminal list (`vau terminal`, the Terminals panel) answers without starting
+  tmux or `ps` again when it just did, and typing no longer lays out the page on every key.
 - Slides present Obsidian Advanced Slides decks: `note:` speaker notes come off the slide and show beside it (S, or
   the notes button), `--` vertical slides, fragments (`<!-- element class="fragment" -->`, `+` lists) stepped through,
   slide backgrounds (`<!-- slide bg="..." -->`, with text in a tone that reads on them), and the deck's `<style>` kept to
