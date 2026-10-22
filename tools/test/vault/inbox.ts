@@ -571,7 +571,8 @@ export default async ($: VaultTest) => {
         const { EventEmitter } = await import("node:events")
         const { matchSocket } = await import("../../../core/plugins.ts")
         const watcher = (local: boolean) => {
-          const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as string[], send(m: string) { ws.got.push(m) }, close() {} })
+          const ws = Object.assign(new EventEmitter(), { OPEN: 1, readyState: 1, got: [] as string[], send(m: string) { ws.got.push(m) }, close() {},
+            ping() { ws.emit("pong") }, terminate() {} }) // (the inbox pings its sockets every 15 s: a slow run reaches it)
           matchSocket(app.plugins, ["inbox", "live"])![1].fn(ws as Any, {} as IncomingMessage, { wild: [], query: local ? { local: "1" } : {} })
           return ws
         }
