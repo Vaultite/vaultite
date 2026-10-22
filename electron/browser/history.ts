@@ -153,6 +153,14 @@ eachPage(({ wc, profile }) => {
 
 // ---------- reading ----------
 
+/** When each host was last visited in a profile's logins (the Sites panel's order). */
+export function lastVisits(profile: string): Map<string, number> {
+  try {
+    const rows = sql("SELECT u.host AS host, max(v.at) AS at FROM visits v JOIN urls u ON u.id = v.url WHERE v.profile = ? GROUP BY u.host").all(profile) as { host: string; at: number }[]
+    return new Map(rows.map((r) => [r.host, r.at]))
+  } catch { return new Map() }
+}
+
 /** "https://www.youtube.com/watch" -> "youtube.com/watch": what the address bar completes and matches against. */
 export const bare = (u: string) => u.replace(/^https?:\/\//i, "").replace(/^www\./i, "")
 const words = (text: string) => text.toLowerCase().split(/\s+/).filter(Boolean).slice(0, 8)

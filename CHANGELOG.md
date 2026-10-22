@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- **Sites, tidied**: each container leads with who you're signed in as, now on Google (YouTube in the same row, other
+  Google accounts beside it), X, Reddit and GitHub too, with their pictures; the rest fold behind "N more sites",
+  latest visited first, and a filter finds a site or account. The address bar's container menu says who you'd be in
+  each container. A page's own icon (Google Maps) no longer replaces its site's on every other tab.
 - **Answered at once**: what you do shows straight away instead of after the server replies. Forgetting a device,
   signing out of a site, disconnecting an app, removing history, errors, extensions or reviewed files fold their rows
   away; switches and names change as you set them; slow actions (Restore, Start it, Keep) say they're working and take

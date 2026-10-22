@@ -1543,6 +1543,28 @@ check("timeline: lines that aren't entries are kept to show (continuation lines 
     said("Error invoking remote method 'setup:create': Error: The vault needs a name") === "The vault needs a name")
 }
 
+// ---------- Browser: who's signed in to a site (electron/siteaccounts.ts), on made-up answers ----------
+{
+  const sa = await import("../electron/siteaccounts.ts")
+  const read = (site: string, body: unknown, cookies: Record<string, string> = {}) => sa.ACCOUNTS[site].read(body, async (_d, name) => cookies[name] ?? "")
+  const list = '["gaia.l.a.r",[["gaia.l.a",1,"Alice Park","alice.park@example.com","https://lh3.example.com/a.png",1,1,0,null,1,"1001",null,null,null,0,1],' +
+    '["gaia.l.a",1,"Lighthouse","studio@example.com","",1,1,0,null,1,"1002",null,null,null,0,1],["gaia.l.a",1,"Old","old@example.com","",1,1,0,null,1,"1003",null,null,null,1,1]]]'
+  check("accounts: Google's list, the first signed in, the others beside it, a signed-out one left out",
+    JSON.stringify(sa.googleAccounts(list)) === JSON.stringify({ account: "alice.park@example.com", more: ["studio@example.com"], avatar: "https://lh3.example.com/a.png" }), sa.googleAccounts(list))
+  const wrapped = `<html><body><script>window.parent.postMessage('${list.replace(/"/g, "\\x22")}', 'https://accounts.google.com')</script></body></html>`
+  check("accounts: Google's list inside the page it sometimes answers", sa.googleAccounts(wrapped)?.account === "alice.park@example.com", sa.googleAccounts(wrapped))
+  check("accounts: Google, nobody signed in", sa.googleAccounts('["gaia.l.a.r",[]]') === null && sa.googleAccounts("<html>Sign in</html>") === null)
+  check("accounts: Reddit's name, its picture's address unescaped",
+    JSON.stringify(await read("reddit.com", { data: { name: "alice_park", icon_img: "https://styles.example.com/a.png?s=1&amp;b=2" } })) === JSON.stringify({ account: "u/alice_park", avatar: "https://styles.example.com/a.png?s=1&b=2" }))
+  check("accounts: GitHub's login from its page, none signed out",
+    (await read("github.com", '<meta name="user-login" content="alicepark">') as { account: string })?.account === "alicepark" && await read("github.com", '<meta name="user-login" content="">') === null)
+  const x = '{"users":{"7":{"id_str":"7","screen_name":"someone"},"42":{"id_str":"42","name":"Alice","screen_name":"alicepark","profile_image_url_https":"https:\\/\\/pbs.example.com\\/a.jpg"}}}'
+  const xWho = await read("x.com", x, { twid: "u%3D42" }) as { account: string; avatar: string } | null
+  check("accounts: X, the user whose id the twid cookie has, not another on the page", xWho?.account === "@alicepark" && xWho.avatar === "https://pbs.example.com/a.jpg", xWho)
+  check("accounts: X, no twid cookie: nobody", await read("x.com", x) === null)
+  check("accounts: claude.ai's email", await read("claude.ai", { account: { email_address: "alice@example.com" } }) === "alice@example.com")
+}
+
 // ---------- Browser: passkeys from a phone (electron/browser/hybrid.ts, webauthn.ts) ----------
 // Chromium's and a real phone's vectors (via kanidm's webauthn-authenticator-rs), then sign-up and sign-in with a fake phone.
 await section("passkeys", async () => {

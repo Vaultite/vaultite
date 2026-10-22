@@ -3,8 +3,9 @@
 import { useEffect, useState, type MouseEvent } from "react"
 import { Bot, Box, Fingerprint, Pencil, Pin, PinOff, Plus, Settings2, Trash2 } from "lucide-react"
 import { choose, colorItems, confirmDialog, dotIcon, menuBelow, notifyError, webPages, type MenuItem } from "@vaultite"
+import { accountIn, askSites } from "./accounts"
 import {
-  addContainer, argOf, colorOf, containerById, containers, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
+  addContainer, argOf, colorOf, containerById, containers, profileIn, removeContainer, ruleFor, setSiteRule, siteOf, updateContainer,
   type Container,
 } from "./containers"
 
@@ -63,14 +64,15 @@ export const containerItems = (c: Container, canLock: boolean): MenuItem[] => [
   { label: `Delete ${c.name}…`, icon: Trash2, danger: true, sep: true, run: () => void deleteContainer(c) },
 ]
 /** The container menu for a tab showing `url` in `container`; `reopen` takes the tab's new arg. Only choosing: a
- *  container's own options are in Sites (`manage`). */
+ *  container's own options are in Sites (`manage`). Each names who's signed in to the page's site there, if known. */
 export function containerMenu(container: string | null, url: string, reopen: (arg: string) => void, manage: () => void): MenuItem[] {
   const list = containers(), site = siteOf(url), rule = site ? ruleFor(url) : null
   const here = containerById(container)
+  const who = (id: string | null) => (site && accountIn(profileIn(id), site)) || undefined
   return [
     { label: "Open in", caption: true, run: () => {} },
-    { label: "No container", icon: Box, checked: !here, run: () => { if (here) reopen(url) } },
-    ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, run: () => { if (c.id !== here?.id) reopen(argOf(url, c.id)) } })),
+    { label: "No container", icon: Box, checked: !here, hint: who(null), run: () => { if (here) reopen(url) } },
+    ...list.map((c) => ({ label: c.name, icon: dotIcon(colorOf(c)), checked: c.id === here?.id, hint: who(c.id), run: () => { if (c.id !== here?.id) reopen(argOf(url, c.id)) } })),
     ...(site && here ? [{ label: `Always open ${site} here`, icon: Pin, checked: rule === here.id, sep: true,
       run: () => void setSiteRule(site, rule === here.id ? null : here.id) }] : []),
     ...(site && !here && rule ? [{ label: `Stop opening ${site} in ${containerById(rule)?.name ?? rule}`, icon: PinOff, sep: true, run: () => void setSiteRule(site, null) }] : []),
@@ -83,16 +85,18 @@ export function containerMenu(container: string | null, url: string, reopen: (ar
 export function ContainerButton({ container, url, reopen, manage }: { container: string | null; url: string; reopen: (arg: string) => void; manage: () => void }) {
   const c = containerById(container)
   const open = (e: MouseEvent) => menuBelow(e, containerMenu(container, url, reopen, manage))
+  // (who's signed in where, asked as the pointer comes: the menu names them as it opens)
+  const ask = () => askSites([profileIn(null), ...containers().map((x) => profileIn(x.id))])
   if (!c) {
     return (
-      <button type="button" onClick={open} aria-label="Container" aria-haspopup="menu" data-tip="Open in a container" data-web-container=""
+      <button type="button" onClick={open} onPointerEnter={ask} onFocus={ask} aria-label="Container" aria-haspopup="menu" data-tip="Open in a container" data-web-container=""
         className="ml-0.5 grid size-6 shrink-0 cursor-pointer place-items-center rounded-[5px] text-tertiary hover:bg-foreground/[0.07] hover:text-foreground">
         <Box className="size-3.5" strokeWidth={2} />
       </button>
     )
   }
   return (
-    <button type="button" onClick={open} aria-label={`Container: ${c.name}`} aria-haspopup="menu" data-web-container={c.id}
+    <button type="button" onClick={open} onPointerEnter={ask} onFocus={ask} aria-label={`Container: ${c.name}`} aria-haspopup="menu" data-web-container={c.id}
       className="ml-0.5 flex h-5.5 max-w-[120px] shrink-0 cursor-pointer items-center gap-1.5 rounded-[5px] px-1.5 text-[12px] font-medium hover:brightness-110 @max-md/bar:px-[7px]"
       style={{ color: colorOf(c), background: `color-mix(in srgb, ${colorOf(c)} 14%, transparent)` }}>
       <span className="size-2 shrink-0 rounded-full" style={{ background: colorOf(c) }} />

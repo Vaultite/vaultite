@@ -140,7 +140,8 @@ export type WebPages = {
   reveal: (path: string) => Promise<unknown>
   /** This window's pages: on screen in a tab (`shown`) or their tab's in the background. */
   list?: () => Promise<WebPageInfo[]>
-  /** The sites a profile keeps cookies for, signed-in ones first, with the account where the app knows how to ask. */
+  /** The sites a profile keeps cookies for, signed-in ones first, then the latest visited, with the account where the
+   *  app knows how to ask. */
   sites?: (profile: string) => Promise<WebSite[]>
   /** Sign out of a site in a profile: its cookies and storage go, its open pages reload. */
   forget?: (profile: string, site: string) => Promise<unknown>
@@ -158,8 +159,8 @@ export type WebPages = {
   /** Something of the window's was focused: the keyboard comes to the window from a page that has it (its id), if one
    *  does (else null). */
   take?: () => Promise<number | null>
-  /** Sites' icons (data URLs) by host without "www.", as pages last told them ("" for none yet). Older builds don't
-   *  have it. */
+  /** Icons (data URLs) by key: a site's by its host without "www.", a page's own by host and first path segment
+   *  ("google.com/maps", only where it differs from its site's); "" for none yet. Older builds don't have it. */
   icons?: (hosts: string[]) => Promise<Record<string, string>>
   /** Ask a feature of the browser engine (electron/browser/: blocking, extensions, history...) by its name. Older
    *  builds don't have it. */
@@ -180,7 +181,7 @@ export type WebEvent =
   /** An image saved to the vault from a page's menu: its bytes (null: it couldn't be had), its name and type. */
   | { type: "image"; id: number; name: string; mime: string; data: Uint8Array | null; error?: string }
   | { type: "pages" }
-  /** A site's icon came or changed (a data URL), by host without "www.". */
+  /** An icon came or changed (a data URL; "" when a page's own is its site's again), by its key (`icons`). */
   | { type: "icon"; host: string; icon: string }
   /** A page's notification (its title and body; the page's address and site, and its logins' profile). */
   | { type: "notify"; id: number; profile: string; url: string; site: string; title: string; body: string }
@@ -203,6 +204,12 @@ export type WebPageInfo = WebPageState & { id: number; profile: string; shown: b
   /** The id of the tab it's for ("": none, a glance). Older builds don't say. */
   tab?: string }
 export type WebSite = { site: string; account?: string
+  /** Other accounts signed in beside `account` (Google's), its picture (a data URL). Older builds don't say. */
+  more?: string[]; avatar?: string
+  /** Other sites the same login signs in to (YouTube with Google), shown as one row. */
+  with?: string[]
+  /** When a page of it was last visited in these logins (ms). */
+  last?: number
   /** No page of it was opened in these logins: its cookies came with other sites' pages (trackers). */
   other?: boolean }
 

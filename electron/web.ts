@@ -4,6 +4,8 @@ import { app, BaseWindow, clipboard, dialog, type Input, ipcMain, Menu, type Men
 import { AppWindow } from "./appwindow.ts"
 import { engineCall, engineLoaded, engineOpens, mayOpen, pageMade, sessionMade } from "./browser/engine.ts"
 import { openElsewhere } from "./browser/default.ts"
+import { lastVisits } from "./browser/history.ts"
+import { ACCOUNTS, nonempty, type Who } from "./siteaccounts.ts"
 import { writeAtomic } from "./setup.ts"
 import { claim, discardable, hear, letGo, media, playback, playing, quietEnds, RECLAIM_MS, tabGone, unclaimed, windowReloaded, type Owned, type Playback } from "./webpages.ts"
 import { execFile } from "node:child_process"
@@ -40,9 +42,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   blankBehind?: boolean
   /** No page of its own has painted yet: it shows the window's colour (`looks`) rather than white. */
   fresh: boolean }
-/** A site a profile keeps cookies for, who's signed in there when we know how to ask, and `other` when no page of it
- *  was opened (its cookies came with other sites' pages: trackers). */
-export type WebSite = { site: string; account?: string; other?: boolean }
+/** A site a profile keeps cookies for: who's signed in when we know how to ask, sites the same login covers (`with`),
+ *  its last visit, and `other` when no page of it was opened (its cookies came with other sites' pages: trackers). */
+export type WebSite = { site: string; account?: string; more?: string[]; avatar?: string; with?: string[]; last?: number; other?: boolean }
 
 const PARTITION = "persist:web"
 /** The session's partition for a profile ("" or a workspace's "2"; anything else is the shared one). */
@@ -818,9 +820,11 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     return cloudState()
   },
   // (anything but a host is answered "", never the whole list refused)
+  // A host with no icon of its own yet (a site only its cookies name, one kept before) is asked for its /favicon.ico.
   "web:icons": (_win, hosts) => {
-    const all = loadIcons()
-    return Object.fromEntries((Array.isArray(hosts) ? hosts : []).slice(0, 500).filter((h): h is string => typeof h === "string").map((h) => [h, all.get(h) ?? ""]))
+    const all = loadIcons(), keys = (Array.isArray(hosts) ? hosts : []).slice(0, 500).filter((h): h is string => typeof h === "string")
+    for (const h of keys) if (!h.includes("/") && /^[a-z0-9.-]+\.[a-z]{2,}(:\d+)?$|^localhost(:\d+)?$/i.test(h) && (!all.has(h) || staleIcons.has(h))) void hostIcon(webSession(""), h)
+    return Object.fromEntries(keys.map((h) => [h, all.get(h) ?? ""]))
   },
   // The browser engine's features (electron/browser/): each answers its own names.
   "web:engine": (win, name, ...args) => engineCall(win, name, args),
@@ -844,33 +848,36 @@ function siteOf(host: string) {
 }
 const hostOfUrl = (u: string) => { try { return new URL(u).hostname } catch { return "" } }
 
-/** Sites whose account we know how to ask for: where (the site's own address, read with the session's cookies) and
- *  what of its answer names the account. More are a line each. */
-const ACCOUNTS: Record<string, { url: string; read: (j: Record<string, unknown>) => unknown }> = {
-  "claude.ai": { url: "https://claude.ai/api/account", read: (j) => j.email_address ?? (j.account as Record<string, unknown> | undefined)?.email_address ?? j.full_name },
-  "chatgpt.com": { url: "https://chatgpt.com/api/auth/session", read: (j) => (j.user as Record<string, unknown> | undefined)?.email ?? (j.user as Record<string, unknown> | undefined)?.name },
-}
-/** Accounts found lately, by "<profile> <site>": asked again after a minute. null: asked, nobody signed in. */
-const accounts = new Map<string, { at: number; account: string | null }>()
+/** Accounts found lately, by "<profile> <site>", with their picture as an icon: asked again after a minute. null:
+ *  asked, nobody signed in. */
+const accounts = new Map<string, { at: number; who: (Who & { avatar?: string }) | null }>()
 
-async function accountOf(profile: string, site: string): Promise<string | null> {
+async function accountOf(profile: string, site: string): Promise<Who | null> {
   const how = ACCOUNTS[site]
   if (!how) return null
   const key = `${profile} ${site}`, had = accounts.get(key)
-  if (had && Date.now() - had.at < 60_000) return had.account
-  let account: string | null = null
+  if (had && Date.now() - had.at < 60_000) return had.who
+  let who: Who | null = null
   try {
-    // From one of its pages when one is open (the site's own origin: what its pages ask is never turned away),
-    // else with the session's cookies from here.
-    const page = [...pages.values()].find((p) => p.profile === profile && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)
-    const j = page
-      ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: `fetch(${JSON.stringify(how.url)}, { credentials: "include" }).then((r) => r.ok ? r.json() : null).catch(() => null)` }])
-      : await webSession(profile).fetch(how.url, { credentials: "include", headers: { accept: "application/json" } }).then((r) => (r.ok ? r.json() : null)).catch(() => null)
-    const v = j && typeof j === "object" ? how.read(j as Record<string, unknown>) : null
-    account = typeof v === "string" && v.trim() ? v.trim().slice(0, 200) : null
+    const s = webSession(profile)
+    const page = how.page && [...pages.values()].find((p) => p.profile === profile && siteOf(hostOfUrl(p.view.webContents.getURL())) === site)
+    const as = how.text ? "text" : "json"
+    const body = page
+      ? await page.view.webContents.executeJavaScriptInIsolatedWorld(1002, [{ code: `fetch(${JSON.stringify(how.url)}, { credentials: "include" }).then((r) => r.ok ? r.${as}() : null).catch(() => null)` }])
+      : await s.fetch(how.url, { method: how.method ?? "GET", credentials: "include", signal: AbortSignal.timeout(8000), headers: { accept: how.text ? "text/html,*/*" : "application/json" } } as RequestInit)
+        .then((r) => (r.ok ? r[as]() : null)).catch(() => null)
+    const cookie = async (domain: string, name: string) => (await s.cookies.get({ domain, name }).catch(() => []))[0]?.value ?? ""
+    const v = body ? await how.read(body, cookie) : null
+    const w = typeof v === "string" ? { account: v } : v
+    const account = nonempty(w?.account).slice(0, 200)
+    if (w && account) {
+      who = { account, ...(w.more?.length ? { more: w.more.map((m) => m.slice(0, 200)).slice(0, 9) } : {}) }
+      const pic = w.avatar && /^https:\/\//.test(w.avatar) ? await iconBytes(s, w.avatar).then((b) => b && iconOf(b), () => null) : null
+      if (pic && isIcon(pic)) who.avatar = pic
+    }
   } catch { /* not signed in, or the site changed: no account shown */ }
-  accounts.set(key, { at: Date.now(), account })
-  return account
+  accounts.set(key, { at: Date.now(), who })
+  return who
 }
 
 async function sitesOf(profile: string): Promise<WebSite[]> {
@@ -878,12 +885,26 @@ async function sitesOf(profile: string): Promise<WebSite[]> {
   const names = [...new Set(cookies.map((c) => siteOf(c.domain ?? "")).filter(Boolean))]
   const been = visitedOf(profile)
   for (const p of pages.values()) if (p.profile === profile) been.add(siteOf(hostOfUrl(p.view.webContents.getURL())))
+  const last = new Map<string, number>()
+  for (const [host, at] of lastVisits(profile)) { const site = siteOf(host); if (at > (last.get(site) ?? 0)) last.set(site, at) }
   const out = await Promise.all(names.map(async (site): Promise<WebSite> => {
-    const account = await accountOf(profile, site)
-    return account ? { site, account } : been.has(site) ? { site } : { site, other: true }
+    const who = await accountOf(profile, site)
+    const at = last.get(site)
+    return { site, ...(who ?? {}), ...(at ? { last: at } : {}), ...(!who && !been.has(site) ? { other: true } : {}) }
   }))
-  // Signed in first, then A to Z.
-  return out.sort((a, b) => Number(!b.account) - Number(!a.account) || a.site.localeCompare(b.site))
+  // A login that signs in to other sites too (Google's, YouTube) is one row for them all.
+  const joined = new Set<string>()
+  for (const s of out) {
+    const also = s.account ? ACCOUNTS[s.site]?.with : undefined
+    if (!also) continue
+    const sites = Object.entries(also).filter(([site, name]) => cookies.some((c) => siteOf(c.domain ?? "") === site && c.name === name)).map(([site]) => site)
+    if (!sites.length) continue
+    s.with = sites
+    for (const x of sites) { joined.add(x); s.last = Math.max(s.last ?? 0, last.get(x) ?? 0) || undefined }
+  }
+  // Signed in first, then the latest visited, then A to Z.
+  return out.filter((s) => !joined.has(s.site))
+    .sort((a, b) => Number(!b.account) - Number(!a.account) || (b.last ?? 0) - (a.last ?? 0) || a.site.localeCompare(b.site))
 }
 
 /** The sites a page was opened at, by profile (this Mac's, in userData: never the vault). */
@@ -913,22 +934,36 @@ function noteVisit(profile: string, url: string) {
 
 // ---------- sites' icons, for their tabs ----------
 
-/** Sites' icons as data URLs by host (no "www."), in userData so a tab whose page isn't loaded shows its site's. */
+/** Icons as data URLs, in userData: a site's by its host (no "www."), its home page's or /favicon.ico; a page's own by
+ *  host and first path segment ("google.com/maps"), only where it differs from its host's. */
 let icons: Map<string, string> | null = null
-/** The address each host's icon came from (this run's), so a page telling the same one isn't fetched again. */
+/** Hosts whose icon came from a build that kept any page's as its host's (Maps' pin as google.com's): asked again. */
+const staleIcons = new Set<string>()
+/** The address each key's icon came from (this run's), so a page telling the same one isn't fetched again. */
 const iconSrc = new Map<string, string>()
+/** Hosts whose /favicon.ico was asked for this run. */
+const iconAsked = new Set<string>()
 const ICON_MAX = 256 * 1024
 const ICONS_KEPT = 300
+const ICONS_VERSION = 2
 const iconsFile = () => path.join(app.getPath("userData"), "web-icons.json")
-/** As the app's tabs name it (web-viewer/address.ts hostOf): with its port, without "www.". */
-const iconHost = (u: string) => { try { return new URL(u).host.replace(/^www\./, "") } catch { return "" } }
+/** As the app's tabs name it (web-viewer/icons.tsx iconKey): with its port, without "www."; `page` adds the first
+ *  path segment. */
+function iconKey(u: string, page = false) {
+  try {
+    const x = new URL(u), host = x.host.replace(/^www\./, "")
+    const seg = page ? x.pathname.split("/")[1] ?? "" : ""
+    return seg ? `${host}/${seg}` : host
+  } catch { return "" }
+}
 const isIcon = (s: string) => s.length < ICON_MAX * 1.4 && /^data:image\/(png|jpeg|gif|webp|x-icon|svg\+xml);base64,[A-Za-z0-9+/]+=*$/.test(s)
 function loadIcons() {
   if (!icons) {
     icons = new Map()
     try {
-      const j = JSON.parse(fs.readFileSync(iconsFile(), "utf8")) as { icons?: Record<string, unknown> }
+      const j = JSON.parse(fs.readFileSync(iconsFile(), "utf8")) as { v?: number; icons?: Record<string, unknown> }
       for (const [h, v] of Object.entries(j?.icons ?? {})) if (typeof v === "string" && isIcon(v)) icons.set(h, v)
+      if (j?.v !== ICONS_VERSION) for (const h of icons.keys()) staleIcons.add(h)
     } catch { /* none yet, or unreadable: they're fetched again */ }
   }
   return icons
@@ -937,8 +972,19 @@ let iconsSaving: ReturnType<typeof setTimeout> | null = null
 function saveIcons() {
   iconsSaving ??= setTimeout(() => {
     iconsSaving = null
-    try { writeAtomic(iconsFile(), JSON.stringify({ icons: Object.fromEntries(loadIcons()) })) } catch { /* kept in memory */ }
+    try { writeAtomic(iconsFile(), JSON.stringify({ v: ICONS_VERSION, icons: Object.fromEntries(loadIcons()) })) } catch { /* kept in memory */ }
   }, 2000)
+}
+/** Keep `icon` as `key`'s (null: none of its own) and tell every window. */
+function setIcon(key: string, icon: string | null) {
+  const all = loadIcons()
+  staleIcons.delete(key)
+  if ((all.get(key) ?? null) === icon) return
+  all.delete(key)
+  if (icon) all.set(key, icon)
+  for (const h of [...all.keys()].slice(0, Math.max(0, all.size - ICONS_KEPT))) all.delete(h)
+  saveIcons()
+  for (const w of AppWindow.getAllWindows()) tell(w, { type: "icon", host: key, icon: icon ?? "" })
 }
 
 /** An image's bytes as an icon: PNG or JPEG redrawn at 64px at most, the formats a page's <img> reads (ICO, SVG,
@@ -974,33 +1020,46 @@ async function iconBytes(s: Session, url: string): Promise<Buffer | null> {
     return Buffer.from(await r.arrayBuffer())
   } catch { return null }
 }
+/** The first of `urls` that's an image, as an icon. */
+async function firstIcon(s: Session, urls: string[], still = () => true) {
+  for (const u of urls) {
+    if (!still()) return null
+    let icon: string | null = null
+    try { const b = await iconBytes(s, u); icon = b && iconOf(b) } catch { icon = null }
+    if (icon && isIcon(icon)) return { icon, from: u }
+  }
+  return null
+}
 
-/** The page told its icons' addresses: the first that's an image becomes its site's icon, told to every window. */
+const LOCAL_HOST = /^(localhost|127(\.\d{1,3}){3}|\[::1\]|(\d{1,3}\.){3}\d{1,3})(:\d+)?$/i
+/** A host's own icon, its /favicon.ico (once a run; `fallback` when it has none), unless it has one already. */
+async function hostIcon(s: Session, host: string, fallback?: string) {
+  if (!host || (loadIcons().has(host) && !staleIcons.has(host)) || iconAsked.has(host)) return
+  iconAsked.add(host)
+  const got = await firstIcon(s, [`${LOCAL_HOST.test(host) ? "http" : "https"}://${host}/favicon.ico`])
+  if (got) { iconSrc.set(host, got.from); setIcon(host, got.icon) }
+  else if (fallback && !loadIcons().has(host)) setIcon(host, fallback)
+}
+
+/** The page told its icons' addresses: the first that's an image is its own icon. At its site's home page it's its
+ *  site's; elsewhere (Maps on google.com) it's kept for its path, when it differs from the site's. */
 async function iconFrom(p: Page, urls: unknown) {
   const list = (Array.isArray(urls) ? urls : []).filter((u): u is string => typeof u === "string" && (web(u) || /^data:image\//i.test(u))).slice(0, 4)
-  const page = p.view.webContents.getURL(), host = iconHost(page)
+  const page = p.view.webContents.getURL(), host = iconKey(page), key = iconKey(page, true)
   if (!host || !web(page)) return
   // (the site's own /favicon.ico last: a page that names none, or whose named ones fail)
   try { const fav = new URL("/favicon.ico", page).href; if (!list.includes(fav)) list.push(fav) } catch { /* no origin */ }
-  const key = list.join(" ")
-  if (p.icons === key) return
-  p.icons = key
-  if (iconSrc.get(host) === list[0] && loadIcons().has(host)) return
-  for (const u of list) {
-    if (p.view.webContents.isDestroyed() || p.icons !== key) return
-    let icon: string | null = null
-    try { const b = await iconBytes(p.view.webContents.session, u); icon = b && iconOf(b) } catch { icon = null }
-    if (!icon || !isIcon(icon)) continue
-    iconSrc.set(host, u)
-    const all = loadIcons()
-    if (all.get(host) === icon) return
-    all.delete(host)
-    all.set(host, icon)
-    for (const h of [...all.keys()].slice(0, Math.max(0, all.size - ICONS_KEPT))) all.delete(h)
-    saveIcons()
-    for (const w of AppWindow.getAllWindows()) tell(w, { type: "icon", host, icon })
-    return
-  }
+  const told = list.join(" ")
+  if (p.icons === told) return
+  p.icons = told
+  if (iconSrc.get(key) === list[0] && loadIcons().has(key)) return
+  const s = p.view.webContents.session
+  const got = await firstIcon(s, list, () => !p.view.webContents.isDestroyed() && p.icons === told)
+  if (!got) return
+  iconSrc.set(key, got.from)
+  if (key === host) { iconAsked.add(host); setIcon(host, got.icon); return }
+  await hostIcon(s, host, got.icon)
+  setIcon(key, loadIcons().get(host) === got.icon ? null : got.icon)
 }
 
 // ---------- Claude Code on the web's sessions ----------

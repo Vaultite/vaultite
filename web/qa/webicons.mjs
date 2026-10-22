@@ -1,6 +1,7 @@
 // Web tabs show their sites' icons (electron/web.ts fetches them, web-viewer/icons.tsx draws them): a PNG, an SVG and
 // a site's own /favicon.ico each on its tab; a site whose icon isn't an image, and one whose kept icon can't be drawn,
-// keep the globe; a broken icons file in userData changes nothing; the icons are kept for the next launch.
+// keep the globe; a page with an icon of its own under a path (Maps on google.com) has it on its tab while its site's
+// home page keeps the site's; a broken icons file in userData changes nothing; the icons are kept for the next launch.
 // WRITES: the throwaway vault only.
 //   node web/qa/webicons.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -21,9 +22,17 @@ const ICO = Buffer.concat([Buffer.from([0, 0, 1, 0, 1, 0, 1, 1, 0, 0, 1, 0, 32, 
 const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><circle cx="8" cy="8" r="8" fill="#c33"/></svg>`
 const page = (title, head = "") => `<!doctype html><html><head><meta charset="utf-8"><title>${title}</title>${head}</head><body><h1>${title}</h1></body></html>`
 // (each its own free port: icons are kept by host, port and all)
-const servers = await Promise.all(["png", "svg", "ico", "html", "bad"].map(async (k) => {
+const servers = await Promise.all(["png", "svg", "ico", "html", "bad", "app"].map(async (k) => {
   const s = http.createServer((req, res) => {
     const u = req.url ?? "/"
+    // (a site whose /maps is an app of its own: its own icon there, the site's at home and as /favicon.ico)
+    if (k === "app") {
+      if (u === "/icon.png") { res.writeHead(200, { "Content-Type": "image/png" }); return res.end(PNG) }
+      if (u === "/maps/icon.svg") { res.writeHead(200, { "Content-Type": "image/svg+xml" }); return res.end(SVG) }
+      if (u === "/favicon.ico") { res.writeHead(200, { "Content-Type": "image/x-icon" }); return res.end(ICO) }
+      if (u === "/maps") { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(page("Site maps", `<link rel="icon" href="/maps/icon.svg" type="image/svg+xml">`)) }
+      if (u === "/") { res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" }); return res.end(page("Site app", `<link rel="icon" href="/icon.png">`)) }
+    }
     if (k === "png" && u === "/icon.png") { res.writeHead(200, { "Content-Type": "image/png" }); return res.end(PNG) }
     if (k === "svg" && u === "/icon.svg") { res.writeHead(200, { "Content-Type": "image/svg+xml" }); return res.end(SVG) }
     if (k === "ico" && u === "/favicon.ico") { res.writeHead(200, { "Content-Type": "image/x-icon" }); return res.end(ICO) }
@@ -66,7 +75,7 @@ const tabIcon = (win, title) => win.evaluate((title) => {
 const drawn = (win, title, mime) => until(async () => { const i = await tabIcon(win, title); return !!i?.drawn && i.src.startsWith(`data:image/${mime}`) }, 15000)
 
 let { app, win, origin } = await launch()
-for (const k of Object.keys(SITES)) { await open(origin, at(k)); await until(async () => (await win.locator("[role=tab]", { hasText: `Site ${k}` }).count()) > 0, 10000) }
+for (const k of Object.keys(SITES).filter((k) => k !== "app")) { await open(origin, at(k)); await until(async () => (await win.locator("[role=tab]", { hasText: `Site ${k}` }).count()) > 0, 10000) }
 check("all five web tabs opened", await until(async () => (await win.locator("[role=tab]", { hasText: "Site " }).count()) === 5, 20000))
 check("a page's PNG icon is on its tab", await drawn(win, "Site png", "png"), await tabIcon(win, "Site png"))
 check("a page's SVG icon is on its tab", await drawn(win, "Site svg", "svg"), await tabIcon(win, "Site svg"))
@@ -74,6 +83,12 @@ check("a site's own /favicon.ico is on its tab", await drawn(win, "Site ico", ""
 await until(async () => (await tabIcon(win, "Site bad"))?.src === "globe", 5000)
 check("an icon that's an HTML page: the globe", (await tabIcon(win, "Site html"))?.src === "globe", await tabIcon(win, "Site html"))
 check("a kept icon that can't be drawn: the globe", (await tabIcon(win, "Site bad"))?.src === "globe", await tabIcon(win, "Site bad"))
+// Its /maps first (the site's icon not known yet), then its home page.
+await open(origin, `${at("app")}maps`)
+check("a page's own icon under a path is on its tab", await drawn(win, "Site maps", "svg"), await tabIcon(win, "Site maps"))
+await open(origin, at("app"))
+check("… its site's home page has the site's icon, not the path's", await drawn(win, "Site app", "png"), await tabIcon(win, "Site app"))
+check("… and the path's tab keeps its own", (await tabIcon(win, "Site maps"))?.src.startsWith("data:image/svg"), await tabIcon(win, "Site maps"))
 const kept = await until(() => {
   try { const j = JSON.parse(fs.readFileSync(path.join(USER_DATA, "web-icons.json"), "utf8")); return ["png", "svg", "ico"].every((k) => j.icons[host(k)]?.startsWith("data:image/")) && !("x" in j.icons) } catch { return false }
 }, 10000)

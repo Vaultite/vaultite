@@ -198,7 +198,7 @@ function Suggestion({ row: r, selected, words, onHover, onPick, onForget }: { ro
       className={cn("group flex h-8 cursor-pointer items-center gap-2.5 rounded-[7px] px-2.5 text-[13px]", selected && "bg-foreground/[0.07]")}>
       {r.kind === "search"
         ? <Search className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} />
-        : <SiteIcon host={hostOf(r.url)} className="size-4 shrink-0 text-muted-foreground" />}
+        : <SiteIcon url={r.url} className="size-4 shrink-0 text-muted-foreground" />}
       <span className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden whitespace-nowrap">
         {title && <span className="min-w-0 shrink truncate text-foreground/90"><Marked text={title} words={words} /></span>}
         {title && r.kind !== "search" && <span className="shrink-0 text-tertiary">–</span>}

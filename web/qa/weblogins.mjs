@@ -96,7 +96,7 @@ await inPage(`location.href = ${JSON.stringify(`${SITE}/whoami`)}`)
 check("… signed in there", await until(async () => (await visible())?.text === "who:Alice", 10000), await visible())
 
 // ---------- the Sites tab: every set of logins ----------
-const logins = (name) => win.locator("[data-web-sites-view] section", { has: win.locator("[data-web-logins-heading]", { hasText: new RegExp(`^${name}$`) }) })
+const logins = (name) => win.locator("[data-web-sites-view] section", { has: win.locator("[data-web-logins-heading] [data-web-logins-name]", { hasText: new RegExp(`^${name}$`) }) })
 await command("web:sites-tab")
 check("Sites: the site signed in to, in workspace 1's logins", await until(async () => (await logins("Workspace 1").locator("[data-web-site='127.0.0.1']").count()) === 1, 10000),
   await win.locator("[data-web-sites-view]").innerText().catch(() => ""))

@@ -1,11 +1,13 @@
-// Sites: a set of logins' sites (Sign out each), a line for trackers' cookies (Clear) and containers' options. Drawn as
-// the sidebar's Sites panel (one set of logins), the Sites tab (every set: containers managed) and in the settings.
-import { useEffect, useState } from "react"
+// Sites: a set of logins' accounts and the sites always opened there, then the rest folded with its trackers (Clear).
+// Drawn as the sidebar's Sites panel (one set of logins), the Sites tab (every set, containers managed) and in settings.
+import { forwardRef, useEffect, useState } from "react"
 import { Bot, ChevronDown, ChevronRight, ChevronsUpDown, Ellipsis, EyeOff, Fingerprint, Globe, LogOut, Pin, Plus, Settings2 } from "lucide-react"
 import {
-  Button, confirmDialog, currentWorkspace, dotIcon, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, scopedState, Section,
+  Button, confirmDialog, currentWorkspace, dotIcon, FilterField, fmtAgo, Group, HeadingButton, isViewOpen, menuBelow, menuFor, openView, PageHeader, plural, removals, scopedState, Section,
   SettingRow, SidebarHeading, SidebarRow, useScopedState, useWorkspaceVersion, webPages, workspaceList, type MenuItem, type SidebarCtx, type WebSite,
 } from "@vaultite"
+import type { LucideIcon, LucideProps } from "lucide-react"
+import { keep, listed } from "./accounts"
 import { SiteIcon, siteIcon } from "./icons"
 import { colorOf, containersOf, profileIn, setSiteRule, useContainers, type Container } from "./containers"
 import { agentsSay, canLockNow, containerItems, newContainer, useCanLock } from "./ContainerButton"
@@ -55,12 +57,12 @@ const signingOut = (prof: string) => leavingIn.get(prof) ?? leavingIn.set(prof, 
 /** The sites of `prof` (drawn afresh for another), asked again when a page done loading may have signed in or out; the
  *  ones signed out of from here gone at once (`leaving`: a row's while it folds away). */
 function useSites(prof: string) {
-  const [sites, setSites] = useState<WebSite[] | null>(null)
+  const [sites, setSites] = useState<WebSite[] | null>(() => listed.get().get(prof) ?? null)
   useEffect(() => {
     const web = webPages
     if (!web?.sites) return
     let gone = false, timer = 0
-    const list = () => { void web.sites!(prof).then((s) => { if (!gone) setSites(s) }, () => {}) }
+    const list = () => { void web.sites!(prof).then((s) => { keep(prof, s); if (!gone) setSites(s) }, () => {}) }
     list()
     const off = web.on((m) => {
       if (m.type === "state" && !m.state.loading) { clearTimeout(timer); timer = window.setTimeout(list, 1500) }
@@ -69,7 +71,7 @@ function useSites(prof: string) {
   }, [prof])
   const { list, leaving } = signingOut(prof).use(sites, (s) => s.site)
   return { sites: list?.filter((s) => !s.other) ?? null, others: list?.filter((s) => s.other) ?? [], leaving,
-    refresh: () => void webPages?.sites?.(prof).then(setSites, () => {}) }
+    refresh: () => void webPages?.sites?.(prof).then((s) => setSites(keep(prof, s)), () => {}) }
 }
 
 /** Forget sites in a set of logins: their rows go at once; the list is asked again once it's done. */
@@ -79,13 +81,20 @@ function forget(l: Logins, names: string[], failed: string, done: () => void) {
   void signingOut(l.prof).remove(names, () => Promise.all(names.map((n) => web.forget!(l.prof, n))), failed).then(done)
 }
 
+/** A row's sites: its own and the ones its login signs in to too. */
+const sitesOf = (s: WebSite) => [s.site, ...(s.with ?? [])]
+const andList = (xs: string[]) => (xs.length > 1 ? `${xs.slice(0, -1).join(", ")} and ${xs[xs.length - 1]}` : xs[0] ?? "")
+/** Everyone signed in, in a line. */
+const whoText = (s: WebSite) => [s.account, ...(s.more ?? [])].filter(Boolean).join(", ")
+
 async function signOut(l: Logins, s: WebSite, done: () => void) {
+  const names = sitesOf(s), who = whoText(s)
   const ok = await confirmDialog({
-    title: `Sign out of ${s.site}?`,
-    body: `${s.account ? `${s.account} will be signed out` : "Its logins go"} in ${l.name}: the site's cookies and what it keeps in the browser are deleted. Open pages of it reload.`,
+    title: `Sign out of ${andList(names)}?`,
+    body: `${who ? `${who} will be signed out` : "Its logins go"} in ${l.name}: ${names.length > 1 ? "their" : "the site's"} cookies and what ${names.length > 1 ? "they keep" : "it keeps"} in the browser are deleted. Open pages of ${names.length > 1 ? "them" : "it"} reload.`,
     confirm: "Sign out", danger: true,
   })
-  if (ok) forget(l, [s.site], "Couldn't sign out", done)
+  if (ok) forget(l, names, "Couldn't sign out", done)
 }
 
 /** Clear the trackers' cookies (and storage), after showing which. */
@@ -145,33 +154,69 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
       </>
     )
   }
+  return <SiteRows logins={l} data={{ sites, others, leaving, refresh }} openPage={openPage} />
+}
+
+type Listed = ReturnType<typeof useSites>
+/** Shown without folding when this few are left over. */
+const FEW = 3
+const matches = (s: WebSite, q: string) => sitesOf(s).some((x) => x.includes(q)) || whoText(s).toLowerCase().includes(q)
+
+/** A set of logins' sites as sidebar rows: who's signed in where, the sites always opened there, then the rest and the
+ *  trackers, folded when there are more than a few. `filter`: only what matches, unfolded. */
+function SiteRows({ logins: l, data, openPage, filter = "" }: { logins: Logins; data: Listed; openPage?: Open; filter?: string }) {
+  const { sites, others, leaving, refresh } = data
+  const containers = useContainers()
+  const c = l.container ? containers.find((x) => x.id === l.container) : undefined
+  const [unfolded, unfold] = useState(false)
   const open = (url: string) => openPage?.(url, l.container)
   // A container's sites always opened there, signed in to or not.
   const always = c?.sites ?? []
-  const rows = [...(sites ?? []), ...(sites ? always.filter((a) => !sites.some((s) => s.site === a)).map((site): WebSite => ({ site })) : [])]
+  const q = filter.trim().toLowerCase()
+  const all = [...(sites ?? []), ...(sites ? always.filter((a) => !sites.some((s) => sitesOf(s).includes(a))).map((site): WebSite => ({ site })) : [])]
+    .filter((s) => !q || matches(s, q))
+  const pinned = (s: WebSite) => sitesOf(s).some((x) => always.includes(x))
+  const top = all.filter((s) => s.account || pinned(s))
+  const rest = all.filter((s) => !s.account && !pinned(s))
+  const trackers = q ? others.filter((s) => matches(s, q)) : others
+  const trackersLeaving = trackers.length && trackers.every((s) => leaving(s.site) === "") ? "" : undefined
+  const folds = !q && rest.length + (trackers.length ? 1 : 0) > FEW
+  const shown = !folds || unfolded
+  const signedIn = (s: WebSite) => !!sites?.some((x) => x.site === s.site)
   const menu = (s: WebSite): MenuItem[] => [
     { label: `Open ${s.site}`, icon: Globe, run: () => open(`https://${s.site}/`) },
     ...(c ? [{ label: `Always open in ${c.name}`, icon: Pin, checked: always.includes(s.site), run: () => void setSiteRule(s.site, always.includes(s.site) ? null : c.id) }] : []),
-    ...(sites?.some((x) => x.site === s.site) ? [{ label: "Sign out", icon: LogOut, danger: true, sep: true, run: () => void signOut(l, s, refresh) }] : []),
+    ...(signedIn(s) ? [{ label: "Sign out", icon: LogOut, danger: true, sep: true, run: () => void signOut(l, s, refresh) }] : []),
   ]
+  const row = (s: WebSite) => (
+    <SidebarRow key={s.site} icon={s.account ? accountIcon(s.site, s.avatar) : siteIcon(`https://${s.site}/`)} label={<SiteLabel s={s} />} open
+      tip={[andList(sitesOf(s)), whoText(s), pinned(s) && c ? `always opens in ${c.name}` : ""].filter(Boolean).join(": ")}
+      data-web-site={s.site} data-web-account={s.account ? "" : undefined} data-leaving={pinned(s) ? undefined : leaving(s.site)} onClick={() => open(`https://${s.site}/`)} more
+      swipe={() => signedIn(s) ? [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(l, s, refresh) }] : []}
+      onContextMenu={menuFor(() => menu(s))}>
+      {pinned(s) && <Pin aria-hidden data-web-always="" className="mr-1 size-3 shrink-0 text-tertiary group-hover/row:hidden" strokeWidth={2} />}
+      {!s.account && !pinned(s) && s.last ? <span className="mr-1 shrink-0 text-[11px] text-tertiary tabular-nums group-hover/row:hidden">{fmtAgo(s.last, { short: true })}</span> : null}
+    </SidebarRow>
+  )
+  const Chevron = unfolded ? ChevronDown : ChevronRight
   return (
     <div className="flex flex-col gap-px" data-web-sites>
-      {rows.map((s) => (
-        <SidebarRow key={s.site} icon={siteIcon(`https://${s.site}/`)} label={<SiteLabel s={s} />} open
-          tip={[s.site, s.account, always.includes(s.site) && c ? `always opens in ${c.name}` : ""].filter(Boolean).join(": ")}
-          data-web-site={s.site} data-leaving={always.includes(s.site) ? undefined : leaving(s.site)} onClick={() => open(`https://${s.site}/`)} more
-          swipe={() => sites?.some((x) => x.site === s.site) ? [{ label: "Sign out", icon: LogOut, danger: true, run: () => void signOut(l, s, refresh) }] : []}
-          onContextMenu={menuFor(() => menu(s))}>
-          {always.includes(s.site) && <Pin aria-hidden data-web-always="" className="mr-1 size-3 shrink-0 text-tertiary group-hover/row:hidden" strokeWidth={2} />}
-        </SidebarRow>
-      ))}
-      {sites && !rows.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">No sites yet</p>}
-      {others.length > 0 && (
-        <SidebarRow icon={EyeOff} label={plural(others.length, "tracker")} open data-web-trackers={String(others.length)} data-leaving={trackersLeaving} tip={trackersTip(others)}
-          onClick={() => void clearTrackers(l, others, refresh)}>
+      {top.map(row)}
+      {folds && (
+        <SidebarRow icon={Chevron} open aria-expanded={unfolded} data-web-more={String(rest.length)} onClick={() => unfold(!unfolded)} tip={null}
+          label={<span className="flex min-w-0 items-baseline gap-1.5 text-muted-foreground">
+            <span className="truncate">{rest.length ? `${plural(rest.length, top.length ? "more site" : "site")}` : plural(trackers.length, "tracker")}</span>
+            {rest.length > 0 && trackers.length > 0 && <span className="min-w-0 truncate text-[12px] text-tertiary">{plural(trackers.length, "tracker")}</span>}
+          </span>} />
+      )}
+      {shown && rest.map(row)}
+      {shown && trackers.length > 0 && (
+        <SidebarRow icon={EyeOff} label={plural(trackers.length, "tracker")} open data-web-trackers={String(trackers.length)} data-leaving={trackersLeaving} tip={trackersTip(trackers)}
+          onClick={() => void clearTrackers(l, trackers, refresh)}>
           <span className="mr-1 text-[11px] text-tertiary">Clear</span>
         </SidebarRow>
       )}
+      {sites && !all.length && !trackers.length && <p className="h-7 truncate pl-1.5 text-[13px] leading-7 text-tertiary">{q ? "Nothing matches" : "No sites yet"}</p>}
     </div>
   )
 }
@@ -179,10 +224,29 @@ function SiteList({ logins: l, look, openPage }: { logins: Logins; look: "sideba
 function SiteLabel({ s }: { s: WebSite }) {
   return (
     <span className="flex min-w-0 items-baseline gap-1.5">
-      <span className="truncate">{s.site}</span>
-      {s.account && <span className="min-w-0 truncate text-[12px] text-muted-foreground">{s.account}</span>}
+      <span className="shrink truncate">{sitesOf(s).join(", ")}</span>
+      {s.account && <span className="min-w-0 shrink-[0.5] truncate text-[12px] text-muted-foreground">{s.account}</span>}
+      {!!s.more?.length && <span className="shrink-0 text-[11px] text-tertiary" data-web-more-accounts={String(s.more.length)}>+{s.more.length}</span>}
     </span>
   )
+}
+
+const accountIcons = new Map<string, LucideIcon>()
+/** A signed-in row's icon (a lucide icon's props): the account's picture with its site's icon on its corner, as a
+ *  browser's profile button has it; the site's icon alone without one. */
+function accountIcon(site: string, avatar?: string): LucideIcon {
+  const key = `${site} ${avatar?.length ?? 0} ${avatar?.slice(-24) ?? ""}`
+  let c = accountIcons.get(key)
+  if (!c) {
+    c = forwardRef<SVGSVGElement, LucideProps>(({ className }, _ref) => avatar
+      ? <span className={`${className ?? ""} relative inline-grid`} data-web-avatar="">
+          <img src={avatar} alt="" draggable={false} className="size-full rounded-full object-cover" />
+          <SiteIcon host={site} className="absolute -right-[3px] -bottom-[3px] size-[9px] rounded-[2px] bg-background" />
+        </span>
+      : <SiteIcon host={site} className={className} />) as unknown as LucideIcon
+    accountIcons.set(key, c)
+  }
+  return c
 }
 
 /** What's set on a container beyond its sites, in a line (only when something is): Touch ID, agents. A click: its options. */
@@ -247,43 +311,56 @@ export function SitesPanel({ open, openPage }: Pick<SidebarCtx, "open"> & { open
   )
 }
 
-/** A set of logins' heading in the Sites tab: its dot and name, and a container's options on hover and right-click. */
-function LoginsHeading({ l, c }: { l: Logins; c?: Container }) {
+/** A set of logins' heading in the Sites tab: its dot and name, what's set on a container (Touch ID, agents), and its
+ *  options on hover and right-click. */
+function LoginsHeading({ l, c, count }: { l: Logins; c?: Container; count: string }) {
   const can = useCanLock()
   const items = () => (c ? containerItems(c, can) : [])
+  const agents = c ? agentsSay(c) : ""
   return (
     <div onContextMenu={c ? menuFor(items) : undefined} data-web-logins-heading={l.container ?? l.prof}
-      className="group/head mt-4 flex h-7 items-center gap-2 pr-0.5 pl-1.5 first:mt-1">
-      <Dot color={l.color} />
-      <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-muted-foreground">{l.name}</span>
-      {c && <span className="opacity-0 transition-opacity group-hover/head:opacity-100 focus-within:opacity-100">
+      className="group/head mb-1 flex h-8 items-center gap-2 pr-0.5 pl-1.5">
+      <span aria-hidden className="size-2.5 shrink-0 rounded-full" style={{ background: l.color }} />
+      <span className="min-w-0 truncate text-[14px] font-semibold" data-web-logins-name="">{l.name}</span>
+      {c?.lock && <Fingerprint aria-label="Locked with Touch ID" data-tip="Locked with Touch ID" className="size-3.5 shrink-0 text-tertiary" strokeWidth={2} />}
+      {agents && <Bot aria-label={agents} data-tip={agents} className="size-3.5 shrink-0 text-tertiary" strokeWidth={2} />}
+      <span className="min-w-0 flex-1 truncate text-right text-[12px] text-tertiary group-hover/head:hidden group-focus-within/head:hidden">{count}</span>
+      {c && <span className="hidden group-hover/head:block group-focus-within/head:block">
         <HeadingButton icon={Ellipsis} label={`Options for ${c.name}`} tip="Options" onClick={(e) => menuBelow(e, items())} />
       </span>}
     </div>
   )
 }
 
-/** The Sites tab: every set of logins with its sites, where containers are added and changed. */
+/** A set of logins in the Sites tab: its heading and its sites; nothing while a filter matches none of them. */
+function LoginsSection({ l, c, openPage, filter }: { l: Logins; c?: Container; openPage: Open; filter: string }) {
+  const data = useSites(l.prof)
+  const q = filter.trim().toLowerCase()
+  if (q && data.sites && !data.sites.some((s) => matches(s, q)) && !data.others.some((s) => matches(s, q)) && !(c?.sites ?? []).some((x) => x.includes(q))) return null
+  const accounts = data.sites?.filter((s) => s.account).length ?? 0, n = data.sites?.length ?? 0
+  const count = data.sites === null ? "" : [accounts ? plural(accounts, "account") : "", n - accounts ? plural(n - accounts, "site") : ""].filter(Boolean).join(" · ")
+  return (
+    <section data-web-logins-section={l.container ?? l.prof} className="mt-7 first:mt-2">
+      <LoginsHeading l={l} c={c} count={count} />
+      <SiteRows logins={l} data={data} openPage={openPage} filter={filter} />
+    </section>
+  )
+}
+
+/** The Sites tab: every set of logins with who's signed in where and its sites, where containers are added and changed. */
 export function SitesView({ openPage }: { openPage: Open }) {
   const all = useAllLogins()
   const containers = useContainers()
+  const [q, setQ] = useState("")
   if (!webPages?.sites) return <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10"><SitesPanel open openPage={openPage} /></div>
   return (
     <div className="mx-auto max-w-[640px] px-4 pt-2 pb-10" data-web-sites-view>
-      <PageHeader title="Sites" subtitle="What each container signs in to, apart from the others">
+      <PageHeader title="Sites" subtitle="Who you're signed in as, container by container">
         <Button size="small" onClick={() => newContainer()} data-web-new-container="">New container</Button>
       </PageHeader>
+      <FilterField value={q} onChange={setQ} placeholder="Filter sites and accounts" className="mb-2" />
       <div data-size-up="">
-        {all.map((l) => {
-          const c = containers.find((x) => x.id === l.container)
-          return (
-            <section key={l.prof} data-web-logins-section={l.container ?? l.prof}>
-              <LoginsHeading l={l} c={c} />
-              {c && <About c={c} />}
-              <SiteList logins={l} look="sidebar" openPage={openPage} />
-            </section>
-          )
-        })}
+        {all.map((l) => <LoginsSection key={l.prof} l={l} c={containers.find((x) => x.id === l.container)} openPage={openPage} filter={q} />)}
       </div>
     </div>
   )
