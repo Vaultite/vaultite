@@ -179,7 +179,8 @@ export class App {
   /** Whether a request may trust the vault's watcher (Vault.synced): the app's own, or one from another machine, which
    *  can't have just written a file here. A local agent or script may have, before the watcher heard of it. */
   trusts(http?: IncomingMessage) {
-    return !!http && (String(http.headers["x-vaultite-client"] ?? "").startsWith("app/") || overNetwork(http))
+    if (!http?.socket) return false // (a request made in-process, as tests do)
+    return String(http.headers["x-vaultite-client"] ?? "").startsWith("app/") || overNetwork(http)
   }
 
   private adopting = new Map<string, number>() // plugin id + hash -> when it was last checked against its source
