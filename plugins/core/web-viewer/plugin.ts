@@ -12,20 +12,32 @@ import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitesty
 export const plugin = new Plugin(import.meta.url)
 
 type Tab = { tab: number; url: string; title: string; container: string | null; access: "none" | "read" | "act"; shown: boolean
-  by: string | null; mine: boolean; paused?: boolean; asking?: string }
+  by: string | null; mine: boolean; summary?: string; paused?: boolean; asking?: string }
 type Download = { name: string; state: string; path?: string }
 type Page = { tab: number; url: string; title: string; downloads?: Download[] }
+/** What an act changed: lines gone (-) and new (+), or the new page's first lines when it went to another (`page`). */
+type Acted = Page & { navigated: boolean; diff?: { page: boolean; lines: string[]; more: number } }
 
 /** Ask the engine, its refusals as plain errors for the agent. */
 async function ask<T>(name: string, ...args: unknown[]): Promise<T> {
   try { return (await plugin.desktop(name, ...args)) as T } catch (e) { throw new OpError((e as Error).message, 409) }
 }
-const by = (ctx: OpCtx, p: { terminal?: string; task?: string }) => ({ name: ctx.who.label, session: p.terminal || ctx.who.agent || "", task: p.task ?? "" })
+const by = (ctx: OpCtx, p: { terminal?: string; task?: string; summary?: string }) => ({ name: ctx.who.label, session: p.terminal || ctx.who.agent || "", task: p.task ?? "",
+  summary: p.summary ?? "" })
 const terminal = { type: "string" as const, env: "VAULTITE_TERMINAL", description: "the app terminal you run in (filled in from VAULTITE_TERMINAL): your steps are kept together for replay" }
 const task = { type: "string" as const, description: "your task in two or three words (flight search): your tabs are grouped as <you>/<task>, and tabs marks them yours" }
+// (ops that only drive the desktop app's pages are lock: false: an act settling or a run's 30 s never hold the vault's
+// writes; pdf's file.upload holds it for its own)
 const tab = { type: "integer" as const, required: true, description: "the tab's number (browser tabs)" }
 const got = (d: Download) => `Downloaded ${d.name}${d.path ? ` to ${d.path}` : ""}${d.state === "completed" ? "" : ` (${d.state})`}`
 const where = (p: Page) => [`Tab ${p.tab}: ${p.title || "(untitled)"}`, p.url, ...(p.downloads ?? []).map(got)].join("\n")
+function changed(r: Acted) {
+  const d = r.diff
+  if (!d) return ""
+  const more = d.more ? `\n… ${d.more} more line${d.more === 1 ? "" : "s"}: browser snapshot ${r.tab}` : ""
+  if (d.page) return `\n\nThe page now:\n${d.lines.join("\n")}${more}`
+  return d.lines.length ? `\n\nWhat changed (- gone, + new):\n${d.lines.join("\n")}${more}` : "\n\nNothing changed on the page."
+}
 
 plugin.op({
   id: "web-viewer.tabs",
@@ -46,7 +58,7 @@ vault (Machines) answers.
   run: (p, ctx) => ask<Tab[]>("agent:tabs", by(ctx, p)),
   text: (tabs: Tab[]) => tabs.length
     ? tabs.map((t) => `${t.tab}  [${[t.access, t.container, t.paused && "paused"].filter(Boolean).join(", ")}]  ${t.title || "(untitled)"}  ${t.url}  `
-      + `(${t.mine ? "yours" : t.by ? `${t.by}'s` : "the user's"}${t.asking ? `; asked the user: ${t.asking}` : ""})`).join("\n")
+      + `(${t.mine ? "yours" : t.by ? `${t.by}'s` : "the user's"}${t.asking ? `; asked the user: ${t.asking}` : ""})${t.summary ? `\n    ${t.summary}` : ""}`).join("\n")
     : "No web pages open.",
 })
 
@@ -57,15 +69,18 @@ plugin.op({
   summary: "Open a web page in a new tab of the desktop app, beside the user's work, for you to read and act in.",
   help: `It opens in the container meant for agents (or the one you name, if agents may act there), signed in to what the
 user signed in to there, in a tab group of yours (<you>/<task>). The user sees it and what you do in it. Answers its tab
-number. Close it when you're done with it, unless the user would want to see it.
+number. summary says what you're doing, for the user watching agents at work ("Show agents in the browser") and
+searching past runs. Close it when you're done with it, unless the user would want to see it.
 
-  vau browser open https://example.com --task "order status"
+  vau browser open https://example.com --task "order status" --summary "Checking where order 1042 is"
   vau browser open https://github.com --container work`,
   kind: "write",
+  lock: false,
   params: {
     url: { type: "string", required: true, description: "an http(s) address" },
     container: { type: "string", description: "the container's id (left out: the one for agents)" },
     task,
+    summary: { type: "string", description: "what you're doing there, in a sentence (Checking where order 1042 is)" },
     terminal,
   },
   args: ["url"],
@@ -81,6 +96,7 @@ plugin.op({
   summary: "Close a tab an agent opened (never the user's).",
   help: `  vau browser close 3`,
   kind: "write",
+  lock: false,
   params: { tab },
   args: ["tab"],
   run: (p) => ask<{ tab: number }>("agent:close", p.tab),
@@ -93,7 +109,8 @@ plugin.op({
   cli: "browser snapshot",
   mcp: "browser_snapshot",
   summary: "A tab's page as an accessibility tree: its text, and its controls with refs (e12) to act on.",
-  help: `Take one before acting, and again after the page changes: refs are only good for the snapshot they came from.
+  help: `Take one before acting. An element keeps its ref while it's on the page (a new page gives new ones), and act answers
+what changed, so you rarely need another.
 
   vau browser snapshot 3`,
   kind: "read",
@@ -126,19 +143,23 @@ plugin.op({
   id: "web-viewer.act",
   cli: "browser act",
   mcp: "browser_act",
-  summary: "Click, type, press a key, pick an option, upload a file or scroll in a tab, by a ref from its snapshot, with real input.",
-  help: `Actions: click, dblclick, hover, fill (replaces what's there), type (adds to it), press (a key, on a ref or the page:
-Enter, Tab, Escape, Meta+a...), check, uncheck, select (an option of a list, by its text), upload (files into a file
-input: vault paths, or absolute paths on this machine), scroll (up or down, the page or a ref). Answers where the tab
-is after, whether it went to another page, and what it downloaded (into the Downloads folder of the Mac whose browser
-it is).
+  summary: "Click, type, fill a form, press a key, pick an option, upload a file or scroll in a tab, by refs from its snapshot, with real input; answers what changed.",
+  help: `Actions: click, dblclick, hover, fill (replaces what's there; with fields, a whole form at once: text typed, a list's
+option picked, a checkbox checked by true or false), type (adds to it), press (a key, on a ref or the page: Enter, Tab,
+Escape, Meta+a...), check, uncheck, select (an option of a list, by its text), upload (files into a file input: vault
+paths, or absolute paths on this machine), scroll (up or down, the page or a ref). Answers once the page settled: where
+the tab is, what it downloaded (into the Downloads folder of the Mac whose browser it is) and what changed on the page
+since you last saw it (diff: summary, up to 30 lines; a number of lines; none), or the new page's first lines when it
+went to another.
 
   vau browser act 3 click e12
   vau browser act 3 fill e5 --value "alice@example.com"
-  vau browser act 3 press --key Enter
+  vau browser act 3 fill --fields '[{"ref":"e5","value":"Alice"},{"ref":"e7","value":"true"},{"ref":"e9","value":"Large"}]'
+  vau browser act 3 press --key Enter --diff none
   vau browser act 3 upload e8 --files Attachments/cv.pdf
   vau browser act 3 scroll --direction down`,
   kind: "write",
+  lock: false,
   params: {
     tab,
     action: { type: "string", required: true, enum: ["click", "dblclick", "hover", "fill", "type", "press", "check", "uncheck", "select", "upload", "scroll"], description: "what to do" },
@@ -147,13 +168,20 @@ it is).
     key: { type: "string", description: "the key to press (Enter, Tab, Meta+a)" },
     direction: { type: "string", enum: ["up", "down"], description: "which way to scroll" },
     files: { type: "array", items: { type: "string" }, description: "upload: the files, vault paths (Attachments/cv.pdf) or absolute paths on this machine" },
+    fields: { type: "array", items: { type: "object", properties: { ref: { type: "string" }, value: { type: "string" } }, required: ["ref"] },
+      description: "fill: a whole form, each field's ref and value (a checkbox's: true or false; a list's: its option)" },
+    diff: { type: "string", default: "summary", description: "what changed, answered: summary (up to 30 lines), none, or at most this many lines" },
     terminal,
   },
   args: ["tab", "action", "ref"],
-  run: async (p, ctx) => ask<Page & { navigated: boolean }>("agent:act", p.tab, { action: p.action, ref: p.ref, value: p.value, key: p.key, direction: p.direction,
-    ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, by(ctx, p)),
-  text: (r: Page & { navigated: boolean }) => `${r.navigated ? "Went to another page. " : ""}${where(r)}`,
-  did: (p) => ({ action: "run", text: `${String(p.action)} in a browser tab${p.ref ? ` (${String(p.ref)})` : ""}` }),
+  run: async (p, ctx) => {
+    if (p.fields && p.action !== "fill") throw new OpError("fields go with fill")
+    return ask<Acted>("agent:act", p.tab, { action: p.action, ref: p.ref, value: p.value, key: p.key, direction: p.direction, fields: p.fields, diff: p.diff,
+      ...(p.action === "upload" ? { files: await filesFor(p.files, ctx) } : {}) }, by(ctx, p))
+  },
+  text: (r: Acted) => `${r.navigated ? "Went to another page. " : ""}${where(r)}${changed(r)}`,
+  did: (p) => ({ action: "run", text: Array.isArray(p.fields) ? `Filled ${p.fields.length} fields in a browser tab`
+    : `${String(p.action)} in a browser tab${p.ref ? ` (${String(p.ref)})` : ""}` }),
 })
 
 plugin.op({
@@ -164,6 +192,7 @@ plugin.op({
   help: `  vau browser go 3 https://example.com/settings
   vau browser go 3 back`,
   kind: "write",
+  lock: false,
   params: { tab, to: { type: "string", required: true, description: "an http(s) address, or back, forward, reload" }, terminal },
   args: ["tab", "to"],
   run: (p, ctx) => ask<Page>("agent:navigate", p.tab, p.to, by(ctx, p)),
@@ -201,6 +230,7 @@ read or done.
   vau browser player 3
   vau browser player 3 --off`,
   kind: "write",
+  lock: false,
   params: {
     tab,
     off: { type: "boolean", description: "bring it back to its tab" },
@@ -296,11 +326,65 @@ the page; act's real input is still the way to click and type.
 
   vau browser evaluate 3 "[...document.querySelectorAll('h2')].map((h) => h.textContent)"`,
   kind: "write",
+  lock: false,
   params: { tab, expression: { type: "string", required: true, description: "a JavaScript expression (an async IIFE for statements)" }, terminal },
   args: ["tab", "expression"],
   run: (p, ctx) => ask<Page & { value: string }>("agent:evaluate", p.tab, p.expression, by(ctx, p)),
   text: (r: Page & { value: string }) => r.value,
   did: (p) => ({ action: "run", text: `Ran a script in browser tab ${String(p.tab)}` }),
+})
+
+plugin.op({
+  id: "web-viewer.run",
+  cli: "browser run",
+  mcp: "browser_run",
+  summary: "Run a script of browser steps in a tab in one call (snapshot, act, fill, read, wait, go): a whole flow, its answer its return value.",
+  help: `The script is an async function's body, run in a sandbox of its own (no network, no files, not the page's world), 30 s at
+most, needing Act like act. Its calls work on the tab: snapshot() (the tree), ref(name, role?) (the first control with
+that name, from a fresh tree: its ref or null), act(action, ref?, value?) or act({ action, ref, value, key, diff }) (as
+browser act; no diff unless asked), fill({ e5: "Alice", e7: true }), read() (the page's text), wait({ text, url,
+download, timeout }), go(url | "back" | "forward" | "reload"), sleep(ms), console.log(...). Each step is kept for replay
+like any other. Answers what it logged and what it returned, as JSON.
+
+  vau browser run 3 'await fill({ [await ref("Name")]: "Alice" }); await act("click", await ref("Send", "button"));
+    await wait({ text: "Hello" }); return (await read()).split("\\n")[0]'
+  vau browser run 3 - < flow.js`,
+  kind: "write",
+  lock: false,
+  params: { tab, script: { type: "string", required: true, stdin: true, description: "the script: an async function's body (await, return)" }, terminal },
+  args: ["tab", "script"],
+  run: (p, ctx) => ask<Page & { value: string; logs: string[] }>("agent:run", p.tab, p.script, by(ctx, p)),
+  text: (r: Page & { value: string; logs: string[] }) => [...r.logs, r.value === "null" && r.logs.length ? "" : r.value].filter(Boolean).join("\n"),
+  did: (p) => ({ action: "run", text: `Ran a script of steps in browser tab ${String(p.tab)}` }),
+})
+
+plugin.op({
+  id: "web-viewer.pdf",
+  cli: "browser pdf",
+  mcp: "browser_pdf",
+  summary: "Save a tab's page as a PDF into the vault (the attachments folder), named for its title; with note, embedded in it.",
+  help: `As the page prints, its backgrounds too. A tab in the background works too.
+
+  vau browser pdf 3
+  vau browser pdf 3 --name "Order 1042" --note "Notes/Orders.md"`,
+  kind: "write",
+  lock: false,
+  params: {
+    tab,
+    name: { type: "string", description: "the file's name (default the page's title)" },
+    folder: { type: "string", description: "the vault folder to save it in; the attachments folder by default" },
+    note: { type: "string", format: "path", description: "a note to embed it in, at its end" },
+    terminal,
+  },
+  args: ["tab"],
+  run: async (p, ctx) => {
+    const r = await ask<Page & { pdf: string }>("agent:pdf", p.tab, by(ctx, p))
+    const name = `${String(p.name ?? "").trim() || r.title.trim() || new URL(r.url).hostname}`.replace(/\.pdf$/i, "").slice(0, 120)
+    const saved = await plugin.runOp("file.upload", { data: r.pdf, name: `${name}.pdf`, folder: p.folder, note: p.note }, ctx.who)
+    return { tab: r.tab, url: r.url, ...saved.result as { path: string; note: string | null } }
+  },
+  text: (r: { path: string; note: string | null }) => `Saved ${r.path}${r.note ? `, embedded in ${r.note}` : ""}.`,
+  did: (p) => ({ action: "edit", text: `Saved browser tab ${String(p.tab)} as a PDF` }),
 })
 
 plugin.op({

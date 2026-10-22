@@ -50,27 +50,30 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
 - Links: web links clicked in the app (in notes, blocks, sheets, terminals) open in a new web tab; ⌘-click (Ctrl
   elsewhere) opens them in the system browser, as does every link with `openLinks: browser`.
 - Agents: the browser ops are `vau browser ...` and MCP tools (`browser_open`, `browser_tabs`, `browser_snapshot`,
-  `browser_act`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_evaluate`,
-  `browser_ask_user`, `browser_close`). The browser is the desktop app's: a server without one (the always-on one, which
+  `browser_act`, `browser_run`, `browser_navigate`, `browser_read`, `browser_wait`, `browser_screenshot`, `browser_pdf`,
+  `browser_evaluate`, `browser_ask_user`, `browser_close`). The browser is the desktop app's: a server without one (the always-on one, which
   the phone and apps on the internet reach) passes each call to a machine in Machines whose desktop app has this vault
   open (its tab numbers, its Downloads), and says so when none has. `vau browser tabs` lists the tabs, whose each is
   (yours, another agent's, the user's) and what agents may do in it; `vau browser open <url> --task "<task>"` opens one
   for you beside the user's, in the Agents container (signed in to what the user signed in to there), in a tab group of
-  yours, `<you>/<task>` ("Claude Code/flight search"), answering its number; `vau browser close <tab>` closes one an
+  yours, `<you>/<task>` ("Claude Code/flight search"; `--summary` says what for), answering its number; `vau browser close <tab>` closes one an
   agent opened (never the user's). Then `vau browser snapshot <tab>` (the page as an accessibility tree, its controls
   with refs like e12), `vau browser act <tab> <action> <ref>` (click, dblclick, hover, fill/type with `--value`, press
   with `--key`, check, uncheck, select an option by its text, upload `--files` from the vault into a file input, scroll;
-  it answers what the step downloaded, and where), `vau browser go <tab> <url|back|forward|reload>`, `vau browser read
+  fill `--fields` fills a whole form; once the page settles it answers what changed on it, `--diff` summary, none or a
+  number of lines, and what the step downloaded), `vau browser run <tab> '<script>'` (snapshot, act, fill, read, wait
+  and go composed in one call, in a sandbox, 30 s at most), `vau browser pdf <tab>` (the page as a PDF in the vault), `vau browser go <tab> <url|back|forward|reload>`, `vau browser read
   <tab>` (its text; `--find` only the lines with some words), `vau browser wait <tab>` (`--text`, `--url`,
   `--download`, `--helped`) and `vau browser screenshot <tab>` (a PNG's path; a background tab too; MCP gives the
-  picture). Take a new snapshot after the page changes: refs are only good for the one they came from. A container's
+  picture). An element keeps its ref while it's on the page; a new page gives new ones. A container's
   `agents` setting says what agents may do in its pages (`read`, or `act`; unset: nothing, as in tabs in no container);
   the user can pause agents in a tab. Pages' scripts never run for agents, nor see what agents do:
   `vau browser evaluate <tab> "<expression>"` (Act only) runs in a world of its own, which sees the DOM, not the page's
   scripts. Where only the user can go on (a sign-in, a captcha), `vau browser ask <tab> "<what to do>"` brings the tab
   to the front with that and a Done button in its bar, and tells their Inbox (their phone too); `vau browser wait <tab>
-  --helped` waits for Done. Each agent's steps are kept on the Mac for 14 days, with pictures, to replay ("Show what
-  agents did in the browser"; never what's typed into a password field).
+  --helped` waits for Done. "Show agents in the browser": the tabs agents are at work in now, each a live picture with
+  Show tab and Pause, then past runs searched by agent, task or summary; each agent's steps are kept on the Mac for 14
+  days, with pictures, to replay (never what's typed into a password field).
 - History: every page's visits (address, title, time, logins, typed or a link) are kept on the Mac running the desktop
   app, never in the vault, ranked by frecency. The address bar completes a site inline as you type and lists the search,
   open tabs ("Switch to tab"), bookmarks and history (⇧⌦ removes a history row); "Open web page…" is a new web tab with

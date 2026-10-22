@@ -1,6 +1,6 @@
 // Agents in the browser, asked by the vault's server (plugins/core/web-viewer/plugin.ts): a page's accessibility tree with
-// refs, then real input on them over the DevTools protocol (no page scripts); each container's access is checked here.
-import { app, type WebContents } from "electron"
+// refs, real input on them over the DevTools protocol (no page scripts), scripts of those in a sandbox; access checked here.
+import { app, session, WebContentsView, type Session, type WebContents } from "electron"
 import crypto from "node:crypto"
 import fs from "node:fs"
 import path from "node:path"
@@ -59,47 +59,101 @@ type AXNode = { nodeId: string; ignored?: boolean; role?: AXValue; name?: AXValu
 const INTERACTIVE = new Set(["button", "link", "textbox", "searchbox", "combobox", "checkbox", "radio", "switch", "slider", "spinbutton", "menuitem",
   "menuitemcheckbox", "menuitemradio", "option", "tab", "treeitem", "listbox"])
 const SKIP = new Set(["none", "generic", "InlineTextBox", "LineBreak", "presentation", "LayoutTable", "LayoutTableRow", "LayoutTableCell"])
-/** Each page's refs from its last snapshot: "e12" → its DOM node. */
-const refs = new WeakMap<WebContents, Map<string, number>>()
+/** Each page's refs: an element keeps its ref while its document lasts, so refs stay good from one snapshot to the next
+ *  and a diff shows only what changed. Never reused in a page: a new document's go on from the last one's. */
+type Refs = { byRef: Map<string, number>; byNode: Map<number, string>; n: number }
+const refs = new WeakMap<WebContents, Refs>()
+const refsOf = (wc: WebContents) => {
+  let r = refs.get(wc)
+  if (!r) refs.set(wc, (r = { byRef: new Map(), byNode: new Map(), n: 0 }))
+  return r
+}
+/** Each page's tree as an agent last saw it, and which document it was (`docs` counts them): what act's diff is against. */
+const seen = new WeakMap<WebContents, { lines: string[]; doc: number }>()
+const docs = new WeakMap<WebContents, number>()
+eachPage((p) => p.wc.on("did-navigate", () => {
+  docs.set(p.wc, (docs.get(p.wc) ?? 0) + 1)
+  const r = refs.get(p.wc)
+  r?.byRef.clear()
+  r?.byNode.clear()
+}))
 const MAX_SNAPSHOT = 60_000
+const MAX_TREE = 1_000_000
 
-async function snapshot(p: EnginePage) {
+/** The page's accessibility tree, a line per node shown, its controls with refs. */
+async function tree(p: EnginePage) {
   await cdp(p.wc, "Accessibility.enable")
   const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getFullAXTree")
   const byId = new Map(nodes.map((n) => [n.nodeId, n]))
   const kids = new Set(nodes.flatMap((n) => n.childIds ?? []))
   const root = nodes.find((n) => !kids.has(n.nodeId)) ?? nodes[0]
-  const map = new Map<string, number>()
+  const r = refsOf(p.wc)
   const lines: string[] = []
-  let n = 0, size = 0, cut = false
+  let size = 0
   const text = (v: AXValue | undefined) => (typeof v?.value === "string" ? v.value : v?.value == null ? "" : String(v.value)).replace(/\s+/g, " ").trim()
   const walk = (node: AXNode | undefined, depth: number) => {
-    if (!node || cut) return
+    if (!node || size > MAX_TREE) return
     const role = text(node.role), name = text(node.name).slice(0, 200)
     const shown = !node.ignored && !SKIP.has(role) && !(role === "StaticText" && !name)
     let d = depth
     if (shown) {
       const props = Object.fromEntries((node.properties ?? []).map((x) => [x.name, x.value?.value]))
       let line = `${"  ".repeat(depth)}- ${role === "StaticText" ? "text" : role}${name ? ` "${name.replace(/"/g, "'")}"` : ""}`
-      if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && node.backendDOMNodeId) {
-        const ref = `e${++n}`
-        map.set(ref, node.backendDOMNodeId)
+      const id = node.backendDOMNodeId
+      if ((INTERACTIVE.has(role) || (props.focusable === true && !!name)) && id) {
+        let ref = r.byNode.get(id)
+        if (!ref) { ref = `e${++r.n}`; r.byNode.set(id, ref); r.byRef.set(ref, id) }
         line += ` [ref=${ref}]`
       }
       const value = text(node.value)
       if (value && value !== name) line += `: ${value.slice(0, 200)}`
       for (const k of ["checked", "pressed", "expanded", "selected", "disabled"]) if (props[k] === true || props[k] === "true" || props[k] === "mixed") line += ` [${k}]`
       size += line.length + 1
-      if (size > MAX_SNAPSHOT) { cut = true; lines.push(`${"  ".repeat(depth)}… (cut short: \`vau browser read\` gives the page's text)`); return }
       lines.push(line)
       d = depth + 1
     }
     for (const c of node.childIds ?? []) walk(byId.get(c), d)
   }
   walk(root, 0)
-  refs.set(p.wc, map)
-  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), snapshot: lines.join("\n") }
+  seen.set(p.wc, { lines, doc: docs.get(p.wc) ?? 0 })
+  return lines
 }
+
+const cut = (lines: string[], max = MAX_SNAPSHOT) => {
+  let size = 0
+  const at = lines.findIndex((l) => (size += l.length + 1) > max)
+  return at < 0 ? lines.join("\n") : `${lines.slice(0, at).join("\n")}\n… (cut short: \`vau browser read\` gives the page's text)`
+}
+async function snapshot(p: EnginePage) {
+  const lines = await tree(p)
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), snapshot: cut(lines) }
+}
+
+/** What changed between two trees: lines gone (-) then new (+), by what they say, not their depth (a wrapper added moves
+ *  nothing). */
+export function changes(before: string[], after: string[]) {
+  const plain = (l: string) => l.trim().replace(/^- /, "")
+  const left = new Map<string, number>()
+  for (const l of before) left.set(plain(l), (left.get(plain(l)) ?? 0) + 1)
+  const added: string[] = []
+  for (const l of after.map(plain)) {
+    const n = left.get(l) ?? 0
+    if (n) left.set(l, n - 1); else added.push(l)
+  }
+  const gone = before.map(plain).filter((l) => { const n = left.get(l) ?? 0; if (n) left.set(l, n - 1); return n > 0 })
+  return [...gone.map((l) => `- ${l}`), ...added.map((l) => `+ ${l}`)]
+}
+
+/** Until the page's DOM is still a moment (300 ms; 2 s at most), so a diff sees what the action drew. */
+const quiet = (p: EnginePage) => p.wc.executeJavaScriptInIsolatedWorld(1014, [{ code: `new Promise((done) => {
+  let t = setTimeout(end, 300)
+  const cap = setTimeout(end, 2000), o = new MutationObserver(() => { clearTimeout(t); t = setTimeout(end, 300) })
+  function end() { o.disconnect(); clearTimeout(t); clearTimeout(cap); done(true) }
+  o.observe(document, { subtree: true, childList: true, attributes: true, characterData: true })
+})` }]).catch(() => {})
+
+/** How many changed lines an act answers: summary (30), none (0, no diff taken) or a number. */
+const diffLimit = (d: unknown) => (d === "none" ? 0 : /^\d+$/.test(String(d ?? "")) ? Math.min(1000, Number(d)) : 30)
 
 // ---------- downloads, by page: where each landed (the app saves them in Downloads, web.ts) ----------
 
@@ -138,8 +192,8 @@ function uploadFiles(files: unknown): string[] {
 // ---------- acting, with real input ----------
 
 async function nodeOf(p: EnginePage, ref: unknown) {
-  const id = refs.get(p.wc)?.get(String(ref))
-  if (!id) throw new Error(`no ref ${String(ref)} in this tab's last snapshot: take one (\`vau browser snapshot ${p.id}\`)`)
+  const id = refsOf(p.wc).byRef.get(String(ref))
+  if (!id) throw new Error(`no ref ${String(ref)} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
   try { await cdp(p.wc, "DOM.scrollIntoViewIfNeeded", { backendNodeId: id }) } catch { throw new Error(`ref ${String(ref)} is gone from the page: take a new snapshot`) }
   const { model } = await cdp<{ model: { content: number[] } }>(p.wc, "DOM.getBoxModel", { backendNodeId: id })
   const q = model.content
@@ -208,9 +262,10 @@ async function settle(p: EnginePage, was: string, since = Date.now()) {
   return { tab: p.id, url, title: p.wc.isDestroyed() ? "" : p.wc.getTitle(), navigated: url !== was, ...(got.length ? { downloads: got.map(shownDownload) } : {}) }
 }
 
-type Act = { action: string; ref?: string; value?: string; key?: string; direction?: string; files?: unknown }
-async function act(p: EnginePage, a: Act) {
-  const was = p.wc.getURL(), since = Date.now()
+type Field = { ref: string; value: string }
+type Act = { action: string; ref?: string; value?: string; key?: string; direction?: string; files?: unknown; fields?: Field[]; diff?: unknown }
+/** One action, with real input, not waiting for what it started. */
+async function step(p: EnginePage, a: Act) {
   const need = (v: unknown, what: string) => { if (v === undefined || v === null || v === "") throw new Error(`${a.action} needs ${what}`); return v }
   switch (a.action) {
     case "click": case "dblclick": case "hover": {
@@ -268,33 +323,83 @@ async function act(p: EnginePage, a: Act) {
     }
     case "scroll": {
       const n = a.ref ? await nodeOf(p, a.ref) : null
-      const dy = { up: -600, down: 600 }[String(a.direction ?? "down")] ?? 600
+      const dy = { up: -600, down: 600 }[String(a.direction ?? a.value ?? "down")] ?? 600
       await cdp(p.wc, "Input.dispatchMouseEvent", { type: "mouseWheel", x: n?.x ?? 400, y: n?.y ?? 300, deltaX: 0, deltaY: dy })
       break
     }
     default: throw new Error(`no action "${a.action}": click, dblclick, hover, fill, type, press, check, uncheck, select, upload or scroll`)
   }
-  return settle(p, was, since)
+}
+
+/** A form's fields, each as its control takes it: typed into a text field, picked in a list, checked or unchecked (true or
+ *  false). Every ref is checked first, so a wrong one fills nothing. */
+async function fillForm(p: EnginePage, fields: Field[]) {
+  const ids = fields.map((f) => {
+    const id = refsOf(p.wc).byRef.get(f.ref)
+    if (!id) throw new Error(`no ref ${f.ref} on this tab's page: take a snapshot (\`vau browser snapshot ${p.id}\`)`)
+    return id
+  })
+  for (const [i, f] of fields.entries()) {
+    const d = await describe(p, ids[i]), type = (d.attrs.type ?? "").toLowerCase(), role = d.attrs.role ?? ""
+    if (d.tag === "input" && type === "file") throw new Error(`${f.ref} is a file input: upload into it (action upload)`)
+    if (d.tag === "select") await step(p, { action: "select", ref: f.ref, value: f.value })
+    else if ((d.tag === "input" && (type === "checkbox" || type === "radio")) || ["checkbox", "radio", "switch"].includes(role)) {
+      await step(p, { action: /^(true|yes|on|1|checked)$/i.test(f.value.trim()) ? "check" : "uncheck", ref: f.ref })
+    } else await step(p, { action: "fill", ref: f.ref, value: f.value })
+  }
+}
+
+/** The fields given (a list of { ref, value }), checked. */
+const fieldsOf = (x: unknown): Field[] => {
+  if (!Array.isArray(x) || !x.length) throw new Error("fields: a list of { ref, value }")
+  return x.slice(0, 200).map((f: { ref?: unknown; value?: unknown }) => {
+    if (!f || typeof f !== "object" || !String(f.ref ?? "").trim()) throw new Error("fields: each needs a ref (e12) and its value")
+    return { ref: String(f.ref).trim(), value: typeof f.value === "string" ? f.value : f.value == null ? "" : String(f.value) }
+  })
+}
+
+/** An action (or a whole form, `fields`) settled: where the tab is, what it downloaded, and what changed on the page since
+ *  the agent last saw it (`diff`: lines, or the new page's when it went to another; none takes no tree). */
+async function act(p: EnginePage, a: Act) {
+  const limit = diffLimit(a.diff)
+  if (limit && !seen.has(p.wc)) await tree(p)
+  const before = seen.get(p.wc), was = p.wc.getURL(), since = Date.now()
+  if (a.fields) await fillForm(p, fieldsOf(a.fields)); else await step(p, a)
+  const r = await settle(p, was, since)
+  if (!limit || p.wc.isDestroyed()) return r
+  await quiet(p)
+  const lines = await tree(p).catch(() => null)
+  if (!lines) return r
+  const page = !before || before.doc !== (docs.get(p.wc) ?? 0)
+  const all = page ? lines : changes(before.lines, lines)
+  return { ...r, navigated: r.navigated || page, diff: { page, lines: all.slice(0, limit), more: Math.max(0, all.length - limit) } }
 }
 
 // ---------- what agents did, kept for replay (this Mac's userData, never the vault) ----------
 
 const RUNS = () => path.join(app.getPath("userData"), "agent-runs")
 const KEEP_DAYS = 14
-/** Who asked: the agent's name, its session (the op's caller) and the task it named, a run each a day. */
-type By = { name?: string; session?: string; task?: string }
+/** Who asked: the agent's name, its session (the op's caller), the task it named and what it said it's doing (`summary`,
+ *  given on open), a run each a day. */
+type By = { name?: string; session?: string; task?: string; summary?: string }
 const runOf = (by: By) => `${new Date().toISOString().slice(0, 10)}-${[by.session || by.name || "agent", by.task].filter(Boolean).join("-").replace(/[^\w.-]+/g, "_").slice(0, 80)}`
 /** An agent's tabs' group in the window, Neo's way: "<agent>/<task>". */
 const groupOf = (by: By) => [by.name || "Agent", by.task].filter(Boolean).join("/")
 const sameAgent = (a: By, b: By) => (a.name ?? "") === (b.name ?? "") && (a.session ?? "") === (b.session ?? "") && (!b.task || a.task === b.task)
+/** Each page's last step, for the live list: who, in which run, and what. */
+const latest = new Map<number, { by: By; run: string; t: number; step: Record<string, unknown> }>()
+/** Live: a page an agent opened, or did something in this last while. */
+const LIVE_MS = 120_000
 
 async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
   // (a step not naming its task is the one the tab was opened for)
-  const by = asked.task ? asked : { ...asked, task: owners.get(p.id)?.task }
+  const owner = owners.get(p.id)
+  const by = { ...asked, task: asked.task || owner?.task, summary: asked.summary || (owner && sameAgent(owner, asked) ? owner.summary : undefined) }
+  const run = runOf(by), t = Date.now()
+  latest.set(p.id, { by, run, t, step })
   try {
-    const dir = path.join(RUNS(), runOf(by))
+    const dir = path.join(RUNS(), run)
     fs.mkdirSync(dir, { recursive: true })
-    const t = Date.now()
     let shot = ""
     if (p.visible() && !p.wc.isDestroyed()) {
       const img = await p.wc.capturePage().catch(() => null)
@@ -304,7 +409,8 @@ async function record(p: EnginePage, asked: By, step: Record<string, unknown>) {
         fs.writeFileSync(path.join(dir, shot), (width > 1200 ? img.resize({ width: 1200 }) : img).toJPEG(70))
       }
     }
-    fs.appendFileSync(path.join(dir, "steps.jsonl"), JSON.stringify({ t, tab: p.id, by: by.name ?? "", url: p.wc.getURL(), title: p.wc.getTitle(), ...step, ...(shot ? { shot } : {}) }) + "\n")
+    fs.appendFileSync(path.join(dir, "steps.jsonl"), JSON.stringify({ t, tab: p.id, by: by.name ?? "", ...(by.task ? { task: by.task } : {}),
+      ...(by.summary ? { summary: by.summary } : {}), url: p.wc.getURL(), title: p.wc.getTitle(), ...step, ...(shot ? { shot } : {}) }) + "\n")
   } catch (e) { console.error("vaultite: an agent's step wasn't kept:", e) }
 }
 setTimeout(() => {
@@ -320,9 +426,9 @@ setTimeout(() => {
 /** Tell the window an agent is at work in a tab (its bar shows who and what, a moment). */
 const acting = (p: EnginePage, by: By, what: string) => tell(p.win, { type: "engine:agent:acting", id: p.id, by: by.name || "An agent", what })
 
-/** An element's name for the log ("Sign in"), from the last snapshot's refs. */
+/** An element's name for the log ("Sign in"), from its ref. */
 async function nameOf(p: EnginePage, ref: unknown) {
-  const id = refs.get(p.wc)?.get(String(ref))
+  const id = refsOf(p.wc).byRef.get(String(ref))
   if (!id) return ""
   try {
     const { nodes } = await cdp<{ nodes: AXNode[] }>(p.wc, "Accessibility.getPartialAXTree", { backendNodeId: id, fetchRelatives: false })
@@ -330,25 +436,195 @@ async function nameOf(p: EnginePage, ref: unknown) {
     return typeof v === "string" ? v.slice(0, 80) : ""
   } catch { return "" }
 }
+/** What the log keeps of a field: its name, never what's typed into a password field. */
+async function logged(p: EnginePage, ref: string | undefined, value: unknown) {
+  const id = ref ? refsOf(p.wc).byRef.get(ref) : undefined
+  const secret = id ? await describe(p, id).then((d) => d.attrs.type === "password", () => false) : false
+  return { name: ref ? await nameOf(p, ref) : "", value: secret ? "•••" : value }
+}
 
-// ---------- the calls ----------
+// ---------- the calls, the server's and a run's alike ----------
 
 const byOf = (x: unknown): By => {
   if (!x || typeof x !== "object") return {}
-  const s = (k: keyof By) => String((x as By)[k] ?? "").trim().slice(0, 80) || undefined
-  return { name: s("name"), session: s("session"), task: s("task") }
+  const s = (k: keyof By, n = 80) => String((x as By)[k] ?? "").replace(/\s+/g, " ").trim().slice(0, n) || undefined
+  return { name: s("name"), session: s("session"), task: s("task"), summary: s("summary", 300) }
 }
-/** The web pages, each with whose it is: an agent's (`by`, and `mine` for the one asking) or the user's. */
+
+async function actIn(p: EnginePage, a: Act, who: By) {
+  if (a.fields) {
+    const fields = fieldsOf(a.fields)
+    const kept = await Promise.all(fields.map(async (f) => ({ ref: f.ref, ...(await logged(p, f.ref, f.value)) })))
+    acting(p, who, `filling ${fields.length === 1 ? "a field" : `${fields.length} fields`}`)
+    const r = await act(p, { ...a, action: "fill", fields })
+    void record(p, who, { action: "form", fields: kept })
+    return r
+  }
+  const files = a.action === "upload" && Array.isArray(a.files) ? (a.files as { name?: unknown }[]).map((f) => String(f?.name ?? "")).join(", ") : ""
+  const kept = await logged(p, a.ref, files || (a.value ?? a.key ?? a.direction))
+  acting(p, who, `${a.action}${kept.name ? ` “${kept.name}”` : ""}`)
+  const r = await act(p, a)
+  void record(p, who, { action: a.action, ref: a.ref, ...kept })
+  return r
+}
+
+async function readIn(p: EnginePage) {
+  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: "({ url: location.href, title: document.title, text: document.body ? document.body.innerText : '' })" }]) as { url: string; title: string; text: string }
+  return { tab: p.id, ...r, text: r.text.length > 200_000 ? `${r.text.slice(0, 200_000)}\n… (cut short)` : r.text }
+}
+
+type Wait = { text?: string; url?: string; download?: boolean; helped?: boolean }
+async function waitIn(p: EnginePage, w: Wait, ms: unknown) {
+  const wait = Math.min(60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
+  const code = `(() => { const t = ${JSON.stringify(String(w.text ?? ""))}; return !t || (document.body?.innerText ?? "").includes(t) })()`
+  const last = () => (downloads.get(p.wc) ?? []).at(-1)
+  if (w.helped && asks.has(p.id)) {
+    // (the user's Done ends it at once, not at the next look)
+    await new Promise<void>((done) => {
+      const set = helpWaits.get(p.id) ?? new Set()
+      helpWaits.set(p.id, set)
+      const end = () => { clearTimeout(timer); set.delete(end); done() }
+      const timer = setTimeout(end, wait)
+      set.add(end)
+    })
+    if (asks.has(p.id)) throw new Error(`waited ${Math.round(wait / 1000)} s: the user hasn't said it's done yet (they still see what you asked): wait again`)
+  }
+  for (;;) {
+    const d = last()
+    const ok = (!w.url || p.wc.getURL().includes(String(w.url))) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading()
+      && await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code }]).catch(() => false)
+    if (ok) return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), ...(w.download && d ? { download: shownDownload(d) } : {}) }
+    if (Date.now() > until) {
+      throw new Error(`waited ${Math.round(wait / 1000)} s: ${w.text ? `no "${w.text}"` : w.url ? `not at ${w.url}` : w.download ? (d ? `${d.name} is still downloading` : "nothing downloaded in this tab") : "still loading"}`)
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+}
+
+async function navigateIn(p: EnginePage, to: unknown, who: By) {
+  const was = p.wc.getURL(), t = String(to ?? "")
+  if (!["back", "forward", "reload"].includes(t) && !/^https?:\/\//i.test(t)) throw new Error("an http(s) address, back, forward or reload")
+  acting(p, who, t === "back" ? "going back" : t === "forward" ? "going forward" : t === "reload" ? "reloading" : `opening ${t}`)
+  const h = p.wc.navigationHistory
+  if (t === "back") { if (h.canGoBack()) h.goBack() } else if (t === "forward") { if (h.canGoForward()) h.goForward() }
+  else if (t === "reload") p.wc.reload()
+  else void p.wc.loadURL(t).catch(() => {})
+  const r = await settle(p, was)
+  void record(p, who, { action: "navigate", value: t })
+  return r
+}
+
+/** The page's web pages, each with whose it is: an agent's (`by`, and `mine` for the one asking) or the user's. */
 const listOf = (asking: By) => allPages().filter((p) => !p.wc.isDestroyed() && /^https?:/i.test(p.wc.getURL() || p.url)).map((p) => {
   const owner = owners.get(p.id)
   return {
     tab: p.id, url: p.wc.getURL() || p.url, title: p.wc.getTitle(), container: p.profile.startsWith("c-") ? p.profile.slice(2) : null,
     access: accessOf(p), shown: p.visible(), by: owner ? groupOf(owner) : null, mine: !!owner && sameAgent(owner, asking),
+    ...(owner?.summary ? { summary: owner.summary } : {}),
     ...(paused.has(p.id) ? { paused: true } : {}), ...(asks.has(p.id) ? { asking: asks.get(p.id)!.reason } : {}),
   }
 })
 
-// The app's: what agents may do in each profile, and where their tabs open.
+// ---------- run: an agent's script composing the calls, in a sandbox of its own ----------
+
+/** The script's page: Chromium's sandbox, a session with no network, no permissions and nothing kept. */
+let sandbox: Session | null = null
+function sandboxSession() {
+  if (sandbox) return sandbox
+  const s = session.fromPartition("vaultite-agent-run")
+  s.webRequest.onBeforeRequest((_d, done) => done({ cancel: true }))
+  s.setPermissionRequestHandler((_wc, _what, done) => done(false))
+  s.setPermissionCheckHandler(() => false)
+  return (sandbox = s)
+}
+const RUN_MS = 30_000
+const CALL = "vaultite-run:"
+/** In the script's page: the calls it has (each a message to this side), what it logs, and the script run as an async
+ *  function's body. */
+const BRIDGE = `(() => {
+  const waits = new Map(), logs = []
+  let n = 0
+  window.__answer = (id, ok, v) => { const w = waits.get(id); if (!w) return; waits.delete(id); if (ok) w.ok(v); else w.fail(new Error(v)) }
+  const call = (name, ...args) => new Promise((ok, fail) => { const id = ++n; waits.set(id, { ok, fail }); console.debug(${JSON.stringify(CALL)} + JSON.stringify({ id, name, args })) })
+  const log = (...a) => { if (logs.length < 500) logs.push(a.map((x) => typeof x === "string" ? x : JSON.stringify(x)).join(" ").slice(0, 2000)) }
+  window.__run = async (script) => {
+    const api = {
+      snapshot: () => call("snapshot"),
+      act: (action, ref, value) => call("act", action && typeof action === "object" ? action : { action, ref, value }),
+      fill: (fields) => call("act", { action: "fill", fields: Array.isArray(fields) ? fields : Object.entries(fields ?? {}).map(([ref, value]) => ({ ref, value: String(value) })) }),
+      ref: (name, role) => call("ref", name, role),
+      read: () => call("read"),
+      wait: (what) => call("wait", what ?? {}),
+      go: (to) => call("go", to),
+      sleep: (ms) => new Promise((r) => setTimeout(r, Math.min(30000, Number(ms) || 0))),
+      log,
+    }
+    try {
+      const fn = new (async function () {}).constructor(...Object.keys(api), "console", script)
+      const value = await fn(...Object.values(api), { log, info: log, warn: log, error: log, debug: log })
+      return { value: value === undefined ? null : JSON.parse(JSON.stringify(value)), logs }
+    } catch (e) { return { error: String(e && e.message || e), logs } }
+  }
+})()`
+
+/** The first control whose name has `name` (an exact one first), of `role` if given: its ref, or null. */
+async function refIn(p: EnginePage, name: unknown, role: unknown) {
+  const want = String(name ?? "").trim().toLowerCase(), r = String(role ?? "").trim()
+  const hits = (await tree(p)).map((l) => /^\s*- (\S+) "([^"]*)".*\[ref=(e\d+)\]/.exec(l)).filter((m): m is RegExpExecArray => !!m && (!r || m[1] === r))
+  const hit = hits.find((m) => m[2].toLowerCase() === want) ?? hits.find((m) => m[2].toLowerCase().includes(want))
+  return hit?.[3] ?? null
+}
+
+async function runIn(p: EnginePage, script: string, who: By) {
+  if (!script.trim()) throw new Error("run needs a script")
+  const view = new WebContentsView({ webPreferences: { session: sandboxSession(), sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } })
+  const wc = view.webContents
+  wc.setWindowOpenHandler(() => ({ action: "deny" }))
+  wc.on("will-navigate", (e) => e.preventDefault())
+  // (each call checks the tab's access again: the user may pause agents mid-run)
+  const calls: Record<string, (...a: unknown[]) => Promise<unknown>> = {
+    snapshot: async () => (await snapshot(pageFor(p.id, "read"))).snapshot,
+    act: (a) => actIn(pageFor(p.id, "act"), { diff: "none", ...(a && typeof a === "object" ? a as Act : { action: "" }) }, who),
+    ref: (name, role) => refIn(pageFor(p.id, "read"), name, role),
+    read: async () => (await readIn(pageFor(p.id, "read"))).text,
+    wait: (w) => { const x = (w && typeof w === "object" ? w : {}) as Wait & { timeout?: number }; return waitIn(pageFor(p.id, "read"), x, (Number(x.timeout) || 10) * 1000) },
+    go: (to) => navigateIn(pageFor(p.id, "act"), to, who),
+  }
+  const answer = (id: unknown, ok: boolean, v: unknown) => {
+    if (!wc.isDestroyed()) void wc.executeJavaScript(`window.__answer(${JSON.stringify(id)}, ${ok}, ${JSON.stringify(v ?? null)})`).catch(() => {})
+  }
+  wc.on("console-message", (e) => {
+    if (!e.message.startsWith(CALL)) return
+    let m: { id?: unknown; name?: unknown; args?: unknown[] }
+    try { m = JSON.parse(e.message.slice(CALL.length)) } catch { return }
+    const fn = calls[String(m.name)]
+    void (fn ? fn(...(Array.isArray(m.args) ? m.args : [])) : Promise.reject(new Error(`no call ${String(m.name)}`)))
+      .then((v) => answer(m.id, true, v), (err: Error) => answer(m.id, false, err.message))
+  })
+  acting(p, who, "running a script")
+  void record(p, who, { action: "run", value: script.slice(0, 2000) })
+  let late = false, timer: NodeJS.Timeout | undefined
+  try {
+    await wc.loadURL("about:blank")
+    await wc.executeJavaScript(BRIDGE)
+    const out = await Promise.race([
+      wc.executeJavaScript(`window.__run(${JSON.stringify(script)})`) as Promise<{ value?: unknown; error?: string; logs: string[] }>,
+      new Promise<never>((_r, fail) => { timer = setTimeout(() => { late = true; fail(new Error(`the script took over ${RUN_MS / 1000} s: it was stopped`)) }, RUN_MS) }),
+    ])
+    if (out.error) throw new Error(`the script failed: ${out.error}${out.logs.length ? `\nIt logged:\n${out.logs.join("\n")}` : ""}`)
+    let value = JSON.stringify(out.value ?? null) ?? "null"
+    if (value.length > 100_000) value = `${value.slice(0, 100_000)}… (cut short)`
+    return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value, logs: out.logs }
+  } finally {
+    clearTimeout(timer)
+    if (late && !wc.isDestroyed()) wc.forcefullyCrashRenderer()
+    if (!wc.isDestroyed()) wc.close()
+  }
+}
+
+// ---------- the app's ----------
+
+// What agents may do in each profile, and where their tabs open.
 handle("agents:access", (_win, map, where) => {
   const next = new Map<string, Access>()
   if (map && typeof map === "object") for (const [k, v] of Object.entries(map)) if (/^[a-z0-9-]{1,32}$/.test(k) && (v === "read" || v === "act")) next.set(k, v)
@@ -367,13 +643,29 @@ handle("agents:pause", (_win, id, on) => {
   if (on) paused.add(Number(id)); else paused.delete(Number(id))
   for (const p of allPages()) if (p.id === Number(id)) tell(p.win, { type: "engine:agent:paused", id: p.id, on: !!on })
 })
+// The pages agents are at work in now, each with a small picture of it as it is.
+handle("agents:live", async () => {
+  const now = Date.now()
+  const live = allPages().filter((p) => !p.wc.isDestroyed() && (owners.has(p.id) || (latest.get(p.id)?.t ?? 0) > now - LIVE_MS))
+  return Promise.all(live.map(async (p) => {
+    const last = latest.get(p.id), by = last?.by ?? owners.get(p.id) ?? {}
+    const img = await p.wc.capturePage(undefined, { stayHidden: true }).catch(() => null)
+    return {
+      tab: p.id, appTab: p.tab(), by: by.name ?? "", task: by.task ?? "", summary: by.summary ?? "", url: p.wc.getURL(), title: p.wc.getTitle(),
+      run: last?.run ?? null, at: last?.t ?? null, step: last?.step ?? null, paused: paused.has(p.id), asking: asks.get(p.id)?.reason ?? null,
+      shot: img && !img.isEmpty() ? `data:image/jpeg;base64,${img.resize({ width: 640 }).toJPEG(65).toString("base64")}` : null,
+    }
+  }))
+})
 handle("agents:runs", () => {
   try {
-    return fs.readdirSync(RUNS()).sort().reverse().slice(0, 100).flatMap((d) => {
+    return fs.readdirSync(RUNS()).sort().reverse().slice(0, 200).flatMap((d) => {
       try {
-        const lines = fs.readFileSync(path.join(RUNS(), d, "steps.jsonl"), "utf8").trim().split("\n")
-        const first = JSON.parse(lines[0]), last = JSON.parse(lines[lines.length - 1])
-        return [{ run: d, by: first.by as string, steps: lines.length, start: first.t as number, end: last.t as number, title: last.title as string, url: last.url as string }]
+        const steps = fs.readFileSync(path.join(RUNS(), d, "steps.jsonl"), "utf8").trim().split("\n").map((l) => JSON.parse(l) as Record<string, unknown>)
+        const first = steps[0], last = steps[steps.length - 1]
+        const said = (k: string) => String(steps.findLast((s) => typeof s[k] === "string" && s[k])?.[k] ?? "")
+        return [{ run: d, by: first.by as string, task: said("task"), summary: said("summary"), steps: steps.length, start: first.t as number, end: last.t as number,
+          title: last.title as string, url: last.url as string }]
       } catch { return [] }
     })
   } catch { return [] }
@@ -386,7 +678,8 @@ handle("agents:run", (_win, run) => {
   return steps.map((s) => ({ ...s, shot: typeof s.shot === "string" && /^\d+\.jpg$/.test(s.shot) ? `data:image/jpeg;base64,${fs.readFileSync(path.join(dir, s.shot)).toString("base64")}` : null }))
 })
 
-// The server's (its agents', checked here whatever the server says).
+// ---------- the server's (its agents', checked here whatever the server says) ----------
+
 handle("agent:tabs", (_win, by) => listOf(byOf(by)))
 handle("agent:open", async (win, url, container, by) => {
   const u = String(url ?? "")
@@ -410,11 +703,7 @@ handle("agent:open", async (win, url, container, by) => {
   }
 })
 handle("agent:snapshot", (_win, tab) => snapshot(pageFor(tab, "read")))
-handle("agent:read", async (_win, tab) => {
-  const p = pageFor(tab, "read")
-  const r = await p.wc.executeJavaScriptInIsolatedWorld(1011, [{ code: "({ url: location.href, title: document.title, text: document.body ? document.body.innerText : '' })" }]) as { url: string; title: string; text: string }
-  return { tab: p.id, ...r, text: r.text.length > 200_000 ? `${r.text.slice(0, 200_000)}\n… (cut short)` : r.text }
-})
+handle("agent:read", (_win, tab) => readIn(pageFor(tab, "read")))
 handle("agent:close", async (_win, tab) => {
   const p = allPages().find((x) => x.id === Number(tab))
   if (!p || p.wc.isDestroyed()) throw new Error(`no tab ${String(tab)}: \`vau browser tabs\` lists them`)
@@ -435,6 +724,13 @@ handle("agent:screenshot", async (_win, tab) => {
   const { width } = img.getSize()
   return { tab: p.id, png: (width > SHOT_WIDTH ? img.resize({ width: SHOT_WIDTH }) : img).toPNG().toString("base64") }
 })
+handle("agent:pdf", async (_win, tab, by) => {
+  const p = pageFor(tab, "read")
+  const pdf = await p.wc.printToPDF({ printBackground: true })
+  if (pdf.length > 50 << 20) throw new Error("the page makes a PDF over 50 MB")
+  void record(p, byOf(by), { action: "pdf" })
+  return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), pdf: pdf.toString("base64") }
+})
 handle("agent:evaluate", async (_win, tab, expression, by) => {
   const p = pageFor(tab, "act")
   const code = String(expression ?? "")
@@ -449,6 +745,7 @@ handle("agent:evaluate", async (_win, tab, expression, by) => {
   if (json.length > 100_000) json = `${json.slice(0, 100_000)}… (cut short)`
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), value: json }
 })
+handle("agent:run", (_win, tab, script, by) => runIn(pageFor(tab, "act"), String(script ?? ""), byOf(by)))
 handle("agent:help", (_win, tab, reason, by) => {
   const p = pageFor(tab, "read")
   const why = String(reason ?? "").replace(/\s+/g, " ").trim().slice(0, 300)
@@ -459,46 +756,8 @@ handle("agent:help", (_win, tab, reason, by) => {
   void record(p, who, { action: "help", value: why })
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-handle("agent:wait", async (_win, tab, what, ms) => {
-  const p = pageFor(tab, "read")
-  const w = (what && typeof what === "object" ? what : {}) as { text?: string; url?: string; download?: boolean; helped?: boolean }
-  const wait = Math.min(60_000, Math.max(100, Number(ms) || 10_000)), until = Date.now() + wait
-  const code = `(() => { const t = ${JSON.stringify(String(w.text ?? ""))}; return !t || (document.body?.innerText ?? "").includes(t) })()`
-  const latest = () => (downloads.get(p.wc) ?? []).at(-1)
-  if (w.helped && asks.has(p.id)) {
-    // (the user's Done ends it at once, not at the next look)
-    await new Promise<void>((done) => {
-      const set = helpWaits.get(p.id) ?? new Set()
-      helpWaits.set(p.id, set)
-      const end = () => { clearTimeout(timer); set.delete(end); done() }
-      const timer = setTimeout(end, wait)
-      set.add(end)
-    })
-    if (asks.has(p.id)) throw new Error(`waited ${Math.round(wait / 1000)} s: the user hasn't said it's done yet (they still see what you asked): wait again`)
-  }
-  for (;;) {
-    const d = latest()
-    const ok = (!w.url || p.wc.getURL().includes(String(w.url))) && (!w.download || (!!d && d.state !== "progressing")) && !p.wc.isLoading()
-      && await p.wc.executeJavaScriptInIsolatedWorld(1012, [{ code }]).catch(() => false)
-    if (ok) return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle(), ...(w.download && d ? { download: shownDownload(d) } : {}) }
-    if (Date.now() > until) {
-      throw new Error(`waited ${Math.round(wait / 1000)} s: ${w.text ? `no "${w.text}"` : w.url ? `not at ${w.url}` : w.download ? (d ? `${d.name} is still downloading` : "nothing downloaded in this tab") : "still loading"}`)
-    }
-    await new Promise((r) => setTimeout(r, 200))
-  }
-})
-handle("agent:navigate", async (_win, tab, to, by) => {
-  const p = pageFor(tab, "act"), was = p.wc.getURL(), t = String(to ?? "")
-  if (!["back", "forward", "reload"].includes(t) && !/^https?:\/\//i.test(t)) throw new Error("an http(s) address, back, forward or reload")
-  acting(p, byOf(by), t === "back" ? "going back" : t === "forward" ? "going forward" : t === "reload" ? "reloading" : `opening ${t}`)
-  const h = p.wc.navigationHistory
-  if (t === "back") { if (h.canGoBack()) h.goBack() } else if (t === "forward") { if (h.canGoForward()) h.goForward() }
-  else if (t === "reload") p.wc.reload()
-  else void p.wc.loadURL(t).catch(() => {})
-  const r = await settle(p, was)
-  void record(p, byOf(by), { action: "navigate", value: t })
-  return r
-})
+handle("agent:wait", (_win, tab, what, ms) => waitIn(pageFor(tab, "read"), (what && typeof what === "object" ? what : {}) as Wait, ms))
+handle("agent:navigate", (_win, tab, to, by) => navigateIn(pageFor(tab, "act"), to, byOf(by)))
 // (any tab, whatever its container lets agents do: it moves the page to a window, nothing in it is read or done)
 handle("agent:player", (_win, tab, on, fullScreen) => {
   const p = allPages().find((x) => x.id === Number(tab))
@@ -507,22 +766,10 @@ handle("agent:player", (_win, tab, on, fullScreen) => {
   p.player(on !== false, fullScreen !== false)
   return { tab: p.id, url: p.wc.getURL(), title: p.wc.getTitle() }
 })
-handle("agent:act", async (_win, tab, a, by) => {
-  const p = pageFor(tab, "act")
-  const step = (a && typeof a === "object" ? a : {}) as Act
-  const who = byOf(by), name = step.ref ? await nameOf(p, step.ref) : ""
-  const files = step.action === "upload" && Array.isArray(step.files) ? (step.files as { name?: unknown }[]).map((f) => String(f?.name ?? "")).join(", ") : ""
-  // (what's typed into a password field isn't kept)
-  const id = step.ref ? refs.get(p.wc)?.get(String(step.ref)) : undefined
-  const secret = id ? await describe(p, id).then((d) => d.attrs.type === "password", () => false) : false
-  acting(p, who, `${step.action}${name ? ` “${name}”` : ""}`)
-  const r = await act(p, step)
-  void record(p, who, { action: step.action, ref: step.ref, name, value: secret ? "•••" : files || (step.value ?? step.key ?? step.direction) })
-  return r
-})
+handle("agent:act", (_win, tab, a, by) => actIn(pageFor(tab, "act"), (a && typeof a === "object" ? a : {}) as Act, byOf(by)))
 
-// A page that ends isn't paused, anyone's, or asking any more.
-eachPage((p) => p.wc.once("destroyed", () => { paused.delete(p.id); owners.delete(p.id); helped(p.id) }))
+// A page that ends isn't paused, anyone's, live or asking any more.
+eachPage((p) => p.wc.once("destroyed", () => { paused.delete(p.id); owners.delete(p.id); latest.delete(p.id); helped(p.id) }))
 // Files given to file inputs, a day on.
 setTimeout(() => {
   try {

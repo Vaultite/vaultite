@@ -6,6 +6,10 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Agents in the browser: `act` answers what changed on the page once it settles (`--diff`) and fills a whole form at
+  once (`--fields`), refs last while their element does, `browser run` does a whole flow in one call (a script in a
+  sandbox, 30 s), and `browser pdf` saves a page into the vault. "Show agents in the browser" shows the tabs agents work
+  in now, live, with Show tab and Pause, then past runs searched by agent, task or the summary given on open.
 - Agents' lines: what agents write in a note is marked theirs by line, kept beside the note (never in its text) and
   found again as you edit: a thin bar in the writer's colour by each line, hover (or a held finger's menu) for who,
   model, effort and when; a line you edit after an agent shows as both. Provenance's setting Agents' lines: a bar,

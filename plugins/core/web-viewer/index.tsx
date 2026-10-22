@@ -226,7 +226,7 @@ export default definePlugin({
   },
   commands: [
     { id: "web:open", name: "Open web page…", desktop: true, when: () => !!webPages, run: () => askAddress() },
-    { id: "web:agent-runs", name: "Show what agents did in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
+    { id: "web:agent-runs", name: "Show agents in the browser", desktop: true, when: () => !!webPages?.engine, icon: Bot,
       run: () => openView("agent-runs", { newTab: !isViewOpen("view:agent-runs") }) },
     { id: "web:default-browser", name: "Make Vaultite the default browser", desktop: true, when: () => !!webPages?.engine, icon: Globe,
       run: () => void Promise.resolve(webPages?.engine?.("browser:make-default")).then((yes) => notify(yes ? "Vaultite is the default browser: links from other apps open here" : "Confirm it in the box macOS shows"), (e) => notifyError(e, "Couldn't make it the default browser")) },
