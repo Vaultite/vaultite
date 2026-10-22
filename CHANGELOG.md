@@ -13,6 +13,11 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 - Another machine's sessions reach this app again after a laptop sleeps or changes network, and their permissions are
   approved, denied and replied to from here, the phone (Reply on the notification) and the watch; only the machine the
   session runs on sends the phone's push.
+- Agents' tabs show their state as a browser tab shows a page loading: a spinner while one works, a dot when it needs
+  you (it waits on you, or its Inbox row is unread), a check once it's done with nothing for you, on the tab bar, the
+  Tabs panel, the phone's tabs and Terminals, which lists the ones that need you first, in bold. Closing an agent's
+  tab leaves it running there; End session ends it (asking only while it works), and a session dispatched from a note
+  opens beside that note's tab, in its tab group.
 - Ask an agent in the background: a small box (the palette's look) takes a question, and Enter starts it in a new
   Claude Code session with no tab, where the workspace's new sessions go (the agent, account and machine are picked
   under the field, remembered per workspace); a toast says what was asked, with Open. `vau terminal ask` does the same.

@@ -2,7 +2,7 @@ import { lazy, Suspense, useEffect, useSyncExternalStore } from "react"
 import { Bot, FileText, LogOut, MessageSquareText, Server, SquareTerminal, SquareX } from "lucide-react"
 import { agentOfTerminal, AmbientButton, canRunAgents, chooseDefaultPlace, choosePlace, definePlugin, getTabLayout, Group, isMac, isViewOpen, Loading, onTabLayoutChange, openTerminal, openView,
   PageHeader, Panel, SettingRow, useLive, viewsChanged } from "@vaultite"
-import { agentIn, current, endForGood, getSessions, labelOf, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
+import { agentIn, current, endForGood, getSessions, iconOf, labelOf, needsYou, pinOfTerminal, runningResume, sessionById, stateClass, subscribeSessions, tabClosed, tintOf, waiting } from "./sessions"
 import { about, SessionList, Sessions, useSessions } from "./SessionsPanel"
 import { TerminalsView } from "./TerminalsView"
 import { AskBox, openAsk } from "./AskBox"
@@ -19,7 +19,7 @@ function Preview() {
       <p className="text-[15px] leading-[20px] text-muted-foreground">
         A shell in a tab, started in the vault's folder: run a coding agent (Claude Code, Codex, OpenCode, Cursor) on your
         notes without leaving the app. Open one from the command palette or the Terminals panel, in a new tab or in a split
-        on the right. Reloading, or the server restarting, keeps the shell running, with its history. Closing its tab ends a shell at its prompt, but whatever runs in one (an agent, a server) keeps running in the Terminals panel until you end it there; typing exit closes the tab. Pasted screenshots
+        on the right. Reloading, or the server restarting, keeps the shell running, with its history. Closing its tab ends a shell at its prompt, but whatever runs in one (an agent, a server) keeps running in the Terminals panel until you end it (End session); typing exit closes the tab. An agent's tab shows what it's doing: a spinner while it works, a dot when it needs you, a check once you've seen what it finished. Pasted screenshots
         reach the shell as files.
       </p>
       <pre className="mt-3 rounded-[8px] bg-background px-3 py-2 font-mono text-[12px] leading-[17px]">
@@ -81,7 +81,9 @@ export default definePlugin({
       // The session's own name, colour and state, as its row in the Terminals panel and the rail show them (an agent's
       // session name, a running program); until the server has said, what it was opened as.
       icon: SquareTerminal,
-      iconFor: (arg) => { const s = sessionById(arg); return (s ? agentIn(s) : agentOfTerminal(arg))?.icon ?? SquareTerminal },
+      // Its state as a browser tab shows a page's: a spinner while its agent works, a dot while it needs you, a check
+      // once what it finished was seen (sessions.ts: iconOf, needsYou).
+      iconFor: (arg) => { const s = sessionById(arg); return (s ? iconOf(s) : agentOfTerminal(arg)?.icon) ?? SquareTerminal },
       title: (arg) => {
         const s = sessionById(arg), label = s ? labelOf(s) : agentOfTerminal(arg)?.label ?? "Terminal"
         const on = s?.machineLabel ?? (arg.includes("@") ? arg.slice(arg.indexOf("@") + 1) : "")
@@ -89,15 +91,17 @@ export default definePlugin({
       },
       iconClass: (arg) => { const s = sessionById(arg); return s ? stateClass(s) : undefined },
       iconTint: (arg) => { const s = sessionById(arg); return s ? tintOf(s) : agentOfTerminal(arg)?.tint },
-      iconBadge: (arg) => { const s = sessionById(arg); return !!s && waiting(s) },
+      iconBadge: (arg) => { const s = sessionById(arg); return !!s && needsYou(s) },
+      // Started on a note (Dispatch): its tab opens beside that note's, in its tab group.
+      opensBeside: (arg) => { const n = sessionById(arg)?.note; return n ? `file:${n}` : null },
       full: true,
       // Links, pages and other views open beside a terminal, never in its tab.
       keepsTab: true,
       // A coding agent's terminal pins as its conversation, and a pin opens the terminal running it, else resumes it.
       pinAs: pinOfTerminal,
       resolve: runningResume,
-      // Its last tab closed: an idle shell ends, one running something keeps running (sessions.ts: tabClosed). Ending
-      // for good is the Terminals row's …, the tab's End session, or the command.
+      // Its last tab closed: an idle shell ends, one running something (an agent) keeps running, detached (sessions.ts:
+      // tabClosed). Ending for good is the Terminals row's …, the tab's End session, or the command.
       onClose: (arg) => tabClosed(arg || "main"),
       tabMenu: (arg) => [{ label: "End session", icon: SquareX, danger: true, run: () => void endForGood(arg || "main") }],
       render: ({ arg, focused, close }) => (

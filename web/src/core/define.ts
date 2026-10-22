@@ -236,6 +236,9 @@ export type ViewDef = {
   render: (ctx: ViewCtx) => ReactNode
   /** Draw edge to edge, filling the pane below the tab bar (no path bar, no page margins): a terminal. */
   full?: boolean
+  /** The tab a new tab of it opens beside, in that tab's pane and tab group, when one shows it (`file:Notes/Idea.md`: a
+   *  session started on that note), as a browser opens a tab beside the one it came from; null: beside the current one. */
+  opensBeside?: (arg: string) => string | null
   /** Its tab is its own (a terminal): opening anything else from it (a link, the sidebar, Graph view) opens beside it,
    *  never in its place, so it's never navigated away from by accident. */
   keepsTab?: boolean

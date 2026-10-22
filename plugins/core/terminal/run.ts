@@ -31,7 +31,11 @@ export function askTitle(prompt: string) {
 
 const pause = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
-export function runOps(plugin: Plugin) {
+/** What the server keeps of a run: the note a session was started on (its tab opens by that note's), and a way to tell
+ *  the app's lists now, so a tab opened right after knows it. */
+type Keep = { startedOn: (id: string, rel: string) => void; listNow: () => Promise<void> }
+
+export function runOps(plugin: Plugin, keep: Keep) {
   /** The machine `id` names when it isn't this one (Machines), else null. */
   async function machineFor(id: string | undefined): Promise<Machine | null> {
     if (!id) return null
@@ -175,6 +179,10 @@ accounts (Claude Code: its config folders). A vault plugin's schedule runs a not
         started.set(key, p)
         p.catch(() => { if (started.get(key) === p) started.delete(key) })
         r = await p
+      }
+      if (!m) {
+        keep.startedOn(r.id, rel)
+        await keep.listNow().catch(() => {})
       }
       let shown = false
       if (open ?? !r.handed) {

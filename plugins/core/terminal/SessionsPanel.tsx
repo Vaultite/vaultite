@@ -1,14 +1,14 @@
-// The Terminals panel: every shell the server runs (sessions outlive tabs), live, with agents' states and other
-// machines' sessions, waiting on you first; on the desktop app, then Claude Code on the web's (cloud.ts).
+// The Terminals panel: every shell the server runs (sessions outlive tabs: a closed tab only detaches), live, with
+// agents' states and other machines' sessions, the ones that need you first; on the desktop app, then Claude Code on the web's (cloud.ts).
 import { useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore, type MouseEvent } from "react"
-import { Cloud, Copy, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
+import { Cloud, Copy, LoaderCircle, MessagesSquare, Monitor, Plus, SquareTerminal, X } from "lucide-react"
 import {
   capitalize, chooseDefaultPlace, choosePlace, cn, copyText, currentWorkspace, fmtAgo, HeadingButton, isViewOpen, menuBelow, menuFor, notify,
   notifyError, onMachine, openAgent, openTerminal, openView, PanelFold, SidebarHeading, SidebarRow, startDrag, useAgents, useDrag, useTerminalAccount,
   useWorkspaceVersion, viewMenuItems, workspaceList, type Agent, type CloudSession, type MenuItem, type SidebarCtx,
 } from "@vaultite"
 import { cloudListed, getCloud, subscribeCloud } from "./cloud"
-import { agentIn, cacheLeft, endForGood, getSessions, labelOf, meterText, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, waiting, type Session } from "./sessions"
+import { agentIn, cacheLeft, endForGood, getSessions, iconOf, labelOf, meterText, needsYou, rankOf, resting, stateClass, stateTip, subscribeSessions, tintOf, type Session } from "./sessions"
 
 /** The sessions, as the server says now (null until it answers; `refused`: this device may not have a shell): the one
  *  list the terminal tabs' names, colours and states come from too (sessions.ts). */
@@ -31,6 +31,7 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   const to = `view:terminal/${s.id}`
   const a = agentIn(s, useAgents())
   const account = useTerminalAccount(s.id, a)
+  const needs = needsYou(s, a)
   const d = useDrag()
   // What the row shows only as colours and rings, or not at all: its state, account, machine, workspace, meters.
   const tip = [labelOf(s, a) + (a ? stateTip(s) : ""),
@@ -39,8 +40,10 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
   return (
     // Dragged (core/drag.ts), like a file from the tree: onto a pane's edge, its middle or a tab bar, it opens there.
     <div onPointerDown={(e) => startDrag(e, { from: "row", to, label: labelOf(s, a) })} className={cn(d?.item.to === to && "opacity-50")}>
-    <SidebarRow icon={a?.icon ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={waiting(s, a)} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
-      active={tab === to} tip={tip} more data-session={s.id} data-state={s.state} data-agent={a?.name}
+    {/* Its icon as its tab's (a spinner, a check); one that needs you bold, with a dot, as an unread mail. */}
+    <SidebarRow icon={iconOf(s, a) ?? SquareTerminal} iconClassName={stateClass(s, a)} tint={tintOf(s, a)} badge={needs} tag={s.machineLabel && short(s.machineLabel)} label={labelOf(s, a)} open={open}
+      active={tab === to} tip={tip} more data-session={s.id} data-state={s.state} data-agent={a?.name} data-needs={needs ? "" : undefined}
+      className={needs ? "font-semibold" : undefined}
       data-where={where}
       data-machine={s.machine}
       swipe={() => [{ label: "End", icon: X, danger: true, run: () => void endForGood(s.id) }]}
@@ -48,8 +51,8 @@ function Row({ s, open, tab, page, where }: { s: Session; open: boolean; tab: st
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>
       {/* At most half the row, so the name always shows. The machine is a tag on the icon, and detached (nobody
           watching: no tab on any device, no tmux in a real terminal) is in the tooltip and the Terminals tab. */}
-      {page && <span className="mr-1 max-w-[50%] truncate text-[11px] text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true, account)].filter(Boolean).join(" · ")}</span>}
-      {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] text-tertiary group-hover/row:hidden">{where}</span>}
+      {page && <span className="mr-1 max-w-[50%] truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{[where && `in ${where}`, about(s, a, true, account)].filter(Boolean).join(" · ")}</span>}
+      {!page && where && <span className="mr-1 max-w-20 shrink-0 truncate text-[11px] font-normal text-tertiary group-hover/row:hidden">{where}</span>}
       {/* (last, so every row's ring lines up at its edge) */}
       {a && s.meter && <Meters s={s} tint={a.tint} />}
     </SidebarRow>
@@ -89,7 +92,7 @@ function Meters({ s, tint }: { s: Session; tint?: string }) {
   const text = c?.as === "percent" ? `${Math.round(used * 100)}%` : c?.as === "tokens" ? `${Math.round(c.tokens / 1000)}k` : ""
   if (!rings.length && !text) return null
   return (
-    <span className="mr-1 flex shrink-0 items-center gap-1.5 group-hover/row:hidden" data-meters>
+    <span className="mr-1 flex shrink-0 items-center gap-1.5 font-normal group-hover/row:hidden" data-meters>
       {text && <span className="text-[11px] text-tertiary tabular-nums" data-meter="context">{text}</span>}
       {!!rings.length && (
         <svg viewBox="0 0 16 16" className="size-3.5 shrink-0 -rotate-90" aria-hidden>
@@ -127,7 +130,7 @@ function byWorkspace(list: Session[]): { here: Session[]; other: { s: Session; w
   return { here, other }
 }
 
-/** Sorted by state (Claude Code's agent view: waiting on you, working, idle, plain shells), the server's order within
+/** Sorted by state, as a mailbox's unread first (needs you, working, idle, plain shells), the server's order within
  *  each. While `held` (the pointer is over them) the order stays, new ones last, so no row moves out from under a click. */
 function useByState(list: Session[], held: boolean) {
   const agents = useAgents()
@@ -163,7 +166,7 @@ function CloudRow({ c, open, tab, page }: { c: CloudSession; open: boolean; tab:
   const a = useAgents().find((x) => x.name === "claude")
   const state = c.state === "running" ? "working" : c.state === "waiting" ? "waiting for you" : "idle"
   return (
-    <SidebarRow icon={a?.icon ?? Cloud} iconClassName={c.state === "running" ? "animate-pulse" : undefined}
+    <SidebarRow icon={c.state === "running" ? LoaderCircle : a?.icon ?? Cloud} iconClassName={c.state === "running" ? "animate-spin motion-reduce:animate-none" : undefined}
       tint={c.state === "waiting" ? "var(--yellow)" : c.state === "running" ? a?.tint : undefined} badge={c.state === "waiting"}
       label={c.title} open={open} active={tab === to} tip={`${c.title} (${state}), in the cloud`} data-cloud={c.id} data-state={c.state}
       onClick={(e) => openView(to, { newTab: !isViewOpen(to) || e.metaKey || e.ctrlKey || e.button === 1 })}>

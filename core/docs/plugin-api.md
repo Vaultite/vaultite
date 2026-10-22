@@ -168,6 +168,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `history:keep` (history): Keep a file's text as it is now as a version, whatever the interval: what an agent is about to change (Provenance's review compares with it). Sync, so it runs before the write.
 - `history:changed` (history): The files followed whose text was last written at or after `since` (ms).
 - `inbox:folder` (inbox): Where results go (where the Inbox's files are, else Inbox/): the clipper asks (its `inbox` option), only while this plugin is on.
+- `inbox:needs` (inbox): Whether an agent's session (by its terminal, or its own session id) has a row that needs the user, unread: Terminal's list says so (its tab's dot, Terminals' first rows).
 - `inbox:state` (inbox): Terminal's stream of its terminals' states.
 - `inbox:handed` (inbox): Dispatch marks the terminals it starts.
 - `inbox:event` (inbox): Add an event from another plugin's backend (what it would POST): the service "inbox:event".

@@ -195,6 +195,10 @@ function sortOf(to: string) {
 /** Whether a view's tab is its own (ViewDef.keepsTab). Set by the app, which knows the views. */
 let keeps: (to: string) => boolean = () => false
 export const setTabKeeper = (fn: (to: string) => boolean) => { keeps = fn }
+/** The tab a new tab of `to` opens beside (ViewDef.opensBeside: a session dispatched from a note, by that note's), or
+ *  null for the current one. Set by the app, which knows the views. */
+let besideOf: (to: string) => string | null = () => null
+export const setOpener = (fn: (to: string) => string | null) => { besideOf = fn }
 /** Whether a file is a page (core/pages.ts isPage). Set by the app, which knows the plugins. */
 let isPage: (path: string) => boolean = () => false
 export const setPageTest = (fn: (path: string) => boolean) => { isPage = fn }
@@ -226,6 +230,13 @@ export function go(to: string, newTab = false, push = true) {
   // Another tab: on phones a history entry, like selectTab (Back returns to the tab it was opened from; replacing the
   // entry would lose that place, and Back would skip it).
   if (open && (!newTab || isBlank(cur))) { switchTo(open.g.id, open.t, open.t.id === cur.id ? undefined : from); return show(to, push && !isDesktop() && open.t.id !== cur.id && !isBlank(cur)) }
+  // Opened by another tab (its opener): beside that one, in its pane and its tab group, as a browser opens a link.
+  const by = isBlank(cur) ? null : besideOf(to)
+  const at = by && by !== cur.to ? findOpen(by) : null
+  if (at) {
+    set(withGroup(at.g.id, (g) => withTabAfter(g, at.t.id, to), { focus: at.g.id }))
+    return show(to, push)
+  }
   if (isBlank(cur) || (!newTab && !cur.pinned && sortOf(cur.to) === sortOf(to))) {
     set(withGroup(state.focus, (g) => mapTabs(g, cur.id, (t) => moveOn(t, to))))
     return show(to, push)

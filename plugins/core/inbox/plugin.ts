@@ -819,6 +819,11 @@ function agentLabel(name: string) {
   return agentName(name) ?? (p ? str(p.manifest.name) : name ? name[0].toUpperCase() + name.slice(1) : "An agent")
 }
 
+/** Whether an agent's session (by its terminal, or its own session id) has a row that needs the user, unread: Terminal's
+ *  list says so (its tab's dot, Terminals' first rows). */
+plugin.provide("inbox:needs", (terminal: string, session = "") => list().some((e) => !e.read && e.kind === "waiting" && !e.gate &&
+  ((!!terminal && e.terminal === terminal) || (!!session && e.session === session))))
+
 /** Terminal's stream of its terminals' states. */
 plugin.provide("inbox:state", (c: StateChange) => { track(heard(c)) })
 

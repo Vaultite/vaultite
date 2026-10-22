@@ -39,4 +39,9 @@ brings an agent and is on. It keeps nothing in the vault but its settings (below
 - A session ended for good (its tab's End session, its row's x, `vau terminal end`: an agent asked to close itself runs
   it without an id) closes its tabs on every device, as does exiting the shell left after an agent (exit, ⌃D); an
   agent's session that died or whose machine restarted keeps them, saying so, with Restart. Otherwise a shell ends only
-  when its last tab closes at its prompt, never for being left alone.
+  when its last tab closes at its prompt, never for being left alone: closing an agent's tab detaches it (it keeps
+  running, listed in Terminals, its answer still reaching the Inbox), and opening it again attaches.
+- An agent's tab and row show its state: a spinner while it works, a dot while it needs the user (it waits on them, or
+  its Inbox row does, unread: the list's `needs`), a check once it's done with nothing for them. Terminals lists the
+  ones that need the user first.
+- A session terminal.run started on a note (Dispatch) opens its tab beside that note's tab, in its tab group.

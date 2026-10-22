@@ -1,4 +1,5 @@
-import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, parseTerminal, type Agent } from "@vaultite"
+import { Check, CircleAlert, LoaderCircle, type LucideIcon } from "lucide-react"
+import { agentOfTerminal, agentsOn, closeView, confirmDialog, notify, openView, parseTerminal, type Agent } from "@vaultite"
 
 // Which terminal the keyboard was in last (for "End terminal session"), without loading xterm.js: the lazy view
 // registers itself here while it's mounted.
@@ -37,6 +38,10 @@ export type Session = { id: string; agent: string | null; process: string; busy?
   /** What its program is doing (OSC 7501, else its agent's hooks or a question on its screen): blocked is waiting on
    *  the user (`kind`: for a permission, an answer or a login), `msg` its words (the program's). */
   state?: "idle" | "working" | "blocked" | "done" | "error"; kind?: "permission" | "question" | "auth"; msg?: string
+  /** The Inbox has a row for it that needs the user, unread: an answer to read, a question. */
+  needs?: boolean
+  /** The note it was started on (Dispatch, terminal.run): its tab opens beside that note's. */
+  note?: string
   /** Its agent isn't installed on that machine. */
   missing?: boolean
   machine?: string; machineLabel?: string
@@ -116,9 +121,17 @@ function endSession(id: string) {
   sock.onerror = () => sock.close()
 }
 
-/** End a session for good, from its row's x, its tab's End session or the command: asks first while something runs in
- *  it, then its tabs here close with it. */
+/** End a session for good (its row's menu, its tab's End session, the command), closing its tabs here. An agent at rest
+ *  just ends (the toast's Resume resumes its conversation); one at work, or anything else running in it, asks first. */
 export async function endForGood(id: string) {
+  const s = sessionById(id), a = s ? agentIn(s) : null
+  if (s && a && resting(s)) {
+    const resume = pinOfTerminal(id)
+    endSession(id)
+    closeView(`terminal/${id}`)
+    notify(`Ended ${labelOf(s, a)}`, resume ? { action: { label: "Resume", run: () => openView(`view:terminal/${resume}`, { newTab: true }) } } : undefined)
+    return
+  }
   const ask = await confirmEnd([id])
   if (ask && !(await confirmDialog(ask))) return
   endSession(id)
@@ -126,7 +139,7 @@ export async function endForGood(id: string) {
 }
 
 /** Closing a tab isn't ending what runs in it: at its last tab a shell at its prompt ends, one running something stays
- *  detached and a toast offers to end it (one toast for tabs closing together). */
+ *  detached, in Terminals: an agent quietly, anything else (a server left by mistake?) with a toast offering to end it. */
 let closing = new Set<string>()
 let closeTimer = 0
 export function tabClosed(id: string) {
@@ -143,7 +156,8 @@ async function settle(ids: string[]) {
   // (another program's own, a herdr pane: closing its tab here leaves it be)
   const theirs = new Set((getSessions().list ?? []).filter((s) => s.external).map((s) => s.id))
   for (const id of ids) if (!keep.some((k) => k.id === id) && !keep.unknown.includes(id) && !theirs.has(id)) endSession(id)
-  keep.splice(0, keep.length, ...keep.filter((k) => !theirs.has(k.id)))
+  const agent = (id: string) => { const s = sessionById(id); return s ? !!agentIn(s) : !!agentOfTerminal(id) }
+  keep.splice(0, keep.length, ...keep.filter((k) => !theirs.has(k.id) && !agent(k.id)))
   if (!keep.length) return
   const one = keep.length === 1
   notify(one ? `${keep[0].label} is still running, in Terminals` : `${keep.length} terminals are still running, in Terminals`, {
@@ -151,12 +165,14 @@ async function settle(ids: string[]) {
   })
 }
 
-/** A session's colour, its state's (Claude Code's agent view): its agent's own (Claude Code's orange, Codex's green)
- *  while it works or says nothing, yellow while it waits on you, none (the icons' grey) idle or a plain shell. */
+/** A session's colour, its state's: its agent's own (Claude Code's orange) while it works or says nothing, yellow while
+ *  it waits on you, red once it failed, none (the icons' grey) at rest or a plain shell. */
 export const tintOf = (s: Session, a = agentIn(s)) =>
-  !a || (resting(s) && !cacheIn(s)) ? undefined : s.state === "blocked" ? "var(--yellow)" : a.tint
-/** Where a session sorts (the agent view's groups): waiting on you, working, idle (or saying nothing), a plain shell. */
-export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 3 : s.state === "blocked" ? 0 : s.state === "working" ? 1 : 2)
+  !a ? undefined : s.state === "error" ? "var(--red)" : resting(s) && !cacheIn(s) ? undefined : s.state === "blocked" ? "var(--yellow)" : a.tint
+/** Where a session sorts, as a mailbox's unread first: needs you, working, idle (or saying nothing), a plain shell. */
+export const rankOf = (s: Session, a = agentIn(s)) => (!a ? 3 : needsYou(s, a) ? 0 : s.state === "working" ? 1 : 2)
+/** It needs the user: its agent waits on them (blocked), or its Inbox row does, unread (an answer to read, a question). */
+export const needsYou = (s: Session, a = agentIn(s)) => !!a && (s.state === "blocked" || !!s.needs)
 /** Its program says it's at rest: waiting for the next instruction, or finished (done or failed, its result to look at). */
 export const resting = (s: Session) => s.state === "idle" || s.state === "done" || s.state === "error"
 
@@ -229,10 +245,17 @@ export function runningResume(id: string): string | null {
   return now.list?.find((s) => s.id !== id && s.session === t.resume && (s.machine ?? null) === t.machine && agentIn(s)?.name === t.agent)?.id ?? null
 }
 
-/** The icon's status while an agent runs (when its hooks say: AgentStart's `state` on the server): a slow pulse while
- *  it works (opacity only, cheap), yellow with a dot while it waits on you (`waiting`, `tintOf`). */
+/** Its icon, as a browser tab's shows a page loading: a spinner while its agent works, a check once it's done with
+ *  nothing for you (or you've read it), an alert once it failed; else its agent's (a dot while it needs you). */
+export function iconOf(s: Session, a = agentIn(s)): LucideIcon | null {
+  if (!a) return null
+  if (s.state === "working") return LoaderCircle
+  if (needsYou(s, a)) return a.icon
+  return s.state === "done" ? Check : s.state === "error" ? CircleAlert : a.icon
+}
+/** Its icon's classes: the spinner turning; at rest, dimmed as far as its prompt cache ran out (Agent meters). */
 export const stateClass = (s: Session, a = agentIn(s)) =>
-  !a ? undefined : s.state === "working" ? "animate-pulse" : resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
+  !a ? undefined : s.state === "working" ? "animate-spin motion-reduce:animate-none" : resting(s) ? DRAIN[Math.ceil(cacheIn(s) * 10)] : undefined
 
 /** How much of its prompt cache's time an idle agent has left (0-1), when Agent meters draws it in the icon. */
 export const cacheIn = (s: Session) => {
@@ -258,4 +281,4 @@ export function meterText(s: Session) {
 }
 export const waiting = (s: Session, a = agentIn(s)) => !!a && s.state === "blocked"
 export const stateTip = (s: Session) => (s.missing ? " (not installed)" : s.state === "working" ? " (working)" : s.state === "blocked" ? " (waiting for you)"
-  : s.state === "done" ? " (done)" : s.state === "error" ? " (failed)" : "")
+  : s.needs ? " (has something for you)" : s.state === "error" ? " (failed)" : s.state === "done" ? " (done)" : "")

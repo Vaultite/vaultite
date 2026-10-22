@@ -292,6 +292,18 @@ const told = new Map<string, { now: Now; at: number; timer?: ReturnType<typeof s
  *  outside the terminal is rate-limited (a new state at most 4 times a second, a new message every 2 s). */
 const STATE_GAP = 250, MSG_GAP = 2000
 
+/** The note a session was started on (terminal.run: Dispatch), kept beside its state, so its tab opens by that note's. */
+const noteFile = (id: string) => `${stateFile(id)}.note`
+const notes = new Map<string, string | null>()
+function noteOf(id: string) {
+  if (!notes.has(id)) { let n: string | null = null; try { n = fs.readFileSync(noteFile(id), "utf8") || null } catch { /* none */ } notes.set(id, n) }
+  return notes.get(id) ?? undefined
+}
+function startedOn(id: string, rel: string) {
+  notes.set(id, rel)
+  try { fs.mkdirSync(STATES, { recursive: true }); fs.writeFileSync(noteFile(id), rel) } catch { /* only this run knows */ }
+}
+
 /** Terminal `id`'s state may have changed: the list hears it, and the Inbox ("inbox:state") does once it has. */
 function stateChanged(id: string) {
   listChanged()
@@ -324,8 +336,8 @@ function oscSaid(id: string, said: Said) {
 
 /** A terminal ended: what was kept of its state goes (the Inbox hears "terminal.ended"). */
 function forgetState(id: string) {
-  for (const f of [stateFile(id), oscMark(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
-  osc.delete(id); asking.delete(id)
+  for (const f of [stateFile(id), oscMark(id), noteFile(id)]) try { fs.rmSync(f, { force: true }) } catch { /* none */ }
+  osc.delete(id); asking.delete(id); notes.delete(id)
   clearTimeout(told.get(id)?.timer)
   told.delete(id)
 }
@@ -784,6 +796,10 @@ let follow: ReturnType<typeof setInterval> | null = null
 type Listed = { id: string; agent: string | null; process: string; busy: boolean; clients: number; started: number; title?: string
   /** What its program is doing (stateNow), while something runs in it; `kind` and `msg` (untrusted) as it said. */
   state?: SessionState; kind?: Kind; msg?: string
+  /** The Inbox has a row for it that needs the user, unread (its service "inbox:needs"): an answer to read, a question. */
+  needs?: true
+  /** The note it was started on (terminal.run). */
+  note?: string
   /** Its agent isn't installed here (the shell found no such program). */
   missing?: true
   machine?: string; machineLabel?: string; backend?: string; external?: boolean
@@ -829,6 +845,7 @@ async function localList(): Promise<Listed[]> {
         // (what an agent titled its terminal goes with it: a shell at its prompt keeps no title)
         title: front !== null ? titleOf(x.title ?? "") : undefined, backend: b.name,
         ...(state && shows ? { state, ...(now?.kind ? { kind: now.kind } : {}), ...(now?.msg ? { msg: now.msg } : {}) } : {}),
+        ...(noteOf(x.id) ? { note: noteOf(x.id) } : {}),
         ...(stateOf(x.id) === MISSING ? { missing: true as const } : {}),
         ...(x.external ? { external: true } : {}) })
     }
@@ -837,6 +854,7 @@ async function localList(): Promise<Listed[]> {
   const meters = plugin.service("terminal:meters"), agents = [...new Set([...out.values()].flatMap((x) => (x.busy ? [x.agent ?? x.process] : [])))]
   const live = (await Promise.all(agents.map((a) => liveOf(a, typeof meters === "function")))).flat().filter((m) => out.get(m.terminal)?.busy)
   for (const m of live) if (m.session) out.get(m.terminal)!.session = m.session
+  for (const x of out.values()) if (x.state && await plugin.ask<boolean>("inbox:needs", false, x.id, x.session ?? "")) x.needs = true
   if (typeof meters === "function" && live.length) {
     const by = await Promise.resolve(meters(live)).catch(() => null) as Record<string, unknown> | null
     for (const [id, m] of Object.entries(by ?? {})) { const x = out.get(id); if (x) x.meter = m }
@@ -894,7 +912,13 @@ function stopFollowing() {
   remotes.clear()
 }
 
-async function sendList() {
+// One at a time, in order: a list read earlier never lands after a later one (a new session's note, then its tab opening).
+let sending = Promise.resolve()
+function sendList() {
+  sending = sending.then(sendOnce, sendOnce)
+  return sending
+}
+async function sendOnce() {
   for (const local of [true, false]) {
     const to = [...watchers].filter(([, l]) => l === local).map(([ws]) => ws)
     if (!to.length) continue
@@ -934,7 +958,7 @@ plugin.onUnload(() => { if (poll) clearInterval(poll); if (listTimer) clearTimeo
 // --- sessions from outside the app (`vau terminal`): routes for list, screen, start, send and end; this machine's only,
 // same access as a shell.
 terminalOps(plugin) // vau terminal ...: terminal.list, open, resume, screen, send, end, tidy (ops.ts), through these routes
-runOps(plugin) // vau terminal run: a file handed to an agent or a command, here or on another machine (run.ts)
+runOps(plugin, { startedOn, listNow: sendList }) // vau terminal run: a file handed to an agent or a command, here or on another machine (run.ts)
 
 async function owner(req: Request) {
   await plugin.ownerOnly(req, "the terminal")
