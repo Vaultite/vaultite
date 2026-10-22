@@ -75,9 +75,11 @@ async function request(url: string, method: string, body?: string, extra: Record
   })
 }
 
-/** The desktop app's folder for this user (its vaults.json; vau's prompt history). */
-export const userData = (env: Record<string, string | undefined> = process.env) => env.VAULTITE_USER_DATA || (process.platform === "darwin"
-  ? path.join(os.homedir(), "Library", "Application Support", "Vaultite") : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Vaultite"))
+/** The desktop app's folder for this user (its vaults.json; vau's prompt history): Electron's userData. */
+export const userData = (env: Record<string, string | undefined> = process.env, platform: string = process.platform) => env.VAULTITE_USER_DATA || (
+  platform === "darwin" ? path.join(os.homedir(), "Library", "Application Support", "Vaultite")
+  : platform === "win32" ? path.join(env.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Vaultite")
+  : path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), ".config"), "Vaultite"))
 
 /** Where a server may be when VAULTITE_URL doesn't say, in order: the one serving the vault we're in (core/serving.ts,
  *  else the desktop app's vaults.json), the default port, then the app's other open vaults, most recent first. */
