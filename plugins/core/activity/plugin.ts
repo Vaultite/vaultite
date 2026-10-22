@@ -12,6 +12,7 @@ import {
 import { agentName, KNOWN_AGENTS } from "../../../core/agents.ts"
 import { joinPath, Kind } from "../../../core/vault.ts"
 import { buildRecap, type Sources } from "./build.ts"
+import { profile, type Profiled } from "./profile.ts"
 import { groupOf, parseRecap, RECAP_GROUPS, type RecapEntry, type RecapGroup, renderRecap } from "./recap.ts"
 import { ACTION_KINDS, actionsOf, type Action, type Actor, type ActivityEvent, type ActivityList, type ActivitySummary, type ClientPerf, type Minute, type Perf, type RouteStat, type SlowRequest, type Timing } from "./model.ts"
 
@@ -817,6 +818,31 @@ what each app window last reported (load, /api/state, long tasks).
     if (p.slow.length) out.push("", "Slow requests:", ...p.slow.slice(0, 8).map((s) => `  ${localTime(s.t)}  ${s.method} /api/${s.route}  ${s.ms} ms  (${s.who})`))
     if (p.clients.length) out.push("", "The app:", ...p.clients.map((x) => `  ${x.device}: load ${x.load ?? "?"} ms, state ${x.state ?? "?"} ms, ${x.longTasks ?? 0} long tasks, ${x.shifts ?? 0} layout shifts (${x.shift ?? 0})`))
     return out.join("\n")
+  },
+})
+
+plugin.op({
+  id: "activity.profile",
+  cli: "profile",
+  summary: "Profile the server's CPU for a while as it runs: the functions its time went to, and the profile saved for DevTools.",
+  help: `Samples the running server (no restart) for some seconds, then lists the functions that took its main thread's
+time: their own ms and with what they called. Do what's slow meanwhile (open the app, run the agent). The profile is
+kept on this machine (the last 10); Chrome's DevTools opens it (Performance, Load profile).
+
+  vau profile
+  vau profile --seconds 60 --top 40`,
+  kind: "read",
+  owner: "profiling the server",
+  params: {
+    seconds: { type: "integer", minimum: 1, maximum: 120, default: 15, description: "how long to sample" },
+    top: { type: "integer", minimum: 5, maximum: 200, default: 25, description: "how many functions to list, by their own time" },
+  },
+  run: ({ seconds, top }) => profile(seconds, top),
+  text: (p: Profiled) => {
+    const pad = (s: string | number, w: number) => String(s).padStart(w)
+    return [`${p.seconds} s sampled: the main thread was busy ${p.busy} ms (${Math.round(p.busy / p.seconds / 10)}%).`, `Saved: ${p.file}`, "",
+      `${pad("self ms", 8)} ${pad("total", 8)}  function`,
+      ...p.hot.map((h) => `${pad(h.self, 8)} ${pad(h.total, 8)}  ${h.fn}${h.at ? `  ${h.at}` : ""}`)].join("\n")
   },
 })
 

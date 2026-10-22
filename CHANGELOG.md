@@ -6,6 +6,8 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- `vau profile` samples the running server's CPU for some seconds (no restart) and lists where its time went; the
+  profile is kept for Chrome's DevTools.
 - Status bar: after the window or a sidebar is resized it no longer reaches under the left sidebar or keeps empty room
   at its end (it held the width it had at the last launch).
 - Faster everywhere: the server no longer walks the whole vault before each of the app's requests while nothing

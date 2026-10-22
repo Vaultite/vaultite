@@ -21,6 +21,7 @@ export class Readable { static from = needsApp }
 export class Writable {}
 export class WebSocketServer { constructor() { needsApp() } }
 export class WebSocket { static OPEN = 1; constructor() { needsApp() } }
+export class Session { connect() { needsApp() } disconnect() {} post() { return needsApp() } }
 export const constants = {}
 export const {
   execFileSync, execSync, spawn, spawnSync, fork, pipeline, request, get, createServer, connect, createConnection, lookup,

@@ -10,7 +10,7 @@ import { ignoreOf, walk } from './core/rules.ts'
 const ROOT = import.meta.dirname
 const node = (file: string) => path.join(ROOT, 'web/demo/node', file)
 const STUBBED = ['node:child_process', 'node:http', 'node:https', 'node:http2', 'node:net', 'node:dns', 'node:readline', 'node:module',
-  'node:stream', 'node:stream/promises', 'node:perf_hooks', 'node:zlib', 'node:sqlite', 'ws', 'node-pty', '@xterm/headless',
+  'node:stream', 'node:stream/promises', 'node:perf_hooks', 'node:inspector/promises', 'node:zlib', 'node:sqlite', 'ws', 'node-pty', '@xterm/headless',
   '@xterm/addon-serialize', '@tailwindcss/node', '@tailwindcss/oxide', 'rolldown']
 const ALIASES: Alias[] = [
   ...Object.entries({ fs: 'fs.ts', path: 'path.ts', crypto: 'crypto.ts', os: 'os.ts', url: 'url.ts', util: 'util.ts', async_hooks: 'async_hooks.ts',
