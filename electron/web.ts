@@ -34,7 +34,9 @@ type Page = Owned<AppWindow> & { view: WebContentsView; error?: string
   /** It had the keyboard when it was last hidden. */
   hadFocus?: boolean
   /** Whether it plays sound, as its tab shows it (webpages.ts), and the timer that ends a quiet stretch's. */
-  sound: Playback; hush?: NodeJS.Timeout }
+  sound: Playback; hush?: NodeJS.Timeout
+  /** It's the spare's, its first load not in yet: the spare's about:blank is no page to go back to (gone once it is). */
+  blankBehind?: boolean }
 /** A site a profile keeps cookies for, who's signed in there when we know how to ask, and `other` when no page of it
  *  was opened (its cookies came with other sites' pages: trackers). */
 export type WebSite = { site: string; account?: string; other?: boolean }
@@ -177,11 +179,12 @@ function freeName(dir: string, name: string) {
 const EDGE = 12
 const tell = (win: AppWindow, msg: Record<string, unknown>) => { if (!win.isDestroyed()) win.webContents.send("vaultite:web", msg) }
 
+const canBack = (p: Page) => !p.blankBehind && p.view.webContents.navigationHistory.canGoBack()
 const playingNow = (p: Page) => !p.view.webContents.isDestroyed() && playing(p.sound, p.view.webContents.isCurrentlyAudible(), Date.now())
 function stateOf(p: Page): WebState {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  return { url: wc.getURL() || p.target, title: wc.getTitle() || "", back: h.canGoBack(), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
+  return { url: wc.getURL() || p.target, title: wc.getTitle() || "", back: canBack(p), forward: h.canGoForward(), loading: wc.isLoading(), ...(p.error ? { error: p.error } : {}),
     ...(playingNow(p) ? { playing: true } : {}), ...(wc.isAudioMuted() ? { muted: true } : {}), ...(p.player ? { player: true } : {}) }
 }
 /** A page's notification, as its stand-in logs it (see the head of this file). */
@@ -236,24 +239,66 @@ async function otherApp(p: Page, to: string) {
   if (await askPermission(p.profile, wc, "openExternal", { requestingUrl: wc.getURL(), externalURL: to }).catch(() => false)) await shell.openExternal(to).catch(console.error)
 }
 
-function make(win: AppWindow, url: string, profile: string, tab: string): Page {
+/** A page's view in a profile's session. */
+function newView(profile: string) {
   // (sandboxed, so frames get no Node: "in sub frames" only lets the engine's preloads reach a page's frames, an
   // extension's own pages embedded in it)
-  const view = new WebContentsView({
+  return new WebContentsView({
     // (a page's full screen never resizes the window by itself: fit() fills its window or player, which goes full
     // screen only where that's wanted)
     webPreferences: { session: webSession(profile), sandbox: true, contextIsolation: true, nodeIntegration: false, nodeIntegrationInSubFrames: true, webSecurity: true, spellcheck: true,
       disableHtmlFullscreenWindowResize: true },
   })
+}
+
+// ---------- a spare page: the next tab's renderer started ahead, as Chrome does (Electron turns Chrome's off) ----------
+
+/** A view on about:blank in the last page's profile, its renderer running: the next page there takes it, saving the
+ *  process's start (much of a new tab's wait). Made a moment after a page opens; `trim` ends it under memory pressure. */
+let spare: { profile: string; view: WebContentsView } | null = null
+let spareTimer: ReturnType<typeof setTimeout> | null = null
+const SPARE_MS = 1500
+function endSpare() {
+  if (spareTimer) { clearTimeout(spareTimer); spareTimer = null }
+  if (spare && !spare.view.webContents.isDestroyed()) spare.view.webContents.close()
+  spare = null
+}
+function makeSpare(profile: string) {
+  if (spareTimer) clearTimeout(spareTimer)
+  spareTimer = setTimeout(() => {
+    spareTimer = null
+    if (spare?.profile === profile && !spare.view.webContents.isDestroyed()) return
+    endSpare()
+    if (!mayOpen(profile) || !sessions.has(profile)) return
+    const view = newView(profile)
+    // (its renderer gone, it's no spare)
+    view.webContents.once("render-process-gone", () => { if (spare?.view === view) endSpare() })
+    spare = { profile, view }
+    void view.webContents.loadURL("about:blank").catch(() => { if (spare?.view === view) endSpare() })
+  }, SPARE_MS)
+  spareTimer.unref?.()
+}
+/** The spare, if it's for `profile` and alive: taken (the next is made a moment later). */
+function takeSpare(profile: string) {
+  const s = spare
+  if (!s || s.profile !== profile || s.view.webContents.isDestroyed() || s.view.webContents.isCrashed()) return null
+  spare = null
+  return s.view
+}
+
+function make(win: AppWindow, url: string, profile: string, tab: string): Page {
+  const taken = takeSpare(profile), view = taken ?? newView(profile)
+  makeSpare(profile)
   view.setBackgroundColor("#ffffff")
   view.setVisible(false)
   // (a size before it's first shown: a page laid out at none has nothing an agent could click)
   const [w, h] = win.getContentSize()
   view.setBounds({ x: 0, y: 0, width: Math.max(320, Math.round(w / 2)), height: Math.max(240, h - 80) })
   addPage(win, view)
-  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback() }
+  const p: Page = { id: next++, win, view, profile, tab, holds: 0, closing: false, let: 0, target: url, want: null, sound: playback(), blankBehind: !!taken }
   pages.set(p.id, p)
   const wc = view.webContents
+  if (taken) wc.once("did-navigate", () => { wc.navigationHistory.clear(); p.blankBehind = false })
   pageMade({ id: p.id, wc, profile, win, url, hide: () => place(p, null), visible: () => p.view.getVisible(), tab: () => p.tab,
     player: (on, fullScreen) => { if (on) void toPlayer(p, fullScreen); else fromPlayer(p) } })
 
@@ -411,7 +456,7 @@ function make(win: AppWindow, url: string, profile: string, tab: string): Page {
     const h = wc.navigationHistory
     if (p.player) items.push({ label: "Back to its tab", click: () => fromPlayer(p, true) }, { type: "separator" })
     items.push(
-      { label: "Back", enabled: h.canGoBack(), click: () => go(p, "back") },
+      { label: "Back", enabled: canBack(p), click: () => go(p, "back") },
       { label: "Forward", enabled: h.canGoForward(), click: () => go(p, "forward") },
       { label: "Reload", click: () => go(p, "reload") },
       { type: "separator" },
@@ -441,7 +486,8 @@ function end(p: Page) {
  *  one in a player is on screen, whatever its tab. */
 async function trim() {
   const keep = (p: Page) => !!p.player || playingNow(p)
-  if (!discardable(pages.values(), keep).length || !(await shortOfMemory())) return
+  if ((!spare && !discardable(pages.values(), keep).length) || !(await shortOfMemory())) return
+  endSpare()
   for (const p of discardable(pages.values(), keep)) end(p)
 }
 setInterval(() => void trim(), 60_000).unref()
@@ -492,7 +538,7 @@ function fit(p: Page) {
 function go(p: Page, action: string, url?: string): unknown {
   const wc = p.view.webContents
   const h = wc.navigationHistory
-  if (action === "back" && h.canGoBack()) h.goBack()
+  if (action === "back" && canBack(p)) h.goBack()
   else if (action === "forward" && h.canGoForward()) h.goForward()
   else if (action === "reload") wc.reload()
   else if (action === "stop") wc.stop()
@@ -643,6 +689,8 @@ export function webWindow(win: AppWindow) {
   win.on("leave-full-screen", () => { for (const p of pages.values()) if (p.win === win && p.full && !p.player) leaveFull(p) })
   win.on("closed", () => {
     for (const p of [...pages.values()]) if (p.win === win) end(p)
+    // (no page left anywhere: no spare kept for one)
+    if (!pages.size) endSpare()
   })
   win.webContents.on("did-start-navigation", (d) => {
     if (!d.isMainFrame || d.isSameDocument) return
@@ -667,8 +715,12 @@ export const webHandlers: Record<string, (win: AppWindow, ...args: unknown[]) =>
     p.holds++
     p.orphan = undefined
     pagesChanged(win)
-    place(p, rectOf(rect))
-    return { id: p.id, state: stateOf(p) }
+    // (shown at once where its tab asks, a page shown again or a new one, rather than after the tab draws: as `web:place`)
+    const r = rectOf(rect), wasHidden = !p.view.getVisible()
+    place(p, r)
+    let focused = false
+    if (r && wasHidden && p.view.getVisible()) { focused = !!p.hadFocus; p.hadFocus = false }
+    return { id: p.id, state: stateOf(p), focused }
   },
   "web:place": (win, id, rect) => {
     const p = mine(win, id), r = rectOf(rect) && mayOpen(p.profile) ? rectOf(rect) : null, wasHidden = !p.view.getVisible()

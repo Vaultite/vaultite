@@ -117,8 +117,8 @@ export type WebRect = { x: number; y: number; width: number; height: number }
  *  known by number, each a tab's: hidden while it's in the background, ended with it. Older builds ignore tabs. */
 export type WebPages = {
   /** Show tab `tab`'s page over `rect`, or hidden (null): the one it has, else a new one at `url`. No tab (a glance):
-   *  a new one, ended when released. */
-  open: (url: string, rect: WebRect | null, profile?: string, tab?: string) => Promise<{ id: number; state: WebPageState }>
+   *  a new one, ended when released. Shown again: `focused` when it had the keyboard as it was hidden. */
+  open: (url: string, rect: WebRect | null, profile?: string, tab?: string) => Promise<{ id: number; state: WebPageState; focused?: boolean }>
   /** Move it over `rect`, or hide it (null). Shown again: `focused` when it had the keyboard as it was hidden (builds
    *  from before answer nothing). */
   place: (id: number, rect: WebRect | null) => Promise<{ focused?: boolean; shown?: boolean } | undefined | void>

@@ -8,7 +8,7 @@ import {
   type WebPageAction, type WebPageState, type WebPages,
 } from "@vaultite"
 import { hostOf } from "./address"
-import { coverOf, overlap, painted, passPointer, sameRect, setCover, setHole } from "./layers"
+import { floatCover, hitCover, matters, moved, overlap, painted, passPointer, popupOpen, sameRect, setCover, setHole, type Change, type Cover } from "./layers"
 import { ExtensionButtons, extensionItems, useExtensionBar } from "./Extensions"
 import { AddressBar, type Go } from "./AddressBar"
 import { ContainerButton } from "./ContainerButton"
@@ -91,6 +91,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
   const blank = !ownPage(arg)
   /** The address the tab had when it got its page: one that went on in the background (an agent's) isn't sent back. */
   const taken = useRef("")
+  /** Shown again by `open`, it had the keyboard when it was hidden. */
+  const shownFocused = useRef(false)
   useEffect(() => {
     if (locked !== false || blank) return
     let gone = false, mine = 0
@@ -100,10 +102,13 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       // A site that always opens in a container, opened in none: its tab goes there (drawn afresh, index.tsx).
       const rule = container ? null : ruleFor(arg)
       if (rule && containerById(rule)) { live.current.setTabArg(argOf(arg, rule)); return Promise.reject(null) }
-      return web.open(arg, null, profileIn(container), tab)
+      // (where its box is now: shown at once, not after this tab draws again; not under something of the app's)
+      const el = box.current, r = el && !popupOpen() ? pageArea(el.getBoundingClientRect()) : null
+      return web.open(arg, r && r.width >= 2 && r.height >= 2 ? { x: r.left, y: r.top, width: r.width, height: r.height } : null, profileIn(container), tab)
     }).then((r) => {
       if (gone) { leave(r.id); return }
       mine = r.id
+      shownFocused.current = !!r.focused
       taken.current = live.current.arg
       setId(r.id)
       setState(r.state)
@@ -168,13 +173,17 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     return () => setFocusedPage(id, false)
   }, [id, focused, web])
 
-  // Keep the page over the box; the window goes over it while anything of the app covers it.
+  // Keep the page over the box; the window goes over it while anything of the app covers it. What covers it is looked at
+  // again only when something that may change it did (`matters`, `moved`): the hit tests are costly, the floats aren't.
+  const kick = useRef<() => void>(undefined)
   useEffect(() => {
     const el = box.current
     if (!id || !el || away) return
-    let raf = 0, covered = false, gone = false, busy = false, again = false
+    let raf = 0, covered = false, gone = false, busy = false, again = false, hits: Cover = null
     /** Where the page is now (null: hidden). */
     let at: DOMRect | null = null
+    /** What to look at again (null: only where it is). */
+    let dirty: Change = "hits"
     // The window is see-through only where the page is, in every frame (App windows make it transparent): the hole
     // shrinks and is painted before the page moves or hides, and grows only once the page is there.
     const move = async (to: DOMRect | null) => {
@@ -189,7 +198,11 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
     const step = async () => {
       const r = pageArea(el.getBoundingClientRect())
       const show = !live.current.error && r.width >= 2 && r.height >= 2
-      const cover = show ? coverOf(el, r) : null
+      // (where it was, and nothing changed since: nor did what covers it)
+      if (!dirty && show && at && sameRect(at, r)) return
+      if (dirty === "hits" || !sameRect(at, r)) hits = show ? hitCover(el, r) : null
+      dirty = null
+      const cover = show ? hits ?? floatCover(r) : null
       setCover(id, cover)
       // In the focused pane with the keyboard nowhere in particular: the page has it (back from under a menu, or shown again
       // with it, or it had it when it was hidden and nothing else took it meanwhile).
@@ -201,7 +214,8 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (sameRect(at, r)) return
       const wasHidden = !at
       const placed = await move(r)
-      if (wasHidden && free && (placed?.focused || mine)) void web.go(id, "focus")
+      if (wasHidden && free && (placed?.focused || shownFocused.current || mine)) void web.go(id, "focus")
+      shownFocused.current = false
     }
     // One step at a time: a move waits for the paint before it.
     const sync = async () => {
@@ -216,30 +230,44 @@ function Page({ web, arg: tabArg, focused, setArg: setTabArg }: Props & { web: W
       if (raf || gone) return
       raf = document.hidden ? window.setTimeout(() => void sync(), 50) : requestAnimationFrame(() => void sync())
     }
-    const ro = new ResizeObserver(schedule)
+    const touch = (c: Change = "hits") => {
+      if (!c || dirty === "hits") return
+      dirty = c
+      schedule()
+    }
+    kick.current = touch
+    const ro = new ResizeObserver(() => touch())
     ro.observe(el)
-    const mo = new MutationObserver(schedule)
+    const mo = new MutationObserver((rs) => { for (const m of rs) { if (dirty === "hits") return; touch(matters(m, el)) } })
     mo.observe(document.documentElement, { subtree: true, childList: true, attributes: true, attributeFilter: ["open", "class", "style", "hidden", "data-dragging", "data-state", "data-visible", "data-removed"] })
-    addEventListener("resize", schedule)
-    document.addEventListener("visibilitychange", schedule)
-    // (and now and then, for a move nothing above announces)
+    // (something sliding over it is looked at where it stops)
+    const ended = (e: Event) => { if (dirty !== "hits") touch(moved(e, el)) }
+    const all = () => touch()
+    for (const ev of ["transitionend", "animationend"]) document.addEventListener(ev, ended, true)
+    addEventListener("resize", all)
+    document.addEventListener("visibilitychange", all)
+    // (and now and then where it is, for a move nothing above announces)
     const tick = setInterval(schedule, 500)
     const unpass = passPointer(el, () => id, () => pageArea(el.getBoundingClientRect()))
     schedule()
     return () => {
       gone = true
+      kick.current = undefined
       cancelAnimationFrame(raf)
       clearTimeout(raf)
       ro.disconnect()
       mo.disconnect()
-      removeEventListener("resize", schedule)
-      document.removeEventListener("visibilitychange", schedule)
+      for (const ev of ["transitionend", "animationend"]) document.removeEventListener(ev, ended, true)
+      removeEventListener("resize", all)
+      document.removeEventListener("visibilitychange", all)
       clearInterval(tick)
       unpass()
       setCover(id, null)
       setHole(id, el, null)
     }
   }, [id, web, away])
+  // (an error's note in the box: the page goes, and comes back with a retry)
+  useEffect(() => kick.current?.(), [state.error])
 
   const inside = containerById(container)
   const ext = useExtensionBar(id, state.url)

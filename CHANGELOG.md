@@ -6,6 +6,9 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
 
 ## Unreleased
 
+- Browser: switching to a web tab shows its page about three times sooner (25 ms instead of 80), a new tab's page
+  loads in a renderer started ahead, as Chrome does (a third sooner), the app no longer spends a steady few percent of
+  CPU checking whether a menu or toast covers the page, and each request costs Shields less.
 - The command palette opens about twice as fast on a vault with many plugins: it draws the rows near the screen,
   more as you scroll.
 - Typing in a long note (over 32 KB) no longer counts its words and tokens on every key: the status bar updates

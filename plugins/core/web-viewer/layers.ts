@@ -21,26 +21,73 @@ export function setCover(id: number, c: Cover) {
   void webPages?.raise(want).catch(() => {})
 }
 
-/** What covers the page at `r` of `box`: anything of the app's over it (sampled every ~48px), toasts and tooltips
- *  only, or nothing. A companion's cursor (`data-under-pages`) and the status bar never count. */
-export function coverOf(box: HTMLElement, r: DOMRect): Cover {
+/** What the app draws over pages that says what it is: dialogs (the app's menus, sheets and boxes are), popovers, menus
+ *  and lists. Found wherever they are, however small. */
+const POPUPS = "dialog[open], :popover-open, [role=menu], [role=listbox], [role=dialog], [role=alertdialog]"
+const NEVER = "[data-sonner-toaster], [data-under-pages], [data-status-bar]"
+/** Whether a popup is open anywhere (a page isn't shown before what covers it is known). */
+export const popupOpen = () => [...document.querySelectorAll(POPUPS)].some((p) => p.getClientRects().length > 0)
+/** How far apart the hit tests along the page's edges are, and how many across its inside. */
+const EDGE_STEP = 64, INSIDE = 4
+
+/** Whether anything of the app taking the pointer is over the page ("app"); a companion's cursor, the status bar, toasts
+ *  never count. Hit tests are costly: popups where they are, the edges (what slides in), a few inside. */
+export function hitCover(box: HTMLElement, r: DOMRect): Cover {
   if ("dragging" in document.documentElement.dataset) return "app"
   // (8px in from the edges: the dividers beside a pane, the sidebar's edge, a split's, reach a few pixels into it)
-  const E = 8, cw = r.width - 2 * E, ch = r.height - 2 * E
-  if (cw <= 0 || ch <= 0) return null
-  const cols = Math.min(40, Math.max(2, Math.ceil(cw / 48) + 1)), rows = Math.min(40, Math.max(2, Math.ceil(ch / 48) + 1))
+  const E = 8, L = r.left + E, T = r.top + E, R = r.right - E, B = r.bottom - E
+  if (R <= L || B <= T) return null
   const w = innerWidth - 1, h = innerHeight - 1
-  for (let i = 0; i < cols; i++) {
-    const x = Math.min(w, r.left + E + (cw * i) / (cols - 1))
-    for (let j = 0; j < rows; j++) {
-      const at = document.elementFromPoint(x, Math.min(h, r.top + E + (ch * j) / (rows - 1)))
-      if (at && at !== box && !box.contains(at) && !at.closest("[data-sonner-toaster], [data-under-pages], [data-status-bar]")) return "app"
+  const hit = (x: number, y: number) => document.elementFromPoint(Math.min(w, x), Math.min(h, y))
+  const over = (at: Element | null) => !!at && at !== box && !box.contains(at) && !at.closest(NEVER)
+  // A popup over the page, hit where it is: its middle and around it (one with no pointer is a float's, below).
+  for (const p of document.querySelectorAll(POPUPS)) {
+    if (box.contains(p)) continue
+    const b = p.getBoundingClientRect()
+    const left = Math.max(b.left, L), right = Math.min(b.right, R), top = Math.max(b.top, T), bottom = Math.min(b.bottom, B)
+    if (left >= right || top >= bottom) continue
+    const mx = (left + right) / 2, my = (top + bottom) / 2, dx = (right - left) / 4, dy = (bottom - top) / 4
+    for (const [x, y] of [[mx, my], [mx - dx, my - dy], [mx + dx, my - dy], [mx - dx, my + dy], [mx + dx, my + dy]]) {
+      const at = hit(x, y)
+      if (over(at) && (at === p || p.contains(at))) return "app"
     }
   }
-  // (tooltips take no pointer, so they're found by where they are)
+  // Along the edges, then a few across the inside.
+  const steps = (from: number, to: number, n: number) => Array.from({ length: n + 1 }, (_, i) => from + ((to - from) * i) / n)
+  const xs = steps(L, R, Math.max(1, Math.ceil((R - L) / EDGE_STEP))), ys = steps(T, B, Math.max(1, Math.ceil((B - T) / EDGE_STEP)))
+  for (const x of xs) if (over(hit(x, T)) || over(hit(x, B))) return "app"
+  for (const y of ys.slice(1, -1)) if (over(hit(L, y)) || over(hit(R, y))) return "app"
+  for (const x of steps(L, R, INSIDE).slice(1, -1)) for (const y of steps(T, B, INSIDE).slice(1, -1)) if (over(hit(x, y))) return "app"
+  return null
+}
+
+/** Whether only what lets the pointer through is over the page ("through"): tooltips and toasts, found by where they are
+ *  (they take no pointer, so no hit test finds them). */
+export function floatCover(r: DOMRect): Cover {
   const floats = document.querySelectorAll<HTMLElement>("[data-floats], [data-sonner-toast][data-visible=true]:not([data-removed=true])")
   for (const f of floats) { const b = f.getBoundingClientRect(); if (b.width > 1 && b.height > 1 && b.left < r.right && b.right > r.left && b.top < r.bottom && b.bottom > r.top) return "through" }
   return null
+}
+
+/** What a change may change of what covers `box`: "hits", only its floats (in a toast or tooltip), or nothing (in the
+ *  box, the status bar, or another pane, whose scroller clips it, but for a fixed element added there). */
+export type Change = "hits" | "floats" | null
+function changeAt(t: Element | null, box: HTMLElement): Change {
+  if (!t || box.contains(t) || t.closest("[data-status-bar]")) return null
+  if (t.closest("[data-sonner-toaster], [data-floats]")) return "floats"
+  const pane = t.closest("[data-pane], [data-kept]")
+  return !pane || pane === t || pane.contains(box) ? "hits" : null
+}
+export function matters(r: MutationRecord, box: HTMLElement): Change {
+  const t = r.target instanceof Element ? r.target : r.target.parentElement
+  const c = changeAt(t, box)
+  if (c || !t || box.contains(t) || t.closest("[data-status-bar]")) return c
+  return r.type === "childList" && [...r.addedNodes].some((n) => n instanceof HTMLElement && getComputedStyle(n).position === "fixed") ? "hits" : null
+}
+/** The same for a transition or animation that ended: what slid in is looked at where it stopped (never a colour's). */
+export function moved(e: Event, box: HTMLElement): Change {
+  if (e instanceof TransitionEvent && /color|shadow|outline|fill|stroke/.test(e.propertyName)) return null
+  return e.target instanceof Element ? changeAt(e.target, box) : null
 }
 
 /** The pointer over a page's box while the window lets it through, passed on to the page. */
