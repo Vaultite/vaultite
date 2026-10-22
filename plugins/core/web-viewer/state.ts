@@ -20,6 +20,8 @@ export type Settings = {
   shieldsDown?: string[]
   /** Parts of sites hidden with one click, by id (elements.ts PRESETS: "youtube-shorts"). */
   hide?: string[]
+  /** Sites whose style (sitestyles.ts) is off: shown as the site makes them. */
+  unstyled?: string[]
   /** Whether a page opened as a player goes full screen, on a Space of its own (the default), or is a window. */
   playerFullScreen?: boolean
 }

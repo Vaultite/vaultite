@@ -192,7 +192,7 @@ handle("adblock:settings", (win, x) => {
   c.on = s.on !== false
   c.down = new Set(down)
 })
-/** The user's hiding rules (the Blocked elements note's, and the parts of sites hidden with one click): the window's
+/** The user's hiding rules (the blocked elements list's, and the parts of sites hidden with one click): the window's
  *  pages show the change at once, without reloading. */
 handle("adblock:rules", (win, rules) => {
   const text = (Array.isArray(rules) ? rules : []).filter((r): r is string => typeof r === "string" && r.length <= 2000 && !/[\n\r]/.test(r))

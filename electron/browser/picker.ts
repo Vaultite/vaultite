@@ -1,5 +1,5 @@
 // Block an element: a picker in the page (picker-page.js, in an isolated world) answers the selector the user chose; the
-// app keeps it in the Blocked elements note, which comes back to Shields (adblock.ts `adblock:rules`) like every rule.
+// app keeps it in the blocked elements list, which comes back to Shields (adblock.ts `adblock:rules`) like every rule.
 import type { BrowserWindow } from "electron"
 import fs from "node:fs"
 import { fileURLToPath } from "node:url"

@@ -1,10 +1,12 @@
-// Shields in the Browser: a page's count of blocked requests and its menu. The desktop app blocks (electron/browser/
-// adblock.ts); the settings here are handed to it, and the parts of pages the user hid (Blocked elements, presets).
+// Shields in the Browser: a page's count of blocked requests and its menu (the parts hidden, the site's style). The
+// desktop app blocks (electron/browser/adblock.ts); the settings here are handed to it, and the rules the user hid by.
 import { useEffect, useState } from "react"
-import { EyeOff, MousePointerSquareDashed, Shield, ShieldOff } from "lucide-react"
+import { EyeOff, MousePointerSquareDashed, Paintbrush, Shield, ShieldOff } from "lucide-react"
 import { cell, cn, getStore, menuBelow, notify, notifyError, numberText, op, openFile, openPluginSettings, useStore, webPages, type MenuItem } from "@vaultite"
-import { onSite, PRESETS, type ElementRule } from "./elements"
+import { BLOCKED, onSite, PRESETS, type ElementRule } from "./elements"
+import type { SiteStyle } from "./sitestyles"
 import { settings } from "./state"
+import { editStyle, setStyled, styleOf } from "./stylestate"
 
 /** Requests blocked on each page (by its id), as the desktop app tells them. */
 const counts = cell(new Map<number, number>())
@@ -29,11 +31,11 @@ export function watchShields() {
 
 const NONE: never[] = []
 const noteRules = () => getStore()?.blockedElements ?? NONE
-/** The rules the engine gets: the note's, then those of the presets turned on. */
+/** The rules the engine gets: the list's, then those of the presets turned on. */
 const allRules = (note: ElementRule[], hide: string[]) => [...note.map((r) => r.rule), ...PRESETS.filter((p) => hide.includes(p.id)).flatMap((p) => p.rules)]
 const tellRules = (rules: string[]) => Promise.resolve(webPages?.engine?.("adblock:rules", rules)).catch(() => {})
 
-/** The desktop app hears the rules now and as the note or the presets change (index.tsx's Background). */
+/** The desktop app hears the rules now and as the list or the presets change (index.tsx's Background). */
 export function useHiddenParts() {
   const note = useStore().store?.blockedElements ?? NONE
   const hide = settings.use().hide ?? NONE
@@ -42,7 +44,7 @@ export function useHiddenParts() {
   useEffect(() => { if (webPages?.engine) void tellRules(rules) }, [key]) // eslint-disable-line react-hooks/exhaustive-deps
 }
 
-/** Hide a rule's elements: kept in the note (it comes back to the engine as the note changes); told now too, so the
+/** Hide a rule's elements: kept in the list (it comes back to the engine as the list changes); told now too, so the
  *  page shows it at once. */
 async function hideRule(rule: string, quiet = false) {
   void tellRules([...allRules(noteRules(), settings.get().hide ?? []), rule])
@@ -51,7 +53,7 @@ async function hideRule(rule: string, quiet = false) {
     if (!quiet) notify(`Hidden on ${siteOfRule(rule)}`, { action: { label: "Undo", run: () => void showRule(rule, true) } })
   } catch (e) { notifyError(e, "Couldn't hide it") }
 }
-/** Show a rule's elements again: taken out of the note. */
+/** Show a rule's elements again: taken out of the list. */
 async function showRule(rule: string, quiet = false) {
   void tellRules(allRules(noteRules(), settings.get().hide ?? []).filter((r) => r !== rule))
   try {
@@ -80,15 +82,25 @@ function hiddenItems(id: number, site: string, note: ElementRule[], hide: string
     const next = [...(settings.get().hide ?? []).filter((x) => x !== pid), ...(on ? [pid] : [])]
     void settings.set({ hide: next.length ? next : null }).catch((e) => notifyError(e, "Couldn't change it"))
   }
-  const path = note.length ? getStore()?.files.files.find((f) => f.type === "blocked-elements")?.path : undefined
   return [
     { label: "Block an element…", icon: MousePointerSquareDashed, sep: true, run: () => void pickElement(id, site) },
     ...presets.map((p): MenuItem => ({ label: p.name, checked: hide.includes(p.id), keep: true, run: () => setPreset(p.id, !(settings.get().hide ?? []).includes(p.id)) })),
     ...(mine.length ? [{ label: `Hidden on ${site}`, icon: EyeOff, hint: numberText(mine.length), run: () => {}, items: [
       { caption: true, label: "Click one to show it again", run: () => {} },
       ...mine.map((r): MenuItem => ({ label: r.rule.slice(r.rule.indexOf("##") + 2), checked: true, run: () => void showRule(r.rule) })),
-      ...(path ? [{ label: "Open the list", sep: true, run: () => openFile(path) }] : []),
+      { label: "Open the list", sep: true, run: () => openFile(BLOCKED) },
     ] }] : []),
+  ]
+}
+
+/** The Shields menu's part for `site`'s style: on or off when it has one, and editing it beside the page. */
+function styleItems(site: string, styles: SiteStyle[], unstyled: string[]): MenuItem[] {
+  const style = styleOf(styles, site)
+  if (!style) return [{ label: "Style this site…", icon: Paintbrush, sep: true, run: () => void editStyle(site) }]
+  const on = !unstyled.includes(style.site)
+  return [
+    { label: `Style for ${style.site}`, checked: on, sep: true, run: () => setStyled(style.site, !on) },
+    { label: "Edit its style…", icon: Paintbrush, run: () => void editStyle(style.site) },
   ]
 }
 
@@ -100,6 +112,7 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
   const told = counts.use((m) => m.get(id))
   const s = settings.use()
   const note = useStore().store?.blockedElements ?? NONE
+  const styles = useStore().store?.siteStyles ?? NONE
   useEffect(() => {
     let gone = false
     void Promise.resolve(webPages?.engine?.("adblock:page", id)).then((r) => { if (!gone) setPage((r as PageShields | null) ?? null) }, () => {})
@@ -130,6 +143,7 @@ export function ShieldsButton({ id, url, loading }: { id: number; url: string; l
       : count ? `${numberText(count)} ${count === 1 ? "request" : "requests"} blocked on this page` : "Nothing blocked on this page", run: () => {} },
     on ? { label: `Shields for ${site}`, checked: up, run: () => void setDown(up) } : { label: "Shields", checked: false, run: () => void turnOn() },
     ...hiddenItems(id, site, note, s.hide ?? []),
+    ...styleItems(site, styles, s.unstyled ?? []),
     { label: "Browser settings…", sep: true, run: () => openPluginSettings("web-viewer", "shields") },
   ]
   const Icon = up ? Shield : ShieldOff

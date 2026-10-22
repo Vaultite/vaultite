@@ -1,12 +1,13 @@
 // Agents in the Browser's pages (`vau browser ...`, browser_ tools; electron/browser/agent.ts answers and checks access),
-// and the bookmarks and blocked elements notes (Bookmarks.md, Blocked elements.md): their lines in the store, their ops.
+// Bookmarks.md and the plugin's files in .vaultite (blocked elements, site styles): what's in them in the store, their ops.
 import fs from "node:fs"
 import os from "node:os"
 import path from "node:path"
 import { OpError, Plugin, vaultPath, type OpCtx } from "../../../core/plugins.ts"
-import { Kind } from "../../../core/vault.ts"
+import { Kind, writeAtomic, type Vault } from "../../../core/vault.ts"
 import { addBookmarks, readBookmarks, type Bookmark } from "./bookmarks.ts"
-import { addRule, makeRule, readRules, removeRule, type ElementRule } from "./elements.ts"
+import { addRule, BLOCKED, makeRule, readRules, removeRule } from "./elements.ts"
+import { siteName, styleFile, STYLES, template, type SiteStyle } from "./sitestyles.ts"
 
 export const plugin = new Plugin(import.meta.url)
 
@@ -335,7 +336,7 @@ plugin.kind(new Kind({
 }))
 
 const note = () => plugin.vault.get("bookmarks", "bookmarks")
-plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], blockedElements: rulesNote()?.rules ?? [] }))
+plugin.state(() => ({ bookmarks: (note()?.links as Bookmark[] | undefined) ?? [], blockedElements: readRules(blockedText(plugin.vault)), siteStyles: siteStyles(plugin.vault) }))
 
 const clean = (v: unknown, n: number) => (typeof v === "string" ? v.trim().slice(0, n) : "")
 
@@ -377,16 +378,12 @@ isn't added again; a folder that isn't there yet gets its heading. links adds ma
 
 // ---------- blocked elements ----------
 
-plugin.kind(new Kind({
-  type: "blocked-elements", collection: "blocked-elements", file: "Blocked elements.md",
-  parse: (_fm, body) => [{ body, rules: readRules(body) }, []],
-  render: (b) => [{}, typeof b.body === "string" ? b.body : ""],
-}))
-
-const rulesNote = () => plugin.vault.get("blocked-elements", "blocked-elements") as { id: string; body?: unknown; rules?: ElementRule[] } | null
+/** A file of the plugin's in .vaultite, its text ("" when there's none). */
+const textOf = (v: Vault, rel: string) => { try { return fs.readFileSync(v.abs(rel), "utf8") } catch { return "" } }
+const blockedText = (v: Vault) => textOf(v, BLOCKED)
 const RULES_HELP = `Rules are standard hiding rules, a site, ## and a CSS selector (youtube.com##ytd-reel-shelf-renderer), as
-in uBlock Origin and Brave; with no site, every site. They're kept in a note of the user's, Blocked elements.md (type:
-blocked-elements), a heading per site, and the desktop app's web pages hide what they match as soon as it changes.`
+in uBlock Origin and Brave; with no site, every site. They're kept in ${BLOCKED}, a heading per site, and the desktop
+app's web pages hide what they match as soon as it changes.`
 
 /** The rule `p` names: whole, or a selector and its site. */
 function ruleFrom(p: { rule?: unknown; site?: unknown }) {
@@ -398,7 +395,7 @@ function ruleFrom(p: { rule?: unknown; site?: unknown }) {
 plugin.op({
   id: "web-viewer.block",
   cli: "browser block",
-  summary: "Hide part of a website in the desktop app's browser: a hiding rule added to the Blocked elements note.",
+  summary: "Hide part of a website in the desktop app's browser: a hiding rule added to the blocked elements list.",
   help: `${RULES_HELP} Prefer selectors that last: a custom element's name, an id, a semantic attribute, not a generated class.
 
   vau browser block "youtube.com##ytd-reel-shelf-renderer"
@@ -409,21 +406,20 @@ plugin.op({
     site: { type: "string", description: "the site it hides on (youtube.com), when rule is a selector; none: every site" },
   },
   args: ["rule"],
-  run: async (p) => {
-    const r = ruleFrom(p), old = rulesNote()
-    const { body, added } = addRule(typeof old?.body === "string" ? old.body : "", r)
-    if (!added) return { rule: r.rule, path: old ? `${old.id}.md` : null, added: false }
-    const saved = await plugin.vault.save("blocked-elements", { body }, old?.id ?? null)
-    return { rule: r.rule, path: saved ? `${saved.id}.md` : null, added: true }
+  run: (p, ctx) => {
+    const r = ruleFrom(p)
+    const { body, added } = addRule(blockedText(ctx.vault), r)
+    if (added) writeAtomic(ctx.vault.abs(BLOCKED), body)
+    return { rule: r.rule, path: BLOCKED, added }
   },
-  text: (r) => `${r.added ? "Hidden" : "Already hidden"}: ${r.rule}${r.path ? ` (${r.path})` : ""}`,
+  text: (r) => `${r.added ? "Hidden" : "Already hidden"}: ${r.rule} (${r.path})`,
   did: (p) => ({ action: "edit", text: `Hid ${clean(p.rule, 120)} in web pages` }),
 })
 
 plugin.op({
   id: "web-viewer.unblock",
   cli: "browser unblock",
-  summary: "Show again what a hiding rule of the Blocked elements note hid: the rule taken out of it.",
+  summary: "Show again what a hiding rule of the blocked elements list hid: the rule taken out of it.",
   help: `  vau browser unblock "youtube.com##ytd-reel-shelf-renderer"`,
   kind: "write",
   params: {
@@ -431,12 +427,11 @@ plugin.op({
     site: { type: "string", description: "its site, when rule is a selector" },
   },
   args: ["rule"],
-  run: async (p) => {
-    const r = ruleFrom(p), old = rulesNote()
-    const { body, removed } = removeRule(typeof old?.body === "string" ? old.body : "", r.rule)
-    if (!removed || !old) return { rule: r.rule, removed: false }
-    await plugin.vault.save("blocked-elements", { body }, old.id)
-    return { rule: r.rule, removed: true }
+  run: (p, ctx) => {
+    const r = ruleFrom(p)
+    const { body, removed } = removeRule(blockedText(ctx.vault), r.rule)
+    if (removed) writeAtomic(ctx.vault.abs(BLOCKED), body)
+    return { rule: r.rule, removed }
   },
   text: (r) => (r.removed ? `Shown again: ${r.rule}` : `Not in the list: ${r.rule}`),
   did: (p) => ({ action: "edit", text: `Showed ${clean(p.rule, 120)} again in web pages` }),
@@ -445,7 +440,7 @@ plugin.op({
 plugin.op({
   id: "web-viewer.blocked",
   cli: "browser blocked",
-  summary: "The hiding rules of the Blocked elements note: what the user hid in web pages, for a site or all.",
+  summary: "The hiding rules of the blocked elements list: what the user hid in web pages, for a site or all.",
   help: `${RULES_HELP}
 
   vau browser blocked
@@ -453,10 +448,68 @@ plugin.op({
   kind: "read",
   params: { site: { type: "string", description: "only this site's (and every site's)" } },
   args: ["site"],
-  run: (p) => {
+  run: (p, ctx) => {
     const site = clean(p.site, 300).toLowerCase().replace(/^www\./, "")
-    const all = rulesNote()?.rules ?? []
-    return { path: rulesNote() ? `${rulesNote()!.id}.md` : null, rules: all.filter((r) => !site || !r.site || site === r.site || site.endsWith(`.${r.site}`)).map((r) => r.rule) }
+    return { path: BLOCKED, rules: readRules(blockedText(ctx.vault)).filter((r) => !site || !r.site || site === r.site || site.endsWith(`.${r.site}`)).map((r) => r.rule) }
   },
-  text: (r) => (r.rules.length ? `${r.rules.join("\n")}${r.path ? `\n\n(${r.path})` : ""}` : "Nothing hidden."),
+  text: (r) => (r.rules.length ? `${r.rules.join("\n")}\n\n(${r.path})` : "Nothing hidden."),
+})
+
+// ---------- site styles ----------
+
+/** Every site's style, by its file in STYLES (youtube.com.css). */
+function siteStyles(v: Vault): SiteStyle[] {
+  let names: string[] = []
+  try { names = fs.readdirSync(v.abs(STYLES)) } catch { return [] }
+  return names.filter((n) => n.endsWith(".css") && siteName(n.slice(0, -4)) === n.slice(0, -4)).sort()
+    .map((n) => ({ site: n.slice(0, -4), path: `${STYLES}/${n}`, css: textOf(v, `${STYLES}/${n}`) }))
+}
+
+plugin.op({
+  id: "web-viewer.style",
+  cli: "browser style",
+  summary: "A website's own CSS in the desktop app's browser, in the vault's look: read, write or remove a site's style.",
+  help: `Each site's style is a CSS file, ${STYLES}/<site>.css, added to its pages (its subdomains' too) as soon as it's
+saved; each declaration wins over the site's own, so no !important. The vault's look is there as variables, kept up to
+date as it changes: --vault-background, --vault-foreground, --vault-card, --vault-muted, --vault-muted-foreground,
+--vault-primary, --vault-accent, --vault-border (and the rest of the app's colours), --vault-font-ui, --vault-font-text,
+--vault-font-code, --vault-radius, --vault-color-scheme (light or dark). Use them rather than colours of your own, so the
+site follows the vault's scheme. Prefer selectors that last (a custom element's name, an id, a semantic attribute). The
+user turns a site's style off in the page's Shields menu (setting unstyled).
+
+  vau browser style                          (the sites that have one)
+  vau browser style youtube.com              (its CSS and file)
+  vau browser style youtube.com --css "$(cat youtube.css)"
+  vau browser style youtube.com --remove`,
+  kind: "write",
+  params: {
+    site: { type: "string", description: "the site (youtube.com); none: the sites that have a style" },
+    css: { type: "string", description: "its whole CSS, replacing what it had" },
+    remove: { type: "boolean", description: "remove its style (the file goes to the trash)" },
+  },
+  args: ["site"],
+  run: (p, ctx) => {
+    const v = ctx.vault
+    if (!clean(p.site, 300)) return { sites: siteStyles(v).map((s) => s.site) }
+    const site = siteName(clean(p.site, 300))
+    if (!site) throw new OpError("give a site like youtube.com")
+    const rel = styleFile(site), had = fs.existsSync(v.abs(rel))
+    if (p.remove === true) {
+      if (had) v.toTrash(rel)
+      return { site, path: rel, removed: had }
+    }
+    if (typeof p.css === "string") {
+      if (p.css.length > 500_000) throw new OpError("that's more CSS than a site's style takes (500 KB)")
+      writeAtomic(v.abs(rel), p.css.endsWith("\n") ? p.css : `${p.css}\n`)
+      return { site, path: rel, written: true }
+    }
+    return { site, path: rel, css: had ? textOf(v, rel) : null, template: had ? undefined : template(site) }
+  },
+  text: (r) => "sites" in r ? (r.sites.length ? r.sites.join("\n") : "No site has a style.")
+    : r.removed !== undefined ? (r.removed ? `Removed ${r.site}'s style.` : `${r.site} has no style.`)
+    : r.written ? `Wrote ${r.site}'s style (${r.path}): its pages show it now.`
+    : r.css !== null ? `${r.path}\n\n${r.css}` : `${r.site} has no style yet. A new one starts as:\n\n${r.template}`,
+  did: (p) => (p.remove === true ? { action: "edit", text: `Removed ${clean(p.site, 120)}'s style in web pages` }
+    : typeof p.css === "string" ? { action: "edit", text: `Styled ${clean(p.site, 120)} in web pages` }
+    : { text: p.site ? `Read ${clean(p.site, 120)}'s style` : "Listed the sites with a style" }),
 })

@@ -31,9 +31,11 @@ a file here that adds itself through `engine.ts` and is imported by `index.ts`; 
   extensions) is `later` in engine.ts, loaded before the first page opens (web.ts awaits `engineLoaded`) or when the app
   asks a name nothing loaded answers. The app asks some names as every window starts (`adblock:settings`, `lock:set`):
   those stay cheap and eager.
-- The user's hiding rules (Blocked elements) are an engine of their own per window, apart from the lists (rebuilt daily)
+- The user's hiding rules (blocked elements) are an engine of their own per window, apart from the lists (rebuilt daily)
   and from Shields being down; they reach frames through the same preload, and again as they change (`adblock:rules`).
   Ghostery joins a stylesheet's selectors into one rule: theirs are split (`apart`), so one typo hides only itself.
+- Site styles (sitestyles.ts) are inserted author CSS, which Chromium orders before the page's own: they win only by
+  being !important in a layer (`vaultite-style`), which the app makes them (web-viewer's stylestate.ts `winning`).
 - The element picker (picker-page.js) is the page's own overlay in an isolated world (a native page can't be drawn
   over by the app), styled through the CSSOM only (constructed sheets, `style`): a page's CSP or Trusted Types never
   refuse it.

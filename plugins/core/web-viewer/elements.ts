@@ -1,5 +1,8 @@
-// Blocked elements: hiding rules (`example.com##selector`) in the user's note Blocked elements.md (type blocked-elements),
-// a heading per site; read and changed here, the same on the server (plugin.ts) and in the app.
+// Blocked elements: hiding rules (`example.com##selector`) in the plugin's list (BLOCKED, a Markdown file in .vaultite:
+// the app's, not a note to read), a heading per site; read and changed here, the same on the server (plugin.ts) and in the app.
+
+/** The list, beside the plugin's settings. */
+export const BLOCKED = ".vaultite/plugins/web-viewer/blocked-elements.md"
 
 /** A rule as the note has it, and the site it's for ("" for every site). */
 export type ElementRule = { rule: string; site: string; selector: string }

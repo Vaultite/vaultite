@@ -1,7 +1,7 @@
 // Browser: web pages in the desktop app's tabs (native views, electron/web.ts, its engine electron/browser/), beside notes.
 // Links open here (⌘-click: the browser); pages' notifications and Claude Code on the web's sessions reach the Inbox.
 import { lazy, Suspense, useEffect } from "react"
-import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, Lock, MonitorPlay, MousePointerSquareDashed, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
+import { Bookmark, Bot, Box, Download, Eraser, ExternalLink, Globe, History, Lock, MonitorPlay, MousePointerSquareDashed, Paintbrush, PencilLine, Puzzle, Scissors, Search, Volume2, VolumeX } from "lucide-react"
 import { choose, closeTab, closeView, definePlugin, focusGroup, getStore, groupTab, isMac, isViewOpen, modKey, modifiedSteps, notify, notifyError, openInSplit, openView, openWebLink, Panel, post, runShortcut, saveAttachments, selectTab, showLabel, systemNotify, selectedText, useCommandList, webPageActions, webPages, type Choice, type WebEvent } from "@vaultite"
 import { hostOf, searchUrl } from "./address"
 import { addContainer, argOf, colorOf, useContainers, containerById, containerOfProfile, containers, profileIn, splitArg } from "./containers"
@@ -15,6 +15,7 @@ import { askImport, browsersHere, findBrowsers } from "./importer"
 import "./types"
 import { agentNews, bookmark, focusedPage, focusedPageId, helpAsks, linksInViewer, pausedPages, profile, setPlayer, setSounds, settings, shown, soundOf, titleOf } from "./state"
 import { pickElement, useHiddenParts, watchShields } from "./shields"
+import { editStyle, useSiteStyles } from "./stylestate"
 import { Playing } from "./Playing"
 
 const WebPage = lazy(() => import("./WebPage"))
@@ -127,6 +128,7 @@ function Background() {
   useEffect(() => { if (hasExtensions()) extensionsChanged() }, [])
   useEffect(watchShields, [])
   useHiddenParts()
+  useSiteStyles()
   // (Claude Code on the web's sessions: their news comes as `session` events from now on)
   useEffect(() => { void webPages?.cloud?.().catch(() => {}) }, [])
   // (the browsers there are to import from: their commands show)
@@ -281,6 +283,8 @@ export default definePlugin({
     { id: "web:clear-history", name: "Clear browsing history…", desktop: true, when: () => !!webPages?.engine, run: askClear, icon: Eraser },
     { id: "web:block-element", name: "Block an element on this page", when: () => !!webPages?.engine && /^https?:\/\//i.test(focusedPage()?.url() ?? ""),
       run: () => void pickElement(focusedPageId()), icon: MousePointerSquareDashed },
+    { id: "web:edit-style", name: "Edit this site's style", when: () => !!webPages?.engine && !!hostOf(focusedPage()?.url() ?? ""),
+      run: () => void editStyle(hostOf(focusedPage()?.url() ?? ""), focusedPageId()), icon: Paintbrush },
     { id: "web:player", name: "Open current web page as player", nameWhenOn: "Bring current web page back from player", keys: ["Mod+Alt+P"], icon: MonitorPlay,
       when: () => !!webPages?.player && /^https?:\/\//i.test(focusedPage()?.url() ?? ""), on: () => !!focusedPage()?.inPlayer(),
       run: () => setPlayer(focusedPageId(), !focusedPage()?.inPlayer()) },

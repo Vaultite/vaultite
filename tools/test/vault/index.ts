@@ -5,6 +5,7 @@ export const AREAS: { name: string; deps: string[] }[] = [
   { name: "write-gate", deps: [] },
   { name: "data", deps: [] },
   { name: "settings", deps: [] },
+  { name: "browser-files", deps: [] },
   { name: "edits", deps: [] },
   { name: "files", deps: [] },
   { name: "search", deps: [] },

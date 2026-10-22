@@ -100,9 +100,14 @@ its own number (`API_VERSION` in `core/version.ts`). The details are in git hist
   page's Shields button counts what was blocked and turns them off for its site. Nothing of it loads until a web page
   opens.
 - Block an element (the Shields menu, the palette, or right-click a part of the page to start on it): point at part of a page, widen or narrow the pick with ↑ and ↓,
-  see it hidden before you save, and edit its selector. Rules are `youtube.com##selector` lines in a Blocked elements
-  note that pages follow as it changes; the Shields menu lists a site's rules (click one to show it again) and hides
+  see it hidden before you save, and edit its selector. Rules are `youtube.com##selector` lines in the Browser's list
+  (`.vaultite/plugins/web-viewer/blocked-elements.md`; a Blocked elements note moves there once) that pages follow as it
+  changes; the Shields menu lists a site's rules (click one to show it again) and hides
   YouTube's Shorts, recommendations or comments in one click. Agents add rules with `vau browser block`.
+- Browser site styles: a site's own CSS (`.vaultite/plugins/web-viewer/sites/youtube.com.css`) in the vault's look, its
+  colours and fonts as `--vault-*` variables that follow light, dark and the colour scheme; it applies as you save, wins
+  over the site's own without !important, and the Shields menu turns it off or opens it beside the page ("Style this
+  site…"). Agents write one with `vau browser style`.
 - Tint the active tab (Settings > Appearance, off by default): a web page's tab takes its container's colour, lightly.
   The container's line under the address is straight.
 - Notes: click a note's icon beside its title to change it, or the icon of a row you're renaming in the file tree.

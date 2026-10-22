@@ -89,9 +89,9 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   subdomains too.
 - Blocked elements: parts of pages the user hid, as hiding rules (`youtube.com##ytd-reel-shelf-renderer`: a site, `##`
   and a CSS selector, uBlock Origin's and Brave's syntax; no site: every site; `:has-text()` and uBlock's other
-  procedural ones work too) in a note, `Blocked elements.md` (`type: blocked-elements`; one moved keeps working): a
-  `## <site>` heading per site and a `` - `rule` `` line per rule, words after it a note to yourself. Pages show a change
-  to the note at once, with no reload; they apply with Shields down too (they're the user's, not the lists'). "Block an
+  procedural ones work too) in the Browser's list, `.vaultite/plugins/web-viewer/blocked-elements.md` (the app's, not a
+  note): a `## <site>` heading per site and a `` - `rule` `` line per rule, words after it a note to yourself. Pages show a change
+  to the list at once, with no reload; they apply with Shields down too (they're the user's, not the lists'). "Block an
   element…" (the Shields menu, or "Block an element on this page") picks one in the page: the element under the pointer
   is outlined, a click picks it, Wider and Narrower (↑ ↓) walk to its parent and back, what the selector matches is
   hidden as a preview and its selector can be edited; Block adds the rule (Esc cancels). The Shields menu lists the
@@ -100,6 +100,16 @@ apart from the app's, on the Mac running the desktop app; nothing about them is 
   "<site>##<selector>"` (or a selector with `--site`), `vau browser unblock <rule>`, `vau browser blocked [site]`;
   prefer selectors that last (a custom element's name, an id, a semantic attribute), never a generated class. Not
   Focus's: what a managed extension blocks isn't here, and nothing here gets around it.
+- Site styles: a site's own CSS, `.vaultite/plugins/web-viewer/sites/<site>.css` (youtube.com.css: its subdomains too),
+  added to its pages before they paint and again as it's saved, no reload. Each declaration wins over the site's own (the
+  app makes them !important, in a layer), so none needs !important. The vault's look is there as variables, following
+  light, dark, the colour scheme and fonts: `--vault-background`, `--vault-foreground`, `--vault-card`, `--vault-popover`,
+  `--vault-muted`, `--vault-muted-foreground`, `--vault-primary`, `--vault-accent`, `--vault-border` and the app's other
+  colours, `--vault-font-ui`, `--vault-font-text`, `--vault-font-code`, `--vault-radius`, `--vault-color-scheme` (light
+  or dark). Use them, not colours of your own, so a site follows the vault; on a site with its own colour tokens (YouTube's),
+  map those rather than restyling each part. The Shields menu has "Style for <site>" (off: setting `unstyled`) and "Edit
+  its style…" ("Style this site…" for one without: its file from a template, opened beside the page); the palette's "Edit
+  this site's style" too. Agents: `vau browser style [site]` (`--css`, `--remove`).
 - Extensions (Chrome's, on the Mac running the desktop app; installed per Mac, never in the vault, since each is code
   run on every site): "Extensions" (a command, or a page's … menu) lists them with a switch each,
   Options, Pin to the bar and Remove, and adds one from a Chrome Web Store link or id, from a folder or `.crx` file, or

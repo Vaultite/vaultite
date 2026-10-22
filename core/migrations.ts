@@ -106,6 +106,29 @@ export function baseLayoutOut(text: string): string {
   return drop.size ? lines.filter((_, i) => !drop.has(i)).join("\n") : text
 }
 
+/** The Browser's blocked elements list, which was a note of the user's (type: blocked-elements) and is the app's now,
+ *  in .vaultite (the web-viewer plugin's elements.ts BLOCKED). */
+const BLOCKED_LIST = ".vaultite/plugins/web-viewer/blocked-elements.md"
+
+/** The blocked elements note (at the top, or moved into a folder) into the Browser's list, the note to the trash. */
+async function blockedElementsIn(v: Vault): Promise<string[]> {
+  const top = "Blocked elements.md"
+  const found = fs.existsSync(v.abs(top)) ? [top] : markdownFiles(v.abs("")).filter((rel) => path.basename(rel) === top)
+  for (const rel of found) {
+    const text = (await readSoon(v.abs(rel)))?.toString("utf8")
+    const fm = text && FM.exec(text)
+    let type: unknown
+    try { type = fm ? loadFm(fm[1] ?? "").type : undefined } catch { continue }
+    if (!text || type !== "blocked-elements") continue
+    const body = text.slice(fm![0].length).replace(/^\n+/, "")
+    const had = fs.existsSync(v.abs(BLOCKED_LIST)) ? fs.readFileSync(v.abs(BLOCKED_LIST), "utf8") : ""
+    writeAtomic(v.abs(BLOCKED_LIST), had ? `${had.replace(/\n*$/, "\n\n")}${body}` : body)
+    v.toTrash(rel)
+    break
+  }
+  return []
+}
+
 /** A step: what it changes in the vault. One that changes files (`only` those, when some were left) returns the files it
  *  couldn't read yet, to change at a later start. */
 const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<string[]> }[] = [
@@ -145,6 +168,7 @@ const STEPS: { id: string; run: (v: Vault, only?: string[]) => void | Promise<st
       }
     },
   },
+  { id: "blocked-elements-2026-10", run: blockedElementsIn },
 ]
 
 /** The app's plugins that moved to Vaultite's plugin directory: id -> where they're installed from now. Off the app in

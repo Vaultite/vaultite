@@ -17,6 +17,7 @@
     "shields": { "type": "boolean", "default": true, "label": "Shields", "description": "block ads (YouTube's video ads too), trackers and malware sites in web pages, with uBlock Origin's default lists (updated daily); a page's Shields button shows how many requests were blocked on it" },
     "shieldsDown": { "type": "list", "label": "Sites with Shields down", "description": "sites where nothing is blocked, like example.com (a site's subdomains too); a page's Shields menu adds and removes its site" },
     "playerFullScreen": { "type": "boolean", "default": true, "label": "Players open full screen", "description": "a page opened as a player (to watch it, or share its window in a call) fills a Space of its own in full screen; off: a window of its own" },
-    "hide": { "type": "list", "label": "Parts of sites hidden", "description": "ready-made rules turned on in a page's Shields menu, by name: youtube-shorts (Shorts), youtube-recommendations (the home feed, Up next and end screens), youtube-comments; your own are the Blocked elements note" }
+    "hide": { "type": "list", "label": "Parts of sites hidden", "description": "ready-made rules turned on in a page's Shields menu, by name: youtube-shorts (Shorts), youtube-recommendations (the home feed, Up next and end screens), youtube-comments; your own are the blocked elements list (.vaultite/plugins/web-viewer/blocked-elements.md)" },
+    "unstyled": { "type": "list", "label": "Sites without their style", "description": "sites whose own CSS (.vaultite/plugins/web-viewer/sites/<site>.css, in the vault's look) is off for now; a page's Shields menu turns it on and off" }
   }
 }

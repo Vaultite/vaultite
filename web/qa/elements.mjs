@@ -2,9 +2,11 @@
 // serves on 127.0.0.1 (Shields' lists: a small one of its own, no network): the Shields menu's Block an element… starts
 // the picker (the page's right-click Block element… too, on what was clicked); pointing outlines, a click picks the
 // element (a stable selector, not its generated class), ↑ widens it to the custom element around it, marked but still
-// shown until P previews it hidden, ↓ narrows back, Esc cancels with nothing kept; Enter keeps `127.0.0.1##<selector>` in Blocked elements.md and
-// the page stays so, a reload too; the menu's Hidden on 127.0.0.1 shows one again (gone from the note, shown without a
-// reload); an agent's `web-viewer.block` hides live (a site's rule, and a generic one), unblock shows.
+// shown until P previews it hidden, ↓ narrows back, Esc cancels with nothing kept; Enter keeps `127.0.0.1##<selector>` in the
+// blocked elements list and the page stays so, a reload too; the menu's Hidden on 127.0.0.1 shows one again (gone from the
+// list, shown without a reload); an agent's `web-viewer.block` hides live (a site's rule, and a generic one), unblock shows.
+// Site styles: a site's CSS file applies at once and beats the page's own, with the vault's look as variables (following
+// light and dark), a reload too; the Shields menu turns it off and on.
 // WRITES: the throwaway vault only.
 //   node web/qa/elements.mjs <vault copy>
 import { _electron } from "playwright-core"
@@ -44,7 +46,8 @@ const plugins = fs.existsSync(pluginsFile) ? JSON.parse(fs.readFileSync(pluginsF
 fs.mkdirSync(path.dirname(pluginsFile), { recursive: true })
 fs.writeFileSync(pluginsFile, JSON.stringify({ ...plugins, enabled: [...(plugins.enabled ?? []).filter((x) => x !== "web-viewer"), "web-viewer"],
   disabled: (plugins.disabled ?? []).filter((x) => x !== "web-viewer") }, null, 2) + "\n")
-const NOTE = path.join(VAULT, "Blocked elements.md")
+const NOTE = path.join(VAULT, ".vaultite/plugins/web-viewer/blocked-elements.md")
+const STYLE = path.join(VAULT, ".vaultite/plugins/web-viewer/sites/127.0.0.1.css")
 const note = () => (fs.existsSync(NOTE) ? fs.readFileSync(NOTE, "utf8") : "")
 
 // ---------- the app ----------
@@ -130,7 +133,7 @@ await key("Up")
 await until(async () => (await picker())?.selector === "my-card[is-sponsored]", 5000)
 await key("Return")
 const RULE = "127.0.0.1##my-card[is-sponsored]"
-check("Enter keeps the rule in Blocked elements.md, under its site", await until(() => note().includes(`## 127.0.0.1\n\n- \`${RULE}\``), 10000), note())
+check("Enter keeps the rule in the blocked elements list, under its site", await until(() => note().includes(`## 127.0.0.1\n\n- \`${RULE}\``), 10000), note())
 check("… the picker's gone", (await picker()) === null)
 await wait(2600) // (past the picker's own preview: the rule hides them now)
 check("… and they stay hidden by the rule", JSON.stringify(await seen()) === JSON.stringify({ s1: false, s2: false, story: true, banner: true }), await seen())
@@ -145,7 +148,7 @@ const row = menuItem("my-card[is-sponsored]")
 check("the Shields menu lists the site's rules", await until(() => row.count(), 5000), await win.locator("[role=menu]").allInnerTexts().catch(() => []))
 await row.click()
 check("a click shows it again, without a reload", await until(async () => (await seen())?.s1 === true && (await seen())?.s2 === true, 10000), await seen())
-check("… and takes it out of the note", await until(() => !note().includes(RULE), 10000), note())
+check("… and takes it out of the list", await until(() => !note().includes(RULE), 10000), note())
 
 // ---------- agents ----------
 await runOp("web-viewer.block", { rule: ".promo-banner", site: "127.0.0.1" })
@@ -156,6 +159,43 @@ await runOp("web-viewer.block", { rule: "##.promo-banner" })
 check("a rule for every site (a class's, matched by what the page has) hides at once too", await until(async () => (await seen())?.banner === false, 10000) && note().includes("## Every site"), [await seen(), note()])
 await runOp("web-viewer.unblock", { rule: "##.promo-banner" })
 check("… and is taken back", await until(async () => (await seen())?.banner === true, 10000), await seen())
+
+// ---------- site styles ----------
+/** How the page's parts look, and the vault's look as the page has it. */
+const looks = () => inPage(`(() => { const css = (sel, p) => getComputedStyle(document.querySelector(sel))[p]
+  const v = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim()
+  return { card: css("#story .inner", "backgroundColor"), banner: css("#banner", "color"), bg: v("--vault-background"), scheme: v("--vault-color-scheme") } })()`)
+const EEF = "rgb(238, 238, 255)"
+check("no style: the site as it made it", (await looks())?.card === EEF && !(await looks())?.bg, await looks())
+fs.mkdirSync(path.dirname(STYLE), { recursive: true })
+fs.writeFileSync(STYLE, ".inner { background: var(--vault-background) }\n#banner { color: rgb(1, 2, 3) }\n")
+check("a site's style applies at once, over the page's own, with the vault's look", await until(async () => {
+  const l = await looks()
+  return l?.banner === "rgb(1, 2, 3)" && l.card !== EEF && !!l.bg && /^(light|dark)$/.test(l.scheme)
+}, 10000), await looks())
+await inPage("location.reload()")
+await wait(1500)
+check("a reload: still styled, from its first paint", await until(async () => (await looks())?.banner === "rgb(1, 2, 3)", 10000), await looks())
+const appearance = path.join(VAULT, ".vaultite/appearance.json")
+const look = fs.existsSync(appearance) ? JSON.parse(fs.readFileSync(appearance, "utf8")) : {}
+const was = (await looks())?.scheme, other = was === "dark" ? "light" : "dark"
+fs.writeFileSync(appearance, JSON.stringify({ ...look, theme: other }, null, 2) + "\n")
+check("the vault's look changing (light, dark) reaches the page", await until(async () => (await looks())?.scheme === other, 10000), await looks())
+fs.writeFileSync(appearance, JSON.stringify(look, null, 2) + "\n")
+await button.click()
+check("the Shields menu has the site's style, on", await until(() => menuItem("Style for 127.0.0.1").count(), 5000)
+  && (await menuItem("Style for 127.0.0.1").getAttribute("aria-checked")) === "true", await win.locator("[role=menu]").allInnerTexts().catch(() => []))
+await menuItem("Style for 127.0.0.1").click()
+check("turned off: the site as it made it, without a reload", await until(async () => (await looks())?.banner !== "rgb(1, 2, 3)" && (await looks())?.card === EEF, 10000), await looks())
+await button.click()
+await menuItem("Style for 127.0.0.1").click()
+check("… and on again", await until(async () => (await looks())?.banner === "rgb(1, 2, 3)", 10000), await looks())
+fs.rmSync(STYLE)
+check("its file gone: the site as it made it", await until(async () => (await looks())?.card === EEF, 10000), await looks())
+await button.click()
+await menuItem("Style this site…").click()
+check("Style this site…: its file made from the template, opened beside the page", await until(() => fs.existsSync(STYLE) && fs.readFileSync(STYLE, "utf8").includes("--vault-background"), 10000)
+  && await until(() => win.getByText("127.0.0.1.css").first().isVisible().catch(() => false), 10000), fs.existsSync(STYLE))
 
 console.log(errs.length ? `page errors:\n${errs.slice(0, 5).join("\n")}` : "no page errors")
 await app.close()
