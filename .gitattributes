@@ -1,0 +1,2 @@
+# LF everywhere, Windows checkouts too: tests compare text and shell scripts break on CRLF
+* text=auto eol=lf
