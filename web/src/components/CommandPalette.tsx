@@ -1,5 +1,5 @@
-// The command palette (⌘P): commands offered now, fuzzy by name, the used last first; a setting shows its switch. A
-// plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
+// The command palette (⌘P): commands offered now, fuzzy by name, the used last first; a setting shows its switch or
+// value. A plugin that's off whose name is typed is offered to turn on ("turn off" and a name, to turn off).
 import { useMemo, useState } from "react"
 import { available, commandName, isOn, isSetting, keysOf, recentCommands, runCommand, runOrSay, useCommandList, type Command } from "@/core/commands"
 import { useSwitches } from "@/core/switches"
@@ -89,8 +89,8 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
   const plugins = usePlugins()
   const { disabled } = usePrefs()
   const [q, setQ] = useState("")
-  // (only whether it's a setting: the hints change with it, and keeping the row itself redrew every row each move)
-  const [setting, setSetting] = useState(false)
+  // (only what kind of setting it is: the hints change with it, and keeping the row itself redrew every row each move)
+  const [setting, setSetting] = useState<"switch" | "choice" | null>(null)
   const switched = useSwitches()
   const rows = useMemo((): Row[] => {
     // Named as they are now ("Hide left sidebar"), found by either name.
@@ -117,20 +117,21 @@ export function CommandPalette({ onClose }: { onClose: () => void }) {
         onClose()
         setTimeout(() => (how.mod && c.place ? c.place.open() : c.plugin ? runOrSay(c.run, c.name) : runCommand(c)), 0)
       }}
-      onSelect={(c) => setSetting(!!c && isSetting(c))}
+      onSelect={(c) => setSetting(!c ? null : isSetting(c) ? "switch" : c.value ? "choice" : null)}
       section={(c) => (c.plugin === "off" ? "Plugins that are off" : c.plugin === "on" ? "Plugins that are on" : undefined)}
       empty={<p className="px-3 py-6 text-center text-[15px] text-muted-foreground">No command matches "{q.trim()}".</p>}
       hints={setting
-        ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to switch"], ["Mod+Enter", "to open in Settings"], ["Escape", "to dismiss"]]
+        ? [["ArrowUp ArrowDown", "to navigate"], ["Enter", setting === "switch" ? "to switch" : "to choose"], ["Mod+Enter", "to open in Settings"], ["Escape", "to dismiss"]]
         : [["ArrowUp ArrowDown", "to navigate"], ["Enter", "to use"], ["Escape", "to dismiss"]]}
       row={(c) => {
         const Icon = commandIcon(c)
         return <>
           {Icon ? <Icon className="size-4 shrink-0 text-muted-foreground" strokeWidth={2} /> : <span aria-hidden className="size-4 shrink-0" />}
           <span className="min-w-0 flex-1 truncate text-[15px] leading-[21px] text-foreground/90"><Marked text={c.name} marks={c.marks} /></span>
-          {isSetting(c) && c.place && <span className="hidden max-w-[35%] shrink-0 truncate text-[13px] text-muted-foreground md:block">{c.place.name}</span>}
+          {(isSetting(c) || c.value) && c.place && <span className="hidden max-w-[35%] shrink-0 truncate text-[13px] text-muted-foreground md:block">{c.place.name}</span>}
           {keysOf(c)[0] && <Keys keys={keysOf(c)[0]} />}
           {isSetting(c) && <SwitchMark on={isOn(c)} />}
+          {c.value && <span className="shrink-0 rounded-[5px] bg-muted px-1.5 text-[12px] leading-[18px] text-muted-foreground" data-choice-value>{c.value()}</span>}
         </>
       }} />
   )

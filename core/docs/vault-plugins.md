@@ -132,7 +132,7 @@ in a sheet guards what isn't saved with `useSheetGuard(() => lines)`.
   => Markdown`, or null to leave it as it is, its text. What it draws under a note's title (`noteTop`) is, for agents, the
   service `page-head`, `({path, type, fm}) => Markdown` or null.
 - `files: { types, page }` draws a type of file as a page. `settingsPanel: ({ store }) => ...` draws what a form can't,
-  above its declared settings. `editor: (ctx) => extensions` adds CodeMirror extensions to every editor (may return a
+  below its declared settings (above with `settingsPanelFirst: true`). `editor: (ctx) => extensions` adds CodeMirror extensions to every editor (may return a
   promise; `ctx.kind` "markdown" for notes): `@codemirror/state`, `view`, `language`, `commands`, `autocomplete`,
   `search` and `@lezer/highlight` are the app's own copy, loaded with the plugin.
 - `sidebar: { "<name>": { title, sort: 40, render: ({ store, open, file, tab }) => ... } }` adds a sidebar panel

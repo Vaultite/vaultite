@@ -4,7 +4,7 @@ import {
   currentEditor, currentFile, definePlugin, getTabLayout, iconAt, isViewOpen, openFile, openView, PIN_SEARCH, useCommands, useFocusedFile,
   usePane, useViewsVersion, useWorkspaceVersion, viewPinLabel, type Store, type TabLayout,
 } from "@vaultite"
-import { PinCurrent, pinChecklist, PinnedPages } from "./Pinned"
+import { PinCurrent, pinChecklist, PinnedPages, showAsMenu } from "./Pinned"
 import { PinnedSettings } from "./SettingsPanel"
 import { currentPins, isPinned, pinItems, pinnable, pinName, pinNoted, relabel, shownPinned, viewPin } from "./types"
 
@@ -107,7 +107,7 @@ function Tiles({ store }: { store: Store }) {
 
 export default definePlugin({
   sidebar: { pages: { title: "Pinned pages", heading: "Pinned", sort: 10, view: "pages", render: (ctx) => <PinnedPages {...ctx} />,
-    actions: ({ file }) => <PinCurrent file={file} />, menu: () => [{ label: "Pinned pages", icon: Pin, run: () => {}, items: pinChecklist(currentFile()) }] } },
+    actions: ({ file }) => <PinCurrent file={file} />, menu: () => [{ label: "Pinned pages", icon: Pin, run: () => {}, items: pinChecklist(currentFile()) }, ...showAsMenu()] } },
   views: {
     // (the list itself: pinned in itself it would only open the list)
     pages: { icon: Pin, title: () => "Pinned pages", pinAs: () => null, render: ({ store }) => <PinnedView store={store} /> },

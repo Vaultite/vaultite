@@ -3,8 +3,8 @@
 // app's own (`alwaysOn`) plugins that have settings; its search finds every plugin's settings, in the menu's place, the
 // arrows lighting one and Enter going there, and Setup's tabs; on Setup's Plugins tab a
 // gear (on plugins that are on and have settings) opens the sheet; generated forms write only the key changed; custom
-// panels (Pinned, File explorer); a data.json-only plugin (Logs); a vault plugin's declared settings; every way to open
-// a sheet; 390px. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
+// panels (Pinned, File explorer), after the options; a data.json-only plugin (Logs); a vault plugin's declared
+// settings; every way to open a sheet; 390px. WRITES plugins.json, files.json, page-preview's, search's and workspaces' settings, and a vault plugin
 // (put back / removed): throwaway server only.
 //   node web/qa/pluginsettings.mjs <base url> <vault path> [out dir]
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs"
@@ -201,6 +201,9 @@ try {
     await page.keyboard.press("Enter")
     await until(() => sheet(page, "pages").count(), 4000)
     check("custom panel: Pinned's pages, there at once", (await sheet(page, "pages").locator("[data-page-row]").count()) >= 2)
+    // (its options first: a list that grows mustn't push them out of sight)
+    check("custom panel: after the options, Show pinned pages as above the pages", await sheet(page, "pages").locator('[data-setting="show"]').evaluate((el) =>
+      !!(el.compareDocumentPosition(el.closest("dialog").querySelector("[data-pinned-settings]")) & Node.DOCUMENT_POSITION_FOLLOWING)).catch(() => false))
     await shot(page, "4-panel-pinned-desktop")
     await closeSheet(page)
 

@@ -71,5 +71,6 @@ export default definePlugin({
     "memory-review": ({ path, body }) => <ReviewCard path={path} body={body} />,
   },
   settingsPanel: () => <SettingsPanel />,
+  settingsPanelFirst: true,
   preview: () => <Preview />,
 })

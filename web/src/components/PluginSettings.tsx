@@ -1,5 +1,5 @@
-// A plugin's settings sheet, the one place its options live: its `settingsPanel`, then a form of its declared
-// settings (choosing the default removes the key), or its settings file drawn. No menus inside: choices unfold.
+// A plugin's settings sheet, the one place its options live: a form of its declared settings (the default removes the
+// key), then its `settingsPanel` (or first), or its settings file drawn. No menus inside: choices unfold.
 import { type KeyboardEvent, useEffect, useMemo, useState } from "react"
 import { Check, ChevronDown, ChevronRight, FileJson, Folder, Plus, X, type LucideIcon } from "lucide-react"
 import { type Store, useStore } from "@/core/data"
@@ -10,7 +10,7 @@ import { useVaultChange } from "@/core/live"
 import { afterSheets } from "@/core/nav"
 import { notifyError } from "@/core/notify"
 import { isEnabled, names, setSwitch, tintOfPlugin } from "@/core/plugins"
-import { pluginSettings, revealRow, settingsFile, takeGoingTo } from "@/core/pluginSettings"
+import { pluginSettings, revealRow, settingsFile, takeGoingTo, valueLabel } from "@/core/pluginSettings"
 import { grantsOf, setGrant } from "@/core/grants"
 import { usePrefs } from "@/core/prefs"
 import { capitalize, cn } from "@/lib/utils"
@@ -40,6 +40,9 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
   const declared = Object.keys(decls).length > 0
   const hasFile = (store.pluginSettings ?? []).includes(plugin.id)
   const blocked = (plugin.requires ?? []).filter((r) => !isEnabled(r, disabled))
+  // Its own panel: after the short options it declares (a list that grows can't push them out of sight), unless it's
+  // what the sheet is for.
+  const panel = on && plugin.settingsPanel && <Catch fallback={panelFailed}>{plugin.settingsPanel({ store })}</Catch>
   // Opened for one setting (the Settings page's search): go to it.
   useEffect(() => {
     const key = takeGoingTo(plugin.id)
@@ -55,8 +58,9 @@ export function PluginSettings({ store, plugin }: { store: Store; plugin: Plugin
         </div>
       )}
       <div className="space-y-5">
-        {on && plugin.settingsPanel && <Catch fallback={panelFailed}>{plugin.settingsPanel({ store })}</Catch>}
-        {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!plugin.settingsPanel && on} />}
+        {panel && plugin.settingsPanelFirst && panel}
+        {declared && <SettingsForm id={plugin.id} decls={decls} titled={!!panel} />}
+        {panel && !plugin.settingsPanelFirst && panel}
         <Homes store={store} plugin={plugin.id} />
         <Writes store={store} plugin={plugin.id} />
         {!declared && !(plugin.settingsPanel && on) && (hasFile ? <SettingsJson path={settingsFile(plugin.id)} /> : (
@@ -172,25 +176,24 @@ export function Field({ k, d, value, set }: { k: string; d: SettingDecl; value: 
   return <SettingRow label={d.label} sub={`${sub}. Edit it in the file below`} {...attrs} />
 }
 
-const labelOf = (d: SettingDecl, v: unknown) => d.labels?.[String(v)] ?? capitalize(String(v))
 
 /** One of a few short values: segmented; more, a row that unfolds into the choices (a menu can't open over a sheet). */
 function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown; set: (v: unknown) => void }) {
   const [open, setOpen] = useState(false)
   const values = d.values ?? []
   const back = (s: string) => values.find((v) => String(v) === s)
-  const short = values.length <= 3 && values.every((v) => labelOf(d, v).length <= 12)
+  const short = values.length <= 3 && values.every((v) => valueLabel(d, v).length <= 12)
   if (short) {
     return (
       <SettingRow stack label={d.label} sub={capitalize(d.description)} data-setting={k}>
         <Segmented className="w-full sm:w-auto sm:shrink-0 [&>button]:whitespace-nowrap" label={d.label} value={value === undefined ? "" : String(value)}
-          options={values.map((v) => ({ value: String(v), label: labelOf(d, v) }))} onChange={(s) => set(back(s))} />
+          options={values.map((v) => ({ value: String(v), label: valueLabel(d, v) }))} onChange={(s) => set(back(s))} />
       </SettingRow>
     )
   }
   return (
     <div data-setting={k}>
-      <SettingRow label={d.label} sub={capitalize(d.description)} value={value === undefined ? "" : labelOf(d, value)} onClick={() => setOpen(!open)}
+      <SettingRow label={d.label} sub={capitalize(d.description)} value={value === undefined ? "" : valueLabel(d, value)} onClick={() => setOpen(!open)}
         chevron={open ? ChevronDown : ChevronRight} aria-expanded={open} />
       {open && (
         <div role="radiogroup" aria-label={d.label} className="-mt-1 pb-2 pl-1">
@@ -200,7 +203,7 @@ function Choice({ k, d, value, set }: { k: string; d: SettingDecl; value: unknow
               <button key={String(v)} type="button" role="radio" aria-checked={on} onClick={() => { set(v); setOpen(false) }}
                 className="flex min-h-11 w-full cursor-pointer items-center gap-2.5 rounded-[8px] px-2 text-left text-[15px] hover:bg-foreground/[0.04] md:min-h-9 md:text-[14px]">
                 <Check className={cn("size-4 shrink-0 text-primary", !on && "invisible")} strokeWidth={2.5} />
-                {labelOf(d, v)}
+                {valueLabel(d, v)}
               </button>
             )
           })}
@@ -323,7 +326,7 @@ function Chips({ k, d, value, set }: { k: string; d: SettingDecl; value: unknown
             <button key={String(v)} type="button" aria-pressed={on} onClick={() => set(on ? list.filter((x) => x !== v) : [...list, v])}
               className={cn("min-h-8 cursor-pointer rounded-full border-[0.5px] px-3 text-[14px] md:min-h-7 md:text-[13px]",
                 on ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground hover:text-foreground")}>
-              {labelOf(d, v)}
+              {valueLabel(d, v)}
             </button>
           )
         })}

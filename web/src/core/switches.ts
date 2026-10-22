@@ -2,12 +2,12 @@
 // the menu bar all follow. Named as Settings names them, never "Toggle"; "Turn on" is only for plugins.
 import { ArrowDownUp, Archive, BookOpenText, Brackets, Eye, Heading, Heading1, ListOrdered, ListTree, MousePointer2, PaintBucket, PanelLeftDashed, PanelTop, PenLine, SeparatorHorizontal, Shapes, SpellCheck, SunDim, WrapText } from "lucide-react"
 import type { Command } from "@/core/commands"
-import { getStore, reload } from "@/core/data"
+import { reload } from "@/core/data"
 import { editorSet, editorSettings, setEditor, type EditorSettings } from "@/core/editorPrefs"
 import { openDetail } from "@/core/nav"
 import { notify, notifyError } from "@/core/notify"
 import { isEnabled, pluginById, PLUGINS, setSwitch, switchedOn } from "@/core/plugins"
-import { openPluginSettings, pluginSettings, revealRow } from "@/core/pluginSettings"
+import { openPluginSettings, pluginSettings, revealRow, settingDefault } from "@/core/pluginSettings"
 import { getPrefs, onPrefs, setPrefs, type Prefs } from "@/core/prefs"
 import { signal } from "@/core/signal"
 import { quickTextSizeSub } from "@/core/textsize"
@@ -83,8 +83,7 @@ function pluginSwitches(disabled: string[]): SwitchDef[] {
   return PLUGINS.filter((p) => isEnabled(p.id, disabled)).flatMap((p) => Object.entries(p.settingsDecls ?? {}).flatMap(([key, d]) => {
     if (d.type !== "boolean" || d.local) return []
     const s = pluginSettings<Record<string, unknown>>(p.id)
-    // (another app's settings make some defaults: SettingsForm's seeds)
-    const dflt = () => { const seeds = getStore()?.settingDefaults?.[`plugins/${p.id}/data`]; return (seeds && Object.hasOwn(seeds, key) ? seeds[key] : d.default) === true }
+    const dflt = () => settingDefault(p.id, key, d) === true
     return [{
       id: `setting:${p.id}:${key}`, name: d.label, sub: () => capitalize(d.description ?? ""), words: `${p.name} ${d.description ?? ""}`, icon: p.icon,
       plugin: { id: p.id, key },
@@ -145,12 +144,12 @@ let started = false
 function follow() {
   if (!started) { started = true; onPrefs(changed.notify) }
   for (const p of PLUGINS) {
-    if (heard.has(p.id) || !Object.values(p.settingsDecls ?? {}).some((d) => d.type === "boolean")) continue
+    if (heard.has(p.id) || !Object.values(p.settingsDecls ?? {}).some((d) => d.type === "boolean" || d.type === "enum")) continue
     heard.add(p.id)
     pluginSettings(p.id).onChange(changed.notify)
   }
 }
-/** Call `fn` when any switch may have changed; returns how to stop. */
+/** Call `fn` when any switch (or a plugin's choice, core/choices.ts) may have changed; returns how to stop. */
 export function onSwitches(fn: () => void) { follow(); return changed.subscribe(fn) }
 /** Redraw when a switch changes. */
 export function useSwitches() { follow(); return changed.use() }

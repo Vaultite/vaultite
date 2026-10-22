@@ -24,6 +24,7 @@ import { askRenameSet, leaveSet, makeSet } from "@/core/tabsets"
 import { getPrefs, setPrefs, usePrefs } from "@/core/prefs"
 import { textSizeCommands } from "@/core/textsize"
 import { allSwitches, switchCommand } from "@/core/switches"
+import { choiceCommands } from "@/core/choices"
 import { loadVaultPlugins } from "@/core/vaultPlugins"
 import { menuBelow, menuFor, type MenuItem } from "@/components/ContextMenu"
 import { DetailSheet } from "@/components/DetailSheet"
@@ -412,7 +413,7 @@ export default function App() {
   // Text sizes: notes' and the plugins' kinds (the Terminal's), apart from the app's zoom (core/textsize.ts).
   useCommands(() => textSizeCommands(disabled, order), [disabled.join(), enabled.join(), order.join()])
   // Every on/off setting, the app's and the plugins' (core/switches.ts).
-  useCommands(() => allSwitches(disabled).map(switchCommand), [disabled.join(), enabled.join(), pluginsVersion])
+  useCommands(() => [...allSwitches(disabled).map(switchCommand), ...choiceCommands(disabled)], [disabled.join(), enabled.join(), pluginsVersion])
   // A pop-out window (core/workspace.ts POPOUT) has no sidebars: its tabs fill it.
   const popout = isPopout()
   // Without rails a hidden sidebar takes no room: it slides in over the page from its edge (core/peek.ts).

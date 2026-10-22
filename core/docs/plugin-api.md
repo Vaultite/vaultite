@@ -112,7 +112,7 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `timeline`: Kinds of timeline entries it knows ("call": a phone icon), for the `## Timeline` sections kinds draw (a person's).
 - `views`: Tabs it can open that aren't files (see ViewDef), by name: `view:<name>`.
 - `agents`: Coding agents it brings, by name (see AgentDef): the Terminal plugin runs them.
-- `commands`: Its commands, listed in the command palette while it's on. One that switches something says what it does now (`on`, `nameWhenOn`), never "Toggle"; a boolean in its manifest's `settings` gets its switch command on its own.
+- `commands`: Its commands, listed in the command palette while it's on. One that switches something says what it does now (`on`, `nameWhenOn`), never "Toggle"; its manifest's boolean and enum `settings` get their commands on their own.
 - `editor`: What it adds to every editor (see EditorExtension).
 - `slash`: Its entries in the editor's slash menu (see SlashItem). Every plugin's blocks are offered there already.
 - `sidebar`: Its panels in the desktop sidebar, by name (see SidebarPanel).
@@ -138,7 +138,8 @@ The app's own manifest keys (a vault plugin's are in `vau docs vault-plugins`).
 - `home`: Where a device's first tab goes and where a phone with nowhere to be goes: a tab target, or null. The first plugin that's on and answers wins; with none, a new tab.
 - `newTab`: Sections it adds to a blank tab's page, by name ("<plugin id>:<name>", arranged in newtab.json).
 - `settingsPages`: Its pages in Settings' list, by name, beside the app's own (Connections' AI apps): for setting the app up, not a plugin's options (those are its settings).
-- `settingsPanel`: Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s.
+- `settingsPanel`: Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. Drawn after its declared settings (a short option above a list that grows), unless `settingsPanelFirst`.
+- `settingsPanelFirst`: Its settingsPanel above its declared settings: when the panel is what the sheet is for (Import, Connect).
 - `settingsSearch`: What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves).
 - `newFiles`: Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile).
 - `player`: Plays audio and video wherever the app shows them (a file's tab, an embed), instead of the browser's bare player: the first plugin that's on wins.

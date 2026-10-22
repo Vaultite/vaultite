@@ -1,10 +1,10 @@
 // The pinned pages (sidebar, drawer, view:pages): drag to reorder, onto a pane to open, elsewhere in the sidebar to
 // unpin; drop a file to pin it. The list is the sidebar's (types.ts): the current workspace's with Workspaces on.
 import { Fragment, useEffect, useId, useRef } from "react"
-import { ChevronRight, Folder, Hash, Heading, PinOff, Plus, Search } from "lucide-react"
+import { ChevronRight, Folder, Hash, Heading, LayoutGrid, List, PinOff, Plus, Search } from "lucide-react"
 import {
-  checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isFolder, isPage, menuFor, offPlugin, openAt, openFile, openingSoon, openInSplit,
-  pinnedFoldersOpen, pluginSettings, showInTree,
+  checklist, cn, currentWorkspace, fileMenu, FileTree, folderMenu, getStore, HeadingButton, iconAt, isDesktop, isFolder, isPage, menuFor, notifyError, offPlugin, openAt, openFile,
+  openingSoon, openInSplit, pinnedFoldersOpen, pluginSettings, showInTree,
   openItem, openView, pastEnd, PIN_SEARCH, placePin, resolveView, rowMenu, selectClick, selectedAttr, selectionFor, SidebarRow, SidebarTile, startDrag, stem, useDrag, useDropHit,
   useDropTarget, useEnabled, useSelectable, useSelectedKeys, useViewsVersion, useWorkspaceVersion, viewInfo, viewSurfaces, type CheckItem, type DragItem, type MenuItem, type SidebarCtx,
 } from "@vaultite"
@@ -87,6 +87,19 @@ export function pinChecklist(file: string | undefined): MenuItem[] {
     off: [pages.map((f) => choice(f.path, stem(f.path))), here.map((p) => choice(p, stem(p))), views.map((v) => choice(v.key, v.label))],
     set: (key, on, before) => void pin(key, on, on ? before : undefined),
   })
+}
+
+/** The panel's menu's Show as ▸ List, Tiles: the setting where it shows. Only on a computer (a phone's drawer keeps
+ *  the list). */
+export function showAsMenu(): MenuItem[] {
+  if (!isDesktop()) return []
+  const show = settings.get().show ?? "list"
+  // (the default again: the key goes)
+  const set = (v: "list" | "tiles") => void settings.set({ show: v === "list" ? null : v }).catch((e) => notifyError(e, "Couldn't change it"))
+  return [{ label: "Show as", icon: show === "tiles" ? LayoutGrid : List, run: () => {}, items: [
+    { label: "List", icon: List, checked: show === "list", run: () => set("list") },
+    { label: "Tiles", icon: LayoutGrid, checked: show === "tiles", run: () => set("tiles") },
+  ] }]
 }
 
 /** The heading's +: pin the file on screen, when it can be and isn't yet. */
@@ -203,7 +216,7 @@ export function PinnedPages({ store, open, file, tab, panel, pane, phone, flyout
       }}
         onPointerEnter={() => file && openingSoon(file)} onPointerLeave={() => openingSoon(null)}
         // Right-clicked (or its …) on a page: opening it, a file's menu as anywhere else (its own Unpin left out), then
-        // Unpin last. The panel's own menu is its heading's: Pinned pages ▸, Panels ▸, Hide.
+        // Unpin last. The panel's own menu is its heading's: Pinned pages ▸, Show as ▸, Panels ▸, Hide.
         onContextMenu={menuFor(rowMenu(SELECT, id, () => [
           ...(folder ? folderMenu(id, { skip: "pages" }) : [openItem(() => openEntry(entry, { newTab: true, pane }), () => openInSplit(to!, "right"))]),
           ...(entry.kind === "file" ? fileMenu(id).filter((it) => it.label !== "Unpin").map((it, i) => (i ? it : { ...it, sep: true })) : []),

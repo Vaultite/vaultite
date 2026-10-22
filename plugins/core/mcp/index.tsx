@@ -40,6 +40,7 @@ function Connect() {
 export default definePlugin({
   preview: () => <Preview />,
   settingsPanel: () => <Connect />,
+  settingsPanelFirst: true,
   icons: { "grok-bot": GrokBotIcon, muse: MuseIcon },
   details: {
     [SETUP_DETAIL]: { title: (_s, [id]) => setupTitle(id), render: (_s, [id]) => <SetupSheet id={id as AppId} /> },

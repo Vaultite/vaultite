@@ -577,7 +577,7 @@ export type PluginDef = {
   /** Coding agents it brings, by name (see AgentDef): the Terminal plugin runs them. */
   agents?: Record<string, AgentDef>
   /** Its commands, listed in the command palette while it's on. One that switches something says what it does now
-   *  (`on`, `nameWhenOn`), never "Toggle"; a boolean in its manifest's `settings` gets its switch command on its own. */
+   *  (`on`, `nameWhenOn`), never "Toggle"; its manifest's boolean and enum `settings` get their commands on their own. */
   commands?: PluginCommand[]
   /** What it adds to every editor (see EditorExtension). */
   editor?: EditorExtension
@@ -638,8 +638,11 @@ export type PluginDef = {
   /** Its pages in Settings' list, by name, beside the app's own (Connections' AI apps): for setting the app up, not a
    *  plugin's options (those are its settings). */
   settingsPages?: Record<string, { label: string; icon: LucideIcon; sub?: string; render: (ctx: { store: Store }) => ReactNode }>
-  /** Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s. */
+  /** Its settings, for what a form from its manifest's `settings` can't say: `SettingRow`s in `Group`s, no `Panel`s.
+   *  Drawn after its declared settings (a short option above a list that grows), unless `settingsPanelFirst`. */
   settingsPanel?: (ctx: { store: Store }) => ReactNode
+  /** Its settingsPanel above its declared settings: when the panel is what the sheet is for (Import, Connect). */
+  settingsPanelFirst?: boolean
   /** What its settingsPanel has, for the Settings page's search (its manifest's `settings` are found by themselves). */
   settingsSearch?: SettingsSearchEntry[]
   /** Kinds of files it makes, in the New submenu after New note in the file tree's menus (see NewFile). */

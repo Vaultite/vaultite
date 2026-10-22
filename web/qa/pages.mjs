@@ -1,7 +1,8 @@
 // Pages are files: a page's file address opens its dashboard, the sidebar lists the pinned files, right-click hides and
 // shows them (the menu stays open), dashboards open in reading as a grid and ⌘E edits them, on a phone the drawer
 // lists them (the sidebar's panel) and a new tab shows them as tiles, Pinned's settings list them, Show pinned pages as
-// Tiles draws the open sidebar's as a grid (the drawer keeps its list), and /api/render reads a dashboard as text.
+// Tiles draws the open sidebar's as a grid (the drawer keeps its list), chosen from the palette or the panel's menu,
+// and /api/render reads a dashboard as text.
 // Screenshots in /tmp/vaultite-pages/.
 // WRITES .vaultite/pages.json and Pinned's data.json (and puts them back): throwaway server only.
 //   node web/qa/pages.mjs <base url>
@@ -123,9 +124,19 @@ check("Pinned's settings: the pages, saying how many are pinned", (await m.locat
 await m.screenshot({ path: `${OUT}phone-settings.png`, fullPage: true })
 
 // Tiles: the open sidebar's pages as a grid of icons, named by their tooltips, in the list's order; the drawer keeps rows.
+// Chosen in the palette: "Show pinned pages as…" says what's in use, and offers both.
 const listed = await side()
-await setShow("tiles")
-await page.goto("about:blank"); await page.goto(`${B}${hashOf("People")}`)
+await page.goto("about:blank"); await page.goto(`${B}${hashOf("People")}`); await page.waitForTimeout(1500)
+await page.keyboard.press("ControlOrMeta+p"); await page.waitForTimeout(300); await page.keyboard.type("show pinned pages as"); await page.waitForTimeout(300)
+const cmd = page.locator("[role=option]", { hasText: "Show pinned pages as…" }).first()
+check("palette: Show pinned pages as…, saying List", (await cmd.locator("[data-choice-value]").innerText().catch(() => "")) === "List")
+await page.screenshot({ path: `${OUT}desktop-palette-row.png` })
+await page.keyboard.press("Enter"); await page.waitForTimeout(400)
+const offered = await page.locator("[role=option]").allInnerTexts()
+check("palette: it offers List and Tiles", same(offered.map((t) => t.trim()), ["List", "Tiles"]), offered)
+await page.screenshot({ path: `${OUT}desktop-palette-choice.png` })
+await page.locator("[role=option]", { hasText: "Tiles" }).click(); await page.waitForTimeout(600)
+check("palette: picking Tiles writes it", (await (await fetch(`${B}api/config/plugin/pages`)).json()).show === "tiles")
 await page.waitForSelector("[data-pin-tiles] [data-pin]", { timeout: 10000 }).catch(() => {})
 const grid = await page.locator("[data-pin-tiles] [data-pin]").evaluateAll((ts) => ts.map((t) => ({ tip: t.getAttribute("data-tip"), text: t.textContent, top: Math.round(t.getBoundingClientRect().top) })))
 check("Tiles: the sidebar's pages as a grid, named by tooltips", grid.length >= 5 && grid.every((t) => t.tip && !t.text) && grid[0].top === grid[3].top && same(grid.map((t) => t.tip), listed.map((l) => l.replaceAll(" / ", "/"))), [grid.map((t) => t.tip), listed])
@@ -136,6 +147,15 @@ check("Tiles: a click opens its page", await page.locator("[data-pin-tiles] [dat
 await m.goto("about:blank"); await m.goto(`${B}#files`); await m.waitForTimeout(1200)
 await m.locator("[data-phone-header] button[aria-label='Open sidebar']").tap(); await m.waitForTimeout(500)
 check("Tiles: a phone's drawer keeps the list", (await m.locator("[data-phone-drawer=left] nav[aria-label=Pages] a").count()) >= 5 && !(await m.locator("[data-phone-drawer=left] [data-pin-tiles]").count()))
+// Back to the list from the panel's menu: Show as ▸ List, Tiles, the one in use checked.
+await page.locator("[data-panel='pages:pages'] [data-panel-handle]").first().click({ button: "right" }); await page.waitForTimeout(200)
+await page.locator("[role=menu] button", { hasText: /^Show as$/ }).first().hover(); await page.waitForTimeout(300)
+const tilesItem = page.locator("[role=menu]").getByRole("menuitemradio", { name: "Tiles", exact: true })
+check("panel menu: Show as ▸ Tiles, checked", await tilesItem.getAttribute("aria-checked") === "true")
+await page.screenshot({ path: `${OUT}desktop-show-as.png` })
+await page.locator("[role=menu]").getByRole("menuitemradio", { name: "List", exact: true }).click(); await page.waitForTimeout(600)
+check("panel menu: List puts the list back", !(await page.locator("[data-pin-tiles]").count()) && (await page.locator("nav[aria-label=Pages] a").count()) >= 5 &&
+  (await (await fetch(`${B}api/config/plugin/pages`)).json()).show === undefined)
 await setShow(showBefore)
 
 const md = await (await fetch(`${B}api/render?path=${encodeURIComponent(`${DIR}/People.md`)}`)).text()

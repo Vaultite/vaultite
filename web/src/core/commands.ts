@@ -35,6 +35,8 @@ export type Command = {
   nameWhenOn?: string
   /** A setting's place in Settings: its section's name ("Appearance") and how to go to it. */
   place?: { name: string; open: () => void }
+  /** A setting of a few values (core/choices.ts): the one in use, at its row's end; running it offers the others. */
+  value?: () => string
 }
 
 /** A setting: drawn with a switch (palette) or a check (menus), not renamed by its state. */

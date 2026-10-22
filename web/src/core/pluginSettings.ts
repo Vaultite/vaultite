@@ -9,6 +9,8 @@ import type { Command } from "@/core/commands"
 import { get as fetchJson, patch } from "@/core/http"
 import { onVaultChange, touches } from "@/core/live"
 import { cell } from "@/core/signal"
+import { capitalize } from "@/lib/utils"
+import type { SettingDecl } from "../../../core/blocks.ts"
 
 /** Where a plugin's settings are kept. */
 export const settingsFile = (id: string) => `.vaultite/plugins/${id}/data.json`
@@ -57,6 +59,16 @@ export function pluginSettings<T extends object = Data>(id: string) {
     ready,
   }
 }
+
+/** What a declared setting is when its key is left out: its manifest's default, or one another app's settings make
+ *  (.obsidian/templates.json's folder). */
+export function settingDefault(id: string, key: string, d: SettingDecl): unknown {
+  const seeds = getStore()?.settingDefaults?.[`plugins/${id}/data`]
+  return seeds && Object.hasOwn(seeds, key) ? seeds[key] : d.default
+}
+
+/** An enum's value as the form and the palette name it: its `labels`' name, else the value capitalized. */
+export const valueLabel = (d: SettingDecl, v: unknown) => d.labels?.[String(v)] ?? capitalize(String(v))
 
 /** A plugin's settings sheet's name: "Vim settings", but "Style settings" as it is. */
 export const settingsTitle = (name: string) => (/\bsettings$/i.test(name) ? name : `${name} settings`)
